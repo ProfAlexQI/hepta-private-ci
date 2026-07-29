@@ -74,9 +74,9 @@
     "canonical_record_sizes_may_not_increase": true
   },
   "scripts_budget": {
-    "baseline_physical_lines": 411218,
+    "baseline_physical_lines": 411238,
     "gate_compat_normalized_effective_lines": 307661,
-    "baseline_effective_lines": 718879,
+    "baseline_effective_lines": 718899,
     "physical_line_limit": 421571,
     "effective_line_limit": 738462,
     "maintenance_headroom_percent_max": 3,

@@ -33,6 +33,14 @@ EXPECTED_PAYLOAD_COUNT = 2512
 MAX_NORMALIZED_PAYLOAD_COUNT = 548
 MAX_NORMALIZED_EFFECTIVE_LINES = 316_891
 MAX_CANONICAL_RECORD_BYTES = 355_619
+LEGACY_GZIP_MTIME = 0
+LEGACY_GZIP_XFL = 0
+LEGACY_GZIP_OS = 3
+LEGACY_GZIP_COMPRESSION_METHOD = 8
+LEGACY_GZIP_HEADER = [
+  0x1f, 0x8b, LEGACY_GZIP_COMPRESSION_METHOD, 0,
+  LEGACY_GZIP_MTIME, LEGACY_GZIP_XFL, LEGACY_GZIP_OS
+].pack("C4VC2").freeze
 EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256 =
   "988ba401674b1adadb3faff943c4de2b12f836e517c31c21066a20b3a77de867"
 LEGACY_ENVELOPE_PREFIX = "#!/usr/bin/env bash\n" \
@@ -67,12 +75,16 @@ end
 
 def legacy_blob(logical_path, source)
   return source unless registered_hashes.key?(logical_path)
-  compressed = StringIO.new
-  writer = Zlib::GzipWriter.new(compressed, Zlib::DEFAULT_COMPRESSION)
-  writer.write(source)
-  writer.close
-  gzip = compressed.string
-  gzip[4, 4] = "\0\0\0\0"
+  deflater = Zlib::Deflate.new(
+    Zlib::DEFAULT_COMPRESSION,
+    -Zlib::MAX_WBITS,
+    Zlib::DEF_MEM_LEVEL,
+    Zlib::DEFAULT_STRATEGY
+  )
+  compressed = deflater.deflate(source, Zlib::FINISH)
+  deflater.close
+  gzip = LEGACY_GZIP_HEADER + compressed +
+    [Zlib.crc32(source), source.bytesize & 0xffffffff].pack("V2")
   LEGACY_ENVELOPE_PREFIX + Base64.strict_encode64(gzip) + "\n"
 end
 
@@ -380,9 +392,17 @@ def verify
   raise "legacy gate payload generation drifted" unless registry["legacy_blob_generation"] ==
     "deterministic_raw_or_gzip_default_mtime_zero_v1"
   raise "legacy gate payload count drifted" unless registry["legacy_blob_count"] == entries.length
-  raise "legacy gate payload aggregate drifted" unless registry["legacy_blob_aggregate_sha256"] ==
-    EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256 &&
-    legacy_blob_aggregate_sha(entries) == EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256
+  actual_legacy_aggregate = legacy_blob_aggregate_sha(entries)
+  unless registry["legacy_blob_aggregate_sha256"] == EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256 &&
+      actual_legacy_aggregate == EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256
+    raise "legacy gate payload aggregate drifted: registry=#{registry["legacy_blob_aggregate_sha256"]} " \
+      "actual=#{actual_legacy_aggregate} expected=#{EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256}"
+  end
+  legacy_roundtrip_path = registered_hashes.keys.min
+  legacy_roundtrip_source = entries.fetch(legacy_roundtrip_path)
+  raise "legacy gate payload gzip roundtrip drifted" unless decode_envelope_bytes(
+    legacy_blob(legacy_roundtrip_path, legacy_roundtrip_source)
+  ) == legacy_roundtrip_source
   expected_current_reality_registry = JSON.pretty_generate(current_reality_registry(entries)) + "\n"
   raise "current-reality capability registry drifted" unless File.file?(CURRENT_REALITY_REGISTRY_PATH) &&
     File.binread(CURRENT_REALITY_REGISTRY_PATH) == expected_current_reality_registry
