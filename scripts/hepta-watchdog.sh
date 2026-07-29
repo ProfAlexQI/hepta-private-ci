@@ -16,6 +16,9 @@ INSTALLED_RECEIPT="${HEPTA_INSTALLED_RECEIPT:-${HEPTA_INSTALLED_MANIFEST:-${HEPT
 EXPECTED_SOURCE_COMMIT="${HEPTA_EXPECTED_SOURCE_COMMIT:-}"
 PRODUCT_BOUNDARY="${HEPTA_PRODUCT_BOUNDARY:-$REPO_ROOT/docs/decisions/hepta-product-boundary-v1.json}"
 EXPECTED_WATCHDOG_AGGREGATE_SHA256="${HEPTA_EXPECTED_WATCHDOG_AGGREGATE_SHA256:-}"
+GATEWAY_LAUNCH_AGENT="${HEPTA_GATEWAY_LAUNCH_AGENT:-}"
+EXPECTED_GATEWAY_LAUNCH_AGENT_SHA256="${HEPTA_EXPECTED_GATEWAY_LAUNCH_AGENT_SHA256:-}"
+EXPECTED_GATEWAY_LOADED_PATH_SHA256="${HEPTA_EXPECTED_GATEWAY_LOADED_PATH_SHA256:-}"
 
 usage() {
   cat >&2 <<'EOF'
@@ -188,7 +191,88 @@ if [[ "$require_active_health" != "true" || "$release_evidence_ready" != "true" 
   exit 0
 fi
 
-health_json="$(curl -fsS "$BASE_URL/health")"
+gateway_launch_agent_bound=false
+gateway_loaded_path=""
+gateway_loaded_path_sha256=""
+if [[ "$watchdog_closure_required" == "true" ]]; then
+  [[ -n "$GATEWAY_LAUNCH_AGENT" \
+    && "$EXPECTED_GATEWAY_LAUNCH_AGENT_SHA256" =~ ^[0-9a-f]{64}$ \
+    && "$EXPECTED_GATEWAY_LOADED_PATH_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "immutable watchdog requires manifest-bound gateway LaunchAgent evidence" >&2
+    exit 1
+  }
+  [[ -f "$GATEWAY_LAUNCH_AGENT" && ! -L "$GATEWAY_LAUNCH_AGENT" ]] || {
+    echo "canonical gateway LaunchAgent is missing or not a regular file" >&2
+    exit 1
+  }
+  [[ "$(stat -f '%Lp' "$GATEWAY_LAUNCH_AGENT")" == "444" \
+    && "$(stat -f '%u' "$GATEWAY_LAUNCH_AGENT")" == "$(id -u)" \
+    && "$(stat -f '%l' "$GATEWAY_LAUNCH_AGENT")" == "1" ]] || {
+    echo "canonical gateway LaunchAgent mode, owner, or link count is unsafe" >&2
+    exit 1
+  }
+  [[ "$(shasum -a 256 "$GATEWAY_LAUNCH_AGENT" | awk '{print $1}')" \
+    == "$EXPECTED_GATEWAY_LAUNCH_AGENT_SHA256" ]] || {
+    echo "canonical gateway LaunchAgent differs from the release manifest" >&2
+    exit 1
+  }
+  gateway_label="$(plutil -extract Label raw -o - "$GATEWAY_LAUNCH_AGENT")"
+  same_label_count=0
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    if [[ "$(plutil -extract Label raw -o - "$candidate" 2>/dev/null || true)" \
+      == "$gateway_label" ]]; then
+      same_label_count=$((same_label_count + 1))
+      [[ "$candidate" == "$GATEWAY_LAUNCH_AGENT" ]] || {
+        echo "non-canonical same-label gateway plist remains loadable: $candidate" >&2
+        exit 1
+      }
+    fi
+  done < <(
+    find "$(dirname "$GATEWAY_LAUNCH_AGENT")" \
+      -maxdepth 1 -type f -name '*.plist' -print | sort
+  )
+  [[ "$same_label_count" == "1" ]] || {
+    echo "canonical gateway LaunchAgent is not the unique loadable same-label plist" >&2
+    exit 1
+  }
+  gateway_loaded_print="$(launchctl print "gui/$(id -u)/$gateway_label")"
+  gateway_loaded_path="$(
+    awk -F' = ' '
+      /^[[:space:]]*path = / {
+        value=$2
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        print value
+        exit
+      }
+    ' <<<"$gateway_loaded_print"
+  )"
+  [[ "$gateway_loaded_path" == "$GATEWAY_LAUNCH_AGENT" ]] || {
+    echo "loaded gateway job path is not the canonical release-bound plist" >&2
+    exit 1
+  }
+  gateway_loaded_path_sha256="$(
+    printf '%s' "$gateway_loaded_path" | shasum -a 256 | awk '{print $1}'
+  )"
+  [[ "$gateway_loaded_path_sha256" == "$EXPECTED_GATEWAY_LOADED_PATH_SHA256" ]] || {
+    echo "loaded gateway job path digest differs from the release manifest" >&2
+    exit 1
+  }
+  gateway_launch_agent_bound=true
+fi
+
+watchdog_state_json="$(curl -fsS "$BASE_URL/api/watchdog-state")"
+if ! jq -e '
+  .schema_version == "hepta_watchdog_state_v1"
+  and .product == "Hepta"
+  and .runtime == "hepta"
+  and .side_effect_free == true
+  and (.route.manifest_sha256 | test("^[0-9a-f]{64}$"))
+' >/dev/null <<<"$watchdog_state_json"; then
+  echo "Hepta compact watchdog projection is invalid" >&2
+  exit 1
+fi
+health_json="$(jq -c '{status:.status}' <<<"$watchdog_state_json")"
 route_manifest_bin=""
 route_manifest_json=""
 for candidate_bin in "$ROUTE_MANIFEST_BIN" "$RELEASE_BIN" "$INSTALLED_BIN"; do
@@ -228,17 +312,20 @@ route_manifest_schema="$(
 route_manifest_sha256="$(
   jq -r '.route_effect_gate_manifest.sha256' <<<"$route_manifest_json"
 )"
-route_json="$(curl -fsS "$BASE_URL/api/control-ui-route-parity")"
-operator_json="$(curl -fsS "$BASE_URL/api/operator-security")"
-owner_json="$(curl -fsS "$BASE_URL/api/telegram-owner-handoff")"
-poll_json="$(curl -fsS "$BASE_URL/api/telegram-poll-loop")"
-post_json="$(curl -fsS "$BASE_URL/api/native-post-activation-plan")"
-stores_json="$(curl -fsS "$BASE_URL/api/native-post-execution-stores")"
-adapter_json="$(curl -fsS "$BASE_URL/api/hepta-engine-adapter-boundary")"
-adapter_alias_json="$(curl -fsS "$BASE_URL/api/hepta-codex-engine-adapter-boundary")"
-core_json="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
-closure_json="$(curl -fsS "$BASE_URL/api/hepta-name-repository-closure")"
-dependency_json="$(curl -fsS "$BASE_URL/api/hepta-engine-dependency-closure")"
+route_json="$(jq -c '.route' <<<"$watchdog_state_json")"
+operator_json="$(
+  jq -c '.operator + {telegram_production_readiness_status:.production}' \
+    <<<"$watchdog_state_json"
+)"
+owner_json="$(jq -c '.owner' <<<"$watchdog_state_json")"
+poll_json="$(jq -c '.poll' <<<"$watchdog_state_json")"
+post_json="$(jq -c '.native_post.activation' <<<"$watchdog_state_json")"
+stores_json="$(jq -c '.native_post.stores' <<<"$watchdog_state_json")"
+adapter_json="$(jq -c '.architecture.adapter' <<<"$watchdog_state_json")"
+adapter_alias_json="$adapter_json"
+core_json="$(jq -c '.architecture.core' <<<"$watchdog_state_json")"
+closure_json="$(jq -c '.architecture.closure' <<<"$watchdog_state_json")"
+dependency_json="$(jq -c '.architecture.dependency' <<<"$watchdog_state_json")"
 product_boundary_json="$(jq -c . "$PRODUCT_BOUNDARY")"
 native_post_contract_json="$(
   hepta_watchdog_native_post_contract_json "$product_boundary_json" "$post_json"
@@ -257,8 +344,12 @@ report="$(jq -n \
   --arg installed_sha "$installed_sha" \
   --arg watchdog_closure_aggregate_sha256 "$watchdog_closure_aggregate_sha256" \
   --arg watchdog_closure_source_commit "$watchdog_closure_source_commit" \
+  --arg gateway_launch_agent "$GATEWAY_LAUNCH_AGENT" \
+  --arg gateway_loaded_path "$gateway_loaded_path" \
+  --arg gateway_loaded_path_sha256 "$gateway_loaded_path_sha256" \
   --argjson watchdog_closure_required "$watchdog_closure_required" \
   --argjson watchdog_closure_bound "$watchdog_closure_bound" \
+  --argjson gateway_launch_agent_bound "$gateway_launch_agent_bound" \
   --argjson release_evidence_ready "$release_evidence_ready" \
   --argjson candidate_required "$require_candidate_artifact" \
   --argjson deployed_required "$require_deployed_receipt" \
@@ -341,9 +432,12 @@ report="$(jq -n \
     status: (
       if $release_evidence_ready == true
         and ($watchdog_closure_required == false or $watchdog_closure_bound == true)
+        and ($watchdog_closure_required == false or $gateway_launch_agent_bound == true)
         and $health.status == "ready"
         and $route_manifest_schema == "hepta_route_effect_gate_manifest_v1"
         and ($route_manifest_sha256 | length) == 64
+        and $route.manifest_schema_version == $route_manifest_schema
+        and $route.manifest_sha256 == $route_manifest_sha256
         and $generated_watchdog_probe_count >= 12
         and ($generated_watchdog_probe_failures | length) == 0
         and $route.status == "ready"
@@ -541,10 +635,26 @@ report="$(jq -n \
       ),
       mutable_worktree_dependency:false
     },
+    gateway_launch_agent:{
+      required:$watchdog_closure_required,
+      bound:$gateway_launch_agent_bound,
+      canonical_path:(if $watchdog_closure_required then $gateway_launch_agent else null end),
+      loaded_path:(if $watchdog_closure_required then $gateway_loaded_path else null end),
+      loaded_path_sha256:(
+        if $watchdog_closure_required then $gateway_loaded_path_sha256 else null end
+      ),
+      unique_loadable_same_label_plist:$gateway_launch_agent_bound
+    },
     active_health:{required:true,status:(if $health.status == "ready" then "ready" else "failed" end)},
     route_effect_gate_manifest:{
       schema_version:$route_manifest_schema,
       sha256:$route_manifest_sha256,
+      live_schema_version:$route.manifest_schema_version,
+      live_sha256:$route.manifest_sha256,
+      live_release_digest_match:(
+        $route.manifest_schema_version == $route_manifest_schema
+        and $route.manifest_sha256 == $route_manifest_sha256
+      ),
       source_binary:$route_manifest_bin,
       generated_watchdog_probe_count:$generated_watchdog_probe_count,
       generated_watchdog_probe_failures:$generated_watchdog_probe_failures

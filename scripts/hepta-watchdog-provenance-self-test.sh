@@ -1,13 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-WATCHDOG="$ROOT/scripts/hepta-watchdog.sh"
-RELEASE_TOOL="$ROOT/scripts/hepta-immutable-release-tree"
 source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
-source "$ROOT/scripts/lib/hepta-release-provenance.sh"
 tmp="$(mktemp -d /tmp/hepta-watchdog-provenance-self-test.XXXXXX)"
 trap 'chmod -R u+w "$tmp" 2>/dev/null || true; rm -rf "$tmp"' EXIT
-source_commit="$(git -C "$ROOT" rev-parse HEAD)"
+fixture_root="$tmp/source"
+mkdir -p \
+  "$fixture_root/scripts/lib" \
+  "$fixture_root/docs/decisions" \
+  "$fixture_root/codex-rs" \
+  "$fixture_root/apps/hepta-native"
+cp \
+  "$ROOT/scripts/hepta-immutable-release-tree" \
+  "$ROOT/scripts/hepta-watchdog.sh" \
+  "$ROOT/scripts/hepta-install-live-watchdog" \
+  "$ROOT/scripts/hepta-install-live-gateway" \
+  "$fixture_root/scripts/"
+cp \
+  "$ROOT/scripts/lib/hepta-release-provenance.sh" \
+  "$ROOT/scripts/lib/hepta-watchdog-release-evidence-v1.sh" \
+  "$ROOT/scripts/lib/hepta-watchdog-product-boundary-v1.sh" \
+  "$ROOT/scripts/lib/hepta-immutable-watchdog-closure-v1.sh" \
+  "$fixture_root/scripts/lib/"
+cp \
+  "$ROOT/scripts/hepta-dependency-security-v1.json" \
+  "$ROOT/scripts/hepta-dependency-exception-policy-v1.json" \
+  "$fixture_root/scripts/"
+cp \
+  "$ROOT/docs/decisions/hepta-product-boundary-v1.json" \
+  "$fixture_root/docs/decisions/"
+cp "$ROOT/codex-rs/"{Cargo.lock,rust-toolchain.toml} "$fixture_root/codex-rs/"
+cp "$ROOT/apps/hepta-native/"{Cargo.lock,rust-toolchain.toml} \
+  "$fixture_root/apps/hepta-native/"
+git -C "$fixture_root" init -q
+git -C "$fixture_root" add .
+git -C "$fixture_root" \
+  -c user.name="Hepta Watchdog Self-Test" \
+  -c user.email="hepta-watchdog-self-test@invalid" \
+  commit -qm "fixture"
+WATCHDOG="$fixture_root/scripts/hepta-watchdog.sh"
+RELEASE_TOOL="$fixture_root/scripts/hepta-immutable-release-tree"
+source "$fixture_root/scripts/lib/hepta-release-provenance.sh"
+source_commit="$(git -C "$fixture_root" rev-parse HEAD)"
 make_artifact() {
   local destination="$1"
   local label="$2"
@@ -20,7 +54,7 @@ materialize_bound_release() {
   local preflight_log="$3"
   local provenance
   provenance="$(
-    hepta_release_fixture_complete_provenance_json "$ROOT" "$source_commit" "$artifact"
+    hepta_release_fixture_complete_provenance_json "$fixture_root" "$source_commit" "$artifact"
   )"
   hepta_release_write_fixture_preflight_log "$preflight_log" "$source_commit" "$provenance"
   "$RELEASE_TOOL" materialize \

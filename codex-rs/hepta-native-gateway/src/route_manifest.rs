@@ -19,6 +19,7 @@ pub(crate) const ROUTE_EFFECT_GATE_MANIFEST_SCHEMA: &str = "hepta_route_effect_g
 
 const WATCHDOG_PROBE_PATHS: &[&str] = &[
     "/health",
+    "/api/watchdog-state",
     "/api/control-ui-route-parity",
     "/api/operator-security",
     "/api/telegram-owner-handoff",
@@ -47,12 +48,20 @@ pub(crate) enum RouteDispatchHandler {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RouteResponsePolicy {
+    Passthrough,
+    DigestBoundPagination,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub(crate) struct RouteManifestEntry {
     #[serde(flatten)]
     pub(crate) lifecycle: IngressLifecycleSpec,
     pub(crate) dispatch_handler: RouteDispatchHandler,
     pub(crate) required_gate: Option<&'static str>,
     pub(crate) watchdog_probe: bool,
+    pub(crate) response_policy: RouteResponsePolicy,
 }
 
 #[derive(Debug, Serialize)]
@@ -133,6 +142,15 @@ pub(crate) fn validate_route_manifest() -> Result<()> {
                 entry.lifecycle.path_pattern
             );
         }
+        if entry.response_policy == RouteResponsePolicy::DigestBoundPagination
+            && entry.lifecycle.method != "GET"
+        {
+            anyhow::bail!(
+                "digest-bound pagination is only valid for GET routes: {} {}",
+                entry.lifecycle.method,
+                entry.lifecycle.path_pattern
+            );
+        }
     }
     for path in WATCHDOG_PROBE_PATHS {
         let count = entries
@@ -185,6 +203,18 @@ fn route_manifest_entry_from_lifecycle(lifecycle: IngressLifecycleSpec) -> Route
         required_gate,
         watchdog_probe: lifecycle.method == "GET"
             && WATCHDOG_PROBE_PATHS.contains(&lifecycle.path_pattern),
+        response_policy: response_policy(lifecycle),
+    }
+}
+
+fn response_policy(lifecycle: IngressLifecycleSpec) -> RouteResponsePolicy {
+    if lifecycle.method == "GET"
+        && (lifecycle.source == "control_ui_route_specs"
+            || lifecycle.path_pattern == crate::route_registry::CONTROL_UI_ROUTE_PARITY_ENDPOINT)
+    {
+        RouteResponsePolicy::DigestBoundPagination
+    } else {
+        RouteResponsePolicy::Passthrough
     }
 }
 

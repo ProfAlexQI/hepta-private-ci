@@ -15,8 +15,15 @@ fn parses_request_target_and_bounded_body_without_query_leakage() {
         request_method_and_path(&request),
         Some(("POST", "/api/test"))
     );
+    assert_eq!(request_query(&request), Some("secret=redacted"));
     assert_eq!(request_body_text(&request), Some("payload"));
     assert!(!request.contains("ignored"));
+}
+
+#[test]
+fn request_query_distinguishes_absent_and_empty_queries() {
+    assert_eq!(request_query("GET /api/test HTTP/1.1\r\n\r\n"), None);
+    assert_eq!(request_query("GET /api/test? HTTP/1.1\r\n\r\n"), Some(""));
 }
 
 #[test]

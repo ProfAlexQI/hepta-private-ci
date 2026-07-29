@@ -157,3 +157,85 @@ fn telegram_live_soak_aliases_share_real_socket_behavior() {
         ]
     );
 }
+
+#[test]
+fn compact_watchdog_projection_is_passthrough_over_a_real_socket() {
+    let root = tempfile::tempdir().expect("runtime root");
+    let runtime = Arc::new(
+        NativeGatewayRuntime::bootstrap_with_anchor_for_test(root.path()).expect("keyed runtime"),
+    );
+    let response = route_over_real_socket(
+        runtime,
+        test_gateway_options(false),
+        "GET",
+        WATCHDOG_STATE_ENDPOINT,
+    );
+    assert!(response.starts_with("HTTP/1.1 200 OK"));
+    let body = response.split_once("\r\n\r\n").expect("response body").1;
+    assert!(body.len() < report_pagination::MAX_DEFAULT_REPORT_BYTES);
+    let value: serde_json::Value = serde_json::from_str(body).expect("watchdog state JSON");
+    assert_eq!(value["schema_version"], "hepta_watchdog_state_v1");
+    assert_ne!(value["schema_version"], "hepta_report_summary_v2");
+    assert_eq!(value["route"]["missing_route_count"], 0);
+    assert_eq!(value["poll"]["external_network_read_by_status"], false);
+    assert_eq!(value["poll"]["external_send_by_status"], false);
+}
+
+#[test]
+fn typed_report_pagination_is_digest_bound_over_real_sockets() {
+    let root = tempfile::tempdir().expect("runtime root");
+    let runtime = Arc::new(
+        NativeGatewayRuntime::bootstrap_with_anchor_for_test(root.path()).expect("keyed runtime"),
+    );
+    let options = test_gateway_options(false);
+    let summary_response = route_over_real_socket(
+        Arc::clone(&runtime),
+        options.clone(),
+        "GET",
+        "/api/operator-security",
+    );
+    assert!(summary_response.starts_with("HTTP/1.1 200 OK"));
+    let summary_body = summary_response
+        .split_once("\r\n\r\n")
+        .expect("summary body")
+        .1;
+    let summary: serde_json::Value =
+        serde_json::from_str(summary_body).expect("report summary JSON");
+    assert_eq!(summary["schema"], "hepta_report_summary_v2");
+    assert_eq!(summary["status"], "attention");
+    let snapshot = summary["content_sha256"]
+        .as_str()
+        .expect("summary snapshot");
+
+    let page_response = route_over_real_socket(
+        Arc::clone(&runtime),
+        options.clone(),
+        "GET",
+        &format!(
+            "/api/operator-security?detail=full&cursor=0&snapshot={snapshot}"
+        ),
+    );
+    assert!(page_response.starts_with("HTTP/1.1 200 OK"));
+    let page: serde_json::Value = serde_json::from_str(
+        page_response
+            .split_once("\r\n\r\n")
+            .expect("page body")
+            .1,
+    )
+    .expect("report page JSON");
+    assert_eq!(page["schema"], "hepta_report_page_v2");
+    assert_eq!(page["status"], "attention");
+    assert_eq!(page["content_sha256"], snapshot);
+
+    let conflict = route_over_real_socket(
+        runtime,
+        options,
+        "GET",
+        &format!(
+            "/api/operator-security?detail=full&cursor=0&snapshot={}",
+            "0".repeat(64)
+        ),
+    );
+    assert!(conflict.starts_with("HTTP/1.1 409 Conflict"));
+    assert!(conflict.contains("report snapshot changed"));
+}

@@ -8,6 +8,10 @@ INTERVAL_SECONDS="${HEPTA_SOAK_INTERVAL_SECONDS:-${HEPTA_CODEX_SOAK_INTERVAL_SEC
 case "$SAMPLES" in
   ''|*[!0-9]*) echo "HEPTA_SOAK_SAMPLES must be numeric; legacy HEPTA_CODEX_SOAK_SAMPLES is also accepted" >&2; exit 2 ;;
 esac
+if (( SAMPLES < 1 )); then
+  echo "HEPTA_SOAK_SAMPLES must be at least 1" >&2
+  exit 2
+fi
 case "$INTERVAL_SECONDS" in
   ''|*[!0-9]*) echo "HEPTA_SOAK_INTERVAL_SECONDS must be numeric; legacy HEPTA_CODEX_SOAK_INTERVAL_SECONDS is also accepted" >&2; exit 2 ;;
 esac
@@ -22,14 +26,15 @@ last_production_readiness_state_known=false
 last_production_readiness_classification="unknown"
 
 for sample in $(seq 1 "$SAMPLES"); do
-  health="$(curl -fsS "$BASE_URL/health" | jq -r '.status' 2>/dev/null || echo fail)"
-  route="$(curl -fsS "$BASE_URL/api/control-ui-route-parity" | jq -r '.status + ":" + (.missing_route_count|tostring)' 2>/dev/null || echo fail)"
-  owner="$(curl -fsS "$BASE_URL/api/telegram-owner-handoff" | jq -r '.active_owner + ":" + (.double_poller_risk|tostring) + ":" + (.hepta_poll_loop_armed|tostring)' 2>/dev/null || echo fail)"
-  poll="$(curl -fsS "$BASE_URL/api/telegram-poll-loop" | jq -r '.status + ":" + (.external_network_read_by_status|tostring) + ":" + (.external_send_by_status|tostring)' 2>/dev/null || echo fail)"
-  post="$(curl -fsS "$BASE_URL/api/native-post-activation-plan" | jq -r '(.activation_currently_enabled|tostring) + ":" + (.real_mutation_performed|tostring) + ":" + (.external_side_effects|tostring)' 2>/dev/null || echo fail)"
-  stores="$(curl -fsS "$BASE_URL/api/native-post-execution-stores" | jq -r '(.store_jsonl_valid|tostring) + ":" + (.store_capacity_ok|tostring)' 2>/dev/null || echo fail)"
-  operator="$(curl -fsS "$BASE_URL/api/operator-security" | jq -r '.status + ":" + (.security_mode // "") + ":" + (.legacy_owner_coexistence_ready|tostring) + ":" + (.attention_reason // "")' 2>/dev/null || echo fail)"
-  production="$(curl -fsS "$BASE_URL/api/telegram-production-readiness" | jq -r '.status + ":" + (.attention_budget_ok|tostring) + ":" + (.recent_bot_api_ok|tostring) + ":" + (.observation_ready|tostring) + ":" + (.observation_fresh|tostring) + ":" + (.poll_loop_armed|tostring) + ":" + (.cursor_ready|tostring) + ":" + (.delivery_ledger_ready|tostring) + ":" + ((.readiness_blockers // []) | join(","))' 2>/dev/null || echo fail)"
+  state="$(curl -fsS "$BASE_URL/api/watchdog-state" 2>/dev/null || echo '{}')"
+  health="$(jq -r '.status // "fail"' <<<"$state" 2>/dev/null || echo fail)"
+  route="$(jq -r '.route | .status + ":" + (.missing_route_count|tostring)' <<<"$state" 2>/dev/null || echo fail)"
+  owner="$(jq -r '.owner | .active_owner + ":" + (.double_poller_risk|tostring) + ":" + (.hepta_poll_loop_armed|tostring)' <<<"$state" 2>/dev/null || echo fail)"
+  poll="$(jq -r '.poll | .status + ":" + (.external_network_read_by_status|tostring) + ":" + (.external_send_by_status|tostring)' <<<"$state" 2>/dev/null || echo fail)"
+  post="$(jq -r '.native_post.activation | (.activation_currently_enabled|tostring) + ":" + (.real_mutation_performed|tostring) + ":" + (.external_side_effects|tostring)' <<<"$state" 2>/dev/null || echo fail)"
+  stores="$(jq -r '.native_post.stores | (.store_jsonl_valid|tostring) + ":" + (.store_capacity_ok|tostring)' <<<"$state" 2>/dev/null || echo fail)"
+  operator="$(jq -r '.operator | .status + ":" + (.security_mode // "") + ":" + (.legacy_owner_coexistence_ready|tostring) + ":" + (.attention_reason // "")' <<<"$state" 2>/dev/null || echo fail)"
+  production="$(jq -r '.production | .status + ":" + (.attention_budget_ok|tostring) + ":" + (.recent_bot_api_ok|tostring) + ":" + (.observation_ready|tostring) + ":" + (.observation_fresh|tostring) + ":" + (.poll_loop_armed|tostring) + ":" + (.cursor_ready|tostring) + ":" + (.delivery_ledger_ready|tostring) + ":" + ((.readiness_blockers // []) | join(","))' <<<"$state" 2>/dev/null || echo fail)"
   last_owner="$owner"
   last_post="$post"
   last_production="$production"

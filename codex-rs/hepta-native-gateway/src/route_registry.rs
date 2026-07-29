@@ -28,6 +28,7 @@ impl NativeRouteAliasSpec {
     }
 }
 pub(crate) const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
+pub(crate) const WATCHDOG_STATE_ENDPOINT: &str = "/api/watchdog-state";
 pub(crate) const HEPTA_MERGE_COMPLETION_ENDPOINT: &str = "/api/hepta-merge-completion";
 pub(crate) const HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT: &str = "/api/hepta-cli-command-inventory";
 pub(crate) const HEPTA_PROVIDER_METADATA_INVENTORY_ENDPOINT: &str =

@@ -14,6 +14,7 @@ use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
 use crate::route_registry::GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT;
 use crate::route_registry::GATEWAY_REPLACEMENT_READINESS_ENDPOINT;
 use crate::route_registry::TELEGRAM_LIVE_SOAK_ROUTE;
+use crate::route_registry::WATCHDOG_STATE_ENDPOINT;
 use crate::runtime_composition::NativeGatewayRuntime;
 use crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT;
 use crate::runtime_composition::RuntimeRequestDisposition;
@@ -286,6 +287,7 @@ const SPECIAL_INGRESS_LIFECYCLES: &[IngressLifecycleSpec] = &[
     metadata_read("/api/telegram-drain-once"),
     metadata_read("/api/telegram-poll-loop"),
     metadata_read("/api/telegram-cursor"),
+    metadata_read(WATCHDOG_STATE_ENDPOINT),
     metadata_read(CONTROL_UI_ROUTE_PARITY_ENDPOINT),
     metadata_read(GATEWAY_REPLACEMENT_READINESS_ENDPOINT),
     metadata_read(GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT),

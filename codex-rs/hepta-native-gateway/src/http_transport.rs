@@ -271,6 +271,13 @@ pub(crate) fn request_method_and_path(request: &str) -> Option<(&str, &str)> {
     Some((method, raw_path.split('?').next().unwrap_or(raw_path)))
 }
 
+pub(crate) fn request_query(request: &str) -> Option<&str> {
+    let first_line = request.lines().next()?;
+    let mut parts = first_line.split_whitespace();
+    parts.next()?;
+    parts.next()?.split_once('?').map(|(_, query)| query)
+}
+
 pub(crate) fn write_http_response(
     stream: &mut TcpStream,
     status: &str,

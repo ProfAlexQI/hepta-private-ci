@@ -1,6 +1,7 @@
 use super::*;
 use crate::operator_mutation::OPERATOR_MUTATION_COMMIT_ENDPOINT;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
+use crate::route_registry::WATCHDOG_STATE_ENDPOINT;
 use crate::runtime_ingress::TELEGRAM_RECEIVE_ONCE_ENDPOINT;
 use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENDPOINT;
 use crate::telegram_authority::TELEGRAM_AUTHORITY_COMMIT_ENDPOINT;
@@ -51,6 +52,33 @@ fn manifest_generates_dispatch_and_gate_bindings() {
         assert_eq!(entry.dispatch_handler, handler);
         assert_eq!(entry.required_gate, gate);
     }
+}
+
+#[test]
+fn manifest_assigns_pagination_to_reports_and_exempts_stable_projections() {
+    let operator = route_manifest_entry("GET", "/api/operator-security")
+        .expect("operator security manifest entry");
+    assert_eq!(
+        operator.response_policy,
+        RouteResponsePolicy::DigestBoundPagination
+    );
+    let parity = route_manifest_entry("GET", "/api/control-ui-route-parity")
+        .expect("route parity manifest entry");
+    assert_eq!(
+        parity.response_policy,
+        RouteResponsePolicy::DigestBoundPagination
+    );
+    for path in ["/health", WATCHDOG_STATE_ENDPOINT] {
+        let entry =
+            route_manifest_entry("GET", path).unwrap_or_else(|| panic!("missing route {path}"));
+        assert_eq!(entry.response_policy, RouteResponsePolicy::Passthrough);
+    }
+    let owner = route_manifest_entry("GET", "/api/telegram-owner-handoff")
+        .expect("owner handoff manifest entry");
+    assert_eq!(
+        owner.response_policy,
+        RouteResponsePolicy::DigestBoundPagination
+    );
 }
 
 #[test]

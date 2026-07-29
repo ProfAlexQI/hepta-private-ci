@@ -29,13 +29,11 @@ use hepta_gateway::DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS;
 use hepta_gateway::DEFAULT_NATIVE_POST_STORE_MAX_BYTES;
 use hepta_gateway::DEFAULT_NATIVE_POST_STORE_MAX_LINES;
 use hepta_gateway::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT;
-#[cfg(test)]
 use hepta_gateway::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND;
 use hepta_gateway::HEPTA_CORE_FUSION_READINESS_ENDPOINT;
 #[cfg(test)]
 use hepta_gateway::HEPTA_CORE_FUSION_READINESS_SOURCE_COMMAND;
 use hepta_gateway::HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT;
-#[cfg(test)]
 use hepta_gateway::HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND;
 use hepta_gateway::HEPTA_ENGINE_DEPENDENCY_CLOSURE_ENDPOINT;
 #[cfg(test)]
@@ -121,6 +119,8 @@ use crate::ui_domain::route_native_gateway_binary_asset;
 
 mod http_rejections;
 mod manifest_dispatch;
+mod report_pagination;
+mod watchdog_state;
 
 const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";
 const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED";
@@ -409,6 +409,7 @@ fn handle_native_gateway_connection(
         );
     }
     let request_body = request_body_text(&request);
+    let request_query = request_query(&request);
     let preflight = match runtime.preflight_request(method, path, request_body) {
         Ok(preflight) => preflight,
         Err(error) => return http_rejections::runtime_ingress(stream, method, path, &error),
@@ -433,6 +434,7 @@ fn handle_native_gateway_connection(
         options,
         runtime,
         request_body,
+        request_query,
         &preflight,
     )
 }
@@ -553,6 +555,13 @@ fn route_native_gateway_request_after_preflight(
                         runtime: "hepta",
                         status: "ready",
                     }),
+                );
+            }
+            WATCHDOG_STATE_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    watchdog_state::watchdog_state_json(options, &telegram_plugin),
                 );
             }
             "/api/native-gateway" | "/api/gateway-runtime" => {
@@ -4026,9 +4035,16 @@ fn native_post_execution_store_root() -> PathBuf {
             return PathBuf::from(trimmed);
         }
     }
-    env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR)
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|home| home.is_absolute())
+        .unwrap_or_else(|| PathBuf::from("/var/empty"))
+        .join(".local/share/hepta")
+        .join(
+            Path::new(DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR)
+                .file_name()
+                .unwrap_or_else(|| OsStr::new("native-post-execution")),
+        )
 }
 
 fn native_post_store_max_bytes() -> u64 {
@@ -4919,6 +4935,13 @@ fn operator_security_json(
     options: &NativeGatewayOptions,
     telegram_plugin: &NativeTelegramPluginStatus,
 ) -> String {
+    json_or_error(&operator_security_report(options, telegram_plugin))
+}
+
+fn operator_security_report(
+    options: &NativeGatewayOptions,
+    telegram_plugin: &NativeTelegramPluginStatus,
+) -> NativeOperatorSecurityResponse {
     let control_ui_route_parity = control_ui_route_parity_report();
     let gateway_replacement_readiness = gateway_replacement_readiness(options, telegram_plugin);
     let post_route_count = CONTROL_UI_ROUTE_SPECS
@@ -4981,7 +5004,7 @@ fn operator_security_json(
         && loopback_bound
         && guarded_post_route_count == post_route_count;
 
-    json_or_error(&NativeOperatorSecurityResponse {
+    NativeOperatorSecurityResponse {
         product: "Hepta",
         runtime: "hepta",
         status: if ready { "ready" } else { "attention" },
@@ -5051,7 +5074,7 @@ fn operator_security_json(
             cursor_written: false,
         },
         next_migration_slice: hepta_contracts::LEGACY_CONTROL_UI_MUTATION_NEXT_ACTION,
-    })
+    }
 }
 
 fn telegram_owner_handoff_status(

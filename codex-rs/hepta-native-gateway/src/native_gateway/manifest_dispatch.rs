@@ -7,6 +7,7 @@ pub(super) fn dispatch_manifest_route(
     options: &NativeGatewayOptions,
     runtime: &NativeGatewayRuntime,
     request_body: Option<&str>,
+    request_query: Option<&str>,
     preflight: &RuntimeRequestPreflightReceipt,
 ) -> Result<()> {
     let Some(manifest_entry) = route_manifest_entry(method, path) else {
@@ -173,6 +174,36 @@ pub(super) fn dispatch_manifest_route(
                 request_body,
                 preflight,
             );
+            if manifest_entry.response_policy
+                == crate::route_manifest::RouteResponsePolicy::DigestBoundPagination
+                && content_type.starts_with("application/json")
+            {
+                return match report_pagination::bounded_report_response(path, request_query, body) {
+                    report_pagination::ReportResponse::Body(body) => {
+                        write_http_response(stream, status, content_type, body.as_bytes())
+                    }
+                    report_pagination::ReportResponse::BadRequest(error) => write_http_response(
+                        stream,
+                        "400 Bad Request",
+                        "application/json; charset=utf-8",
+                        json_or_error(&serde_json::json!({"error": error})).as_bytes(),
+                    ),
+                    report_pagination::ReportResponse::InternalError(error) => write_http_response(
+                        stream,
+                        "500 Internal Server Error",
+                        "application/json; charset=utf-8",
+                        json_or_error(&serde_json::json!({"error": error})).as_bytes(),
+                    ),
+                    report_pagination::ReportResponse::SnapshotConflict(error) => {
+                        write_http_response(
+                            stream,
+                            "409 Conflict",
+                            "application/json; charset=utf-8",
+                            json_or_error(&serde_json::json!({"error": error})).as_bytes(),
+                        )
+                    }
+                };
+            }
             write_http_response(stream, status, content_type, body.as_bytes())
         }
         RouteDispatchHandler::RetiredCompatibility => http_rejections::runtime_ingress(
