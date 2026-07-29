@@ -1,15 +1,16 @@
-use std::path::Path;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::AuthProvider;
-use codex_client::build_reqwest_client_with_custom_ca;
-use reqwest::StatusCode;
-use reqwest::header::CONTENT_LENGTH;
+use bytes::Bytes;
+use codex_http_client::RouteAwareClientPool;
+use codex_http_client::RouteAwareRequestBuilder;
+use codex_http_client::RouteAwareRequestError;
+use futures::Stream;
+use http::Method;
+use http::StatusCode;
+use http::header::CONTENT_LENGTH;
 use serde::Deserialize;
-use tokio::fs::File;
 use tokio::time::Instant;
-use tokio_util::io::ReaderStream;
 
 pub const OPENAI_FILE_URI_PREFIX: &str = "sediment://";
 pub const OPENAI_FILE_UPLOAD_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
@@ -27,26 +28,15 @@ pub struct UploadedOpenAiFile {
     pub file_name: String,
     pub file_size_bytes: u64,
     pub mime_type: Option<String>,
-    pub path: PathBuf,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum OpenAiFileError {
-    #[error("path `{path}` does not exist")]
-    MissingPath { path: PathBuf },
-    #[error("path `{path}` is not a file")]
-    NotAFile { path: PathBuf },
-    #[error("path `{path}` cannot be read: {source}")]
-    ReadFile {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
     #[error(
-        "file `{path}` is too large: {size_bytes} bytes exceeds the limit of {limit_bytes} bytes"
+        "file `{file_name}` is too large: {size_bytes} bytes exceeds the limit of {limit_bytes} bytes"
     )]
     FileTooLarge {
-        path: PathBuf,
+        file_name: String,
         size_bytes: u64,
         limit_bytes: u64,
     },
@@ -54,7 +44,7 @@ pub enum OpenAiFileError {
     Request {
         url: String,
         #[source]
-        source: reqwest::Error,
+        source: RouteAwareRequestError,
     },
     #[error("OpenAI file request to {url} failed with status {status}: {body}")]
     UnexpectedStatus {
@@ -94,45 +84,27 @@ pub fn openai_file_uri(file_id: &str) -> String {
     format!("{OPENAI_FILE_URI_PREFIX}{file_id}")
 }
 
-pub async fn upload_local_file(
+pub async fn upload_openai_file(
     base_url: &str,
     auth: &dyn AuthProvider,
-    path: &Path,
+    client_pool: &RouteAwareClientPool,
+    file_name: String,
+    file_size_bytes: u64,
+    contents: impl Stream<Item = std::io::Result<Bytes>> + Send + 'static,
 ) -> Result<UploadedOpenAiFile, OpenAiFileError> {
-    let metadata = tokio::fs::metadata(path)
-        .await
-        .map_err(|source| match source.kind() {
-            std::io::ErrorKind::NotFound => OpenAiFileError::MissingPath {
-                path: path.to_path_buf(),
-            },
-            _ => OpenAiFileError::ReadFile {
-                path: path.to_path_buf(),
-                source,
-            },
-        })?;
-    if !metadata.is_file() {
-        return Err(OpenAiFileError::NotAFile {
-            path: path.to_path_buf(),
-        });
-    }
-    if metadata.len() > OPENAI_FILE_UPLOAD_LIMIT_BYTES {
+    if file_size_bytes > OPENAI_FILE_UPLOAD_LIMIT_BYTES {
         return Err(OpenAiFileError::FileTooLarge {
-            path: path.to_path_buf(),
-            size_bytes: metadata.len(),
+            file_name,
+            size_bytes: file_size_bytes,
             limit_bytes: OPENAI_FILE_UPLOAD_LIMIT_BYTES,
         });
     }
 
-    let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("file")
-        .to_string();
     let create_url = format!("{}/files", base_url.trim_end_matches('/'));
-    let create_response = authorized_request(auth, reqwest::Method::POST, &create_url)
+    let create_response = authorized_request(client_pool, auth, Method::POST, &create_url)
         .json(&serde_json::json!({
-            "file_name": file_name,
-            "file_size": metadata.len(),
+            "file_name": file_name.as_str(),
+            "file_size": file_size_bytes,
             "use_case": OPENAI_FILE_USE_CASE,
         }))
         .send()
@@ -156,18 +128,12 @@ pub async fn upload_local_file(
             source,
         })?;
 
-    let upload_file = File::open(path)
-        .await
-        .map_err(|source| OpenAiFileError::ReadFile {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    let upload_response = build_reqwest_client()
+    let upload_response = client_pool
         .put(&create_payload.upload_url)
         .timeout(OPENAI_FILE_REQUEST_TIMEOUT)
         .header("x-ms-blob-type", "BlockBlob")
-        .header(CONTENT_LENGTH, metadata.len())
-        .body(reqwest::Body::wrap_stream(ReaderStream::new(upload_file)))
+        .header(CONTENT_LENGTH, file_size_bytes)
+        .body_stream(contents)
         .send()
         .await
         .map_err(|source| OpenAiFileError::Request {
@@ -191,7 +157,7 @@ pub async fn upload_local_file(
     );
     let finalize_started_at = Instant::now();
     loop {
-        let finalize_response = authorized_request(auth, reqwest::Method::POST, &finalize_url)
+        let finalize_response = authorized_request(client_pool, auth, Method::POST, &finalize_url)
             .json(&serde_json::json!({}))
             .send()
             .await
@@ -226,9 +192,8 @@ pub async fn upload_local_file(
                         }
                     })?,
                     file_name: finalize_payload.file_name.unwrap_or(file_name),
-                    file_size_bytes: metadata.len(),
+                    file_size_bytes,
                     mime_type: finalize_payload.mime_type,
-                    path: path.to_path_buf(),
                 });
             }
             "retry" => {
@@ -252,36 +217,38 @@ pub async fn upload_local_file(
 }
 
 fn authorized_request(
+    client_pool: &RouteAwareClientPool,
     auth: &dyn AuthProvider,
-    method: reqwest::Method,
+    method: Method,
     url: &str,
-) -> reqwest::RequestBuilder {
+) -> RouteAwareRequestBuilder {
     let mut headers = http::HeaderMap::new();
     auth.add_auth_headers(&mut headers);
 
-    let client = build_reqwest_client();
-    client
+    client_pool
         .request(method, url)
         .timeout(OPENAI_FILE_REQUEST_TIMEOUT)
         .headers(headers)
 }
 
-fn build_reqwest_client() -> reqwest::Client {
-    build_reqwest_client_with_custom_ca(reqwest::Client::builder()).unwrap_or_else(|error| {
-        tracing::warn!(error = %error, "failed to build OpenAI file upload client");
-        reqwest::Client::new()
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use codex_http_client::ClientRouteClass;
+    use codex_http_client::HttpClientFactory;
+    use codex_http_client::OutboundProxyPolicy;
+    use http::HeaderMap;
+    use http::header::AUTHORIZATION;
+    use http::header::HeaderValue;
     use pretty_assertions::assert_eq;
-    use reqwest::header::HeaderValue;
+    use std::io::Read;
+    use std::io::Write;
+    use std::net::SocketAddr;
+    use std::net::TcpListener;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use tempfile::TempDir;
+    use std::thread::JoinHandle;
     use wiremock::Mock;
     use wiremock::MockServer;
     use wiremock::Request;
@@ -295,11 +262,8 @@ mod tests {
     struct ChatGptTestAuth;
 
     impl AuthProvider for ChatGptTestAuth {
-        fn add_auth_headers(&self, headers: &mut reqwest::header::HeaderMap) {
-            headers.insert(
-                reqwest::header::AUTHORIZATION,
-                HeaderValue::from_static("Bearer token"),
-            );
+        fn add_auth_headers(&self, headers: &mut HeaderMap) {
+            headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer token"));
             headers.insert("ChatGPT-Account-ID", HeaderValue::from_static("account_id"));
         }
     }
@@ -312,8 +276,138 @@ mod tests {
         format!("{}/backend-api", server.uri())
     }
 
+    fn route_aware_client_pool() -> RouteAwareClientPool {
+        RouteAwareClientPool::new_without_request_logging(
+            HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+            ClientRouteClass::Api,
+        )
+        .with_legacy_custom_ca_fallback()
+    }
+
+    struct NoDirectEgressProxy {
+        base_url: String,
+        upload_url: String,
+        address: SocketAddr,
+        thread: JoinHandle<Vec<String>>,
+    }
+
+    fn spawn_no_direct_egress_proxy() -> NoDirectEgressProxy {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("proxy listener should bind");
+        let address = listener
+            .local_addr()
+            .expect("proxy listener should have an address");
+        listener
+            .set_nonblocking(true)
+            .expect("proxy listener should become nonblocking");
+
+        let nonce = address.port();
+        let base_url = format!("http://files-{nonce}.hepta.invalid/backend-api");
+        let upload_url = format!("http://blob-{nonce}.hepta.invalid/upload/file_proxy");
+        let create_url = format!("{base_url}/files");
+        let finalize_url = format!("{base_url}/files/file_proxy/uploaded");
+        let expected_request_lines = [
+            format!("POST {create_url} HTTP/1.1"),
+            format!("PUT {upload_url} HTTP/1.1"),
+            format!("POST {finalize_url} HTTP/1.1"),
+        ];
+        let create_body = serde_json::json!({
+            "file_id": "file_proxy",
+            "upload_url": upload_url,
+        })
+        .to_string();
+        let finalize_body = serde_json::json!({
+            "status": "success",
+            "download_url": "https://download.example/file_proxy",
+            "file_name": "proxy.txt",
+            "mime_type": "text/plain",
+        })
+        .to_string();
+        let thread = std::thread::spawn(move || {
+            let mut requests = Vec::new();
+            for (index, expected_request_line) in expected_request_lines.into_iter().enumerate() {
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                let (mut stream, _) = loop {
+                    match listener.accept() {
+                        Ok(connection) => break connection,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(
+                                std::time::Instant::now() < deadline,
+                                "proxy should receive request {}",
+                                index + 1
+                            );
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(error) => panic!("proxy listener should accept: {error}"),
+                    }
+                };
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .expect("proxy stream should get a read timeout");
+                let request = read_proxy_http_message(&mut stream);
+                assert_eq!(
+                    request.lines().next(),
+                    Some(expected_request_line.as_str()),
+                    "request must use HTTP proxy absolute-form"
+                );
+                let response_body = match index {
+                    0 => create_body.as_str(),
+                    1 => "",
+                    2 => finalize_body.as_str(),
+                    _ => unreachable!("exactly three file provider requests are expected"),
+                };
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response_body}",
+                    response_body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .expect("proxy should write response");
+                requests.push(request);
+            }
+            requests
+        });
+
+        NoDirectEgressProxy {
+            base_url,
+            upload_url,
+            address,
+            thread,
+        }
+    }
+
+    fn read_proxy_http_message(stream: &mut impl Read) -> String {
+        let mut buffer = Vec::new();
+        let mut chunk = [0_u8; 4096];
+        loop {
+            let bytes_read = stream.read(&mut chunk).expect("proxy request should read");
+            if bytes_read == 0 {
+                break;
+            }
+            buffer.extend_from_slice(&chunk[..bytes_read]);
+            let Some(header_end) = buffer.windows(4).position(|window| window == b"\r\n\r\n")
+            else {
+                continue;
+            };
+            let body_start = header_end + 4;
+            let headers = String::from_utf8_lossy(&buffer[..body_start]);
+            let content_length = headers
+                .lines()
+                .filter_map(|line| line.split_once(':'))
+                .find_map(|(name, value)| {
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+                .unwrap_or(0);
+            if buffer.len() >= body_start + content_length {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&buffer).into_owned()
+    }
+
     #[tokio::test]
-    async fn upload_local_file_returns_canonical_uri() {
+    async fn upload_openai_file_returns_canonical_uri() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/backend-api/files"))
@@ -359,13 +453,19 @@ mod tests {
             .await;
 
         let base_url = base_url_for(&server);
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("hello.txt");
-        tokio::fs::write(&path, b"hello").await.expect("write file");
-
-        let uploaded = upload_local_file(&base_url, &chatgpt_auth(), &path)
-            .await
-            .expect("upload succeeds");
+        let contents = futures::stream::once(async {
+            Ok::<Bytes, std::io::Error>(Bytes::from_static(b"hello"))
+        });
+        let uploaded = upload_openai_file(
+            &base_url,
+            &chatgpt_auth(),
+            &route_aware_client_pool(),
+            "hello.txt".to_string(),
+            5,
+            contents,
+        )
+        .await
+        .expect("upload succeeds");
 
         assert_eq!(uploaded.file_id, "file_123");
         assert_eq!(uploaded.uri, "sediment://file_123");
@@ -376,5 +476,57 @@ mod tests {
         assert_eq!(uploaded.file_name, "hello.txt");
         assert_eq!(uploaded.mime_type, Some("text/plain".to_string()));
         assert_eq!(finalize_attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn upload_openai_file_has_no_direct_egress_bypass() {
+        let proxy = spawn_no_direct_egress_proxy();
+        let proxy_url = format!("http://{}", proxy.address);
+        let create_url = format!("{}/files", proxy.base_url);
+        let finalize_url = format!("{}/files/file_proxy/uploaded", proxy.base_url);
+        for request_url in [&create_url, &proxy.upload_url, &finalize_url] {
+            codex_http_client::cache_system_proxy_route_for_test(request_url, proxy_url.clone());
+        }
+        let pool = RouteAwareClientPool::new_without_request_logging(
+            HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+            ClientRouteClass::Api,
+        );
+        let contents = futures::stream::once(async {
+            Ok::<Bytes, std::io::Error>(Bytes::from_static(b"proxy"))
+        });
+
+        let uploaded = tokio::time::timeout(
+            Duration::from_secs(5),
+            upload_openai_file(
+                &proxy.base_url,
+                &chatgpt_auth(),
+                &pool,
+                "proxy.txt".to_string(),
+                5,
+                contents,
+            ),
+        )
+        .await
+        .expect("file upload should complete through the configured proxy")
+        .expect("file upload should succeed without direct DNS or egress");
+
+        assert_eq!(uploaded.file_id, "file_proxy");
+        assert_eq!(uploaded.uri, "sediment://file_proxy");
+        let requests = proxy
+            .thread
+            .join()
+            .expect("proxy should observe all file provider requests");
+        assert_eq!(requests.len(), 3);
+        assert_eq!(
+            requests
+                .iter()
+                .filter_map(|request| request.lines().next())
+                .collect::<Vec<_>>(),
+            vec![
+                format!("POST {create_url} HTTP/1.1"),
+                format!("PUT {} HTTP/1.1", proxy.upload_url),
+                format!("POST {finalize_url} HTTP/1.1"),
+            ]
+        );
     }
 }

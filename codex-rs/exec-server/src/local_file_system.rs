@@ -7,12 +7,14 @@ use std::sync::LazyLock;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tokio::io;
+use tokio_util::io::ReaderStream;
 
 use crate::CopyOptions;
 use crate::CreateDirectoryOptions;
 use crate::ExecServerRuntimePaths;
 use crate::ExecutorFileSystem;
 use crate::FileMetadata;
+use crate::FileSystemReadStream;
 use crate::FileSystemResult;
 use crate::FileSystemSandboxContext;
 use crate::ReadDirectoryEntry;
@@ -86,6 +88,15 @@ impl ExecutorFileSystem for LocalFileSystem {
     ) -> FileSystemResult<Vec<u8>> {
         let (file_system, sandbox) = self.file_system_for(sandbox)?;
         file_system.read_file(path, sandbox).await
+    }
+
+    async fn read_file_stream(
+        &self,
+        path: &AbsolutePathBuf,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<FileSystemReadStream> {
+        let (file_system, sandbox) = self.file_system_for(sandbox)?;
+        file_system.read_file_stream(path, sandbox).await
     }
 
     async fn read_file_beneath(
@@ -172,6 +183,17 @@ impl ExecutorFileSystem for UnsandboxedFileSystem {
     ) -> FileSystemResult<Vec<u8>> {
         reject_platform_sandbox_context(sandbox)?;
         self.file_system.read_file(path, /*sandbox*/ None).await
+    }
+
+    async fn read_file_stream(
+        &self,
+        path: &AbsolutePathBuf,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<FileSystemReadStream> {
+        reject_platform_sandbox_context(sandbox)?;
+        self.file_system
+            .read_file_stream(path, /*sandbox*/ None)
+            .await
     }
 
     async fn read_file_beneath(
@@ -285,6 +307,16 @@ impl ExecutorFileSystem for DirectFileSystem {
         tokio::fs::read(path.as_path()).await
     }
 
+    async fn read_file_stream(
+        &self,
+        path: &AbsolutePathBuf,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<FileSystemReadStream> {
+        reject_sandbox_context(sandbox)?;
+        let file = tokio::fs::File::open(path.as_path()).await?;
+        Ok(Box::pin(ReaderStream::with_capacity(file, 1024 * 1024)))
+    }
+
     async fn read_file_beneath(
         &self,
         authority_root: &AbsolutePathBuf,
@@ -343,6 +375,7 @@ impl ExecutorFileSystem for DirectFileSystem {
             is_directory: metadata.is_dir(),
             is_file: metadata.is_file(),
             is_symlink: symlink_metadata.file_type().is_symlink(),
+            size: metadata.len(),
             created_at_ms: metadata.created().ok().map_or(0, system_time_to_unix_ms),
             modified_at_ms: metadata.modified().ok().map_or(0, system_time_to_unix_ms),
         })

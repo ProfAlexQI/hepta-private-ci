@@ -64,6 +64,24 @@ fn governed_network_callers_cannot_regress_to_direct_clients() {
         "Responses WebSocket must use the configured connector"
     );
 
+    let openai_files = workspace.join("codex-api/src/files.rs");
+    let openai_files_source =
+        fs::read_to_string(&openai_files).expect("read OpenAI file upload source");
+    assert_forbidden(
+        &openai_files,
+        &openai_files_source,
+        &[
+            "build_reqwest_client",
+            "reqwest::Client::builder",
+            "reqwest::Client::new",
+            "reqwest::RequestBuilder",
+        ],
+    );
+    assert!(
+        openai_files_source.contains("RouteAwareClientPool"),
+        "OpenAI file create, blob PUT, and finalize requests must share the route-aware pool"
+    );
+
     let oauth_login = workspace.join("rmcp-client/src/perform_oauth_login.rs");
     let oauth_source = fs::read_to_string(&oauth_login).expect("read MCP OAuth source");
     assert_forbidden(

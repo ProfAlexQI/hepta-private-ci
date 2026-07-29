@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use bytes::Bytes;
 use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::SandboxEnforcement;
@@ -9,8 +10,10 @@ use codex_protocol::permissions::FileSystemSpecialPath;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use futures::Stream;
 use std::io;
 use std::path::Path;
+use std::pin::Pin;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CreateDirectoryOptions {
@@ -33,6 +36,7 @@ pub struct FileMetadata {
     pub is_directory: bool,
     pub is_file: bool,
     pub is_symlink: bool,
+    pub size: u64,
     pub created_at_ms: i64,
     pub modified_at_ms: i64,
 }
@@ -142,6 +146,10 @@ fn file_system_policy_has_cwd_dependent_entries(
 
 pub type FileSystemResult<T> = io::Result<T>;
 
+/// Stream of immutable file chunks read through an executor filesystem capability.
+pub type FileSystemReadStream =
+    Pin<Box<dyn Stream<Item = FileSystemResult<Bytes>> + Send + 'static>>;
+
 /// Abstract filesystem access used by components that may operate locally or via
 /// a remote executor.
 #[async_trait]
@@ -151,6 +159,19 @@ pub trait ExecutorFileSystem: Send + Sync {
         path: &AbsolutePathBuf,
         sandbox: Option<&FileSystemSandboxContext>,
     ) -> FileSystemResult<Vec<u8>>;
+
+    /// Reads a file as a stream. Executors should override this to avoid buffering the whole file;
+    /// the default preserves compatibility for legacy executors that only support bounded reads.
+    async fn read_file_stream(
+        &self,
+        path: &AbsolutePathBuf,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<FileSystemReadStream> {
+        let contents = self.read_file(path, sandbox).await?;
+        Ok(Box::pin(futures::stream::once(async move {
+            Ok(Bytes::from(contents))
+        })))
+    }
 
     /// Atomically opens `authority_root`, walks only normal relative path
     /// components without following symbolic links, and reads no more than

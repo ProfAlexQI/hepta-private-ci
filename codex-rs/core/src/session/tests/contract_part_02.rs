@@ -979,6 +979,12 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         show_raw_agent_reasoning: config.show_raw_agent_reasoning,
         exec_policy,
         auth_manager: auth_manager.clone(),
+        openai_file_upload_client_pool:
+            codex_http_client::RouteAwareClientPool::new_without_request_logging(
+                config.http_client_factory(),
+                codex_http_client::ClientRouteClass::Api,
+            )
+            .with_legacy_custom_ca_fallback(),
         session_telemetry: session_telemetry.clone(),
         models_manager: Arc::clone(&models_manager),
         tool_approvals: Mutex::new(ApprovalStore::default()),
@@ -2870,6 +2876,12 @@ where
         show_raw_agent_reasoning: config.show_raw_agent_reasoning,
         exec_policy,
         auth_manager: Arc::clone(&auth_manager),
+        openai_file_upload_client_pool:
+            codex_http_client::RouteAwareClientPool::new_without_request_logging(
+                config.http_client_factory(),
+                codex_http_client::ClientRouteClass::Api,
+            )
+            .with_legacy_custom_ca_fallback(),
         session_telemetry: session_telemetry.clone(),
         models_manager: Arc::clone(&models_manager),
         tool_approvals: Mutex::new(ApprovalStore::default()),

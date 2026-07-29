@@ -285,8 +285,12 @@ impl ContextualUserFragment for EnvironmentContext {
             }
             EnvironmentContextEnvironments::Multiple(environments) => {
                 lines.push("  <environments>".to_string());
-                for environment in environments {
-                    lines.push(format!("    <environment id=\"{}\">", environment.id));
+                for (index, environment) in environments.iter().enumerate() {
+                    lines.push(format!(
+                        "    <environment id=\"{}\" primary=\"{}\">",
+                        environment.id,
+                        index == 0
+                    ));
                     lines.push(format!(
                         "      <cwd>{}</cwd>",
                         environment.cwd.to_string_lossy()
