@@ -1,0 +1,91 @@
+{
+  "schema": "hepta_l1_compatibility_ratchet_v1",
+  "status": "source_ready",
+  "work_graph": {
+    "logical_module_count": 711,
+    "canonical_files": ["source.schema.json", "templates.jsonl", "parameters.jsonl"],
+    "normalized_template_count": 454,
+    "normalized_parameter_row_count": 711,
+    "normalized_effective_lines": 288695,
+    "normalized_effective_line_limit": 297356,
+    "aggregate_source_sha256": "e0fd95b1d8d3515065e086b289331a4918c1fe92467bbbdd29efdfe050a97f9c",
+    "generated_bundle_sha256": "14eeb0c620bdc22c8f6c920d2c7506f023fc328a9fb0941161b85b311c53db08",
+    "canonical_schema_sha256": "ec0230b7e5b0dc42ebd6c45c29c427e932f8a932e629e5b9964ef6109cdf4576",
+    "canonical_templates_sha256": "8e86b298fc4eb5eb393e7cdc80e0627fe3d81c7a5d9372c78cf4f30a3f674be5",
+    "canonical_parameters_sha256": "0a8761519063132e4a62bd415df1d3de83758685f343f1a630e3d5cc36ce2f9f",
+    "canonical_max_record_bytes": 89271,
+    "canonical_max_record_byte_limit": 89271,
+    "gzip_mtime": 1,
+    "gzip_os": 255,
+    "byte_identical_repack_verified": true
+  },
+  "gate_pair_compatibility": {
+    "pair_count": 851,
+    "captured_shell_pair_count": 808,
+    "logical_payload_count": 1650,
+    "canonical_files": ["source.schema.json", "templates.jsonl", "parameters.jsonl"],
+    "normalized_payload_count": 411,
+    "normalized_parameter_row_count": 1650,
+    "normalized_effective_lines": 183836,
+    "normalized_effective_line_limit": 189352,
+    "unregistered_payload_count": 0,
+    "aggregate_source_sha256": "eeb933cd0c847329f88254a37c8badbaa3c78ea46e1de1209db7a6b335d382f0",
+    "legacy_blob_aggregate_sha256": "2b1c918ad80e2de33ed20b8aa43da930e06a10365c99b25526e472cbcd42aebb",
+    "generated_bundle_sha256": "cf6c236c88011c553daed526195f45d92959353fde33ec52b38be4811c7d9211",
+    "source_registry_sha256": "616406b244f26fb9063531a53cb58f50c22c209523628f7fcd3b3a2f4335ea74",
+    "canonical_schema_sha256": "7187b038aa7fa73f542f1c483599c41e9e5cd3cefca9b4c889ecda89d1d85e5d",
+    "canonical_templates_sha256": "2495cd22686d6847fcaa0d613a27897e5dfa3bae50b69bf01af85e08c8f73865",
+    "canonical_parameters_sha256": "e46c6d9c321b04e18867e06407b387c0cbd30f1a2ede3ce3ac15ed39d437362d",
+    "canonical_max_record_bytes": 355618,
+    "canonical_max_record_byte_limit": 355618,
+    "gzip_mtime": 1,
+    "gzip_os": 255,
+    "byte_identical_repack_verified": true,
+    "physical_entrypoint_count": 92,
+    "logical_virtual_entrypoint_count": 1610,
+    "normalized_virtual_entrypoint_count": 2,
+    "retirement_receipt": "docs/architecture/HEPTA_GATE_COMPAT_L1_RETIREMENT_V1.json",
+    "retired_pair_count": 431,
+    "retirement_dependency_closed": true,
+    "git_history_recovery_bound": true
+  },
+  "ratchets": {
+    "discrete_debt_growth_percent": 0,
+    "effective_line_maintenance_headroom_percent": 3,
+    "work_graph_physical_file_limit": 1,
+    "single_exec_wrapper_limit": 92,
+    "gate_pair_physical_entrypoint_limit": 92,
+    "gate_pair_normalized_virtual_entrypoint_limit": 2,
+    "cross_release_verifier": "scripts/hepta-architecture-release-ratchet",
+    "active_immutable_release_comparison_required": true,
+    "canonical_record_sizes_may_not_increase": true
+  },
+  "scripts_budget": {
+    "baseline_physical_lines": 401137,
+    "gate_compat_normalized_effective_lines": 183836,
+    "baseline_effective_lines": 584973,
+    "physical_line_limit": 413172,
+    "effective_line_limit": 602523,
+    "maintenance_headroom_percent_max": 3,
+    "binary_newline_counts_excluded": true,
+    "readable_canonical_effective_source_counted": true
+  },
+  "tree_classification": {
+    "architecture_budget_enforces_contract": true,
+    "preflight_consumes_architecture_budget": true
+  },
+  "compatibility": {
+    "work_graph_aggregate_source_sha256_preserved": true,
+    "gate_payload_aggregate_source_sha256_preserved": true,
+    "legacy_blob_aggregate_sha256_preserved": true,
+    "logical_sources_reassemble_exactly": true,
+    "gzip_is_generated_artifact_only": true
+  },
+  "release_hard_gates": {
+    "pair_count_less_than": 999,
+    "physical_entrypoint_count_less_than": 99,
+    "unregistered_payload_count_equals": 0,
+    "monotonic_cross_release_comparison": true
+  },
+  "product_boundary_unchanged": true
+}

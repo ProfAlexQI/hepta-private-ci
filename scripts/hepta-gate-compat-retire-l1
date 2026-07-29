@@ -1,0 +1,52 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "set"
+
+ROOT = File.expand_path("..", __dir__)
+SPEC_PATH = File.join(ROOT, "scripts/hepta-gate-pair-specs-v1.json")
+RECEIPT_PATH = File.join(ROOT, "docs/architecture/HEPTA_GATE_COMPAT_L1_RETIREMENT_V1.json")
+
+def verify_retirement
+  receipt = JSON.parse(File.binread(RECEIPT_PATH))
+  digest_payload = receipt.dup
+  expected_digest = digest_payload.delete("aggregate_sha256")
+  actual_digest = Digest::SHA256.hexdigest(JSON.generate(digest_payload))
+  raise "L1 retirement receipt digest drifted" unless actual_digest == expected_digest
+
+  spec = JSON.parse(File.binread(SPEC_PATH))
+  active_ids = spec.fetch("pairs").map { |pair| pair.fetch("id") }.to_set
+  retired_ids = receipt.fetch("retired_pairs").to_set
+  raise "retired compatibility pair remains active" unless (active_ids & retired_ids).empty?
+  raise "retired pair count drifted" unless retired_ids.length == receipt.fetch("retired_pair_count")
+  raise "L1 compatibility pair target drifted" unless active_ids.length == receipt.fetch("remaining_pair_count")
+  raise "L1 compatibility pair hard limit exceeded" unless active_ids.length < 999
+  raise "retirement is not bound to Git recovery" unless receipt.fetch("source_commit").match?(/\A[0-9a-f]{40}\z/)
+
+  retired_payloads = receipt.fetch("retired_payloads")
+  raise "retired payload count drifted" unless retired_payloads.length == retired_ids.length * 2
+  raise "retired payload metadata drifted" unless retired_payloads.all? do |payload|
+    payload.fetch("path").start_with?("scripts/lib/hepta-gate-pair-compat-v1/") &&
+      payload.fetch("sha256").match?(/\A[0-9a-f]{64}\z/) &&
+      payload.fetch("lines").positive?
+  end
+
+  puts JSON.generate(
+    schema: "hepta_gate_compat_l1_retirement_verify_v1",
+    status: "ready",
+    active_pair_count: active_ids.length,
+    retired_pair_count: retired_ids.length,
+    retained_caller_count: receipt.fetch("retained_caller_count"),
+    git_history_recovery_bound: true,
+    receipt_sha256: Digest::SHA256.file(RECEIPT_PATH).hexdigest
+  )
+end
+
+unless ARGV == ["verify"]
+  warn "usage: scripts/hepta-gate-compat-retire-l1 verify"
+  exit 64
+end
+
+verify_retirement

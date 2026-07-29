@@ -29,20 +29,18 @@ LONG_PATH_REGISTRY_PATH = File.join(SCRIPTS_ROOT, "lib/hepta-long-path-v1/regist
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 LEGACY_SCHEMA = "hepta_gate_pair_payload_bundle_v2"
 MARKER = "# hepta_gate_pair_gzip_base64_v1:"
-EXPECTED_PAYLOAD_COUNT = 2512
-MAX_NORMALIZED_PAYLOAD_COUNT = 548
-MAX_NORMALIZED_EFFECTIVE_LINES = 316_891
-MAX_CANONICAL_RECORD_BYTES = 355_619
+EXPECTED_PAYLOAD_COUNT = 1650
+MAX_NORMALIZED_PAYLOAD_COUNT = 411
+MAX_NORMALIZED_EFFECTIVE_LINES = 189_352
+MAX_CANONICAL_RECORD_BYTES = 355_618
 LEGACY_GZIP_MTIME = 0
 LEGACY_GZIP_XFL = 0
 LEGACY_GZIP_OS = 3
 LEGACY_GZIP_COMPRESSION_METHOD = 8
-LEGACY_GZIP_HEADER = [
-  0x1f, 0x8b, LEGACY_GZIP_COMPRESSION_METHOD, 0,
-  LEGACY_GZIP_MTIME, LEGACY_GZIP_XFL, LEGACY_GZIP_OS
-].pack("C4VC2").freeze
+LEGACY_GZIP_HEADER = [0x1f, 0x8b, LEGACY_GZIP_COMPRESSION_METHOD, 0,
+                      LEGACY_GZIP_MTIME, LEGACY_GZIP_XFL, LEGACY_GZIP_OS].pack("C4VC2").freeze
 EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256 =
-  "988ba401674b1adadb3faff943c4de2b12f836e517c31c21066a20b3a77de867"
+  "2b1c918ad80e2de33ed20b8aa43da930e06a10365c99b25526e472cbcd42aebb"
 LEGACY_ENVELOPE_PREFIX = "#!/usr/bin/env bash\n" \
   'exec "${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}/scripts/hepta-gate-pair-compat-exec" "$0" "$@" ' \
   "#{MARKER}"
@@ -180,6 +178,13 @@ def registered_hashes
       hashes[logical_path] = expected_sha
     end
   end
+  spec.fetch("supplemental_payloads", []).each do |payload|
+    logical_path = payload.fetch("path")
+    expected_sha = payload.fetch("sha256")
+    existing = hashes[logical_path]
+    raise "conflicting supplemental payload hash: #{logical_path}" if existing && existing != expected_sha
+    hashes[logical_path] = expected_sha
+  end
   hashes
 end
 
@@ -234,10 +239,10 @@ def write_bundle(entries)
     tokenizer: HeptaNormalizedTokenBundle.method(:shell_tokens)
   )
   if bundle.metrics.fetch(:normalized_template_count) > MAX_NORMALIZED_PAYLOAD_COUNT
-    raise "normalized gate payload budget exceeded"
+    raise "normalized gate payload budget exceeded: #{bundle.metrics.fetch(:normalized_template_count)}"
   end
   if bundle.metrics.fetch(:normalized_effective_lines) > MAX_NORMALIZED_EFFECTIVE_LINES
-    raise "normalized gate payload effective-line budget exceeded"
+    raise "normalized gate payload effective-line budget exceeded: #{bundle.metrics.fetch(:normalized_effective_lines)}"
   end
   FileUtils.mkdir_p(BUNDLE_ROOT)
   canonical = HeptaReadableTokenSource.write(
@@ -552,14 +557,10 @@ def materialize_overlay
   puts destination
 end
 
-if ARGV == ["pack"]
-  pack
-elsif ARGV == ["verify"]
-  verify
-elsif ARGV == ["unpack"]
-  unpack
-elsif ARGV == ["materialize-overlay"]
-  materialize_overlay
+if ARGV.length == 1 && {"pack"=>method(:pack), "verify"=>method(:verify),
+                        "unpack"=>method(:unpack), "materialize-overlay"=>method(:materialize_overlay)}.key?(ARGV.first)
+  {"pack"=>method(:pack), "verify"=>method(:verify), "unpack"=>method(:unpack),
+   "materialize-overlay"=>method(:materialize_overlay)}.fetch(ARGV.first).call
 elsif ARGV.length == 3 && ARGV.first == "--decode-to"
   decode_to(ARGV.fetch(1), ARGV.fetch(2))
 elsif ARGV.length == 3 && ARGV.first == "--legacy-blob-to"

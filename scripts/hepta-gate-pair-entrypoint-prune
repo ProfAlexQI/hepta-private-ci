@@ -11,7 +11,7 @@ SCRIPTS_ROOT = File.join(ROOT, "scripts")
 SPEC_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-specs-v1.json")
 REGISTRY_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-entrypoints-v2.json")
 SCHEMA = "hepta_gate_pair_entrypoints_v2"
-MAX_RETAINED_ENTRYPOINTS = 165
+MAX_RETAINED_ENTRYPOINTS = 98
 MAX_NORMALIZED_VIRTUAL_ENTRYPOINTS = 2
 MAX_TRACKED_PATH_BYTES = 240
 
@@ -64,7 +64,10 @@ def scan_references(entrypoint_paths)
     next unless File.file?(path)
     next if excluded_prefixes.any? { |prefix| path.start_with?(prefix) }
     relative = path.delete_prefix("#{ROOT}/")
-    next if path_set.include?(relative) || relative == "scripts/hepta-gate-pair-specs-v1.json"
+    next if path_set.include?(relative) || [
+      "scripts/hepta-gate-pair-specs-v1.json",
+      "scripts/hepta-gate-pair-entrypoints-v2.json"
+    ].include?(relative)
     next if File.size(path) > 20 * 1024 * 1024
     source = File.binread(path)
     next unless source.valid_encoding?
@@ -79,12 +82,9 @@ def pack
   entries = pair_entrypoints
   entrypoint_paths = entries.map(&:first)
   referenced = scan_references(entrypoint_paths)
-  template_retained_ids = spec.fetch("pairs").each_with_object(Set.new) do |pair, retained_ids|
-    retained_ids << pair.fetch("id") unless pair.fetch("template") == "captured_shell_compat_v1"
-  end
   retained = entries.select do |path, _kind, id|
     path.bytesize <= MAX_TRACKED_PATH_BYTES &&
-      (referenced.include?(path) || template_retained_ids.include?(id))
+      referenced.include?(path)
   end
   raise "retained gate-pair entrypoint budget exceeded: #{retained.length}" if retained.length > MAX_RETAINED_ENTRYPOINTS
   retained_paths = retained.map(&:first).to_set

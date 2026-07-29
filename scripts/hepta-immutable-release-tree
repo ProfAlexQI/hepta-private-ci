@@ -1833,7 +1833,7 @@ self_test() {
     and .watchdog.source.commit_bound == true
     and .watchdog.source.commit == .source.commit
     and .watchdog.entrypoint == "scripts/hepta-watchdog.sh"
-    and .watchdog.file_count == 13
+    and .watchdog.file_count == 15
     and (.watchdog.files | any(
       .relative_path == "scripts/hepta-live-soak.sh"
       and .mode == "0555"

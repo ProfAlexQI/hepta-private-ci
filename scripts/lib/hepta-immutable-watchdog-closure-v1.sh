@@ -4,6 +4,7 @@ HEPTA_IMMUTABLE_WATCHDOG_CLOSURE_SCHEMA="hepta_immutable_watchdog_closure_v1"
 HEPTA_IMMUTABLE_WATCHDOG_ENTRYPOINT="scripts/hepta-watchdog.sh"
 HEPTA_IMMUTABLE_WATCHDOG_PRODUCT_BOUNDARY="docs/decisions/hepta-product-boundary-v1.json"
 HEPTA_IMMUTABLE_WATCHDOG_VERIFY_TOOL="scripts/hepta-immutable-release-tree"
+HEPTA_IMMUTABLE_WATCHDOG_LEGACY_K_SOURCE_COMMIT="7e9d073a7ddb68d1f78666ebbf889c73d54d254a"
 
 hepta_immutable_watchdog_closure_spec() {
   cat <<'EOF'
@@ -34,8 +35,14 @@ hepta_immutable_watchdog_sha256_text() {
 }
 
 hepta_immutable_watchdog_expected_paths_json() {
+  local source_commit="${1:-}"
   hepta_immutable_watchdog_closure_spec \
     | cut -f1 \
+    | if [[ "$source_commit" == "$HEPTA_IMMUTABLE_WATCHDOG_LEGACY_K_SOURCE_COMMIT" ]]; then
+        grep -v -E '^scripts/hepta-(generation-pointer|off-device-archive)$'
+      else
+        cat
+      fi \
     | jq -R . \
     | jq -cs .
 }
@@ -122,7 +129,7 @@ hepta_immutable_watchdog_verify() {
   local source_bound="$3"
   local closure_json="$4"
   local expected_paths
-  expected_paths="$(hepta_immutable_watchdog_expected_paths_json)"
+  expected_paths="$(hepta_immutable_watchdog_expected_paths_json "$source_commit")"
 
   jq -e \
     --arg schema "$HEPTA_IMMUTABLE_WATCHDOG_CLOSURE_SCHEMA" \

@@ -44,7 +44,7 @@ verify_payload_dependency_closure() {
 verify() {
   require_tools
   jq -e '
-    .schema_version == "hepta_gate_compat_debt_v3"
+    .schema_version == "hepta_gate_compat_debt_v4"
     and .status == "bounded_migration_debt"
     and .migration_policy == {
       counts_may_only_improve:true,
@@ -56,6 +56,7 @@ verify() {
       legacy_logical_surfaces_remain_reversible:true,
       unregistered_payloads_must_not_grow:true,
       removal_requires_reference_graph_proof:true
+      ,explicit_supplemental_payloads_are_sha256_bound:true
     }
     and .ratchet == {
       discrete_debt_growth_percent:0,
@@ -184,7 +185,7 @@ verify() {
     "$overlay"
 
   jq -n \
-    --arg schema hepta_gate_compat_debt_receipt_v3 \
+    --arg schema hepta_gate_compat_debt_receipt_v4 \
     --arg status ready \
     --argjson pair_count "$pair_count" \
     --argjson captured_shell_pair_count "$captured_count" \
@@ -272,7 +273,7 @@ EOF
     echo "Hepta gate compatibility debt accepted an effective-line regression" >&2
     return 1
   fi
-  echo '{"schema":"hepta_gate_compat_debt_self_test_v3","status":"ready","negative_fixtures":6}'
+  echo '{"schema":"hepta_gate_compat_debt_self_test_v4","status":"ready","negative_fixtures":6}'
 }
 
 [[ $# -eq 1 ]] || usage
