@@ -110,7 +110,7 @@ migrate_layout() {
   }
   tmp_suffix="$$.$RANDOM"
   ln -s "$release_dir" "$INSTALL_ROOT/.active-generation.$tmp_suffix"
-  mv -f "$INSTALL_ROOT/.active-generation.$tmp_suffix" "$GENERATION_LINK"
+  mv -fh "$INSTALL_ROOT/.active-generation.$tmp_suffix" "$GENERATION_LINK"
   ln -s "../active/manifest.json" "$ACTIVE_DIR/.hepta-generation-manifest.$tmp_suffix"
   mv -f "$ACTIVE_DIR/.hepta-generation-manifest.$tmp_suffix" "$ACTIVE_MANIFEST"
   ln -s "../active/bin/hepta" "$ACTIVE_DIR/.hepta-generation-program.$tmp_suffix"
@@ -146,7 +146,7 @@ cutover_generation() {
     echo "staged generation artifact SHA-256 mismatch" >&2
     exit 1
   }
-  mv -f "$INSTALL_ROOT/.active-generation.$suffix" "$GENERATION_LINK"
+  mv -fh "$INSTALL_ROOT/.active-generation.$suffix" "$GENERATION_LINK"
   verify_layout "$ACTIVE_PROGRAM" "$verifier" >/dev/null
   jq -cn \
     --arg schema "hepta_generation_pointer_cutover_receipt_v1" \
@@ -195,7 +195,7 @@ rollback_generation() {
   }
   suffix="$$.$RANDOM"
   ln -s "$previous_release" "$(dirname "$generation_link")/.active-generation.$suffix"
-  mv -f "$(dirname "$generation_link")/.active-generation.$suffix" "$generation_link"
+  mv -fh "$(dirname "$generation_link")/.active-generation.$suffix" "$generation_link"
   verify_layout "$active_program" "$verifier" >/dev/null
   jq -cn --arg schema "hepta_generation_pointer_rollback_receipt_v1" \
     --arg generation_link "$generation_link" --arg restored_release "$previous_release" \
@@ -206,7 +206,7 @@ rollback_generation() {
 self_test() {
   local root install_root verifier release_a release_b sha_a sha_b cutover_receipt
   root="$(mktemp -d /tmp/hepta-generation-pointer-self-test.XXXXXX)"
-  trap "rm -R '$root'" EXIT
+  trap "chmod -R u+w '$root' 2>/dev/null || true; rm -R '$root'" EXIT
   install_root="$root/install"
   release_a="$install_root/releases/a"
   release_b="$install_root/releases/b"
@@ -219,6 +219,7 @@ self_test() {
   jq -n --arg sha "$sha_a" '{artifact:{relative_path:"bin/hepta",sha256:$sha}}' >"$release_a/manifest.json"
   jq -n --arg sha "$sha_b" '{artifact:{relative_path:"bin/hepta",sha256:$sha}}' >"$release_b/manifest.json"
   chmod 0444 "$release_a/manifest.json" "$release_b/manifest.json"
+  chmod 0555 "$release_a" "$release_b"
   verifier="$root/verifier"
   cat >"$verifier" <<'EOF'
 #!/usr/bin/env bash
@@ -241,7 +242,7 @@ EOF
   cutover_receipt="$root/cutover.json"
   cutover_generation "$install_root/bin/hepta" "$verifier" "$release_b/manifest.json" "$sha_a" >"$cutover_receipt"
   [[ "$(sha256_file "$install_root/bin/hepta")" == "$sha_b" ]]
-  if cutover_generation "$install_root/bin/hepta" "$verifier" "$release_a/manifest.json" "$sha_a" >/dev/null 2>&1; then
+  if (cutover_generation "$install_root/bin/hepta" "$verifier" "$release_a/manifest.json" "$sha_a") >/dev/null 2>&1; then
     echo "generation cutover accepted stale CAS" >&2
     exit 1
   fi
