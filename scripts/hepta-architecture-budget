@@ -3,6 +3,23 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+architecture_sha256_file() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+RUNTIME_WHOLE_TREE_MAX_LINES=509661
+HEPTA_OWNED_RUST_WHOLE_TREE_MAX_LINES=1022534
+HEPTA_FIRST_PARTY_RUST_COMPLETE_MAX_LINES=1041381
+SCRIPTS_PHYSICAL_MAX_LINES=421571
+SCRIPTS_WHOLE_TREE_MAX_LINES=738462
+WORK_GRAPH_MAX_FILES=1
+WORK_GRAPH_MAX_EFFECTIVE_LINES=297356
+SINGLE_EXEC_WRAPPER_MAX_COUNT=165
+GIANT_MODULE_OVER_10000_MAX_COUNT=0
+GIANT_MODULE_OVER_5000_MAX_COUNT=18
+GATE_COMPAT_ROOT="scripts/lib/hepta-gate-pair-compat-v2"
+TREE_CLASSIFICATION="docs/architecture/hepta-tree-classification-v1.json"
+
 resolve_budget_file() {
   local logical_path="$1"
   local relocated_path
@@ -82,6 +99,170 @@ maintainable_tree_line_total() {
     | awk '$2 != "total" { total += $1 } END { print total + 0 }'
 }
 
+maintainable_scripts_physical_line_total() {
+  find scripts -type f \
+    ! -path "$GATE_COMPAT_ROOT/payloads.bundle.gz" \
+    ! -path "$GATE_COMPAT_ROOT/templates.jsonl" \
+    ! -path "$GATE_COMPAT_ROOT/parameters.jsonl" \
+    -exec wc -l {} + \
+    | awk '$2 != "total" { total += $1 } END { print total + 0 }'
+}
+
+maintainable_scripts_effective_line_total() {
+  local physical compat_effective
+  physical="$(maintainable_scripts_physical_line_total)"
+  compat_effective="$(
+    jq -er '
+      select(.schema == "hepta_gate_pair_normalized_payload_bundle_v3")
+      | .normalized_effective_lines
+    ' "$GATE_COMPAT_ROOT/registry.json"
+  )"
+  printf '%s\n' "$((physical + compat_effective))"
+}
+
+verify_tree_classification() {
+  verify_file_max "$TREE_CLASSIFICATION" 130
+  jq -e '
+    .schema == "hepta.tree-classification.v1"
+    and .product_boundary == "openclaw_governed_backend"
+    and (.classifications.active.roots | index("codex-rs/hepta-durable-store") != null)
+    and (.classifications.active.roots | index("codex-rs/http-client") != null)
+    and (.classifications.active.roots | index("codex-rs/websocket-client") != null)
+    and .classifications.active.targeted_upstream_surfaces == [
+      "codex-rs/app-server",
+      "codex-rs/app-server-protocol",
+      "codex-rs/backend-client",
+      "codex-rs/cli",
+      "codex-rs/codex-api",
+      "codex-rs/codex-backend-openapi-models",
+      "codex-rs/codex-mcp",
+      "codex-rs/core",
+      "codex-rs/core-plugins",
+      "codex-rs/exec-server",
+      "codex-rs/features",
+      "codex-rs/mcp-server",
+      "codex-rs/protocol",
+      "codex-rs/rmcp-client",
+      "codex-rs/thread-store",
+      "codex-rs/tui"
+    ]
+    and .classifications.active.operational_tools == [
+      "scripts/hepta-architecture-release-ratchet",
+      "scripts/hepta-preflight-evidence-pack"
+    ]
+    and (.classifications.compat.roots | index("codex-rs/hepta-runtime/codegen/workgraph-v3") != null)
+    and (.classifications.compat.roots | index("scripts/lib/hepta-gate-pair-compat-v2") != null)
+    and .classifications.conditional.roots == [
+      "codex-rs/exec-server-protocol",
+      "codex-rs/hepta-mcp-2026-compat"
+    ]
+    and .classifications.generated.canonical_roots == [
+      "codex-rs/hepta-runtime/codegen/workgraph-v3",
+      "scripts/lib/hepta-gate-pair-compat-v2"
+    ]
+    and .classifications.generated.artifact_files == [
+      "codex-rs/hepta-runtime/codegen/workgraph-v3/modules.bundle.gz",
+      "scripts/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz"
+    ]
+    and .merge_policy.whole_tree_merge == false
+    and .merge_policy.archive_ref_merge == false
+    and .merge_policy.targeted_semantic_intake_only == true
+    and .merge_policy.preserve_incremental_hepta_authority == true
+  ' "$TREE_CLASSIFICATION" >/dev/null
+  while IFS= read -r classified_root; do
+    [[ -e "$classified_root" ]] || {
+      echo "classified Hepta tree root is missing: $classified_root" >&2
+      return 1
+    }
+  done < <(
+    jq -r '
+      .classifications.active.roots[],
+      .classifications.active.targeted_upstream_surfaces[],
+      .classifications.active.operational_tools[],
+      .classifications.compat.roots[],
+      .classifications.conditional.roots[],
+      .classifications.generated.canonical_roots[],
+      .classifications.generated.artifact_files[]
+    ' "$TREE_CLASSIFICATION" | LC_ALL=C sort -u
+  )
+}
+
+verify_split_family() {
+  local expected_count="$1"
+  local max_lines="$2"
+  shift 2
+  [[ "$#" -eq "$expected_count" ]] || {
+    echo "architecture split-family count drifted: actual=$# expected=$expected_count files=$*" >&2
+    return 1
+  }
+  local file
+  for file in "$@"; do
+    [[ -f "$file" ]] || {
+      echo "architecture split-family member is missing: $file" >&2
+      return 1
+    }
+    verify_file_max "$file" "$max_lines"
+  done
+}
+
+verify_k2_split_budgets() {
+  verify_file_max codex-rs/hepta-native-gateway/src/native_gateway/tests.rs 20
+  verify_split_family 12 4800 \
+    codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_*.rs
+  verify_file_max apps/hepta-native/src/home/room_screen.rs 5000
+  verify_split_family 9 5000 apps/hepta-native/src/home/room_screen/*.rs
+  verify_file_max \
+    apps/hepta-native/src/home/hepta_telegram_base_contract/tests.rs \
+    20
+  verify_split_family 6 4000 \
+    apps/hepta-native/src/home/hepta_telegram_base_contract/tests/contract_part_*.rs
+  verify_file_max codex-rs/hepta-core/src/upstream_codex_sync.rs 9700
+  verify_file_max codex-rs/hepta-core/src/upstream_codex_sync/tests.rs 4000
+  local report_root
+  for report_root in \
+    codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/runtime_and_operator_lanes \
+    codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/approval_and_activation_receipts \
+    codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/canary_execution_and_rollback \
+    codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/identity_and_signing_denials
+  do
+    verify_split_family 3 4800 "$report_root"/part_*.rs
+  done
+  verify_file_max codex-rs/core/src/session/tests.rs 20
+  verify_split_family 4 3800 codex-rs/core/src/session/tests/contract_part_*.rs
+  verify_file_max codex-rs/core/src/config/config_tests.rs 20
+  verify_split_family 4 3000 \
+    codex-rs/core/src/config/config_tests/contract_part_*.rs
+  verify_file_max scripts/hepta-preflight-evidence-pack 270
+  [[ -x scripts/hepta-preflight-evidence-pack ]] || {
+    echo "preflight evidence packer is not executable" >&2
+    return 1
+  }
+  scripts/hepta-preflight-evidence-pack self-test \
+    | jq -e '
+      .schema == "hepta_preflight_evidence_pack_self_test_v1"
+      and .status == "ready"
+      and .deterministic_repack == true
+      and .exact_roundtrip == true
+      and .tamper_rejected == true
+    ' >/dev/null
+  verify_file_max scripts/hepta-architecture-release-ratchet 380
+  [[ -x scripts/hepta-architecture-release-ratchet ]] || {
+    echo "architecture release ratchet is not executable" >&2
+    return 1
+  }
+  scripts/hepta-architecture-release-ratchet self-test \
+    | jq -e '
+      .schema == "hepta_architecture_release_ratchet_self_test_v1"
+      and .status == "ready"
+      and .unchanged_receipt_accepted == true
+      and .increased_discrete_debt_denied == true
+      and .increased_canonical_record_size_denied == true
+      and .raised_ceiling_denied == true
+      and .growth_above_3_percent_denied == true
+      and .raw_and_gzip_previous_receipt_extraction == true
+    ' >/dev/null
+}
+
 maintainable_tree_with_generated_line_total() {
   local pattern="$1"
   local generated_root="$2"
@@ -89,10 +270,10 @@ maintainable_tree_with_generated_line_total() {
   {
     maintainable_tree_line_counts "$pattern" "$@"
     if [[ -f "$generated_root/registry.json" ]] \
-      && jq -e '.schema == "hepta_workgraph_module_bundle_v2"' \
+      && jq -e '.schema == "hepta_workgraph_normalized_bundle_v3"' \
         "$generated_root/registry.json" >/dev/null 2>&1
     then
-      jq -r '.source_lines' "$generated_root/registry.json"
+      jq -r '.normalized_effective_lines' "$generated_root/registry.json"
     else
       find "$generated_root" -type f -exec wc -l {} +
     fi
@@ -137,9 +318,18 @@ verify() {
   local runtime_effective_line_count
   local owned_rust_effective_line_count
   local complete_rust_effective_line_count
+  local giant_module_over_10000_count
+  local giant_module_over_5000_count
+  local j3_active_linkage_files
   local scripts_line_count
+  local scripts_physical_line_count
+  local gate_compat_effective_line_count
+  local work_graph_canonical_max_record_bytes
+  local gate_compat_canonical_max_record_bytes
 
   source scripts/lib/hepta-source-set.sh
+  verify_tree_classification
+  verify_k2_split_budgets
 
   verify_file_max codex-rs/hepta-native-gateway/src/native_gateway.rs 5800
   verify_file_max codex-rs/hepta-native-gateway/src/route_manifest.rs 230
@@ -266,12 +456,12 @@ verify() {
   verify_file_max codex-rs/hepta-memory/src/tests/runtime_state_store.rs 120
   verify_file_max apps/hepta-native/src/home/room_screen.rs 38000
   verify_file_max codex-rs/hepta-runtime/src/execution_admission.rs 360
-  scripts/hepta-workgraph-codegen verify >/dev/null
-  verify_tree_with_generated_total_max 629992 '*.rs' \
-    codex-rs/hepta-runtime/codegen/workgraph-v2 \
+  scripts/hepta-workgraph-module-bundle verify >/dev/null
+  verify_tree_with_generated_total_max "$RUNTIME_WHOLE_TREE_MAX_LINES" '*.rs' \
+    codex-rs/hepta-runtime/codegen/workgraph-v3 \
     codex-rs/hepta-runtime/src
-  verify_tree_with_generated_total_max 1142319 '*.rs' \
-    codex-rs/hepta-runtime/codegen/workgraph-v2 \
+  verify_tree_with_generated_total_max "$HEPTA_OWNED_RUST_WHOLE_TREE_MAX_LINES" '*.rs' \
+    codex-rs/hepta-runtime/codegen/workgraph-v3 \
     codex-rs/hepta-contracts/src \
     codex-rs/hepta-core/src \
     codex-rs/hepta-memory/src \
@@ -283,9 +473,12 @@ verify() {
     codex-rs/hepta-native-gateway/src \
     codex-rs/hepta-cli/src \
     codex-rs/hepta-authority/src \
+    codex-rs/hepta-durable-store/src \
+    codex-rs/hepta-mcp-2026-compat/src \
+    codex-rs/exec-server-protocol/src \
     apps/hepta-native/src
-  verify_tree_with_generated_total_max 1161055 '*.rs' \
-    codex-rs/hepta-runtime/codegen/workgraph-v2 \
+  verify_tree_with_generated_total_max "$HEPTA_FIRST_PARTY_RUST_COMPLETE_MAX_LINES" '*.rs' \
+    codex-rs/hepta-runtime/codegen/workgraph-v3 \
     codex-rs/hepta-contracts \
     codex-rs/hepta-core \
     codex-rs/hepta-memory \
@@ -298,16 +491,38 @@ verify() {
     codex-rs/hepta-cli \
     codex-rs/hepta-kg \
     codex-rs/hepta-authority \
+    codex-rs/hepta-durable-store \
+    codex-rs/hepta-mcp-2026-compat \
+    codex-rs/exec-server-protocol \
     apps/hepta-native
-  verify_tree_total_max 443991 '*' scripts
+  scripts_physical_line_count="$(maintainable_scripts_physical_line_total)"
+  gate_compat_effective_line_count="$(
+    jq -er '.normalized_effective_lines' "$GATE_COMPAT_ROOT/registry.json"
+  )"
+  work_graph_canonical_max_record_bytes="$(
+    jq -er '.canonical_max_record_bytes' \
+      codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json
+  )"
+  gate_compat_canonical_max_record_bytes="$(
+    jq -er '.canonical_max_record_bytes' "$GATE_COMPAT_ROOT/registry.json"
+  )"
+  scripts_line_count="$((scripts_physical_line_count + gate_compat_effective_line_count))"
+  if (( scripts_physical_line_count > SCRIPTS_PHYSICAL_MAX_LINES )); then
+    echo "architecture scripts physical line budget exceeded: ${scripts_physical_line_count} > ${SCRIPTS_PHYSICAL_MAX_LINES}" >&2
+    return 1
+  fi
+  if (( scripts_line_count > SCRIPTS_WHOLE_TREE_MAX_LINES )); then
+    echo "architecture scripts effective line budget exceeded: ${scripts_line_count} > ${SCRIPTS_WHOLE_TREE_MAX_LINES}" >&2
+    return 1
+  fi
   runtime_effective_line_count="$(
     maintainable_tree_with_generated_line_total '*.rs' \
-      codex-rs/hepta-runtime/codegen/workgraph-v2 \
+      codex-rs/hepta-runtime/codegen/workgraph-v3 \
       codex-rs/hepta-runtime/src
   )"
   owned_rust_effective_line_count="$(
     maintainable_tree_with_generated_line_total '*.rs' \
-      codex-rs/hepta-runtime/codegen/workgraph-v2 \
+      codex-rs/hepta-runtime/codegen/workgraph-v3 \
       codex-rs/hepta-contracts/src \
       codex-rs/hepta-core/src \
       codex-rs/hepta-memory/src \
@@ -319,11 +534,14 @@ verify() {
       codex-rs/hepta-native-gateway/src \
       codex-rs/hepta-cli/src \
       codex-rs/hepta-authority/src \
+      codex-rs/hepta-durable-store/src \
+      codex-rs/hepta-mcp-2026-compat/src \
+      codex-rs/exec-server-protocol/src \
       apps/hepta-native/src
   )"
   complete_rust_effective_line_count="$(
     maintainable_tree_with_generated_line_total '*.rs' \
-      codex-rs/hepta-runtime/codegen/workgraph-v2 \
+      codex-rs/hepta-runtime/codegen/workgraph-v3 \
       codex-rs/hepta-contracts \
       codex-rs/hepta-core \
       codex-rs/hepta-memory \
@@ -336,19 +554,73 @@ verify() {
       codex-rs/hepta-cli \
       codex-rs/hepta-kg \
       codex-rs/hepta-authority \
+      codex-rs/hepta-durable-store \
+      codex-rs/hepta-mcp-2026-compat \
+      codex-rs/exec-server-protocol \
       apps/hepta-native
   )"
-  scripts_line_count="$(maintainable_tree_line_total '*' scripts)"
+  giant_module_over_10000_count="$(
+    find \
+      codex-rs/hepta-contracts/src \
+      codex-rs/hepta-core/src \
+      codex-rs/hepta-memory/src \
+      codex-rs/hepta-intelligence/src \
+      codex-rs/hepta-plugins/src \
+      codex-rs/hepta-kernel/src \
+      codex-rs/hepta-runtime/src \
+      codex-rs/hepta-gateway/src \
+      codex-rs/hepta-native-gateway/src \
+      codex-rs/hepta-cli/src \
+      codex-rs/hepta-authority/src \
+      codex-rs/hepta-durable-store/src \
+      codex-rs/hepta-mcp-2026-compat/src \
+      codex-rs/exec-server-protocol/src \
+      apps/hepta-native/src \
+      -type f -name '*.rs' -exec wc -l {} + \
+      | awk '$2 != "total" && $1 > 10000 { count += 1 } END { print count + 0 }'
+  )"
+  giant_module_over_5000_count="$(
+    find \
+      codex-rs/hepta-contracts/src \
+      codex-rs/hepta-core/src \
+      codex-rs/hepta-memory/src \
+      codex-rs/hepta-intelligence/src \
+      codex-rs/hepta-plugins/src \
+      codex-rs/hepta-kernel/src \
+      codex-rs/hepta-runtime/src \
+      codex-rs/hepta-gateway/src \
+      codex-rs/hepta-native-gateway/src \
+      codex-rs/hepta-cli/src \
+      codex-rs/hepta-authority/src \
+      codex-rs/hepta-durable-store/src \
+      codex-rs/hepta-mcp-2026-compat/src \
+      codex-rs/exec-server-protocol/src \
+      apps/hepta-native/src \
+      -type f -name '*.rs' -exec wc -l {} + \
+      | awk '$2 != "total" && $1 > 5000 { count += 1 } END { print count + 0 }'
+  )"
+  if (( giant_module_over_10000_count > GIANT_MODULE_OVER_10000_MAX_COUNT || giant_module_over_5000_count > GIANT_MODULE_OVER_5000_MAX_COUNT )); then
+    echo "first-party giant-module debt grew: over_10000=$giant_module_over_10000_count/$GIANT_MODULE_OVER_10000_MAX_COUNT over_5000=$giant_module_over_5000_count/$GIANT_MODULE_OVER_5000_MAX_COUNT" >&2
+    return 1
+  fi
   verify_file_max scripts/hepta-kernel-module-split 90
   verify_file_max scripts/hepta-long-path-relocate 240
   verify_file_max scripts/hepta-long-path-resolve 50
-  verify_file_max scripts/hepta-workgraph-module-bundle 330
-  verify_file_max scripts/hepta-gate-pair-payload-bundle 465
+  verify_file_max scripts/hepta-workgraph-module-bundle 360
+  verify_file_max scripts/hepta-workgraph-readable-token-source-v1.rb 280
+  verify_file_max scripts/hepta-gate-pair-payload-bundle 570
   verify_file_max scripts/hepta-gate-pair-entrypoint-prune 210
+  verify_file_max scripts/lib/hepta-normalized-token-bundle-v1.rb 420
   verify_file_max scripts/hepta-gate-pair-launch 20
   verify_file_max scripts/hepta-gate-pair-compat-pack 40
-  verify_file_max scripts/hepta-gate-compat-debt 240
+  verify_file_max scripts/hepta-gate-compat-debt 300
   verify_file_max codex-rs/hepta-native-gateway/src/gate_pair_archive.rs 400
+  verify_file_max \
+    codex-rs/hepta-native-gateway/src/gate_pair_archive/normalized_payload_bundle.rs \
+    220
+  verify_file_max \
+    codex-rs/hepta-native-gateway/src/native_gateway/report_pagination.rs \
+    373
   verify_file_max codex-rs/hepta-native-gateway/src/gate_runner.rs 1450
   verify_file_max scripts/hepta-state-machine-gate-runner 260
   verify_file_max scripts/hepta-state-machine-gate-runner-self-test 80
@@ -421,6 +693,57 @@ verify() {
     and .unknown_route_structured_rejection == true
     and .retired_route_structured_rejection == true
   ' docs/architecture/HEPTA_I2_ROUTE_EFFECT_GATE_MANIFEST_2026-07-28.json >/dev/null
+  verify_file_max \
+    docs/architecture/HEPTA_K0_RELEASE_BLOCKER_CLOSURE_2026-07-29.json \
+    130
+  jq -e '
+    .schema == "hepta_k0_release_blocker_closure_v1"
+    and .status == "source_validated_release_pending"
+    and .product_role == "openclaw_governed_backend"
+    and .response_transport.global_get_json_size_wrapper_removed == true
+    and .response_transport.canonical_policy_source ==
+      "hepta_native_gateway::route_manifest::RouteResponsePolicy"
+    and .response_transport.policies == [
+      "passthrough",
+      "digest_bound_pagination"
+    ]
+    and .response_transport.route_manifest_entry_count == 322
+    and .response_transport.passthrough_route_count == 79
+    and .response_transport.digest_bound_pagination_route_count == 243
+    and .response_transport.pagination_schema == "hepta_report_summary_v2"
+    and .response_transport.page_schema == "hepta_report_page_v2"
+    and .response_transport.snapshot_digest_required_for_every_page == true
+    and .response_transport.snapshot_change_http_status == 409
+    and .response_transport.source_status_preserved == true
+    and .response_transport.fixed_ready_status_forbidden == true
+    and .watchdog_projection.endpoint == "/api/watchdog-state"
+    and .watchdog_projection.schema == "hepta_watchdog_state_v1"
+    and .watchdog_projection.response_policy == "passthrough"
+    and .watchdog_projection.default_response_cap_bytes == 131072
+    and .watchdog_projection.watchdog_report_payload_fields_from_projection_only == true
+    and .watchdog_projection.live_soak_report_payload_fields_from_projection_only == true
+    and .watchdog_projection.additional_manifest_and_http_probe_checks == true
+    and .watchdog_projection.watchdog_probe_count == 13
+    and .watchdog_projection.legacy_report_routes_retained == true
+    and .watchdog_projection.external_effects == false
+    and .watchdog_launch_agent.release_bound_program == true
+    and .watchdog_launch_agent.plist_mode == "0444"
+    and .watchdog_launch_agent.plist_sha256_in_install_receipt == true
+    and .watchdog_launch_agent.run_at_load_exit_zero_required_after_install == true
+    and .gateway_launch_agent.label == "ai.hepta.gateway"
+    and .gateway_launch_agent.unique_loadable_same_label_plist_required == true
+    and .gateway_launch_agent.same_label_backups_must_leave_launch_agents == true
+    and .gateway_launch_agent.loaded_path_digest_required == true
+    and .gateway_launch_agent.working_directory == "~/.local/share/hepta/runtime-v2"
+    and .gateway_launch_agent.state_root == "~/.local/share/hepta"
+    and .gateway_launch_agent.all_effectful_gates_default_false == true
+    and .unchanged_boundaries.telegram_owner == "legacy_openclaw"
+    and ([.unchanged_boundaries.telegram_external_read,
+          .unchanged_boundaries.telegram_external_send,
+          .unchanged_boundaries.telegram_poll_loop_owner,
+          .unchanged_boundaries.native_real_mutation,
+          .unchanged_boundaries.second_provider_owner] | all(. == false))
+  ' docs/architecture/HEPTA_K0_RELEASE_BLOCKER_CLOSURE_2026-07-29.json >/dev/null
   verify_file_max docs/architecture/HEPTA_I3_TOPOLOGY_COMPACTION_2026-07-28.json 120
   jq -e '
     .schema == "hepta_i3_topology_compaction_v1"
@@ -449,6 +772,453 @@ verify() {
     and .compatibility.native_gate_runner_tests_passed == 26
     and .compatibility.kernel_tests_passed == 118
   ' docs/architecture/HEPTA_I3_TOPOLOGY_COMPACTION_2026-07-28.json >/dev/null
+  verify_file_max docs/architecture/HEPTA_J1_SEMANTIC_COMPACTION_2026-07-28.json 120
+  jq -e '
+    .schema == "hepta_j1_semantic_compaction_v1"
+    and .status == "source_ready"
+    and .work_graph.logical_module_count == 711
+    and .work_graph.normalized_template_count == 454
+    and .work_graph.normalized_parameter_row_count == 711
+    and .work_graph.normalized_effective_lines == 288695
+    and .work_graph.normalized_effective_line_limit == 299999
+    and .work_graph.exact_reassembly == true
+    and .gate_pair_compatibility.logical_payload_count == 2512
+    and .gate_pair_compatibility.normalized_payload_count == 548
+    and .gate_pair_compatibility.logical_virtual_entrypoint_count == 2399
+    and .gate_pair_compatibility.normalized_virtual_entrypoint_count == 2
+    and .gate_pair_compatibility.legacy_blob_archive_removed == true
+    and .gate_pair_compatibility.legacy_blob_aggregate_sha256 == "988ba401674b1adadb3faff943c4de2b12f836e517c31c21066a20b3a77de867"
+    and .gate_pair_compatibility.exact_reassembly == true
+    and .report_transport.default_response_max_bytes == 131072
+    and .report_transport.page_source_max_bytes == 73728
+    and .report_transport.default_route_sweep_max_bytes == 8388608
+    and .real_budgets.runtime_effective_line_cap == 509661
+    and .real_budgets.owned_rust_effective_line_cap == 1022534
+    and .real_budgets.complete_first_party_rust_effective_line_cap == 1041381
+    and .real_budgets.scripts_line_cap == 427570
+    and .real_budgets.maintenance_headroom_percent == 3
+    and .compatibility.legacy_symbol_json_hash_and_golden_compatibility_preserved == true
+    and .compatibility.full_detail_bytes_reassemble_exactly == true
+  ' docs/architecture/HEPTA_J1_SEMANTIC_COMPACTION_2026-07-28.json >/dev/null
+  verify_file_max \
+    docs/architecture/HEPTA_K1_READABLE_CANONICAL_RATCHET_2026-07-29.json \
+    130
+  jq -e \
+    --argjson scripts_physical_actual "$scripts_physical_line_count" \
+    --argjson scripts_effective_actual "$scripts_line_count" \
+    --argjson scripts_physical_limit "$SCRIPTS_PHYSICAL_MAX_LINES" \
+    --argjson scripts_effective_limit "$SCRIPTS_WHOLE_TREE_MAX_LINES" \
+    --arg work_schema_sha "$(
+      architecture_sha256_file codex-rs/hepta-runtime/codegen/workgraph-v3/source.schema.json
+    )" \
+    --arg work_templates_sha "$(
+      architecture_sha256_file codex-rs/hepta-runtime/codegen/workgraph-v3/templates.jsonl
+    )" \
+    --arg work_parameters_sha "$(
+      architecture_sha256_file codex-rs/hepta-runtime/codegen/workgraph-v3/parameters.jsonl
+    )" \
+    --arg gate_schema_sha "$(
+      architecture_sha256_file "$GATE_COMPAT_ROOT/source.schema.json"
+    )" \
+    --arg gate_templates_sha "$(
+      architecture_sha256_file "$GATE_COMPAT_ROOT/templates.jsonl"
+    )" \
+    --arg gate_parameters_sha "$(
+      architecture_sha256_file "$GATE_COMPAT_ROOT/parameters.jsonl"
+    )" \
+    --arg gate_source_registry_sha "$(
+      architecture_sha256_file scripts/hepta-gate-pair-specs-v1.json
+    )" \
+    --slurpfile work_registry \
+      codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json \
+    --slurpfile gate_registry "$GATE_COMPAT_ROOT/registry.json" '
+    .schema == "hepta_k1_readable_canonical_ratchet_v1"
+    and .status == "source_ready"
+    and .work_graph.logical_module_count == 711
+    and .work_graph.canonical_files == [
+      "source.schema.json",
+      "templates.jsonl",
+      "parameters.jsonl"
+    ]
+    and .work_graph.normalized_template_count == 454
+    and .work_graph.normalized_parameter_row_count == 711
+    and .work_graph.normalized_effective_lines == 288695
+    and .work_graph.normalized_effective_line_limit == 297356
+    and .work_graph.aggregate_source_sha256 ==
+      $work_registry[0].aggregate_source_sha256
+    and .work_graph.generated_bundle_sha256 == $work_registry[0].bundle_sha256
+    and .work_graph.canonical_schema_sha256 ==
+      $work_registry[0].canonical_schema_sha256
+    and .work_graph.canonical_schema_sha256 == $work_schema_sha
+    and .work_graph.canonical_templates_sha256 ==
+      $work_registry[0].canonical_templates_sha256
+    and .work_graph.canonical_templates_sha256 == $work_templates_sha
+    and .work_graph.canonical_parameters_sha256 ==
+      $work_registry[0].canonical_parameters_sha256
+    and .work_graph.canonical_parameters_sha256 == $work_parameters_sha
+    and .work_graph.canonical_max_record_bytes ==
+      $work_registry[0].canonical_max_record_bytes
+    and .work_graph.canonical_max_record_byte_limit ==
+      $work_registry[0].canonical_max_record_byte_limit
+    and .work_graph.canonical_max_record_byte_limit ==
+      .work_graph.canonical_max_record_bytes
+    and .work_graph.gzip_mtime == 1
+    and .work_graph.gzip_os == 255
+    and .work_graph.byte_identical_repack_verified == true
+    and .gate_pair_compatibility.logical_payload_count == 2512
+    and .gate_pair_compatibility.normalized_payload_count == 548
+    and .gate_pair_compatibility.normalized_effective_lines == 307661
+    and .gate_pair_compatibility.normalized_effective_line_limit == 316891
+    and .gate_pair_compatibility.aggregate_source_sha256 ==
+      $gate_registry[0].aggregate_source_sha256
+    and .gate_pair_compatibility.generated_bundle_sha256 ==
+      $gate_registry[0].bundle_sha256
+    and .gate_pair_compatibility.source_registry_sha256 ==
+      $gate_registry[0].source_registry_sha256
+    and .gate_pair_compatibility.source_registry_sha256 ==
+      $gate_source_registry_sha
+    and .gate_pair_compatibility.canonical_schema_sha256 ==
+      $gate_registry[0].canonical_schema_sha256
+    and .gate_pair_compatibility.canonical_schema_sha256 == $gate_schema_sha
+    and .gate_pair_compatibility.canonical_templates_sha256 ==
+      $gate_registry[0].canonical_templates_sha256
+    and .gate_pair_compatibility.canonical_templates_sha256 ==
+      $gate_templates_sha
+    and .gate_pair_compatibility.canonical_parameters_sha256 ==
+      $gate_registry[0].canonical_parameters_sha256
+    and .gate_pair_compatibility.canonical_parameters_sha256 ==
+      $gate_parameters_sha
+    and .gate_pair_compatibility.canonical_max_record_bytes ==
+      $gate_registry[0].canonical_max_record_bytes
+    and .gate_pair_compatibility.canonical_max_record_byte_limit ==
+      $gate_registry[0].canonical_max_record_byte_limit
+    and .gate_pair_compatibility.canonical_max_record_byte_limit ==
+      .gate_pair_compatibility.canonical_max_record_bytes
+    and .gate_pair_compatibility.gzip_mtime == 1
+    and .gate_pair_compatibility.gzip_os == 255
+    and .gate_pair_compatibility.byte_identical_repack_verified == true
+    and .ratchets.discrete_debt_growth_percent == 0
+    and .ratchets.effective_line_maintenance_headroom_percent == 3
+    and .ratchets.work_graph_physical_file_limit == 1
+    and .ratchets.single_exec_wrapper_limit == 165
+    and .ratchets.gate_pair_physical_entrypoint_limit == 165
+    and .ratchets.gate_pair_normalized_virtual_entrypoint_limit == 2
+    and .ratchets.cross_release_verifier ==
+      "scripts/hepta-architecture-release-ratchet"
+    and .ratchets.active_immutable_release_comparison_required == true
+    and .ratchets.canonical_record_sizes_may_not_increase == true
+    and .scripts_budget.baseline_physical_lines == $scripts_physical_actual
+    and .scripts_budget.baseline_effective_lines == $scripts_effective_actual
+    and .scripts_budget.physical_line_limit == $scripts_physical_limit
+    and .scripts_budget.effective_line_limit == $scripts_effective_limit
+    and .scripts_budget.maintenance_headroom_percent_max == 3
+    and .scripts_budget.gate_compat_normalized_effective_lines == 307661
+    and .scripts_budget.binary_newline_counts_excluded == true
+    and .scripts_budget.readable_canonical_effective_source_counted == true
+    and .tree_classification.architecture_budget_enforces_contract == true
+    and .tree_classification.preflight_consumes_architecture_budget == true
+    and .compatibility.work_graph_aggregate_source_sha256_preserved == true
+    and .compatibility.gate_payload_aggregate_source_sha256_preserved == true
+    and .compatibility.legacy_blob_aggregate_sha256_preserved == true
+    and .compatibility.logical_sources_reassemble_exactly == true
+    and .compatibility.gzip_is_generated_artifact_only == true
+    and .product_boundary_unchanged == true
+  ' docs/architecture/HEPTA_K1_READABLE_CANONICAL_RATCHET_2026-07-29.json >/dev/null
+  verify_file_max \
+    docs/architecture/HEPTA_K2_STRUCTURAL_SPLIT_RATCHET_2026-07-29.json \
+    120
+  jq -e '
+    .schema == "hepta_k2_structural_split_ratchet_v1"
+    and .status == "source_ready"
+    and .budget_scope.hepta_first_party_only == true
+    and .budget_scope.target_directories_excluded == true
+    and .budget_scope.generated_workgraph_counted_by_normalized_effective_lines == true
+    and .budget_scope.upstream_codex_core_tui_giants_excluded == true
+    and .giant_modules.over_10000_current == 0
+    and .giant_modules.over_10000_limit == 0
+    and .giant_modules.over_5000_current == 18
+    and .giant_modules.over_5000_limit == 18
+    and .giant_modules.decline_targets.next_over_5000 == 12
+    and .giant_modules.decline_targets.terminal_over_5000 == 0
+    and (.mechanical_splits | length) == 7
+    and (.mechanical_splits | map(select(.source == "codex-rs/hepta-native-gateway/src/native_gateway/tests.rs")) | length) == 1
+    and (.mechanical_splits | map(select(.source == "codex-rs/core/src/session/tests.rs")) | length) == 1
+    and (.mechanical_splits | map(select(.source == "codex-rs/core/src/config/config_tests.rs")) | length) == 1
+    and (.mechanical_splits
+      | map(select(.source == "apps/hepta-native/src/home/hepta_telegram_base_contract.rs"))
+      | .[0]) == {
+        source:"apps/hepta-native/src/home/hepta_telegram_base_contract.rs",
+        before_lines:25978,
+        retained_non_test_wrapper_lines:3805,
+        extracted_test_wrapper:"apps/hepta-native/src/home/hepta_telegram_base_contract/tests.rs",
+        extracted_test_wrapper_lines:6,
+        part_count:6,
+        max_part_lines:3823
+      }
+    and .upstream_preserved_exceptions == [{
+      source:"codex-rs/tui/src/bottom_pane/chat_composer.rs",
+      lines:10687,
+      reason:"upstream TUI ownership is outside the OpenClaw-governed backend lane"
+    }]
+    and .ratchet.discrete_count_baselines_are_hard_ceilings == true
+    and .ratchet.discrete_count_regrowth_is_rejected == true
+    and .ratchet.line_growth_above_headroom_is_rejected == true
+    and .ratchet.future_baseline_updates_require_verified_decrease == true
+    and .ratchet.line_budget_headroom_percent_max == 3
+    and .verification.architecture_budget_enforces_counts == true
+    and .verification.targeted_rust_and_native_tests_required_before_release == true
+    and .verification.clean_release_preflight_required == true
+    and .preflight_evidence.tool == "scripts/hepta-preflight-evidence-pack"
+    and .preflight_evidence.summary_schema ==
+      "hepta_preflight_evidence_summary_v1"
+    and .preflight_evidence.full_log_default == false
+    and .preflight_evidence.full_log_retained_as_deterministic_gzip == true
+    and .preflight_evidence.source_log_sha256_bound == true
+    and .preflight_evidence.immutable_release_v3_bound == true
+    and .preflight_evidence.rollback_bundle_bound == true
+    and .preflight_evidence.zero_sample_soak_denied == true
+    and .preflight_evidence.phase_sequence_sha256_bound == true
+    and .preflight_evidence.provenance_and_final_receipt_sha256_bound == true
+    and .preflight_evidence.exact_roundtrip_verified == true
+    and .preflight_evidence.tamper_rejected == true
+    and .preflight_evidence.reference_profile == {
+      phase_count:603,
+      source_bytes:15876167,
+      archive_bytes:845693,
+      saved_bytes:15030474
+    }
+    and .product_boundary_unchanged == true
+  ' docs/architecture/HEPTA_K2_STRUCTURAL_SPLIT_RATCHET_2026-07-29.json >/dev/null
+  verify_file_max docs/architecture/HEPTA_J2_DURABLE_STORE_AND_MODULE_SPLIT_2026-07-28.json 140
+  jq -e '
+    .schema == "hepta_j2_durable_store_and_module_split_v1"
+    and .status == "source_ready"
+    and .durable_store.crate == "hepta-durable-store"
+    and .durable_store.authority_reexport == "hepta-authority::AuthenticatedJournalStore"
+    and .durable_store.consumers == [
+      "plugin_mutation_journal",
+      "operator_mutation_journal",
+      "telegram_authority"
+    ]
+    and .durable_store.descriptor_relative_no_follow == true
+    and .durable_store.private_owner_mode_and_link_validation == true
+    and .durable_store.bounded_read == true
+    and .durable_store.locked_atomic_checkpoint == true
+    and .durable_store.file_and_parent_fsync == true
+    and .durable_store.crash_before_publication_preserves_previous_bytes == true
+    and .compatibility.persisted_schema_hash_and_lock_paths_preserved == true
+    and .giant_modules.over_10000_before == 19
+    and .giant_modules.over_10000_after == 8
+    and .giant_modules.over_10000_cap == 8
+    and .giant_modules.over_5000_after == 25
+    and .giant_modules.over_5000_cap == 25
+    and .lint_scope.crate_wide_allowances_removed == [
+      "extend_with_drain",
+      "let_and_return",
+      "manual_contains",
+      "redundant_closure",
+      "unnecessary_lazy_evaluations",
+      "useless_conversion"
+    ]
+    and .lint_scope.generated_legacy_manual_contains_allow_modules == [
+      "work_graph_append_only_store_runtime_enablement_preview",
+      "work_graph_replay_readback_preview"
+    ]
+    and .product_boundary_unchanged == true
+  ' docs/architecture/HEPTA_J2_DURABLE_STORE_AND_MODULE_SPLIT_2026-07-28.json >/dev/null
+  verify_file_max docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json 220
+  jq -e '
+    .schema == "hepta_j3_upstream_protocol_intake_v2"
+    and .status == "source_ready_release_blocked"
+    and .source_base_head == "275e657c21f9435f3b90f92ca80c99c81f2709af"
+    and .prior_upstream_head == "a68d0a74bd38ddc01361ce42262da689b788afce"
+    and .upstream_head == "28f3f1f9ef4e9578a5f023f6b6eba018914a5342"
+    and .upstream_intake == "semantic_selective"
+    and .whole_tree_merge == false
+    and (.must_absorptions | length) == 8
+    and ([.must_absorptions[].status] | all(. == "source_ready"))
+    and [.must_absorptions[].semantic] == [
+      "route_aware_plugin_http_and_upload",
+      "route_aware_responses_websocket",
+      "mcp_oauth_uses_runtime_http_client",
+      "mcp_catalog_parallelism_and_cancel_cleanup",
+      "nested_agent_parent_turn_identity_chain",
+      "plaintext_encrypted_collaboration_provenance",
+      "thread_history_state_db_fail_closed",
+      "plugin_summary_plan_eligibility_and_prolite"
+    ]
+    and .no_direct_egress.status == "passed"
+    and .no_direct_egress.focused_test ==
+      "remote::share::tests::save_remote_plugin_share_has_no_direct_egress_bypass"
+    and .no_direct_egress.unresolvable_destination_hosts == true
+    and .no_direct_egress.outbound_proxy_policy == "RespectSystemProxy"
+    and .no_direct_egress.cached_exact_url_routes == 3
+    and .no_direct_egress.absolute_form_proxy_requests == [
+      "upload-url POST",
+      "blob PUT",
+      "finalize POST"
+    ]
+    and .no_direct_egress.http_request_count_before_replay == 3
+    and .no_direct_egress.static_forbidden_client_gate == "passed"
+    and .verification.codex_core_lib_no_run == "passed"
+    and .verification.k3_package_checks == "passed"
+    and .verification.focused_tests_passed == 21
+    and .verification.focused_test_cases_passed == 34
+    and .verification.clean_release_preflight == false
+    and (.tree_classification_expectation.targeted_upstream_roots | length) == 18
+    and (.tree_classification_expectation.targeted_upstream_roots
+      | index("codex-rs/http-client") != null)
+    and (.tree_classification_expectation.targeted_upstream_roots
+      | index("codex-rs/websocket-client") != null)
+    and .tree_classification_expectation.workspace_metadata == [
+      "codex-rs/Cargo.toml",
+      "codex-rs/Cargo.lock"
+    ]
+    and .tree_classification_expectation.unclassified_changed_roots == []
+    and (.not_introduced | index("whole_tree_merge") != null)
+    and .active_hepta_linkage.governed_release_artifact == false
+    and .active_hepta_linkage.compatibility_packages_built == true
+    and .active_hepta_linkage.provider_runtime_activated == false
+    and .active_hepta_linkage.tool_runner_runtime_activated == false
+    and .product_boundary.role == "openclaw_governed_backend"
+    and .product_boundary.telegram_owner == "legacy_openclaw"
+    and ([.product_boundary.telegram_external_read,
+          .product_boundary.telegram_external_send,
+          .product_boundary.telegram_poll_loop,
+          .product_boundary.double_poller,
+          .product_boundary.native_real_mutation] | all(. == false))
+    and (.claims | all(. == false))
+  ' docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json >/dev/null
+  rg -Fq 'save_remote_plugin_share_has_no_direct_egress_bypass' \
+    codex-rs/core-plugins/src/remote/share/tests.rs
+  rg -Fq 'cache_system_proxy_route_for_test' \
+    codex-rs/core-plugins/src/remote/share/tests.rs
+  rg -Fq 'WebSocketConnector::new' \
+    codex-rs/codex-api/src/endpoint/responses_websocket.rs
+  rg -Fq 'OAuthHttpClientAdapter::new' \
+    codex-rs/rmcp-client/src/perform_oauth_login.rs
+  rg -Fq 'join_all' codex-rs/codex-mcp/src/connection_manager.rs
+  rg -Fq 'parent_turn_id: Option<String>' codex-rs/protocol/src/protocol.rs
+  rg -Fq 'DirectPlaintextMessage' codex-rs/core/src/tools/context.rs
+  rg -Fq 'operation: "paginated_history",' \
+    codex-rs/thread-store/src/local/mod.rs
+  rg -Fq 'SelfServeBusinessProLite' codex-rs/protocol/src/account.rs
+  rg -Fq 'pub eligible_plan_types: Option<Vec<String>>' \
+    codex-rs/app-server-protocol/src/protocol/v2/plugin.rs
+  verify_file_max codex-rs/hepta-mcp-2026-compat/src/lib.rs 260
+  verify_file_max codex-rs/exec-server-protocol/src/lib.rs 340
+  verify_file_max codex-rs/protocol/src/models/executed_tool_calls.rs 280
+  verify_file_max codex-rs/core/src/agent/registry.rs 400
+  verify_file_max codex-rs/core/src/agent/role.rs 550
+  rg -Fq 'thread_paths: HashMap<ThreadId, String>' \
+    codex-rs/core/src/agent/registry.rs
+  rg -Fq 'subagent_developer_instructions: Option<String>' \
+    codex-rs/features/src/feature_configs.rs
+  rg -Fq 'apply_role_to_config_for_multi_agent_v2' \
+    codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs
+  rg -Fq 'const MAX_EXECUTED_TOOL_CALL_ARGUMENT_BYTES: usize = 8 * 1024;' \
+    codex-rs/protocol/src/models/executed_tool_calls.rs
+  rg -Fq 'const MAX_EXECUTED_TOOL_CALL_METADATA_BYTES: usize = 32 * 1024;' \
+    codex-rs/protocol/src/models/executed_tool_calls.rs
+  rg -Fq 'version = "=3.0.0-beta.3"' codex-rs/Cargo.toml
+  rg -Fq 'pub const MCP_2026_PROTOCOL_VERSION: &str = "2026-07-28";' \
+    codex-rs/hepta-mcp-2026-compat/src/lib.rs
+  rg -Fq 'server.enabled() && server.required()' \
+    codex-rs/core/src/session/session.rs
+  rg -Fq '.required_startup_failures(&required_mcp_servers)' \
+    codex-rs/core/src/session/session.rs
+  rg -Fq 'tokio::spawn(async move {' \
+    codex-rs/codex-mcp/src/connection_manager.rs
+  rg -Fq 'pub const EXEC_TERMINATE_METHOD: &str = "process/terminate";' \
+    codex-rs/exec-server-protocol/src/lib.rs
+  rg -Fq 'pub const NETWORK_POLICY_REQUEST_METHOD: &str = "network/policyRequest";' \
+    codex-rs/exec-server-protocol/src/lib.rs
+  j3_active_linkage_files="$(
+    rg -l 'hepta-mcp-2026-compat|codex-exec-server-protocol' \
+      codex-rs -g 'Cargo.toml' \
+      | rg -v '^codex-rs/(Cargo.toml|hepta-mcp-2026-compat/Cargo.toml|exec-server-protocol/Cargo.toml)$' \
+      || true
+  )"
+  if [[ -n "$j3_active_linkage_files" ]]; then
+    echo "J3 protocol-only crate linked outside its compatibility manifest: $j3_active_linkage_files" >&2
+    return 1
+  fi
+  verify_file_max docs/architecture/HEPTA_J4_OPENCLAW_CALLER_E2E_2026-07-28.json 100
+  jq -e '
+    .schema == "hepta_j4_openclaw_caller_receipt_v2"
+    and .status == "source_ready_release_blocked"
+    and .caller_inventory.governed_mutation_registry_count == 7
+    and .caller_inventory.observed_openclaw_caller_count == 1
+    and .caller_inventory.entries == [{
+      rpc_method:"plugin/share/save",
+      operation:"plugin-share-save",
+      caller_boundary:"openclaw_app_server_stdio",
+      frequency:"on_demand",
+      authority:"hepta-authority",
+      gate:"plugin_sharing_feature_and_typed_product_boundary",
+      terminal_receipt_required:true
+    }]
+    and .e2e.plan_bound == true
+    and .e2e.durable_intent_persisted_before_effect == true
+    and .e2e.logical_provider_operation_count_before_replay == 1
+    and .e2e.authenticated_provider_ack_count_before_replay == 1
+    and .e2e.provider_http_request_sequence == [
+      "upload-url POST",
+      "blob PUT",
+      "finalize POST"
+    ]
+    and .e2e.provider_http_request_count_before_replay == 3
+    and .e2e.terminal_status == "succeeded"
+    and .e2e.provider_ack_hash_persisted == true
+    and .e2e.terminal_receipt_hash_persisted == true
+    and .e2e.readback_verified == true
+    and .e2e.journal_state_hmac_verified == true
+    and .e2e.external_anchor_hmac_verified == true
+    and .e2e.external_anchor_matches_journal_generation == true
+    and .e2e.cross_process_replay == true
+    and .e2e.same_request_binding_replayed == true
+    and .e2e.replay_response_matches_terminal_receipt == true
+    and .e2e.logical_provider_operation_count_after_replay == 1
+    and .e2e.authenticated_provider_ack_count_after_replay == 1
+    and .e2e.provider_http_request_count_added_by_replay == 0
+    and .e2e.provider_http_request_count_after_replay == 3
+    and .e2e.journal_bytes_unchanged_after_replay == true
+    and .e2e.anchor_bytes_unchanged_after_replay == true
+    and .e2e.focused_receipt_test ==
+      "suite::v2::plugin_share::plugin_share_save_persists_authenticated_terminal_receipt"
+    and .e2e.focused_network_test ==
+      "remote::share::tests::save_remote_plugin_share_has_no_direct_egress_bypass"
+    and .network_boundary.outbound_proxy_policy == "RespectSystemProxy"
+    and .network_boundary.unresolvable_destination_hosts == true
+    and .network_boundary.exact_url_routes_cached == 3
+    and .network_boundary.absolute_form_proxy_request_count == 3
+    and .network_boundary.direct_egress_bypass_observed == false
+    and .network_boundary.focused_test_status == "passed"
+    and .mutation_surface.additional_governed_mutation_added == false
+    and .mutation_surface.uncalled_required_backend_mutations_activated == false
+    and .product_boundary.role == "openclaw_governed_backend"
+    and .product_boundary.telegram_owner == "legacy_openclaw"
+    and ([.product_boundary.telegram_external_read,
+          .product_boundary.telegram_external_send,
+          .product_boundary.telegram_poll_loop,
+          .product_boundary.double_poller,
+          .product_boundary.native_real_mutation] | all(. == false))
+    and (.claims | all(. == false))
+  ' docs/architecture/HEPTA_J4_OPENCLAW_CALLER_E2E_2026-07-28.json >/dev/null
+  rg -Fq 'let journal_before_replay = std::fs::read(&journal_path)?;' \
+    codex-rs/app-server/tests/suite/v2/plugin_share.rs
+  rg -Fq 'let anchor_before_replay = std::fs::read(&anchor_path)?;' \
+    codex-rs/app-server/tests/suite/v2/plugin_share.rs
+  rg -Fq 'let mut replay_mcp = McpProcess::new_with_env(' \
+    codex-rs/app-server/tests/suite/v2/plugin_share.rs
+  rg -Fq 'assert_eq!(std::fs::read(&journal_path)?, journal_before_replay);' \
+    codex-rs/app-server/tests/suite/v2/plugin_share.rs
+  rg -Fq 'assert_eq!(std::fs::read(&anchor_path)?, anchor_before_replay);' \
+    codex-rs/app-server/tests/suite/v2/plugin_share.rs
+  rg -Fq 'pub(super) const MAX_DEFAULT_REPORT_BYTES: usize = 128 * 1024;' \
+    codex-rs/hepta-native-gateway/src/native_gateway/report_pagination.rs
+  rg -Fq 'const MAX_REPORT_PAGE_SOURCE_BYTES: usize = 72 * 1024;' \
+    codex-rs/hepta-native-gateway/src/native_gateway/report_pagination.rs
   verify_file_max docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json 180
   jq -e '
     .schema == "hepta_i4_upstream_governed_mutation_e2e_v1"
@@ -533,6 +1303,36 @@ verify() {
       return 1
     fi
     rg -q '_JOURNAL_ENGINE' "$journal"
+  done
+  verify_file_max codex-rs/hepta-durable-store/src/lib.rs 650
+  verify_file_max \
+    codex-rs/app-server/src/request_processors/plugin_mutation_journal.rs \
+    1400
+  verify_file_max codex-rs/hepta-native-gateway/src/operator_mutation_journal.rs 950
+  verify_file_max codex-rs/hepta-native-gateway/src/telegram_authority.rs 2600
+  verify_file_max codex-rs/hepta-native-gateway/src/telegram_durable_files.rs 180
+  rg -Fq 'AuthenticatedJournalStore::new' \
+    codex-rs/app-server/src/request_processors/plugin_mutation_journal.rs
+  rg -Fq 'AuthenticatedJournalStore::new' \
+    codex-rs/hepta-native-gateway/src/telegram_durable_files.rs
+  for journal in \
+    codex-rs/hepta-native-gateway/src/operator_mutation_journal.rs \
+    codex-rs/hepta-native-gateway/src/telegram_authority.rs
+  do
+    rg -Fq 'crate::telegram_durable_files::' "$journal"
+  done
+  for lint in \
+    extend_with_drain \
+    let_and_return \
+    manual_contains \
+    redundant_closure \
+    unnecessary_lazy_evaluations \
+    useless_conversion
+  do
+    if rg -Fq "clippy::$lint" codex-rs/hepta-runtime/src/lib.rs; then
+      echo "runtime still carries crate-wide clippy allowance: $lint" >&2
+      return 1
+    fi
   done
   jq -e '
     .schema == "hepta_g_upstream_targeted_semantic_intake_v1"
@@ -646,15 +1446,15 @@ verify() {
     | awk '$2 != "total" { total += $1 } END { print total + 0 }')"
   work_graph_generated_line_count="$(
     jq -er '
-      select(.schema == "hepta_workgraph_module_bundle_v2")
-      | .source_lines
-    ' codex-rs/hepta-runtime/codegen/workgraph-v2/registry.json
+      select(.schema == "hepta_workgraph_normalized_bundle_v3")
+      | .normalized_effective_lines
+    ' codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json
   )"
   work_graph_line_count="$((work_graph_line_count + work_graph_generated_line_count))"
   work_graph_long_filename_count="$(find codex-rs/hepta-runtime/src -maxdepth 1 -type f -name '*.rs' \
     -exec basename {} \; | awk 'length($0) > 240 { count += 1 } END { print count + 0 }')"
-  if (( work_graph_file_count > 199 || work_graph_line_count > 417761 || work_graph_long_filename_count > 0 )); then
-    echo "WorkGraph structural debt grew: files=$work_graph_file_count/199 effective_lines=$work_graph_line_count/417761 long_names=$work_graph_long_filename_count/0" >&2
+  if (( work_graph_file_count > WORK_GRAPH_MAX_FILES || work_graph_line_count > WORK_GRAPH_MAX_EFFECTIVE_LINES || work_graph_long_filename_count > 0 )); then
+    echo "WorkGraph structural debt grew: files=$work_graph_file_count/$WORK_GRAPH_MAX_FILES normalized_effective_lines=$work_graph_line_count/$WORK_GRAPH_MAX_EFFECTIVE_LINES long_names=$work_graph_long_filename_count/0" >&2
     return 1
   fi
   single_exec_wrapper_count="$(
@@ -671,8 +1471,8 @@ verify() {
       | wc -l \
       | tr -d '[:space:]'
   )"
-  if (( single_exec_wrapper_count > 299 )); then
-    echo "single-exec wrapper debt grew: $single_exec_wrapper_count/299" >&2
+  if (( single_exec_wrapper_count > SINGLE_EXEC_WRAPPER_MAX_COUNT )); then
+    echo "single-exec wrapper debt grew: $single_exec_wrapper_count/$SINGLE_EXEC_WRAPPER_MAX_COUNT" >&2
     return 1
   fi
   materialized_long_path_count="$(
@@ -1094,11 +1894,27 @@ verify() {
     --argjson runtime_lines "$runtime_effective_line_count" \
     --argjson owned_rust_lines "$owned_rust_effective_line_count" \
     --argjson complete_rust_lines "$complete_rust_effective_line_count" \
+    --argjson giant_over_10000 "$giant_module_over_10000_count" \
+    --argjson giant_over_5000 "$giant_module_over_5000_count" \
+    --argjson giant_over_10000_max "$GIANT_MODULE_OVER_10000_MAX_COUNT" \
+    --argjson giant_over_5000_max "$GIANT_MODULE_OVER_5000_MAX_COUNT" \
     --argjson scripts_lines "$scripts_line_count" \
+    --argjson scripts_physical_lines "$scripts_physical_line_count" \
+    --argjson gate_compat_effective_lines "$gate_compat_effective_line_count" \
+    --argjson work_graph_record_bytes "$work_graph_canonical_max_record_bytes" \
+    --argjson gate_compat_record_bytes "$gate_compat_canonical_max_record_bytes" \
+    --argjson runtime_max_lines "$RUNTIME_WHOLE_TREE_MAX_LINES" \
+    --argjson owned_rust_max_lines "$HEPTA_OWNED_RUST_WHOLE_TREE_MAX_LINES" \
+    --argjson complete_rust_max_lines "$HEPTA_FIRST_PARTY_RUST_COMPLETE_MAX_LINES" \
+    --argjson scripts_max_lines "$SCRIPTS_WHOLE_TREE_MAX_LINES" \
+    --argjson scripts_physical_max_lines "$SCRIPTS_PHYSICAL_MAX_LINES" \
     --argjson work_graph_files "$work_graph_file_count" \
     --argjson work_graph_lines "$work_graph_line_count" \
+    --argjson work_graph_max_files "$WORK_GRAPH_MAX_FILES" \
+    --argjson work_graph_max_lines "$WORK_GRAPH_MAX_EFFECTIVE_LINES" \
     --argjson work_graph_long_names "$work_graph_long_filename_count" \
     --argjson single_exec_wrappers "$single_exec_wrapper_count" \
+    --argjson single_exec_wrapper_max_count "$SINGLE_EXEC_WRAPPER_MAX_COUNT" \
     --argjson materialized_long_paths "$materialized_long_path_count" \
     --argjson kernel_lib_lines "$(wc -l <codex-rs/hepta-kernel/src/lib.rs | tr -d '[:space:]')" \
     --argjson kernel_test_lines "$(wc -l <codex-rs/hepta-kernel/src/tests.rs | tr -d '[:space:]')" '
@@ -1106,21 +1922,32 @@ verify() {
       schema:"hepta_architecture_budget_v1",
       status:"ready",
       runtime_whole_tree_actual_lines:$runtime_lines,
-      runtime_whole_tree_max_lines:629992,
+      runtime_whole_tree_max_lines:$runtime_max_lines,
       work_graph_family_actual_files:$work_graph_files,
-      work_graph_family_max_files:199,
+      work_graph_family_max_files:$work_graph_max_files,
       work_graph_family_actual_lines:$work_graph_lines,
-      work_graph_family_max_lines:417761,
+      work_graph_family_max_lines:$work_graph_max_lines,
       work_graph_long_filename_count:$work_graph_long_names,
       work_graph_long_filename_max_count:0,
       hepta_owned_rust_whole_tree_actual_lines:$owned_rust_lines,
-      hepta_owned_rust_whole_tree_max_lines:1142319,
+      hepta_owned_rust_whole_tree_max_lines:$owned_rust_max_lines,
       hepta_first_party_rust_complete_actual_lines:$complete_rust_lines,
-      hepta_first_party_rust_complete_max_lines:1161055,
+      hepta_first_party_rust_complete_max_lines:$complete_rust_max_lines,
+      first_party_giant_module_over_10000_actual_count:$giant_over_10000,
+      first_party_giant_module_over_10000_max_count:$giant_over_10000_max,
+      first_party_giant_module_over_5000_actual_count:$giant_over_5000,
+      first_party_giant_module_over_5000_max_count:$giant_over_5000_max,
       scripts_whole_tree_actual_lines:$scripts_lines,
-      scripts_whole_tree_max_lines:443991,
+      scripts_whole_tree_max_lines:$scripts_max_lines,
+      scripts_physical_actual_lines:$scripts_physical_lines,
+      scripts_physical_max_lines:$scripts_physical_max_lines,
+      gate_compat_normalized_effective_lines:$gate_compat_effective_lines,
+      work_graph_canonical_max_record_bytes:$work_graph_record_bytes,
+      work_graph_canonical_max_record_byte_limit:$work_graph_record_bytes,
+      gate_compat_canonical_max_record_bytes:$gate_compat_record_bytes,
+      gate_compat_canonical_max_record_byte_limit:$gate_compat_record_bytes,
       single_exec_wrapper_actual_count:$single_exec_wrappers,
-      single_exec_wrapper_max_count:299,
+      single_exec_wrapper_max_count:$single_exec_wrapper_max_count,
       materialized_long_path_actual_count:$materialized_long_paths,
       materialized_long_path_max_count:0,
       kernel_lib_actual_lines:$kernel_lib_lines,
@@ -1130,6 +1957,19 @@ verify() {
       kernel_aggregate_max_lines:11600,
       maintenance_headroom_percent:3,
       generated_source_is_counted:true,
+      readable_canonical_source_is_counted:true,
+      gate_compat_effective_source_is_counted:true,
+      binary_newline_counts_are_excluded:true,
+      current_baseline_monotonic_ratchets:true,
+      decline_targets:{
+        work_graph_logical_modules:{next:399,terminal:199},
+        work_graph_effective_lines:{next:260000,terminal:180000},
+        single_exec_wrappers:{next:99,terminal:20},
+        gate_compat_effective_lines:{next:240000,terminal:100000},
+        first_party_modules_over_5000:{next:12,terminal:0}
+      },
+      default_route_response_max_bytes:131072,
+      default_route_sweep_max_bytes:8388608,
       report_dag_max_entries:2048,
       report_dag_max_bytes:134217728,
       report_max_bytes:2097152
@@ -1217,11 +2057,17 @@ self_test_build_output_pruned() (
 
 self_test_first_model_invocation_test_family_split() {
   local family_file="codex-rs/hepta-native-gateway/src/native_gateway/tests/first_model_invocation.rs"
-  local parent_file="codex-rs/hepta-native-gateway/src/native_gateway/tests.rs"
+  local parent_file
+  parent_file="$(
+    rg -l 'mod first_model_invocation_tests \{' \
+      codex-rs/hepta-native-gateway/src/native_gateway/tests.rs \
+      codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_*.rs
+  )"
 
   [[ -f "$family_file" ]]
+  [[ "$(printf '%s\n' "$parent_file" | sed '/^$/d' | wc -l | tr -d ' ')" == 1 ]]
   rg -Fq 'mod first_model_invocation_tests {' "$parent_file"
-  rg -Fq 'include!("tests/first_model_invocation.rs");' "$parent_file"
+  rg -Fq 'include!("first_model_invocation.rs");' "$parent_file"
   [[ "$(rg -c '^[[:space:]]*#\[test\]' "$family_file")" == 1 ]]
   [[ "$(rg -o 'HEPTA_FIRST_MODEL_[A-Z0-9_]+_ENDPOINT' "$family_file" | sort -u | wc -l | tr -d ' ')" == 17 ]]
 }

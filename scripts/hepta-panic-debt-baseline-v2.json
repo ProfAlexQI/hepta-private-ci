@@ -15,26 +15,26 @@
     "generated_build": {
       "by_kind": {
         "expect": 14,
-        "panic": 0,
+        "panic": 1,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
         "unwrap": 0
       },
-      "fingerprints_sha256": "56e7f1a7cf0162be6ccfdb2a2d9a3a7b8f5b710d414f13793530414163d46fae",
-      "total": 14
+      "fingerprints_sha256": "ad148acce335075a1d5d825dbb6308477e43fcfbca70520309664a8070ecc219",
+      "total": 15
     },
     "test": {
       "by_kind": {
-        "expect": 4411,
-        "panic": 74,
+        "expect": 4417,
+        "panic": 76,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
         "unwrap": 320
       },
-      "fingerprints_sha256": "efe38dae497dd15f8b5a42fc25d149c997031ee4aa051494296a8600c8be5f40",
-      "total": 4805
+      "fingerprints_sha256": "bb331209c7aa0072be5be9b621dcd946bab87e78d02c55c0afb9529432f23971",
+      "total": 4813
     }
   },
   "limitations": [
@@ -155,9 +155,9 @@
       "content_sha256": "932d0b2d1eac92a2b66a8cffae1140765388a545a288df2bdae3013b7d7e86e2",
       "disposition": "accepted_invariant",
       "duplicate_ordinal": 1,
-      "fingerprint": "6e3978eccad1dc886c857e9e28384976a6277609da1a5e7f13d3c751797d24dc",
+      "fingerprint": "6eb293dbc791c3a66b3c24a940d8c6ad7eb5372471b04eddf7a420aa8b7ee261",
       "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/gate_pair_archive.rs",
+      "path": "codex-rs/hepta-native-gateway/src/gate_pair_archive/normalized_payload_bundle.rs",
       "rationale": "The preceding bounds-checked read returns exactly four bytes, so array conversion cannot fail.",
       "risk": "accepted",
       "source_class": "production"
@@ -343,6 +343,7 @@
       "codex-rs/hepta-cli",
       "codex-rs/hepta-contracts",
       "codex-rs/hepta-core",
+      "codex-rs/hepta-durable-store",
       "codex-rs/hepta-gateway",
       "codex-rs/hepta-intelligence",
       "codex-rs/hepta-kernel",
@@ -356,14 +357,14 @@
     "test": "tests paths, *_tests.rs/tests.rs/test_support.rs files, and items requiring cfg(test)"
   },
   "source_set": {
-    "file_count": 738,
-    "paths_and_classes_sha256": "fad6c373f21ff74b70577886c2ad7a45dd6c59bef1550596ad3d6cc914260f47"
+    "file_count": 749,
+    "paths_and_classes_sha256": "5c4ffef31628bca1f73b61818887ea6e335d5490debbde497ea5ceca4fa4933a"
   },
   "summary": {
     "actionable_high_risk_production_fingerprints": [],
     "by_kind": {
-      "expect": 4446,
-      "panic": 74,
+      "expect": 4452,
+      "panic": 77,
       "todo": 0,
       "unimplemented": 0,
       "unreachable": 3,
@@ -371,20 +372,20 @@
     },
     "by_risk": {
       "accepted": 24,
-      "excluded_nonproduction": 14,
+      "excluded_nonproduction": 15,
       "high": 0,
       "low": 0,
       "medium": 0,
-      "test_only": 4805,
+      "test_only": 4813,
       "unclassified": 0
     },
     "by_source_class": {
       "fixture": 0,
-      "generated_build": 14,
+      "generated_build": 15,
       "production": 24,
-      "test": 4805
+      "test": 4813
     },
-    "classification_sha256": "48e4dc399f62e5cd7c275a428f7e15d4ab8d42b01903c7fc8c26ab1056a521a6",
-    "total": 4843
+    "classification_sha256": "7d1cd7d614fc9e1bbf7fb93b25c80b0e6f61389a34548ec670b584e7d6ac6a51",
+    "total": 4852
   }
 }

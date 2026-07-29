@@ -1,0 +1,106 @@
+{
+  "schema": "hepta_k1_readable_canonical_ratchet_v1",
+  "status": "source_ready",
+  "work_graph": {
+    "logical_module_count": 711,
+    "canonical_root": "codex-rs/hepta-runtime/codegen/workgraph-v3",
+    "canonical_files": [
+      "source.schema.json",
+      "templates.jsonl",
+      "parameters.jsonl"
+    ],
+    "normalized_template_count": 454,
+    "normalized_parameter_row_count": 711,
+    "normalized_effective_lines": 288695,
+    "normalized_effective_line_limit": 297356,
+    "aggregate_source_sha256": "e0fd95b1d8d3515065e086b289331a4918c1fe92467bbbdd29efdfe050a97f9c",
+    "generated_bundle_sha256": "14eeb0c620bdc22c8f6c920d2c7506f023fc328a9fb0941161b85b311c53db08",
+    "canonical_schema_sha256": "ec0230b7e5b0dc42ebd6c45c29c427e932f8a932e629e5b9964ef6109cdf4576",
+    "canonical_templates_sha256": "8e86b298fc4eb5eb393e7cdc80e0627fe3d81c7a5d9372c78cf4f30a3f674be5",
+    "canonical_parameters_sha256": "0a8761519063132e4a62bd415df1d3de83758685f343f1a630e3d5cc36ce2f9f",
+    "canonical_max_record_bytes": 89271,
+    "canonical_max_record_byte_limit": 89271,
+    "gzip_mtime": 1,
+    "gzip_os": 255,
+    "byte_identical_repack_verified": true,
+    "decline_targets": {
+      "next_logical_module_count": 399,
+      "terminal_logical_module_count": 199,
+      "next_effective_lines": 260000,
+      "terminal_effective_lines": 180000
+    }
+  },
+  "gate_pair_compatibility": {
+    "logical_payload_count": 2512,
+    "canonical_root": "scripts/lib/hepta-gate-pair-compat-v2",
+    "canonical_files": [
+      "source.schema.json",
+      "templates.jsonl",
+      "parameters.jsonl"
+    ],
+    "normalized_payload_count": 548,
+    "normalized_parameter_row_count": 2512,
+    "normalized_effective_lines": 307661,
+    "normalized_effective_line_limit": 316891,
+    "aggregate_source_sha256": "8f27949692b263a034ce77a3bf1778ec6b16bae472cfb0231aa925d5552f0f5e",
+    "legacy_blob_aggregate_sha256": "988ba401674b1adadb3faff943c4de2b12f836e517c31c21066a20b3a77de867",
+    "generated_bundle_sha256": "d82dfbfb083bd5a0f1c08a8f4975c847f49d830aa3f449e4e7ad636039cc336e",
+    "source_registry_sha256": "d2632b0d2d72b68a9515eea0c1523bc01b95ee61f76b51f92ea35e8c6d24a6e4",
+    "canonical_schema_sha256": "fc6991ebc1f3555a7390517ced34d052b96bedde38d2d40f2a0597ae2196c231",
+    "canonical_templates_sha256": "f0613efb3bee3d9b47ed7cbc27fe3439ab2062ee0d562812526dbff12caa745c",
+    "canonical_parameters_sha256": "7010a7307053f70ae3fc1bcce9a90b2d162afe83188484d80edb21c10349fd26",
+    "canonical_max_record_bytes": 355619,
+    "canonical_max_record_byte_limit": 355619,
+    "gzip_mtime": 1,
+    "gzip_os": 255,
+    "byte_identical_repack_verified": true,
+    "decline_targets": {
+      "next_logical_payload_count": 999,
+      "terminal_logical_payload_count": 299,
+      "next_effective_lines": 240000,
+      "terminal_effective_lines": 100000
+    }
+  },
+  "ratchets": {
+    "discrete_debt_growth_percent": 0,
+    "effective_line_maintenance_headroom_percent": 3,
+    "work_graph_physical_file_limit": 1,
+    "single_exec_wrapper_limit": 165,
+    "gate_pair_physical_entrypoint_limit": 165,
+    "gate_pair_normalized_virtual_entrypoint_limit": 2,
+    "baseline_updates_require_verified_decrease": true,
+    "cross_release_verifier": "scripts/hepta-architecture-release-ratchet",
+    "active_immutable_release_comparison_required": true,
+    "canonical_record_sizes_may_not_increase": true
+  },
+  "scripts_budget": {
+    "baseline_physical_lines": 411160,
+    "gate_compat_normalized_effective_lines": 307661,
+    "baseline_effective_lines": 718821,
+    "physical_line_limit": 421571,
+    "effective_line_limit": 738462,
+    "maintenance_headroom_percent_max": 3,
+    "binary_newline_counts_excluded": true,
+    "readable_canonical_effective_source_counted": true
+  },
+  "tree_classification": {
+    "contract": "docs/architecture/hepta-tree-classification-v1.json",
+    "new_active_root": "codex-rs/hepta-durable-store",
+    "conditional_roots": [
+      "codex-rs/exec-server-protocol",
+      "codex-rs/hepta-mcp-2026-compat"
+    ],
+    "workgraph_v3_classified": true,
+    "gate_compat_v2_classified": true,
+    "architecture_budget_enforces_contract": true,
+    "preflight_consumes_architecture_budget": true
+  },
+  "compatibility": {
+    "work_graph_aggregate_source_sha256_preserved": true,
+    "gate_payload_aggregate_source_sha256_preserved": true,
+    "legacy_blob_aggregate_sha256_preserved": true,
+    "logical_sources_reassemble_exactly": true,
+    "gzip_is_generated_artifact_only": true
+  },
+  "product_boundary_unchanged": true
+}

@@ -1,0 +1,115 @@
+{
+  "schema": "hepta_k2_structural_split_ratchet_v1",
+  "status": "source_ready",
+  "budget_scope": {
+    "hepta_first_party_only": true,
+    "target_directories_excluded": true,
+    "generated_workgraph_counted_by_normalized_effective_lines": true,
+    "upstream_codex_core_tui_giants_excluded": true
+  },
+  "giant_modules": {
+    "over_10000_j2_baseline": 8,
+    "over_10000_current": 0,
+    "over_10000_limit": 0,
+    "over_5000_j2_baseline": 25,
+    "over_5000_current": 18,
+    "over_5000_limit": 18,
+    "decline_targets": {
+      "next_over_5000": 12,
+      "terminal_over_5000": 0
+    }
+  },
+  "mechanical_splits": [
+    {
+      "source": "codex-rs/hepta-native-gateway/src/native_gateway/tests.rs",
+      "before_lines": 50592,
+      "wrapper_lines": 12,
+      "part_count": 12,
+      "max_part_lines": 4667
+    },
+    {
+      "source": "apps/hepta-native/src/home/room_screen.rs",
+      "before_lines": 36648,
+      "wrapper_lines": 4994,
+      "part_count": 9,
+      "max_part_lines": 4963
+    },
+    {
+      "source": "apps/hepta-native/src/home/hepta_telegram_base_contract.rs",
+      "before_lines": 25978,
+      "retained_non_test_wrapper_lines": 3805,
+      "extracted_test_wrapper": "apps/hepta-native/src/home/hepta_telegram_base_contract/tests.rs",
+      "extracted_test_wrapper_lines": 6,
+      "part_count": 6,
+      "max_part_lines": 3823
+    },
+    {
+      "source": "codex-rs/hepta-core/src/upstream_codex_sync.rs",
+      "before_lines": 13274,
+      "wrapper_lines": 9367,
+      "part_count": 1,
+      "max_part_lines": 3897
+    },
+    {
+      "source_family": "four_native_gateway_report_modules",
+      "before_over_10000_count": 4,
+      "wrapper_lines_each": 3,
+      "part_count": 12,
+      "max_part_lines": 4690
+    },
+    {
+      "source": "codex-rs/core/src/session/tests.rs",
+      "before_lines": 13966,
+      "wrapper_lines": 6,
+      "part_count": 4,
+      "max_part_lines": 3686
+    },
+    {
+      "source": "codex-rs/core/src/config/config_tests.rs",
+      "before_lines": 11631,
+      "wrapper_lines": 4,
+      "part_count": 4,
+      "max_part_lines": 2914
+    }
+  ],
+  "upstream_preserved_exceptions": [
+    {
+      "source": "codex-rs/tui/src/bottom_pane/chat_composer.rs",
+      "lines": 10687,
+      "reason": "upstream TUI ownership is outside the OpenClaw-governed backend lane"
+    }
+  ],
+  "ratchet": {
+    "discrete_count_baselines_are_hard_ceilings": true,
+    "discrete_count_regrowth_is_rejected": true,
+    "line_growth_above_headroom_is_rejected": true,
+    "future_baseline_updates_require_verified_decrease": true,
+    "line_budget_headroom_percent_max": 3
+  },
+  "preflight_evidence": {
+    "tool": "scripts/hepta-preflight-evidence-pack",
+    "summary_schema": "hepta_preflight_evidence_summary_v1",
+    "full_log_default": false,
+    "full_log_retained_as_deterministic_gzip": true,
+    "source_log_sha256_bound": true,
+    "immutable_release_v3_bound": true,
+    "rollback_bundle_bound": true,
+    "zero_sample_soak_denied": true,
+    "phase_sequence_sha256_bound": true,
+    "provenance_and_final_receipt_sha256_bound": true,
+    "exact_roundtrip_verified": true,
+    "tamper_rejected": true,
+    "reference_profile": {
+      "phase_count": 603,
+      "source_bytes": 15876167,
+      "archive_bytes": 845693,
+      "saved_bytes": 15030474
+    }
+  },
+  "verification": {
+    "architecture_budget_enforces_counts": true,
+    "targeted_rust_and_native_tests_required_before_release": true,
+    "clean_release_preflight_required": true
+  },
+  "product_boundary_unchanged": true
+}

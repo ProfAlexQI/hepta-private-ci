@@ -1,0 +1,58 @@
+{
+  "schema": "hepta_j1_semantic_compaction_v1",
+  "status": "source_ready",
+  "work_graph": {
+    "logical_module_count": 711,
+    "physical_source_file_count": 1,
+    "source_lines": 405519,
+    "normalized_template_count": 454,
+    "normalized_parameter_row_count": 711,
+    "normalized_effective_lines": 288695,
+    "normalized_effective_line_limit": 299999,
+    "aggregate_source_sha256": "e0fd95b1d8d3515065e086b289331a4918c1fe92467bbbdd29efdfe050a97f9c",
+    "bundle_sha256": "81033657054b4b05b6beb62dc6cb098f489c4778bdb7fe20684efe7b1d2be050",
+    "exact_reassembly": true
+  },
+  "gate_pair_compatibility": {
+    "logical_payload_count": 2512,
+    "normalized_payload_count": 548,
+    "normalized_payload_limit": 1499,
+    "logical_virtual_entrypoint_count": 2399,
+    "normalized_virtual_entrypoint_count": 2,
+    "normalized_virtual_entrypoint_limit": 1199,
+    "physical_entrypoint_count": 165,
+    "aggregate_source_sha256": "8f27949692b263a034ce77a3bf1778ec6b16bae472cfb0231aa925d5552f0f5e",
+    "bundle_sha256": "793cf0200047ecc5cfd094ee62f70c719937e4093349a3420a399cc7c653126b",
+    "legacy_blob_archive_removed": true,
+    "legacy_blob_generation": "deterministic_raw_or_gzip_default_mtime_zero_v1",
+    "legacy_blob_aggregate_sha256": "988ba401674b1adadb3faff943c4de2b12f836e517c31c21066a20b3a77de867",
+    "exact_reassembly": true
+  },
+  "report_transport": {
+    "default_large_report": "summary_and_digest",
+    "full_detail": "cursor_paginated_base64_json_bytes",
+    "default_response_max_bytes": 131072,
+    "page_source_max_bytes": 73728,
+    "default_route_sweep_max_bytes": 8388608,
+    "unknown_route_status": 404,
+    "retired_effectful_get_status": 410,
+    "socket_sweep_required_before_release": true
+  },
+  "real_budgets": {
+    "runtime_effective_lines": 494821,
+    "runtime_effective_line_cap": 509661,
+    "owned_rust_effective_lines": 992751,
+    "owned_rust_effective_line_cap": 1022534,
+    "complete_first_party_rust_effective_lines": 1011049,
+    "complete_first_party_rust_effective_line_cap": 1041381,
+    "scripts_lines": 415116,
+    "scripts_line_cap": 427570,
+    "maintenance_headroom_percent": 3,
+    "generated_source_counted": true
+  },
+  "compatibility": {
+    "legacy_symbol_json_hash_and_golden_compatibility_preserved": true,
+    "legacy_release_manifest_verification_preserved": true,
+    "full_detail_bytes_reassemble_exactly": true
+  }
+}

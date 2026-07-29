@@ -1,0 +1,207 @@
+{
+  "schema": "hepta_j3_upstream_protocol_intake_v2",
+  "status": "source_ready_release_blocked",
+  "source_base_head": "275e657c21f9435f3b90f92ca80c99c81f2709af",
+  "prior_upstream_head": "a68d0a74bd38ddc01361ce42262da689b788afce",
+  "upstream_head": "28f3f1f9ef4e9578a5f023f6b6eba018914a5342",
+  "upstream_intake": "semantic_selective",
+  "whole_tree_merge": false,
+  "must_absorptions": [
+    {
+      "semantic": "route_aware_plugin_http_and_upload",
+      "upstream_commits": [
+        "d937bfac84786b453ddb2d3fdb2712c1eca830ea",
+        "2494d939cfb33f95cbce61ac7283193861960577",
+        "899539c03ac46301c8e860bc0096854f57625b82"
+      ],
+      "status": "source_ready",
+      "local_surfaces": [
+        "codex-rs/http-client",
+        "codex-rs/core-plugins/src/remote.rs",
+        "codex-rs/core-plugins/src/remote/share.rs"
+      ],
+      "verification": "real RespectSystemProxy .invalid-host proxy test passed for upload-url POST, blob PUT, and finalize POST"
+    },
+    {
+      "semantic": "route_aware_responses_websocket",
+      "upstream_commits": [
+        "2780bd588f8170abd41455d5509409ae0f76ffe9",
+        "c9ef7eff005c3299a5a5f0004c34c6a3eedf2564",
+        "94ebae725e5e8f22b5d86773d9223047f57b6118"
+      ],
+      "status": "source_ready",
+      "local_surfaces": [
+        "codex-rs/websocket-client",
+        "codex-rs/codex-api/src/endpoint/responses_websocket.rs"
+      ],
+      "verification": "secure WebSocket HTTP-proxy tunnel test passed"
+    },
+    {
+      "semantic": "mcp_oauth_uses_runtime_http_client",
+      "upstream_commits": [
+        "9ea975a2dc88d039512313da3e332013e8bd911e",
+        "709283b432fb5231c9bca720c239b25046968aa2"
+      ],
+      "status": "source_ready",
+      "local_surfaces": [
+        "codex-rs/rmcp-client/src/oauth_http_client.rs",
+        "codex-rs/exec-server/src/client/route_aware_http_client.rs"
+      ],
+      "verification": "injected-client and configured-client OAuth tests passed"
+    },
+    {
+      "semantic": "mcp_catalog_parallelism_and_cancel_cleanup",
+      "upstream_commits": [
+        "84ccb2938bfeee481e9481244f073d27d3c672cf",
+        "c550cb3e01c921e8d7cd02768a187298ad22ddee"
+      ],
+      "status": "source_ready",
+      "local_surfaces": [
+        "codex-rs/codex-mcp/src/connection_manager.rs",
+        "codex-rs/codex-mcp/src/elicitation.rs"
+      ],
+      "verification": "catalog concurrency barrier and cancelled-elicitation cleanup tests passed"
+    },
+    {
+      "semantic": "nested_agent_parent_turn_identity_chain",
+      "upstream_commits": [
+        "1def0a8925cd9df462cbd7cec355458198015473"
+      ],
+      "status": "source_ready",
+      "local_surfaces": [
+        "codex-rs/protocol/src/protocol.rs",
+        "codex-rs/core/src/turn_metadata.rs",
+        "codex-rs/core/src/agent"
+      ],
+      "verification": "metadata isolation, mailbox ambiguity, and delegated-submission forwarding tests passed"
+    },
+    {
+      "semantic": "plaintext_encrypted_collaboration_provenance",
+      "upstream_commits": [
+        "03edf16f0bce2c454fc9a8ddb382e9c23c114f7f"
+      ],
+      "status": "source_ready",
+      "local_surfaces": [
+        "codex-rs/protocol/src/models.rs",
+        "codex-rs/core/src/context/inter_agent_message.rs",
+        "codex-rs/core/src/tools/router.rs"
+      ],
+      "verification": "empty encrypted marker is preserved; namespace, tool, and nonempty-marker fallbacks fail closed; plaintext logs are redacted"
+    },
+    {
+      "semantic": "thread_history_state_db_fail_closed",
+      "upstream_commits": [
+        "fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5"
+      ],
+      "status": "source_ready",
+      "local_surfaces": [
+        "codex-rs/thread-store/src/local"
+      ],
+      "verification": "no-state-db refusal and state-backed paginated projection tests passed"
+    },
+    {
+      "semantic": "plugin_summary_plan_eligibility_and_prolite",
+      "upstream_commits": [
+        "12b961d4c545f4871efba3a9fd4ea1c1f747eaf4",
+        "28f3f1f9ef4e9578a5f023f6b6eba018914a5342",
+        "cf7e9cfe6a196d14a34a4a2e10265143df336781"
+      ],
+      "status": "source_ready",
+      "local_surfaces": [
+        "codex-rs/app-server-protocol/src/protocol/v2/plugin.rs",
+        "codex-rs/core-plugins",
+        "codex-rs/protocol/src/account.rs",
+        "codex-rs/protocol/src/auth.rs"
+      ],
+      "verification": "plugin-summary compatibility and 14 plan-family tests passed"
+    }
+  ],
+  "no_direct_egress": {
+    "status": "passed",
+    "focused_test": "remote::share::tests::save_remote_plugin_share_has_no_direct_egress_bypass",
+    "unresolvable_destination_hosts": true,
+    "outbound_proxy_policy": "RespectSystemProxy",
+    "cached_exact_url_routes": 3,
+    "absolute_form_proxy_requests": [
+      "upload-url POST",
+      "blob PUT",
+      "finalize POST"
+    ],
+    "http_request_count_before_replay": 3,
+    "static_forbidden_client_gate": "passed"
+  },
+  "verification": {
+    "codex_core_lib_no_run": "passed",
+    "k3_package_checks": "passed",
+    "focused_tests_passed": 21,
+    "focused_test_cases_passed": 34,
+    "fmt": "pending_full_tree_coordination",
+    "clean_release_preflight": false
+  },
+  "tree_classification_expectation": {
+    "targeted_upstream_roots": [
+      "codex-rs/app-server",
+      "codex-rs/app-server-protocol",
+      "codex-rs/backend-client",
+      "codex-rs/cli",
+      "codex-rs/codex-api",
+      "codex-rs/codex-backend-openapi-models",
+      "codex-rs/codex-mcp",
+      "codex-rs/core",
+      "codex-rs/core-plugins",
+      "codex-rs/exec-server",
+      "codex-rs/features",
+      "codex-rs/http-client",
+      "codex-rs/mcp-server",
+      "codex-rs/protocol",
+      "codex-rs/rmcp-client",
+      "codex-rs/thread-store",
+      "codex-rs/tui",
+      "codex-rs/websocket-client"
+    ],
+    "workspace_metadata": [
+      "codex-rs/Cargo.toml",
+      "codex-rs/Cargo.lock"
+    ],
+    "unclassified_changed_roots": []
+  },
+  "conditional_until_real_caller": [
+    "mcp_2026_legacy_discovery",
+    "remote_exec_lifecycle",
+    "foreign_and_windows_paths",
+    "central_sqlite_constructor_shim",
+    "host_executor_skill_budget"
+  ],
+  "not_introduced": [
+    "cloud_config",
+    "code_mode_host_or_v8_runtime",
+    "complete_provider_or_tool_runner",
+    "complete_context_fragments",
+    "tui_windows_update_release_bazel_runtime",
+    "external_agent_migration",
+    "webrtc_or_realtime",
+    "whole_tree_merge",
+    "second_telegram_or_provider_owner"
+  ],
+  "active_hepta_linkage": {
+    "governed_release_artifact": false,
+    "compatibility_packages_built": true,
+    "provider_runtime_activated": false,
+    "tool_runner_runtime_activated": false
+  },
+  "product_boundary": {
+    "role": "openclaw_governed_backend",
+    "telegram_owner": "legacy_openclaw",
+    "telegram_external_read": false,
+    "telegram_external_send": false,
+    "telegram_poll_loop": false,
+    "double_poller": false,
+    "native_real_mutation": false
+  },
+  "claims": {
+    "released": false,
+    "deployed": false,
+    "live_gate_changed": false,
+    "full_upstream_parity": false
+  }
+}

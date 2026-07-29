@@ -12,7 +12,7 @@ SCHEMA = "hepta_panic_debt_inventory_v2"
 SCANNER_VERSION = 1
 DEFAULT_ROOTS = """
 codex-rs/hepta-authority codex-rs/hepta-cli codex-rs/hepta-contracts codex-rs/hepta-core
-codex-rs/hepta-gateway codex-rs/hepta-intelligence codex-rs/hepta-kernel codex-rs/hepta-kg
+codex-rs/hepta-durable-store codex-rs/hepta-gateway codex-rs/hepta-intelligence codex-rs/hepta-kernel codex-rs/hepta-kg
 codex-rs/hepta-memory codex-rs/hepta-native-gateway codex-rs/hepta-plugins codex-rs/hepta-runtime
 """.split()
 KINDS = {"panic", "unwrap", "expect", "todo", "unimplemented", "unreachable"}

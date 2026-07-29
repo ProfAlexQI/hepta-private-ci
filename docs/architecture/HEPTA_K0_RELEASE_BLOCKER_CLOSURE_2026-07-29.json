@@ -1,0 +1,70 @@
+{
+  "schema": "hepta_k0_release_blocker_closure_v1",
+  "status": "source_validated_release_pending",
+  "product_role": "openclaw_governed_backend",
+  "response_transport": {
+    "global_get_json_size_wrapper_removed": true,
+    "canonical_policy_source": "hepta_native_gateway::route_manifest::RouteResponsePolicy",
+    "policies": [
+      "passthrough",
+      "digest_bound_pagination"
+    ],
+    "route_manifest_entry_count": 322,
+    "passthrough_route_count": 79,
+    "digest_bound_pagination_route_count": 243,
+    "pagination_schema": "hepta_report_summary_v2",
+    "page_schema": "hepta_report_page_v2",
+    "snapshot_digest_required_for_every_page": true,
+    "snapshot_change_http_status": 409,
+    "source_status_preserved": true,
+    "fixed_ready_status_forbidden": true
+  },
+  "watchdog_projection": {
+    "endpoint": "/api/watchdog-state",
+    "schema": "hepta_watchdog_state_v1",
+    "response_policy": "passthrough",
+    "default_response_cap_bytes": 131072,
+    "watchdog_report_payload_fields_from_projection_only": true,
+    "live_soak_report_payload_fields_from_projection_only": true,
+    "additional_manifest_and_http_probe_checks": true,
+    "watchdog_probe_count": 13,
+    "legacy_report_routes_retained": true,
+    "external_effects": false
+  },
+  "watchdog_launch_agent": {
+    "release_bound_program": true,
+    "plist_mode": "0444",
+    "plist_sha256_in_install_receipt": true,
+    "run_at_load_exit_zero_required_after_install": true
+  },
+  "gateway_launch_agent": {
+    "label": "ai.hepta.gateway",
+    "canonical_install_path": "~/Library/LaunchAgents/ai.hepta.gateway.plist",
+    "manifest_bound_template": "launchd/ai.hepta.gateway.plist",
+    "unique_loadable_same_label_plist_required": true,
+    "same_label_backups_must_leave_launch_agents": true,
+    "archive_suffix": ".disabled",
+    "loaded_path_digest_required": true,
+    "working_directory": "~/.local/share/hepta/runtime-v2",
+    "state_root": "~/.local/share/hepta",
+    "all_effectful_gates_default_false": true
+  },
+  "unchanged_boundaries": {
+    "telegram_owner": "legacy_openclaw",
+    "telegram_external_read": false,
+    "telegram_external_send": false,
+    "telegram_poll_loop_owner": false,
+    "native_real_mutation": false,
+    "second_provider_owner": false
+  },
+  "release_required_next": [
+    "clean source commit slices",
+    "full Rust 1.95 backend and Native preflight",
+    "materialize immutable release contract v3",
+    "install canonical gateway LaunchAgent",
+    "install release-bound watchdog LaunchAgent",
+    "real socket route and pagination sweep",
+    "cutover rollback recutover",
+    "soak"
+  ]
+}

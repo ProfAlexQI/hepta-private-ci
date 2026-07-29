@@ -1,0 +1,378 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+DEFAULT_PREVIOUS_MANIFEST="$HOME/.local/opt/hepta/bin/hepta.manifest"
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  scripts/hepta-architecture-release-ratchet verify [--previous-manifest PATH]
+  scripts/hepta-architecture-release-ratchet compare --previous-receipt PATH --current-receipt PATH
+  scripts/hepta-architecture-release-ratchet self-test
+EOF
+  exit 2
+}
+
+sha256_file() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+extract_architecture_receipt() {
+  ruby -rdigest -rjson -rstringio -rzlib - "$1" "${2:-raw}" "${3:-}" <<'RUBY'
+path, encoding, expected_source_sha = ARGV
+bytes = File.binread(path)
+source = case encoding
+         when "raw" then bytes
+         when "gzip" then Zlib::GzipReader.new(StringIO.new(bytes)).read
+         else raise "unsupported preflight evidence encoding: #{encoding}"
+         end
+if !expected_source_sha.empty? && Digest::SHA256.hexdigest(source) != expected_source_sha
+  raise "preflight evidence source SHA-256 drifted"
+end
+matches = source.each_line(chomp: true).each_with_object([]) do |line, found|
+  next unless line.start_with?("{") && line.include?('"schema":"hepta_architecture_budget_v1"')
+  begin
+    value = JSON.parse(line)
+    found << value if value["schema"] == "hepta_architecture_budget_v1"
+  rescue JSON::ParserError
+    nil
+  end
+end
+raise "preflight log must contain exactly one architecture budget receipt" unless matches.length == 1
+puts JSON.generate(matches.fetch(0))
+RUBY
+}
+
+compare_receipts() {
+  local previous_receipt="$1"
+  local current_receipt="$2"
+  local previous_binding_json="${3:-null}"
+  ruby -rjson - "$previous_receipt" "$current_receipt" "$previous_binding_json" <<'RUBY'
+previous = JSON.parse(File.binread(ARGV.fetch(0)))
+current = JSON.parse(File.binread(ARGV.fetch(1)))
+binding = JSON.parse(ARGV.fetch(2))
+raise "invalid previous architecture receipt" unless previous["schema"] ==
+  "hepta_architecture_budget_v1" && previous["status"] == "ready"
+raise "invalid current architecture receipt" unless current["schema"] ==
+  "hepta_architecture_budget_v1" && current["status"] == "ready"
+raise "architecture maintenance allowance must remain exactly 3%" unless
+  current["maintenance_headroom_percent"] == 3
+
+checks = []
+failures = []
+check = lambda do |name, actual, limit, policy|
+  ready = actual.is_a?(Integer) && limit.is_a?(Integer) && actual <= limit
+  item = {
+    "metric" => name, "actual" => actual, "limit" => limit,
+    "policy" => policy, "ready" => ready
+  }
+  checks << item
+  failures << item unless ready
+end
+growth_limit = lambda do |value|
+  raise "previous receipt metric is not an integer" unless value.is_a?(Integer)
+  ((value * 103) + 99) / 100
+end
+
+[
+  "runtime_whole_tree_actual_lines",
+  "work_graph_family_actual_lines",
+  "hepta_owned_rust_whole_tree_actual_lines",
+  "hepta_first_party_rust_complete_actual_lines"
+].each do |field|
+  check.call(
+    field, current[field], growth_limit.call(previous.fetch(field)),
+    "previous_release_plus_3_percent"
+  )
+end
+
+previous_scripts_physical = previous.fetch(
+  "scripts_physical_actual_lines",
+  previous.fetch("scripts_whole_tree_actual_lines")
+)
+check.call(
+  "scripts_physical_actual_lines",
+  current["scripts_physical_actual_lines"],
+  growth_limit.call(previous_scripts_physical),
+  "previous_release_physical_plus_3_percent"
+)
+if previous.key?("scripts_physical_actual_lines")
+  check.call(
+    "scripts_whole_tree_actual_lines",
+    current["scripts_whole_tree_actual_lines"],
+    growth_limit.call(previous.fetch("scripts_whole_tree_actual_lines")),
+    "previous_release_effective_plus_3_percent"
+  )
+end
+
+[
+  "work_graph_family_actual_files",
+  "work_graph_long_filename_count",
+  "single_exec_wrapper_actual_count",
+  "materialized_long_path_actual_count"
+].each do |field|
+  check.call(field, current[field], previous.fetch(field), "nonincreasing_release_debt")
+end
+[
+  "first_party_giant_module_over_10000_actual_count",
+  "first_party_giant_module_over_5000_actual_count",
+  "gate_compat_normalized_effective_lines",
+  "work_graph_canonical_max_record_bytes",
+  "gate_compat_canonical_max_record_bytes"
+].each do |field|
+  next unless previous.key?(field)
+  check.call(field, current[field], previous.fetch(field), "nonincreasing_release_debt")
+end
+
+{
+  "runtime_whole_tree_max_lines" => "runtime_whole_tree_actual_lines",
+  "work_graph_family_max_lines" => "work_graph_family_actual_lines",
+  "hepta_owned_rust_whole_tree_max_lines" => "hepta_owned_rust_whole_tree_actual_lines",
+  "hepta_first_party_rust_complete_max_lines" => "hepta_first_party_rust_complete_actual_lines",
+  "scripts_physical_max_lines" => "scripts_physical_actual_lines",
+  "scripts_whole_tree_max_lines" => "scripts_whole_tree_actual_lines"
+}.each do |maximum, actual|
+  check.call(
+    maximum, current[maximum], growth_limit.call(current.fetch(actual)),
+    "current_measurement_plus_3_percent"
+  )
+  comparable_previous_ceiling = previous.key?(maximum) &&
+    (maximum != "scripts_whole_tree_max_lines" ||
+      previous.key?("scripts_physical_actual_lines"))
+  if comparable_previous_ceiling
+    check.call(
+      "#{maximum}_cross_release", current[maximum], previous.fetch(maximum),
+      "ceiling_may_not_increase"
+    )
+  end
+end
+
+{
+  "work_graph_family_max_files" => "work_graph_family_actual_files",
+  "single_exec_wrapper_max_count" => "single_exec_wrapper_actual_count",
+  "work_graph_long_filename_max_count" => "work_graph_long_filename_count",
+  "materialized_long_path_max_count" => "materialized_long_path_actual_count",
+  "first_party_giant_module_over_10000_max_count" =>
+    "first_party_giant_module_over_10000_actual_count",
+  "first_party_giant_module_over_5000_max_count" =>
+    "first_party_giant_module_over_5000_actual_count",
+  "work_graph_canonical_max_record_byte_limit" =>
+    "work_graph_canonical_max_record_bytes",
+  "gate_compat_canonical_max_record_byte_limit" =>
+    "gate_compat_canonical_max_record_bytes"
+}.each do |maximum, actual|
+  check.call(
+    maximum, current[maximum], current.fetch(actual),
+    "discrete_ceiling_equals_current_debt"
+  )
+  if previous.key?(maximum)
+    check.call(
+      "#{maximum}_cross_release", current[maximum], previous.fetch(maximum),
+      "discrete_ceiling_may_not_increase"
+    )
+  end
+end
+
+raise "architecture release ratchet failed: #{JSON.generate(failures)}" unless failures.empty?
+puts JSON.generate(
+  "schema" => "hepta_architecture_release_ratchet_v1",
+  "status" => "ready",
+  "previous_release" => binding,
+  "maintenance_headroom_percent" => 3,
+  "checks" => checks,
+  "failure_count" => 0,
+  "baseline_self_raise_denied" => true,
+  "cross_release_comparison" => true
+)
+RUBY
+}
+
+compare_action() {
+  local previous_receipt=""
+  local current_receipt=""
+  while (( $# > 0 )); do
+    case "$1" in
+      --previous-receipt) shift; [[ $# -gt 0 ]] || usage; previous_receipt="$1" ;;
+      --current-receipt) shift; [[ $# -gt 0 ]] || usage; current_receipt="$1" ;;
+      *) usage ;;
+    esac
+    shift
+  done
+  [[ -f "$previous_receipt" && -f "$current_receipt" ]] || usage
+  compare_receipts "$previous_receipt" "$current_receipt"
+}
+
+verify_action() {
+  local previous_manifest="$DEFAULT_PREVIOUS_MANIFEST"
+  while (( $# > 0 )); do
+    case "$1" in
+      --previous-manifest) shift; [[ $# -gt 0 ]] || usage; previous_manifest="$1" ;;
+      *) usage ;;
+    esac
+    shift
+  done
+  [[ -f "$previous_manifest" ]] || {
+    echo "previous immutable release manifest is missing: $previous_manifest" >&2
+    exit 1
+  }
+  "$REPO_ROOT/scripts/hepta-immutable-release-tree" \
+    verify --manifest "$previous_manifest" >/dev/null
+  local manifest release_dir previous_log expected_log_sha active_bin expected_artifact_sha
+  local previous_tmp current_tmp binding release_contract_version evidence_encoding
+  local archive_sha delivery
+  manifest="$(realpath "$previous_manifest")"
+  release_dir="$(dirname "$manifest")"
+  release_contract_version="$(jq -r '.policy.release_contract_version // 1' "$manifest")"
+  expected_log_sha="$(jq -r '.preflight.log_sha256' "$manifest")"
+  delivery="$(jq -r '.preflight.delivery // "raw"' "$manifest")"
+  archive_sha=""
+  if [[ "$release_contract_version" == "3" \
+    && "$delivery" == "summary_and_deterministic_gzip" ]]; then
+    previous_log="$release_dir/$(jq -er '.preflight.archive_relative_path' "$manifest")"
+    archive_sha="$(jq -r '.preflight.archive_sha256' "$manifest")"
+    evidence_encoding="gzip"
+    [[ -f "$previous_log" && ! -L "$previous_log" \
+      && "$(sha256_file "$previous_log")" == "$archive_sha" ]] || {
+      echo "previous immutable compressed preflight evidence differs from its manifest" >&2
+      exit 1
+    }
+  else
+    previous_log="$release_dir/$(jq -er '.preflight.relative_path' "$manifest")"
+    evidence_encoding="raw"
+    [[ -f "$previous_log" && ! -L "$previous_log" \
+      && "$(sha256_file "$previous_log")" == "$expected_log_sha" ]] || {
+      echo "previous immutable preflight evidence differs from its manifest" >&2
+      exit 1
+    }
+  fi
+  active_bin="${previous_manifest%.manifest}"
+  expected_artifact_sha="$(jq -r '.artifact.sha256' "$manifest")"
+  [[ -f "$active_bin" && "$(sha256_file "$active_bin")" == "$expected_artifact_sha" ]] || {
+    echo "previous manifest is not paired with the active immutable binary" >&2
+    exit 1
+  }
+  previous_tmp="$(mktemp /tmp/hepta-architecture-ratchet-previous.XXXXXX)"
+  current_tmp="$(mktemp /tmp/hepta-architecture-ratchet-current.XXXXXX)"
+  trap 'rm -f "$previous_tmp" "$current_tmp"' RETURN
+  extract_architecture_receipt \
+    "$previous_log" "$evidence_encoding" "$expected_log_sha" >"$previous_tmp"
+  "$REPO_ROOT/scripts/hepta-architecture-budget" verify >"$current_tmp"
+  binding="$(
+    jq -cn \
+      --arg manifest "$manifest" \
+      --arg manifest_sha256 "$(sha256_file "$manifest")" \
+      --arg source_commit "$(jq -r '.source.commit' "$manifest")" \
+      --arg artifact_sha256 "$expected_artifact_sha" \
+      --arg preflight_log "$previous_log" \
+      --arg preflight_log_sha256 "$expected_log_sha" \
+      --arg delivery "$delivery" \
+      --arg encoding "$evidence_encoding" \
+      --arg archive_sha256 "$archive_sha" \
+      '{
+        manifest:$manifest,
+        manifest_sha256:$manifest_sha256,
+        source_commit:$source_commit,
+        artifact_sha256:$artifact_sha256,
+        preflight_log:$preflight_log,
+        preflight_log_sha256:$preflight_log_sha256,
+        preflight_delivery:$delivery,
+        preflight_evidence_encoding:$encoding,
+        preflight_archive_sha256:(
+          if $archive_sha256 == "" then null else $archive_sha256 end
+        )
+      }'
+  )"
+  compare_receipts "$previous_tmp" "$current_tmp" "$binding"
+  rm -f "$previous_tmp" "$current_tmp"
+  trap - RETURN
+}
+
+self_test() {
+  local tmp previous current raw_log gzip_log raw_extracted gzip_extracted
+  tmp="$(mktemp -d /tmp/hepta-architecture-release-ratchet.XXXXXX)"
+  trap 'rm -rf "$tmp"' RETURN
+  previous="$tmp/previous.json"
+  current="$tmp/current.json"
+  jq -n '{
+    schema:"hepta_architecture_budget_v1",status:"ready",
+    runtime_whole_tree_actual_lines:1000,runtime_whole_tree_max_lines:1030,
+    work_graph_family_actual_files:2,work_graph_family_max_files:2,
+    work_graph_family_actual_lines:1000,work_graph_family_max_lines:1030,
+    work_graph_long_filename_count:0,work_graph_long_filename_max_count:0,
+    hepta_owned_rust_whole_tree_actual_lines:2000,
+    hepta_owned_rust_whole_tree_max_lines:2060,
+    hepta_first_party_rust_complete_actual_lines:3000,
+    hepta_first_party_rust_complete_max_lines:3090,
+    scripts_whole_tree_actual_lines:1000,scripts_whole_tree_max_lines:1030,
+    scripts_physical_actual_lines:800,scripts_physical_max_lines:824,
+    gate_compat_normalized_effective_lines:200,
+    work_graph_canonical_max_record_bytes:90,
+    work_graph_canonical_max_record_byte_limit:90,
+    gate_compat_canonical_max_record_bytes:350,
+    gate_compat_canonical_max_record_byte_limit:350,
+    single_exec_wrapper_actual_count:2,single_exec_wrapper_max_count:2,
+    materialized_long_path_actual_count:0,materialized_long_path_max_count:0,
+    first_party_giant_module_over_10000_actual_count:0,
+    first_party_giant_module_over_10000_max_count:0,
+    first_party_giant_module_over_5000_actual_count:2,
+    first_party_giant_module_over_5000_max_count:2,
+    maintenance_headroom_percent:3
+  }' >"$previous"
+  cp "$previous" "$current"
+  compare_receipts "$previous" "$current" >/dev/null
+  jq '.single_exec_wrapper_actual_count=3 | .single_exec_wrapper_max_count=3' \
+    "$previous" >"$current"
+  ! compare_receipts "$previous" "$current" >/dev/null 2>&1 || {
+    echo "ratchet accepted increased discrete debt" >&2; exit 1;
+  }
+  jq '.gate_compat_canonical_max_record_bytes=351 |
+      .gate_compat_canonical_max_record_byte_limit=351' \
+    "$previous" >"$current"
+  ! compare_receipts "$previous" "$current" >/dev/null 2>&1 || {
+    echo "ratchet accepted increased canonical record size" >&2; exit 1;
+  }
+  jq '.runtime_whole_tree_max_lines=1031' "$previous" >"$current"
+  ! compare_receipts "$previous" "$current" >/dev/null 2>&1 || {
+    echo "ratchet accepted a raised ceiling" >&2; exit 1;
+  }
+  jq '.runtime_whole_tree_actual_lines=1031 | .runtime_whole_tree_max_lines=1061' \
+    "$previous" >"$current"
+  ! compare_receipts "$previous" "$current" >/dev/null 2>&1 || {
+    echo "ratchet accepted growth above 3%" >&2; exit 1;
+  }
+  raw_log="$tmp/preflight.log"
+  gzip_log="$tmp/preflight.log.gz"
+  raw_extracted="$tmp/raw-extracted.json"
+  gzip_extracted="$tmp/gzip-extracted.json"
+  printf '%s\n' "$(jq -c . "$previous")" >"$raw_log"
+  gzip -c "$raw_log" >"$gzip_log"
+  extract_architecture_receipt \
+    "$raw_log" raw "$(sha256_file "$raw_log")" >"$raw_extracted"
+  extract_architecture_receipt \
+    "$gzip_log" gzip "$(sha256_file "$raw_log")" >"$gzip_extracted"
+  cmp -s "$raw_extracted" "$gzip_extracted" || {
+    echo "raw/gzip previous receipt extraction diverged" >&2; exit 1;
+  }
+  rm -rf "$tmp"
+  trap - RETURN
+  jq -cn '{
+    schema:"hepta_architecture_release_ratchet_self_test_v1",
+    status:"ready",
+    unchanged_receipt_accepted:true,
+    increased_discrete_debt_denied:true,
+    increased_canonical_record_size_denied:true,
+    raised_ceiling_denied:true,
+    growth_above_3_percent_denied:true,
+    raw_and_gzip_previous_receipt_extraction:true
+  }'
+}
+
+action="${1:-}"
+shift || true
+case "$action" in
+  verify) verify_action "$@" ;;
+  compare) compare_action "$@" ;;
+  self-test) [[ $# -eq 0 ]] || usage; self_test ;;
+  *) usage ;;
+esac

@@ -9,6 +9,7 @@
         "codex-rs/hepta-cli",
         "codex-rs/hepta-contracts",
         "codex-rs/hepta-core",
+        "codex-rs/hepta-durable-store",
         "codex-rs/hepta-gateway",
         "codex-rs/hepta-intelligence",
         "codex-rs/hepta-kernel",
@@ -16,12 +17,31 @@
         "codex-rs/hepta-memory",
         "codex-rs/hepta-native-gateway",
         "codex-rs/hepta-plugins",
-        "codex-rs/hepta-runtime"
+        "codex-rs/hepta-runtime",
+        "codex-rs/http-client",
+        "codex-rs/websocket-client"
       ],
       "targeted_upstream_surfaces": [
         "codex-rs/app-server",
         "codex-rs/app-server-protocol",
-        "codex-rs/codex-mcp"
+        "codex-rs/backend-client",
+        "codex-rs/cli",
+        "codex-rs/codex-api",
+        "codex-rs/codex-backend-openapi-models",
+        "codex-rs/codex-mcp",
+        "codex-rs/core",
+        "codex-rs/core-plugins",
+        "codex-rs/exec-server",
+        "codex-rs/features",
+        "codex-rs/mcp-server",
+        "codex-rs/protocol",
+        "codex-rs/rmcp-client",
+        "codex-rs/thread-store",
+        "codex-rs/tui"
+      ],
+      "operational_tools": [
+        "scripts/hepta-architecture-release-ratchet",
+        "scripts/hepta-preflight-evidence-pack"
       ]
     },
     "compat": {
@@ -30,12 +50,40 @@
         "scripts/hepta-gate-pair-compat-exec",
         "scripts/hepta-gate-pair-compat-pack",
         "scripts/hepta-gate-pair-specs-v1.json",
-        "codex-rs/hepta-runtime/codegen/workgraph-v1"
+        "scripts/lib/hepta-gate-pair-compat-v2",
+        "codex-rs/hepta-runtime/codegen/workgraph-v3"
       ],
       "invariants": [
         "compatibility handlers are never proof of production ingress",
         "legacy Control UI POST routes remain plan-only",
         "generated compatibility payloads retain their decoded SHA-256 identities"
+      ]
+    },
+    "conditional": {
+      "policy": "Built and budgeted for selective compatibility intake, but not active-linked into the governed release until a real caller and explicit boundary review exist.",
+      "roots": [
+        "codex-rs/exec-server-protocol",
+        "codex-rs/hepta-mcp-2026-compat"
+      ],
+      "invariants": [
+        "conditional roots do not grant provider, tool-runner, MCP, or remote-exec authority",
+        "activation requires a real caller, focused tests, and an updated product-boundary receipt"
+      ]
+    },
+    "generated": {
+      "policy": "Readable templates and parameter rows are canonical; compressed bundles are deterministic generated artifacts only.",
+      "canonical_roots": [
+        "codex-rs/hepta-runtime/codegen/workgraph-v3",
+        "scripts/lib/hepta-gate-pair-compat-v2"
+      ],
+      "artifact_files": [
+        "codex-rs/hepta-runtime/codegen/workgraph-v3/modules.bundle.gz",
+        "scripts/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz"
+      ],
+      "invariants": [
+        "source.schema.json plus templates.jsonl plus parameters.jsonl are canonical",
+        "verify repacks each gzip artifact byte-identically",
+        "decoded aggregate source SHA-256 remains compatibility-bound"
       ]
     },
     "archive": {

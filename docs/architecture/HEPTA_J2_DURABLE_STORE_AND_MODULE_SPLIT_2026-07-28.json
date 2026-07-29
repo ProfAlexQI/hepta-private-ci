@@ -1,0 +1,50 @@
+{
+  "schema": "hepta_j2_durable_store_and_module_split_v1",
+  "status": "source_ready",
+  "durable_store": {
+    "crate": "hepta-durable-store",
+    "authority_reexport": "hepta-authority::AuthenticatedJournalStore",
+    "consumers": [
+      "plugin_mutation_journal",
+      "operator_mutation_journal",
+      "telegram_authority"
+    ],
+    "descriptor_relative_no_follow": true,
+    "private_owner_mode_and_link_validation": true,
+    "bounded_read": true,
+    "locked_atomic_checkpoint": true,
+    "file_and_parent_fsync": true,
+    "crash_before_publication_preserves_previous_bytes": true
+  },
+  "compatibility": {
+    "persisted_schema_hash_and_lock_paths_preserved": true,
+    "plugin_journal_schema_preserved": true,
+    "operator_journal_schema_preserved": true,
+    "telegram_authority_schema_preserved": true
+  },
+  "giant_modules": {
+    "over_10000_before": 19,
+    "over_10000_after": 8,
+    "over_10000_cap": 8,
+    "over_5000_after": 25,
+    "over_5000_cap": 25,
+    "source_byte_reassembly_verified": true
+  },
+  "lint_scope": {
+    "crate_wide_allowances_removed": [
+      "extend_with_drain",
+      "let_and_return",
+      "manual_contains",
+      "redundant_closure",
+      "unnecessary_lazy_evaluations",
+      "useless_conversion"
+    ],
+    "generated_legacy_manual_contains_allow_modules": [
+      "work_graph_append_only_store_runtime_enablement_preview",
+      "work_graph_replay_readback_preview"
+    ],
+    "new_crate_unsafe_boundary": "descriptor_relative_unix_io_only",
+    "hepta_authority_remains_unsafe_free": true
+  },
+  "product_boundary_unchanged": true
+}

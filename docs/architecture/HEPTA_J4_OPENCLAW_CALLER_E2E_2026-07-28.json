@@ -1,0 +1,75 @@
+{
+  "schema": "hepta_j4_openclaw_caller_receipt_v2",
+  "status": "source_ready_release_blocked",
+  "caller_inventory": {
+    "governed_mutation_registry_count": 7,
+    "observed_openclaw_caller_count": 1,
+    "entries": [
+      {
+        "rpc_method": "plugin/share/save",
+        "operation": "plugin-share-save",
+        "caller_boundary": "openclaw_app_server_stdio",
+        "frequency": "on_demand",
+        "authority": "hepta-authority",
+        "gate": "plugin_sharing_feature_and_typed_product_boundary",
+        "terminal_receipt_required": true
+      }
+    ]
+  },
+  "e2e": {
+    "plan_bound": true,
+    "durable_intent_persisted_before_effect": true,
+    "logical_provider_operation_count_before_replay": 1,
+    "authenticated_provider_ack_count_before_replay": 1,
+    "provider_http_request_sequence": [
+      "upload-url POST",
+      "blob PUT",
+      "finalize POST"
+    ],
+    "provider_http_request_count_before_replay": 3,
+    "terminal_status": "succeeded",
+    "provider_ack_hash_persisted": true,
+    "terminal_receipt_hash_persisted": true,
+    "readback_verified": true,
+    "journal_state_hmac_verified": true,
+    "external_anchor_hmac_verified": true,
+    "external_anchor_matches_journal_generation": true,
+    "cross_process_replay": true,
+    "same_request_binding_replayed": true,
+    "replay_response_matches_terminal_receipt": true,
+    "logical_provider_operation_count_after_replay": 1,
+    "authenticated_provider_ack_count_after_replay": 1,
+    "provider_http_request_count_added_by_replay": 0,
+    "provider_http_request_count_after_replay": 3,
+    "journal_bytes_unchanged_after_replay": true,
+    "anchor_bytes_unchanged_after_replay": true,
+    "focused_receipt_test": "suite::v2::plugin_share::plugin_share_save_persists_authenticated_terminal_receipt",
+    "focused_network_test": "remote::share::tests::save_remote_plugin_share_has_no_direct_egress_bypass"
+  },
+  "network_boundary": {
+    "outbound_proxy_policy": "RespectSystemProxy",
+    "unresolvable_destination_hosts": true,
+    "exact_url_routes_cached": 3,
+    "absolute_form_proxy_request_count": 3,
+    "direct_egress_bypass_observed": false,
+    "focused_test_status": "passed"
+  },
+  "mutation_surface": {
+    "additional_governed_mutation_added": false,
+    "uncalled_required_backend_mutations_activated": false
+  },
+  "product_boundary": {
+    "role": "openclaw_governed_backend",
+    "telegram_owner": "legacy_openclaw",
+    "telegram_external_read": false,
+    "telegram_external_send": false,
+    "telegram_poll_loop": false,
+    "double_poller": false,
+    "native_real_mutation": false
+  },
+  "claims": {
+    "released": false,
+    "deployed": false,
+    "live_gate_changed": false
+  }
+}
