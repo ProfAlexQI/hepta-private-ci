@@ -19,6 +19,10 @@ use crate::gate_pair_archive::GatePairArchive;
 use crate::gate_spec::GateSpec;
 use crate::gate_spec::ReceiptStateMachine;
 
+mod supplemental_payload;
+use supplemental_payload::SupplementalPayloadSpec;
+use supplemental_payload::validate_supplemental_payloads;
+
 const SHELL_GATE_PAIR_SPECS_JSON: &str =
     include_str!("../../../scripts/hepta-gate-pair-specs-v1.json");
 const COMPATIBILITY_PAYLOAD_MARKER: &str = "# hepta_gate_pair_gzip_base64_v1:";
@@ -311,6 +315,7 @@ struct ShellPairManifest {
     schema_version: String,
     receipt_state_machine: Vec<String>,
     pairs: Vec<ShellPairMigrationSpec>,
+    supplemental_payloads: Vec<SupplementalPayloadSpec>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -512,6 +517,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
     if manifest.receipt_state_machine != ordered_states {
         anyhow::bail!("Hepta migrated gate pair receipt state machine is stale");
     }
+    validate_supplemental_payloads(&manifest.supplemental_payloads)?;
 
     let mut specs = BTreeMap::new();
     for spec in manifest.pairs {

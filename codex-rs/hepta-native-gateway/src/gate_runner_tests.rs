@@ -178,6 +178,27 @@ fn migrated_pair_specs_use_the_receipt_state_machine() {
 }
 
 #[test]
+fn supplemental_gate_pair_payloads_are_typed_and_fail_closed() {
+    let mut payload = SupplementalPayloadSpec {
+        path: "scripts/lib/hepta-gate-pair-compat-v1/example.gate".to_string(),
+        sha256: "a".repeat(64),
+        classification: "explicit_non_pair_compatibility_surface".to_string(),
+        mutation_allowed: false,
+        owner: "hepta-backend-maintainers".to_string(),
+    };
+    validate_supplemental_payloads(std::slice::from_ref(&payload))
+        .expect("valid supplemental payload");
+
+    payload.mutation_allowed = true;
+    assert!(
+        validate_supplemental_payloads(std::slice::from_ref(&payload))
+            .expect_err("mutation-capable supplemental payload must fail closed")
+            .to_string()
+            .contains("invalid supplemental gate-pair payload policy")
+    );
+}
+
+#[test]
 fn shell_snapshot_matches_the_append_only_parity_ledger() {
     let snapshot: serde_json::Value = serde_json::from_str(
         &shell_gate_snapshot_json_for_root(repo_root()).expect("shell snapshot"),

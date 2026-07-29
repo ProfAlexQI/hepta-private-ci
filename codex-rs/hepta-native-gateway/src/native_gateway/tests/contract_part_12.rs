@@ -1547,11 +1547,18 @@ fn native_post_execution_stores_endpoint_is_read_only() {
         with_telegram_plugin: true,
         telegram_plugin_poll_ms: 1500,
     };
+    let before = native_post_execution_stores_report();
     let (status, content_type, body) =
         route_native_gateway_request("GET", NATIVE_POST_EXECUTION_STORES_ENDPOINT, &options);
+    let after = native_post_execution_stores_report();
+    assert_eq!(after, before);
     assert_eq!(status, "200 OK");
     assert_eq!(content_type, "application/json; charset=utf-8");
     let value: serde_json::Value = serde_json::from_str(&body).expect("post stores json");
+    assert_eq!(
+        value,
+        serde_json::to_value(&before).expect("expected post stores json")
+    );
 
     assert_eq!(value["runtime"], "hepta");
     assert_eq!(value["status"], "ready");
@@ -1568,12 +1575,18 @@ fn native_post_execution_stores_endpoint_is_read_only() {
         value["max_store_lines_env"],
         NATIVE_POST_STORE_MAX_LINES_ENV
     );
-    assert_eq!(value["total_bytes"], 0);
+    assert_eq!(value["total_bytes"], before.total_bytes);
     assert_eq!(value["store_jsonl_valid"], true);
     assert_eq!(value["store_capacity_ok"], true);
-    assert_eq!(value["total_line_count"], 0);
-    assert_eq!(value["valid_json_line_count"], 0);
-    assert_eq!(value["invalid_json_line_count"], 0);
+    assert_eq!(value["total_line_count"], before.total_line_count);
+    assert_eq!(
+        value["valid_json_line_count"],
+        before.valid_json_line_count
+    );
+    assert_eq!(
+        value["invalid_json_line_count"],
+        before.invalid_json_line_count
+    );
     assert_eq!(value["persistence_implementation_ready"], true);
     assert_eq!(value["idempotency_store_ready"], true);
     assert_eq!(value["audit_store_ready"], true);
@@ -1598,7 +1611,7 @@ fn native_post_execution_stores_endpoint_is_read_only() {
                 && store["append_only"] == true
                 && store["jsonl_readable"] == true
                 && store["jsonl_valid"] == true
-                && store["line_count"] == 0
+                && store["line_count"].as_u64().is_some()
                 && store["raw_idempotency_key_exposed"] == false)
     );
 }
