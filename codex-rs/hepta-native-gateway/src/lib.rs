@@ -23,6 +23,7 @@ mod runtime_ingress;
 mod runtime_mutation;
 mod secure_key_file;
 mod sensitive_http;
+mod state_root;
 mod telegram_authority;
 mod telegram_durable_files;
 mod ui_domain;

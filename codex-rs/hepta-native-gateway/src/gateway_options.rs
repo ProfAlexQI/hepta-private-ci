@@ -3,6 +3,8 @@ use std::env;
 use anyhow::Context;
 use anyhow::Result;
 
+use crate::state_root::validate_state_root_env;
+
 pub(crate) const DEFAULT_BIND_ADDR: &str = "127.0.0.1:7373";
 pub(crate) const DEFAULT_TELEGRAM_POLL_MS: u64 = 1500;
 
@@ -15,6 +17,7 @@ pub struct NativeGatewayOptions {
 
 impl NativeGatewayOptions {
     fn from_env_and_args(args: &[String]) -> Result<Self> {
+        validate_state_root_env()?;
         let mut options = Self {
             bind_addr: DEFAULT_BIND_ADDR.to_string(),
             with_telegram_plugin: env_truthy("HEPTA_GATEWAY_ENABLE_TELEGRAM_PLUGIN"),

@@ -91,6 +91,7 @@ payload = {
         "HEPTA_RUNTIME_MUTATION_CANARY": "0",
         "HEPTA_OPERATOR_MUTATION_ENABLED": "0",
         "HEPTA_TELEGRAM_AUTHORITY_ENABLED": "0",
+        "HEPTA_STATE_ROOT": str(state_root),
         "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR": native_post_store,
         "HEPTA_RUNTIME_OUTCOME_DATABASE": str(state_root / "runtime-v2/outcomes.sqlite3"),
         "HEPTA_RUNTIME_STATE_DATABASE": str(state_root / "runtime-v2/runtime-state.json"),
@@ -122,7 +123,7 @@ PY
     --arg canonical_path "$canonical_path" \
     --arg canonical_path_sha256 "$canonical_path_sha" \
     '{
-      schema:"hepta_gateway_launch_agent_v1",
+      schema:"hepta_gateway_launch_agent_v2",
       immutable_release_bound:true,
       relative_path:$relative_path,
       sha256:$sha256,
@@ -131,6 +132,7 @@ PY
       program:$program,
       working_directory:$working_directory,
       state_root:$state_root,
+      state_root_schema:"hepta_runtime_state_root_v1",
       canonical_install_path:$canonical_path,
       canonical_install_path_sha256:$canonical_path_sha256,
       loaded_path_digest_required:true,
@@ -162,7 +164,7 @@ verify_gateway_launch_agent() {
   local release_dir="$1"
   local contract_json="$2"
   jq -e '
-    .schema == "hepta_gateway_launch_agent_v1"
+    (.schema == "hepta_gateway_launch_agent_v1" or .schema == "hepta_gateway_launch_agent_v2")
     and .immutable_release_bound == true
     and .relative_path == "launchd/ai.hepta.gateway.plist"
     and (.sha256 | test("^[0-9a-f]{64}$"))
@@ -177,6 +179,9 @@ verify_gateway_launch_agent() {
       archived_suffix:".disabled",
       loadable_backup_plists_forbidden:true
     }
+    and (if .schema == "hepta_gateway_launch_agent_v2" then
+      .state_root_schema == "hepta_runtime_state_root_v1"
+    else true end)
   ' >/dev/null <<<"$contract_json" || {
     echo "gateway LaunchAgent contract is invalid" >&2
     return 1
@@ -209,6 +214,13 @@ verify_gateway_launch_agent() {
     echo "release-bound gateway LaunchAgent metadata differs from manifest" >&2
     return 1
   }
+  if [[ "$(jq -r '.schema' <<<"$contract_json")" == "hepta_gateway_launch_agent_v2" ]]; then
+    [[ "$(plutil -extract EnvironmentVariables.HEPTA_STATE_ROOT raw -o - "$plist")" \
+      == "$(jq -r '.state_root' <<<"$contract_json")" ]] || {
+      echo "release-bound typed state root differs from manifest" >&2
+      return 1
+    }
+  fi
   local gate_key
   for gate_key in \
     HEPTA_GATEWAY_ENABLE_TELEGRAM_PLUGIN \
@@ -1759,6 +1771,8 @@ self_test() {
     "$source_root/scripts/hepta-live-soak.sh" \
     "$source_root/scripts/hepta-generation-pointer" \
     "$source_root/scripts/hepta-off-device-archive" \
+    "$source_root/scripts/hepta-log-rotate" \
+    "$source_root/scripts/hepta-final-evidence-index" \
     "$source_root/scripts/hepta-preflight-evidence-pack" \
     "$source_root/scripts/hepta-install-live-watchdog" \
     "$source_root/scripts/hepta-install-live-gateway" \
@@ -1833,7 +1847,7 @@ self_test() {
     and .watchdog.source.commit_bound == true
     and .watchdog.source.commit == .source.commit
     and .watchdog.entrypoint == "scripts/hepta-watchdog.sh"
-    and .watchdog.file_count == 15
+    and .watchdog.file_count == 17
     and (.watchdog.files | any(
       .relative_path == "scripts/hepta-live-soak.sh"
       and .mode == "0555"
@@ -1844,7 +1858,7 @@ self_test() {
       and .mode == "0555"
       and .executable == true
     ))
-    and .gateway_launch_agent.schema == "hepta_gateway_launch_agent_v1"
+    and .gateway_launch_agent.schema == "hepta_gateway_launch_agent_v2"
     and .gateway_launch_agent.immutable_release_bound == true
     and .gateway_launch_agent.label == "ai.hepta.gateway"
     and (.gateway_launch_agent.effective_gates | [.[]] | all(. == false))

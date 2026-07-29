@@ -13,6 +13,8 @@ scripts/hepta-live-soak.sh	0555	true
 scripts/hepta-immutable-release-tree	0555	true
 scripts/hepta-generation-pointer	0555	true
 scripts/hepta-off-device-archive	0555	true
+scripts/hepta-log-rotate	0555	true
+scripts/hepta-final-evidence-index	0555	true
 scripts/hepta-preflight-evidence-pack	0555	true
 scripts/hepta-install-live-watchdog	0555	true
 scripts/hepta-install-live-gateway	0555	true
@@ -39,7 +41,7 @@ hepta_immutable_watchdog_expected_paths_json() {
   hepta_immutable_watchdog_closure_spec \
     | cut -f1 \
     | if [[ "$source_commit" == "$HEPTA_IMMUTABLE_WATCHDOG_LEGACY_K_SOURCE_COMMIT" ]]; then
-        grep -v -E '^scripts/hepta-(generation-pointer|off-device-archive)$'
+        grep -v -E '^scripts/hepta-(generation-pointer|off-device-archive|log-rotate|final-evidence-index)$'
       else
         cat
       fi \

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+log_root=""
+max_bytes="${HEPTA_LOG_ROTATE_MAX_BYTES:-8388608}"
+generations="${HEPTA_LOG_ROTATE_GENERATIONS:-3}"
+
+usage() {
+  echo "usage: scripts/hepta-log-rotate --root DIR [--max-bytes N] [--generations N]" >&2
+  exit 2
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --root) shift; [[ $# -gt 0 ]] || usage; log_root="$1" ;;
+    --max-bytes) shift; [[ $# -gt 0 ]] || usage; max_bytes="$1" ;;
+    --generations) shift; [[ $# -gt 0 ]] || usage; generations="$1" ;;
+    *) usage ;;
+  esac
+  shift
+done
+
+[[ -n "$log_root" && "$max_bytes" =~ ^[1-9][0-9]*$ \
+  && "$generations" =~ ^[1-9][0-9]*$ ]] || usage
+[[ -d "$log_root" && ! -L "$log_root" ]] || {
+  echo "log root must be a real directory: $log_root" >&2
+  exit 1
+}
+[[ "$(stat -f '%u' "$log_root")" == "$(id -u)" ]] || {
+  echo "log root must be owned by the current user" >&2
+  exit 1
+}
+chmod 0700 "$log_root"
+
+for log_file in "$log_root"/*.log; do
+  [[ -e "$log_file" ]] || continue
+  [[ -f "$log_file" && ! -L "$log_file" \
+    && "$(stat -f '%u' "$log_file")" == "$(id -u)" \
+    && "$(stat -f '%l' "$log_file")" == "1" ]] || {
+    echo "refusing unsafe log file: $log_file" >&2
+    exit 1
+  }
+  chmod 0600 "$log_file"
+  size_bytes="$(stat -f '%z' "$log_file")"
+  (( size_bytes >= max_bytes )) || continue
+
+  for (( generation = generations; generation >= 2; generation-- )); do
+    previous="$log_file.$((generation - 1)).gz"
+    current="$log_file.$generation.gz"
+    [[ ! -L "$previous" && ! -L "$current" ]] || {
+      echo "refusing symlinked log generation" >&2
+      exit 1
+    }
+    [[ ! -e "$previous" ]] || mv -f "$previous" "$current"
+  done
+
+  staged="$(mktemp "$log_root/.hepta-log-rotate.XXXXXX.gz")"
+  trap 'rm -f "$staged"' EXIT
+  gzip -c -9 "$log_file" >"$staged"
+  gzip -t "$staged"
+  chmod 0600 "$staged"
+  mv -f "$staged" "$log_file.1.gz"
+  trap - EXIT
+  : >"$log_file"
+  chmod 0600 "$log_file"
+done
+
+jq -cn \
+  --arg schema hepta_log_rotation_v1 \
+  --arg root "$(realpath "$log_root")" \
+  --argjson max_bytes "$max_bytes" \
+  --argjson generations "$generations" \
+  '{schema:$schema,status:"ready",root:$root,max_bytes:$max_bytes,generations:$generations}'

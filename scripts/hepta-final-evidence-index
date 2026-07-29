@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+action="${1:-}"
+shift || true
+
+case "$action" in
+  build)
+    [[ "${1:-}" == "--entries-tsv" && -n "${2:-}" \
+      && "${3:-}" == "--output" && -n "${4:-}" && $# == 4 ]] || {
+      echo "usage: scripts/hepta-final-evidence-index build --entries-tsv PATH --output PATH" >&2
+      exit 2
+    }
+    entries_tsv="$2"
+    output="$4"
+    ;;
+  verify)
+    [[ "${1:-}" == "--index" && -n "${2:-}" && $# == 2 ]] || {
+      echo "usage: scripts/hepta-final-evidence-index verify --index PATH" >&2
+      exit 2
+    }
+    output="$2"
+    entries_tsv=""
+    ;;
+  *)
+    echo "usage: scripts/hepta-final-evidence-index {build|verify} ..." >&2
+    exit 2
+    ;;
+esac
+
+ruby - "$action" "$entries_tsv" "$output" <<'RUBY'
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "pathname"
+
+SCHEMA = "hepta_final_only_evidence_index_v1"
+ROLE = /\A[a-z0-9][a-z0-9_-]*\z/
+FORBIDDEN = /(attempt|raw|superseded|invalid|temporary|candidate)/
+
+def sha256(path)
+  Digest::SHA256.file(path).hexdigest
+end
+
+def validate_entry(entry)
+  role = entry.fetch("role")
+  path = Pathname(entry.fetch("path"))
+  raise "invalid final evidence role" unless ROLE.match?(role) && !FORBIDDEN.match?(role)
+  raise "final evidence path must be absolute" unless path.absolute?
+  raise "final evidence must be a regular non-symlink file" unless path.file? && !path.symlink?
+  raise "final evidence SHA drifted" unless entry.fetch("sha256") == sha256(path)
+  raise "final evidence size drifted" unless entry.fetch("size_bytes") == path.size
+end
+
+def read_entries(path)
+  seen_roles = {}
+  seen_paths = {}
+  File.readlines(path, chomp: true).reject(&:empty?).map do |line|
+    role, source = line.split("\t", 2)
+    raise "entry must contain role and path" unless role && source
+    raise "duplicate final evidence role" if seen_roles[role]
+    absolute = Pathname(source).realpath.to_s
+    raise "duplicate final evidence path" if seen_paths[absolute]
+    seen_roles[role] = true
+    seen_paths[absolute] = true
+    candidate = Pathname(absolute)
+    entry = {
+      "role" => role,
+      "path" => absolute,
+      "sha256" => sha256(candidate),
+      "size_bytes" => candidate.size
+    }
+    validate_entry(entry)
+    entry
+  end
+end
+
+action, entries_path, output_path = ARGV
+if action == "build"
+  entries = read_entries(entries_path)
+  raise "final evidence index must not be empty" if entries.empty?
+  payload = JSON.generate({
+    "schema" => SCHEMA,
+    "status" => "ready",
+    "final_only" => true,
+    "whitelist_only" => true,
+    "entry_count" => entries.length,
+    "entries" => entries
+  }) + "\n"
+  output = Pathname(output_path)
+  raise "refusing to overwrite final evidence index" if output.exist?
+  output.dirname.mkpath
+  temporary = Pathname("#{output}.tmp.#{Process.pid}")
+  File.open(temporary, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+    file.write(payload)
+    file.flush
+    file.fsync
+  end
+  File.chmod(0o444, temporary)
+  File.rename(temporary, output)
+end
+
+index = JSON.parse(File.read(output_path))
+raise "invalid final-only evidence index" unless index["schema"] == SCHEMA &&
+  index["status"] == "ready" && index["final_only"] == true &&
+  index["whitelist_only"] == true && index["entry_count"] == index.fetch("entries").length &&
+  !index.fetch("entries").empty?
+index.fetch("entries").each { |entry| validate_entry(entry) }
+puts JSON.generate(index)
+RUBY

@@ -20,6 +20,12 @@ GATEWAY_LAUNCH_AGENT="${HEPTA_GATEWAY_LAUNCH_AGENT:-}"
 EXPECTED_GATEWAY_LAUNCH_AGENT_SHA256="${HEPTA_EXPECTED_GATEWAY_LAUNCH_AGENT_SHA256:-}"
 EXPECTED_GATEWAY_LOADED_PATH_SHA256="${HEPTA_EXPECTED_GATEWAY_LOADED_PATH_SHA256:-}"
 
+for log_root in \
+  "$HOME/.local/opt/hepta/logs/watchdog" \
+  "$HOME/.local/opt/hepta/logs/gateway"; do
+  [[ ! -d "$log_root" ]] || "$REPO_ROOT/scripts/hepta-log-rotate" --root "$log_root" >/dev/null
+done
+
 usage() {
   cat >&2 <<'EOF'
 usage: scripts/hepta-watchdog.sh [--mode MODE] [--candidate-manifest PATH] [--installed-receipt PATH] [--expected-source-commit SHA]
