@@ -1,0 +1,235 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "set"
+require "stringio"
+require "zlib"
+require_relative "lib/hepta-normalized-token-bundle-v1"
+
+ROOT = File.expand_path("..", __dir__)
+SOURCE_ROOT = File.join(ROOT, "codex-rs/hepta-runtime/src")
+LIB_PATH = File.join(SOURCE_ROOT, "lib.rs")
+EXPORTS_PATH = File.join(SOURCE_ROOT, "runtime_kernel/exports_workgraph.rs")
+PARAMETERS_PATH = File.join(ROOT, "codex-rs/hepta-runtime/codegen/workgraph-v3/parameters.jsonl")
+RECEIPT_PATH = File.join(ROOT, "docs/architecture/HEPTA_WORKGRAPH_L1_RETIREMENT_V1.json")
+TARGET_MODULE_COUNT = 398
+BASELINE_COMMIT = "0c7fa6b3f5"
+MODULE_PATTERN = /^mod ((?:wg_|work_graph_)[a-z0-9_]+);$/
+PUBLIC_SYMBOL_PATTERN = /^pub(?:\([^)]*\))?\s+(?:async\s+)?(?:fn|struct|enum|const|static|type|trait)\s+([A-Za-z_][A-Za-z0-9_]*)/
+INCLUDE_PATTERN = /include!\(\s*concat!\(\s*env!\("OUT_DIR"\),\s*"\/hepta_workgraph_bundle\/modules\.rs"\s*\)\s*\);\n/m
+SCHEMA = "hepta_workgraph_normalized_bundle_v3"
+
+def declarations
+  File.readlines(LIB_PATH, chomp: true).each_with_object([]) do |line, names|
+    match = MODULE_PATTERN.match(line)
+    names << match[1] if match
+  end
+end
+
+def atomic_write(path, content)
+  staging = File.join(File.dirname(path), ".hepta-workgraph-l1-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp")
+  File.binwrite(staging, content)
+  File.rename(staging, path)
+end
+
+def public_symbols(source)
+  source.scan(PUBLIC_SYMBOL_PATTERN).flatten.to_set
+end
+
+def strongly_connected_components(active, outgoing)
+  index = 0
+  indices = {}
+  lowlinks = {}
+  stack = []
+  on_stack = Set.new
+  components = []
+  visit = nil
+  visit = lambda do |node|
+    indices[node] = lowlinks[node] = index
+    index += 1
+    stack << node
+    on_stack << node
+    outgoing.fetch(node).each do |target|
+      next unless active.include?(target)
+      if !indices.key?(target)
+        visit.call(target)
+        lowlinks[node] = [lowlinks[node], lowlinks[target]].min
+      elsif on_stack.include?(target)
+        lowlinks[node] = [lowlinks[node], indices[target]].min
+      end
+    end
+    return unless lowlinks[node] == indices[node]
+    component = []
+    loop do
+      member = stack.pop
+      on_stack.delete(member)
+      component << member
+      break if member == node
+    end
+    components << component
+  end
+  active.each { |node| visit.call(node) unless indices.key?(node) }
+  components
+end
+
+def git_show(path)
+  IO.popen(["git", "-C", ROOT, "show", "#{BASELINE_COMMIT}:#{path}"], "rb", &:read)
+end
+
+def baseline_sources
+  compressed = git_show("codex-rs/hepta-runtime/codegen/workgraph-v3/modules.bundle.gz")
+  payload = Zlib::GzipReader.new(StringIO.new(compressed)).read
+  entries = HeptaNormalizedTokenBundle.decode(payload, schema: SCHEMA,
+    name_validator: ->(name) { name.match?(/\A(?:wg_|work_graph_)[a-z0-9_]+\z/) })
+  entries.to_h { |entry| [entry.name, entry.source] }
+end
+
+def rewrite_exports(retired, baseline_source)
+  lines = baseline_source.lines
+  output = []
+  statement = []
+  lines.each do |line|
+    if statement.empty? && line.match?(/^pub use (?:crate::)?(?:wg_|work_graph_)/)
+      statement << line
+      next unless line.include?(";")
+    elsif !statement.empty?
+      statement << line
+      next unless line.include?(";")
+    else
+      output << line
+      next
+    end
+    module_name = statement.join[/^pub use (?:crate::)?((?:wg_|work_graph_)[a-z0-9_]+)/, 1]
+    output.concat(statement) unless retired.include?(module_name)
+    statement.clear
+  end
+  raise "unterminated WorkGraph export statement" unless statement.empty?
+  atomic_write(EXPORTS_PATH, output.join)
+end
+
+def apply_retirement
+  sources = baseline_sources
+  names = sources.keys.sort
+  raise "L1 retirement requires 711 baseline WorkGraph modules" unless names.length == 711
+  owners = Hash.new { |hash, key| hash[key] = Set.new }
+  sources.each { |name, source| public_symbols(source).each { |symbol| owners[symbol] << name } }
+
+  protected_modules = Set.new
+  Dir[File.join(ROOT, "codex-rs/**/*.rs")].sort.each do |path|
+    next if sources.key?(File.basename(path, ".rs")) || path == EXPORTS_PATH
+    next if path.include?("/tests/") || File.basename(path).include?("test")
+    outside_source = File.read(path)
+    outside_source.scan(/(?:pub\s+)?use\s+((?:wg_|work_graph_)[a-z0-9_]+)::/) do |(module_name)|
+      protected_modules << module_name if sources.key?(module_name)
+    end
+    outside_source.scan(/(?:crate|hepta_runtime)::([A-Za-z_][A-Za-z0-9_]*)/) do |(identifier)|
+      owners.fetch(identifier, []).each { |owner| protected_modules << owner }
+    end
+    outside_source.scan(/use\s+(?:crate|hepta_runtime)::\{(.*?)\};/m) do |(imports)|
+      imports.scan(/[A-Za-z_][A-Za-z0-9_]*/) do |identifier|
+        owners.fetch(identifier, []).each { |owner| protected_modules << owner }
+      end
+    end
+  end
+  owners.each_value { |module_names| protected_modules.merge(module_names) if module_names.length > 1 }
+
+  outgoing = names.to_h { |name| [name, Set.new] }
+  incoming = names.to_h { |name| [name, 0] }
+  sources.each do |name, source|
+    source.scan(/crate::((?:wg_|work_graph_)[a-z0-9_]+)::/) do |(target)|
+      next if target == name || !sources.key?(target) || outgoing.fetch(name).include?(target)
+      outgoing.fetch(name) << target
+      incoming[target] += 1
+    end
+    source.scan(/crate::([A-Za-z_][A-Za-z0-9_]*)/) do |(symbol)|
+      owners.fetch(symbol, []).each do |target|
+        next if target == name || outgoing.fetch(name).include?(target)
+        outgoing.fetch(name) << target
+        incoming[target] += 1
+      end
+    end
+  end
+
+  active = names.to_set
+  retired = []
+  while active.length > TARGET_MODULE_COUNT
+    components = strongly_connected_components(active, outgoing)
+    component_by_module = {}
+    components.each_with_index { |component, id| component.each { |name| component_by_module[name] = id } }
+    incoming_components = Set.new
+    active.each do |source|
+      outgoing.fetch(source).each do |target|
+        next unless active.include?(target)
+        incoming_components << component_by_module.fetch(target) if component_by_module.fetch(source) != component_by_module.fetch(target)
+      end
+    end
+    remaining = active.length - TARGET_MODULE_COUNT
+    candidates = components.each_with_index.each_with_object([]) do |(component, id), selected_components|
+      next if incoming_components.include?(id) || component.any? { |name| protected_modules.include?(name) }
+      selected_components << component if component.length <= remaining
+    end
+    selected = candidates.max_by do |component|
+      [component.sum { |name| sources.fetch(name).lines.count }, component.sort.join("\0")]
+    end
+    raise "insufficient dependency-closed WorkGraph retirement components: active=#{active.length} protected=#{protected_modules.length}" unless selected
+    selected.each { |name| active.delete(name); retired << name }
+  end
+
+  retired_set = retired.to_set
+  baseline_lib = git_show("codex-rs/hepta-runtime/src/lib.rs")
+  declarations = active.to_a.sort.map { |name| "mod #{name};\n" }.join
+  raise "baseline WorkGraph include missing" unless baseline_lib.scan(INCLUDE_PATTERN).length == 1
+  atomic_write(LIB_PATH, baseline_lib.sub(INCLUDE_PATTERN, declarations))
+  rewrite_exports(retired_set, git_show("codex-rs/hepta-runtime/src/runtime_kernel/exports_workgraph.rs"))
+
+  Dir[File.join(SOURCE_ROOT, "wg_*.rs")].each { |path| File.delete(path) }
+  Dir[File.join(SOURCE_ROOT, "work_graph_*.rs")].each do |path|
+    File.delete(path) if sources.key?(File.basename(path, ".rs"))
+  end
+  active.each { |name| atomic_write(File.join(SOURCE_ROOT, "#{name}.rs"), sources.fetch(name)) }
+
+  retired_records = retired.sort.map do |name|
+    source = sources.fetch(name)
+    {name: name, sha256: Digest::SHA256.hexdigest(source), lines: source.lines.count}
+  end
+  receipt = {
+    schema: "hepta_workgraph_l1_retirement_v1",
+    status: "ready",
+    source_commit: `git -C #{ROOT.shellescape} rev-parse #{BASELINE_COMMIT}`.strip,
+    original_module_count: names.length,
+    retired_module_count: retired.length,
+    remaining_module_count: active.length,
+    selection: "largest_source_first_dependency_closed_uncalled_export_leaves",
+    protected_external_module_count: protected_modules.length,
+    git_history_recovery_bound: true,
+    retired_modules: retired_records
+  }
+  receipt[:aggregate_sha256] = Digest::SHA256.hexdigest(JSON.generate(receipt))
+  atomic_write(RECEIPT_PATH, JSON.pretty_generate(receipt) + "\n")
+end
+
+def verify_retirement
+  receipt = JSON.parse(File.binread(RECEIPT_PATH))
+  digest_payload = receipt.dup
+  expected = digest_payload.delete("aggregate_sha256")
+  raise "WorkGraph L1 receipt digest drifted" unless Digest::SHA256.hexdigest(JSON.generate(digest_payload)) == expected
+  names = File.readlines(PARAMETERS_PATH, chomp: true).map { |line| JSON.parse(line).fetch("name") }.to_set
+  retired = receipt.fetch("retired_modules").map { |record| record.fetch("name") }.to_set
+  raise "retired WorkGraph module remains active" unless (names & retired).empty?
+  raise "WorkGraph L1 module count drifted" unless names.length == receipt.fetch("remaining_module_count")
+  raise "WorkGraph L1 hard target exceeded" unless names.length < 399
+  puts JSON.generate(schema: "hepta_workgraph_l1_retirement_verify_v1", status: "ready",
+                     active_module_count: names.length, retired_module_count: retired.length,
+                     git_history_recovery_bound: true, receipt_sha256: Digest::SHA256.file(RECEIPT_PATH).hexdigest)
+end
+
+require "shellwords"
+case ARGV
+when ["apply"] then apply_retirement
+when ["verify"] then verify_retirement
+else
+  warn "usage: scripts/hepta-workgraph-retire-l1 <apply|verify>"
+  exit 64
+end

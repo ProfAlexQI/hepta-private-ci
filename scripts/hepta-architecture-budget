@@ -7,13 +7,13 @@ architecture_sha256_file() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
 
-RUNTIME_WHOLE_TREE_MAX_LINES=509661
-HEPTA_OWNED_RUST_WHOLE_TREE_MAX_LINES=1022534
-HEPTA_FIRST_PARTY_RUST_COMPLETE_MAX_LINES=1041381
-SCRIPTS_PHYSICAL_MAX_LINES=413172
-SCRIPTS_WHOLE_TREE_MAX_LINES=602523
+RUNTIME_WHOLE_TREE_MAX_LINES=413423
+HEPTA_OWNED_RUST_WHOLE_TREE_MAX_LINES=927294
+HEPTA_FIRST_PARTY_RUST_COMPLETE_MAX_LINES=946184
+SCRIPTS_PHYSICAL_MAX_LINES=413414
+SCRIPTS_WHOLE_TREE_MAX_LINES=602765
 WORK_GRAPH_MAX_FILES=1
-WORK_GRAPH_MAX_EFFECTIVE_LINES=297356
+WORK_GRAPH_MAX_EFFECTIVE_LINES=202869
 SINGLE_EXEC_WRAPPER_MAX_COUNT=92
 GIANT_MODULE_OVER_10000_MAX_COUNT=0
 GIANT_MODULE_OVER_5000_MAX_COUNT=18
@@ -839,16 +839,16 @@ verify() {
     --slurpfile gate_registry "$GATE_COMPAT_ROOT/registry.json" '
     .schema == "hepta_l1_compatibility_ratchet_v1"
     and .status == "source_ready"
-    and .work_graph.logical_module_count == 711
+    and .work_graph.logical_module_count == 398
     and .work_graph.canonical_files == [
       "source.schema.json",
       "templates.jsonl",
       "parameters.jsonl"
     ]
-    and .work_graph.normalized_template_count == 454
-    and .work_graph.normalized_parameter_row_count == 711
-    and .work_graph.normalized_effective_lines == 288695
-    and .work_graph.normalized_effective_line_limit == 297356
+    and .work_graph.normalized_template_count == 282
+    and .work_graph.normalized_parameter_row_count == 398
+    and .work_graph.normalized_effective_lines == 196886
+    and .work_graph.normalized_effective_line_limit == 202793
     and .work_graph.aggregate_source_sha256 ==
       $work_registry[0].aggregate_source_sha256
     and .work_graph.generated_bundle_sha256 == $work_registry[0].bundle_sha256
@@ -1970,8 +1970,8 @@ verify() {
       binary_newline_counts_are_excluded:true,
       current_baseline_monotonic_ratchets:true,
       decline_targets:{
-        work_graph_logical_modules:{next:399,terminal:199},
-        work_graph_effective_lines:{next:260000,terminal:180000},
+        work_graph_logical_modules:{next:299,terminal:199},
+        work_graph_effective_lines:{next:130000,terminal:90000},
         single_exec_wrappers:{next:99,terminal:20},
         gate_compat_effective_lines:{next:240000,terminal:100000},
         first_party_modules_over_5000:{next:12,terminal:0}
