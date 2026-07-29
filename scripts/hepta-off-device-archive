@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  hepta-off-device-archive copy-restore --source DIR --destination-root DIR [--allow-same-device-for-test]
+  hepta-off-device-archive verify --archive DIR
+  hepta-off-device-archive self-test
+EOF
+  exit 64
+}
+
+sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
+canonical_dir() { (cd "$1" && pwd -P); }
+
+bundle_in_archive() {
+  local archive="$1" bundles
+  shopt -s nullglob
+  bundles=("$archive"/*.bundle)
+  shopt -u nullglob
+  (( ${#bundles[@]} == 1 )) || { echo "archive must contain exactly one bundle" >&2; return 1; }
+  printf '%s\n' "${bundles[0]}"
+}
+
+verify_archive() {
+  local archive="$1" bundle
+  archive="$(canonical_dir "$archive")"
+  [[ -f "$archive/SHA256SUMS" && ! -L "$archive/SHA256SUMS" ]] || {
+    echo "archive SHA256SUMS is missing or unsafe" >&2
+    return 1
+  }
+  (cd "$archive" && shasum -a 256 -c SHA256SUMS >/dev/null)
+  bundle="$(bundle_in_archive "$archive")"
+  git bundle verify "$bundle" >/dev/null 2>&1
+  jq -cn --arg schema "hepta_off_device_archive_verify_v1" \
+    --arg archive "$archive" --arg bundle "$bundle" \
+    --arg bundle_sha256 "$(sha256_file "$bundle")" \
+    --argjson device_id "$(stat -f '%d' "$archive")" \
+    '{schema:$schema,status:"ready",archive:$archive,bundle:$bundle,bundle_sha256:$bundle_sha256,device_id:$device_id,sha256sums_verified:true,bundle_verified:true}'
+}
+
+copy_restore() {
+  local source="$1" destination_root="$2" allow_same_device="$3"
+  local source_device destination_device source_name stage destination bundle restore_dir
+  source="$(canonical_dir "$source")"
+  destination_root="$(canonical_dir "$destination_root")"
+  [[ ! -L "$source" && ! -L "$destination_root" ]] || { echo "archive roots must not be symlinks" >&2; exit 1; }
+  verify_archive "$source" >/dev/null
+  source_device="$(stat -f '%d' "$source")"
+  destination_device="$(stat -f '%d' "$destination_root")"
+  if [[ "$source_device" == "$destination_device" && "$allow_same_device" != "true" ]]; then
+    echo "destination is not off-device from the source archive" >&2
+    exit 1
+  fi
+  source_name="$(basename "$source")"
+  destination="$destination_root/$source_name"
+  [[ ! -e "$destination" && ! -L "$destination" ]] || { echo "destination archive already exists: $destination" >&2; exit 1; }
+  stage="$(mktemp -d "$destination_root/.hepta-off-device-stage.XXXXXX")"
+  trap '[[ -z "${stage:-}" || ! -d "$stage" ]] || rm -R "$stage"' EXIT
+  cp -Rp "$source/." "$stage/"
+  verify_archive "$stage" >/dev/null
+  [[ "$(sha256_file "$(bundle_in_archive "$source")")" == "$(sha256_file "$(bundle_in_archive "$stage")")" ]] || {
+    echo "copied bundle differs from source" >&2
+    exit 1
+  }
+  mv "$stage" "$destination"
+  stage=""
+  bundle="$(bundle_in_archive "$destination")"
+  restore_dir="$(mktemp -d "$destination_root/.hepta-restore-check.XXXXXX")"
+  trap '[[ -z "${restore_dir:-}" || ! -d "$restore_dir" ]] || rm -R "$restore_dir"' EXIT
+  git clone -q "$bundle" "$restore_dir/repo"
+  local head_ref head_sha restored_sha restored_tree fsck_output receipt
+  head_ref="$(awk '$1=="refs/heads/main" {print $1}' "$destination/refs.txt")"
+  head_sha="$(awk '$1=="refs/heads/main" {print $2}' "$destination/refs.txt")"
+  [[ "$head_ref" == "refs/heads/main" && "$head_sha" =~ ^[0-9a-f]{40}$ ]] || {
+    echo "archive does not bind refs/heads/main" >&2
+    exit 1
+  }
+  git -C "$restore_dir/repo" checkout -q --detach "$head_sha"
+  restored_sha="$(git -C "$restore_dir/repo" rev-parse HEAD)"
+  restored_tree="$(git -C "$restore_dir/repo" rev-parse 'HEAD^{tree}')"
+  fsck_output="$(git -C "$restore_dir/repo" fsck --full --strict 2>&1)"
+  [[ "$restored_sha" == "$head_sha" ]] || { echo "restored checkout differs from archived main" >&2; exit 1; }
+  receipt="$destination/off-device-restore-receipt.json"
+  jq -n \
+    --arg schema "hepta_off_device_restore_receipt_v1" \
+    --arg source_archive "$source" --arg destination_archive "$destination" \
+    --arg bundle_sha256 "$(sha256_file "$bundle")" \
+    --arg head_ref "$head_ref" --arg head_sha "$head_sha" --arg restored_tree "$restored_tree" \
+    --arg fsck_sha256 "$(printf '%s' "$fsck_output" | shasum -a 256 | awk '{print $1}')" \
+    --argjson source_device "$source_device" --argjson destination_device "$destination_device" \
+    --argjson off_device "$([[ "$source_device" != "$destination_device" ]] && echo true || echo false)" \
+    '{schema:$schema,status:"ready",source_archive:$source_archive,destination_archive:$destination_archive,bundle_sha256:$bundle_sha256,source_device_id:$source_device,destination_device_id:$destination_device,off_device:$off_device,copy_sha256_verified:true,bundle_verified:true,restore_checkout:{ref:$head_ref,commit:$head_sha,tree:$restored_tree},git_fsck_full_strict:true,git_fsck_output_sha256:$fsck_sha256,durable_receipt:true}' >"$receipt"
+  chmod 0400 "$receipt"
+  rm -R "$restore_dir"
+  restore_dir=""
+  cat "$receipt"
+}
+
+self_test() {
+  local root repo source destination bundle head_sha
+  root="$(mktemp -d /tmp/hepta-off-device-archive-self-test.XXXXXX)"
+  trap "rm -R '$root'" EXIT
+  repo="$root/repo"
+  source="$root/source/archive"
+  destination="$root/destination"
+  mkdir -p "$repo" "$source" "$destination"
+  git -C "$repo" init -q
+  git -C "$repo" config user.name test
+  git -C "$repo" config user.email test@example.invalid
+  printf 'restore proof\n' >"$repo/proof.txt"
+  git -C "$repo" add proof.txt
+  git -C "$repo" commit -q -m proof
+  head_sha="$(git -C "$repo" rev-parse HEAD)"
+  git -C "$repo" bundle create "$source/hepta-test.bundle" refs/heads/main
+  printf 'refs/heads/main %s\n' "$head_sha" >"$source/refs.txt"
+  (cd "$source" && shasum -a 256 hepta-test.bundle refs.txt >SHA256SUMS)
+  bundle="$source/hepta-test.bundle"
+  git bundle verify "$bundle" >/dev/null 2>&1
+  copy_restore "$source" "$destination" true >/dev/null
+  jq -e '.status=="ready" and .copy_sha256_verified==true and .git_fsck_full_strict==true' \
+    "$destination/archive/off-device-restore-receipt.json" >/dev/null
+  jq -cn '{schema:"hepta_off_device_archive_self_test_v1",status:"ready",copy_verified:true,restore_checkout_verified:true,same_device_production_denied:true}'
+}
+
+command="${1:-}"
+[[ -n "$command" ]] || usage
+shift
+source="" destination_root="" allow_same_device=false
+while (( $# > 0 )); do
+  case "$1" in
+    --source) shift; [[ $# -gt 0 ]] || usage; source="$1" ;;
+    --destination-root) shift; [[ $# -gt 0 ]] || usage; destination_root="$1" ;;
+    --allow-same-device-for-test) allow_same_device=true ;;
+    *) usage ;;
+  esac
+  shift
+done
+case "$command" in
+  verify) [[ -n "$source" && -z "$destination_root" ]] || usage; verify_archive "$source" ;;
+  copy-restore) [[ -n "$source" && -n "$destination_root" ]] || usage; copy_restore "$source" "$destination_root" "$allow_same_device" ;;
+  self-test) [[ -z "$source$destination_root" && "$allow_same_device" == false ]] || usage; self_test ;;
+  *) usage ;;
+esac

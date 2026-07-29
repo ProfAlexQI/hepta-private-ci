@@ -1757,6 +1757,8 @@ self_test() {
   cp "$source_root/scripts/hepta-watchdog.sh" "$root/scripts/"
   cp \
     "$source_root/scripts/hepta-live-soak.sh" \
+    "$source_root/scripts/hepta-generation-pointer" \
+    "$source_root/scripts/hepta-off-device-archive" \
     "$source_root/scripts/hepta-preflight-evidence-pack" \
     "$source_root/scripts/hepta-install-live-watchdog" \
     "$source_root/scripts/hepta-install-live-gateway" \
