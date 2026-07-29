@@ -15,6 +15,8 @@ use codex_config::McpServerConfig;
 use codex_exec_server::Environment;
 use codex_exec_server::HttpClient;
 use codex_exec_server::ReqwestHttpClient;
+use codex_exec_server::RouteAwareHttpClient;
+use codex_http_client::HttpClientFactory;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::SandboxPolicy;
 
@@ -45,6 +47,7 @@ pub struct SandboxState {
 pub struct McpRuntimeEnvironment {
     environment: Arc<Environment>,
     fallback_cwd: PathBuf,
+    local_http_client: Arc<dyn HttpClient>,
 }
 
 impl McpRuntimeEnvironment {
@@ -52,6 +55,21 @@ impl McpRuntimeEnvironment {
         Self {
             environment,
             fallback_cwd,
+            local_http_client: Arc::new(ReqwestHttpClient),
+        }
+    }
+
+    /// Creates a runtime whose local HTTP capability follows the effective
+    /// session proxy and custom-CA policy.
+    pub fn new_with_http_client_factory(
+        environment: Arc<Environment>,
+        fallback_cwd: PathBuf,
+        http_client_factory: HttpClientFactory,
+    ) -> Self {
+        Self {
+            environment,
+            fallback_cwd,
+            local_http_client: Arc::new(RouteAwareHttpClient::new(http_client_factory)),
         }
     }
 
@@ -67,7 +85,7 @@ impl McpRuntimeEnvironment {
     /// starting the MCP transport.
     pub fn http_client_for_server(&self, server: &McpServerConfig) -> Result<Arc<dyn HttpClient>> {
         match server.experimental_environment.as_deref() {
-            None | Some("local") => Ok(Arc::new(ReqwestHttpClient)),
+            None | Some("local") => Ok(Arc::clone(&self.local_http_client)),
             Some("remote") => {
                 if !self.environment.is_remote() {
                     bail!("remote MCP server requires a remote environment");

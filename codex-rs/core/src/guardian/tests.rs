@@ -211,6 +211,7 @@ async fn seed_guardian_parent_history(session: &Arc<Session>, turn: &Arc<TurnCon
                     name: "gh_repo_view".to_string(),
                     namespace: None,
                     arguments: "{\"repo\":\"openai/codex\"}".to_string(),
+                    encrypted_function_args: None,
                     call_id: "call-1".to_string(),
                 },
                 ResponseItem::FunctionCallOutput {
@@ -658,6 +659,7 @@ fn collect_guardian_transcript_entries_includes_recent_tool_calls_and_output() {
             name: "read_file".to_string(),
             namespace: None,
             arguments: "{\"path\":\"README.md\"}".to_string(),
+            encrypted_function_args: None,
             call_id: "call-1".to_string(),
         },
         ResponseItem::FunctionCallOutput {

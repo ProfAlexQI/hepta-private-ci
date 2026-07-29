@@ -1,0 +1,20 @@
+[package]
+name = "hepta-durable-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "hepta_durable_store"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+anyhow = { workspace = true }
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

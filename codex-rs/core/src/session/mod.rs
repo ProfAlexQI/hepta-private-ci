@@ -745,7 +745,8 @@ impl Codex {
 
     /// Submit the `op` wrapped in a `Submission` with a unique ID.
     pub async fn submit(&self, op: Op) -> CodexResult<String> {
-        self.submit_with_trace(op, /*trace*/ None).await
+        self.submit_with_parent_turn(op, /*parent_turn_id*/ None)
+            .await
     }
 
     pub async fn submit_with_trace(
@@ -753,11 +754,31 @@ impl Codex {
         op: Op,
         trace: Option<W3cTraceContext>,
     ) -> CodexResult<String> {
+        self.submit_with_trace_and_parent_turn(op, trace, /*parent_turn_id*/ None)
+            .await
+    }
+
+    pub async fn submit_with_parent_turn(
+        &self,
+        op: Op,
+        parent_turn_id: Option<String>,
+    ) -> CodexResult<String> {
+        self.submit_with_trace_and_parent_turn(op, /*trace*/ None, parent_turn_id)
+            .await
+    }
+
+    async fn submit_with_trace_and_parent_turn(
+        &self,
+        op: Op,
+        trace: Option<W3cTraceContext>,
+        parent_turn_id: Option<String>,
+    ) -> CodexResult<String> {
         let id = Uuid::now_v7().to_string();
         let sub = Submission {
             id: id.clone(),
             op,
             trace,
+            parent_turn_id,
         };
         self.submit_with_id(sub).await?;
         Ok(id)
@@ -1151,6 +1172,7 @@ impl Session {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
             },
+            /*parent_turn_id*/ None,
             /*mirror_user_text_to_realtime*/ None,
         )
         .await;
@@ -3644,12 +3666,27 @@ impl Session {
         self.mailbox.send(communication)
     }
 
+    pub(crate) fn enqueue_mailbox_communication_with_parent(
+        &self,
+        communication: InterAgentCommunication,
+        parent_turn_id: Option<String>,
+    ) -> u64 {
+        self.mailbox.send_with_parent(communication, parent_turn_id)
+    }
+
     pub(crate) async fn has_trigger_turn_mailbox_items(&self) -> bool {
         self.mailbox_rx.lock().await.has_pending_trigger_turn()
     }
 
     pub(crate) async fn has_pending_mailbox_items(&self) -> bool {
         self.mailbox_rx.lock().await.has_pending()
+    }
+
+    pub(crate) async fn unambiguous_trigger_parent_turn_id(&self) -> Option<String> {
+        self.mailbox_rx
+            .lock()
+            .await
+            .unambiguous_trigger_parent_turn_id()
     }
 
     #[expect(

@@ -380,7 +380,7 @@ impl RuntimeKernel {
                 bundle
                     .active_topic_sessions
                     .iter()
-                    .map(|topic_session| format_active_topic_session(topic_session)),
+                    .map(format_active_topic_session),
             );
         }
 

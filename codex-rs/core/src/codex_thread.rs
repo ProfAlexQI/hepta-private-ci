@@ -225,6 +225,15 @@ impl CodexThread {
         self.codex.submit_with_trace(op, trace).await
     }
 
+    #[doc(hidden)]
+    pub async fn submit_with_parent_turn(
+        &self,
+        op: Op,
+        parent_turn_id: Option<String>,
+    ) -> CodexResult<String> {
+        self.codex.submit_with_parent_turn(op, parent_turn_id).await
+    }
+
     /// Persist whether this thread is eligible for future memory generation.
     pub async fn set_thread_memory_mode(&self, mode: ThreadMemoryMode) -> anyhow::Result<()> {
         self.codex.set_thread_memory_mode(mode).await

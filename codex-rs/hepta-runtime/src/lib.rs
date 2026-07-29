@@ -1,16 +1,10 @@
 #![allow(
     clippy::collapsible_if,
     clippy::derivable_impls,
-    clippy::extend_with_drain,
     clippy::if_same_then_else,
-    clippy::let_and_return,
-    clippy::manual_contains,
     clippy::obfuscated_if_else,
-    clippy::redundant_closure,
     clippy::too_many_arguments,
-    clippy::type_complexity,
-    clippy::unnecessary_lazy_evaluations,
-    clippy::useless_conversion
+    clippy::type_complexity
 )]
 
 use std::collections::HashMap;

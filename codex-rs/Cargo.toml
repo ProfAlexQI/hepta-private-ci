@@ -38,6 +38,7 @@ members = [
     "core-plugins",
     "core-skills",
     "hooks",
+    "http-client",
     "secrets",
     "exec",
     "file-system",
@@ -71,6 +72,7 @@ members = [
     "rollout",
     "rollout-trace",
     "rmcp-client",
+    "hepta-mcp-2026-compat",
     "responses-api-proxy",
     "response-debug-context",
     "sandboxing",
@@ -79,10 +81,13 @@ members = [
     "tui",
     "tools",
     "v8-poc",
+    "websocket-client",
     "utils/absolute-path",
     "utils/cargo-bin",
     "git-utils",
     "hepta-authority",
+    "hepta-durable-store",
+    "exec-server-protocol",
     "hepta-contracts",
     "hepta-core",
     "hepta-cli",
@@ -166,6 +171,8 @@ codex-cloud-tasks-mock-client = { path = "cloud-tasks-mock-client" }
 codex-code-mode = { path = "code-mode" }
 codex-config = { path = "config" }
 codex-connectors = { path = "connectors" }
+codex-http-client = { path = "http-client" }
+codex-websocket-client = { path = "websocket-client" }
 codex-core = { path = "core" }
 codex-core-api = { path = "core-api" }
 codex-core-plugins = { path = "core-plugins" }
@@ -187,6 +194,7 @@ codex-file-search = { path = "file-search" }
 codex-file-watcher = { path = "file-watcher" }
 codex-git-utils = { path = "git-utils" }
 hepta-authority = { path = "hepta-authority" }
+hepta-durable-store = { path = "hepta-durable-store" }
 hepta-contracts = { path = "hepta-contracts" }
 hepta-core = { path = "hepta-core" }
 hepta-gateway = { path = "hepta-gateway" }
@@ -369,6 +377,7 @@ regex = "1.12.3"
 regex-lite = "0.1.8"
 reqwest = { version = "0.12", features = ["cookies"] }
 rmcp = { version = "1.8.0", default-features = false }
+rmcp-2026 = { package = "rmcp", version = "=3.0.0-beta.3", default-features = false }
 runfiles = { git = "https://github.com/dzbarsky/rules_rust", rev = "b56cbaa8465e74127f1ea216f813cd377295ad81" }
 rustls = { version = "0.23", default-features = false, features = [
     "ring",
@@ -410,6 +419,7 @@ strum_macros = "0.28.0"
 supports-color = "3.0.2"
 syntect = "5"
 sys-locale = "0.3.2"
+system-configuration = "0.7"
 tar = { version = "=0.4.45", default-features = false }
 tempfile = "3.23.0"
 test-log = "0.2.19"
@@ -418,6 +428,7 @@ thiserror = "2.0.17"
 time = "0.3.47"
 tiny_http = "0.12"
 tokio = "1"
+tokio-rustls = "0.26.4"
 tokio-stream = "0.1.18"
 tokio-test = "0.4"
 tokio-tungstenite = { version = "0.28.0", features = [

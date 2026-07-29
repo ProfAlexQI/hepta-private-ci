@@ -152,6 +152,11 @@ impl LocalThreadStore {
     }
 
     async fn thread_history_db(&self) -> ThreadStoreResult<&sqlx::SqlitePool> {
+        if self.state_db.is_none() {
+            return Err(ThreadStoreError::Unsupported {
+                operation: "paginated_history",
+            });
+        }
         self.thread_history_db
             .get_or_try_init(|| async {
                 codex_state::open_thread_history_db(self.config.sqlite_home.as_path()).await

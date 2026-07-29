@@ -210,6 +210,7 @@ mod tests {
             (PlanType::Pro, "Pro"),
             (PlanType::ProLite, "Pro Lite"),
             (PlanType::Team, "Business"),
+            (PlanType::SelfServeBusinessProLite, "Business"),
             (PlanType::SelfServeBusinessUsageBased, "Business"),
             (PlanType::Business, "Enterprise"),
             (PlanType::EnterpriseCbpUsageBased, "Enterprise"),

@@ -639,6 +639,7 @@ async fn resume_replays_image_tool_outputs_with_detail() {
                 name: "view_image".to_string(),
                 namespace: None,
                 arguments: "{\"path\":\"/tmp/example.webp\"}".to_string(),
+                encrypted_function_args: None,
                 call_id: function_call_id.to_string(),
             }),
         },
@@ -2363,6 +2364,7 @@ async fn azure_responses_request_includes_store_and_reasoning_ids() {
         name: "do_thing".into(),
         namespace: None,
         arguments: "{}".into(),
+        encrypted_function_args: None,
         call_id: "function-call-id".into(),
     });
     prompt.input.push(ResponseItem::FunctionCallOutput {

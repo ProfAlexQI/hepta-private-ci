@@ -121,6 +121,39 @@ fn turn_metadata_state_uses_platform_sandbox_tag() {
 }
 
 #[test]
+fn parent_turn_id_is_sent_to_responses_but_not_external_mcp_metadata() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let permission_profile = PermissionProfile::read_only();
+    let state = TurnMetadataState::new_with_parent_turn_id(
+        "session-a".to_string(),
+        "thread-a".to_string(),
+        Some(ThreadSource::Subagent),
+        "turn-child".to_string(),
+        Some("turn-parent".to_string()),
+        temp_dir.path().abs(),
+        &permission_profile,
+        WindowsSandboxLevel::Disabled,
+        /*enforce_managed_network*/ false,
+    );
+
+    let header = state
+        .current_header_value()
+        .expect("Responses metadata header");
+    let responses_metadata: Value = serde_json::from_str(&header).expect("Responses metadata JSON");
+    assert_eq!(
+        responses_metadata
+            .get("parent_turn_id")
+            .and_then(Value::as_str),
+        Some("turn-parent")
+    );
+
+    let mcp_metadata = state
+        .current_meta_value_for_mcp_request(test_mcp_turn_metadata_context())
+        .expect("MCP metadata");
+    assert!(mcp_metadata.get("parent_turn_id").is_none());
+}
+
+#[test]
 fn turn_metadata_state_uses_explicit_subagent_thread_source() {
     let temp_dir = TempDir::new().expect("temp dir");
     let cwd = temp_dir.path().abs();

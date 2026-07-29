@@ -54,6 +54,7 @@ use codex_protocol::protocol::McpStartupFailure;
 use codex_protocol::protocol::McpStartupStatus;
 use codex_protocol::protocol::McpStartupUpdateEvent;
 use codex_rmcp_client::ElicitationResponse;
+use futures::future::join_all;
 use rmcp::model::ElicitationCapability;
 use rmcp::model::ListResourceTemplatesResult;
 use rmcp::model::ListResourcesResult;
@@ -700,8 +701,10 @@ impl McpToolListSnapshot {
     #[instrument(level = "trace", skip_all)]
     pub async fn list_all_tools(&self) -> Vec<ToolInfo> {
         let mut tools = Vec::new();
-        for managed_client in &self.clients {
-            let Some(server_tools) = managed_client.listed_tools().await else {
+        let server_results =
+            join_all(self.clients.iter().map(AsyncManagedClient::listed_tools)).await;
+        for server_tools in server_results {
+            let Some(server_tools) = server_tools else {
                 continue;
             };
             tools.extend(

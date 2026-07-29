@@ -1,3 +1,4 @@
+use hepta_authority::AuthenticatedJournalStore;
 use hepta_authority::AuthenticationFraming;
 use hepta_authority::PLUGIN_MUTATION_EXTERNAL_ANCHOR_FILE_ENV;
 use hepta_authority::PLUGIN_MUTATION_JOURNAL_ENGINE;
@@ -10,15 +11,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::Digest;
 use sha2::Sha256;
-use std::fs::File;
-use std::fs::OpenOptions;
 use std::io::ErrorKind;
-use std::io::Read;
-use std::io::Write;
-#[cfg(unix)]
-use std::os::fd::AsRawFd;
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -42,16 +35,6 @@ const ANCHOR_MAC_DOMAIN: &[u8] = b"hepta.plugin-mutation-anchor.hmac-sha256.v1";
 const CHECKPOINT_HASH_DOMAIN: &str = "hepta-plugin-mutation-checkpoint-v1";
 const CHECKPOINT_GENESIS_HASH: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
-#[cfg(unix)]
-const LOCK_EXCLUSIVE: std::ffi::c_int = 2;
-#[cfg(unix)]
-const LOCK_RELEASE: std::ffi::c_int = 8;
-
-#[cfg(unix)]
-unsafe extern "C" {
-    fn flock(file_descriptor: std::ffi::c_int, operation: std::ffi::c_int) -> std::ffi::c_int;
-}
-
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct PluginMutationJournalError {
@@ -570,34 +553,43 @@ impl PluginMutationJournal {
         &self,
         mutate: impl FnOnce(&mut PluginMutationState) -> Result<T, PluginMutationJournalError>,
     ) -> Result<T, PluginMutationJournalError> {
-        let parent = self.path.parent().ok_or_else(|| {
-            PluginMutationJournalError::new("plugin mutation journal has no parent directory")
-        })?;
-        std::fs::create_dir_all(parent).map_err(|error| {
-            PluginMutationJournalError::new(format!("create journal directory: {error}"))
-        })?;
-        let lock_path = self.path.with_extension("lock");
-        let lock = open_private_lock(&lock_path)?;
-        lock_exclusive(&lock)?;
+        let journal_store = private_store(
+            &self.path,
+            MAX_JOURNAL_BYTES,
+            "hepta-plugin-mutation-journal",
+        )?
+        .with_lock_path(self.path.with_extension("lock"))
+        .map_err(|error| store_error("configure plugin mutation journal lock", error))?;
+        let anchor_store = private_store(
+            &self.anchor_path,
+            MAX_ANCHOR_BYTES,
+            "hepta-plugin-mutation-anchor",
+        )?;
+        let key_store = private_store(
+            &self.path.with_extension("key"),
+            MAX_KEY_BYTES,
+            "hepta-plugin-mutation-key",
+        )?;
+        let _lock = journal_store
+            .lock()
+            .map_err(|error| store_error("lock plugin mutation journal", error))?;
         let result = (|| {
-            let version = journal_version(&self.path)?;
-            let key_path = self.path.with_extension("key");
+            let version = journal_version(&journal_store)?;
             let key = load_or_create_key(
-                &key_path,
+                &key_store,
                 version.is_none() || version == Some(LEGACY_JOURNAL_VERSION),
             )?;
-            let mut loaded = read_state(&self.path, &key)?;
-            verify_or_initialize_anchor(&self.anchor_path, &loaded, &key)?;
+            let mut loaded = read_state(&journal_store, &key)?;
+            verify_or_initialize_anchor(&anchor_store, &loaded, &key)?;
             let mutation_result = mutate(&mut loaded.state);
             if mutation_result.is_ok() {
                 validate_state(&loaded.state)?;
                 loaded.state.refresh_integrity(&key)?;
-                publish_state(&self.path, &loaded.state)?;
-                publish_anchor(&self.anchor_path, &loaded.state, &key)?;
+                publish_state(&journal_store, &loaded.state)?;
+                publish_anchor(&anchor_store, &loaded.state, &key)?;
             }
             mutation_result
         })();
-        unlock(&lock);
         result
     }
 }
@@ -645,11 +637,14 @@ fn replay_record(
     })
 }
 
-fn journal_version(path: &Path) -> Result<Option<u32>, PluginMutationJournalError> {
-    let bytes = match read_private_bytes(path, "plugin mutation journal") {
-        Ok(bytes) => bytes,
-        Err(error) if error.message.ends_with(" does not exist") => return Ok(None),
-        Err(error) => return Err(error),
+fn journal_version(
+    store: &AuthenticatedJournalStore,
+) -> Result<Option<u32>, PluginMutationJournalError> {
+    let Some(bytes) = store
+        .read()
+        .map_err(|error| store_error("read plugin mutation journal header", error))?
+    else {
+        return Ok(None);
     };
     let header: VersionHeader = serde_json::from_slice(&bytes).map_err(|error| {
         PluginMutationJournalError::new(format!("decode plugin mutation journal header: {error}"))
@@ -657,16 +652,18 @@ fn journal_version(path: &Path) -> Result<Option<u32>, PluginMutationJournalErro
     Ok(Some(header.version))
 }
 
-fn read_state(path: &Path, key: &[u8; 32]) -> Result<LoadedState, PluginMutationJournalError> {
-    let bytes = match read_private_bytes(path, "plugin mutation journal") {
-        Ok(bytes) => bytes,
-        Err(error) if error.message.ends_with(" does not exist") => {
-            return Ok(LoadedState {
-                state: PluginMutationState::empty(key)?,
-                origin: StateOrigin::New,
-            });
-        }
-        Err(error) => return Err(error),
+fn read_state(
+    store: &AuthenticatedJournalStore,
+    key: &[u8; 32],
+) -> Result<LoadedState, PluginMutationJournalError> {
+    let Some(bytes) = store
+        .read()
+        .map_err(|error| store_error("read plugin mutation journal", error))?
+    else {
+        return Ok(LoadedState {
+            state: PluginMutationState::empty(key)?,
+            origin: StateOrigin::New,
+        });
     };
     let header: VersionHeader = serde_json::from_slice(&bytes).map_err(|error| {
         PluginMutationJournalError::new(format!("decode plugin mutation journal header: {error}"))
@@ -702,18 +699,20 @@ fn read_state(path: &Path, key: &[u8; 32]) -> Result<LoadedState, PluginMutation
 }
 
 fn verify_or_initialize_anchor(
-    path: &Path,
+    store: &AuthenticatedJournalStore,
     loaded: &LoadedState,
     key: &[u8; 32],
 ) -> Result<(), PluginMutationJournalError> {
-    let anchor = match read_private_bytes(path, "plugin mutation anchor") {
-        Ok(bytes) => Some(
+    let anchor = match store
+        .read()
+        .map_err(|error| store_error("read plugin mutation anchor", error))?
+    {
+        Some(bytes) => Some(
             serde_json::from_slice::<PluginMutationAnchor>(&bytes).map_err(|error| {
                 PluginMutationJournalError::new(format!("decode plugin anchor: {error}"))
             })?,
         ),
-        Err(error) if error.message.ends_with(" does not exist") => None,
-        Err(error) => return Err(error),
+        None => None,
     };
     let Some(anchor) = anchor else {
         if loaded.origin == StateOrigin::Current {
@@ -721,7 +720,7 @@ fn verify_or_initialize_anchor(
                 "plugin mutation anchor is missing for an authenticated journal",
             ));
         }
-        return publish_anchor(path, &loaded.state, key);
+        return publish_anchor(store, &loaded.state, key);
     };
     anchor.verify(key)?;
     if anchor.generation > loaded.state.generation {
@@ -736,23 +735,25 @@ fn verify_or_initialize_anchor(
         ));
     }
     if anchor.generation < loaded.state.generation {
-        publish_anchor(path, &loaded.state, key)?;
+        publish_anchor(store, &loaded.state, key)?;
     }
     Ok(())
 }
 
 fn publish_state(
-    path: &Path,
+    store: &AuthenticatedJournalStore,
     state: &PluginMutationState,
 ) -> Result<(), PluginMutationJournalError> {
     let bytes = serde_json::to_vec(state).map_err(|error| {
         PluginMutationJournalError::new(format!("encode plugin mutation journal: {error}"))
     })?;
-    publish_private_bytes(path, &bytes, "plugin mutation journal")
+    store
+        .publish(&bytes)
+        .map_err(|error| store_error("publish plugin mutation journal", error))
 }
 
 fn publish_anchor(
-    path: &Path,
+    store: &AuthenticatedJournalStore,
     state: &PluginMutationState,
     key: &[u8; 32],
 ) -> Result<(), PluginMutationJournalError> {
@@ -760,30 +761,30 @@ fn publish_anchor(
     let bytes = serde_json::to_vec(&anchor).map_err(|error| {
         PluginMutationJournalError::new(format!("encode plugin mutation anchor: {error}"))
     })?;
-    publish_private_bytes(path, &bytes, "plugin mutation anchor")
+    store
+        .publish(&bytes)
+        .map_err(|error| store_error("publish plugin mutation anchor", error))
 }
 
 fn load_or_create_key(
-    path: &Path,
+    store: &AuthenticatedJournalStore,
     allow_create: bool,
 ) -> Result<[u8; 32], PluginMutationJournalError> {
-    match read_private_bytes(path, "plugin mutation journal key") {
-        Ok(bytes) => decode_key(&bytes),
-        Err(error) if error.message.ends_with(" does not exist") && allow_create => {
+    match store
+        .read()
+        .map_err(|error| store_error("read plugin mutation journal key", error))?
+    {
+        Some(bytes) => decode_key(&bytes),
+        None if allow_create => {
             let key = generate_key();
-            publish_private_bytes(
-                path,
-                hex_encode(&key).as_bytes(),
-                "plugin mutation journal key",
-            )?;
+            store
+                .publish(hex_encode(&key).as_bytes())
+                .map_err(|error| store_error("publish plugin mutation journal key", error))?;
             Ok(key)
         }
-        Err(error) if error.message.ends_with(" does not exist") => {
-            Err(PluginMutationJournalError::new(
-                "plugin mutation journal key is missing for an authenticated journal",
-            ))
-        }
-        Err(error) => Err(error),
+        None => Err(PluginMutationJournalError::new(
+            "plugin mutation journal key is missing for an authenticated journal",
+        )),
     }
 }
 
@@ -805,49 +806,47 @@ fn decode_key(bytes: &[u8]) -> Result<[u8; 32], PluginMutationJournalError> {
     })
 }
 
-fn read_private_bytes(path: &Path, label: &str) -> Result<Vec<u8>, PluginMutationJournalError> {
-    let metadata = match std::fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == ErrorKind::NotFound => {
-            return Err(PluginMutationJournalError::new(format!(
-                "{label} does not exist"
-            )));
-        }
-        Err(error) => {
-            return Err(PluginMutationJournalError::new(format!(
-                "inspect {label}: {error}"
-            )));
-        }
-    };
-    validate_private_metadata(&metadata, label)?;
-    let max_bytes = private_file_limit(label);
-    if metadata.len() > max_bytes {
-        return Err(PluginMutationJournalError::new(format!(
-            "{label} exceeds {max_bytes} bytes"
-        )));
-    }
-    let file = OpenOptions::new()
-        .read(true)
-        .open(path)
-        .map_err(|error| PluginMutationJournalError::new(format!("open {label}: {error}")))?;
-    validate_private_metadata(
-        &file
-            .metadata()
-            .map_err(|error| PluginMutationJournalError::new(format!("stat {label}: {error}")))?,
-        label,
-    )?;
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.take(max_bytes.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(|error| PluginMutationJournalError::new(format!("read {label}: {error}")))?;
-    if bytes.len() as u64 > max_bytes {
-        return Err(PluginMutationJournalError::new(format!(
-            "{label} exceeds {max_bytes} bytes"
-        )));
-    }
-    Ok(bytes)
+fn private_store(
+    path: &Path,
+    max_bytes: u64,
+    staging_prefix: &str,
+) -> Result<AuthenticatedJournalStore, PluginMutationJournalError> {
+    AuthenticatedJournalStore::new(path, max_bytes, staging_prefix)
+        .map_err(|error| store_error("configure authenticated journal store", error))
 }
 
+fn store_error(context: &str, error: anyhow::Error) -> PluginMutationJournalError {
+    PluginMutationJournalError::new(format!("{context}: {error:#}"))
+}
+
+#[cfg(test)]
+fn read_private_bytes(path: &Path, label: &str) -> Result<Vec<u8>, PluginMutationJournalError> {
+    private_store(
+        path,
+        private_file_limit(label),
+        "hepta-plugin-mutation-test",
+    )?
+    .read()
+    .map_err(|error| store_error(&format!("read {label}"), error))?
+    .ok_or_else(|| PluginMutationJournalError::new(format!("{label} does not exist")))
+}
+
+#[cfg(test)]
+fn publish_private_bytes(
+    path: &Path,
+    bytes: &[u8],
+    label: &str,
+) -> Result<(), PluginMutationJournalError> {
+    private_store(
+        path,
+        private_file_limit(label),
+        "hepta-plugin-mutation-test",
+    )?
+    .publish(bytes)
+    .map_err(|error| store_error(&format!("publish {label}"), error))
+}
+
+#[cfg(test)]
 fn private_file_limit(label: &str) -> u64 {
     match label {
         "plugin mutation anchor" => MAX_ANCHOR_BYTES,
@@ -855,119 +854,6 @@ fn private_file_limit(label: &str) -> u64 {
         _ => MAX_JOURNAL_BYTES,
     }
 }
-
-fn validate_private_metadata(
-    metadata: &std::fs::Metadata,
-    label: &str,
-) -> Result<(), PluginMutationJournalError> {
-    if !metadata.file_type().is_file() {
-        return Err(PluginMutationJournalError::new(format!(
-            "{label} must be a regular file"
-        )));
-    }
-    #[cfg(unix)]
-    if metadata.permissions().mode() & 0o077 != 0 {
-        return Err(PluginMutationJournalError::new(format!(
-            "{label} permissions must be private"
-        )));
-    }
-    Ok(())
-}
-
-fn publish_private_bytes(
-    path: &Path,
-    bytes: &[u8],
-    label: &str,
-) -> Result<(), PluginMutationJournalError> {
-    let max_bytes = private_file_limit(label);
-    if bytes.len() as u64 > max_bytes {
-        return Err(PluginMutationJournalError::new(format!(
-            "{label} exceeds {max_bytes} bytes"
-        )));
-    }
-    if let Ok(metadata) = std::fs::symlink_metadata(path) {
-        validate_private_metadata(&metadata, label)?;
-    }
-    let staging = path.with_extension(format!(
-        "tmp-{}-{}",
-        std::process::id(),
-        uuid::Uuid::now_v7()
-    ));
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    let mut file = options.open(&staging).map_err(|error| {
-        PluginMutationJournalError::new(format!("open {label} staging file: {error}"))
-    })?;
-    let result = (|| {
-        file.write_all(bytes).map_err(|error| {
-            PluginMutationJournalError::new(format!("write {label} staging file: {error}"))
-        })?;
-        file.sync_all().map_err(|error| {
-            PluginMutationJournalError::new(format!("sync {label} staging file: {error}"))
-        })?;
-        std::fs::rename(&staging, path).map_err(|error| {
-            PluginMutationJournalError::new(format!("publish {label}: {error}"))
-        })?;
-        if let Some(parent) = path.parent() {
-            File::open(parent)
-                .and_then(|directory| directory.sync_all())
-                .map_err(|error| {
-                    PluginMutationJournalError::new(format!("sync {label} directory: {error}"))
-                })?;
-        }
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(staging);
-    }
-    result
-}
-
-fn open_private_lock(path: &Path) -> Result<File, PluginMutationJournalError> {
-    if let Ok(metadata) = std::fs::symlink_metadata(path) {
-        validate_private_metadata(&metadata, "plugin mutation lock")?;
-    }
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    let file = options.open(path).map_err(|error| {
-        PluginMutationJournalError::new(format!("open plugin mutation lock: {error}"))
-    })?;
-    validate_private_metadata(
-        &file.metadata().map_err(|error| {
-            PluginMutationJournalError::new(format!("stat plugin mutation lock: {error}"))
-        })?,
-        "plugin mutation lock",
-    )?;
-    Ok(file)
-}
-
-#[cfg(unix)]
-fn lock_exclusive(file: &File) -> Result<(), PluginMutationJournalError> {
-    if unsafe { flock(file.as_raw_fd(), LOCK_EXCLUSIVE) } != 0 {
-        return Err(PluginMutationJournalError::new(format!(
-            "lock plugin mutation journal: {}",
-            std::io::Error::last_os_error()
-        )));
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn lock_exclusive(_file: &File) -> Result<(), PluginMutationJournalError> {
-    Ok(())
-}
-
-#[cfg(unix)]
-fn unlock(file: &File) {
-    let _ = unsafe { flock(file.as_raw_fd(), LOCK_RELEASE) };
-}
-
-#[cfg(not(unix))]
-fn unlock(_file: &File) {}
 
 fn compact_terminal_records(
     state: &mut PluginMutationState,

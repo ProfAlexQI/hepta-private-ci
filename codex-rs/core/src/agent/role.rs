@@ -41,13 +41,44 @@ pub(crate) async fn apply_role_to_config(
     config: &mut Config,
     role_name: Option<&str>,
 ) -> Result<(), String> {
+    apply_role_to_config_with_developer_instructions(
+        config,
+        role_name,
+        RoleDeveloperInstructions::UseConfigLayers,
+    )
+    .await
+}
+
+pub(crate) async fn apply_role_to_config_for_multi_agent_v2(
+    config: &mut Config,
+    role_name: Option<&str>,
+) -> Result<(), String> {
+    apply_role_to_config_with_developer_instructions(
+        config,
+        role_name,
+        RoleDeveloperInstructions::PreserveCallerInstructions,
+    )
+    .await
+}
+
+#[derive(Clone, Copy)]
+enum RoleDeveloperInstructions {
+    UseConfigLayers,
+    PreserveCallerInstructions,
+}
+
+async fn apply_role_to_config_with_developer_instructions(
+    config: &mut Config,
+    role_name: Option<&str>,
+    developer_instructions: RoleDeveloperInstructions,
+) -> Result<(), String> {
     let role_name = role_name.unwrap_or(DEFAULT_ROLE_NAME);
 
     let role = resolve_role_config(config, role_name)
         .cloned()
         .ok_or_else(|| format!("unknown agent_type '{role_name}'"))?;
 
-    apply_role_to_config_inner(config, role_name, &role)
+    apply_role_to_config_inner(config, role_name, &role, developer_instructions)
         .await
         .map_err(|err| {
             tracing::warn!("failed to apply role to config: {err}");
@@ -59,6 +90,7 @@ async fn apply_role_to_config_inner(
     config: &mut Config,
     role_name: &str,
     role: &AgentRoleConfig,
+    developer_instructions: RoleDeveloperInstructions,
 ) -> anyhow::Result<()> {
     let is_built_in = !config.agent_roles.contains_key(role_name);
     let Some(config_file) = role.config_file.as_ref() else {
@@ -77,6 +109,7 @@ async fn apply_role_to_config_inner(
     *config = reload::build_next_config(
         config,
         role_layer_toml,
+        developer_instructions,
         preserve_current_profile,
         preserve_current_provider,
     )
@@ -155,6 +188,7 @@ mod reload {
     pub(super) async fn build_next_config(
         config: &Config,
         role_layer_toml: TomlValue,
+        developer_instructions: RoleDeveloperInstructions,
         preserve_current_profile: bool,
         preserve_current_provider: bool,
     ) -> anyhow::Result<Config> {
@@ -168,10 +202,20 @@ mod reload {
             merged_config.profile = None;
         }
 
+        let mut overrides = reload_overrides(config, preserve_current_provider);
+        if let (RoleDeveloperInstructions::PreserveCallerInstructions, Some(_), None) = (
+            developer_instructions,
+            &config.multi_agent_v2.subagent_developer_instructions,
+            role_layer_toml.get("developer_instructions"),
+        ) {
+            overrides
+                .developer_instructions
+                .clone_from(&config.developer_instructions);
+        }
         let mut next_config = Config::load_config_with_layer_stack(
             LOCAL_FS.as_ref(),
             merged_config,
-            reload_overrides(config, preserve_current_provider),
+            overrides,
             config.codex_home.clone(),
             config_layer_stack,
         )

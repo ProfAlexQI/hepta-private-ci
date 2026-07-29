@@ -17,6 +17,9 @@ pub enum PlanType {
     Pro,
     ProLite,
     Team,
+    #[serde(rename = "self_serve_business_prolite")]
+    #[ts(rename = "self_serve_business_prolite")]
+    SelfServeBusinessProLite,
     #[serde(rename = "self_serve_business_usage_based")]
     #[ts(rename = "self_serve_business_usage_based")]
     SelfServeBusinessUsageBased,
@@ -40,7 +43,10 @@ pub enum ProviderAccount {
 
 impl PlanType {
     pub fn is_team_like(self) -> bool {
-        matches!(self, Self::Team | Self::SelfServeBusinessUsageBased)
+        matches!(
+            self,
+            Self::Team | Self::SelfServeBusinessProLite | Self::SelfServeBusinessUsageBased
+        )
     }
 
     pub fn is_business_like(self) -> bool {
@@ -51,6 +57,7 @@ impl PlanType {
         matches!(
             self,
             Self::Team
+                | Self::SelfServeBusinessProLite
                 | Self::SelfServeBusinessUsageBased
                 | Self::Business
                 | Self::EnterpriseCbpUsageBased
@@ -78,6 +85,7 @@ impl From<KnownPlan> for PlanType {
             KnownPlan::Pro => Self::Pro,
             KnownPlan::ProLite => Self::ProLite,
             KnownPlan::Team => Self::Team,
+            KnownPlan::SelfServeBusinessProLite => Self::SelfServeBusinessProLite,
             KnownPlan::SelfServeBusinessUsageBased => Self::SelfServeBusinessUsageBased,
             KnownPlan::Business => Self::Business,
             KnownPlan::EnterpriseCbpUsageBased => Self::EnterpriseCbpUsageBased,

@@ -18,6 +18,9 @@ pub(super) async fn materialize_to_sqlite(
     thread_id: ThreadId,
     rollout_path: &Path,
 ) -> ThreadStoreResult<()> {
+    if store.state_db.is_none() {
+        return Ok(());
+    }
     let start_offset = super::thread_history::next_rollout_byte_offset(store, thread_id).await?;
     let (lines, next_offset) = read_complete_rollout_lines(rollout_path, start_offset).await?;
     if lines.is_empty() && start_offset == next_offset {

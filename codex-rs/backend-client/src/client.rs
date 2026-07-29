@@ -572,6 +572,9 @@ impl Client {
             crate::types::PlanType::Pro => AccountPlanType::Pro,
             crate::types::PlanType::ProLite => AccountPlanType::ProLite,
             crate::types::PlanType::Team => AccountPlanType::Team,
+            crate::types::PlanType::SelfServeBusinessProLite => {
+                AccountPlanType::SelfServeBusinessProLite
+            }
             crate::types::PlanType::SelfServeBusinessUsageBased => {
                 AccountPlanType::SelfServeBusinessUsageBased
             }

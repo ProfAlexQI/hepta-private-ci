@@ -4,7 +4,7 @@ use crate::agent::control::SpawnAgentOptions;
 use crate::agent::control::render_input_preview;
 use crate::agent::next_thread_spawn_depth;
 use crate::agent::role::DEFAULT_ROLE_NAME;
-use crate::agent::role::apply_role_to_config;
+use crate::agent::role::apply_role_to_config_for_multi_agent_v2;
 use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v2;
 use crate::tools::handlers::work_graph_admission::WorkGraphAdmissionShadowDecision;
@@ -17,7 +17,6 @@ use crate::tools::handlers::work_graph_admission::configured_agent_role_manifest
 use crate::tools::handlers::work_graph_admission::subagent_spawn_agent_card_manifest;
 use crate::turn_timing::now_unix_timestamp_ms;
 use codex_protocol::AgentPath;
-use codex_protocol::protocol::InterAgentCommunication;
 use codex_protocol::protocol::Op;
 use codex_tools::ToolSpec;
 
@@ -58,6 +57,7 @@ async fn handle_spawn_agent(
         turn,
         payload,
         call_id,
+        source,
         ..
     } = invocation;
     let arguments = function_arguments(payload)?;
@@ -132,7 +132,7 @@ async fn handle_spawn_agent(
             args.reasoning_effort,
         )
         .await?;
-        apply_role_to_config(&mut config, role_name)
+        apply_role_to_config_for_multi_agent_v2(&mut config, role_name)
             .await
             .map_err(FunctionCallError::RespondToModel)?;
     }
@@ -163,13 +163,13 @@ async fn handle_spawn_agent(
                         .all(|item| matches!(item, UserInput::Text { .. })) =>
                 {
                     Op::InterAgentCommunication {
-                        communication: InterAgentCommunication::new(
+                        communication: communication_from_tool_message(
                             turn.session_source
                                 .get_agent_path()
                                 .unwrap_or_else(AgentPath::root),
                             recipient,
-                            Vec::new(),
                             prompt.clone(),
+                            &source,
                             /*trigger_turn*/ true,
                         ),
                     }
@@ -180,6 +180,7 @@ async fn handle_spawn_agent(
             SpawnAgentOptions {
                 fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
                 fork_mode,
+                parent_turn_id: Some(turn.sub_id.clone()),
                 environments: Some(turn.environments.to_selections()),
             },
         ),

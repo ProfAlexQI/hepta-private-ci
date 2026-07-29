@@ -570,6 +570,7 @@ impl MessageProcessor {
                 id: request_id_string,
                 op: codex_protocol::protocol::Op::Interrupt,
                 trace: None,
+                parent_turn_id: None,
             })
             .await
         {

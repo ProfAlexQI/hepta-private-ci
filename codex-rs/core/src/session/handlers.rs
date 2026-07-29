@@ -99,10 +99,20 @@ pub async fn override_turn_context(sess: &Session, sub_id: String, updates: Sess
 }
 
 pub async fn user_input_or_turn(sess: &Arc<Session>, sub_id: String, op: Op) {
+    user_input_or_turn_with_parent(sess, sub_id, op, /*parent_turn_id*/ None).await;
+}
+
+pub async fn user_input_or_turn_with_parent(
+    sess: &Arc<Session>,
+    sub_id: String,
+    op: Op,
+    parent_turn_id: Option<String>,
+) {
     user_input_or_turn_inner(
         sess,
         sub_id,
         op,
+        parent_turn_id,
         /*mirror_user_text_to_realtime*/ Some(()),
     )
     .await;
@@ -112,6 +122,7 @@ pub(super) async fn user_input_or_turn_inner(
     sess: &Arc<Session>,
     sub_id: String,
     op: Op,
+    parent_turn_id: Option<String>,
     mirror_user_text_to_realtime: Option<()>,
 ) {
     let (items, updates, responsesapi_client_metadata, context_recall_selected_snippets) = match op
@@ -243,7 +254,10 @@ pub(super) async fn user_input_or_turn_inner(
         _ => unreachable!(),
     };
 
-    let Ok(current_context) = sess.new_turn_with_sub_id(sub_id.clone(), updates).await else {
+    let Ok(current_context) = sess
+        .new_turn_with_sub_id_and_parent(sub_id.clone(), updates, parent_turn_id)
+        .await
+    else {
         // new_turn_with_sub_id already emits the error event.
         return;
     };
@@ -340,8 +354,24 @@ pub async fn inter_agent_communication(
     sub_id: String,
     communication: InterAgentCommunication,
 ) {
+    inter_agent_communication_with_parent(
+        sess,
+        sub_id,
+        communication,
+        /*parent_turn_id*/ None,
+    )
+    .await;
+}
+
+pub async fn inter_agent_communication_with_parent(
+    sess: &Arc<Session>,
+    sub_id: String,
+    communication: InterAgentCommunication,
+    parent_turn_id: Option<String>,
+) {
     let trigger_turn = communication.trigger_turn;
-    let mailbox_seq = sess.enqueue_mailbox_communication(communication.clone());
+    let mailbox_seq = sess
+        .enqueue_mailbox_communication_with_parent(communication.clone(), parent_turn_id.clone());
     if let Some(state_db) = sess.state_db() {
         let trace_id = codex_otel::current_span_trace_id();
         if let Err(err) = state_db
@@ -357,7 +387,7 @@ pub async fn inter_agent_communication(
         }
     }
     if trigger_turn {
-        sess.maybe_start_turn_for_pending_work_with_sub_id(sub_id)
+        sess.maybe_start_turn_for_pending_work_with_sub_id_and_parent(sub_id, parent_turn_id)
             .await;
     }
 }
@@ -737,9 +767,12 @@ pub async fn review(
     sess: &Arc<Session>,
     config: &Arc<Config>,
     sub_id: String,
+    parent_turn_id: Option<String>,
     review_request: ReviewRequest,
 ) {
-    let turn_context = sess.new_default_turn_with_sub_id(sub_id.clone()).await;
+    let turn_context = sess
+        .new_default_turn_with_sub_id_and_parent(sub_id.clone(), parent_turn_id)
+        .await;
     sess.maybe_emit_unknown_model_warning_for_turn(turn_context.as_ref())
         .await;
     sess.refresh_mcp_servers_if_requested(&turn_context, Some(sess.mcp_elicitation_reviewer()))
@@ -867,11 +900,23 @@ pub(super) async fn submission_loop(
                 Op::UserInput { .. }
                 | Op::UserInputWithTurnContext { .. }
                 | Op::UserTurn { .. } => {
-                    user_input_or_turn(&sess, sub.id.clone(), sub.op).await;
+                    user_input_or_turn_with_parent(
+                        &sess,
+                        sub.id.clone(),
+                        sub.op,
+                        sub.parent_turn_id.clone(),
+                    )
+                    .await;
                     false
                 }
                 Op::InterAgentCommunication { communication } => {
-                    inter_agent_communication(&sess, sub.id.clone(), communication).await;
+                    inter_agent_communication_with_parent(
+                        &sess,
+                        sub.id.clone(),
+                        communication,
+                        sub.parent_turn_id.clone(),
+                    )
+                    .await;
                     false
                 }
                 Op::ExecApproval {
@@ -935,7 +980,14 @@ pub(super) async fn submission_loop(
                 }
                 Op::Shutdown => shutdown(&sess, sub.id.clone()).await,
                 Op::Review { review_request } => {
-                    review(&sess, &config, sub.id.clone(), review_request).await;
+                    review(
+                        &sess,
+                        &config,
+                        sub.id.clone(),
+                        sub.parent_turn_id.clone(),
+                        review_request,
+                    )
+                    .await;
                     false
                 }
                 Op::ApproveGuardianDeniedAction { event } => {

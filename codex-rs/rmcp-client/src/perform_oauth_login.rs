@@ -9,11 +9,12 @@ use anyhow::anyhow;
 use anyhow::bail;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use reqwest::ClientBuilder;
+use codex_exec_server::HttpClient;
 use reqwest::Url;
 use rmcp::transport::AuthorizationManager;
 use rmcp::transport::AuthorizationSession;
 use rmcp::transport::auth::OAuthClientConfig;
+use rmcp::transport::auth::OAuthHttpClient;
 use rmcp::transport::auth::OAuthState;
 use sha2::Digest;
 use sha2::Sha256;
@@ -26,14 +27,15 @@ use urlencoding::decode;
 use crate::StoredOAuthTokens;
 use crate::WrappedOAuthTokenResponse;
 use crate::oauth::compute_expires_at_millis;
+use crate::oauth_http_client::OAuthHttpClientAdapter;
 use crate::save_oauth_tokens;
-use crate::utils::apply_default_headers;
 use crate::utils::build_default_headers;
 use codex_config::types::OAuthCredentialsStoreMode;
 
-struct OauthHeaders {
+struct OAuthHttpContext {
     http_headers: Option<HashMap<String, String>>,
     env_http_headers: Option<HashMap<String, String>>,
+    http_client: Arc<dyn HttpClient>,
 }
 
 struct CallbackServerGuard {
@@ -88,6 +90,7 @@ pub async fn perform_oauth_login(
     oauth_resource: Option<&str>,
     callback_port: Option<u16>,
     callback_url: Option<&str>,
+    http_client: Arc<dyn HttpClient>,
 ) -> Result<()> {
     perform_oauth_login_with_browser_output(
         server_name,
@@ -100,6 +103,7 @@ pub async fn perform_oauth_login(
         oauth_resource,
         callback_port,
         callback_url,
+        http_client,
         /*emit_browser_url*/ true,
     )
     .await
@@ -117,6 +121,7 @@ pub async fn perform_oauth_login_silent(
     oauth_resource: Option<&str>,
     callback_port: Option<u16>,
     callback_url: Option<&str>,
+    http_client: Arc<dyn HttpClient>,
 ) -> Result<()> {
     perform_oauth_login_with_browser_output(
         server_name,
@@ -129,6 +134,7 @@ pub async fn perform_oauth_login_silent(
         oauth_resource,
         callback_port,
         callback_url,
+        http_client,
         /*emit_browser_url*/ false,
     )
     .await
@@ -146,17 +152,19 @@ async fn perform_oauth_login_with_browser_output(
     oauth_resource: Option<&str>,
     callback_port: Option<u16>,
     callback_url: Option<&str>,
+    http_client: Arc<dyn HttpClient>,
     emit_browser_url: bool,
 ) -> Result<()> {
-    let headers = OauthHeaders {
+    let http_context = OAuthHttpContext {
         http_headers,
         env_http_headers,
+        http_client,
     };
     OauthLoginFlow::new(
         server_name,
         server_url,
         store_mode,
-        headers,
+        http_context,
         scopes,
         oauth_client_id,
         oauth_resource,
@@ -183,16 +191,18 @@ pub async fn perform_oauth_login_return_url(
     timeout_secs: Option<i64>,
     callback_port: Option<u16>,
     callback_url: Option<&str>,
+    http_client: Arc<dyn HttpClient>,
 ) -> Result<OauthLoginHandle> {
-    let headers = OauthHeaders {
+    let http_context = OAuthHttpContext {
         http_headers,
         env_http_headers,
+        http_client,
     };
     let flow = OauthLoginFlow::new(
         server_name,
         server_url,
         store_mode,
-        headers,
+        http_context,
         scopes,
         oauth_client_id,
         oauth_resource,
@@ -445,7 +455,7 @@ impl OauthLoginFlow {
         server_name: &str,
         server_url: &str,
         store_mode: OAuthCredentialsStoreMode,
-        headers: OauthHeaders,
+        http_context: OAuthHttpContext,
         scopes: &[String],
         oauth_client_id: Option<&str>,
         oauth_resource: Option<&str>,
@@ -476,17 +486,18 @@ impl OauthLoginFlow {
         let (tx, rx) = oneshot::channel();
         spawn_callback_server(server, tx, callback_path);
 
-        let OauthHeaders {
+        let OAuthHttpContext {
             http_headers,
             env_http_headers,
-        } = headers;
+            http_client,
+        } = http_context;
         let default_headers = build_default_headers(http_headers, env_http_headers)?;
-        let http_client = apply_default_headers(ClientBuilder::new(), &default_headers).build()?;
+        let oauth_http_client = Arc::new(OAuthHttpClientAdapter::new(http_client, default_headers));
 
         let scope_refs: Vec<&str> = scopes.iter().map(String::as_str).collect();
         let oauth_state = start_authorization(
             server_url,
-            http_client,
+            oauth_http_client,
             &scope_refs,
             &redirect_uri,
             oauth_client_id,
@@ -603,22 +614,23 @@ impl OauthLoginFlow {
 
 async fn start_authorization(
     server_url: &str,
-    http_client: reqwest::Client,
+    http_client: Arc<dyn OAuthHttpClient>,
     scopes: &[&str],
     redirect_uri: &str,
     oauth_client_id: Option<&str>,
 ) -> Result<OAuthState> {
+    let mut auth_manager =
+        AuthorizationManager::new_with_oauth_http_client(server_url, http_client).await?;
+
     let Some(oauth_client_id) = oauth_client_id.filter(|client_id| !client_id.trim().is_empty())
     else {
-        let mut oauth_state = OAuthState::new(server_url, Some(http_client)).await?;
+        let mut oauth_state = OAuthState::Unauthorized(auth_manager);
         oauth_state
             .start_authorization(scopes, redirect_uri, Some("Hepta"))
             .await?;
         return Ok(oauth_state);
     };
 
-    let mut auth_manager = AuthorizationManager::new(server_url).await?;
-    auth_manager.with_client(http_client)?;
     let metadata = auth_manager.discover_metadata().await?;
     auth_manager.set_metadata(metadata);
     auth_manager.configure_client(
@@ -651,9 +663,25 @@ fn append_query_param(url: &str, key: &str, value: Option<&str>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
     use axum::Json;
     use axum::Router;
     use axum::routing::get;
+    use codex_config::types::OAuthCredentialsStoreMode;
+    use codex_exec_server::ExecServerError;
+    use codex_exec_server::HttpClient;
+    use codex_exec_server::HttpRedirectPolicy;
+    use codex_exec_server::HttpRequestParams;
+    use codex_exec_server::HttpRequestResponse;
+    use codex_exec_server::HttpResponseBodyStream;
+    use codex_exec_server::RouteAwareHttpClient;
+    use codex_http_client::HttpClientFactory;
+    use codex_http_client::OutboundProxyPolicy;
+    use futures::future::BoxFuture;
+    use http::HeaderMap;
     use pretty_assertions::assert_eq;
     use reqwest::Url;
     use serde_json::json;
@@ -666,7 +694,53 @@ mod tests {
     use super::callback_id_from_server_url;
     use super::callback_path_from_redirect_uri;
     use super::parse_oauth_callback;
+    use super::perform_oauth_login;
     use super::start_authorization;
+    use crate::oauth_http_client::OAuthHttpClientAdapter;
+
+    #[derive(Default)]
+    struct RecordingHttpClient {
+        requests: AtomicUsize,
+    }
+
+    impl HttpClient for RecordingHttpClient {
+        fn http_request(
+            &self,
+            _params: HttpRequestParams,
+        ) -> BoxFuture<'_, Result<HttpRequestResponse, ExecServerError>> {
+            Box::pin(async {
+                Err(ExecServerError::HttpRequest(
+                    "unexpected buffered OAuth request".to_string(),
+                ))
+            })
+        }
+
+        fn http_request_stream(
+            &self,
+            _params: HttpRequestParams,
+        ) -> BoxFuture<'_, Result<(HttpRequestResponse, HttpResponseBodyStream), ExecServerError>>
+        {
+            Box::pin(async {
+                Err(ExecServerError::HttpRequest(
+                    "unexpected redirect-unspecified OAuth request".to_string(),
+                ))
+            })
+        }
+
+        fn http_request_stream_with_redirect_policy(
+            &self,
+            _params: HttpRequestParams,
+            _redirect_policy: HttpRedirectPolicy,
+        ) -> BoxFuture<'_, Result<(HttpRequestResponse, HttpResponseBodyStream), ExecServerError>>
+        {
+            self.requests.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async {
+                Err(ExecServerError::HttpRequest(
+                    "configured OAuth client was used".to_string(),
+                ))
+            })
+        }
+    }
 
     async fn spawn_oauth_metadata_server() -> String {
         let listener = TcpListener::bind("127.0.0.1:0")
@@ -710,7 +784,12 @@ mod tests {
         let base_url = spawn_oauth_metadata_server().await;
         let oauth_state = start_authorization(
             &format!("{base_url}/mcp"),
-            reqwest::Client::new(),
+            Arc::new(OAuthHttpClientAdapter::new(
+                Arc::new(RouteAwareHttpClient::new(HttpClientFactory::new(
+                    OutboundProxyPolicy::ReqwestDefault,
+                ))),
+                HeaderMap::new(),
+            )),
             &[],
             "http://127.0.0.1/callback",
             Some("eci-prd-pub-codex-123"),
@@ -729,6 +808,28 @@ mod tests {
             .map(|(_, value)| value.into_owned());
 
         assert_eq!(client_id.as_deref(), Some("eci-prd-pub-codex-123"));
+    }
+
+    #[tokio::test]
+    async fn oauth_login_uses_supplied_http_client() {
+        let http_client = Arc::new(RecordingHttpClient::default());
+        perform_oauth_login(
+            "configured-client",
+            "http://127.0.0.1:1/mcp",
+            OAuthCredentialsStoreMode::default(),
+            /*http_headers*/ None,
+            /*env_http_headers*/ None,
+            &[],
+            /*oauth_client_id*/ None,
+            /*oauth_resource*/ None,
+            /*callback_port*/ None,
+            /*callback_url*/ None,
+            http_client.clone(),
+        )
+        .await
+        .expect_err("OAuth discovery should fail through the supplied client");
+
+        assert!(http_client.requests.load(Ordering::SeqCst) > 0);
     }
 
     #[test]

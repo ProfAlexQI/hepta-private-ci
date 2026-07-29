@@ -90,4 +90,29 @@ pub trait HttpClient: Send + Sync {
         &self,
         params: HttpRequestParams,
     ) -> BoxFuture<'_, Result<(HttpRequestResponse, HttpResponseBodyStream), ExecServerError>>;
+
+    /// Perform a streamed request with an explicit redirect policy.
+    ///
+    /// Older remote executors do not carry redirect policy in their protocol,
+    /// so the default implementation fails closed for `Stop`.
+    fn http_request_stream_with_redirect_policy(
+        &self,
+        params: HttpRequestParams,
+        redirect_policy: HttpRedirectPolicy,
+    ) -> BoxFuture<'_, Result<(HttpRequestResponse, HttpResponseBodyStream), ExecServerError>> {
+        match redirect_policy {
+            HttpRedirectPolicy::Follow => self.http_request_stream(params),
+            HttpRedirectPolicy::Stop => Box::pin(async {
+                Err(ExecServerError::HttpRequest(
+                    "HTTP client cannot enforce stop-redirect policy".to_string(),
+                ))
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HttpRedirectPolicy {
+    Follow,
+    Stop,
 }

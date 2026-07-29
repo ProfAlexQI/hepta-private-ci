@@ -145,6 +145,7 @@ fn response_item_records_turn_ttft_for_first_output_signals() {
             name: "shell".to_string(),
             namespace: None,
             arguments: "{}".to_string(),
+            encrypted_function_args: None,
             call_id: "call-1".to_string(),
         }
     ));

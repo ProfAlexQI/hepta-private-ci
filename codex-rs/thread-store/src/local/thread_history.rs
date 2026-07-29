@@ -27,6 +27,9 @@ pub(super) async fn next_rollout_byte_offset(
     store: &LocalThreadStore,
     thread_id: ThreadId,
 ) -> ThreadStoreResult<u64> {
+    if store.state_db.is_none() {
+        return Ok(0);
+    }
     let db_path = codex_state::thread_history_db_path(store.config.sqlite_home.as_path());
     if !tokio::fs::try_exists(db_path.as_path())
         .await

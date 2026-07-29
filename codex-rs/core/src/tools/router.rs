@@ -18,6 +18,7 @@ use codex_tools::ToolExecutor;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 use codex_tools::ToolsConfig;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -30,6 +31,37 @@ pub struct ToolCall {
     pub tool_name: ToolName,
     pub call_id: String,
     pub payload: ToolPayload,
+}
+
+pub(crate) fn direct_source_for_response_item(item: &ResponseItem) -> ToolCallSource {
+    if let ResponseItem::FunctionCall {
+        name,
+        namespace,
+        encrypted_function_args: Some(encrypted_function_args),
+        ..
+    } = item
+        && namespace.as_deref() == Some("collaboration")
+        && matches!(
+            name.as_str(),
+            "spawn_agent" | "send_message" | "followup_task"
+        )
+        && encrypted_function_args.is_empty()
+    {
+        ToolCallSource::DirectPlaintextMessage
+    } else {
+        ToolCallSource::Direct
+    }
+}
+
+pub(crate) fn tool_log_payload<'a>(
+    payload: &'a ToolPayload,
+    source: &ToolCallSource,
+) -> Cow<'a, str> {
+    if matches!(source, ToolCallSource::DirectPlaintextMessage) {
+        Cow::Borrowed("[plaintext arguments]")
+    } else {
+        payload.log_payload()
+    }
 }
 
 pub struct ToolRouter {

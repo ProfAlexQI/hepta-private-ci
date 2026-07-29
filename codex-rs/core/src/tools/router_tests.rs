@@ -152,6 +152,7 @@ async fn build_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()
         name: tool_name.clone(),
         namespace: Some("mcp__codex_apps__calendar".to_string()),
         arguments: "{}".to_string(),
+        encrypted_function_args: None,
         call_id: "call-namespace".to_string(),
     })?
     .expect("function_call should produce a tool call");
@@ -169,6 +170,73 @@ async fn build_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()
     }
 
     Ok(())
+}
+
+#[test]
+fn plaintext_collaboration_marker_is_narrow_and_fail_closed() {
+    let plaintext = ResponseItem::FunctionCall {
+        id: None,
+        name: "send_message".to_string(),
+        namespace: Some("collaboration".to_string()),
+        arguments: r#"{"target":"/root/worker","message":"secret"}"#.to_string(),
+        encrypted_function_args: Some(Vec::new()),
+        call_id: "call-plaintext".to_string(),
+    };
+    assert_eq!(
+        crate::tools::router::direct_source_for_response_item(&plaintext),
+        ToolCallSource::DirectPlaintextMessage
+    );
+
+    let wrong_namespace = ResponseItem::FunctionCall {
+        id: None,
+        name: "send_message".to_string(),
+        namespace: None,
+        arguments: "{}".to_string(),
+        encrypted_function_args: Some(Vec::new()),
+        call_id: "call-wrong-namespace".to_string(),
+    };
+    assert_eq!(
+        crate::tools::router::direct_source_for_response_item(&wrong_namespace),
+        ToolCallSource::Direct
+    );
+
+    let wrong_tool = ResponseItem::FunctionCall {
+        id: None,
+        name: "close_agent".to_string(),
+        namespace: Some("collaboration".to_string()),
+        arguments: "{}".to_string(),
+        encrypted_function_args: Some(Vec::new()),
+        call_id: "call-wrong-tool".to_string(),
+    };
+    assert_eq!(
+        crate::tools::router::direct_source_for_response_item(&wrong_tool),
+        ToolCallSource::Direct
+    );
+
+    let encrypted = ResponseItem::FunctionCall {
+        id: None,
+        name: "send_message".to_string(),
+        namespace: Some("collaboration".to_string()),
+        arguments: "{}".to_string(),
+        encrypted_function_args: Some(vec!["opaque".to_string()]),
+        call_id: "call-encrypted".to_string(),
+    };
+    assert_eq!(
+        crate::tools::router::direct_source_for_response_item(&encrypted),
+        ToolCallSource::Direct
+    );
+
+    let payload = ToolPayload::Function {
+        arguments: r#"{"message":"secret"}"#.to_string(),
+    };
+    assert_eq!(
+        crate::tools::router::tool_log_payload(&payload, &ToolCallSource::DirectPlaintextMessage),
+        "[plaintext arguments]"
+    );
+    assert_eq!(
+        crate::tools::router::tool_log_payload(&payload, &ToolCallSource::Direct),
+        r#"{"message":"secret"}"#
+    );
 }
 
 #[tokio::test]
@@ -482,6 +550,7 @@ async fn extension_tool_executors_are_model_visible_and_dispatchable() -> anyhow
         name: "echo".to_string(),
         namespace: Some("extension/".to_string()),
         arguments: json!({ "message": "hello" }).to_string(),
+        encrypted_function_args: None,
         call_id: "call-extension".to_string(),
     })?
     .expect("function_call should produce a tool call");

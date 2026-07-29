@@ -54,6 +54,7 @@ pub(crate) enum SpawnAgentForkMode {
 pub(crate) struct SpawnAgentOptions {
     pub(crate) fork_parent_spawn_call_id: Option<String>,
     pub(crate) fork_mode: Option<SpawnAgentForkMode>,
+    pub(crate) parent_turn_id: Option<String>,
     pub(crate) environments: Option<Vec<TurnEnvironmentSelection>>,
 }
 
@@ -125,6 +126,44 @@ fn keep_forked_rollout_item(item: &RolloutItem) -> bool {
         RolloutItem::TurnContext(_) => false,
         RolloutItem::Compacted(_) | RolloutItem::EventMsg(_) | RolloutItem::SessionMeta(_) => true,
     }
+}
+
+fn retain_forked_response_item(
+    item: &mut ResponseItem,
+    usage_hint_texts: &[String],
+    parent_developer_instructions: Option<&str>,
+    subagent_developer_instructions: Option<&str>,
+) -> bool {
+    let ResponseItem::Message { role, content, .. } = item else {
+        return true;
+    };
+    if role != "developer" {
+        return true;
+    }
+    if let [ContentItem::InputText { text }] = content.as_slice()
+        && usage_hint_texts
+            .iter()
+            .any(|usage_hint_text| usage_hint_text == text)
+    {
+        return false;
+    }
+    let (Some(parent), Some(subagent)) = (
+        parent_developer_instructions,
+        subagent_developer_instructions,
+    ) else {
+        return true;
+    };
+    content.retain_mut(|content_item| {
+        let ContentItem::InputText { text } = content_item else {
+            return true;
+        };
+        if !text.contains(parent) {
+            return true;
+        }
+        *text = text.replace(parent, subagent);
+        !text.is_empty()
+    });
+    !content.is_empty()
 }
 
 /// Control-plane handle for multi-agent operations.
@@ -323,8 +362,12 @@ impl AgentControl {
         )
         .await;
 
-        self.send_input(new_thread.thread_id, initial_operation)
-            .await?;
+        self.send_input_with_parent(
+            new_thread.thread_id,
+            initial_operation,
+            options.parent_turn_id.clone(),
+        )
+        .await?;
         if !new_thread.thread.enabled(Feature::MultiAgentV2) {
             let child_reference = agent_metadata
                 .agent_path
@@ -376,6 +419,31 @@ impl AgentControl {
 
         let parent_thread_id = *parent_thread_id;
         let parent_thread = state.get_thread(parent_thread_id).await.ok();
+        let (parent_developer_instructions, subagent_developer_instructions) = if config
+            .multi_agent_v2
+            .subagent_developer_instructions
+            .is_some()
+        {
+            let parent_developer_instructions = if let Some(parent_thread) = parent_thread.as_ref()
+            {
+                parent_thread
+                    .codex
+                    .session
+                    .new_default_turn()
+                    .await
+                    .developer_instructions
+                    .clone()
+                    .filter(|instructions| !instructions.is_empty())
+            } else {
+                None
+            };
+            (
+                parent_developer_instructions,
+                Some(config.developer_instructions.clone().unwrap_or_default()),
+            )
+        } else {
+            (None, None)
+        };
         if let Some(parent_thread) = parent_thread.as_ref() {
             // `record_conversation_items` only queues persistence writes asynchronously.
             // Flush before snapshotting store history for a fork.
@@ -423,18 +491,34 @@ impl AgentControl {
             } else {
                 Vec::new()
             };
-        forked_rollout_items.retain(|item| {
-            if let RolloutItem::ResponseItem(ResponseItem::Message { role, content, .. }) = item
-                && role == "developer"
-                && let [ContentItem::InputText { text }] = content.as_slice()
-                && multi_agent_v2_usage_hint_texts_to_filter
-                    .iter()
-                    .any(|usage_hint_text| usage_hint_text == text)
-            {
+        forked_rollout_items.retain_mut(|item| {
+            if !keep_forked_rollout_item(item) {
                 return false;
             }
-
-            keep_forked_rollout_item(item)
+            match item {
+                RolloutItem::ResponseItem(response_item) => retain_forked_response_item(
+                    response_item,
+                    &multi_agent_v2_usage_hint_texts_to_filter,
+                    parent_developer_instructions.as_deref(),
+                    subagent_developer_instructions.as_deref(),
+                ),
+                RolloutItem::Compacted(compacted) => {
+                    if let Some(replacement_history) = compacted.replacement_history.as_mut() {
+                        replacement_history.retain_mut(|response_item| {
+                            retain_forked_response_item(
+                                response_item,
+                                &multi_agent_v2_usage_hint_texts_to_filter,
+                                parent_developer_instructions.as_deref(),
+                                subagent_developer_instructions.as_deref(),
+                            )
+                        });
+                    }
+                    true
+                }
+                RolloutItem::EventMsg(_)
+                | RolloutItem::SessionMeta(_)
+                | RolloutItem::TurnContext(_) => true,
+            }
         });
 
         state
@@ -642,13 +726,25 @@ impl AgentControl {
         agent_id: ThreadId,
         initial_operation: Op,
     ) -> CodexResult<String> {
+        self.send_input_with_parent(agent_id, initial_operation, /*parent_turn_id*/ None)
+            .await
+    }
+
+    pub(crate) async fn send_input_with_parent(
+        &self,
+        agent_id: ThreadId,
+        initial_operation: Op,
+        parent_turn_id: Option<String>,
+    ) -> CodexResult<String> {
         let last_task_message = render_input_preview(&initial_operation);
         let state = self.upgrade()?;
         let result = self
             .handle_thread_request_result(
                 agent_id,
                 &state,
-                state.send_op(agent_id, initial_operation).await,
+                state
+                    .send_op(agent_id, initial_operation, parent_turn_id)
+                    .await,
             )
             .await;
         if result.is_ok() {
@@ -679,14 +775,33 @@ impl AgentControl {
         agent_id: ThreadId,
         communication: InterAgentCommunication,
     ) -> CodexResult<String> {
+        self.send_inter_agent_communication_with_parent(
+            agent_id,
+            communication,
+            /*parent_turn_id*/ None,
+        )
+        .await
+    }
+
+    pub(crate) async fn send_inter_agent_communication_with_parent(
+        &self,
+        agent_id: ThreadId,
+        communication: InterAgentCommunication,
+        parent_turn_id: Option<String>,
+    ) -> CodexResult<String> {
         let last_task_message = communication.content.clone();
+        let parent_turn_id = parent_turn_id.filter(|_| communication.trigger_turn);
         let state = self.upgrade()?;
         let result = self
             .handle_thread_request_result(
                 agent_id,
                 &state,
                 state
-                    .send_op(agent_id, Op::InterAgentCommunication { communication })
+                    .send_op(
+                        agent_id,
+                        Op::InterAgentCommunication { communication },
+                        parent_turn_id,
+                    )
                     .await,
             )
             .await;
@@ -700,7 +815,9 @@ impl AgentControl {
     /// Interrupt the current task for an existing agent thread.
     pub(crate) async fn interrupt_agent(&self, agent_id: ThreadId) -> CodexResult<String> {
         let state = self.upgrade()?;
-        state.send_op(agent_id, Op::Interrupt).await
+        state
+            .send_op(agent_id, Op::Interrupt, /*parent_turn_id*/ None)
+            .await
     }
 
     async fn handle_thread_request_result(
@@ -726,12 +843,16 @@ impl AgentControl {
             let result = if matches!(thread.agent_status().await, AgentStatus::Shutdown) {
                 Ok(String::new())
             } else {
-                state.send_op(agent_id, Op::Shutdown {}).await
+                state
+                    .send_op(agent_id, Op::Shutdown {}, /*parent_turn_id*/ None)
+                    .await
             };
             thread.wait_until_terminated().await;
             result
         } else {
-            state.send_op(agent_id, Op::Shutdown {}).await
+            state
+                .send_op(agent_id, Op::Shutdown {}, /*parent_turn_id*/ None)
+                .await
         };
         let _ = state.remove_thread(&agent_id).await;
         self.state.release_spawned_thread(agent_id);

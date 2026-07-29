@@ -96,12 +96,67 @@ fn assistant_message(text: &str, phase: Option<MessagePhase>) -> ResponseItem {
     }
 }
 
+fn developer_message(texts: &[&str]) -> ResponseItem {
+    ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: texts
+            .iter()
+            .map(|text| ContentItem::InputText {
+                text: (*text).to_string(),
+            })
+            .collect(),
+        phase: None,
+    }
+}
+
+#[test]
+fn forked_subagent_developer_override_replaces_only_parent_fragment() {
+    let mut item = developer_message(&[
+        "Higher-priority system-owned guidance.",
+        "Parent developer instructions.",
+    ]);
+    assert!(retain_forked_response_item(
+        &mut item,
+        &[],
+        Some("Parent developer instructions."),
+        Some("Governed child instructions."),
+    ));
+    assert_eq!(
+        item,
+        developer_message(&[
+            "Higher-priority system-owned guidance.",
+            "Governed child instructions.",
+        ])
+    );
+}
+
+#[test]
+fn blank_forked_subagent_override_clears_inherited_developer_fragment() {
+    let mut item = developer_message(&["Parent developer instructions."]);
+    assert!(!retain_forked_response_item(
+        &mut item,
+        &[],
+        Some("Parent developer instructions."),
+        Some(""),
+    ));
+}
+
+#[test]
+fn unset_forked_subagent_override_preserves_parent_developer_fragment() {
+    let mut item = developer_message(&["Parent developer instructions."]);
+    let original = item.clone();
+    assert!(retain_forked_response_item(&mut item, &[], None, None));
+    assert_eq!(item, original);
+}
+
 fn spawn_agent_call(call_id: &str) -> ResponseItem {
     ResponseItem::FunctionCall {
         id: None,
         name: "spawn_agent".to_string(),
         namespace: None,
         arguments: "{}".to_string(),
+        encrypted_function_args: None,
         call_id: call_id.to_string(),
     }
 }

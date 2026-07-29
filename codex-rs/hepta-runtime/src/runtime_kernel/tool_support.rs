@@ -5302,7 +5302,7 @@ fn validate_property(
             if let Some(allowed) = field_schema.get("enum").and_then(Value::as_array) {
                 let allowed_values = allowed.iter().filter_map(Value::as_str).collect::<Vec<_>>();
                 if !allowed_values.is_empty()
-                    && !allowed_values.iter().any(|item| *item == string_value)
+                    && !allowed_values.contains(&string_value)
                 {
                     return Err(HeptaError(format!(
                         "tool {} field '{}' must be one of: {}",

@@ -467,11 +467,26 @@ impl Session {
         self: &Arc<Self>,
         sub_id: String,
     ) {
-        if !self.has_queued_response_items_for_next_turn().await
-            && !self.has_trigger_turn_mailbox_items().await
-        {
+        self.maybe_start_turn_for_pending_work_with_sub_id_and_parent(
+            sub_id, /*parent_turn_id*/ None,
+        )
+        .await;
+    }
+
+    pub(crate) async fn maybe_start_turn_for_pending_work_with_sub_id_and_parent(
+        self: &Arc<Self>,
+        sub_id: String,
+        parent_turn_id: Option<String>,
+    ) {
+        let has_queued_response_items = self.has_queued_response_items_for_next_turn().await;
+        if !has_queued_response_items && !self.has_trigger_turn_mailbox_items().await {
             return;
         }
+        let parent_turn_id = if has_queued_response_items {
+            None
+        } else {
+            parent_turn_id.or(self.unambiguous_trigger_parent_turn_id().await)
+        };
 
         {
             let mut active_turn = self.active_turn.lock().await;
@@ -481,7 +496,9 @@ impl Session {
             *active_turn = Some(ActiveTurn::default());
         }
 
-        let turn_context = self.new_default_turn_with_sub_id(sub_id).await;
+        let turn_context = self
+            .new_default_turn_with_sub_id_and_parent(sub_id, parent_turn_id)
+            .await;
         self.maybe_emit_unknown_model_warning_for_turn(turn_context.as_ref())
             .await;
         self.start_task(turn_context, Vec::new(), RegularTask::new())

@@ -1559,7 +1559,7 @@ impl RuntimeKernel {
                         for message in &mut retry_messages {
                             message.delivery_state = AgentDeliveryState::Queued;
                         }
-                        retry_messages.extend(agent.inbox.drain(..));
+                        retry_messages.append(&mut agent.inbox);
                         agent.inbox = retry_messages;
                     } else {
                         agent.status = AgentRuntimeStatus::Failed;
@@ -1902,7 +1902,7 @@ fn normalize_workspace_id(
     workspace_id: Option<&str>,
     agent_id: &str,
 ) -> Result<String, HeptaError> {
-    let raw = workspace_id.unwrap_or_else(|| "").trim();
+    let raw = workspace_id.unwrap_or("").trim();
     let fallback = default_workspace_id(agent_id);
     let candidate = if raw.is_empty() {
         fallback.as_str()

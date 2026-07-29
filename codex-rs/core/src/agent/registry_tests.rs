@@ -86,6 +86,12 @@ fn commit_holds_slot_until_release() {
     let reservation = registry.reserve_spawn_slot(Some(1)).expect("reserve slot");
     let thread_id = ThreadId::new();
     reservation.commit(agent_metadata(thread_id));
+    assert_eq!(
+        registry
+            .agent_metadata_for_thread(thread_id)
+            .and_then(|metadata| metadata.agent_id),
+        Some(thread_id)
+    );
 
     let err = match registry.reserve_spawn_slot(Some(1)) {
         Ok(_) => panic!("limit should be enforced"),
@@ -97,6 +103,7 @@ fn commit_holds_slot_until_release() {
     assert_eq!(max_threads, 1);
 
     registry.release_spawned_thread(thread_id);
+    assert!(registry.agent_metadata_for_thread(thread_id).is_none());
     let reservation = registry
         .reserve_spawn_slot(Some(1))
         .expect("slot released after thread removal");
@@ -341,10 +348,91 @@ fn committed_agent_path_is_indexed_until_release() {
         registry.agent_id_for_path(&agent_path("/root/researcher")),
         Some(thread_id)
     );
+    assert_eq!(
+        registry
+            .agent_metadata_for_thread(thread_id)
+            .and_then(|metadata| metadata.agent_path),
+        Some(agent_path("/root/researcher"))
+    );
 
     registry.release_spawned_thread(thread_id);
     assert_eq!(
         registry.agent_id_for_path(&agent_path("/root/researcher")),
         None
+    );
+    assert!(registry.agent_metadata_for_thread(thread_id).is_none());
+}
+
+#[test]
+fn replacing_agent_metadata_updates_both_identity_indexes() {
+    let registry = AgentRegistry::default();
+    let previous_thread_id = ThreadId::new();
+    let current_thread_id = ThreadId::new();
+    let path = agent_path("/root/researcher");
+
+    registry.register_spawned_thread(AgentMetadata {
+        agent_id: Some(previous_thread_id),
+        agent_path: Some(path.clone()),
+        ..Default::default()
+    });
+    registry.register_spawned_thread(AgentMetadata {
+        agent_id: Some(current_thread_id),
+        agent_path: Some(path.clone()),
+        agent_role: Some("researcher".to_string()),
+        ..Default::default()
+    });
+
+    assert!(
+        registry
+            .agent_metadata_for_thread(previous_thread_id)
+            .is_none()
+    );
+    assert_eq!(registry.agent_id_for_path(&path), Some(current_thread_id));
+    assert_eq!(
+        registry
+            .agent_metadata_for_thread(current_thread_id)
+            .map(|metadata| (metadata.agent_path, metadata.agent_role)),
+        Some((Some(path), Some("researcher".to_string())))
+    );
+
+    registry.release_spawned_thread(previous_thread_id);
+    assert_eq!(
+        registry
+            .agent_metadata_for_thread(current_thread_id)
+            .and_then(|metadata| metadata.agent_id),
+        Some(current_thread_id)
+    );
+}
+
+#[test]
+fn thread_identity_can_move_between_agent_paths() {
+    let registry = Arc::new(AgentRegistry::default());
+    let thread_id = ThreadId::new();
+    let previous_path = agent_path("/root/researcher");
+    let current_path = agent_path("/root/reviewer");
+    let mut reservation = registry.reserve_spawn_slot(Some(1)).expect("reserve slot");
+    reservation
+        .reserve_agent_path(&previous_path)
+        .expect("reserve original path");
+    reservation.commit(AgentMetadata {
+        agent_id: Some(thread_id),
+        agent_path: Some(previous_path.clone()),
+        ..Default::default()
+    });
+
+    registry.register_spawned_thread(AgentMetadata {
+        agent_id: Some(thread_id),
+        agent_path: Some(current_path.clone()),
+        agent_role: Some("reviewer".to_string()),
+        ..Default::default()
+    });
+
+    assert_eq!(registry.agent_id_for_path(&previous_path), None);
+    assert_eq!(registry.agent_id_for_path(&current_path), Some(thread_id));
+    assert_eq!(
+        registry
+            .agent_metadata_for_thread(thread_id)
+            .map(|metadata| (metadata.agent_path, metadata.agent_role)),
+        Some((Some(current_path), Some("reviewer".to_string())))
     );
 }

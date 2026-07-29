@@ -128,6 +128,69 @@ async fn apply_role_returns_unavailable_for_missing_user_role_file() {
 }
 
 #[tokio::test]
+async fn multi_agent_v2_role_without_instructions_preserves_subagent_override() {
+    let (home, mut config) = test_config_with_cli_overrides(Vec::new()).await;
+    let role_path = write_role_config(&home, "model-only.toml", "model = \"role-model\"").await;
+    config.multi_agent_v2.subagent_developer_instructions =
+        Some("Caller-owned instructions".to_string());
+    config.developer_instructions = Some("Caller-owned instructions".to_string());
+    config.agent_roles.insert(
+        "custom".to_string(),
+        AgentRoleConfig {
+            description: None,
+            config_file: Some(role_path),
+            agent_card_manifest_source: None,
+            agent_card_manifest_version: None,
+            agent_card_manifest: None,
+            nickname_candidates: None,
+        },
+    );
+
+    apply_role_to_config_for_multi_agent_v2(&mut config, Some("custom"))
+        .await
+        .expect("custom role should apply");
+
+    assert_eq!(
+        config.developer_instructions.as_deref(),
+        Some("Caller-owned instructions")
+    );
+}
+
+#[tokio::test]
+async fn multi_agent_v2_role_instructions_take_precedence_over_subagent_override() {
+    let (home, mut config) = test_config_with_cli_overrides(Vec::new()).await;
+    let role_path = write_role_config(
+        &home,
+        "instructions-role.toml",
+        "developer_instructions = \"Role-owned instructions\"",
+    )
+    .await;
+    config.multi_agent_v2.subagent_developer_instructions =
+        Some("Caller-owned instructions".to_string());
+    config.developer_instructions = Some("Caller-owned instructions".to_string());
+    config.agent_roles.insert(
+        "custom".to_string(),
+        AgentRoleConfig {
+            description: None,
+            config_file: Some(role_path),
+            agent_card_manifest_source: None,
+            agent_card_manifest_version: None,
+            agent_card_manifest: None,
+            nickname_candidates: None,
+        },
+    );
+
+    apply_role_to_config_for_multi_agent_v2(&mut config, Some("custom"))
+        .await
+        .expect("custom role should apply");
+
+    assert_eq!(
+        config.developer_instructions.as_deref(),
+        Some("Role-owned instructions")
+    );
+}
+
+#[tokio::test]
 async fn apply_role_returns_unavailable_for_invalid_user_role_toml() {
     let (home, mut config) = test_config_with_cli_overrides(Vec::new()).await;
     let role_path = write_role_config(&home, "invalid-role.toml", "model = [").await;

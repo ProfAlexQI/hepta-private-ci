@@ -464,6 +464,7 @@ async fn run_agent_job_loop(
                             "agent_job:{job_id}"
                         )))),
                         SpawnAgentOptions {
+                            parent_turn_id: Some(turn.sub_id.clone()),
                             environments: Some(turn.environments.to_selections()),
                             ..Default::default()
                         },

@@ -1152,7 +1152,7 @@ impl RuntimeKernel {
         });
         topic_session_state
             .sessions
-            .extend(normalized_topic_sessions.into_iter());
+            .extend(normalized_topic_sessions);
         drop(topic_session_state);
 
         let mut topic_graph_state = self

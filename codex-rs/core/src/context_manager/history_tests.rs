@@ -444,6 +444,7 @@ fn for_prompt_strips_images_when_model_does_not_support_images() {
             name: "view_image".to_string(),
             namespace: None,
             arguments: "{}".to_string(),
+            encrypted_function_args: None,
             call_id: "call-1".to_string(),
         },
         ResponseItem::FunctionCallOutput {
@@ -508,6 +509,7 @@ fn for_prompt_strips_images_when_model_does_not_support_images() {
             name: "view_image".to_string(),
             namespace: None,
             arguments: "{}".to_string(),
+            encrypted_function_args: None,
             call_id: "call-1".to_string(),
         },
         ResponseItem::FunctionCallOutput {
@@ -683,6 +685,7 @@ fn remove_first_item_removes_matching_output_for_function_call() {
             name: "do_it".to_string(),
             namespace: None,
             arguments: "{}".to_string(),
+            encrypted_function_args: None,
             call_id: "call-1".to_string(),
         },
         ResponseItem::FunctionCallOutput {
@@ -707,6 +710,7 @@ fn remove_first_item_removes_matching_call_for_output() {
             name: "do_it".to_string(),
             namespace: None,
             arguments: "{}".to_string(),
+            encrypted_function_args: None,
             call_id: "call-2".to_string(),
         },
     ];
@@ -724,6 +728,7 @@ fn remove_last_item_removes_matching_call_for_output() {
             name: "do_it".to_string(),
             namespace: None,
             arguments: "{}".to_string(),
+            encrypted_function_args: None,
             call_id: "call-delete-last".to_string(),
         },
         ResponseItem::FunctionCallOutput {
@@ -1278,6 +1283,7 @@ fn normalize_adds_missing_output_for_function_call() {
         name: "do_it".to_string(),
         namespace: None,
         arguments: "{}".to_string(),
+        encrypted_function_args: None,
         call_id: "call-x".to_string(),
     }];
     let mut h = create_history_with_items(items);
@@ -1292,6 +1298,7 @@ fn normalize_adds_missing_output_for_function_call() {
                 name: "do_it".to_string(),
                 namespace: None,
                 arguments: "{}".to_string(),
+                encrypted_function_args: None,
                 call_id: "call-x".to_string(),
             },
             ResponseItem::FunctionCallOutput {
@@ -1416,6 +1423,7 @@ fn normalize_mixed_inserts_and_removals() {
             name: "f1".to_string(),
             namespace: None,
             arguments: "{}".to_string(),
+            encrypted_function_args: None,
             call_id: "c1".to_string(),
         },
         // Orphan output that should be removed
@@ -1457,6 +1465,7 @@ fn normalize_mixed_inserts_and_removals() {
                 name: "f1".to_string(),
                 namespace: None,
                 arguments: "{}".to_string(),
+                encrypted_function_args: None,
                 call_id: "c1".to_string(),
             },
             ResponseItem::FunctionCallOutput {
@@ -1502,6 +1511,7 @@ fn normalize_adds_missing_output_for_function_call_inserts_output() {
         name: "do_it".to_string(),
         namespace: None,
         arguments: "{}".to_string(),
+        encrypted_function_args: None,
         call_id: "call-x".to_string(),
     }];
     let mut h = create_history_with_items(items);
@@ -1514,6 +1524,7 @@ fn normalize_adds_missing_output_for_function_call_inserts_output() {
                 name: "do_it".to_string(),
                 namespace: None,
                 arguments: "{}".to_string(),
+                encrypted_function_args: None,
                 call_id: "call-x".to_string(),
             },
             ResponseItem::FunctionCallOutput {
@@ -1680,6 +1691,7 @@ fn normalize_mixed_inserts_and_removals_panics_in_debug() {
             name: "f1".to_string(),
             namespace: None,
             arguments: "{}".to_string(),
+            encrypted_function_args: None,
             call_id: "c1".to_string(),
         },
         ResponseItem::FunctionCallOutput {

@@ -117,6 +117,8 @@ use crate::util::emit_feedback_auth_recovery_tags;
 use codex_api::map_api_error;
 use codex_feedback::FeedbackRequestTags;
 use codex_feedback::emit_feedback_request_tags_with_auth_env;
+use codex_http_client::HttpClientFactory;
+use codex_http_client::OutboundProxyPolicy;
 use codex_login::auth_env_telemetry::AuthEnvTelemetry;
 use codex_login::auth_env_telemetry::collect_auth_env_telemetry;
 use codex_model_provider::SharedModelProvider;
@@ -180,6 +182,7 @@ struct ModelClientState {
     attestation_provider: Option<Arc<dyn AttestationProvider>>,
     disable_websockets: AtomicBool,
     cached_websocket_session: StdMutex<WebsocketSession>,
+    http_client_factory: HttpClientFactory,
 }
 
 /// Resolved API client setup for a single request attempt.
@@ -324,6 +327,37 @@ impl ModelClient {
         beta_features_header: Option<String>,
         attestation_provider: Option<Arc<dyn AttestationProvider>>,
     ) -> Self {
+        Self::new_with_http_client_factory(
+            auth_manager,
+            session_id,
+            thread_id,
+            installation_id,
+            provider_info,
+            session_source,
+            model_verbosity,
+            enable_request_compression,
+            include_timing_metrics,
+            beta_features_header,
+            attestation_provider,
+            HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_http_client_factory(
+        auth_manager: Option<Arc<AuthManager>>,
+        session_id: SessionId,
+        thread_id: ThreadId,
+        installation_id: String,
+        provider_info: ModelProviderInfo,
+        session_source: SessionSource,
+        model_verbosity: Option<VerbosityConfig>,
+        enable_request_compression: bool,
+        include_timing_metrics: bool,
+        beta_features_header: Option<String>,
+        attestation_provider: Option<Arc<dyn AttestationProvider>>,
+        http_client_factory: HttpClientFactory,
+    ) -> Self {
         let model_provider = create_model_provider(provider_info, auth_manager);
         let codex_api_key_env_enabled = model_provider
             .auth_manager()
@@ -349,6 +383,7 @@ impl ModelClient {
                 attestation_provider,
                 disable_websockets: AtomicBool::new(false),
                 cached_websocket_session: StdMutex::new(WebsocketSession::default()),
+                http_client_factory,
             }),
         }
     }
@@ -719,7 +754,18 @@ impl ModelClient {
         service_tier: Option<String>,
     ) -> Result<ResponsesApiRequest> {
         let instructions = &prompt.base_instructions.text;
-        let input = prompt.get_formatted_input();
+        let mut input = prompt.get_formatted_input();
+        if !self.state.provider.info().is_openai() {
+            for item in &mut input {
+                if let ResponseItem::FunctionCall {
+                    encrypted_function_args,
+                    ..
+                } = item
+                {
+                    *encrypted_function_args = None;
+                }
+            }
+        }
         let tools = create_tools_json_for_responses_api(&prompt.tools)?;
         let reasoning = Self::build_reasoning(model_info, effort, summary);
         let include = if reasoning.is_some() {
@@ -825,6 +871,7 @@ impl ModelClient {
         let result = match tokio::time::timeout(
             websocket_connect_timeout,
             ApiWebSocketResponsesClient::new(api_provider, api_auth).connect(
+                &self.state.http_client_factory,
                 headers,
                 codex_login::default_client::default_headers(),
                 turn_state,

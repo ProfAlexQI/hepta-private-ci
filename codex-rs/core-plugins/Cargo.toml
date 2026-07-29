@@ -21,7 +21,9 @@ codex-core-skills = { workspace = true }
 codex-exec-server = { workspace = true }
 codex-git-utils = { workspace = true }
 codex-hooks = { workspace = true }
+codex-http-client = { workspace = true }
 codex-login = { workspace = true }
+http = { workspace = true }
 codex-model-provider = { workspace = true }
 codex-otel = { workspace = true }
 codex-plugin = { workspace = true }

@@ -2206,6 +2206,7 @@ async fn websocket_reachability_check(
     match tokio::time::timeout(
         provider.websocket_connect_timeout(),
         client.probe_handshake(
+            &config.http_client_factory(),
             extra_headers,
             default_headers(),
             WEBSOCKET_IMMEDIATE_CLOSE_GRACE,

@@ -88,6 +88,9 @@ fn plugins_config_input_with_requirements(
         /*remote_plugin_enabled*/ false,
         /*plugin_hooks_enabled*/ false,
         String::new(),
+        codex_http_client::HttpClientFactory::new(
+            codex_http_client::OutboundProxyPolicy::ReqwestDefault,
+        ),
     )
 }
 
@@ -1492,6 +1495,9 @@ url = "https://github.com/example/allowed.git"
         /*remote_plugin_enabled*/ false,
         /*plugin_hooks_enabled*/ false,
         String::new(),
+        codex_http_client::HttpClientFactory::new(
+            codex_http_client::OutboundProxyPolicy::ReqwestDefault,
+        ),
     );
     let manager = PluginsManager::new(codex_home.path().to_path_buf());
 

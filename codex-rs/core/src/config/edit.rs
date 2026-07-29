@@ -667,7 +667,20 @@ impl ConfigDocument {
                 }
                 Ok(self.insert(segments, value.clone()))
             }
-            ConfigEdit::ClearPath { segments } => Ok(self.clear_owned(segments)),
+            ConfigEdit::ClearPath { segments } => {
+                if is_multi_agent_v2_feature_path(segments) {
+                    let mut existing = Some(self.doc.as_item());
+                    for segment in segments {
+                        existing = existing.and_then(|item| item.as_table_like()?.get(segment));
+                    }
+                    if existing.and_then(TomlItem::as_table_like).is_some() {
+                        let mut enabled_segments = segments.clone();
+                        enabled_segments.push("enabled".to_string());
+                        return Ok(self.insert(&enabled_segments, value(false)));
+                    }
+                }
+                Ok(self.clear_owned(segments))
+            }
             ConfigEdit::SetProjectTrustLevel { path, level } => {
                 // Delegate to the existing, tested logic in config.rs to
                 // ensure tables are explicit and migration is preserved.

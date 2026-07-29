@@ -1,15 +1,17 @@
+use crate::remote::RemotePluginServiceConfig;
 use crate::store::PluginInstallResult;
 use crate::store::PluginStore;
 use crate::store::PluginStoreError;
 use crate::store::validate_plugin_version_segment;
-use codex_login::default_client::build_reqwest_client;
+use codex_http_client::HttpResponse;
+use codex_http_client::RouteAwareRequestError;
 use codex_plugin::PluginId;
 use codex_plugin::PluginIdError;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_plugins::find_plugin_manifest_path;
 use flate2::read::GzDecoder;
-use reqwest::Response;
-use reqwest::StatusCode;
+use http::Method;
+use http::StatusCode;
 use std::fs;
 use std::io;
 use std::io::Read;
@@ -83,7 +85,7 @@ pub enum RemotePluginBundleInstallError {
     DownloadRequest {
         url: String,
         #[source]
-        source: reqwest::Error,
+        source: RouteAwareRequestError,
     },
 
     #[error("remote plugin bundle download from {url} failed with status {status}: {body}")]
@@ -97,7 +99,7 @@ pub enum RemotePluginBundleInstallError {
     DownloadBody {
         url: String,
         #[source]
-        source: reqwest::Error,
+        source: codex_http_client::HttpError,
     },
 
     #[error("remote plugin bundle download from {url} exceeded maximum size of {max_bytes} bytes")]
@@ -220,10 +222,12 @@ fn is_loopback_url(url: &Url) -> bool {
 }
 
 pub async fn download_and_install_remote_plugin_bundle(
+    config: &RemotePluginServiceConfig,
     codex_home: PathBuf,
     bundle: ValidatedRemotePluginBundle,
 ) -> Result<PluginInstallResult, RemotePluginBundleInstallError> {
     let bundle_bytes = download_remote_plugin_bundle_with_limit(
+        config,
         &bundle.bundle_download_url,
         /*max_bytes*/ REMOTE_PLUGIN_BUNDLE_MAX_DOWNLOAD_BYTES,
     )
@@ -240,10 +244,12 @@ pub async fn download_and_install_remote_plugin_bundle(
 }
 
 pub(crate) async fn download_and_extract_remote_plugin_bundle_to_path(
+    config: &RemotePluginServiceConfig,
     bundle: ValidatedRemotePluginBundle,
     destination: AbsolutePathBuf,
 ) -> Result<AbsolutePathBuf, RemotePluginBundleInstallError> {
     let bundle_bytes = download_remote_plugin_bundle_with_limit(
+        config,
         &bundle.bundle_download_url,
         /*max_bytes*/ REMOTE_PLUGIN_BUNDLE_MAX_DOWNLOAD_BYTES,
     )
@@ -260,12 +266,12 @@ pub(crate) async fn download_and_extract_remote_plugin_bundle_to_path(
 }
 
 async fn download_remote_plugin_bundle_with_limit(
+    config: &RemotePluginServiceConfig,
     bundle_download_url: &str,
     max_bytes: u64,
 ) -> Result<Vec<u8>, RemotePluginBundleInstallError> {
-    let client = build_reqwest_client();
-    let response = client
-        .get(bundle_download_url)
+    let response = config
+        .http_request(Method::GET, bundle_download_url)
         .timeout(REMOTE_PLUGIN_BUNDLE_DOWNLOAD_TIMEOUT)
         .send()
         .await
@@ -275,8 +281,7 @@ async fn download_remote_plugin_bundle_with_limit(
         })?;
 
     let final_url = response.url().clone();
-    // reqwest may already have followed redirects here. For backend-issued bundle URLs, keep the
-    // shared client policy and fail unsupported final schemes before caching.
+    // The route-aware client follows each redirect through the same policy.
     if !is_allowed_bundle_download_url(&final_url, allow_test_loopback_http_bundle_downloads()) {
         return Err(
             RemotePluginBundleInstallError::UnsupportedBundleDownloadFinalUrl {
@@ -303,7 +308,7 @@ async fn download_remote_plugin_bundle_with_limit(
 }
 
 async fn read_response_body_with_limit(
-    mut response: Response,
+    mut response: HttpResponse,
     url: &str,
     max_bytes: u64,
 ) -> Result<Vec<u8>, RemotePluginBundleInstallError> {

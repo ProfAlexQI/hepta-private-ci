@@ -1605,6 +1605,9 @@
         "root_agent_usage_hint_text": {
           "type": "string"
         },
+        "subagent_developer_instructions": {
+          "type": "string"
+        },
         "subagent_usage_hint_text": {
           "type": "string"
         },

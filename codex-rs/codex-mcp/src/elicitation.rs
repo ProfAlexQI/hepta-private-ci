@@ -29,7 +29,6 @@ use futures::future::FutureExt;
 use rmcp::model::CreateElicitationRequestParams;
 use rmcp::model::ElicitationAction;
 use rmcp::model::RequestId;
-use tokio::sync::Mutex;
 use tokio::sync::oneshot;
 
 #[derive(Debug, Clone)]
@@ -50,11 +49,27 @@ pub type ElicitationReviewerHandle = Arc<dyn ElicitationReviewer>;
 
 #[derive(Clone)]
 pub(crate) struct ElicitationRequestManager {
-    requests: Arc<Mutex<ResponderMap>>,
+    requests: Arc<StdMutex<ResponderMap>>,
     pub(crate) approval_policy: Arc<StdMutex<AskForApproval>>,
     pub(crate) permission_profile: Arc<StdMutex<PermissionProfile>>,
     auto_deny: Arc<StdMutex<bool>>,
     reviewer: Option<ElicitationReviewerHandle>,
+}
+
+struct PendingElicitationRequest {
+    requests: Arc<StdMutex<ResponderMap>>,
+    key: (String, RequestId),
+}
+
+impl Drop for PendingElicitationRequest {
+    fn drop(&mut self) {
+        let responder = self
+            .requests
+            .lock()
+            .ok()
+            .and_then(|mut requests| requests.remove(&self.key));
+        drop(responder);
+    }
 }
 
 impl ElicitationRequestManager {
@@ -64,7 +79,7 @@ impl ElicitationRequestManager {
         reviewer: Option<ElicitationReviewerHandle>,
     ) -> Self {
         Self {
-            requests: Arc::new(Mutex::new(HashMap::new())),
+            requests: Arc::new(StdMutex::new(HashMap::new())),
             approval_policy: Arc::new(StdMutex::new(approval_policy)),
             permission_profile: Arc::new(StdMutex::new(permission_profile)),
             auto_deny: Arc::new(StdMutex::new(false)),
@@ -91,11 +106,13 @@ impl ElicitationRequestManager {
         id: RequestId,
         response: ElicitationResponse,
     ) -> Result<()> {
-        self.requests
+        let responder = self
+            .requests
             .lock()
-            .await
+            .map_err(|_| anyhow!("elicitation request router unavailable"))?
             .remove(&(server_name, id))
-            .ok_or_else(|| anyhow!("elicitation request not found"))?
+            .ok_or_else(|| anyhow!("elicitation request not found"))?;
+        responder
             .send(response)
             .map_err(|e| anyhow!("failed to send elicitation response: {e:?}"))
     }
@@ -201,10 +218,15 @@ impl ElicitationRequestManager {
                     },
                 };
                 let (tx, rx) = oneshot::channel();
-                {
-                    let mut lock = elicitation_requests.lock().await;
-                    lock.insert((server_name.clone(), id.clone()), tx);
-                }
+                let request_key = (server_name.clone(), id.clone());
+                elicitation_requests
+                    .lock()
+                    .map_err(|_| anyhow!("elicitation request router unavailable"))?
+                    .insert(request_key.clone(), tx);
+                let _pending_request = PendingElicitationRequest {
+                    requests: Arc::clone(&elicitation_requests),
+                    key: request_key,
+                };
                 let _ = tx_event
                     .send(Event {
                         id: "mcp_elicitation_request".to_string(),
@@ -228,6 +250,14 @@ impl ElicitationRequestManager {
             }
             .boxed()
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_request_count(&self) -> usize {
+        self.requests
+            .lock()
+            .map(|requests| requests.len())
+            .unwrap_or_default()
     }
 }
 

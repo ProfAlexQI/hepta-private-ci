@@ -1094,14 +1094,19 @@ impl ThreadManagerState {
     }
 
     /// Send an operation to a thread by ID.
-    pub(crate) async fn send_op(&self, thread_id: ThreadId, op: Op) -> CodexResult<String> {
+    pub(crate) async fn send_op(
+        &self,
+        thread_id: ThreadId,
+        op: Op,
+        parent_turn_id: Option<String>,
+    ) -> CodexResult<String> {
         let thread = self.get_thread(thread_id).await?;
         if let Some(ops_log) = &self.ops_log
             && let Ok(mut log) = ops_log.lock()
         {
             log.push((thread_id, op.clone()));
         }
-        thread.submit(op).await
+        thread.submit_with_parent_turn(op, parent_turn_id).await
     }
 
     #[cfg(test)]

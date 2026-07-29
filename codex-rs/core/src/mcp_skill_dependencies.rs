@@ -140,17 +140,19 @@ pub(crate) async fn maybe_install_mcp_dependencies(
     }
 
     let runtime_environment = match turn_context.environments.primary() {
-        Some(turn_environment) => McpRuntimeEnvironment::new(
+        Some(turn_environment) => McpRuntimeEnvironment::new_with_http_client_factory(
             Arc::clone(&turn_environment.environment),
             turn_environment.cwd.to_path_buf(),
+            config.http_client_factory(),
         ),
-        None => McpRuntimeEnvironment::new(
+        None => McpRuntimeEnvironment::new_with_http_client_factory(
             sess.services
                 .environment_manager
                 .default_environment()
                 .unwrap_or_else(|| sess.services.environment_manager.local_environment()),
             #[allow(deprecated)]
             turn_context.cwd.to_path_buf(),
+            config.http_client_factory(),
         ),
     };
     for (name, server_config) in added {
@@ -163,7 +165,7 @@ pub(crate) async fn maybe_install_mcp_dependencies(
         };
         let oauth_config = match oauth_login_support_with_http_client(
             &server_config.transport,
-            http_client,
+            Arc::clone(&http_client),
             OAuthDiscoveryTimeout::Requested,
         )
         .await
@@ -193,6 +195,7 @@ pub(crate) async fn maybe_install_mcp_dependencies(
             server_config.oauth_resource.as_deref(),
             config.mcp_oauth_callback_port,
             config.mcp_oauth_callback_url.as_deref(),
+            Arc::clone(&http_client),
         )
         .await;
 
@@ -209,6 +212,7 @@ pub(crate) async fn maybe_install_mcp_dependencies(
                     server_config.oauth_resource.as_deref(),
                     config.mcp_oauth_callback_port,
                     config.mcp_oauth_callback_url.as_deref(),
+                    http_client,
                 )
                 .await
                 {

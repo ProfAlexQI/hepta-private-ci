@@ -61,9 +61,17 @@ impl ToolCallRuntime {
         call: ToolCall,
         cancellation_token: CancellationToken,
     ) -> impl std::future::Future<Output = Result<ResponseInputItem, CodexErr>> {
+        self.handle_direct_tool_call_with_source(call, ToolCallSource::Direct, cancellation_token)
+    }
+
+    pub(crate) fn handle_direct_tool_call_with_source(
+        self,
+        call: ToolCall,
+        source: ToolCallSource,
+        cancellation_token: CancellationToken,
+    ) -> impl std::future::Future<Output = Result<ResponseInputItem, CodexErr>> {
         let error_call = call.clone();
-        let future =
-            self.handle_tool_call_with_source(call, ToolCallSource::Direct, cancellation_token);
+        let future = self.handle_tool_call_with_source(call, source, cancellation_token);
         async move {
             match future.await {
                 Ok(response) => Ok(response.into_response()),

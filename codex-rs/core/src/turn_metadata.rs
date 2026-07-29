@@ -26,6 +26,7 @@ const MODEL_KEY: &str = "model";
 const REASONING_EFFORT_KEY: &str = "reasoning_effort";
 const TURN_STARTED_AT_UNIX_MS_KEY: &str = "turn_started_at_unix_ms";
 const USER_INPUT_REQUESTED_DURING_TURN_KEY: &str = "user_input_requested_during_turn";
+const PARENT_TURN_ID_KEY: &str = "parent_turn_id";
 
 pub(crate) struct McpTurnMetadataContext<'a> {
     pub(crate) model: &'a str,
@@ -77,6 +78,8 @@ pub(crate) struct TurnMetadataBag {
     thread_source: Option<ThreadSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent_turn_id: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     workspaces: BTreeMap<String, TurnMetadataWorkspace>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -123,6 +126,7 @@ fn build_turn_metadata_bag(
     thread_id: Option<String>,
     thread_source: Option<ThreadSource>,
     turn_id: Option<String>,
+    parent_turn_id: Option<String>,
     sandbox: Option<String>,
     repo_root: Option<String>,
     workspace_git_metadata: Option<WorkspaceGitMetadata>,
@@ -139,6 +143,7 @@ fn build_turn_metadata_bag(
         thread_id,
         thread_source,
         turn_id,
+        parent_turn_id,
         workspaces,
         sandbox,
     }
@@ -169,6 +174,7 @@ pub async fn build_turn_metadata_header(
         /*thread_id*/ None,
         /*thread_source*/ None,
         /*turn_id*/ None,
+        /*parent_turn_id*/ None,
         sandbox.map(ToString::to_string),
         repo_root,
         Some(WorkspaceGitMetadata {
@@ -205,6 +211,31 @@ impl TurnMetadataState {
         windows_sandbox_level: WindowsSandboxLevel,
         enforce_managed_network: bool,
     ) -> Self {
+        Self::new_with_parent_turn_id(
+            session_id,
+            thread_id,
+            thread_source,
+            turn_id,
+            /*parent_turn_id*/ None,
+            cwd,
+            permission_profile,
+            windows_sandbox_level,
+            enforce_managed_network,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_parent_turn_id(
+        session_id: String,
+        thread_id: String,
+        thread_source: Option<ThreadSource>,
+        turn_id: String,
+        parent_turn_id: Option<String>,
+        cwd: AbsolutePathBuf,
+        permission_profile: &PermissionProfile,
+        windows_sandbox_level: WindowsSandboxLevel,
+        enforce_managed_network: bool,
+    ) -> Self {
         let repo_root = get_git_repo_root(&cwd).map(|root| root.to_string_lossy().into_owned());
         let sandbox = Some(
             permission_profile_sandbox_tag(
@@ -219,6 +250,7 @@ impl TurnMetadataState {
             Some(thread_id),
             thread_source,
             Some(turn_id),
+            parent_turn_id,
             sandbox,
             /*repo_root*/ None,
             /*workspace_git_metadata*/ None,
@@ -275,6 +307,7 @@ impl TurnMetadataState {
     ) -> Option<serde_json::Value> {
         let header = self.current_header_value()?;
         let mut metadata = serde_json::from_str::<serde_json::Map<String, Value>>(&header).ok()?;
+        metadata.remove(PARENT_TURN_ID_KEY);
         metadata.insert(
             MODEL_KEY.to_string(),
             Value::String(context.model.to_string()),
@@ -352,6 +385,7 @@ impl TurnMetadataState {
                 state.base_metadata.thread_id.clone(),
                 state.base_metadata.thread_source,
                 state.base_metadata.turn_id.clone(),
+                state.base_metadata.parent_turn_id.clone(),
                 state.base_metadata.sandbox.clone(),
                 Some(repo_root),
                 Some(workspace_git_metadata),

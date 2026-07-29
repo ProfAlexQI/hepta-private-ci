@@ -411,6 +411,7 @@ mod tests {
                 name: "shell_command".to_string(),
                 namespace: None,
                 arguments: "{}".to_string(),
+                encrypted_function_args: None,
                 call_id: "call_1".to_string(),
             },
             ResponseItem::Compaction {

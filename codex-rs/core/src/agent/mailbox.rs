@@ -18,6 +18,7 @@ pub(crate) struct Mailbox {
 pub(crate) struct MailboxDelivery {
     pub(crate) sequence: u64,
     pub(crate) communication: InterAgentCommunication,
+    pub(crate) parent_turn_id: Option<String>,
 }
 
 pub(crate) struct MailboxReceiver {
@@ -47,10 +48,19 @@ impl Mailbox {
     }
 
     pub(crate) fn send(&self, communication: InterAgentCommunication) -> u64 {
+        self.send_with_parent(communication, /*parent_turn_id*/ None)
+    }
+
+    pub(crate) fn send_with_parent(
+        &self,
+        communication: InterAgentCommunication,
+        parent_turn_id: Option<String>,
+    ) -> u64 {
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed) + 1;
         let _ = self.tx.send(MailboxDelivery {
             sequence: seq,
             communication,
+            parent_turn_id,
         });
         self.seq_tx.send_replace(seq);
         seq
@@ -74,6 +84,18 @@ impl MailboxReceiver {
         self.pending_mails
             .iter()
             .any(|mail| mail.communication.trigger_turn)
+    }
+
+    pub(crate) fn unambiguous_trigger_parent_turn_id(&mut self) -> Option<String> {
+        self.sync_pending_mails();
+        let mut trigger_turn_mails = self
+            .pending_mails
+            .iter()
+            .filter(|mail| mail.communication.trigger_turn);
+        let parent_turn_id = trigger_turn_mails.next()?.parent_turn_id.as_ref()?;
+        trigger_turn_mails
+            .all(|mail| mail.parent_turn_id.as_ref() == Some(parent_turn_id))
+            .then(|| parent_turn_id.clone())
     }
 
     #[cfg(test)]
@@ -159,10 +181,12 @@ mod tests {
                 MailboxDelivery {
                     sequence: 1,
                     communication: mail_one,
+                    parent_turn_id: None,
                 },
                 MailboxDelivery {
                     sequence: 2,
                     communication: mail_two,
+                    parent_turn_id: None,
                 },
             ]
         );
@@ -211,5 +235,34 @@ mod tests {
             /*trigger_turn*/ true,
         ));
         assert!(receiver.has_pending_trigger_turn());
+    }
+
+    #[tokio::test]
+    async fn mailbox_reports_parent_turn_only_when_trigger_sources_are_unambiguous() {
+        let (mailbox, mut receiver) = Mailbox::new();
+        mailbox.send_with_parent(
+            make_mail(
+                AgentPath::root(),
+                AgentPath::try_from("/root/worker").expect("agent path"),
+                "wake",
+                /*trigger_turn*/ true,
+            ),
+            Some("parent-a".to_string()),
+        );
+        assert_eq!(
+            receiver.unambiguous_trigger_parent_turn_id().as_deref(),
+            Some("parent-a")
+        );
+
+        mailbox.send_with_parent(
+            make_mail(
+                AgentPath::root(),
+                AgentPath::try_from("/root/worker").expect("agent path"),
+                "different parent",
+                /*trigger_turn*/ true,
+            ),
+            Some("parent-b".to_string()),
+        );
+        assert_eq!(receiver.unambiguous_trigger_parent_turn_id(), None);
     }
 }

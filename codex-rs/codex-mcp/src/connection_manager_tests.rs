@@ -287,6 +287,37 @@ async fn disabled_permissions_do_not_auto_accept_elicitation_with_requested_fiel
     );
 }
 
+#[tokio::test]
+async fn cancelled_elicitation_future_removes_stale_responder() {
+    let manager = ElicitationRequestManager::new(
+        AskForApproval::OnRequest,
+        PermissionProfile::read_only(),
+        /*reviewer*/ None,
+    );
+    let (tx_event, rx_event) = async_channel::bounded(1);
+    let sender = manager.make_sender("server".to_string(), tx_event);
+    let task = tokio::spawn(sender(
+        NumberOrString::Number(7),
+        CreateElicitationRequestParams::FormElicitationParams {
+            meta: None,
+            message: "What should I say?".to_string(),
+            requested_schema: rmcp::model::ElicitationSchema::builder()
+                .required_property(
+                    "message",
+                    rmcp::model::PrimitiveSchema::String(rmcp::model::StringSchema::new()),
+                )
+                .build()
+                .expect("schema should build"),
+        },
+    ));
+
+    rx_event.recv().await.expect("elicitation request event");
+    assert_eq!(manager.pending_request_count(), 1);
+    task.abort();
+    let _ = task.await;
+    assert_eq!(manager.pending_request_count(), 0);
+}
+
 #[test]
 fn test_normalize_tools_short_non_duplicated_names() {
     let tools = vec![
@@ -740,6 +771,44 @@ async fn list_all_tools_blocks_while_client_is_pending_without_startup_snapshot(
     let timeout_result =
         tokio::time::timeout(Duration::from_millis(10), manager.list_all_tools()).await;
     assert!(timeout_result.is_err());
+}
+
+#[tokio::test]
+async fn list_all_tools_polls_server_catalogs_concurrently() {
+    let approval_policy = Constrained::allow_any(AskForApproval::OnFailure);
+    let permission_profile = Constrained::allow_any(PermissionProfile::default());
+    let mut manager =
+        McpConnectionManager::new_uninitialized(&approval_policy, &permission_profile);
+    let barrier = Arc::new(tokio::sync::Barrier::new(3));
+
+    for server_name in ["docs", "issues"] {
+        let barrier = Arc::clone(&barrier);
+        let failed_after_barrier = async move {
+            barrier.wait().await;
+            Err(StartupOutcomeError::Failed {
+                error: "expected test failure".to_string(),
+            })
+        }
+        .boxed()
+        .shared();
+        manager.clients.insert(
+            server_name.to_string(),
+            AsyncManagedClient {
+                client: failed_after_barrier,
+                startup_snapshot: Some(vec![create_test_tool(server_name, "search")]),
+                startup_complete: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                tool_plugin_provenance: Arc::new(ToolPluginProvenance::default()),
+                cancel_token: CancellationToken::new(),
+            },
+        );
+    }
+
+    let list_task = tokio::spawn(async move { manager.list_all_tools().await });
+    tokio::time::timeout(Duration::from_secs(1), barrier.wait())
+        .await
+        .expect("both server catalog futures should be polled together");
+    let tools = list_task.await.expect("catalog task");
+    assert_eq!(tools.len(), 2);
 }
 
 #[tokio::test]

@@ -10,6 +10,7 @@ path = "src/lib.rs"
 doctest = false
 
 [dependencies]
+hepta-durable-store = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 

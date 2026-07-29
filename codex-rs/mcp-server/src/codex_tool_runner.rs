@@ -136,6 +136,7 @@ pub async fn run_hepta_tool_session(
             responsesapi_client_metadata: None,
         },
         trace: None,
+        parent_turn_id: None,
     };
 
     if let Err(e) = thread.submit_with_id(submission).await {

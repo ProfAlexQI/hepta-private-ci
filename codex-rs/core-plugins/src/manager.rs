@@ -64,6 +64,8 @@ use codex_config::types::PluginConfig;
 use codex_config::version_for_toml;
 use codex_core_skills::SkillMetadata;
 use codex_hooks::plugin_hook_declarations;
+use codex_http_client::HttpClientFactory;
+use codex_http_client::RouteAwareRequestError;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_plugin::AppConnectorId;
@@ -98,6 +100,7 @@ pub struct PluginsConfigInput {
     pub remote_plugin_enabled: bool,
     pub plugin_hooks_enabled: bool,
     pub chatgpt_base_url: String,
+    http_client_factory: HttpClientFactory,
 }
 
 impl PluginsConfigInput {
@@ -107,6 +110,7 @@ impl PluginsConfigInput {
         remote_plugin_enabled: bool,
         plugin_hooks_enabled: bool,
         chatgpt_base_url: String,
+        http_client_factory: HttpClientFactory,
     ) -> Self {
         Self {
             config_layer_stack,
@@ -114,7 +118,16 @@ impl PluginsConfigInput {
             remote_plugin_enabled,
             plugin_hooks_enabled,
             chatgpt_base_url,
+            http_client_factory,
         }
+    }
+
+    /// Builds route-aware service state for every remote plugin request.
+    pub fn remote_plugin_service_config(&self) -> RemotePluginServiceConfig {
+        RemotePluginServiceConfig::new(
+            self.chatgpt_base_url.clone(),
+            self.http_client_factory.clone(),
+        )
     }
 }
 
@@ -183,9 +196,7 @@ struct ConfiguredMarketplaceUpgradeState {
 }
 
 fn remote_plugin_service_config(config: &PluginsConfigInput) -> RemotePluginServiceConfig {
-    RemotePluginServiceConfig {
-        chatgpt_base_url: config.chatgpt_base_url.clone(),
-    }
+    config.remote_plugin_service_config()
 }
 
 fn featured_plugin_ids_cache_key(
@@ -318,6 +329,9 @@ pub struct RemotePluginSyncResult {
 
 #[derive(Debug, thiserror::Error)]
 pub enum PluginRemoteSyncError {
+    #[error("invalid chatgpt base url for remote plugin request: {0}")]
+    InvalidBaseUrl(#[source] url::ParseError),
+
     #[error("chatgpt authentication required to sync remote plugins")]
     AuthRequired,
 
@@ -333,13 +347,13 @@ pub enum PluginRemoteSyncError {
     Request {
         url: String,
         #[source]
-        source: reqwest::Error,
+        source: RouteAwareRequestError,
     },
 
     #[error("remote plugin sync request to {url} failed with status {status}: {body}")]
     UnexpectedStatus {
         url: String,
-        status: reqwest::StatusCode,
+        status: http::StatusCode,
         body: String,
     },
 
@@ -392,6 +406,7 @@ impl PluginRemoteSyncError {
 impl From<RemotePluginFetchError> for PluginRemoteSyncError {
     fn from(value: RemotePluginFetchError) -> Self {
         match value {
+            RemotePluginFetchError::InvalidBaseUrl(source) => Self::InvalidBaseUrl(source),
             RemotePluginFetchError::AuthRequired => Self::AuthRequired,
             RemotePluginFetchError::UnsupportedAuthMode => Self::UnsupportedAuthMode,
             RemotePluginFetchError::AuthToken(source) => Self::AuthToken(source),

@@ -9,8 +9,12 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
+use std::io::Write;
+use std::net::SocketAddr;
+use std::net::TcpListener;
 use std::path::Path;
 use std::path::PathBuf;
+use std::thread::JoinHandle;
 use tempfile::TempDir;
 use wiremock::Mock;
 use wiremock::MockServer;
@@ -23,9 +27,135 @@ use wiremock::matchers::query_param;
 use wiremock::matchers::query_param_is_missing;
 
 fn test_config(server: &MockServer) -> RemotePluginServiceConfig {
-    RemotePluginServiceConfig {
-        chatgpt_base_url: format!("{}/backend-api", server.uri()),
+    RemotePluginServiceConfig::new(
+        format!("{}/backend-api", server.uri()),
+        codex_http_client::HttpClientFactory::new(
+            codex_http_client::OutboundProxyPolicy::ReqwestDefault,
+        ),
+    )
+}
+
+struct NoDirectEgressProxy {
+    base_url: String,
+    upload_url: String,
+    address: SocketAddr,
+    thread: JoinHandle<Vec<String>>,
+}
+
+fn spawn_no_direct_egress_proxy() -> NoDirectEgressProxy {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("proxy listener should bind");
+    let address = listener
+        .local_addr()
+        .expect("proxy listener should have an address");
+    listener
+        .set_nonblocking(true)
+        .expect("proxy listener should become nonblocking");
+
+    let nonce = address.port();
+    let base_url = format!("http://control-{nonce}.hepta.invalid/backend-api");
+    let upload_url = format!("http://upload-{nonce}.hepta.invalid/blob/file_123");
+    let upload_request_url = format!("{base_url}/public/plugins/workspace/upload-url");
+    let finalize_url = format!("{base_url}/public/plugins/workspace");
+    let expected_request_lines = [
+        format!("POST {upload_request_url} HTTP/1.1"),
+        format!("PUT {upload_url} HTTP/1.1"),
+        format!("POST {finalize_url} HTTP/1.1"),
+    ];
+    let upload_response_body = json!({
+        "file_id": "file_123",
+        "upload_url": upload_url,
+        "etag": "\"upload_etag_123\"",
+    })
+    .to_string();
+    let finalize_response_body = json!({
+        "plugin_id": "plugins_123",
+        "share_url": "https://chatgpt.example/plugins/share/share-key-1",
+    })
+    .to_string();
+    let thread = std::thread::spawn(move || {
+        let mut requests = Vec::new();
+        for (index, expected_request_line) in expected_request_lines.into_iter().enumerate() {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            let (mut stream, _) = loop {
+                match listener.accept() {
+                    Ok(connection) => break connection,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            std::time::Instant::now() < deadline,
+                            "proxy should receive request {}",
+                            index + 1
+                        );
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    Err(error) => panic!("proxy listener should accept: {error}"),
+                }
+            };
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .expect("proxy stream should get a read timeout");
+            let request = read_proxy_http_message(&mut stream);
+            assert_eq!(
+                request.lines().next(),
+                Some(expected_request_line.as_str()),
+                "request must use HTTP proxy absolute-form"
+            );
+            let response_body = match index {
+                0 => upload_response_body.as_str(),
+                1 => "",
+                2 => finalize_response_body.as_str(),
+                _ => unreachable!("exactly three provider HTTP requests are expected"),
+            };
+            let response = format!(
+                "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response_body}",
+                response_body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("proxy should write response");
+            requests.push(request);
+        }
+        requests
+    });
+
+    NoDirectEgressProxy {
+        base_url,
+        upload_url,
+        address,
+        thread,
     }
+}
+
+fn read_proxy_http_message(stream: &mut impl Read) -> String {
+    let mut buffer = Vec::new();
+    let mut chunk = [0_u8; 4096];
+    let mut header_len = None;
+    loop {
+        let bytes_read = stream.read(&mut chunk).expect("proxy request should read");
+        if bytes_read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..bytes_read]);
+        let Some(header_end) = buffer.windows(4).position(|window| window == b"\r\n\r\n") else {
+            continue;
+        };
+        let body_start = header_end + 4;
+        header_len = Some(body_start);
+        let headers = String::from_utf8_lossy(&buffer[..body_start]);
+        let content_length = headers
+            .lines()
+            .filter_map(|line| line.split_once(':'))
+            .find_map(|(name, value)| {
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .unwrap_or(0);
+        if buffer.len() >= body_start + content_length {
+            break;
+        }
+    }
+    let header_len = header_len.expect("proxy request should include complete headers");
+    String::from_utf8(buffer[..header_len].to_vec()).expect("proxy headers should be UTF-8")
 }
 
 fn test_auth() -> CodexAuth {
@@ -160,6 +290,70 @@ fn expected_plugin_interface() -> PluginInterface {
         screenshots: Vec::new(),
         screenshot_urls: Vec::new(),
     }
+}
+
+#[tokio::test]
+async fn save_remote_plugin_share_has_no_direct_egress_bypass() {
+    let codex_home = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().unwrap();
+    let plugin_path =
+        AbsolutePathBuf::try_from(write_test_plugin(temp_dir.path(), "demo-plugin")).unwrap();
+    let proxy = spawn_no_direct_egress_proxy();
+    let proxy_url = format!("http://{}", proxy.address);
+    let upload_request_url = format!("{}/public/plugins/workspace/upload-url", proxy.base_url);
+    let finalize_url = format!("{}/public/plugins/workspace", proxy.base_url);
+    for request_url in [&upload_request_url, &proxy.upload_url, &finalize_url] {
+        codex_http_client::cache_system_proxy_route_for_test(request_url, proxy_url.clone());
+    }
+    let config = RemotePluginServiceConfig::new(
+        proxy.base_url,
+        codex_http_client::HttpClientFactory::new(
+            codex_http_client::OutboundProxyPolicy::RespectSystemProxy,
+        ),
+    );
+    let auth = test_auth();
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        save_remote_plugin_share(
+            &config,
+            Some(&auth),
+            codex_home.path(),
+            &plugin_path,
+            /*remote_plugin_id*/ None,
+            RemotePluginShareAccessPolicy {
+                discoverability: Some(RemotePluginShareDiscoverability::Private),
+                share_targets: None,
+            },
+        ),
+    )
+    .await
+    .expect("plugin share should complete through the configured proxy")
+    .expect("plugin share should succeed without direct DNS or egress");
+
+    assert_eq!(
+        result,
+        RemotePluginShareSaveResult {
+            remote_plugin_id: "plugins_123".to_string(),
+            share_url: Some("https://chatgpt.example/plugins/share/share-key-1".to_string()),
+        }
+    );
+    let requests = proxy
+        .thread
+        .join()
+        .expect("proxy should observe all provider requests");
+    assert_eq!(requests.len(), 3);
+    assert_eq!(
+        requests
+            .iter()
+            .filter_map(|request| request.lines().next())
+            .collect::<Vec<_>>(),
+        vec![
+            format!("POST {upload_request_url} HTTP/1.1"),
+            format!("PUT {} HTTP/1.1", proxy.upload_url),
+            format!("POST {finalize_url} HTTP/1.1"),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -614,10 +808,13 @@ async fn list_remote_plugin_shares_fetches_created_workspace_plugins() {
                         ]),
                     }),
                     installed: false,
+                    installed_at: None,
                     enabled: false,
                     install_policy: PluginInstallPolicy::Available,
                     auth_policy: PluginAuthPolicy::OnUse,
                     availability: PluginAvailability::Available,
+                    disabled_reason: None,
+                    eligible_plan_types: None,
                     interface: Some(expected_plugin_interface()),
                     keywords: Vec::new(),
                 },
@@ -651,10 +848,13 @@ async fn list_remote_plugin_shares_fetches_created_workspace_plugins() {
                         ]),
                     }),
                     installed: true,
+                    installed_at: None,
                     enabled: true,
                     install_policy: PluginInstallPolicy::Available,
                     auth_policy: PluginAuthPolicy::OnUse,
                     availability: PluginAvailability::Available,
+                    disabled_reason: None,
+                    eligible_plan_types: None,
                     interface: Some(expected_plugin_interface()),
                     keywords: Vec::new(),
                 },

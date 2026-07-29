@@ -232,6 +232,15 @@ fn build_agent_shared_config(turn: &TurnContext) -> Result<Config, FunctionCallE
         .or(turn.model_info.default_reasoning_level);
     config.model_reasoning_summary = Some(turn.reasoning_summary);
     config.developer_instructions = turn.developer_instructions.clone();
+    if turn.config.features.enabled(Feature::MultiAgentV2)
+        && let Some(developer_instructions) = turn
+            .config
+            .multi_agent_v2
+            .subagent_developer_instructions
+            .clone()
+    {
+        config.developer_instructions = Some(developer_instructions);
+    }
     config.compact_prompt = turn.compact_prompt.clone();
     apply_spawn_agent_runtime_overrides(&mut config, turn)?;
 

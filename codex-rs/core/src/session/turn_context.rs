@@ -504,6 +504,52 @@ impl Session {
         skills_outcome: Arc<SkillLoadOutcome>,
         goal_tools_supported: bool,
     ) -> TurnContext {
+        Self::make_turn_context_with_parent_turn_id(
+            thread_id,
+            session_id,
+            auth_manager,
+            session_telemetry,
+            provider,
+            session_configuration,
+            user_shell,
+            shell_zsh_path,
+            main_execve_wrapper_exe,
+            per_turn_config,
+            model_info,
+            models_manager,
+            network,
+            environments,
+            cwd,
+            sub_id,
+            /*parent_turn_id*/ None,
+            skills_outcome,
+            goal_tools_supported,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn make_turn_context_with_parent_turn_id(
+        thread_id: ThreadId,
+        session_id: SessionId,
+        auth_manager: Option<Arc<AuthManager>>,
+        session_telemetry: &SessionTelemetry,
+        provider: ModelProviderInfo,
+        session_configuration: &SessionConfiguration,
+        user_shell: &shell::Shell,
+        shell_zsh_path: Option<&PathBuf>,
+        main_execve_wrapper_exe: Option<&PathBuf>,
+        per_turn_config: Config,
+        model_info: ModelInfo,
+        models_manager: &SharedModelsManager,
+        network: Option<NetworkProxy>,
+        environments: ResolvedTurnEnvironments,
+        cwd: AbsolutePathBuf,
+        sub_id: String,
+        parent_turn_id: Option<String>,
+        skills_outcome: Arc<SkillLoadOutcome>,
+        goal_tools_supported: bool,
+    ) -> TurnContext {
         let reasoning_effort = session_configuration.collaboration_mode.reasoning_effort();
         let reasoning_summary = session_configuration
             .model_reasoning_summary
@@ -585,11 +631,12 @@ impl Session {
             .service_tier
             .filter(|service_tier| model_info.supports_service_tier(service_tier));
         let per_turn_config = Arc::new(per_turn_config);
-        let turn_metadata_state = Arc::new(TurnMetadataState::new(
+        let turn_metadata_state = Arc::new(TurnMetadataState::new_with_parent_turn_id(
             session_id.to_string(),
             thread_id.to_string(),
             session_configuration.thread_source,
             sub_id.clone(),
+            parent_turn_id,
             cwd.clone(),
             &session_configuration.permission_profile(),
             session_configuration.windows_sandbox_level,
@@ -654,6 +701,16 @@ impl Session {
         &self,
         sub_id: String,
         updates: SessionSettingsUpdate,
+    ) -> CodexResult<Arc<TurnContext>> {
+        self.new_turn_with_sub_id_and_parent(sub_id, updates, /*parent_turn_id*/ None)
+            .await
+    }
+
+    pub(crate) async fn new_turn_with_sub_id_and_parent(
+        &self,
+        sub_id: String,
+        updates: SessionSettingsUpdate,
+        parent_turn_id: Option<String>,
     ) -> CodexResult<Arc<TurnContext>> {
         let notify_config_contributors = !self.services.extensions.config_contributors().is_empty();
         let update_result: CodexResult<_> = {
@@ -742,6 +799,7 @@ impl Session {
         Ok(self
             .new_turn_from_configuration(
                 sub_id,
+                parent_turn_id,
                 session_configuration,
                 updates.final_output_json_schema,
                 turn_environments,
@@ -762,6 +820,7 @@ impl Session {
     async fn new_turn_from_configuration(
         &self,
         sub_id: String,
+        parent_turn_id: Option<String>,
         session_configuration: SessionConfiguration,
         final_output_json_schema: Option<Option<Value>>,
         turn_environments: ResolvedTurnEnvironments,
@@ -801,7 +860,7 @@ impl Session {
                 .await,
         );
         let goal_tools_supported = !per_turn_config.ephemeral && self.state_db().is_some();
-        let mut turn_context: TurnContext = Self::make_turn_context(
+        let mut turn_context: TurnContext = Self::make_turn_context_with_parent_turn_id(
             self.thread_id(),
             self.session_id(),
             Some(Arc::clone(&self.services.auth_manager)),
@@ -826,6 +885,7 @@ impl Session {
             turn_environments,
             cwd,
             sub_id,
+            parent_turn_id,
             skills_outcome,
             goal_tools_supported,
         )
@@ -861,6 +921,15 @@ impl Session {
     }
 
     pub(crate) async fn new_default_turn_with_sub_id(&self, sub_id: String) -> Arc<TurnContext> {
+        self.new_default_turn_with_sub_id_and_parent(sub_id, /*parent_turn_id*/ None)
+            .await
+    }
+
+    pub(crate) async fn new_default_turn_with_sub_id_and_parent(
+        &self,
+        sub_id: String,
+        parent_turn_id: Option<String>,
+    ) -> Arc<TurnContext> {
         let session_configuration = {
             let state = self.state.lock().await;
             state.session_configuration.clone()
@@ -880,6 +949,7 @@ impl Session {
 
         self.new_turn_from_configuration(
             sub_id,
+            parent_turn_id,
             session_configuration,
             /*final_output_json_schema*/ None,
             turn_environments,

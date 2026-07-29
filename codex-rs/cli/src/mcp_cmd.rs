@@ -17,6 +17,7 @@ use codex_core::config::load_global_mcp_servers;
 use codex_core_plugins::PluginsManager;
 use codex_exec_server::EnvironmentManager;
 use codex_exec_server::ExecServerRuntimePaths;
+use codex_exec_server::HttpClient;
 use codex_mcp::McpOAuthLoginSupport;
 use codex_mcp::McpRuntimeEnvironment;
 use codex_mcp::ResolvedMcpOAuthScopes;
@@ -209,6 +210,7 @@ async fn perform_oauth_login_retry_without_scopes(
     oauth_resource: Option<&str>,
     callback_port: Option<u16>,
     callback_url: Option<&str>,
+    http_client: Arc<dyn HttpClient>,
 ) -> Result<()> {
     match perform_oauth_login(
         name,
@@ -221,6 +223,7 @@ async fn perform_oauth_login_retry_without_scopes(
         oauth_resource,
         callback_port,
         callback_url,
+        Arc::clone(&http_client),
     )
     .await
     {
@@ -238,6 +241,7 @@ async fn perform_oauth_login_retry_without_scopes(
                 oauth_resource,
                 callback_port,
                 callback_url,
+                http_client,
             )
             .await
         }
@@ -337,7 +341,7 @@ async fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Re
 
     match oauth_login_support_with_http_client(
         &transport,
-        http_client,
+        Arc::clone(&http_client),
         OAuthDiscoveryTimeout::Requested,
     )
     .await
@@ -360,6 +364,7 @@ async fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Re
                 /*oauth_resource*/ None,
                 config.mcp_oauth_callback_port,
                 config.mcp_oauth_callback_url.as_deref(),
+                http_client,
             )
             .await?;
             println!("Successfully logged in.");
@@ -444,7 +449,7 @@ async fn run_login(config_overrides: &CliConfigOverrides, login_args: LoginArgs)
     let discovered_scopes = if explicit_scopes.is_none() && server.scopes.is_none() {
         discover_supported_scopes_with_http_client(
             &server.transport,
-            http_client,
+            Arc::clone(&http_client),
             OAuthDiscoveryTimeout::Requested,
         )
         .await
@@ -465,6 +470,7 @@ async fn run_login(config_overrides: &CliConfigOverrides, login_args: LoginArgs)
         server.oauth_resource.as_deref(),
         config.mcp_oauth_callback_port,
         config.mcp_oauth_callback_url.as_deref(),
+        http_client,
     )
     .await?;
     println!("Successfully logged in to MCP server '{name}'.");
@@ -764,11 +770,12 @@ async fn runtime_environment_for_config(config: &Config) -> Result<McpRuntimeEnv
     )?;
     let environment_manager =
         EnvironmentManager::from_codex_home(config.codex_home.clone(), local_runtime_paths).await?;
-    Ok(McpRuntimeEnvironment::new(
+    Ok(McpRuntimeEnvironment::new_with_http_client_factory(
         environment_manager
             .default_environment()
             .unwrap_or_else(|| environment_manager.local_environment()),
         config.cwd.to_path_buf(),
+        config.http_client_factory(),
     ))
 }
 

@@ -1978,8 +1978,10 @@ dependencies = [
  "bytes",
  "chrono",
  "codex-client",
+ "codex-http-client",
  "codex-protocol",
  "codex-utils-rustls-provider",
+ "codex-websocket-client",
  "eventsource-stream",
  "futures",
  "http 1.4.0",
@@ -2066,7 +2068,7 @@ dependencies = [
  "opentelemetry_sdk",
  "pretty_assertions",
  "reqwest 0.12.28",
- "rmcp",
+ "rmcp 1.8.0",
  "serde",
  "serde_json",
  "serial_test",
@@ -2150,7 +2152,7 @@ dependencies = [
  "codex-utils-cargo-bin",
  "inventory",
  "pretty_assertions",
- "rmcp",
+ "rmcp 1.8.0",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -2643,6 +2645,7 @@ dependencies = [
  "codex-feedback",
  "codex-git-utils",
  "codex-hooks",
+ "codex-http-client",
  "codex-login",
  "codex-mcp",
  "codex-memories-read",
@@ -2701,7 +2704,7 @@ dependencies = [
  "rand 0.9.3",
  "regex-lite",
  "reqwest 0.12.28",
- "rmcp",
+ "rmcp 1.8.0",
  "serde",
  "serde_json",
  "serial_test",
@@ -2762,6 +2765,7 @@ dependencies = [
  "codex-exec-server",
  "codex-git-utils",
  "codex-hooks",
+ "codex-http-client",
  "codex-login",
  "codex-model-provider",
  "codex-otel",
@@ -2772,6 +2776,7 @@ dependencies = [
  "codex-utils-plugins",
  "dirs",
  "flate2",
+ "http 1.4.0",
  "libc",
  "pretty_assertions",
  "regex",
@@ -2891,6 +2896,7 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-client",
  "codex-file-system",
+ "codex-http-client",
  "codex-protocol",
  "codex-sandboxing",
  "codex-test-binary-support",
@@ -2899,6 +2905,7 @@ dependencies = [
  "codex-utils-rustls-provider",
  "ctor 0.6.3",
  "futures",
+ "http 1.4.0",
  "pretty_assertions",
  "prost 0.14.3",
  "reqwest 0.12.28",
@@ -2913,8 +2920,17 @@ dependencies = [
  "tokio-util",
  "toml 0.9.11+spec-1.1.0",
  "tracing",
+ "url",
  "uuid",
  "wiremock",
+]
+
+[[package]]
+name = "codex-exec-server-protocol"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3138,6 +3154,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-http-client"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "codex-utils-cargo-bin",
+ "codex-utils-rustls-provider",
+ "futures",
+ "http 1.4.0",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "pretty_assertions",
+ "rcgen",
+ "reqwest 0.12.28",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "system-configuration",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "windows-sys 0.52.0",
+ "zstd 0.13.3",
+]
+
+[[package]]
 name = "codex-install-context"
 version = "0.0.0"
 dependencies = [
@@ -3243,6 +3290,7 @@ dependencies = [
  "codex-async-utils",
  "codex-config",
  "codex-exec-server",
+ "codex-http-client",
  "codex-login",
  "codex-model-provider",
  "codex-otel",
@@ -3253,7 +3301,7 @@ dependencies = [
  "futures",
  "pretty_assertions",
  "regex-lite",
- "rmcp",
+ "rmcp 1.8.0",
  "serde",
  "serde_json",
  "sha1 0.10.6",
@@ -3286,7 +3334,7 @@ dependencies = [
  "mcp_test_support",
  "os_info",
  "pretty_assertions",
- "rmcp",
+ "rmcp 1.8.0",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -3328,7 +3376,7 @@ dependencies = [
  "codex-utils-absolute-path",
  "codex-utils-output-truncation",
  "pretty_assertions",
- "rmcp",
+ "rmcp 1.8.0",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -3652,17 +3700,19 @@ dependencies = [
  "codex-client",
  "codex-config",
  "codex-exec-server",
+ "codex-http-client",
  "codex-keyring-store",
  "codex-protocol",
  "codex-utils-cargo-bin",
  "codex-utils-home-dir",
  "codex-utils-pty",
  "futures",
+ "http 1.4.0",
  "keyring",
  "oauth2",
  "pretty_assertions",
  "reqwest 0.13.4",
- "rmcp",
+ "rmcp 1.8.0",
  "serde",
  "serde_json",
  "serial_test",
@@ -3909,7 +3959,7 @@ dependencies = [
  "codex-utils-pty",
  "codex-utils-string",
  "pretty_assertions",
- "rmcp",
+ "rmcp 1.8.0",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3993,7 +4043,7 @@ dependencies = [
  "ratatui-macros",
  "regex-lite",
  "reqwest 0.12.28",
- "rmcp",
+ "rmcp 1.8.0",
  "serde",
  "serde_json",
  "serial_test",
@@ -4256,6 +4306,22 @@ version = "0.0.0"
 dependencies = [
  "pretty_assertions",
  "v8",
+]
+
+[[package]]
+name = "codex-websocket-client"
+version = "0.0.0"
+dependencies = [
+ "codex-http-client",
+ "codex-utils-rustls-provider",
+ "futures",
+ "pretty_assertions",
+ "rcgen",
+ "rustls",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite",
+ "url",
 ]
 
 [[package]]
@@ -7475,6 +7541,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 name = "hepta-authority"
 version = "0.0.0"
 dependencies = [
+ "hepta-durable-store",
  "hmac 0.12.1",
  "sha2 0.10.9",
 ]
@@ -7503,6 +7570,15 @@ dependencies = [
  "hepta-contracts",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "hepta-durable-store"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "libc",
+ "tempfile",
 ]
 
 [[package]]
@@ -7551,6 +7627,16 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "hepta-mcp-2026-compat"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "rmcp 3.0.0-beta.3",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -9173,7 +9259,7 @@ dependencies = [
  "core_test_support",
  "os_info",
  "pretty_assertions",
- "rmcp",
+ "rmcp 1.8.0",
  "serde",
  "serde_json",
  "shlex",
@@ -11919,6 +12005,25 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "rmcp"
+version = "3.0.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e13a8472324b3d6c74f092cc5d07b2707b128196b020ed7c3c2d52bede542680"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures",
+ "pin-project-lite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]

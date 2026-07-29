@@ -585,14 +585,12 @@ mod bootstrap_candidate_matching {
     ) -> hepta_intelligence::BootstrapTopicMatchFeatures {
         let candidate_slug = slugify_identifier(candidate_label);
         let topic_label_slug = slugify_identifier(&topic_session.topic_label.0);
-        let features = hepta_intelligence::compute_bootstrap_topic_match_features(
+        hepta_intelligence::compute_bootstrap_topic_match_features(
             candidate_label,
             &candidate_slug,
             topic_session,
             &topic_label_slug,
-        );
-
-        features
+        )
     }
 }
 

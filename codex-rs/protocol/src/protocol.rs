@@ -146,6 +146,9 @@ pub struct Submission {
     /// Optional W3C trace carrier propagated across async submission handoffs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trace: Option<W3cTraceContext>,
+    /// Core-provided ID of the parent turn that directly initiated this submission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_turn_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
@@ -897,6 +900,9 @@ pub struct InterAgentCommunication {
     #[serde(default)]
     pub other_recipients: Vec<AgentPath>,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub encrypted_content: Option<String>,
     pub trigger_turn: bool,
 }
 
@@ -913,6 +919,24 @@ impl InterAgentCommunication {
             recipient,
             other_recipients,
             content,
+            encrypted_content: None,
+            trigger_turn,
+        }
+    }
+
+    pub fn new_encrypted(
+        author: AgentPath,
+        recipient: AgentPath,
+        other_recipients: Vec<AgentPath>,
+        encrypted_content: String,
+        trigger_turn: bool,
+    ) -> Self {
+        Self {
+            author,
+            recipient,
+            other_recipients,
+            content: String::new(),
+            encrypted_content: Some(encrypted_content),
             trigger_turn,
         }
     }
@@ -5787,6 +5811,7 @@ mod tests {
             recipient: AgentPath::root().join("reviewer").expect("recipient path"),
             other_recipients: vec![AgentPath::root().join("worker").expect("recipient path")],
             content: "review the diff".to_string(),
+            encrypted_content: None,
             trigger_turn: true,
         };
 

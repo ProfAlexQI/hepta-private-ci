@@ -18,6 +18,7 @@ use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
 use crate::tools::flat_tool_name;
 use crate::tools::hook_names::HookToolName;
+use crate::tools::router::tool_log_payload;
 use crate::tools::tool_dispatch_trace::ToolDispatchTrace;
 use crate::tools::tool_search_entry::ToolSearchInfo;
 use crate::util::error_or_panic;
@@ -348,7 +349,7 @@ impl ToolRegistry {
             Some(tool) => tool,
             None => {
                 let message = unsupported_tool_call_message(&invocation.payload, &tool_name);
-                let log_payload = invocation.payload.log_payload();
+                let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
                 otel.tool_result_with_tags(
                     tool_name_flat.as_ref(),
                     &call_id_owned,
@@ -379,7 +380,7 @@ impl ToolRegistry {
         }
         if !tool.matches_kind(&invocation.payload) {
             let message = format!("tool {tool_name} invoked with incompatible payload");
-            let log_payload = invocation.payload.log_payload();
+            let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
             otel.tool_result_with_tags(
                 tool_name_flat.as_ref(),
                 &call_id_owned,
@@ -423,7 +424,7 @@ impl ToolRegistry {
 
         let response_cell = tokio::sync::Mutex::new(None);
         let invocation_for_tool = invocation.clone();
-        let log_payload = invocation.payload.log_payload();
+        let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
 
         let result = otel
             .log_tool_result_with_tags(

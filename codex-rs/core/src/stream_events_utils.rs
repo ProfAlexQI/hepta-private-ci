@@ -346,6 +346,7 @@ pub(crate) async fn handle_output_item_done(
 ) -> Result<OutputItemResult> {
     let mut output = OutputItemResult::default();
     let plan_mode = ctx.turn_context.collaboration_mode.mode == ModeKind::Plan;
+    let direct_source = crate::tools::router::direct_source_for_response_item(&item);
 
     match ToolRouter::build_tool_call(item.clone()) {
         // The model emitted a tool call; log it, persist the item immediately, and queue the tool execution.
@@ -354,7 +355,8 @@ pub(crate) async fn handle_output_item_done(
                 .accept_mailbox_delivery_for_current_turn(&ctx.turn_context.sub_id)
                 .await;
 
-            let payload_preview = call.payload.log_payload().into_owned();
+            let payload_preview =
+                crate::tools::router::tool_log_payload(&call.payload, &direct_source).into_owned();
             tracing::info!(
                 thread_id = %ctx.sess.conversation_id,
                 "ToolCall: {} {}",
@@ -369,7 +371,7 @@ pub(crate) async fn handle_output_item_done(
             let tool_future: InFlightFuture<'static> = Box::pin(
                 ctx.tool_runtime
                     .clone()
-                    .handle_tool_call(call, cancellation_token),
+                    .handle_direct_tool_call_with_source(call, direct_source, cancellation_token),
             );
 
             output.needs_follow_up = true;

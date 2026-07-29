@@ -13,6 +13,9 @@ pub use authenticated_journal::AuthenticationFraming;
 pub use authenticated_journal::decode_sha256_hex;
 pub use authenticated_journal::hex_decode;
 pub use authenticated_journal::hex_encode;
+pub use hepta_durable_store::AuthenticatedJournalStore;
+pub use hepta_durable_store::AuthenticatedJournalStoreLock;
+pub use hepta_durable_store::DurableFileSnapshot;
 
 /// Persistent authority journal family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

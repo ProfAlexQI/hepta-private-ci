@@ -131,11 +131,12 @@ impl McpRequestProcessor {
             )));
         };
         let environment_manager = self.thread_manager.environment_manager();
-        let runtime_environment = McpRuntimeEnvironment::new(
+        let runtime_environment = McpRuntimeEnvironment::new_with_http_client_factory(
             environment_manager
                 .default_environment()
                 .unwrap_or_else(|| environment_manager.local_environment()),
             config.cwd.to_path_buf(),
+            config.http_client_factory(),
         );
         let http_client = runtime_environment
             .http_client_for_server(server)
@@ -162,7 +163,7 @@ impl McpRequestProcessor {
         let discovered_scopes = if scopes.is_none() && server.scopes.is_none() {
             discover_supported_scopes_with_http_client(
                 &server.transport,
-                http_client,
+                Arc::clone(&http_client),
                 OAuthDiscoveryTimeout::Requested,
             )
             .await
@@ -184,6 +185,7 @@ impl McpRequestProcessor {
             timeout_secs,
             config.mcp_oauth_callback_port,
             config.mcp_oauth_callback_url.as_deref(),
+            http_client,
         )
         .await
         .map_err(|err| internal_error(format!("failed to login to MCP server '{name}': {err}")))?;

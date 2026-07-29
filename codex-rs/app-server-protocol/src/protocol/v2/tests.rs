@@ -3111,10 +3111,13 @@ fn plugin_share_list_response_serializes_share_items() {
                     share_context: None,
                     source: PluginSource::Remote,
                     installed: false,
+                    installed_at: None,
                     enabled: false,
                     install_policy: PluginInstallPolicy::Available,
                     auth_policy: PluginAuthPolicy::OnUse,
                     availability: PluginAvailability::Available,
+                    disabled_reason: None,
+                    eligible_plan_types: None,
                     interface: None,
                     keywords: Vec::new(),
                 },
@@ -3132,10 +3135,13 @@ fn plugin_share_list_response_serializes_share_items() {
                     "shareContext": null,
                     "source": { "type": "remote" },
                     "installed": false,
+                    "installedAt": null,
                     "enabled": false,
                     "installPolicy": "AVAILABLE",
                     "authPolicy": "ON_USE",
                     "availability": "AVAILABLE",
+                    "disabledReason": null,
+                    "eligiblePlanTypes": null,
                     "interface": null,
                     "keywords": [],
                 },
@@ -3162,6 +3168,9 @@ fn plugin_summary_defaults_missing_availability_to_available() {
     assert_eq!(summary.availability, PluginAvailability::Available);
     assert_eq!(summary.local_version, None);
     assert_eq!(summary.share_context, None);
+    assert_eq!(summary.installed_at, None);
+    assert_eq!(summary.disabled_reason, None);
+    assert_eq!(summary.eligible_plan_types, None);
 }
 
 #[test]

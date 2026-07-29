@@ -13,7 +13,6 @@ use crate::tools::handlers::work_graph_admission::build_agent_card_manifest_shad
 use crate::tools::handlers::work_graph_admission::configured_agent_role_manifest_source;
 use crate::tools::handlers::work_graph_admission::subagent_handoff_agent_card_manifest;
 use crate::turn_timing::now_unix_timestamp_ms;
-use codex_protocol::protocol::InterAgentCommunication;
 use serde::Serialize;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -23,17 +22,10 @@ pub(crate) enum MessageDeliveryMode {
 }
 
 impl MessageDeliveryMode {
-    /// Returns whether the produced communication should start a turn immediately.
-    fn apply(self, communication: InterAgentCommunication) -> InterAgentCommunication {
+    fn trigger_turn(self) -> bool {
         match self {
-            Self::QueueOnly => InterAgentCommunication {
-                trigger_turn: false,
-                ..communication
-            },
-            Self::TriggerTurn => InterAgentCommunication {
-                trigger_turn: true,
-                ..communication
-            },
+            Self::QueueOnly => false,
+            Self::TriggerTurn => true,
         }
     }
 
@@ -88,6 +80,7 @@ pub(crate) async fn handle_message_string_tool(
         session,
         turn,
         call_id,
+        source,
         ..
     } = invocation;
     let receiver_thread_id = resolve_agent_target(&session, &turn, &target).await?;
@@ -127,19 +120,23 @@ pub(crate) async fn handle_message_string_tool(
         &turn,
         receiver_agent.agent_role.as_ref(),
     );
-    let communication = InterAgentCommunication::new(
+    let communication = communication_from_tool_message(
         turn.session_source
             .get_agent_path()
             .unwrap_or_else(AgentPath::root),
         receiver_agent_path,
-        Vec::new(),
         prompt.clone(),
-        /*trigger_turn*/ true,
+        &source,
+        mode.trigger_turn(),
     );
     let result = session
         .services
         .agent_control
-        .send_inter_agent_communication(receiver_thread_id, mode.apply(communication))
+        .send_inter_agent_communication_with_parent(
+            receiver_thread_id,
+            communication,
+            Some(turn.sub_id.clone()),
+        )
         .await
         .map_err(|err| collab_agent_error(receiver_thread_id, err));
     let status = session

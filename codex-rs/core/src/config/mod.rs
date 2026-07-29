@@ -1022,6 +1022,7 @@ pub struct MultiAgentV2Config {
     pub usage_hint_text: Option<String>,
     pub root_agent_usage_hint_text: Option<String>,
     pub subagent_usage_hint_text: Option<String>,
+    pub subagent_developer_instructions: Option<String>,
     pub hide_spawn_agent_metadata: bool,
     pub non_code_mode_only: bool,
 }
@@ -1038,6 +1039,7 @@ impl Default for MultiAgentV2Config {
             usage_hint_text: None,
             root_agent_usage_hint_text: None,
             subagent_usage_hint_text: None,
+            subagent_developer_instructions: None,
             hide_spawn_agent_metadata: false,
             non_code_mode_only: false,
         }
@@ -1465,6 +1467,19 @@ impl Config {
         }
     }
 
+    /// Creates the shared outbound HTTP factory from the effective feature set.
+    ///
+    /// Keeping this derivation on `Config` makes remote plugin, MCP OAuth, and
+    /// Responses WebSocket callers share one route-selection policy.
+    pub fn http_client_factory(&self) -> codex_http_client::HttpClientFactory {
+        let policy = if self.features.enabled(Feature::RespectSystemProxy) {
+            codex_http_client::OutboundProxyPolicy::RespectSystemProxy
+        } else {
+            codex_http_client::OutboundProxyPolicy::ReqwestDefault
+        };
+        codex_http_client::HttpClientFactory::new(policy)
+    }
+
     /// Build the plugin-manager input from the effective config.
     pub fn plugins_config_input(&self) -> PluginsConfigInput {
         PluginsConfigInput::new(
@@ -1473,6 +1488,7 @@ impl Config {
             self.features.enabled(Feature::RemotePlugin),
             self.features.enabled(Feature::PluginHooks),
             self.chatgpt_base_url.clone(),
+            self.http_client_factory(),
         )
     }
 
@@ -2461,6 +2477,11 @@ fn resolve_multi_agent_v2_config(
         .or_else(|| base.and_then(|config| config.subagent_usage_hint_text.as_ref()))
         .cloned()
         .or(default.subagent_usage_hint_text);
+    let subagent_developer_instructions = profile
+        .and_then(|config| config.subagent_developer_instructions.as_ref())
+        .or_else(|| base.and_then(|config| config.subagent_developer_instructions.as_ref()))
+        .map(|instructions| instructions.trim().to_string())
+        .or(default.subagent_developer_instructions);
     let hide_spawn_agent_metadata = profile
         .and_then(|config| config.hide_spawn_agent_metadata)
         .or_else(|| base.and_then(|config| config.hide_spawn_agent_metadata))
@@ -2479,6 +2500,7 @@ fn resolve_multi_agent_v2_config(
         usage_hint_text,
         root_agent_usage_hint_text,
         subagent_usage_hint_text,
+        subagent_developer_instructions,
         hide_spawn_agent_metadata,
         non_code_mode_only,
     }

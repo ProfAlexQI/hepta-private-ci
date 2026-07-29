@@ -85,7 +85,7 @@ fn multi_agent_v2_feature_toggle_preserves_nested_configuration() {
     let config_path = tmp.path().join(CONFIG_TOML_FILE);
     std::fs::write(
         &config_path,
-        "[features.multi_agent_v2]\nenabled = true\nsubagent_usage_hint_text = \"Delegate carefully.\"\n",
+        "[features.multi_agent_v2]\nenabled = true\nsubagent_usage_hint_text = \"Delegate carefully.\"\nsubagent_developer_instructions = \"Keep caller policy.\"\n",
     )
     .expect("write config");
 
@@ -94,14 +94,12 @@ fn multi_agent_v2_feature_toggle_preserves_nested_configuration() {
         .apply_blocking()
         .expect("disable feature");
 
-    let updated = std::fs::read_to_string(config_path)
-        .expect("read config")
-        .parse::<TomlValue>()
-        .expect("parse config");
+    let updated_contents = std::fs::read_to_string(config_path).expect("read config");
+    let updated = toml::from_str::<TomlValue>(&updated_contents).expect("parse config");
     assert_eq!(
         updated,
         toml::from_str::<TomlValue>(
-            "[features.multi_agent_v2]\nenabled = false\nsubagent_usage_hint_text = \"Delegate carefully.\"\n"
+            "[features.multi_agent_v2]\nenabled = false\nsubagent_usage_hint_text = \"Delegate carefully.\"\nsubagent_developer_instructions = \"Keep caller policy.\"\n"
         )
         .expect("parse expected config")
     );

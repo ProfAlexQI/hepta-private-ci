@@ -254,13 +254,11 @@ async fn plugin_share_save_persists_authenticated_terminal_receipt() -> Result<(
     )
     .await?;
     timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let request_params = json!({
+        "pluginPath": AbsolutePathBuf::try_from(plugin_path)?,
+    });
     let request_id = mcp
-        .send_raw_request(
-            "plugin/share/save",
-            Some(json!({
-                "pluginPath": AbsolutePathBuf::try_from(plugin_path)?,
-            })),
-        )
+        .send_raw_request("plugin/share/save", Some(request_params.clone()))
         .await?;
     let response: JSONRPCResponse = timeout(
         DEFAULT_TIMEOUT,
@@ -277,6 +275,38 @@ async fn plugin_share_save_persists_authenticated_terminal_receipt() -> Result<(
         }
     );
     assert_authenticated_plugin_mutation_receipt(codex_home.path(), &anchor_path, &response)?;
+    let journal_path = codex_home.path().join("hepta-plugin-mutation-journal.json");
+    let journal_before_replay = std::fs::read(&journal_path)?;
+    let anchor_before_replay = std::fs::read(&anchor_path)?;
+    drop(mcp);
+
+    let mut replay_mcp = McpProcess::new_with_env(
+        codex_home.path(),
+        &[(
+            PLUGIN_MUTATION_EXTERNAL_ANCHOR_FILE_ENV,
+            Some(anchor_path_text.as_str()),
+        )],
+    )
+    .await?;
+    timeout(DEFAULT_TIMEOUT, replay_mcp.initialize()).await??;
+    let replay_request_id = replay_mcp
+        .send_raw_request("plugin/share/save", Some(request_params))
+        .await?;
+    let replay_response: JSONRPCResponse = timeout(
+        DEFAULT_TIMEOUT,
+        replay_mcp.read_stream_until_response_message(RequestId::Integer(replay_request_id)),
+    )
+    .await??;
+    let replay_response: PluginShareSaveResponse = to_response(replay_response)?;
+
+    assert_eq!(replay_response, response);
+    assert_eq!(std::fs::read(&journal_path)?, journal_before_replay);
+    assert_eq!(std::fs::read(&anchor_path)?, anchor_before_replay);
+    assert_authenticated_plugin_mutation_receipt(
+        codex_home.path(),
+        &anchor_path,
+        &replay_response,
+    )?;
 
     Ok(())
 }
