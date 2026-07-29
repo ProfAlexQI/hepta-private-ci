@@ -47,6 +47,11 @@
     "loaded_path_digest_required": true,
     "working_directory": "~/.local/share/hepta/runtime-v2",
     "state_root": "~/.local/share/hepta",
+    "telegram_plugin_requested": false,
+    "legacy_poll_safe_statuses": [
+      "disabled",
+      "gated"
+    ],
     "all_effectful_gates_default_false": true
   },
   "unchanged_boundaries": {

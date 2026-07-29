@@ -736,6 +736,11 @@ verify() {
     and .gateway_launch_agent.loaded_path_digest_required == true
     and .gateway_launch_agent.working_directory == "~/.local/share/hepta/runtime-v2"
     and .gateway_launch_agent.state_root == "~/.local/share/hepta"
+    and .gateway_launch_agent.telegram_plugin_requested == false
+    and .gateway_launch_agent.legacy_poll_safe_statuses == [
+      "disabled",
+      "gated"
+    ]
     and .gateway_launch_agent.all_effectful_gates_default_false == true
     and .unchanged_boundaries.telegram_owner == "legacy_openclaw"
     and ([.unchanged_boundaries.telegram_external_read,

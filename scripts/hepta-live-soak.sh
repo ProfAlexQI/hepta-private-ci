@@ -46,7 +46,7 @@ for sample in $(seq 1 "$SAMPLES"); do
   production_readiness_state_known=false
   production_readiness_classification="unknown"
   if [[ "$owner" == "legacy_openclaw:false:false" \
-    && "$poll" == "gated:false:false" \
+    && ("$poll" == "gated:false:false" || "$poll" == "disabled:false:false") \
     && "$post" == "false:false:false" \
     && "$operator" == "attention:legacy_owner_coexistence_ready:true:telegram_replacement_not_requested" ]]; then
     legacy_sample_ready=true
@@ -56,6 +56,13 @@ for sample in $(seq 1 "$SAMPLES"); do
     production_attention_budget_known=true
     production_readiness_state_known=true
     production_readiness_classification="warming_observation_budget"
+  fi
+  if [[ "$legacy_sample_ready" == true \
+    && "$poll" == "disabled:false:false" \
+    && "$production" == "disabled:true:true:false:false:false:false:true:telegram_plugin_not_requested,poll_loop_not_armed,cursor_not_ready,production_guards_not_ready,observation_min_poll_iterations,observation_stale" ]]; then
+    production_attention_budget_known=true
+    production_readiness_state_known=true
+    production_readiness_classification="legacy_owner_plugin_disabled"
   fi
   if [[ "$owner" == "parallel_bots:false:true" \
     && "$poll" == "armed:false:false" \

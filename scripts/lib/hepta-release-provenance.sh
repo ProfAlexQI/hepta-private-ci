@@ -398,6 +398,7 @@ hepta_release_write_fixture_preflight_log() {
   printf '%s\n' \
     "[hepta-preflight-resume] head=${source_commit:0:10} attempt=1 start_line=1 marker=<start> log=$target" \
     "{\"hepta_repo_head\":\"$source_commit\"}" \
+    "[hepta-preflight] fixture source-bound validation" \
     "[hepta-preflight-provenance] $canonical_provenance" \
     "[hepta-preflight-final] $final_receipt" \
     "Hepta preflight passed" >"$target"

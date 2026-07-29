@@ -64,8 +64,6 @@ hepta_watchdog_native_post_contract_json() {
           and $post.activation_currently_enabled == false
           and $post.handler_candidate_count == 3
           and $post.handler_scope_env == "HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE"
-          and $post.handler_scope == "task_publish"
-          and $post.handler_scope_configured == true
           and $post.execution_evidence_ready == true
           and $post.store_contracts_ready == true
           and $post.store_jsonl_valid == true
@@ -101,6 +99,8 @@ hepta_watchdog_native_post_contract_json() {
           and $post.single_handler_scope_ready == true
           and $post.selected_handler_count == 1
           and $post.selected_handler_kinds == ["task_publish"]
+          and $post.handler_scope == "task_publish"
+          and $post.handler_scope_configured == true
           and $post.rollback_ready == true
           and $scope_gate_enabled
         ) as $legacy_plan_ready
@@ -114,6 +114,8 @@ hepta_watchdog_native_post_contract_json() {
           and $post.single_handler_scope_ready == false
           and $post.selected_handler_count == 0
           and $post.selected_handler_kinds == []
+          and $post.handler_scope == null
+          and $post.handler_scope_configured == false
           and $post.rollback_ready == false
           and ($scope_gate_enabled | not)
         ) as $governed_backend_disabled

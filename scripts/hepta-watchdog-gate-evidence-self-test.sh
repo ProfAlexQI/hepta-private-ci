@@ -266,6 +266,8 @@ governed_native_post="$(
     single_handler_scope_ready:false,
     selected_handler_count:0,
     selected_handler_kinds:[],
+    handler_scope:null,
+    handler_scope_configured:false,
     rollback_ready:false
   }' <<<"$native_post_common"
 )"

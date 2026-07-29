@@ -125,6 +125,10 @@ fn watchdog_state(
         options.telegram_plugin_poll_ms,
     );
     let architecture = architecture_state();
+    let legacy_poll_safe = matches!(poll.status, "gated" | "disabled")
+        && !poll.worker_spawned_by_status
+        && !poll.external_network_read_by_status
+        && !poll.external_send_by_status;
     let legacy_boundary_ready = operator_report.status == "attention"
         && operator_report.security_mode == "legacy_owner_coexistence_ready"
         && operator_report.legacy_owner_coexistence_ready
@@ -133,10 +137,7 @@ fn watchdog_state(
         && owner.conflict_free
         && !owner.double_poller_risk
         && !owner.hepta_poll_loop_armed
-        && poll.status == "gated"
-        && !poll.worker_spawned_by_status
-        && !poll.external_network_read_by_status
-        && !poll.external_send_by_status
+        && legacy_poll_safe
         && !activation.activation_currently_enabled
         && !activation.real_mutation_performed
         && !activation.external_side_effects
@@ -412,7 +413,9 @@ mod tests {
         assert!(body.len() < report_pagination::MAX_DEFAULT_REPORT_BYTES);
         let value: serde_json::Value = serde_json::from_str(&body).expect("watchdog JSON");
         assert_eq!(value["schema_version"], WATCHDOG_STATE_SCHEMA);
+        assert_eq!(value["status"], "ready");
         assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["poll"]["status"], "disabled");
         assert_eq!(value["poll"]["external_network_read_by_status"], false);
         assert_eq!(value["poll"]["external_send_by_status"], false);
         assert_eq!(
@@ -429,6 +432,7 @@ mod tests {
         assert_eq!(value["product_boundary"]["telegram_external_send"], false);
         assert_eq!(value["product_boundary"]["telegram_poll_loop_owner"], false);
         assert_eq!(value["product_boundary"]["native_real_mutation"], false);
+        assert_eq!(value["product_boundary"]["status"], "ready");
     }
 
     #[test]

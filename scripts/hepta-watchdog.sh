@@ -382,7 +382,7 @@ report="$(jq -n \
         and $owner.active_owner == "legacy_openclaw"
         and $owner.double_poller_risk == false
         and $owner.hepta_poll_loop_armed == false
-        and $poll.status == "gated"
+        and ($poll.status == "gated" or $poll.status == "disabled")
         and $post.activation_currently_enabled == false
       ) as $legacy_owner_attention_state_known
     | (
@@ -424,6 +424,20 @@ report="$(jq -n \
         and ($production.readiness_blockers | index("observation_min_poll_iterations")) != null
         and ($production.readiness_blockers | index("observation_stale")) != null
       ) as $warming_observation_budget_state_known
+    | (
+        $legacy_owner_attention_state_known
+        and $poll.status == "disabled"
+        and $production.status == "disabled"
+        and $production.attention_budget_ok == true
+        and $production.recent_bot_api_ok == true
+        and $production.observation_ready == false
+        and $production.observation_fresh == false
+        and $production.poll_loop_armed == false
+        and $production.cursor_ready == false
+        and $production.delivery_ledger_ready == true
+        and ($production.readiness_blockers | index("telegram_plugin_not_requested")) != null
+        and ($production.readiness_blockers | index("poll_loop_not_armed")) != null
+      ) as $legacy_plugin_disabled_state_known
     | {
     product:$product,
     runtime:$runtime,
@@ -584,7 +598,7 @@ report="$(jq -n \
             and $operator.attention_reason == "telegram_replacement_not_requested"
             and $owner.active_owner == "legacy_openclaw"
             and $owner.hepta_poll_loop_armed == false
-            and $poll.status == "gated"
+            and ($poll.status == "gated" or $poll.status == "disabled")
             and $post.activation_currently_enabled == false
           )
           or (
@@ -675,6 +689,7 @@ report="$(jq -n \
       $active_replacement_state_known
       or $attention_budget_exceeded_state_known
       or $warming_observation_budget_state_known
+      or $legacy_plugin_disabled_state_known
     ),
     telegram_production_readiness_classification:(
       if $active_replacement_state_known
@@ -683,12 +698,15 @@ report="$(jq -n \
       then "attention_budget_exceeded"
       elif $warming_observation_budget_state_known
       then "warming_observation_budget"
+      elif $legacy_plugin_disabled_state_known
+      then "legacy_owner_plugin_disabled"
       else "unknown"
       end
     ),
     operator_security_attention_budget_known: (
       $attention_budget_exceeded_state_known
       or $warming_observation_budget_state_known
+      or $legacy_plugin_disabled_state_known
     ),
     telegram_production_attention_budget_ok:$production.attention_budget_ok,
     security_mode:$operator.security_mode,
