@@ -93,6 +93,67 @@ pub struct AuthenticatedJournalEngine {
     policy: AuthorityJournalPolicy,
 }
 
+/// Schema-preserving codec for a journal's framed text fields.
+///
+/// Domain-specific journals retain their own record types and ordering. This
+/// codec only centralizes the byte projection shared by their MAC and digest
+/// operations, so adopting it cannot silently change a persisted schema.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuthenticatedJournalCodec {
+    engine: AuthenticatedJournalEngine,
+    framing: AuthenticationFraming,
+    domain: &'static [u8],
+}
+
+impl AuthenticatedJournalCodec {
+    /// Binds a codec to one engine, framing mode, and immutable domain.
+    pub const fn new(
+        engine: AuthenticatedJournalEngine,
+        framing: AuthenticationFraming,
+        domain: &'static [u8],
+    ) -> Self {
+        Self {
+            engine,
+            framing,
+            domain,
+        }
+    }
+
+    /// Computes a lowercase HMAC-SHA256 over ordered text fields.
+    pub fn mac_hex<T: AsRef<[u8]>>(
+        self,
+        key: &[u8],
+        fields: &[T],
+    ) -> Result<String, AuthenticatedJournalError> {
+        let fields = fields.iter().map(AsRef::as_ref).collect::<Vec<&[u8]>>();
+        self.engine.mac_hex(key, self.framing, self.domain, &fields)
+    }
+
+    /// Computes a lowercase SHA-256 digest over ordered text fields.
+    pub fn digest_hex<T: AsRef<[u8]>>(self, fields: &[T]) -> String {
+        let fields = fields.iter().map(AsRef::as_ref).collect::<Vec<&[u8]>>();
+        self.engine.digest_hex(self.framing, self.domain, &fields)
+    }
+
+    /// Computes a `sha256:` content hash over ordered text fields.
+    pub fn content_hash<T: AsRef<[u8]>>(self, fields: &[T]) -> String {
+        let fields = fields.iter().map(AsRef::as_ref).collect::<Vec<&[u8]>>();
+        self.engine.content_hash(self.framing, self.domain, &fields)
+    }
+
+    /// Verifies an HMAC-SHA256 over ordered text fields.
+    pub fn verify_mac_hex<T: AsRef<[u8]>>(
+        self,
+        key: &[u8],
+        fields: &[T],
+        proof: &str,
+    ) -> Result<(), AuthenticatedJournalError> {
+        let fields = fields.iter().map(AsRef::as_ref).collect::<Vec<&[u8]>>();
+        self.engine
+            .verify_mac_hex(key, self.framing, self.domain, &fields, proof)
+    }
+}
+
 impl AuthenticatedJournalEngine {
     /// Creates an engine bound to one immutable journal policy.
     pub const fn new(policy: AuthorityJournalPolicy) -> Self {
@@ -336,6 +397,22 @@ mod tests {
             ENGINE.digest_hex(AuthenticationFraming::FramedDomain, b"domain", &fields),
             "75fe625e75d36d371aeeb2a084eaa5ab88a849f87fcefcd9dd3c9780a0e170da"
         );
+
+        let codec =
+            AuthenticatedJournalCodec::new(ENGINE, AuthenticationFraming::FramedDomain, b"domain");
+        let text_fields = ["alpha", "beta"];
+        let codec_mac = codec.mac_hex(&key, &text_fields).expect("codec MAC");
+        assert_eq!(
+            codec_mac,
+            "767e4a18170d01eb4cf6427394c91788e591e5bf08a713555576d97eec177bd0"
+        );
+        assert_eq!(
+            codec.digest_hex(&text_fields),
+            "75fe625e75d36d371aeeb2a084eaa5ab88a849f87fcefcd9dd3c9780a0e170da"
+        );
+        codec
+            .verify_mac_hex(&key, &text_fields, &codec_mac)
+            .expect("codec verification");
     }
 
     #[test]

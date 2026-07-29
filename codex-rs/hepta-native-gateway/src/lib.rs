@@ -17,6 +17,7 @@ mod preference_ingress;
 mod provider_domain;
 mod route_manifest;
 mod route_registry;
+mod route_report_descriptor;
 mod runtime_composition;
 mod runtime_ingress;
 mod runtime_mutation;

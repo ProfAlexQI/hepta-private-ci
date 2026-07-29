@@ -82,6 +82,23 @@ fn manifest_assigns_pagination_to_reports_and_exempts_stable_projections() {
 }
 
 #[test]
+fn manifest_derives_typed_report_descriptors_only_for_native_gets() {
+    let report = route_manifest_entry("GET", "/api/operator-security")
+        .expect("operator security manifest entry")
+        .report_descriptor()
+        .expect("native GET report descriptor");
+    assert_eq!(report.renderer, ReportRenderer::NativeGatewayJson);
+    assert_eq!(
+        report.response_policy,
+        RouteResponsePolicy::DigestBoundPagination
+    );
+
+    let mutation = route_manifest_entry("POST", OPERATOR_MUTATION_COMMIT_ENDPOINT)
+        .expect("operator mutation manifest entry");
+    assert_eq!(mutation.report_descriptor(), None);
+}
+
+#[test]
 fn manifest_marks_quarantined_legacy_effects_as_retired_dispatch() {
     for route in CONTROL_UI_ROUTE_SPECS
         .iter()

@@ -174,8 +174,13 @@ pub(super) fn dispatch_manifest_route(
                 request_body,
                 preflight,
             );
-            if manifest_entry.response_policy
-                == crate::route_manifest::RouteResponsePolicy::DigestBoundPagination
+            if manifest_entry
+                .report_descriptor()
+                .is_some_and(|descriptor| {
+                    descriptor.renderer == crate::route_manifest::ReportRenderer::NativeGatewayJson
+                        && descriptor.response_policy
+                            == crate::route_manifest::RouteResponsePolicy::DigestBoundPagination
+                })
                 && content_type.starts_with("application/json")
             {
                 return match report_pagination::bounded_report_response(path, request_query, body) {

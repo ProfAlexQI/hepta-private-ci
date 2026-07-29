@@ -7,6 +7,7 @@
 
 mod authenticated_journal;
 
+pub use authenticated_journal::AuthenticatedJournalCodec;
 pub use authenticated_journal::AuthenticatedJournalEngine;
 pub use authenticated_journal::AuthenticatedJournalError;
 pub use authenticated_journal::AuthenticationFraming;

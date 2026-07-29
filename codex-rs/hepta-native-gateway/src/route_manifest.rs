@@ -7,6 +7,8 @@ use sha2::Sha256;
 
 use crate::native_telegram::TELEGRAM_LIVE_READ_ENV;
 use crate::operator_mutation::OPERATOR_MUTATION_ENABLED_ENV;
+pub(crate) use crate::route_report_descriptor::ReportDescriptor;
+pub(crate) use crate::route_report_descriptor::ReportRenderer;
 use crate::runtime_ingress::IngressDefaultEnablement;
 use crate::runtime_ingress::IngressLifecycleSpec;
 use crate::runtime_ingress::declared_runtime_ingress_lifecycle;

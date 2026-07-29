@@ -20,6 +20,7 @@ use std::sync::Mutex;
 
 use anyhow::Context;
 use anyhow::Result;
+use hepta_authority::AuthenticatedJournalCodec;
 use hepta_authority::AuthenticationFraming;
 pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_COMMIT_ENDPOINT;
 pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_ENABLED_ENV;
@@ -1998,26 +1999,15 @@ fn validate_checkpoint(checkpoint: &JournalCheckpoint, key: &[u8; 32]) -> Result
 
 fn checkpoint_mac(checkpoint: &JournalCheckpoint, key: &[u8; 32]) -> Result<String> {
     let fields = checkpoint_fields(checkpoint);
-    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
-    TELEGRAM_AUTHORITY_JOURNAL_ENGINE
-        .mac_hex(
-            key,
-            AuthenticationFraming::FramedDomain,
-            CHECKPOINT_MAC_DOMAIN,
-            &fields,
-        )
+    journal_codec(CHECKPOINT_MAC_DOMAIN)
+        .mac_hex(key, &fields)
         .context("initialize Telegram checkpoint HMAC")
 }
 
 fn checkpoint_hash(checkpoint: &JournalCheckpoint) -> String {
     let mut fields = checkpoint_fields(checkpoint);
     fields.push(checkpoint.mac.clone());
-    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
-    TELEGRAM_AUTHORITY_JOURNAL_ENGINE.content_hash(
-        AuthenticationFraming::FramedDomain,
-        CHECKPOINT_HASH_DOMAIN,
-        &fields,
-    )
+    journal_codec(CHECKPOINT_HASH_DOMAIN).content_hash(&fields)
 }
 
 fn checkpoint_fields(checkpoint: &JournalCheckpoint) -> Vec<String> {
@@ -2038,26 +2028,15 @@ fn checkpoint_fields(checkpoint: &JournalCheckpoint) -> Vec<String> {
 
 fn event_mac(event: &JournalEvent, key: &[u8; 32]) -> Result<String> {
     let fields = event_fields(event);
-    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
-    TELEGRAM_AUTHORITY_JOURNAL_ENGINE
-        .mac_hex(
-            key,
-            AuthenticationFraming::FramedDomain,
-            EVENT_MAC_DOMAIN,
-            &fields,
-        )
+    journal_codec(EVENT_MAC_DOMAIN)
+        .mac_hex(key, &fields)
         .context("initialize Telegram event HMAC")
 }
 
 fn event_hash(event: &JournalEvent) -> String {
     let mut fields = event_fields(event);
     fields.push(event.mac.clone());
-    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
-    TELEGRAM_AUTHORITY_JOURNAL_ENGINE.content_hash(
-        AuthenticationFraming::FramedDomain,
-        EVENT_HASH_DOMAIN,
-        &fields,
-    )
+    journal_codec(EVENT_HASH_DOMAIN).content_hash(&fields)
 }
 
 fn event_fields(event: &JournalEvent) -> Vec<String> {
@@ -2320,14 +2299,8 @@ fn delivery_ack_mac(authority: &AuthenticatedDeliveryAckBinding, key: &[u8; 32])
         authority.cursor_path_hash.clone(),
         "acked".to_owned(),
     ];
-    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
-    TELEGRAM_AUTHORITY_JOURNAL_ENGINE
-        .mac_hex(
-            key,
-            AuthenticationFraming::FramedDomain,
-            DELIVERY_ACK_MAC_DOMAIN,
-            &fields,
-        )
+    journal_codec(DELIVERY_ACK_MAC_DOMAIN)
+        .mac_hex(key, &fields)
         .context("initialize Telegram delivery ACK HMAC")
 }
 
@@ -2456,31 +2429,21 @@ fn hash_read_result(result: &TelegramReadResult) -> String {
     )
 }
 
-fn verify_proof(key: &[u8; 32], domain: &[u8], fields: &[&str], proof: &str) -> Result<()> {
-    let fields = fields
-        .iter()
-        .map(|field| field.as_bytes())
-        .collect::<Vec<_>>();
-    TELEGRAM_AUTHORITY_JOURNAL_ENGINE
-        .verify_mac_hex(
-            key,
-            AuthenticationFraming::FramedDomain,
-            domain,
-            &fields,
-            proof,
-        )
+fn verify_proof(key: &[u8; 32], domain: &'static [u8], fields: &[&str], proof: &str) -> Result<()> {
+    journal_codec(domain)
+        .verify_mac_hex(key, fields, proof)
         .map_err(|_| anyhow::anyhow!("Telegram operator proof is invalid"))
 }
 
-fn digest(domain: &[u8], fields: &[&str]) -> String {
-    let fields = fields
-        .iter()
-        .map(|field| field.as_bytes())
-        .collect::<Vec<_>>();
-    TELEGRAM_AUTHORITY_JOURNAL_ENGINE.digest_hex(
+fn digest(domain: &'static [u8], fields: &[&str]) -> String {
+    journal_codec(domain).digest_hex(fields)
+}
+
+fn journal_codec(domain: &'static [u8]) -> AuthenticatedJournalCodec {
+    AuthenticatedJournalCodec::new(
+        TELEGRAM_AUTHORITY_JOURNAL_ENGINE,
         AuthenticationFraming::FramedDomain,
         domain,
-        &fields,
     )
 }
 
