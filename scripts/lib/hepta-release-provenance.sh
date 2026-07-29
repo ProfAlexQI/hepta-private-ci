@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 HEPTA_BUILD_PROVENANCE_SCHEMA="hepta_build_provenance_v1"
 HEPTA_BOUND_GATE_RECEIPTS_SCHEMA="hepta_preflight_bound_gate_receipts_v1"
+HEPTA_LEGACY_K_SOURCE_COMMIT="7e9d073a7ddb68d1f78666ebbf889c73d54d254a"
+HEPTA_LEGACY_K_CODEX_CARGO_LOCK_SHA="f7b467cb3710e216d7fabdddb0165ab3894f725d3191d68e2874c02c136dde4e"
+HEPTA_LEGACY_K_NATIVE_CARGO_LOCK_SHA="9ef7a327cb828068e6c307bdd352d384b8efc52a6ade3c1f1def33b3ce7eb8ad"
+HEPTA_LEGACY_K_DEPENDENCY_CONTRACT_SHA="1b0e826b8ee925da788eff9033b649d0834fa78aecf827db84078d5608e51d58"
 HEPTA_LEGACY_I_SOURCE_COMMIT="8d144b101aa8e5f0a42aff19fc1fcaadad921b72"
 HEPTA_LEGACY_I_CODEX_CARGO_LOCK_SHA="358634c200decbe1e28a9391b520b19379c7cb555b19a01eeb4c1bc32f4f6836"
 HEPTA_LEGACY_I_NATIVE_CARGO_LOCK_SHA="9ef7a327cb828068e6c307bdd352d384b8efc52a6ade3c1f1def33b3ce7eb8ad"
@@ -213,6 +217,10 @@ hepta_release_validate_bound_gate_receipts_json() {
     --arg codex_cargo_lock_sha "$codex_cargo_lock_sha" \
     --arg native_cargo_lock_sha "$native_cargo_lock_sha" \
     --arg dependency_contract_sha "$dependency_contract_sha" \
+    --arg legacy_k_source_commit "$HEPTA_LEGACY_K_SOURCE_COMMIT" \
+    --arg legacy_k_codex_cargo_lock_sha "$HEPTA_LEGACY_K_CODEX_CARGO_LOCK_SHA" \
+    --arg legacy_k_native_cargo_lock_sha "$HEPTA_LEGACY_K_NATIVE_CARGO_LOCK_SHA" \
+    --arg legacy_k_dependency_contract_sha "$HEPTA_LEGACY_K_DEPENDENCY_CONTRACT_SHA" \
     --arg legacy_i_source_commit "$HEPTA_LEGACY_I_SOURCE_COMMIT" \
     --arg legacy_i_codex_cargo_lock_sha "$HEPTA_LEGACY_I_CODEX_CARGO_LOCK_SHA" \
     --arg legacy_i_native_cargo_lock_sha "$HEPTA_LEGACY_I_NATIVE_CARGO_LOCK_SHA" \
@@ -269,9 +277,12 @@ hepta_release_validate_bound_gate_receipts_json() {
         )
         or
         (
-          $g["dependency-security"].self_test_receipt == {schema:"hepta_dependency_security_self_test_v1",status:"ready",negative_fixtures:12,vendored_source_negative_fixtures:5,exception_policy_negative_fixtures:3}
+          $source_commit == $legacy_k_source_commit
+          and $codex_cargo_lock_sha == $legacy_k_codex_cargo_lock_sha
+          and $native_cargo_lock_sha == $legacy_k_native_cargo_lock_sha
+          and $g["dependency-security"].self_test_receipt == {schema:"hepta_dependency_security_self_test_v1",status:"ready",negative_fixtures:12,vendored_source_negative_fixtures:5,exception_policy_negative_fixtures:3}
           and $g["native-ingress-composition"].self_test_receipt == {schema:"hepta.native-ingress-composition-self-test.v2",status:"ready",negative_fixtures:14}
-          and $g["dependency-security"].receipt.contract_sha256 == $dependency_contract_sha
+          and $g["dependency-security"].receipt.contract_sha256 == $legacy_k_dependency_contract_sha
           and $g["gate-compat-debt"].receipt == {"captured_shell_pair_count":1239,"compatibility_payload_count":548,"counts_may_only_improve":true,"current_baseline_monotonic_ratchet":true,"declarative_pair_count":35,"effective_line_maintenance_headroom_percent":3,"entrypoint_manifest_verified":true,"legacy_workgraph_pair_count":8,"logical_compatibility_payload_count":2512,"logical_virtual_entrypoint_count":2399,"normalized_effective_lines":307661,"normalized_payload_bundle_verified":true,"pair_count":1282,"payload_bundle_verified":true,"physical_entrypoint_count":165,"schema":"hepta_gate_compat_debt_receipt_v3","status":"ready","unregistered_payload_count":26,"virtual_entrypoint_count":2}
           and $g["gate-compat-debt"].self_test_receipt == {schema:"hepta_gate_compat_debt_self_test_v3",status:"ready",negative_fixtures:6}
         )
