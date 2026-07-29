@@ -75,4 +75,25 @@ fn governed_network_callers_cannot_regress_to_direct_clients() {
         oauth_source.contains("OAuthHttpClientAdapter::new"),
         "MCP OAuth must use the runtime-selected HTTP adapter"
     );
+
+    let oauth_runtime = workspace.join("rmcp-client/src/rmcp_client.rs");
+    let oauth_runtime_source =
+        fs::read_to_string(&oauth_runtime).expect("read MCP OAuth runtime source");
+    assert_forbidden(
+        &oauth_runtime,
+        &oauth_runtime_source,
+        &[
+            "reqwest::Client::builder",
+            "reqwest::Client::new",
+            "ClientBuilder",
+        ],
+    );
+    assert!(
+        oauth_runtime_source.contains("OAuthHttpClientAdapter::new"),
+        "MCP OAuth bootstrap and refresh must use the runtime-selected HTTP adapter"
+    );
+    assert!(
+        oauth_runtime_source.contains("OAuthState::new_with_oauth_http_client"),
+        "MCP OAuth bootstrap and refresh must preserve the supplied HTTP capability"
+    );
 }

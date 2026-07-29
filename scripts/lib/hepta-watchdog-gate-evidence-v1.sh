@@ -56,6 +56,10 @@ hepta_watchdog_gate_evidence_contract_json() {
                     $watchdog.telegram_production_readiness_classification == "warming_observation_budget"
                     and $watchdog.telegram_production_attention_budget_ok == true
                   )
+                  or (
+                    $watchdog.telegram_production_readiness_classification == "legacy_owner_plugin_disabled"
+                    and $watchdog.telegram_production_attention_budget_ok == true
+                  )
                 )
               )
             )
