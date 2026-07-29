@@ -14,6 +14,10 @@ cp \
   "$ROOT/scripts/hepta-immutable-release-tree" \
   "$ROOT/scripts/hepta-watchdog.sh" \
   "$ROOT/scripts/hepta-live-soak.sh" \
+  "$ROOT/scripts/hepta-generation-pointer" \
+  "$ROOT/scripts/hepta-off-device-archive" \
+  "$ROOT/scripts/hepta-log-rotate" \
+  "$ROOT/scripts/hepta-final-evidence-index" \
   "$ROOT/scripts/hepta-preflight-evidence-pack" \
   "$ROOT/scripts/hepta-install-live-watchdog" \
   "$ROOT/scripts/hepta-install-live-gateway" \
