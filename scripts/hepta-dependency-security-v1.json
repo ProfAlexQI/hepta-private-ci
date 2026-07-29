@@ -26,7 +26,7 @@
         "manifest_path": "codex-rs/Cargo.toml",
         "path": "codex-rs/Cargo.lock",
         "deny_config_path": "codex-rs/deny.toml",
-        "sha256": "fd635d50111c1974d6f21a779df816e9f257eded6d1fc6bdaab28053899ed2d4"
+        "sha256": "f7b467cb3710e216d7fabdddb0165ab3894f725d3191d68e2874c02c136dde4e"
       },
       {
         "id": "native-app",
