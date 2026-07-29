@@ -44,17 +44,30 @@ verify_payload_dependency_closure() {
 verify() {
   require_tools
   jq -e '
-    .schema_version == "hepta_gate_compat_debt_v2"
+    .schema_version == "hepta_gate_compat_debt_v3"
     and .status == "bounded_migration_debt"
     and .migration_policy == {
       counts_may_only_improve:true,
       registered_payloads_are_sha256_bound:true,
       public_entrypoints_remain_thin_wrappers:true,
       virtual_entrypoints_are_manifest_bound:true,
-      payloads_are_content_addressed:true,
+      payloads_are_normalized_templates_with_parameter_rows:true,
+      virtual_entrypoints_are_normalized_templates_with_parameter_rows:true,
+      legacy_logical_surfaces_remain_reversible:true,
       unregistered_payloads_must_not_grow:true,
       removal_requires_reference_graph_proof:true
     }
+    and .ratchet == {
+      discrete_debt_growth_percent:0,
+      effective_line_maintenance_headroom_percent:3,
+      baseline_updates_require_verified_decrease:true,
+      decline_targets_are_not_release_claims:true
+    }
+    and .compatibility_store == "scripts/lib/hepta-gate-pair-compat-v2"
+    and .logical_overlay_store == "scripts/lib/hepta-gate-pair-compat-v1"
+    and (.baselines | type == "object")
+    and (.decline_targets.next | type == "object")
+    and (.decline_targets.terminal | type == "object")
     and (.registry.sha256 | test("^[0-9a-f]{64}$"))
   ' "$CONTRACT" >/dev/null
 
@@ -86,26 +99,62 @@ verify() {
     ))
   ' "$registry" >/dev/null
 
-  local pair_count captured_count legacy_count declarative_count payload_count
+  local pair_count captured_count legacy_count declarative_count payload_count normalized_payload_count
+  local normalized_effective_lines
   local registered_payload_count unregistered_count retained_entrypoint_count virtual_entrypoint_count
+  local normalized_virtual_entrypoint_count
   pair_count="$(jq '.pairs | length' "$registry")"
   captured_count="$(jq '[.pairs[] | select(.template == "captured_shell_compat_v1")] | length' "$registry")"
   legacy_count="$(jq '[.pairs[] | select(.template == "legacy_workgraph_projection_v1")] | length' "$registry")"
   declarative_count="$((pair_count - captured_count - legacy_count))"
   payload_count="$(jq -er '.payload_count' "$payload_registry")"
+  normalized_payload_count="$(jq -er '.normalized_payload_count' "$payload_registry")"
+  normalized_effective_lines="$(jq -er '.normalized_effective_lines' "$payload_registry")"
   registered_payload_count="$(jq -er '.registered_payload_count' "$payload_registry")"
   unregistered_count="$((payload_count - registered_payload_count))"
   retained_entrypoint_count="$(jq -er '.retained_entrypoint_count' "$entrypoint_registry")"
   virtual_entrypoint_count="$(jq -er '.virtual_entrypoint_count' "$entrypoint_registry")"
+  normalized_virtual_entrypoint_count="$(jq -er '.normalized_virtual_entrypoint_count' "$entrypoint_registry")"
 
   [[ "$pair_count" -le "$(jq -er '.ceilings.pair_count' "$CONTRACT")" \
     && "$captured_count" -le "$(jq -er '.ceilings.captured_shell_pair_count' "$CONTRACT")" \
     && "$legacy_count" -le "$(jq -er '.ceilings.legacy_workgraph_pair_count' "$CONTRACT")" \
-    && "$payload_count" -le "$(jq -er '.ceilings.compatibility_payload_count' "$CONTRACT")" \
+    && "$payload_count" -le "$(jq -er '.ceilings.logical_compatibility_payload_count' "$CONTRACT")" \
+    && "$normalized_payload_count" -le "$(jq -er '.ceilings.compatibility_payload_count' "$CONTRACT")" \
+    && "$normalized_effective_lines" -le "$(jq -er '.ceilings.normalized_effective_lines' "$CONTRACT")" \
     && "$unregistered_count" -le "$(jq -er '.ceilings.unregistered_payload_count' "$CONTRACT")" \
     && "$retained_entrypoint_count" -le "$(jq -er '.ceilings.physical_entrypoint_count' "$CONTRACT")" \
+    && "$virtual_entrypoint_count" -le "$(jq -er '.ceilings.logical_virtual_entrypoint_count' "$CONTRACT")" \
+    && "$normalized_virtual_entrypoint_count" -le "$(jq -er '.ceilings.virtual_entrypoint_count' "$CONTRACT")" \
     && "$declarative_count" -ge "$(jq -er '.floors.declarative_pair_count' "$CONTRACT")" ]] || {
     echo "Hepta gate compatibility debt regressed" >&2
+    return 1
+  }
+  jq -e '
+    .ceilings.pair_count == .baselines.pair_count
+    and .ceilings.captured_shell_pair_count == .baselines.captured_shell_pair_count
+    and .ceilings.legacy_workgraph_pair_count == .baselines.legacy_workgraph_pair_count
+    and .ceilings.compatibility_payload_count == .baselines.compatibility_payload_count
+    and .ceilings.logical_compatibility_payload_count == .baselines.logical_compatibility_payload_count
+    and .ceilings.unregistered_payload_count == .baselines.unregistered_payload_count
+    and .ceilings.physical_entrypoint_count == .baselines.physical_entrypoint_count
+    and .ceilings.virtual_entrypoint_count == .baselines.virtual_entrypoint_count
+    and .ceilings.logical_virtual_entrypoint_count == .baselines.logical_virtual_entrypoint_count
+    and .floors.declarative_pair_count == .baselines.declarative_pair_count
+    and .ceilings.normalized_effective_lines >= .baselines.normalized_effective_lines
+    and .ceilings.normalized_effective_lines
+      <= ((.baselines.normalized_effective_lines * 103 + 99) / 100 | floor)
+    and .decline_targets.next.pair_count < .baselines.pair_count
+    and .decline_targets.next.captured_shell_pair_count < .baselines.captured_shell_pair_count
+    and .decline_targets.next.compatibility_payload_count < .baselines.compatibility_payload_count
+    and .decline_targets.next.logical_compatibility_payload_count < .baselines.logical_compatibility_payload_count
+    and .decline_targets.next.normalized_effective_lines < .baselines.normalized_effective_lines
+    and .decline_targets.next.physical_entrypoint_count < .baselines.physical_entrypoint_count
+    and .decline_targets.next.declarative_pair_count > .baselines.declarative_pair_count
+    and .decline_targets.terminal.pair_count < .decline_targets.next.pair_count
+    and .decline_targets.terminal.normalized_effective_lines < .decline_targets.next.normalized_effective_lines
+  ' "$CONTRACT" >/dev/null || {
+    echo "Hepta gate compatibility monotonic ratchet contract drifted" >&2
     return 1
   }
 
@@ -135,16 +184,19 @@ verify() {
     "$overlay"
 
   jq -n \
-    --arg schema hepta_gate_compat_debt_receipt_v2 \
+    --arg schema hepta_gate_compat_debt_receipt_v3 \
     --arg status ready \
     --argjson pair_count "$pair_count" \
     --argjson captured_shell_pair_count "$captured_count" \
     --argjson legacy_workgraph_pair_count "$legacy_count" \
     --argjson declarative_pair_count "$declarative_count" \
-    --argjson compatibility_payload_count "$payload_count" \
+    --argjson compatibility_payload_count "$normalized_payload_count" \
+    --argjson normalized_effective_lines "$normalized_effective_lines" \
+    --argjson logical_compatibility_payload_count "$payload_count" \
     --argjson unregistered_payload_count "$unregistered_count" \
     --argjson physical_entrypoint_count "$retained_entrypoint_count" \
-    --argjson virtual_entrypoint_count "$virtual_entrypoint_count" \
+    --argjson virtual_entrypoint_count "$normalized_virtual_entrypoint_count" \
+    --argjson logical_virtual_entrypoint_count "$virtual_entrypoint_count" \
     '{
       schema:$schema,
       status:$status,
@@ -153,17 +205,32 @@ verify() {
       legacy_workgraph_pair_count:$legacy_workgraph_pair_count,
       declarative_pair_count:$declarative_pair_count,
       compatibility_payload_count:$compatibility_payload_count,
+      normalized_effective_lines:$normalized_effective_lines,
+      logical_compatibility_payload_count:$logical_compatibility_payload_count,
       unregistered_payload_count:$unregistered_payload_count,
       physical_entrypoint_count:$physical_entrypoint_count,
       virtual_entrypoint_count:$virtual_entrypoint_count,
+      logical_virtual_entrypoint_count:$logical_virtual_entrypoint_count,
       payload_bundle_verified:true,
+      normalized_payload_bundle_verified:true,
       entrypoint_manifest_verified:true,
-      counts_may_only_improve:true
+      counts_may_only_improve:true,
+      current_baseline_monotonic_ratchet:true,
+      effective_line_maintenance_headroom_percent:3
     }'
 }
 
 self_test() {
-  local tmp
+  local entrypoint_registry normalized_payload_count normalized_virtual_entrypoint_count
+  local normalized_effective_lines
+  local payload_registry tmp
+  payload_registry="$ROOT/$(jq -er '.payload_registry' "$CONTRACT")"
+  entrypoint_registry="$ROOT/$(jq -er '.entrypoint_registry' "$CONTRACT")"
+  normalized_payload_count="$(jq -er '.normalized_payload_count' "$payload_registry")"
+  normalized_effective_lines="$(jq -er '.normalized_effective_lines' "$payload_registry")"
+  normalized_virtual_entrypoint_count="$(
+    jq -er '.normalized_virtual_entrypoint_count' "$entrypoint_registry"
+  )"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-gate-compat-debt-self-test.XXXXXX")"
   trap 'rm -rf "$tmp"' RETURN
   jq '.ceilings.captured_shell_pair_count -= 1' "$CONTRACT" >"$tmp/regressed.json"
@@ -184,7 +251,28 @@ EOF
     echo "Hepta gate compatibility debt accepted a missing payload dependency" >&2
     return 1
   fi
-  echo '{"schema":"hepta_gate_compat_debt_self_test_v2","status":"ready","negative_fixtures":3}'
+  jq --argjson ceiling "$((normalized_payload_count - 1))" \
+    '.ceilings.compatibility_payload_count = $ceiling' \
+    "$CONTRACT" >"$tmp/payload-regressed.json"
+  if HEPTA_GATE_COMPAT_DEBT_CONTRACT="$tmp/payload-regressed.json" "$0" verify >/dev/null 2>&1; then
+    echo "Hepta gate compatibility debt accepted a normalized payload regression" >&2
+    return 1
+  fi
+  jq --argjson ceiling "$((normalized_virtual_entrypoint_count - 1))" \
+    '.ceilings.virtual_entrypoint_count = $ceiling' \
+    "$CONTRACT" >"$tmp/entrypoint-regressed.json"
+  if HEPTA_GATE_COMPAT_DEBT_CONTRACT="$tmp/entrypoint-regressed.json" "$0" verify >/dev/null 2>&1; then
+    echo "Hepta gate compatibility debt accepted a normalized entrypoint regression" >&2
+    return 1
+  fi
+  jq --argjson ceiling "$((normalized_effective_lines - 1))" \
+    '.ceilings.normalized_effective_lines = $ceiling' \
+    "$CONTRACT" >"$tmp/effective-lines-regressed.json"
+  if HEPTA_GATE_COMPAT_DEBT_CONTRACT="$tmp/effective-lines-regressed.json" "$0" verify >/dev/null 2>&1; then
+    echo "Hepta gate compatibility debt accepted an effective-line regression" >&2
+    return 1
+  fi
+  echo '{"schema":"hepta_gate_compat_debt_self_test_v3","status":"ready","negative_fixtures":6}'
 }
 
 [[ $# -eq 1 ]] || usage

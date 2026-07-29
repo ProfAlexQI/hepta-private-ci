@@ -1,20 +1,70 @@
 {
-  "schema_version": "hepta_gate_compat_debt_v2",
+  "schema_version": "hepta_gate_compat_debt_v3",
   "status": "bounded_migration_debt",
   "registry": {
     "path": "scripts/hepta-gate-pair-specs-v1.json",
     "sha256": "d2632b0d2d72b68a9515eea0c1523bc01b95ee61f76b51f92ea35e8c6d24a6e4"
   },
-  "compatibility_store": "scripts/lib/hepta-gate-pair-compat-v1",
+  "compatibility_store": "scripts/lib/hepta-gate-pair-compat-v2",
+  "logical_overlay_store": "scripts/lib/hepta-gate-pair-compat-v1",
   "payload_registry": "scripts/lib/hepta-gate-pair-compat-v2/registry.json",
   "entrypoint_registry": "scripts/hepta-gate-pair-entrypoints-v2.json",
   "ceilings": {
     "pair_count": 1282,
     "captured_shell_pair_count": 1239,
     "legacy_workgraph_pair_count": 8,
-    "compatibility_payload_count": 2512,
+    "compatibility_payload_count": 548,
+    "logical_compatibility_payload_count": 2512,
+    "normalized_effective_lines": 316891,
     "unregistered_payload_count": 26,
-    "physical_entrypoint_count": 299
+    "physical_entrypoint_count": 165,
+    "virtual_entrypoint_count": 2,
+    "logical_virtual_entrypoint_count": 2399
+  },
+  "baselines": {
+    "pair_count": 1282,
+    "captured_shell_pair_count": 1239,
+    "legacy_workgraph_pair_count": 8,
+    "compatibility_payload_count": 548,
+    "logical_compatibility_payload_count": 2512,
+    "normalized_effective_lines": 307661,
+    "unregistered_payload_count": 26,
+    "physical_entrypoint_count": 165,
+    "virtual_entrypoint_count": 2,
+    "logical_virtual_entrypoint_count": 2399,
+    "declarative_pair_count": 35
+  },
+  "decline_targets": {
+    "next": {
+      "pair_count": 999,
+      "captured_shell_pair_count": 999,
+      "legacy_workgraph_pair_count": 0,
+      "compatibility_payload_count": 399,
+      "logical_compatibility_payload_count": 999,
+      "normalized_effective_lines": 240000,
+      "unregistered_payload_count": 0,
+      "physical_entrypoint_count": 99,
+      "logical_virtual_entrypoint_count": 999,
+      "declarative_pair_count": 100
+    },
+    "terminal": {
+      "pair_count": 299,
+      "captured_shell_pair_count": 0,
+      "legacy_workgraph_pair_count": 0,
+      "compatibility_payload_count": 149,
+      "logical_compatibility_payload_count": 299,
+      "normalized_effective_lines": 100000,
+      "unregistered_payload_count": 0,
+      "physical_entrypoint_count": 20,
+      "logical_virtual_entrypoint_count": 199,
+      "declarative_pair_count": 299
+    }
+  },
+  "ratchet": {
+    "discrete_debt_growth_percent": 0,
+    "effective_line_maintenance_headroom_percent": 3,
+    "baseline_updates_require_verified_decrease": true,
+    "decline_targets_are_not_release_claims": true
   },
   "floors": {
     "declarative_pair_count": 35
@@ -24,7 +74,9 @@
     "registered_payloads_are_sha256_bound": true,
     "public_entrypoints_remain_thin_wrappers": true,
     "virtual_entrypoints_are_manifest_bound": true,
-    "payloads_are_content_addressed": true,
+    "payloads_are_normalized_templates_with_parameter_rows": true,
+    "virtual_entrypoints_are_normalized_templates_with_parameter_rows": true,
+    "legacy_logical_surfaces_remain_reversible": true,
     "unregistered_payloads_must_not_grow": true,
     "removal_requires_reference_graph_proof": true
   }

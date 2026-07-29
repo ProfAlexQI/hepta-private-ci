@@ -1,0 +1,30 @@
+{
+  "schema": "hepta_readable_normalized_token_source_v1",
+  "domain": "hepta_workgraph_modules",
+  "artifact_schema": "hepta_workgraph_normalized_bundle_v3",
+  "canonical_files": [
+    "templates.jsonl",
+    "parameters.jsonl"
+  ],
+  "generated_artifact": "modules.bundle.gz",
+  "template_count": 454,
+  "parameter_row_count": 711,
+  "source_bytes": 21815269,
+  "source_lines": 405519,
+  "aggregate_source_sha256": "e0fd95b1d8d3515065e086b289331a4918c1fe92467bbbdd29efdfe050a97f9c",
+  "templates_sha256": "8e86b298fc4eb5eb393e7cdc80e0627fe3d81c7a5d9372c78cf4f30a3f674be5",
+  "parameters_sha256": "0a8761519063132e4a62bd415df1d3de83758685f343f1a630e3d5cc36ce2f9f",
+  "jsonl_record_byte_semantics": "record_including_lf",
+  "templates_max_record_bytes": 89271,
+  "parameters_max_record_bytes": 45630,
+  "canonical_max_record_bytes": 89271,
+  "normalized_effective_lines": 288695,
+  "gzip_profile": {
+    "compression": "zlib_best_compression",
+    "mtime": 1,
+    "os": 255
+  },
+  "source_is_canonical": true,
+  "artifact_is_generated": true,
+  "exact_reassembly": true
+}

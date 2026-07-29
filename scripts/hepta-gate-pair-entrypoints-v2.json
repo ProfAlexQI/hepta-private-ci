@@ -6,8 +6,14 @@
   "original_entrypoint_count": 2564,
   "retained_entrypoint_count": 165,
   "virtual_entrypoint_count": 2399,
+  "normalized_virtual_entrypoint_count": 2,
+  "normalized_virtual_entrypoint_limit": 2,
+  "virtual_entrypoint_template_kinds": [
+    "gate",
+    "report"
+  ],
   "virtual_long_path_count": 89,
-  "max_retained_entrypoints": 299,
+  "max_retained_entrypoints": 165,
   "max_tracked_path_bytes": 240,
   "launcher": "scripts/hepta-gate-pair-launch",
   "retained_paths": [

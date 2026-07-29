@@ -10,11 +10,13 @@ use flate2::read::GzDecoder;
 use sha2::Digest;
 use sha2::Sha256;
 
-const SCHEMA: &str = "hepta_workgraph_module_bundle_v2";
-const CODEGEN_DIRECTORY: &str = "codegen/workgraph-v2";
+const SCHEMA: &str = "hepta_workgraph_normalized_bundle_v3";
+const CODEGEN_DIRECTORY: &str = "codegen/workgraph-v3";
 const BUNDLE_FILE: &str = "modules.bundle.gz";
 const CONTROL_PLANE_TESTS: &str = "src/work_graph_control_plane_tests.rs";
 const EXPECTED_MODULE_COUNT: usize = 711;
+const MAX_COMPRESSED_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
+const MAX_DECODED_BUNDLE_BYTES: u64 = 64 * 1024 * 1024;
 
 fn main() {
     println!("cargo:rerun-if-changed={CODEGEN_DIRECTORY}");
@@ -24,11 +26,20 @@ fn main() {
     fs::create_dir_all(&output_root).expect("create WorkGraph bundle output directory");
     let bundle_path = Path::new(CODEGEN_DIRECTORY).join(BUNDLE_FILE);
     let compressed = fs::read(&bundle_path).expect("read WorkGraph module bundle");
-    let mut decoder = GzDecoder::new(compressed.as_slice());
+    assert!(
+        compressed.len() <= MAX_COMPRESSED_BUNDLE_BYTES,
+        "compressed WorkGraph bundle exceeds byte limit"
+    );
+    let decoder = GzDecoder::new(compressed.as_slice());
     let mut payload = Vec::new();
     decoder
+        .take(MAX_DECODED_BUNDLE_BYTES + 1)
         .read_to_end(&mut payload)
         .expect("decode WorkGraph module bundle");
+    assert!(
+        payload.len() as u64 <= MAX_DECODED_BUNDLE_BYTES,
+        "decoded WorkGraph bundle exceeds byte limit"
+    );
     let modules = decode_bundle(&payload);
     assert_eq!(
         modules.len(),
@@ -38,11 +49,18 @@ fn main() {
     let mut declarations = String::new();
     for module in modules {
         let source_path = output_root.join(format!("{}.rs", module.name));
-        fs::write(&source_path, module.source).expect("write generated WorkGraph module");
+        fs::write(&source_path, &module.source).expect("write generated WorkGraph module");
         let escaped_path = source_path
             .to_string_lossy()
             .replace('\\', "\\\\")
             .replace('"', "\\\"");
+        if matches!(
+            module.name.as_str(),
+            "work_graph_append_only_store_runtime_enablement_preview"
+                | "work_graph_replay_readback_preview"
+        ) {
+            declarations.push_str("#[allow(clippy::manual_contains)]\n");
+        }
         writeln!(
             &mut declarations,
             "#[path = \"{escaped_path}\"]\nmod {};",
@@ -59,49 +77,82 @@ fn main() {
         .expect("write generated WorkGraph module declarations");
 }
 
-struct BundledModule<'a> {
-    name: &'a str,
-    source: &'a [u8],
+struct BundledModule {
+    name: String,
+    source: Vec<u8>,
 }
 
-fn decode_bundle(payload: &[u8]) -> Vec<BundledModule<'_>> {
+enum TemplateSegment {
+    Fixed(Vec<u8>),
+    Slot,
+}
+
+struct TemplateFamily {
+    segments: Vec<TemplateSegment>,
+    slot_count: usize,
+}
+
+fn decode_bundle(payload: &[u8]) -> Vec<BundledModule> {
     let mut cursor = Cursor::new(payload);
     let mut magic = vec![0; SCHEMA.len() + 1];
     cursor
         .read_exact(&mut magic)
         .expect("read WorkGraph bundle magic");
     assert_eq!(magic, format!("{SCHEMA}\0").as_bytes());
+    let family_count = read_u32(&mut cursor) as usize;
+    assert!(
+        family_count > 0 && family_count <= EXPECTED_MODULE_COUNT,
+        "unexpected WorkGraph template family count"
+    );
+    let families = (0..family_count)
+        .map(|_| decode_family(&mut cursor))
+        .collect::<Vec<_>>();
     let module_count = read_u32(&mut cursor) as usize;
+    assert_eq!(
+        module_count, EXPECTED_MODULE_COUNT,
+        "unexpected WorkGraph module count"
+    );
     let mut modules = Vec::with_capacity(module_count);
     for _ in 0..module_count {
         let name_length = read_u32(&mut cursor) as usize;
+        let family_index = read_u32(&mut cursor) as usize;
+        let replacement_count = read_u32(&mut cursor) as usize;
         let source_length = read_u32(&mut cursor) as usize;
-        let name_start = cursor.position() as usize;
-        let name_end = name_start
-            .checked_add(name_length)
-            .expect("WorkGraph name length overflow");
-        let digest_end = name_end
-            .checked_add(32)
-            .expect("WorkGraph digest length overflow");
-        let source_end = digest_end
-            .checked_add(source_length)
-            .expect("WorkGraph source length overflow");
-        assert!(source_end <= payload.len(), "truncated WorkGraph bundle");
-        let name = std::str::from_utf8(&payload[name_start..name_end])
-            .expect("WorkGraph module name must be UTF-8");
+        let name_bytes = read_bytes(&mut cursor, name_length);
+        let name = std::str::from_utf8(&name_bytes).expect("WorkGraph module name must be UTF-8");
         assert!(
             valid_module_name(name),
             "invalid WorkGraph module name: {name}"
         );
-        let expected_digest = &payload[name_end..digest_end];
-        let source = &payload[digest_end..source_end];
+        let expected_digest = read_bytes(&mut cursor, 32);
+        let family = families
+            .get(family_index)
+            .expect("invalid WorkGraph template family index");
         assert_eq!(
-            Sha256::digest(source).as_slice(),
+            replacement_count, family.slot_count,
+            "WorkGraph replacement count drifted: {name}"
+        );
+        let replacements = (0..replacement_count)
+            .map(|_| {
+                let length = read_u32(&mut cursor) as usize;
+                read_bytes(&mut cursor, length)
+            })
+            .collect::<Vec<_>>();
+        let source = expand_family(family, &replacements);
+        assert_eq!(
+            source.len(),
+            source_length,
+            "WorkGraph source size drifted: {name}"
+        );
+        assert_eq!(
+            Sha256::digest(&source).as_slice(),
             expected_digest,
             "WorkGraph module SHA mismatch: {name}"
         );
-        cursor.set_position(source_end as u64);
-        modules.push(BundledModule { name, source });
+        modules.push(BundledModule {
+            name: name.to_owned(),
+            source,
+        });
     }
     assert_eq!(
         cursor.position() as usize,
@@ -111,12 +162,71 @@ fn decode_bundle(payload: &[u8]) -> Vec<BundledModule<'_>> {
     modules
 }
 
+fn decode_family(cursor: &mut Cursor<&[u8]>) -> TemplateFamily {
+    let segment_count = read_u32(cursor) as usize;
+    let slot_count = read_u32(cursor) as usize;
+    let mut actual_slot_count = 0;
+    let segments = (0..segment_count)
+        .map(|_| match read_bytes(cursor, 1)[0] {
+            0 => {
+                let length = read_u32(cursor) as usize;
+                TemplateSegment::Fixed(read_bytes(cursor, length))
+            }
+            1 => {
+                actual_slot_count += 1;
+                TemplateSegment::Slot
+            }
+            _ => panic!("invalid WorkGraph template segment kind"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual_slot_count, slot_count,
+        "WorkGraph template slot count drifted"
+    );
+    TemplateFamily {
+        segments,
+        slot_count,
+    }
+}
+
+fn expand_family(family: &TemplateFamily, replacements: &[Vec<u8>]) -> Vec<u8> {
+    let mut replacement_index = 0;
+    let mut source = Vec::new();
+    for segment in &family.segments {
+        match segment {
+            TemplateSegment::Fixed(bytes) => source.extend_from_slice(bytes),
+            TemplateSegment::Slot => {
+                source.extend_from_slice(
+                    replacements
+                        .get(replacement_index)
+                        .expect("missing WorkGraph replacement"),
+                );
+                replacement_index += 1;
+            }
+        }
+    }
+    assert_eq!(
+        replacement_index,
+        replacements.len(),
+        "unused WorkGraph replacements"
+    );
+    source
+}
+
 fn read_u32(cursor: &mut Cursor<&[u8]>) -> u32 {
     let mut bytes = [0; 4];
     cursor
         .read_exact(&mut bytes)
         .expect("read WorkGraph bundle integer");
     u32::from_be_bytes(bytes)
+}
+
+fn read_bytes(cursor: &mut Cursor<&[u8]>, length: usize) -> Vec<u8> {
+    let mut bytes = vec![0; length];
+    cursor
+        .read_exact(&mut bytes)
+        .expect("read WorkGraph bundle bytes");
+    bytes
 }
 
 fn valid_module_name(name: &str) -> bool {

@@ -1,0 +1,51 @@
+{
+  "schema": "hepta_workgraph_normalized_bundle_v3",
+  "status": "normalized",
+  "module_count": 711,
+  "source_bytes": 21815269,
+  "source_lines": 405519,
+  "aggregate_source_sha256": "e0fd95b1d8d3515065e086b289331a4918c1fe92467bbbdd29efdfe050a97f9c",
+  "bundle_bytes": 1354909,
+  "bundle_sha256": "14eeb0c620bdc22c8f6c920d2c7506f023fc328a9fb0941161b85b311c53db08",
+  "normalized_template_count": 454,
+  "normalized_template_limit": 454,
+  "normalized_parameter_row_count": 711,
+  "normalized_effective_lines": 288695,
+  "normalized_effective_line_limit": 297356,
+  "canonical_source_schema": "hepta_readable_normalized_token_source_v1",
+  "canonical_source_files": [
+    "templates.jsonl",
+    "parameters.jsonl"
+  ],
+  "canonical_schema_sha256": "ec0230b7e5b0dc42ebd6c45c29c427e932f8a932e629e5b9964ef6109cdf4576",
+  "canonical_templates_sha256": "8e86b298fc4eb5eb393e7cdc80e0627fe3d81c7a5d9372c78cf4f30a3f674be5",
+  "canonical_parameters_sha256": "0a8761519063132e4a62bd415df1d3de83758685f343f1a630e3d5cc36ce2f9f",
+  "canonical_max_record_bytes": 89271,
+  "canonical_max_record_byte_limit": 89271,
+  "canonical_record_byte_semantics": "record_including_lf",
+  "gzip_mtime": 1,
+  "gzip_os": 255,
+  "monotonic_ratchet": {
+    "logical_module_ceiling": 711,
+    "normalized_template_ceiling": 454,
+    "normalized_effective_line_ceiling": 297356
+  },
+  "decline_targets": {
+    "next": {
+      "logical_module_count": 399,
+      "normalized_template_count": 399,
+      "normalized_effective_lines": 260000
+    },
+    "terminal": {
+      "logical_module_count": 199,
+      "normalized_template_count": 199,
+      "normalized_effective_lines": 180000
+    }
+  },
+  "source_files_materialized": false,
+  "canonical_source_is_readable": true,
+  "gzip_is_generated_artifact": true,
+  "byte_identical_repack_verified": true,
+  "build_time_module_generation": true,
+  "reversible_unpack": true
+}

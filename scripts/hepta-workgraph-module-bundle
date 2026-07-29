@@ -5,16 +5,23 @@ require "digest"
 require "fileutils"
 require "json"
 require "zlib"
+require_relative "lib/hepta-normalized-token-bundle-v1"
+require_relative "hepta-workgraph-readable-token-source-v1"
 
 ROOT = File.expand_path("..", __dir__)
 RUNTIME_ROOT = File.join(ROOT, "codex-rs/hepta-runtime")
 SOURCE_ROOT = File.join(RUNTIME_ROOT, "src")
 LIB_SOURCE = File.join(SOURCE_ROOT, "lib.rs")
-BUNDLE_ROOT = File.join(RUNTIME_ROOT, "codegen/workgraph-v2")
+BUNDLE_ROOT = File.join(RUNTIME_ROOT, "codegen/workgraph-v3")
 BUNDLE_PATH = File.join(BUNDLE_ROOT, "modules.bundle.gz")
 REGISTRY_PATH = File.join(BUNDLE_ROOT, "registry.json")
-SCHEMA = "hepta_workgraph_module_bundle_v2"
-MAGIC = "#{SCHEMA}\0".b
+LEGACY_BUNDLE_PATH = File.join(
+  RUNTIME_ROOT,
+  "codegen/workgraph-v2/modules.bundle.gz"
+)
+LEGACY_BUNDLE_ROOT = File.dirname(LEGACY_BUNDLE_PATH)
+SCHEMA = "hepta_workgraph_normalized_bundle_v3"
+LEGACY_SCHEMA = "hepta_workgraph_module_bundle_v2"
 MODULE_PATTERN = /^mod ((?:wg_|work_graph_)[a-z0-9_]+);$/
 INCLUDE_LINE = <<~RUST
   include!(concat!(
@@ -25,6 +32,9 @@ RUST
 INCLUDE_PATTERN =
   /include!\(\s*concat!\(\s*env!\("OUT_DIR"\),\s*"\/hepta_workgraph_bundle\/modules\.rs"\s*\)\s*\);\n/m
 EXPECTED_MODULE_COUNT = 711
+MAX_NORMALIZED_EFFECTIVE_LINES = 297_356
+MAX_NORMALIZED_TEMPLATE_COUNT = 454
+MAX_CANONICAL_RECORD_BYTES = 89_271
 
 def usage
   warn "usage: scripts/hepta-workgraph-module-bundle [pack|verify|unpack|contains MODULE]"
@@ -49,95 +59,157 @@ def source_declarations
   end
 end
 
-def packed?
-  File.file?(BUNDLE_PATH) && File.file?(REGISTRY_PATH) &&
-    File.binread(LIB_SOURCE).match?(INCLUDE_PATTERN)
-end
-
 def source_path(module_name)
   File.join(SOURCE_ROOT, "#{module_name}.rs")
 end
 
-def encode_bundle(entries)
-  payload = MAGIC.dup
-  payload << [entries.length].pack("N")
-  entries.each do |module_name, source|
-    name = module_name.b
-    body = source.b
-    payload << [name.bytesize, body.bytesize].pack("NN")
-    payload << name
-    payload << Digest::SHA256.digest(body)
-    payload << body
-  end
-  payload
+def normalized_entries
+  compressed = File.binread(BUNDLE_PATH)
+  payload = Zlib::GzipReader.new(StringIO.new(compressed)).read
+  HeptaNormalizedTokenBundle.decode(
+    payload,
+    schema: SCHEMA,
+    name_validator: lambda { |name|
+      name.match?(/\A(?:wg_|work_graph_)[a-z0-9_]+\z/)
+    }
+  )
 end
 
-def decode_bundle
-  payload = Zlib::GzipReader.open(BUNDLE_PATH, &:read).b
-  cursor = 0
-  magic = payload.byteslice(cursor, MAGIC.bytesize)
-  raise "invalid WorkGraph bundle magic" unless magic == MAGIC
-  cursor += MAGIC.bytesize
-  count = payload.byteslice(cursor, 4)&.unpack1("N")
-  raise "missing WorkGraph bundle count" unless count
-  cursor += 4
-  entries = []
-  count.times do
-    lengths = payload.byteslice(cursor, 8)&.unpack("NN")
-    raise "truncated WorkGraph bundle lengths" unless lengths&.length == 2
-    cursor += 8
+def canonical_entries(strict_metadata:)
+  HeptaReadableTokenSource.read(
+    root: BUNDLE_ROOT,
+    artifact_schema: SCHEMA,
+    domain: "hepta_workgraph_modules",
+    name_validator: lambda { |name|
+      name.match?(/\A(?:wg_|work_graph_)[a-z0-9_]+\z/)
+    },
+    strict_metadata: strict_metadata
+  )
+end
+
+def legacy_entries
+  payload = Zlib::GzipReader.open(LEGACY_BUNDLE_PATH, &:read).b
+  cursor = StringIO.new(payload)
+  magic = "#{LEGACY_SCHEMA}\0".b
+  raise "invalid legacy WorkGraph bundle magic" unless cursor.read(magic.bytesize) == magic
+  count = cursor.read(4)&.unpack1("N")
+  raise "missing legacy WorkGraph module count" unless count
+  entries = Array.new(count) do
+    lengths = cursor.read(8)&.unpack("NN")
+    raise "truncated legacy WorkGraph lengths" unless lengths&.length == 2
     name_length, source_length = lengths
-    name = payload.byteslice(cursor, name_length)
-    raise "truncated WorkGraph module name" unless name&.bytesize == name_length
-    cursor += name_length
-    expected_sha = payload.byteslice(cursor, 32)
-    raise "truncated WorkGraph module digest" unless expected_sha&.bytesize == 32
-    cursor += 32
-    source = payload.byteslice(cursor, source_length)
-    raise "truncated WorkGraph module source" unless source&.bytesize == source_length
-    cursor += source_length
-    raise "invalid WorkGraph module name" unless name.match?(/\A(?:wg_|work_graph_)[a-z0-9_]+\z/)
-    raise "WorkGraph module SHA mismatch: #{name}" unless Digest::SHA256.digest(source) == expected_sha
-    entries << [name.force_encoding(Encoding::UTF_8), source]
+    name = cursor.read(name_length)
+    expected_sha = cursor.read(32)
+    source = cursor.read(source_length)
+    raise "truncated legacy WorkGraph module" unless name&.bytesize == name_length &&
+      expected_sha&.bytesize == 32 && source&.bytesize == source_length
+    raise "legacy WorkGraph SHA mismatch: #{name}" unless Digest::SHA256.digest(source) == expected_sha
+    HeptaNormalizedTokenBundle::Entry.new(name.force_encoding(Encoding::UTF_8), source)
   end
-  raise "trailing bytes in WorkGraph bundle" unless cursor == payload.bytesize
-  entries
+  raise "trailing legacy WorkGraph bundle bytes" unless cursor.eof?
+  entries.sort_by(&:name)
 end
 
-def aggregate_sha(entries)
-  digest = Digest::SHA256.new
-  entries.each do |module_name, source|
-    digest << module_name << "\0" << Digest::SHA256.hexdigest(source) << "\n"
-  end
-  digest.hexdigest
+def source_entries
+  declarations = source_declarations
+  raise "unexpected WorkGraph module count: #{declarations.length}" unless declarations.length == EXPECTED_MODULE_COUNT
+  declarations.map do |module_name|
+    path = source_path(module_name)
+    raise "missing WorkGraph source: #{path}" unless File.file?(path)
+    HeptaNormalizedTokenBundle::Entry.new(module_name, File.binread(path))
+  end.sort_by(&:name)
 end
 
-def write_registry(entries)
+def build_bundle(entries)
+  raise "unexpected WorkGraph module count" unless entries.length == EXPECTED_MODULE_COUNT
+  bundle = HeptaNormalizedTokenBundle.build(
+    entries,
+    tokenizer: HeptaNormalizedTokenBundle.method(:rust_tokens)
+  )
+  raise "WorkGraph normalized template budget exceeded" if bundle.metrics.fetch(:normalized_template_count) > MAX_NORMALIZED_TEMPLATE_COUNT
+  raise "WorkGraph normalized effective-line budget exceeded" if bundle.metrics.fetch(:normalized_effective_lines) > MAX_NORMALIZED_EFFECTIVE_LINES
+  FileUtils.mkdir_p(BUNDLE_ROOT)
+  canonical = HeptaReadableTokenSource.write(
+    root: BUNDLE_ROOT,
+    bundle: bundle,
+    artifact_schema: SCHEMA,
+    domain: "hepta_workgraph_modules",
+    artifact_file: File.basename(BUNDLE_PATH),
+    atomic_write: method(:atomic_write)
+  )
+  payload = HeptaNormalizedTokenBundle.encode(bundle, schema: SCHEMA)
+  atomic_write(
+    BUNDLE_PATH,
+    HeptaReadableTokenSource.deterministic_gzip(payload),
+    0o644
+  )
+  write_registry(entries, bundle.metrics, canonical)
+end
+
+def write_registry(entries, metrics, canonical)
   registry = {
     schema: SCHEMA,
-    status: "packed",
+    status: "normalized",
     module_count: entries.length,
-    source_bytes: entries.sum { |_module_name, source| source.bytesize },
-    source_lines: entries.sum { |_module_name, source| source.lines.count },
-    aggregate_source_sha256: aggregate_sha(entries),
+    source_bytes: entries.sum { |entry| entry.source.bytesize },
+    source_lines: entries.sum { |entry| entry.source.lines.count },
+    aggregate_source_sha256: HeptaNormalizedTokenBundle.aggregate_sha(entries),
     bundle_bytes: File.size(BUNDLE_PATH),
     bundle_sha256: Digest::SHA256.file(BUNDLE_PATH).hexdigest,
+    normalized_template_count: metrics.fetch(:normalized_template_count),
+    normalized_template_limit: MAX_NORMALIZED_TEMPLATE_COUNT,
+    normalized_parameter_row_count: metrics.fetch(:normalized_parameter_row_count),
+    normalized_effective_lines: metrics.fetch(:normalized_effective_lines),
+    normalized_effective_line_limit: MAX_NORMALIZED_EFFECTIVE_LINES,
+    canonical_source_schema: canonical.fetch(:schema),
+    canonical_source_files: canonical.fetch(:canonical_files),
+    canonical_schema_sha256: Digest::SHA256.file(
+      File.join(BUNDLE_ROOT, HeptaReadableTokenSource::SCHEMA_FILE)
+    ).hexdigest,
+    canonical_templates_sha256: canonical.fetch(:templates_sha256),
+    canonical_parameters_sha256: canonical.fetch(:parameters_sha256),
+    canonical_max_record_bytes: canonical.fetch(:canonical_max_record_bytes),
+    canonical_max_record_byte_limit: MAX_CANONICAL_RECORD_BYTES,
+    canonical_record_byte_semantics: canonical.fetch(:jsonl_record_byte_semantics),
+    gzip_mtime: HeptaReadableTokenSource::FIXED_GZIP_MTIME,
+    gzip_os: HeptaReadableTokenSource::FIXED_GZIP_OS,
+    monotonic_ratchet: {
+      logical_module_ceiling: EXPECTED_MODULE_COUNT,
+      normalized_template_ceiling: MAX_NORMALIZED_TEMPLATE_COUNT,
+      normalized_effective_line_ceiling: MAX_NORMALIZED_EFFECTIVE_LINES
+    },
+    decline_targets: {
+      next: {
+        logical_module_count: 399,
+        normalized_template_count: 399,
+        normalized_effective_lines: 260_000
+      },
+      terminal: {
+        logical_module_count: 199,
+        normalized_template_count: 199,
+        normalized_effective_lines: 180_000
+      }
+    },
     source_files_materialized: false,
+    canonical_source_is_readable: true,
+    gzip_is_generated_artifact: true,
+    byte_identical_repack_verified: true,
     build_time_module_generation: true,
     reversible_unpack: true
   }
   atomic_write(REGISTRY_PATH, JSON.pretty_generate(registry) + "\n", 0o644)
 end
 
-def rewrite_lib_to_bundle(module_names)
-  lines = File.readlines(LIB_SOURCE, chomp: false)
-  declarations = lines.each_with_object([]) do |line, names|
+def rewrite_lib_to_bundle
+  source = File.binread(LIB_SOURCE)
+  declarations = source.lines.each_with_object([]) do |line, names|
     match = MODULE_PATTERN.match(line.chomp)
     names << match[1] if match
   end
-  raise "WorkGraph declaration set drifted" unless declarations == module_names
+  return if declarations.empty? && source.scan(INCLUDE_PATTERN).length == 1
+  raise "unexpected WorkGraph declaration count" unless declarations.length == EXPECTED_MODULE_COUNT
   inserted = false
-  rewritten = lines.each_with_object([]) do |line, output|
+  rewritten = source.lines.each_with_object([]) do |line, output|
     if MODULE_PATTERN.match?(line.chomp)
       unless inserted
         output << INCLUDE_LINE
@@ -151,10 +223,10 @@ def rewrite_lib_to_bundle(module_names)
   atomic_write(LIB_SOURCE, rewritten.join, File.stat(LIB_SOURCE).mode & 0o777)
 end
 
-def rewrite_lib_to_sources(module_names)
+def rewrite_lib_to_sources(entries)
   source = File.binread(LIB_SOURCE)
   raise "WorkGraph bundle include is missing" unless source.scan(INCLUDE_PATTERN).length == 1
-  declarations = module_names.map { |module_name| "mod #{module_name};\n" }.join
+  declarations = entries.map { |entry| "mod #{entry.name};\n" }.join
   atomic_write(
     LIB_SOURCE,
     source.sub(INCLUDE_PATTERN, declarations),
@@ -163,70 +235,118 @@ def rewrite_lib_to_sources(module_names)
 end
 
 def pack
-  if packed? && source_declarations.empty?
-    verify
-    return
-  end
-  module_names = source_declarations
-  raise "unexpected WorkGraph module count: #{module_names.length}" unless module_names.length == EXPECTED_MODULE_COUNT
-  raise "duplicate WorkGraph module declaration" unless module_names.uniq.length == module_names.length
-  entries = module_names.map do |module_name|
-    path = source_path(module_name)
-    raise "missing WorkGraph source: #{path}" unless File.file?(path)
-    [module_name, File.binread(path)]
-  end
-  FileUtils.mkdir_p(BUNDLE_ROOT)
-  staging = File.join(BUNDLE_ROOT, ".modules.bundle.#{$$}.gz")
-  Zlib::GzipWriter.open(staging, Zlib::BEST_COMPRESSION) do |writer|
-    writer.mtime = 0
-    writer.write(encode_bundle(entries))
-  end
-  File.rename(staging, BUNDLE_PATH)
-  write_registry(entries)
-  rewrite_lib_to_bundle(module_names)
-  entries.each { |module_name, _source| FileUtils.rm_f(source_path(module_name)) }
+  entries = if HeptaReadableTokenSource.present?(BUNDLE_ROOT) &&
+      source_declarations.empty?
+              canonical_entries(strict_metadata: false).first
+            elsif File.file?(BUNDLE_PATH) && source_declarations.empty?
+              normalized_entries
+            elsif File.file?(LEGACY_BUNDLE_PATH) && source_declarations.empty?
+              legacy_entries
+            else
+              source_entries
+            end
+  build_bundle(entries)
+  rewrite_lib_to_bundle
+  entries.each { |entry| FileUtils.rm_f(source_path(entry.name)) }
+  FileUtils.rm_rf(LEGACY_BUNDLE_ROOT)
+  FileUtils.rm_rf(File.join(RUNTIME_ROOT, "codegen/workgraph-v1"))
   verify
 end
 
 def verify
-  raise "missing WorkGraph bundle inputs" unless File.file?(BUNDLE_PATH) && File.file?(REGISTRY_PATH)
-  entries = decode_bundle
+  raise "missing normalized WorkGraph bundle" unless File.file?(BUNDLE_PATH) &&
+    File.file?(REGISTRY_PATH) &&
+    HeptaReadableTokenSource.present?(BUNDLE_ROOT)
+  entries, canonical_bundle, canonical = canonical_entries(strict_metadata: true)
+  rebuilt = HeptaNormalizedTokenBundle.build(
+    entries,
+    tokenizer: HeptaNormalizedTokenBundle.method(:rust_tokens)
+  )
+  canonical_payload = HeptaNormalizedTokenBundle.encode(canonical_bundle, schema: SCHEMA)
+  rebuilt_payload = HeptaNormalizedTokenBundle.encode(rebuilt, schema: SCHEMA)
+  raise "WorkGraph canonical normalization drifted" unless canonical_payload == rebuilt_payload
+  expected_gzip = HeptaReadableTokenSource.deterministic_gzip(rebuilt_payload)
+  raise "WorkGraph generated gzip is not byte-identical" unless File.binread(BUNDLE_PATH) ==
+    expected_gzip
+  artifact_entries = normalized_entries
+  raise "WorkGraph artifact reassembly drifted" unless HeptaNormalizedTokenBundle.aggregate_sha(
+    artifact_entries
+  ) == HeptaNormalizedTokenBundle.aggregate_sha(entries)
   registry = JSON.parse(File.binread(REGISTRY_PATH))
-  raise "invalid WorkGraph bundle registry schema" unless registry["schema"] == SCHEMA
-  raise "unexpected WorkGraph bundle module count" unless entries.length == EXPECTED_MODULE_COUNT
-  raise "WorkGraph registry module count drifted" unless registry["module_count"] == entries.length
-  raise "WorkGraph registry aggregate SHA drifted" unless registry["aggregate_source_sha256"] == aggregate_sha(entries)
+  raise "invalid normalized WorkGraph registry schema" unless registry["schema"] == SCHEMA
+  raise "unexpected WorkGraph module count" unless entries.length == EXPECTED_MODULE_COUNT
+  raise "WorkGraph module count drifted" unless registry["module_count"] == entries.length
+  raise "WorkGraph aggregate SHA drifted" unless registry["aggregate_source_sha256"] == HeptaNormalizedTokenBundle.aggregate_sha(entries)
+  raise "WorkGraph source byte count drifted" unless registry["source_bytes"] == entries.sum { |entry| entry.source.bytesize }
+  raise "WorkGraph source line count drifted" unless registry["source_lines"] == entries.sum { |entry| entry.source.lines.count }
   raise "WorkGraph bundle SHA drifted" unless registry["bundle_sha256"] == Digest::SHA256.file(BUNDLE_PATH).hexdigest
   raise "WorkGraph bundle byte count drifted" unless registry["bundle_bytes"] == File.size(BUNDLE_PATH)
-  raise "WorkGraph source byte count drifted" unless registry["source_bytes"] == entries.sum { |_name, source| source.bytesize }
-  raise "WorkGraph source line count drifted" unless registry["source_lines"] == entries.sum { |_name, source| source.lines.count }
+  raise "WorkGraph normalized template budget exceeded" unless registry[
+    "normalized_template_count"
+  ].between?(1, MAX_NORMALIZED_TEMPLATE_COUNT)
+  raise "WorkGraph normalized template limit drifted" unless registry[
+    "normalized_template_limit"
+  ] == MAX_NORMALIZED_TEMPLATE_COUNT
+  raise "WorkGraph normalized parameter rows drifted" unless registry["normalized_parameter_row_count"] == EXPECTED_MODULE_COUNT
+  raise "WorkGraph normalized effective-line budget exceeded" unless registry["normalized_effective_lines"].between?(1, MAX_NORMALIZED_EFFECTIVE_LINES)
+  raise "WorkGraph normalized effective-line limit drifted" unless registry[
+    "normalized_effective_line_limit"
+  ] == MAX_NORMALIZED_EFFECTIVE_LINES
+  raise "WorkGraph readable canonical schema drifted" unless registry[
+    "canonical_source_schema"
+  ] == HeptaReadableTokenSource::SCHEMA
+  raise "WorkGraph readable canonical SHA drifted" unless registry[
+    "canonical_schema_sha256"
+  ] == Digest::SHA256.file(
+    File.join(BUNDLE_ROOT, HeptaReadableTokenSource::SCHEMA_FILE)
+  ).hexdigest
+  raise "WorkGraph canonical template SHA drifted" unless registry[
+    "canonical_templates_sha256"
+  ] == canonical.fetch("templates_sha256")
+  raise "WorkGraph canonical parameter SHA drifted" unless registry[
+    "canonical_parameters_sha256"
+  ] == canonical.fetch("parameters_sha256")
+  raise "WorkGraph canonical record size drifted" unless registry[
+    "canonical_max_record_bytes"
+  ] == canonical.fetch("canonical_max_record_bytes")
+  raise "WorkGraph canonical record-size budget exceeded" unless registry[
+    "canonical_max_record_bytes"
+  ].between?(1, MAX_CANONICAL_RECORD_BYTES)
+  raise "WorkGraph canonical record-size limit drifted" unless registry[
+    "canonical_max_record_byte_limit"
+  ] == MAX_CANONICAL_RECORD_BYTES
+  raise "WorkGraph canonical record byte semantics drifted" unless registry[
+    "canonical_record_byte_semantics"
+  ] == "record_including_lf"
+  raise "WorkGraph gzip profile drifted" unless registry["gzip_mtime"] ==
+    HeptaReadableTokenSource::FIXED_GZIP_MTIME &&
+    registry["gzip_os"] == HeptaReadableTokenSource::FIXED_GZIP_OS
   source = File.binread(LIB_SOURCE)
   raise "WorkGraph bundle include count drifted" unless source.scan(INCLUDE_PATTERN).length == 1
   raise "materialized WorkGraph declarations remain" unless source_declarations.empty?
-  entries.each do |module_name, _source|
-    raise "materialized WorkGraph source remains: #{module_name}" if File.exist?(source_path(module_name))
+  entries.each do |entry|
+    raise "materialized WorkGraph source remains: #{entry.name}" if File.exist?(source_path(entry.name))
   end
-  puts "hepta-workgraph-module-bundle: PASS: #{entries.length} modules, #{registry.fetch("source_lines")} source lines"
+  raise "legacy WorkGraph bundle remains active" if File.exist?(LEGACY_BUNDLE_ROOT)
+  puts "hepta-workgraph-module-bundle: PASS: #{entries.length} modules, #{registry.fetch("normalized_template_count")} templates, #{registry.fetch("normalized_effective_lines")} normalized lines"
 end
 
 def unpack
-  entries = decode_bundle
-  rewrite_lib_to_sources(entries.map(&:first))
-  entries.each do |module_name, source|
-    atomic_write(source_path(module_name), source, 0o644)
+  entries = normalized_entries
+  rewrite_lib_to_sources(entries)
+  entries.each do |entry|
+    atomic_write(source_path(entry.name), entry.source, 0o644)
   end
   puts "hepta-workgraph-module-bundle: unpacked #{entries.length} modules"
 end
 
-if ARGV == ["pack"]
-  pack
-elsif ARGV == ["verify"]
-  verify
-elsif ARGV == ["unpack"]
-  unpack
-elsif ARGV.length == 2 && ARGV.first == "contains"
-  module_name = ARGV.fetch(1)
-  exit(decode_bundle.any? { |candidate, _source| candidate == module_name } ? 0 : 1)
+case ARGV
+when ["pack"] then pack
+when ["verify"] then verify
+when ["unpack"] then unpack
 else
+  if ARGV.length == 2 && ARGV.first == "contains"
+    exit(normalized_entries.any? { |entry| entry.name == ARGV.last } ? 0 : 1)
+  end
   usage
 end

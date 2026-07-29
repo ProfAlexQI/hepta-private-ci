@@ -11,7 +11,8 @@ SCRIPTS_ROOT = File.join(ROOT, "scripts")
 SPEC_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-specs-v1.json")
 REGISTRY_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-entrypoints-v2.json")
 SCHEMA = "hepta_gate_pair_entrypoints_v2"
-MAX_RETAINED_ENTRYPOINTS = 299
+MAX_RETAINED_ENTRYPOINTS = 165
+MAX_NORMALIZED_VIRTUAL_ENTRYPOINTS = 2
 MAX_TRACKED_PATH_BYTES = 240
 
 def usage
@@ -88,6 +89,9 @@ def pack
   raise "retained gate-pair entrypoint budget exceeded: #{retained.length}" if retained.length > MAX_RETAINED_ENTRYPOINTS
   retained_paths = retained.map(&:first).to_set
   virtual = entries.reject { |path, _kind, _id| retained_paths.include?(path) }
+  virtual_template_kinds = virtual.map { |_path, kind, _id| kind }.uniq.sort
+  raise "normalized virtual entrypoint budget exceeded" if virtual_template_kinds.length >
+    MAX_NORMALIZED_VIRTUAL_ENTRYPOINTS
   registry = {
     schema: SCHEMA,
     status: "pruned",
@@ -96,6 +100,9 @@ def pack
     original_entrypoint_count: entries.length,
     retained_entrypoint_count: retained.length,
     virtual_entrypoint_count: virtual.length,
+    normalized_virtual_entrypoint_count: virtual_template_kinds.length,
+    normalized_virtual_entrypoint_limit: MAX_NORMALIZED_VIRTUAL_ENTRYPOINTS,
+    virtual_entrypoint_template_kinds: virtual_template_kinds,
     virtual_long_path_count: virtual.count { |path, _kind, _id| path.bytesize > MAX_TRACKED_PATH_BYTES },
     max_retained_entrypoints: MAX_RETAINED_ENTRYPOINTS,
     max_tracked_path_bytes: MAX_TRACKED_PATH_BYTES,
@@ -117,9 +124,23 @@ def verify
   retained_paths = registry.fetch("retained_paths").to_set
   raise "retained gate-pair entrypoint budget exceeded" if retained_paths.length > MAX_RETAINED_ENTRYPOINTS
   raise "retained gate-pair entrypoint count drifted" unless registry["retained_entrypoint_count"] == retained_paths.length
+  raise "retained gate-pair entrypoint limit drifted" unless registry[
+    "max_retained_entrypoints"
+  ] == MAX_RETAINED_ENTRYPOINTS
   raise "gate-pair entrypoint total drifted" unless registry["original_entrypoint_count"] == entries.length
   virtual_paths = entries.map(&:first).reject { |path| retained_paths.include?(path) }
   raise "virtual gate-pair entrypoint count drifted" unless registry["virtual_entrypoint_count"] == virtual_paths.length
+  virtual_template_kinds = entries
+    .reject { |path, _kind, _id| retained_paths.include?(path) }
+    .map { |_path, kind, _id| kind }
+    .uniq
+    .sort
+  raise "normalized virtual entrypoint count drifted" unless registry["normalized_virtual_entrypoint_count"] == virtual_template_kinds.length
+  raise "normalized virtual entrypoint budget exceeded" unless registry["normalized_virtual_entrypoint_count"] <= MAX_NORMALIZED_VIRTUAL_ENTRYPOINTS
+  raise "normalized virtual entrypoint limit drifted" unless registry[
+    "normalized_virtual_entrypoint_limit"
+  ] == MAX_NORMALIZED_VIRTUAL_ENTRYPOINTS
+  raise "virtual entrypoint template kinds drifted" unless registry["virtual_entrypoint_template_kinds"] == virtual_template_kinds
   raise "virtual gate-pair path digest drifted" unless registry["virtual_paths_sha256"] == Digest::SHA256.hexdigest(virtual_paths.join("\n") + "\n")
   entries.each do |relative, kind, id|
     path = File.join(ROOT, relative)

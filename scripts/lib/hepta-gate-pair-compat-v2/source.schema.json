@@ -1,0 +1,30 @@
+{
+  "schema": "hepta_readable_normalized_token_source_v1",
+  "domain": "hepta_gate_pair_compat_payloads",
+  "artifact_schema": "hepta_gate_pair_normalized_payload_bundle_v3",
+  "canonical_files": [
+    "templates.jsonl",
+    "parameters.jsonl"
+  ],
+  "generated_artifact": "payloads.bundle.gz",
+  "template_count": 548,
+  "parameter_row_count": 2512,
+  "source_bytes": 23422350,
+  "source_lines": 365088,
+  "aggregate_source_sha256": "8f27949692b263a034ce77a3bf1778ec6b16bae472cfb0231aa925d5552f0f5e",
+  "templates_sha256": "f0613efb3bee3d9b47ed7cbc27fe3439ab2062ee0d562812526dbff12caa745c",
+  "parameters_sha256": "7010a7307053f70ae3fc1bcce9a90b2d162afe83188484d80edb21c10349fd26",
+  "jsonl_record_byte_semantics": "record_including_lf",
+  "templates_max_record_bytes": 355619,
+  "parameters_max_record_bytes": 32183,
+  "canonical_max_record_bytes": 355619,
+  "normalized_effective_lines": 307661,
+  "gzip_profile": {
+    "compression": "zlib_best_compression",
+    "mtime": 1,
+    "os": 255
+  },
+  "source_is_canonical": true,
+  "artifact_is_generated": true,
+  "exact_reassembly": true
+}
