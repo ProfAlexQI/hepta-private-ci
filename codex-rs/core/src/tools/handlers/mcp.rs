@@ -24,8 +24,11 @@ use codex_tools::ToolName;
 use codex_tools::ToolSearchSourceInfo;
 use codex_tools::ToolSpec;
 use codex_tools::mcp_tool_to_responses_api_tool;
+use codex_utils_string::take_bytes_at_char_boundary;
 use serde_json::Map;
 use serde_json::Value;
+
+const MAX_MCP_NAMESPACE_DESCRIPTION_BYTES: usize = 1_000;
 
 pub struct McpHandler {
     tool_info: ToolInfo,
@@ -61,6 +64,7 @@ impl ToolExecutor<ToolInvocation> for McpHandler {
             .as_deref()
             .map(str::trim)
             .filter(|description| !description.is_empty())
+            .map(bounded_mcp_namespace_description)
             .map(str::to_string)
             .or_else(|| {
                 self.tool_info
@@ -147,6 +151,7 @@ impl CoreToolRuntime for McpHandler {
                 .as_deref()
                 .map(str::trim)
                 .filter(|description| !description.is_empty())
+                .map(bounded_mcp_namespace_description)
                 .map(str::to_string),
         });
 
@@ -221,6 +226,10 @@ impl CoreToolRuntime for McpHandler {
             tool_response,
         })
     }
+}
+
+fn bounded_mcp_namespace_description(description: &str) -> &str {
+    take_bytes_at_char_boundary(description, MAX_MCP_NAMESPACE_DESCRIPTION_BYTES)
 }
 
 fn mcp_hook_tool_input(raw_arguments: &str) -> Value {
@@ -446,6 +455,32 @@ mod tests {
     #[test]
     fn mcp_hook_tool_input_defaults_empty_args_to_object() {
         assert_eq!(mcp_hook_tool_input("  "), json!({}));
+    }
+
+    #[test]
+    fn namespace_description_is_bounded_without_splitting_utf8() {
+        let mut info = tool_info("filesystem", "mcp__filesystem__", "read_file");
+        info.namespace_description = Some("🦀".repeat(400));
+        let handler = McpHandler::new(info);
+        let ToolSpec::Namespace(namespace) = handler.spec().expect("namespace spec") else {
+            panic!("expected namespace spec");
+        };
+        assert_eq!(
+            namespace.description.len(),
+            MAX_MCP_NAMESPACE_DESCRIPTION_BYTES
+        );
+        assert!(
+            namespace
+                .description
+                .chars()
+                .all(|character| character == '🦀')
+        );
+        let source = handler
+            .search_info()
+            .and_then(|info| info.source_info)
+            .and_then(|source| source.description)
+            .expect("search source description");
+        assert_eq!(source, namespace.description);
     }
 
     fn tool_info(server_name: &str, callable_namespace: &str, tool_name: &str) -> ToolInfo {

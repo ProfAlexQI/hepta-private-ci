@@ -1,0 +1,64 @@
+{
+  "schema": "hepta_l4_upstream_selective_intake_v1",
+  "status": "source_ready_release_pending",
+  "upstream": {
+    "previous_audited_commit": "28f3f1f9ef4e9578a5f023f6b6eba018914a5342",
+    "latest_audited_commit": "9a6668f674d74b35418fa534b3b6285a315d0765",
+    "new_commit_count": 11,
+    "audited_at": "2026-07-29"
+  },
+  "selected_intake": [
+    {
+      "upstream_commit": "ddf33ea802f787f800e2a3691cc6e7379e6bb695",
+      "scope": "bounded_model_facing_mcp_namespace_and_tool_search_source_descriptions",
+      "namespace_description_max_bytes": 1000,
+      "tool_search_source_description_max_bytes": 4096,
+      "utf8_boundary_preserved": true,
+      "stored_server_metadata_mutated": false
+    }
+  ],
+  "already_satisfied_by_l0": [
+    {
+      "upstream_commit": "250de82bfbf2ceef0ba7f6b043595219819e3594",
+      "scope": "environment_filesystem_for_mcp_uploads"
+    },
+    {
+      "upstream_commit": "0a6616f4cf74f2f7e89bd8761ac64b8e189aa0cd",
+      "scope": "primary_environment_model_context_marker"
+    }
+  ],
+  "conditional_not_active_linked": [
+    {
+      "upstream_commit": "6c13b113a3d28b16ce6d00cdbd18ede5bbc1f283",
+      "scope": "in_place_deferred_environment_readiness_updates",
+      "condition": "remote_or_deferred_environment_becomes_a_formal_hepta_runtime_caller"
+    },
+    {
+      "upstream_commit": "fe01054a28fa4bd04716d9ceadb410f2443a50ce",
+      "scope": "step_context_environment_inheritance_for_spawned_agents",
+      "condition": "tool_invocation_step_context_is_adopted_as_one_coherent_protocol_slice"
+    },
+    {
+      "upstream_commit": "fbf666fa986c43990a5c25fd3bd50696795b0b2c",
+      "scope": "run_unrelated_tools_while_mcp_servers_start",
+      "condition": "measured_mcp_startup_contention_justifies_parallel_scheduler_change"
+    },
+    {
+      "upstream_commit": "9a6668f674d74b35418fa534b3b6285a315d0765",
+      "scope": "listed_subagent_direct_input_capability",
+      "condition": "parent_owned_read_only_subagent_protocol_is_intaken_with_its_prerequisites"
+    }
+  ],
+  "excluded": [
+    "tui_only_status_rendering",
+    "external_agent_import_title_metadata",
+    "whole_tree_merge_or_rebase",
+    "second_provider_or_telegram_owner"
+  ],
+  "verification": {
+    "mcp_namespace_utf8_bound_test": true,
+    "tool_search_aggregate_bound_test": true,
+    "product_boundary_unchanged": true,
+    "mutation_surface_expanded": false
+  }
+}
