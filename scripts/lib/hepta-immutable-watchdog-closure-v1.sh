@@ -8,7 +8,11 @@ HEPTA_IMMUTABLE_WATCHDOG_VERIFY_TOOL="scripts/hepta-immutable-release-tree"
 hepta_immutable_watchdog_closure_spec() {
   cat <<'EOF'
 scripts/hepta-watchdog.sh	0555	true
+scripts/hepta-live-soak.sh	0555	true
 scripts/hepta-immutable-release-tree	0555	true
+scripts/hepta-preflight-evidence-pack	0555	true
+scripts/hepta-install-live-watchdog	0555	true
+scripts/hepta-install-live-gateway	0555	true
 scripts/lib/hepta-watchdog-release-evidence-v1.sh	0444	false
 scripts/lib/hepta-watchdog-product-boundary-v1.sh	0444	false
 scripts/lib/hepta-release-provenance.sh	0444	false

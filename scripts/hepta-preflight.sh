@@ -924,6 +924,11 @@ run_preflight_gate "resume supervisor retry/backoff self-test" scripts/hepta-pre
 run_preflight_gate "watchdog gate evidence mode self-test" scripts/hepta-watchdog-gate-evidence-self-test.sh
 run_preflight_gate "live Control UI truth mode self-test" scripts/hepta-live-control-ui-truth-self-test.sh
 run_preflight_gate "immutable release tree self-test" scripts/hepta-immutable-release-tree self-test
+run_preflight_gate "preflight evidence pack deterministic self-test" scripts/hepta-preflight-evidence-pack self-test
+run_preflight_gate "architecture cross-release ratchet self-test" scripts/hepta-architecture-release-ratchet self-test
+if [[ "$RUN_RELEASE" == "1" ]]; then
+  run_preflight_gate "architecture cross-release immutable ratchet" scripts/hepta-architecture-release-ratchet verify
+fi
 run_preflight_gate "active binary deployment consistency self-test" scripts/hepta-active-binary-consistency-self-test.sh
 run_preflight_gate "watchdog build provenance self-test" scripts/hepta-watchdog-provenance-self-test.sh
 run_preflight_gate "architecture hard budget verify/self-test" scripts/hepta-architecture-budget verify

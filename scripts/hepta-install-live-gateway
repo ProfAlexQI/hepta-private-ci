@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+manifest=""
+install_job=false
+launch_agent=""
+archive_root="${HEPTA_LAUNCH_AGENT_ARCHIVE_ROOT:-$HOME/.local/share/hepta/archive/launchagents}"
+
+usage() {
+  cat >&2 <<'EOF'
+usage: scripts/hepta-install-live-gateway --manifest PATH [options]
+
+Options:
+  --launch-agent PATH
+  --archive-root DIR
+  --install
+
+Without --install, validate and print the immutable canonical install plan.
+With --install, archive every same-label non-canonical plist outside
+~/Library/LaunchAgents, atomically install the release-bound canonical plist,
+and replace the user launchd job.
+EOF
+  exit 2
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --manifest) shift; [[ $# -gt 0 ]] || usage; manifest="$1" ;;
+    --launch-agent) shift; [[ $# -gt 0 ]] || usage; launch_agent="$1" ;;
+    --archive-root) shift; [[ $# -gt 0 ]] || usage; archive_root="$1" ;;
+    --install) install_job=true ;;
+    *) usage ;;
+  esac
+  shift
+done
+
+[[ -n "$manifest" ]] || usage
+manifest="$(realpath "$manifest")"
+release_dir="$(dirname "$manifest")"
+verify_tool="$release_dir/$(jq -r '.watchdog.verify_tool // empty' "$manifest")"
+[[ -x "$verify_tool" && ! -L "$verify_tool" ]] || {
+  echo "release-bound immutable verifier is missing: $verify_tool" >&2
+  exit 1
+}
+"$verify_tool" verify --manifest "$manifest" >/dev/null
+
+contract="$(jq -ce '.gateway_launch_agent' "$manifest")" || {
+  echo "immutable release manifest has no gateway LaunchAgent contract" >&2
+  exit 1
+}
+template="$release_dir/$(jq -r '.relative_path' <<<"$contract")"
+label="$(jq -r '.label' <<<"$contract")"
+canonical_launch_agent="$(jq -r '.canonical_install_path' <<<"$contract")"
+canonical_path_sha256="$(jq -r '.canonical_install_path_sha256' <<<"$contract")"
+template_sha256="$(jq -r '.sha256' <<<"$contract")"
+working_directory="$(jq -r '.working_directory' <<<"$contract")"
+state_root="$(jq -r '.state_root' <<<"$contract")"
+launch_agent="${launch_agent:-$canonical_launch_agent}"
+
+[[ -f "$template" && ! -L "$template" ]] || {
+  echo "release-bound canonical gateway plist is missing: $template" >&2
+  exit 1
+}
+[[ "$(shasum -a 256 "$template" | awk '{print $1}')" == "$template_sha256" ]] || {
+  echo "release-bound canonical gateway plist differs from manifest" >&2
+  exit 1
+}
+[[ "$(printf '%s' "$canonical_launch_agent" | shasum -a 256 | awk '{print $1}')" \
+  == "$canonical_path_sha256" ]] || {
+  echo "canonical gateway plist path digest differs from manifest" >&2
+  exit 1
+}
+plutil -lint "$template" >/dev/null
+
+if [[ "$install_job" == "true" && "$launch_agent" != "$canonical_launch_agent" ]]; then
+  echo "--install requires the manifest-bound canonical gateway plist path" >&2
+  exit 1
+fi
+
+launch_agent_dir="$(dirname "$launch_agent")"
+same_label_plists=()
+if [[ -d "$launch_agent_dir" ]]; then
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    candidate_label="$(plutil -extract Label raw -o - "$candidate" 2>/dev/null || true)"
+    if [[ "$candidate_label" == "$label" ]]; then
+      same_label_plists+=("$candidate")
+    fi
+  done < <(find "$launch_agent_dir" -maxdepth 1 -type f -name '*.plist' -print | sort)
+fi
+
+archived='[]'
+loaded=false
+loaded_path=""
+loaded_path_sha256=""
+if [[ "$install_job" == "true" ]]; then
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p \
+    "$archive_root" \
+    "$launch_agent_dir" \
+    "$working_directory" \
+    "$state_root/native-post-execution" \
+    "$HOME/.local/opt/hepta/logs/gateway"
+  archive_root="$(realpath "$archive_root")"
+  launch_agent_dir="$(realpath "$launch_agent_dir")"
+  [[ "$archive_root" != "$launch_agent_dir" \
+    && "$archive_root" != "$launch_agent_dir/"* ]] || {
+    echo "gateway plist archive must remain outside the LaunchAgents directory" >&2
+    exit 1
+  }
+  archive_dir="$(mktemp -d "$archive_root/$timestamp.XXXXXX")"
+  chmod 0700 \
+    "$archive_root" \
+    "$archive_dir" \
+    "$state_root" \
+    "$working_directory" \
+    "$state_root/native-post-execution" \
+    "$HOME/.local/opt/hepta/logs/gateway"
+
+  for candidate in "${same_label_plists[@]}"; do
+    if [[ "$candidate" == "$launch_agent" \
+      && "$(shasum -a 256 "$candidate" | awk '{print $1}')" == "$template_sha256" ]]; then
+      continue
+    fi
+    archived_path="$archive_dir/$(basename "$candidate").$timestamp.disabled"
+    mv "$candidate" "$archived_path"
+    archived="$(
+      jq -cn \
+        --argjson archived "$archived" \
+        --arg source "$candidate" \
+        --arg destination "$archived_path" \
+        '$archived + [{source:$source,destination:$destination}]'
+    )"
+  done
+
+  staged_plist="$(mktemp "$launch_agent_dir/.ai.hepta.gateway.XXXXXX")"
+  trap 'rm -f "$staged_plist"' EXIT
+  cp "$template" "$staged_plist"
+  chmod 0444 "$staged_plist"
+  plutil -lint "$staged_plist" >/dev/null
+  mv -f "$staged_plist" "$launch_agent"
+  trap - EXIT
+
+  domain="gui/$(id -u)"
+  launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
+  launchctl bootstrap "$domain" "$launch_agent"
+  launchctl kickstart -k "$domain/$label"
+  loaded_print="$(launchctl print "$domain/$label")"
+  loaded_path="$(
+    awk -F' = ' '
+      /^[[:space:]]*path = / {
+        value=$2
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        print value
+        exit
+      }
+    ' <<<"$loaded_print"
+  )"
+  [[ "$loaded_path" == "$canonical_launch_agent" ]] || {
+    echo "loaded gateway job path is not the manifest-bound canonical plist" >&2
+    exit 1
+  }
+  loaded_path_sha256="$(printf '%s' "$loaded_path" | shasum -a 256 | awk '{print $1}')"
+  [[ "$loaded_path_sha256" == "$canonical_path_sha256" ]] || {
+    echo "loaded gateway job path digest differs from manifest" >&2
+    exit 1
+  }
+  remaining_same_label=0
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    if [[ "$(plutil -extract Label raw -o - "$candidate" 2>/dev/null || true)" == "$label" ]]; then
+      remaining_same_label=$((remaining_same_label + 1))
+      [[ "$candidate" == "$canonical_launch_agent" ]] || {
+        echo "a non-canonical same-label gateway plist remains loadable: $candidate" >&2
+        exit 1
+      }
+    fi
+  done < <(find "$launch_agent_dir" -maxdepth 1 -type f -name '*.plist' -print | sort)
+  [[ "$remaining_same_label" == "1" ]] || {
+    echo "canonical gateway plist is not the unique loadable same-label plist" >&2
+    exit 1
+  }
+  loaded=true
+fi
+
+jq -cn \
+  --arg status ready \
+  --arg manifest "$manifest" \
+  --arg label "$label" \
+  --arg template "$template" \
+  --arg template_sha256 "$template_sha256" \
+  --arg canonical_launch_agent "$canonical_launch_agent" \
+  --arg canonical_path_sha256 "$canonical_path_sha256" \
+  --arg requested_launch_agent "$launch_agent" \
+  --arg working_directory "$working_directory" \
+  --arg state_root "$state_root" \
+  --arg loaded_path "$loaded_path" \
+  --arg loaded_path_sha256 "$loaded_path_sha256" \
+  --argjson same_label_plist_count "${#same_label_plists[@]}" \
+  --argjson archived "$archived" \
+  --argjson loaded "$loaded" \
+  '{
+    schema:"hepta_gateway_launch_agent_install_v1",
+    status:$status,
+    manifest:$manifest,
+    label:$label,
+    template:$template,
+    template_sha256:$template_sha256,
+    canonical_launch_agent:$canonical_launch_agent,
+    canonical_path_sha256:$canonical_path_sha256,
+    requested_launch_agent:$requested_launch_agent,
+    canonical_target:($requested_launch_agent == $canonical_launch_agent),
+    working_directory:$working_directory,
+    state_root:$state_root,
+    effective_gates_all_false:true,
+    same_label_plist_count_before:$same_label_plist_count,
+    archived:$archived,
+    archived_loadable_plist_count:0,
+    loaded:$loaded,
+    loaded_path:(if $loaded then $loaded_path else null end),
+    loaded_path_sha256:(if $loaded then $loaded_path_sha256 else null end),
+    loaded_path_digest_verified:$loaded,
+    mutable_worktree_dependency:false
+  }'

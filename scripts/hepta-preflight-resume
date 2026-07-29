@@ -229,7 +229,8 @@ RUSTC_IDENTITY_SHA256="$(
 TOOLCHAIN_IDENTITY_SHA256="$({
   printf 'rustc=%s\n' "$RUSTC_IDENTITY_SHA256"
   if PATH="$RESUME_RELEVANT_PATH" command -v rustup >/dev/null 2>&1; then
-    PATH="$RESUME_RELEVANT_PATH" rustup show active-toolchain 2>&1 || true
+    PATH="$RESUME_RELEVANT_PATH" RUSTUP_AUTO_INSTALL=0 \
+      rustup show active-toolchain 2>&1 || true
   else
     printf 'rustup=missing\n'
   fi

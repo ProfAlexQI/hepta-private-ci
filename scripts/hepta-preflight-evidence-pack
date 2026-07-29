@@ -1,0 +1,263 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+action="${1:-}"
+shift || true
+
+case "$action" in
+  pack)
+    [[ "${1:-}" == "--log" && -n "${2:-}" && "${3:-}" == "--output-dir" && -n "${4:-}" && $# == 4 ]] || {
+      echo "usage: scripts/hepta-preflight-evidence-pack pack --log PATH --output-dir DIR" >&2
+      exit 2
+    }
+    ;;
+  verify)
+    [[ "${1:-}" == "--summary" && -n "${2:-}" && $# == 2 ]] || {
+      echo "usage: scripts/hepta-preflight-evidence-pack verify --summary PATH" >&2
+      exit 2
+    }
+    ;;
+  self-test)
+    [[ $# == 0 ]] || {
+      echo "usage: scripts/hepta-preflight-evidence-pack self-test" >&2
+      exit 2
+    }
+    ;;
+  *)
+    echo "usage: scripts/hepta-preflight-evidence-pack {pack|verify|self-test} ..." >&2
+    exit 2
+    ;;
+esac
+
+ruby - "$action" "$@" <<'RUBY'
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "stringio"
+require "tmpdir"
+require "zlib"
+
+SCHEMA = "hepta_preflight_evidence_summary_v1"
+ARCHIVE_NAME = "preflight.log.gz"
+SUMMARY_NAME = "preflight-summary.json"
+FIXED_GZIP_MTIME = 1
+FIXED_GZIP_OS = 255
+
+def sha256(payload)
+  Digest::SHA256.hexdigest(payload)
+end
+
+def deterministic_gzip(payload)
+  buffer = StringIO.new(+"".b)
+  writer = Zlib::GzipWriter.new(buffer, Zlib::BEST_COMPRESSION)
+  writer.mtime = FIXED_GZIP_MTIME
+  writer.write(payload)
+  writer.close
+  gzip = buffer.string
+  gzip[4, 4] = [FIXED_GZIP_MTIME].pack("V")
+  gzip.setbyte(9, FIXED_GZIP_OS)
+  gzip
+end
+
+def extract_single(lines, prefix, label)
+  matches = lines.each_with_object([]) do |line, found|
+    found << line.delete_prefix(prefix).delete_suffix("\n") if line.start_with?(prefix)
+  end
+  raise "preflight log must contain exactly one #{label}" unless matches.length == 1
+  matches.fetch(0)
+end
+
+def analyze(log, gzip)
+  lines = log.lines
+  phase_markers = lines.each_with_object([]) do |line, found|
+    next unless line.start_with?("[hepta-preflight] ")
+    found << line.delete_prefix("[hepta-preflight] ").delete_suffix("\n")
+  end
+  raise "preflight log has no phase markers" if phase_markers.empty?
+
+  provenance_text = extract_single(
+    lines,
+    "[hepta-preflight-provenance] ",
+    "provenance receipt"
+  )
+  final_text = extract_single(lines, "[hepta-preflight-final] ", "final receipt")
+  provenance = JSON.parse(provenance_text)
+  final_receipt = JSON.parse(final_text)
+  raise "invalid preflight provenance schema" unless provenance["schema_version"] ==
+    "hepta_build_provenance_v1"
+  raise "invalid preflight final receipt schema" unless final_receipt["schema"] ==
+    "hepta_preflight_final_receipt_v1"
+  raise "preflight final receipt did not pass" unless final_receipt["status"] == "passed"
+  raise "preflight final receipt/provenance source drifted" unless final_receipt["source_commit"] ==
+    provenance.dig("source", "commit")
+  raise "preflight final receipt/provenance artifact drifted" unless final_receipt[
+    "artifact_sha256"
+  ] == provenance.dig("artifact", "sha256")
+  raise "preflight provenance digest drifted" unless final_receipt["build_provenance_sha256"] ==
+    sha256(provenance_text)
+
+  phase_sequence = phase_markers.join("\n") + "\n"
+  {
+    "schema" => SCHEMA,
+    "status" => "ready",
+    "source" => {
+      "log_sha256" => sha256(log),
+      "log_size_bytes" => log.bytesize,
+      "phase_count" => phase_markers.length,
+      "unique_phase_count" => phase_markers.uniq.length,
+      "phase_sequence_sha256" => sha256(phase_sequence),
+      "first_phase" => phase_markers.first,
+      "last_phase" => phase_markers.last,
+      "provenance_sha256" => sha256(provenance_text),
+      "final_receipt_sha256" => sha256(final_text),
+      "source_commit" => final_receipt.fetch("source_commit"),
+      "artifact_sha256" => final_receipt.fetch("artifact_sha256")
+    },
+    "archive" => {
+      "relative_path" => ARCHIVE_NAME,
+      "sha256" => sha256(gzip),
+      "size_bytes" => gzip.bytesize,
+      "saved_bytes" => log.bytesize - gzip.bytesize,
+      "compression_percent_x100" => ((gzip.bytesize * 10_000) / log.bytesize),
+      "codec" => "gzip_zlib_best_compression",
+      "mtime" => FIXED_GZIP_MTIME,
+      "os" => FIXED_GZIP_OS,
+      "contains_exact_source_bytes" => true
+    },
+    "final_receipt" => final_receipt,
+    "full_detail_default" => false
+  }
+end
+
+def write_exact(path, payload)
+  if File.exist?(path)
+    raise "refusing to replace different evidence: #{path}" unless File.binread(path) == payload
+    return
+  end
+  temporary = "#{path}.tmp.#{Process.pid}.#{rand(1 << 32)}"
+  File.open(temporary, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+    file.write(payload)
+    file.flush
+    file.fsync
+  end
+  File.chmod(0o444, temporary)
+  File.rename(temporary, path)
+end
+
+def pack(log_path, output_dir)
+  raise "preflight log must be a regular non-symlink file" unless File.file?(log_path) &&
+    !File.symlink?(log_path)
+  if File.exist?(output_dir)
+    raise "output directory must not be a symlink" if File.symlink?(output_dir)
+    raise "output path must be a directory" unless File.directory?(output_dir)
+  else
+    FileUtils.mkdir_p(output_dir, mode: 0o700)
+  end
+  log = File.binread(log_path)
+  raise "preflight log is empty" if log.empty?
+  gzip = deterministic_gzip(log)
+  summary = analyze(log, gzip)
+  summary_bytes = JSON.pretty_generate(summary) + "\n"
+  write_exact(File.join(output_dir, ARCHIVE_NAME), gzip)
+  write_exact(File.join(output_dir, SUMMARY_NAME), summary_bytes)
+  summary
+end
+
+def verify(summary_path)
+  raise "summary must be a regular non-symlink file" unless File.file?(summary_path) &&
+    !File.symlink?(summary_path)
+  summary = JSON.parse(File.binread(summary_path))
+  raise "invalid evidence summary schema" unless summary["schema"] == SCHEMA
+  archive_path = File.join(File.dirname(summary_path), summary.dig("archive", "relative_path"))
+  raise "archive must be a regular non-symlink file" unless File.file?(archive_path) &&
+    !File.symlink?(archive_path)
+  gzip = File.binread(archive_path)
+  log = Zlib::GzipReader.new(StringIO.new(gzip)).read
+  raise "archive is not deterministic gzip" unless gzip == deterministic_gzip(log)
+  expected = analyze(log, gzip)
+  raise "preflight evidence summary drifted" unless summary == expected
+  true
+end
+
+def self_test
+  Dir.mktmpdir("hepta-preflight-evidence-pack.") do |root|
+    source_commit = "a" * 40
+    artifact_sha256 = "b" * 64
+    provenance = {
+      "schema_version" => "hepta_build_provenance_v1",
+      "source" => {"commit" => source_commit, "commit_bound" => true},
+      "artifact" => {"sha256" => artifact_sha256, "bound" => true}
+    }
+    provenance_text = JSON.generate(provenance)
+    final_receipt = {
+      "artifact_sha256" => artifact_sha256,
+      "build_provenance_sha256" => sha256(provenance_text),
+      "schema" => "hepta_preflight_final_receipt_v1",
+      "source_commit" => source_commit,
+      "status" => "passed"
+    }
+    log = [
+      "[hepta-preflight] metadata",
+      "[hepta-preflight] fmt",
+      "[hepta-preflight] whitespace/status",
+      "[hepta-preflight-provenance] #{provenance_text}",
+      "[hepta-preflight-final] #{JSON.generate(final_receipt)}",
+      "Hepta preflight passed"
+    ].join("\n") + "\n"
+    log_path = File.join(root, "preflight.log")
+    File.binwrite(log_path, log)
+    first = File.join(root, "first")
+    second = File.join(root, "second")
+    first_summary = pack(log_path, first)
+    second_summary = pack(log_path, second)
+    raise "summary is not deterministic" unless first_summary == second_summary
+    raise "gzip is not deterministic" unless File.binread(File.join(first, ARCHIVE_NAME)) ==
+      File.binread(File.join(second, ARCHIVE_NAME))
+    verify(File.join(first, SUMMARY_NAME))
+
+    tampered = File.binread(File.join(first, ARCHIVE_NAME))
+    tampered.setbyte(tampered.bytesize / 2, tampered.getbyte(tampered.bytesize / 2) ^ 1)
+    File.chmod(0o600, File.join(first, ARCHIVE_NAME))
+    File.binwrite(File.join(first, ARCHIVE_NAME), tampered)
+    rejected = false
+    begin
+      verify(File.join(first, SUMMARY_NAME))
+    rescue StandardError
+      rejected = true
+    end
+    raise "tampered archive was accepted" unless rejected
+
+    return {
+      "schema" => "hepta_preflight_evidence_pack_self_test_v1",
+      "status" => "ready",
+      "deterministic_repack" => true,
+      "exact_roundtrip" => true,
+      "tamper_rejected" => true,
+      "phase_count" => first_summary.dig("source", "phase_count")
+    }
+  end
+end
+
+action = ARGV.shift
+case action
+when "pack"
+  raise "invalid pack arguments" unless ARGV == ["--log", ARGV[1], "--output-dir", ARGV[3]]
+  result = pack(ARGV.fetch(1), ARGV.fetch(3))
+  puts JSON.generate(result)
+when "verify"
+  raise "invalid verify arguments" unless ARGV == ["--summary", ARGV[1]]
+  verify(ARGV.fetch(1))
+  puts JSON.generate(
+    "schema" => "hepta_preflight_evidence_pack_verify_v1",
+    "status" => "ready",
+    "summary" => File.expand_path(ARGV.fetch(1))
+  )
+when "self-test"
+  raise "invalid self-test arguments" unless ARGV.empty?
+  puts JSON.generate(self_test)
+else
+  raise "unknown action"
+end
+RUBY

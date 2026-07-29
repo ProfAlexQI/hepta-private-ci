@@ -81,6 +81,9 @@ release_bin="$release_dir/$(jq -r '.artifact.relative_path' "$manifest")"
 source_commit="$(jq -r '.source.commit' "$manifest")"
 manifest_sha="$(shasum -a 256 "$manifest" | awk '{print $1}')"
 watchdog_aggregate_sha="$(jq -r '.watchdog.aggregate_sha256' "$manifest")"
+gateway_launch_agent="$(jq -r '.gateway_launch_agent.canonical_install_path' "$manifest")"
+gateway_launch_agent_sha="$(jq -r '.gateway_launch_agent.sha256' "$manifest")"
+gateway_loaded_path_sha="$(jq -r '.gateway_launch_agent.canonical_install_path_sha256' "$manifest")"
 [[ -x "$entrypoint" && ! -L "$entrypoint" ]] || {
   echo "release-bound watchdog entrypoint is missing: $entrypoint" >&2
   exit 1
@@ -107,7 +110,10 @@ python3 - \
   "$manifest" \
   "$source_commit" \
   "$product_boundary" \
-  "$watchdog_aggregate_sha" <<'PY'
+  "$watchdog_aggregate_sha" \
+  "$gateway_launch_agent" \
+  "$gateway_launch_agent_sha" \
+  "$gateway_loaded_path_sha" <<'PY'
 import plistlib
 from pathlib import Path
 import sys
@@ -126,6 +132,9 @@ import sys
     source_commit,
     product_boundary,
     watchdog_aggregate_sha,
+    gateway_launch_agent,
+    gateway_launch_agent_sha,
+    gateway_loaded_path_sha,
 ) = sys.argv[1:]
 
 payload = {
@@ -149,6 +158,9 @@ payload = {
         "HEPTA_EXPECTED_SOURCE_COMMIT": source_commit,
         "HEPTA_PRODUCT_BOUNDARY": product_boundary,
         "HEPTA_EXPECTED_WATCHDOG_AGGREGATE_SHA256": watchdog_aggregate_sha,
+        "HEPTA_GATEWAY_LAUNCH_AGENT": gateway_launch_agent,
+        "HEPTA_EXPECTED_GATEWAY_LAUNCH_AGENT_SHA256": gateway_launch_agent_sha,
+        "HEPTA_EXPECTED_GATEWAY_LOADED_PATH_SHA256": gateway_loaded_path_sha,
     },
 }
 with Path(output).open("wb") as destination:
@@ -156,9 +168,19 @@ with Path(output).open("wb") as destination:
 PY
 
 plutil -lint "$staged_plist" >/dev/null
-chmod 0644 "$staged_plist"
+chmod 0444 "$staged_plist"
 mv -f "$staged_plist" "$launch_agent"
 trap - EXIT
+[[ -f "$launch_agent" && ! -L "$launch_agent" ]] || {
+  echo "installed watchdog plist is not a regular non-symlink file" >&2
+  exit 1
+}
+launch_agent_sha="$(shasum -a 256 "$launch_agent" | awk '{print $1}')"
+launch_agent_mode="$(stat -f '%Lp' "$launch_agent")"
+[[ "$launch_agent_mode" == "444" ]] || {
+  echo "installed watchdog plist mode is not immutable: $launch_agent_mode" >&2
+  exit 1
+}
 
 loaded=false
 if [[ "$install_job" == "true" ]]; then
@@ -174,12 +196,17 @@ jq -cn \
   --arg status ready \
   --arg label "$label" \
   --arg plist "$launch_agent" \
+  --arg plist_sha256 "$launch_agent_sha" \
+  --arg plist_mode "$launch_agent_mode" \
   --arg program "$entrypoint" \
   --arg working_directory "$release_dir" \
   --arg manifest "$manifest" \
   --arg manifest_sha256 "$manifest_sha" \
   --arg source_commit "$source_commit" \
   --arg watchdog_aggregate_sha256 "$watchdog_aggregate_sha" \
+  --arg gateway_launch_agent "$gateway_launch_agent" \
+  --arg gateway_launch_agent_sha256 "$gateway_launch_agent_sha" \
+  --arg gateway_loaded_path_sha256 "$gateway_loaded_path_sha" \
   --argjson interval_seconds "$interval_seconds" \
   --argjson loaded "$loaded" \
   '{
@@ -187,12 +214,17 @@ jq -cn \
     status:$status,
     label:$label,
     plist:$plist,
+    plist_sha256:$plist_sha256,
+    plist_mode:$plist_mode,
     program:$program,
     working_directory:$working_directory,
     manifest:$manifest,
     manifest_sha256:$manifest_sha256,
     source_commit:$source_commit,
     watchdog_aggregate_sha256:$watchdog_aggregate_sha256,
+    gateway_launch_agent:$gateway_launch_agent,
+    gateway_launch_agent_sha256:$gateway_launch_agent_sha256,
+    gateway_loaded_path_sha256:$gateway_loaded_path_sha256,
     run_at_load:true,
     interval_seconds:$interval_seconds,
     loaded:$loaded,

@@ -33,6 +33,204 @@ require_sha256() {
     exit 1
   }
 }
+gateway_launch_agent_path_sha256() {
+  printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+}
+materialize_gateway_launch_agent() {
+  local staging_root="$1"
+  local release_dir="$2"
+  local output="$staging_root/launchd/ai.hepta.gateway.plist"
+  local canonical_path="$HOME/Library/LaunchAgents/ai.hepta.gateway.plist"
+  local active_program="$HOME/.local/opt/hepta/bin/hepta"
+  local working_directory="$HOME/.local/share/hepta/runtime-v2"
+  local state_root="$HOME/.local/share/hepta"
+  local native_post_store="$state_root/native-post-execution"
+  local gateway_log_root="$HOME/.local/opt/hepta/logs/gateway"
+  mkdir -p "$(dirname "$output")"
+  python3 - \
+    "$output" \
+    "$active_program" \
+    "$working_directory" \
+    "$state_root" \
+    "$native_post_store" \
+    "$gateway_log_root" <<'PY'
+import plistlib
+from pathlib import Path
+import sys
+
+output, program, working_directory, state_root, native_post_store, log_root = sys.argv[1:]
+state_root = Path(state_root)
+payload = {
+    "Label": "ai.hepta.gateway",
+    "ProgramArguments": [program, "--serve-ui", "127.0.0.1:7373"],
+    "RunAtLoad": True,
+    "KeepAlive": True,
+    "WorkingDirectory": working_directory,
+    "StandardOutPath": str(Path(log_root) / "stdout.log"),
+    "StandardErrorPath": str(Path(log_root) / "stderr.log"),
+    "EnvironmentVariables": {
+        "HOME": str(Path.home()),
+        "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "HEPTA_BIN": program,
+        "HEPTA_SERVICE_KIND": "gateway",
+        "HEPTA_SERVICE_VERSION": "hepta",
+        "HEPTA_SERVICE_MARKER": "hepta",
+        "HEPTA_LAUNCHD_LABEL": "ai.hepta.gateway",
+        "HEPTA_LIVE_URL": "http://127.0.0.1:7373",
+        "HEPTA_GATEWAY_ENABLE_TELEGRAM_PLUGIN": "0",
+        "HEPTA_NATIVE_TELEGRAM_LIVE_READ": "0",
+        "HEPTA_NATIVE_TELEGRAM_MODEL_TURN": "0",
+        "HEPTA_NATIVE_TELEGRAM_SEND": "0",
+        "HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED": "0",
+        "HEPTA_NATIVE_TELEGRAM_POLL_LOOP": "0",
+        "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER": "0",
+        "HEPTA_NATIVE_TELEGRAM_HEPTA_KERNEL_RUNNER": "0",
+        "HEPTA_NATIVE_TELEGRAM_CODEX_CORE_RUNNER": "0",
+        "HEPTA_NATIVE_POST_REAL_HANDLERS": "0",
+        "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED": "0",
+        "HEPTA_RUNTIME_MUTATION_CANARY": "0",
+        "HEPTA_OPERATOR_MUTATION_ENABLED": "0",
+        "HEPTA_TELEGRAM_AUTHORITY_ENABLED": "0",
+        "HEPTA_NATIVE_POST_EXECUTION_STORE_DIR": native_post_store,
+        "HEPTA_RUNTIME_OUTCOME_DATABASE": str(state_root / "runtime-v2/outcomes.sqlite3"),
+        "HEPTA_RUNTIME_STATE_DATABASE": str(state_root / "runtime-v2/runtime-state.json"),
+        "HEPTA_RUNTIME_INTEGRITY_KEY_FILE": str(state_root / "runtime-v2/keys/runtime-integrity.key"),
+        "HEPTA_RUNTIME_OUTCOME_MODE": "open-existing",
+        "HEPTA_PREFERENCE_DATABASE": str(state_root / "runtime-v2/preferences.sqlite3"),
+        "HEPTA_PREFERENCE_INTEGRITY_KEY_FILE": str(state_root / "runtime-v2/keys/preference-integrity.key"),
+        "HEPTA_PREFERENCE_INGRESS_AUTH_KEY_FILE": str(state_root / "runtime-v2/keys/preference-ingress-auth.key"),
+        "HEPTA_PREFERENCE_STORE_MODE": "open-existing",
+    },
+}
+with Path(output).open("wb") as destination:
+    plistlib.dump(payload, destination, fmt=plistlib.FMT_XML, sort_keys=True)
+PY
+  plutil -lint "$output" >/dev/null
+  chmod 0444 "$output"
+  local plist_sha plist_size canonical_path_sha
+  plist_sha="$(sha256_file "$output")"
+  plist_size="$(stat -f '%z' "$output")"
+  canonical_path_sha="$(gateway_launch_agent_path_sha256 "$canonical_path")"
+  jq -cn \
+    --arg relative_path "launchd/ai.hepta.gateway.plist" \
+    --arg sha256 "$plist_sha" \
+    --argjson size_bytes "$plist_size" \
+    --arg label "ai.hepta.gateway" \
+    --arg program "$active_program" \
+    --arg working_directory "$working_directory" \
+    --arg state_root "$state_root" \
+    --arg canonical_path "$canonical_path" \
+    --arg canonical_path_sha256 "$canonical_path_sha" \
+    '{
+      schema:"hepta_gateway_launch_agent_v1",
+      immutable_release_bound:true,
+      relative_path:$relative_path,
+      sha256:$sha256,
+      size_bytes:$size_bytes,
+      label:$label,
+      program:$program,
+      working_directory:$working_directory,
+      state_root:$state_root,
+      canonical_install_path:$canonical_path,
+      canonical_install_path_sha256:$canonical_path_sha256,
+      loaded_path_digest_required:true,
+      effective_gates:{
+        telegram_plugin_requested:false,
+        telegram_external_read:false,
+        telegram_model_turn:false,
+        telegram_external_send:false,
+        telegram_delivery_approved:false,
+        telegram_poll_loop:false,
+        telegram_in_process_model_runner:false,
+        telegram_hepta_kernel_runner:false,
+        telegram_codex_core_runner:false,
+        native_post_real_handlers:false,
+        native_post_real_handler_approved:false,
+        runtime_mutation_canary:false,
+        operator_mutation:false,
+        telegram_authority:false
+      },
+      backup_policy:{
+        duplicate_label_plists_forbidden:true,
+        archive_outside_launch_agents:true,
+        archived_suffix:".disabled",
+        loadable_backup_plists_forbidden:true
+      }
+    }'
+}
+verify_gateway_launch_agent() {
+  local release_dir="$1"
+  local contract_json="$2"
+  jq -e '
+    .schema == "hepta_gateway_launch_agent_v1"
+    and .immutable_release_bound == true
+    and .relative_path == "launchd/ai.hepta.gateway.plist"
+    and (.sha256 | test("^[0-9a-f]{64}$"))
+    and (.size_bytes | type == "number" and . > 0)
+    and .label == "ai.hepta.gateway"
+    and .loaded_path_digest_required == true
+    and (.canonical_install_path_sha256 | test("^[0-9a-f]{64}$"))
+    and (.effective_gates | [.[]] | all(. == false))
+    and .backup_policy == {
+      duplicate_label_plists_forbidden:true,
+      archive_outside_launch_agents:true,
+      archived_suffix:".disabled",
+      loadable_backup_plists_forbidden:true
+    }
+  ' >/dev/null <<<"$contract_json" || {
+    echo "gateway LaunchAgent contract is invalid" >&2
+    return 1
+  }
+  local plist="$release_dir/$(jq -r '.relative_path' <<<"$contract_json")"
+  [[ -f "$plist" && ! -L "$plist" ]] || {
+    echo "release-bound gateway LaunchAgent is missing" >&2
+    return 1
+  }
+  [[ "$(stat -f '%Lp' "$plist")" == "444" ]] || {
+    echo "release-bound gateway LaunchAgent mode must be 0444" >&2
+    return 1
+  }
+  [[ "$(sha256_file "$plist")" == "$(jq -r '.sha256' <<<"$contract_json")" \
+    && "$(stat -f '%z' "$plist")" == "$(jq -r '.size_bytes' <<<"$contract_json")" ]] || {
+    echo "release-bound gateway LaunchAgent bytes differ from manifest" >&2
+    return 1
+  }
+  plutil -lint "$plist" >/dev/null
+  local label program working_directory canonical_path canonical_path_sha
+  label="$(plutil -extract Label raw -o - "$plist")"
+  program="$(plutil -extract ProgramArguments.0 raw -o - "$plist")"
+  working_directory="$(plutil -extract WorkingDirectory raw -o - "$plist")"
+  canonical_path="$(jq -r '.canonical_install_path' <<<"$contract_json")"
+  canonical_path_sha="$(gateway_launch_agent_path_sha256 "$canonical_path")"
+  [[ "$label" == "$(jq -r '.label' <<<"$contract_json")" \
+    && "$program" == "$(jq -r '.program' <<<"$contract_json")" \
+    && "$working_directory" == "$(jq -r '.working_directory' <<<"$contract_json")" \
+    && "$canonical_path_sha" == "$(jq -r '.canonical_install_path_sha256' <<<"$contract_json")" ]] || {
+    echo "release-bound gateway LaunchAgent metadata differs from manifest" >&2
+    return 1
+  }
+  local gate_key
+  for gate_key in \
+    HEPTA_GATEWAY_ENABLE_TELEGRAM_PLUGIN \
+    HEPTA_NATIVE_TELEGRAM_LIVE_READ \
+    HEPTA_NATIVE_TELEGRAM_MODEL_TURN \
+    HEPTA_NATIVE_TELEGRAM_SEND \
+    HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED \
+    HEPTA_NATIVE_TELEGRAM_POLL_LOOP \
+    HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER \
+    HEPTA_NATIVE_TELEGRAM_HEPTA_KERNEL_RUNNER \
+    HEPTA_NATIVE_TELEGRAM_CODEX_CORE_RUNNER \
+    HEPTA_NATIVE_POST_REAL_HANDLERS \
+    HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED \
+    HEPTA_RUNTIME_MUTATION_CANARY \
+    HEPTA_OPERATOR_MUTATION_ENABLED \
+    HEPTA_TELEGRAM_AUTHORITY_ENABLED; do
+    [[ "$(plutil -extract "EnvironmentVariables.$gate_key" raw -o - "$plist")" == "0" ]] || {
+      echo "release-bound gateway gate is not false: $gate_key" >&2
+      return 1
+    }
+  done
+}
 cargo_lock_sha_from_provenance() {
   local provenance_json="$1"
   local lock_path="$2"
@@ -213,15 +411,20 @@ materialize() {
   require_sha256 "$artifact_sha"
   artifact_size="$(stat -f '%z' "$artifact")"
   local status source_commit_bound preflight_bound preflight_sha preflight_size preflight_head
+  local preflight_summary_sha preflight_summary_size preflight_archive_sha preflight_archive_size
   local build_provenance_json codex_cargo_lock_sha native_cargo_lock_sha
   local dependency_contract_sha bound_gate_receipts_json final_receipt_json
-  local watchdog_json
+  local watchdog_json gateway_launch_agent_json
   status="ready"
   source_commit_bound=true
   preflight_bound=true
   preflight_sha=""
   preflight_size=0
   preflight_head=""
+  preflight_summary_sha=""
+  preflight_summary_size=0
+  preflight_archive_sha=""
+  preflight_archive_size=0
   build_provenance_json="null"
   codex_cargo_lock_sha=""
   native_cargo_lock_sha=""
@@ -229,6 +432,7 @@ materialize() {
   bound_gate_receipts_json="null"
   final_receipt_json="null"
   watchdog_json="null"
+  gateway_launch_agent_json="null"
   if [[ "$source_commit" == "unknown" ]]; then
     status="legacy_unbound"
     source_commit_bound=false
@@ -368,9 +572,23 @@ materialize() {
         and .preflight.log_size_bytes == (
           if .status == "ready" then $preflight_size else 0 end
         )
-        and .preflight.relative_path == (
-          if .status == "ready" then "evidence/preflight.log" else null end
+        and .preflight.source_log_sha256 == (
+          if .status == "ready" then $preflight_sha else null end
         )
+        and .preflight.source_log_size_bytes == (
+          if .status == "ready" then $preflight_size else 0 end
+        )
+        and .preflight.relative_path == (
+          if .status == "ready" then "evidence/preflight-summary.json" else null end
+        )
+        and .preflight.summary_relative_path == .preflight.relative_path
+        and .preflight.archive_relative_path == (
+          if .status == "ready" then "evidence/preflight.log.gz" else null end
+        )
+        and .preflight.delivery == (
+          if .status == "ready" then "summary_and_deterministic_gzip" else null end
+        )
+        and .preflight.full_log_default == false
         and .build_provenance == $build_provenance
         and .policy.release_contract_version == 3
         and .watchdog.immutable_release_bound == true
@@ -378,6 +596,9 @@ materialize() {
         and .watchdog.source.commit == (
           if .source.commit_bound then .source.commit else null end
         )
+        and .gateway_launch_agent.immutable_release_bound == true
+        and .gateway_launch_agent.label == "ai.hepta.gateway"
+        and (.gateway_launch_agent.effective_gates | [.[]] | all(. == false))
       ' "$manifest_path" >/dev/null || {
       echo "existing immutable release evidence differs from the current materialization" >&2
       exit 1
@@ -398,10 +619,18 @@ materialize() {
       "$source_commit" \
       "$source_commit_bound"
   )"
+  gateway_launch_agent_json="$(
+    materialize_gateway_launch_agent "$staging" "$release_dir"
+  )"
   if [[ "$status" == "ready" ]]; then
     mkdir -p "$staging/evidence"
-    cp -p "$preflight_log" "$staging/evidence/preflight.log"
-    chmod 0444 "$staging/evidence/preflight.log"
+    "$REPO_ROOT/scripts/hepta-preflight-evidence-pack" pack \
+      --log "$preflight_log" \
+      --output-dir "$staging/evidence" >/dev/null
+    preflight_summary_sha="$(sha256_file "$staging/evidence/preflight-summary.json")"
+    preflight_summary_size="$(stat -f '%z' "$staging/evidence/preflight-summary.json")"
+    preflight_archive_sha="$(sha256_file "$staging/evidence/preflight.log.gz")"
+    preflight_archive_size="$(stat -f '%z' "$staging/evidence/preflight.log.gz")"
     chmod 0555 "$staging/evidence"
   fi
   jq -n \
@@ -416,8 +645,13 @@ materialize() {
     --arg preflight_sha256 "$preflight_sha" \
     --arg preflight_source_head "$preflight_head" \
     --argjson preflight_size_bytes "$preflight_size" \
+    --arg preflight_summary_sha256 "$preflight_summary_sha" \
+    --argjson preflight_summary_size_bytes "$preflight_summary_size" \
+    --arg preflight_archive_sha256 "$preflight_archive_sha" \
+    --argjson preflight_archive_size_bytes "$preflight_archive_size" \
     --argjson build_provenance "$build_provenance_json" \
     --argjson watchdog "$watchdog_json" \
+    --argjson gateway_launch_agent "$gateway_launch_agent_json" \
     '{
       schema_version:$schema_version,
       status:$status,
@@ -426,12 +660,32 @@ materialize() {
       artifact:{relative_path:"bin/hepta",sha256:$artifact_sha256,size_bytes:$artifact_size_bytes,executable:true},
       build_provenance:$build_provenance,
       watchdog:$watchdog,
-      preflight:{bound:$preflight_bound,relative_path:(if $preflight_bound then "evidence/preflight.log" else null end),source_head:(if $preflight_bound then $preflight_source_head else null end),candidate_source_commit:(if $preflight_bound then $source_commit else null end),candidate_artifact_sha256:(if $preflight_bound then $artifact_sha256 else null end),log_sha256:(if $preflight_bound then $preflight_sha256 else null end),log_size_bytes:(if $preflight_bound then $preflight_size_bytes else 0 end),passed:$preflight_bound},
+      gateway_launch_agent:$gateway_launch_agent,
+      preflight:{
+        bound:$preflight_bound,
+        delivery:(if $preflight_bound then "summary_and_deterministic_gzip" else null end),
+        relative_path:(if $preflight_bound then "evidence/preflight-summary.json" else null end),
+        summary_relative_path:(if $preflight_bound then "evidence/preflight-summary.json" else null end),
+        archive_relative_path:(if $preflight_bound then "evidence/preflight.log.gz" else null end),
+        source_head:(if $preflight_bound then $preflight_source_head else null end),
+        candidate_source_commit:(if $preflight_bound then $source_commit else null end),
+        candidate_artifact_sha256:(if $preflight_bound then $artifact_sha256 else null end),
+        log_sha256:(if $preflight_bound then $preflight_sha256 else null end),
+        log_size_bytes:(if $preflight_bound then $preflight_size_bytes else 0 end),
+        source_log_sha256:(if $preflight_bound then $preflight_sha256 else null end),
+        source_log_size_bytes:(if $preflight_bound then $preflight_size_bytes else 0 end),
+        summary_sha256:(if $preflight_bound then $preflight_summary_sha256 else null end),
+        summary_size_bytes:(if $preflight_bound then $preflight_summary_size_bytes else 0 end),
+        archive_sha256:(if $preflight_bound then $preflight_archive_sha256 else null end),
+        archive_size_bytes:(if $preflight_bound then $preflight_archive_size_bytes else 0 end),
+        full_log_default:false,
+        passed:$preflight_bound
+      },
       policy:{release_contract_version:3,immutable_tree:true,dirty_worktree_source_forbidden:true,activation_byte_change_forbidden:true,restart_performed:false},
       side_effects:{service_restarted:false,active_process_mutated:false,provider_invoked:false,credentials_read:false,memory_or_kg_written:false,channel_message_sent:false}
     }' >"$staging/manifest.json"
   chmod 0444 "$staging/manifest.json"
-  chmod 0555 "$staging/bin" "$staging"
+  chmod 0555 "$staging/bin" "$staging/launchd" "$staging"
   mv "$staging" "$release_dir"
   trap - RETURN
   "$0" verify --manifest "$manifest_path" >/dev/null
@@ -455,7 +709,8 @@ verify_manifest() {
   local manifest_status release_contract_version source_commit preflight_sha
   local build_provenance_json codex_cargo_lock_sha native_cargo_lock_sha
   local dependency_contract_sha bound_gate_receipts_json expected_release_id
-  local immutable_preflight final_evidence evidence_provenance final_receipt_json
+  local immutable_preflight immutable_preflight_summary immutable_preflight_archive
+  local unpacked_preflight final_evidence evidence_provenance final_receipt_json
   release_dir="$(dirname "$manifest")"
   jq -e --arg schema "$SCHEMA_VERSION" '
     .schema_version == $schema
@@ -527,7 +782,6 @@ verify_manifest() {
       jq -e '
         (.policy.release_contract_version == 2 or .policy.release_contract_version == 3)
         and .policy.dirty_worktree_source_forbidden == true
-        and .preflight.relative_path == "evidence/preflight.log"
         and (.build_provenance | keys | sort) == [
           "artifact",
           "bound_gate_receipts",
@@ -572,21 +826,126 @@ verify_manifest() {
         echo "immutable release bound gate receipts are invalid" >&2
         exit 1
       }
-      immutable_preflight="$release_dir/evidence/preflight.log"
-      [[ -f "$immutable_preflight" && ! -L "$immutable_preflight" ]] || {
-        echo "immutable release preflight evidence is missing or not a regular file" >&2
+      if [[ "$release_contract_version" == "2" ]]; then
+        jq -e '.preflight.relative_path == "evidence/preflight.log"' "$manifest" >/dev/null || {
+          echo "immutable release v2 preflight path is invalid" >&2
+          exit 1
+        }
+        immutable_preflight="$release_dir/evidence/preflight.log"
+        [[ -f "$immutable_preflight" && ! -L "$immutable_preflight" ]] || {
+          echo "immutable release v2 preflight evidence is missing or not a regular file" >&2
+          exit 1
+        }
+        [[ "$(stat -f '%Lp' "$immutable_preflight")" == "444" ]] || {
+          echo "immutable release v2 preflight evidence mode must be 0444" >&2
+          exit 1
+        }
+        [[ "$(sha256_file "$immutable_preflight")" == "$preflight_sha" \
+          && "$(stat -f '%z' "$immutable_preflight")" == "$(jq -r '.preflight.log_size_bytes' "$manifest")" ]] || {
+          echo "immutable release v2 preflight evidence bytes do not match the manifest" >&2
+          exit 1
+        }
+      else
+        jq -e '
+          .policy.release_contract_version == 3
+          and .preflight.delivery == "summary_and_deterministic_gzip"
+          and .preflight.relative_path == "evidence/preflight-summary.json"
+          and .preflight.summary_relative_path == .preflight.relative_path
+          and .preflight.archive_relative_path == "evidence/preflight.log.gz"
+          and .preflight.source_log_sha256 == .preflight.log_sha256
+          and .preflight.source_log_size_bytes == .preflight.log_size_bytes
+          and (.preflight.summary_sha256 | test("^[0-9a-f]{64}$"))
+          and (.preflight.summary_size_bytes | type == "number" and . > 0)
+          and (.preflight.archive_sha256 | test("^[0-9a-f]{64}$"))
+          and (.preflight.archive_size_bytes | type == "number" and . > 0)
+          and .preflight.full_log_default == false
+        ' "$manifest" >/dev/null || {
+          echo "immutable release v3 packed preflight contract is invalid" >&2
+          exit 1
+        }
+        hepta_immutable_watchdog_verify \
+          "$release_dir" \
+          "$source_commit" \
+          true \
+          "$(jq -ce '.watchdog' "$manifest")" || {
+          echo "immutable release watchdog closure is invalid" >&2
+          exit 1
+        }
+        verify_gateway_launch_agent \
+          "$release_dir" \
+          "$(jq -ce '.gateway_launch_agent' "$manifest")" || {
+          echo "immutable release gateway LaunchAgent closure is invalid" >&2
+          exit 1
+        }
+        immutable_preflight_summary="$release_dir/evidence/preflight-summary.json"
+        immutable_preflight_archive="$release_dir/evidence/preflight.log.gz"
+        [[ -f "$immutable_preflight_summary" && ! -L "$immutable_preflight_summary" \
+          && -f "$immutable_preflight_archive" && ! -L "$immutable_preflight_archive" ]] || {
+          echo "immutable release v3 packed preflight evidence is missing or not regular" >&2
+          exit 1
+        }
+        [[ "$(stat -f '%Lp' "$immutable_preflight_summary")" == "444" \
+          && "$(stat -f '%Lp' "$immutable_preflight_archive")" == "444" ]] || {
+          echo "immutable release v3 packed preflight evidence mode must be 0444" >&2
+          exit 1
+        }
+        [[ ! -e "$release_dir/evidence/preflight.log" \
+          && ! -L "$release_dir/evidence/preflight.log" ]] || {
+          echo "immutable release v3 must not materialize the full preflight log by default" >&2
+          exit 1
+        }
+        [[ "$(sha256_file "$immutable_preflight_summary")" == "$(jq -r '.preflight.summary_sha256' "$manifest")" \
+          && "$(stat -f '%z' "$immutable_preflight_summary")" == "$(jq -r '.preflight.summary_size_bytes' "$manifest")" \
+          && "$(sha256_file "$immutable_preflight_archive")" == "$(jq -r '.preflight.archive_sha256' "$manifest")" \
+          && "$(stat -f '%z' "$immutable_preflight_archive")" == "$(jq -r '.preflight.archive_size_bytes' "$manifest")" ]] || {
+          echo "immutable release v3 packed preflight bytes do not match the manifest" >&2
+          exit 1
+        }
+        "$release_dir/scripts/hepta-preflight-evidence-pack" verify \
+          --summary "$immutable_preflight_summary" >/dev/null || {
+          echo "immutable release v3 packed preflight evidence is invalid" >&2
+          exit 1
+        }
+        jq -e --slurpfile release "$manifest" '
+          $release[0] as $manifest
+          | .schema == "hepta_preflight_evidence_summary_v1"
+          and .status == "ready"
+          and .source.log_sha256 == $manifest.preflight.source_log_sha256
+          and .source.log_size_bytes == $manifest.preflight.source_log_size_bytes
+          and .source.source_commit == $manifest.source.commit
+          and .source.artifact_sha256 == $manifest.artifact.sha256
+          and .archive.relative_path == "preflight.log.gz"
+          and .archive.sha256 == $manifest.preflight.archive_sha256
+          and .archive.size_bytes == $manifest.preflight.archive_size_bytes
+          and .archive.codec == "gzip_zlib_best_compression"
+          and .archive.mtime == 1
+          and .archive.os == 255
+          and .archive.contains_exact_source_bytes == true
+          and .full_detail_default == false
+        ' "$immutable_preflight_summary" >/dev/null || {
+          echo "immutable release v3 preflight summary differs from its manifest" >&2
+          exit 1
+        }
+        unpacked_preflight="$(mktemp "${TMPDIR:-/tmp}/hepta-immutable-preflight.XXXXXX")"
+        if ! gzip -dc "$immutable_preflight_archive" >"$unpacked_preflight"; then
+          rm -f "$unpacked_preflight"
+          echo "immutable release v3 preflight archive could not be decompressed" >&2
+          exit 1
+        fi
+        [[ "$(sha256_file "$unpacked_preflight")" == "$preflight_sha" \
+          && "$(stat -f '%z' "$unpacked_preflight")" == "$(jq -r '.preflight.source_log_size_bytes' "$manifest")" ]] || {
+          rm -f "$unpacked_preflight"
+          echo "immutable release v3 archive does not contain the exact source preflight bytes" >&2
+          exit 1
+        }
+        immutable_preflight="$unpacked_preflight"
+      fi
+      final_evidence="$(extract_final_preflight_evidence "$immutable_preflight")" || {
+        [[ -z "${unpacked_preflight:-}" ]] || rm -f "$unpacked_preflight"
         exit 1
       }
-      [[ "$(stat -f '%Lp' "$immutable_preflight")" == "444" ]] || {
-        echo "immutable release preflight evidence mode must be 0444" >&2
-        exit 1
-      }
-      [[ "$(sha256_file "$immutable_preflight")" == "$preflight_sha" \
-        && "$(stat -f '%z' "$immutable_preflight")" == "$(jq -r '.preflight.log_size_bytes' "$manifest")" ]] || {
-        echo "immutable release preflight evidence bytes do not match the manifest" >&2
-        exit 1
-      }
-      final_evidence="$(extract_final_preflight_evidence "$immutable_preflight")" || exit 1
+      [[ -z "${unpacked_preflight:-}" ]] || rm -f "$unpacked_preflight"
+      unpacked_preflight=""
       evidence_provenance="$(sed -n '1p' <<<"$final_evidence")"
       final_receipt_json="$(sed -n '2p' <<<"$final_evidence")"
       [[ "$(jq -cS . <<<"$build_provenance_json")" == "$evidence_provenance" ]] || {
@@ -603,16 +962,6 @@ verify_manifest() {
         echo "immutable release final receipt differs from its manifest" >&2
         exit 1
       }
-      if [[ "$release_contract_version" == "3" ]]; then
-        hepta_immutable_watchdog_verify \
-          "$release_dir" \
-          "$source_commit" \
-          true \
-          "$(jq -ce '.watchdog' "$manifest")" || {
-          echo "immutable release watchdog closure is invalid" >&2
-          exit 1
-        }
-      fi
     elif [[ "$release_contract_version" != "1" ]]; then
       echo "unsupported immutable release contract version: $release_contract_version" >&2
       exit 1
@@ -636,12 +985,34 @@ verify_manifest() {
       }
     }
     if [[ "$release_contract_version" == "3" ]]; then
+      jq -e '
+        .preflight.delivery == null
+        and .preflight.relative_path == null
+        and .preflight.summary_relative_path == null
+        and .preflight.archive_relative_path == null
+        and .preflight.source_log_sha256 == null
+        and .preflight.source_log_size_bytes == 0
+        and .preflight.summary_sha256 == null
+        and .preflight.summary_size_bytes == 0
+        and .preflight.archive_sha256 == null
+        and .preflight.archive_size_bytes == 0
+        and .preflight.full_log_default == false
+      ' "$manifest" >/dev/null || {
+        echo "legacy-unbound v3 release has invalid packed preflight placeholders" >&2
+        exit 1
+      }
       hepta_immutable_watchdog_verify \
         "$release_dir" \
         unknown \
         false \
         "$(jq -ce '.watchdog' "$manifest")" || {
         echo "legacy immutable release watchdog closure is invalid" >&2
+        exit 1
+      }
+      verify_gateway_launch_agent \
+        "$release_dir" \
+        "$(jq -ce '.gateway_launch_agent' "$manifest")" || {
+        echo "legacy immutable release gateway LaunchAgent closure is invalid" >&2
         exit 1
       }
     fi
@@ -675,7 +1046,18 @@ verify_manifest() {
     echo "immutable release manifest mode must be 0444" >&2
     exit 1
   }
-  jq -c '{schema_version,status,release_id,source,artifact,build_provenance,watchdog,preflight,policy}' "$manifest"
+  jq -c '{
+    schema_version,
+    status,
+    release_id,
+    source,
+    artifact,
+    build_provenance,
+    watchdog,
+    gateway_launch_agent,
+    preflight,
+    policy
+  }' "$manifest"
 }
 activate() {
   local manifest="" active_link="" expected_current_sha=""
@@ -972,7 +1354,9 @@ cutover() {
   local current_sha current_manifest_sha current_manifest_file_sha current_manifest_target
   local backup_root backup backup_manifest rollback_record rollback_record_sha rollback_record_previous_manifest
   local backup_staging backup_created current_preflight_relative current_release_contract_version
+  local current_preflight_summary_relative current_preflight_archive_relative
   local current_watchdog_relative current_watchdog_mode
+  local current_gateway_relative
   current_sha="$(sha256_file "$active_link")"
   current_manifest_sha="$(jq -r '.artifact.sha256' "$manifest_link")"
   current_manifest_file_sha="$(sha256_file "$manifest_link")"
@@ -1014,10 +1398,39 @@ cutover() {
     mkdir "$backup_staging/bin"
     cp -p "$(canonical_file "$active_link")" "$backup_staging/bin/hepta"
     cp -p "$(canonical_file "$manifest_link")" "$backup_staging/manifest.json"
+    current_release_contract_version="$(
+      jq -r '.policy.release_contract_version // 1' "$backup_staging/manifest.json"
+    )"
     current_preflight_relative="$(
       jq -r '.preflight.relative_path // empty' "$backup_staging/manifest.json"
     )"
-    if [[ -n "$current_preflight_relative" ]]; then
+    if [[ "$current_release_contract_version" == "3" && -n "$current_preflight_relative" ]]; then
+      current_preflight_summary_relative="$(
+        jq -r '.preflight.summary_relative_path // empty' "$backup_staging/manifest.json"
+      )"
+      current_preflight_archive_relative="$(
+        jq -r '.preflight.archive_relative_path // empty' "$backup_staging/manifest.json"
+      )"
+      [[ "$(jq -r '.preflight.delivery // empty' "$backup_staging/manifest.json")" \
+          == "summary_and_deterministic_gzip" \
+        && "$current_preflight_relative" == "evidence/preflight-summary.json" \
+        && "$current_preflight_summary_relative" == "$current_preflight_relative" \
+        && "$current_preflight_archive_relative" == "evidence/preflight.log.gz" ]] || {
+        echo "current v3 release has an unexpected packed preflight evidence contract" >&2
+        exit 1
+      }
+      mkdir -p "$backup_staging/evidence"
+      cp -p \
+        "$(dirname "$current_manifest_target")/$current_preflight_summary_relative" \
+        "$backup_staging/$current_preflight_summary_relative"
+      cp -p \
+        "$(dirname "$current_manifest_target")/$current_preflight_archive_relative" \
+        "$backup_staging/$current_preflight_archive_relative"
+      chmod 0444 \
+        "$backup_staging/$current_preflight_summary_relative" \
+        "$backup_staging/$current_preflight_archive_relative"
+      chmod 0555 "$backup_staging/evidence"
+    elif [[ -n "$current_preflight_relative" ]]; then
       [[ "$current_preflight_relative" == "evidence/preflight.log" ]] || {
         echo "current release has an unexpected preflight evidence path" >&2
         exit 1
@@ -1029,9 +1442,6 @@ cutover() {
       chmod 0444 "$backup_staging/evidence/preflight.log"
       chmod 0555 "$backup_staging/evidence"
     fi
-    current_release_contract_version="$(
-      jq -r '.policy.release_contract_version // 1' "$backup_staging/manifest.json"
-    )"
     if [[ "$current_release_contract_version" == "3" ]]; then
       while IFS=$'\t' read -r current_watchdog_relative current_watchdog_mode; do
         mkdir -p "$(dirname "$backup_staging/$current_watchdog_relative")"
@@ -1045,6 +1455,19 @@ cutover() {
       )
       find "$backup_staging/scripts" "$backup_staging/docs" \
         -type d -exec chmod 0555 {} +
+      current_gateway_relative="$(
+        jq -r '.gateway_launch_agent.relative_path' "$backup_staging/manifest.json"
+      )"
+      [[ "$current_gateway_relative" == "launchd/ai.hepta.gateway.plist" ]] || {
+        echo "current release has an unexpected gateway LaunchAgent path" >&2
+        exit 1
+      }
+      mkdir -p "$(dirname "$backup_staging/$current_gateway_relative")"
+      cp -p \
+        "$(dirname "$current_manifest_target")/$current_gateway_relative" \
+        "$backup_staging/$current_gateway_relative"
+      chmod 0444 "$backup_staging/$current_gateway_relative"
+      chmod 0555 "$backup_staging/launchd"
     fi
     chmod 0555 "$backup_staging/bin/hepta" "$backup_staging/bin"
     chmod 0444 "$backup_staging/manifest.json"
@@ -1282,7 +1705,7 @@ self_test_expect_materialize_denied() {
   local fixture_root="$6"
   local preflight="$fixture_root/preflight.log"
   mkdir -p "$fixture_root"
-  hepta_release_write_fixture_preflight_log "$preflight" "$source_commit" "$provenance_json"
+  self_test_write_fixture_preflight_log "$preflight" "$source_commit" "$provenance_json"
   if "$tool" materialize \
     --artifact "$artifact" \
     --source-commit "$source_commit" \
@@ -1291,6 +1714,18 @@ self_test_expect_materialize_denied() {
     echo "immutable release materialization accepted $label" >&2
     return 1
   fi
+}
+self_test_write_fixture_preflight_log() {
+  local target="$1"
+  local source_commit="$2"
+  local provenance_json="$3"
+  local phased="$target.phased.$$"
+  hepta_release_write_fixture_preflight_log "$target" "$source_commit" "$provenance_json"
+  {
+    printf '%s\n' "[hepta-preflight] immutable-release-fixture"
+    /bin/cat "$target"
+  } >"$phased"
+  mv "$phased" "$target"
 }
 self_test() {
   [[ $# -eq 0 ]] || usage
@@ -1302,10 +1737,14 @@ self_test() {
   local receipts legacy_i_receipts legacy_h_receipts mutated_receipts mutated_provenance negative_name negative_filter negative_root
   local evidence_variant_preflight evidence_variant_provenance evidence_variant_manifest tampered_release_dir
   local missing_receipts_verify_dir missing_receipts_manifest
-  local dirty_source_fixture tampered_evidence_manifest tampered_evidence_file
+  local dirty_source_fixture tampered_evidence_manifest tampered_evidence_archive
+  local tampered_evidence_summary tampered_summary_manifest
   local canonical_preflight_artifact artifact_override_rc
-  local immutable_watchdog immutable_watchdog_sha
+  local immutable_watchdog immutable_watchdog_sha immutable_live_soak immutable_live_soak_sha
+  local zero_sample_soak_output zero_sample_soak_rc
+  local packed_summary packed_archive rollback_release_dir
   local watchdog_installer watchdog_plist watchdog_install_receipt source_watchdog_backup
+  local gateway_installer gateway_install_receipt
   source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
   tmp="$(mktemp -d /tmp/hepta-immutable-release-tree-self-test.XXXXXX)"
   root="$tmp/source"
@@ -1316,7 +1755,12 @@ self_test() {
     "$root/apps/hepta-native"
   cp "$source_root/scripts/hepta-immutable-release-tree" "$root/scripts/"
   cp "$source_root/scripts/hepta-watchdog.sh" "$root/scripts/"
-  cp "$source_root/scripts/hepta-install-live-watchdog" "$root/scripts/"
+  cp \
+    "$source_root/scripts/hepta-live-soak.sh" \
+    "$source_root/scripts/hepta-preflight-evidence-pack" \
+    "$source_root/scripts/hepta-install-live-watchdog" \
+    "$source_root/scripts/hepta-install-live-gateway" \
+    "$root/scripts/"
   cp "$source_root/scripts/lib/hepta-release-provenance.sh" "$root/scripts/lib/"
   cp \
     "$source_root/scripts/lib/hepta-watchdog-release-evidence-v1.sh" \
@@ -1347,7 +1791,7 @@ self_test() {
   short_head="${source_commit:0:10}"
   preflight="$tmp/preflight.log"
   provenance="$(hepta_release_fixture_complete_provenance_json "$root" "$source_commit" "$artifact")"
-  hepta_release_write_fixture_preflight_log "$preflight" "$source_commit" "$provenance"
+  self_test_write_fixture_preflight_log "$preflight" "$source_commit" "$provenance"
   canonical_preflight_artifact="$(
     hepta_release_canonical_preflight_artifact_path "$tmp/cargo-target" ""
   )"
@@ -1374,15 +1818,61 @@ self_test() {
     and .preflight.source_head == .source.commit
     and .preflight.candidate_source_commit == .source.commit
     and .preflight.candidate_artifact_sha256 == .artifact.sha256
-    and .preflight.relative_path == "evidence/preflight.log"
+    and .preflight.delivery == "summary_and_deterministic_gzip"
+    and .preflight.relative_path == "evidence/preflight-summary.json"
+    and .preflight.summary_relative_path == .preflight.relative_path
+    and .preflight.archive_relative_path == "evidence/preflight.log.gz"
+    and .preflight.source_log_sha256 == .preflight.log_sha256
+    and .preflight.source_log_size_bytes == .preflight.log_size_bytes
+    and .preflight.full_log_default == false
     and .policy.release_contract_version == 3
     and .policy.immutable_tree == true
     and .watchdog.immutable_release_bound == true
     and .watchdog.source.commit_bound == true
     and .watchdog.source.commit == .source.commit
     and .watchdog.entrypoint == "scripts/hepta-watchdog.sh"
-    and .watchdog.file_count == 9
+    and .watchdog.file_count == 13
+    and (.watchdog.files | any(
+      .relative_path == "scripts/hepta-live-soak.sh"
+      and .mode == "0555"
+      and .executable == true
+    ))
+    and (.watchdog.files | any(
+      .relative_path == "scripts/hepta-preflight-evidence-pack"
+      and .mode == "0555"
+      and .executable == true
+    ))
+    and .gateway_launch_agent.schema == "hepta_gateway_launch_agent_v1"
+    and .gateway_launch_agent.immutable_release_bound == true
+    and .gateway_launch_agent.label == "ai.hepta.gateway"
+    and (.gateway_launch_agent.effective_gates | [.[]] | all(. == false))
+    and .gateway_launch_agent.backup_policy.loadable_backup_plists_forbidden == true
   ' >/dev/null
+  packed_summary="$(dirname "$bound_manifest")/evidence/preflight-summary.json"
+  packed_archive="$(dirname "$bound_manifest")/evidence/preflight.log.gz"
+  [[ -f "$packed_summary" && -f "$packed_archive" \
+    && "$(stat -f '%Lp' "$packed_summary")" == "444" \
+    && "$(stat -f '%Lp' "$packed_archive")" == "444" \
+    && "$(sha256_file "$preflight")" == "$(jq -r '.preflight.source_log_sha256' "$bound_manifest")" \
+    && "$(stat -f '%z' "$preflight")" == "$(jq -r '.preflight.source_log_size_bytes' "$bound_manifest")" \
+    && ! -e "$(dirname "$bound_manifest")/evidence/preflight.log" ]] || {
+    echo "immutable v3 release did not default to summary plus deterministic gzip evidence" >&2
+    exit 1
+  }
+  gateway_installer="$root/scripts/hepta-install-live-gateway"
+  gateway_install_receipt="$(
+    "$gateway_installer" \
+      --manifest "$bound_manifest" \
+      --launch-agent "$tmp/LaunchAgents/ai.hepta.gateway.plist"
+  )"
+  jq -e '
+    .status == "ready"
+    and .label == "ai.hepta.gateway"
+    and .loaded == false
+    and .canonical_target == false
+    and .effective_gates_all_false == true
+    and .mutable_worktree_dependency == false
+  ' >/dev/null <<<"$gateway_install_receipt"
   immutable_watchdog="$(dirname "$bound_manifest")/$(jq -r '.watchdog.entrypoint' "$bound_manifest")"
   immutable_watchdog_sha="$(sha256_file "$immutable_watchdog")"
   [[ "$immutable_watchdog_sha" == "$(
@@ -1391,6 +1881,29 @@ self_test() {
       "$bound_manifest"
   )" ]] || {
     echo "immutable watchdog entrypoint is not manifest-bound" >&2
+    exit 1
+  }
+  immutable_live_soak="$(dirname "$bound_manifest")/scripts/hepta-live-soak.sh"
+  immutable_live_soak_sha="$(sha256_file "$immutable_live_soak")"
+  [[ -x "$immutable_live_soak" && "$immutable_live_soak_sha" == "$(
+    jq -r \
+      '.watchdog.files[] | select(.relative_path == "scripts/hepta-live-soak.sh") | .sha256' \
+      "$bound_manifest"
+  )" ]] || {
+    echo "immutable live soak helper is not manifest-bound" >&2
+    exit 1
+  }
+  if zero_sample_soak_output="$(
+    HEPTA_SOAK_SAMPLES=0 "$immutable_live_soak" 2>&1
+  )"; then
+    echo "immutable live soak accepted a zero-sample run" >&2
+    exit 1
+  else
+    zero_sample_soak_rc=$?
+  fi
+  [[ "$zero_sample_soak_rc" == "2" \
+    && "$zero_sample_soak_output" == "HEPTA_SOAK_SAMPLES must be at least 1" ]] || {
+    echo "immutable live soak zero-sample refusal is not fail-closed" >&2
     exit 1
   }
   chmod u+w "$(dirname "$bound_manifest")" "$(dirname "$immutable_watchdog")" "$immutable_watchdog"
@@ -1403,6 +1916,17 @@ self_test() {
   chmod u+w "$(dirname "$bound_manifest")" "$(dirname "$immutable_watchdog")" "$immutable_watchdog"
   cp "$root/scripts/hepta-watchdog.sh" "$immutable_watchdog"
   chmod 0555 "$immutable_watchdog" "$(dirname "$immutable_watchdog")" "$(dirname "$bound_manifest")"
+  $tool verify --manifest "$bound_manifest" >/dev/null
+  chmod u+w "$(dirname "$bound_manifest")" "$(dirname "$immutable_live_soak")" "$immutable_live_soak"
+  printf '\n# tampered after materialize\n' >>"$immutable_live_soak"
+  chmod 0555 "$immutable_live_soak" "$(dirname "$immutable_live_soak")" "$(dirname "$bound_manifest")"
+  if $tool verify --manifest "$bound_manifest" >/dev/null 2>&1; then
+    echo "immutable release verification accepted live soak tampering" >&2
+    exit 1
+  fi
+  chmod u+w "$(dirname "$bound_manifest")" "$(dirname "$immutable_live_soak")" "$immutable_live_soak"
+  cp "$root/scripts/hepta-live-soak.sh" "$immutable_live_soak"
+  chmod 0555 "$immutable_live_soak" "$(dirname "$immutable_live_soak")" "$(dirname "$bound_manifest")"
   $tool verify --manifest "$bound_manifest" >/dev/null
   watchdog_installer="$root/scripts/hepta-install-live-watchdog"
   watchdog_plist="$tmp/ai.hepta.immutable-watchdog-fixture.plist"
@@ -1417,10 +1941,13 @@ self_test() {
   jq -e \
     --arg program "$immutable_watchdog" \
     --arg manifest "$bound_manifest" \
+    --arg plist_sha256 "$(sha256_file "$watchdog_plist")" \
     '
       .status == "ready"
       and .program == $program
       and .manifest == $manifest
+      and .plist_sha256 == $plist_sha256
+      and .plist_mode == "444"
       and .loaded == false
       and .mutable_worktree_dependency == false
     ' >/dev/null <<<"$watchdog_install_receipt"
@@ -1466,14 +1993,31 @@ self_test() {
       --preflight-log "$preflight" \
       --release-root "$tmp/tampered-evidence-releases"
   )"
-  tampered_evidence_file="$(dirname "$tampered_evidence_manifest")/evidence/preflight.log"
-  chmod u+w "$(dirname "$tampered_evidence_manifest")" "$(dirname "$tampered_evidence_file")"
-  chmod u+w "$tampered_evidence_file"
-  printf '%s\n' '[forged-after-materialize]' >>"$tampered_evidence_file"
-  chmod 0444 "$tampered_evidence_file"
-  chmod 0555 "$(dirname "$tampered_evidence_file")" "$(dirname "$tampered_evidence_manifest")"
+  tampered_evidence_archive="$(dirname "$tampered_evidence_manifest")/evidence/preflight.log.gz"
+  chmod u+w "$(dirname "$tampered_evidence_manifest")" "$(dirname "$tampered_evidence_archive")"
+  chmod u+w "$tampered_evidence_archive"
+  printf '%s\n' '[forged-after-materialize]' >>"$tampered_evidence_archive"
+  chmod 0444 "$tampered_evidence_archive"
+  chmod 0555 "$(dirname "$tampered_evidence_archive")" "$(dirname "$tampered_evidence_manifest")"
   if $tool verify --manifest "$tampered_evidence_manifest" >/dev/null 2>&1; then
-    echo "immutable release verification accepted tampered copied preflight evidence" >&2
+    echo "immutable release verification accepted a tampered preflight archive" >&2
+    exit 1
+  fi
+  tampered_summary_manifest="$(
+    $tool materialize \
+      --artifact "$artifact" \
+      --source-commit "$source_commit" \
+      --preflight-log "$preflight" \
+      --release-root "$tmp/tampered-summary-releases"
+  )"
+  tampered_evidence_summary="$(dirname "$tampered_summary_manifest")/evidence/preflight-summary.json"
+  chmod u+w "$(dirname "$tampered_summary_manifest")" "$(dirname "$tampered_evidence_summary")"
+  chmod u+w "$tampered_evidence_summary"
+  printf '%s\n' ' ' >>"$tampered_evidence_summary"
+  chmod 0444 "$tampered_evidence_summary"
+  chmod 0555 "$(dirname "$tampered_evidence_summary")" "$(dirname "$tampered_summary_manifest")"
+  if $tool verify --manifest "$tampered_summary_manifest" >/dev/null 2>&1; then
+    echo "immutable release verification accepted a tampered preflight summary" >&2
     exit 1
   fi
   mutated_provenance="$(jq -c 'del(.bound_gate_receipts)' <<<"$provenance")"
@@ -1484,11 +2028,35 @@ self_test() {
   legacy_i_receipts="$(
     jq -c \
       --arg source_commit "$HEPTA_LEGACY_I_SOURCE_COMMIT" \
+      --arg codex_lock_sha "$HEPTA_LEGACY_I_CODEX_CARGO_LOCK_SHA" \
+      --arg native_lock_sha "$HEPTA_LEGACY_I_NATIVE_CARGO_LOCK_SHA" \
       --arg dependency_contract_sha "$HEPTA_LEGACY_I_DEPENDENCY_CONTRACT_SHA" '
         .source.commit = $source_commit
         | (.gates[] | select(.id == "dependency-security") | .receipt.contract_sha256) = $dependency_contract_sha
+        | (.gates[] | select(.id == "dependency-security") | .receipt.graphs[0].cargo_lock_sha256) = $codex_lock_sha
+        | (.gates[] | select(.id == "dependency-security") | .receipt.graphs[1].cargo_lock_sha256) = $native_lock_sha
         | (.gates[] | select(.id == "dependency-security") | .self_test_receipt)
           |= del(.exception_policy_negative_fixtures)
+        | (.gates[] | select(.id == "gate-compat-debt") | .receipt) = {
+            schema:"hepta_gate_compat_debt_receipt_v2",
+            status:"ready",
+            pair_count:1282,
+            captured_shell_pair_count:1239,
+            legacy_workgraph_pair_count:8,
+            declarative_pair_count:35,
+            compatibility_payload_count:2512,
+            unregistered_payload_count:26,
+            physical_entrypoint_count:165,
+            virtual_entrypoint_count:2399,
+            payload_bundle_verified:true,
+            entrypoint_manifest_verified:true,
+            counts_may_only_improve:true
+          }
+        | (.gates[] | select(.id == "gate-compat-debt") | .self_test_receipt) = {
+            schema:"hepta_gate_compat_debt_self_test_v2",
+            status:"ready",
+            negative_fixtures:3
+          }
       ' <<<"$receipts"
   )"
   legacy_i_receipts="$(self_test_rehash_bound_gate_receipts "$legacy_i_receipts")"
@@ -1522,7 +2090,11 @@ self_test() {
             unregistered_payload_count:26,
             counts_may_only_improve:true
           }
-        | (.gates[] | select(.id == "gate-compat-debt") | .self_test_receipt.schema) = "hepta_gate_compat_debt_self_test_v1"
+        | (.gates[] | select(.id == "gate-compat-debt") | .self_test_receipt) = {
+            schema:"hepta_gate_compat_debt_self_test_v1",
+            status:"ready",
+            negative_fixtures:3
+          }
       ' <<<"$receipts"
   )"
   legacy_h_receipts="$(self_test_rehash_bound_gate_receipts "$legacy_h_receipts")"
@@ -1645,7 +2217,7 @@ EOF
   evidence_variant_provenance="$(
     jq -c '.watchdog_gate_mode = "fixture-variant"' <<<"$provenance"
   )"
-  hepta_release_write_fixture_preflight_log \
+  self_test_write_fixture_preflight_log \
     "$evidence_variant_preflight" \
     "$source_commit" \
     "$evidence_variant_provenance"
@@ -1755,7 +2327,7 @@ EOF
   different_sha="$(sha256_file "$different")"
   different_preflight="$tmp/different-preflight.log"
   different_provenance="$(hepta_release_fixture_complete_provenance_json "$root" "$source_commit" "$different")"
-  hepta_release_write_fixture_preflight_log "$different_preflight" "$source_commit" "$different_provenance"
+  self_test_write_fixture_preflight_log "$different_preflight" "$source_commit" "$different_provenance"
   different_manifest="$($tool materialize --artifact "$different" --source-commit "$source_commit" --preflight-log "$different_preflight" --release-root "$tmp/releases")"
   if $tool activate --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha" >/dev/null 2>&1; then
     echo "immutable activation accepted different binary bytes" >&2
@@ -1833,22 +2405,28 @@ EOF
     fi
     failure_receipt="$(tail -n 1 "$failure_log")"
     jq -e '.status == "rolled_back" and .operation == "cutover" and .rollback.performed == true and .rollback.restored == true' >/dev/null <<<"$failure_receipt"
+    rollback_release_dir="$rollback_active/backups/hepta.pre-cutover-$fixture_sha-to-$different_sha"
     if [[ "$(sha256_file "$rollback_active/hepta")" != "$fixture_sha" \
       || "$(readlink "$rollback_active/hepta")" != "$(dirname "$bound_manifest")/bin/hepta" \
       || "$(readlink "$rollback_active/hepta.manifest")" != "$bound_manifest" \
-      || "$(sha256_file "$rollback_active/backups/hepta.pre-cutover-$fixture_sha-to-$different_sha/bin/hepta")" != "$fixture_sha" \
-      || ! -f "$rollback_active/backups/hepta.pre-cutover-$fixture_sha-to-$different_sha/rollback.json" \
+      || "$(sha256_file "$rollback_release_dir/bin/hepta")" != "$fixture_sha" \
+      || ! -f "$rollback_release_dir/rollback.json" \
+      || ! -f "$rollback_release_dir/evidence/preflight-summary.json" \
+      || ! -f "$rollback_release_dir/evidence/preflight.log.gz" \
+      || -e "$rollback_release_dir/evidence/preflight.log" \
+      || ! -x "$rollback_release_dir/scripts/hepta-live-soak.sh" \
       || -e "$rollback_active/.hepta-immutable-release-cutover.lock" ]]; then
       echo "injected $failure_point cutover did not restore and preserve the reviewed release pair" >&2
       exit 1
     fi
+    $tool verify --manifest "$rollback_release_dir/manifest.json" >/dev/null
     if find "$rollback_active/backups" -maxdepth 1 -type d -name '.hepta-pre-cutover.*' | rg -q .; then
       echo "injected $failure_point cutover leaked its backup staging directory" >&2
       exit 1
     fi
   done
   jq -n --arg status ready --arg schema_version "$SCHEMA_VERSION" --arg source_commit "$source_commit" --arg artifact_sha256 "$fixture_sha" \
-    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,real_short_banner_full_source_truth_ready:true,conflicting_resume_banner_denied:true,conflicting_full_source_truth_denied:true,missing_full_source_truth_denied:true,missing_preflight_denied:true,canonical_cargo_target_artifact_selected:true,artifact_override_denied:true,bound_gate_receipts_required_during_materialize:true,bound_gate_receipts_required_during_verify:true,bound_gate_source_and_lock_bound:true,legacy_i_bound_gate_profile_valid:true,legacy_h_bound_gate_profile_valid:true,mixed_bound_gate_profiles_denied:true,duplicate_missing_and_unknown_gate_ids_denied:true,blocked_receipt_and_self_test_denied:true,dependency_nonzero_findings_and_exceptions_denied:true,raw_configured_zero_new_exception_missing_modified_and_reordered_findings_denied:true,wrong_receipt_schema_hash_and_lock_denied:true,manifest_gate_receipt_tamper_denied:true,immutable_watchdog_closure_bound:true,immutable_watchdog_tamper_denied:true,immutable_watchdog_plist_release_path_bound:true,dirty_source_watchdog_ignored_after_materialization:true,existing_release_evidence_drift_denied:true,same_source_artifact_different_evidence_gets_distinct_identity:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,stale_cutover_cas_denied:true,identical_bytes_cutover_denied:true,legacy_to_bound_byte_changing_cutover_ready:true,cutover_backup_verified:true,manifest_link_cutover_verified:true,durable_post_cutover_rollback_verified:true,rollback_bundle_reuse_verified:true,after_active_swap_rollback_verified:true,after_manifest_swap_rollback_verified:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}'
+    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,real_short_banner_full_source_truth_ready:true,conflicting_resume_banner_denied:true,conflicting_full_source_truth_denied:true,missing_full_source_truth_denied:true,missing_preflight_denied:true,canonical_cargo_target_artifact_selected:true,artifact_override_denied:true,bound_gate_receipts_required_during_materialize:true,bound_gate_receipts_required_during_verify:true,bound_gate_source_and_lock_bound:true,legacy_i_bound_gate_profile_valid:true,legacy_h_bound_gate_profile_valid:true,mixed_bound_gate_profiles_denied:true,duplicate_missing_and_unknown_gate_ids_denied:true,blocked_receipt_and_self_test_denied:true,dependency_nonzero_findings_and_exceptions_denied:true,raw_configured_zero_new_exception_missing_modified_and_reordered_findings_denied:true,wrong_receipt_schema_hash_and_lock_denied:true,manifest_gate_receipt_tamper_denied:true,immutable_watchdog_closure_bound:true,immutable_watchdog_tamper_denied:true,immutable_live_soak_bound:true,zero_sample_soak_denied:true,immutable_live_soak_tamper_denied:true,packed_preflight_summary_archive_bound:true,packed_preflight_archive_tamper_denied:true,packed_preflight_summary_tamper_denied:true,packed_preflight_full_log_default_false:true,immutable_watchdog_plist_release_path_bound:true,dirty_source_watchdog_ignored_after_materialization:true,existing_release_evidence_drift_denied:true,same_source_artifact_different_evidence_gets_distinct_identity:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,stale_cutover_cas_denied:true,identical_bytes_cutover_denied:true,legacy_to_bound_byte_changing_cutover_ready:true,cutover_backup_verified:true,v3_rollback_evidence_complete:true,manifest_link_cutover_verified:true,durable_post_cutover_rollback_verified:true,rollback_bundle_reuse_verified:true,after_active_swap_rollback_verified:true,after_manifest_swap_rollback_verified:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}'
   echo "hepta immutable release tree self-test passed"
 }
 [[ $# -gt 0 ]] || usage
