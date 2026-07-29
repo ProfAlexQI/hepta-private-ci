@@ -7,10 +7,16 @@ sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
 }
 
-OPERATOR_JSON="$(curl -fsS "$BASE_URL/api/operator-security")"
-PRODUCTION_JSON="$(curl -fsS "$BASE_URL/api/telegram-production-readiness")"
-OWNER_JSON="$(curl -fsS "$BASE_URL/api/telegram-owner-handoff")"
-POLL_JSON="$(curl -fsS "$BASE_URL/api/telegram-poll-loop")"
+STATE_JSON="$(curl -fsS "$BASE_URL/api/watchdog-state")"
+jq -e '
+  .schema_version == "hepta_watchdog_state_v1"
+  and .status == "ready"
+  and .side_effect_free == true
+' <<<"$STATE_JSON" >/dev/null
+OPERATOR_JSON="$(jq -c '.operator' <<<"$STATE_JSON")"
+PRODUCTION_JSON="$(jq -c '.production' <<<"$STATE_JSON")"
+OWNER_JSON="$(jq -c '.owner' <<<"$STATE_JSON")"
+POLL_JSON="$(jq -c '.poll' <<<"$STATE_JSON")"
 
 operator_report_sha256="$(sha256_text "$OPERATOR_JSON")"
 production_report_sha256="$(sha256_text "$PRODUCTION_JSON")"
@@ -37,6 +43,7 @@ report="$(jq -n \
   --arg diagnostic_hash_sha256 "$diagnostic_hash_sha256" \
   --arg policy_hash_sha256 "$policy_hash_sha256" \
   --arg side_effect_hash_sha256 "$side_effect_hash_sha256" \
+  --argjson state "$STATE_JSON" \
   --argjson operator "$OPERATOR_JSON" \
   --argjson production "$PRODUCTION_JSON" \
   --argjson owner "$OWNER_JSON" \
@@ -50,6 +57,12 @@ report="$(jq -n \
         and ($production.attention_budget_ok // false) == true
         and ($blockers | length) == 0
       then "ready"
+      elif $production.status == "disabled"
+        and ($production.requested | bool_or(true)) == false
+        and $owner.active_owner == "legacy_openclaw"
+        and ($owner.hepta_poll_loop_armed | bool_or(true)) == false
+        and $poll.status == "disabled"
+      then "legacy_owner_plugin_disabled"
       elif $production.status == "warming"
         or (($blockers | index("observation_min_poll_iterations")) != null)
       then "warming_observation_budget"
@@ -77,6 +90,7 @@ report="$(jq -n \
     ) as $operator_state
     | (
       $production_state == "ready"
+      or $production_state == "legacy_owner_plugin_disabled"
       or $production_state == "warming_observation_budget"
       or $production_state == "attention_budget_exceeded"
     ) as $production_state_known
@@ -127,7 +141,7 @@ report="$(jq -n \
       and ($poll.raw_response_text_exposed // false) == false
     ) as $redaction_ok
     | (
-      ($operator.side_effect_free // false) == true
+      $state.side_effect_free == true
       and ($production.side_effect_free // false) == true
       and ($owner.side_effect_free // false) == true
       and ($poll.external_network_read_by_status | bool_or(true)) == false
@@ -159,9 +173,9 @@ report="$(jq -n \
       ready_source_count:(
         [
           $operator.status == "ready" or $operator.status == "attention",
-          $production.status == "ready" or $production.status == "warming" or $production.status == "attention",
-          $owner.ready == true or $owner.status == "parallel_bot_ready" or $owner.status == "ready" or $owner.status == "conflict_risk",
-          $poll.status == "armed" or $poll.status == "gated"
+          $production.status == "ready" or $production.status == "disabled" or $production.status == "warming" or $production.status == "attention",
+          $owner.ready == true or $owner.status == "legacy_owner" or $owner.status == "parallel_bot_ready" or $owner.status == "ready" or $owner.status == "conflict_risk",
+          $poll.status == "disabled" or $poll.status == "armed" or $poll.status == "gated"
         ] | map(select(.)) | length
       ),
       classification_known:$diagnostic_ready,
@@ -208,7 +222,7 @@ report="$(jq -n \
           production_readiness_state:$production_state,
           attention_budget_ok:($production.attention_budget_ok // false),
           blocker_count:($blockers | length),
-          reason:"classifies ready, warming observation budget, and attention-budget-exceeded states without recovery action"
+          reason:"classifies ready, legacy-owner plugin-disabled, warming observation budget, and attention-budget-exceeded states without recovery action"
         },
         {
           id:"operator-security-attention-mapping",
