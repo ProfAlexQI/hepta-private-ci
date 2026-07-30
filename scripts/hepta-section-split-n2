@@ -1,0 +1,72 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+
+ROOT = File.expand_path("..", __dir__)
+SPECS = [
+  {
+    source: "codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs",
+    extracted: "codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs",
+    start: "fn native_compat_web_fetch(",
+    finish: "fn path_argument_name_for_tool(",
+    include: "tool_support/native_compat_adapters.rs"
+  },
+  {
+    source: "codex-rs/hepta-runtime/src/worker_tasks.rs",
+    extracted: "codex-rs/hepta-runtime/src/worker_tasks/report_builders.rs",
+    start: "fn build_autonomous_coding_diff_summary(",
+    finish: "fn is_zero(",
+    include: "worker_tasks/report_builders.rs"
+  },
+  {
+    source: "codex-rs/hepta-native-gateway/src/native_gateway.rs",
+    extracted: "codex-rs/hepta-native-gateway/src/native_gateway/generated_dispatch.rs",
+    start: "fn route_native_gateway_request_after_preflight(",
+    finish: "fn operator_snapshot_json(",
+    include: "native_gateway/generated_dispatch.rs"
+  }
+].freeze
+
+def atomic_write(path, content)
+  FileUtils.mkdir_p(File.dirname(path))
+  staging = "#{path}.#{$$}.tmp"
+  File.binwrite(staging, content)
+  File.rename(staging, path)
+end
+
+def split(spec)
+  source_path = File.join(ROOT, spec.fetch(:source))
+  extracted_path = File.join(ROOT, spec.fetch(:extracted))
+  marker = "include!(\"#{spec.fetch(:include)}\");\n\n"
+  source = File.binread(source_path)
+  return verify(spec) if source.include?(marker)
+  start_at = source.index(spec.fetch(:start))
+  finish_at = source.index(spec.fetch(:finish), start_at || 0)
+  raise "section markers missing: #{spec.fetch(:source)}" unless start_at && finish_at && finish_at > start_at
+  extracted = source.byteslice(start_at, finish_at - start_at)
+  atomic_write(extracted_path, extracted)
+  atomic_write(source_path, source.byteslice(0, start_at) + marker + source.byteslice(finish_at, source.bytesize))
+  verify(spec)
+end
+
+def verify(spec)
+  source = File.binread(File.join(ROOT, spec.fetch(:source)))
+  extracted = File.binread(File.join(ROOT, spec.fetch(:extracted)))
+  marker = "include!(\"#{spec.fetch(:include)}\");\n\n"
+  raise "split include drifted: #{spec.fetch(:source)}" unless source.scan(marker).length == 1
+  raise "section start remains in owner: #{spec.fetch(:source)}" if source.include?(spec.fetch(:start))
+  raise "section extraction drifted: #{spec.fetch(:source)}" unless extracted.start_with?(spec.fetch(:start))
+  {source: spec.fetch(:source), source_lines: source.lines.length,
+   extracted: spec.fetch(:extracted), extracted_lines: extracted.lines.length,
+   extracted_sha256: Digest::SHA256.hexdigest(extracted)}
+end
+
+reports = case ARGV
+          when ["split"] then SPECS.map { |spec| split(spec) }
+          when ["verify"] then SPECS.map { |spec| verify(spec) }
+          else abort "usage: scripts/hepta-section-split-n2 <split|verify>"
+          end
+puts JSON.generate(schema: "hepta_section_split_n2_v1", status: "ready", modules: reports)

@@ -46,7 +46,7 @@ WORK_GRAPH_MAX_FILES=1
 WORK_GRAPH_MAX_EFFECTIVE_LINES="$(jq -er '.ceilings.work_graph_effective_lines' "$ARCHITECTURE_RATCHET")"
 SINGLE_EXEC_WRAPPER_MAX_COUNT="$(jq -er '.ceilings.single_exec_wrappers' "$ARCHITECTURE_RATCHET")"
 GIANT_MODULE_OVER_10000_MAX_COUNT=0
-GIANT_MODULE_OVER_5000_MAX_COUNT=17
+GIANT_MODULE_OVER_5000_MAX_COUNT=12
 GATE_COMPAT_ROOT="scripts/lib/hepta-gate-pair-compat-v2"
 TREE_CLASSIFICATION="docs/architecture/hepta-tree-classification-v1.json"
 

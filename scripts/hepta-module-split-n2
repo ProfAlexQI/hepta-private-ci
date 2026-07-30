@@ -1,0 +1,62 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+
+ROOT = File.expand_path("..", __dir__)
+SPECS = [
+  ["codex-rs/hepta-intelligence/src/lib.rs", "codex-rs/hepta-intelligence/src/tests.rs"],
+  ["codex-rs/hepta-runtime/src/reports.rs", "codex-rs/hepta-runtime/src/reports/tests.rs"],
+  ["codex-rs/hepta-runtime/src/worker_tasks.rs", "codex-rs/hepta-runtime/src/worker_tasks/tests.rs"]
+].freeze
+INLINE = "\n#[cfg(test)]\nmod tests {\n"
+
+def atomic_write(path, content)
+  staging = "#{path}.#{$$}.tmp"
+  Dir.mkdir(File.dirname(path)) unless Dir.exist?(File.dirname(path))
+  File.binwrite(staging, content)
+  File.rename(staging, path)
+end
+
+def split(source_relative, tests_relative)
+  source_path = File.join(ROOT, source_relative)
+  tests_path = File.join(ROOT, tests_relative)
+  module_path = tests_relative.delete_prefix(File.dirname(source_relative) + "/")
+  marker = "\n#[cfg(test)]\n#[path = \"#{module_path}\"]\nmod tests;\n"
+  source = File.binread(source_path)
+  return verify(source_relative, tests_relative) if source.end_with?(marker)
+  offset = source.index(INLINE)
+  raise "missing inline tests: #{source_relative}" unless offset
+  prefix = source.byteslice(0, offset)
+  inline = source.byteslice(offset + INLINE.bytesize, source.bytesize)
+  raise "inline test module ending drifted: #{source_relative}" unless inline.end_with?("}\n")
+  body = inline.byteslice(0, inline.bytesize - 2).lines.map do |line|
+    line.start_with?("    ") ? line.delete_prefix("    ") : line
+  end.join
+  raise "split tests lost parent import: #{source_relative}" unless body.include?("use super")
+  atomic_write(tests_path, body)
+  atomic_write(source_path, prefix + marker)
+  verify(source_relative, tests_relative)
+end
+
+def verify(source_relative, tests_relative)
+  source = File.binread(File.join(ROOT, source_relative))
+  tests = File.binread(File.join(ROOT, tests_relative))
+  module_path = tests_relative.delete_prefix(File.dirname(source_relative) + "/")
+  marker = "\n#[cfg(test)]\n#[path = \"#{module_path}\"]\nmod tests;\n"
+  raise "split module marker drifted: #{source_relative}" unless source.end_with?(marker)
+  raise "inline tests remain: #{source_relative}" if source.include?(INLINE)
+  {source: source_relative, source_lines: source.lines.length, tests: tests_relative,
+   test_lines: tests.lines.length, tests_sha256: Digest::SHA256.hexdigest(tests)}
+end
+
+case ARGV
+when ["split"]
+  reports = SPECS.map { |source, tests| split(source, tests) }
+when ["verify"]
+  reports = SPECS.map { |source, tests| verify(source, tests) }
+else
+  abort "usage: scripts/hepta-module-split-n2 <split|verify>"
+end
+puts JSON.generate(schema: "hepta_module_split_n2_v1", status: "ready", modules: reports)
