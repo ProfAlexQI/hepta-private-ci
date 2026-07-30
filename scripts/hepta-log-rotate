@@ -40,38 +40,36 @@ mkdir "$lock_dir" 2>/dev/null || {
 }
 trap 'rm -rf "$lock_dir"' EXIT
 
-for log_file in "$log_root"/*.log; do
-  [[ -e "$log_file" ]] || continue
-  [[ -f "$log_file" && ! -L "$log_file" \
-    && "$(stat -f '%u' "$log_file")" == "$(id -u)" \
-    && "$(stat -f '%l' "$log_file")" == "1" ]] || {
-    echo "refusing unsafe log file: $log_file" >&2
+command -v lsof >/dev/null 2>&1 || {
+  echo "lossless log rotation requires lsof" >&2
+  exit 1
+}
+
+rotated=0
+deferred_open_writer=0
+
+archive_pending() {
+  local log_file="$1"
+  local pending="$log_file.pending"
+  local staged
+  local generation
+  local previous
+  local current
+  [[ -e "$pending" ]] || return 0
+  [[ -f "$pending" && ! -L "$pending" \
+    && "$(stat -f '%u' "$pending")" == "$(id -u)" \
+    && "$(stat -f '%l' "$pending")" == "1" ]] || {
+    echo "refusing unsafe pending log: $pending" >&2
     exit 1
   }
-  chmod 0600 "$log_file"
-  size_bytes="$(stat -f '%z' "$log_file")"
-  (( size_bytes >= max_bytes )) || continue
-
-  before_identity="$(stat -f '%i:%z:%m' "$log_file")"
-  snapshot="$(mktemp "$log_root/.hepta-log-rotate.XXXXXX.snapshot")"
+  if lsof -t -- "$pending" >/dev/null 2>&1; then
+    deferred_open_writer=$((deferred_open_writer + 1))
+    return 0
+  fi
   staged="$(mktemp "$log_root/.hepta-log-rotate.XXXXXX.gz")"
-  cp "$log_file" "$snapshot"
-  [[ "$(stat -f '%z' "$snapshot")" == "$size_bytes" \
-    && "$(stat -f '%i:%z:%m' "$log_file")" == "$before_identity" ]] || {
-    rm -f "$snapshot" "$staged"
-    echo "log changed while snapshotting; rotation deferred: $log_file" >&2
-    exit 1
-  }
-  gzip -c -9 "$snapshot" >"$staged"
+  gzip -c -9 "$pending" >"$staged"
   gzip -t "$staged"
-  [[ "$(stat -f '%i:%z:%m' "$log_file")" == "$before_identity" ]] || {
-    rm -f "$snapshot" "$staged"
-    echo "log changed while compressing; rotation deferred: $log_file" >&2
-    exit 1
-  }
-  rm -f "$snapshot"
   chmod 0600 "$staged"
-
   for (( generation = generations; generation >= 2; generation-- )); do
     previous="$log_file.$((generation - 1)).gz"
     current="$log_file.$generation.gz"
@@ -83,13 +81,34 @@ for log_file in "$log_root"/*.log; do
     [[ ! -e "$previous" ]] || mv -f "$previous" "$current"
   done
   mv -f "$staged" "$log_file.1.gz"
+  rm -f "$pending"
+  rotated=$((rotated + 1))
+}
+
+for log_file in "$log_root"/*.log; do
+  [[ -e "$log_file" ]] || continue
+  [[ -f "$log_file" && ! -L "$log_file" \
+    && "$(stat -f '%u' "$log_file")" == "$(id -u)" \
+    && "$(stat -f '%l' "$log_file")" == "1" ]] || {
+    echo "refusing unsafe log file: $log_file" >&2
+    exit 1
+  }
+  chmod 0600 "$log_file"
+  archive_pending "$log_file"
+  [[ ! -e "$log_file.pending" ]] || continue
+  size_bytes="$(stat -f '%z' "$log_file")"
+  (( size_bytes >= max_bytes )) || continue
+  mv "$log_file" "$log_file.pending"
   : >"$log_file"
   chmod 0600 "$log_file"
+  archive_pending "$log_file"
 done
 
 jq -cn \
-  --arg schema hepta_log_rotation_v1 \
+  --arg schema hepta_log_rotation_v2 \
   --arg root "$(realpath "$log_root")" \
   --argjson max_bytes "$max_bytes" \
   --argjson generations "$generations" \
-  '{schema:$schema,status:"ready",root:$root,max_bytes:$max_bytes,generations:$generations,exclusive_lock:true,stable_snapshot_required:true,changed_log_fails_closed:true}'
+  --argjson rotated "$rotated" \
+  --argjson deferred_open_writer "$deferred_open_writer" \
+  '{schema:$schema,status:"ready",root:$root,max_bytes:$max_bytes,generations:$generations,rotated:$rotated,deferred_open_writer:$deferred_open_writer,exclusive_lock:true,rename_before_compress:true,open_writer_pending_is_preserved:true,copytruncate:false}'

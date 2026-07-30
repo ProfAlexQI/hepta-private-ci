@@ -12,6 +12,15 @@ expected="$(shasum -a 256 "$tmp/watchdog.log" | awk '{print $1}')"
 [[ ! -s "$tmp/watchdog.log" ]]
 [[ "$(gzip -dc "$tmp/watchdog.log.1.gz" | shasum -a 256 | awk '{print $1}')" == "$expected" ]]
 
+printf 'before\n' >"$tmp/open.log"
+exec 9>>"$tmp/open.log"
+"$ROOT/scripts/hepta-log-rotate" --root "$tmp" --max-bytes 1 --generations 2 >/dev/null
+printf 'after\n' >&9
+[[ -f "$tmp/open.log.pending" && ! -e "$tmp/open.log.1.gz" ]]
+exec 9>&-
+"$ROOT/scripts/hepta-log-rotate" --root "$tmp" --max-bytes 999999 --generations 2 >/dev/null
+[[ "$(gzip -dc "$tmp/open.log.1.gz")" == $'before\nafter' ]]
+
 mkdir "$tmp/.hepta-log-rotate.lock"
 if "$ROOT/scripts/hepta-log-rotate" --root "$tmp" --max-bytes 1 --generations 2 >/dev/null 2>&1; then
   echo "log rotation accepted an overlapping writer lock" >&2
@@ -25,4 +34,4 @@ if "$ROOT/scripts/hepta-log-rotate" --root "$tmp" --max-bytes 1 --generations 2 
   exit 1
 fi
 
-echo '{"schema":"hepta_log_rotation_self_test_v1","status":"ready","lossless_snapshot":true,"overlap_denied":true,"symlink_denied":true}'
+echo '{"schema":"hepta_log_rotation_self_test_v2","status":"ready","rename_before_compress":true,"open_writer_preserved":true,"overlap_denied":true,"symlink_denied":true}'
