@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${HEPTA_V2_ARCH_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
+ROOT="${HEPTA_V2_ARCH_ROOT:-$(cd "$(dirname "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "${BASH_SOURCE[0]}")")/../.." && pwd -P)}"
 source "$ROOT/scripts/lib/hepta-v2-test-inventory.sh"
 
 usage() {
