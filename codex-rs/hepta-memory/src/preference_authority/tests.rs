@@ -22,6 +22,17 @@ const REDUCER_VERSION: &str = "test.preference.reducer.v1";
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+fn private_tempdir() -> Result<tempfile::TempDir, Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(directory)
+}
+
 #[test]
 fn authenticated_request_advances_once_and_replay_fails_before_reauthentication() -> TestResult {
     let store = InMemoryPreferenceStore::default();
@@ -248,7 +259,7 @@ fn competing_authority_requests_have_one_cas_winner() -> TestResult {
 
 #[tokio::test]
 async fn durable_authority_persists_the_single_advance() -> TestResult {
-    let temporary = tempfile::tempdir()?;
+    let temporary = private_tempdir()?;
     let database_path = temporary.path().join("preference-authority.sqlite");
     let store = DurablePreferenceStore::bootstrap_new(&database_path).await?;
     let genesis = genesis_document();
