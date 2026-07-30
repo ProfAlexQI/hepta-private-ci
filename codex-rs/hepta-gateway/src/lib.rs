@@ -192,6 +192,7 @@ pub use native_post::native_post_store_capacity_check_required;
 pub use native_post::native_post_store_effect_projection;
 pub use native_post::native_post_store_write_attempt_required;
 pub use native_post::persist_native_post_execution_store_record;
+pub use outbound_http::EgressAuthorization;
 pub use outbound_http::JsonEgressRequest;
 pub use outbound_http::JsonEgressResponse;
 pub use outbound_http::JsonMethod;

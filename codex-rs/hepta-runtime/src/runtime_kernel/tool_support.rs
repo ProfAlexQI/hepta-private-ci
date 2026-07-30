@@ -432,9 +432,7 @@ impl ToolRegistry {
                             })
                             .map_err(|error| HeptaError(error.0))?;
                         let effect_sink = effect_sink.ok_or_else(|| {
-                            HeptaError(format!(
-                                "{name} lacks provider effect coordination"
-                            ))
+                            HeptaError(format!("{name} lacks provider effect coordination"))
                         })?;
                         #[cfg(test)]
                         self.record_provider_invocation(name);
@@ -3149,39 +3147,48 @@ fn native_compat_web_fetch(
         .get("url")
         .and_then(Value::as_str)
         .ok_or_else(|| hepta_core::ToolError("web_fetch requires string field 'url'".into()))?;
-    let output = std::process::Command::new("curl")
-        .arg("-L")
-        .arg("--max-time")
-        .arg("30")
-        .arg("--silent")
-        .arg("--show-error")
-        .arg(url)
-        .output()
-        .map_err(|err| hepta_core::ToolError(format!("failed to run curl: {}", err)))?;
-    let body = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let max_chars = input
         .get("maxChars")
         .or_else(|| input.get("max_chars"))
         .and_then(Value::as_u64)
         .unwrap_or(20_000) as usize;
+    let governed = effect_bound_egress_authorization(
+        ExecutionIngress::NativeGateway,
+        "duckduckgo-html-search",
+        url,
+        url.as_bytes(),
+    )
+    .map_err(hepta_core::ToolError)?;
+    let response = hepta_egress::execute_text(hepta_egress::TextEgressRequest {
+        authorization: governed.authorization.clone(),
+        // Arbitrary web_fetch destinations remain fail-closed. The native
+        // compatibility surface currently has one exact, reviewable read
+        // capability for the DuckDuckGo HTML search endpoint.
+        capability: hepta_egress::OutboundHttpCapability::DuckDuckGoHtml,
+        method: hepta_egress::EgressMethod::Get,
+        url: url.to_string(),
+        query: Vec::new(),
+        headers: Vec::new(),
+        body: None,
+        timeout: Duration::from_secs(30),
+        max_response_bytes: max_chars.saturating_mul(4).clamp(1, 8 * 1024 * 1024),
+    })
+    .map_err(|err| hepta_core::ToolError(format!("web fetch egress denied or failed: {err}")))?;
+    let effect_receipt_hash = governed
+        .complete(response.status, &response.body)
+        .map_err(hepta_core::ToolError)?;
+    let body = String::from_utf8_lossy(&response.body).to_string();
     let extracted = body.chars().take(max_chars).collect::<String>();
-    let mut out = native_compat_base(
-        tool,
-        if output.status.success() {
-            "ok"
-        } else {
-            "error"
-        },
-    );
+    let success = (200..300).contains(&response.status);
+    let mut out = native_compat_base(tool, if success { "ok" } else { "error" });
     out.insert("content".into(), Value::String(extracted.clone()));
     out.insert(
         "result".into(),
         json!({
             "url": url,
-            "status_code_available": false,
+            "status_code": response.status,
+            "effect_receipt_hash": effect_receipt_hash,
             "text": extracted,
-            "stderr": stderr,
             "truncated": body.chars().count() > max_chars
         }),
     );
@@ -3196,8 +3203,7 @@ fn native_compat_web_search(
         .get("query")
         .and_then(Value::as_str)
         .ok_or_else(|| hepta_core::ToolError("web_search requires string field 'query'".into()))?;
-    let encoded = query.replace(' ', "+");
-    let url = format!("https://duckduckgo.com/html/?q={}", encoded);
+    let url = format!("https://duckduckgo.com/html/?q={}", form_urlencode(query));
     let mut fetch_input = serde_json::Map::new();
     fetch_input.insert("url".into(), Value::String(url.clone()));
     fetch_input.insert(
@@ -5301,9 +5307,7 @@ fn validate_property(
 
             if let Some(allowed) = field_schema.get("enum").and_then(Value::as_array) {
                 let allowed_values = allowed.iter().filter_map(Value::as_str).collect::<Vec<_>>();
-                if !allowed_values.is_empty()
-                    && !allowed_values.contains(&string_value)
-                {
+                if !allowed_values.is_empty() && !allowed_values.contains(&string_value) {
                     return Err(HeptaError(format!(
                         "tool {} field '{}' must be one of: {}",
                         schema_name,

@@ -584,6 +584,7 @@ fn telegram_json_request(
     method: &str,
 ) -> Result<crate::JsonEgressResponse, String> {
     crate::execute_outbound_json(crate::JsonEgressRequest {
+        authorization: crate::EgressAuthorization::LegacyGovernedTelegram,
         capability: crate::OutboundHttpCapability::TelegramBotApi,
         method: method_kind,
         url: endpoint,

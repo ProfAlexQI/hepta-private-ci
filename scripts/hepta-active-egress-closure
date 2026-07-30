@@ -12,7 +12,9 @@ FORBIDDEN = {
   "reqwest blocking client" => /reqwest::blocking::Client/,
   "direct reqwest client construction" => /reqwest::Client(?:::\w+)?\s*\(/,
   "direct TCP connect" => /TcpStream::connect\s*\(/,
-  "direct tungstenite connect" => /tungstenite::(?:client::)?connect\s*\(/
+  "direct tungstenite connect" => /tungstenite::(?:client::)?connect\s*\(/,
+  "network subprocess" => /(?:std::process::)?Command::new\s*\(\s*"(?:curl|wget|nc|ncat|netcat|socat|ftp)"\s*\)/,
+  "shell network subprocess" => /(?:std::process::)?Command::new\s*\(\s*"(?:sh|bash|zsh)"\s*\)[\s\S]{0,800}?\.arg\s*\(\s*"[^\"]*(?:curl|wget|nc|ncat|netcat|socat|ftp)[^\"]*"\s*\)/
 }.freeze
 TRANSPORT_OWNERS = Set[
   "codex-http-client",
@@ -70,7 +72,7 @@ def verify
   end
   raise "active binary dependency closure has direct egress bypasses:\n#{violations.uniq.sort.join("\n")}" unless violations.empty?
   puts JSON.generate({
-    schema: "hepta_active_egress_closure_v1",
+    schema: "hepta_active_egress_closure_v2",
     status: "ready",
     root_package: "hepta-cli",
     normal_dependency_package_count: packages.length,
@@ -80,10 +82,28 @@ def verify
   })
 end
 
+def self_test
+  fixtures = {
+    "reqwest::blocking::Client::new()" => "reqwest blocking client",
+    "std::net::TcpStream::connect(addr)" => "direct TCP connect",
+    'std::process::Command::new("curl").arg(url)' => "network subprocess",
+    'Command::new("sh").arg("-c").arg("curl https://example.com")' => "shell network subprocess"
+  }
+  fixtures.each do |source, expected|
+    matched = FORBIDDEN.select { |_label, pattern| source.match?(pattern) }.keys
+    raise "egress scanner failed to trap #{expected}" unless matched.include?(expected)
+  end
+  clean = 'Command::new("git").arg("status")'
+  raise "egress scanner rejected a non-network subprocess" if FORBIDDEN.any? { |_label, pattern| clean.match?(pattern) }
+  puts JSON.generate({schema: "hepta_active_egress_closure_self_test_v1", status: "ready"})
+end
+
 case ARGV
 when ["verify"]
   verify
+when ["self-test"]
+  self_test
 else
-  warn "usage: scripts/hepta-active-egress-closure verify"
+  warn "usage: scripts/hepta-active-egress-closure <verify|self-test>"
   exit 2
 end

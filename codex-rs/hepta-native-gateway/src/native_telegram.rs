@@ -1867,6 +1867,7 @@ fn run_mlx_local_chat_completion(
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let body = native_telegram_mlx_chat_completion_body(model, prompt, max_tokens)?;
     let response = hepta_gateway::execute_outbound_json(hepta_gateway::JsonEgressRequest {
+        authorization: hepta_gateway::EgressAuthorization::LiteralLoopback,
         capability: hepta_gateway::OutboundHttpCapability::LiteralLoopbackProvider,
         method: hepta_gateway::JsonMethod::Post,
         url: endpoint,

@@ -598,6 +598,7 @@ struct OpenAiCodexAuthProfile {
 struct CodexHttpResponse {
     status: u16,
     body: String,
+    effect_receipt_hash: String,
 }
 
 fn is_openai_codex_provider_id(provider_id: &str) -> bool {
@@ -873,8 +874,7 @@ fn parse_openai_codex_sse_response(body: &str) -> Result<ModelResponse, String> 
                 return Err(format!("openai-codex response failed: {}", message));
             }
             "response.output_item.added"
-                if event.pointer("/item/type").and_then(Value::as_str)
-                    == Some("function_call") =>
+                if event.pointer("/item/type").and_then(Value::as_str) == Some("function_call") =>
             {
                 current_function_name = event
                     .pointer("/item/name")
@@ -1402,88 +1402,153 @@ fn curl_post_with_secret_files(
     body: &str,
     timeout_ms: Option<u64>,
 ) -> Result<CodexHttpResponse, String> {
-    let header_text = headers
-        .iter()
-        .map(|(name, value)| format!("{}: {}", name, value))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let header_path = write_secret_temp_file("hepta-codex-headers", &header_text)?;
-    let body_path = write_secret_temp_file("hepta-codex-body", body)?;
-    let timeout_secs = provider_read_timeout_duration(timeout_ms)
-        .as_secs()
-        .clamp(1, 300)
-        .to_string();
-    let output = Command::new("curl")
-        .arg("--silent")
-        .arg("--show-error")
-        .arg("--no-buffer")
-        .arg("--max-time")
-        .arg(timeout_secs)
-        .arg("--request")
-        .arg("POST")
-        .arg("--header")
-        .arg(format!("@{}", header_path.display()))
-        .arg("--data-binary")
-        .arg(format!("@{}", body_path.display()))
-        .arg("--write-out")
-        .arg("\n__HEPTA_HTTP_STATUS__:%{http_code}\n")
-        .arg(url)
-        .output();
-    let _ = fs::remove_file(&header_path);
-    let _ = fs::remove_file(&body_path);
-    let output = output.map_err(|err| format!("failed to run curl for openai-codex: {}", err))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    if !output.status.success() && stdout.trim().is_empty() {
-        return Err(format!(
-            "curl openai-codex request failed: {}",
-            redact_codex_error_preview(&stderr)
-        ));
-    }
-    let (body, status_text) = stdout
-        .rsplit_once("\n__HEPTA_HTTP_STATUS__:")
-        .ok_or_else(|| "curl openai-codex response missing HTTP status marker".to_string())?;
-    let status = status_text.trim().parse::<u16>().map_err(|_| {
-        format!(
-            "invalid openai-codex HTTP status marker: {}",
-            status_text.trim()
-        )
+    let governed = effect_bound_egress_authorization(
+        ExecutionIngress::ModelProvider,
+        "openai-codex-http",
+        url,
+        body.as_bytes(),
+    )?;
+    let response = hepta_egress::execute_text(hepta_egress::TextEgressRequest {
+        authorization: governed.authorization.clone(),
+        capability: hepta_egress::OutboundHttpCapability::OpenAiCodexApi,
+        method: hepta_egress::EgressMethod::Post,
+        url: url.to_string(),
+        query: Vec::new(),
+        headers: headers.to_vec(),
+        body: Some(body.as_bytes().to_vec()),
+        timeout: provider_read_timeout_duration(timeout_ms),
+        max_response_bytes: 8 * 1024 * 1024,
     })?;
+    let body = String::from_utf8(response.body)
+        .map_err(|_| "openai-codex response was not valid UTF-8".to_string())?;
+    let effect_receipt_hash = governed.complete(response.status, body.as_bytes())?;
     Ok(CodexHttpResponse {
-        status,
-        body: body.to_string(),
+        status: response.status,
+        body,
+        effect_receipt_hash,
     })
 }
 
-fn write_secret_temp_file(prefix: &str, content: &str) -> Result<PathBuf, String> {
-    let ts = current_unix_ms().unwrap_or(0);
-    for attempt in 0..100u8 {
-        let mut path = env::temp_dir();
-        path.push(format!(
-            "{}-{}-{}-{}.tmp",
-            prefix,
-            std::process::id(),
-            ts,
-            attempt
-        ));
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        match options.open(&path) {
-            Ok(mut file) => {
-                file.write_all(content.as_bytes())
-                    .map_err(|err| format!("failed to write secret temp file: {}", err))?;
-                return Ok(path);
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(format!("failed to create secret temp file: {}", err)),
-        }
+struct GovernedEgressAuthorization {
+    authorization: hepta_egress::EgressAuthorization,
+    broker: EffectBroker,
+    effect_plan_hash: String,
+}
+
+impl GovernedEgressAuthorization {
+    fn complete(mut self, status: u16, response: &[u8]) -> Result<String, String> {
+        let provider_receipt = runtime_kernel::context_freezer::framed_hash(
+            "hepta.egress.provider-receipt.v1",
+            &[
+                ("status", status.to_string().as_bytes()),
+                ("response", response),
+            ],
+        )
+        .into_inner();
+        let ack = ProviderEffectAck::new(&self.effect_plan_hash, "hepta-egress", &provider_receipt)
+            .map_err(|error| error.to_string())?;
+        self.broker
+            .record_provider_ack(ack.clone())
+            .map_err(|error| error.to_string())?;
+        let terminal = TerminalEffectReceipt::terminal(
+            ack.ack_hash(),
+            if (200..300).contains(&status) {
+                "completed"
+            } else {
+                "http-error"
+            },
+            &provider_receipt,
+            runtime_kernel::context_freezer::framed_hash(
+                "hepta.egress.terminal-evidence.v1",
+                &[
+                    ("effect-plan", self.effect_plan_hash.as_bytes()),
+                    ("response", response),
+                ],
+            )
+            .into_inner(),
+        )
+        .map_err(|error| error.to_string())?;
+        let receipt_hash = terminal.receipt_hash().to_string();
+        self.broker
+            .record_terminal_receipt(terminal)
+            .map_err(|error| error.to_string())?;
+        self.broker
+            .completed_receipt_hash()
+            .map_err(|error| error.to_string())?;
+        Ok(receipt_hash)
     }
-    Err("failed to create unique secret temp file".into())
+}
+
+fn effect_bound_egress_authorization(
+    ingress: ExecutionIngress,
+    operation: &str,
+    target: &str,
+    payload: &[u8],
+) -> Result<GovernedEgressAuthorization, String> {
+    let hash = |domain: &str, fields: &[(&str, &[u8])]| {
+        runtime_kernel::context_freezer::framed_hash(domain, fields).into_inner()
+    };
+    let raw_hex = |content_hash: &str| {
+        content_hash
+            .strip_prefix("sha256:")
+            .ok_or_else(|| "egress authorization hash lost its content-hash domain".to_string())
+            .map(str::to_string)
+    };
+    let caller = hash(
+        "hepta.egress.caller.v1",
+        &[("operation", operation.as_bytes())],
+    );
+    let workspace = hash(
+        "hepta.egress.workspace.v1",
+        &[("state-root", b"typed-hepta-state-root")],
+    );
+    let session = hash(
+        "hepta.egress.session.v1",
+        &[("target", target.as_bytes()), ("payload", payload)],
+    );
+    let authority =
+        ExactExecutionAuthority::new(raw_hex(&caller)?, raw_hex(&workspace)?, raw_hex(&session)?)
+            .map_err(|error| error.to_string())?;
+    let intent = hash(
+        "hepta.egress.intent.v1",
+        &[
+            ("operation", operation.as_bytes()),
+            ("target", target.as_bytes()),
+        ],
+    );
+    let candidate = hash(
+        "hepta.egress.candidate.v1",
+        &[("payload", payload), ("target", target.as_bytes())],
+    );
+    let admission =
+        ExecutionAdmission::new(ingress, operation, authority, raw_hex(&intent)?, candidate)
+            .map_err(|error| error.to_string())?;
+    let payload_digest = hash("hepta.egress.payload.v1", &[("payload", payload)]);
+    let idempotency = hash(
+        "hepta.egress.idempotency.v1",
+        &[("operation", operation.as_bytes()), ("payload", payload)],
+    );
+    let plan = EffectPlan::new(
+        admission.admission_hash(),
+        "outbound-http",
+        target,
+        payload_digest,
+        raw_hex(&idempotency)?,
+    )
+    .map_err(|error| error.to_string())?;
+    let effect_plan_hash = plan.effect_plan_hash().to_string();
+    let mut broker = EffectBroker::admit(admission.clone());
+    broker
+        .record_effect_plan(plan)
+        .map_err(|error| error.to_string())?;
+    Ok(GovernedEgressAuthorization {
+        authorization: hepta_egress::EgressAuthorization::EffectBound {
+            admission_hash: admission.admission_hash().to_string(),
+            effect_plan_hash: effect_plan_hash.clone(),
+        },
+        broker,
+        effect_plan_hash,
+    })
 }
 
 fn form_urlencode_pairs(pairs: &[(&str, &str)]) -> String {
@@ -2189,6 +2254,7 @@ fn http_post_json_plaintext(
     timeout_ms: Option<u64>,
 ) -> Result<String, String> {
     let response = hepta_egress::execute_json(hepta_egress::JsonEgressRequest {
+        authorization: hepta_egress::EgressAuthorization::LiteralLoopback,
         capability: hepta_egress::OutboundHttpCapability::LiteralLoopbackProvider,
         method: hepta_egress::JsonMethod::Post,
         url: url.to_string(),
@@ -2198,7 +2264,10 @@ fn http_post_json_plaintext(
         timeout: provider_read_timeout_duration(timeout_ms),
     })?;
     if !(200..300).contains(&response.status) {
-        return Err(format!("provider returned non-success status: {}", response.status));
+        return Err(format!(
+            "provider returned non-success status: {}",
+            response.status
+        ));
     }
     Ok(response.body.to_string())
 }
