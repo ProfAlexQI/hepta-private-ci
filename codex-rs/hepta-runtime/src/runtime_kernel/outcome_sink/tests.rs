@@ -27,6 +27,19 @@ use crate::RuntimeKernel;
 use crate::SafetyGateClient;
 use crate::runtime_kernel::execution_attempt::AuthorizedToolExecution;
 
+mod tempfile {
+    pub(super) fn tempdir() -> std::io::Result<::tempfile::TempDir> {
+        let directory = ::tempfile::tempdir()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))?;
+        }
+        Ok(directory)
+    }
+}
+
 fn durable_integrity_key() -> DurableIntegrityKey {
     DurableIntegrityKey::from_bytes([0x77; 32])
 }
