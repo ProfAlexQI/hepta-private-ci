@@ -156,6 +156,8 @@ verify_tree_classification() {
     .schema == "hepta.tree-classification.v1"
     and .product_boundary == "openclaw_governed_backend"
     and (.classifications.active.roots | index("codex-rs/hepta-durable-store") != null)
+    and (.classifications.active.roots | index("codex-rs/hepta-egress") != null)
+    and (.classifications.active.roots | index("codex-rs/hepta-paths") != null)
     and (.classifications.active.roots | index("codex-rs/http-client") != null)
     and (.classifications.active.roots | index("codex-rs/websocket-client") != null)
     and .classifications.active.targeted_upstream_surfaces == [

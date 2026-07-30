@@ -87,6 +87,7 @@ members = [
     "git-utils",
     "hepta-authority",
     "hepta-durable-store",
+    "hepta-egress",
     "exec-server-protocol",
     "hepta-contracts",
     "hepta-core",
@@ -97,6 +98,7 @@ members = [
     "hepta-kg",
     "hepta-gateway",
     "hepta-memory",
+    "hepta-paths",
     "hepta-plugins",
     "hepta-runtime",
     "utils/cache",
@@ -195,6 +197,7 @@ codex-file-watcher = { path = "file-watcher" }
 codex-git-utils = { path = "git-utils" }
 hepta-authority = { path = "hepta-authority" }
 hepta-durable-store = { path = "hepta-durable-store" }
+hepta-egress = { path = "hepta-egress" }
 hepta-contracts = { path = "hepta-contracts" }
 hepta-core = { path = "hepta-core" }
 hepta-gateway = { path = "hepta-gateway" }
@@ -203,6 +206,7 @@ hepta-intelligence = { path = "hepta-intelligence" }
 hepta-kernel = { path = "hepta-kernel" }
 hepta-kg = { path = "hepta-kg" }
 hepta-memory = { path = "hepta-memory" }
+hepta-paths = { path = "hepta-paths" }
 hepta-plugins = { path = "hepta-plugins" }
 hepta-runtime = { path = "hepta-runtime" }
 codex-hooks = { path = "hooks" }

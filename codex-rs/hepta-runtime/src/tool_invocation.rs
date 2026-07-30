@@ -124,12 +124,9 @@ impl ToolInvocationLedger {
     }
 
     pub fn default_in_current_dir() -> Result<Self, HeptaError> {
-        let cwd = std::env::current_dir().map_err(|err| {
-            HeptaError(format!(
-                "failed to resolve cwd for tool-invocation-ledger: {err}"
-            ))
-        })?;
-        Ok(Self::new(cwd.join(DEFAULT_TOOL_INVOCATION_LEDGER_PATH)))
+        Ok(Self::new(crate::default_state_path(
+            DEFAULT_TOOL_INVOCATION_LEDGER_PATH,
+        )?))
     }
 
     pub fn path_display(&self) -> String {

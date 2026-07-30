@@ -18,9 +18,7 @@ use crate::telegram_delivery::telegram_delivery_lifecycle_record;
 use crate::telegram_policy::NativeTelegramReplyTargetMaterial;
 use crate::telegram_policy::NativeTelegramSendExecutionReport;
 use crate::telegram_policy::NativeTelegramSendRequestPlan;
-use hepta_runtime::native_telegram_bot_api_client_build_error;
 use hepta_runtime::native_telegram_bot_api_http_status_error;
-use hepta_runtime::native_telegram_bot_api_json_parse_error;
 use hepta_runtime::native_telegram_bot_api_request_failed_error;
 use hepta_runtime::native_telegram_bot_token_shape_ok;
 use hepta_runtime::native_telegram_get_updates_error_is_conflict;
@@ -192,10 +190,14 @@ pub fn telegram_call_get_updates_once(
 ) -> Result<Value, String> {
     let endpoint = telegram_bot_api_endpoint(token, "getUpdates")?;
     let query = telegram_get_updates_query(limit, offset);
-    let client = telegram_blocking_client(timeout, "getUpdates")?;
-    let response = client.get(endpoint).query(&query).send().map_err(|error| {
-        native_telegram_bot_api_request_failed_error("getUpdates", &error.without_url().to_string())
-    })?;
+    let response = telegram_json_request(
+        crate::JsonMethod::Get,
+        endpoint,
+        query,
+        None,
+        timeout,
+        "getUpdates",
+    )?;
     telegram_bot_api_json_response(response, "getUpdates")
 }
 
@@ -208,13 +210,14 @@ pub fn telegram_call_send_message(
 ) -> Result<Value, String> {
     let endpoint = telegram_bot_api_endpoint(token, "sendMessage")?;
     let body = telegram_send_message_request_body(message_text, chat_id, reply_to_message_id)?;
-    let client = telegram_blocking_client(timeout, "sendMessage")?;
-    let response = client.post(endpoint).json(&body).send().map_err(|error| {
-        native_telegram_bot_api_request_failed_error(
-            "sendMessage",
-            &error.without_url().to_string(),
-        )
-    })?;
+    let response = telegram_json_request(
+        crate::JsonMethod::Post,
+        endpoint,
+        Vec::new(),
+        Some(body),
+        timeout,
+        "sendMessage",
+    )?;
     telegram_bot_api_json_response(response, "sendMessage")
 }
 
@@ -225,13 +228,14 @@ pub fn telegram_call_send_chat_action(
 ) -> Result<Value, String> {
     let endpoint = telegram_bot_api_endpoint(token, "sendChatAction")?;
     let body = telegram_send_chat_action_request_body(chat_id)?;
-    let client = telegram_blocking_client(timeout, "sendChatAction")?;
-    let response = client.post(endpoint).json(&body).send().map_err(|error| {
-        native_telegram_bot_api_request_failed_error(
-            "sendChatAction",
-            &error.without_url().to_string(),
-        )
-    })?;
+    let response = telegram_json_request(
+        crate::JsonMethod::Post,
+        endpoint,
+        Vec::new(),
+        Some(body),
+        timeout,
+        "sendChatAction",
+    )?;
     telegram_bot_api_json_response(response, "sendChatAction")
 }
 
@@ -571,28 +575,41 @@ fn telegram_bot_api_endpoint(token: &str, method: &str) -> Result<String, String
     Ok(format!("{TELEGRAM_BOT_API_BASE_URL}/bot{token}/{method}"))
 }
 
-fn telegram_blocking_client(
+fn telegram_json_request(
+    method_kind: crate::JsonMethod,
+    endpoint: String,
+    query: Vec<(&'static str, String)>,
+    body: Option<Value>,
     timeout: Duration,
     method: &str,
-) -> Result<reqwest::blocking::Client, String> {
-    crate::bounded_blocking_http_client(timeout)
-        .map_err(|error| native_telegram_bot_api_client_build_error(method, &error.to_string()))
+) -> Result<crate::JsonEgressResponse, String> {
+    crate::execute_outbound_json(crate::JsonEgressRequest {
+        capability: crate::OutboundHttpCapability::TelegramBotApi,
+        method: method_kind,
+        url: endpoint,
+        query: query
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), value))
+            .collect(),
+        bearer_token: None,
+        body,
+        timeout,
+    })
+    .map_err(|error| native_telegram_bot_api_request_failed_error(method, &error))
 }
 
 fn telegram_bot_api_json_response(
-    response: reqwest::blocking::Response,
+    response: crate::JsonEgressResponse,
     method: &str,
 ) -> Result<Value, String> {
-    let status = response.status();
-    let body = response
-        .json::<Value>()
-        .map_err(|error| native_telegram_bot_api_json_parse_error(method, &error.to_string()))?;
-    if status.is_success() {
+    let status = response.status;
+    let body = response.body;
+    if (200..300).contains(&status) {
         Ok(body)
     } else {
         Err(native_telegram_bot_api_http_status_error(
             method,
-            status.as_u16(),
+            status,
             body.get("description").and_then(Value::as_str),
         ))
     }

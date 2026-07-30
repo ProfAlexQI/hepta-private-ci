@@ -11,9 +11,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::io::Read;
 use std::io::Write;
-use std::net::TcpStream;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::Component;
@@ -75,9 +73,16 @@ use hepta_core::WritePathScope;
 use hepta_intelligence::TopicAwareModelFeedbackRecord;
 use hepta_memory::InMemoryStore;
 use hepta_memory::StoreSnapshot;
+use hepta_paths::HeptaStateRoot;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+
+fn default_state_path(legacy_path: &str) -> Result<PathBuf, HeptaError> {
+    HeptaStateRoot::discover()
+        .and_then(|root| root.resolve_legacy_default(legacy_path))
+        .map_err(|error| HeptaError(format!("failed to resolve typed Hepta state path: {error}")))
+}
 use serde_json::json;
 
 mod agent_harness;

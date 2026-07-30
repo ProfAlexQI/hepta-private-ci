@@ -249,10 +249,9 @@ impl DurableDeliveryQueue {
     }
 
     pub fn default_in_current_dir() -> Result<Self, HeptaError> {
-        let cwd = std::env::current_dir().map_err(|err| {
-            HeptaError(format!("failed to resolve cwd for delivery-queue: {err}"))
-        })?;
-        Ok(Self::new(cwd.join(DEFAULT_DELIVERY_QUEUE_PATH)))
+        Ok(Self::new(crate::default_state_path(
+            DEFAULT_DELIVERY_QUEUE_PATH,
+        )?))
     }
 
     pub fn path_display(&self) -> String {
@@ -854,12 +853,9 @@ impl ReadbackEvidenceLedger {
     }
 
     pub fn default_in_current_dir() -> Result<Self, HeptaError> {
-        let cwd = std::env::current_dir().map_err(|err| {
-            HeptaError(format!(
-                "failed to resolve cwd for readback-evidence: {err}"
-            ))
-        })?;
-        Ok(Self::new(cwd.join(DEFAULT_READBACK_EVIDENCE_PATH)))
+        Ok(Self::new(crate::default_state_path(
+            DEFAULT_READBACK_EVIDENCE_PATH,
+        )?))
     }
 
     pub fn path_display(&self) -> String {

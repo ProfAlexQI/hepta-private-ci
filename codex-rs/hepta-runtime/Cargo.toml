@@ -7,9 +7,11 @@ license.workspace = true
 [dependencies]
 hepta-contracts.workspace = true
 hepta-core.workspace = true
+hepta-egress.workspace = true
 hepta-intelligence.workspace = true
 hepta-kernel.workspace = true
 hepta-memory.workspace = true
+hepta-paths.workspace = true
 libc.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

@@ -15,7 +15,7 @@ const PARAMETERS_PATH: &str = "scripts/lib/hepta-gate-pair-compat-v2/parameters.
 const SOURCE_SCHEMA: &str = "hepta_readable_normalized_token_source_v1";
 const SOURCE_DOMAIN: &str = "hepta_gate_pair_compat_payloads";
 const RECORD_BYTE_SEMANTICS: &str = "record_including_lf";
-const MAX_RECORD_BYTE_LIMIT: usize = 355_619;
+const MAX_RECORD_BYTE_LIMIT: usize = 355_618;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

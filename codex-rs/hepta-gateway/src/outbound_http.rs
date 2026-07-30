@@ -1,18 +1,5 @@
-use std::time::Duration;
-
-pub fn blocking_client(timeout: Duration) -> Result<reqwest::blocking::Client, reqwest::Error> {
-    reqwest::blocking::Client::builder()
-        .timeout(timeout)
-        .build()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::blocking_client;
-    use std::time::Duration;
-
-    #[test]
-    fn builds_bounded_blocking_client() {
-        blocking_client(Duration::from_secs(1)).expect("bounded HTTP client should build");
-    }
-}
+pub use hepta_egress::JsonEgressRequest;
+pub use hepta_egress::JsonEgressResponse;
+pub use hepta_egress::JsonMethod;
+pub use hepta_egress::OutboundHttpCapability;
+pub use hepta_egress::execute_json;

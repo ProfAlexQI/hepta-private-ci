@@ -1,0 +1,35 @@
+{
+  "schema": "hepta.m1-egress-paths-receipt.v1",
+  "status": "source_complete",
+  "product_boundary": "openclaw_governed_backend",
+  "egress": {
+    "capability_crate": "codex-rs/hepta-egress",
+    "route_aware_transport": "codex-http-client::RouteAwareClientPool",
+    "capabilities": [
+      "telegram_bot_api_https",
+      "literal_loopback_provider_http"
+    ],
+    "default_hepta_cli_normal_dependency_packages": 231,
+    "direct_egress_violation_count": 0,
+    "hard_gate": "scripts/hepta-active-egress-closure verify"
+  },
+  "paths": {
+    "typed_crate": "codex-rs/hepta-paths",
+    "environment_variable": "HEPTA_STATE_ROOT",
+    "first_party_production_relative_hepta_literal_files": 0,
+    "first_party_production_relative_hepta_literal_occurrences": 0
+  },
+  "verification": [
+    "cargo test -p codex-http-client -p hepta-egress -p hepta-paths --lib",
+    "cargo test -p hepta-gateway --lib",
+    "cargo test -p hepta-runtime --lib",
+    "scripts/hepta-active-egress-closure verify",
+    "scripts/hepta-architecture-budget verify"
+  ],
+  "runtime_changed": false,
+  "gates_changed": false,
+  "limitations": [
+    "codex-in-process-runner is not enabled in the released default hepta-cli feature set and is outside this default-artifact closure receipt",
+    "the capability tests use local deterministic servers and do not claim a real external Telegram or provider mutation"
+  ]
+}

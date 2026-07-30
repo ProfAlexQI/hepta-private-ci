@@ -590,6 +590,7 @@ impl RouteAwareClientPool {
         drop(clients);
 
         let client_builder = match self.http_client_factory.outbound_proxy_policy() {
+            OutboundProxyPolicy::DirectOnly => self.client_builder.clone().without_redirects(),
             OutboundProxyPolicy::ReqwestDefault => self.client_builder.clone(),
             OutboundProxyPolicy::RespectSystemProxy => {
                 self.client_builder.clone().without_redirects()
@@ -606,7 +607,9 @@ impl RouteAwareClientPool {
             (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::LegacyTransportDefault) => {
                 client_builder.build_with_transport_default_proxy_and_custom_ca_fallback()
             }
-            (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::Disabled)
+            (OutboundProxyPolicy::DirectOnly, CustomCaFallback::Disabled)
+            | (OutboundProxyPolicy::DirectOnly, CustomCaFallback::LegacyTransportDefault)
+            | (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::Disabled)
             | (OutboundProxyPolicy::RespectSystemProxy, CustomCaFallback::Disabled)
             | (OutboundProxyPolicy::RespectSystemProxy, CustomCaFallback::LegacyTransportDefault) => {
                 client_builder.build_for_resolved_route(

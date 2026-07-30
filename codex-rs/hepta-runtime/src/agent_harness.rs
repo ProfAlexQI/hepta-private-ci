@@ -316,12 +316,9 @@ impl AgentHarnessLedger {
     }
 
     pub fn default_in_current_dir() -> Result<Self, HeptaError> {
-        let cwd = std::env::current_dir().map_err(|err| {
-            HeptaError(format!(
-                "failed to resolve cwd for agent-harness-ledger: {err}"
-            ))
-        })?;
-        Ok(Self::new(cwd.join(DEFAULT_AGENT_HARNESS_LEDGER_PATH)))
+        Ok(Self::new(crate::default_state_path(
+            DEFAULT_AGENT_HARNESS_LEDGER_PATH,
+        )?))
     }
 
     pub fn path_display(&self) -> String {

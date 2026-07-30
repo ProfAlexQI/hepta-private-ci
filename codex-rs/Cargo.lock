@@ -7584,13 +7584,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "hepta-egress"
+version = "0.0.0"
+dependencies = [
+ "codex-http-client",
+ "pretty_assertions",
+ "reqwest 0.12.28",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "hepta-gateway"
 version = "0.0.0"
 dependencies = [
  "hepta-core",
+ "hepta-egress",
  "hepta-plugins",
  "hepta-runtime",
- "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tempfile",
@@ -7674,10 +7685,10 @@ dependencies = [
  "hepta-gateway",
  "hepta-intelligence",
  "hepta-memory",
+ "hepta-paths",
  "hepta-runtime",
  "hmac 0.12.1",
  "libc",
- "reqwest 0.12.28",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -7685,6 +7696,10 @@ dependencies = [
  "tokio",
  "zeroize",
 ]
+
+[[package]]
+name = "hepta-paths"
+version = "0.0.0"
 
 [[package]]
 name = "hepta-plugins"
@@ -7700,9 +7715,11 @@ dependencies = [
  "flate2",
  "hepta-contracts",
  "hepta-core",
+ "hepta-egress",
  "hepta-intelligence",
  "hepta-kernel",
  "hepta-memory",
+ "hepta-paths",
  "libc",
  "pretty_assertions",
  "serde",

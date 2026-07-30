@@ -93,6 +93,10 @@ impl fmt::Display for RouteFailureClass {
 /// legacy behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutboundProxyPolicy {
+    /// Always connect directly. This is reserved for destinations whose capability contract
+    /// already restricts them to literal loopback addresses and must never disclose credentials
+    /// to a configured proxy.
+    DirectOnly,
     /// Preserve reqwest's built-in proxy behavior.
     ReqwestDefault,
     /// Resolve system/PAC/WPAD settings, then environment settings, then direct routing.
@@ -176,6 +180,9 @@ impl HttpClientFactory {
         &self,
         request_url: String,
     ) -> io::Result<OutboundProxyRoute> {
+        if matches!(self.outbound_proxy_policy, OutboundProxyPolicy::DirectOnly) {
+            return Ok(OutboundProxyRoute::Direct);
+        }
         if matches!(
             self.outbound_proxy_policy,
             OutboundProxyPolicy::ReqwestDefault
@@ -250,6 +257,9 @@ fn resolve_proxy_route(
     outbound_proxy_policy: OutboundProxyPolicy,
     resolve_system_proxy: impl FnOnce(&str, &RequestOrigin) -> SystemProxyDecision,
 ) -> OutboundProxyRoute {
+    if matches!(outbound_proxy_policy, OutboundProxyPolicy::DirectOnly) {
+        return OutboundProxyRoute::Direct;
+    }
     if matches!(outbound_proxy_policy, OutboundProxyPolicy::ReqwestDefault) {
         return OutboundProxyRoute::TransportDefault;
     }

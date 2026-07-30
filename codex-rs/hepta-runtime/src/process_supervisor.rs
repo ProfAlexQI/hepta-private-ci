@@ -214,12 +214,9 @@ impl ProcessSupervisor {
     }
 
     pub fn default_in_current_dir() -> Result<Self, HeptaError> {
-        let cwd = std::env::current_dir().map_err(|err| {
-            HeptaError(format!(
-                "failed to resolve cwd for process-supervisor: {err}"
-            ))
-        })?;
-        Ok(Self::new(cwd.join(DEFAULT_PROCESS_SUPERVISOR_PATH)))
+        Ok(Self::new(crate::default_state_path(
+            DEFAULT_PROCESS_SUPERVISOR_PATH,
+        )?))
     }
 
     pub fn path_display(&self) -> String {

@@ -1,0 +1,89 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "open3"
+require "pathname"
+require "set"
+
+ROOT = Pathname(__dir__).parent.realpath
+MANIFEST = ROOT.join("codex-rs/Cargo.toml")
+FORBIDDEN = {
+  "reqwest blocking client" => /reqwest::blocking::Client/,
+  "direct reqwest client construction" => /reqwest::Client(?:::\w+)?\s*\(/,
+  "direct TCP connect" => /TcpStream::connect\s*\(/,
+  "direct tungstenite connect" => /tungstenite::(?:client::)?connect\s*\(/
+}.freeze
+TRANSPORT_OWNERS = Set[
+  "codex-http-client",
+  "codex-websocket-client",
+  "hepta-egress"
+].freeze
+
+def metadata
+  output, status = Open3.capture2e(
+    "cargo", "metadata", "--format-version", "1", "--locked", "--offline",
+    "--manifest-path", MANIFEST.to_s
+  )
+  raise "cargo metadata failed: #{output}" unless status.success?
+
+  JSON.parse(output)
+end
+
+def normal_dependency_closure(document, root_name)
+  # Cargo metadata resolves the entire workspace feature union, so walking its
+  # nodes would incorrectly pull optional runner/provider crates into the
+  # default production artifact. cargo tree evaluates the selected package's
+  # actual default feature set and target, which is the closure we release.
+  output, status = Open3.capture2e(
+    "cargo", "tree", "-p", root_name, "-e", "normal", "--locked", "--offline",
+    "--prefix", "none", "--format", "{p}", "--manifest-path", MANIFEST.to_s
+  )
+  raise "cargo tree failed: #{output}" unless status.success?
+
+  active_names = output.lines.map { |line| line[/\A([^ ]+) v[^ ]+/, 1] }.compact.to_set
+  document.fetch("packages").select { |package| active_names.include?(package.fetch("name")) }
+end
+
+def production_sources(package)
+  manifest = Pathname(package.fetch("manifest_path"))
+  root = manifest.parent
+  return [] unless root.to_s.start_with?(ROOT.join("codex-rs").to_s)
+
+  Dir.glob(root.join("src/**/*.rs")).sort.reject do |path|
+    path.include?("/tests/") || path.end_with?("_tests.rs") || path.end_with?("/tests.rs")
+  end
+end
+
+def verify
+  packages = normal_dependency_closure(metadata, "hepta-cli")
+  violations = []
+  packages.each do |package|
+    next if TRANSPORT_OWNERS.include?(package.fetch("name"))
+    production_sources(package).each do |path|
+      source = File.binread(path)
+      FORBIDDEN.each do |label, pattern|
+        next unless source.match?(pattern)
+        violations << "#{label}: #{Pathname(path).relative_path_from(ROOT)}"
+      end
+    end
+  end
+  raise "active binary dependency closure has direct egress bypasses:\n#{violations.uniq.sort.join("\n")}" unless violations.empty?
+  puts JSON.generate({
+    schema: "hepta_active_egress_closure_v1",
+    status: "ready",
+    root_package: "hepta-cli",
+    normal_dependency_package_count: packages.length,
+    transport_owners: TRANSPORT_OWNERS.to_a.sort,
+    forbidden_patterns: FORBIDDEN.keys.sort,
+    violation_count: 0
+  })
+end
+
+case ARGV
+when ["verify"]
+  verify
+else
+  warn "usage: scripts/hepta-active-egress-closure verify"
+  exit 2
+end

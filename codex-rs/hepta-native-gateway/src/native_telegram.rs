@@ -153,6 +153,12 @@ const LOCAL_IMPORT_CONFIG_PATH: &str = ".hepta/local-import/private/config/openc
 const LOCAL_IMPORT_MANIFEST_PATH: &str = ".hepta/local-import/manifest.json";
 pub(crate) const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor.json";
 pub(crate) const TELEGRAM_DELIVERY_LEDGER_PATH: &str = ".hepta/telegram/delivery-ledger.jsonl";
+
+fn typed_state_path(legacy_path: &str) -> PathBuf {
+    hepta_paths::HeptaStateRoot::discover()
+        .and_then(|root| root.resolve_legacy_default(legacy_path))
+        .unwrap_or_else(|error| panic!("invalid typed Hepta state path {legacy_path}: {error}"))
+}
 pub(crate) const TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER";
 pub(crate) const TELEGRAM_HEPTA_KERNEL_RUNNER_ENV: &str =
@@ -325,9 +331,11 @@ pub(crate) fn execute_operator_authorized_telegram_drain(
         anyhow::bail!("operator-authorized Telegram pipeline requires all legacy live gates");
     }
     let token = RefCell::new(None::<Zeroizing<String>>);
+    let delivery_ledger_path = typed_state_path(TELEGRAM_DELIVERY_LEDGER_PATH);
+    let ingress_cursor_path = typed_state_path(TELEGRAM_INGRESS_CURSOR_PATH);
     permit.execute_with(
-        Path::new(TELEGRAM_DELIVERY_LEDGER_PATH),
-        Path::new(TELEGRAM_INGRESS_CURSOR_PATH),
+        &delivery_ledger_path,
+        &ingress_cursor_path,
         |request| {
             let config = load_telegram_execution_config_status();
             if !config.config_ready() {
@@ -549,9 +557,10 @@ fn run_telegram_poll_loop(requested: bool, poll_ms: u64, runtime: Arc<NativeGate
 }
 
 pub(crate) fn telegram_cursor_status(requested: bool) -> NativeTelegramCursorStatus {
+    let cursor_path = typed_state_path(TELEGRAM_INGRESS_CURSOR_PATH);
     crate::telegram_durable_files::cursor_status(
         requested,
-        Path::new(TELEGRAM_INGRESS_CURSOR_PATH),
+        &cursor_path,
         TELEGRAM_INGRESS_CURSOR_PATH,
     )
 }
@@ -559,9 +568,10 @@ pub(crate) fn telegram_cursor_status(requested: bool) -> NativeTelegramCursorSta
 pub(crate) fn telegram_delivery_ledger_status(
     requested: bool,
 ) -> NativeTelegramDeliveryLedgerStatus {
+    let ledger_path = typed_state_path(TELEGRAM_DELIVERY_LEDGER_PATH);
     hepta_gateway::telegram_delivery_ledger_status(
         requested,
-        Path::new(TELEGRAM_DELIVERY_LEDGER_PATH),
+        &ledger_path,
         TELEGRAM_DELIVERY_LEDGER_PATH,
     )
 }
@@ -584,9 +594,10 @@ fn telegram_drain_once_status_with_gates(
     let mut send_execution = preflight.send_execution;
     let mut model_execution = preflight.model_execution;
     let execution_plan = preflight.execution_plan;
+    let ingress_cursor_path = typed_state_path(TELEGRAM_INGRESS_CURSOR_PATH);
     let runtime_cursor_status = preflight
         .status_probe_executes_pipeline
-        .then(|| telegram_cursor_status_from_path(Path::new(TELEGRAM_INGRESS_CURSOR_PATH)));
+        .then(|| telegram_cursor_status_from_path(&ingress_cursor_path));
     let runtime_admission_error = if preflight.status_probe_executes_pipeline {
         match runtime {
             Some(runtime) => runtime
@@ -674,6 +685,10 @@ fn telegram_drain_once_status_with_gates(
                             status = fetch_plan.status;
                             error = fetch_plan.error;
                             if fetch_plan.should_execute_pipeline {
+                                let ingress_cursor_path =
+                                    typed_state_path(TELEGRAM_INGRESS_CURSOR_PATH);
+                                let delivery_ledger_path =
+                                    typed_state_path(TELEGRAM_DELIVERY_LEDGER_PATH);
                                 let model_runner_plan = telegram_model_runner_plan();
                                 let pipeline = execute_telegram_drain_pipeline_for_updates(
                                     NativeTelegramDrainPipelineInput {
@@ -681,10 +696,8 @@ fn telegram_drain_once_status_with_gates(
                                         next_update_offset: cursor_status.next_update_offset,
                                         token: Some(token.as_str()),
                                         gates: &gates,
-                                        cursor_path: Path::new(TELEGRAM_INGRESS_CURSOR_PATH),
-                                        delivery_ledger_path: Path::new(
-                                            TELEGRAM_DELIVERY_LEDGER_PATH,
-                                        ),
+                                        cursor_path: &ingress_cursor_path,
+                                        delivery_ledger_path: &delivery_ledger_path,
                                         model_failure_fallback_enabled:
                                             telegram_model_failure_fallback_enabled(),
                                         model_failure_fallback_message:
@@ -903,7 +916,8 @@ fn telegram_receive_once_status_with_gate(
         }
     };
 
-    let cursor_status = telegram_cursor_status_from_path(Path::new(TELEGRAM_INGRESS_CURSOR_PATH));
+    let ingress_cursor_path = typed_state_path(TELEGRAM_INGRESS_CURSOR_PATH);
+    let cursor_status = telegram_cursor_status_from_path(&ingress_cursor_path);
     let get_updates_offset = cursor_status.next_update_offset;
     let shell_readiness =
         plan_telegram_receive_once_shell_readiness(NativeTelegramReceiveOnceShellReadinessInput {
@@ -1360,12 +1374,12 @@ fn resolve_private_hepta_runtime_config_path() -> Option<PathBuf> {
         }
     }
 
-    let relative = PathBuf::from(LOCAL_IMPORT_CONFIG_PATH);
+    let relative = typed_state_path(LOCAL_IMPORT_CONFIG_PATH);
     if relative.is_file() {
         return Some(relative);
     }
 
-    let manifest = PathBuf::from(LOCAL_IMPORT_MANIFEST_PATH);
+    let manifest = typed_state_path(LOCAL_IMPORT_MANIFEST_PATH);
     if let Ok(raw) = fs::read_to_string(&manifest)
         && let Ok(value) = serde_json::from_str::<Value>(&raw)
         && let Some(import_root) = value.get("import_root").and_then(Value::as_str)
@@ -1842,29 +1856,29 @@ fn run_mlx_local_chat_completion(
         .ok_or_else(|| "Telegram MLX runner requires a max token limit".to_string())?;
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let body = native_telegram_mlx_chat_completion_body(model, prompt, max_tokens)?;
-    let client = hepta_gateway::bounded_blocking_http_client(telegram_model_timeout())
-        .map_err(|error| format!("failed to build local MLX model client: {error}"))?;
-    let response = client.post(endpoint).json(&body).send().map_err(|error| {
-        format!(
-            "local MLX chat-completions request failed: {}",
-            error.without_url()
-        )
-    })?;
-    let status = response.status();
-    let body = response
-        .json::<Value>()
-        .map_err(|error| format!("failed to parse local MLX response JSON: {error}"))?;
-    if !status.is_success() {
+    let response = hepta_gateway::execute_outbound_json(hepta_gateway::JsonEgressRequest {
+        capability: hepta_gateway::OutboundHttpCapability::LiteralLoopbackProvider,
+        method: hepta_gateway::JsonMethod::Post,
+        url: endpoint,
+        query: Vec::new(),
+        bearer_token: None,
+        body: Some(body),
+        timeout: telegram_model_timeout(),
+    })
+    .map_err(|error| format!("local MLX chat-completions request failed: {error}"))?;
+    if !(200..300).contains(&response.status) {
         return Err(format!(
             "local MLX chat-completions HTTP status {}; description={}",
-            status.as_u16(),
-            body.pointer("/error/message")
+            response.status,
+            response
+                .body
+                .pointer("/error/message")
                 .and_then(Value::as_str)
                 .map(redact_token_like_text)
                 .unwrap_or_else(|| "missing".to_string())
         ));
     }
-    extract_native_telegram_openai_chat_completion_text(&body)
+    extract_native_telegram_openai_chat_completion_text(&response.body)
 }
 
 fn run_hepta_in_process_model_turn_with_context(

@@ -6,8 +6,8 @@ license.workspace = true
 
 [dependencies]
 hepta-core.workspace = true
+hepta-egress.workspace = true
 hepta-runtime.workspace = true
-reqwest = { workspace = true, features = ["blocking", "json", "rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 

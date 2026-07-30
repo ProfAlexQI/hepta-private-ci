@@ -1189,11 +1189,9 @@ fn openai_codex_auth_profile_paths() -> Vec<PathBuf> {
         }
     }
     for agent in ["hepta", "main"] {
-        push_candidate(
-            PathBuf::from(".hepta/local-import/private/agents")
-                .join(agent)
-                .join("agent/auth-profiles.json"),
-        );
+        if let Ok(root) = default_state_path(".hepta/local-import/private/agents") {
+            push_candidate(root.join(agent).join("agent/auth-profiles.json"));
+        }
     }
     candidates
 }
@@ -1676,12 +1674,13 @@ fn local_import_private_config_paths() -> Vec<PathBuf> {
             }
         }
     }
-    for candidate in [
-        PathBuf::from(".hepta/local-import/private/config/hepta_runtime.json"),
-        PathBuf::from(".hepta/local-import/private/config")
-            .join(source_runtime_config_name.as_str()),
-    ] {
-        push_candidate(candidate);
+    if let Ok(root) = default_state_path(".hepta/local-import/private/config") {
+        for candidate in [
+            root.join("hepta_runtime.json"),
+            root.join(source_runtime_config_name.as_str()),
+        ] {
+            push_candidate(candidate);
+        }
     }
 
     candidates
@@ -2189,66 +2188,19 @@ fn http_post_json_plaintext(
     payload: &Value,
     timeout_ms: Option<u64>,
 ) -> Result<String, String> {
-    let parsed = parse_plain_http_url(url)?;
-    if parsed.scheme != "http" {
-        return Err(format!(
-            "Hepta native provider currently allows plain HTTP only for local providers; unsupported scheme: {}",
-            parsed.scheme
-        ));
-    }
-    let body = payload.to_string();
-    let mut headers = format!(
-        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nAccept: application/json\r\nConnection: close\r\nContent-Length: {}\r\n",
-        parsed.path,
-        parsed.host_header,
-        body.len()
-    );
-    if let Some(token) = bearer_token.filter(|token| !token.trim().is_empty()) {
-        headers.push_str(&format!("Authorization: Bearer {}\r\n", token));
-    }
-    headers.push_str("\r\n");
-    let mut stream = TcpStream::connect((parsed.host.as_str(), parsed.port))
-        .map_err(|err| format!("failed to connect provider {}: {}", parsed.host_header, err))?;
-    let read_timeout = provider_read_timeout_duration(timeout_ms);
-    stream
-        .set_read_timeout(Some(read_timeout))
-        .map_err(|err| format!("failed to set provider read timeout: {}", err))?;
-    stream
-        .set_write_timeout(Some(std::time::Duration::from_secs(15)))
-        .map_err(|err| format!("failed to set provider write timeout: {}", err))?;
-    stream
-        .write_all(headers.as_bytes())
-        .and_then(|_| stream.write_all(body.as_bytes()))
-        .map_err(|err| format!("failed to write provider request: {}", err))?;
-    let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).map_err(|err| {
-        if matches!(
-            err.kind(),
-            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-        ) {
-            format!(
-                "provider read timeout after {} ms",
-                read_timeout.as_millis()
-            )
-        } else {
-            format!("failed to read provider response: {}", err)
-        }
+    let response = hepta_egress::execute_json(hepta_egress::JsonEgressRequest {
+        capability: hepta_egress::OutboundHttpCapability::LiteralLoopbackProvider,
+        method: hepta_egress::JsonMethod::Post,
+        url: url.to_string(),
+        query: Vec::new(),
+        bearer_token: bearer_token.map(str::to_string),
+        body: Some(payload.clone()),
+        timeout: provider_read_timeout_duration(timeout_ms),
     })?;
-    let raw_text = String::from_utf8_lossy(&raw).to_string();
-    let (head, body) = raw_text
-        .split_once("\r\n\r\n")
-        .ok_or_else(|| "provider returned malformed HTTP response".to_string())?;
-    let status_line = head.lines().next().unwrap_or_default();
-    if !status_line.contains(" 200 ") {
-        return Err(format!("provider returned non-200 status: {}", status_line));
+    if !(200..300).contains(&response.status) {
+        return Err(format!("provider returned non-success status: {}", response.status));
     }
-    if head
-        .lines()
-        .any(|line| line.eq_ignore_ascii_case("transfer-encoding: chunked"))
-    {
-        return decode_http_chunked_body(body);
-    }
-    Ok(body.to_string())
+    Ok(response.body.to_string())
 }
 
 fn provider_read_timeout_duration(timeout_ms: Option<u64>) -> std::time::Duration {
@@ -2262,70 +2214,15 @@ fn provider_read_timeout_duration(timeout_ms: Option<u64>) -> std::time::Duratio
     std::time::Duration::from_millis(timeout_ms)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PlainHttpUrl {
-    scheme: String,
-    host: String,
-    port: u16,
-    host_header: String,
-    path: String,
-}
-
-fn parse_plain_http_url(url: &str) -> Result<PlainHttpUrl, String> {
-    let (scheme, rest) = url
-        .split_once("://")
-        .ok_or_else(|| format!("invalid URL: {}", url))?;
-    let (authority, path) = match rest.split_once('/') {
-        Some((authority, path)) => (authority, format!("/{}", path)),
-        None => (rest, "/".to_string()),
-    };
-    if authority.is_empty() {
-        return Err(format!("invalid URL authority: {}", url));
-    }
-    let (host, port) = if let Some((host, port_text)) = authority.rsplit_once(':') {
-        let port = port_text
-            .parse::<u16>()
-            .map_err(|_| format!("invalid URL port: {}", port_text))?;
-        (host.to_string(), port)
-    } else {
-        (
-            authority.to_string(),
-            if scheme == "https" { 443 } else { 80 },
-        )
-    };
-    Ok(PlainHttpUrl {
-        scheme: scheme.to_string(),
-        host,
-        port,
-        host_header: authority.to_string(),
-        path,
-    })
-}
-
-fn decode_http_chunked_body(body: &str) -> Result<String, String> {
-    let mut rest = body;
-    let mut decoded = String::new();
-    loop {
-        let (size_line, after_size) = rest
-            .split_once("\r\n")
-            .ok_or_else(|| "malformed chunked provider response".to_string())?;
-        let size = usize::from_str_radix(size_line.trim(), 16)
-            .map_err(|_| format!("invalid HTTP chunk size: {}", size_line))?;
-        if size == 0 {
-            return Ok(decoded);
-        }
-        if after_size.len() < size + 2 {
-            return Err("truncated chunked provider response".into());
-        }
-        decoded.push_str(&after_size[..size]);
-        rest = &after_size[size + 2..];
-    }
-}
-
 #[cfg(not(test))]
 fn imported_startup_provider_descriptors() -> Vec<ProviderDescriptor> {
-    let manifest_path = std::env::var("HEPTA_LOCAL_CONFIG_IMPORT_MANIFEST")
-        .unwrap_or_else(|_| ".hepta/local-import/manifest.json".into());
+    let manifest_path = match std::env::var("HEPTA_LOCAL_CONFIG_IMPORT_MANIFEST") {
+        Ok(path) => PathBuf::from(path),
+        Err(_) => match default_state_path(".hepta/local-import/manifest.json") {
+            Ok(path) => path,
+            Err(_) => return Vec::new(),
+        },
+    };
     hepta_core::LocalConfigImportStatus::from_manifest_path(manifest_path)
         .manifest
         .and_then(|manifest| manifest.startup_config)
