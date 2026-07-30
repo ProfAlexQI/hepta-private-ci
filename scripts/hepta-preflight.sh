@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+HEPTA_RUST_TOOLCHAIN="${HEPTA_RUST_TOOLCHAIN:-1.95.0}"
+if ! command -v rustup >/dev/null 2>&1; then
+  echo "[hepta-preflight] rustup is required for pinned Rust ${HEPTA_RUST_TOOLCHAIN}" >&2
+  exit 2
+fi
+hepta_cargo() {
+  rustup run "$HEPTA_RUST_TOOLCHAIN" cargo "$@"
+}
 # hepta-preflight-resume: prelude-start
 REPO_ROOT="$PWD"
 source "$REPO_ROOT/scripts/lib/hepta-release-provenance.sh"
@@ -25,7 +33,7 @@ budgeted_cargo_test() {
     --max-seconds "$max_seconds" \
     --workspace "$PWD" \
     --max-dirty-delta "$HEPTA_TEST_MAX_DIRTY_DELTA" \
-    -- cargo test "$@"
+    -- rustup run "$HEPTA_RUST_TOOLCHAIN" cargo test "$@"
 }
 assert_test_inventory() {
   hepta_v2_assert_test_inventory "$@"
@@ -52,7 +60,7 @@ if [[ "${HEPTA_JSON_REPORT_CAPTURE_CACHE:-1}" != "0" \
 fi
 echo "[hepta-preflight] metadata"
 PREFLIGHT_RELEASE_TARGET_DIR="$(
-  cargo metadata --offline --manifest-path "$MANIFEST" --no-deps --format-version 1 \
+  hepta_cargo metadata --offline --manifest-path "$MANIFEST" --no-deps --format-version 1 \
     | tee /tmp/hepta-preflight-metadata.json \
     | jq -r '.target_directory'
 )"
@@ -60,7 +68,7 @@ PREFLIGHT_RELEASE_TARGET_DIR="$(
 echo "[hepta-preflight] fmt"
 just fmt-check
 echo "[hepta-preflight] cargo check"
-cargo check --offline --manifest-path "$MANIFEST" -q \
+hepta_cargo check --offline --manifest-path "$MANIFEST" -q \
   -p hepta-contracts \
   -p hepta-core \
   -p hepta-intelligence \
@@ -71,17 +79,17 @@ cargo check --offline --manifest-path "$MANIFEST" -q \
   -p hepta-gateway \
   -p hepta-cli --bin hepta
 echo "[hepta-preflight] source route/effect/gate manifest binary"
-cargo build --offline --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
+hepta_cargo build --offline --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
 export HEPTA_ROUTE_MANIFEST_BIN="$PREFLIGHT_RELEASE_TARGET_DIR/debug/hepta"
 echo "[hepta-preflight] Architecture V2 contract boundary tests"
 assert_test_inventory "Architecture V2 stable contracts" 12 '.*' \
   codex-rs/hepta-contracts/tests/stable_contracts.rs
 budgeted_cargo_test architecture-v2-contracts "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
   --offline --manifest-path "$MANIFEST" -q -p hepta-contracts
-cargo clippy --offline --manifest-path "$MANIFEST" -q \
+hepta_cargo clippy --offline --manifest-path "$MANIFEST" -q \
   -p hepta-contracts --tests -- -D warnings
 echo "[hepta-preflight] Architecture V2 crate lint gates"
-cargo clippy --offline --manifest-path "$MANIFEST" -q \
+hepta_cargo clippy --offline --manifest-path "$MANIFEST" -q \
   -p hepta-intelligence \
   -p hepta-memory \
   -p hepta-runtime \
@@ -988,17 +996,17 @@ echo "[hepta-preflight] control-ui smoke"
 CARGO_NET_OFFLINE=true scripts/hepta-control-ui-smoke.sh
 if [[ "$RUN_NATIVE" == "1" ]]; then
   echo "[hepta-preflight] native app metadata/check/tests"
-  cargo metadata --offline --locked --manifest-path "$NATIVE_MANIFEST" --no-deps --format-version 1 >/tmp/hepta-native-preflight-metadata.json
-  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" cargo check --offline --locked --manifest-path "$NATIVE_MANIFEST"
-  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" cargo test --offline --locked --manifest-path "$NATIVE_MANIFEST" hepta_ -- --nocapture
+  hepta_cargo metadata --offline --locked --manifest-path "$NATIVE_MANIFEST" --no-deps --format-version 1 >/tmp/hepta-native-preflight-metadata.json
+  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" hepta_cargo check --offline --locked --manifest-path "$NATIVE_MANIFEST"
+  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" hepta_cargo test --offline --locked --manifest-path "$NATIVE_MANIFEST" hepta_ -- --nocapture
 else
   echo "[hepta-preflight] native app gates skipped (HEPTA_PREFLIGHT_NATIVE=$RUN_NATIVE)"
 fi
 if [[ "$RUN_RELEASE" == "1" ]]; then
   echo "[hepta-preflight] release build compatibility codex-cli"
-  cargo build --release --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta-codex-compat
+  hepta_cargo build --release --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta-codex-compat
   echo "[hepta-preflight] release build active hepta-cli"
-  cargo build --release --offline --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
+  hepta_cargo build --release --offline --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
 else
   echo "[hepta-preflight] release build skipped (set HEPTA_PREFLIGHT_RELEASE=1)"
 fi
