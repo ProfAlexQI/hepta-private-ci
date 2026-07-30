@@ -475,9 +475,8 @@ impl McpConnectionManager {
                     "resources/list",
                     timeout,
                     |cursor| async {
-                        let params = cursor.map(|next| {
-                            PaginatedRequestParams::default().with_cursor(Some(next))
-                        });
+                        let params = cursor
+                            .map(|next| PaginatedRequestParams::default().with_cursor(Some(next)));
                         let response = client.list_resources(params, timeout).await?;
                         Ok((response.resources, response.next_cursor))
                     },
@@ -526,9 +525,8 @@ impl McpConnectionManager {
                     "resources/templates/list",
                     timeout,
                     |cursor| async {
-                        let params = cursor.map(|next| {
-                            PaginatedRequestParams::default().with_cursor(Some(next))
-                        });
+                        let params = cursor
+                            .map(|next| PaginatedRequestParams::default().with_cursor(Some(next)));
                         let response = client.list_resource_templates(params, timeout).await?;
                         Ok((response.resource_templates, response.next_cursor))
                     },

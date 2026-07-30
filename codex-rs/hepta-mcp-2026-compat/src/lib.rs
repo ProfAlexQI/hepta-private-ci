@@ -70,9 +70,7 @@ where
     Fut: Future<Output = Result<(Vec<T>, Option<String>)>>,
 {
     collect_paginated_bounded(method, overall_timeout, |cursor| {
-        let params = cursor.map(|next| {
-            PaginatedRequestParams::default().with_cursor(Some(next))
-        });
+        let params = cursor.map(|next| PaginatedRequestParams::default().with_cursor(Some(next)));
         fetch(params)
     })
     .await
