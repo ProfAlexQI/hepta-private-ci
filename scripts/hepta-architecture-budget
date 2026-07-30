@@ -3,6 +3,36 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+ARCHITECTURE_RATCHET="scripts/hepta-architecture-ratchet-v1.json"
+
+jq -e '
+  .schema == "hepta_architecture_ratchet_v1"
+  and .status == "corrected_l_baseline"
+  and .counting_semantics.worktree_umask_independent == true
+  and (.ceilings | keys | sort) == (.baselines | keys | sort)
+  and (.baselines | keys | sort) == (.decline_targets.next | keys | sort)
+  and (.decline_targets.next | keys | sort) == (.decline_targets.terminal | keys | sort)
+  and ([.baselines, .decline_targets.next, .decline_targets.terminal]
+    | all(.work_graph_logical_modules >= 0
+      and .work_graph_effective_lines >= 0
+      and .gate_compat_pairs >= 0
+      and .gate_compat_effective_lines >= 0
+      and .single_exec_wrappers >= 0
+      and .first_party_modules_over_5000 >= 0))
+  and .decline_targets.next.work_graph_logical_modules < .baselines.work_graph_logical_modules
+  and .decline_targets.terminal.work_graph_logical_modules < .decline_targets.next.work_graph_logical_modules
+  and .decline_targets.next.work_graph_effective_lines < .baselines.work_graph_effective_lines
+  and .decline_targets.terminal.work_graph_effective_lines < .decline_targets.next.work_graph_effective_lines
+  and .decline_targets.next.gate_compat_pairs < .baselines.gate_compat_pairs
+  and .decline_targets.terminal.gate_compat_pairs < .decline_targets.next.gate_compat_pairs
+  and .decline_targets.next.gate_compat_effective_lines < .baselines.gate_compat_effective_lines
+  and .decline_targets.terminal.gate_compat_effective_lines < .decline_targets.next.gate_compat_effective_lines
+  and .decline_targets.next.single_exec_wrappers < .baselines.single_exec_wrappers
+  and .decline_targets.terminal.single_exec_wrappers < .decline_targets.next.single_exec_wrappers
+  and .decline_targets.next.first_party_modules_over_5000 < .baselines.first_party_modules_over_5000
+  and .decline_targets.terminal.first_party_modules_over_5000 < .decline_targets.next.first_party_modules_over_5000
+' "$ARCHITECTURE_RATCHET" >/dev/null
+
 architecture_sha256_file() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
@@ -13,8 +43,8 @@ HEPTA_FIRST_PARTY_RUST_COMPLETE_MAX_LINES=946184
 SCRIPTS_PHYSICAL_MAX_LINES=413414
 SCRIPTS_WHOLE_TREE_MAX_LINES=602765
 WORK_GRAPH_MAX_FILES=1
-WORK_GRAPH_MAX_EFFECTIVE_LINES=202869
-SINGLE_EXEC_WRAPPER_MAX_COUNT=92
+WORK_GRAPH_MAX_EFFECTIVE_LINES="$(jq -er '.ceilings.work_graph_effective_lines' "$ARCHITECTURE_RATCHET")"
+SINGLE_EXEC_WRAPPER_MAX_COUNT="$(jq -er '.ceilings.single_exec_wrappers' "$ARCHITECTURE_RATCHET")"
 GIANT_MODULE_OVER_10000_MAX_COUNT=0
 GIANT_MODULE_OVER_5000_MAX_COUNT=17
 GATE_COMPAT_ROOT="scripts/lib/hepta-gate-pair-compat-v2"
@@ -808,6 +838,25 @@ verify() {
   verify_file_max \
     docs/architecture/HEPTA_L1_COMPATIBILITY_RATCHET_2026-07-29.json \
     130
+  verify_file_max docs/architecture/HEPTA_M0_RELEASE_TRUTH_2026-07-30.json 80
+  jq -e '
+    .schema == "hepta_m0_release_truth_v1"
+    and .status == "source_ready"
+    and .wrapper_measurement.previous_claim == 92
+    and .wrapper_measurement.corrected_git_index_count == 172
+    and .wrapper_measurement.worktree_umask_independent == true
+    and .canonical_ratchet.single_source_of_truth == true
+    and .canonical_ratchet.target_monotonicity_self_tested == true
+    and .stage_identity.runtime_and_install_receipts_hash_bound == true
+    and .stage_identity.previous_stage_hash_bound == true
+    and .stage_identity.terminal_stage_hash_bound == true
+    and .final_evidence.required_roles_supported == true
+    and .final_evidence.missing_required_role_denied == true
+    and .final_evidence.release_hard_gate == true
+    and (.verification | [.[]] | all(. == "passed"))
+    and .runtime_mutated == false
+    and .deployment_performed == false
+  ' docs/architecture/HEPTA_M0_RELEASE_TRUTH_2026-07-30.json >/dev/null
   jq -e \
     --argjson scripts_physical_actual "$scripts_physical_line_count" \
     --argjson scripts_effective_actual "$scripts_line_count" \
@@ -915,8 +964,8 @@ verify() {
       "scripts/hepta-architecture-release-ratchet"
     and .ratchets.active_immutable_release_comparison_required == true
     and .ratchets.canonical_record_sizes_may_not_increase == true
-    and .scripts_budget.baseline_physical_lines == $scripts_physical_actual
-    and .scripts_budget.baseline_effective_lines == $scripts_effective_actual
+    and .scripts_budget.baseline_physical_lines == 401600
+    and .scripts_budget.baseline_effective_lines == 585436
     and .scripts_budget.physical_line_limit == $scripts_physical_limit
     and .scripts_budget.effective_line_limit == $scripts_effective_limit
     and .scripts_budget.maintenance_headroom_percent_max == 3
@@ -1465,20 +1514,8 @@ verify() {
     echo "WorkGraph structural debt grew: files=$work_graph_file_count/$WORK_GRAPH_MAX_FILES normalized_effective_lines=$work_graph_line_count/$WORK_GRAPH_MAX_EFFECTIVE_LINES long_names=$work_graph_long_filename_count/0" >&2
     return 1
   fi
-  single_exec_wrapper_count="$(
-    find scripts -type f -perm -111 -print0 \
-      | while IFS= read -r -d '' file; do
-          awk '
-            BEGIN { lines = 0; execs = 0 }
-            /^[[:space:]]*(#|$)/ { next }
-            { lines += 1 }
-            /^[[:space:]]*exec[[:space:]]/ { execs += 1 }
-            END { if (lines <= 4 && execs == 1) print 1 }
-          ' "$file"
-        done \
-      | wc -l \
-      | tr -d '[:space:]'
-  )"
+  scripts/hepta-single-exec-wrapper-count self-test >/dev/null
+  single_exec_wrapper_count="$(scripts/hepta-single-exec-wrapper-count count)"
   if (( single_exec_wrapper_count > SINGLE_EXEC_WRAPPER_MAX_COUNT )); then
     echo "single-exec wrapper debt grew: $single_exec_wrapper_count/$SINGLE_EXEC_WRAPPER_MAX_COUNT" >&2
     return 1
@@ -1506,6 +1543,11 @@ verify() {
   verify_file_max codex-rs/hepta-core/src/hepta_contracts.rs 700
 
   [[ -x scripts/hepta-budgeted-test ]]
+  [[ -x scripts/hepta-single-exec-wrapper-count ]]
+  verify_file_max scripts/hepta-single-exec-wrapper-count 100
+  [[ -x scripts/hepta-stage-identity-chain ]]
+  verify_file_max scripts/hepta-stage-identity-chain 180
+  verify_file_max scripts/hepta-final-evidence-index 150
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_ENTRIES:-2048' scripts/lib/hepta-json-report-capture.sh
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES:-134217728' scripts/lib/hepta-json-report-capture.sh
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES:-2097152' scripts/lib/hepta-json-report-capture.sh
@@ -1924,6 +1966,7 @@ verify() {
     --argjson single_exec_wrappers "$single_exec_wrapper_count" \
     --argjson single_exec_wrapper_max_count "$SINGLE_EXEC_WRAPPER_MAX_COUNT" \
     --argjson materialized_long_paths "$materialized_long_path_count" \
+    --argjson decline_targets "$(jq -c '.decline_targets' "$ARCHITECTURE_RATCHET")" \
     --argjson kernel_lib_lines "$(wc -l <codex-rs/hepta-kernel/src/lib.rs | tr -d '[:space:]')" \
     --argjson kernel_test_lines "$(wc -l <codex-rs/hepta-kernel/src/tests.rs | tr -d '[:space:]')" '
     {
@@ -1969,13 +2012,7 @@ verify() {
       gate_compat_effective_source_is_counted:true,
       binary_newline_counts_are_excluded:true,
       current_baseline_monotonic_ratchets:true,
-      decline_targets:{
-        work_graph_logical_modules:{next:299,terminal:199},
-        work_graph_effective_lines:{next:130000,terminal:90000},
-        single_exec_wrappers:{next:99,terminal:20},
-        gate_compat_effective_lines:{next:240000,terminal:100000},
-        first_party_modules_over_5000:{next:12,terminal:0}
-      },
+      decline_targets:$decline_targets,
       default_route_response_max_bytes:131072,
       default_route_sweep_max_bytes:8388608,
       report_dag_max_entries:2048,

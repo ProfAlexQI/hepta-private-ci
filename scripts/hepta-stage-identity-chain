@@ -1,0 +1,129 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "pathname"
+
+SCHEMA = "hepta_stage_identity_chain_v1"
+SHA256 = /\A[0-9a-f]{64}\z/
+STAGE = /\A[a-z0-9][a-z0-9_-]*\z/
+
+def canonical_json(value)
+  JSON.generate(value.sort.to_h)
+end
+
+def sha256_file(path)
+  Digest::SHA256.file(path).hexdigest
+end
+
+def validate_runtime(runtime)
+  raise "runtime receipt is not ready" unless runtime["status"] == "ready"
+  raise "runtime PID is invalid" unless runtime["pid"].is_a?(Integer) && runtime["pid"].positive?
+  executable = Pathname(runtime.fetch("executable"))
+  raise "runtime executable path is not absolute" unless executable.absolute?
+  raise "runtime artifact SHA is invalid" unless SHA256.match?(runtime.fetch("artifact_sha256"))
+  raise "runtime health is not ready" unless runtime["health"] == "ready"
+end
+
+def validate_install(install)
+  raise "install receipt is not ready" unless install["status"] == "ready"
+  raise "gateway was not loaded" unless install["loaded"] == true
+  raise "loaded plist digest was not verified" unless install["loaded_path_digest_verified"] == true
+  raise "install receipt depends on a mutable worktree" unless install["mutable_worktree_dependency"] == false
+end
+
+def read_rows(path)
+  File.readlines(path, chomp: true).reject(&:empty?).map do |line|
+    stage, runtime_path, install_path = line.split("\t", 3)
+    raise "stage row must contain stage, runtime, and install paths" unless stage && runtime_path && install_path
+    raise "invalid or duplicate stage" unless STAGE.match?(stage)
+    runtime_file = Pathname(runtime_path).realpath
+    install_file = Pathname(install_path).realpath
+    raise "stage receipts must be regular non-symlink files" unless runtime_file.file? &&
+      install_file.file? && !runtime_file.symlink? && !install_file.symlink?
+    runtime = JSON.parse(runtime_file.read)
+    install = JSON.parse(install_file.read)
+    validate_runtime(runtime)
+    validate_install(install)
+    {
+      "stage" => stage,
+      "runtime_receipt" => runtime_file.to_s,
+      "runtime_receipt_sha256" => sha256_file(runtime_file),
+      "install_receipt" => install_file.to_s,
+      "install_receipt_sha256" => sha256_file(install_file),
+      "pid" => runtime.fetch("pid"),
+      "executable" => runtime.fetch("executable"),
+      "artifact_sha256" => runtime.fetch("artifact_sha256"),
+      "health" => runtime.fetch("health")
+    }
+  end
+end
+
+def bind_chain(rows)
+  previous = "0" * 64
+  rows.map do |row|
+    bound = row.merge("previous_stage_sha256" => previous)
+    digest = Digest::SHA256.hexdigest(canonical_json(bound))
+    previous = digest
+    bound.merge("stage_sha256" => digest)
+  end
+end
+
+def validate_chain(document)
+  raise "invalid stage identity schema" unless document["schema"] == SCHEMA
+  raise "stage identity chain is not ready" unless document["status"] == "ready"
+  stages = document.fetch("stages")
+  raise "stage identity chain must contain at least three stages" unless stages.length >= 3
+  raise "stage names must be unique" unless stages.map { |stage| stage["stage"] }.uniq.length == stages.length
+  rebound = bind_chain(stages.map { |stage| stage.reject { |key, _| ["previous_stage_sha256", "stage_sha256"].include?(key) } })
+  raise "stage identity hash chain drifted" unless rebound == stages
+  raise "terminal stage hash drifted" unless document["terminal_stage_sha256"] == stages.last["stage_sha256"]
+  stages.each do |stage|
+    runtime_file = Pathname(stage.fetch("runtime_receipt"))
+    install_file = Pathname(stage.fetch("install_receipt"))
+    raise "runtime receipt SHA drifted" unless runtime_file.file? && !runtime_file.symlink? &&
+      sha256_file(runtime_file) == stage["runtime_receipt_sha256"]
+    raise "install receipt SHA drifted" unless install_file.file? && !install_file.symlink? &&
+      sha256_file(install_file) == stage["install_receipt_sha256"]
+    validate_runtime(JSON.parse(runtime_file.read))
+    validate_install(JSON.parse(install_file.read))
+  end
+end
+
+action = ARGV.shift
+case action
+when "build"
+  raise "usage: scripts/hepta-stage-identity-chain build ROWS_TSV OUTPUT" unless ARGV.length == 2
+  rows_path, output_path = ARGV
+  stages = bind_chain(read_rows(rows_path))
+  document = {
+    "schema" => SCHEMA,
+    "status" => "ready",
+    "hash_bound" => true,
+    "stage_count" => stages.length,
+    "stages" => stages,
+    "terminal_stage_sha256" => stages.last.fetch("stage_sha256")
+  }
+  validate_chain(document)
+  output = Pathname(output_path)
+  raise "refusing to overwrite stage identity chain" if output.exist?
+  output.dirname.mkpath
+  temporary = Pathname("#{output}.tmp.#{Process.pid}")
+  File.open(temporary, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+    file.write(JSON.generate(document) + "\n")
+    file.flush
+    file.fsync
+  end
+  File.chmod(0o444, temporary)
+  File.rename(temporary, output)
+  puts JSON.generate(document)
+when "verify"
+  raise "usage: scripts/hepta-stage-identity-chain verify OUTPUT" unless ARGV.length == 1
+  document = JSON.parse(File.read(ARGV.first))
+  validate_chain(document)
+  puts JSON.generate(document)
+else
+  warn "usage: scripts/hepta-stage-identity-chain {build ROWS_TSV OUTPUT|verify OUTPUT}"
+  exit 2
+end

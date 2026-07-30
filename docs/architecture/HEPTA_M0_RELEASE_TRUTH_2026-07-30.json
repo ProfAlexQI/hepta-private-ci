@@ -1,0 +1,42 @@
+{
+  "schema": "hepta_m0_release_truth_v1",
+  "status": "source_ready",
+  "wrapper_measurement": {
+    "previous_claim": 92,
+    "corrected_git_index_count": 172,
+    "counting_semantics": "git_index_100755_and_at_most_four_noncomment_lines_and_exactly_one_exec",
+    "worktree_umask_independent": true,
+    "counter": "scripts/hepta-single-exec-wrapper-count",
+    "counter_sha256": "21f6fc40197ed8285aacab4ea260de1cd95f918279105a639b4a3945aaa08488",
+    "self_test_0700_and_0755": true
+  },
+  "canonical_ratchet": {
+    "path": "scripts/hepta-architecture-ratchet-v1.json",
+    "sha256": "5be066661856b757dce81e1afb1dfa1d46a9351ac6e8153768328de83ea872b5",
+    "single_source_of_truth": true,
+    "target_monotonicity_self_tested": true
+  },
+  "stage_identity": {
+    "tool": "scripts/hepta-stage-identity-chain",
+    "tool_sha256": "63475e7be6fbc3548ba9681b45ea3849b06a6b80bc135c48fdb7ddf25e70a1af",
+    "runtime_and_install_receipts_hash_bound": true,
+    "previous_stage_hash_bound": true,
+    "terminal_stage_hash_bound": true,
+    "l_first_rollback_final_fixture_verified": true
+  },
+  "final_evidence": {
+    "tool": "scripts/hepta-final-evidence-index",
+    "tool_sha256": "90b0402456fd7f58d6cfbd9736a9818e583249a8141256b8916e979a294fab49",
+    "required_roles_supported": true,
+    "missing_required_role_denied": true,
+    "release_hard_gate": true
+  },
+  "verification": {
+    "architecture_budget_self_test": "passed",
+    "immutable_release_tree_self_test": "passed",
+    "watchdog_provenance_self_test": "passed",
+    "active_binary_consistency_self_test": "passed"
+  },
+  "runtime_mutated": false,
+  "deployment_performed": false
+}

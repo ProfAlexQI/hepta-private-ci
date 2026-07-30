@@ -1,0 +1,59 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "fileutils"
+require "open3"
+require "tmpdir"
+
+ROOT = File.expand_path("..", __dir__)
+
+def indexed_executable_paths(root)
+  output, status = Open3.capture2("git", "-C", root, "ls-files", "--stage", "-z", "scripts")
+  raise "git ls-files failed" unless status.success?
+
+  output.split("\0").map do |record|
+    match = record.match(/\A(\d{6}) [0-9a-f]+ \d+\t(.+)\z/)
+    match && match[1] == "100755" ? match[2] : nil
+  end.compact
+end
+
+def single_exec_wrapper?(root, relative)
+  source = File.binread(File.join(root, relative))
+  lines = source.lines.reject { |line| line.match?(/\A\s*(?:#|$)/) }
+  lines.length <= 4 && lines.count { |line| line.match?(/\A\s*exec\s/) } == 1
+end
+
+def count(root)
+  indexed_executable_paths(root).count { |relative| single_exec_wrapper?(root, relative) }
+end
+
+def self_test
+  Dir.mktmpdir("hepta-single-exec-wrapper-count.") do |root|
+    FileUtils.mkdir_p(File.join(root, "scripts"))
+    wrapper = File.join(root, "scripts", "wrapper")
+    File.binwrite(wrapper, "#!/bin/sh\nexec true\n")
+    File.chmod(0o755, wrapper)
+    system("git", "-C", root, "init", "-q", exception: true)
+    system("git", "-C", root, "add", "scripts/wrapper", exception: true)
+    raise "indexed executable wrapper was not counted" unless count(root) == 1
+
+    File.chmod(0o700, wrapper)
+    raise "count depends on owner-only worktree mode" unless count(root) == 1
+    File.chmod(0o755, wrapper)
+    raise "count depends on group/other worktree mode" unless count(root) == 1
+
+    system("git", "-C", root, "update-index", "--chmod=-x", "scripts/wrapper", exception: true)
+    raise "non-executable index entry was counted" unless count(root).zero?
+  end
+  puts "hepta-single-exec-wrapper-count: self-test passed"
+end
+
+case ARGV
+when ["count"]
+  puts count(ROOT)
+when ["self-test"]
+  self_test
+else
+  warn "usage: scripts/hepta-single-exec-wrapper-count {count|self-test}"
+  exit 2
+end

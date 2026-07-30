@@ -15,6 +15,7 @@ scripts/hepta-generation-pointer	0555	true
 scripts/hepta-off-device-archive	0555	true
 scripts/hepta-log-rotate	0555	true
 scripts/hepta-final-evidence-index	0555	true
+scripts/hepta-stage-identity-chain	0555	true
 scripts/hepta-preflight-evidence-pack	0555	true
 scripts/hepta-install-live-watchdog	0555	true
 scripts/hepta-install-live-gateway	0555	true

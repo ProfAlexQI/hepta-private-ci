@@ -8,12 +8,21 @@ shift || true
 case "$action" in
   build)
     [[ "${1:-}" == "--entries-tsv" && -n "${2:-}" \
-      && "${3:-}" == "--output" && -n "${4:-}" && $# == 4 ]] || {
-      echo "usage: scripts/hepta-final-evidence-index build --entries-tsv PATH --output PATH" >&2
+      && "${3:-}" == "--output" && -n "${4:-}" ]] || {
+      echo "usage: scripts/hepta-final-evidence-index build --entries-tsv PATH --output PATH [--required-roles-file PATH]" >&2
       exit 2
     }
     entries_tsv="$2"
     output="$4"
+    required_roles_file=""
+    shift 4
+    if (( $# > 0 )); then
+      [[ "${1:-}" == "--required-roles-file" && -n "${2:-}" && $# == 2 ]] || {
+        echo "usage: scripts/hepta-final-evidence-index build --entries-tsv PATH --output PATH [--required-roles-file PATH]" >&2
+        exit 2
+      }
+      required_roles_file="$2"
+    fi
     ;;
   verify)
     [[ "${1:-}" == "--index" && -n "${2:-}" && $# == 2 ]] || {
@@ -22,6 +31,7 @@ case "$action" in
     }
     output="$2"
     entries_tsv=""
+    required_roles_file=""
     ;;
   *)
     echo "usage: scripts/hepta-final-evidence-index {build|verify} ..." >&2
@@ -29,7 +39,7 @@ case "$action" in
     ;;
 esac
 
-ruby - "$action" "$entries_tsv" "$output" <<'RUBY'
+ruby - "$action" "$entries_tsv" "$output" "$required_roles_file" <<'RUBY'
 # frozen_string_literal: true
 
 require "digest"
@@ -77,16 +87,28 @@ def read_entries(path)
   end
 end
 
-action, entries_path, output_path = ARGV
+action, entries_path, output_path, required_roles_path = ARGV
 if action == "build"
   entries = read_entries(entries_path)
   raise "final evidence index must not be empty" if entries.empty?
+  required_roles = if required_roles_path && !required_roles_path.empty?
+    File.readlines(required_roles_path, chomp: true).reject(&:empty?)
+  else
+    []
+  end
+  raise "required final evidence roles must be unique" unless required_roles.uniq.length == required_roles.length
+  raise "invalid required final evidence role" unless required_roles.all? { |role| ROLE.match?(role) && !FORBIDDEN.match?(role) }
+  present_roles = entries.map { |entry| entry.fetch("role") }
+  missing_roles = required_roles - present_roles
+  raise "required final evidence roles are missing: #{missing_roles.join(",")}" unless missing_roles.empty?
   payload = JSON.generate({
     "schema" => SCHEMA,
     "status" => "ready",
     "final_only" => true,
     "whitelist_only" => true,
     "entry_count" => entries.length,
+    "release_hard_gate" => !required_roles.empty?,
+    "required_roles" => required_roles,
     "entries" => entries
   }) + "\n"
   output = Pathname(output_path)
@@ -107,6 +129,10 @@ raise "invalid final-only evidence index" unless index["schema"] == SCHEMA &&
   index["status"] == "ready" && index["final_only"] == true &&
   index["whitelist_only"] == true && index["entry_count"] == index.fetch("entries").length &&
   !index.fetch("entries").empty?
+required_roles = index.fetch("required_roles", [])
+present_roles = index.fetch("entries").map { |entry| entry.fetch("role") }
+raise "required final evidence role is missing" unless (required_roles - present_roles).empty?
+raise "release hard gate flag drifted" unless index.fetch("release_hard_gate", false) == !required_roles.empty?
 index.fetch("entries").each { |entry| validate_entry(entry) }
 puts JSON.generate(index)
 RUBY
