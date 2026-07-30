@@ -1,0 +1,129 @@
+{
+  "schema": "hepta_m_progress_v1",
+  "generated_at_utc": "2026-07-30T08:34:19Z",
+  "status": "source_progress_release_blocked",
+  "source_head": "2721ace674ac729a92204c0f96d3dc1fab18e9d8",
+  "release_claim": false,
+  "phases": {
+    "m0": {
+      "status": "complete",
+      "wrapper_counting": "git_index_executable_bit",
+      "canonical_ratchet_single_source": true,
+      "stage_identity_hash_chain": true,
+      "final_evidence_release_hard_gate": true
+    },
+    "m1": {
+      "status": "complete",
+      "egress_capability": true,
+      "active_binary_dependency_closure_direct_egress_violations": 0,
+      "typed_hepta_paths_state_root": true
+    },
+    "m2": {
+      "status": "partial",
+      "metrics": {
+        "work_graph_logical_modules": 398,
+        "work_graph_target_exclusive_max": 299,
+        "gate_compat_pairs": 598,
+        "gate_compat_target_exclusive_max": 599,
+        "single_exec_wrappers": 59,
+        "single_exec_wrapper_target_exclusive_max": 60,
+        "first_party_modules_over_5000_lines": 17,
+        "first_party_modules_over_5000_target_inclusive_max": 12
+      },
+      "completed": [
+        "gate_compat_pair_target",
+        "single_exec_wrapper_target",
+        "caller_graph_driven_compatibility_alias_retention"
+      ],
+      "remaining": [
+        "work_graph_398_to_below_299",
+        "first_party_modules_over_5000_lines_17_to_at_most_12",
+        "single_declarative_route_report_registry_and_generated_dispatch"
+      ]
+    },
+    "m3": {
+      "status": "local_complete_off_device_pending",
+      "lossless_log_rotation_fail_closed": true,
+      "local_archive_verified": true,
+      "local_archive_path": "/Users/qianqi/.local/share/hepta/archive/M/20260730T031337Z/hepta-M-pre-prune-all-refs.bundle",
+      "local_archive_sha256": "44e9933475aa5fe2c19191efdcb8c5e15fd5a6a95dbb59430ec7836a7d06a8ab",
+      "repository_state_archive_sha256": "5a2ecfcc4a046d3b2067e9118e79035f3c175dd0118bcd5c7f0e98afec9523ae",
+      "reclaimed_bytes_approx": 14817637171,
+      "samsung_t5_mounted": false,
+      "off_device_copy_restore_receipt": false
+    },
+    "m4": {
+      "status": "source_semantics_complete_with_explicit_deferment",
+      "absorbed_upstream_semantics": [
+        "3834c47_network_amendment_persistence_failure_denies",
+        "3e3ae088_mcp_catalog_global_pagination_budgets",
+        "7ec480dd_mcp_oauth_discovery_unknown",
+        "b1ccaa0_symlink_safe_migration_precondition",
+        "406dc923_mcp_read_only_hint_as_untrusted_advisory"
+      ],
+      "deferred": [
+        "7579a2b_foreign_windows_pathuri_join_pending_protocol_abi"
+      ],
+      "whole_tree_merge_or_rebase": false
+    }
+  },
+  "verification": {
+    "full_source_preflight": {
+      "status": "ready",
+      "release_build_enabled": false,
+      "native_checks_enabled": true,
+      "phase_count": 605,
+      "log_path": "/Users/qianqi/.openclaw/tmp/hepta-m4-preflight-umask022-run13.log",
+      "log_sha256": "60b7ff36322926e8c0b3ab7e750543c45fe57697d17ba1a7e00050191c38cc9d",
+      "log_bytes": 15906363,
+      "log_lines": 301282,
+      "terminal_marker": "Hepta preflight passed"
+    },
+    "dual_clean_tree_umask": {
+      "status": "ready",
+      "umasks": [
+        "022",
+        "077"
+      ],
+      "head": "2721ace674ac729a92204c0f96d3dc1fab18e9d8",
+      "single_exec_wrappers_each": 59,
+      "gate_compat_pairs_each": 598,
+      "active_egress_closure_each": "ready",
+      "cargo_fmt_each": "ready",
+      "dirty_files_each": 0
+    }
+  },
+  "live_runtime": {
+    "mutated_by_m": false,
+    "deployed_generation": "L",
+    "source_head": "1b3958e929b82a327abcd74c7293cdf5da806a5e",
+    "artifact_sha256": "a6ccf13cc81f62a822beea7dc1b9aa9d61c9734728d123d4fde473969c5efaf7",
+    "health": "ready",
+    "watchdog": "ready",
+    "runtime_routes": 283,
+    "missing_routes": 0,
+    "channel_owner": "legacy_openclaw",
+    "external_read": false,
+    "external_send": false,
+    "native_real_mutation": false
+  },
+  "release_blockers": [
+    "m2_work_graph_target_not_met",
+    "m2_first_party_giant_module_target_not_met",
+    "m2_generated_route_report_dispatch_not_complete",
+    "m3_off_device_copy_restore_receipt_missing",
+    "m4_foreign_windows_pathuri_join_deferred",
+    "m_release_artifact_not_built"
+  ],
+  "release_actions": {
+    "cutover_performed": false,
+    "rollback_performed": false,
+    "recutover_performed": false,
+    "m_soak_performed": false,
+    "off_device_restore_performed": false,
+    "pushed": false,
+    "signed": false,
+    "notarized": false,
+    "publicly_released": false
+  }
+}
