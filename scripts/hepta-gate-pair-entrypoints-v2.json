@@ -1,18 +1,18 @@
 {
   "schema": "hepta_gate_pair_entrypoints_v2",
   "status": "pruned",
-  "source_registry_sha256": "616406b244f26fb9063531a53cb58f50c22c209523628f7fcd3b3a2f4335ea74",
-  "pair_count": 851,
-  "original_entrypoint_count": 1702,
+  "source_registry_sha256": "bb278b201c113b480849339ba5e6d2980b4dcecdd2dcbf98554d80561b9fcc3a",
+  "pair_count": 598,
+  "original_entrypoint_count": 1196,
   "retained_entrypoint_count": 92,
-  "virtual_entrypoint_count": 1610,
+  "virtual_entrypoint_count": 1104,
   "normalized_virtual_entrypoint_count": 2,
   "normalized_virtual_entrypoint_limit": 2,
   "virtual_entrypoint_template_kinds": [
     "gate",
     "report"
   ],
-  "virtual_long_path_count": 56,
+  "virtual_long_path_count": 50,
   "max_retained_entrypoints": 98,
   "max_tracked_path_bytes": 240,
   "launcher": "scripts/hepta-gate-pair-launch",
@@ -110,6 +110,6 @@
     "scripts/hepta-systems-workflow-temporal-lite-replay-alignment-recovery-receipt-local-persistence-readback-gate.sh",
     "scripts/hepta-systems-workflow-temporal-lite-replay-alignment-recovery-window-feature-gated-readback-gate.sh"
   ],
-  "virtual_paths_sha256": "4bae104e1042abcd341e74dc90d578f6adb230d52c32ff21fc0a2f76477ef8d4",
+  "virtual_paths_sha256": "9e8a6b19536aad7372b24a438cfec33dd1da5ee01f322265fc80c1fe0c258b86",
   "reversible_unpack": true
 }

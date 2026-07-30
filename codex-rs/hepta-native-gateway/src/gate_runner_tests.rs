@@ -1172,12 +1172,23 @@ fn parameterized_artifact_signing_receipt_route_fixtures_match_canonical_gate_sp
                 .as_str()
                 .expect("artifact-signing receipt route wrapper path"),
         );
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized artifact-signing receipt route wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-artifact-signing-receipt-route-gate-runner"));
-        assert!(wrapper.contains(id));
+        if fs::symlink_metadata(&wrapper_path)
+            .expect("artifact-signing route alias metadata")
+            .file_type()
+            .is_symlink()
+        {
+            assert_eq!(
+                fs::read_link(&wrapper_path).expect("artifact-signing route alias"),
+                Path::new("hepta-artifact-signing-receipt-route-gate-runner")
+            );
+        } else {
+            let wrapper = fs::read_to_string(&wrapper_path)
+                .with_context(|| format!("failed to read {}", wrapper_path.display()))
+                .expect("parameterized artifact-signing receipt route wrapper");
+            assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
+            assert!(wrapper.contains("scripts/hepta-artifact-signing-receipt-route-gate-runner"));
+            assert!(wrapper.contains(id));
+        }
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1720,12 +1731,23 @@ fn parameterized_artifact_signing_receipt_fixtures_match_canonical_gate_specs() 
             .long_path_entry(&logical_wrapper_path)
             .map(|entry| repo_root().join(entry.relocated_path()))
             .unwrap_or_else(|| repo_root().join(&logical_wrapper_path));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized artifact-signing receipt wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-artifact-signing-receipt-gate-runner"));
-        assert!(wrapper.contains(id));
+        if fs::symlink_metadata(&wrapper_path)
+            .expect("artifact-signing alias metadata")
+            .file_type()
+            .is_symlink()
+        {
+            assert_eq!(
+                fs::read_link(&wrapper_path).expect("artifact-signing alias"),
+                Path::new("hepta-state-machine-gate-runner")
+            );
+        } else {
+            let wrapper = fs::read_to_string(&wrapper_path)
+                .with_context(|| format!("failed to read {}", wrapper_path.display()))
+                .expect("parameterized artifact-signing receipt wrapper");
+            assert_eq!(wrapper.lines().count(), 4, "thin wrapper for {id}");
+            assert!(wrapper.contains("scripts/hepta-artifact-signing-receipt-gate-runner"));
+            assert!(wrapper.contains(id));
+        }
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()

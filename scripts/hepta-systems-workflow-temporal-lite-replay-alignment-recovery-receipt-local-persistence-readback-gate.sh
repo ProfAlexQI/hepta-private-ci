@@ -1,5 +1,1 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-exec "$ROOT/scripts/hepta-gate-pair-runner" gate "hepta-systems-workflow-temporal-lite-replay-alignment-recovery-receipt-local-persistence-readback"
+hepta-gate-pair-launch

@@ -1,5 +1,1 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-exec "$ROOT/scripts/hepta-gate-pair-runner" report "hepta-context-selected-recall-summary-canary-eval"
+hepta-gate-pair-launch

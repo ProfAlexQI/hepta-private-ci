@@ -50,6 +50,11 @@ def atomic_write(path, content, mode = nil)
   File.rename(staging, path)
 end
 
+def materialize_alias(path)
+  FileUtils.rm_f(path)
+  FileUtils.ln_s("hepta-gate-pair-launch", path)
+end
+
 def scan_references(entrypoint_paths)
   path_set = entrypoint_paths.to_set
   referenced = Set.new
@@ -113,6 +118,7 @@ def pack
   }
   atomic_write(REGISTRY_PATH, JSON.pretty_generate(registry) + "\n", 0o644)
   virtual.each { |path, _kind, _id| FileUtils.rm_f(File.join(ROOT, path)) }
+  retained.each { |path, _kind, _id| materialize_alias(File.join(ROOT, path)) }
   verify
 end
 
@@ -147,7 +153,8 @@ def verify
     if retained_paths.include?(relative)
       raise "retained gate-pair path is too long: #{relative}" if relative.bytesize > MAX_TRACKED_PATH_BYTES
       raise "missing retained gate-pair entrypoint: #{relative}" unless File.file?(path)
-      raise "retained gate-pair entrypoint drifted: #{relative}" unless File.binread(path) == wrapper_body(kind, id)
+      raise "retained gate-pair alias drifted: #{relative}" unless File.symlink?(path) &&
+        File.readlink(path) == "hepta-gate-pair-launch"
       raise "retained gate-pair entrypoint is not executable: #{relative}" unless File.executable?(path)
     elsif File.exist?(path)
       raise "virtual gate-pair entrypoint was materialized: #{relative}"

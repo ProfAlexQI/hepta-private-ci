@@ -1,6 +1,6 @@
 {
   "schema": "hepta_architecture_ratchet_v1",
-  "status": "corrected_l_baseline",
+  "status": "m2_partial_targets_active",
   "counting_semantics": {
     "single_exec_wrappers": "git_index_100755_and_at_most_four_noncomment_lines_and_exactly_one_exec",
     "worktree_umask_independent": true,
@@ -9,26 +9,26 @@
   "ceilings": {
     "work_graph_logical_modules": 398,
     "work_graph_effective_lines": 202869,
-    "gate_compat_pairs": 851,
-    "gate_compat_effective_lines": 189352,
-    "single_exec_wrappers": 172,
+    "gate_compat_pairs": 598,
+    "gate_compat_effective_lines": 160551,
+    "single_exec_wrappers": 59,
     "first_party_modules_over_5000": 17
   },
   "baselines": {
     "work_graph_logical_modules": 398,
     "work_graph_effective_lines": 196886,
-    "gate_compat_pairs": 851,
-    "gate_compat_effective_lines": 183836,
-    "single_exec_wrappers": 172,
+    "gate_compat_pairs": 598,
+    "gate_compat_effective_lines": 155874,
+    "single_exec_wrappers": 59,
     "first_party_modules_over_5000": 17
   },
   "decline_targets": {
     "next": {
       "work_graph_logical_modules": 298,
       "work_graph_effective_lines": 130000,
-      "gate_compat_pairs": 598,
+      "gate_compat_pairs": 499,
       "gate_compat_effective_lines": 130000,
-      "single_exec_wrappers": 59,
+      "single_exec_wrappers": 39,
       "first_party_modules_over_5000": 12
     },
     "terminal": {

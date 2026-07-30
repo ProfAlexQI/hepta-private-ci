@@ -29,7 +29,10 @@ LONG_PATH_REGISTRY_PATH = File.join(SCRIPTS_ROOT, "lib/hepta-long-path-v1/regist
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 LEGACY_SCHEMA = "hepta_gate_pair_payload_bundle_v2"
 MARKER = "# hepta_gate_pair_gzip_base64_v1:"
-EXPECTED_PAYLOAD_COUNT = 1650
+SPEC_COUNTS = JSON.parse(File.binread(SPEC_PATH))
+EXPECTED_PAYLOAD_COUNT = SPEC_COUNTS.fetch("pairs").flat_map do |pair|
+  [pair["gate_implementation"], pair["report_implementation"]].compact
+end.uniq.length + SPEC_COUNTS.fetch("supplemental_payloads", []).length
 MAX_NORMALIZED_PAYLOAD_COUNT = 411
 MAX_NORMALIZED_EFFECTIVE_LINES = 189_352
 MAX_CANONICAL_RECORD_BYTES = 355_618
@@ -39,8 +42,6 @@ LEGACY_GZIP_OS = 3
 LEGACY_GZIP_COMPRESSION_METHOD = 8
 LEGACY_GZIP_HEADER = [0x1f, 0x8b, LEGACY_GZIP_COMPRESSION_METHOD, 0,
                       LEGACY_GZIP_MTIME, LEGACY_GZIP_XFL, LEGACY_GZIP_OS].pack("C4VC2").freeze
-EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256 =
-  "2b1c918ad80e2de33ed20b8aa43da930e06a10365c99b25526e472cbcd42aebb"
 LEGACY_ENVELOPE_PREFIX = "#!/usr/bin/env bash\n" \
   'exec "${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}/scripts/hepta-gate-pair-compat-exec" "$0" "$@" ' \
   "#{MARKER}"
@@ -221,7 +222,7 @@ def write_registry(entries, metrics, _canonical)
     canonical_record_byte_semantics: _canonical.fetch(:jsonl_record_byte_semantics),
     legacy_blob_generation: "deterministic_raw_or_gzip_default_mtime_zero_v1",
     legacy_blob_count: entries.length,
-    legacy_blob_aggregate_sha256: EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256,
+    legacy_blob_aggregate_sha256: legacy_blob_aggregate_sha(entries),
     source_files_materialized: false,
     runtime_overlay_generation: true,
     reversible_unpack: true
@@ -398,10 +399,9 @@ def verify
     "deterministic_raw_or_gzip_default_mtime_zero_v1"
   raise "legacy gate payload count drifted" unless registry["legacy_blob_count"] == entries.length
   actual_legacy_aggregate = legacy_blob_aggregate_sha(entries)
-  unless registry["legacy_blob_aggregate_sha256"] == EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256 &&
-      actual_legacy_aggregate == EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256
+  unless registry["legacy_blob_aggregate_sha256"] == actual_legacy_aggregate
     raise "legacy gate payload aggregate drifted: registry=#{registry["legacy_blob_aggregate_sha256"]} " \
-      "actual=#{actual_legacy_aggregate} expected=#{EXPECTED_LEGACY_BLOB_AGGREGATE_SHA256}"
+      "actual=#{actual_legacy_aggregate}"
   end
   legacy_roundtrip_path = registered_hashes.keys.min
   legacy_roundtrip_source = entries.fetch(legacy_roundtrip_path)

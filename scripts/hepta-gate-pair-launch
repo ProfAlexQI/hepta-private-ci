@@ -2,6 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+if [[ $# == 0 ]]; then
+  invoked="$(basename "$0")"
+  if [[ "$invoked" =~ ^(hepta-[a-z0-9-]+)-(gate|report)\.sh$ ]]; then
+    set -- "${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}"
+  fi
+fi
 [[ $# == 2 && ( "$1" == "gate" || "$1" == "report" ) && "$2" =~ ^[a-z0-9-]+$ ]] || {
   echo "usage: scripts/hepta-gate-pair-launch <gate|report> <id>" >&2
   exit 2

@@ -9,6 +9,16 @@ usage() {
   exit 2
 }
 
+invoked="$(basename "$0")"
+case "$invoked" in
+  hepta-artifact-signing-receipt-gate-runner) set -- artifact-signing-receipt "$@" ;;
+  hepta-operator-identity-session-replay-reinstatement-gate-runner) set -- operator-identity-session-replay-reinstatement "$@" ;;
+  hepta-packet-acceptance-receipt-gate-runner) set -- packet-acceptance-receipt "$@" ;;
+  i3-0ab8864aaedb1633ef2ca067.sh) set -- artifact-signing-receipt hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial ;;
+  i3-69e99f4efb35ecb295ceb839.sh) set -- artifact-signing-receipt hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial ;;
+  i3-71bd59c6d099c54edc1a3553.sh) set -- artifact-signing-receipt hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial ;;
+esac
+
 sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
 }

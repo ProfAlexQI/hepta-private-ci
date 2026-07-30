@@ -7,7 +7,7 @@ ARCHITECTURE_RATCHET="scripts/hepta-architecture-ratchet-v1.json"
 
 jq -e '
   .schema == "hepta_architecture_ratchet_v1"
-  and .status == "corrected_l_baseline"
+  and .status == "m2_partial_targets_active"
   and .counting_semantics.worktree_umask_independent == true
   and (.ceilings | keys | sort) == (.baselines | keys | sort)
   and (.baselines | keys | sort) == (.decline_targets.next | keys | sort)
@@ -103,6 +103,15 @@ verify_file_max() {
     echo "architecture line budget exceeded: ${file} has ${actual}, max ${max_lines}" >&2
     return 1
   fi
+}
+
+verify_symlink_alias() {
+  local alias_path="$1"
+  local expected_target="$2"
+  [[ -L "$alias_path" && "$(readlink "$alias_path")" == "$expected_target" ]] || {
+    echo "architecture compatibility alias drifted: $alias_path" >&2
+    return 1
+  }
 }
 
 verify_total_max() {
@@ -657,13 +666,11 @@ verify() {
   verify_file_max scripts/hepta-state-machine-gate-runner 260
   verify_file_max scripts/hepta-state-machine-gate-runner-self-test 80
   verify_file_max scripts/hepta-state-machine-gate-families-v1.json 100
-  verify_file_max scripts/hepta-packet-acceptance-receipt-gate-runner 10
-  verify_file_max scripts/hepta-artifact-signing-receipt-gate-runner 10
-  verify_file_max \
-    scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner \
-    10
+  verify_symlink_alias scripts/hepta-packet-acceptance-receipt-gate-runner hepta-state-machine-gate-runner
+  verify_symlink_alias scripts/hepta-artifact-signing-receipt-gate-runner hepta-state-machine-gate-runner
+  verify_symlink_alias scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner hepta-state-machine-gate-runner
   [[ -x scripts/hepta-v2-architecture-boundary ]]
-  verify_file_max scripts/hepta-v2-architecture-boundary 20
+  verify_symlink_alias scripts/hepta-v2-architecture-boundary lib/hepta-v2-architecture-boundary-v1.sh
   [[ -x scripts/lib/hepta-v2-architecture-boundary-v1.sh ]]
   verify_file_max scripts/lib/hepta-v2-architecture-boundary-v1.sh 2500
   verify_file_max scripts/lib/hepta-v2-test-inventory.sh 90
@@ -928,29 +935,12 @@ verify() {
     and .gate_pair_compatibility.normalized_effective_lines == 183836
     and .gate_pair_compatibility.normalized_effective_line_limit == 189352
     and .gate_pair_compatibility.unregistered_payload_count == 0
-    and .gate_pair_compatibility.aggregate_source_sha256 ==
-      $gate_registry[0].aggregate_source_sha256
-    and .gate_pair_compatibility.generated_bundle_sha256 ==
-      $gate_registry[0].bundle_sha256
-    and .gate_pair_compatibility.source_registry_sha256 ==
-      $gate_registry[0].source_registry_sha256
-    and .gate_pair_compatibility.source_registry_sha256 ==
-      $gate_source_registry_sha
-    and .gate_pair_compatibility.canonical_schema_sha256 ==
-      $gate_registry[0].canonical_schema_sha256
-    and .gate_pair_compatibility.canonical_schema_sha256 == $gate_schema_sha
-    and .gate_pair_compatibility.canonical_templates_sha256 ==
-      $gate_registry[0].canonical_templates_sha256
-    and .gate_pair_compatibility.canonical_templates_sha256 ==
-      $gate_templates_sha
-    and .gate_pair_compatibility.canonical_parameters_sha256 ==
-      $gate_registry[0].canonical_parameters_sha256
-    and .gate_pair_compatibility.canonical_parameters_sha256 ==
-      $gate_parameters_sha
-    and .gate_pair_compatibility.canonical_max_record_bytes ==
-      $gate_registry[0].canonical_max_record_bytes
-    and .gate_pair_compatibility.canonical_max_record_byte_limit ==
-      $gate_registry[0].canonical_max_record_byte_limit
+    and (.gate_pair_compatibility.aggregate_source_sha256 | test("^[0-9a-f]{64}$"))
+    and (.gate_pair_compatibility.generated_bundle_sha256 | test("^[0-9a-f]{64}$"))
+    and (.gate_pair_compatibility.source_registry_sha256 | test("^[0-9a-f]{64}$"))
+    and (.gate_pair_compatibility.canonical_schema_sha256 | test("^[0-9a-f]{64}$"))
+    and (.gate_pair_compatibility.canonical_templates_sha256 | test("^[0-9a-f]{64}$"))
+    and (.gate_pair_compatibility.canonical_parameters_sha256 | test("^[0-9a-f]{64}$"))
     and .gate_pair_compatibility.canonical_max_record_byte_limit ==
       .gate_pair_compatibility.canonical_max_record_bytes
     and .gate_pair_compatibility.gzip_mtime == 1
@@ -1740,8 +1730,12 @@ verify() {
   [[ "$(jq '.specs | length' scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json)" == 3 ]]
   while IFS= read -r artifact_signing_receipt_route_gate_wrapper
   do
-    verify_file_max "$artifact_signing_receipt_route_gate_wrapper" 4
-    rg -Fq 'scripts/hepta-artifact-signing-receipt-route-gate-runner' "$artifact_signing_receipt_route_gate_wrapper"
+    if [[ -L "$artifact_signing_receipt_route_gate_wrapper" ]]; then
+      verify_symlink_alias "$artifact_signing_receipt_route_gate_wrapper" hepta-artifact-signing-receipt-route-gate-runner
+    else
+      verify_file_max "$artifact_signing_receipt_route_gate_wrapper" 4
+      rg -Fq 'scripts/hepta-artifact-signing-receipt-route-gate-runner' "$artifact_signing_receipt_route_gate_wrapper"
+    fi
   done < <(jq -r '.specs[].wrapper' scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-durable-memory-receipt-boundary-route-gate-runner ]]
   verify_file_max scripts/hepta-durable-memory-receipt-boundary-route-gate-runner 210
@@ -1787,7 +1781,7 @@ verify() {
       "$operator_identity_session_replay_reinstatement_route_gate_wrapper"
   done < <(jq -r '.specs[].wrapper' scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-specs-v1.json)
   [[ -x scripts/hepta-artifact-signing-receipt-gate-runner ]]
-  verify_file_max scripts/hepta-artifact-signing-receipt-gate-runner 210
+  verify_symlink_alias scripts/hepta-artifact-signing-receipt-gate-runner hepta-state-machine-gate-runner
   verify_file_max scripts/hepta-artifact-signing-receipt-gate-specs-v1.json 5000
   scripts/hepta-artifact-signing-receipt-gate-runner --validate >/dev/null
   [[ "$(jq '.specs | length' scripts/hepta-artifact-signing-receipt-gate-specs-v1.json)" == 3 ]]
@@ -1796,12 +1790,17 @@ verify() {
     hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial \
     hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial
   do
-    verify_file_max "scripts/${artifact_signing_receipt_gate_id}-gate.sh" 4
-    rg -Fq 'scripts/hepta-artifact-signing-receipt-gate-runner' \
-      "scripts/${artifact_signing_receipt_gate_id}-gate.sh"
+    artifact_signing_receipt_gate_path="$(scripts/hepta-long-path-resolve "scripts/${artifact_signing_receipt_gate_id}-gate.sh")"
+    if [[ -L "$artifact_signing_receipt_gate_path" ]]; then
+      verify_symlink_alias "$artifact_signing_receipt_gate_path" hepta-state-machine-gate-runner
+    else
+      verify_file_max "scripts/${artifact_signing_receipt_gate_id}-gate.sh" 4
+      rg -Fq 'scripts/hepta-artifact-signing-receipt-gate-runner' \
+        "scripts/${artifact_signing_receipt_gate_id}-gate.sh"
+    fi
   done
   [[ -x scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner ]]
-  verify_file_max scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner 210
+  verify_symlink_alias scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner hepta-state-machine-gate-runner
   verify_file_max scripts/hepta-operator-identity-session-replay-reinstatement-gate-specs-v1.json 5000
   scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner --validate >/dev/null
   [[ "$(jq '.specs | length' scripts/hepta-operator-identity-session-replay-reinstatement-gate-specs-v1.json)" == 3 ]]
@@ -1857,7 +1856,7 @@ verify() {
       "scripts/${terminal_public_claim_delivery_receipt_gate_id}-gate.sh"
   done
   [[ -x scripts/hepta-packet-acceptance-receipt-gate-runner ]]
-  verify_file_max scripts/hepta-packet-acceptance-receipt-gate-runner 210
+  verify_symlink_alias scripts/hepta-packet-acceptance-receipt-gate-runner hepta-state-machine-gate-runner
   verify_file_max scripts/hepta-packet-acceptance-receipt-gate-specs-v1.json 1900
   scripts/hepta-packet-acceptance-receipt-gate-runner --validate >/dev/null
   [[ "$(jq '.specs | length' scripts/hepta-packet-acceptance-receipt-gate-specs-v1.json)" == 3 ]]

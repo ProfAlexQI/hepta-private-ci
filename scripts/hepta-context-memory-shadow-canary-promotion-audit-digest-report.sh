@@ -1,5 +1,1 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-exec "$ROOT/scripts/hepta-gate-pair-runner" report "hepta-context-memory-shadow-canary-promotion-audit-digest"
+hepta-gate-pair-launch

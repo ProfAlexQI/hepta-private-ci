@@ -10,6 +10,15 @@ usage() {
   exit 2
 }
 
+if [[ $# == 0 ]]; then
+  invoked="$(basename "$0")"
+  if [[ "$invoked" == "hepta-artifact-signing-receipt-cancellation-supersession-denial-route-gate.sh" ]]; then
+    set -- hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-cancellation-supersession-denial
+  elif [[ "$invoked" =~ ^(hepta-[a-z0-9-]+)-route-gate\.sh$ ]]; then
+    set -- "${BASH_REMATCH[1]}"
+  fi
+fi
+
 [[ -f "$SPEC_FILE" ]] || {
   echo "missing artifact-signing receipt route registry: $SPEC_FILE" >&2
   exit 1

@@ -1,0 +1,50 @@
+{
+  "schema": "hepta.m2-topology-progress.v1",
+  "status": "partial_targets_verified",
+  "completed": {
+    "gate_compat_pairs": {
+      "before": 851,
+      "after": 598,
+      "target": "<599",
+      "selection": "dependency-closed uncalled captured-shell leaves",
+      "retirement_receipt": "docs/architecture/HEPTA_GATE_COMPAT_M2_RETIREMENT_V1.json"
+    },
+    "single_exec_wrappers": {
+      "before": 172,
+      "after": 59,
+      "target": "<60",
+      "compatibility_paths_preserved_as_symlink_aliases": true,
+      "git_index_counting": true
+    }
+  },
+  "not_completed": {
+    "work_graph_logical_modules": {
+      "current": 398,
+      "target": "<299",
+      "blocker": "the existing dependency-closed retirement algorithm reaches active=368 while 251 externally referenced modules remain protected; further reduction requires caller migration or semantic family aggregation"
+    },
+    "first_party_modules_over_5000": {
+      "current": 17,
+      "target": "<=12",
+      "blocker": "no metric-only include split was accepted as semantic modularization"
+    },
+    "generated_route_report_dispatch": {
+      "completed": false,
+      "blocker": "the manifest owns lifecycle and policy but NativeGateway rendering still contains a handwritten route match; moving it without a single typed renderer registry would only relocate the debt"
+    }
+  },
+  "verification": {
+    "architecture_budget": "passed",
+    "gate_compat_debt": "passed",
+    "gate_compat_negative_self_test": "passed",
+    "entrypoint_alias_verification": "passed",
+    "native_gate_runner": {
+      "passed": 24,
+      "failed": 3,
+      "failure_class": "pre_existing_missing_migrated_public_ga_source_report",
+      "new_alias_or_retirement_failures": 0
+    }
+  },
+  "runtime_mutated": false,
+  "deployment_performed": false
+}

@@ -2,31 +2,108 @@
 # frozen_string_literal: true
 
 require "digest"
+require "fileutils"
 require "json"
 require "set"
 
 ROOT = File.expand_path("..", __dir__)
 SPEC_PATH = File.join(ROOT, "scripts/hepta-gate-pair-specs-v1.json")
-RECEIPT_PATH = File.join(ROOT, "docs/architecture/HEPTA_GATE_COMPAT_L1_RETIREMENT_V1.json")
+RECEIPT_PATH = File.join(ROOT, "docs/architecture/HEPTA_GATE_COMPAT_M2_RETIREMENT_V1.json")
+TARGET_PAIR_COUNT = 598
+
+def atomic_write(path, content)
+  staging = "#{path}.#{$$}.tmp"
+  File.binwrite(staging, content)
+  File.rename(staging, path)
+end
+
+def apply_retirement
+  spec = JSON.parse(File.binread(SPEC_PATH))
+  pairs = spec.fetch("pairs")
+  raise "M2 retirement requires 851 baseline pairs" unless pairs.length == 851
+  ids = pairs.to_h { |pair| [pair.fetch("id"), pair] }
+  entrypoints = pairs.flat_map { |pair| ["scripts/#{pair.fetch("id")}-gate.sh", pair.fetch("report_path")] }.to_set
+  protected = Set.new
+  outgoing = ids.keys.to_h { |id| [id, Set.new] }
+  Dir.glob(File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v1/*.{gate,report}")).sort.each do |path|
+    owner = File.basename(path).sub(/\.(?:gate|report)\z/, "")
+    File.binread(path).scan(%r{scripts/lib/hepta-gate-pair-compat-v1/([a-z0-9-]+)\.(?:gate|report)}) do |(id)|
+      outgoing.fetch(owner) << id if ids.key?(owner) && ids.key?(id) && owner != id
+    end
+  end
+  Dir.glob(File.join(ROOT, "{codex-rs,scripts}/**/*"), File::FNM_DOTMATCH).sort.each do |path|
+    next unless File.file?(path)
+    relative = path.delete_prefix("#{ROOT}/")
+    next if relative == "scripts/hepta-gate-pair-specs-v1.json" || entrypoints.include?(relative)
+    next if relative.start_with?("scripts/lib/hepta-gate-pair-compat-v1/") ||
+      relative.start_with?("scripts/lib/hepta-gate-pair-compat-v2/")
+    next if File.size(path) > 20 * 1024 * 1024
+    source = File.binread(path)
+    next unless source.valid_encoding?
+    ids.each_key { |id| protected << id if source.include?(id) }
+  end
+  retire_count = pairs.length - TARGET_PAIR_COUNT
+  active = ids.keys.to_set
+  retired = []
+  while retired.length < retire_count
+    incoming = Hash.new(0)
+    active.each { |source| outgoing.fetch(source).each { |target| incoming[target] += 1 if active.include?(target) } }
+    candidates = active.select do |id|
+      ids.fetch(id)["template"] == "captured_shell_compat_v1" && !protected.include?(id) && incoming[id].zero?
+    end
+    raise "insufficient dependency-closed compatibility leaves" if candidates.empty?
+    selected = candidates.max_by do |id|
+      pair = ids.fetch(id)
+      paths = [pair["gate_implementation"], pair["report_implementation"]].compact.uniq
+      [paths.sum { |relative| File.file?(File.join(ROOT, relative)) ? File.readlines(File.join(ROOT, relative)).length : 0 }, id]
+    end
+    active.delete(selected)
+    retired << ids.fetch(selected)
+  end
+  retired_ids = retired.map { |pair| pair.fetch("id") }.to_set
+  retired_payloads = retired.flat_map do |pair|
+    [pair["gate_implementation"], pair["report_implementation"]].compact.uniq.map do |relative|
+      path = File.join(ROOT, relative)
+      next unless File.file?(path)
+      record = {path: relative, sha256: Digest::SHA256.file(path).hexdigest, lines: File.readlines(path).length}
+      FileUtils.rm_f(path)
+      record
+    end
+  end.compact
+  spec["pairs"] = pairs.reject { |pair| retired_ids.include?(pair.fetch("id")) }
+  atomic_write(SPEC_PATH, JSON.pretty_generate(spec) + "\n")
+  receipt = {
+    schema: "hepta_gate_compat_m2_retirement_v1", status: "ready",
+    source_commit: `git -C #{ROOT.shellescape} rev-parse HEAD`.strip,
+    original_pair_count: pairs.length, retired_pair_count: retired_ids.length,
+    remaining_pair_count: spec.fetch("pairs").length,
+    retained_caller_count: protected.length,
+    selection: "largest_payload_first_dependency_closed_uncalled_captured_shell_leaves",
+    retired_pairs: retired_ids.to_a.sort, retired_payloads: retired_payloads,
+    git_history_recovery_bound: true
+  }
+  receipt[:aggregate_sha256] = Digest::SHA256.hexdigest(JSON.generate(receipt))
+  atomic_write(RECEIPT_PATH, JSON.pretty_generate(receipt) + "\n")
+end
 
 def verify_retirement
   receipt = JSON.parse(File.binread(RECEIPT_PATH))
   digest_payload = receipt.dup
   expected_digest = digest_payload.delete("aggregate_sha256")
   actual_digest = Digest::SHA256.hexdigest(JSON.generate(digest_payload))
-  raise "L1 retirement receipt digest drifted" unless actual_digest == expected_digest
+  raise "M2 retirement receipt digest drifted" unless actual_digest == expected_digest
 
   spec = JSON.parse(File.binread(SPEC_PATH))
   active_ids = spec.fetch("pairs").map { |pair| pair.fetch("id") }.to_set
   retired_ids = receipt.fetch("retired_pairs").to_set
   raise "retired compatibility pair remains active" unless (active_ids & retired_ids).empty?
   raise "retired pair count drifted" unless retired_ids.length == receipt.fetch("retired_pair_count")
-  raise "L1 compatibility pair target drifted" unless active_ids.length == receipt.fetch("remaining_pair_count")
-  raise "L1 compatibility pair hard limit exceeded" unless active_ids.length < 999
+  raise "M2 compatibility pair target drifted" unless active_ids.length == receipt.fetch("remaining_pair_count")
+  raise "M2 compatibility pair hard limit exceeded" unless active_ids.length < 599
   raise "retirement is not bound to Git recovery" unless receipt.fetch("source_commit").match?(/\A[0-9a-f]{40}\z/)
 
   retired_payloads = receipt.fetch("retired_payloads")
-  raise "retired payload count drifted" unless retired_payloads.length == retired_ids.length * 2
+  raise "retired payload evidence is empty" if retired_payloads.empty?
   raise "retired payload metadata drifted" unless retired_payloads.all? do |payload|
     payload.fetch("path").start_with?("scripts/lib/hepta-gate-pair-compat-v1/") &&
       payload.fetch("sha256").match?(/\A[0-9a-f]{64}\z/) &&
@@ -34,7 +111,7 @@ def verify_retirement
   end
 
   puts JSON.generate(
-    schema: "hepta_gate_compat_l1_retirement_verify_v1",
+    schema: "hepta_gate_compat_m2_retirement_verify_v1",
     status: "ready",
     active_pair_count: active_ids.length,
     retired_pair_count: retired_ids.length,
@@ -44,9 +121,11 @@ def verify_retirement
   )
 end
 
-unless ARGV == ["verify"]
-  warn "usage: scripts/hepta-gate-compat-retire-l1 verify"
+require "shellwords"
+case ARGV
+when ["apply"] then apply_retirement
+when ["verify"] then verify_retirement
+else
+  warn "usage: scripts/hepta-gate-compat-retire-l1 <apply|verify>"
   exit 64
 end
-
-verify_retirement

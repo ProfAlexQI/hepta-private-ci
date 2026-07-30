@@ -1003,6 +1003,13 @@ fn validate_entrypoint(
 }
 
 fn validate_thin_wrapper(path: &Path, kind: &str, id: &str) -> Result<()> {
+    if fs::symlink_metadata(path)?.file_type().is_symlink() {
+        let target = fs::read_link(path)?;
+        if target == Path::new("hepta-gate-pair-launch") {
+            return Ok(());
+        }
+        anyhow::bail!("Hepta {kind} compatibility alias is not canonical: {id}");
+    }
     let expected = canonical_wrapper(kind, id);
     let actual = fs::read_to_string(path)
         .with_context(|| format!("failed to read thin Hepta {kind} wrapper: {id}"))?;
@@ -1047,7 +1054,7 @@ fn resolve_compatibility_script(
                 canonical.display()
             );
         }
-        resolved.push(canonical);
+        resolved.push(candidate);
     }
 
     match resolved.as_slice() {
