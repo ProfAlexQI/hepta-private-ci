@@ -29,17 +29,26 @@ fi
 grep -q 'exec "$script_dir/hepta-live-soak.sh" "$@"' "$legacy_soak"
 grep -q 'HEPTA_CODEX_SOAK_SAMPLES' "$legacy_soak"
 grep -q 'HEPTA_CODEX_SOAK_INTERVAL_SECONDS' "$legacy_soak"
-grep -q 'exec "$script_dir/hepta-browser-visual-smoke.sh" "$@"' "$legacy_browser"
+if [[ -L "$legacy_browser" ]]; then
+  [[ "$(readlink "$legacy_browser")" == "$(basename "$canonical_browser")" ]]
+  [[ "$(cd "$(dirname "$legacy_browser")" && pwd -P)/$(readlink "$legacy_browser")" \
+    == "$(cd "$(dirname "$canonical_browser")" && pwd -P)/$(basename "$canonical_browser")" ]]
+else
+  grep -q 'exec "$script_dir/hepta-browser-visual-smoke.sh" "$@"' "$legacy_browser"
+fi
 
-if grep -q 'curl -fsS' "$legacy_soak" "$legacy_browser"; then
+legacy_content_wrappers=("$legacy_soak")
+[[ -L "$legacy_browser" ]] || legacy_content_wrappers+=("$legacy_browser")
+
+if grep -q 'curl -fsS' "${legacy_content_wrappers[@]}"; then
   echo "legacy Hepta Codex live gate wrappers must not keep live probe implementations" >&2
   exit 1
 fi
-if grep -q 'jq -n' "$legacy_soak" "$legacy_browser"; then
+if grep -q 'jq -n' "${legacy_content_wrappers[@]}"; then
   echo "legacy Hepta Codex live gate wrappers must not keep report implementations" >&2
   exit 1
 fi
-if grep -q 'capture_viewport' "$legacy_browser"; then
+if [[ ! -L "$legacy_browser" ]] && grep -q 'capture_viewport' "$legacy_browser"; then
   echo "legacy browser smoke wrapper must not keep screenshot capture implementation" >&2
   exit 1
 fi
