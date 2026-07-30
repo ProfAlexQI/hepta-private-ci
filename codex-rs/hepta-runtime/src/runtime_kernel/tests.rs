@@ -45,6 +45,22 @@ use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 
+mod tempfile {
+    pub(super) fn tempdir() -> std::io::Result<::tempfile::TempDir> {
+        let directory = ::tempfile::tempdir()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            std::fs::set_permissions(
+                directory.path(),
+                std::fs::Permissions::from_mode(0o700),
+            )?;
+        }
+        Ok(directory)
+    }
+}
+
 fn extract_json_string_field(json_text: &str, field: &str) -> Option<String> {
     serde_json::from_str::<Value>(json_text)
         .ok()?
@@ -5679,6 +5695,8 @@ mod architecture_v2_capability_descriptor_tests {
 }
 
 mod architecture_v2_symlink_reservation_tests {
+    use super::tempfile;
+
     include!("tests/architecture_v2_symlink_reservation.rs");
 }
 
@@ -5691,14 +5709,20 @@ mod architecture_v2_process_reservation_tests {
 }
 
 mod architecture_v2_native_mutation_tests {
+    use super::tempfile;
+
     include!("tests/architecture_v2_native_mutation.rs");
 }
 
 mod architecture_v2_maintenance_mutation_tests {
+    use super::tempfile;
+
     include!("tests/architecture_v2_maintenance_mutation.rs");
 }
 
 mod architecture_v2_process_control_tests {
+    use super::tempfile;
+
     include!("tests/architecture_v2_process_control.rs");
 }
 
@@ -5707,10 +5731,14 @@ mod architecture_v2_provider_idempotency_tests {
 }
 
 mod architecture_v2_provider_effect_tests {
+    use super::tempfile;
+
     include!("tests/architecture_v2_provider_effect.rs");
 }
 
 mod architecture_v2_sealed_read_tests {
+    use super::tempfile;
+
     include!("tests/architecture_v2_sealed_read.rs");
 }
 
