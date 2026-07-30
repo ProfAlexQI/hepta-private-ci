@@ -31,20 +31,29 @@ if grep -q 'hepta-script-family-alias.sh' "${canonical_scripts[@]}"; then
   exit 1
 fi
 
-grep -q 'exec "$script_dir/hepta-public-ga-readiness.sh" "$@"' scripts/hepta-codex-public-ga-readiness.sh
-grep -q 'exec "$script_dir/hepta-public-ga-operator-approval-packet.sh" "$@"' scripts/hepta-codex-public-ga-operator-approval-packet.sh
-grep -q 'exec "$script_dir/hepta-native-packaging-gate.sh" "$@"' scripts/hepta-codex-native-packaging-gate.sh
-grep -q 'exec "$script_dir/hepta-release-hardening-status-gate.sh" "$@"' scripts/hepta-codex-release-hardening-status-gate.sh
+legacy_content_wrappers=()
+for index in "${!canonical_scripts[@]}"; do
+  canonical="${canonical_scripts[$index]}"
+  legacy="${legacy_scripts[$index]}"
+  if [[ -L "$legacy" ]]; then
+    [[ "$(readlink "$legacy")" == "$(basename "$canonical")" ]]
+    [[ "$(cd "$(dirname "$legacy")" && pwd -P)/$(readlink "$legacy")" \
+      == "$(cd "$(dirname "$canonical")" && pwd -P)/$(basename "$canonical")" ]]
+  else
+    grep -Fq "exec \"\$script_dir/$(basename "$canonical")\" \"\$@\"" "$legacy"
+    legacy_content_wrappers+=("$legacy")
+  fi
+done
 
-if grep -q 'curl -fsS' "${legacy_scripts[@]}"; then
+if ((${#legacy_content_wrappers[@]})) && grep -q 'curl -fsS' "${legacy_content_wrappers[@]}"; then
   echo "legacy release/readiness wrappers must not keep live report implementations" >&2
   exit 1
 fi
-if grep -q 'jq -n' "${legacy_scripts[@]}"; then
+if ((${#legacy_content_wrappers[@]})) && grep -q 'jq -n' "${legacy_content_wrappers[@]}"; then
   echo "legacy release/readiness wrappers must not keep report implementations" >&2
   exit 1
 fi
-if grep -q 'cargo metadata' "${legacy_scripts[@]}"; then
+if ((${#legacy_content_wrappers[@]})) && grep -q 'cargo metadata' "${legacy_content_wrappers[@]}"; then
   echo "legacy release/readiness wrappers must not keep packaging implementations" >&2
   exit 1
 fi

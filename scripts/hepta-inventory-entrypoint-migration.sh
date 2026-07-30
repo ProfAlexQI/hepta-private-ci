@@ -16,6 +16,7 @@ bases=(
 
 canonical_scripts=()
 legacy_scripts=()
+legacy_content_wrappers=()
 for base in "${bases[@]}"; do
   canonical="scripts/hepta-${base}.sh"
   legacy="scripts/hepta-codex-${base}.sh"
@@ -25,19 +26,26 @@ for base in "${bases[@]}"; do
   [[ -x "$legacy" ]]
   bash -n "$canonical"
   bash -n "$legacy"
-  pattern='exec "$script_dir/hepta-'"${base}"'.sh" "$@"'
-  grep -Fq "$pattern" "$legacy"
+  if [[ -L "$legacy" ]]; then
+    [[ "$(readlink "$legacy")" == "$(basename "$canonical")" ]]
+    [[ "$(cd "$(dirname "$legacy")" && pwd -P)/$(readlink "$legacy")" \
+      == "$(cd "$(dirname "$canonical")" && pwd -P)/$(basename "$canonical")" ]]
+  else
+    pattern='exec "$script_dir/hepta-'"${base}"'.sh" "$@"'
+    grep -Fq "$pattern" "$legacy"
+    legacy_content_wrappers+=("$legacy")
+  fi
 done
 
 if grep -q 'hepta-script-family-alias.sh' "${canonical_scripts[@]}"; then
   echo "canonical inventory gates must not route through the legacy script-family alias" >&2
   exit 1
 fi
-if grep -q 'curl -fsS' "${legacy_scripts[@]}"; then
+if ((${#legacy_content_wrappers[@]})) && grep -q 'curl -fsS' "${legacy_content_wrappers[@]}"; then
   echo "legacy inventory wrappers must not keep live report implementations" >&2
   exit 1
 fi
-if grep -q 'jq -n' "${legacy_scripts[@]}"; then
+if ((${#legacy_content_wrappers[@]})) && grep -q 'jq -n' "${legacy_content_wrappers[@]}"; then
   echo "legacy inventory wrappers must not keep report implementations" >&2
   exit 1
 fi

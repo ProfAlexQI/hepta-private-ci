@@ -39,6 +39,7 @@
     "gate_compat_negative_self_test": "passed",
     "entrypoint_alias_verification": "passed",
     "legacy_live_gate_symlink_alias_verification": "passed",
+    "legacy_release_and_inventory_symlink_alias_verification": "passed",
     "native_gate_runner": {
       "passed": 24,
       "failed": 3,
