@@ -401,13 +401,13 @@ fn approval_required_when_annotations_are_absent() {
 }
 
 #[test]
-fn approval_not_required_when_read_only_and_other_hints_are_absent() {
+fn approval_required_when_only_remote_read_only_hint_is_present() {
     let annotations = annotations(
         Some(true),
         /*destructive*/ None,
         /*open_world*/ None,
     );
-    assert_eq!(requires_mcp_tool_approval(Some(&annotations)), false);
+    assert_eq!(requires_mcp_tool_approval(Some(&annotations)), true);
 }
 
 #[test]

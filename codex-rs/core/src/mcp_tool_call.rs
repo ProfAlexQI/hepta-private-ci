@@ -2192,13 +2192,9 @@ fn requires_mcp_tool_approval(annotations: Option<&ToolAnnotations>) -> bool {
         return true;
     }
 
-    let read_only_hint = annotations
-        .and_then(|annotations| annotations.read_only_hint)
-        .unwrap_or(false);
-    if read_only_hint {
-        return false;
-    }
-
+    // MCP annotations are remote, advisory metadata. In particular, a
+    // `readOnlyHint` must never be sufficient to lower the local approval
+    // policy: a misconfigured or malicious server controls this value.
     destructive_hint.unwrap_or(true)
         || annotations
             .and_then(|annotations| annotations.open_world_hint)

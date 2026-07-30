@@ -5,9 +5,9 @@ require "digest"
 require "json"
 require "pathname"
 
-SCHEMA = "hepta_stage_identity_chain_v1"
+SCHEMA = "hepta_stage_identity_chain_v2"
 SHA256 = /\A[0-9a-f]{64}\z/
-STAGE = /\A[a-z0-9][a-z0-9_-]*\z/
+CANONICAL_STAGES = %w[first_candidate rollback_previous final_candidate].freeze
 
 def canonical_json(value)
   JSON.generate(value.sort.to_h)
@@ -17,13 +17,25 @@ def sha256_file(path)
   Digest::SHA256.file(path).hexdigest
 end
 
+def receipt_path(value, label)
+  source = Pathname(value)
+  raise "#{label} path must be absolute" unless source.absolute?
+  raise "#{label} must not be a symlink" if source.symlink?
+  resolved = source.realpath
+  raise "#{label} must be a regular non-symlink file" unless resolved.file? && !resolved.symlink?
+  resolved
+end
+
 def validate_runtime(runtime)
   raise "runtime receipt is not ready" unless runtime["status"] == "ready"
   raise "runtime PID is invalid" unless runtime["pid"].is_a?(Integer) && runtime["pid"].positive?
-  executable = Pathname(runtime.fetch("executable"))
-  raise "runtime executable path is not absolute" unless executable.absolute?
-  raise "runtime artifact SHA is invalid" unless SHA256.match?(runtime.fetch("artifact_sha256"))
+  executable = receipt_path(runtime.fetch("executable"), "runtime executable")
+  artifact_sha = runtime.fetch("artifact_sha256")
+  raise "runtime artifact SHA is invalid" unless SHA256.match?(artifact_sha)
+  raise "runtime executable bytes differ from receipt" unless sha256_file(executable) == artifact_sha
   raise "runtime health is not ready" unless runtime["health"] == "ready"
+  raise "runtime generation pointer was not verified" unless runtime["generation_pointer"] == true
+  raise "runtime product boundary was not preserved" unless runtime["product_boundary_preserved"] == true
 end
 
 def validate_install(install)
@@ -31,33 +43,87 @@ def validate_install(install)
   raise "gateway was not loaded" unless install["loaded"] == true
   raise "loaded plist digest was not verified" unless install["loaded_path_digest_verified"] == true
   raise "install receipt depends on a mutable worktree" unless install["mutable_worktree_dependency"] == false
+  raise "install receipt does not target the canonical LaunchAgent" unless install["canonical_target"] == true
+end
+
+def validate_soak(soak)
+  raise "soak receipt is not ready" unless soak["status"] == "ready"
+  raise "soak receipt has failures" unless soak["fail"] == 0
+  raise "soak samples are invalid" unless soak["samples"].is_a?(Integer) && soak["samples"].positive? &&
+    soak["ok"] == soak["samples"]
+  raise "soak did not preserve the legacy owner" unless soak["legacy_owner_preserved"] == true
+  raise "soak enabled Telegram send" unless soak["telegram_live_send_enabled"] == false
+  raise "soak enabled native mutation" unless soak["native_post_real_activation_enabled"] == false
+end
+
+def validate_watchdog(watchdog)
+  raise "watchdog receipt is not ready" unless watchdog["status"] == "ready"
+  route = watchdog.fetch("route")
+  raise "watchdog route parity is not ready" unless route["status"] == "ready" &&
+    route["route_count"] == route["implemented_route_count"] && route["missing_route_count"] == 0
+  boundary = watchdog.fetch("product_boundary")
+  raise "watchdog product boundary is not ready" unless boundary["status"] == "ready" &&
+    boundary["role"] == "openclaw_governed_backend" &&
+    boundary["channel_owner"] == "legacy_openclaw" &&
+    boundary["telegram_external_read"] == false &&
+    boundary["telegram_external_send"] == false &&
+    boundary["telegram_poll_loop_owner"] == false &&
+    boundary["native_real_mutation"] == false
+end
+
+def validated_stage(stage, runtime_file, install_file, soak_file, watchdog_file)
+  runtime = JSON.parse(runtime_file.read)
+  install = JSON.parse(install_file.read)
+  soak = JSON.parse(soak_file.read)
+  watchdog = JSON.parse(watchdog_file.read)
+  validate_runtime(runtime)
+  validate_install(install)
+  validate_soak(soak)
+  validate_watchdog(watchdog)
+
+  manifest_file = receipt_path(install.fetch("manifest"), "release manifest")
+  manifest = JSON.parse(manifest_file.read)
+  manifest_artifact_sha = manifest.dig("artifact", "sha256")
+  raise "manifest artifact SHA is invalid" unless SHA256.match?(manifest_artifact_sha)
+  raise "runtime and manifest artifact differ" unless runtime["artifact_sha256"] == manifest_artifact_sha
+  source_commit = manifest.dig("source", "commit")
+  raise "manifest source commit is invalid" unless source_commit&.match?(/\A[0-9a-f]{40}\z/)
+
+  {
+    "stage" => stage,
+    "runtime_receipt" => runtime_file.to_s,
+    "runtime_receipt_sha256" => sha256_file(runtime_file),
+    "install_receipt" => install_file.to_s,
+    "install_receipt_sha256" => sha256_file(install_file),
+    "soak_receipt" => soak_file.to_s,
+    "soak_receipt_sha256" => sha256_file(soak_file),
+    "watchdog_receipt" => watchdog_file.to_s,
+    "watchdog_receipt_sha256" => sha256_file(watchdog_file),
+    "pid" => runtime.fetch("pid"),
+    "executable" => runtime.fetch("executable"),
+    "artifact_sha256" => runtime.fetch("artifact_sha256"),
+    "manifest" => manifest_file.to_s,
+    "manifest_sha256" => sha256_file(manifest_file),
+    "source_commit" => source_commit,
+    "soak_samples" => soak.fetch("samples"),
+    "route_manifest_sha256" => watchdog.dig("route", "manifest_sha256")
+  }
 end
 
 def read_rows(path)
-  File.readlines(path, chomp: true).reject(&:empty?).map do |line|
-    stage, runtime_path, install_path = line.split("\t", 3)
-    raise "stage row must contain stage, runtime, and install paths" unless stage && runtime_path && install_path
-    raise "invalid or duplicate stage" unless STAGE.match?(stage)
-    runtime_file = Pathname(runtime_path).realpath
-    install_file = Pathname(install_path).realpath
-    raise "stage receipts must be regular non-symlink files" unless runtime_file.file? &&
-      install_file.file? && !runtime_file.symlink? && !install_file.symlink?
-    runtime = JSON.parse(runtime_file.read)
-    install = JSON.parse(install_file.read)
-    validate_runtime(runtime)
-    validate_install(install)
-    {
-      "stage" => stage,
-      "runtime_receipt" => runtime_file.to_s,
-      "runtime_receipt_sha256" => sha256_file(runtime_file),
-      "install_receipt" => install_file.to_s,
-      "install_receipt_sha256" => sha256_file(install_file),
-      "pid" => runtime.fetch("pid"),
-      "executable" => runtime.fetch("executable"),
-      "artifact_sha256" => runtime.fetch("artifact_sha256"),
-      "health" => runtime.fetch("health")
-    }
+  rows = File.readlines(path, chomp: true).reject(&:empty?).map do |line|
+    stage, runtime, install, soak, watchdog, extra = line.split("\t", 6)
+    raise "stage row must contain exactly five fields" if extra || [stage, runtime, install, soak, watchdog].any?(&:nil?)
+    validated_stage(
+      stage,
+      receipt_path(runtime, "runtime receipt"),
+      receipt_path(install, "install receipt"),
+      receipt_path(soak, "soak receipt"),
+      receipt_path(watchdog, "watchdog receipt")
+    )
   end
+  raise "stage order must be #{CANONICAL_STAGES.join(" -> ")}" unless rows.map { |row| row["stage"] } == CANONICAL_STAGES
+  rows
 end
 
 def bind_chain(rows)
@@ -70,25 +136,37 @@ def bind_chain(rows)
   end
 end
 
+def validate_alternation(stages)
+  first, rollback, final = stages
+  raise "candidate artifact changed across recutover" unless first["artifact_sha256"] == final["artifact_sha256"]
+  raise "candidate manifest changed across recutover" unless first["manifest_sha256"] == final["manifest_sha256"]
+  raise "candidate source changed across recutover" unless first["source_commit"] == final["source_commit"]
+  raise "rollback did not switch artifacts" if rollback["artifact_sha256"] == first["artifact_sha256"]
+  raise "rollback did not switch manifests" if rollback["manifest_sha256"] == first["manifest_sha256"]
+  raise "rollback did not switch source commits" if rollback["source_commit"] == first["source_commit"]
+end
+
 def validate_chain(document)
   raise "invalid stage identity schema" unless document["schema"] == SCHEMA
   raise "stage identity chain is not ready" unless document["status"] == "ready"
   stages = document.fetch("stages")
-  raise "stage identity chain must contain at least three stages" unless stages.length >= 3
-  raise "stage names must be unique" unless stages.map { |stage| stage["stage"] }.uniq.length == stages.length
-  rebound = bind_chain(stages.map { |stage| stage.reject { |key, _| ["previous_stage_sha256", "stage_sha256"].include?(key) } })
+  raise "stage identity chain must contain exactly three stages" unless stages.length == 3
+  raise "stage order drifted" unless stages.map { |stage| stage["stage"] } == CANONICAL_STAGES
+  rebound = bind_chain(stages.map { |stage| stage.reject { |key, _| %w[previous_stage_sha256 stage_sha256].include?(key) } })
   raise "stage identity hash chain drifted" unless rebound == stages
   raise "terminal stage hash drifted" unless document["terminal_stage_sha256"] == stages.last["stage_sha256"]
   stages.each do |stage|
-    runtime_file = Pathname(stage.fetch("runtime_receipt"))
-    install_file = Pathname(stage.fetch("install_receipt"))
-    raise "runtime receipt SHA drifted" unless runtime_file.file? && !runtime_file.symlink? &&
-      sha256_file(runtime_file) == stage["runtime_receipt_sha256"]
-    raise "install receipt SHA drifted" unless install_file.file? && !install_file.symlink? &&
-      sha256_file(install_file) == stage["install_receipt_sha256"]
-    validate_runtime(JSON.parse(runtime_file.read))
-    validate_install(JSON.parse(install_file.read))
+    rebuilt = validated_stage(
+      stage.fetch("stage"),
+      receipt_path(stage.fetch("runtime_receipt"), "runtime receipt"),
+      receipt_path(stage.fetch("install_receipt"), "install receipt"),
+      receipt_path(stage.fetch("soak_receipt"), "soak receipt"),
+      receipt_path(stage.fetch("watchdog_receipt"), "watchdog receipt")
+    )
+    expected = stage.reject { |key, _| %w[previous_stage_sha256 stage_sha256].include?(key) }
+    raise "stage evidence drifted" unless rebuilt == expected
   end
+  validate_alternation(stages)
 end
 
 action = ARGV.shift
@@ -101,6 +179,7 @@ when "build"
     "schema" => SCHEMA,
     "status" => "ready",
     "hash_bound" => true,
+    "canonical_stage_order" => CANONICAL_STAGES,
     "stage_count" => stages.length,
     "stages" => stages,
     "terminal_stage_sha256" => stages.last.fetch("stage_sha256")

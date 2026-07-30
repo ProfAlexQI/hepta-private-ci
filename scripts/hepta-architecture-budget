@@ -1538,8 +1538,11 @@ verify() {
   [[ -x scripts/hepta-single-exec-wrapper-count ]]
   verify_file_max scripts/hepta-single-exec-wrapper-count 100
   [[ -x scripts/hepta-stage-identity-chain ]]
-  verify_file_max scripts/hepta-stage-identity-chain 180
-  verify_file_max scripts/hepta-final-evidence-index 150
+  verify_file_max scripts/hepta-stage-identity-chain 220
+  verify_file_max scripts/hepta-final-evidence-index 200
+  verify_file_max scripts/hepta-release-evidence-finalize 100
+  verify_file_max scripts/hepta-release-evidence-self-test 140
+  scripts/hepta-release-evidence-self-test >/dev/null
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_ENTRIES:-2048' scripts/lib/hepta-json-report-capture.sh
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES:-134217728' scripts/lib/hepta-json-report-capture.sh
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES:-2097152' scripts/lib/hepta-json-report-capture.sh

@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+stage_rows=""
+entries_tsv=""
+run_dir=""
+
+usage() {
+  echo "usage: scripts/hepta-release-evidence-finalize --stage-rows PATH --entries-tsv PATH --run-dir DIR" >&2
+  exit 2
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --stage-rows) shift; [[ $# -gt 0 ]] || usage; stage_rows="$1" ;;
+    --entries-tsv) shift; [[ $# -gt 0 ]] || usage; entries_tsv="$1" ;;
+    --run-dir) shift; [[ $# -gt 0 ]] || usage; run_dir="$1" ;;
+    *) usage ;;
+  esac
+  shift
+done
+
+[[ -n "$stage_rows" && -n "$entries_tsv" && -n "$run_dir" ]] || usage
+[[ -f "$stage_rows" && ! -L "$stage_rows" && -f "$entries_tsv" && ! -L "$entries_tsv" ]] || {
+  echo "release evidence inputs must be regular non-symlink files" >&2
+  exit 1
+}
+mkdir -p "$run_dir"
+run_dir="$(realpath "$run_dir")"
+[[ -d "$run_dir" && ! -L "$run_dir" ]] || {
+  echo "release run directory must be a real directory" >&2
+  exit 1
+}
+
+chain="$run_dir/stage-identity-chain.json"
+index="$run_dir/final-evidence-index.json"
+receipt="$run_dir/release-evidence-finalize.json"
+[[ ! -e "$chain" && ! -e "$index" && ! -e "$receipt" ]] || {
+  echo "refusing to overwrite finalized release evidence" >&2
+  exit 1
+}
+
+"$root/scripts/hepta-stage-identity-chain" build "$stage_rows" "$chain" >/dev/null
+"$root/scripts/hepta-stage-identity-chain" verify "$chain" >/dev/null
+
+stage_index_path="$(awk -F '\t' '$1 == "stage_identity_chain" {print $2}' "$entries_tsv")"
+[[ -n "$stage_index_path" && "$(realpath "$stage_index_path")" == "$chain" ]] || {
+  echo "final evidence entries must bind the just-created stage identity chain" >&2
+  exit 1
+}
+
+"$root/scripts/hepta-final-evidence-index" \
+  build --entries-tsv "$entries_tsv" --output "$index" >/dev/null
+"$root/scripts/hepta-final-evidence-index" verify --index "$index" >/dev/null
+
+chain_sha="$(shasum -a 256 "$chain" | awk '{print $1}')"
+index_sha="$(shasum -a 256 "$index" | awk '{print $1}')"
+terminal_stage_sha="$(jq -r '.terminal_stage_sha256' "$chain")"
+canonical_roles_sha="$(jq -r '.canonical_required_roles_sha256' "$index")"
+temporary="$receipt.tmp.$$"
+jq -cn \
+  --arg schema hepta_release_evidence_finalize_v1 \
+  --arg status ready \
+  --arg run_dir "$run_dir" \
+  --arg chain "$chain" \
+  --arg chain_sha256 "$chain_sha" \
+  --arg terminal_stage_sha256 "$terminal_stage_sha" \
+  --arg index "$index" \
+  --arg index_sha256 "$index_sha" \
+  --arg canonical_required_roles_sha256 "$canonical_roles_sha" \
+  '{
+    schema:$schema,
+    status:$status,
+    release_hard_gate:true,
+    run_dir:$run_dir,
+    stage_identity:{path:$chain,sha256:$chain_sha256,terminal_stage_sha256:$terminal_stage_sha256},
+    final_evidence:{path:$index,sha256:$index_sha256,canonical_required_roles_sha256:$canonical_required_roles_sha256}
+  }' >"$temporary"
+chmod 0444 "$temporary"
+mv "$temporary" "$receipt"
+printf '%s\n' "$receipt"

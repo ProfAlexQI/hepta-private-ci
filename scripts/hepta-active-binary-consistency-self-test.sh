@@ -31,6 +31,7 @@ cp \
   "$ROOT/scripts/hepta-log-rotate" \
   "$ROOT/scripts/hepta-final-evidence-index" \
   "$ROOT/scripts/hepta-stage-identity-chain" \
+  "$ROOT/scripts/hepta-release-evidence-finalize" \
   "$ROOT/scripts/hepta-preflight-evidence-pack" \
   "$ROOT/scripts/hepta-install-live-watchdog" \
   "$ROOT/scripts/hepta-install-live-gateway" \

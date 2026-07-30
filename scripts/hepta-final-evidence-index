@@ -33,8 +33,17 @@ case "$action" in
     entries_tsv=""
     required_roles_file=""
     ;;
+  roles)
+    [[ $# == 0 ]] || {
+      echo "usage: scripts/hepta-final-evidence-index roles" >&2
+      exit 2
+    }
+    output=""
+    entries_tsv=""
+    required_roles_file=""
+    ;;
   *)
-    echo "usage: scripts/hepta-final-evidence-index {build|verify} ..." >&2
+    echo "usage: scripts/hepta-final-evidence-index {build|verify|roles} ..." >&2
     exit 2
     ;;
 esac
@@ -46,20 +55,54 @@ require "digest"
 require "json"
 require "pathname"
 
-SCHEMA = "hepta_final_only_evidence_index_v1"
+SCHEMA = "hepta_final_only_evidence_index_v2"
 ROLE = /\A[a-z0-9][a-z0-9_-]*\z/
-FORBIDDEN = /(attempt|raw|superseded|invalid|temporary|candidate)/
+FORBIDDEN = /(attempt|raw|superseded|invalid|temporary|candidate_evidence)/
+CANONICAL_REQUIRED_ROLES = %w[
+  source_preflight_summary
+  source_preflight_archive
+  release_materialization
+  release_verify
+  architecture_budget
+  dependency_security
+  no_egress
+  route_sweep
+  pagination
+  file_upload_boundary
+  first_candidate_runtime
+  first_candidate_install
+  first_candidate_soak
+  first_candidate_watchdog
+  rollback_previous_runtime
+  rollback_previous_install
+  rollback_previous_soak
+  rollback_previous_watchdog
+  final_candidate_runtime
+  final_candidate_install
+  final_candidate_soak
+  final_candidate_watchdog
+  stage_identity_chain
+  tree_hygiene
+  off_device_restore
+].freeze
 
 def sha256(path)
   Digest::SHA256.file(path).hexdigest
 end
 
+def canonical_roles_sha256
+  Digest::SHA256.hexdigest(CANONICAL_REQUIRED_ROLES.join("\n") + "\n")
+end
+
 def validate_entry(entry)
   role = entry.fetch("role")
-  path = Pathname(entry.fetch("path"))
+  source = Pathname(entry.fetch("path"))
   raise "invalid final evidence role" unless ROLE.match?(role) && !FORBIDDEN.match?(role)
-  raise "final evidence path must be absolute" unless path.absolute?
+  raise "final evidence path must be absolute" unless source.absolute?
+  raise "final evidence source must not be a symlink" if source.symlink?
+  path = source.realpath
   raise "final evidence must be a regular non-symlink file" unless path.file? && !path.symlink?
+  raise "final evidence path must already be canonical" unless path.to_s == source.to_s
   raise "final evidence SHA drifted" unless entry.fetch("sha256") == sha256(path)
   raise "final evidence size drifted" unless entry.fetch("size_bytes") == path.size
 end
@@ -68,10 +111,12 @@ def read_entries(path)
   seen_roles = {}
   seen_paths = {}
   File.readlines(path, chomp: true).reject(&:empty?).map do |line|
-    role, source = line.split("\t", 2)
-    raise "entry must contain role and path" unless role && source
+    role, source, extra = line.split("\t", 3)
+    raise "entry must contain exactly role and path" if extra || !role || !source
     raise "duplicate final evidence role" if seen_roles[role]
-    absolute = Pathname(source).realpath.to_s
+    unresolved = Pathname(source)
+    raise "final evidence source must not be a symlink" if unresolved.symlink?
+    absolute = unresolved.realpath.to_s
     raise "duplicate final evidence path" if seen_paths[absolute]
     seen_roles[role] = true
     seen_paths[absolute] = true
@@ -87,28 +132,33 @@ def read_entries(path)
   end
 end
 
+def validate_canonical_roles(roles)
+  raise "final evidence roles are not canonical" unless roles == CANONICAL_REQUIRED_ROLES
+end
+
 action, entries_path, output_path, required_roles_path = ARGV
+if action == "roles"
+  puts CANONICAL_REQUIRED_ROLES
+  exit
+end
+
 if action == "build"
   entries = read_entries(entries_path)
-  raise "final evidence index must not be empty" if entries.empty?
-  required_roles = if required_roles_path && !required_roles_path.empty?
-    File.readlines(required_roles_path, chomp: true).reject(&:empty?)
-  else
-    []
+  if required_roles_path && !required_roles_path.empty?
+    supplied_roles = File.readlines(required_roles_path, chomp: true).reject(&:empty?)
+    validate_canonical_roles(supplied_roles)
   end
-  raise "required final evidence roles must be unique" unless required_roles.uniq.length == required_roles.length
-  raise "invalid required final evidence role" unless required_roles.all? { |role| ROLE.match?(role) && !FORBIDDEN.match?(role) }
   present_roles = entries.map { |entry| entry.fetch("role") }
-  missing_roles = required_roles - present_roles
-  raise "required final evidence roles are missing: #{missing_roles.join(",")}" unless missing_roles.empty?
+  validate_canonical_roles(present_roles)
   payload = JSON.generate({
     "schema" => SCHEMA,
     "status" => "ready",
     "final_only" => true,
     "whitelist_only" => true,
     "entry_count" => entries.length,
-    "release_hard_gate" => !required_roles.empty?,
-    "required_roles" => required_roles,
+    "release_hard_gate" => true,
+    "canonical_required_roles_sha256" => canonical_roles_sha256,
+    "required_roles" => CANONICAL_REQUIRED_ROLES,
     "entries" => entries
   }) + "\n"
   output = Pathname(output_path)
@@ -127,12 +177,11 @@ end
 index = JSON.parse(File.read(output_path))
 raise "invalid final-only evidence index" unless index["schema"] == SCHEMA &&
   index["status"] == "ready" && index["final_only"] == true &&
-  index["whitelist_only"] == true && index["entry_count"] == index.fetch("entries").length &&
-  !index.fetch("entries").empty?
-required_roles = index.fetch("required_roles", [])
-present_roles = index.fetch("entries").map { |entry| entry.fetch("role") }
-raise "required final evidence role is missing" unless (required_roles - present_roles).empty?
-raise "release hard gate flag drifted" unless index.fetch("release_hard_gate", false) == !required_roles.empty?
+  index["whitelist_only"] == true && index["release_hard_gate"] == true &&
+  index["entry_count"] == index.fetch("entries").length &&
+  index["canonical_required_roles_sha256"] == canonical_roles_sha256
+validate_canonical_roles(index.fetch("required_roles"))
+validate_canonical_roles(index.fetch("entries").map { |entry| entry.fetch("role") })
 index.fetch("entries").each { |entry| validate_entry(entry) }
 puts JSON.generate(index)
 RUBY

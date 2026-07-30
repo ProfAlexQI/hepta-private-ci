@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-release-evidence.XXXXXX")"
+trap 'chmod -R u+w "$tmp" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/artifacts" "$tmp/receipts" "$tmp/evidence" "$tmp/final"
+
+candidate="$tmp/artifacts/candidate"
+previous="$tmp/artifacts/previous"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$candidate"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$previous"
+chmod 0755 "$candidate" "$previous"
+
+make_stage() {
+  local stage="$1" artifact="$2" source_commit="$3"
+  local artifact_sha manifest runtime install soak watchdog
+  artifact_sha="$(shasum -a 256 "$artifact" | awk '{print $1}')"
+  manifest="$tmp/receipts/$stage-manifest.json"
+  runtime="$tmp/receipts/$stage-runtime.json"
+  install="$tmp/receipts/$stage-install.json"
+  soak="$tmp/receipts/$stage-soak.json"
+  watchdog="$tmp/receipts/$stage-watchdog.json"
+  jq -cn \
+    --arg source_commit "$source_commit" \
+    --arg artifact_sha256 "$artifact_sha" \
+    '{source:{commit:$source_commit},artifact:{sha256:$artifact_sha256}}' >"$manifest"
+  jq -cn \
+    --arg executable "$artifact" \
+    --arg artifact_sha256 "$artifact_sha" \
+    '{schema:"hepta_stage_runtime_fixture_v1",status:"ready",pid:12345,executable:$executable,artifact_sha256:$artifact_sha256,health:"ready",generation_pointer:true,product_boundary_preserved:true}' >"$runtime"
+  jq -cn \
+    --arg manifest "$manifest" \
+    '{schema:"hepta_gateway_launch_agent_install_v1",status:"ready",manifest:$manifest,loaded:true,loaded_path_digest_verified:true,mutable_worktree_dependency:false,canonical_target:true}' >"$install"
+  jq -cn \
+    '{status:"ready",samples:3,ok:3,fail:0,legacy_owner_preserved:true,telegram_live_send_enabled:false,native_post_real_activation_enabled:false}' >"$soak"
+  jq -cn \
+    '{status:"ready",route:{status:"ready",route_count:1,implemented_route_count:1,missing_route_count:0,manifest_sha256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},product_boundary:{status:"ready",role:"openclaw_governed_backend",channel_owner:"legacy_openclaw",telegram_external_read:false,telegram_external_send:false,telegram_poll_loop_owner:false,native_real_mutation:false}}' >"$watchdog"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$stage" "$runtime" "$install" "$soak" "$watchdog"
+}
+
+candidate_commit="1111111111111111111111111111111111111111"
+previous_commit="2222222222222222222222222222222222222222"
+stage_rows="$tmp/stages.tsv"
+{
+  make_stage first_candidate "$candidate" "$candidate_commit"
+  make_stage rollback_previous "$previous" "$previous_commit"
+  make_stage final_candidate "$candidate" "$candidate_commit"
+} >"$stage_rows"
+
+chain_fixture="$tmp/chain-fixture.json"
+"$root/scripts/hepta-stage-identity-chain" build "$stage_rows" "$chain_fixture" >/dev/null
+"$root/scripts/hepta-stage-identity-chain" verify "$chain_fixture" >/dev/null
+
+order_rows="$tmp/order.tsv"
+{ sed -n '2p' "$stage_rows"; sed -n '1p' "$stage_rows"; sed -n '3p' "$stage_rows"; } >"$order_rows"
+if "$root/scripts/hepta-stage-identity-chain" build "$order_rows" "$tmp/order.json" >/dev/null 2>&1; then
+  echo "stage identity chain accepted a reordered cycle" >&2
+  exit 1
+fi
+
+bad_rows="$tmp/bad-alternation.tsv"
+{
+  sed -n '1p' "$stage_rows"
+  make_stage rollback_previous_bad "$candidate" "$candidate_commit" | sed 's/^rollback_previous_bad/rollback_previous/'
+  sed -n '3p' "$stage_rows"
+} >"$bad_rows"
+if "$root/scripts/hepta-stage-identity-chain" build "$bad_rows" "$tmp/bad-alternation.json" >/dev/null 2>&1; then
+  echo "stage identity chain accepted a non-switching rollback" >&2
+  exit 1
+fi
+
+entries="$tmp/entries.tsv"
+while IFS= read -r role; do
+  if [[ "$role" == "stage_identity_chain" ]]; then
+    evidence="$tmp/final/stage-identity-chain.json"
+  else
+    evidence="$tmp/evidence/$role.json"
+    jq -cn --arg role "$role" '{schema:"hepta_release_evidence_fixture_v1",status:"ready",role:$role}' >"$evidence"
+  fi
+  printf '%s\t%s\n' "$role" "$evidence"
+done < <("$root/scripts/hepta-final-evidence-index" roles) >"$entries"
+
+finalize_receipt="$(
+  "$root/scripts/hepta-release-evidence-finalize" \
+    --stage-rows "$stage_rows" \
+    --entries-tsv "$entries" \
+    --run-dir "$tmp/final"
+)"
+jq -e '
+  .schema == "hepta_release_evidence_finalize_v1"
+  and .status == "ready"
+  and .release_hard_gate == true
+' "$finalize_receipt" >/dev/null
+
+missing_entries="$tmp/missing.tsv"
+sed '$d' "$entries" >"$missing_entries"
+if "$root/scripts/hepta-final-evidence-index" \
+  build --entries-tsv "$missing_entries" --output "$tmp/missing-index.json" >/dev/null 2>&1; then
+  echo "final evidence index accepted a missing canonical role" >&2
+  exit 1
+fi
+
+reordered_entries="$tmp/reordered.tsv"
+{ sed -n '2p' "$entries"; sed -n '1p' "$entries"; sed -n '3,$p' "$entries"; } >"$reordered_entries"
+if "$root/scripts/hepta-final-evidence-index" \
+  build --entries-tsv "$reordered_entries" --output "$tmp/reordered-index.json" >/dev/null 2>&1; then
+  echo "final evidence index accepted reordered canonical roles" >&2
+  exit 1
+fi
+
+printf '\n' >>"$tmp/evidence/source_preflight_summary.json"
+if "$root/scripts/hepta-final-evidence-index" \
+  verify --index "$tmp/final/final-evidence-index.json" >/dev/null 2>&1; then
+  echo "final evidence index accepted post-finalization evidence drift" >&2
+  exit 1
+fi
+
+echo "hepta release evidence self-test passed"

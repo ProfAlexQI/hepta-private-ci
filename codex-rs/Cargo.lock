@@ -3013,6 +3013,7 @@ name = "codex-external-agent-migration"
 version = "0.0.0"
 dependencies = [
  "codex-hooks",
+ "libc",
  "pretty_assertions",
  "serde_json",
  "serde_yaml",

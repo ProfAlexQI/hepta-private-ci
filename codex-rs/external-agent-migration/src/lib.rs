@@ -6,8 +6,23 @@ use serde_json::Value as JsonValue;
 use serde_yaml::Value as YamlValue;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+#[cfg(unix)]
+use std::ffi::CString;
 use std::fs;
+use std::fs::File;
 use std::io;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(unix)]
+use std::os::fd::FromRawFd;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
+#[cfg(unix)]
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use toml::Value as TomlValue;
@@ -115,20 +130,23 @@ pub fn import_hooks(source_external_agent_dir: &Path, target_hooks: &Path) -> io
         return Ok(false);
     }
 
-    fs::create_dir_all(parent)?;
+    ensure_directory_tree_no_symlinks(parent)?;
 
-    let mut wrote_active_hooks = false;
-    if is_missing_or_empty_text_file(target_hooks)? {
+    let rendered = if is_missing_or_empty_text_file(target_hooks)? {
         copy_hook_scripts(source_external_agent_dir, parent)?;
         let mut payload = serde_json::Map::new();
         payload.insert("hooks".to_string(), JsonValue::Object(migration));
         let rendered = serde_json::to_string_pretty(&JsonValue::Object(payload))
             .map_err(|err| invalid_data_error(format!("failed to serialize hooks.json: {err}")))?;
-        fs::write(target_hooks, format!("{rendered}\n"))?;
-        wrote_active_hooks = true;
-    }
+        Some(format!("{rendered}\n"))
+    } else {
+        None
+    };
 
-    Ok(wrote_active_hooks)
+    rendered
+        .map(|rendered| write_text_if_missing_or_empty_no_symlinks(target_hooks, &rendered))
+        .transpose()
+        .map(Option::unwrap_or_default)
 }
 
 pub fn count_missing_subagents(source_agents: &Path, target_agents: &Path) -> io::Result<usize> {
@@ -160,21 +178,19 @@ pub fn import_subagents(source_agents: &Path, target_agents: &Path) -> io::Resul
         return Ok(0);
     }
 
-    fs::create_dir_all(target_agents)?;
+    ensure_directory_tree_no_symlinks(target_agents)?;
     let mut imported = 0usize;
     for source_file in agent_source_files(source_agents)? {
         let Some(target) = subagent_target_file(&source_file, target_agents) else {
             continue;
         };
-        if target.exists() {
-            continue;
-        }
         let document = parse_document(&source_file)?;
         let Some(metadata) = agent_metadata(&document) else {
             continue;
         };
-        fs::write(&target, render_agent_toml(&document.body, &metadata)?)?;
-        imported += 1;
+        if write_new_file_no_symlinks(&target, render_agent_toml(&document.body, &metadata)?)? {
+            imported += 1;
+        }
     }
 
     Ok(imported)
@@ -200,24 +216,25 @@ pub fn import_commands(source_commands: &Path, target_skills: &Path) -> io::Resu
         return Ok(0);
     }
 
-    fs::create_dir_all(target_skills)?;
+    ensure_directory_tree_no_symlinks(target_skills)?;
     let mut imported = 0usize;
     for (source_file, name) in unique_supported_command_sources(source_commands)? {
         let document = parse_document(&source_file)?;
         let target_dir = target_skills.join(&name);
-        if target_dir.exists() {
+        let created = create_directory_no_symlinks(&target_dir)?;
+        if !created {
             continue;
         }
-        fs::create_dir_all(&target_dir)?;
         let source_name = command_source_name(source_commands, &source_file);
         let Some(description) = command_skill_description(&document, &source_name) else {
             continue;
         };
-        fs::write(
-            target_dir.join("SKILL.md"),
+        if write_new_file_no_symlinks(
+            &target_dir.join("SKILL.md"),
             render_command_skill(&document.body, &name, &description, &source_name),
-        )?;
-        imported += 1;
+        )? {
+            imported += 1;
+        }
     }
 
     Ok(imported)
@@ -870,7 +887,7 @@ fn copy_hook_scripts(source_external_agent_dir: &Path, target_config_dir: &Path)
 }
 
 fn copy_dir_recursive_skip_existing(source: &Path, target: &Path) -> io::Result<()> {
-    fs::create_dir_all(target)?;
+    ensure_directory_tree_no_symlinks(target)?;
     for entry in fs::read_dir(source)? {
         let entry = entry?;
         let source_path = entry.path();
@@ -878,8 +895,8 @@ fn copy_dir_recursive_skip_existing(source: &Path, target: &Path) -> io::Result<
         let file_type = entry.file_type()?;
         if file_type.is_dir() {
             copy_dir_recursive_skip_existing(&source_path, &target_path)?;
-        } else if file_type.is_file() && !target_path.exists() {
-            fs::copy(source_path, target_path)?;
+        } else if file_type.is_file() {
+            write_new_file_no_symlinks(&target_path, fs::read(source_path)?)?;
         }
     }
     Ok(())
@@ -1284,16 +1301,251 @@ impl FrontmatterValue {
     }
 }
 
+#[cfg(unix)]
+fn path_component_cstring(component: &std::ffi::OsStr) -> io::Result<CString> {
+    CString::new(component.as_bytes())
+        .map_err(|_| invalid_data_error("migration target path contains a NUL byte"))
+}
+
+#[cfg(unix)]
+fn open_directory_at(parent: &File, component: &std::ffi::OsStr) -> io::Result<File> {
+    let component = path_component_cstring(component)?;
+    let descriptor = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            component.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if descriptor < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: openat returned a new owned descriptor on success.
+    Ok(unsafe { File::from_raw_fd(descriptor) })
+}
+
+#[cfg(unix)]
+fn create_directory_at(parent: &File, component: &std::ffi::OsStr) -> io::Result<bool> {
+    let component = path_component_cstring(component)?;
+    let result = unsafe { libc::mkdirat(parent.as_raw_fd(), component.as_ptr(), 0o700) };
+    if result == 0 {
+        return Ok(true);
+    }
+    let error = io::Error::last_os_error();
+    if error.kind() == io::ErrorKind::AlreadyExists {
+        return Ok(false);
+    }
+    Err(error)
+}
+
+#[cfg(unix)]
+fn ensure_directory_tree_no_symlinks(path: &Path) -> io::Result<File> {
+    let mut directory = if path.is_absolute() {
+        File::open("/")?
+    } else {
+        File::open(".")?
+    };
+    for component in path.components() {
+        let component = match component {
+            Component::RootDir | Component::CurDir => continue,
+            Component::Normal(component) => component,
+            Component::ParentDir | Component::Prefix(_) => {
+                return Err(invalid_data_error(
+                    "migration target path must not contain parent or prefix components",
+                ));
+            }
+        };
+        directory = match open_directory_at(&directory, component) {
+            Ok(next) => next,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                create_directory_at(&directory, component)?;
+                open_directory_at(&directory, component)?
+            }
+            Err(error) => return Err(error),
+        };
+    }
+    Ok(directory)
+}
+
+#[cfg(unix)]
+fn create_directory_no_symlinks(path: &Path) -> io::Result<bool> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_data_error("migration target directory has no parent"))?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| invalid_data_error("migration target directory has no name"))?;
+    let parent = ensure_directory_tree_no_symlinks(parent)?;
+    let created = create_directory_at(&parent, name)?;
+    open_directory_at(&parent, name)?;
+    Ok(created)
+}
+
+#[cfg(unix)]
+fn open_file_at(parent: &File, name: &std::ffi::OsStr, flags: i32) -> io::Result<File> {
+    let name = path_component_cstring(name)?;
+    let descriptor = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            flags | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600,
+        )
+    };
+    if descriptor < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: openat returned a new owned descriptor on success.
+    Ok(unsafe { File::from_raw_fd(descriptor) })
+}
+
+#[cfg(unix)]
+fn migration_target_parent(path: &Path) -> io::Result<(File, &std::ffi::OsStr)> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_data_error("migration target file has no parent"))?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| invalid_data_error("migration target file has no name"))?;
+    Ok((ensure_directory_tree_no_symlinks(parent)?, name))
+}
+
+#[cfg(unix)]
+fn write_new_file_no_symlinks(path: &Path, contents: impl AsRef<[u8]>) -> io::Result<bool> {
+    let (parent, name) = migration_target_parent(path)?;
+    let mut file = match open_file_at(&parent, name, libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            // Open the existing entry with O_NOFOLLOW so a symlink is rejected
+            // rather than silently treated as a legitimate existing target.
+            open_file_at(&parent, name, libc::O_RDONLY)?;
+            return Ok(false);
+        }
+        Err(error) => return Err(error),
+    };
+    file.write_all(contents.as_ref())?;
+    file.sync_all()?;
+    Ok(true)
+}
+
+#[cfg(unix)]
+fn write_text_if_missing_or_empty_no_symlinks(path: &Path, contents: &str) -> io::Result<bool> {
+    let (parent, name) = migration_target_parent(path)?;
+    let mut file = match open_file_at(&parent, name, libc::O_RDWR) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            open_file_at(&parent, name, libc::O_RDWR | libc::O_CREAT | libc::O_EXCL)?
+        }
+        Err(error) => return Err(error),
+    };
+    let mut existing = String::new();
+    file.read_to_string(&mut existing)?;
+    if !existing.trim().is_empty() {
+        return Ok(false);
+    }
+    file.set_len(0)?;
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(contents.as_bytes())?;
+    file.sync_all()?;
+    Ok(true)
+}
+
+#[cfg(unix)]
+fn is_missing_or_empty_text_file(path: &Path) -> io::Result<bool> {
+    let (parent, name) = migration_target_parent(path)?;
+    let mut file = match open_file_at(&parent, name, libc::O_RDONLY) {
+        Ok(file) => file,
+        Err(error) if matches!(error.raw_os_error(), Some(libc::ENOENT) | Some(libc::ELOOP)) => {
+            return Ok(error.kind() == io::ErrorKind::NotFound);
+        }
+        Err(error) => return Err(error),
+    };
+    if !file.metadata()?.is_file() {
+        return Ok(false);
+    }
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents.trim().is_empty())
+}
+
+#[cfg(not(unix))]
+fn ensure_directory_tree_no_symlinks(path: &Path) -> io::Result<()> {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(invalid_data_error(
+                    "migration target directory is a symlink",
+                ));
+            }
+            Ok(metadata) if !metadata.is_dir() => {
+                return Err(invalid_data_error(
+                    "migration target ancestor is not a directory",
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => fs::create_dir(&current)?,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn create_directory_no_symlinks(path: &Path) -> io::Result<bool> {
+    if fs::symlink_metadata(path).is_ok() {
+        ensure_directory_tree_no_symlinks(path)?;
+        return Ok(false);
+    }
+    ensure_directory_tree_no_symlinks(path)?;
+    Ok(true)
+}
+
+#[cfg(not(unix))]
+fn write_new_file_no_symlinks(path: &Path, contents: impl AsRef<[u8]>) -> io::Result<bool> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_data_error("migration target file has no parent"))?;
+    ensure_directory_tree_no_symlinks(parent)?;
+    let mut file = match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    file.write_all(contents.as_ref())?;
+    file.sync_all()?;
+    Ok(true)
+}
+
+#[cfg(not(unix))]
+fn write_text_if_missing_or_empty_no_symlinks(path: &Path, contents: &str) -> io::Result<bool> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_data_error("migration target file has no parent"))?;
+    ensure_directory_tree_no_symlinks(parent)?;
+    if !is_missing_or_empty_text_file(path)? {
+        return Ok(false);
+    }
+    fs::write(path, contents)?;
+    Ok(true)
+}
+
+#[cfg(not(unix))]
 fn is_missing_or_empty_text_file(path: &Path) -> io::Result<bool> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(true),
         Err(error) => return Err(error),
     };
-    if !metadata.is_file() {
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
         return Ok(false);
     }
-
     Ok(fs::read_to_string(path)?.trim().is_empty())
 }
 
@@ -1402,6 +1654,36 @@ mod tests {
         assert!(!is_missing_or_empty_text_file(&migration_target).expect("probe"));
         fs::remove_file(&linked_target).expect("make dangling");
         assert!(!is_missing_or_empty_text_file(&migration_target).expect("dangling probe"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn migration_write_rejects_parent_symlink() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let outside = root.path().join("outside");
+        let target_root = root.path().join("target");
+        fs::create_dir(&outside).expect("outside");
+        fs::create_dir(&target_root).expect("target");
+        std::os::unix::fs::symlink(&outside, target_root.join("linked")).expect("parent symlink");
+
+        let target = target_root.join("linked/AGENTS.md");
+        assert!(write_new_file_no_symlinks(&target, "blocked").is_err());
+        assert!(!outside.join("AGENTS.md").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn migration_write_rejects_ancestor_symlink() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let outside = root.path().join("outside");
+        let target_root = root.path().join("target");
+        fs::create_dir(&outside).expect("outside");
+        fs::create_dir(&target_root).expect("target");
+        std::os::unix::fs::symlink(&outside, target_root.join("linked")).expect("ancestor symlink");
+
+        let target = target_root.join("linked/nested/SKILL.md");
+        assert!(write_text_if_missing_or_empty_no_symlinks(&target, "blocked").is_err());
+        assert!(!outside.join("nested/SKILL.md").exists());
     }
 
     fn source_path(relative_path: &str) -> PathBuf {
