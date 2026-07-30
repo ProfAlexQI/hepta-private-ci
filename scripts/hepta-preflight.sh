@@ -8,8 +8,11 @@ if ! command -v rustup >/dev/null 2>&1; then
 fi
 HEPTA_RUSTC="$(rustup which --toolchain "$HEPTA_RUST_TOOLCHAIN" rustc)"
 HEPTA_RUSTDOC="$(rustup which --toolchain "$HEPTA_RUST_TOOLCHAIN" rustdoc)"
+HEPTA_TOOLCHAIN_BIN="$(dirname "$HEPTA_RUSTC")"
+export RUSTUP_TOOLCHAIN="$HEPTA_RUST_TOOLCHAIN"
 export RUSTC="$HEPTA_RUSTC"
 export RUSTDOC="$HEPTA_RUSTDOC"
+export PATH="$HEPTA_TOOLCHAIN_BIN:$PATH"
 hepta_cargo() {
   rustup run "$HEPTA_RUST_TOOLCHAIN" cargo "$@"
 }
