@@ -33,6 +33,13 @@ done
 }
 chmod 0700 "$log_root"
 
+lock_dir="$log_root/.hepta-log-rotate.lock"
+mkdir "$lock_dir" 2>/dev/null || {
+  echo "log rotation already active: $lock_dir" >&2
+  exit 1
+}
+trap 'rm -rf "$lock_dir"' EXIT
+
 for log_file in "$log_root"/*.log; do
   [[ -e "$log_file" ]] || continue
   [[ -f "$log_file" && ! -L "$log_file" \
@@ -45,23 +52,37 @@ for log_file in "$log_root"/*.log; do
   size_bytes="$(stat -f '%z' "$log_file")"
   (( size_bytes >= max_bytes )) || continue
 
+  before_identity="$(stat -f '%i:%z:%m' "$log_file")"
+  snapshot="$(mktemp "$log_root/.hepta-log-rotate.XXXXXX.snapshot")"
+  staged="$(mktemp "$log_root/.hepta-log-rotate.XXXXXX.gz")"
+  cp "$log_file" "$snapshot"
+  [[ "$(stat -f '%z' "$snapshot")" == "$size_bytes" \
+    && "$(stat -f '%i:%z:%m' "$log_file")" == "$before_identity" ]] || {
+    rm -f "$snapshot" "$staged"
+    echo "log changed while snapshotting; rotation deferred: $log_file" >&2
+    exit 1
+  }
+  gzip -c -9 "$snapshot" >"$staged"
+  gzip -t "$staged"
+  [[ "$(stat -f '%i:%z:%m' "$log_file")" == "$before_identity" ]] || {
+    rm -f "$snapshot" "$staged"
+    echo "log changed while compressing; rotation deferred: $log_file" >&2
+    exit 1
+  }
+  rm -f "$snapshot"
+  chmod 0600 "$staged"
+
   for (( generation = generations; generation >= 2; generation-- )); do
     previous="$log_file.$((generation - 1)).gz"
     current="$log_file.$generation.gz"
     [[ ! -L "$previous" && ! -L "$current" ]] || {
+      rm -f "$staged"
       echo "refusing symlinked log generation" >&2
       exit 1
     }
     [[ ! -e "$previous" ]] || mv -f "$previous" "$current"
   done
-
-  staged="$(mktemp "$log_root/.hepta-log-rotate.XXXXXX.gz")"
-  trap 'rm -f "$staged"' EXIT
-  gzip -c -9 "$log_file" >"$staged"
-  gzip -t "$staged"
-  chmod 0600 "$staged"
   mv -f "$staged" "$log_file.1.gz"
-  trap - EXIT
   : >"$log_file"
   chmod 0600 "$log_file"
 done
@@ -71,4 +92,4 @@ jq -cn \
   --arg root "$(realpath "$log_root")" \
   --argjson max_bytes "$max_bytes" \
   --argjson generations "$generations" \
-  '{schema:$schema,status:"ready",root:$root,max_bytes:$max_bytes,generations:$generations}'
+  '{schema:$schema,status:"ready",root:$root,max_bytes:$max_bytes,generations:$generations,exclusive_lock:true,stable_snapshot_required:true,changed_log_fails_closed:true}'

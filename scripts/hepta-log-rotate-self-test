@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-log-rotate.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+
+printf 'alpha\nbeta\ngamma\n' >"$tmp/watchdog.log"
+expected="$(shasum -a 256 "$tmp/watchdog.log" | awk '{print $1}')"
+"$ROOT/scripts/hepta-log-rotate" --root "$tmp" --max-bytes 1 --generations 2 >/dev/null
+[[ ! -s "$tmp/watchdog.log" ]]
+[[ "$(gzip -dc "$tmp/watchdog.log.1.gz" | shasum -a 256 | awk '{print $1}')" == "$expected" ]]
+
+mkdir "$tmp/.hepta-log-rotate.lock"
+if "$ROOT/scripts/hepta-log-rotate" --root "$tmp" --max-bytes 1 --generations 2 >/dev/null 2>&1; then
+  echo "log rotation accepted an overlapping writer lock" >&2
+  exit 1
+fi
+rmdir "$tmp/.hepta-log-rotate.lock"
+
+ln -s "$tmp/watchdog.log" "$tmp/unsafe.log"
+if "$ROOT/scripts/hepta-log-rotate" --root "$tmp" --max-bytes 1 --generations 2 >/dev/null 2>&1; then
+  echo "log rotation accepted a symlinked log" >&2
+  exit 1
+fi
+
+echo '{"schema":"hepta_log_rotation_self_test_v1","status":"ready","lossless_snapshot":true,"overlap_denied":true,"symlink_denied":true}'
