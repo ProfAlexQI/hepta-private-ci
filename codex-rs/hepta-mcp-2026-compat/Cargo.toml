@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+hepta-mcp-pagination = { workspace = true }
 rmcp-2026 = { workspace = true, features = ["client"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["time"] }

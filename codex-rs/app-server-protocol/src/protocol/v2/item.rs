@@ -286,6 +286,10 @@ pub enum ThreadItem {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         mcp_app_resource_uri: Option<String>,
+        /// Untrusted advisory copied from the selected MCP tool annotation.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        read_only_hint: Option<bool>,
         result: Option<Box<McpToolCallResult>>,
         error: Option<McpToolCallError>,
         /// The duration of the MCP tool call in milliseconds.
@@ -846,6 +850,7 @@ impl From<CoreTurnItem> for ThreadItem {
                     status: McpToolCallStatus::from(mcp.status),
                     arguments: mcp.arguments,
                     mcp_app_resource_uri: mcp.mcp_app_resource_uri,
+                    read_only_hint: mcp.read_only_hint,
                     result: mcp.result.map(McpToolCallResult::from).map(Box::new),
                     error: mcp.error.map(McpToolCallError::from),
                     duration_ms,

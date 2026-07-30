@@ -225,7 +225,7 @@ where
                             warn!(
                                 "failed to determine auth status for MCP server `{name}`: {error:?}"
                             );
-                            McpAuthStatus::Unsupported
+                            McpAuthStatus::Unknown
                         }
                     }
                 }

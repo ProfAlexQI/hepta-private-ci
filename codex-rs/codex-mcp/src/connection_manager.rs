@@ -471,33 +471,19 @@ impl McpConnectionManager {
             let client = managed_client.client.clone();
 
             join_set.spawn(async move {
-                let mut collected: Vec<Resource> = Vec::new();
-                let mut cursor: Option<String> = None;
-
-                loop {
-                    let params = cursor.as_ref().map(|next| {
-                        PaginatedRequestParams::default().with_cursor(Some(next.clone()))
-                    });
-                    let response = match client.list_resources(params, timeout).await {
-                        Ok(result) => result,
-                        Err(err) => return (server_name, Err(err)),
-                    };
-
-                    collected.extend(response.resources);
-
-                    match response.next_cursor {
-                        Some(next) => {
-                            if cursor.as_ref() == Some(&next) {
-                                return (
-                                    server_name,
-                                    Err(anyhow!("resources/list returned duplicate cursor")),
-                                );
-                            }
-                            cursor = Some(next);
-                        }
-                        None => return (server_name, Ok(collected)),
-                    }
-                }
+                let result = hepta_mcp_pagination::collect_paginated(
+                    "resources/list",
+                    timeout,
+                    |cursor| async {
+                        let params = cursor.map(|next| {
+                            PaginatedRequestParams::default().with_cursor(Some(next))
+                        });
+                        let response = client.list_resources(params, timeout).await?;
+                        Ok((response.resources, response.next_cursor))
+                    },
+                )
+                .await;
+                (server_name, result)
             });
         }
 
@@ -536,35 +522,19 @@ impl McpConnectionManager {
             let timeout = managed_client.tool_timeout;
 
             join_set.spawn(async move {
-                let mut collected: Vec<ResourceTemplate> = Vec::new();
-                let mut cursor: Option<String> = None;
-
-                loop {
-                    let params = cursor.as_ref().map(|next| {
-                        PaginatedRequestParams::default().with_cursor(Some(next.clone()))
-                    });
-                    let response = match client.list_resource_templates(params, timeout).await {
-                        Ok(result) => result,
-                        Err(err) => return (server_name_cloned, Err(err)),
-                    };
-
-                    collected.extend(response.resource_templates);
-
-                    match response.next_cursor {
-                        Some(next) => {
-                            if cursor.as_ref() == Some(&next) {
-                                return (
-                                    server_name_cloned,
-                                    Err(anyhow!(
-                                        "resources/templates/list returned duplicate cursor"
-                                    )),
-                                );
-                            }
-                            cursor = Some(next);
-                        }
-                        None => return (server_name_cloned, Ok(collected)),
-                    }
-                }
+                let result = hepta_mcp_pagination::collect_paginated(
+                    "resources/templates/list",
+                    timeout,
+                    |cursor| async {
+                        let params = cursor.map(|next| {
+                            PaginatedRequestParams::default().with_cursor(Some(next))
+                        });
+                        let response = client.list_resource_templates(params, timeout).await?;
+                        Ok((response.resource_templates, response.next_cursor))
+                    },
+                )
+                .await;
+                (server_name_cloned, result)
             });
         }
 

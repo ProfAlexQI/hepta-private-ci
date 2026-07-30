@@ -83,7 +83,7 @@ pub async fn determine_streamable_http_auth_status(
             debug!(
                 "failed to detect OAuth support for MCP server `{server_name}` at {url}: {error:?}"
             );
-            Ok(McpAuthStatus::Unsupported)
+            Ok(McpAuthStatus::Unknown)
         }
     }
 }
@@ -128,7 +128,7 @@ pub async fn determine_streamable_http_auth_status_with_http_client(
             debug!(
                 "failed to detect OAuth support for MCP server `{server_name}` at {url}: {error:?}"
             );
-            Ok(McpAuthStatus::Unsupported)
+            Ok(McpAuthStatus::Unknown)
         }
     }
 }
@@ -542,6 +542,22 @@ mod tests {
         .expect("status should compute");
 
         assert_eq!(status, McpAuthStatus::BearerToken);
+    }
+
+    #[tokio::test]
+    async fn discovery_failure_is_unknown_not_unsupported() {
+        let status = determine_streamable_http_auth_status(
+            "server",
+            "not-a-valid-url",
+            /*bearer_token_env_var*/ None,
+            /*http_headers*/ None,
+            /*env_http_headers*/ None,
+            OAuthCredentialsStoreMode::File,
+        )
+        .await
+        .expect("discovery failures should have an explicit status");
+
+        assert_eq!(status, McpAuthStatus::Unknown);
     }
 
     #[tokio::test]

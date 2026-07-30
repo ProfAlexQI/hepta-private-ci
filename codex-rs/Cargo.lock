@@ -3301,6 +3301,7 @@ dependencies = [
  "codex-rmcp-client",
  "codex-utils-plugins",
  "futures",
+ "hepta-mcp-pagination",
  "pretty_assertions",
  "regex-lite",
  "rmcp 1.8.0",
@@ -7647,8 +7648,17 @@ name = "hepta-mcp-2026-compat"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "hepta-mcp-pagination",
  "rmcp 3.0.0-beta.3",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "hepta-mcp-pagination"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
  "tokio",
 ]
 

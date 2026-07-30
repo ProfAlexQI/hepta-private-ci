@@ -1285,10 +1285,12 @@ impl FrontmatterValue {
 }
 
 fn is_missing_or_empty_text_file(path: &Path) -> io::Result<bool> {
-    if !path.exists() {
-        return Ok(true);
-    }
-    if !path.is_file() {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(true),
+        Err(error) => return Err(error),
+    };
+    if !metadata.is_file() {
         return Ok(false);
     }
 
@@ -1387,6 +1389,20 @@ fn external_agent_term_variants() -> [String; 5] {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    #[cfg(unix)]
+    #[test]
+    fn migration_target_probe_never_follows_symlinks() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let linked_target = root.path().join("outside.txt");
+        let migration_target = root.path().join("AGENTS.md");
+        fs::write(&linked_target, "").expect("empty linked target");
+        std::os::unix::fs::symlink(&linked_target, &migration_target).expect("symlink");
+
+        assert!(!is_missing_or_empty_text_file(&migration_target).expect("probe"));
+        fs::remove_file(&linked_target).expect("make dangling");
+        assert!(!is_missing_or_empty_text_file(&migration_target).expect("dangling probe"));
+    }
 
     fn source_path(relative_path: &str) -> PathBuf {
         Path::new("/repo")

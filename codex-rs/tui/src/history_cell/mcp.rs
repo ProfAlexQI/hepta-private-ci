@@ -16,6 +16,7 @@ impl HistoryCell for McpImageOutputCell {
 }
 fn mcp_auth_status_label(status: McpAuthStatus) -> &'static str {
     match status {
+        McpAuthStatus::Unknown => "Unknown",
         McpAuthStatus::Unsupported => "Unsupported",
         McpAuthStatus::NotLoggedIn => "Not logged in",
         McpAuthStatus::BearerToken => "Bearer token",
@@ -559,6 +560,7 @@ pub(crate) fn new_mcp_tools_output_from_statuses(
         }
         let auth_status = status
             .map(|status| match status.auth_status {
+                codex_app_server_protocol::McpAuthStatus::Unknown => McpAuthStatus::Unknown,
                 codex_app_server_protocol::McpAuthStatus::Unsupported => McpAuthStatus::Unsupported,
                 codex_app_server_protocol::McpAuthStatus::NotLoggedIn => McpAuthStatus::NotLoggedIn,
                 codex_app_server_protocol::McpAuthStatus::BearerToken => McpAuthStatus::BearerToken,

@@ -1,0 +1,54 @@
+{
+  "schema": "hepta.m4-upstream-intake.v1",
+  "status": "source_complete_with_one_prerequisite_deferred",
+  "strategy": "read-only compare followed by narrow semantic patches; no unrelated-history merge or rebase",
+  "upstream": {
+    "audited_main": "406dc9239492aff6d295cca5eebe2a548548d42f",
+    "baseline_provenance": "108234b5ebe6941764a6b8edbb37b2aa04369f07"
+  },
+  "absorbed": [
+    {
+      "commit": "3834c47ccb91adeef82e7d95f7ecdec5cde6dda8",
+      "semantic": "network policy allow amendment persistence failure denies the request and does not cache the host"
+    },
+    {
+      "commit": "3e3ae088398b4a4ad0833c84f5b1dcaaf5cdabe3",
+      "semantic": "shared MCP catalog pagination limits: 100 pages, 1024 items, 64 KiB cursor, 30 second default overall timeout, any repeated cursor"
+    },
+    {
+      "commit": "7ec480dda5792b8d54286c72f3e36bbdb267d0c3",
+      "semantic": "OAuth discovery failures are Unknown rather than Unsupported"
+    },
+    {
+      "commit": "b1ccaa0e080f59cfd71a136f6fcc60a4f2d60fba",
+      "semantic": "migration target probes use symlink_metadata and never traverse existing or dangling symlinks"
+    },
+    {
+      "commit": "406dc9239492aff6d295cca5eebe2a548548d42f",
+      "semantic": "MCP readOnlyHint is retained as an untrusted advisory in invocation history and does not lower approval"
+    }
+  ],
+  "deferred": [
+    {
+      "commit": "7579a2b41353470efaef93c08b4a21068a366b7f",
+      "semantic": "foreign-environment native PathUri joining",
+      "reason": "this tree's ExecutorFileSystem ABI and TurnEnvironment cwd still accept AbsolutePathBuf rather than PathUri; changing only the upload caller would falsely claim foreign Windows path support",
+      "current_guarantee": "primary environment filesystem selection and route-aware upload remain enforced"
+    }
+  ],
+  "verification": [
+    "cargo check for codex-core, codex-mcp, codex-rmcp-client, codex-app-server-protocol, codex-app-server, codex-tui, external-agent-migration, and both pagination crates",
+    "hepta-mcp-pagination unit tests: 3 passed",
+    "hepta-mcp-2026-compat pagination test: passed",
+    "codex-rmcp-client Unknown regression test: passed",
+    "external-agent-migration symlink regression test: passed",
+    "codex-core network approval unit suite: 21 passed",
+    "app-server protocol MCP advisory propagation regression: passed",
+    "scripts/hepta-architecture-budget verify: passed",
+    "scripts/hepta-active-egress-closure verify: passed",
+    "scripts/hepta-compat-debt-budget verify: passed"
+  ],
+  "runtime_changed": false,
+  "gates_changed": false,
+  "deployment_performed": false
+}

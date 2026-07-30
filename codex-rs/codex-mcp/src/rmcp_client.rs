@@ -338,11 +338,18 @@ pub(crate) async fn list_tools_for_client_uncached(
     timeout: Option<Duration>,
     server_instructions: Option<&str>,
 ) -> Result<Vec<ToolInfo>> {
-    let resp = client
-        .list_tools_with_connector_ids(/*params*/ None, timeout)
-        .await?;
-    let tools = resp
-        .tools
+    let tools = hepta_mcp_pagination::collect_paginated(
+        "tools/list",
+        timeout,
+        |cursor| async move {
+            let params = cursor.map(|next| {
+                rmcp::model::PaginatedRequestParams::default().with_cursor(Some(next))
+            });
+            let response = client.list_tools_with_connector_ids(params, timeout).await?;
+            Ok((response.tools, response.next_cursor))
+        },
+    )
+    .await?
         .into_iter()
         .map(|tool| {
             let mut tool_def = tool.tool;

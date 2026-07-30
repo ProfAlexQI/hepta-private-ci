@@ -1,6 +1,5 @@
 #![forbid(unsafe_code)]
 
-use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::future::Future;
 use std::io;
@@ -8,6 +7,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use anyhow::anyhow;
+use hepta_mcp_pagination::collect_paginated as collect_paginated_bounded;
 use rmcp_2026::model::PaginatedRequestParams;
 use rmcp_2026::model::ProtocolVersion;
 use rmcp_2026::service::ClientLifecycleMode;
@@ -69,31 +69,13 @@ where
     F: FnMut(Option<PaginatedRequestParams>) -> Fut,
     Fut: Future<Output = Result<(Vec<T>, Option<String>)>>,
 {
-    let collect = async {
-        let mut collected = Vec::new();
-        let mut cursor = None;
-        let mut seen_cursors = HashSet::new();
-        loop {
-            let params = cursor.as_ref().map(|next: &String| {
-                PaginatedRequestParams::default().with_cursor(Some(next.clone()))
-            });
-            let (items, next_cursor) = fetch(params).await?;
-            collected.extend(items);
-            let Some(next_cursor) = next_cursor else {
-                return Ok(collected);
-            };
-            if !seen_cursors.insert(next_cursor.clone()) {
-                return Err(anyhow!("{method} returned a repeated pagination cursor"));
-            }
-            cursor = Some(next_cursor);
-        }
-    };
-    match overall_timeout {
-        Some(timeout) => tokio::time::timeout(timeout, collect)
-            .await
-            .map_err(|_| anyhow!("{method} pagination timed out after {timeout:?}"))?,
-        None => collect.await,
-    }
+    collect_paginated_bounded(method, overall_timeout, |cursor| {
+        let params = cursor.map(|next| {
+            PaginatedRequestParams::default().with_cursor(Some(next))
+        });
+        fetch(params)
+    })
+    .await
 }
 
 pub fn normalize_discovery_response(bytes: &[u8]) -> Result<Value> {

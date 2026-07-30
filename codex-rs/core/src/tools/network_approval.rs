@@ -793,7 +793,25 @@ impl NetworkApprovalService {
                                 .await;
                         }
                     }
-                    PendingApprovalDecision::AllowForSession
+                    if pending_owner.decision_on_drop == PendingApprovalDecision::AllowForSession {
+                        {
+                            let mut denied_hosts = self.session_denied_hosts.lock().await;
+                            denied_hosts.remove(&key);
+                        }
+                        self.session_approved_hosts.lock().await.insert(key.clone());
+                        PendingApprovalDecision::AllowForSession
+                    } else {
+                        if let Some(owner_call) = owner_call.as_ref() {
+                            self.record_call_outcome(
+                                &owner_call.registration_id,
+                                NetworkApprovalOutcome::DeniedByPolicy(
+                                    policy_denial_message.clone(),
+                                ),
+                            )
+                            .await;
+                        }
+                        PendingApprovalDecision::Deny
+                    }
                 }
                 NetworkPolicyRuleAction::Deny => {
                     match session
