@@ -22,8 +22,12 @@ while IFS=$'\t' read -r family_id executor validation_schema spec_count; do
       and .family_count == 1
       and .spec_count == $spec_count
     ' <<<"$output" >/dev/null
-  [[ "$(wc -l < "$ROOT/$executor" | tr -d ' ')" -le 6 ]]
-  grep -F 'hepta-state-machine-gate-runner' "$ROOT/$executor" >/dev/null
+  if [[ -L "$ROOT/$executor" ]]; then
+    [[ "$(readlink "$ROOT/$executor")" == "hepta-state-machine-gate-runner" ]]
+  else
+    [[ "$(wc -l < "$ROOT/$executor" | tr -d ' ')" -le 6 ]]
+    grep -F 'hepta-state-machine-gate-runner' "$ROOT/$executor" >/dev/null
+  fi
 done < <(
   jq -r '.families[] | [.id, .executor, .validation_schema, .spec_count] | @tsv' "$FAMILY_FILE"
 )
