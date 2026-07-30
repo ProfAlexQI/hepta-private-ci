@@ -4,7 +4,7 @@ use crate::DurablePreferenceStore;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_reads_and_recovery_observe_one_sqlite_snapshot() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let writer = DurablePreferenceStore::bootstrap_new(&database_path).await?;
     let reader = DurablePreferenceStore::open_existing(&database_path).await?;

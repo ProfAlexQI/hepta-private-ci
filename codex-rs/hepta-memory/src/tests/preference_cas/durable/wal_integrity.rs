@@ -4,7 +4,7 @@ use sha2::Digest;
 
 pub(super) async fn durable_preference_wal_document_must_match_transition_next_state() -> TestResult
 {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let preference = PreferenceId::new("preference-durable-wal-binding");
     let subject = PrincipalId::new("subject-durable-wal-binding");
@@ -70,7 +70,7 @@ pub(super) async fn durable_preference_wal_document_must_match_transition_next_s
 }
 
 pub(super) async fn durable_preference_head_must_equal_immutable_wal_replay() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     DurablePreferenceStore::bootstrap_new(&database_path)
         .await?

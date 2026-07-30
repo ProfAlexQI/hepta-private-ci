@@ -10,7 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 #[tokio::test]
 async fn durable_bootstrap_creates_private_parent_database_and_sidecars() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let private_parent = directory.path().join("nested").join("durable");
     let database_path = private_parent.join("v2-memory.sqlite3");
     let _store = DurablePreferenceStore::bootstrap_new(&database_path).await?;
@@ -38,7 +38,7 @@ async fn durable_bootstrap_creates_private_parent_database_and_sidecars() -> Tes
 #[cfg(unix)]
 #[tokio::test]
 async fn durable_open_existing_rejects_permissive_database_mode() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let _store = DurablePreferenceStore::bootstrap_new(&database_path).await?;
     std::fs::set_permissions(&database_path, std::fs::Permissions::from_mode(0o644))?;
@@ -55,7 +55,7 @@ async fn durable_open_existing_rejects_permissive_database_mode() -> TestResult 
 #[cfg(unix)]
 #[tokio::test]
 async fn durable_open_existing_rejects_hardlinked_database() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let alias_path = directory.path().join("database-hardlink.sqlite3");
     let _store = DurablePreferenceStore::bootstrap_new(&database_path).await?;
@@ -75,7 +75,7 @@ async fn durable_open_existing_rejects_hardlinked_database() -> TestResult {
 async fn durable_bootstrap_rejects_unsafe_or_symlink_parent() -> TestResult {
     use std::os::unix::fs::symlink;
 
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let unsafe_parent = directory.path().join("unsafe");
     std::fs::create_dir(&unsafe_parent)?;
     std::fs::set_permissions(&unsafe_parent, std::fs::Permissions::from_mode(0o777))?;
@@ -120,7 +120,7 @@ async fn durable_bootstrap_rejects_unsafe_or_symlink_parent() -> TestResult {
 #[cfg(unix)]
 #[tokio::test]
 async fn durable_open_existing_rejects_parent_that_became_unsafe() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let private_parent = directory.path().join("private");
     std::fs::create_dir(&private_parent)?;
     std::fs::set_permissions(&private_parent, std::fs::Permissions::from_mode(0o700))?;
@@ -140,7 +140,7 @@ async fn durable_open_existing_rejects_parent_that_became_unsafe() -> TestResult
 #[cfg(unix)]
 #[tokio::test]
 async fn durable_open_existing_rejects_insecure_sqlite_sidecar() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let _store = DurablePreferenceStore::bootstrap_new(&database_path).await?;
     let wal_path = sqlite_sidecar_path(&database_path, "-wal");
@@ -158,7 +158,7 @@ async fn durable_open_existing_rejects_insecure_sqlite_sidecar() -> TestResult {
 #[cfg(unix)]
 #[tokio::test]
 async fn durable_open_existing_rejects_hardlinked_sqlite_sidecar() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let _store = DurablePreferenceStore::bootstrap_new(&database_path).await?;
     let wal_path = sqlite_sidecar_path(&database_path, "-wal");

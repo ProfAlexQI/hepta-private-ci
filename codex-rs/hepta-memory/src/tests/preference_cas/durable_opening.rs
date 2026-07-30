@@ -4,7 +4,7 @@ use crate::DurablePreferenceStore;
 
 #[tokio::test]
 async fn durable_preference_open_existing_never_creates_missing_path() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let parent = directory.path().join("missing-parent");
     let database_path = parent.join("v2-memory.sqlite3");
 
@@ -21,7 +21,7 @@ async fn durable_preference_open_existing_never_creates_missing_path() -> TestRe
 
 #[tokio::test]
 async fn durable_preference_bootstrap_refuses_existing_and_preserves_it() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     std::fs::write(&database_path, b"preference-sentinel")?;
 
@@ -38,7 +38,7 @@ async fn durable_preference_bootstrap_refuses_existing_and_preserves_it() -> Tes
 
 #[tokio::test]
 async fn durable_preference_open_existing_rejects_invalid_schema_without_healing() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let partial_path = directory.path().join("partial.sqlite3");
     let options = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(&partial_path)
@@ -122,7 +122,7 @@ async fn durable_preference_open_existing_rejects_invalid_schema_without_healing
 
 #[tokio::test]
 async fn durable_preference_store_fails_closed_after_path_deletion_or_replacement() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let deleted_path = directory.path().join("deleted.sqlite3");
     let deleted = DurablePreferenceStore::bootstrap_new(&deleted_path).await?;
     std::fs::remove_file(&deleted_path)?;

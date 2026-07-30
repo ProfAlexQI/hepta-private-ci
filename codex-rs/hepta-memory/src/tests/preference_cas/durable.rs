@@ -11,7 +11,7 @@ mod wal_integrity;
 
 #[tokio::test]
 async fn durable_preference_monotonic_state_advances_and_survives_reopen() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-monotonic-preference.sqlite3");
     let store =
         DurablePreferenceStore::bootstrap_new_keyed(&database_path, durable_integrity_key(0x51))
@@ -37,7 +37,7 @@ async fn durable_preference_monotonic_state_advances_and_survives_reopen() -> Te
 
 #[tokio::test]
 async fn durable_preference_wal_replays_head_and_historical_idempotency() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let preference = PreferenceId::new("preference-durable-replay");
     let subject = PrincipalId::new("subject-durable-replay");
@@ -110,7 +110,7 @@ async fn durable_preference_wal_replays_head_and_historical_idempotency() -> Tes
 
 #[tokio::test]
 async fn keyed_preference_wal_recovers_only_with_the_exact_key() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-keyed-preference.sqlite3");
     let preference = PreferenceId::new("preference-keyed-replay");
     let subject = PrincipalId::new("subject-keyed-replay");
@@ -149,7 +149,7 @@ async fn keyed_preference_wal_recovers_only_with_the_exact_key() -> TestResult {
 
 #[tokio::test]
 async fn durable_preference_receipt_single_use_survives_recovery() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let store = DurablePreferenceStore::bootstrap_new(&database_path).await?;
     let subject = PrincipalId::new("subject-durable-receipt");
@@ -206,7 +206,7 @@ async fn durable_preference_receipt_single_use_survives_recovery() -> TestResult
 
 #[tokio::test]
 async fn independently_opened_durable_stores_serialize_one_exact_cas_winner() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let preference = PreferenceId::new("preference-durable-race");
     let subject = PrincipalId::new("subject-durable-race");
@@ -267,7 +267,7 @@ async fn independently_opened_durable_stores_serialize_one_exact_cas_winner() ->
 
 #[tokio::test]
 async fn durable_preference_storage_hash_tampering_fails_closed() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");
     let preference = PreferenceId::new("preference-durable-tamper");
     let subject = PrincipalId::new("subject-durable-tamper");
