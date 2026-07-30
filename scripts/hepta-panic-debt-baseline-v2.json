@@ -26,15 +26,15 @@
     },
     "test": {
       "by_kind": {
-        "expect": 4443,
+        "expect": 4446,
         "panic": 78,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
         "unwrap": 320
       },
-      "fingerprints_sha256": "1251e9d1e63543c860433deb55b657c308cd6838d485b7ae6cda9e51efe2ce63",
-      "total": 4841
+      "fingerprints_sha256": "b9a4fa445b78ea859a3d8943479705540d10eb6f46032b50d3754e82adf292c7",
+      "total": 4844
     }
   },
   "limitations": [
@@ -363,7 +363,7 @@
   "summary": {
     "actionable_high_risk_production_fingerprints": [],
     "by_kind": {
-      "expect": 4478,
+      "expect": 4481,
       "panic": 79,
       "todo": 0,
       "unimplemented": 0,
@@ -376,16 +376,16 @@
       "high": 0,
       "low": 0,
       "medium": 0,
-      "test_only": 4841,
+      "test_only": 4844,
       "unclassified": 0
     },
     "by_source_class": {
       "fixture": 0,
       "generated_build": 15,
       "production": 24,
-      "test": 4841
+      "test": 4844
     },
     "classification_sha256": "f03bffaaa25169130bca92b14c7b37887ac5e49b2d3ebb91664d73133be42064",
-    "total": 4880
+    "total": 4883
   }
 }

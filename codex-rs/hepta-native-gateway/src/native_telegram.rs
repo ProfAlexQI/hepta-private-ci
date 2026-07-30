@@ -155,9 +155,19 @@ pub(crate) const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-d
 pub(crate) const TELEGRAM_DELIVERY_LEDGER_PATH: &str = ".hepta/telegram/delivery-ledger.jsonl";
 
 fn typed_state_path(legacy_path: &str) -> PathBuf {
-    hepta_paths::HeptaStateRoot::discover()
+    match hepta_paths::HeptaStateRoot::discover()
         .and_then(|root| root.resolve_legacy_default(legacy_path))
-        .unwrap_or_else(|error| panic!("invalid typed Hepta state path {legacy_path}: {error}"))
+    {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("invalid typed Hepta state path {legacy_path}: {error}");
+            // An empty path cannot name a state file. Returning it keeps every
+            // downstream read/write fail-closed without falling back to the
+            // deprecated working-tree-relative `.hepta` path or aborting the
+            // process.
+            PathBuf::new()
+        }
+    }
 }
 pub(crate) const TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER";
