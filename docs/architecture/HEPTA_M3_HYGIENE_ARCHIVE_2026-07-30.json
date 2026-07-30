@@ -1,0 +1,44 @@
+{
+  "schema": "hepta.m3-hygiene-archive.v1",
+  "status": "local_complete_off_device_pending",
+  "log_rotation": {
+    "exclusive_lock": true,
+    "stable_snapshot_required": true,
+    "changed_log_fails_closed_without_truncation": true,
+    "self_test": "passed"
+  },
+  "pre_prune_archive": {
+    "root": "/Users/qianqi/.local/share/hepta/archive/M/20260730T031337Z",
+    "bundle": "hepta-M-pre-prune-all-refs.bundle",
+    "bundle_sha256": "44e9933475aa5fe2c19191efdcb8c5e15fd5a6a95dbb59430ec7836a7d06a8ab",
+    "bundle_verify": true,
+    "clone_checkout_fsck": true,
+    "repo_state_archive": "repo-hepta-state.tar.gz",
+    "repo_state_sha256": "5a2ecfcc4a046d3b2067e9118e79035f3c175dd0118bcd5c7f0e98afec9523ae",
+    "device_id": 16777234,
+    "off_device": false
+  },
+  "cleanup": {
+    "obsolete_remote_refs_removed": 13,
+    "remaining_refs": [
+      "refs/heads/main",
+      "refs/remotes/upstream/HEAD",
+      "refs/remotes/upstream/main",
+      "refs/tags/hepta-stable-main-20260706-7ba8000ff"
+    ],
+    "repo_state_tree_archived_and_removed": true,
+    "temporary_git_pack_files_removed": 3,
+    "git_garbage_bytes_after": 0,
+    "codex_target_reclaimed_gib": 5.5,
+    "hepta_native_target_reclaimed_gib": 8.3
+  },
+  "off_device": {
+    "volume": "Samsung_T5",
+    "mounted": false,
+    "copy_complete": false,
+    "restore_complete": false,
+    "pending": true
+  },
+  "live_runtime_mutated": false,
+  "deployment_performed": false
+}
