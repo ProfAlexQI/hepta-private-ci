@@ -6,6 +6,10 @@ if ! command -v rustup >/dev/null 2>&1; then
   echo "[hepta-preflight] rustup is required for pinned Rust ${HEPTA_RUST_TOOLCHAIN}" >&2
   exit 2
 fi
+HEPTA_RUSTC="$(rustup which --toolchain "$HEPTA_RUST_TOOLCHAIN" rustc)"
+HEPTA_RUSTDOC="$(rustup which --toolchain "$HEPTA_RUST_TOOLCHAIN" rustdoc)"
+export RUSTC="$HEPTA_RUSTC"
+export RUSTDOC="$HEPTA_RUSTDOC"
 hepta_cargo() {
   rustup run "$HEPTA_RUST_TOOLCHAIN" cargo "$@"
 }
