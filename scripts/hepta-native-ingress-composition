@@ -257,12 +257,17 @@ verify() {
   require_literal "$telegram" \
     'execute_operator_authorized_telegram_drain(' \
     "operator Telegram production adapter is missing"
-  require_literal "$telegram" \
-    'Path::new(TELEGRAM_DELIVERY_LEDGER_PATH)' \
-    "operator Telegram delivery ledger target is not fixed by production code"
-  require_literal "$telegram" \
-    'Path::new(TELEGRAM_INGRESS_CURSOR_PATH)' \
-    "operator Telegram cursor target is not fixed by production code"
+  for evidence in \
+    'fn typed_state_path(legacy_path: &str) -> PathBuf' \
+    'hepta_paths::HeptaStateRoot::discover()' \
+    'root.resolve_legacy_default(legacy_path)' \
+    'PathBuf::new()' \
+    'typed_state_path(TELEGRAM_DELIVERY_LEDGER_PATH)' \
+    'typed_state_path(TELEGRAM_INGRESS_CURSOR_PATH)'
+  do
+    require_literal "$telegram" "$evidence" \
+      "operator Telegram durable path is not fixed under the typed state root"
+  done
   require_literal "$preference" \
     'if request.session_binding_hash != expected_session_binding_hash {' \
     "preference authority is not bound to the active runtime session"
@@ -428,6 +433,12 @@ self_test() {
     "native ingress composition self-test accepted sensitive ingress without transport admission"
   cp "$ROOT/codex-rs/hepta-native-gateway/src/native_gateway.rs" \
     "$fixture/codex-rs/hepta-native-gateway/src/native_gateway.rs"
+  perl -0pi -e 's/root\.resolve_legacy_default\(legacy_path\)/Ok(PathBuf::from(legacy_path))/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_telegram.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted working-tree-relative Telegram state"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/native_telegram.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_telegram.rs"
   perl -0pi -e 's/let file_metadata = fs::metadata\(path\)/let _raw = fs::read_to_string(path); let file_metadata = fs::metadata(path)/' \
     "$fixture/codex-rs/hepta-native-gateway/src/native_telegram.rs"
   expect_verify_failure "$fixture" \
@@ -450,7 +461,7 @@ self_test() {
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs"
   expect_verify_failure "$fixture" \
     "native ingress composition self-test accepted discarded preference authority"
-  echo '{"schema":"hepta.native-ingress-composition-self-test.v2","status":"ready","negative_fixtures":14}'
+  echo '{"schema":"hepta.native-ingress-composition-self-test.v2","status":"ready","negative_fixtures":15}'
 }
 
 case "${1:-}" in
