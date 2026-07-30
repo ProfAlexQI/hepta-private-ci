@@ -20,6 +20,17 @@ use crate::explicit_preference_genesis;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+fn private_tempdir() -> Result<tempfile::TempDir, Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(directory)
+}
+
 fn durable_integrity_key(byte: u8) -> DurableIntegrityKey {
     DurableIntegrityKey::from_bytes([byte; 32])
 }
@@ -321,7 +332,7 @@ fn reducer_version_and_payload_fail_before_any_cas_mutation() -> TestResult {
 
 #[tokio::test]
 async fn composed_keyed_authority_advances_once_and_reopens_for_audit() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("trusted-preference.sqlite3");
     let target_binding = target("durable-authority");
     let genesis = explicit_preference_genesis(
@@ -413,7 +424,7 @@ async fn composed_keyed_authority_advances_once_and_reopens_for_audit() -> TestR
 
 #[tokio::test]
 async fn composed_authority_rejects_source_drift_before_authentication_or_cas() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("trusted-source-drift.sqlite3");
     let target = target("source-drift");
     let genesis = explicit_preference_genesis(
@@ -477,7 +488,7 @@ async fn composed_authority_rejects_source_drift_before_authentication_or_cas() 
 
 #[tokio::test]
 async fn durable_hmac_ingress_plans_without_writing_then_commits_exactly_once() -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let database_path = directory.path().join("live-preference.sqlite3");
     let source = source_ref("live-http");
     let ingress = DurableHmacTrustedPreferenceIngress::bootstrap_new(
@@ -537,7 +548,7 @@ async fn durable_hmac_ingress_plans_without_writing_then_commits_exactly_once() 
 #[tokio::test]
 async fn invalid_hmac_never_initializes_genesis_and_invalid_source_never_creates_store()
 -> TestResult {
-    let directory = tempfile::tempdir()?;
+    let directory = private_tempdir()?;
     let invalid_database = directory.path().join("invalid-source.sqlite3");
     assert!(
         PreferenceFeedbackSourceRef::try_new(
