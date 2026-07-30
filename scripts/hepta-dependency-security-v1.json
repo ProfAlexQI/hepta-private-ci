@@ -26,14 +26,14 @@
         "manifest_path": "codex-rs/Cargo.toml",
         "path": "codex-rs/Cargo.lock",
         "deny_config_path": "codex-rs/deny.toml",
-      "sha256": "2c30a9364d77bf41b43bf66bc69019acb15707e07f4c681f713fc432fc848a45"
+        "sha256": "5752e48bc2b1f9853e69d3678ca158a053123fb9af34786f2b3ea7bd755f9f18"
       },
       {
         "id": "native-app",
         "manifest_path": "apps/hepta-native/Cargo.toml",
         "path": "apps/hepta-native/Cargo.lock",
         "deny_config_path": "apps/hepta-native/deny.toml",
-        "sha256": "9ef7a327cb828068e6c307bdd352d384b8efc52a6ade3c1f1def33b3ce7eb8ad"
+        "sha256": "8856ff8f8a0c6869e245c919e9acfb00758441ffb7a988f92397ea31c117d1cb"
       }
     ],
     "deny_config": {"path":"codex-rs/deny.toml","sha256":"5e927231e3e0f1ff09b2f4ce6f963314f8320631dc680da9bcf24ae2d8620ec3"},
