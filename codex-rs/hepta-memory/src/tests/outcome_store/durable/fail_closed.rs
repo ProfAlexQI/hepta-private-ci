@@ -1,3 +1,4 @@
+use super::super::tempfile;
 use super::*;
 
 pub(super) async fn durable_outcome_storage_hash_tampering_fails_closed_on_reopen() -> TestResult {
