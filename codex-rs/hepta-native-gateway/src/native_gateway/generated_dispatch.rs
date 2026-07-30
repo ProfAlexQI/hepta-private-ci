@@ -2711,7 +2711,6 @@ fn route_native_gateway_request_after_preflight(
         )
     }
 }
-
 pub(crate) fn native_gateway_json(
     options: &NativeGatewayOptions,
     telegram_plugin: &NativeTelegramPluginStatus,
@@ -2826,4 +2825,3 @@ pub(crate) fn native_gateway_json(
         next_migration_slice: "keep public GA readiness blocked until explicit operator-approved live handoff, mutation, provider, channel, and release gates are satisfied",
     })
 }
-

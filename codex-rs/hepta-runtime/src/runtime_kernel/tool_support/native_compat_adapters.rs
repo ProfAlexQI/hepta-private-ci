@@ -53,7 +53,6 @@ fn native_compat_web_fetch(
     );
     Ok(out)
 }
-
 fn native_compat_web_search(
     tool: &str,
     input: &serde_json::Map<String, Value>,
@@ -867,4 +866,3 @@ fn ensure_tool_schema_has_field(
         )))
     }
 }
-
