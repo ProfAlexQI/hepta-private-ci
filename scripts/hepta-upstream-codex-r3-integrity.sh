@@ -32,13 +32,9 @@ fail() {
   exit 1
 }
 
-resolve_direct_commit_ref() {
-  local label="$1" ref="$2" expected="$3" symbolic_target raw object_type
-  symbolic_target="$(git symbolic-ref -q "$ref" 2>/dev/null || true)"
-  [[ -z "$symbolic_target" ]] || fail "$label must be a direct ref, found symref to $symbolic_target"
-  raw="$(git rev-parse --verify "$ref" 2>/dev/null)" || fail "$label is missing: $ref"
-  [[ "$raw" == "$expected" ]] || fail "$label raw OID drifted: expected $expected got $raw"
-  object_type="$(git cat-file -t "$raw" 2>/dev/null)" || fail "$label object is unavailable: $raw"
+verify_pinned_commit_object() {
+  local label="$1" expected="$2" object_type
+  object_type="$(git cat-file -t "$expected" 2>/dev/null)" || fail "$label object is unavailable: $expected"
   [[ "$object_type" == "commit" ]] || fail "$label must point directly to a commit, found $object_type"
 }
 
@@ -52,9 +48,12 @@ fi
 [[ "$CUTOFF_REF" == "$PINNED_CUTOFF_REF" ]] || fail "cutoff ref does not match pinned R3 ref"
 [[ "$CUTOFF_HEAD" == "$PINNED_CUTOFF_HEAD" ]] || fail "cutoff head does not match pinned R3 head"
 [[ "$(shasum -a 256 "$PINNED_R2_MANIFEST" | awk '{print $1}')" == "$PINNED_R2_MANIFEST_SHA256" ]] || fail "R2 predecessor manifest hash drifted"
-resolve_direct_commit_ref "R1 predecessor cutoff" "$PINNED_R1_REF" "$PINNED_R1_HEAD"
-resolve_direct_commit_ref "R2 predecessor cutoff" "$PINNED_R2_REF" "$PINNED_R2_HEAD"
-resolve_direct_commit_ref "R3 historical cutoff" "$CUTOFF_REF" "$CUTOFF_HEAD"
+# Historical intake refs are archive labels recorded in the hash-bound manifests,
+# not durable runtime dependencies.  Verify the pinned commit objects directly so
+# a receipt-backed ref-prune cannot make a clean checkout fail this integrity gate.
+verify_pinned_commit_object "R1 predecessor cutoff" "$PINNED_R1_HEAD"
+verify_pinned_commit_object "R2 predecessor cutoff" "$PINNED_R2_HEAD"
+verify_pinned_commit_object "R3 historical cutoff" "$CUTOFF_HEAD"
 git merge-base --is-ancestor "$PINNED_R1_HEAD" "$PINNED_R2_HEAD" || fail "R1 predecessor is not an ancestor of R2"
 git merge-base --is-ancestor "$PINNED_R2_HEAD" "$CUTOFF_HEAD" || fail "R2 predecessor is not an ancestor of R3"
 
