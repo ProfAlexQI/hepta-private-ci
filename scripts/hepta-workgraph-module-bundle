@@ -31,9 +31,9 @@ INCLUDE_LINE = <<~RUST
 RUST
 INCLUDE_PATTERN =
   /include!\(\s*concat!\(\s*env!\("OUT_DIR"\),\s*"\/hepta_workgraph_bundle\/modules\.rs"\s*\)\s*\);\n/m
-EXPECTED_MODULE_COUNT = 398
-MAX_NORMALIZED_EFFECTIVE_LINES = 202_793
-MAX_NORMALIZED_TEMPLATE_COUNT = 282
+EXPECTED_MODULE_COUNT = 298
+MAX_NORMALIZED_EFFECTIVE_LINES = 150_357
+MAX_NORMALIZED_TEMPLATE_COUNT = 201
 MAX_CANONICAL_RECORD_BYTES = 89_270
 
 def usage
@@ -180,14 +180,14 @@ def write_registry(entries, metrics, canonical)
     },
     decline_targets: {
       next: {
-        logical_module_count: 299,
-        normalized_template_count: 199,
-        normalized_effective_lines: 130_000
+        logical_module_count: 199,
+        normalized_template_count: 149,
+        normalized_effective_lines: 100_000
       },
       terminal: {
-        logical_module_count: 199,
-        normalized_template_count: 199,
-        normalized_effective_lines: 180_000
+        logical_module_count: 99,
+        normalized_template_count: 99,
+        normalized_effective_lines: 75_000
       }
     },
     source_files_materialized: false,

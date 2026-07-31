@@ -1,0 +1,1152 @@
+{
+  "schema": "hepta_workgraph_o2_retirement_v1",
+  "status": "ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "source_tree": "07817399938296ebd5b3e0b06bfa6962e4c9bd43",
+  "baseline_bundle_sha256": "4a7189d11b664b70bd27051796ad1b80eb14dec6d8e62496d87fbd43f52f00b3",
+  "baseline_aggregate_source_sha256": "ec593fdcd4ae380891b92a6a924887e4e23a1911621cc1a8dffd6a17d739d026",
+  "baseline_gate_payload_bundle_sha256": "cf1e680a5cb11c2f2e210594482b0d93b1ae08b02c4c7abbaa8968b2ac70626c",
+  "baseline_gate_spec_sha256": "bb278b201c113b480849339ba5e6d2980b4dcecdd2dcbf98554d80561b9fcc3a",
+  "original_module_count": 398,
+  "retired_module_count": 100,
+  "remaining_module_count": 298,
+  "protected_external_module_count": 3,
+  "protected_total_module_count": 274,
+  "protected_gate_payload_module_count": 272,
+  "selection": "largest_source_first_gate_invisible_uncalled_dependency_leaf",
+  "baseline_recovery_available": true,
+  "git_history_recovery_bound": false,
+  "history_anchor_required": true,
+  "retired_modules": [
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fc",
+      "sha256": "3b49bcb57a26974ccffd682c61f538ad600ecebd3895697e0250a052a84ccbe3",
+      "lines": 580,
+      "template_id": 5,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fc_readback",
+      "sha256": "4f7ff0d787f72cdab6801ac985cda2b30f949c3bd5661766c175d80f4f64667d",
+      "lines": 555,
+      "template_id": 6,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fc"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fc_readback_ai",
+      "sha256": "f571c71e995130e405e4f8ca3063c7490b3c626b331f05009cfcf36139e90d32",
+      "lines": 549,
+      "template_id": 7,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fc_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fc_readback_ai_np_fc",
+      "sha256": "aeeba24ac7fc96ba1f60dbc1dc4bdaabc6ccaa057d1929ab23e5af1a5cc0725d",
+      "lines": 580,
+      "template_id": 5,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fc_readback_ai_np_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fc_readback_ai_np_readback",
+      "sha256": "edbbf9796fb1a48c8397259e39d3ec679ce1c27066c1e552840aa6aa1dceff5e",
+      "lines": 571,
+      "template_id": 8,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fc_readback_ai"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_fcrb_ai_np_readback",
+      "sha256": "31bde51a62b20410e87a6ef624daa1fd4bb47192b094aebebfa52bf67f9aabdc",
+      "lines": 571,
+      "template_id": 8,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout",
+      "sha256": "55c79458fda3c543d6f7f94ae942486c5661210129829b682d020417a777bb44",
+      "lines": 641,
+      "template_id": 9,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback",
+      "sha256": "7f859efea1d96172191cb37ca3167f636b00029a63411fc28fadd0dc134de073",
+      "lines": 604,
+      "template_id": 10,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index",
+      "sha256": "6ea4d60857da148eb7fb3cb6885c07113efa7ceba21c917ed89651e5b39ad43d",
+      "lines": 613,
+      "template_id": 11,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout",
+      "sha256": "e35e561f6fd77cacb0c76dc6ba0988bcfd5d7a072c982d3ee0f4191751fe79f4",
+      "lines": 631,
+      "template_id": 12,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback",
+      "sha256": "6bad90de4583d05f89949a9a0f7bf09897fb193975684003592743cb495a026b",
+      "lines": 547,
+      "template_id": 13,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index",
+      "sha256": "81ced3d634d2cd871e921d0df1bde1dc58565e038b2d2a51a78433e801b55f3d",
+      "lines": 593,
+      "template_id": 14,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout",
+      "sha256": "660c2d912d302b8b7bd2d35861dadca4a3dd33d1a7ad9dd681e1ca4093fd36c1",
+      "lines": 595,
+      "template_id": 15,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback",
+      "sha256": "eaa09319e31c0623982a4105200ccb72b38c1693aba4f15cb6fb0dd25014e52e",
+      "lines": 565,
+      "template_id": 16,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index",
+      "sha256": "d6d05ae626c2b69de1742263c6fff976558f35697387ab887f44dfc39432861c",
+      "lines": 549,
+      "template_id": 7,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout",
+      "sha256": "af75403e6626bd004606876fe325864d67124a49ebf7b2bff493eff9bf8d1309",
+      "lines": 580,
+      "template_id": 5,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback",
+      "sha256": "1c64c19a0a1e1bc645edd71820ef01ea6fb477c1cc6bc4a04eb98eef0e02a9d9",
+      "lines": 555,
+      "template_id": 6,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index",
+      "sha256": "2fd07f5aac47b8d7c99fe557222352cc21f32df2726c415de09d2ad1a6d07d34",
+      "lines": 549,
+      "template_id": 7,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout",
+      "sha256": "9bd7911d17cbff558d5a4eb8691158c8554756fe2d17d304ce193f60433bad6d",
+      "lines": 580,
+      "template_id": 5,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback",
+      "sha256": "bd264574a4c62eae7696f577e9663e30b4228b35d38180f8bc220abad97166d3",
+      "lines": 555,
+      "template_id": 6,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index",
+      "sha256": "948f3a6442569aa6f68a0976f36b7c79b7d327a40659009f1d672086e203dda7",
+      "lines": 549,
+      "template_id": 7,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_readback",
+      "sha256": "fcaef012e31869973c72422056c42946a774ae5878f1c423198c3115b4f45154",
+      "lines": 571,
+      "template_id": 8,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_readback",
+      "sha256": "bd0a2b04272cff296f8626e83a1293f31bb55eaaac06d7cba308bbdcda4d560a",
+      "lines": 571,
+      "template_id": 8,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_readback",
+      "sha256": "d152fd7ab398731c5e7b173a0645edfc1f5a274a8e7970bbe7f1e58f977c0745",
+      "lines": 580,
+      "template_id": 17,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_readback",
+      "sha256": "08003047410a76038dea855ec0159a80008065ae98bfdff85308b913c0a14cef",
+      "lines": 625,
+      "template_id": 18,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_readback",
+      "sha256": "d380857c9e4ffb2c85e1528a58ce9d5ccd5a967ae1117517f295bf61b065cfbe",
+      "lines": 714,
+      "template_id": 19,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_final_closeout_readback_audit_index"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_final_closeout",
+      "sha256": "7f0f78fe0c7a90eb6c71bc765b0ba4875739fedf36f953032dcba198cf2b3671",
+      "lines": 729,
+      "template_id": 20,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_audit_index_np_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_final_closeout_readback",
+      "sha256": "b41d58ef1f805edb5714aed43334abe056f9591d961905aa6b84e2da466a7892",
+      "lines": 705,
+      "template_id": 21,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_final_closeout"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_ai_np_final_closeout_readback_audit_index",
+      "sha256": "1de510a402afeeec89c6bdf877957be42e14ce7dde8a1cec4276f1126b719f15",
+      "lines": 710,
+      "template_id": 22,
+      "outgoing_dependencies": [
+        "wg_sg_live_attach_tc_readback_ai_np_final_closeout_readback"
+      ]
+    },
+    {
+      "name": "wg_sg_live_attach_tc_readback_audit_index_np_readback",
+      "sha256": "f697e7bbeced26780e7909c7f67529ac2affd42c5f5328be44a26ee81664ac7f",
+      "lines": 691,
+      "template_id": 23,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index"
+      ]
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_preview",
+      "sha256": "733a75f0c72ee58e317037e143213f829218dc09bae55f919a8a3b5efcb91c78",
+      "lines": 684,
+      "template_id": 34,
+      "outgoing_dependencies": [
+        "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview",
+        "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_canary_readback_replay",
+      "sha256": "de97d700c9a696e1f31c1396ba5687303ba0ce56c85c5fc342bfc2c94c55c84a",
+      "lines": 540,
+      "template_id": 49,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_append_only_event_store_shadow_path",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_task_result_envelope_report_only_validator"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+      "sha256": "894664c348322de4cd2463104eb90426f9499882badab084757959458e64b53f",
+      "lines": 672,
+      "template_id": 50,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+      "sha256": "ac250b4169027f280e14a8bb0f491e131316fe0d9a51252febc42ba7b30aa20a",
+      "lines": 564,
+      "template_id": 51,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+      "sha256": "89304b8bb44a87237d4639f04d761aa60ba12f3a3a94aaf9b5accd23e2d64fb6",
+      "lines": 527,
+      "template_id": 52,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+      "sha256": "6522675d2ba04efacad52e88cd8f4acadc77a0ca22ff9b764dacc2b7c456f1ba",
+      "lines": 559,
+      "template_id": 53,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+      "sha256": "9b94f40730c29cb0b9a44c2c8919761f373aca0896c3cc762716c6c43eef95d9",
+      "lines": 501,
+      "template_id": 54,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+      "sha256": "62aa4fff6521a9721f5836103aac2c3eba22866cca0fb4d70478ff7c87c1ad7b",
+      "lines": 573,
+      "template_id": 55,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+      "sha256": "36fa7ef7aab6649f16f2ddac8f3335c4bf92ccf12257e2301772e531a3abefde",
+      "lines": 537,
+      "template_id": 56,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+      "sha256": "2937fbd7457d6145e38027c769e0cf00cae3bcad01463ef78e562540c1588c1f",
+      "lines": 751,
+      "template_id": 57,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix",
+      "sha256": "fd1d351355e29cad9c21b5d78765cb2c3a56979e4cfad91bb782f4635049a0a8",
+      "lines": 533,
+      "template_id": 58,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback",
+      "sha256": "3d52fdeed97c41198279672c9470204a31687869d6713c6bdbd9b53fe2885a25",
+      "lines": 551,
+      "template_id": 59,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index",
+      "sha256": "8f804bad4adc6a222946797c32c56cc5f4269d85498525be9525f6e52c6cbff4",
+      "lines": 639,
+      "template_id": 60,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_non_persistence_readback",
+      "sha256": "4c0f375a09453affdb54cf4373c86aae11b76b0b867e4c6f623c5233d21b10a1",
+      "lines": 580,
+      "template_id": 61,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix",
+      "sha256": "f2d8e0a6f9c781ec49cf5df07e6b82d6f85f766a7fcec50940d79d17296cc8ec",
+      "lines": 642,
+      "template_id": 62,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback",
+      "sha256": "076522d3025ae66f51f75fd46b16313124c08163d6e6b4573da2f17345c1fbeb",
+      "lines": 645,
+      "template_id": 63,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_audit_index",
+      "sha256": "2fdaad76b558f38527f5d83374bd96d54180298da2fff9b95455bb6700315120",
+      "lines": 681,
+      "template_id": 64,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_audit_index_non_persistence_readback",
+      "sha256": "e4c4fd091370ac4e3cfb275a4a3c6478c8916695e1994c481c609e92af2f3f7f",
+      "lines": 630,
+      "template_id": 65,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout",
+      "sha256": "b72d3005a180c970d94f0c3f7eb5eea8653374e17a2c26c55b8b56032ffbb439",
+      "lines": 627,
+      "template_id": 66,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_audit_index",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_audit_index_non_persistence_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback",
+      "sha256": "298b887c61b3e1d0df307f09ed995710941c96272d842e746c7c24573da6eff7",
+      "lines": 621,
+      "template_id": 67,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index",
+      "sha256": "a096ac0a31cf455a40d53b69634bbc654e404640555deccabb8bd42823703e91",
+      "lines": 700,
+      "template_id": 68,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index_non_persistence_readback",
+      "sha256": "a7575f20849bcade772e572df42daad8343f9538d91431b3e3f3c80336ba4751",
+      "lines": 657,
+      "template_id": 69,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_final_closeout",
+      "sha256": "87167b889243fcfed4b6663b30e4ec18f7daa5f789d6aa45a257ebe1318d26d4",
+      "lines": 690,
+      "template_id": 70,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index_non_persistence_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix",
+      "sha256": "166b014e7861bc0fefd7d84efec31b3cb0155000084fd1fe566eca0e538b2d0f",
+      "lines": 476,
+      "template_id": 71,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only",
+        "work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback",
+        "work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+      "sha256": "daf0996e455c7afaea17ddfd30527e67283aa90adc556fee18e9214b87b5d518",
+      "lines": 393,
+      "template_id": 72,
+      "outgoing_dependencies": [
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_task_result_envelope_report_only_validator",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint",
+      "sha256": "2d3e3ed6a4eadf43f39c0e93c6dc7bc6559fb36e4ee179f064c6693ac8c66e4d",
+      "lines": 598,
+      "template_id": 73,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_final_closeout",
+        "work_graph_agent_jobs_task_board_report_only_entrypoint_emission",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_trace_guardrail_span_report_only"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening",
+      "sha256": "8a7b6f0c1594c50b6f595469f0fcd05314dfa78c225d870555317a355cc13156",
+      "lines": 804,
+      "template_id": 74,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint",
+        "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_terminal_no_execution_final_closeout"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback",
+      "sha256": "db159db1503b386ef38bae538942aed4e92c45068f0da1879d2ec5c68a41c5c0",
+      "lines": 726,
+      "template_id": 75,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_audit_index",
+      "sha256": "fe03b85adb24133905a21c8481346f2c9680ee52469a0076bb4523afede3f7f4",
+      "lines": 700,
+      "template_id": 76,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_audit_index_non_persistence_readback",
+      "sha256": "a46eebe0949f98bd68c15c8f0c1ba3149b1b16b12b359b39a617dbeeafd0d899",
+      "lines": 704,
+      "template_id": 77,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_audit_index"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout",
+      "sha256": "6c01648346ce92673732267008a869e60dce79bee199a7a11cdf9de11d40bbdf",
+      "lines": 747,
+      "template_id": 78,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_audit_index_non_persistence_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness",
+      "sha256": "6f9370a455af304853f1b042466edcae40f64b031442022a5c56d245e653da33",
+      "lines": 765,
+      "template_id": 79,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_terminal_no_attachment_final_closeout"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback",
+      "sha256": "434fc49b2060d81195cf2589686b7ba65ea70d435d6ec17f4a721ce823aaf4f9",
+      "lines": 717,
+      "template_id": 80,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_audit_index",
+      "sha256": "cfc9578afd42d9e708fe8675409668e4df3796ca11097a5050328af433be3023",
+      "lines": 642,
+      "template_id": 81,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_audit_index_non_persistence_readback",
+      "sha256": "146e867366f3cfef6d221d8dacfccce5092ca9750341feb64dd1ccae2bfa4ab3",
+      "lines": 650,
+      "template_id": 82,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_audit_index"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout",
+      "sha256": "6c178a937e4f5ffb474b1a54104e3df85ea7fb2be4e63adeda2604cb98a68d30",
+      "lines": 704,
+      "template_id": 83,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_audit_index_non_persistence_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback",
+      "sha256": "846f0eff55ba6de2db5f61e482063f435a2f71c70d97d9699a80c9b0424e62a8",
+      "lines": 697,
+      "template_id": 84,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_audit_index",
+      "sha256": "2e3ef5a808adc8866139b89f1d3700f7d7e985bc9b129c845c3ae007952cbf5c",
+      "lines": 727,
+      "template_id": 85,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_audit_index_non_persistence_readback",
+      "sha256": "ec30a6fe411ee01e8e301c27a5366c9a32b27ce6b6e9f6eb5c0a221c657ebdd0",
+      "lines": 714,
+      "template_id": 86,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_audit_index"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout",
+      "sha256": "996f4c1648cc387e65f7460f00fc57b88771fca3e5de606b842b98ac7d7e9753",
+      "lines": 724,
+      "template_id": 87,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_audit_index_non_persistence_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback",
+      "sha256": "77cb97e39e358f65cedbf233c14254a2b94481a5fd10f95f788164e860519476",
+      "lines": 688,
+      "template_id": 88,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index",
+      "sha256": "c5e51a141a774ef772292f0316ce6d37412733325ba6e468af1789371264efac",
+      "lines": 745,
+      "template_id": 89,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix",
+      "sha256": "da99b7c4a2e16c1c0cc5ceb32440d503638a562d6cf48f135e0e2dd8cc7b846d",
+      "lines": 772,
+      "template_id": 90,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback",
+      "sha256": "2f82212b8a3af0e09f8d8ad7b70381dbb78da2bc982419c7713ddd2c7e478377",
+      "lines": 707,
+      "template_id": 91,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_audit_index",
+      "sha256": "7f4110e0e29a2140b6aa95b886734260204666e552ff803645290f84184d7afd",
+      "lines": 720,
+      "template_id": 92,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_audit_index_non_persistence_readback",
+      "sha256": "77a5abae4a1cadb1ff44d3d0fce80efb8ddf34efa04bda2eb236abe8a6adf3a1",
+      "lines": 759,
+      "template_id": 93,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_audit_index"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_terminal_no_attachment_final_closeout",
+      "sha256": "fe30cb334e160914d0296aaa47e3f7793980205b50a89803635da9148954a1d7",
+      "lines": 696,
+      "template_id": 94,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_audit_index_non_persistence_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback",
+      "sha256": "1cf920f318c482be42e7ea9e95e0dd2987525915f85dc9aaaf0701a16365afa5",
+      "lines": 717,
+      "template_id": 95,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_canary_readback_replay",
+        "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint",
+        "work_graph_append_only_event_store_shadow_path"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run",
+      "sha256": "1f78b319a403e65153e2dd7917144ccfdb56dbf75c9b66e011d9fe90f5aed5bf",
+      "lines": 619,
+      "template_id": 96,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback",
+        "work_graph_append_only_event_store_shadow_path"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback",
+      "sha256": "bbcac865271218382bfde99146994cf9816674e563b33b008e4b70ca7d22cd80",
+      "lines": 627,
+      "template_id": 97,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback",
+        "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index",
+      "sha256": "8c512071dd06860cf31a14a1d0b978050073ec2b70e4242f65c00bb21dc856a2",
+      "lines": 616,
+      "template_id": 98,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_non_persistence_readback",
+      "sha256": "b3d8ec7a22baf71f852b089d29dc95107d2fb16c9088a6828b42a74eccf0ed69",
+      "lines": 630,
+      "template_id": 99,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index"
+      ]
+    },
+    {
+      "name": "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_terminal_no_execution_final_closeout",
+      "sha256": "80e0fc8e22ac7f44f29f1e53be9ea829833729e92b589bed3a9e60f92c9e200e",
+      "lines": 664,
+      "template_id": 100,
+      "outgoing_dependencies": [
+        "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_non_persistence_readback"
+      ]
+    },
+    {
+      "name": "work_graph_agent_role_agent_card_manifest_report_only",
+      "sha256": "4d7389149618cf6247a601a02140a16f92061bada3b273f798ebaae66ed82be7",
+      "lines": 475,
+      "template_id": 101,
+      "outgoing_dependencies": [
+        "work_graph_persistent_mailbox_handoff_event_mapping",
+        "work_graph_role_manifest_contract"
+      ]
+    },
+    {
+      "name": "work_graph_append_only_event_store_feature_gated_wal_no_write_plan",
+      "sha256": "9a1a559f26688eea7bf64066999b5dc5f2aa24f7f58051b11349deb017205c43",
+      "lines": 778,
+      "template_id": 103,
+      "outgoing_dependencies": [
+        "work_graph_append_only_event_store_feature_gated_wal_precondition"
+      ]
+    },
+    {
+      "name": "work_graph_append_only_event_store_feature_gated_wal_replay_diff_plan",
+      "sha256": "f2b333d2efb26387a474f6facb9585784eb75a60e5af5a7d51753e41391ed7d7",
+      "lines": 797,
+      "template_id": 105,
+      "outgoing_dependencies": [
+        "work_graph_append_only_event_store_feature_gated_wal_no_write_plan"
+      ]
+    },
+    {
+      "name": "work_graph_persistent_mailbox_handoff_event_mapping",
+      "sha256": "cc4e72a52dd1e1d0e53d15dfe5c7ff15cecc631ed6d78bc1fb73b8740307cb05",
+      "lines": 536,
+      "template_id": 201,
+      "outgoing_dependencies": [
+        "work_graph_append_only_event_store_shadow_path"
+      ]
+    },
+    {
+      "name": "work_graph_trace_guardrail_span_report_only",
+      "sha256": "d4a5eea4b841afa4df143deb1a3ff2865459b9b90d196bed991cb86674c3ca5b",
+      "lines": 738,
+      "template_id": 233,
+      "outgoing_dependencies": [
+        "work_graph_agent_role_agent_card_manifest_report_only",
+        "work_graph_append_only_event_store_shadow_path",
+        "work_graph_scheduler_admission_dry_run_enforcement",
+        "work_graph_task_result_envelope_report_only_validator"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer13_blocker_drift_budget_preview",
+      "sha256": "1bbf315d17412473e88f4ca7a3868b63036e73440c9c48c6d7f82fa38bd9ff05",
+      "lines": 629,
+      "template_id": 234,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer13_blocker_readback_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer13_blocker_preview",
+      "sha256": "56f51fe3f929d919f37b1060b6fbb68663c59f364b78cc1b3e94b4fb1fe0f34e",
+      "lines": 808,
+      "template_id": 235,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer12_blocker_promotion_precondition_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer13_blocker_promotion_precondition_preview",
+      "sha256": "1053d485daa2befad8f6b2c26e3c6498a95b1a16a4b3d01c865ef8e41c00b3f5",
+      "lines": 640,
+      "template_id": 236,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer13_blocker_drift_budget_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer13_blocker_readback_preview",
+      "sha256": "778c0047c9e2cdabf3ca5a62df913e5d8e13a838cce38d5494c6f893da521cd9",
+      "lines": 794,
+      "template_id": 238,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer13_blocker_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer14_blocker_drift_budget_preview",
+      "sha256": "9ca1a9abcc1db8ed3b71bd6eb6445cb5ae74f473e6042f016f539f878146c09e",
+      "lines": 629,
+      "template_id": 239,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer14_blocker_readback_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer14_blocker_preview",
+      "sha256": "cc5482e905b1d8ff39c897d63a50afb41501309588e0426e105c0bac1c159dae",
+      "lines": 368,
+      "template_id": 240,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer13_blocker_preview",
+        "work_graph_ttrw_shadow_activation_layer13_blocker_promotion_precondition_preview",
+        "work_graph_ttrw_shadow_activation_layer13_blocker_readback_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer14_blocker_promotion_precondition_preview",
+      "sha256": "72a5265bed762b921bec37fac2588991afaf0f187bfafc5625032567006bb62d",
+      "lines": 640,
+      "template_id": 236,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer14_blocker_drift_budget_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer14_blocker_readback_preview",
+      "sha256": "d92546d2690cc4246863116b76b27704d4dbcaeada76c3ac790fcdb9bb915649",
+      "lines": 28,
+      "template_id": 241,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer14_blocker_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer15_blocker_drift_budget_preview",
+      "sha256": "9067e6bef4061ff0a098c599285def66189141eeecfba46d9f60a653196a1480",
+      "lines": 629,
+      "template_id": 239,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer15_blocker_readback_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer15_blocker_preview",
+      "sha256": "ce2f3b66afc9d9d1690c84d877b0a61e417e486f8808a615a8f260cbc3d9f808",
+      "lines": 29,
+      "template_id": 242,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer14_blocker_preview",
+        "work_graph_ttrw_shadow_activation_layer14_blocker_promotion_precondition_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer15_blocker_promotion_precondition_preview",
+      "sha256": "cb4add4670abcd5ef3c04d06566a7f86e02ce97decc6f0aebff9a6741a6fe9d1",
+      "lines": 640,
+      "template_id": 236,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer15_blocker_drift_budget_preview"
+      ]
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer15_blocker_readback_preview",
+      "sha256": "15668789d8c67c0f35ad6d6e1e75593b34d05561fbce93e036f43df63df9cc5f",
+      "lines": 28,
+      "template_id": 241,
+      "outgoing_dependencies": [
+        "work_graph_ttrw_shadow_activation_layer14_blocker_preview",
+        "work_graph_ttrw_shadow_activation_layer15_blocker_preview"
+      ]
+    }
+  ],
+  "aggregate_sha256": "fdaa860577ad86a49740855b82de76e9125e3dfe089b6220ca00227b468160dc"
+}

@@ -1,0 +1,47 @@
+{
+  "schema": "hepta_o2_workgraph_ratchet_v1",
+  "status": "source_ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "baseline": {
+    "logical_module_count": 398,
+    "normalized_template_count": 282,
+    "normalized_effective_lines": 196886,
+    "bundle_sha256": "4a7189d11b664b70bd27051796ad1b80eb14dec6d8e62496d87fbd43f52f00b3"
+  },
+  "current": {
+    "logical_module_count": 298,
+    "normalized_template_count": 201,
+    "normalized_parameter_row_count": 298,
+    "normalized_effective_lines": 145977,
+    "normalized_effective_line_limit": 150357,
+    "source_lines": 211538,
+    "source_bytes": 11566816,
+    "aggregate_source_sha256": "27f946966621a9e7e184a7dd992d29f1dbe249e0f8927eb9679a500a39744c30",
+    "bundle_sha256": "ab7c8fe105214b9e0b742d2346bd9ae687bd4208bc9481a9761a612b70d1980d",
+    "canonical_schema_sha256": "0272d03cf604ce745934ccc2c98f3af3fd3042999565dd7733936f251707dc4a",
+    "canonical_templates_sha256": "983cb73a21c79762e83378e7dbb90f7a1786856826067f2a13ec73108827541c",
+    "canonical_parameters_sha256": "7d5d7f5485c4d4ae5e22cf19ddba722a3087f508f45cf67e4a00e68d8fb65eea",
+    "canonical_max_record_bytes": 89270,
+    "gzip_mtime": 1,
+    "gzip_os": 255,
+    "byte_identical_repack_verified": true,
+    "reversible_unpack": true
+  },
+  "retirement": {
+    "receipt": "docs/architecture/HEPTA_WORKGRAPH_O2_RETIREMENT_V1.json",
+    "retired_module_count": 100,
+    "retired_source_lines": 61746,
+    "protected_external_module_count": 3,
+    "selection": "largest_source_first_gate_invisible_uncalled_dependency_leaf",
+    "dependency_closed": true,
+    "baseline_recovery_available": true,
+    "git_history_recovery_bound": false,
+    "history_anchor_required": true
+  },
+  "hard_target": {
+    "logical_module_count_less_than": 299,
+    "met": true
+  },
+  "runtime_mutated": false,
+  "deployment_performed": false
+}

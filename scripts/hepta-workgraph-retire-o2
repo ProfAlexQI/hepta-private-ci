@@ -1,0 +1,380 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "open3"
+require "set"
+require "stringio"
+require "zlib"
+require_relative "lib/hepta-normalized-token-bundle-v1"
+
+ROOT = File.expand_path("..", __dir__)
+RUNTIME_ROOT = File.join(ROOT, "codex-rs/hepta-runtime")
+SOURCE_ROOT = File.join(RUNTIME_ROOT, "src")
+LIB_PATH = File.join(SOURCE_ROOT, "lib.rs")
+EXPORT_PATHS = [
+  File.join(SOURCE_ROOT, "runtime_kernel/exports_workgraph.rs"),
+  File.join(SOURCE_ROOT, "runtime_kernel/exports.rs"),
+  File.join(SOURCE_ROOT, "runtime_kernel/exports/workgraph_projection.rs")
+].freeze
+BUNDLE_PATH = File.join(RUNTIME_ROOT, "codegen/workgraph-v3/modules.bundle.gz")
+BUNDLE_RELATIVE_PATH = "codex-rs/hepta-runtime/codegen/workgraph-v3/modules.bundle.gz"
+REGISTRY_PATH = File.join(RUNTIME_ROOT, "codegen/workgraph-v3/registry.json")
+PARAMETERS_PATH = File.join(RUNTIME_ROOT, "codegen/workgraph-v3/parameters.jsonl")
+PARAMETERS_RELATIVE_PATH = "codex-rs/hepta-runtime/codegen/workgraph-v3/parameters.jsonl"
+GATE_PAYLOAD_RELATIVE_PATH = "scripts/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz"
+GATE_SPEC_RELATIVE_PATH = "scripts/hepta-gate-pair-specs-v1.json"
+RECEIPT_PATH = File.join(ROOT, "docs/architecture/HEPTA_WORKGRAPH_O2_RETIREMENT_V1.json")
+SCHEMA = "hepta_workgraph_normalized_bundle_v3"
+BASELINE_MODULE_COUNT = 398
+TARGET_MODULE_COUNT = 298
+MODULE_PATTERN = /\A(?:wg_|work_graph_)[a-z0-9_]+\z/
+PUBLIC_SYMBOL_PATTERN = /^pub(?:\([^)]*\))?\s+(?:async\s+)?(?:fn|struct|enum|const|static|type|trait)\s+([A-Za-z_][A-Za-z0-9_]*)/
+INCLUDE_PATTERN = /include!\(\s*concat!\(\s*env!\("OUT_DIR"\),\s*"\/hepta_workgraph_bundle\/modules\.rs"\s*\)\s*\);\n/m
+
+def atomic_write(path, content)
+  staging = File.join(
+    File.dirname(path),
+    ".hepta-workgraph-o2-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp"
+  )
+  File.binwrite(staging, content)
+  File.rename(staging, path)
+end
+
+def source_commit
+  @source_commit ||= Open3.capture2("git", "-C", ROOT, "rev-parse", "HEAD").then do |output, status|
+    raise "cannot resolve source commit" unless status.success?
+    output.strip
+  end
+end
+
+def source_tree
+  @source_tree ||= Open3.capture2(
+    "git", "-C", ROOT, "rev-parse", "#{source_commit}^{tree}"
+  ).then do |output, status|
+    raise "cannot resolve source tree" unless status.success?
+    output.strip
+  end
+end
+
+def git_blob(relative_path)
+  output, status = Open3.capture2("git", "-C", ROOT, "show", "#{source_commit}:#{relative_path}")
+  raise "cannot read #{relative_path} from #{source_commit}" unless status.success?
+  output.b
+end
+
+def sources
+  payload = Zlib::GzipReader.new(StringIO.new(git_blob(BUNDLE_RELATIVE_PATH))).read
+  HeptaNormalizedTokenBundle.decode(
+    payload,
+    schema: SCHEMA,
+    name_validator: ->(name) { name.match?(MODULE_PATTERN) }
+  ).to_h { |entry| [entry.name, entry.source] }
+end
+
+def baseline_parameters
+  @baseline_parameters ||= git_blob(PARAMETERS_RELATIVE_PATH).lines.to_h do |line|
+    row = JSON.parse(line)
+    [row.fetch("name"), row]
+  end
+end
+
+def gate_payload_protected_modules(module_sources)
+  payload = Zlib::GzipReader.new(StringIO.new(git_blob(GATE_PAYLOAD_RELATIVE_PATH))).read
+  module_sources.keys.select { |name| payload.include?(name) }.to_set
+end
+
+def public_symbols(source)
+  source.scan(PUBLIC_SYMBOL_PATTERN).flatten.to_set
+end
+
+def external_sources(module_sources)
+  Dir[File.join(ROOT, "codex-rs/**/*.rs")].sort.each_with_object([]) do |path, sources|
+    next if path.include?("/target/")
+    next if path.include?("/tests/") || File.basename(path).include?("test")
+    next if module_sources.key?(File.basename(path, ".rs")) || EXPORT_PATHS.include?(path)
+    source = File.binread(path)
+    sources << [path, source] if source.valid_encoding?
+  end
+end
+
+def graph(module_sources)
+  names = module_sources.keys.sort
+  owners = Hash.new { |hash, key| hash[key] = Set.new }
+  module_sources.each do |name, source|
+    public_symbols(source).each { |symbol| owners[symbol] << name }
+  end
+
+  protected_modules = Set.new
+  external_sources(module_sources).each do |_path, source|
+    source.scan(/(?:pub\s+)?use\s+((?:wg_|work_graph_)[a-z0-9_]+)::/) do |(module_name)|
+      protected_modules << module_name if module_sources.key?(module_name)
+    end
+    source.scan(/(?:crate|hepta_runtime)::([A-Za-z_][A-Za-z0-9_]*)/) do |(identifier)|
+      owners.fetch(identifier, []).each { |owner| protected_modules << owner }
+    end
+    source.scan(/use\s+(?:crate|hepta_runtime)::\{(.*?)\};/m) do |(imports)|
+      imports.scan(/[A-Za-z_][A-Za-z0-9_]*/) do |identifier|
+        owners.fetch(identifier, []).each { |owner| protected_modules << owner }
+      end
+    end
+  end
+  outgoing = names.to_h { |name| [name, Set.new] }
+  incoming = names.to_h { |name| [name, 0] }
+  module_sources.each do |name, source|
+    source.scan(/crate::((?:wg_|work_graph_)[a-z0-9_]+)::/) do |(target)|
+      next if target == name || !module_sources.key?(target) || outgoing.fetch(name).include?(target)
+      outgoing.fetch(name) << target
+      incoming[target] += 1
+    end
+    source.scan(/crate::([A-Za-z_][A-Za-z0-9_]*)/) do |(symbol)|
+      owners.fetch(symbol, []).each do |target|
+        next if target == name || outgoing.fetch(name).include?(target)
+        outgoing.fetch(name) << target
+        incoming[target] += 1
+      end
+    end
+  end
+  [protected_modules, outgoing, incoming]
+end
+
+def strongly_connected_components(active, outgoing)
+  index = 0
+  indices = {}
+  lowlinks = {}
+  stack = []
+  on_stack = Set.new
+  components = []
+  visit = nil
+  visit = lambda do |node|
+    indices[node] = lowlinks[node] = index
+    index += 1
+    stack << node
+    on_stack << node
+    outgoing.fetch(node).each do |target|
+      next unless active.include?(target)
+      if !indices.key?(target)
+        visit.call(target)
+        lowlinks[node] = [lowlinks[node], lowlinks[target]].min
+      elsif on_stack.include?(target)
+        lowlinks[node] = [lowlinks[node], indices[target]].min
+      end
+    end
+    return unless lowlinks[node] == indices[node]
+    component = []
+    loop do
+      member = stack.pop
+      on_stack.delete(member)
+      component << member
+      break if member == node
+    end
+    components << component
+  end
+  active.each { |node| visit.call(node) unless indices.key?(node) }
+  components
+end
+
+def retirement_plan
+  module_sources = sources
+  raise "O2 retirement requires #{BASELINE_MODULE_COUNT} modules" unless module_sources.length == BASELINE_MODULE_COUNT
+  protected_modules, outgoing, _incoming = graph(module_sources)
+  externally_protected = protected_modules.dup
+  gate_payload_protected = gate_payload_protected_modules(module_sources)
+  protected_modules.merge(gate_payload_protected)
+  retire_count = BASELINE_MODULE_COUNT - TARGET_MODULE_COUNT
+  active = module_sources.keys.to_set
+  retired = []
+  while retired.length < retire_count
+    components = strongly_connected_components(active, outgoing)
+    component_by_module = {}
+    components.each_with_index do |component, id|
+      component.each { |name| component_by_module[name] = id }
+    end
+    incoming_components = Set.new
+    active.each do |source|
+      outgoing.fetch(source).each do |target|
+        next unless active.include?(target)
+        source_id = component_by_module.fetch(source)
+        target_id = component_by_module.fetch(target)
+        incoming_components << target_id if source_id != target_id
+      end
+    end
+    remaining = retire_count - retired.length
+    candidates = components.each_with_index.each_with_object([]) do |(component, id), selected|
+      next if incoming_components.include?(id)
+      next if component.any? { |name| protected_modules.include?(name) }
+      selected << component if component.length <= remaining
+    end
+    if candidates.empty?
+      raise "insufficient uncalled dependency leaves: retired=#{retired.length} protected=#{protected_modules.length}"
+    end
+    selected = candidates.max_by do |component|
+      [component.sum { |name| module_sources.fetch(name).lines.count }, component.sort.join("\0")]
+    end
+    selected.each do |name|
+      active.delete(name)
+      retired << name
+    end
+  end
+  {
+    module_sources: module_sources,
+    protected_modules: protected_modules,
+    externally_protected: externally_protected,
+    gate_payload_protected: gate_payload_protected,
+    outgoing: outgoing,
+    retired: retired,
+    active: active
+  }
+end
+
+def filtered_exports(source, retired)
+  output = []
+  statement = []
+  source.lines.each do |line|
+    if statement.empty? && line.match?(/^pub use (?:crate::)?(?:wg_|work_graph_)/)
+      statement << line
+      next unless line.include?(";")
+    elsif !statement.empty?
+      statement << line
+      next unless line.include?(";")
+    else
+      output << line
+      next
+    end
+    module_name = statement.join[/^pub use (?:crate::)?((?:wg_|work_graph_)[a-z0-9_]+)/, 1]
+    output.concat(statement) unless retired.include?(module_name)
+    statement.clear
+  end
+  raise "unterminated WorkGraph export statement" unless statement.empty?
+  output.join
+end
+
+def rewrite_exports(path, retired)
+  relative = path.delete_prefix("#{ROOT}/")
+  atomic_write(path, filtered_exports(git_blob(relative), retired))
+end
+
+def plan_receipt(plan)
+  module_sources = plan.fetch(:module_sources)
+  retired = plan.fetch(:retired)
+  parameters = baseline_parameters
+  registry = JSON.parse(git_blob("codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json"))
+  {
+    schema: "hepta_workgraph_o2_retirement_v1",
+    status: "ready",
+    source_commit: source_commit,
+    source_tree: source_tree,
+    baseline_bundle_sha256: Digest::SHA256.hexdigest(git_blob(BUNDLE_RELATIVE_PATH)),
+    baseline_aggregate_source_sha256: registry.fetch("aggregate_source_sha256"),
+    baseline_gate_payload_bundle_sha256: Digest::SHA256.hexdigest(git_blob(GATE_PAYLOAD_RELATIVE_PATH)),
+    baseline_gate_spec_sha256: Digest::SHA256.hexdigest(git_blob(GATE_SPEC_RELATIVE_PATH)),
+    original_module_count: module_sources.length,
+    retired_module_count: retired.length,
+    remaining_module_count: plan.fetch(:active).length,
+    protected_external_module_count: plan.fetch(:externally_protected).length,
+    protected_total_module_count: plan.fetch(:protected_modules).length,
+    protected_gate_payload_module_count: plan.fetch(:gate_payload_protected).length,
+    selection: "largest_source_first_gate_invisible_uncalled_dependency_leaf",
+    baseline_recovery_available: true,
+    git_history_recovery_bound: false,
+    history_anchor_required: true,
+    retired_modules: retired.sort.map do |name|
+      source = module_sources.fetch(name)
+      {
+        name: name,
+        sha256: Digest::SHA256.hexdigest(source),
+        lines: source.lines.count,
+        template_id: parameters.fetch(name).fetch("template_id"),
+        outgoing_dependencies: plan.fetch(:outgoing).fetch(name).to_a.sort
+      }
+    end
+  }
+end
+
+def print_plan
+  receipt = plan_receipt(retirement_plan)
+  puts JSON.pretty_generate(receipt.reject { |key, _value| key == :retired_modules }.merge(
+    retired_source_lines: receipt.fetch(:retired_modules).sum { |record| record.fetch(:lines) },
+    largest_retired_modules: receipt.fetch(:retired_modules).sort_by { |record| -record.fetch(:lines) }.first(20)
+  ))
+end
+
+def apply_retirement
+  plan = retirement_plan
+  receipt = plan_receipt(plan)
+  retired = plan.fetch(:retired).to_set
+  active = plan.fetch(:active).to_a.sort
+  lib_source = File.binread(LIB_PATH)
+  declarations = active.map { |name| "mod #{name};\n" }.join
+  include_count = lib_source.scan(INCLUDE_PATTERN).length
+  if include_count == 1
+    atomic_write(LIB_PATH, lib_source.sub(INCLUDE_PATTERN, declarations))
+  elsif include_count.zero?
+    declared = lib_source.lines.each_with_object([]) do |line, names|
+      match = line.chomp.match(/^mod ((?:wg_|work_graph_)[a-z0-9_]+);$/)
+      names << match[1] if match
+    end
+    raise "WorkGraph declarations drifted during retry" unless declared.to_set == active.to_set
+  else
+    raise "multiple WorkGraph bundle includes"
+  end
+  EXPORT_PATHS.each { |path| rewrite_exports(path, retired) }
+  active.each do |name|
+    atomic_write(File.join(SOURCE_ROOT, "#{name}.rs"), plan.fetch(:module_sources).fetch(name))
+  end
+  receipt[:aggregate_sha256] = Digest::SHA256.hexdigest(JSON.generate(receipt))
+  atomic_write(RECEIPT_PATH, JSON.pretty_generate(receipt) + "\n")
+end
+
+def verify_retirement
+  receipt = JSON.parse(File.binread(RECEIPT_PATH))
+  digest_payload = receipt.dup
+  expected_digest = digest_payload.delete("aggregate_sha256")
+  raise "O2 receipt digest drifted" unless Digest::SHA256.hexdigest(JSON.generate(digest_payload)) == expected_digest
+  active = File.readlines(PARAMETERS_PATH, chomp: true).map { |line| JSON.parse(line).fetch("name") }.to_set
+  retired = receipt.fetch("retired_modules").map { |record| record.fetch("name") }.to_set
+  module_sources = sources
+  protected_modules, outgoing, = graph(module_sources)
+  gate_payload_protected = gate_payload_protected_modules(module_sources)
+  protected_modules.merge(gate_payload_protected)
+  raise "retired module remains active" unless (active & retired).empty?
+  raise "retired module remains externally consumed" unless (protected_modules & retired).empty?
+  active.each do |name|
+    raise "active module depends on retired module: #{name}" unless (outgoing.fetch(name) & retired).empty?
+  end
+  EXPORT_PATHS.each do |path|
+    relative = path.delete_prefix("#{ROOT}/")
+    raise "WorkGraph export projection drifted: #{relative}" unless File.binread(path) ==
+      filtered_exports(git_blob(relative), retired)
+  end
+  raise "O2 WorkGraph count drifted" unless active.length == receipt.fetch("remaining_module_count")
+  raise "O2 WorkGraph hard target exceeded" unless active.length < 299
+  raise "retirement baseline is not Git recoverable" unless receipt.fetch("source_commit").match?(/\A[0-9a-f]{40}\z/) &&
+    receipt.fetch("source_tree").match?(/\A[0-9a-f]{40}\z/) && receipt.fetch("baseline_recovery_available")
+  raise "uncommitted retirement claimed a history anchor" if receipt.fetch("git_history_recovery_bound") ||
+    !receipt.fetch("history_anchor_required")
+  raise "baseline WorkGraph bundle drifted" unless receipt.fetch("baseline_bundle_sha256") == Digest::SHA256.hexdigest(git_blob(BUNDLE_RELATIVE_PATH))
+  raise "baseline gate payload bundle drifted" unless receipt.fetch("baseline_gate_payload_bundle_sha256") == Digest::SHA256.hexdigest(git_blob(GATE_PAYLOAD_RELATIVE_PATH))
+  raise "baseline gate spec drifted" unless receipt.fetch("baseline_gate_spec_sha256") == Digest::SHA256.hexdigest(git_blob(GATE_SPEC_RELATIVE_PATH))
+  puts JSON.generate(
+    schema: "hepta_workgraph_o2_retirement_verify_v1",
+    status: "ready",
+    active_module_count: active.length,
+    retired_module_count: retired.length,
+    baseline_recovery_available: true,
+    git_history_recovery_bound: false,
+    history_anchor_required: true,
+    receipt_sha256: Digest::SHA256.file(RECEIPT_PATH).hexdigest
+  )
+end
+
+require "shellwords"
+case ARGV
+when ["plan"] then print_plan
+when ["apply"] then apply_retirement
+when ["verify"] then verify_retirement
+else
+  warn "usage: scripts/hepta-workgraph-retire-o2 <plan|apply|verify>"
+  exit 64
+end

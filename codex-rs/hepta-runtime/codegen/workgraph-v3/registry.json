@@ -1,45 +1,45 @@
 {
   "schema": "hepta_workgraph_normalized_bundle_v3",
   "status": "normalized",
-  "module_count": 398,
-  "source_bytes": 15014034,
-  "source_lines": 273284,
-  "aggregate_source_sha256": "ec593fdcd4ae380891b92a6a924887e4e23a1911621cc1a8dffd6a17d739d026",
-  "bundle_bytes": 956909,
-  "bundle_sha256": "4a7189d11b664b70bd27051796ad1b80eb14dec6d8e62496d87fbd43f52f00b3",
-  "normalized_template_count": 282,
-  "normalized_template_limit": 282,
-  "normalized_parameter_row_count": 398,
-  "normalized_effective_lines": 196886,
-  "normalized_effective_line_limit": 202793,
+  "module_count": 298,
+  "source_bytes": 11566816,
+  "source_lines": 211538,
+  "aggregate_source_sha256": "27f946966621a9e7e184a7dd992d29f1dbe249e0f8927eb9679a500a39744c30",
+  "bundle_bytes": 730805,
+  "bundle_sha256": "ab7c8fe105214b9e0b742d2346bd9ae687bd4208bc9481a9761a612b70d1980d",
+  "normalized_template_count": 201,
+  "normalized_template_limit": 201,
+  "normalized_parameter_row_count": 298,
+  "normalized_effective_lines": 145977,
+  "normalized_effective_line_limit": 150357,
   "canonical_source_schema": "hepta_readable_normalized_token_source_v1",
   "canonical_source_files": [
     "templates.jsonl",
     "parameters.jsonl"
   ],
-  "canonical_schema_sha256": "606e2241e85fb442eaeec6a1627b15070d9d239a37cd20bdde3820ccc7214c9f",
-  "canonical_templates_sha256": "e18957d80921777ae6874a4518422123fed87ea4aa72c46a4a9eb2892fded561",
-  "canonical_parameters_sha256": "97d2173c8293b73d2526da8ec45c872e24e2554b658b6cfc0335afc01dc8abaa",
+  "canonical_schema_sha256": "0272d03cf604ce745934ccc2c98f3af3fd3042999565dd7733936f251707dc4a",
+  "canonical_templates_sha256": "983cb73a21c79762e83378e7dbb90f7a1786856826067f2a13ec73108827541c",
+  "canonical_parameters_sha256": "7d5d7f5485c4d4ae5e22cf19ddba722a3087f508f45cf67e4a00e68d8fb65eea",
   "canonical_max_record_bytes": 89270,
   "canonical_max_record_byte_limit": 89270,
   "canonical_record_byte_semantics": "record_including_lf",
   "gzip_mtime": 1,
   "gzip_os": 255,
   "monotonic_ratchet": {
-    "logical_module_ceiling": 398,
-    "normalized_template_ceiling": 282,
-    "normalized_effective_line_ceiling": 202793
+    "logical_module_ceiling": 298,
+    "normalized_template_ceiling": 201,
+    "normalized_effective_line_ceiling": 150357
   },
   "decline_targets": {
     "next": {
-      "logical_module_count": 299,
-      "normalized_template_count": 199,
-      "normalized_effective_lines": 130000
+      "logical_module_count": 199,
+      "normalized_template_count": 149,
+      "normalized_effective_lines": 100000
     },
     "terminal": {
-      "logical_module_count": 199,
-      "normalized_template_count": 199,
-      "normalized_effective_lines": 180000
+      "logical_module_count": 99,
+      "normalized_template_count": 99,
+      "normalized_effective_lines": 75000
     }
   },
   "source_files_materialized": false,

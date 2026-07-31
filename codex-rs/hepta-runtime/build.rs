@@ -14,7 +14,7 @@ const SCHEMA: &str = "hepta_workgraph_normalized_bundle_v3";
 const CODEGEN_DIRECTORY: &str = "codegen/workgraph-v3";
 const BUNDLE_FILE: &str = "modules.bundle.gz";
 const CONTROL_PLANE_TESTS: &str = "src/work_graph_control_plane_tests.rs";
-const EXPECTED_MODULE_COUNT: usize = 398;
+const EXPECTED_MODULE_COUNT: usize = 298;
 const MAX_COMPRESSED_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_DECODED_BUNDLE_BYTES: u64 = 64 * 1024 * 1024;
 
