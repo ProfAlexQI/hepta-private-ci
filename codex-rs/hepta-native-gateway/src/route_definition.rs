@@ -31,6 +31,7 @@ pub(crate) const WATCHDOG_PROBE_PATHS: &[&str] = &[
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RouteDispatchHandler {
     NativeGateway,
+    EvidenceIndex,
     PreferenceIngress,
     EffectReconciliation,
     TelegramReconciliation,
@@ -106,6 +107,9 @@ fn route_definition_from_lifecycle(lifecycle: IngressLifecycleSpec) -> RouteDefi
 }
 
 fn dispatch_handler(lifecycle: IngressLifecycleSpec) -> RouteDispatchHandler {
+    if lifecycle.path_pattern == EVIDENCE_INDEX_ENDPOINT {
+        return RouteDispatchHandler::EvidenceIndex;
+    }
     match lifecycle.source {
         "trusted_preference_ingress" => RouteDispatchHandler::PreferenceIngress,
         "effect_reconciliation" => RouteDispatchHandler::EffectReconciliation,

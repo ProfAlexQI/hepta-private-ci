@@ -10,6 +10,7 @@ pub(crate) use crate::route_definition::RouteResponsePolicy;
 pub(crate) use crate::route_definition::WATCHDOG_PROBE_PATHS;
 pub(crate) use crate::route_definition::route_definition;
 pub(crate) use crate::route_definition::route_definition_registry;
+#[cfg(test)]
 pub(crate) use crate::route_report_descriptor::ReportRenderer;
 use crate::runtime_ingress::IngressDefaultEnablement;
 use crate::runtime_ingress::route_pattern_matches;

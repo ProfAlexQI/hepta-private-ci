@@ -395,6 +395,12 @@ verify() {
   verify_file_max \
     codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs \
     230
+  verify_file_max \
+    codex-rs/hepta-native-gateway/src/native_gateway/evidence_dispatch.rs \
+    100
+  verify_file_max \
+    codex-rs/hepta-native-gateway/src/native_gateway/report_response.rs \
+    80
   verify_file_max codex-rs/hepta-native-gateway/src/runtime_ingress.rs 900
   verify_file_max codex-rs/hepta-native-gateway/src/canonical_manifest.rs 180
   verify_file_max codex-rs/hepta-native-gateway/src/gate_command.rs 150

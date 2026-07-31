@@ -161,6 +161,14 @@ pub(super) fn dispatch_manifest_route(
                 response.body.as_bytes(),
             )
         }
+        RouteDispatchHandler::EvidenceIndex => evidence_dispatch::dispatch_evidence_route(
+            stream,
+            path,
+            options,
+            request_query,
+            preflight,
+            manifest_entry,
+        ),
         RouteDispatchHandler::NativeGateway => {
             if let Some((status, content_type, body)) =
                 route_native_gateway_binary_asset(method, path)
@@ -174,42 +182,15 @@ pub(super) fn dispatch_manifest_route(
                 request_body,
                 preflight,
             );
-            if manifest_entry
-                .report_descriptor()
-                .is_some_and(|descriptor| {
-                    descriptor.renderer == crate::route_manifest::ReportRenderer::NativeGatewayJson
-                        && descriptor.response_policy
-                            == crate::route_manifest::RouteResponsePolicy::DigestBoundPagination
-                })
-                && content_type.starts_with("application/json")
-            {
-                return match report_pagination::bounded_report_response(path, request_query, body) {
-                    report_pagination::ReportResponse::Body(body) => {
-                        write_http_response(stream, status, content_type, body.as_bytes())
-                    }
-                    report_pagination::ReportResponse::BadRequest(error) => write_http_response(
-                        stream,
-                        "400 Bad Request",
-                        "application/json; charset=utf-8",
-                        json_or_error(&serde_json::json!({"error": error})).as_bytes(),
-                    ),
-                    report_pagination::ReportResponse::InternalError(error) => write_http_response(
-                        stream,
-                        "500 Internal Server Error",
-                        "application/json; charset=utf-8",
-                        json_or_error(&serde_json::json!({"error": error})).as_bytes(),
-                    ),
-                    report_pagination::ReportResponse::SnapshotConflict(error) => {
-                        write_http_response(
-                            stream,
-                            "409 Conflict",
-                            "application/json; charset=utf-8",
-                            json_or_error(&serde_json::json!({"error": error})).as_bytes(),
-                        )
-                    }
-                };
-            }
-            write_http_response(stream, status, content_type, body.as_bytes())
+            report_response::write_typed_report_response(
+                stream,
+                path,
+                request_query,
+                status,
+                content_type,
+                body,
+                manifest_entry,
+            )
         }
         RouteDispatchHandler::RetiredCompatibility => http_rejections::runtime_ingress(
             stream,

@@ -11,15 +11,24 @@ pub(crate) struct ReportDescriptor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ReportRenderer {
     NativeGatewayJson,
+    CanonicalEvidenceJson,
 }
 
 impl RouteDefinition {
     pub(crate) fn report_descriptor(self) -> Option<ReportDescriptor> {
-        (self.lifecycle.method == "GET"
-            && self.dispatch_handler == RouteDispatchHandler::NativeGateway)
-            .then_some(ReportDescriptor {
+        if self.lifecycle.method != "GET" {
+            return None;
+        }
+        match self.dispatch_handler {
+            RouteDispatchHandler::NativeGateway => Some(ReportDescriptor {
                 renderer: ReportRenderer::NativeGatewayJson,
                 response_policy: self.response_policy,
-            })
+            }),
+            RouteDispatchHandler::EvidenceIndex => Some(ReportDescriptor {
+                renderer: ReportRenderer::CanonicalEvidenceJson,
+                response_policy: self.response_policy,
+            }),
+            _ => None,
+        }
     }
 }

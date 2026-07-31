@@ -118,9 +118,11 @@ use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
 mod evidence_api;
+mod evidence_dispatch;
 mod http_rejections;
 mod manifest_dispatch;
 mod report_pagination;
+mod report_response;
 mod watchdog_state;
 
 const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";

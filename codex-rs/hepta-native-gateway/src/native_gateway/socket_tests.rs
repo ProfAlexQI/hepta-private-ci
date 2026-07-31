@@ -239,3 +239,35 @@ fn typed_report_pagination_is_digest_bound_over_real_sockets() {
     assert!(conflict.starts_with("HTTP/1.1 409 Conflict"));
     assert!(conflict.contains("report snapshot changed"));
 }
+
+#[test]
+fn canonical_evidence_route_serves_legacy_reports_over_real_sockets() {
+    let root = tempfile::tempdir().expect("runtime root");
+    let runtime = Arc::new(
+        NativeGatewayRuntime::bootstrap_with_anchor_for_test(root.path()).expect("keyed runtime"),
+    );
+    let selected = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .filter(|route| {
+            route.method == "GET"
+                && route.pattern != EVIDENCE_INDEX_ENDPOINT
+                && route.receipt_state().is_some()
+                && !route.is_quarantined_transitive_effect()
+                && !route.pattern.contains('<')
+        })
+        .min_by_key(|route| route.pattern.len())
+        .expect("legacy evidence route");
+    let response = route_over_real_socket(
+        runtime,
+        test_gateway_options(false),
+        "GET",
+        &format!("{EVIDENCE_INDEX_ENDPOINT}?route={}", selected.pattern),
+    );
+    assert!(response.starts_with("HTTP/1.1 200 OK"));
+    let body = response.split_once("\r\n\r\n").expect("response body").1;
+    let value: serde_json::Value = serde_json::from_str(body).expect("evidence JSON");
+    assert_eq!(value["schema"], "hepta_evidence_document_v1");
+    assert_eq!(value["selected_route"], selected.pattern);
+    assert_eq!(value["evidence"]["legacy_compatibility_route"], true);
+    assert_eq!(value["source_http_status"], "200 OK");
+}

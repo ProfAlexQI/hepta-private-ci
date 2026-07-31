@@ -28,6 +28,12 @@ fn manifest_generates_dispatch_and_gate_bindings() {
     for (method, path, handler, gate) in [
         ("GET", "/health", RouteDispatchHandler::NativeGateway, None),
         (
+            "GET",
+            crate::route_registry::EVIDENCE_INDEX_ENDPOINT,
+            RouteDispatchHandler::EvidenceIndex,
+            None,
+        ),
+        (
             "POST",
             TELEGRAM_RECEIVE_ONCE_ENDPOINT,
             RouteDispatchHandler::TelegramReceiveOnce,
@@ -87,7 +93,7 @@ fn manifest_assigns_pagination_to_reports_and_exempts_stable_projections() {
 }
 
 #[test]
-fn manifest_derives_typed_report_descriptors_only_for_native_gets() {
+fn manifest_derives_typed_report_descriptors_for_json_gets() {
     let report = route_manifest_entry("GET", "/api/operator-security")
         .expect("operator security manifest entry")
         .report_descriptor()
@@ -101,6 +107,12 @@ fn manifest_derives_typed_report_descriptors_only_for_native_gets() {
     let mutation = route_manifest_entry("POST", OPERATOR_MUTATION_COMMIT_ENDPOINT)
         .expect("operator mutation manifest entry");
     assert_eq!(mutation.report_descriptor(), None);
+
+    let evidence = route_manifest_entry("GET", crate::route_registry::EVIDENCE_INDEX_ENDPOINT)
+        .expect("canonical evidence definition")
+        .report_descriptor()
+        .expect("canonical evidence descriptor");
+    assert_eq!(evidence.renderer, ReportRenderer::CanonicalEvidenceJson);
 }
 
 #[test]

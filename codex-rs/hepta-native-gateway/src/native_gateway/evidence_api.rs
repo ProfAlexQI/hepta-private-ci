@@ -1,4 +1,7 @@
 use serde::Serialize;
+use serde_json::Value;
+use sha2::Digest;
+use sha2::Sha256;
 
 use crate::route_manifest::RouteDefinition;
 use crate::route_manifest::route_definition_registry;
@@ -37,6 +40,18 @@ struct EvidenceEntry {
     legacy_compatibility_route: bool,
 }
 
+#[derive(Debug, Serialize)]
+pub(super) struct EvidenceDocument {
+    schema: &'static str,
+    status: &'static str,
+    canonical_endpoint: &'static str,
+    selected_route: &'static str,
+    source_http_status: &'static str,
+    source_content_sha256: String,
+    evidence: EvidenceEntry,
+    payload: Value,
+}
+
 pub(super) fn evidence_index_report() -> EvidenceIndex {
     let entries = route_definition_registry()
         .into_iter()
@@ -58,6 +73,58 @@ pub(super) fn evidence_index_report() -> EvidenceIndex {
             .count(),
         entries,
     }
+}
+
+pub(super) fn requested_evidence_route(query: Option<&str>) -> Result<Option<&str>, &'static str> {
+    let Some(query) = query.filter(|query| !query.is_empty()) else {
+        return Ok(None);
+    };
+    let mut route = None;
+    for pair in query.split('&') {
+        let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+        if name != "route" {
+            continue;
+        }
+        if route.is_some() {
+            return Err("evidence route may only be provided once");
+        }
+        if !value.starts_with("/api/") || value.contains(['?', '#', '%']) {
+            return Err("evidence route must be an unescaped canonical /api/ path");
+        }
+        route = Some(value);
+    }
+    Ok(route)
+}
+
+pub(super) fn evidence_document_report(
+    definition: RouteDefinition,
+    source_http_status: &'static str,
+    source_content_type: &'static str,
+    source_body: String,
+) -> Result<EvidenceDocument, &'static str> {
+    if !definition.legacy_compatibility_route
+        || definition.lifecycle.method != "GET"
+        || definition.lifecycle.path_pattern.contains('<')
+    {
+        return Err("selected route is not a canonical legacy evidence report");
+    }
+    if !source_content_type.starts_with("application/json") {
+        return Err("selected evidence report did not return JSON");
+    }
+    let payload = serde_json::from_str(&source_body)
+        .map_err(|_| "selected evidence report returned invalid JSON")?;
+    let evidence = evidence_entry(definition)
+        .ok_or("selected route does not expose receipt-state evidence")?;
+    Ok(EvidenceDocument {
+        schema: "hepta_evidence_document_v1",
+        status: "ready",
+        canonical_endpoint: EVIDENCE_INDEX_ENDPOINT,
+        selected_route: definition.lifecycle.path_pattern,
+        source_http_status,
+        source_content_sha256: format!("{:x}", Sha256::digest(source_body.as_bytes())),
+        evidence,
+        payload,
+    })
 }
 
 fn evidence_entry(definition: RouteDefinition) -> Option<EvidenceEntry> {
@@ -130,5 +197,17 @@ mod tests {
             definition.lifecycle.path_pattern != TELEGRAM_LIVE_SOAK_ROUTE.canonical
                 || definition.aliases == TELEGRAM_LIVE_SOAK_ROUTE.aliases
         }));
+    }
+
+    #[test]
+    fn evidence_route_query_is_canonical_and_unambiguous() {
+        assert_eq!(requested_evidence_route(None), Ok(None));
+        assert_eq!(
+            requested_evidence_route(Some("route=/api/example&detail=full")),
+            Ok(Some("/api/example"))
+        );
+        assert!(requested_evidence_route(Some("route=/api/a&route=/api/b")).is_err());
+        assert!(requested_evidence_route(Some("route=%2Fapi%2Fexample")).is_err());
+        assert!(requested_evidence_route(Some("route=/health")).is_err());
     }
 }

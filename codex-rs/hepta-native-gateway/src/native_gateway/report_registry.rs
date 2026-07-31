@@ -1,11 +1,4 @@
 match path {
-            EVIDENCE_INDEX_ENDPOINT => {
-                return (
-                    "200 OK",
-                    "application/json; charset=utf-8",
-                    json_or_error(&evidence_api::evidence_index_report()),
-                );
-            }
             "/" | "/index.html" => {
                 return (
                     "200 OK",
