@@ -1,0 +1,21 @@
+{
+  "schema": "hepta_workgraph_safe_leaf_history_anchor_v1",
+  "status": "ready",
+  "implementation_commit": "233e0482b7c0a159bbac4fb6837d48577db838bf",
+  "implementation_tree": "25790c5698b6549ebc3e6025e1d9e4e4dfe6d05b",
+  "receipt_path": "docs/architecture/HEPTA_WORKGRAPH_SAFE_LEAF_RETIREMENT_V1.json",
+  "receipt_sha256": "7340c555386dd4bf7ccc6b22e6073a7864dd9d0b4ecc05acbc545b304a67ac9f",
+  "recovery": {
+    "strategy": "git_revert_in_isolated_clean_worktree",
+    "commit_exists": true,
+    "tree_matches": true,
+    "receipt_matches_implementation_commit": true,
+    "head_descends_from_implementation": true
+  },
+  "safety": {
+    "runtime_mutated": false,
+    "deployment_performed": false,
+    "release_complete": false,
+    "source_progress_release_blocked": true
+  }
+}

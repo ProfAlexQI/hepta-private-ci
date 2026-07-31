@@ -1088,6 +1088,16 @@ verify() {
     and .safety.counter_semantics_changed == false
     and .safety.source_progress_release_blocked == true
   ' docs/architecture/HEPTA_WORKGRAPH_SAFE_LEAF_RETIREMENT_V1.json >/dev/null
+  local safe_leaf_anchor="docs/architecture/HEPTA_WORKGRAPH_SAFE_LEAF_HISTORY_ANCHOR_V1.json"
+  local safe_leaf_commit
+  local safe_leaf_tree
+  local safe_leaf_receipt
+  safe_leaf_commit="$(jq -er '.implementation_commit' "$safe_leaf_anchor")"
+  safe_leaf_tree="$(jq -er '.implementation_tree' "$safe_leaf_anchor")"
+  safe_leaf_receipt="$(jq -er '.receipt_sha256' "$safe_leaf_anchor")"
+  [[ "$(git rev-parse "${safe_leaf_commit}^{tree}")" == "$safe_leaf_tree" ]]
+  git merge-base --is-ancestor "$safe_leaf_commit" HEAD
+  [[ "$(git show "${safe_leaf_commit}:docs/architecture/HEPTA_WORKGRAPH_SAFE_LEAF_RETIREMENT_V1.json" | shasum -a 256 | awk '{print $1}')" == "$safe_leaf_receipt" ]]
   verify_file_max \
     docs/architecture/HEPTA_O2_GATE_COMPAT_RATCHET_2026-07-31.json \
     90
