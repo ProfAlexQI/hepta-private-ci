@@ -1,0 +1,97 @@
+{
+  "schema_version": "hepta_workgraph_source_report_specs_v1",
+  "status": "source_ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "entry_count": 8,
+  "execution_mode": "source_report_smoke_plus_targeted_rust_test",
+  "entries": [
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview",
+      "source_stem": "work_graph_unified_projection_enforcement_readiness_runtime_wal_write_boundary_execution_rerun_preview",
+      "expected_gate": "hepta_work_graph_unified_projection_enforcement_readiness_runtime_wal_write_boundary_execution_rerun_preview_gate",
+      "expected_schema": "work_graph_unified_projection_enforcement_readiness_runtime_wal_write_boundary_execution_rerun_preview_v1",
+      "report_path": "scripts/lib/hepta-workgraph-source-report-v1/wgr-c7bf30dc84a9fd52.report",
+      "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview.report",
+      "report_sha256": "354f71ffa2d7215196636c3f22142a1b53620b3b493713932168e509d012a065",
+      "report_lines": 285,
+      "pass_message": "Hepta WorkGraph unified projection enforcement readiness runtime WAL write-boundary execution rerun preview gate passed"
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-operator-review-packet-rerun-preview",
+      "source_stem": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_operator_review_packet_rerun_preview",
+      "expected_gate": "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_operator_review_packet_rerun_preview_gate",
+      "expected_schema": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_operator_review_packet_rerun_preview_v1",
+      "report_path": "scripts/lib/hepta-workgraph-source-report-v1/wgr-798cd78d907ba892.report",
+      "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-operator-review-packet-rerun-preview.report",
+      "report_sha256": "f66ad72eacb9bfe830e591a63f237a560618d4b48003b9e9e3f09132115e878d",
+      "report_lines": 211,
+      "pass_message": "Hepta WorkGraph unified projection enforcement readiness WorkGraph events event-store cutover_operator_review_packet rerun preview gate passed"
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-replay-readback-execution-closure-rerun-preview",
+      "source_stem": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_replay_readback_execution_closure_rerun_preview",
+      "expected_gate": "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_replay_readback_execution_closure_rerun_preview_gate",
+      "expected_schema": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_replay_readback_execution_closure_rerun_preview_v1",
+      "report_path": "scripts/lib/hepta-workgraph-source-report-v1/wgr-81b1b92c21f78757.report",
+      "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-replay-readback-execution-closure-rerun-preview.report",
+      "report_sha256": "2af5ba9f62fa5de38f55dc13c11cf566acc237374314f8bf24306aba52a0b751",
+      "report_lines": 222,
+      "pass_message": "Hepta WorkGraph unified projection enforcement readiness WorkGraph events event-store cutover replay/readback execution closure rerun preview gate passed"
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview",
+      "source_stem": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_runtime_adapter_enforcement_closure_rerun_preview",
+      "expected_gate": "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_runtime_adapter_enforcement_closure_rerun_preview_gate",
+      "expected_schema": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_runtime_adapter_enforcement_closure_rerun_preview_v1",
+      "report_path": "scripts/lib/hepta-workgraph-source-report-v1/wgr-b40cf2deb863ff6e.report",
+      "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview.report",
+      "report_sha256": "7a32a42b402e79b51d159eda4c0934ded935bfbc5b56e089b3b08c9555caff06",
+      "report_lines": 221,
+      "pass_message": "Hepta WorkGraph unified projection enforcement readiness WorkGraph events event-store cutover runtime-adapter enforcement closure rerun preview gate passed"
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-receipt-acknowledgement-replay-idempotency-rerun-preview",
+      "source_stem": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_rerun_preview",
+      "expected_gate": "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_rerun_preview_gate",
+      "expected_schema": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_rerun_preview_v1",
+      "report_path": "scripts/lib/hepta-workgraph-source-report-v1/wgr-0b7ad6062d67459d.report",
+      "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-receipt-acknowledgement-replay-idempotency-rerun-preview.report",
+      "report_sha256": "50c3b47b823e1fcbc644d451da88d8c25f5dc38f542d541bdc008b169340aa8f",
+      "report_lines": 212,
+      "pass_message": "Hepta WorkGraph unified projection enforcement readiness WorkGraph events event-store cutover terminal no-cutover receipt acknowledgement replay idempotency closeout rerun preview gate passed"
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview",
+      "source_stem": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_rerun_preview",
+      "expected_gate": "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_rerun_preview_gate",
+      "expected_schema": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_rerun_preview_v1",
+      "report_path": "scripts/lib/hepta-workgraph-source-report-v1/wgr-4155a95881d70324.report",
+      "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview.report",
+      "report_sha256": "357f2e1ba8c9c57fdb702f4f519f14613c7763ed12bc7777a0f13415929cbd31",
+      "report_lines": 212,
+      "pass_message": "Hepta WorkGraph unified projection enforcement readiness WorkGraph events event-store cutover terminal no-cutover receipt acknowledgement replay idempotency closeout rerun preview gate passed"
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview",
+      "source_stem": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_rerun_preview",
+      "expected_gate": "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_rerun_preview_gate",
+      "expected_schema": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_rerun_preview_v1",
+      "report_path": "scripts/lib/hepta-workgraph-source-report-v1/wgr-bafa135c8370ff1e.report",
+      "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview.report",
+      "report_sha256": "2c0d5692d451a79330a61b5d3cc30b5f3c06514973a23388ac40e5e6794c4566",
+      "report_lines": 212,
+      "pass_message": "Hepta WorkGraph unified projection enforcement readiness WorkGraph events event-store cutover terminal no-cutover receipt acknowledgement replay idempotency rerun preview gate passed"
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview",
+      "source_stem": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_rerun_preview",
+      "expected_gate": "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_rerun_preview_gate",
+      "expected_schema": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_rerun_preview_v1",
+      "report_path": "scripts/lib/hepta-workgraph-source-report-v1/wgr-2f995b7cc11ad44b.report",
+      "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview.report",
+      "report_sha256": "d99724131e998b136198b3cdfbd32079f1a8699f7268e2b594fe7d3287728972",
+      "report_lines": 212,
+      "pass_message": "Hepta WorkGraph unified projection enforcement readiness WorkGraph events event-store cutover terminal no-cutover receipt acknowledgement rerun preview gate passed"
+    }
+  ]
+}

@@ -2,8 +2,9 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-front_door_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-gate.sh"
+front_door_gate="$repo_root/scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate"
 front_door_report="$repo_root/scripts/hepta-context-source-aware-compression-front-door-report.sh"
+front_door_report_source="$repo_root/scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.report"
 context_contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
 preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
@@ -245,7 +246,7 @@ if [ "$report_gates" != "$actual_gates_csv" ]; then
 fi
 
 gate_list_owner_files=(
-  "$front_door_report"
+  "$front_door_report_source"
   "$repo_root/scripts/hepta-context-source-aware-compression-front-door-report-status-gate.sh"
   "$repo_root/scripts/hepta-context-source-aware-compression-front-door-report-status-negative-gate.sh"
   "$repo_root/scripts/hepta-context-source-aware-compression-front-door-report-status-fixture-matrix-gate.sh"

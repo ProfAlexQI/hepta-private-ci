@@ -1,0 +1,1088 @@
+{
+  "schema": "hepta_gate_compat_o2_retirement_v1",
+  "status": "ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "baseline_spec_sha256": "bb278b201c113b480849339ba5e6d2980b4dcecdd2dcbf98554d80561b9fcc3a",
+  "baseline_payload_bundle_sha256": "cf1e680a5cb11c2f2e210594482b0d93b1ae08b02c4c7abbaa8968b2ac70626c",
+  "baseline_registry_sha256": "e80b08d69935f2fe7bfd2cf3ef2ab10bc4e596ac3e8b7f7ebf9a68e2bf140956",
+  "original_pair_count": 598,
+  "retired_pair_count": 84,
+  "migrated_pair_count": 16,
+  "remaining_pair_count": 498,
+  "retained_caller_count": 123,
+  "selection": "captured_shell_dependency_closed_uncalled_leaves_then_canonical_promotion",
+  "retired_pairs": [
+    "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-summary-final-index",
+    "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-summary-final-index",
+    "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-summary-final-index",
+    "hepta-systems-work-graph-deep-td7-receipt-retention-expiry-preview",
+    "hepta-systems-work-graph-deep-td7-receipt-retention-readback-ack-preview",
+    "hepta-systems-work-graph-deep-td7-receipt-retention-readback-ack-replay-preview",
+    "hepta-systems-work-graph-deep-td7-receipt-retention-readback-receipt-preview",
+    "hepta-systems-work-graph-deep-td8-receipt-retention-expiry-preview",
+    "hepta-systems-work-graph-deep-td8-receipt-retention-readback-ack-preview",
+    "hepta-systems-work-graph-deep-td8-receipt-retention-readback-ack-replay-preview",
+    "hepta-systems-work-graph-deep-td8-receipt-retention-readback-receipt-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-ack-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-ack-replay-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-expiry-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-replay-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-ack-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-ack-replay-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-replay-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-receipt-preview",
+    "hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-receipt-preview",
+    "hepta-systems-work-graph-deep-td8-terminal-decision-preview",
+    "hepta-systems-work-graph-deep-td8-terminal-decision-receipt-ack-preview",
+    "hepta-systems-work-graph-deep-td8-terminal-decision-receipt-ack-replay-preview",
+    "hepta-systems-work-graph-deep-td8-terminal-decision-receipt-preview",
+    "hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-preview",
+    "hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-expiry-preview",
+    "hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-rbackack-preview",
+    "hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-rbackack-replay-preview",
+    "hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-rbrcpt-preview",
+    "hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-receipt-ack-preview",
+    "hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-receipt-ack-replay-preview",
+    "hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-receipt-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-expiry-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-expiry-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-rbackack-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-rbackack-replay-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-rbrcpt-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-receipt-ack-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-receipt-ack-replay-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-receipt-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-readback-ack-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-readback-ack-replay-preview",
+    "hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-readback-receipt-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-expiry-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-replay-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-receipt-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-readback-ack-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-readback-ack-replay-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-readback-receipt-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-replay-preview",
+    "hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-receipt-preview",
+    "hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-preview",
+    "hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-expiry-preview",
+    "hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-rbackack-preview",
+    "hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-rbackack-replay-preview",
+    "hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-rbrcpt-preview",
+    "hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-receipt-ack-preview",
+    "hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-receipt-ack-replay-preview",
+    "hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-receipt-preview",
+    "hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-preview",
+    "hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-expiry-preview",
+    "hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbackack-preview",
+    "hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbackack-replay-preview",
+    "hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbackack-td-preview",
+    "hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbrcpt-preview",
+    "hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-receipt-ack-preview",
+    "hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-receipt-ack-replay-preview",
+    "hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-receipt-preview",
+    "hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-preview",
+    "hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-receipt-ack-preview",
+    "hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-receipt-ack-replay-idempotency-preview",
+    "hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-receipt-preview"
+  ],
+  "retired_payloads": [
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-summary-final-index.gate",
+      "sha256": "7d6b736aa774cf333a5eae7e08b89405c9e6a7083995c671f47f5c64be4b1266",
+      "lines": 43
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-summary-final-index.report",
+      "sha256": "bf092c11a42d5fe4491100f92ce1fe707a8d266e353bb9f542d06b25f82e5002",
+      "lines": 91
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-summary-final-index.gate",
+      "sha256": "6d535fb60a4a25b761e6c321a3e19effe45b02118fdcb695be4996ce713501dd",
+      "lines": 43
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-summary-final-index.report",
+      "sha256": "d9317aefeae3aaf518c19f244a6866683fb4b3f49830c38179826266b8a1fac3",
+      "lines": 91
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-summary-final-index.gate",
+      "sha256": "e990acf04871685297ad3b8aad3834ab1ec077a4d81cf99c7637a3f9596aba13",
+      "lines": 43
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-summary-final-index.report",
+      "sha256": "edb35ab03031a02535469bf64933d741ed5cb97cb6435811c20a200dec898109",
+      "lines": 91
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td7-receipt-retention-expiry-preview.gate",
+      "sha256": "9adb148758651ef899d054ece919068612be243296361ccae16ca1312863c02a",
+      "lines": 43
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td7-receipt-retention-expiry-preview.report",
+      "sha256": "083e1e1f96bb7eee1a2e76d4251e6f9f8a09fe61fac1eb786fa831e304a83c12",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td7-receipt-retention-readback-ack-preview.gate",
+      "sha256": "68a136912fccafca02f7b84c221f705f66bb34414c4b5e4a49190704d67f6ce3",
+      "lines": 42
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td7-receipt-retention-readback-ack-preview.report",
+      "sha256": "528f52fff7f062f0fc9d6f4f65a7efd4c2b27a72087145fcdb667af257a05231",
+      "lines": 91
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td7-receipt-retention-readback-ack-replay-preview.gate",
+      "sha256": "81b04d6d1be6a5e3487a6e72b80e6841ad4b42c1e6bb1de57ad5a0dd6195009b",
+      "lines": 42
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td7-receipt-retention-readback-ack-replay-preview.report",
+      "sha256": "66c552f7b5ce1cbb3c1befea839a8e0f92c99f3b212938fe62ad53938ac70590",
+      "lines": 92
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td7-receipt-retention-readback-receipt-preview.gate",
+      "sha256": "50b5d4572a59dd2340b68c9597c7e558a3e4d62277d40a747d14cad7bb9558f2",
+      "lines": 41
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td7-receipt-retention-readback-receipt-preview.report",
+      "sha256": "9adec113ff0b908d746a0f0c95f7bf4a9e9fd43874358f57ac68c12cb8c14cac",
+      "lines": 88
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-receipt-retention-expiry-preview.gate",
+      "sha256": "33669e2600e5163d63b8f7ae4d899b83302a36f32a7cf7445b57df5f87126dc0",
+      "lines": 42
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-receipt-retention-expiry-preview.report",
+      "sha256": "e6bf797dd5b4d66fa632bffd573e55b247432f736c9a0c7b14d5267c04661cc8",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-receipt-retention-readback-ack-preview.gate",
+      "sha256": "8cd10cdfb62917cc570efe47009e61000de0179b10aa8c846d944247eb1fca3e",
+      "lines": 41
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-receipt-retention-readback-ack-preview.report",
+      "sha256": "d8787e3273cdcec3bd668c45da2b0fe90ebfe409d1d6ea15d5eb9f2e80b50787",
+      "lines": 92
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-receipt-retention-readback-ack-replay-preview.gate",
+      "sha256": "f806e8c4a3de66727bfd8eee57567bc026814aa03b933ee6212a0010f5755eba",
+      "lines": 41
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-receipt-retention-readback-ack-replay-preview.report",
+      "sha256": "1458d29662289da7dac789122d15662b109460bce625b50702d90e283dc06920",
+      "lines": 93
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-receipt-retention-readback-receipt-preview.gate",
+      "sha256": "597124591adc426e798d7f69ae0524b87557610ec05aec6db851ed0e2f139f87",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-receipt-retention-readback-receipt-preview.report",
+      "sha256": "0cfcc5b52eab3f6fd9d6192288ecb009876d85c0004059916a491acb957db2e9",
+      "lines": 89
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-preview.gate",
+      "sha256": "c3909332df895540b08f8bbd6f9166607de677d7c3d76ef5be031535af808a9c",
+      "lines": 60
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-preview.report",
+      "sha256": "5734c38b62732749b82c0edfacc4efc8eda2168e2f09a259e550f6d67f1080a3",
+      "lines": 138
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-ack-preview.gate",
+      "sha256": "dfe82db619b03cae410ccb646f22d67b6f68a9c14f706c2eec162419d601cfd3",
+      "lines": 56
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-ack-preview.report",
+      "sha256": "ec72aa241c840fbdc0589ecdc1064da6c340b63ffe8f4793490ee36b192b6e5b",
+      "lines": 141
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-ack-replay-preview.gate",
+      "sha256": "ca9183bfcdb33fe4530505ef5ea053e2ec58730a9ef1bcfba22141a863a4934e",
+      "lines": 53
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-ack-replay-preview.report",
+      "sha256": "0a40fe0b7afa376facb8c2ac6b25228846a0f83cb410f74369995b1904d3804c",
+      "lines": 137
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-preview.gate",
+      "sha256": "9ebc62d085c09caabf524b4f7d31a317299eee02c32576b5e884c63795d54441",
+      "lines": 54
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-preview.report",
+      "sha256": "ff195562f2e3f1b836c4547381c19191941c2082f74d80926255e01190812c44",
+      "lines": 138
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-expiry-preview.gate",
+      "sha256": "fa6174353fa5069a374b3b1c501528b97dfa776b29d2eeffb9311ec67cae40b5",
+      "lines": 45
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-expiry-preview.report",
+      "sha256": "2d59f6128f4fb24ce86cd0c7f66ee30f86325a1f3905a674ad8fceafd5aaa985",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-preview.gate",
+      "sha256": "02bb29a31a8b4e292d648d7d279d9a7815e0e887e6c3aedb772ba81694643fca",
+      "lines": 44
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-preview.report",
+      "sha256": "c74dd20cb5e6ae422b61bebf4f0d5bfdc3f3728f2f4eeef79dc9ce7d06f7c582",
+      "lines": 92
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-replay-preview.gate",
+      "sha256": "5dfc4e61c0510334fdfb354ffdd4877e2d393506b07ca81504a7043a0de3bdd9",
+      "lines": 44
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-replay-preview.report",
+      "sha256": "5eed822a3d7d7637590c1a9009abb706fd5758cafe3ba9bc1338fcee2ca6fe5d",
+      "lines": 93
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-preview.gate",
+      "sha256": "7280bf56c8547bd39c8c42a3083fa9c66703afb5cb3654cddb961667f64ecce8",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-preview.report",
+      "sha256": "9d232644b9b5a43815a436d0d7035798de9d5e643c7b4cf62545692c2e2e5a47",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-ack-preview.gate",
+      "sha256": "ab9e8ca2858d96cb61e61deaedb9c41bfa7be741855175c813b700a81eba8abd",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-ack-preview.report",
+      "sha256": "35e44a844b7db5c0a8501cc913bc309de4d02e74c3cbd1dc18fe2b661be60383",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-ack-replay-preview.gate",
+      "sha256": "3e28df36a151e6c359aaf7937689d5444438338680aad051dda4e169ea961b04",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-ack-replay-preview.report",
+      "sha256": "a828623410d5adbf205602e40915661810534225f0478f8a0738991e6784e868",
+      "lines": 109
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-preview.gate",
+      "sha256": "3c50b698d1d40953bfe2eb15ac6ada2922869da325d63241561991b11bffb767",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-preview.report",
+      "sha256": "f73471c43c34c4e68516ac7c24879c76a014a9543f5ba40b23a5ed5fb74b9af7",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-preview.gate",
+      "sha256": "5bcd1a992a2e3b48921d3e7e3ff36acdf1b8a4cba050c29dc3563e5936582b39",
+      "lines": 45
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-preview.report",
+      "sha256": "a4dadd324ab96cfae0706f4f5b8e3ef8fecd806fbff462c8e14e89165504e1e8",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-preview.gate",
+      "sha256": "72ac38b41fb6714fc49f69465f711bf45a04bdb6a7201ade7c560797259c94b5",
+      "lines": 44
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-preview.report",
+      "sha256": "b59f6827cb5d2fdf343578b0859342f16abb2edfd87e7814873c3b52d2631f4f",
+      "lines": 92
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-replay-preview.gate",
+      "sha256": "20bc651e8bf54c3ad870bac99977f92f4a82f63b52552981a579065c610fc7a5",
+      "lines": 44
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-replay-preview.report",
+      "sha256": "6c8cc8211afa39659ab696c6f04ada391b98a1063fcbb5b843193377e69031ed",
+      "lines": 93
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-receipt-preview.gate",
+      "sha256": "50dc18fc606d7ef50c44cdfe167ebd169627139d69b0da8bbc472029cb069e6d",
+      "lines": 43
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-receipt-preview.report",
+      "sha256": "426446215363e1799a413a5bf290501381747656f1f164446d320c3f13374f38",
+      "lines": 89
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-receipt-preview.gate",
+      "sha256": "3eec3b72d9d7dd33cc901956a795b2595795807d03e47db80b6e25f11226058f",
+      "lines": 43
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-retention-ack-terminal-decision-receipt-retention-readback-receipt-preview.report",
+      "sha256": "e1f9331eeffa2a4358a2657c2473962569bd47362d12fb16ffa7f3befa7fcc7b",
+      "lines": 89
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-terminal-decision-preview.gate",
+      "sha256": "3e874470f25eab2a4d0053867fd44fc22a1d81ebc9302514e480cc101dd7b00c",
+      "lines": 60
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-terminal-decision-preview.report",
+      "sha256": "1eee10ce7c692ba366e1a05d51e42274742e7cb90080f20b5822121fff4a46e0",
+      "lines": 138
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-terminal-decision-receipt-ack-preview.gate",
+      "sha256": "124dd48e4c8e454a92fde6fc05783c6d5dff8340a1b6fd00efe8f2f003d67d43",
+      "lines": 56
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-terminal-decision-receipt-ack-preview.report",
+      "sha256": "962f8be6ecca57467f68c8ba71de84892cee1219c2fd9e0e2f95aa02c4285869",
+      "lines": 141
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-terminal-decision-receipt-ack-replay-preview.gate",
+      "sha256": "add5915372df7057b72cbdac9ca97aebaf81714f7c481ba2c2fb671bf669070b",
+      "lines": 53
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-terminal-decision-receipt-ack-replay-preview.report",
+      "sha256": "543addebb2c43fa8b6d5b49a3ec022115362da81dcda0b62e2302b9a85ea4f55",
+      "lines": 137
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-terminal-decision-receipt-preview.gate",
+      "sha256": "3f7d0b7e4aa5104c774fdc94effbe95cb31be4053b08f8738f1a35b0d90ccfcc",
+      "lines": 54
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-deep-td8-terminal-decision-receipt-preview.report",
+      "sha256": "940b116049fc658b1fe9d716ea2948141f981de27480ee69a50e18ec32e967c8",
+      "lines": 138
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-preview.gate",
+      "sha256": "dd6abcbc1319f014768aa019916661ac1a7f55a79e40ef85ad25c0aa2d69d312",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-preview.report",
+      "sha256": "ba0169e1dd01cb2bf963ecceaa22414860a35a59f1adf439ae806fb4d5a4ba2f",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-expiry-preview.gate",
+      "sha256": "f42a20cfe21f6406cd0464caa067a4f23ae1c5dea7745759eccdcb68fcad0125",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-expiry-preview.report",
+      "sha256": "d343f12d75e4dd300ccd63b60e3314b2360ff6bd6e36fc349288d6732d8e39eb",
+      "lines": 98
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-rbackack-preview.gate",
+      "sha256": "b0d2ded88c1123b648f0438d096fe4bf109df7cf74a3e88cf58e5a143f6c8eb9",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-rbackack-preview.report",
+      "sha256": "4dd26ffe216060d08d60ad83e092e00c03a13824fba43b18116e6f0baad22f82",
+      "lines": 103
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-rbackack-replay-preview.gate",
+      "sha256": "75379f569772511c6219cbfc037130ac3dc959aac55b2f27d92659d4764d30cf",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-rbackack-replay-preview.report",
+      "sha256": "ed690e38c862e52c97f42944c4b4fe8ded0b46d93881710ed08766a001456d8d",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-rbrcpt-preview.gate",
+      "sha256": "41c73f6c386c97cd3e102b1a76a5ee8d4a83d7c04343caa6d7b933ad28c154af",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-rcptret-rbrcpt-preview.report",
+      "sha256": "4a2aa69e5a833d4a7071081b0f9378345bd71da20bff3cf0ffc05ba06d133406",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-receipt-ack-preview.gate",
+      "sha256": "e63832c09896b86424cee6a03b0b0e752a19f85eed62965e2ef4d02ad11801c6",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-receipt-ack-preview.report",
+      "sha256": "f54dc2a3bfdc5094046c4d1eaa76d48318ebe5e04f60f9c6dbb2afbddadc2346",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-receipt-ack-replay-preview.gate",
+      "sha256": "6886d484c7fc2b435f7effcad3f3e26ba9231bd1533cbd0dab30cb23b5a5049d",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-receipt-ack-replay-preview.report",
+      "sha256": "14456cb3206ddfb34d91fc696e8dfa6f190da9850ed7c27d3b9b66080d34d045",
+      "lines": 109
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-receipt-preview.gate",
+      "sha256": "6f252b176501247cbaf2b07980018011dfa0671d3d1d70b189c0d79e4618f412",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-rbackacktd-rcptret-rbackack-td2-receipt-preview.report",
+      "sha256": "6300fbef57395dae44d24e77f4b140083438ce1cff94f8af69a721bd21b2622e",
+      "lines": 104
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-expiry-preview.gate",
+      "sha256": "58ce1b33ad3f57385588982894acbdcda53dc64d76a71abe29c59cc2b83db537",
+      "lines": 41
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-expiry-preview.report",
+      "sha256": "5ee682545ad6149eaccb04d8a270c8b4e2e1965914cbbc960764bb31d86202f1",
+      "lines": 98
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-preview.gate",
+      "sha256": "925d39d3ec97a23561c888d1ff3bd97c2563208ecb7c6e0d09f827a8c85235d1",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-preview.report",
+      "sha256": "f54041d6b70bf2f5428ccfcc0354c1a41a2eba3121ba912a564540ed89159a24",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-expiry-preview.gate",
+      "sha256": "433232156867326096a5d834514b8c0148894ea75d07a03baa053a3fa5b7f201",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-expiry-preview.report",
+      "sha256": "4f7b66829b78bdb2de233ac970eb885827297f0145152a4b1a1a3ef8f412b8ea",
+      "lines": 98
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-rbackack-preview.gate",
+      "sha256": "7bdde161d427231565da723439faa6d58e2b63fc2ee2ce240d3fcfccb22a337d",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-rbackack-preview.report",
+      "sha256": "e6d2bea65e4073014723cec0ebed966cf6ac4914d30fcecea3edf246e5a71c98",
+      "lines": 103
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-rbackack-replay-preview.gate",
+      "sha256": "8589a55285fc30b88381e9c4187d98cb72a1829d9bbe7b3134677a8c578153ed",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-rbackack-replay-preview.report",
+      "sha256": "3b9c288aed947d26789f4e144f40f4c8ecdda62eb33cc18bda0ea7f8ac0639de",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-rbrcpt-preview.gate",
+      "sha256": "91bebd6b60f6b9927afa949cdfcfe218d049cdb4a72420051c772d6c75e37e6b",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-rcptret-rbrcpt-preview.report",
+      "sha256": "226dd415b50f607ae9d1f4976163b49982c6e8f1bcf4323d79df64618b2ec63a",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-receipt-ack-preview.gate",
+      "sha256": "a1e92a35e2f4f986d07c7c5e46c1171ff8f1b9dadc772bfaa597d959672f8d0f",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-receipt-ack-preview.report",
+      "sha256": "e190b39f53797f76516009cd2d43b017a9790f130ba62a4b30bd9db612bfc08e",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-receipt-ack-replay-preview.gate",
+      "sha256": "4bbf16fb669e52e17f785d660f72761e2e13c784e32d63c75b1193d35cfb6523",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-receipt-ack-replay-preview.report",
+      "sha256": "dd139340911750de36a90bd3999da01650bf27bf2e4c338b42abb785ee6af370",
+      "lines": 109
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-receipt-preview.gate",
+      "sha256": "b750b21c67865d2a67fd7ca9a0465929038a624fd4fc850b5fe56c5664f690c9",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-rbackack-td-receipt-preview.report",
+      "sha256": "dc3c6f9be6363e7d497f90e19faaf1c20c1c120068cae10f9b4b3b063af80a4f",
+      "lines": 104
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-readback-ack-preview.gate",
+      "sha256": "721320de15d07c173db50cfe720e2afa9df5a636f530e66f9412a9ba71e8c113",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-readback-ack-preview.report",
+      "sha256": "657454f062533d09050e9c94f78136386404ca785739dd7161cb562a983b91f8",
+      "lines": 103
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-readback-ack-replay-preview.gate",
+      "sha256": "3f6cbb70002dc44fe4d2afa26625087a88a17849fc95cfb920c2f68b230497f0",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-readback-ack-replay-preview.report",
+      "sha256": "2a89008d397431c74075e5f95d9a5684bf8838ae2db2571379f6f341b72b8ff7",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-readback-receipt-preview.gate",
+      "sha256": "dcc1286142a76b6346ec3b0bcee36145c72edcb7dffeb89b64facf311f1f6ba7",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-rbackacktd-rbackacktd-rcptret-readback-receipt-preview.report",
+      "sha256": "45c6266d02044aedfd41229adac725f1e205c393218c4c8e88a970e139268e4d",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-preview.gate",
+      "sha256": "884a71feed22bd64b92ed373bc450e7562ce80d5c6232c79828756281eb770df",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-preview.report",
+      "sha256": "0e29b1a017b817ec40da9c30b47cec4e4d36265deac70263f380917adf837188",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-expiry-preview.gate",
+      "sha256": "f237fd98029c1d19dc1ec77a1d49a51c4f6449d2cf67d2d938f295d3f280a4d6",
+      "lines": 45
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-expiry-preview.report",
+      "sha256": "ae940c8312dbe6a2de9e0cec27eed19c7af93bda235010d2ed5a17a19e453d29",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-preview.gate",
+      "sha256": "5637aaea26da20cf0bcf7195f2cd858b13ea26982a3f8fa0716747c3f3c32686",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-preview.report",
+      "sha256": "62fc789562d9be1703d0f50a937dfc817c8e9fcd19f57468109f263a081bad63",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-preview.gate",
+      "sha256": "214472ad19aed800f310d1eed363af5aeb7d45f4aef1c718e8da9ae24dce8aa0",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-preview.report",
+      "sha256": "b2f9645490528fc0d5f1b5208077f8fefbe2e7c68f2b44d976bc28a0b92c5bfe",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-replay-preview.gate",
+      "sha256": "1935470cf008ea34e7bad94c10db0a5ea58062a1cc1e662ab89204132ecf4c19",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-replay-preview.report",
+      "sha256": "9bcb91d98b143ebc0b80ede1ea3369ce0c0e7fced7e6e7fec576a356cad194ad",
+      "lines": 109
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-receipt-preview.gate",
+      "sha256": "90032e5e9120881e4522500c824ac4c14442121a0ae2877031853c34dc8992c8",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-rback-ack-td-receipt-preview.report",
+      "sha256": "e9a0d844e7b88ec8adacad21a1c162a1b1570853a2b8dbad7cd1c660ceda127a",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-readback-ack-preview.gate",
+      "sha256": "ed4b4198eef324002510d54fddd5415a110f8e1e8901e0d88d63360704eb3d8e",
+      "lines": 44
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-readback-ack-preview.report",
+      "sha256": "fb10be764786ca01d0065d02ceb74aa3349200cc17446caf3027b409913521b8",
+      "lines": 92
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-readback-ack-replay-preview.gate",
+      "sha256": "a521d4d4c1ab942982f638e837ccff28c8926e0ff75599a05346f187d03b646f",
+      "lines": 44
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-readback-ack-replay-preview.report",
+      "sha256": "22a3a45dda8f013f76fe7cc4dd580c8b3e62c2e7b1fadf3a50c9ec8388406780",
+      "lines": 93
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-readback-receipt-preview.gate",
+      "sha256": "6fa3d7c60d68794a6669254f030043345993713970020f1b9dde608c64c281f4",
+      "lines": 43
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-rcpt-ret-readback-receipt-preview.report",
+      "sha256": "175007ca2e97f4a15905c9a637eab4965d238f96d694c0a02a0e3bf178f1cab8",
+      "lines": 89
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-preview.gate",
+      "sha256": "b115a367dfbf54b2b8783fa801521c2b40d689e3341c9f3a7833a7f39a18233e",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-preview.report",
+      "sha256": "9dfef071c22ffede70af0346e703ec78a318462c9d1f74f5a5a2ab0a6b7bc512",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-replay-preview.gate",
+      "sha256": "3eb6f5e408bdf46f2d023fd396530765269840ed8279fddba30b762bc29ea509",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-receipt-ack-replay-preview.report",
+      "sha256": "7170ddb1d046a726cf16445899a96d4be33d6c860e9b5aa1266257c2618f7ac9",
+      "lines": 109
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-receipt-preview.gate",
+      "sha256": "43cc389f0c8eb570ab954cacdc692373281c7d53073eb29ebd7f55983ad74516",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-retack-td-rback-ack-td-rcpt-ret-rback-ack-td-receipt-preview.report",
+      "sha256": "9b425d68f05b57457679948f6f4075202189f9efc98742dfe8f2292815ad6b03",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-preview.gate",
+      "sha256": "115fc3c7bd3ad378f4eb55b8014e9ec1f6a4ad977b1f44303afe194c062fe760",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-preview.report",
+      "sha256": "d9a0ae505ff1790e82ab7bbecce6e6dfd3fc83276065438b63ff0f5d9876dad8",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-expiry-preview.gate",
+      "sha256": "f18e56b25502538260a3afa4b14766e6d6531f622d146158280f11ea05630dc6",
+      "lines": 41
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-expiry-preview.report",
+      "sha256": "ed70e1413e004974515d79eae6ff89ccfb6876f162e7a7b211effcdd3a46824d",
+      "lines": 98
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-rbackack-preview.gate",
+      "sha256": "665d46e7621500f97ac4d4ce926a798ad87e59b4de1955723508c2030dc7f011",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-rbackack-preview.report",
+      "sha256": "66ee16b006cfe4458cb0cd186085b4a9e14591e2bc43520f61d5a97e350e9960",
+      "lines": 104
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-rbackack-replay-preview.gate",
+      "sha256": "8a8fdd7436466bebb41ebc98163ded1ce8d5806fd744310581dd5817359d69c4",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-rbackack-replay-preview.report",
+      "sha256": "d7a58a4e0d345d5f33d9961ce191c47ddfbb76e30982009a5a680e5b04ce8e6d",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-rbrcpt-preview.gate",
+      "sha256": "914bc4876325e5024f53ff6ed16e8da6e766906e08f9207404820c7638a2cc64",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-rcptret-rbrcpt-preview.report",
+      "sha256": "a05ca461e5b4252a259171894a57665bf2e35d5b84a41a3c83c49a3c32ced304",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-receipt-ack-preview.gate",
+      "sha256": "4da4b85bc8112fcaef1f880cf082147e7f2c9086f1416d2fd547d9b9cdd16088",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-receipt-ack-preview.report",
+      "sha256": "68b7b41a4970ed254836c42f51ca9f5842da86d916fb95b3ad0717482e1d2742",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-receipt-ack-replay-preview.gate",
+      "sha256": "db0b217ec2e29363f1bb1c0cdb09770fae525aa3158f07ed9d65bcec0dd28fbf",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-receipt-ack-replay-preview.report",
+      "sha256": "59a28149072c41659192718f45da035c2ea8c451ef1d2ca12d20e09f79eed5e6",
+      "lines": 109
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-receipt-preview.gate",
+      "sha256": "713a01082155d952c27d2ff706f83a3486bf2ef5a79e85a1d3cd880578d6c4f4",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td2-rcptret-rbackack-td3-receipt-preview.report",
+      "sha256": "84fb160d2bcafd9c9f8f72d07742bd39ed2879bbf9ebd40a3459e026a8247d6a",
+      "lines": 104
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-preview.gate",
+      "sha256": "aafca549b5993fb3ee40fe62637f1f104a991aa7246b2b36311701c9567ff37e",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-preview.report",
+      "sha256": "0b16c39f8d5cb40d446e9499873dc5e5974f3ba17629136e4c4546e808d13b62",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-expiry-preview.gate",
+      "sha256": "3f04a56968b39cc609ba8ae3e3c02b993c36993388bf4f7823054b921089b201",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-expiry-preview.report",
+      "sha256": "82811047228b18f14f693efd3300da57b8acfa7bfcaca393d9be2134cb1fcf09",
+      "lines": 98
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbackack-preview.gate",
+      "sha256": "3301d0edcfcdbc7b0d8941a15a7951b5b097349ba6f1430c80d9868017b656d5",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbackack-preview.report",
+      "sha256": "10828f14b28bca87aa9c77efdfbdf8e6b5dacf2b587f11000d84c0f063a445f2",
+      "lines": 104
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbackack-replay-preview.gate",
+      "sha256": "019b1b4584ff8d4bf1b03a29abeef58a02ca46a4602598cd62fe24c019f330b8",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbackack-replay-preview.report",
+      "sha256": "22c8013acca4ebd309d936951ca13120440a2844cb4444e44b5b5c2330fa87f8",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbackack-td-preview.gate",
+      "sha256": "c612f1e83ce64c63d661ea11872d5ee389907495c0d47e55d3f5144a47c2e65a",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbackack-td-preview.report",
+      "sha256": "fdaea77a64a759b1b629e19de957a9f587fba835c01550b485c53ee7b4a096a6",
+      "lines": 105
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbrcpt-preview.gate",
+      "sha256": "0626148b33151c0ff7e6452bb476f798476732a0ff66569b26fbbfa4de0a3ea5",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-rcptret-rbrcpt-preview.report",
+      "sha256": "fd176f48d4e157b5be6886b81201493401368adf36e8fe2b9362f968f4d34dbe",
+      "lines": 96
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-receipt-ack-preview.gate",
+      "sha256": "54532c6fa986cb6617bf513f7447231f72fdee35dadb26354d0b6fc7e8366057",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-receipt-ack-preview.report",
+      "sha256": "375449b880426ae922c51ff9b76bc53515416079a77e85b799eaf69a06ee8f36",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-receipt-ack-replay-preview.gate",
+      "sha256": "94daf570e058197aaeafdc14f3b26c6b8cf0f1e1a619ac7e1ca320f8601844cd",
+      "lines": 40
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-receipt-ack-replay-preview.report",
+      "sha256": "83fc45aaa3d95a2d2a5763e6d0c983fbce738c761784c839eb0fbd55ad1da1e5",
+      "lines": 109
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-receipt-preview.gate",
+      "sha256": "70ff3ed558702f5714b75b9f02975891a2212ba453b42bbd78a2f9c7a074d07a",
+      "lines": 39
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rcptret-rbackack-td-receipt-preview.report",
+      "sha256": "35ea7f5587c629e40dd78b5271458b7eb6fb7b362364d51929f2c0574c07d5ce",
+      "lines": 104
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-preview.gate",
+      "sha256": "09ca6e74e001d3c5896eb9fcbe883b77c3e54fc58996c790dcce8d2e94cb5fc5",
+      "lines": 100
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-preview.report",
+      "sha256": "f65597c1b8cb111a33cee04821afb748de17be1398ccc86aab5a918ef79ab624",
+      "lines": 236
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-receipt-ack-preview.gate",
+      "sha256": "5c5f9318f797e93b977bfd68583c74bbe0be3ae106364ef0f99baacb3eb034ab",
+      "lines": 106
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-receipt-ack-preview.report",
+      "sha256": "385e0160670f79cc3dd640a8cdfa5615ce9d16aaadaca1bcb618c8db1de4971d",
+      "lines": 248
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-receipt-ack-replay-idempotency-preview.gate",
+      "sha256": "3764e95ccd8525d0e9511e7674bbb28cc11ef6867d52f63e804f862d18951046",
+      "lines": 76
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-receipt-ack-replay-idempotency-preview.report",
+      "sha256": "cfed7dc8f40847294dce5a833b2b7416ad7f78e50aa282c5aa5b2bcf995f4bfe",
+      "lines": 203
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-receipt-preview.gate",
+      "sha256": "7eb5af8cc418fb70440da2631b5c329a896f71833465d755557701ccada647e0",
+      "lines": 103
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-term-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-retention-readback-ack-td-rcpt-ret-exp-rdbk-ack-td-receipt-preview.report",
+      "sha256": "a5409f60c8285e4984942b125d05c0cd9df1698f64c43c386f4dfa08424deed7",
+      "lines": 234
+    }
+  ],
+  "promoted_context_pairs": [
+    "hepta-context-generated-context-inventory",
+    "hepta-context-health",
+    "hepta-context-memory-provider-boundary",
+    "hepta-context-memory-provider-v2-boundary",
+    "hepta-context-selected-recall-summary-canary",
+    "hepta-context-selected-recall-summary-canary-eval",
+    "hepta-context-source-aware-compression-front-door",
+    "hepta-context-source-aware-compression-readiness-export"
+  ],
+  "promoted_legacy_workgraph_pairs": [
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-operator-review-packet-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-replay-readback-execution-closure-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-receipt-acknowledgement-replay-idempotency-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview"
+  ],
+  "promoted_payloads": [
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-generated-context-inventory.gate",
+      "sha256": "d56915704748dc619926cada2dae56db52f663b2070dfc57409c165566bdc39f",
+      "lines": 204
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-generated-context-inventory.report",
+      "sha256": "076657c456801fa1646313f6543c742fec5d6107e26c21d4289601a29fdca278",
+      "lines": 75
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-health.gate",
+      "sha256": "b903a9dbb7f482bc18ca6fddb65d738c915c99facfbf1a2ee8d22460e7a1030c",
+      "lines": 135
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-health.report",
+      "sha256": "a5b75caf9c1aa4c1cc5708e81a5bef631038f063ced10dc20fb39715e268783a",
+      "lines": 125
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-boundary.gate",
+      "sha256": "28e97157ac478196dd1d6f1110ea50384ffc9da44c612de1966ed4410dcd1692",
+      "lines": 204
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-boundary.report",
+      "sha256": "d104342d344ab331603d9dbe6760da620c420e4ad084fa43394de5f1ab9e9b9e",
+      "lines": 14
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-v2-boundary.gate",
+      "sha256": "60fcd1332d1acf0a847f275523d04d328159ca374abbcad74663578c5834ea4c",
+      "lines": 198
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-v2-boundary.report",
+      "sha256": "0f697398a983d2710e3543653b8ce123fa36b3e753afbfa9fe463942a75c7a85",
+      "lines": 16
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-selected-recall-summary-canary-eval.gate",
+      "sha256": "4c31777512f46d9bec404356f6dc6a1d38503c2569688e247687c40113ae717c",
+      "lines": 216
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-selected-recall-summary-canary-eval.report",
+      "sha256": "68941c92b865c494477749f7525b17b4d12bfa2038e7e5cf3ff2b930c048218e",
+      "lines": 62
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-selected-recall-summary-canary.gate",
+      "sha256": "def3087b6e6488fe7f978e6cb81c73fb10d17a1dba6f33dc5eeb939a183a7d02",
+      "lines": 281
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-selected-recall-summary-canary.report",
+      "sha256": "607a84ff51e7196871d9add76efb15a87599acf4a95ef887a53dad4ecf7ecbf2",
+      "lines": 110
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-front-door.gate",
+      "sha256": "662201f247521c55805c83557c01f70ca776a7d53db74bf28f5f1d1f0d207a71",
+      "lines": 1992
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-front-door.report",
+      "sha256": "2b9a5e59c6d2c2349ec2be21661e166c13902aadd1be5c2935b04c492866566d",
+      "lines": 38
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-readiness-export.gate",
+      "sha256": "95388b806d29e7a196207abd9b662e041e9600961cfb0f1d68175ae12246df81",
+      "lines": 165
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-readiness-export.report",
+      "sha256": "4e749bf6b87a23b418dd77077434a9bbf3401e84958e4c2a3e89cfcaa7958114",
+      "lines": 21
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview.report",
+      "sha256": "354f71ffa2d7215196636c3f22142a1b53620b3b493713932168e509d012a065",
+      "lines": 285
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-operator-review-packet-rerun-preview.report",
+      "sha256": "f66ad72eacb9bfe830e591a63f237a560618d4b48003b9e9e3f09132115e878d",
+      "lines": 211
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-replay-readback-execution-closure-rerun-preview.report",
+      "sha256": "2af5ba9f62fa5de38f55dc13c11cf566acc237374314f8bf24306aba52a0b751",
+      "lines": 222
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview.report",
+      "sha256": "7a32a42b402e79b51d159eda4c0934ded935bfbc5b56e089b3b08c9555caff06",
+      "lines": 221
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-receipt-acknowledgement-replay-idempotency-rerun-preview.report",
+      "sha256": "50c3b47b823e1fcbc644d451da88d8c25f5dc38f542d541bdc008b169340aa8f",
+      "lines": 212
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview.report",
+      "sha256": "357f2e1ba8c9c57fdb702f4f519f14613c7763ed12bc7777a0f13415929cbd31",
+      "lines": 212
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview.report",
+      "sha256": "2c0d5692d451a79330a61b5d3cc30b5f3c06514973a23388ac40e5e6794c4566",
+      "lines": 212
+    },
+    {
+      "path": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview.report",
+      "sha256": "d99724131e998b136198b3cdfbd32079f1a8699f7268e2b594fe7d3287728972",
+      "lines": 212
+    }
+  ],
+  "result_spec_sha256": "25e987bb2f8691c591b505b460f75f637c513689d7638f60ae4b028f6e69e311",
+  "git_history_recovery_bound": false,
+  "history_anchor_required": true,
+  "aggregate_sha256": "566fd0eda12532571ebca44eea98ea9e02bc4cb5c66937d7daf26fd26ce9bcc7"
+}

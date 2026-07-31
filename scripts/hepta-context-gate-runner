@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC="$ROOT/scripts/hepta-context-gate-specs-v1.json"
+SOURCE_ROOT="$(cd "$(dirname "$(/bin/realpath "$SPEC")")/.." && pwd -P)"
+
+usage() {
+  echo "usage: scripts/hepta-context-gate-runner <gate|report> <id> | --validate" >&2
+  exit 2
+}
+
+validate() {
+  local overlay
+  local resolved_alias
+  local resolved_source
+  overlay="$($ROOT/scripts/hepta-gate-pair-payload-bundle materialize-overlay)"
+  jq -e '
+    .schema_version == "hepta_context_gate_specs_v1"
+    and .status == "source_ready"
+    and .entry_count == 8
+    and (.entries | length) == .entry_count
+    and ((.entries | map(.id) | unique | length) == .entry_count)
+    and (.entries | all(
+      (.id | test("^hepta-context-[a-z0-9-]+$"))
+      and ([.gate, .report] | all(
+        (.path | test("^scripts/lib/hepta-context-gates-v1/[a-z0-9-]+\\.(gate|report)$"))
+        and (.compatibility_alias | test("^scripts/lib/hepta-gate-pair-compat-v1/[a-z0-9-]+\\.(gate|report)$"))
+        and (.sha256 | test("^[0-9a-f]{64}$"))
+        and (.lines | type == "number" and . > 0)
+      ))
+    ))
+  ' "$SPEC" >/dev/null
+  while IFS=$'\t' read -r path alias expected_sha; do
+    [[ -f "$ROOT/$path" && -x "$ROOT/$path" ]] || { echo "missing canonical context payload: $path" >&2; exit 1; }
+    [[ "$(shasum -a 256 "$ROOT/$path" | awk '{print $1}')" == "$expected_sha" ]] || { echo "context payload SHA drifted: $path" >&2; exit 1; }
+    [[ -L "$overlay/$alias" ]] || { echo "missing context compatibility alias: $alias" >&2; exit 1; }
+    resolved_alias="$(cd "$(dirname "$overlay/$alias")" && cd "$(dirname "$(readlink "$overlay/$alias")")" && pwd -P)/$(basename "$(readlink "$overlay/$alias")")"
+    resolved_source="$(cd "$(dirname "$ROOT/$path")" && pwd -P)/$(basename "$ROOT/$path")"
+    [[ "$resolved_alias" == "$resolved_source" ]] || { echo "context compatibility alias drifted: $alias" >&2; exit 1; }
+  done < <(jq -r '.entries[] | [.gate, .report][] | [.path, .compatibility_alias, .sha256] | @tsv' "$SPEC")
+}
+
+[[ -f "$SPEC" ]] || { echo "missing Hepta context gate registry" >&2; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
+if [[ $# == 1 && "$1" == "--validate" ]]; then
+  validate
+  echo '{"schema":"hepta_context_gate_specs_validation_v1","status":"ready","entry_count":8}'
+  exit 0
+fi
+[[ $# == 2 && ( "$1" == "gate" || "$1" == "report" ) && "$2" =~ ^hepta-context-[a-z0-9-]+$ ]] || usage
+validate
+kind="$1"
+id="$2"
+payload="$(jq -er --arg id "$id" --arg kind "$kind" '.entries[] | select(.id == $id) | .[$kind].path' "$SPEC")" || { echo "unknown Hepta context gate: $id" >&2; exit 1; }
+overlay="$($ROOT/scripts/hepta-gate-pair-payload-bundle materialize-overlay)"
+exec env \
+  HEPTA_REPO_ROOT="$overlay" \
+  HEPTA_COMPAT_SOURCE_REPO_ROOT="$SOURCE_ROOT" \
+  "$ROOT/$payload"

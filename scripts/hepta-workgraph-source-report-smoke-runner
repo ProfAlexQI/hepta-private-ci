@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC="$ROOT/scripts/hepta-workgraph-source-report-specs-v1.json"
+
+usage() {
+  echo "usage: scripts/hepta-workgraph-source-report-smoke-runner <gate|report> <id> | --validate" >&2
+  exit 2
+}
+
+validate() {
+  local overlay
+  overlay="$($ROOT/scripts/hepta-gate-pair-payload-bundle materialize-overlay)"
+  jq -e '
+    .schema_version == "hepta_workgraph_source_report_specs_v1"
+    and .status == "source_ready"
+    and .entry_count == 8
+    and .execution_mode == "source_report_smoke_plus_targeted_rust_test"
+    and (.entries | length) == .entry_count
+    and ((.entries | map(.id) | unique | length) == .entry_count)
+    and (.entries | all(
+      (.id | test("^hepta-systems-work-graph-[a-z0-9-]+$"))
+      and (.source_stem | test("^work_graph_[a-z0-9_]+$"))
+      and (.expected_gate | test("^hepta_work_graph_[a-z0-9_]+_gate$"))
+      and (.expected_schema | test("^work_graph_[a-z0-9_]+_v1$"))
+      and (.report_path | test("^scripts/lib/hepta-workgraph-source-report-v1/wgr-[0-9a-f]{16}\\.report$"))
+      and (.compatibility_alias | test("^scripts/lib/hepta-gate-pair-compat-v1/[a-z0-9-]+\\.report$"))
+      and (.report_sha256 | test("^[0-9a-f]{64}$"))
+      and (.report_lines | type == "number" and . > 0)
+    ))
+  ' "$SPEC" >/dev/null
+  while IFS=$'\t' read -r path alias expected_sha; do
+    [[ -f "$ROOT/$path" && -x "$ROOT/$path" ]] || { echo "missing canonical WorkGraph report: $path" >&2; exit 1; }
+    [[ "$(shasum -a 256 "$ROOT/$path" | awk '{print $1}')" == "$expected_sha" ]] || { echo "WorkGraph report SHA drifted: $path" >&2; exit 1; }
+    [[ -L "$overlay/$alias" ]] || { echo "missing WorkGraph compatibility alias: $alias" >&2; exit 1; }
+  done < <(jq -r '.entries[] | [.report_path, .compatibility_alias, .report_sha256] | @tsv' "$SPEC")
+}
+
+[[ -f "$SPEC" ]] || { echo "missing Hepta WorkGraph source-report registry" >&2; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
+if [[ $# == 1 && "$1" == "--validate" ]]; then
+  validate
+  echo '{"schema":"hepta_workgraph_source_report_specs_validation_v1","status":"ready","entry_count":8}'
+  exit 0
+fi
+[[ $# == 2 && ( "$1" == "gate" || "$1" == "report" ) && "$2" =~ ^hepta-systems-work-graph-[a-z0-9-]+$ ]] || usage
+validate
+kind="$1"
+id="$2"
+entry="$(jq -cer --arg id "$id" '.entries[] | select(.id == $id)' "$SPEC")" || { echo "unknown Hepta WorkGraph source report: $id" >&2; exit 1; }
+report_path="$(jq -r '.report_path' <<<"$entry")"
+overlay="$($ROOT/scripts/hepta-gate-pair-payload-bundle materialize-overlay)"
+if [[ "$kind" == "report" ]]; then
+  exec env HEPTA_REPO_ROOT="$overlay" "$ROOT/$report_path"
+fi
+source_stem="$(jq -r '.source_stem' <<<"$entry")"
+"$ROOT/scripts/hepta-workgraph-module-bundle" contains "$source_stem"
+json="$(env HEPTA_REPO_ROOT="$overlay" "$ROOT/$report_path")"
+printf '%s\n' "$json"
+jq -e --arg expected_gate "$(jq -r '.expected_gate' <<<"$entry")" --arg expected_schema "$(jq -r '.expected_schema' <<<"$entry")" '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and (.status == "ready" or .status == "blocked")
+  and .gate == $expected_gate
+  and .schema_version == $expected_schema
+  and .required_prior_gate_count == (.required_prior_gates | length)
+  and (.required_prior_gates | length == (unique | length))
+  and .ready_for_live_execution == false
+  and ([.source_probes | .. | select(type == "boolean")] | length > 0 and all)
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$json"
+cargo test --offline --manifest-path "$ROOT/codex-rs/Cargo.toml" -q -p hepta-runtime "$source_stem" --lib
+printf '%s\n' "$(jq -r '.pass_message' <<<"$entry")"

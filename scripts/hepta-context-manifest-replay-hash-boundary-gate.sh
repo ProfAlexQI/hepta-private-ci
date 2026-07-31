@@ -8,8 +8,12 @@ manifest="$repo_root/codex-rs/core/src/context_manager/manifest.rs"
 updates="$repo_root/codex-rs/core/src/context_manager/updates.rs"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
 preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
-canonical_digest_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-canonical-export-digest-report.sh"
-dependency_canonical_digest_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest-report.sh"
+gate_pair_specs="$repo_root/scripts/hepta-gate-pair-specs-v1.json"
+payload_bundle="$repo_root/scripts/hepta-gate-pair-payload-bundle"
+scratch_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-context-manifest-replay-hash.XXXXXX")"
+canonical_digest_report="$scratch_dir/canonical-export-digest.report"
+dependency_canonical_digest_report="$scratch_dir/dependency-chain-canonical-digest.report"
+trap 'rm -rf "$scratch_dir"' EXIT
 
 fail() {
   echo "hepta-context-manifest-replay-hash-boundary-gate: $*" >&2
@@ -62,6 +66,26 @@ assert_line_before() {
     fail "$label expected '$before_needle' before '$after_needle'"
   fi
 }
+
+decode_registered_report_source() {
+  local pair_id="$1"
+  local output_path="$2"
+  local implementation
+
+  implementation="$(
+    jq -er --arg pair_id "$pair_id" \
+      '.pairs[] | select(.id == $pair_id) | .report_implementation' \
+      "$gate_pair_specs"
+  )" || fail "missing captured report implementation for $pair_id"
+  "$payload_bundle" --decode-to "$implementation" "$output_path"
+}
+
+decode_registered_report_source \
+  "hepta-context-plane-operator-approval-packet-canonical-export-digest" \
+  "$canonical_digest_report"
+decode_registered_report_source \
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest" \
+  "$dependency_canonical_digest_report"
 
 for term in \
   "Stable manifest replay hash" \

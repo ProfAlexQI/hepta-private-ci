@@ -1,41 +1,41 @@
 {
   "schema": "hepta_architecture_ratchet_v1",
-  "status": "m2_partial_targets_active",
+  "status": "o2_hard_targets_met",
   "counting_semantics": {
     "single_exec_wrappers": "git_index_100755_and_at_most_four_noncomment_lines_and_exactly_one_exec",
     "worktree_umask_independent": true,
     "generated_effective_source_counted": true
   },
   "ceilings": {
-    "work_graph_logical_modules": 398,
-    "work_graph_effective_lines": 202869,
-    "gate_compat_pairs": 598,
-    "gate_compat_effective_lines": 160551,
-    "single_exec_wrappers": 59,
-    "first_party_modules_over_5000": 12
+    "work_graph_logical_modules": 298,
+    "work_graph_effective_lines": 150357,
+    "gate_compat_pairs": 498,
+    "gate_compat_effective_lines": 145377,
+    "single_exec_wrappers": 38,
+    "first_party_modules_over_5000": 11
   },
   "baselines": {
-    "work_graph_logical_modules": 398,
-    "work_graph_effective_lines": 196886,
-    "gate_compat_pairs": 598,
-    "gate_compat_effective_lines": 155874,
-    "single_exec_wrappers": 59,
-    "first_party_modules_over_5000": 12
+    "work_graph_logical_modules": 298,
+    "work_graph_effective_lines": 145977,
+    "gate_compat_pairs": 498,
+    "gate_compat_effective_lines": 141142,
+    "single_exec_wrappers": 38,
+    "first_party_modules_over_5000": 11
   },
   "decline_targets": {
     "next": {
-      "work_graph_logical_modules": 298,
-      "work_graph_effective_lines": 130000,
-      "gate_compat_pairs": 499,
-      "gate_compat_effective_lines": 130000,
-      "single_exec_wrappers": 39,
-      "first_party_modules_over_5000": 11
-    },
-    "terminal": {
       "work_graph_logical_modules": 199,
-      "work_graph_effective_lines": 90000,
+      "work_graph_effective_lines": 100000,
       "gate_compat_pairs": 299,
       "gate_compat_effective_lines": 100000,
+      "single_exec_wrappers": 29,
+      "first_party_modules_over_5000": 5
+    },
+    "terminal": {
+      "work_graph_logical_modules": 99,
+      "work_graph_effective_lines": 75000,
+      "gate_compat_pairs": 199,
+      "gate_compat_effective_lines": 75000,
       "single_exec_wrappers": 20,
       "first_party_modules_over_5000": 0
     }

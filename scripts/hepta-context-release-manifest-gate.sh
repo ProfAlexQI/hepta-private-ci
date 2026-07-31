@@ -224,9 +224,7 @@ codex-rs/hepta-core/src/memory/tests.rs
 codex-rs/hepta-core/src/memory/tests/context_plane_activation.rs
 codex-rs/hepta-core/src/memory/tests/context_plane_operator_packet.rs
 codex-rs/hepta-core/src/memory/tests/context_plane_status.rs
-codex-rs/hepta-core/src/memory/tests/eval_harness.rs
 codex-rs/hepta-core/src/memory/tests/provider_plane.rs
-codex-rs/hepta-core/src/memory/tests/query.rs
 codex-rs/hepta-core/src/memory/tests/recall_core.rs
 codex-rs/hepta-core/src/memory/tests/recall_inspection.rs
 codex-rs/hepta-core/src/memory/tests/recall_inspection/bundle.rs
@@ -236,11 +234,6 @@ codex-rs/hepta-core/src/memory/tests/recall_inspection/limit_pressure.rs
 codex-rs/hepta-core/src/memory/tests/recall_inspection/omission.rs
 codex-rs/hepta-core/src/memory/tests/recall_inspection/provenance.rs
 codex-rs/hepta-core/src/memory/tests/recall_inspection/request.rs
-codex-rs/hepta-core/src/memory/tests/recall_memory.rs
-codex-rs/hepta-core/src/memory/tests/recall_memory/formation.rs
-codex-rs/hepta-core/src/memory/tests/recall_memory/taxonomy.rs
-codex-rs/hepta-core/src/memory/tests/recall_memory/temporal.rs
-codex-rs/hepta-core/src/memory/tests/recall_quality.rs
 codex-rs/hepta-core/src/memory/tests/recall_summary.rs
 codex-rs/hepta-core/src/memory/tests/restore_impact.rs
 codex-rs/hepta-core/src/memory/tests/restore_planning.rs
@@ -266,13 +259,19 @@ codex-rs/hepta-core/src/memory/tests/snapshot/transcript_integrity.rs
 codex-rs/hepta-core/src/memory/tests/snapshot/transcript_inventory.rs
 codex-rs/hepta-core/src/memory/tests/snapshot/transcript_manifest.rs
 codex-rs/hepta-core/src/memory/tests/snapshot/transcript_stats.rs
-codex-rs/hepta-core/src/memory/tests/snapshot_inspection.rs
 codex-rs/hepta-core/src/memory/tests/snapshot_inspection/audit.rs
 codex-rs/hepta-core/src/memory/tests/snapshot_inspection/drift.rs
 codex-rs/hepta-core/src/memory/tests/snapshot_inspection/health.rs
 codex-rs/hepta-core/src/memory/tests/snapshot_inspection/inspected.rs
 codex-rs/hepta-core/src/memory/tests/store.rs
 codex-rs/hepta-core/src/memory/tests/transcript.rs
+codex-rs/hepta-core/tests/memory_eval_harness.rs
+codex-rs/hepta-core/tests/memory_query.rs
+codex-rs/hepta-core/tests/memory_recall_contracts.rs
+codex-rs/hepta-core/tests/memory_recall_contracts/formation.rs
+codex-rs/hepta-core/tests/memory_recall_contracts/taxonomy.rs
+codex-rs/hepta-core/tests/memory_recall_contracts/temporal.rs
+codex-rs/hepta-core/tests/memory_recall_quality.rs
 codex-rs/hepta-core/src/memory/transcript.rs
 codex-rs/hepta-memory/src/context_plane_helpers.rs
 codex-rs/hepta-memory/src/lib.rs
@@ -338,8 +337,12 @@ codex-rs/response-debug-context/src/lib.rs
 codex-rs/response-debug-context/src/rollout_context.rs
 codex-rs/response-debug-context/src/rollout_context/memory.rs
 codex-rs/response-debug-context/src/tests.rs
+scripts/hepta-context-gate-launch
+scripts/hepta-context-gate-runner
+scripts/hepta-context-gate-specs-v1.json
 EOF
-  (cd "$repo_root" && rg --files scripts | rg '^scripts/hepta-context.*\.sh$' | sort)
+  (cd "$repo_root" && find scripts -maxdepth 1 \( -type f -o -type l \) -name 'hepta-context*.sh' -print | sort)
+  (cd "$repo_root" && find scripts/lib/hepta-context-gates-v1 -maxdepth 1 -type f -print | sort)
 } | LC_ALL=C sort -u >"$required_paths"
 
 if ! diff -u "$required_paths" "$manifest_paths"; then

@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "normalized_reports_sha256": "26b1a391858f8fc4125a9d709d8f6a59f4d36b11057e8a19403d2434abf30d82",
+    "normalized_reports_sha256": "2820eb6fa86e2a7a02bab1e86f736d339d694bd1681486c4ccabb1f1eb775ac8",
     "source": "route_native_gateway_request"
   },
   "reports": {
@@ -395,7 +395,7 @@
         }
       ],
       "missing_route_count": 0,
-      "native_gateway_source_command_count": 283,
+      "native_gateway_source_command_count": 284,
       "native_route": true,
       "network_read_enabled": false,
       "network_read_enabled_count": 0,
@@ -409,7 +409,7 @@
       "planner_ready_count": 11,
       "process_execution_enabled": false,
       "product": "Hepta",
-      "route_count": 283,
+      "route_count": 284,
       "runtime": "hepta",
       "script_inventory_script": "scripts/hepta-local-tooling-content-inventory.sh",
       "side_effect_free": true,
@@ -584,7 +584,7 @@
       ],
       "memory_store_mutation_enabled": false,
       "missing_route_count": 0,
-      "native_gateway_source_command_count": 283,
+      "native_gateway_source_command_count": 284,
       "native_route": true,
       "next_slices": [
         "port remaining external release and hardening scripts as local-only status gates",
@@ -595,7 +595,7 @@
       "old_memory_capability_ops_file_count": 14,
       "plugin_registry_mutation_enabled": false,
       "product": "Hepta",
-      "route_count": 283,
+      "route_count": 284,
       "runtime": "hepta",
       "script_inventory_script": "scripts/hepta-memory-capability-inventory.sh",
       "search_provider_live_query_enabled": false,
@@ -743,7 +743,7 @@
       "isolated_fixture_materialized": false,
       "live_invocation_enabled_count": 0,
       "missing_route_count": 0,
-      "native_gateway_source_command_count": 283,
+      "native_gateway_source_command_count": 284,
       "native_route": true,
       "next_slices": [
         "expand individual old CLI shims only as no-side-effect dry-run contracts",
@@ -754,7 +754,7 @@
       "plan_family_count": 5,
       "product": "Hepta",
       "provider_prompt_execution_enabled": false,
-      "route_count": 283,
+      "route_count": 284,
       "runtime": "hepta",
       "runtime_store_mutation_enabled": false,
       "script_inventory_script": "scripts/hepta-provider-channel-dry-run-plan.sh",
@@ -827,7 +827,7 @@
       ],
       "irreversible_actions_blocked_by_default": true,
       "missing_route_count": 0,
-      "native_gateway_source_command_count": 283,
+      "native_gateway_source_command_count": 284,
       "native_route": true,
       "product": "Hepta",
       "public_ga_blocker_count": 9,
@@ -850,7 +850,7 @@
         "disable native POST activation flags and replay dry-run store checks",
         "revert release artifact staging directory before public publication"
       ],
-      "route_count": 283,
+      "route_count": 284,
       "runtime": "hepta",
       "safe_default_mode": "plan_only_no_live_mutation",
       "side_effect_free": true,
@@ -900,7 +900,7 @@
       "local_import_execution_enabled": false,
       "local_status_gate_ready_count": 12,
       "missing_route_count": 0,
-      "native_gateway_source_command_count": 283,
+      "native_gateway_source_command_count": 284,
       "native_route": true,
       "next_slices": [
         "keep release/hardening script families backed by status gates and explicit production evidence",
@@ -1061,7 +1061,7 @@
         }
       ],
       "release_hardening_status_gate_ready": true,
-      "route_count": 283,
+      "route_count": 284,
       "runtime": "hepta",
       "script_inventory_script": "scripts/hepta-release-hardening-status-gate.sh",
       "side_effect_free": true,
@@ -1206,7 +1206,7 @@
       "gateway_event_enqueue_enabled": false,
       "live_mutation_surface_count": 0,
       "missing_route_count": 0,
-      "native_gateway_source_command_count": 283,
+      "native_gateway_source_command_count": 284,
       "native_route": true,
       "next_slices": [
         "promote channel adapters only as disabled live-gated status reports",
@@ -1217,7 +1217,7 @@
       "old_runtime_ops_file_count": 12,
       "planner_ready_count": 12,
       "product": "Hepta",
-      "route_count": 283,
+      "route_count": 284,
       "runtime": "hepta",
       "runtime_inventory_doc": "docs/release/HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_2026-05-20.md",
       "script_inventory_script": "scripts/hepta-runtime-session-dry-run-inventory.sh",

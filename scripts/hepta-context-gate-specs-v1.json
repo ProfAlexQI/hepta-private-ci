@@ -1,0 +1,129 @@
+{
+  "schema_version": "hepta_context_gate_specs_v1",
+  "status": "source_ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "entry_count": 8,
+  "side_effect_policy": "preserve_captured_read_only_behavior_without_compat_registry_authority",
+  "entries": [
+    {
+      "id": "hepta-context-generated-context-inventory",
+      "gate": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-generated-context-inventory.gate",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-generated-context-inventory.gate",
+        "sha256": "d56915704748dc619926cada2dae56db52f663b2070dfc57409c165566bdc39f",
+        "lines": 204
+      },
+      "report": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-generated-context-inventory.report",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-generated-context-inventory.report",
+        "sha256": "076657c456801fa1646313f6543c742fec5d6107e26c21d4289601a29fdca278",
+        "lines": 75
+      }
+    },
+    {
+      "id": "hepta-context-health",
+      "gate": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-health.gate",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-health.gate",
+        "sha256": "6ce71c6b7b53430a52f9f8f93ae3ce8c8bdc05ba26be4c3fbc2f1a610dff4b4c",
+        "lines": 135
+      },
+      "report": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-health.report",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-health.report",
+        "sha256": "a5b75caf9c1aa4c1cc5708e81a5bef631038f063ced10dc20fb39715e268783a",
+        "lines": 125
+      }
+    },
+    {
+      "id": "hepta-context-memory-provider-boundary",
+      "gate": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-boundary.gate",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-boundary.gate",
+        "sha256": "faa10fe21a105e452598aa14378d7b352a3757e90e7344dcb1ab17cf223a96aa",
+        "lines": 204
+      },
+      "report": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-boundary.report",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-boundary.report",
+        "sha256": "d104342d344ab331603d9dbe6760da620c420e4ad084fa43394de5f1ab9e9b9e",
+        "lines": 14
+      }
+    },
+    {
+      "id": "hepta-context-memory-provider-v2-boundary",
+      "gate": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-v2-boundary.gate",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-v2-boundary.gate",
+        "sha256": "25f924fb2165df63b6b3c4c90f05aec3f39269a2836db43653bf5510d00116fe",
+        "lines": 198
+      },
+      "report": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-v2-boundary.report",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-v2-boundary.report",
+        "sha256": "0f697398a983d2710e3543653b8ce123fa36b3e753afbfa9fe463942a75c7a85",
+        "lines": 16
+      }
+    },
+    {
+      "id": "hepta-context-selected-recall-summary-canary",
+      "gate": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-selected-recall-summary-canary.gate",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-selected-recall-summary-canary.gate",
+        "sha256": "c338963610617596d36ac090fc9642702b0a69b9dcd8b90f50f2a2ade594b127",
+        "lines": 281
+      },
+      "report": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-selected-recall-summary-canary.report",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-selected-recall-summary-canary.report",
+        "sha256": "607a84ff51e7196871d9add76efb15a87599acf4a95ef887a53dad4ecf7ecbf2",
+        "lines": 110
+      }
+    },
+    {
+      "id": "hepta-context-selected-recall-summary-canary-eval",
+      "gate": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-selected-recall-summary-canary-eval.gate",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-selected-recall-summary-canary-eval.gate",
+        "sha256": "1679950b3d285f31628d3453668a5b22798ee6497b0b422b49000ec58f587182",
+        "lines": 216
+      },
+      "report": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-selected-recall-summary-canary-eval.report",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-selected-recall-summary-canary-eval.report",
+        "sha256": "68941c92b865c494477749f7525b17b4d12bfa2038e7e5cf3ff2b930c048218e",
+        "lines": 62
+      }
+    },
+    {
+      "id": "hepta-context-source-aware-compression-front-door",
+      "gate": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-front-door.gate",
+        "sha256": "bc303c07281b77116cfff05fbdb0488ab27c916790618de35a30f487306c5127",
+        "lines": 1992
+      },
+      "report": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.report",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-front-door.report",
+        "sha256": "2b9a5e59c6d2c2349ec2be21661e166c13902aadd1be5c2935b04c492866566d",
+        "lines": 38
+      }
+    },
+    {
+      "id": "hepta-context-source-aware-compression-readiness-export",
+      "gate": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-readiness-export.gate",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-readiness-export.gate",
+        "sha256": "3ae3da78e7796289241430e6bd69319626d616b4b9e102f6ff114dd2b4aea6a0",
+        "lines": 165
+      },
+      "report": {
+        "path": "scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-readiness-export.report",
+        "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-readiness-export.report",
+        "sha256": "4e749bf6b87a23b418dd77077434a9bbf3401e84958e4c2a3e89cfcaa7958114",
+        "lines": 21
+      }
+    }
+  ]
+}

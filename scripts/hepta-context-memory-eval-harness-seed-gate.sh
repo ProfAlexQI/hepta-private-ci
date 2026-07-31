@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo_root/codex-rs/Cargo.toml"
 hepta_core_memory="$repo_root/codex-rs/hepta-core/src/memory.rs"
-hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/src/memory/tests/eval_harness.rs"
+hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/tests/memory_eval_harness.rs"
 hepta_core_eval_harness="$repo_root/codex-rs/hepta-core/src/memory/eval_harness.rs"
 hepta_core_eval_seed="$repo_root/codex-rs/hepta-core/src/memory/eval_harness/eval_seed.rs"
 hepta_memory="$repo_root/codex-rs/hepta-memory/src/lib.rs"
@@ -13,7 +13,7 @@ hepta_memory_context_plane_helpers="$repo_root/codex-rs/hepta-memory/src/context
 contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
 preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
-front_door_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-gate.sh"
+front_door_gate="$repo_root/scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate"
 lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
 target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"
 target_leaf="$lane"
@@ -177,7 +177,7 @@ assert_line_before \
 
 cargo test --manifest-path "$manifest" -p hepta-core \
   memory_eval \
-  --lib --message-format=short
+  --test memory_eval_harness --message-format=short
 
 cargo test --manifest-path "$manifest" -p hepta-memory \
   memory_eval \

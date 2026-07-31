@@ -1,0 +1,49 @@
+{
+  "schema": "hepta_single_exec_wrapper_o2_migration_v1",
+  "status": "source_ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "source_tree": "07817399938296ebd5b3e0b06bfa6962e4c9bd43",
+  "baseline_wrapper_count": 59,
+  "current_wrapper_count": 38,
+  "regular_wrappers_replaced": 21,
+  "public_paths_preserved": true,
+  "registry": {
+    "path": "scripts/hepta-route-gate-aliases-v1.json",
+    "sha256": "d324dfe95f6ecfe27ee5155c61123690f6dd1eb420f5b95c693d5b52e91af29c",
+    "path_set_sha256": "3618af2543b08031ebb70ac69e218d52b16628f2f82252a869e0c31684bd5c36",
+    "original_records_sha256": "fdd77c4f83d5b6522b099c613d46374603c93ffeec293667daee84dd91dc6e0b"
+  },
+  "launcher": {
+    "path": "scripts/hepta-route-gate-alias-launch",
+    "sha256": "175964a02a293f4e57fc629d083d4d7313415576a99d8ab1f7dd00caf8c80e95"
+  },
+  "canonical_bindings": [
+    {"runner":"scripts/hepta-route-gate-runner","runner_sha256":"81c17577bd5b42101535be30bac5a1913ad1b071a4b6ce15110222ad2a85395d","spec":"scripts/hepta-route-gate-specs-v1.json","spec_sha256":"e38081e1193fda20f915943f0cc38286602744ef2e248a0a85ffd2180afdec59"},
+    {"runner":"scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner","runner_sha256":"722775330f1589b2e41e365ab2ddd3672be6e3755ccce1e7645f93847b038fea","spec":"scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json","spec_sha256":"da73685a6fdb2c0265abdf9bd685d94f72f06c6110d28c467b4c93e50fd22153"},
+    {"runner":"scripts/hepta-release-publication-result-receipt-route-gate-runner","runner_sha256":"113c680e45af39c1e13e743c0279e442dc07751dfd017cdb50b90f1214d91c79","spec":"scripts/hepta-release-publication-result-receipt-route-gate-specs-v1.json","spec_sha256":"e7004fc422748b492300859cb07b26fae2a1ef68fe0b775061a1a003432e1ed8"},
+    {"runner":"scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner","runner_sha256":"81bf2c3139867ef391872ba670a623b9f2555f44b7100709bd30b85b40a42578","spec":"scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json","spec_sha256":"a11021a2e33315790b8c7a30e1361cf58a8799ab4a3d54e628af143563a4f24f"},
+    {"runner":"scripts/hepta-packet-acceptance-receipt-route-gate-runner","runner_sha256":"4903dfbca2112d0328540faa1eedd979429f72145bdca0ce31e69924fb8451a4","spec":"scripts/hepta-packet-acceptance-receipt-route-gate-specs-v1.json","spec_sha256":"51f4dc6b9314da4ff73b0cbf3440a10eaeec73eb05d0fe31f71b57b67965ce50"},
+    {"runner":"scripts/hepta-durable-memory-receipt-boundary-route-gate-runner","runner_sha256":"80b3729bbecac430f923140f52ddf1183a71e3cbde7ef8bbb3f1c2016c393f79","spec":"scripts/hepta-durable-memory-receipt-boundary-route-gate-specs-v1.json","spec_sha256":"5f581e23101cf8189750482408ce5689f97becdaed3cd07c4bbed0953f420e60"},
+    {"runner":"scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner","runner_sha256":"a0eca5599fa17e82c693934fafe4c7c7c1a4d0e85dba51e7db4c33aa5bb4d275","spec":"scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-specs-v1.json","spec_sha256":"f87d96bd1602cdd9aa9e67395aa7e215d5c64379577b3850d4ea846f48b940a4"}
+  ],
+  "historical_catalog": {
+    "path": "docs/architecture/HEPTA_SHELL_GATE_MIGRATION_INPUT_V1.json",
+    "file_sha256": "a24b66f4f5608332a61cad4efbc6bcb0a3af31deb8db6effae17296ab252e746",
+    "catalog_sha256": "0f3c23ede4bd759d91c1d333021c7252cc262282922889a194836b5fb2c392a9",
+    "unchanged": true
+  },
+  "validation": {
+    "alias_command": "scripts/hepta-route-gate-alias-launch --validate",
+    "alias_stdout_sha256": "086b4e4854d16555f04d220a2d3884784207d05ff5647773cd7ca91b6389a054",
+    "wrapper_command": "scripts/hepta-single-exec-wrapper-count self-test",
+    "wrapper_stdout_sha256": "abacd7222b347230aa7559681c2d2e92a49816346e0823de851d15f908dd26f9",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exit_code": 0,
+    "exit_code_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "baseline_recovery_available": true,
+  "git_history_recovery_bound": false,
+  "history_anchor_required": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}

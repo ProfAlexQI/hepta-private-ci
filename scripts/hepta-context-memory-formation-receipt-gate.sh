@@ -9,7 +9,7 @@ context_manifest_tests="$repo_root/codex-rs/core/src/context_manager/manifest/te
 hepta_core_memory="$repo_root/codex-rs/hepta-core/src/memory.rs"
 hepta_core_memory_formation="$repo_root/codex-rs/hepta-core/src/memory/formation.rs"
 hepta_core_memory_recall_inspection="$repo_root/codex-rs/hepta-core/src/memory/recall/inspection.rs"
-hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/src/memory/tests/recall_memory/formation.rs"
+hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/tests/memory_recall_contracts/formation.rs"
 hepta_memory="$repo_root/codex-rs/hepta-memory/src/lib.rs"
 hepta_memory_tests="$repo_root/codex-rs/hepta-memory/src/tests/recall_memory/formation.rs"
 hepta_memory_recall_helpers="$repo_root/codex-rs/hepta-memory/src/recall_helpers/snapshot.rs"
@@ -129,7 +129,7 @@ cargo test --manifest-path "$manifest" -p codex-protocol \
 
 cargo test --manifest-path "$manifest" -p hepta-core \
   context_recall_memory_formation_receipts_are_payload_light_and_non_writing \
-  --lib --message-format=short
+  --test memory_recall_contracts --message-format=short
 
 cargo test --manifest-path "$manifest" -p hepta-memory \
   memory_formation_receipts \

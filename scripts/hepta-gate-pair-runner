@@ -186,27 +186,135 @@ execute_captured_shell_compat() {
   # include! files, so searching lib.rs alone produces false negatives. Keep
   # the content-addressed payloads immutable and adapt only the exact legacy
   # grep/rg target through a fail-closed crate-root source-set resolver.
+  hepta_context_test_source_path() {
+    case "$1" in
+      "$HEPTA_REPO_ROOT/codex-rs/hepta-core/src/memory/tests/eval_harness.rs")
+        printf '%s\n' "$HEPTA_COMPAT_SOURCE_REPO_ROOT/codex-rs/hepta-core/tests/memory_eval_harness.rs"
+        ;;
+      "$HEPTA_REPO_ROOT/codex-rs/hepta-core/src/memory/tests/recall_memory/taxonomy.rs")
+        printf '%s\n' "$HEPTA_COMPAT_SOURCE_REPO_ROOT/codex-rs/hepta-core/tests/memory_recall_contracts/taxonomy.rs"
+        ;;
+      "$HEPTA_REPO_ROOT/codex-rs/hepta-core/src/memory/tests/recall_memory/temporal.rs")
+        printf '%s\n' "$HEPTA_COMPAT_SOURCE_REPO_ROOT/codex-rs/hepta-core/tests/memory_recall_contracts/temporal.rs"
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  }
+  hepta_compat_release_manifest_contains() {
+    local logical_path="$1"
+    [[ "$logical_path" =~ ^scripts/lib/hepta-gate-pair-compat-v1/[a-z0-9-]+\.(gate|report)$ ]] || return 1
+    jq -e --arg logical_path "$logical_path" '
+      any(
+        .pairs[];
+        ([
+          .gate_implementation?,
+          .report_implementation?,
+          .source_report?,
+          .report_path?
+        ] | any(. == $logical_path))
+      )
+    ' "$HEPTA_COMPAT_SOURCE_REPO_ROOT/scripts/hepta-gate-pair-specs-v1.json" >/dev/null
+  }
   grep() {
     local last_argument=""
+    local mapped_argument=""
+    local manifest_query=""
+    local -a arguments=("$@")
     if [[ $# -gt 0 ]]; then
       last_argument="${!#}"
     fi
-    if [[ "$last_argument" == "$HEPTA_REPO_ROOT/codex-rs/hepta-runtime/src/lib.rs" ]]; then
+    if [[ ${#arguments[@]} -ge 2 \
+      && "$last_argument" == "$HEPTA_REPO_ROOT/codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv" ]]; then
+      manifest_query="${arguments[$((${#arguments[@]} - 2))]}"
+    fi
+    if [[ -n "$manifest_query" ]] && hepta_compat_release_manifest_contains "$manifest_query"; then
+      printf '%s\n' "$manifest_query"
+    elif [[ "$last_argument" == "$HEPTA_REPO_ROOT/codex-rs/hepta-runtime/src/lib.rs" ]]; then
       "$HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET" grep "$@"
+    elif mapped_argument="$(hepta_context_test_source_path "$last_argument")"; then
+      arguments[$((${#arguments[@]} - 1))]="$mapped_argument"
+      command grep "${arguments[@]}"
     else
       command grep "$@"
     fi
   }
   rg() {
     local last_argument=""
+    local mapped_argument=""
+    local -a arguments=("$@")
     if [[ $# -gt 0 ]]; then
       last_argument="${!#}"
     fi
     if [[ "$last_argument" == "$HEPTA_REPO_ROOT/codex-rs/hepta-runtime/src/lib.rs" ]]; then
       "$HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET" rg "$@"
+    elif mapped_argument="$(hepta_context_test_source_path "$last_argument")"; then
+      arguments[$((${#arguments[@]} - 1))]="$mapped_argument"
+      command rg "${arguments[@]}"
     else
       command rg "$@"
     fi
+  }
+  cargo() {
+    local package=""
+    local filter=""
+    local integration_suite=""
+    local lib_index="-1"
+    local index
+    local -a arguments=("$@")
+    local -a rewritten=()
+
+    for ((index = 0; index < ${#arguments[@]}; index++)); do
+      if [[ "${arguments[$index]}" == "-p" && $((index + 1)) -lt ${#arguments[@]} ]]; then
+        package="${arguments[$((index + 1))]}"
+      elif [[ "${arguments[$index]}" == "--lib" ]]; then
+        lib_index="$index"
+      fi
+    done
+    if [[ "$package" == "hepta-core" && "$lib_index" -ge 0 ]]; then
+      for filter in \
+        adaptive_allocator_eval_shadow \
+        memory_eval \
+        ranked_recall_shadow \
+        shadow_canary_promotion_negative_rehearsal \
+        shadow_canary_promotion_readiness \
+        shadow_quality_summary \
+        shadow_regression_dashboard \
+        trend_snapshot; do
+        if [[ " ${arguments[*]} " == *" $filter "* ]]; then
+          integration_suite="memory_eval_harness"
+          break
+        fi
+      done
+      if [[ -z "$integration_suite" ]]; then
+        for filter in \
+          context_memory_namespace_policy \
+          context_memory_write_chain \
+          memory_temporal \
+          temporal_graph_shadow \
+          temporal_graph_shadow_replay \
+          temporal_graph_shadow_store \
+          write_chain_receipt; do
+          if [[ " ${arguments[*]} " == *" $filter "* ]]; then
+            integration_suite="memory_recall_contracts"
+            break
+          fi
+        done
+      fi
+    fi
+    if [[ -z "$integration_suite" ]]; then
+      command cargo "$@"
+      return
+    fi
+    for ((index = 0; index < ${#arguments[@]}; index++)); do
+      if [[ "$index" -eq "$lib_index" ]]; then
+        rewritten+=(--test "$integration_suite")
+      else
+        rewritten+=("${arguments[$index]}")
+      fi
+    done
+    command cargo "${rewritten[@]}"
   }
   git() {
     local working_directory=""
@@ -223,7 +331,7 @@ execute_captured_shell_compat() {
     fi
     command git "$@"
   }
-  export -f grep rg git
+  export -f hepta_context_test_source_path hepta_compat_release_manifest_contains grep rg cargo git
   "$compatibility_executor" "$implementation"
 }
 

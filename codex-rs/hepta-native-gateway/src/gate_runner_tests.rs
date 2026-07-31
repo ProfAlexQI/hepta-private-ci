@@ -7,6 +7,39 @@ fn repo_root() -> &'static Path {
         .expect("repo root")
 }
 
+fn assert_route_gate_alias(wrapper_path: &Path, id: &str, runner: &str) {
+    assert!(
+        fs::symlink_metadata(wrapper_path)
+            .expect("route gate alias metadata")
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        fs::read_link(wrapper_path).expect("route gate alias target"),
+        Path::new("hepta-route-gate-alias-launch")
+    );
+
+    let registry_path = repo_root().join("scripts/hepta-route-gate-aliases-v1.json");
+    let registry: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&registry_path)
+            .with_context(|| format!("failed to read {}", registry_path.display()))
+            .expect("route gate alias registry"),
+    )
+    .expect("route gate alias registry value");
+    let logical_path = wrapper_path
+        .strip_prefix(repo_root())
+        .expect("route gate alias under repo root")
+        .to_string_lossy();
+    let entry = registry["entries"]
+        .as_array()
+        .expect("route gate alias entries")
+        .iter()
+        .find(|entry| entry["logical_path"] == logical_path.as_ref())
+        .unwrap_or_else(|| panic!("missing route gate alias registry entry for {logical_path}"));
+    assert_eq!(entry["id"], id);
+    assert_eq!(entry["runner"], runner);
+}
+
 #[test]
 fn resolves_compatibility_scripts_inside_the_repo_only() {
     let gate = resolve_compatibility_script(
@@ -132,7 +165,7 @@ fn shell_snapshot_is_deterministic_and_content_addressed() {
 }
 
 #[test]
-fn migrated_pair_specs_use_the_receipt_state_machine() {
+fn migrated_and_promoted_pair_specs_use_the_receipt_state_machine() {
     let specs = migrated_pair_specs().expect("migrated pair specs");
     assert!(!specs.is_empty());
     assert!(specs.values().all(|spec| {
@@ -156,25 +189,37 @@ fn migrated_pair_specs_use_the_receipt_state_machine() {
     assert_eq!(value["report_execution_performed"], false);
 
     let id = "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview";
-    let value: serde_json::Value = serde_json::from_str(
-        &migrated_pair_spec_json(id)
-            .expect("legacy WorkGraph pair lookup")
-            .expect("legacy WorkGraph pair json"),
+    let registry_path = repo_root().join("scripts/hepta-workgraph-source-report-specs-v1.json");
+    let registry: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&registry_path)
+            .with_context(|| format!("failed to read {}", registry_path.display()))
+            .expect("promoted WorkGraph registry"),
     )
-    .expect("legacy WorkGraph pair value");
-    assert_eq!(value["template"], "legacy_workgraph_projection_v1");
-    assert!(
-        value["retired_gate_implementation"]
-            .as_str()
-            .is_some_and(|path| path.ends_with(".gate"))
+    .expect("promoted WorkGraph registry value");
+    let value = registry["entries"]
+        .as_array()
+        .expect("promoted WorkGraph registry entries")
+        .iter()
+        .find(|entry| entry["id"] == id)
+        .expect("promoted WorkGraph pair");
+    assert_eq!(
+        registry["schema_version"],
+        "hepta_workgraph_source_report_specs_v1"
     );
     assert_eq!(
-        value["retired_gate_implementation_sha256"]
-            .as_str()
-            .map(str::len),
-        Some(64)
+        registry["execution_mode"],
+        "source_report_smoke_plus_targeted_rust_test"
     );
-    assert_eq!(value["report_execution_performed"], false);
+    assert_eq!(
+        value["source_stem"],
+        "work_graph_unified_projection_enforcement_readiness_runtime_wal_write_boundary_execution_rerun_preview"
+    );
+    assert_eq!(value["report_sha256"].as_str().map(str::len), Some(64));
+    assert!(
+        value["compatibility_alias"]
+            .as_str()
+            .is_some_and(|path| path.ends_with(".report"))
+    );
 }
 
 #[test]
@@ -236,24 +281,6 @@ fn shell_snapshot_matches_the_append_only_parity_ledger() {
             "baseline {field}"
         );
     }
-    assert_eq!(snapshot["gate_count"], latest["gate_count"]);
-    assert_eq!(snapshot["report_count"], latest["report_count"]);
-    assert_eq!(snapshot["exact_pair_count"], latest["exact_pair_count"]);
-    // The full catalog content hash is batch-local evidence: unrelated
-    // gate/report fixes legitimately change it after the migration batch.
-    // Pair membership is the durable parity contract across later commits.
-    assert_eq!(
-        snapshot["exact_pair_id_sha256"],
-        latest["post_migration_exact_pair_id_sha256"]
-    );
-    assert_eq!(
-        snapshot["thin_wrapper_pair_count"],
-        latest["migrated_pair_count"]
-    );
-    assert_eq!(
-        snapshot["legacy_pair_count"],
-        latest["remaining_legacy_pair_count"]
-    );
     assert_eq!(latest["remaining_legacy_pair_count"], 0);
     assert_eq!(latest["all_exact_pairs_thin_wrappers"], true);
     assert_eq!(latest["pre_migration_content_snapshot_ready"], true);
@@ -297,19 +324,79 @@ fn shell_snapshot_matches_the_append_only_parity_ledger() {
         .collect::<BTreeMap<_, _>>();
     let specs = migrated_pair_specs().expect("migrated pair specs");
     assert_eq!(input_entries.len(), 1282);
-    assert_eq!(specs.len(), input_entries.len());
+    assert_eq!(
+        latest["migrated_pair_count"].as_u64(),
+        Some(input_entries.len() as u64)
+    );
     assert!(specs.keys().all(|id| input_entries.contains_key(id)));
+
+    let retirement_path =
+        repo_root().join("docs/architecture/HEPTA_GATE_COMPAT_O2_RETIREMENT_V1.json");
+    let retirement: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&retirement_path)
+            .with_context(|| format!("failed to read {}", retirement_path.display()))
+            .expect("O2 compatibility retirement receipt"),
+    )
+    .expect("O2 compatibility retirement receipt value");
+    assert_eq!(retirement["schema"], "hepta_gate_compat_o2_retirement_v1");
+    assert_eq!(retirement["status"], "ready");
+    assert_eq!(
+        retirement["source_commit"],
+        "c8f1ad0e84539109415f1c57b6506a2620bb6b74"
+    );
+    assert_eq!(retirement["original_pair_count"], 598);
+    assert_eq!(retirement["retired_pair_count"], 84);
+    assert_eq!(retirement["migrated_pair_count"], 16);
+    assert_eq!(retirement["remaining_pair_count"], 498);
+    assert_eq!(specs.len(), 498);
+    assert_eq!(
+        retirement["original_pair_count"].as_u64(),
+        retirement["retired_pair_count"]
+            .as_u64()
+            .zip(retirement["migrated_pair_count"].as_u64())
+            .zip(retirement["remaining_pair_count"].as_u64())
+            .map(|((retired, migrated), remaining)| retired + migrated + remaining)
+    );
+
+    let spec_path = repo_root().join("scripts/hepta-gate-pair-specs-v1.json");
+    let spec_bytes = fs::read(&spec_path)
+        .with_context(|| format!("failed to read {}", spec_path.display()))
+        .expect("current gate-pair specs");
+    assert_eq!(
+        format!("{:x}", Sha256::digest(&spec_bytes)),
+        retirement["result_spec_sha256"]
+    );
+    assert_eq!(
+        snapshot["thin_wrapper_pair_count"].as_u64(),
+        Some(specs.len() as u64)
+    );
+    assert_eq!(
+        snapshot["physical_thin_wrapper_entrypoint_count"]
+            .as_u64()
+            .zip(snapshot["virtual_thin_wrapper_entrypoint_count"].as_u64())
+            .map(|(physical, virtual_count)| physical + virtual_count),
+        Some((specs.len() * 2) as u64)
+    );
+    assert_eq!(
+        snapshot["legacy_pair_count"].as_u64(),
+        snapshot["exact_pair_count"]
+            .as_u64()
+            .map(|exact| exact - specs.len() as u64)
+    );
 
     let captured_specs = specs
         .values()
         .filter(|spec| spec.template == "captured_shell_compat_v1")
         .collect::<Vec<_>>();
+    assert_eq!(captured_specs.len(), 463);
     assert_eq!(
-        captured_specs.len(),
-        latest["captured_compatibility_pair_count"]
-            .as_u64()
-            .expect("captured compatibility pair count") as usize
+        specs
+            .values()
+            .filter(|spec| spec.template == "legacy_workgraph_projection_v1")
+            .count(),
+        0
     );
+    assert_eq!(specs.len() - captured_specs.len(), 35);
     for spec in captured_specs {
         let input = input_entries.get(&spec.id).expect("captured pair input");
         assert_eq!(
@@ -371,12 +458,7 @@ fn parameterized_route_gate_fixtures_match_the_canonical_gate_specs() {
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-route-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized route gate wrapper");
-        assert_eq!(wrapper.lines().count(), 5, "thin wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-route-gate-runner"));
-        assert!(wrapper.contains(id));
+        assert_route_gate_alias(&wrapper_path, id, "scripts/hepta-route-gate-runner");
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -810,16 +892,11 @@ fn parameterized_artifact_download_install_affordance_result_receipt_route_fixtu
                 .as_str()
                 .expect("artifact-download/install-affordance result-receipt route wrapper path"),
         );
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect(
-                "parameterized artifact-download/install-affordance result-receipt route wrapper",
-            );
-        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-        assert!(wrapper.contains(
-            "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner"
-        ));
-        assert!(wrapper.contains(id));
+        assert_route_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -920,16 +997,11 @@ fn parameterized_memory_live_mutation_activation_command_result_receipt_route_fi
             repo_root().join(fixture["wrapper"].as_str().expect(
                 "Memory live-mutation activation-command result-receipt route wrapper path",
             ));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect(
-                "parameterized Memory live-mutation activation-command result-receipt route wrapper",
-            );
-        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-        assert!(wrapper.contains(
-            "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner"
-        ));
-        assert!(wrapper.contains(id));
+        assert_route_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1102,14 +1174,11 @@ fn parameterized_release_publication_result_receipt_route_fixtures_match_canonic
                 .as_str()
                 .expect("release-publication result-receipt route wrapper path"),
         );
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized release-publication result-receipt route wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-        assert!(
-            wrapper.contains("scripts/hepta-release-publication-result-receipt-route-gate-runner")
+        assert_route_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-release-publication-result-receipt-route-gate-runner",
         );
-        assert!(wrapper.contains(id));
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1251,14 +1320,11 @@ fn parameterized_durable_memory_receipt_boundary_route_fixtures_match_canonical_
                 .as_str()
                 .expect("durable Memory receipt-boundary route wrapper path"),
         );
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized durable Memory receipt-boundary route wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-        assert!(
-            wrapper.contains("scripts/hepta-durable-memory-receipt-boundary-route-gate-runner")
+        assert_route_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-durable-memory-receipt-boundary-route-gate-runner",
         );
-        assert!(wrapper.contains(id));
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1321,12 +1387,11 @@ fn parameterized_packet_acceptance_receipt_route_fixtures_match_canonical_gate_s
                 .as_str()
                 .expect("packet-acceptance receipt route wrapper path"),
         );
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized packet-acceptance receipt route wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-packet-acceptance-receipt-route-gate-runner"));
-        assert!(wrapper.contains(id));
+        assert_route_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-packet-acceptance-receipt-route-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1459,14 +1524,11 @@ fn parameterized_operator_identity_session_replay_reinstatement_route_fixtures_m
                 .as_str()
                 .expect("operator identity/session replay/reinstatement route wrapper path"),
         );
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized operator identity/session replay/reinstatement route wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-        assert!(wrapper.contains(
-            "scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner"
-        ));
-        assert!(wrapper.contains(id));
+        assert_route_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()

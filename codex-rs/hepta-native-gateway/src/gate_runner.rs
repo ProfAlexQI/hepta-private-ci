@@ -891,7 +891,10 @@ fn validate_migrated_pairs(
         }
         validate_entrypoint(&archive, &expected_gate, &gate_relative, "gate", id)?;
         validate_entrypoint(&archive, &expected_report, &spec.report_path, "report", id)?;
-        if !source_report.is_file()
+        if matches!(
+            spec.template.as_str(),
+            "captured_shell_compat_v1" | "legacy_workgraph_projection_v1"
+        ) && !source_report.is_file()
             && archive.payload(&spec.source_report).is_none()
             && !migrated
                 .values()

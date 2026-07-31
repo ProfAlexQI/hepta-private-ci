@@ -4,12 +4,16 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo_root/codex-rs/Cargo.toml"
 runtime_query="$repo_root/codex-rs/hepta-runtime/src/query.rs"
-runtime_lib="$repo_root/codex-rs/hepta-runtime/src/lib.rs"
-session_tests="$repo_root/codex-rs/core/src/session/tests.rs"
+runtime_turn_handoff="$repo_root/codex-rs/hepta-runtime/src/query/context_recall_turn_handoff.rs"
+runtime_query_tests="$repo_root/codex-rs/hepta-runtime/src/query/tests.rs"
+runtime_context_turn_ops="$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/context_turn_ops.rs"
+runtime_tool_support="$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
+runtime_tests="$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
+session_tests="$repo_root/codex-rs/core/src/session/tests/contract_part_03.rs"
 contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
 preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
-front_door_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-gate.sh"
+front_door_gate="$repo_root/scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate"
 release_manifest="$repo_root/codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv"
 lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
 target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"
@@ -87,29 +91,56 @@ done
 
 for term in \
   "mod context_recall_turn_handoff" \
-  "fn build(" \
-  "let provider_rollup = context_recall_provider_rollup::build(slice);" \
-  "then(|| context_recall_selected_snippet_envelope::build(slice, query_text))" \
   "RuntimeContextRecallTurnHandoff" \
-  "impl std::fmt::Debug for RuntimeContextRecallTurnHandoff" \
-  "$runtime_rollup_test" \
-  "$runtime_turn_handoff_test"
+  "impl std::fmt::Debug for RuntimeContextRecallTurnHandoff"
 do
   assert_file_contains "$runtime_query" "$term" \
     "runtime provider rollup single-slice handoff implementation"
 done
 
 for term in \
+  "$runtime_rollup_test" \
+  "$runtime_turn_handoff_test"
+do
+  assert_file_contains "$runtime_query_tests" "$term" \
+    "runtime provider rollup single-slice handoff regression"
+done
+
+for term in \
+  "fn build(" \
+  "let provider_rollup = context_recall_provider_rollup::build(slice);" \
+  "then(|| context_recall_selected_snippet_envelope::build(slice, query_text))" \
+  "RuntimeContextRecallTurnHandoff"
+do
+  assert_file_contains "$runtime_turn_handoff" "$term" \
+    "runtime provider rollup single-slice handoff implementation"
+done
+
+for term in \
   "native_turn_messages_with_context_recall_handoff" \
   "context_recall_turn_handoff(" \
+  "native_selected_snippet_prompt_count"
+do
+  assert_file_contains "$runtime_context_turn_ops" "$term" \
+    "runtime native selected-snippet handoff implementation"
+done
+
+for term in \
   "native_selected_snippet_prompt_count" \
+  "query_payload"
+do
+  assert_file_contains "$runtime_tool_support" "$term" \
+    "runtime native selected-snippet handoff implementation"
+done
+
+for term in \
   "$runtime_native_handoff_test" \
   "selected_context_recall_block" \
   "source_memory_ids" \
   "query_payload"
 do
-  assert_file_contains "$runtime_lib" "$term" \
-    "runtime native selected-snippet handoff implementation"
+  assert_file_contains "$runtime_tests" "$term" \
+    "runtime native selected-snippet handoff regression"
 done
 
 for term in \

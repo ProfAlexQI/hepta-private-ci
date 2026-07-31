@@ -377,6 +377,11 @@ Source-aware compression readiness export surface: the contract-only readiness,
 operator-approval evidence, and positive-route checks must also be represented
 as a payload-light fixed status block from
 `scripts/hepta-context-source-aware-compression-readiness-export-report.sh`.
+Its canonical promoted sources are
+`scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-readiness-export.report`
+and
+`scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-readiness-export.gate`;
+the public shell paths remain compatibility aliases.
 That report must emit `source-aware-readiness-export=pass`,
 `source-aware-readiness-export.runtime-activation=disabled`,
 `source-aware-readiness-export.operator-approval-evidence=contract-only`,

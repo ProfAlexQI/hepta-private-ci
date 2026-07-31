@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+if [[ $# == 0 ]]; then
+  invoked="$(basename "$0")"
+  [[ "$invoked" =~ ^(hepta-systems-work-graph-[a-z0-9-]+)-(gate|report)\.sh$ ]] || {
+    echo "invalid Hepta WorkGraph source-report alias: $invoked" >&2
+    exit 2
+  }
+  set -- "${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}"
+fi
+exec "$ROOT/scripts/hepta-workgraph-source-report-smoke-runner" "$@"

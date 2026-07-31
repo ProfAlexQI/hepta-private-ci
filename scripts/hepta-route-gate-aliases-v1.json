@@ -1,0 +1,180 @@
+{
+  "schema_version": "hepta_route_gate_aliases_v1",
+  "status": "source_ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "source_tree": "07817399938296ebd5b3e0b06bfa6962e4c9bd43",
+  "launcher": "scripts/hepta-route-gate-alias-launch",
+  "alias_count": 21,
+  "path_set_sha256": "3618af2543b08031ebb70ac69e218d52b16628f2f82252a869e0c31684bd5c36",
+  "original_records_sha256": "fdd77c4f83d5b6522b099c613d46374603c93ffeec293667daee84dd91dc6e0b",
+  "entries": [
+    {
+      "logical_path": "scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-cancellation-supersession-denial-route-gate.sh",
+      "id": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-cancellation-supersession-denial",
+      "runner": "scripts/hepta-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "f26a6a86ffce2ec2ee296dfe13f3098314ee43b2",
+      "original_sha256": "608d4f0d45ff95312e37927cee17c7d2b1b77bc411f65d357edd36ceca053bc1"
+    },
+    {
+      "logical_path": "scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial-route-gate.sh",
+      "id": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial",
+      "runner": "scripts/hepta-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "e8fd7eef8ffe4afbebaea3e75bf7b07b67a1f5b9",
+      "original_sha256": "afbf289ef688fa03ee6634c96af6355d043336604c5727a835519cf0522e36c7"
+    },
+    {
+      "logical_path": "scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial-route-gate.sh",
+      "id": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial",
+      "runner": "scripts/hepta-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "32761553b37e2c5cae69123a2a104c4c03dd46fd",
+      "original_sha256": "5efc02ebee2e504219493e06316468f69be97f8c2bd15d2f2b06e5d8de718f82"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-cancellation-supersession-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial",
+      "runner": "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "c02e47106d741cafc2db79e2d2f647b3dfdefaee",
+      "original_sha256": "db6b541fc3fc42631afa2bc38b87fe0045e3d6eb381a128d5c0b920a31cca555"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-cancellation-supersession-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-cancellation-supersession-denial",
+      "runner": "scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "4b4b15680768fdbc487a94897d24036d531523cd",
+      "original_sha256": "b4610a1c933db5635d586f8e7f3aef9d8c064b2a4ebced4febc71b02ab450d58"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-ordering-monotonicity-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-ordering-monotonicity-denial",
+      "runner": "scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "ef9d4c9a359684254e4c92d666471ea1430a0889",
+      "original_sha256": "43c56640c2cb6db837e02fd53564b554c390132d1dbfaf0cf22736ed8f7c5d1f"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-denial",
+      "runner": "scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "61343f391d842a36534acaa54eda9cba0ecce561",
+      "original_sha256": "bff216131895adad2178b8af8555a854ac4542f997f2ceb41d3c509f9a3ba824"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-ordering-monotonicity-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial",
+      "runner": "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "083a0f1d867367633ae325b30d7f717aa854d208",
+      "original_sha256": "538bfd1964021d61ff2272545ec8eb7dc275c295a168a455a8f9fa924e7bf631"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-replay-idempotency-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial",
+      "runner": "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "9579e6fe63a91025413f3c538917c299a43d73dc",
+      "original_sha256": "2a668394b288918b7b2aa7a76b06aa3786ef65981e14284586ca366f287d0900"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-cancellation-supersession-denial-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-cancellation-supersession-denial",
+      "runner": "scripts/hepta-packet-acceptance-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "ef9abb8a1f28d850e51219639ba390a12fe7fc3b",
+      "original_sha256": "eec54ac86544fbb608c5945f6b9cabd7298b4921479f09fa20ac6e160dea13b5"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial",
+      "runner": "scripts/hepta-packet-acceptance-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "4159e8cfd57f97f3f2a034ba7dd7309929d03549",
+      "original_sha256": "18c7a4972a38e316c4d71559429b93bcca01f03e966e258087a3a6f18d3e4a2d"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-cancellation-supersession-denial-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-cancellation-supersession-denial",
+      "runner": "scripts/hepta-release-publication-result-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "aed4acd3e3f9d37d94754db0f00baef70568f442",
+      "original_sha256": "65e5d4f1d053f8b342c42d443185394de6863f74282e318c0d0f9ffd650a303d"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-ordering-monotonicity-denial-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-ordering-monotonicity-denial",
+      "runner": "scripts/hepta-release-publication-result-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "f1150607e57fdeb9225cf04faacc9a301784d16e",
+      "original_sha256": "844e7aa997817e67f01370b08d0d138dd934ff6bcb61cf2def6a14c919f153f6"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-replay-idempotency-denial-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-replay-idempotency-denial",
+      "runner": "scripts/hepta-release-publication-result-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "5ac868af61b6c379a10fc4b98ea73ea014de20d7",
+      "original_sha256": "6503b31e288777f5d938d12cf7f64cfd8ffaf8ac1098694fdf13ac8779d81cf1"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-replay-idempotency-denial-route-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-replay-idempotency-denial",
+      "runner": "scripts/hepta-packet-acceptance-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "33ffe2a1e89c6e896010ac2b976c66aecfc45318",
+      "original_sha256": "bbfdc3bfca29b8b70d857a0d215d8dd77cf8e6fc8c60b07a25827a98633528af"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial-boundary-route-gate.sh",
+      "id": "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial-boundary",
+      "runner": "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "34b90769f3094be91c66d9ea7a0b68401c90c539",
+      "original_sha256": "cff8bea559e9a535c44cda34b4caaa41c8a0de4a73ac11095b910fc09d6ac489"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial-boundary-route-gate.sh",
+      "id": "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial-boundary",
+      "runner": "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "1baa7a72a470e3ac31d4a05b16f73f998c037a79",
+      "original_sha256": "48f4f9b8e6a6d4a1ad8e0916696f577ecf5d55db4775cb4df85a33449f63c46f"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial-boundary-route-gate.sh",
+      "id": "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial-boundary",
+      "runner": "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "d4a24e76ccd708d58756dc951fda21f90cfe17db",
+      "original_sha256": "c8c017b136adddccf7c62f40b414ae9043ebf6e37c152b4af3749077cbd6471a"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary-route-gate.sh",
+      "id": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary",
+      "runner": "scripts/hepta-durable-memory-receipt-boundary-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "267253b64a41ae05a73193d132d51908b6d7ae42",
+      "original_sha256": "383f59c1d14d8b5c3925329a2aae35b3c942dbf123ae7ab6b2a83120c8765951"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary-route-gate.sh",
+      "id": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary",
+      "runner": "scripts/hepta-durable-memory-receipt-boundary-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "eb42e1980836fde98ffeb51cb8d9f4a51918b13b",
+      "original_sha256": "ca0924df81da504c128e4421e7e96219d169f385fdecbe5269e1fe66d4ac595b"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary-route-gate.sh",
+      "id": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary",
+      "runner": "scripts/hepta-durable-memory-receipt-boundary-route-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "b9fdbfcf32d0710efbaf48dd4eff43f8ceafeb6d",
+      "original_sha256": "59d5ea3c43ffb0a3835fd2862c495a18e93310acdeff8f934a48785b86a13df1"
+    }
+  ]
+}

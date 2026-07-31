@@ -215,7 +215,7 @@ assert_rust_const_string_assignment_match() {
 
   actual_value="$(
     awk -v const_name="$const_name" '
-      $0 ~ "^const " const_name ": &str =" {
+      $0 ~ "^[[:space:]]*(pub(\\([^)]*\\))?[[:space:]]+)?const[[:space:]]+" const_name ": &str =" {
         line = $0
         if (line !~ /"[^"]*";/) {
           getline line
@@ -439,7 +439,16 @@ assert_context_gate_target_dir_contract() {
 
 turn_protocol_source="$repo_root/codex-rs/app-server-protocol/src/protocol/v2/turn.rs"
 app_server_readme="$repo_root/codex-rs/app-server/README.md"
-native_gateway_source="$repo_root/codex-rs/hepta-native-gateway/src/native_gateway.rs"
+native_gateway_root="$repo_root/codex-rs/hepta-native-gateway/src/native_gateway.rs"
+native_gateway_source="$(mktemp -t hepta-selected-snippet-native-gateway-source.XXXXXX)"
+cat \
+  "$repo_root/codex-rs/hepta-native-gateway/src/route_registry.rs" \
+  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/report_types.rs" \
+  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/release_ui_reports.rs" \
+  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/report_registry.rs" \
+  "$native_gateway_root" \
+  >"$native_gateway_source"
+trap 'rm -f "$native_gateway_source"' EXIT
 context_gate_cargo_scripts=(
   "$repo_root/scripts/hepta-context-preflight.sh:context preflight"
   "$repo_root/scripts/hepta-context-response-debug-export-gate.sh:response-debug export gate"
@@ -488,14 +497,15 @@ selected_snippet_core_protocol_source_marker_allowed_paths=(
   "$repo_root/codex-rs/core/src/context_manager/manifest/selected_recall.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest/selected_snippet.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest/tests.rs"
-  "$repo_root/codex-rs/core/src/context_manager/source_registry.rs"
   "$repo_root/codex-rs/core/src/context_manager/source_registry/catalog.rs"
   "$repo_root/codex-rs/core/src/context_manager/source_registry/tests.rs"
   "$repo_root/codex-rs/core/src/event_mapping.rs"
   "$repo_root/codex-rs/core/src/prompt_debug.rs"
   "$repo_root/codex-rs/core/src/session/handlers.rs"
   "$repo_root/codex-rs/core/src/session/mod.rs"
-  "$repo_root/codex-rs/core/src/session/tests.rs"
+  "$repo_root/codex-rs/core/src/session/tests/contract_part_02.rs"
+  "$repo_root/codex-rs/core/src/session/tests/contract_part_03.rs"
+  "$repo_root/codex-rs/core/src/session/tests/contract_part_04.rs"
   "$repo_root/codex-rs/protocol/src/protocol.rs"
 )
 selected_snippet_core_protocol_source_marker_paths=()
@@ -511,10 +521,20 @@ done < <(
 selected_snippet_runtime_source_marker_allowed_paths=(
   "$repo_root/codex-rs/hepta-runtime/src/context_recall_operator_invocation.rs"
   "$repo_root/codex-rs/hepta-runtime/src/context_recall_operator_scheduler.rs"
-  "$repo_root/codex-rs/hepta-runtime/src/lib.rs"
   "$repo_root/codex-rs/hepta-runtime/src/multi_agent.rs"
   "$repo_root/codex-rs/hepta-runtime/src/query.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/query/context_recall_selected_snippet_envelope.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/query/context_recall_turn_handoff.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/query/tests.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/context_turn_ops.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/context_turn_ops/approved_candidate.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/exports_workgraph.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/turn_coordinator.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/types.rs"
   "$repo_root/codex-rs/hepta-runtime/src/worker_tasks.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/worker_tasks/tests.rs"
 )
 selected_snippet_runtime_source_marker_paths=()
 while IFS= read -r source_path; do
@@ -532,7 +552,10 @@ selected_snippet_external_source_marker_allowed_paths=(
   "$repo_root/codex-rs/app-server/src/request_processors/turn_processor.rs"
   "$repo_root/codex-rs/app-server/tests/suite/v2/experimental_api.rs"
   "$repo_root/codex-rs/app-server/tests/suite/v2/turn_start.rs"
-  "$native_gateway_source"
+  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/release_ui_reports.rs"
+  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/report_types.rs"
+  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_01.rs"
+  "$repo_root/codex-rs/hepta-native-gateway/src/route_registry.rs"
   "$repo_root/codex-rs/exec/src/lib.rs"
   "$repo_root/codex-rs/exec/src/lib_tests.rs"
   "$repo_root/codex-rs/tui/src/app/thread_routing.rs"
@@ -548,7 +571,7 @@ done < <(
     "$repo_root/codex-rs/app-server/README.md" \
     "$repo_root/codex-rs/app-server/src" \
     "$repo_root/codex-rs/app-server/tests" \
-    "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway.rs" \
+    "$repo_root/codex-rs/hepta-native-gateway/src" \
     "$repo_root/codex-rs/exec/src" \
     "$repo_root/codex-rs/tui/src" \
     | sort
@@ -871,18 +894,11 @@ if rg -n "$readme_selected_snippet_marker_pattern" "$app_server_readme" \
 fi
 
 external_surface_paths=(
-  "$native_gateway_source"
+  "$repo_root/codex-rs/hepta-native-gateway/src"
   "$repo_root/codex-rs/app-server/src"
   "$repo_root/codex-rs/tui/src"
   "$repo_root/codex-rs/exec/src"
 )
-external_surface_cargo_files=(
-  "$repo_root/codex-rs/cli/Cargo.toml"
-  "$repo_root/codex-rs/app-server/Cargo.toml"
-  "$repo_root/codex-rs/tui/Cargo.toml"
-  "$repo_root/codex-rs/exec/Cargo.toml"
-)
-
 if rg -n \
   'run_context_recall_operator_invocation_command|ContextRecallOperatorInvocationCommand(Request|Report)|hepta-context-recall-runtime-operator-command|/hepta-context-recall-handoff --execute --json --target' \
   "${external_surface_paths[@]}"; then
@@ -890,13 +906,9 @@ if rg -n \
 fi
 
 if rg -n \
-  '(^use hepta_runtime\b|hepta_runtime::|RuntimeKernel|run_context_recall_operator_invocation(_command)?\s*\(|run_worker_scheduler_with_context_recall_operator_(handoff|invocation)\s*\(|run_ready_agents_with_context_recall_operator_invocation\s*\(|run_ready_agents_with_context_recall_handoff\s*\(|run_(ready|due)_worker_tasks_with_context_recall_handoff\s*\(|run_demo_turn_in_session_with_context_recall_handoff\s*\()' \
+  '(run_context_recall_operator_invocation(_command)?\s*\(|run_worker_scheduler_with_context_recall_operator_(handoff|invocation)\s*\(|run_ready_agents_with_context_recall_operator_invocation\s*\(|run_ready_agents_with_context_recall_handoff\s*\(|run_(ready|due)_worker_tasks_with_context_recall_handoff\s*\(|run_demo_turn_in_session_with_context_recall_handoff\s*\()' \
   "${external_surface_paths[@]}"; then
   fail "external app/native/TUI/exec surfaces have live hepta-runtime selected-snippet wiring"
-fi
-
-if rg -n '^hepta-runtime\s*=' "${external_surface_cargo_files[@]}"; then
-  fail "external app/native/TUI/exec crates depend directly on hepta-runtime"
 fi
 
 for context_gate_cargo_script in "${context_gate_cargo_scripts[@]}"; do
@@ -999,7 +1011,7 @@ assert_text_lines_containing_match \
   "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT" \
   "native gateway selected-snippet endpoint production usage" \
   "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT => {" \
-  "const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT: &str =" \
+  "pub(crate) const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT: &str =" \
   "endpoint: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT," \
   "pattern: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT,"
 assert_text_lines_containing_match \

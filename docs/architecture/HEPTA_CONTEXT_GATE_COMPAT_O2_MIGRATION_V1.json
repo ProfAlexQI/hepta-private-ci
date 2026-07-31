@@ -1,0 +1,73 @@
+{
+  "schema": "hepta_context_gate_compat_o2_migration_v1",
+  "status": "source_ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "source_tree": "07817399938296ebd5b3e0b06bfa6962e4c9bd43",
+  "baseline": {
+    "gate_spec_sha256": "bb278b201c113b480849339ba5e6d2980b4dcecdd2dcbf98554d80561b9fcc3a",
+    "payload_bundle_sha256": "cf1e680a5cb11c2f2e210594482b0d93b1ae08b02c4c7abbaa8968b2ac70626c"
+  },
+  "selection": {
+    "pair_count": 8,
+    "ordered_ids_sha256": "c38ad433816f3c728bfe2ec2fe9f362edff2e8a55a9e0338351442b11b2279e7",
+    "payload_count": 16,
+    "payload_source_lines": 3856,
+    "payload_records_sha256": "0b40d18689f21cd53bf8ccd0170d6376f00ca6a88d15b14f77afb122f413e22f"
+  },
+  "consumption_graph": {
+    "internal_edges": 3,
+    "outgoing_edges": 0,
+    "inbound_edges": 25,
+    "real_callers": [
+      "scripts/hepta-context-debug-gate.sh",
+      "scripts/hepta-context-preflight.sh",
+      "codex-rs/CONTEXT_DEBUG_CONTRACTS.md",
+      "codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv"
+    ]
+  },
+  "canonical": {
+    "spec": "scripts/hepta-context-gate-specs-v1.json",
+    "spec_sha256": "d46dc308a748cb16c43fc735c171115074250039a3fb7168710dbdb0e8f1486d",
+    "runner": "scripts/hepta-context-gate-runner",
+    "runner_sha256": "f1aaadf57768523a555a0d8184ad1dd5670f8a06533cb5fe08ea554552005733",
+    "launcher": "scripts/hepta-context-gate-launch",
+    "launcher_sha256": "b30ddaf0480e2ce452a7836d5422fced90ea1bded438ffe5e64aef16d39c3b00",
+    "payload_root": "scripts/lib/hepta-context-gates-v1",
+    "payload_file_count": 16,
+    "payload_source_lines": 3856,
+    "payload_records_sha256": "f8e431605b37238a839054300b88d2214ea6ecc544b67cad70db6bb9f7b4bfe2",
+    "payload_records": [
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-generated-context-inventory.gate","lines":204,"sha256":"d56915704748dc619926cada2dae56db52f663b2070dfc57409c165566bdc39f"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-generated-context-inventory.report","lines":75,"sha256":"076657c456801fa1646313f6543c742fec5d6107e26c21d4289601a29fdca278"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-health.gate","lines":135,"sha256":"6ce71c6b7b53430a52f9f8f93ae3ce8c8bdc05ba26be4c3fbc2f1a610dff4b4c"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-health.report","lines":125,"sha256":"a5b75caf9c1aa4c1cc5708e81a5bef631038f063ced10dc20fb39715e268783a"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-boundary.gate","lines":204,"sha256":"faa10fe21a105e452598aa14378d7b352a3757e90e7344dcb1ab17cf223a96aa"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-boundary.report","lines":14,"sha256":"d104342d344ab331603d9dbe6760da620c420e4ad084fa43394de5f1ab9e9b9e"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-v2-boundary.gate","lines":198,"sha256":"25f924fb2165df63b6b3c4c90f05aec3f39269a2836db43653bf5510d00116fe"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-v2-boundary.report","lines":16,"sha256":"0f697398a983d2710e3543653b8ce123fa36b3e753afbfa9fe463942a75c7a85"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-selected-recall-summary-canary-eval.gate","lines":216,"sha256":"1679950b3d285f31628d3453668a5b22798ee6497b0b422b49000ec58f587182"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-selected-recall-summary-canary-eval.report","lines":62,"sha256":"68941c92b865c494477749f7525b17b4d12bfa2038e7e5cf3ff2b930c048218e"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-selected-recall-summary-canary.gate","lines":281,"sha256":"c338963610617596d36ac090fc9642702b0a69b9dcd8b90f50f2a2ade594b127"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-selected-recall-summary-canary.report","lines":110,"sha256":"607a84ff51e7196871d9add76efb15a87599acf4a95ef887a53dad4ecf7ecbf2"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate","lines":1992,"sha256":"bc303c07281b77116cfff05fbdb0488ab27c916790618de35a30f487306c5127"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.report","lines":38,"sha256":"2b9a5e59c6d2c2349ec2be21661e166c13902aadd1be5c2935b04c492866566d"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-readiness-export.gate","lines":165,"sha256":"3ae3da78e7796289241430e6bd69319626d616b4b9e102f6ff114dd2b4aea6a0"},
+      {"path":"scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-readiness-export.report","lines":21,"sha256":"4e749bf6b87a23b418dd77077434a9bbf3401e84958e4c2a3e89cfcaa7958114"}
+    ],
+    "public_alias_count": 16,
+    "compatibility_alias_count": 16,
+    "overlay_materialization_required": true
+  },
+  "validation": {
+    "command": "scripts/hepta-context-gate-runner --validate",
+    "stdout_sha256": "dff8e51001d53931b96d5c866a205e14829ddfe7f04b98d8ecc2311285ff1857",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exit_code": 0,
+    "exit_code_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "baseline_recovery_available": true,
+  "git_history_recovery_bound": false,
+  "history_anchor_required": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}

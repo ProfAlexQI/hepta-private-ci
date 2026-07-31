@@ -2445,7 +2445,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_request_denial_matrix",
                 "activation_request_denial_matrix_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_request_denial_matrix_v1",
-                "262f10b639d28119809c5d2d304012538c3132aa4354a64ed9eaf65c47fbde68"
+                "2681b2505a25995e414e4063e85ce644e79c67f31ea61b273e1b8fd89b89b4ab"
             );
 }
 
@@ -2458,7 +2458,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_noop_handoff",
                 "activation_command_noop_handoff_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_v1",
-                "557c2751b9852c644806f7dc5b8d0eb6d081fb8bec75d39c5200d6927846bb70"
+                "e71f3c6b1b55f02a98abe1a07c937f85383060df4f1f919814f016a2b3d56100"
             );
 }
 
@@ -2471,7 +2471,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_no_persistence",
                 "activation_command_result_receipt_no_persistence_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_no_persistence_v1",
-                "b1a5ab6cea00d374ccb99b229f188b8373da292117a521baeed06b5987b8937b"
+                "d501c4a69311acff945748e16f2bc05b4e75d4361f3533b95c177780431ba8ab"
             );
 }
 
@@ -2484,7 +2484,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_replay_idempotency_denial",
                 "activation_command_result_receipt_replay_idempotency_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_replay_idempotency_denial_v1",
-                "c15f2e75acab275b064bd122ed1cd64a24d77d860d7b9966f30eca924437b926"
+                "911b3b212b816e14b01e4bd0e48152f4062a8ff8407a8bbb6d30e28a321ee3fd"
             );
 }
 
@@ -2497,7 +2497,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial",
                 "activation_command_result_receipt_ordering_monotonicity_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_ordering_monotonicity_denial_v1",
-                "be727bdb1bff95e9e741a6638c71f93993492b3d4d974e08b75383271670ecea"
+                "12255fcbf7366dc01081a7748490ba3a9c01ec7b4974ba320ce10fa101e17e1b"
             );
 }
 
@@ -2510,7 +2510,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial",
                 "activation_command_result_receipt_cancellation_supersession_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_cancellation_supersession_denial_v1",
-                "87bc4468e76b76445b59dfe02005544e8bbd7b4df37b865449ce3b8c3fc820b7"
+                "c5e18818820a1f85decdf119143c4ae3138826211a3e063362efe8b014a59e7d"
             );
 }
 
@@ -2523,7 +2523,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_audit_trail_immutable_evidence_denial",
                 "activation_command_result_receipt_audit_trail_immutable_evidence_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_audit_trail_immutable_evidence_denial_v1",
-                "82be30082b62b33cebb69bafd1679ebf438186075af36f93954e9cea911f9a06"
+                "3bd273403a8decdc37338c9676ad488bdd4d3619f67a48841536cbbe2c37ce2b"
             );
 }
 
@@ -2536,7 +2536,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_retention_expiry_garbage_collection_denial",
                 "activation_command_result_receipt_retention_expiry_garbage_collection_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_retention_expiry_garbage_collection_denial_v1",
-                "c82b547bdf6fd65ebacbc69a9c704792ee9d4e615bc58b6e2ed0a1a6dee71899"
+                "cc2fd7e79fb7e67800c48a13c08f5b150946e726c53b55b256257f043372c6c6"
             );
 }
 
@@ -2549,7 +2549,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_export_query_observability_denial",
                 "activation_command_result_receipt_export_query_observability_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_export_query_observability_denial_v1",
-                "b3c27e124545846e7a4fd6608b609c58ac90fbdaefecd5508d3af12b535604d2"
+                "944df505c979a0f9fd7d02f4c1646b547c7ba07d4732f8eb058e06605a5ace5d"
             );
 }
 
@@ -2562,7 +2562,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial",
                 "activation_command_result_receipt_operator_facing_summary_briefing_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_operator_facing_summary_briefing_non_persistence_denial_v1",
-                "8568e042e86e47bd27185ec3a66711e3c6ba1e8c20d82d07f376e311707fa8ea"
+                "da94c8c920da98d3832c00bb6e115dd6badc44b7beb7a810270c11f13ab83177"
             );
 }
 
@@ -2575,7 +2575,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial",
                 "activation_command_result_receipt_final_operator_acknowledgement_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_final_operator_acknowledgement_non_acceptance_denial_v1",
-                "4e10ab177718c4ba99e602bf828e216f7dfbea106ac2403246e73b74e189877e"
+                "38d069e7ba21000ca35bc3e7c5eadf1791d395c799949447b1ee369ddcdd58b0"
             );
 }
 
@@ -2588,7 +2588,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial",
                 "activation_command_result_receipt_terminal_operator_decision_public_claim_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_v1",
-                "86562993944c7227bd4cf04b8dd303f9d1a94ec760df0122a93501fc8dd55723"
+                "0f2ad1204d6e20472c8df8995ffdd159a4f1808a416fbfd0573b4ca081d94678"
             );
 }
 
@@ -2601,7 +2601,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
                 "runtime_provider_router_activation_command_result_receipt_release_artifact_publication_denial",
                 "activation_command_result_receipt_release_artifact_publication_schema_version",
                 "memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_release_artifact_publication_denial_v1",
-                "5fb3de46c09d24af4bfca5a76400e24e0f62dd049c7edca79520113e79c3fcad"
+                "5988a393cd31bfe4abccfd8d854e315cfbbd39e68a41006103ccda57e94475e5"
             );
 }
 #[test]

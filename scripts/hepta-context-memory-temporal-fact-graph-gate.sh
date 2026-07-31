@@ -7,14 +7,14 @@ hepta_core_memory="$repo_root/codex-rs/hepta-core/src/memory.rs"
 hepta_core_memory_recall_inspection="$repo_root/codex-rs/hepta-core/src/memory/recall/inspection.rs"
 hepta_core_memory_temporal="$repo_root/codex-rs/hepta-core/src/memory/temporal.rs"
 hepta_core_memory_temporal_graph="$repo_root/codex-rs/hepta-core/src/memory/temporal/graph.rs"
-hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/src/memory/tests/recall_memory/temporal.rs"
+hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/tests/memory_recall_contracts/temporal.rs"
 hepta_memory="$repo_root/codex-rs/hepta-memory/src/lib.rs"
 hepta_memory_tests="$repo_root/codex-rs/hepta-memory/src/tests/recall_memory/temporal.rs"
 hepta_memory_recall_helpers="$repo_root/codex-rs/hepta-memory/src/recall_helpers/snapshot.rs"
 contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
 preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
-front_door_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-gate.sh"
+front_door_gate="$repo_root/scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate"
 release_manifest="$repo_root/codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv"
 lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
 target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"
@@ -166,7 +166,7 @@ assert_line_before \
 
 cargo test --manifest-path "$manifest" -p hepta-core \
   memory_temporal_fact_graph \
-  --lib --message-format=short
+  --test memory_recall_contracts --message-format=short
 
 cargo test --manifest-path "$manifest" -p hepta-memory \
   memory_temporal_fact_graph \

@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+manifest="$repo_root/codex-rs/Cargo.toml"
+registry="$repo_root/codex-rs/CONTEXT_SOURCE_REGISTRY.tsv"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+report_script="$repo_root/scripts/lib/hepta-gate-pair-compat-v1/hepta-context-generated-context-inventory.report"
+source_registry_tests="$repo_root/codex-rs/core/src/context_manager/source_registry/tests.rs"
+updates_rs="$repo_root/codex-rs/core/src/context_manager/updates.rs"
+controller_rs="$repo_root/codex-rs/core/src/context_manager/controller.rs"
+lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
+target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"
+target_leaf="$lane"
+if [[ "$target_leaf" != hepta-* ]]; then
+  target_leaf="hepta-$target_leaf"
+fi
+export CARGO_TARGET_DIR="${HEPTA_CARGO_TARGET_DIR:-$target_root/$target_leaf}"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+
+fail() {
+  echo "hepta-context-generated-context-inventory-gate: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+assert_file_not_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must not contain stale text: $needle"
+  fi
+}
+
+assert_output_contains() {
+  local output="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! printf '%s\n' "$output" | grep -F "$needle" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+line_number_of() {
+  local file_path="$1"
+  local needle="$2"
+  local line
+
+  line="$(grep -n -F "$needle" "$file_path" | head -n 1 | cut -d: -f1 || true)"
+  if [ -z "$line" ]; then
+    fail "$file_path is missing required text: $needle"
+  fi
+  printf '%s\n' "$line"
+}
+
+assert_line_before() {
+  local file_path="$1"
+  local before_needle="$2"
+  local after_needle="$3"
+  local label="$4"
+  local before_line
+  local after_line
+
+  before_line="$(line_number_of "$file_path" "$before_needle")"
+  after_line="$(line_number_of "$file_path" "$after_needle")"
+  if [ "$before_line" -ge "$after_line" ]; then
+    fail "$label expected '$before_needle' before '$after_needle'"
+  fi
+}
+
+for term in \
+  "Generated context inventory report" \
+  "generated-context-inventory=pass" \
+  "generated-context-inventory.settings-diff-covered=16" \
+  "generated-context-inventory.turn-scoped-no-steady-state-diff=3" \
+  "generated-context-inventory.live-turn-item=1" \
+  "source -> producer -> manifest entry -> debug surface ->" \
+  "gate -> runtime status" \
+  "build_settings_update_items coverage" \
+  "ownership map is machine-checkable" \
+  "must not export prompt bodies" \
+  "must not become a runtime activation route" \
+  "hepta-context-generated-context-inventory-report.sh" \
+  "hepta-context-generated-context-inventory-gate.sh"; do
+  assert_file_contains "$contracts" "$term" "generated context inventory contract"
+done
+
+assert_file_contains "$source_registry_tests" \
+  "model_visible_context_sources_have_explicit_settings_diff_coverage" \
+  "generated context inventory settings-diff coverage test"
+assert_file_contains "$source_registry_tests" \
+  "SettingsDiffCoverageKind::ManifestHashDiffWithClear" \
+  "generated context inventory clearable settings-diff coverage"
+assert_file_contains "$source_registry_tests" \
+  "SettingsDiffCoverageKind::TurnScopedNoSteadyStateDiff" \
+  "generated context inventory turn-scoped no-diff coverage"
+assert_file_contains "$source_registry_tests" \
+  "SettingsDiffCoverageKind::LiveTurnItem" \
+  "generated context inventory live-turn coverage"
+assert_file_contains "$updates_rs" \
+  "Keep this function aligned with the generated context inventory gate" \
+  "generated context inventory settings-diff source comment"
+assert_file_not_contains "$updates_rs" \
+  "still does not cover every" \
+  "generated context inventory stale coverage TODO"
+assert_file_contains "$controller_rs" "plan_pending_context_items" \
+  "generated context inventory controller ownership map"
+assert_file_contains "$controller_rs" "plan_turn_context" \
+  "generated context inventory controller ownership map"
+
+assert_file_contains "$debug_gate" \
+  "hepta-context-generated-context-inventory-gate.sh" \
+  "generated context inventory debug gate"
+assert_file_contains "$preflight_script" \
+  "generated context inventory gate" \
+  "generated context inventory preflight stage"
+assert_line_before "$debug_gate" \
+  "hepta-context-source-registry-health-gate.sh" \
+  "hepta-context-generated-context-inventory-gate.sh" \
+  "generated context inventory debug gate order"
+assert_line_before "$debug_gate" \
+  "hepta-context-generated-context-inventory-gate.sh" \
+  "hepta-context-health-gate.sh" \
+  "generated context inventory debug gate order"
+assert_line_before "$preflight_script" \
+  "context source registry health gate" \
+  "generated context inventory gate" \
+  "generated context inventory preflight order"
+assert_line_before "$preflight_script" \
+  "generated context inventory gate" \
+  "context health/meta report gate" \
+  "generated context inventory preflight order"
+
+report_output="$(bash "$report_script")"
+line_count="$(printf '%s\n' "$report_output" | wc -l | tr -d ' ')"
+if [ "$line_count" != "31" ]; then
+  fail "expected generated context inventory report to emit 31 lines, got $line_count"
+fi
+
+for line in \
+  "generated-context-inventory=pass" \
+  "generated-context-inventory.schema=1" \
+  "generated-context-inventory.source-count=20" \
+  "generated-context-inventory.registry-sync=pass" \
+  "generated-context-inventory.settings-diff-covered=16" \
+  "generated-context-inventory.turn-scoped-no-steady-state-diff=3" \
+  "generated-context-inventory.live-turn-item=1" \
+  "generated-context-inventory.build-settings-update-items=covered" \
+  "generated-context-inventory.context-controller-ownership=plan_pending_context_items+plan_turn_context" \
+  "generated-context-inventory.session-ownership=build_initial_context+build_settings_update_items+side_effect_handoff" \
+  "generated-context-inventory.runtime-activation=disabled"; do
+  assert_output_contains "$report_output" "$line" "generated context inventory report"
+done
+
+registry_ids="$(awk -F '\t' 'NR > 2 { print $1 }' "$registry")"
+report_ids="$(printf '%s\n' "$report_output" \
+  | grep '^generated-context-inventory\.source\.' \
+  | sed 's/^generated-context-inventory\.source\.//' \
+  | cut -d= -f1)"
+if [ "$registry_ids" != "$report_ids" ]; then
+  fail "generated context inventory source rows drifted from CONTEXT_SOURCE_REGISTRY.tsv"
+fi
+
+source_row_count="$(printf '%s\n' "$report_output" | grep -c '^generated-context-inventory\.source\.')"
+if [ "$source_row_count" != "20" ]; then
+  fail "expected 20 generated context inventory source rows, got $source_row_count"
+fi
+if ! printf '%s\n' "$report_output" \
+  | grep '^generated-context-inventory\.source\.' \
+  | awk -F '[=;]' '{ if ($7 != "runtime:disabled") exit 1 }'; then
+  fail "every generated context inventory source row must keep runtime:disabled"
+fi
+
+if printf '%s\n' "$report_output" | grep -E -i \
+  '(raw_prompt|prompt_body|prompt_payload|memory_text|transcript_text|tool_args|tool_outputs|response_item_payload|provider_payload|ranked_recall_payload|temporal_graph_payload|raw_replay_key|rollback_hash|candidate_text)' >/dev/null; then
+  fail "generated context inventory report leaked payload-shaped fields"
+fi
+
+cargo test --manifest-path "$manifest" -p codex-core \
+  context_manager::source_registry::tests::model_visible_context_sources_have_explicit_settings_diff_coverage \
+  --lib --message-format=short
+
+echo "generated-context-inventory=pass"
+echo "generated-context-inventory.source-count=20"
+echo "generated-context-inventory.settings-diff-covered=16"
+echo "generated-context-inventory.registry-sync=pass"
+echo "generated-context-inventory.build-settings-update-items=covered"
+echo "generated-context-inventory.context-controller-ownership=covered"
+echo "generated-context-inventory.runtime-activation=disabled"
+echo "Hepta generated context inventory gate passed"

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REGISTRY="$ROOT/scripts/hepta-route-gate-aliases-v1.json"
+
+validate() {
+  jq -e '
+    .schema_version == "hepta_route_gate_aliases_v1"
+    and .status == "source_ready"
+    and .launcher == "scripts/hepta-route-gate-alias-launch"
+    and .alias_count == 21
+    and (.entries | length) == .alias_count
+    and ((.entries | map(.logical_path) | unique | length) == .alias_count)
+    and ((.entries | map(.id) | unique | length) == .alias_count)
+    and (.entries | all(
+      (.logical_path | test("^scripts/[a-z0-9-]+-route-gate\\.sh$"))
+      and (.id | test("^[a-z0-9-]+$"))
+      and (.runner | test("^scripts/hepta-[a-z0-9-]+(?:runner)$"))
+      and .original_mode == "100755"
+      and (.original_blob | test("^[0-9a-f]{40}$"))
+      and (.original_sha256 | test("^[0-9a-f]{64}$"))
+    ))
+  ' "$REGISTRY" >/dev/null
+  actual_path_sha="$(jq -r '.entries[].logical_path' "$REGISTRY" | shasum -a 256 | awk '{print $1}')"
+  [[ "$actual_path_sha" == "$(jq -r '.path_set_sha256' "$REGISTRY")" ]] || { echo "route alias path-set SHA drifted" >&2; exit 1; }
+  while IFS=$'\t' read -r logical_path runner; do
+    [[ -L "$ROOT/$logical_path" ]] || { echo "missing route gate alias: $logical_path" >&2; exit 1; }
+    [[ "$(readlink "$ROOT/$logical_path")" == "hepta-route-gate-alias-launch" ]] || { echo "route gate alias target drifted: $logical_path" >&2; exit 1; }
+    [[ -x "$ROOT/$runner" ]] || { echo "missing route gate runner: $runner" >&2; exit 1; }
+  done < <(jq -r '.entries[] | [.logical_path, .runner] | @tsv' "$REGISTRY")
+}
+
+[[ -f "$REGISTRY" ]] || { echo "missing Hepta route gate alias registry" >&2; exit 1; }
+if [[ $# == 1 && "$1" == "--validate" ]]; then
+  validate
+  echo '{"schema":"hepta_route_gate_aliases_validation_v1","status":"ready","alias_count":21}'
+  exit 0
+fi
+[[ $# == 0 ]] || { echo "usage: scripts/hepta-route-gate-alias-launch [--validate]" >&2; exit 2; }
+validate
+logical_path="scripts/$(basename "$0")"
+entry="$(jq -cer --arg logical_path "$logical_path" '.entries[] | select(.logical_path == $logical_path)' "$REGISTRY")" || { echo "unknown Hepta route gate alias: $logical_path" >&2; exit 1; }
+exec "$ROOT/$(jq -r '.runner' <<<"$entry")" "$(jq -r '.id' <<<"$entry")"

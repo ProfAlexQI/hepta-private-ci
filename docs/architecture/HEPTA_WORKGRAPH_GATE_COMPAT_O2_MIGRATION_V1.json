@@ -1,0 +1,52 @@
+{
+  "schema": "hepta_workgraph_gate_compat_o2_migration_v1",
+  "status": "source_ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "source_tree": "07817399938296ebd5b3e0b06bfa6962e4c9bd43",
+  "baseline": {
+    "gate_spec_sha256": "bb278b201c113b480849339ba5e6d2980b4dcecdd2dcbf98554d80561b9fcc3a",
+    "payload_bundle_sha256": "cf1e680a5cb11c2f2e210594482b0d93b1ae08b02c4c7abbaa8968b2ac70626c"
+  },
+  "selection": {
+    "pair_count": 8,
+    "ordered_ids_sha256": "48ec28ff777e76c25f965af5f55260360f5a7818100b3e60547627b736347489",
+    "payload_count": 8,
+    "payload_source_lines": 1787,
+    "payload_records_sha256": "3c920dda1e255bc201c89ff35dac4fa7a174d9455c658f1d7414d661c41757c2"
+  },
+  "consumption_graph": {
+    "inbound_compatibility_edges": 16,
+    "real_callers": [
+      "codex-rs/hepta-runtime/src/hepta_systems_workgraph_legacy_gate_recursion_inventory_readback.rs",
+      "codex-rs/hepta-runtime/src/hepta_systems_gate_recursion_lean_contract_readback.rs",
+      "codex-rs/hepta-native-gateway/src/gate_runner_tests.rs"
+    ]
+  },
+  "canonical": {
+    "spec": "scripts/hepta-workgraph-source-report-specs-v1.json",
+    "spec_sha256": "852f1ae52179e075780516df3ac1e3c9aeea7ed7f3e06ac66809c08e6e003386",
+    "runner": "scripts/hepta-workgraph-source-report-smoke-runner",
+    "runner_sha256": "20f81845863936b710c9d8dcbbd2d111ac4074d193ee4fee608f0486968635ef",
+    "launcher": "scripts/hepta-workgraph-source-report-smoke-launch",
+    "launcher_sha256": "ff24c9935c60c5c6cef23a3a9ec0cccbbf194a4b4e683215fce591aa1e8ae51e",
+    "payload_root": "scripts/lib/hepta-workgraph-source-report-v1",
+    "execution_mode": "source_report_smoke_plus_targeted_rust_test",
+    "public_alias_count": 16,
+    "compatibility_alias_count": 8,
+    "virtual_long_public_alias_count": 2,
+    "virtual_long_compatibility_alias_count": 1,
+    "overlay_materialization_required": true
+  },
+  "validation": {
+    "command": "scripts/hepta-workgraph-source-report-smoke-runner --validate",
+    "stdout_sha256": "0901f14beb8b8e93c6482bae1ba72e1a4c60ae9c253e7f9eb423af2ade2f447a",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exit_code": 0,
+    "exit_code_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "baseline_recovery_available": true,
+  "git_history_recovery_bound": false,
+  "history_anchor_required": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}

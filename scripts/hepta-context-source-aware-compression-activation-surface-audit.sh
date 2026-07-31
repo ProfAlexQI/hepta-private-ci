@@ -165,7 +165,7 @@ assert_fixed_string_paths_match \
   3 \
   "codex-rs/core/src/context_manager/manifest.rs" \
   "codex-rs/core/src/context_manager/manifest/tests.rs" \
-  "codex-rs/core/src/session/tests.rs" \
+  "codex-rs/core/src/session/tests/contract_part_04.rs" \
   -- \
   "${code_roots[@]}"
 

@@ -10,7 +10,7 @@ hepta_core_memory="$repo_root/codex-rs/hepta-core/src/memory.rs"
 hepta_core_memory_recall_inspection="$repo_root/codex-rs/hepta-core/src/memory/recall/inspection.rs"
 hepta_core_memory_temporal="$repo_root/codex-rs/hepta-core/src/memory/temporal.rs"
 hepta_core_memory_temporal_fact="$repo_root/codex-rs/hepta-core/src/memory/temporal/fact.rs"
-hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/src/memory/tests/recall_memory/temporal.rs"
+hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/tests/memory_recall_contracts/temporal.rs"
 hepta_memory="$repo_root/codex-rs/hepta-memory/src/lib.rs"
 hepta_memory_tests="$repo_root/codex-rs/hepta-memory/src/tests/recall_memory/temporal.rs"
 hepta_memory_recall_helpers="$repo_root/codex-rs/hepta-memory/src/recall_helpers/snapshot.rs"
@@ -141,7 +141,7 @@ cargo test --manifest-path "$manifest" -p codex-protocol \
 
 cargo test --manifest-path "$manifest" -p hepta-core \
   memory_temporal \
-  --lib --message-format=short
+  --test memory_recall_contracts --message-format=short
 
 cargo test --manifest-path "$manifest" -p hepta-memory \
   memory_temporal \

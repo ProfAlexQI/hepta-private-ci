@@ -55,10 +55,10 @@ assert_line_before() {
 }
 
 contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
-session_tests="$repo_root/codex-rs/core/src/session/tests.rs"
+session_tests="$repo_root/codex-rs/core/src/session/tests/contract_part_04.rs"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
 preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
-front_door_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-gate.sh"
+front_door_gate="$repo_root/scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate"
 release_manifest="$repo_root/codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv"
 gate_script="hepta-context-selected-snippet-live-prompt-compression-gate.sh"
 new_test="record_context_updates_and_set_reference_context_item_rejects_prompt_unsafe_selected_snippets_under_source_aware_compression_opt_in"

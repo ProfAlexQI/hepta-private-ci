@@ -7,7 +7,7 @@ prompt_debug="$repo_root/codex-rs/core/src/prompt_debug.rs"
 contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
 preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
-front_door_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-gate.sh"
+front_door_gate="$repo_root/scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate"
 release_manifest="$repo_root/codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv"
 lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
 target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"
@@ -17,6 +17,7 @@ if [[ "$target_leaf" != hepta-* ]]; then
 fi
 export CARGO_TARGET_DIR="${HEPTA_CARGO_TARGET_DIR:-$target_root/$target_leaf}"
 export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+export RUST_MIN_STACK="${HEPTA_CONTEXT_TEST_STACK_BYTES:-16777216}"
 
 fail() {
   echo "hepta-context-prompt-input-summary-gate: $*" >&2
@@ -39,6 +40,7 @@ shadow_no_leak_test="build_prompt_input_from_session_consumes_context_manifest_w
 
 echo "hepta-context-prompt-input-summary-gate: lane=$lane"
 echo "hepta-context-prompt-input-summary-gate: CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+echo "hepta-context-prompt-input-summary-gate: RUST_MIN_STACK=$RUST_MIN_STACK"
 
 for term in \
   "Prompt Input Gate" \

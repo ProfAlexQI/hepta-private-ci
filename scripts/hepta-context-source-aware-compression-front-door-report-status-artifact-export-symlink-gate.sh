@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 artifact_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-report-status-artifact-gate.sh"
 status_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-report-status-gate.sh"
 context_contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
-front_door_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-gate.sh"
+front_door_gate="$repo_root/scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
 preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
 symlink_gate_script="hepta-context-source-aware-compression-front-door-report-status-artifact-export-symlink-gate.sh"
@@ -185,6 +185,7 @@ unexpected_env_refs="$(
   rg -n "$artifact_out_env" "$repo_root/codex-rs" "$repo_root/scripts" | awk -F: '
     $1 !~ /codex-rs\/CONTEXT_DEBUG_CONTRACTS\.md$/ &&
     $1 !~ /scripts\/hepta-context-source-aware-compression-front-door-gate\.sh$/ &&
+    $1 !~ /scripts\/lib\/hepta-context-gates-v1\/hepta-context-source-aware-compression-front-door\.gate$/ &&
     $1 !~ /scripts\/hepta-context-source-aware-compression-front-door-report-status-artifact-gate\.sh$/ &&
     $1 !~ /scripts\/hepta-context-source-aware-compression-front-door-report-status-artifact-export-gate\.sh$/ &&
     $1 !~ /scripts\/hepta-context-source-aware-compression-front-door-report-status-artifact-export-negative-gate\.sh$/ &&

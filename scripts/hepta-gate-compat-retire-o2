@@ -1,0 +1,288 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "open3"
+require "set"
+require "stringio"
+require "zlib"
+require_relative "lib/hepta-normalized-token-bundle-v1"
+require_relative "hepta-workgraph-readable-token-source-v1"
+
+ROOT = File.expand_path("..", __dir__)
+SPEC_PATH = File.join(ROOT, "scripts/hepta-gate-pair-specs-v1.json")
+BUNDLE_ROOT = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2")
+REGISTRY_PATH = File.join(BUNDLE_ROOT, "registry.json")
+ENTRYPOINT_REGISTRY_PATH = File.join(ROOT, "scripts/hepta-gate-pair-entrypoints-v2.json")
+RECEIPT_PATH = File.join(ROOT, "docs/architecture/HEPTA_GATE_COMPAT_O2_RETIREMENT_V1.json")
+SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
+BASELINE_PAIR_COUNT = 598
+TARGET_PAIR_COUNT = 498
+RETIRED_PAIR_COUNT = 84
+BASELINE_SPEC_RELATIVE_PATH = "scripts/hepta-gate-pair-specs-v1.json"
+BASELINE_BUNDLE_RELATIVE_PATH = "scripts/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz"
+BASELINE_REGISTRY_RELATIVE_PATH = "scripts/lib/hepta-gate-pair-compat-v2/registry.json"
+CONTEXT_PROMOTION_IDS = %w[
+  hepta-context-generated-context-inventory
+  hepta-context-health
+  hepta-context-memory-provider-boundary
+  hepta-context-memory-provider-v2-boundary
+  hepta-context-selected-recall-summary-canary
+  hepta-context-selected-recall-summary-canary-eval
+  hepta-context-source-aware-compression-front-door
+  hepta-context-source-aware-compression-readiness-export
+].to_set.freeze
+EXPECTED_RESULT_SPEC_SHA256 = "25e987bb2f8691c591b505b460f75f637c513689d7638f60ae4b028f6e69e311"
+
+def atomic_write(path, content)
+  staging = File.join(
+    File.dirname(path),
+    ".hepta-gate-compat-o2-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp"
+  )
+  File.binwrite(staging, content)
+  File.rename(staging, path)
+end
+
+def spec
+  JSON.parse(File.binread(SPEC_PATH))
+end
+
+def source_commit
+  @source_commit ||= Open3.capture2("git", "-C", ROOT, "rev-parse", "HEAD").then do |output, status|
+    raise "cannot resolve source commit" unless status.success?
+    output.strip
+  end
+end
+
+def git_blob(relative_path)
+  output, status = Open3.capture2("git", "-C", ROOT, "show", "#{source_commit}:#{relative_path}")
+  raise "cannot read #{relative_path} from #{source_commit}" unless status.success?
+  output.b
+end
+
+def baseline_spec
+  JSON.parse(git_blob(BASELINE_SPEC_RELATIVE_PATH))
+end
+
+def payloads
+  payload = Zlib::GzipReader.new(StringIO.new(git_blob(BASELINE_BUNDLE_RELATIVE_PATH))).read
+  entries = HeptaNormalizedTokenBundle.decode(
+    payload,
+    schema: SCHEMA,
+    name_validator: lambda { |name|
+      name.match?(%r{\Ascripts/lib/hepta-gate-pair-compat-v1/[a-z0-9-]+\.(?:gate|report)\z})
+    }
+  )
+  entries.to_h { |entry| [entry.name, entry.source] }
+end
+
+def entrypoint_paths(pairs)
+  pairs.flat_map do |pair|
+    ["scripts/#{pair.fetch("id")}-gate.sh", pair.fetch("report_path")]
+  end.to_set
+end
+
+def protected_pair_ids(pairs, entries, supplemental_payloads)
+  ids = pairs.map { |pair| pair.fetch("id") }
+  paths = entrypoint_paths(pairs)
+  protected = Set.new
+  supplemental_payloads.each do |payload|
+    source = entries.fetch(payload.fetch("path"))
+    source.scan(%r{scripts/lib/hepta-gate-pair-compat-v1/([a-z0-9-]+)\.(?:gate|report)}) do |(id)|
+      protected << id if ids.include?(id)
+    end
+    source.scan(%r{scripts/([a-z0-9-]+)-(?:gate|report)\.sh}) do |(id)|
+      protected << id if ids.include?(id)
+    end
+  end
+  Dir.glob(File.join(ROOT, "{codex-rs,scripts}/**/*"), File::FNM_DOTMATCH).sort.each do |path|
+    next unless File.file?(path)
+    relative = path.delete_prefix("#{ROOT}/")
+    next if relative == "scripts/hepta-gate-pair-specs-v1.json" ||
+      relative == "scripts/hepta-gate-pair-entrypoints-v2.json" ||
+      paths.include?(relative) ||
+      relative.start_with?("scripts/lib/hepta-gate-pair-compat-v1/") ||
+      relative.start_with?("scripts/lib/hepta-gate-pair-compat-v2/") ||
+      relative.include?("/target/")
+    next if File.size(path) > 20 * 1024 * 1024
+    source = File.binread(path)
+    next unless source.valid_encoding?
+    ids.each { |id| protected << id if source.include?(id) }
+  end
+  protected
+end
+
+def dependency_graph(pairs, entries)
+  ids = pairs.map { |pair| pair.fetch("id") }.to_set
+  outgoing = ids.to_h { |id| [id, Set.new] }
+  pairs.each do |pair|
+    owner = pair.fetch("id")
+    implementations = [pair["gate_implementation"], pair["report_implementation"]].compact.uniq
+    implementations.each do |implementation|
+      source = entries.fetch(implementation)
+      source.scan(%r{scripts/lib/hepta-gate-pair-compat-v1/([a-z0-9-]+)\.(?:gate|report)}) do |(target)|
+        outgoing.fetch(owner) << target if ids.include?(target) && target != owner
+      end
+      source.scan(%r{scripts/([a-z0-9-]+)-(?:gate|report)\.sh}) do |(target)|
+        outgoing.fetch(owner) << target if ids.include?(target) && target != owner
+      end
+    end
+  end
+  outgoing
+end
+
+def retirement_plan
+  source_spec = baseline_spec
+  pairs = source_spec.fetch("pairs")
+  raise "O2 compatibility retirement requires #{BASELINE_PAIR_COUNT} pairs" unless pairs.length == BASELINE_PAIR_COUNT
+  entries = payloads
+  by_id = pairs.to_h { |pair| [pair.fetch("id"), pair] }
+  protected = protected_pair_ids(pairs, entries, source_spec.fetch("supplemental_payloads", []))
+  outgoing = dependency_graph(pairs, entries)
+  active = by_id.keys.to_set
+  retired = []
+  retire_count = RETIRED_PAIR_COUNT
+  while retired.length < retire_count
+    incoming = Hash.new(0)
+    active.each do |source|
+      outgoing.fetch(source).each { |target| incoming[target] += 1 if active.include?(target) }
+    end
+    candidates = active.select do |id|
+      by_id.fetch(id).fetch("template") == "captured_shell_compat_v1" &&
+        !protected.include?(id) && incoming[id].zero?
+    end
+    if candidates.empty?
+      raise "insufficient dependency-closed compatibility leaves: retired=#{retired.length} protected=#{protected.length}"
+    end
+    selected = candidates.max_by do |id|
+      pair = by_id.fetch(id)
+      implementations = [pair["gate_implementation"], pair["report_implementation"]].compact.uniq
+      [implementations.sum { |path| entries.fetch(path).lines.count }, id]
+    end
+    active.delete(selected)
+    retired << selected
+  end
+  legacy_promotions = pairs.select { |pair| pair.fetch("template") == "legacy_workgraph_projection_v1" }.map { |pair| pair.fetch("id") }.to_set
+  promoted = legacy_promotions | CONTEXT_PROMOTION_IDS
+  raise "O2 compatibility promotion count drifted" unless promoted.length == 16
+  raise "retirement overlaps promotion" unless (retired.to_set & promoted).empty?
+  {
+    spec: source_spec,
+    pairs: pairs,
+    entries: entries,
+    protected: protected,
+    outgoing: outgoing,
+    retired: retired,
+    promoted: promoted,
+    legacy_promotions: legacy_promotions
+  }
+end
+
+def receipt_for(plan)
+  retired = plan.fetch(:retired)
+  by_id = plan.fetch(:pairs).to_h { |pair| [pair.fetch("id"), pair] }
+  entries = plan.fetch(:entries)
+  payload_records = retired.flat_map do |id|
+    pair = by_id.fetch(id)
+    [pair["gate_implementation"], pair["report_implementation"]].compact.uniq.map do |path|
+      source = entries.fetch(path)
+      {path: path, sha256: Digest::SHA256.hexdigest(source), lines: source.lines.count}
+    end
+  end
+  promoted_payload_records = plan.fetch(:promoted).flat_map do |id|
+    pair = by_id.fetch(id)
+    [pair["gate_implementation"], pair["report_implementation"]].compact.uniq.map do |path|
+      source = entries.fetch(path)
+      {path: path, sha256: Digest::SHA256.hexdigest(source), lines: source.lines.count}
+    end
+  end
+  {
+    schema: "hepta_gate_compat_o2_retirement_v1",
+    status: "ready",
+    source_commit: source_commit,
+    baseline_spec_sha256: Digest::SHA256.hexdigest(git_blob(BASELINE_SPEC_RELATIVE_PATH)),
+    baseline_payload_bundle_sha256: Digest::SHA256.hexdigest(git_blob(BASELINE_BUNDLE_RELATIVE_PATH)),
+    baseline_registry_sha256: Digest::SHA256.hexdigest(git_blob(BASELINE_REGISTRY_RELATIVE_PATH)),
+    original_pair_count: plan.fetch(:pairs).length,
+    retired_pair_count: retired.length,
+    migrated_pair_count: plan.fetch(:promoted).length,
+    remaining_pair_count: plan.fetch(:pairs).length - retired.length - plan.fetch(:promoted).length,
+    retained_caller_count: plan.fetch(:protected).length,
+    selection: "captured_shell_dependency_closed_uncalled_leaves_then_canonical_promotion",
+    retired_pairs: retired.sort,
+    retired_payloads: payload_records.sort_by { |record| record.fetch(:path) },
+    promoted_context_pairs: CONTEXT_PROMOTION_IDS.to_a.sort,
+    promoted_legacy_workgraph_pairs: plan.fetch(:legacy_promotions).to_a.sort,
+    promoted_payloads: promoted_payload_records.sort_by { |record| record.fetch(:path) },
+    result_spec_sha256: EXPECTED_RESULT_SPEC_SHA256,
+    git_history_recovery_bound: false,
+    history_anchor_required: true
+  }
+end
+
+def print_plan
+  receipt = receipt_for(retirement_plan)
+  puts JSON.pretty_generate(
+    receipt.reject { |key, _value| [:retired_pairs, :retired_payloads].include?(key) }.merge(
+      retired_payload_count: receipt.fetch(:retired_payloads).length,
+      retired_payload_lines: receipt.fetch(:retired_payloads).sum { |record| record.fetch(:lines) },
+      promoted_payload_count: receipt.fetch(:promoted_payloads).length,
+      promoted_payload_lines: receipt.fetch(:promoted_payloads).sum { |record| record.fetch(:lines) },
+      sample_retired_pairs: receipt.fetch(:retired_pairs).first(20)
+    )
+  )
+end
+
+def apply_retirement
+  plan = retirement_plan
+  retired = plan.fetch(:retired).to_set | plan.fetch(:promoted)
+  updated = plan.fetch(:spec)
+  updated["pairs"] = plan.fetch(:pairs).reject { |pair| retired.include?(pair.fetch("id")) }
+  atomic_write(SPEC_PATH, JSON.pretty_generate(updated) + "\n")
+  receipt = receipt_for(plan)
+  receipt[:aggregate_sha256] = Digest::SHA256.hexdigest(JSON.generate(receipt))
+  atomic_write(RECEIPT_PATH, JSON.pretty_generate(receipt) + "\n")
+end
+
+def verify_retirement
+  receipt = JSON.parse(File.binread(RECEIPT_PATH))
+  digest_payload = receipt.dup
+  expected_digest = digest_payload.delete("aggregate_sha256")
+  raise "O2 compatibility receipt digest drifted" unless Digest::SHA256.hexdigest(JSON.generate(digest_payload)) == expected_digest
+  active = spec.fetch("pairs").map { |pair| pair.fetch("id") }.to_set
+  retired = receipt.fetch("retired_pairs").to_set
+  promoted = (receipt.fetch("promoted_context_pairs") + receipt.fetch("promoted_legacy_workgraph_pairs")).to_set
+  raise "retired compatibility pair remains active" unless (active & retired).empty?
+  raise "promoted compatibility pair remains active" unless (active & promoted).empty?
+  raise "O2 compatibility pair count drifted" unless active.length == receipt.fetch("remaining_pair_count")
+  raise "O2 compatibility hard target exceeded" unless active.length < 499
+  raise "O2 compatibility source registry shape drifted" unless spec.fetch("pairs").count { |pair| pair.fetch("template") == "captured_shell_compat_v1" } == 463
+  raise "legacy WorkGraph compatibility pair remains" unless spec.fetch("pairs").none? { |pair| pair.fetch("template") == "legacy_workgraph_projection_v1" }
+  raise "declarative compatibility coverage drifted" unless spec.fetch("pairs").count { |pair| pair.fetch("template") != "captured_shell_compat_v1" } == 35
+  raise "O2 result spec SHA drifted" unless Digest::SHA256.file(SPEC_PATH).hexdigest == EXPECTED_RESULT_SPEC_SHA256
+  payload_registry = JSON.parse(File.binread(REGISTRY_PATH))
+  entrypoint_registry = JSON.parse(File.binread(ENTRYPOINT_REGISTRY_PATH))
+  raise "compatibility payload registry is not source-bound" unless payload_registry.fetch("source_registry_sha256") == Digest::SHA256.file(SPEC_PATH).hexdigest
+  raise "compatibility entrypoint registry is not source-bound" unless entrypoint_registry.fetch("source_registry_sha256") == Digest::SHA256.file(SPEC_PATH).hexdigest
+  raise "compatibility entrypoint pair count drifted" unless entrypoint_registry.fetch("pair_count") == active.length
+  puts JSON.generate(
+    schema: "hepta_gate_compat_o2_retirement_verify_v1",
+    status: "ready",
+    active_pair_count: active.length,
+    retired_pair_count: retired.length,
+    migrated_pair_count: promoted.length,
+    git_history_recovery_bound: false,
+    receipt_sha256: Digest::SHA256.file(RECEIPT_PATH).hexdigest
+  )
+end
+
+require "shellwords"
+case ARGV
+when ["plan"] then print_plan
+when ["apply"] then apply_retirement
+when ["verify"] then verify_retirement
+else
+  warn "usage: scripts/hepta-gate-compat-retire-o2 <plan|apply|verify>"
+  exit 64
+end

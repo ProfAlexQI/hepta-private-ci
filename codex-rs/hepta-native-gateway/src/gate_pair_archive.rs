@@ -59,6 +59,7 @@ struct PayloadRegistry {
     normalized_payload_limit: usize,
     normalized_parameter_row_count: usize,
     normalized_effective_lines: usize,
+    normalized_effective_line_limit: usize,
     registered_payload_count: usize,
     source_bytes: usize,
     aggregate_source_sha256: String,
@@ -245,6 +246,7 @@ fn validate_payload_registry(
         || registry.normalized_payload_count > registry.normalized_payload_limit
         || registry.normalized_parameter_row_count != registry.payload_count
         || registry.normalized_effective_lines == 0
+        || registry.normalized_effective_lines > registry.normalized_effective_line_limit
         || registry.bundle_sha256.len() != 64
         || registry.aggregate_source_sha256.len() != 64
         || registry.legacy_blob_generation != "deterministic_raw_or_gzip_default_mtime_zero_v1"

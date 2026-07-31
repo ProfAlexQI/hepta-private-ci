@@ -1,0 +1,56 @@
+{
+  "schema": "hepta_o2_gate_compat_ratchet_v1",
+  "status": "source_ready",
+  "source_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "baseline": {
+    "pair_count": 598,
+    "captured_shell_pair_count": 555,
+    "logical_payload_count": 1144,
+    "normalized_payload_count": 403,
+    "normalized_effective_lines": 155874,
+    "logical_virtual_entrypoint_count": 1104
+  },
+  "current": {
+    "pair_count": 498,
+    "captured_shell_pair_count": 463,
+    "legacy_workgraph_pair_count": 0,
+    "declarative_pair_count": 35,
+    "logical_payload_count": 952,
+    "registered_payload_count": 952,
+    "normalized_payload_count": 361,
+    "normalized_parameter_row_count": 952,
+    "normalized_effective_lines": 141142,
+    "normalized_effective_line_limit": 145377,
+    "retained_entrypoint_count": 69,
+    "logical_virtual_entrypoint_count": 927,
+    "normalized_virtual_entrypoint_count": 2,
+    "source_registry_sha256": "25e987bb2f8691c591b505b460f75f637c513689d7638f60ae4b028f6e69e311",
+    "aggregate_source_sha256": "a7a44af1be843d66cca6e7fd2b5ab58b122c44bbc0dd9048dc0a0979b0752fe3",
+    "bundle_sha256": "8de2101c9b10e3eb3870b413e79de4c44f8dea7d51812b23b4e22df33679401b",
+    "canonical_schema_sha256": "5bdefc8cf0e8db60df58f47fc1b65e6ab1d88376854e3350f969f67d27a632cb",
+    "canonical_templates_sha256": "a323eba7603664f1e2e390b85ad3f9b157e835ec93675c4e39c7dfd271a1cbc9",
+    "canonical_parameters_sha256": "dcff965432401df62557932288689f1415506a03cab21211fc8f4ced4de5d4cb",
+    "canonical_max_record_bytes": 355618,
+    "byte_identical_repack_verified": true,
+    "reversible_unpack": true
+  },
+  "retirement": {
+    "receipt": "docs/architecture/HEPTA_GATE_COMPAT_O2_RETIREMENT_V1.json",
+    "retired_pair_count": 84,
+    "migrated_pair_count": 16,
+    "retired_payload_count": 168,
+    "retired_payload_lines": 13007,
+    "promoted_payload_count": 24,
+    "retained_caller_count": 123,
+    "selection": "captured_shell_dependency_closed_uncalled_leaves_then_canonical_promotion",
+    "dependency_closed": true,
+    "git_history_recovery_bound": false,
+    "history_anchor_required": true
+  },
+  "hard_target": {
+    "pair_count_less_than": 499,
+    "met": true
+  },
+  "runtime_mutated": false,
+  "deployment_performed": false
+}
