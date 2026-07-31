@@ -676,6 +676,15 @@ verify() {
   fi
   verify_file_max scripts/hepta-kernel-module-split 90
   verify_file_max scripts/hepta-backend-giant-module-split 260
+  backend_giant_split_report="$(scripts/hepta-backend-giant-module-split verify)"
+  jq -e '
+    .schema == "hepta_backend_giant_module_split_v1"
+    and .status == "ready"
+    and .max_part_lines == 5000
+    and .module_count == 6
+    and .part_count == 12
+    and (.modules | all(.parts | all(.lines <= 5000)))
+  ' <<<"$backend_giant_split_report" >/dev/null
   verify_file_max scripts/hepta-long-path-relocate 240
   verify_file_max scripts/hepta-long-path-resolve 50
   verify_file_max scripts/hepta-workgraph-module-bundle 360
@@ -1188,6 +1197,41 @@ verify() {
     and .history_anchor_required == false
     and .source_progress_release_blocked == true
   ' docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_HISTORY_ANCHOR_V1.json >/dev/null
+  verify_file_max docs/architecture/HEPTA_BACKEND_GIANT_MODULE_P1_SPLIT_V1.json 160
+  jq -e '
+    .schema == "hepta_backend_giant_module_p1_split_v1"
+    and .status == "source_split_verified_history_anchor_pending"
+    and .git_history_recovery_bound == false
+    and .split_contract.module_count == 6
+    and .split_contract.part_count == 12
+    and .split_contract.max_part_lines == 5000
+    and .split_contract.original_source_sha256_reconstructed == true
+    and .ratchet.first_party_modules_over_5000_before == 11
+    and .ratchet.first_party_modules_over_5000_after == 5
+    and (.modules | length) == 6
+  ' docs/architecture/HEPTA_BACKEND_GIANT_MODULE_P1_SPLIT_V1.json >/dev/null
+  verify_file_max docs/architecture/HEPTA_BACKEND_GIANT_MODULE_P1_HISTORY_ANCHOR_V1.json 40
+  backend_split_result_commit="$(jq -r '.result_commit' docs/architecture/HEPTA_BACKEND_GIANT_MODULE_P1_HISTORY_ANCHOR_V1.json)"
+  backend_split_result_tree="$(git show -s --format=%T "$backend_split_result_commit")"
+  git merge-base --is-ancestor "$backend_split_result_commit" HEAD
+  jq -e \
+    --arg result_commit "$backend_split_result_commit" \
+    --arg result_tree "$backend_split_result_tree" \
+    --arg receipt_sha "$(architecture_sha256_file docs/architecture/HEPTA_BACKEND_GIANT_MODULE_P1_SPLIT_V1.json)" \
+    --arg verifier_sha "$(architecture_sha256_file scripts/hepta-backend-giant-module-split)" \
+    --arg ratchet_sha "$(architecture_sha256_file scripts/hepta-architecture-ratchet-v1.json)" '
+    .schema == "hepta_backend_giant_module_p1_history_anchor_v1"
+    and .status == "history_bound"
+    and .result_commit == $result_commit
+    and .result_tree == $result_tree
+    and .receipt.sha256 == $receipt_sha
+    and .split_verifier.sha256 == $verifier_sha
+    and .architecture_ratchet_sha256 == $ratchet_sha
+    and .baseline_recovery_available == true
+    and .git_history_recovery_bound == true
+    and .history_anchor_required == false
+    and .source_progress_release_blocked == true
+  ' docs/architecture/HEPTA_BACKEND_GIANT_MODULE_P1_HISTORY_ANCHOR_V1.json >/dev/null
   verify_file_max docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json 50
   o2_history_result_commit="$(jq -r '.result_commit' docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json)"
   o2_history_result_tree="$(git show -s --format=%T "$o2_history_result_commit")"

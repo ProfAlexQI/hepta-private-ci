@@ -1,0 +1,23 @@
+{
+  "schema": "hepta_backend_giant_module_p1_history_anchor_v1",
+  "status": "history_bound",
+  "source_commit": "a71b7bce5593588fe98d8a00aacc16e8d592d048",
+  "source_tree": "dd034ccdb7ed7dab2c5ed52075a36fa6cf4ec4c2",
+  "result_commit": "d277e2aa347076f356279fc97da584809bd9bcc9",
+  "result_tree": "6c422a98929808f60a8f67d41badd393a3667b9d",
+  "receipt": {
+    "path": "docs/architecture/HEPTA_BACKEND_GIANT_MODULE_P1_SPLIT_V1.json",
+    "sha256": "29cad70672f699df8e9ef8ef1bc2f3e21d804f66b963f28b4f3126c51870d707"
+  },
+  "split_verifier": {
+    "path": "scripts/hepta-backend-giant-module-split",
+    "sha256": "de1da5b3b2a4f1d8ed0c1655d0e2b0c3c8a389791329aec9792eb8e905cfa121"
+  },
+  "architecture_ratchet_sha256": "66c0c598561ea22fc2cfbe7fd97cd1ae3ddf7042f3b45b271544cf8dc3aa6f2d",
+  "baseline_recovery_available": true,
+  "git_history_recovery_bound": true,
+  "history_anchor_required": false,
+  "source_progress_release_blocked": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}
