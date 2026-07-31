@@ -383,6 +383,15 @@ verify() {
 
   verify_file_max codex-rs/hepta-native-gateway/src/native_gateway.rs 5800
   verify_file_max codex-rs/hepta-native-gateway/src/route_manifest.rs 230
+  verify_file_max codex-rs/hepta-native-gateway/src/route_definition.rs 220
+  rg -Fq 'pub(crate) struct RouteDefinition' \
+    codex-rs/hepta-native-gateway/src/route_definition.rs
+  if rg -Fq 'macro_rules!' \
+    codex-rs/hepta-native-gateway/src/native_gateway/report_registry.rs
+  then
+    echo "native report dispatch must not reintroduce a macro registry" >&2
+    return 1
+  fi
   verify_file_max \
     codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs \
     230

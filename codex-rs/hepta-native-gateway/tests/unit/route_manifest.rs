@@ -1,10 +1,15 @@
 use super::*;
+use crate::native_telegram::TELEGRAM_LIVE_READ_ENV;
 use crate::operator_mutation::OPERATOR_MUTATION_COMMIT_ENDPOINT;
+use crate::operator_mutation::OPERATOR_MUTATION_ENABLED_ENV;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
 use crate::route_registry::WATCHDOG_STATE_ENDPOINT;
 use crate::runtime_ingress::TELEGRAM_RECEIVE_ONCE_ENDPOINT;
+use crate::runtime_ingress::runtime_ingress_lifecycle_registry;
 use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENDPOINT;
+use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENV;
 use crate::telegram_authority::TELEGRAM_AUTHORITY_COMMIT_ENDPOINT;
+use crate::telegram_authority::TELEGRAM_AUTHORITY_ENABLED_ENV;
 
 #[test]
 fn manifest_is_unique_complete_and_digestible() {

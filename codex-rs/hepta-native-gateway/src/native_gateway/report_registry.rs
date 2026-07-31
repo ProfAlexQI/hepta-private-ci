@@ -1,7 +1,4 @@
-{
-macro_rules! hepta_native_report_registry {
-    ($dispatch_macro:ident) => {
-        $dispatch_macro! {
+match path {
             EVIDENCE_INDEX_ENDPOINT => {
                 return (
                     "200 OK",
@@ -2627,8 +2624,5 @@ macro_rules! hepta_native_report_registry {
                     )),
                 );
             }
-        }
-    };
-}
-hepta_native_report_registry!(dispatch_registered_native_reports);
+    _ => {}
 }

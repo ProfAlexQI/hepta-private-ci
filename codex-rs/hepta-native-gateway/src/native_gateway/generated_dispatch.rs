@@ -10,14 +10,6 @@ fn route_native_gateway_request_after_preflight(
         options.telegram_plugin_poll_ms,
     );
     if method == "GET" {
-        macro_rules! dispatch_registered_native_reports {
-            ($($pattern:pat $(if $guard:expr)? => $body:block)*) => {
-                match path {
-                    $($pattern $(if $guard)? => $body)*
-                    _ => {}
-                }
-            };
-        }
         include!("report_registry.rs");
 
         if let Some(query) = path

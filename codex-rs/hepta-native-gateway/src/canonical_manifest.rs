@@ -66,7 +66,7 @@ pub fn canonical_manifest_json() -> Result<String> {
             },
             "routes": RegistryBinding {
                 schema_version: ROUTE_EFFECT_GATE_MANIFEST_SCHEMA,
-                source: "hepta_native_gateway::route_manifest",
+                source: "hepta_native_gateway::route_definition_registry",
                 derived_entry_count: route_manifest.entry_count,
             },
             "migrated_gate_pairs": RegistryBinding {

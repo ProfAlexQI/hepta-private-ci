@@ -1,8 +1,12 @@
 use serde::Serialize;
 
-use crate::gate_spec::GateSpec;
+use crate::route_manifest::RouteDefinition;
+use crate::route_manifest::route_definition_registry;
+#[cfg(test)]
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
 use crate::route_registry::EVIDENCE_INDEX_ENDPOINT;
+#[cfg(test)]
+use crate::route_registry::TELEGRAM_LIVE_SOAK_ROUTE;
 
 #[derive(Debug, Serialize)]
 pub(super) struct EvidenceIndex {
@@ -34,8 +38,8 @@ struct EvidenceEntry {
 }
 
 pub(super) fn evidence_index_report() -> EvidenceIndex {
-    let entries = CONTROL_UI_ROUTE_SPECS
-        .iter()
+    let entries = route_definition_registry()
+        .into_iter()
         .filter_map(evidence_entry)
         .collect::<Vec<_>>();
     EvidenceIndex {
@@ -56,29 +60,17 @@ pub(super) fn evidence_index_report() -> EvidenceIndex {
     }
 }
 
-fn evidence_entry(spec: &GateSpec) -> Option<EvidenceEntry> {
-    let evidence_state = spec.receipt_state()?.as_str();
+fn evidence_entry(definition: RouteDefinition) -> Option<EvidenceEntry> {
+    let evidence_state = definition.receipt_state?.as_str();
     Some(EvidenceEntry {
-        route: spec.pattern,
-        source_command: spec.source_command,
-        capability: spec.capability,
+        route: definition.lifecycle.path_pattern,
+        source_command: definition.source_command?,
+        capability: definition.capability?,
         evidence_state,
-        effect_class: effect_class(spec),
-        side_effect_boundary: spec.side_effect_boundary,
-        legacy_compatibility_route: spec.pattern != EVIDENCE_INDEX_ENDPOINT,
+        effect_class: definition.evidence_effect_class?,
+        side_effect_boundary: definition.side_effect_boundary?,
+        legacy_compatibility_route: definition.legacy_compatibility_route,
     })
-}
-
-fn effect_class(spec: &GateSpec) -> &'static str {
-    if spec.is_read_only() {
-        "read_only"
-    } else if spec.is_dry_run() {
-        "dry_run"
-    } else if spec.requires_confirmation() {
-        "confirmation_required"
-    } else {
-        "declared_no_effect"
-    }
 }
 
 #[cfg(test)]
@@ -105,5 +97,38 @@ mod tests {
             report.legacy_compatibility_route_count,
             report.entries.len() - 1
         );
+    }
+
+    #[test]
+    fn route_definitions_bind_evidence_permissions_and_aliases_once() {
+        let definitions = route_definition_registry();
+        assert!(definitions.len() > CONTROL_UI_ROUTE_SPECS.len());
+        for spec in CONTROL_UI_ROUTE_SPECS {
+            let definition = crate::route_manifest::route_definition(spec.method, spec.pattern)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing route definition for {} {}",
+                        spec.method, spec.pattern
+                    )
+                });
+            assert_eq!(definition.source_command, Some(spec.source_command));
+            assert_eq!(definition.capability, Some(spec.capability));
+            assert_eq!(
+                definition.side_effect_boundary,
+                Some(spec.side_effect_boundary)
+            );
+            assert_eq!(definition.receipt_state, spec.receipt_state());
+        }
+        assert_eq!(
+            definitions
+                .iter()
+                .filter(|definition| definition.receipt_state.is_some())
+                .count(),
+            evidence_index_report().entry_count
+        );
+        assert!(definitions.iter().all(|definition| {
+            definition.lifecycle.path_pattern != TELEGRAM_LIVE_SOAK_ROUTE.canonical
+                || definition.aliases == TELEGRAM_LIVE_SOAK_ROUTE.aliases
+        }));
     }
 }

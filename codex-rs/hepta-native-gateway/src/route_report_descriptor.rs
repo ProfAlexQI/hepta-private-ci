@@ -1,5 +1,5 @@
+use crate::route_manifest::RouteDefinition;
 use crate::route_manifest::RouteDispatchHandler;
-use crate::route_manifest::RouteManifestEntry;
 use crate::route_manifest::RouteResponsePolicy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,7 +13,7 @@ pub(crate) enum ReportRenderer {
     NativeGatewayJson,
 }
 
-impl RouteManifestEntry {
+impl RouteDefinition {
     pub(crate) fn report_descriptor(self) -> Option<ReportDescriptor> {
         (self.lifecycle.method == "GET"
             && self.dispatch_handler == RouteDispatchHandler::NativeGateway)
