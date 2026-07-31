@@ -4,6 +4,7 @@ HEPTA_IMMUTABLE_WATCHDOG_CLOSURE_SCHEMA="hepta_immutable_watchdog_closure_v1"
 HEPTA_IMMUTABLE_WATCHDOG_ENTRYPOINT="scripts/hepta-watchdog.sh"
 HEPTA_IMMUTABLE_WATCHDOG_PRODUCT_BOUNDARY="docs/decisions/hepta-product-boundary-v1.json"
 HEPTA_IMMUTABLE_WATCHDOG_VERIFY_TOOL="scripts/hepta-immutable-release-tree"
+HEPTA_IMMUTABLE_WATCHDOG_LEGACY_L_SOURCE_COMMIT="1b3958e929b82a327abcd74c7293cdf5da806a5e"
 HEPTA_IMMUTABLE_WATCHDOG_LEGACY_K_SOURCE_COMMIT="7e9d073a7ddb68d1f78666ebbf889c73d54d254a"
 
 hepta_immutable_watchdog_closure_spec() {
@@ -42,7 +43,9 @@ hepta_immutable_watchdog_expected_paths_json() {
   local source_commit="${1:-}"
   hepta_immutable_watchdog_closure_spec \
     | cut -f1 \
-    | if [[ "$source_commit" == "$HEPTA_IMMUTABLE_WATCHDOG_LEGACY_K_SOURCE_COMMIT" ]]; then
+    | if [[ "$source_commit" == "$HEPTA_IMMUTABLE_WATCHDOG_LEGACY_L_SOURCE_COMMIT" ]]; then
+        grep -v -E '^scripts/hepta-(stage-identity-chain|release-evidence-finalize)$'
+      elif [[ "$source_commit" == "$HEPTA_IMMUTABLE_WATCHDOG_LEGACY_K_SOURCE_COMMIT" ]]; then
         grep -v -E '^scripts/hepta-(generation-pointer|off-device-archive|log-rotate|final-evidence-index)$'
       else
         cat

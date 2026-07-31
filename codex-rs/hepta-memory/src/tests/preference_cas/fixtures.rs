@@ -183,3 +183,12 @@ fn outcome_receipt(id: &str, receipt_hash: &str) -> Result<OutcomeReceipt, Contr
 fn revision_stamp(revision: u64, hash: &str) -> RevisionStamp {
     RevisionStamp::new(Revision::new(revision), ContentHash::new(hash))
 }
+fn private_tempdir() -> Result<tempfile::TempDir, Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(directory)
+}

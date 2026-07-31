@@ -37,11 +37,11 @@ architecture_sha256_file() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
 
-RUNTIME_WHOLE_TREE_MAX_LINES=413423
+RUNTIME_WHOLE_TREE_MAX_LINES=413411
 HEPTA_OWNED_RUST_WHOLE_TREE_MAX_LINES=927294
 HEPTA_FIRST_PARTY_RUST_COMPLETE_MAX_LINES=946184
-SCRIPTS_PHYSICAL_MAX_LINES=413414
-SCRIPTS_WHOLE_TREE_MAX_LINES=602765
+SCRIPTS_PHYSICAL_MAX_LINES=408307
+SCRIPTS_WHOLE_TREE_MAX_LINES=568857
 WORK_GRAPH_MAX_FILES=1
 WORK_GRAPH_MAX_EFFECTIVE_LINES="$(jq -er '.ceilings.work_graph_effective_lines' "$ARCHITECTURE_RATCHET")"
 SINGLE_EXEC_WRAPPER_MAX_COUNT="$(jq -er '.ceilings.single_exec_wrappers' "$ARCHITECTURE_RATCHET")"
@@ -867,10 +867,8 @@ verify() {
     and .deployment_performed == false
   ' docs/architecture/HEPTA_M0_RELEASE_TRUTH_2026-07-30.json >/dev/null
   jq -e \
-    --argjson scripts_physical_actual "$scripts_physical_line_count" \
-    --argjson scripts_effective_actual "$scripts_line_count" \
-    --argjson scripts_physical_limit "$SCRIPTS_PHYSICAL_MAX_LINES" \
-    --argjson scripts_effective_limit "$SCRIPTS_WHOLE_TREE_MAX_LINES" \
+    --argjson scripts_physical_limit 413414 \
+    --argjson scripts_effective_limit 602765 \
     --arg work_schema_sha "$(
       architecture_sha256_file codex-rs/hepta-runtime/codegen/workgraph-v3/source.schema.json
     )" \
