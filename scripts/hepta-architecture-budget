@@ -1169,6 +1169,24 @@ verify() {
     and .git_history_recovery_bound == false
     and .history_anchor_required == true
   ' docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_MIGRATION_V1.json >/dev/null
+  verify_file_max docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_HISTORY_ANCHOR_V1.json 40
+  wrapper_p1_result_commit="$(jq -r '.result_commit' docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_HISTORY_ANCHOR_V1.json)"
+  wrapper_p1_result_tree="$(git show -s --format=%T "$wrapper_p1_result_commit")"
+  git merge-base --is-ancestor "$wrapper_p1_result_commit" HEAD
+  jq -e \
+    --arg result_commit "$wrapper_p1_result_commit" \
+    --arg result_tree "$wrapper_p1_result_tree" \
+    --arg receipt_sha "$(architecture_sha256_file docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_MIGRATION_V1.json)" '
+    .schema == "hepta_single_exec_wrapper_p1_history_anchor_v1"
+    and .status == "history_bound"
+    and .result_commit == $result_commit
+    and .result_tree == $result_tree
+    and .receipt.sha256 == $receipt_sha
+    and .baseline_recovery_available == true
+    and .git_history_recovery_bound == true
+    and .history_anchor_required == false
+    and .source_progress_release_blocked == true
+  ' docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_HISTORY_ANCHOR_V1.json >/dev/null
   verify_file_max docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json 50
   o2_history_result_commit="$(jq -r '.result_commit' docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json)"
   o2_history_result_tree="$(git show -s --format=%T "$o2_history_result_commit")"

@@ -1,0 +1,18 @@
+{
+  "schema": "hepta_single_exec_wrapper_p1_history_anchor_v1",
+  "status": "history_bound",
+  "source_commit": "17c7b69201003d07c332b4b51aaf80b084826e3f",
+  "source_tree": "b1b1304a4ddfb867e35939e2699c90ae8fb8c556",
+  "result_commit": "e30f0e9bc9ab3c6790fe2b2b14ab61ba0cfed981",
+  "result_tree": "38a4739b41a36e28c544f277146fd369cf14c2e6",
+  "receipt": {
+    "path": "docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_MIGRATION_V1.json",
+    "sha256": "a382250d0f0bffef4b3dbc764b56b88a4719c08e12b3ff8f3090219d8683da97"
+  },
+  "baseline_recovery_available": true,
+  "git_history_recovery_bound": true,
+  "history_anchor_required": false,
+  "source_progress_release_blocked": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}
