@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,6 +26,7 @@ use codex_protocol::protocol::EventMsg;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 use futures::future::BoxFuture;
+use indexmap::IndexMap;
 use serde_json::Value;
 use tracing::warn;
 
@@ -244,16 +244,16 @@ impl CoreToolRuntime for ExposureOverride {
 }
 
 pub struct ToolRegistry {
-    tools: HashMap<ToolName, Arc<dyn CoreToolRuntime>>,
+    tools: IndexMap<ToolName, Arc<dyn CoreToolRuntime>>,
 }
 
 impl ToolRegistry {
-    fn new(tools: HashMap<ToolName, Arc<dyn CoreToolRuntime>>) -> Self {
+    fn new(tools: IndexMap<ToolName, Arc<dyn CoreToolRuntime>>) -> Self {
         Self { tools }
     }
 
     pub(crate) fn from_tools(tools: impl IntoIterator<Item = Arc<dyn CoreToolRuntime>>) -> Self {
-        let mut tools_by_name = HashMap::new();
+        let mut tools_by_name = IndexMap::new();
         for tool in tools {
             let name = tool.tool_name();
             if tools_by_name.contains_key(&name) {
@@ -267,7 +267,7 @@ impl ToolRegistry {
 
     #[cfg(test)]
     pub(crate) fn empty_for_test() -> Self {
-        Self::new(HashMap::new())
+        Self::new(IndexMap::new())
     }
 
     #[cfg(test)]
@@ -276,7 +276,10 @@ impl ToolRegistry {
         T: CoreToolRuntime + 'static,
     {
         let name = handler.tool_name();
-        Self::new(HashMap::from([(name, handler as Arc<dyn CoreToolRuntime>)]))
+        Self::new(IndexMap::from([(
+            name,
+            handler as Arc<dyn CoreToolRuntime>,
+        )]))
     }
 
     fn tool(&self, name: &ToolName) -> Option<Arc<dyn CoreToolRuntime>> {

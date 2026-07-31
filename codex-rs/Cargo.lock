@@ -2068,7 +2068,7 @@ dependencies = [
  "opentelemetry_sdk",
  "pretty_assertions",
  "reqwest 0.12.28",
- "rmcp 1.8.0",
+ "rmcp",
  "serde",
  "serde_json",
  "serial_test",
@@ -2152,7 +2152,7 @@ dependencies = [
  "codex-utils-cargo-bin",
  "inventory",
  "pretty_assertions",
- "rmcp 1.8.0",
+ "rmcp",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -2704,7 +2704,7 @@ dependencies = [
  "rand 0.9.3",
  "regex-lite",
  "reqwest 0.12.28",
- "rmcp 1.8.0",
+ "rmcp",
  "serde",
  "serde_json",
  "serial_test",
@@ -3305,7 +3305,7 @@ dependencies = [
  "hepta-mcp-pagination",
  "pretty_assertions",
  "regex-lite",
- "rmcp 1.8.0",
+ "rmcp",
  "serde",
  "serde_json",
  "sha1 0.10.6",
@@ -3338,7 +3338,7 @@ dependencies = [
  "mcp_test_support",
  "os_info",
  "pretty_assertions",
- "rmcp 1.8.0",
+ "rmcp",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -3380,7 +3380,7 @@ dependencies = [
  "codex-utils-absolute-path",
  "codex-utils-output-truncation",
  "pretty_assertions",
- "rmcp 1.8.0",
+ "rmcp",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -3716,7 +3716,7 @@ dependencies = [
  "oauth2",
  "pretty_assertions",
  "reqwest 0.13.4",
- "rmcp 1.8.0",
+ "rmcp",
  "serde",
  "serde_json",
  "serial_test",
@@ -3963,7 +3963,7 @@ dependencies = [
  "codex-utils-pty",
  "codex-utils-string",
  "pretty_assertions",
- "rmcp 1.8.0",
+ "rmcp",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -4047,7 +4047,7 @@ dependencies = [
  "ratatui-macros",
  "regex-lite",
  "reqwest 0.12.28",
- "rmcp 1.8.0",
+ "rmcp",
  "serde",
  "serde_json",
  "serial_test",
@@ -7645,17 +7645,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hepta-mcp-2026-compat"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "hepta-mcp-pagination",
- "rmcp 3.0.0-beta.3",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "hepta-mcp-pagination"
 version = "0.0.0"
 dependencies = [
@@ -9289,7 +9278,7 @@ dependencies = [
  "core_test_support",
  "os_info",
  "pretty_assertions",
- "rmcp 1.8.0",
+ "rmcp",
  "serde",
  "serde_json",
  "shlex",
@@ -12035,25 +12024,6 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
-]
-
-[[package]]
-name = "rmcp"
-version = "3.0.0-beta.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13a8472324b3d6c74f092cc5d07b2707b128196b020ed7c3c2d52bede542680"
-dependencies = [
- "async-trait",
- "chrono",
- "futures",
- "pin-project-lite",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tracing",
 ]
 
 [[package]]

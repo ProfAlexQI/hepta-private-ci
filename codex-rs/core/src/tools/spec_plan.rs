@@ -571,6 +571,14 @@ fn append_tool_search_executor(
         return;
     }
 
+    let host_tool_name = ToolName::plain(TOOL_SEARCH_TOOL_NAME);
+    executors.retain(|executor| {
+        if executor.tool_name() != host_tool_name {
+            return true;
+        }
+        warn!("Skipping external `{TOOL_SEARCH_TOOL_NAME}` tool: the name is reserved by the host");
+        false
+    });
     executors.push(Arc::new(ToolSearchHandler::new(search_infos)));
 }
 

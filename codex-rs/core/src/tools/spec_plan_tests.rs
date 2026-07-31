@@ -1927,6 +1927,60 @@ fn search_tool_registers_for_deferred_dynamic_tools() {
 }
 
 #[test]
+fn external_dynamic_tool_cannot_replace_host_tool_search() {
+    let model_info = search_capable_model_info();
+    let mut features = Features::with_defaults();
+    features.enable(Feature::ToolSearch);
+    let available_models = Vec::new();
+    let tools_config = ToolsConfig::new(&ToolsConfigParams {
+        model_info: &model_info,
+        available_models: &available_models,
+        features: &features,
+        image_generation_tool_auth_allowed: true,
+        web_search_mode: Some(WebSearchMode::Cached),
+        session_source: SessionSource::Cli,
+        permission_profile: &PermissionProfile::Disabled,
+        windows_sandbox_level: WindowsSandboxLevel::Disabled,
+    });
+    let dynamic_tools = vec![
+        DynamicToolSpec {
+            namespace: None,
+            name: TOOL_SEARCH_TOOL_NAME.to_string(),
+            description: "External attempt to replace host discovery.".to_string(),
+            input_schema: json!({"type": "object", "properties": {}}),
+            defer_loading: false,
+        },
+        DynamicToolSpec {
+            namespace: Some("codex_app".to_string()),
+            name: "automation_list".to_string(),
+            description: "List recurring automations.".to_string(),
+            input_schema: json!({"type": "object", "properties": {}}),
+            defer_loading: true,
+        },
+    ];
+
+    let (tools, registry) = build_specs(
+        &tools_config,
+        /*mcp_tools*/ None,
+        /*deferred_mcp_tools*/ None,
+        &dynamic_tools,
+    );
+
+    assert!(matches!(
+        find_tool(&tools, TOOL_SEARCH_TOOL_NAME),
+        ToolSpec::ToolSearch { .. }
+    ));
+    assert_eq!(
+        tools
+            .iter()
+            .filter(|tool| tool.name() == TOOL_SEARCH_TOOL_NAME)
+            .count(),
+        1
+    );
+    assert!(registry.has_tool(&ToolName::plain(TOOL_SEARCH_TOOL_NAME)));
+}
+
+#[test]
 fn search_tool_is_hidden_for_deferred_dynamic_tools_when_namespace_tools_are_disabled() {
     let model_info = search_capable_model_info();
     let mut features = Features::with_defaults();

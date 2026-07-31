@@ -64,8 +64,7 @@
     "conditional": {
       "policy": "Built and budgeted for selective compatibility intake, but not active-linked into the governed release until a real caller and explicit boundary review exist.",
       "roots": [
-        "codex-rs/exec-server-protocol",
-        "codex-rs/hepta-mcp-2026-compat"
+        "codex-rs/exec-server-protocol"
       ],
       "invariants": [
         "conditional roots do not grant provider, tool-runner, MCP, or remote-exec authority",

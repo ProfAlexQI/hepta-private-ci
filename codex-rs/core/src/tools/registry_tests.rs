@@ -35,7 +35,7 @@ fn handler_looks_up_namespaced_aliases_explicitly() {
     let namespaced_handler = Arc::new(TestHandler {
         tool_name: namespaced_name.clone(),
     }) as Arc<dyn CoreToolRuntime>;
-    let registry = ToolRegistry::new(HashMap::from([
+    let registry = ToolRegistry::new(IndexMap::from([
         (plain_name.clone(), Arc::clone(&plain_handler)),
         (namespaced_name.clone(), Arc::clone(&namespaced_handler)),
     ]));
