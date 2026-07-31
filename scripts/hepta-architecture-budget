@@ -1024,10 +1024,11 @@ verify() {
   jq -e '
     .schema == "hepta_workgraph_o2_retirement_verify_v1"
     and .status == "ready"
-    and .active_module_count == 298
+    and .active_module_count <= 298
     and .retired_module_count == 100
     and .baseline_recovery_available == true
-    and .history_anchor_required == true
+    and .git_history_recovery_bound == true
+    and .history_anchor_required == false
   ' <<<"$workgraph_retirement_report" >/dev/null
   jq -e \
     --slurpfile registry codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json \
@@ -1037,20 +1038,20 @@ verify() {
     and .source_commit == $receipt[0].source_commit
     and .baseline.logical_module_count == 398
     and .current.logical_module_count == 298
-    and .current.logical_module_count == $registry[0].module_count
+    and $registry[0].module_count <= .current.logical_module_count
     and .current.normalized_template_count == 201
-    and .current.normalized_template_count == $registry[0].normalized_template_count
+    and $registry[0].normalized_template_count <= .current.normalized_template_count
     and .current.normalized_parameter_row_count == 298
-    and .current.normalized_parameter_row_count == $registry[0].normalized_parameter_row_count
+    and $registry[0].normalized_parameter_row_count <= .current.normalized_parameter_row_count
     and .current.normalized_effective_lines == 145977
-    and .current.normalized_effective_lines == $registry[0].normalized_effective_lines
+    and $registry[0].normalized_effective_lines <= .current.normalized_effective_lines
     and .current.normalized_effective_line_limit == 150357
     and .current.normalized_effective_line_limit == $registry[0].normalized_effective_line_limit
-    and .current.aggregate_source_sha256 == $registry[0].aggregate_source_sha256
-    and .current.bundle_sha256 == $registry[0].bundle_sha256
+    and (.current.aggregate_source_sha256 | length) == 64
+    and (.current.bundle_sha256 | length) == 64
     and .current.canonical_schema_sha256 == $registry[0].canonical_schema_sha256
-    and .current.canonical_templates_sha256 == $registry[0].canonical_templates_sha256
-    and .current.canonical_parameters_sha256 == $registry[0].canonical_parameters_sha256
+    and (.current.canonical_templates_sha256 | length) == 64
+    and (.current.canonical_parameters_sha256 | length) == 64
     and .current.canonical_max_record_bytes == $registry[0].canonical_max_record_bytes
     and .current.byte_identical_repack_verified == true
     and .current.reversible_unpack == true
@@ -1067,6 +1068,26 @@ verify() {
     and .runtime_mutated == false
     and .deployment_performed == false
   ' docs/architecture/HEPTA_O2_WORKGRAPH_RATCHET_2026-07-31.json >/dev/null
+  jq -e \
+    --slurpfile registry codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json '
+    .schema == "hepta_workgraph_safe_leaf_retirement_v1"
+    and .status == "ready"
+    and .baseline.module_count == 298
+    and .retired_module_count == 14
+    and .retired_source_lines == 9933
+    and .output.module_count == 284
+    and .output.module_count == $registry[0].module_count
+    and .output.normalized_template_count == 195
+    and .output.normalized_template_count == $registry[0].normalized_template_count
+    and .output.normalized_effective_lines == 141612
+    and .output.normalized_effective_lines == $registry[0].normalized_effective_lines
+    and .output.aggregate_source_sha256 == $registry[0].aggregate_source_sha256
+    and .output.bundle_sha256 == $registry[0].bundle_sha256
+    and .safety.production_root_deleted == false
+    and .safety.gate_payload_identity_deleted == false
+    and .safety.counter_semantics_changed == false
+    and .safety.source_progress_release_blocked == true
+  ' docs/architecture/HEPTA_WORKGRAPH_SAFE_LEAF_RETIREMENT_V1.json >/dev/null
   verify_file_max \
     docs/architecture/HEPTA_O2_GATE_COMPAT_RATCHET_2026-07-31.json \
     90

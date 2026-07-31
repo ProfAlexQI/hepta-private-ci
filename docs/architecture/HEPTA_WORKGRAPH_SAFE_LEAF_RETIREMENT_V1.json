@@ -1,0 +1,142 @@
+{
+  "schema": "hepta_workgraph_safe_leaf_retirement_v1",
+  "status": "ready",
+  "input": {
+    "commit": "08f9507978066c615c289da21c0c4e941dc94424",
+    "tree": "5680f2972182a0d6dfaf24699ed6053b9cfe5bce"
+  },
+  "result": {
+    "commit": null,
+    "tree": null,
+    "history_anchor_required": true,
+    "git_history_recovery_bound": false
+  },
+  "baseline": {
+    "module_count": 298,
+    "bundle_sha256": "ab7c8fe105214b9e0b742d2346bd9ae687bd4208bc9481a9761a612b70d1980d",
+    "gate_payload_sha256": "8de2101c9b10e3eb3870b413e79de4c44f8dea7d51812b23b4e22df33679401b",
+    "gate_spec_sha256": "25e987bb2f8691c591b505b460f75f637c513689d7638f60ae4b028f6e69e311",
+    "feasibility_receipt_sha256": "bf2b51ee0dc916660b6f752a852406cc60b78671d23d19803e10e7acafdacb0e",
+    "candidate_records_sha256": "3412533019a114272ecabef656b1d3ca113f36fb97d68d84130390c9842a4937"
+  },
+  "selection": "preaudited_gate_invisible_dependency_closed_safe_leaves",
+  "retired_module_count": 14,
+  "retired_source_lines": 9933,
+  "retired_modules": [
+    {
+      "name": "work_graph_terminal_task_result_wrapper_shadow_activation_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_drift_budget_preview",
+      "sha256": "90cbf8925f3c9235fa366752c685bfbb9b09373639692d25bc815f9e33b2d413",
+      "lines": 680,
+      "template_id": 156
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_decuple_blocker_drift_budget_preview",
+      "sha256": "8eab47ae5079c457e11e0badf2504c2a18362c2de95479a7a85c260eb1d8ecb2",
+      "lines": 629,
+      "template_id": 157
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_decuple_blocker_preview",
+      "sha256": "9f0943e2390814e72de63354b622b15022c38aa1d53025aeeb995e3cce9a9f65",
+      "lines": 808,
+      "template_id": 158
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_decuple_blocker_promotion_precondition_preview",
+      "sha256": "8c6e88236be749037a153221340db82c63cfc8b303c34020d9d8d22b61dbc981",
+      "lines": 640,
+      "template_id": 159
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_decuple_blocker_readback_preview",
+      "sha256": "bf35d2876900edc7cd66e7d4e6f887a5c3b1e81b0ea692ffca83bee70626b85c",
+      "lines": 794,
+      "template_id": 160
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer11_blocker_drift_budget_preview",
+      "sha256": "0ebdfe115a7181313312fac60b7b3750ea10542055fff546e4ca595fa8ba8947",
+      "lines": 629,
+      "template_id": 157
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer11_blocker_preview",
+      "sha256": "326f0612c53c7e080f4a67418d634e5d74bd9268ec17b427c137347fa8b4f26e",
+      "lines": 808,
+      "template_id": 158
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer11_blocker_promotion_precondition_preview",
+      "sha256": "62ad8047805209d8299946da663a723c9c46e3f62d259407a4332e98ec56bfee",
+      "lines": 640,
+      "template_id": 159
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer11_blocker_readback_preview",
+      "sha256": "06a86cca2562fadfc31e098e58599c41cac5136ba5d9d7adfb8e3b235a1722f3",
+      "lines": 794,
+      "template_id": 160
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer12_blocker_drift_budget_preview",
+      "sha256": "22c90ccb39d51203ec21633dca4426c89514794ede94b8f0af6e4bb621364388",
+      "lines": 629,
+      "template_id": 157
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer12_blocker_preview",
+      "sha256": "640432ef49d877a5f25e1e319b678d779bca537afec9e625958e37a0897f9dd9",
+      "lines": 808,
+      "template_id": 158
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer12_blocker_promotion_precondition_preview",
+      "sha256": "c4e21f1cfae06645a7a3d0c7e35e9ecddd329fa1db4346bab6d96907dbb4bb55",
+      "lines": 640,
+      "template_id": 159
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_layer12_blocker_readback_preview",
+      "sha256": "a3dbb3ee7df913cb393b412f36d5be0c718385525e0a69f4a267572c214e8c9a",
+      "lines": 794,
+      "template_id": 161
+    },
+    {
+      "name": "work_graph_ttrw_shadow_activation_nonuple_blocker_promotion_precondition_preview",
+      "sha256": "dc1dac21dbde1febbbc4bbbc6cc09eda61c0c4db59cf466960cfcedfd7dd483b",
+      "lines": 640,
+      "template_id": 159
+    }
+  ],
+  "output": {
+    "module_count": 284,
+    "normalized_template_count": 195,
+    "normalized_effective_lines": 141612,
+    "aggregate_source_sha256": "d61e8c442587972fd2e4b1637ff66ac58861ab849c0efafa049fdcb96441a0c1",
+    "bundle_sha256": "43151f09cfe65bf944d19677df66bc329d304c327f344b830e4d3d331c67a216",
+    "parameters_sha256": "9706d307875583cf9b6e00d4897c9dfca62a4d45e3ffc8e5d30d887d89e870f5",
+    "templates_sha256": "a6aef8df35d542e5d137f69fa03086ee0fe3b9474f41bb9642b9586a59bea120",
+    "exports_workgraph_sha256": "3121d785c5d186563f30c54720f06d5f4faaec0ed526383a4c20ecf9d122e2b1"
+  },
+  "safety": {
+    "production_root_deleted": false,
+    "gate_payload_identity_deleted": false,
+    "counter_semantics_changed": false,
+    "runtime_mutated": false,
+    "deployment_performed": false,
+    "release_complete": false,
+    "source_progress_release_blocked": true
+  },
+  "validation": {
+    "workgraph_bundle_verify": "passed_284_195_141612",
+    "o2_monotonic_retirement_verify": "passed",
+    "gate_payload_bundle_verify": "passed_952",
+    "runtime_crate_root_source_set": "passed",
+    "cargo_check": "passed_runtime_cli_gateway",
+    "runtime_lib_tests": "2282_passed_2_flaky_passed_on_exact_serial_rerun",
+    "cli_workgraph_tests": "3_passed",
+    "architecture_budget": "passed",
+    "git_diff_check": "passed"
+  },
+  "aggregate_sha256": "b2f20dd2f6b08a0ee7775fc8be172fb2e99fcac64d717a04881e0e5aab5d8d74"
+}
