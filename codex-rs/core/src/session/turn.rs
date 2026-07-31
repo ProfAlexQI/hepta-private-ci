@@ -1408,7 +1408,7 @@ async fn built_tools_with_recommendations(
                 .effective_apps()
                 .into_iter()
                 .map(|connector_id| connector_id.0),
-            accessible_connectors.clone().unwrap_or_default(),
+            accessible_connectors.unwrap_or_default(),
         );
         Some(connectors::with_app_enabled_state(
             connectors,

@@ -573,7 +573,8 @@ impl PluginMutationJournal {
         let _lock = journal_store
             .lock()
             .map_err(|error| store_error("lock plugin mutation journal", error))?;
-        let result = (|| {
+
+        (|| {
             let version = journal_version(&journal_store)?;
             let key = load_or_create_key(
                 &key_store,
@@ -589,8 +590,7 @@ impl PluginMutationJournal {
                 publish_anchor(&anchor_store, &loaded.state, &key)?;
             }
             mutation_result
-        })();
-        result
+        })()
     }
 }
 

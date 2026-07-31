@@ -1783,7 +1783,7 @@ async fn explicit_token_budget_setting_wins_even_when_equal_to_builtin_default()
     assert!(config.has_explicit_token_budget_settings());
     assert_eq!(
         config.resolve_token_budget_with_model_defaults(Some(&model_owned_token_budget_defaults())),
-        config.token_budget.clone()
+        config.token_budget
     );
     assert_eq!(
         config
@@ -1820,7 +1820,7 @@ reminder_threshold_tokens = 2048
         .await?;
 
     assert_eq!(
-        config.token_budget.clone(),
+        config.token_budget,
         Some(TokenBudgetConfig {
             reminder_threshold_tokens: Some(2_048),
             reminder_message_template: DEFAULT_TOKEN_BUDGET_REMINDER_MESSAGE_TEMPLATE.to_string(),
@@ -1851,7 +1851,7 @@ async fn invalid_model_owned_token_budget_defaults_are_ignored() -> std::io::Res
 
     assert_eq!(
         config.resolve_token_budget_with_model_defaults(Some(&invalid_defaults)),
-        config.token_budget.clone()
+        config.token_budget
     );
 
     Ok(())

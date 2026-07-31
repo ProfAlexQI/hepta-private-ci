@@ -6486,6 +6486,7 @@ mod tests {
                 tool: "tool".into(),
                 arguments: json!({"arg": "value"}),
                 mcp_app_resource_uri: Some("app://connector".into()),
+                read_only_hint: None,
                 status: McpToolCallStatus::InProgress,
                 result: None,
                 error: None,
@@ -6594,6 +6595,7 @@ mod tests {
                 tool: "tool".into(),
                 arguments: json!({"arg": "value"}),
                 mcp_app_resource_uri: Some("app://connector".into()),
+                read_only_hint: None,
                 status: McpToolCallStatus::Completed,
                 result: Some(CallToolResult {
                     content: vec![json!({"type": "text", "text": "ok"})],

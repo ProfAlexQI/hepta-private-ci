@@ -1322,10 +1322,13 @@ pub(super) fn plugins_test_summary(
             path: plugins_test_absolute_path(&format!("plugins/{name}")),
         },
         installed,
+        installed_at: None,
         enabled,
         install_policy,
         auth_policy: PluginAuthPolicy::OnInstall,
         availability: PluginAvailability::Available,
+        disabled_reason: None,
+        eligible_plan_types: None,
         interface: Some(plugins_test_interface(
             display_name,
             description,
