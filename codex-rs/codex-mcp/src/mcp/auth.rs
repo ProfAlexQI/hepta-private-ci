@@ -266,15 +266,21 @@ async fn compute_auth_status(
             env_http_headers,
         } => {
             let http_client = runtime_environment.http_client_for_server(config)?;
+            let oauth_credential_name = config.oauth_credential_name(server_name);
+            let discovery_timeout = if config.is_local_environment() {
+                OAuthDiscoveryTimeout::LOCAL
+            } else {
+                OAuthDiscoveryTimeout::Requested
+            };
             determine_streamable_http_auth_status_with_http_client(
-                server_name,
+                oauth_credential_name.as_ref(),
                 url,
                 bearer_token_env_var.as_deref(),
                 http_headers.clone(),
                 env_http_headers.clone(),
                 store_mode,
                 http_client,
-                OAuthDiscoveryTimeout::LOCAL,
+                discovery_timeout,
             )
             .boxed()
             .await

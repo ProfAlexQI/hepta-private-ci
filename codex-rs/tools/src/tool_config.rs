@@ -148,6 +148,7 @@ pub struct ToolsConfigParams<'a> {
 pub enum ToolEnvironmentMode {
     None,
     Single,
+    SingleRemote,
     Multiple,
 }
 
@@ -162,6 +163,10 @@ impl ToolEnvironmentMode {
 
     pub fn has_environment(self) -> bool {
         !matches!(self, Self::None)
+    }
+
+    pub fn supports_legacy_shell_command(self) -> bool {
+        matches!(self, Self::Single)
     }
 }
 

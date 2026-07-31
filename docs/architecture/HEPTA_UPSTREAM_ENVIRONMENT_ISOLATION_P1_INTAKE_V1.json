@@ -1,0 +1,55 @@
+{
+  "schema": "hepta.upstream-environment-isolation-p1-intake.v1",
+  "status": "source_complete_history_pending",
+  "strategy": "read-only upstream comparison followed by narrow semantic patches; no whole-tree merge, rebase, or cherry-pick",
+  "input": {
+    "commit": "7167dbfbec6c582209e3cf326cc4a49a5d28eed4",
+    "tree": "11c9503944748dbd53a24ccfd6ce5f4ccd591500"
+  },
+  "upstream": [
+    {
+      "commit": "164b3bfeabdbc8e33c7320437e7cd875f93a534e",
+      "semantic": "isolate MCP OAuth credentials by execution environment"
+    },
+    {
+      "commit": "bf4d3f51ea70ce70ab7fabce7a66f328fef49e57",
+      "semantic": "restrict hosted MCP session credentials to local environments"
+    },
+    {
+      "commit": "ef293f7ac9d756f793f3e952a790f9bec16a6eeb",
+      "semantic": "expose legacy shell_command only for one local environment"
+    }
+  ],
+  "adaptation": {
+    "environment_contract": "Hepta experimental_environment values are treated as local only when absent or exactly local; every other selector is executor-owned",
+    "oauth_key_contract": "local credentials retain legacy names unless a reserved prefix requires local escaping; executor credentials use an environment-and-server encoded namespace",
+    "fallback_store_contract": "legacy host entries remain readable only by host lookups; executor lookups require an executor-owned marker and exact scoped identity",
+    "host_auth_contract": "Codex Apps session auth is never injected into executor-owned MCP transports",
+    "shell_contract": "legacy shell_command is registered only for exactly one local environment; remote and multi-environment turns must use environment-aware execution",
+    "reserved_name_contract": "an unnamespaced dynamic tool cannot reclaim the host shell_command name"
+  },
+  "authority_boundaries": [
+    "no change to Hepta authenticated preference authority",
+    "no change to approval or permission authority",
+    "no change to mutation journal or release gates",
+    "no credential migration across host and executor ownership",
+    "no deployment or live configuration mutation"
+  ],
+  "verification": [
+    "cargo test -p codex-config oauth_credential_names: 2 passed",
+    "cargo test -p codex-rmcp-client fallback_file_isolates_executor_credentials_from_host_credentials: passed",
+    "cargo test -p codex-rmcp-client local_reserved_names_keep_legacy_host_store_keys: passed",
+    "cargo test -p codex-core legacy_shell_command_requires_one_local_environment: passed",
+    "cargo test -p codex-core external_dynamic_tools_cannot_reclaim_reserved_shell_command: passed",
+    "cargo check -p codex-mcp -p codex-cli -p codex-core: passed with pre-existing dead-code warnings",
+    "cargo check -p codex-tools -p codex-core: passed with pre-existing dead-code warnings",
+    "scoped just fix attempted; codex-tools test compilation is blocked by pre-existing construction of a non-exhaustive rmcp Tool"
+  ],
+  "result": {
+    "commit": null,
+    "tree": null,
+    "history_recovery_bound": false
+  },
+  "runtime_changed": false,
+  "deployment_performed": false
+}

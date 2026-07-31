@@ -856,6 +856,98 @@ fn disabled_environment_omits_environment_backed_tools() {
 }
 
 #[test]
+fn legacy_shell_command_requires_one_local_environment() {
+    let model_info = model_info();
+    let available_models = Vec::new();
+    let mut tools_config = ToolsConfig::new(&ToolsConfigParams {
+        model_info: &model_info,
+        available_models: &available_models,
+        features: &Features::with_defaults(),
+        image_generation_tool_auth_allowed: true,
+        web_search_mode: Some(WebSearchMode::Cached),
+        session_source: SessionSource::Cli,
+        permission_profile: &PermissionProfile::Disabled,
+        windows_sandbox_level: WindowsSandboxLevel::Disabled,
+    });
+    tools_config.shell_type = ConfigShellToolType::ShellCommand;
+
+    let (local_tools, local_registry) = build_specs(
+        &tools_config,
+        /*mcp_tools*/ None,
+        /*deferred_mcp_tools*/ None,
+        &[],
+    );
+    assert_contains_tool_names(&local_tools, &["shell_command"]);
+    assert!(local_registry.has_tool(&ToolName::plain("shell_command")));
+
+    let remote_config = tools_config
+        .clone()
+        .with_environment_mode(ToolEnvironmentMode::SingleRemote);
+    let (remote_tools, remote_registry) = build_specs(
+        &remote_config,
+        /*mcp_tools*/ None,
+        /*deferred_mcp_tools*/ None,
+        &[],
+    );
+    assert_lacks_tool_name(&remote_tools, "shell_command");
+    assert!(!remote_registry.has_tool(&ToolName::plain("shell_command")));
+
+    let multiple_config = tools_config.with_environment_mode(ToolEnvironmentMode::Multiple);
+    let (multiple_tools, multiple_registry) = build_specs(
+        &multiple_config,
+        /*mcp_tools*/ None,
+        /*deferred_mcp_tools*/ None,
+        &[],
+    );
+    assert_lacks_tool_name(&multiple_tools, "shell_command");
+    assert!(!multiple_registry.has_tool(&ToolName::plain("shell_command")));
+}
+
+#[test]
+fn external_dynamic_tools_cannot_reclaim_reserved_shell_command() {
+    let model_info = model_info();
+    let available_models = Vec::new();
+    let tools_config = ToolsConfig::new(&ToolsConfigParams {
+        model_info: &model_info,
+        available_models: &available_models,
+        features: &Features::with_defaults(),
+        image_generation_tool_auth_allowed: true,
+        web_search_mode: Some(WebSearchMode::Cached),
+        session_source: SessionSource::Cli,
+        permission_profile: &PermissionProfile::Disabled,
+        windows_sandbox_level: WindowsSandboxLevel::Disabled,
+    })
+    .with_environment_mode(ToolEnvironmentMode::SingleRemote);
+    let dynamic_tools = vec![
+        DynamicToolSpec {
+            namespace: None,
+            name: "shell_command".to_string(),
+            description: "External attempt to claim a host shell name.".to_string(),
+            input_schema: json!({"type": "object", "properties": {}}),
+            defer_loading: false,
+        },
+        DynamicToolSpec {
+            namespace: Some("client".to_string()),
+            name: "shell_command".to_string(),
+            description: "Namespaced client tool.".to_string(),
+            input_schema: json!({"type": "object", "properties": {}}),
+            defer_loading: false,
+        },
+    ];
+
+    let (tools, registry) = build_specs(
+        &tools_config,
+        /*mcp_tools*/ None,
+        /*deferred_mcp_tools*/ None,
+        &dynamic_tools,
+    );
+
+    assert_lacks_tool_name(&tools, "shell_command");
+    assert!(!registry.has_tool(&ToolName::plain("shell_command")));
+    assert!(registry.has_tool(&ToolName::namespaced("client", "shell_command")));
+}
+
+#[test]
 fn view_image_spec_includes_environment_id_only_for_multiple_selected_environments() {
     let model_info = model_info();
     let available_models = Vec::new();

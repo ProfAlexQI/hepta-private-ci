@@ -237,14 +237,15 @@ impl McpConnectionManager {
                     });
             let runtime_auth_provider = if server_name == CODEX_APPS_MCP_SERVER_NAME
                 && !uses_env_bearer_token
-                && server
-                    .configured_config()
-                    .is_some_and(|config| match &config.transport {
-                        McpServerTransportConfig::StreamableHttp { url, .. } => {
-                            codex_apps_mcp_url_accepts_chatgpt_session_auth(url)
+                && server.configured_config().is_some_and(|config| {
+                    config.is_local_environment()
+                        && match &config.transport {
+                            McpServerTransportConfig::StreamableHttp { url, .. } => {
+                                codex_apps_mcp_url_accepts_chatgpt_session_auth(url)
+                            }
+                            McpServerTransportConfig::Stdio { .. } => false,
                         }
-                        McpServerTransportConfig::Stdio { .. } => false,
-                    }) {
+                }) {
                 codex_apps_auth_provider.clone()
             } else {
                 None

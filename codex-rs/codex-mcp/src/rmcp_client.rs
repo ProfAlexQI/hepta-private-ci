@@ -565,6 +565,7 @@ async fn make_rmcp_client(
     let runtime_http_client = runtime_environment
         .http_client_for_server(&config)
         .map_err(StartupOutcomeError::from)?;
+    let oauth_credential_name = config.oauth_credential_name(server_name);
     let McpServerConfig {
         transport,
         experimental_environment,
@@ -632,7 +633,7 @@ async fn make_rmcp_client(
                     Err(error) => return Err(error.into()),
                 };
             RmcpClient::new_streamable_http_client(
-                server_name,
+                oauth_credential_name.as_ref(),
                 &url,
                 resolved_bearer_token,
                 http_headers,

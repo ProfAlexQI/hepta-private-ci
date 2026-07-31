@@ -408,6 +408,9 @@ struct FallbackTokenEntry {
     refresh_token: Option<String>,
     #[serde(default)]
     scopes: Vec<String>,
+    // Legacy host entries omit this marker, so executor lookups fail closed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    executor_owned: bool,
 }
 
 fn load_oauth_tokens_from_file(server_name: &str, url: &str) -> Result<Option<StoredOAuthTokens>> {
@@ -417,9 +420,22 @@ fn load_oauth_tokens_from_file(server_name: &str, url: &str) -> Result<Option<St
 
     let key = compute_store_key(server_name, url)?;
 
-    for entry in store.values() {
-        let entry_key = compute_store_key(&entry.server_name, &entry.server_url)?;
-        if entry_key != key {
+    let local_server_name = server_name.strip_prefix("local:").unwrap_or(server_name);
+
+    for (stored_key, entry) in &store {
+        let matches_credential = if server_name.starts_with("executor:") {
+            stored_key == &key
+                && entry.executor_owned
+                && entry.server_name == server_name
+                && entry.server_url == url
+        } else if entry.executor_owned {
+            false
+        } else {
+            entry.server_url == url
+                && (entry.server_name == local_server_name
+                    || (stored_key == &key && entry.server_name == server_name))
+        };
+        if !matches_credential {
             continue;
         }
 
@@ -456,6 +472,10 @@ fn load_oauth_tokens_from_file(server_name: &str, url: &str) -> Result<Option<St
 fn save_oauth_tokens_to_file(tokens: &StoredOAuthTokens) -> Result<()> {
     let key = compute_store_key(&tokens.server_name, &tokens.url)?;
     let mut store = read_fallback_file()?.unwrap_or_default();
+    let executor_owned = tokens.server_name.starts_with("executor:");
+    if executor_owned && store.get(&key).is_some_and(|entry| !entry.executor_owned) {
+        anyhow::bail!("executor OAuth credential key conflicts with a host-owned credential");
+    }
 
     let token_response = &tokens.token_response.0;
     let expires_at = tokens
@@ -476,6 +496,7 @@ fn save_oauth_tokens_to_file(tokens: &StoredOAuthTokens) -> Result<()> {
         expires_at,
         refresh_token,
         scopes,
+        executor_owned,
     };
 
     store.insert(key, entry);
@@ -487,6 +508,13 @@ fn delete_oauth_tokens_from_file(key: &str) -> Result<bool> {
         Some(store) => store,
         None => return Ok(false),
     };
+
+    if key.starts_with("executor:")
+        && !key.contains('|')
+        && store.get(key).is_some_and(|entry| !entry.executor_owned)
+    {
+        anyhow::bail!("executor OAuth credential key conflicts with a host-owned credential");
+    }
 
     let removed = store.remove(key).is_some();
 
@@ -538,6 +566,8 @@ fn token_needs_refresh(expires_at: Option<u64>) -> bool {
 }
 
 fn compute_store_key(server_name: &str, server_url: &str) -> Result<String> {
+    let executor_owned = server_name.starts_with("executor:");
+    let server_name = server_name.strip_prefix("local:").unwrap_or(server_name);
     let mut payload = JsonMap::new();
     payload.insert(
         "type".to_string(),
@@ -547,7 +577,8 @@ fn compute_store_key(server_name: &str, server_url: &str) -> Result<String> {
     payload.insert("headers".to_string(), Value::Object(JsonMap::new()));
 
     let truncated = sha_256_prefix(&Value::Object(payload))?;
-    Ok(format!("{server_name}|{truncated}"))
+    let separator = if executor_owned { ':' } else { '|' };
+    Ok(format!("{server_name}{separator}{truncated}"))
 }
 
 fn fallback_file_path() -> Result<PathBuf> {
@@ -863,6 +894,49 @@ mod tests {
         );
         assert!(result.is_err());
         assert!(super::fallback_file_path().unwrap().exists());
+        Ok(())
+    }
+
+    #[test]
+    fn fallback_file_isolates_executor_credentials_from_host_credentials() -> Result<()> {
+        let _env = TempHeptaHome::new();
+        let host_tokens = sample_tokens();
+        super::save_oauth_tokens_to_file(&host_tokens)?;
+
+        let executor_name = "executor:cmVtb3Rl:dGVzdC1zZXJ2ZXI";
+        assert!(
+            super::load_oauth_tokens_from_file(executor_name, &host_tokens.url)?.is_none(),
+            "executor lookup must not reuse host credentials"
+        );
+
+        let mut executor_tokens = host_tokens.clone();
+        executor_tokens.server_name = executor_name.to_string();
+        super::save_oauth_tokens_to_file(&executor_tokens)?;
+
+        assert_eq!(
+            super::load_oauth_tokens_from_file(&host_tokens.server_name, &host_tokens.url)?
+                .expect("host credentials should remain available")
+                .server_name,
+            host_tokens.server_name
+        );
+        assert_eq!(
+            super::load_oauth_tokens_from_file(executor_name, &host_tokens.url)?
+                .expect("executor credentials should load only from executor storage")
+                .server_name,
+            executor_name
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_reserved_names_keep_legacy_host_store_keys() -> Result<()> {
+        let url = "https://example.test";
+        let local_key = super::compute_store_key("local:executor:reserved", url)?;
+        let executor_key = super::compute_store_key("executor:reserved", url)?;
+
+        assert!(local_key.starts_with("executor:reserved|"));
+        assert!(executor_key.starts_with("executor:reserved:"));
+        assert_ne!(local_key, executor_key);
         Ok(())
     }
 

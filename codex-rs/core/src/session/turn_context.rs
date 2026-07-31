@@ -565,6 +565,14 @@ impl Session {
         let provider_for_context = create_model_provider(provider, auth_manager);
         let provider_capabilities = provider_for_context.capabilities();
         let session_telemetry_for_context = session_telemetry;
+        let environment_mode = match environments.turn_environments.as_slice() {
+            [] => ToolEnvironmentMode::None,
+            [environment] if environment.environment.is_remote() => {
+                ToolEnvironmentMode::SingleRemote
+            }
+            [_] => ToolEnvironmentMode::Single,
+            [_, ..] => ToolEnvironmentMode::Multiple,
+        };
         let tools_config = ToolsConfig::new(&ToolsConfigParams {
             model_info: &model_info,
             available_models: &models_manager.try_list_models().unwrap_or_default(),
@@ -586,9 +594,7 @@ impl Session {
         .with_web_search_config(per_turn_config.web_search_config.clone())
         .with_update_plan_enabled(per_turn_config.update_plan_enabled)
         .with_allow_login_shell(per_turn_config.permissions.allow_login_shell)
-        .with_environment_mode(ToolEnvironmentMode::from_count(
-            environments.turn_environments.len(),
-        ))
+        .with_environment_mode(environment_mode)
         .with_spawn_agent_usage_hint(per_turn_config.multi_agent_v2.usage_hint_enabled)
         .with_spawn_agent_usage_hint_text(per_turn_config.multi_agent_v2.usage_hint_text.clone())
         .with_hide_spawn_agent_metadata(per_turn_config.multi_agent_v2.hide_spawn_agent_metadata)

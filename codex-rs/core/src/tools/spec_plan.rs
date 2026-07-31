@@ -368,6 +368,7 @@ fn collect_tool_executors(
 ) -> Vec<Arc<dyn CoreToolRuntime>> {
     let exec_permission_approvals_enabled = config.exec_permission_approvals_enabled;
     let mut executors = Vec::<Arc<dyn CoreToolRuntime>>::new();
+    let supports_legacy_shell_command = config.environment_mode.supports_legacy_shell_command();
 
     if config.environment_mode.has_environment() {
         let include_environment_id =
@@ -387,13 +388,15 @@ fn collect_tool_executors(
             ConfigShellToolType::Default
             | ConfigShellToolType::Local
             | ConfigShellToolType::ShellCommand => {
-                executors.push(Arc::new(ShellCommandHandler::new(
-                    ShellCommandHandlerOptions {
-                        backend_config: config.shell_command_backend,
-                        allow_login_shell: config.allow_login_shell,
-                        exec_permission_approvals_enabled,
-                    },
-                )));
+                if supports_legacy_shell_command {
+                    executors.push(Arc::new(ShellCommandHandler::new(
+                        ShellCommandHandlerOptions {
+                            backend_config: config.shell_command_backend,
+                            allow_login_shell: config.allow_login_shell,
+                            exec_permission_approvals_enabled,
+                        },
+                    )));
+                }
             }
         }
     }
@@ -403,9 +406,11 @@ fn collect_tool_executors(
     {
         match &config.shell_type {
             ConfigShellToolType::UnifiedExec => {
-                executors.push(Arc::new(ShellCommandHandler::from(
-                    config.shell_command_backend,
-                )));
+                if supports_legacy_shell_command {
+                    executors.push(Arc::new(ShellCommandHandler::from(
+                        config.shell_command_backend,
+                    )));
+                }
             }
             ConfigShellToolType::Default
             | ConfigShellToolType::Local
@@ -538,6 +543,10 @@ fn collect_tool_executors(
     }
 
     for tool in params.dynamic_tools {
+        if tool.namespace.is_none() && tool.name == "shell_command" {
+            warn!("Skipping external `shell_command` tool: the name is reserved by the host");
+            continue;
+        }
         let Some(handler) = DynamicToolHandler::new(tool).map(Arc::new) else {
             tracing::error!(
                 "Failed to convert dynamic tool {:?} to OpenAI tool",

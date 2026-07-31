@@ -458,9 +458,10 @@ async fn run_login(config_overrides: &CliConfigOverrides, login_args: LoginArgs)
     };
     let resolved_scopes =
         resolve_oauth_scopes(explicit_scopes, server.scopes.clone(), discovered_scopes);
+    let credential_name = server.oauth_credential_name(&name);
 
     perform_oauth_login_retry_without_scopes(
-        &name,
+        credential_name.as_ref(),
         &url,
         config.mcp_oauth_credentials_store_mode,
         http_headers,
@@ -497,8 +498,13 @@ async fn run_logout(config_overrides: &CliConfigOverrides, logout_args: LogoutAr
         McpServerTransportConfig::StreamableHttp { url, .. } => url.clone(),
         _ => bail!("OAuth logout is only supported for streamable_http transports."),
     };
+    let credential_name = server.oauth_credential_name(&name);
 
-    match delete_oauth_tokens(&name, &url, config.mcp_oauth_credentials_store_mode) {
+    match delete_oauth_tokens(
+        credential_name.as_ref(),
+        &url,
+        config.mcp_oauth_credentials_store_mode,
+    ) {
         Ok(true) => println!("Removed OAuth credentials for '{name}'."),
         Ok(false) => println!("No OAuth credentials stored for '{name}'."),
         Err(err) => return Err(anyhow!("failed to delete OAuth credentials: {err}")),

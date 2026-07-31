@@ -503,3 +503,41 @@ fn deserialize_rejects_inline_bearer_token_field() {
         "unexpected error: {err}"
     );
 }
+
+#[test]
+fn oauth_credential_names_preserve_local_compatibility() {
+    let cfg: McpServerConfig = toml::from_str(
+        r#"
+            url = "https://example.com"
+        "#,
+    )
+    .expect("local MCP config should deserialize");
+
+    assert!(cfg.is_local_environment());
+    assert_eq!(cfg.oauth_credential_name("docs"), "docs");
+    assert_eq!(
+        cfg.oauth_credential_name("executor:reserved"),
+        "local:executor:reserved"
+    );
+    assert_eq!(
+        cfg.oauth_credential_name("local:reserved"),
+        "local:local:reserved"
+    );
+}
+
+#[test]
+fn oauth_credential_names_isolate_remote_environments() {
+    let cfg: McpServerConfig = toml::from_str(
+        r#"
+            url = "https://example.com"
+            experimental_environment = "remote"
+        "#,
+    )
+    .expect("remote MCP config should deserialize");
+
+    assert!(!cfg.is_local_environment());
+    assert_eq!(
+        cfg.oauth_credential_name("docs"),
+        "executor:cmVtb3Rl:ZG9jcw"
+    );
+}
