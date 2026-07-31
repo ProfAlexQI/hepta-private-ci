@@ -40,6 +40,39 @@ fn assert_route_gate_alias(wrapper_path: &Path, id: &str, runner: &str) {
     assert_eq!(entry["runner"], runner);
 }
 
+fn assert_gate_alias(wrapper_path: &Path, id: &str, runner: &str) {
+    assert!(
+        fs::symlink_metadata(wrapper_path)
+            .expect("gate alias metadata")
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        fs::read_link(wrapper_path).expect("gate alias target"),
+        Path::new("hepta-gate-alias-launch")
+    );
+
+    let registry_path = repo_root().join("scripts/hepta-gate-aliases-v1.json");
+    let registry: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&registry_path)
+            .with_context(|| format!("failed to read {}", registry_path.display()))
+            .expect("gate alias registry"),
+    )
+    .expect("gate alias registry value");
+    let logical_path = wrapper_path
+        .strip_prefix(repo_root())
+        .expect("gate alias under repo root")
+        .to_string_lossy();
+    let entry = registry["entries"]
+        .as_array()
+        .expect("gate alias entries")
+        .iter()
+        .find(|entry| entry["logical_path"] == logical_path.as_ref())
+        .unwrap_or_else(|| panic!("missing gate alias registry entry for {logical_path}"));
+    assert_eq!(entry["id"], id);
+    assert_eq!(entry["runner"], runner);
+}
+
 #[test]
 fn resolves_compatibility_scripts_inside_the_repo_only() {
     let gate = resolve_compatibility_script(
@@ -516,12 +549,11 @@ fn parameterized_core_activation_chain_fixtures_match_canonical_gate_specs() {
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized core activation chain wrapper");
-        assert_eq!(wrapper.lines().count(), 5, "thin wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-core-activation-chain-gate-runner"));
-        assert!(wrapper.contains(id));
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-core-activation-chain-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -583,12 +615,11 @@ fn parameterized_provider_router_activation_chain_fixtures_match_canonical_gate_
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized provider-router activation chain wrapper");
-        assert_eq!(wrapper.lines().count(), 5, "thin wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-provider-router-activation-chain-gate-runner"));
-        assert!(wrapper.contains(id));
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-provider-router-activation-chain-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -650,12 +681,11 @@ fn parameterized_operator_canary_activation_chain_fixtures_match_canonical_gate_
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized operator-canary activation chain wrapper");
-        assert_eq!(wrapper.lines().count(), 5, "thin wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-operator-canary-activation-chain-gate-runner"));
-        assert!(wrapper.contains(id));
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-operator-canary-activation-chain-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
