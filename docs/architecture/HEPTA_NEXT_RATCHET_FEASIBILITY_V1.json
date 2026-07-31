@@ -1,0 +1,76 @@
+{
+  "schema": "hepta.next-ratchet-feasibility.v1",
+  "status": "analysis_ready",
+  "source": {
+    "commit": "6a8e3b984228bf7b4c0a76dca67fd0cfcbeef9a3",
+    "tree": "cb7c9fa83b28e95647f173821c8032f96094e49e"
+  },
+  "workgraph": {
+    "current_module_count": 298,
+    "requested_target_count": 199,
+    "bundle_sha256": "ab7c8fe105214b9e0b742d2346bd9ae687bd4208bc9481a9761a612b70d1980d",
+    "gate_payload_sha256": "8de2101c9b10e3eb3870b413e79de4c44f8dea7d51812b23b4e22df33679401b",
+    "gate_spec_sha256": "25e987bb2f8691c591b505b460f75f637c513689d7638f60ae4b028f6e69e311",
+    "externally_protected_module_count": 3,
+    "gate_payload_protected_module_count": 272,
+    "protected_module_count": 274,
+    "additional_dependency_closed_leaf_count": 14,
+    "additional_dependency_closed_leaf_lines": 9933,
+    "honest_deletion_floor": 284,
+    "required_consolidation_or_caller_migration_count_after_safe_leaf_retirement": 85,
+    "candidate_records_sha256": "3412533019a114272ecabef656b1d3ca113f36fb97d68d84130390c9842a4937",
+    "additional_dependency_closed_leaves": [
+      "work_graph_terminal_task_result_wrapper_shadow_activation_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_activation_blocker_drift_budget_preview",
+      "work_graph_ttrw_shadow_activation_decuple_blocker_drift_budget_preview",
+      "work_graph_ttrw_shadow_activation_decuple_blocker_preview",
+      "work_graph_ttrw_shadow_activation_decuple_blocker_promotion_precondition_preview",
+      "work_graph_ttrw_shadow_activation_decuple_blocker_readback_preview",
+      "work_graph_ttrw_shadow_activation_layer11_blocker_drift_budget_preview",
+      "work_graph_ttrw_shadow_activation_layer11_blocker_preview",
+      "work_graph_ttrw_shadow_activation_layer11_blocker_promotion_precondition_preview",
+      "work_graph_ttrw_shadow_activation_layer11_blocker_readback_preview",
+      "work_graph_ttrw_shadow_activation_layer12_blocker_drift_budget_preview",
+      "work_graph_ttrw_shadow_activation_layer12_blocker_preview",
+      "work_graph_ttrw_shadow_activation_layer12_blocker_promotion_precondition_preview",
+      "work_graph_ttrw_shadow_activation_layer12_blocker_readback_preview",
+      "work_graph_ttrw_shadow_activation_nonuple_blocker_promotion_precondition_preview"
+    ],
+    "decision": "retire only the 14 verified leaves; reach 199 through protected-module consolidation and caller migration, never by deleting gate payload identities"
+  },
+  "gate_compatibility": {
+    "current_pair_count": 498,
+    "requested_target_count": 299,
+    "captured_shell_pair_count": 463,
+    "declarative_pair_count": 35,
+    "external_or_supplemental_protected_pair_count": 107,
+    "additional_dependency_closed_uncalled_leaf_count": 0,
+    "honest_deletion_floor": 498,
+    "required_canonical_pair_migration_count": 199,
+    "spec_sha256": "25e987bb2f8691c591b505b460f75f637c513689d7638f60ae4b028f6e69e311",
+    "payload_bundle_sha256": "8de2101c9b10e3eb3870b413e79de4c44f8dea7d51812b23b4e22df33679401b",
+    "payload_registry_sha256": "7b898252cc802eba919d23b309706ef3c04054787de6d7cc8c5da3eb67498e28",
+    "entrypoint_registry_sha256": "e00c8cd79c4caa1233d0b701fd39566afcebab153f0b1bd67e23310ee320e065",
+    "decision": "migrate protected families to SHA-bound canonical runners while preserving every public alias, dependency edge, output contract, and recovery record; no captured pair is safe for deletion"
+  },
+  "single_exec_wrappers": {
+    "current_count": 29,
+    "requested_target_count": 29,
+    "target_satisfied": true,
+    "counter_semantics_changed": false
+  },
+  "large_modules": {
+    "first_party_over_5000_lines": 5,
+    "first_party_over_10000_lines": 0,
+    "requested_over_5000_target": 5,
+    "target_satisfied": true
+  },
+  "safety": {
+    "counter_semantics_changed": false,
+    "declarative_floor_lowered": false,
+    "gate_payload_deleted": false,
+    "public_alias_deleted": false,
+    "runtime_mutated": false,
+    "deployment_performed": false,
+    "source_progress_release_blocked": true
+  }
+}
