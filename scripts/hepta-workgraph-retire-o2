@@ -7,6 +7,7 @@ require "open3"
 require "set"
 require "stringio"
 require "zlib"
+require_relative "lib/hepta-migration-history-anchor-v1"
 require_relative "lib/hepta-normalized-token-bundle-v1"
 
 ROOT = File.expand_path("..", __dir__)
@@ -26,6 +27,10 @@ PARAMETERS_RELATIVE_PATH = "codex-rs/hepta-runtime/codegen/workgraph-v3/paramete
 GATE_PAYLOAD_RELATIVE_PATH = "scripts/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz"
 GATE_SPEC_RELATIVE_PATH = "scripts/hepta-gate-pair-specs-v1.json"
 RECEIPT_PATH = File.join(ROOT, "docs/architecture/HEPTA_WORKGRAPH_O2_RETIREMENT_V1.json")
+HISTORY_ANCHOR_PATH = File.join(
+  ROOT,
+  "docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json"
+)
 SCHEMA = "hepta_workgraph_normalized_bundle_v3"
 BASELINE_MODULE_COUNT = 398
 TARGET_MODULE_COUNT = 298
@@ -358,8 +363,13 @@ def verify_retirement
   )
   raise "retirement baseline tree drifted" unless baseline_tree_status.success? &&
     baseline_tree.strip == receipt.fetch("source_tree")
-  raise "uncommitted retirement claimed a history anchor" if receipt.fetch("git_history_recovery_bound") ||
+  raise "retirement receipt must defer to the history anchor" if receipt.fetch("git_history_recovery_bound") ||
     !receipt.fetch("history_anchor_required")
+  history = HeptaMigrationHistoryAnchorV1.verify!(
+    root: ROOT,
+    anchor_path: HISTORY_ANCHOR_PATH,
+    receipt_path: RECEIPT_PATH
+  )
   raise "baseline WorkGraph bundle drifted" unless receipt.fetch("baseline_bundle_sha256") == Digest::SHA256.hexdigest(git_blob(BUNDLE_RELATIVE_PATH, baseline_commit))
   raise "baseline gate payload bundle drifted" unless receipt.fetch("baseline_gate_payload_bundle_sha256") == Digest::SHA256.hexdigest(git_blob(GATE_PAYLOAD_RELATIVE_PATH, baseline_commit))
   raise "baseline gate spec drifted" unless receipt.fetch("baseline_gate_spec_sha256") == Digest::SHA256.hexdigest(git_blob(GATE_SPEC_RELATIVE_PATH, baseline_commit))
@@ -369,9 +379,12 @@ def verify_retirement
     active_module_count: active.length,
     retired_module_count: retired.length,
     baseline_recovery_available: true,
-    git_history_recovery_bound: false,
-    history_anchor_required: true,
-    receipt_sha256: Digest::SHA256.file(RECEIPT_PATH).hexdigest
+    git_history_recovery_bound: true,
+    history_anchor_required: false,
+    result_commit: history.fetch(:result_commit),
+    result_tree: history.fetch(:result_tree),
+    receipt_sha256: history.fetch(:receipt_sha256),
+    history_anchor_sha256: history.fetch(:anchor_sha256)
   )
 end
 

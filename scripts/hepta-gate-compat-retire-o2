@@ -7,6 +7,7 @@ require "open3"
 require "set"
 require "stringio"
 require "zlib"
+require_relative "lib/hepta-migration-history-anchor-v1"
 require_relative "lib/hepta-normalized-token-bundle-v1"
 require_relative "hepta-workgraph-readable-token-source-v1"
 
@@ -16,6 +17,10 @@ BUNDLE_ROOT = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2")
 REGISTRY_PATH = File.join(BUNDLE_ROOT, "registry.json")
 ENTRYPOINT_REGISTRY_PATH = File.join(ROOT, "scripts/hepta-gate-pair-entrypoints-v2.json")
 RECEIPT_PATH = File.join(ROOT, "docs/architecture/HEPTA_GATE_COMPAT_O2_RETIREMENT_V1.json")
+HISTORY_ANCHOR_PATH = File.join(
+  ROOT,
+  "docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json"
+)
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 BASELINE_PAIR_COUNT = 598
 TARGET_PAIR_COUNT = 498
@@ -266,14 +271,23 @@ def verify_retirement
   raise "compatibility payload registry is not source-bound" unless payload_registry.fetch("source_registry_sha256") == Digest::SHA256.file(SPEC_PATH).hexdigest
   raise "compatibility entrypoint registry is not source-bound" unless entrypoint_registry.fetch("source_registry_sha256") == Digest::SHA256.file(SPEC_PATH).hexdigest
   raise "compatibility entrypoint pair count drifted" unless entrypoint_registry.fetch("pair_count") == active.length
+  history = HeptaMigrationHistoryAnchorV1.verify!(
+    root: ROOT,
+    anchor_path: HISTORY_ANCHOR_PATH,
+    receipt_path: RECEIPT_PATH
+  )
   puts JSON.generate(
     schema: "hepta_gate_compat_o2_retirement_verify_v1",
     status: "ready",
     active_pair_count: active.length,
     retired_pair_count: retired.length,
     migrated_pair_count: promoted.length,
-    git_history_recovery_bound: false,
-    receipt_sha256: Digest::SHA256.file(RECEIPT_PATH).hexdigest
+    git_history_recovery_bound: true,
+    history_anchor_required: false,
+    result_commit: history.fetch(:result_commit),
+    result_tree: history.fetch(:result_tree),
+    receipt_sha256: history.fetch(:receipt_sha256),
+    history_anchor_sha256: history.fetch(:anchor_sha256)
   )
 end
 
