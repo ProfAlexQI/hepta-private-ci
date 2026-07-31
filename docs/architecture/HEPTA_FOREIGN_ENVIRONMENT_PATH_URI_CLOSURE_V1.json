@@ -1,0 +1,56 @@
+{
+  "schema": "hepta.foreign-environment-path-uri-closure.v1",
+  "status": "source_complete_release_unproven",
+  "input": {
+    "commit": "b5cb3cbc5afc1d530f28412ad850574114a64a01",
+    "tree": "30f6fb4419bf104511566f2533d9e6dd9679f87f"
+  },
+  "result": {
+    "commit": "f372f79ffb87e541b254b08345cf10f9d6119785",
+    "tree": "60ba88cfef18c75b82519019a8a861274629f023"
+  },
+  "upstream_semantic_anchor": {
+    "commit": "7579a2b41353470efaef93c08b4a21068a366b7f",
+    "tree": "19616ac5b51cc1b94e22d3c3bcb4adb121913f80",
+    "subject": "Resolve MCP file uploads with environment-native paths (#36002)"
+  },
+  "closure": {
+    "turn_environment_cwd": "PathUri",
+    "app_server_boundary": "LegacyAppPathString preserving absolute POSIX or Windows syntax",
+    "remote_file_rpc": [
+      "fs/readFile PathUri",
+      "fs/getMetadata PathUri"
+    ],
+    "mcp_upload": "join and basename are evaluated using the selected environment path convention",
+    "conversion_boundary": "PathUri is converted to AbsolutePathBuf only by the target executor",
+    "unsupported_foreign_operations": "host-native apply_patch, exec, view_image, and local CSV operations fail closed rather than reinterpret a foreign cwd"
+  },
+  "artifact_sha256": {
+    "path_uri_lib": "72dc1d21115bce57cd9b2d41ea97e572f0f3b603e6307a5d48538e8f6420cf5c",
+    "turn_protocol": "ef4bec08b445890bff76047b6f748e4cd50c21872f0dae2db931f5c937599481",
+    "exec_protocol": "399d055d57fc9685d2310b3f298da44684bc91ff0a6d733dad4fd4feb908def8",
+    "mcp_upload": "269b09ed981c08f8e38d0bdf5a5831239a347f0d5c066d1d8cd985ea277d51ab",
+    "turn_start_schema": "d866796a1b45964e49eaee86e235c1925701960118d1389509d5ad7f886995d1",
+    "cargo_lock": "a2744bc58cad79e1a03a4720aa6a2ae8b58184e677ea6aa956a3fa04f8db8427"
+  },
+  "verification": [
+    "codex-utils-path-uri: 61 tests passed",
+    "app-server foreign Windows cwd regression passed",
+    "exec-server foreign Windows URI wire round-trip passed",
+    "codex-core MCP upload foreign Windows cwd regression passed",
+    "codex-core MCP openai file suite: 6 tests passed",
+    "codex-exec-server lib suite: 98 tests passed",
+    "app-server schema fixtures: 2 tests passed",
+    "cargo test --no-run for codex-core, codex-app-server-protocol, and codex-exec-server passed",
+    "cargo check for codex-app-server passed",
+    "Bazel module lock update and check passed",
+    "Hepta architecture budget passed",
+    "git diff --check passed"
+  ],
+  "known_validation_debt": [
+    "strict multi-crate Clippy remains blocked by pre-existing codex-exec-server lints outside this change"
+  ],
+  "runtime_changed": false,
+  "deployment_performed": false,
+  "release_complete": false
+}
