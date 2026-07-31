@@ -116,6 +116,21 @@ fn manifest_derives_typed_report_descriptors_for_json_gets() {
 }
 
 #[test]
+fn manifest_binds_every_native_get_to_a_typed_renderer() {
+    for entry in route_manifest_registry().into_iter().filter(|entry| {
+        entry.lifecycle.method == "GET"
+            && entry.dispatch_handler == RouteDispatchHandler::NativeGateway
+    }) {
+        assert_ne!(
+            entry.report_binding,
+            RouteReportBinding::None,
+            "missing renderer for {}",
+            entry.lifecycle.path_pattern
+        );
+    }
+}
+
+#[test]
 fn manifest_marks_quarantined_legacy_effects_as_retired_dispatch() {
     for route in CONTROL_UI_ROUTE_SPECS
         .iter()

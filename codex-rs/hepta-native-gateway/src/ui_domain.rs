@@ -3,11 +3,13 @@ use crate::http_transport::escape_html;
 use crate::native_gateway::native_gateway_json;
 use crate::native_telegram::NativeTelegramPluginStatus;
 
+pub(crate) const NATIVE_GATEWAY_BINARY_ASSET_PATHS: &[&str] = &["/assets/hepta-agent-logo.png"];
+
 pub(crate) fn route_native_gateway_binary_asset(
     method: &str,
     path: &str,
 ) -> Option<(&'static str, &'static str, &'static [u8])> {
-    if method == "GET" && path == "/assets/hepta-agent-logo.png" {
+    if method == "GET" && NATIVE_GATEWAY_BINARY_ASSET_PATHS.contains(&path) {
         Some((
             "200 OK",
             "image/png",

@@ -18,10 +18,6 @@ pub(crate) struct NativeRouteAliasSpec {
 }
 
 impl NativeRouteAliasSpec {
-    pub(crate) fn matches(self, path: &str) -> bool {
-        path == self.canonical || self.aliases.contains(&path)
-    }
-
     #[cfg(test)]
     pub(crate) fn paths(self) -> impl Iterator<Item = &'static str> {
         std::iter::once(self.canonical).chain(self.aliases.iter().copied())

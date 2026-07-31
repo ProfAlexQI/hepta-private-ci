@@ -6,6 +6,7 @@ use sha2::Sha256;
 
 pub(crate) use crate::route_definition::RouteDefinition;
 pub(crate) use crate::route_definition::RouteDispatchHandler;
+pub(crate) use crate::route_definition::RouteReportBinding;
 pub(crate) use crate::route_definition::RouteResponsePolicy;
 pub(crate) use crate::route_definition::WATCHDOG_PROBE_PATHS;
 pub(crate) use crate::route_definition::route_definition;
@@ -98,6 +99,15 @@ pub(crate) fn validate_route_manifest() -> Result<()> {
             anyhow::bail!(
                 "digest-bound pagination is only valid for GET routes: {} {}",
                 entry.lifecycle.method,
+                entry.lifecycle.path_pattern
+            );
+        }
+        if entry.lifecycle.method == "GET"
+            && entry.dispatch_handler == RouteDispatchHandler::NativeGateway
+            && entry.report_binding == RouteReportBinding::None
+        {
+            anyhow::bail!(
+                "native GET route lacks a typed report binding: {}",
                 entry.lifecycle.path_pattern
             );
         }

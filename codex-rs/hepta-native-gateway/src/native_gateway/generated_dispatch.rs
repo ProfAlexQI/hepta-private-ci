@@ -5,12 +5,18 @@ fn route_native_gateway_request_after_preflight(
     request_body: Option<&str>,
     preflight: &RuntimeRequestPreflightReceipt,
 ) -> (&'static str, &'static str, String) {
-    let telegram_plugin = native_telegram::telegram_plugin_status(
-        options.with_telegram_plugin,
-        options.telegram_plugin_poll_ms,
-    );
     if method == "GET" {
-        include!("report_registry.rs");
+        let telegram_plugin = native_telegram::telegram_plugin_status(
+            options.with_telegram_plugin,
+            options.telegram_plugin_poll_ms,
+        );
+        if let Some(response) = native_report_registry::render_registered_native_report(
+            path,
+            options,
+            telegram_plugin,
+        ) {
+            return response;
+        }
 
         if let Some(query) = path
             .strip_prefix("/api/query-transcript/")

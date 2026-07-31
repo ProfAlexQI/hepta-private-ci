@@ -50,6 +50,16 @@ pub(crate) enum RouteResponsePolicy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RouteReportBinding {
+    None,
+    NativeExact,
+    NativeParameterized,
+    NativeBinaryAsset,
+    CanonicalEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub(crate) struct RouteDefinition {
     #[serde(flatten)]
     pub(crate) lifecycle: IngressLifecycleSpec,
@@ -57,6 +67,7 @@ pub(crate) struct RouteDefinition {
     pub(crate) required_gate: Option<&'static str>,
     pub(crate) watchdog_probe: bool,
     pub(crate) response_policy: RouteResponsePolicy,
+    pub(crate) report_binding: RouteReportBinding,
     pub(crate) source_command: Option<&'static str>,
     pub(crate) capability: Option<&'static str>,
     pub(crate) side_effect_boundary: Option<&'static str>,
@@ -91,6 +102,7 @@ fn route_definition_from_lifecycle(lifecycle: IngressLifecycleSpec) -> RouteDefi
         watchdog_probe: lifecycle.method == "GET"
             && WATCHDOG_PROBE_PATHS.contains(&lifecycle.path_pattern),
         response_policy: response_policy(lifecycle),
+        report_binding: report_binding(lifecycle, dispatch_handler),
         source_command: gate.map(|gate| gate.source_command),
         capability: gate.map(|gate| gate.capability),
         side_effect_boundary: gate.map(|gate| gate.side_effect_boundary),
@@ -103,6 +115,35 @@ fn route_definition_from_lifecycle(lifecycle: IngressLifecycleSpec) -> RouteDefi
         },
         legacy_compatibility_route: receipt_state.is_some()
             && lifecycle.path_pattern != EVIDENCE_INDEX_ENDPOINT,
+    }
+}
+
+fn report_binding(
+    lifecycle: IngressLifecycleSpec,
+    dispatch_handler: RouteDispatchHandler,
+) -> RouteReportBinding {
+    if lifecycle.method != "GET" {
+        return RouteReportBinding::None;
+    }
+    match dispatch_handler {
+        RouteDispatchHandler::EvidenceIndex => RouteReportBinding::CanonicalEvidence,
+        RouteDispatchHandler::NativeGateway
+            if crate::native_gateway::native_report_registry::has_registered_native_report(
+                lifecycle.path_pattern,
+            ) =>
+        {
+            RouteReportBinding::NativeExact
+        }
+        RouteDispatchHandler::NativeGateway
+            if crate::ui_domain::NATIVE_GATEWAY_BINARY_ASSET_PATHS
+                .contains(&lifecycle.path_pattern) =>
+        {
+            RouteReportBinding::NativeBinaryAsset
+        }
+        RouteDispatchHandler::NativeGateway if lifecycle.path_pattern.contains('<') => {
+            RouteReportBinding::NativeParameterized
+        }
+        _ => RouteReportBinding::None,
     }
 }
 

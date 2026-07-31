@@ -121,6 +121,7 @@ mod evidence_api;
 mod evidence_dispatch;
 mod http_rejections;
 mod manifest_dispatch;
+pub(crate) mod native_report_registry;
 mod report_pagination;
 mod report_response;
 mod watchdog_state;

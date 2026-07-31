@@ -398,10 +398,19 @@ verify() {
   verify_file_max codex-rs/hepta-native-gateway/src/route_definition.rs 220
   rg -Fq 'pub(crate) struct RouteDefinition' \
     codex-rs/hepta-native-gateway/src/route_definition.rs
-  if rg -Fq 'macro_rules!' \
-    codex-rs/hepta-native-gateway/src/native_gateway/report_registry.rs
+  if [[ -e codex-rs/hepta-native-gateway/src/native_gateway/report_registry.rs ]]; then
+    echo "handwritten native report match registry must stay retired" >&2
+    return 1
+  fi
+  verify_file_max \
+    codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs \
+    2000
+  rg -Fq 'const NATIVE_REPORT_DEFINITIONS' \
+    codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs
+  if rg -Fq 'match path' \
+    codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs
   then
-    echo "native report dispatch must not reintroduce a macro registry" >&2
+    echo "native report registry must remain a typed function-pointer table" >&2
     return 1
   fi
   verify_file_max \

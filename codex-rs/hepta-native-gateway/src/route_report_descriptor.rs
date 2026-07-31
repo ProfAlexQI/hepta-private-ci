@@ -1,5 +1,5 @@
 use crate::route_manifest::RouteDefinition;
-use crate::route_manifest::RouteDispatchHandler;
+use crate::route_manifest::RouteReportBinding;
 use crate::route_manifest::RouteResponsePolicy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,16 +19,18 @@ impl RouteDefinition {
         if self.lifecycle.method != "GET" {
             return None;
         }
-        match self.dispatch_handler {
-            RouteDispatchHandler::NativeGateway => Some(ReportDescriptor {
-                renderer: ReportRenderer::NativeGatewayJson,
-                response_policy: self.response_policy,
-            }),
-            RouteDispatchHandler::EvidenceIndex => Some(ReportDescriptor {
+        match self.report_binding {
+            RouteReportBinding::NativeExact | RouteReportBinding::NativeParameterized => {
+                Some(ReportDescriptor {
+                    renderer: ReportRenderer::NativeGatewayJson,
+                    response_policy: self.response_policy,
+                })
+            }
+            RouteReportBinding::CanonicalEvidence => Some(ReportDescriptor {
                 renderer: ReportRenderer::CanonicalEvidenceJson,
                 response_policy: self.response_policy,
             }),
-            _ => None,
+            RouteReportBinding::None | RouteReportBinding::NativeBinaryAsset => None,
         }
     }
 }

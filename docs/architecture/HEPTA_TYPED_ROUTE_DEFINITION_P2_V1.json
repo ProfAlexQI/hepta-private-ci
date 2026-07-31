@@ -1,0 +1,73 @@
+{
+  "schema": "hepta.typed-route-definition-p2.v1",
+  "status": "source_validated_history_pending",
+  "input": {
+    "commit": "b5bad567076505d452a56f4099e9fc1f60a99702",
+    "tree": "918a53e8876fa6dc920b8684ebf832ebc766eb8c"
+  },
+  "before": {
+    "handwritten_report_match_path": "codex-rs/hepta-native-gateway/src/native_gateway/report_registry.rs",
+    "handwritten_report_match_sha256": "f8a29563ab77af919f6ad4e5026a21d00f671acb86ee416e0d4320832829e5ad",
+    "handwritten_report_match_lines": 2621,
+    "handwritten_report_match_arms": 278,
+    "generated_dispatch_sha256": "fa7ee2832a1e5cf0fd487c8c3d869d758515595d129bb7e2295a0e74b2adfd1b"
+  },
+  "after": {
+    "typed_renderer_registry_path": "codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs",
+    "typed_renderer_registry_sha256": "642c6d0808696429e96ec084e02ed5a4335c323c6c1a8f48565a5c80d2422b43",
+    "typed_renderer_registry_lines": 1934,
+    "exact_registered_paths": 285,
+    "route_definition_sha256": "caa8fd32a0f3258cb89acd24285ee539e0c0f0690c65f0c6d455e9cb7b2d4529",
+    "generated_dispatch_sha256": "08f61d500004d65fa133fafda21f3a6f7cf4f5128b36ba1c2a685dd26fab2280",
+    "handwritten_report_match_present": false,
+    "path_match_dispatch_present": false
+  },
+  "route_definition_contract": {
+    "canonical_runtime_source": "hepta_native_gateway::route_definition_registry",
+    "generates": [
+      "lifecycle manifest",
+      "generic dispatch class",
+      "typed report binding",
+      "response pagination policy",
+      "required permission gate",
+      "watchdog probes",
+      "source command and capability documentation",
+      "evidence classification",
+      "aliases",
+      "socket parity tests"
+    ],
+    "report_bindings": [
+      "none",
+      "native_exact",
+      "native_parameterized",
+      "native_binary_asset",
+      "canonical_evidence"
+    ],
+    "unknown_route_fail_closed": true,
+    "retired_route_fail_closed": true,
+    "get_effect_surfaces_forbidden": true
+  },
+  "compatibility": {
+    "legacy_evidence_routes_retained": true,
+    "legacy_evidence_route_count": 206,
+    "canonical_evidence_endpoint": "/api/evidence",
+    "behavioral_deletion_performed": false
+  },
+  "verification": [
+    "typed renderer registry uniqueness: 285 unique paths",
+    "typed renderer binding covers every admitted native GET lifecycle",
+    "all registered GET routes returned expected structured HTTP over real sockets",
+    "hepta-native-gateway package: 431 tests passed",
+    "scoped just fix completed; 36 pre-existing gateway warnings remain outside this migration",
+    "scripts/hepta-architecture-budget: ready",
+    "git diff --check: passed"
+  ],
+  "result": {
+    "commit": null,
+    "tree": null,
+    "history_recovery_bound": false
+  },
+  "source_progress_release_blocked": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}
