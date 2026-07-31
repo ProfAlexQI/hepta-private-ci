@@ -1010,6 +1010,16 @@ verify() {
   verify_file_max \
     docs/architecture/HEPTA_O2_WORKGRAPH_RATCHET_2026-07-31.json \
     80
+  verify_file_max scripts/hepta-workgraph-retire-o2 410
+  workgraph_retirement_report="$(scripts/hepta-workgraph-retire-o2 verify)"
+  jq -e '
+    .schema == "hepta_workgraph_o2_retirement_verify_v1"
+    and .status == "ready"
+    and .active_module_count == 298
+    and .retired_module_count == 100
+    and .baseline_recovery_available == true
+    and .history_anchor_required == true
+  ' <<<"$workgraph_retirement_report" >/dev/null
   jq -e \
     --slurpfile registry codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json \
     --slurpfile receipt docs/architecture/HEPTA_WORKGRAPH_O2_RETIREMENT_V1.json '
