@@ -88,6 +88,15 @@ def require_direct_commit(ref: str, expected: str, label: str) -> None:
     require(object_type.returncode == 0 and object_type.stdout.strip() == "commit", f"{label} object is not an available commit: {expected}")
 
 
+def require_archived_commit(ref: str, expected: str, label: str) -> None:
+    require(isinstance(ref, str) and ref.startswith("refs/"), f"{label} archived ref label is invalid: {ref}")
+    actual = ref_oid(ref)
+    if actual is not None:
+        require_direct_commit(ref, expected, label)
+    else:
+        require_commit(expected, f"{label} archived commit")
+
+
 def require_commit(commit: str, label: str) -> None:
     require(
         isinstance(commit, str) and len(commit) == 40
@@ -353,7 +362,7 @@ def verify_semantic(
     expected_head = upstream.get("expected_head")
     frozen_ref = upstream.get("frozen_ref")
     require_commit(expected_head, "registry expected upstream head")
-    require_direct_commit(frozen_ref, expected_head, "latest frozen upstream")
+    require_archived_commit(frozen_ref, expected_head, "latest frozen upstream")
 
     head = git("rev-parse", "HEAD").stdout.strip()
     records = registry.get("records")
@@ -398,7 +407,7 @@ def verify_semantic(
         require(observation.get("range_start_exclusive") == start, f"{record_id} range start mismatch")
         require(observation.get("range_end_inclusive") == end, f"{record_id} range end mismatch")
         require(observation.get("observed_upstream_head") == end, f"{record_id} observed head mismatch")
-        require_direct_commit(source.get("frozen_ref"), end, f"{record_id} frozen upstream")
+        require_archived_commit(source.get("frozen_ref"), end, f"{record_id} frozen upstream")
         require_commit(start, f"{record_id} upstream range start")
 
         entries = intake_entries(intake)
