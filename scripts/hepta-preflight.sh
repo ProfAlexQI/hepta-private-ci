@@ -20,6 +20,7 @@ hepta_cargo() {
 REPO_ROOT="$PWD"
 source "$REPO_ROOT/scripts/lib/hepta-release-provenance.sh"
 source "$REPO_ROOT/scripts/lib/hepta-v2-test-inventory.sh"
+source "$REPO_ROOT/scripts/lib/hepta-preflight-lifecycle.sh"
 MANIFEST="${HEPTA_MANIFEST:-${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}}"
 NATIVE_MANIFEST="${HEPTA_NATIVE_MANIFEST:-apps/hepta-native/Cargo.toml}"
 NATIVE_TARGET_DIR="${HEPTA_NATIVE_TARGET_DIR:-apps/hepta-native/target}"
@@ -28,8 +29,16 @@ RUN_RELEASE="${HEPTA_PREFLIGHT_RELEASE:-${HEPTA_CODEX_PREFLIGHT_RELEASE:-0}}"
 export HEPTA_WATCHDOG_GATE_MODE="${HEPTA_PREFLIGHT_WATCHDOG_GATE_MODE:-active-health}"
 HEPTA_FOCUSED_TEST_MAX_SECONDS="${HEPTA_FOCUSED_TEST_MAX_SECONDS:-600}"
 HEPTA_FULL_TEST_MAX_SECONDS="${HEPTA_FULL_TEST_MAX_SECONDS:-1800}"
+HEPTA_PREFLIGHT_GATE_MAX_SECONDS="${HEPTA_PREFLIGHT_GATE_MAX_SECONDS:-1800}"
 HEPTA_TEST_MAX_DIRTY_DELTA="${HEPTA_TEST_MAX_DIRTY_DELTA:-0}"
 PREFLIGHT_SOURCE_COMMIT="$(git rev-parse HEAD)"
+PREFLIGHT_STARTED_AT_EPOCH="$(date +%s)"
+PREFLIGHT_CURRENT_GATE_STARTED_AT_EPOCH=0
+PREFLIGHT_CURRENT_GATE=""
+PREFLIGHT_TIMED_OUT_GATE=""
+PREFLIGHT_COMPLETED_GATE_COUNT=0
+PREFLIGHT_TERMINATING_SIGNAL=""
+PREFLIGHT_FINAL_PASS_MARKER_EMITTED=false
 export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 budgeted_cargo_test() {
   local name="$1"
@@ -47,9 +56,26 @@ assert_test_inventory() {
 }
 run_preflight_gate() {
   local marker="$1"
+  local gate_rc=0
   shift
+  PREFLIGHT_CURRENT_GATE="$marker"
+  PREFLIGHT_CURRENT_GATE_STARTED_AT_EPOCH="$(date +%s)"
   printf '[hepta-preflight] %s\n' "$marker"
-  "$@"
+  hepta_preflight_run_with_timeout "$HEPTA_PREFLIGHT_GATE_MAX_SECONDS" "$@" || gate_rc=$?
+  if (( gate_rc == 124 )); then
+    PREFLIGHT_TIMED_OUT_GATE="$marker"
+    jq -cSn \
+      --arg schema hepta_preflight_gate_timeout_v1 \
+      --arg gate "$marker" \
+      --argjson max_seconds "$HEPTA_PREFLIGHT_GATE_MAX_SECONDS" \
+      '{schema:$schema,status:"timed_out",gate:$gate,max_seconds:$max_seconds}' \
+      | sed 's/^/[hepta-preflight-timeout] /' >&2
+  elif (( gate_rc != 0 )); then
+    printf '[hepta-preflight-failure] gate=%q exit_code=%d\n' "$marker" "$gate_rc" >&2
+  else
+    PREFLIGHT_COMPLETED_GATE_COUNT=$((PREFLIGHT_COMPLETED_GATE_COUNT + 1))
+  fi
+  return "$gate_rc"
 }
 HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR=0
 PREFLIGHT_BOUND_GATE_DIR="$(mktemp -d /tmp/hepta-preflight-bound-gates.XXXXXX)"
@@ -58,7 +84,21 @@ hepta_preflight_cleanup() {
   [[ "${HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR:-0}" != "1" ]] \
     || rm -rf "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}"
 }
-trap hepta_preflight_cleanup EXIT
+hepta_preflight_on_exit() {
+  local exit_code="$1"
+  trap - EXIT HUP INT TERM
+  hepta_preflight_emit_terminal_receipt "$exit_code" || true
+  hepta_preflight_cleanup
+  exit "$exit_code"
+}
+hepta_preflight_on_signal() {
+  PREFLIGHT_TERMINATING_SIGNAL="$1"
+  exit "$2"
+}
+trap 'hepta_preflight_on_exit $?' EXIT
+trap 'hepta_preflight_on_signal HUP 129' HUP
+trap 'hepta_preflight_on_signal INT 130' INT
+trap 'hepta_preflight_on_signal TERM 143' TERM
 if [[ "${HEPTA_JSON_REPORT_CAPTURE_CACHE:-1}" != "0" \
   && -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
   export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$(mktemp -d /tmp/hepta-json-report-capture.XXXXXX)"
@@ -1134,4 +1174,5 @@ if [[ "$RUN_RELEASE" == "1" ]]; then
   printf '[hepta-preflight-provenance] %s\n' "$release_build_provenance"
   printf '[hepta-preflight-final] %s\n' "$release_final_receipt"
 fi
+PREFLIGHT_FINAL_PASS_MARKER_EMITTED=true
 echo "Hepta preflight passed"
