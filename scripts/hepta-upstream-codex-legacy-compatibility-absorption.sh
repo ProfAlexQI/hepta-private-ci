@@ -6,7 +6,8 @@ cd "$(dirname "$0")/.."
 MANIFEST="${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}"
 BASE_HEAD="${HEPTA_UPSTREAM_CODEX_DIFF_BASE_HEAD:-108234b5ebe6941764a6b8edbb37b2aa04369f07}"
 TARGET_REF="${HEPTA_UPSTREAM_CODEX_DIFF_TARGET_REF:-refs/remotes/openai-codex/main}"
-TARGET_HEAD="${HEPTA_UPSTREAM_CODEX_DIFF_TARGET_HEAD:-}"
+PINNED_TARGET_HEAD="7d47056ea42636271ac020b86347fbbef49490aa"
+TARGET_HEAD="${HEPTA_UPSTREAM_CODEX_DIFF_TARGET_HEAD:-$PINNED_TARGET_HEAD}"
 EXPECTED_SELECTED_COUNT="${HEPTA_UPSTREAM_CODEX_LEGACY_COMPAT_EXPECTED_COUNT:-128}"
 
 echo "[hepta-upstream-codex-legacy-compatibility-absorption] report contract tests"
@@ -23,9 +24,8 @@ validate_sha() {
 }
 
 validate_sha "HEPTA_UPSTREAM_CODEX_DIFF_BASE_HEAD" "$BASE_HEAD"
-if [[ -z "$TARGET_HEAD" ]]; then
-  TARGET_HEAD="$(git rev-parse --verify "${TARGET_REF}^{commit}")"
-  target_head_source="$TARGET_REF"
+if [[ -z "${HEPTA_UPSTREAM_CODEX_DIFF_TARGET_HEAD:-}" ]]; then
+  target_head_source="pinned_archive_manifest:$TARGET_REF"
 else
   validate_sha "HEPTA_UPSTREAM_CODEX_DIFF_TARGET_HEAD" "$TARGET_HEAD"
   target_head_source="env"

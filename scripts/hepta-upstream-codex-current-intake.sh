@@ -108,14 +108,10 @@ sha256_file() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
 
-resolve_direct_commit_ref() {
-  local label="$1" ref="$2" expected="$3" symbolic_target raw object_type
-  symbolic_target="$(git symbolic-ref -q "$ref" 2>/dev/null || true)"
-  [[ -z "$symbolic_target" ]] || fail "$label must be a direct ref, found symref to $symbolic_target"
-  raw="$(git rev-parse --verify "$ref" 2>/dev/null)" || fail "$label is missing: $ref"
-  [[ "$raw" == "$expected" ]] || fail "$label raw OID drifted: expected $expected got $raw"
-  object_type="$(git cat-file -t "$raw" 2>/dev/null)" || fail "$label object is unavailable: $raw"
-  [[ "$object_type" == "commit" ]] || fail "$label must point directly to a commit, found $object_type"
+require_pinned_commit_object() {
+  local label="$1" expected="$2" object_type
+  object_type="$(git cat-file -t "$expected" 2>/dev/null)" || fail "$label object is unavailable: $expected"
+  [[ "$object_type" == "commit" ]] || fail "$label must identify a commit object, found $object_type"
 }
 
 require_file_hash() {
@@ -688,13 +684,13 @@ r9_related_path_digest="$(jq -r '[.commit_inventory[].related_files[]] | unique[
 [[ "$r9_normalized_commit_digest" == "$PINNED_R9_NORMALIZED_COMMIT_DIGEST" ]] || fail "R9 normalized commit inventory digest drifted"
 [[ "$r9_related_path_digest" == "$PINNED_R9_RELATED_PATH_DIGEST" ]] || fail "R9 related path inventory digest drifted"
 
-resolve_direct_commit_ref "R3 historical cutoff" "$PINNED_R3_REF" "$PINNED_R3_HEAD"
-resolve_direct_commit_ref "R4 frozen cutoff" "$R4_REF" "$R4_HEAD"
-resolve_direct_commit_ref "R5 historical cutoff" "$R5_REF" "$R5_HEAD"
-resolve_direct_commit_ref "R6 historical cutoff" "$R6_REF" "$R6_HEAD"
-resolve_direct_commit_ref "R7 historical cutoff" "$R7_REF" "$R7_HEAD"
-resolve_direct_commit_ref "R8 frozen cutoff" "$R8_REF" "$R8_HEAD"
-resolve_direct_commit_ref "R9 frozen cutoff" "$R9_REF" "$R9_HEAD"
+require_pinned_commit_object "R3 historical cutoff" "$PINNED_R3_HEAD"
+require_pinned_commit_object "R4 frozen cutoff" "$R4_HEAD"
+require_pinned_commit_object "R5 historical cutoff" "$R5_HEAD"
+require_pinned_commit_object "R6 historical cutoff" "$R6_HEAD"
+require_pinned_commit_object "R7 historical cutoff" "$R7_HEAD"
+require_pinned_commit_object "R8 frozen cutoff" "$R8_HEAD"
+require_pinned_commit_object "R9 frozen cutoff" "$R9_HEAD"
 git merge-base --is-ancestor "$PINNED_R3_HEAD" "$R4_HEAD" || fail "R3 is not an ancestor of R4"
 git merge-base --is-ancestor "$R4_HEAD" "$R5_HEAD" || fail "R4 is not an ancestor of R5"
 git merge-base --is-ancestor "$R5_HEAD" "$R6_HEAD" || fail "R5 is not an ancestor of R6"
