@@ -28,6 +28,7 @@ impl NativeRouteAliasSpec {
     }
 }
 pub(crate) const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
+pub(crate) const EVIDENCE_INDEX_ENDPOINT: &str = "/api/evidence";
 pub(crate) const WATCHDOG_STATE_ENDPOINT: &str = "/api/watchdog-state";
 pub(crate) const HEPTA_MERGE_COMPLETION_ENDPOINT: &str = "/api/hepta-merge-completion";
 pub(crate) const HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT: &str = "/api/hepta-cli-command-inventory";
@@ -494,6 +495,13 @@ pub(crate) const TELEGRAM_DELIVERY_LEDGER_ENDPOINT: &str = "/api/telegram-delive
 pub(crate) const TELEGRAM_OWNER_HANDOFF_ENDPOINT: &str = "/api/telegram-owner-handoff";
 
 pub(crate) const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: EVIDENCE_INDEX_ENDPOINT,
+        source_command: "/gate list --json",
+        capability: "evidence-index",
+        side_effect_boundary: "read-only canonical evidence index with digest-bound cursor pagination; legacy report, denial, and receipt routes remain compatibility-only",
+    },
     ControlUiRouteSpec {
         method: "GET",
         pattern: "/api/control-ui",

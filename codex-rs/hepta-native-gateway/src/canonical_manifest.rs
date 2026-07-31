@@ -20,7 +20,7 @@ const CURRENT_REALITY_CAPABILITY_REGISTRY_SCHEMA: &str =
     "hepta_current_reality_capability_registry_v1";
 const IMMUTABLE_RELEASE_MANIFEST_SCHEMA: &str = "hepta_immutable_release_manifest_v1";
 const ROUTE_REGISTRY_NORMALIZED_SHA256: &str =
-    "aabbfa3b6a873716afb5ad49bfd1e1d4fa7717ce495dde7bc94d8674aba320a1";
+    "305103fbd8bd1ea09b42cea31a0cba74a2395ec87270f4e80b0bf57afb2f530d";
 
 #[derive(Debug, Serialize)]
 struct RegistryBinding {

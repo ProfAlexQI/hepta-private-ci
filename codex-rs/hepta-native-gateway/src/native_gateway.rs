@@ -117,6 +117,7 @@ use crate::runtime_mutation::enabled as runtime_mutation_enabled;
 use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
+mod evidence_api;
 mod http_rejections;
 mod manifest_dispatch;
 mod report_pagination;
