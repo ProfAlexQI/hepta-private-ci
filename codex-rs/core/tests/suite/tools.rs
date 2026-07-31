@@ -119,7 +119,7 @@ async fn turn_environment_selection_keeps_environment_backed_tools() -> Result<(
         "which tools are available?",
         Some(vec![TurnEnvironmentSelection {
             environment_id: "local".to_string(),
-            cwd: test.config.cwd.clone(),
+            cwd: test.config.cwd.clone().into(),
         }]),
     )
     .await?;

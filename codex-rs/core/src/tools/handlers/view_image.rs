@@ -135,7 +135,11 @@ impl ToolExecutor<ToolInvocation> for ViewImageHandler {
                 "view_image is unavailable in this session".to_string(),
             ));
         };
-        let cwd = turn_environment.cwd.clone();
+        let cwd = turn_environment.native_cwd().map_err(|error| {
+            FunctionCallError::RespondToModel(format!(
+                "view_image requires a host-native cwd in this build: {error}"
+            ))
+        })?;
         let abs_path = cwd.join(path);
         let sandbox = turn.file_system_sandbox_context(/*additional_permissions*/ None, &cwd);
         let fs = turn_environment.environment.get_filesystem();
@@ -289,7 +293,7 @@ mod tests {
             .turn_environments
             .first_mut()
             .expect("default local turn environment")
-            .cwd = image_cwd.clone();
+            .cwd = image_cwd.clone().into();
         let image_path = image_cwd.join("image.png");
         std::fs::write(image_path.as_path(), b"not a real image").expect("write test image");
         turn.permission_profile = PermissionProfile::read_only();
@@ -356,7 +360,7 @@ mod tests {
             .turn_environments
             .first_mut()
             .expect("default local turn environment")
-            .cwd = image_cwd.clone();
+            .cwd = image_cwd.clone().into();
         let image_path = image_cwd.join("image.png");
         std::fs::write(image_path.as_path(), b"not a real image").expect("write test image");
         turn.permission_profile = PermissionProfile::Disabled;

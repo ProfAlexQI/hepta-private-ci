@@ -500,6 +500,16 @@
             "call_id": {
               "type": "string"
             },
+            "encrypted_function_args": {
+              "description": "Provider-owned encrypted argument metadata. An explicitly empty list marks a collaboration call whose message may be forwarded as structured plaintext.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "id": {
               "type": [
                 "string",

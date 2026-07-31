@@ -10252,6 +10252,9 @@
         "title": "ItemStartedNotification",
         "type": "object"
       },
+      "LegacyAppPathString": {
+        "type": "string"
+      },
       "ListMcpServerStatusParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -10812,6 +10815,7 @@
       },
       "McpAuthStatus": {
         "enum": [
+          "unknown",
           "unsupported",
           "notLoggedIn",
           "bearerToken",
@@ -11817,6 +11821,7 @@
           "pro",
           "prolite",
           "team",
+          "self_serve_business_prolite",
           "self_serve_business_usage_based",
           "business",
           "enterprise_cbp_usage_based",
@@ -11908,6 +11913,15 @@
           "summary"
         ],
         "type": "object"
+      },
+      "PluginDisabledReason": {
+        "enum": [
+          "disabled_by_admin",
+          "plan_not_eligible",
+          "required_app_unavailable",
+          "unknown"
+        ],
+        "type": "string"
       },
       "PluginHookSummary": {
         "properties": {
@@ -12731,6 +12745,29 @@
             "default": "AVAILABLE",
             "description": "Availability state for installing and using the plugin."
           },
+          "disabledReason": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/PluginDisabledReason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Why the remote plugin is unavailable, when provided by plugin-service."
+          },
+          "eligiblePlanTypes": {
+            "default": null,
+            "description": "Raw plugin-service plan identifiers eligible to install the plugin.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "enabled": {
             "type": "boolean"
           },
@@ -12742,6 +12779,15 @@
           },
           "installed": {
             "type": "boolean"
+          },
+          "installedAt": {
+            "default": null,
+            "description": "Unix timestamp in seconds when the remote plugin was installed, when available.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "interface": {
             "anyOf": [
@@ -13796,6 +13842,16 @@
               },
               "call_id": {
                 "type": "string"
+              },
+              "encrypted_function_args": {
+                "description": "Provider-owned encrypted argument metadata. An explicitly empty list marks a collaboration call whose message may be forwarded as structured plaintext.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "id": {
                 "type": [
@@ -16012,6 +16068,13 @@
                   "null"
                 ]
               },
+              "readOnlyHint": {
+                "description": "Untrusted advisory copied from the selected MCP tool annotation.",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
               "result": {
                 "anyOf": [
                   {
@@ -17808,7 +17871,7 @@
       "TurnEnvironmentParams": {
         "properties": {
           "cwd": {
-            "$ref": "#/definitions/v2/AbsolutePathBuf"
+            "$ref": "#/definitions/v2/LegacyAppPathString"
           },
           "environmentId": {
             "type": "string"

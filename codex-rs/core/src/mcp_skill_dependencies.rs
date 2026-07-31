@@ -142,7 +142,7 @@ pub(crate) async fn maybe_install_mcp_dependencies(
     let runtime_environment = match turn_context.environments.primary() {
         Some(turn_environment) => McpRuntimeEnvironment::new_with_http_client_factory(
             Arc::clone(&turn_environment.environment),
-            turn_environment.cwd.to_path_buf(),
+            turn_environment.cwd().to_path_buf(),
             config.http_client_factory(),
         ),
         None => McpRuntimeEnvironment::new_with_http_client_factory(

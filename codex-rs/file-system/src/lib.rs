@@ -10,6 +10,7 @@ use codex_protocol::permissions::FileSystemSpecialPath;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_path_uri::PathUri;
 use futures::Stream;
 use std::io;
 use std::path::Path;
@@ -173,6 +174,20 @@ pub trait ExecutorFileSystem: Send + Sync {
         })))
     }
 
+    /// Reads a file identified by an environment-native URI.
+    ///
+    /// Local executors convert at their own host boundary. Remote executors
+    /// should override this method so foreign paths remain URI-native across
+    /// transport and are converted only by the target executor.
+    async fn read_file_stream_uri(
+        &self,
+        path: &PathUri,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<FileSystemReadStream> {
+        let native_path = path.to_abs_path()?;
+        self.read_file_stream(&native_path, sandbox).await
+    }
+
     /// Atomically opens `authority_root`, walks only normal relative path
     /// components without following symbolic links, and reads no more than
     /// `max_bytes + 1` bytes from a regular final file.
@@ -223,6 +238,16 @@ pub trait ExecutorFileSystem: Send + Sync {
         path: &AbsolutePathBuf,
         sandbox: Option<&FileSystemSandboxContext>,
     ) -> FileSystemResult<FileMetadata>;
+
+    /// Reads metadata for an environment-native URI.
+    async fn get_metadata_uri(
+        &self,
+        path: &PathUri,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<FileMetadata> {
+        let native_path = path.to_abs_path()?;
+        self.get_metadata(&native_path, sandbox).await
+    }
 
     async fn read_directory(
         &self,

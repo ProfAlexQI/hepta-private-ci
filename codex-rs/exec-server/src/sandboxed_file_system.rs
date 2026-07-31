@@ -63,7 +63,7 @@ impl ExecutorFileSystem for SandboxedFileSystem {
             .run_sandboxed(
                 sandbox,
                 FsHelperRequest::ReadFile(FsReadFileParams {
-                    path: path.clone(),
+                    path: codex_utils_path_uri::PathUri::from_abs_path(path),
                     sandbox: None,
                 }),
             )
@@ -154,7 +154,7 @@ impl ExecutorFileSystem for SandboxedFileSystem {
             .run_sandboxed(
                 sandbox,
                 FsHelperRequest::GetMetadata(FsGetMetadataParams {
-                    path: path.clone(),
+                    path: codex_utils_path_uri::PathUri::from_abs_path(path),
                     sandbox: None,
                 }),
             )

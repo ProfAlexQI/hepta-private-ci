@@ -16,6 +16,7 @@ use codex_api::OPENAI_FILE_UPLOAD_LIMIT_BYTES;
 use codex_api::upload_openai_file;
 use codex_http_client::RouteAwareClientPool;
 use codex_login::CodexAuth;
+use codex_utils_path_uri::PathUri;
 use serde_json::Value as JsonValue;
 
 pub(crate) async fn rewrite_mcp_tool_arguments_for_openai_files(
@@ -134,35 +135,32 @@ async fn build_uploaded_local_argument_value(
             "no primary turn environment is available".to_string(),
         ));
     };
-    let resolved_path = turn_environment.cwd.join(file_path);
+    let path_uri = resolve_uploaded_file_path(turn_environment.cwd(), file_path)
+        .map_err(|error| contextualize_error(error.to_string()))?;
     let fs = turn_environment.environment.get_filesystem();
     let metadata = fs
-        .get_metadata(&resolved_path, /*sandbox*/ None)
+        .get_metadata_uri(&path_uri, /*sandbox*/ None)
         .await
         .map_err(|error| contextualize_error(error.to_string()))?;
     if !metadata.is_file {
         return Err(contextualize_error(format!(
             "path `{}` is not a file",
-            resolved_path.display()
+            path_uri.inferred_native_path_string()
         )));
     }
     if metadata.size > OPENAI_FILE_UPLOAD_LIMIT_BYTES {
         return Err(contextualize_error(format!(
             "file `{}` is too large: {} bytes exceeds the limit of {} bytes",
-            resolved_path.display(),
+            path_uri.inferred_native_path_string(),
             metadata.size,
             OPENAI_FILE_UPLOAD_LIMIT_BYTES,
         )));
     }
     let contents = fs
-        .read_file_stream(&resolved_path, /*sandbox*/ None)
+        .read_file_stream_uri(&path_uri, /*sandbox*/ None)
         .await
         .map_err(|error| contextualize_error(error.to_string()))?;
-    let file_name = resolved_path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("file")
-        .to_string();
+    let file_name = path_uri.basename().unwrap_or_else(|| "file".to_string());
     let upload_auth = codex_model_provider::auth_provider_from_auth(auth);
     let uploaded = upload_openai_file(
         turn_context.config.chatgpt_base_url.trim_end_matches('/'),
@@ -184,12 +182,21 @@ async fn build_uploaded_local_argument_value(
     }))
 }
 
+fn resolve_uploaded_file_path(
+    cwd: &PathUri,
+    file_path: &str,
+) -> Result<PathUri, codex_utils_path_uri::PathUriParseError> {
+    cwd.join(file_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::session::tests::make_session_and_context;
     use crate::session::turn_context::TurnContext;
     use codex_utils_absolute_path::AbsolutePathBuf;
+    use codex_utils_path_uri::LegacyAppPathString;
+    use codex_utils_path_uri::PathConvention;
     use pretty_assertions::assert_eq;
     use std::sync::Arc;
     use tempfile::tempdir;
@@ -201,7 +208,23 @@ mod tests {
             .turn_environments
             .first_mut()
             .expect("primary environment")
-            .cwd = cwd;
+            .cwd = cwd.into();
+    }
+
+    #[test]
+    fn uploaded_file_path_preserves_foreign_windows_cwd() {
+        let cwd = LegacyAppPathString::from_string(r"C:\workspace\reports")
+            .to_path_uri(PathConvention::Windows)
+            .expect("absolute Windows cwd");
+
+        let resolved = resolve_uploaded_file_path(&cwd, r"daily\result.csv")
+            .expect("relative Windows file path should resolve");
+
+        assert_eq!(
+            resolved.inferred_native_path_string(),
+            r"C:\workspace\reports\daily\result.csv"
+        );
+        assert_eq!(resolved.basename().as_deref(), Some("result.csv"));
     }
 
     #[tokio::test]

@@ -148,7 +148,7 @@ pub(crate) async fn make_session_configuration_for_tests() -> SessionConfigurati
         approvals_reviewer: config.approvals_reviewer,
         permission_profile_state: config.permissions.permission_profile_state().clone(),
         windows_sandbox_level: WindowsSandboxLevel::from_config(&config),
-        cwd: config.cwd.clone(),
+        cwd: config.cwd.clone().into(),
         workspace_roots: config.workspace_roots.clone(),
         codex_home: config.codex_home.clone(),
         thread_name: None,
@@ -174,7 +174,7 @@ fn turn_environments_for_tests(
         turn_environments: vec![TurnEnvironment {
             environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
             environment: Arc::clone(environment),
-            cwd: cwd.clone(),
+            cwd: cwd.clone().into(),
             shell: None,
         }],
     }
@@ -687,7 +687,7 @@ async fn cwd_update_does_not_rewrite_sticky_environment_cwd() {
         let environment_cwd = original_cwd.join("environment");
         state.session_configuration.environments = vec![TurnEnvironmentSelection {
             environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
-            cwd: environment_cwd.clone(),
+            cwd: environment_cwd.clone().into(),
         }];
         (original_cwd, environment_cwd)
     };
@@ -706,7 +706,7 @@ async fn cwd_update_does_not_rewrite_sticky_environment_cwd() {
     assert_eq!(state.session_configuration.cwd, updated_cwd);
     assert_eq!(
         state.session_configuration.environments[0].cwd,
-        environment_cwd
+        environment_cwd.into()
     );
 }
 
@@ -726,7 +726,7 @@ async fn absolute_cwd_update_with_turn_environment_is_allowed() {
                 cwd: Some(absolute_cwd.to_path_buf()),
                 environments: Some(vec![TurnEnvironmentSelection {
                     environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
-                    cwd: absolute_cwd.clone(),
+                    cwd: absolute_cwd.clone().into(),
                 }]),
                 ..Default::default()
             },
@@ -787,7 +787,7 @@ async fn session_new_fails_when_zsh_fork_enabled_without_zsh_path() {
         approvals_reviewer: config.approvals_reviewer,
         permission_profile_state: config.permissions.permission_profile_state().clone(),
         windows_sandbox_level: WindowsSandboxLevel::from_config(&config),
-        cwd: config.cwd.clone(),
+        cwd: config.cwd.clone().into(),
         workspace_roots: config.workspace_roots.clone(),
         codex_home: config.codex_home.clone(),
         thread_name: None,
@@ -877,7 +877,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
     };
     let default_environments = vec![TurnEnvironmentSelection {
         environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
-        cwd: config.cwd.clone(),
+        cwd: config.cwd.clone().into(),
     }];
     let session_configuration = SessionConfiguration {
         provider: config.model_provider.clone(),
@@ -897,7 +897,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         approvals_reviewer: config.approvals_reviewer,
         permission_profile_state: config.permissions.permission_profile_state().clone(),
         windows_sandbox_level: WindowsSandboxLevel::from_config(&config),
-        cwd: config.cwd.clone(),
+        cwd: config.cwd.clone().into(),
         workspace_roots: config.workspace_roots.clone(),
         codex_home: config.codex_home.clone(),
         thread_name: None,
@@ -1144,7 +1144,7 @@ async fn make_session_with_config_and_auth_manager_and_rx(
     };
     let default_environments = vec![TurnEnvironmentSelection {
         environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
-        cwd: config.cwd.clone(),
+        cwd: config.cwd.clone().into(),
     }];
     let session_configuration = SessionConfiguration {
         provider: config.model_provider.clone(),
@@ -1248,7 +1248,7 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
     };
     let default_environments = vec![TurnEnvironmentSelection {
         environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
-        cwd: config.cwd.clone(),
+        cwd: config.cwd.clone().into(),
     }];
     let session_configuration = SessionConfiguration {
         provider: config.model_provider.clone(),
@@ -1993,7 +1993,7 @@ async fn turn_environments_set_primary_environment() {
             SessionSettingsUpdate {
                 environments: Some(vec![TurnEnvironmentSelection {
                     environment_id: "local".to_string(),
-                    cwd: selected_cwd.clone(),
+                    cwd: selected_cwd.clone().into(),
                 }]),
                 ..Default::default()
             },
@@ -2029,7 +2029,7 @@ async fn default_turn_overlays_session_cwd_onto_stored_thread_environments() {
         let mut state = session.state.lock().await;
         state.session_configuration.environments = vec![TurnEnvironmentSelection {
             environment_id: "local".to_string(),
-            cwd: selected_cwd.clone(),
+            cwd: selected_cwd.clone().into(),
         }];
     }
 
@@ -2084,7 +2084,7 @@ async fn primary_environment_uses_first_turn_environment() {
         .push(TurnEnvironment {
             environment_id: "second".to_string(),
             environment: Arc::clone(&first_environment.environment),
-            cwd: second_cwd.clone(),
+            cwd: second_cwd.clone().into(),
             shell: None,
         });
 
@@ -2104,12 +2104,12 @@ async fn primary_environment_uses_first_turn_environment() {
             .find(|environment| environment.environment_id == "second")
             .expect("second environment")
             .cwd,
-        second_cwd
+        second_cwd.clone().into()
     );
     assert_eq!(turn_context.environments.turn_environments.len(), 2);
     assert_eq!(
         turn_context.environments.turn_environments[1].cwd,
-        second_cwd
+        second_cwd.into()
     );
 }
 
@@ -2150,7 +2150,7 @@ async fn unknown_turn_environment_returns_error() {
             SessionSettingsUpdate {
                 environments: Some(vec![TurnEnvironmentSelection {
                     environment_id: "missing".to_string(),
-                    cwd: original_configuration.cwd.clone(),
+                    cwd: original_configuration.cwd.clone().into(),
                 }]),
                 ..Default::default()
             },
@@ -2186,11 +2186,11 @@ async fn duplicate_turn_environment_returns_error_without_mutating_session() {
                 environments: Some(vec![
                     TurnEnvironmentSelection {
                         environment_id: "local".to_string(),
-                        cwd: original_configuration.cwd.clone(),
+                        cwd: original_configuration.cwd.clone().into(),
                     },
                     TurnEnvironmentSelection {
                         environment_id: "local".to_string(),
-                        cwd: original_configuration.cwd.join("second"),
+                        cwd: original_configuration.cwd.join("second").into(),
                     },
                 ]),
                 ..Default::default()
@@ -2774,7 +2774,7 @@ where
     };
     let default_environments = vec![TurnEnvironmentSelection {
         environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
-        cwd: config.cwd.clone(),
+        cwd: config.cwd.clone().into(),
     }];
     let session_configuration = SessionConfiguration {
         provider: config.model_provider.clone(),

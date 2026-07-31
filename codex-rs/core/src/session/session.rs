@@ -1191,7 +1191,7 @@ impl Session {
                 let mcp_runtime_environment = match turn_environment.as_ref() {
                     Some(turn_environment) => McpRuntimeEnvironment::new(
                         Arc::clone(&turn_environment.environment),
-                        turn_environment.cwd.to_path_buf(),
+                        turn_environment.cwd().to_path_buf(),
                     ),
                     None => McpRuntimeEnvironment::new(
                         sess.services

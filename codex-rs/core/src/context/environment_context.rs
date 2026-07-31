@@ -4,6 +4,7 @@ use crate::shell::Shell;
 use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::TurnContextNetworkItem;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_path_uri::PathUri;
 
 use super::ContextualUserFragment;
 
@@ -19,7 +20,7 @@ pub(crate) struct EnvironmentContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct EnvironmentContextEnvironment {
     pub(crate) id: String,
-    pub(crate) cwd: AbsolutePathBuf,
+    pub(crate) cwd: PathUri,
     pub(crate) shell: String,
 }
 
@@ -27,7 +28,7 @@ impl EnvironmentContextEnvironment {
     fn legacy(cwd: AbsolutePathBuf, shell: String) -> Self {
         Self {
             id: String::new(),
-            cwd,
+            cwd: PathUri::from_abs_path(&cwd),
             shell,
         }
     }
@@ -37,7 +38,7 @@ impl EnvironmentContextEnvironment {
             .iter()
             .map(|environment| Self {
                 id: environment.environment_id.clone(),
-                cwd: environment.cwd.clone(),
+                cwd: environment.cwd().clone(),
                 shell: environment
                     .shell
                     .clone()
@@ -165,11 +166,16 @@ impl EnvironmentContext {
         after: &EnvironmentContext,
     ) -> Self {
         let before_network = Self::network_from_turn_context_item(before);
+        let before_cwd = AbsolutePathBuf::try_from(before.cwd.clone())
+            .unwrap_or_else(|_| AbsolutePathBuf::resolve_path_against_base(&before.cwd, "/"));
         let environments = match &after.environments {
             EnvironmentContextEnvironments::Single(environment) => {
-                if before.cwd.as_path() != environment.cwd.as_path() {
+                if PathUri::from_abs_path(&before_cwd) != environment.cwd {
                     EnvironmentContextEnvironments::Single(EnvironmentContextEnvironment::legacy(
-                        environment.cwd.clone(),
+                        environment
+                            .cwd
+                            .to_abs_path()
+                            .unwrap_or_else(|_| before_cwd.clone()),
                         environment.shell.clone(),
                     ))
                 } else {
@@ -279,7 +285,7 @@ impl ContextualUserFragment for EnvironmentContext {
             EnvironmentContextEnvironments::Single(environment) => {
                 lines.push(format!(
                     "  <cwd>{}</cwd>",
-                    environment.cwd.to_string_lossy()
+                    environment.cwd.inferred_native_path_string()
                 ));
                 lines.push(format!("  <shell>{}</shell>", environment.shell));
             }
@@ -293,7 +299,7 @@ impl ContextualUserFragment for EnvironmentContext {
                     ));
                     lines.push(format!(
                         "      <cwd>{}</cwd>",
-                        environment.cwd.to_string_lossy()
+                        environment.cwd.inferred_native_path_string()
                     ));
                     lines.push(format!("      <shell>{}</shell>", environment.shell));
                     lines.push("    </environment>".to_string());

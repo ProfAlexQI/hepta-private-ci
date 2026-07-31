@@ -7,6 +7,7 @@ use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_path_uri::PathUri;
 
 use crate::session::turn_context::TurnEnvironment;
 
@@ -19,7 +20,7 @@ pub(crate) fn default_thread_environment_selections(
         .into_iter()
         .map(|environment_id| TurnEnvironmentSelection {
             environment_id,
-            cwd: cwd.clone(),
+            cwd: PathUri::from_abs_path(cwd),
         })
         .collect()
 }
@@ -71,12 +72,12 @@ pub(crate) fn resolve_environment_selections(
             .ok_or_else(|| {
                 CodexErr::InvalidRequest(format!("unknown turn environment id `{environment_id}`"))
             })?;
-        turn_environments.push(TurnEnvironment {
+        turn_environments.push(TurnEnvironment::new(
             environment_id,
             environment,
-            cwd: selected_environment.cwd.clone(),
-            shell: None,
-        });
+            selected_environment.cwd.clone(),
+            /*shell*/ None,
+        ));
     }
 
     Ok(ResolvedTurnEnvironments { turn_environments })
@@ -114,7 +115,7 @@ mod tests {
             default_thread_environment_selections(&manager, &cwd),
             vec![TurnEnvironmentSelection {
                 environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
-                cwd,
+                cwd: cwd.into(),
             }]
         );
     }
@@ -141,11 +142,11 @@ url = "ws://127.0.0.1:8765"
             vec![
                 TurnEnvironmentSelection {
                     environment_id: LOCAL_ENVIRONMENT_ID.to_string(),
-                    cwd: cwd.clone(),
+                    cwd: cwd.clone().into(),
                 },
                 TurnEnvironmentSelection {
                     environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
-                    cwd,
+                    cwd: cwd.into(),
                 },
             ]
         );
@@ -172,11 +173,11 @@ url = "ws://127.0.0.1:8765"
             &[
                 TurnEnvironmentSelection {
                     environment_id: "local".to_string(),
-                    cwd: cwd.clone(),
+                    cwd: cwd.clone().into(),
                 },
                 TurnEnvironmentSelection {
                     environment_id: "local".to_string(),
-                    cwd: cwd.join("other"),
+                    cwd: cwd.join("other").into(),
                 },
             ],
         )
@@ -195,7 +196,7 @@ url = "ws://127.0.0.1:8765"
             &manager,
             &[TurnEnvironmentSelection {
                 environment_id: "local".to_string(),
-                cwd: selected_cwd,
+                cwd: selected_cwd.into(),
             }],
         )
         .expect("environment selections should resolve");

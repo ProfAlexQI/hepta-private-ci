@@ -49,9 +49,10 @@ impl FileSystemHandler {
         &self,
         params: FsReadFileParams,
     ) -> Result<FsReadFileResponse, JSONRPCErrorError> {
+        let path = params.path.to_abs_path().map_err(map_fs_error)?;
         let bytes = self
             .file_system
-            .read_file(&params.path, params.sandbox.as_ref())
+            .read_file(&path, params.sandbox.as_ref())
             .await
             .map_err(map_fs_error)?;
         Ok(FsReadFileResponse {
@@ -114,9 +115,10 @@ impl FileSystemHandler {
         &self,
         params: FsGetMetadataParams,
     ) -> Result<FsGetMetadataResponse, JSONRPCErrorError> {
+        let path = params.path.to_abs_path().map_err(map_fs_error)?;
         let metadata = self
             .file_system
-            .get_metadata(&params.path, params.sandbox.as_ref())
+            .get_metadata(&path, params.sandbox.as_ref())
             .await
             .map_err(map_fs_error)?;
         Ok(FsGetMetadataResponse {
@@ -246,7 +248,7 @@ mod tests {
 
             let response = handler
                 .read_file(FsReadFileParams {
-                    path,
+                    path: path.into(),
                     sandbox: Some(FileSystemSandboxContext::from_legacy_sandbox_policy(
                         sandbox_policy,
                         sandbox_cwd.clone(),

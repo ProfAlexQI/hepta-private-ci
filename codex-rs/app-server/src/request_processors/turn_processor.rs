@@ -274,12 +274,26 @@ impl TurnRequestProcessor {
         let environment_selections = environments.map(|environments| {
             environments
                 .into_iter()
-                .map(|environment| TurnEnvironmentSelection {
-                    environment_id: environment.environment_id,
-                    cwd: environment.cwd,
+                .map(|environment| {
+                    let environment_id = environment.environment_id;
+                    let cwd = environment
+                        .cwd
+                        .infer_absolute_path_convention()
+                        .and_then(|convention| environment.cwd.to_path_uri(convention).ok())
+                        .ok_or_else(|| {
+                            invalid_request(format!(
+                                "invalid cwd for environment `{environment_id}`: path `{}` does not use absolute POSIX or Windows path syntax",
+                                environment.cwd
+                            ))
+                        })?;
+                    Ok(TurnEnvironmentSelection {
+                        environment_id,
+                        cwd,
+                    })
                 })
-                .collect::<Vec<_>>()
+                .collect::<Result<Vec<_>, JSONRPCErrorError>>()
         });
+        let environment_selections = environment_selections.transpose()?;
         if let Some(environment_selections) = environment_selections.as_ref() {
             self.thread_manager
                 .validate_environment_selections(environment_selections)

@@ -3719,7 +3719,7 @@ fn turn_start_params_round_trip_environments() {
         params.environments,
         Some(vec![TurnEnvironmentParams {
             environment_id: "local".to_string(),
-            cwd: cwd.clone(),
+            cwd: cwd.clone().into(),
         }])
     );
     assert_eq!(
@@ -3737,6 +3737,26 @@ fn turn_start_params_round_trip_environments() {
             }
         ]))
     );
+}
+
+#[test]
+fn turn_start_environment_preserves_foreign_windows_cwd() {
+    let params: TurnStartParams = serde_json::from_value(json!({
+        "threadId": "thread-1",
+        "input": [],
+        "environments": [{
+            "environmentId": "windows-remote",
+            "cwd": "C:\\workspace\\reports"
+        }]
+    }))
+    .expect("foreign Windows cwd should deserialize on any host");
+
+    let environment = params
+        .environments
+        .as_ref()
+        .and_then(|environments| environments.first())
+        .expect("environment");
+    assert_eq!(environment.cwd.render_for_ui(), r"C:\workspace\reports");
 }
 
 fn test_core_selected_snippet_envelope() -> CoreTurnContextRecallSelectedSnippetEnvelope {

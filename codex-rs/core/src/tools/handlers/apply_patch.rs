@@ -345,7 +345,11 @@ impl ToolExecutor<ToolInvocation> for ApplyPatchHandler {
                 "apply_patch is unavailable in this session".to_string(),
             ));
         };
-        let cwd = turn_environment.cwd.clone();
+        let cwd = turn_environment.native_cwd().map_err(|error| {
+            FunctionCallError::RespondToModel(format!(
+                "apply_patch requires a host-native cwd: {error}"
+            ))
+        })?;
         let fs = turn_environment.environment.get_filesystem();
         let sandbox = turn.file_system_sandbox_context(/*additional_permissions*/ None, &cwd);
         match codex_apply_patch::verify_apply_patch_args(args, &cwd, fs.as_ref(), Some(&sandbox))

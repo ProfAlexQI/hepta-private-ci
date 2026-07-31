@@ -600,7 +600,7 @@ async fn start_thread_rejects_explicit_local_environment_when_default_provider_i
             parent_trace: None,
             environments: vec![TurnEnvironmentSelection {
                 environment_id: "local".to_string(),
-                cwd: config.cwd.clone(),
+                cwd: config.cwd.clone().into(),
             }],
         })
         .await;
@@ -783,7 +783,7 @@ async fn resume_and_fork_do_not_restore_thread_environments_from_rollout_impl() 
         AbsolutePathBuf::try_from(config.cwd.as_path().join("selected")).expect("absolute path");
     let environments = vec![TurnEnvironmentSelection {
         environment_id: "local".to_string(),
-        cwd: selected_cwd.clone(),
+        cwd: selected_cwd.clone().into(),
     }];
     let default_cwd = config.cwd.clone();
     let source = manager
@@ -837,11 +837,11 @@ async fn resume_and_fork_do_not_restore_thread_environments_from_rollout_impl() 
     assert_eq!(resumed_turn.environments.turn_environments.len(), 1);
     assert_eq!(
         resumed_turn.environments.turn_environments[0].cwd,
-        default_cwd
+        default_cwd.clone().into()
     );
     assert_ne!(
         resumed_turn.environments.turn_environments[0].cwd,
-        selected_cwd
+        selected_cwd.clone().into()
     );
 
     let forked = manager
@@ -865,11 +865,11 @@ async fn resume_and_fork_do_not_restore_thread_environments_from_rollout_impl() 
     assert_eq!(forked_turn.environments.turn_environments.len(), 1);
     assert_eq!(
         forked_turn.environments.turn_environments[0].cwd,
-        default_cwd
+        default_cwd.into()
     );
     assert_ne!(
         forked_turn.environments.turn_environments[0].cwd,
-        selected_cwd
+        selected_cwd.into()
     );
 }
 

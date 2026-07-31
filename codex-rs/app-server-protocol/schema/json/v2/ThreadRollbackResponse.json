@@ -1244,6 +1244,13 @@
                 "null"
               ]
             },
+            "readOnlyHint": {
+              "description": "Untrusted advisory copied from the selected MCP tool annotation.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "result": {
               "anyOf": [
                 {

@@ -461,7 +461,7 @@ async fn view_image_routes_to_selected_local_environment() -> anyhow::Result<()>
         "route local view image",
         Some(vec![TurnEnvironmentSelection {
             environment_id: LOCAL_ENVIRONMENT_ID.to_string(),
-            cwd: test.config.cwd.clone(),
+            cwd: test.config.cwd.clone().into(),
         }]),
     )
     .await?;
@@ -577,7 +577,7 @@ async fn view_image_routes_to_selected_remote_environment() -> anyhow::Result<()
     fs::write(local_cwd.path().join("remote.png"), b"not a remote image")?;
     let local_selection = TurnEnvironmentSelection {
         environment_id: LOCAL_ENVIRONMENT_ID.to_string(),
-        cwd: local_cwd.path().abs(),
+        cwd: local_cwd.path().abs().into(),
     };
     let remote_cwd = PathBuf::from(format!(
         "/tmp/codex-view-image-routing-{}",
@@ -598,7 +598,7 @@ async fn view_image_routes_to_selected_remote_environment() -> anyhow::Result<()
         .await?;
     let remote_selection = TurnEnvironmentSelection {
         environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
-        cwd: remote_cwd.clone(),
+        cwd: remote_cwd.clone().into(),
     };
     let call_id = "call-view-image-multi-env";
     let response_mock = mount_sse_sequence(

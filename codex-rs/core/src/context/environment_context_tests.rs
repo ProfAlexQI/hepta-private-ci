@@ -25,7 +25,7 @@ fn serialize_workspace_write_environment_context() {
     let context = EnvironmentContext::new(
         vec![EnvironmentContextEnvironment {
             id: "local".to_string(),
-            cwd: cwd.abs(),
+            cwd: cwd.abs().into(),
             shell: fake_shell_name(),
         }],
         Some("2026-02-26".to_string()),
@@ -56,7 +56,7 @@ fn serialize_environment_context_with_network() {
     let context = EnvironmentContext::new(
         vec![EnvironmentContextEnvironment {
             id: "local".to_string(),
-            cwd: test_path_buf("/repo").abs(),
+            cwd: test_path_buf("/repo").abs().into(),
             shell: fake_shell_name(),
         }],
         Some("2026-02-26".to_string()),
@@ -102,7 +102,7 @@ fn equals_except_shell_compares_cwd() {
     let context1 = EnvironmentContext::new(
         vec![EnvironmentContextEnvironment {
             id: "local".to_string(),
-            cwd: test_abs_path("/repo"),
+            cwd: test_abs_path("/repo").into(),
             shell: fake_shell_name(),
         }],
         /*current_date*/ None,
@@ -113,7 +113,7 @@ fn equals_except_shell_compares_cwd() {
     let context2 = EnvironmentContext::new(
         vec![EnvironmentContextEnvironment {
             id: "local".to_string(),
-            cwd: test_abs_path("/repo"),
+            cwd: test_abs_path("/repo").into(),
             shell: fake_shell_name(),
         }],
         /*current_date*/ None,
@@ -129,7 +129,7 @@ fn equals_except_shell_compares_cwd_differences() {
     let context1 = EnvironmentContext::new(
         vec![EnvironmentContextEnvironment {
             id: "local".to_string(),
-            cwd: test_abs_path("/repo1"),
+            cwd: test_abs_path("/repo1").into(),
             shell: fake_shell_name(),
         }],
         /*current_date*/ None,
@@ -140,7 +140,7 @@ fn equals_except_shell_compares_cwd_differences() {
     let context2 = EnvironmentContext::new(
         vec![EnvironmentContextEnvironment {
             id: "local".to_string(),
-            cwd: test_abs_path("/repo2"),
+            cwd: test_abs_path("/repo2").into(),
             shell: fake_shell_name(),
         }],
         /*current_date*/ None,
@@ -157,7 +157,7 @@ fn equals_except_shell_ignores_shell() {
     let context1 = EnvironmentContext::new(
         vec![EnvironmentContextEnvironment {
             id: "local".to_string(),
-            cwd: test_abs_path("/repo"),
+            cwd: test_abs_path("/repo").into(),
             shell: "bash".to_string(),
         }],
         /*current_date*/ None,
@@ -168,7 +168,7 @@ fn equals_except_shell_ignores_shell() {
     let context2 = EnvironmentContext::new(
         vec![EnvironmentContextEnvironment {
             id: "other".to_string(),
-            cwd: test_abs_path("/repo"),
+            cwd: test_abs_path("/repo").into(),
             shell: "zsh".to_string(),
         }],
         /*current_date*/ None,
@@ -185,7 +185,7 @@ fn serialize_environment_context_with_subagents() {
     let context = EnvironmentContext::new(
         vec![EnvironmentContextEnvironment {
             id: "local".to_string(),
-            cwd: test_path_buf("/repo").abs(),
+            cwd: test_path_buf("/repo").abs().into(),
             shell: fake_shell_name(),
         }],
         Some("2026-02-26".to_string()),
@@ -219,12 +219,12 @@ fn serialize_environment_context_with_multiple_selected_environments() {
         vec![
             EnvironmentContextEnvironment {
                 id: "local".to_string(),
-                cwd: local_cwd.abs(),
+                cwd: local_cwd.abs().into(),
                 shell: "bash".to_string(),
             },
             EnvironmentContextEnvironment {
                 id: "remote".to_string(),
-                cwd: remote_cwd.abs(),
+                cwd: remote_cwd.abs().into(),
                 shell: "bash".to_string(),
             },
         ],
@@ -264,12 +264,12 @@ fn serialize_environment_context_prefers_environment_shell_when_present() {
         vec![
             EnvironmentContextEnvironment {
                 id: "local".to_string(),
-                cwd: local_cwd.abs(),
+                cwd: local_cwd.abs().into(),
                 shell: "powershell".to_string(),
             },
             EnvironmentContextEnvironment {
                 id: "remote".to_string(),
-                cwd: remote_cwd.abs(),
+                cwd: remote_cwd.abs().into(),
                 shell: "cmd".to_string(),
             },
         ],

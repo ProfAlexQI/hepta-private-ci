@@ -276,7 +276,7 @@ async fn exec_command_routes_to_selected_remote_environment() -> Result<()> {
     fs::write(local_cwd.path().join("marker.txt"), "local-routing")?;
     let local_selection = TurnEnvironmentSelection {
         environment_id: LOCAL_ENVIRONMENT_ID.to_string(),
-        cwd: local_cwd.path().abs(),
+        cwd: local_cwd.path().abs().into(),
     };
     let remote_cwd = PathBuf::from(format!(
         "/tmp/codex-remote-routing-{}",
@@ -300,7 +300,7 @@ async fn exec_command_routes_to_selected_remote_environment() -> Result<()> {
         .await?;
     let remote_selection = TurnEnvironmentSelection {
         environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
-        cwd: remote_cwd.clone(),
+        cwd: remote_cwd.clone().into(),
     };
     let multi_env_output = exec_command_routing_output(
         &test,
@@ -390,11 +390,11 @@ async fn apply_patch_freeform_routes_to_selected_remote_environment() -> Result<
         Some(vec![
             TurnEnvironmentSelection {
                 environment_id: LOCAL_ENVIRONMENT_ID.to_string(),
-                cwd: local_cwd.path().abs(),
+                cwd: local_cwd.path().abs().into(),
             },
             TurnEnvironmentSelection {
                 environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
-                cwd: remote_cwd.clone(),
+                cwd: remote_cwd.clone().into(),
             },
         ]),
     )
@@ -471,11 +471,11 @@ async fn apply_patch_approvals_are_remembered_per_environment() -> Result<()> {
     let environments = vec![
         TurnEnvironmentSelection {
             environment_id: LOCAL_ENVIRONMENT_ID.to_string(),
-            cwd: local_cwd.path().abs(),
+            cwd: local_cwd.path().abs().into(),
         },
         TurnEnvironmentSelection {
             environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
-            cwd: remote_cwd.clone(),
+            cwd: remote_cwd.clone().into(),
         },
     ];
     let local_patch = format!(
@@ -671,11 +671,11 @@ async fn apply_patch_intercepted_exec_command_routes_to_selected_remote_environm
         Some(vec![
             TurnEnvironmentSelection {
                 environment_id: LOCAL_ENVIRONMENT_ID.to_string(),
-                cwd: local_cwd.path().abs(),
+                cwd: local_cwd.path().abs().into(),
             },
             TurnEnvironmentSelection {
                 environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
-                cwd: remote_cwd.clone(),
+                cwd: remote_cwd.clone().into(),
             },
         ]),
     )

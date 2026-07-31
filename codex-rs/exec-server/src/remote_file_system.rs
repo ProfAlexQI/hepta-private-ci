@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_path_uri::PathUri;
 use std::path::Path;
 use tokio::io;
 use tracing::trace;
@@ -11,6 +12,7 @@ use crate::CreateDirectoryOptions;
 use crate::ExecServerError;
 use crate::ExecutorFileSystem;
 use crate::FileMetadata;
+use crate::FileSystemReadStream;
 use crate::FileSystemResult;
 use crate::FileSystemSandboxContext;
 use crate::ReadDirectoryEntry;
@@ -39,16 +41,12 @@ impl RemoteFileSystem {
         trace!("remote fs new");
         Self { client }
     }
-}
 
-#[async_trait]
-impl ExecutorFileSystem for RemoteFileSystem {
-    async fn read_file(
+    async fn read_file_uri_bytes(
         &self,
-        path: &AbsolutePathBuf,
+        path: &PathUri,
         sandbox: Option<&FileSystemSandboxContext>,
     ) -> FileSystemResult<Vec<u8>> {
-        trace!("remote fs read_file");
         let client = self.client.get().await.map_err(map_remote_error)?;
         let response = client
             .fs_read_file(FsReadFileParams {
@@ -63,6 +61,54 @@ impl ExecutorFileSystem for RemoteFileSystem {
                 format!("remote fs/readFile returned invalid base64 dataBase64: {err}"),
             )
         })
+    }
+
+    async fn get_metadata_uri_inner(
+        &self,
+        path: &PathUri,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<FileMetadata> {
+        let client = self.client.get().await.map_err(map_remote_error)?;
+        let response = client
+            .fs_get_metadata(FsGetMetadataParams {
+                path: path.clone(),
+                sandbox: remote_sandbox_context(sandbox),
+            })
+            .await
+            .map_err(map_remote_error)?;
+        Ok(FileMetadata {
+            is_directory: response.is_directory,
+            is_file: response.is_file,
+            is_symlink: response.is_symlink,
+            size: response.size,
+            created_at_ms: response.created_at_ms,
+            modified_at_ms: response.modified_at_ms,
+        })
+    }
+}
+
+#[async_trait]
+impl ExecutorFileSystem for RemoteFileSystem {
+    async fn read_file(
+        &self,
+        path: &AbsolutePathBuf,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<Vec<u8>> {
+        trace!("remote fs read_file");
+        self.read_file_uri_bytes(&PathUri::from_abs_path(path), sandbox)
+            .await
+    }
+
+    async fn read_file_stream_uri(
+        &self,
+        path: &PathUri,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<FileSystemReadStream> {
+        trace!("remote fs read_file_stream_uri");
+        let contents = self.read_file_uri_bytes(path, sandbox).await?;
+        Ok(Box::pin(futures::stream::once(async move {
+            Ok(bytes::Bytes::from(contents))
+        })))
     }
 
     async fn read_file_beneath(
@@ -130,22 +176,17 @@ impl ExecutorFileSystem for RemoteFileSystem {
         sandbox: Option<&FileSystemSandboxContext>,
     ) -> FileSystemResult<FileMetadata> {
         trace!("remote fs get_metadata");
-        let client = self.client.get().await.map_err(map_remote_error)?;
-        let response = client
-            .fs_get_metadata(FsGetMetadataParams {
-                path: path.clone(),
-                sandbox: remote_sandbox_context(sandbox),
-            })
+        self.get_metadata_uri_inner(&PathUri::from_abs_path(path), sandbox)
             .await
-            .map_err(map_remote_error)?;
-        Ok(FileMetadata {
-            is_directory: response.is_directory,
-            is_file: response.is_file,
-            is_symlink: response.is_symlink,
-            size: response.size,
-            created_at_ms: response.created_at_ms,
-            modified_at_ms: response.modified_at_ms,
-        })
+    }
+
+    async fn get_metadata_uri(
+        &self,
+        path: &PathUri,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<FileMetadata> {
+        trace!("remote fs get_metadata_uri");
+        self.get_metadata_uri_inner(path, sandbox).await
     }
 
     async fn read_directory(

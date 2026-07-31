@@ -19,7 +19,7 @@ fn test_turn_environment(environment_id: &str) -> crate::session::turn_context::
     crate::session::turn_context::TurnEnvironment {
         environment_id: environment_id.to_string(),
         environment: std::sync::Arc::new(codex_exec_server::Environment::default_for_tests()),
-        cwd: std::env::temp_dir().abs(),
+        cwd: std::env::temp_dir().abs().into(),
         shell: None,
     }
 }

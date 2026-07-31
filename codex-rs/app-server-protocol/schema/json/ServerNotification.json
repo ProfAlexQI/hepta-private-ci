@@ -2433,6 +2433,7 @@
         "pro",
         "prolite",
         "team",
+        "self_serve_business_prolite",
         "self_serve_business_usage_based",
         "business",
         "enterprise_cbp_usage_based",
@@ -3597,6 +3598,13 @@
             "mcpAppResourceUri": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "readOnlyHint": {
+              "description": "Untrusted advisory copied from the selected MCP tool annotation.",
+              "type": [
+                "boolean",
                 "null"
               ]
             },

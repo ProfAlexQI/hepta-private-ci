@@ -12,6 +12,7 @@ use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_sandboxing::compatibility_sandbox_policy_for_permission_profile;
 use codex_sandboxing::policy_transforms::effective_file_system_sandbox_policy;
 use codex_sandboxing::policy_transforms::effective_network_sandbox_policy;
+use codex_utils_path_uri::PathUri;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
@@ -38,11 +39,33 @@ impl TurnSkillsContext {
 pub(crate) struct TurnEnvironment {
     pub(crate) environment_id: String,
     pub(crate) environment: Arc<Environment>,
-    pub(crate) cwd: AbsolutePathBuf,
+    pub(crate) cwd: PathUri,
     pub(crate) shell: Option<String>,
 }
 
 impl TurnEnvironment {
+    pub(crate) fn new(
+        environment_id: String,
+        environment: Arc<Environment>,
+        cwd: PathUri,
+        shell: Option<String>,
+    ) -> Self {
+        Self {
+            environment_id,
+            environment,
+            cwd,
+            shell,
+        }
+    }
+
+    pub(crate) fn cwd(&self) -> &PathUri {
+        &self.cwd
+    }
+
+    pub(crate) fn native_cwd(&self) -> std::io::Result<AbsolutePathBuf> {
+        self.cwd.to_abs_path()
+    }
+
     pub(crate) fn selection(&self) -> TurnEnvironmentSelection {
         TurnEnvironmentSelection {
             environment_id: self.environment_id.clone(),
@@ -833,7 +856,7 @@ impl Session {
     ) -> Arc<TurnContext> {
         let primary_turn_environment = turn_environments.primary();
         let cwd = primary_turn_environment
-            .map(|turn_environment| turn_environment.cwd.clone())
+            .and_then(|turn_environment| turn_environment.native_cwd().ok())
             .unwrap_or_else(|| session_configuration.cwd.clone());
         let per_turn_config = Self::build_per_turn_config(&session_configuration, cwd.clone());
         {
@@ -968,9 +991,9 @@ impl Session {
         runtime_cwd: &AbsolutePathBuf,
     ) {
         if let Some(turn_environment) = environments.first_mut()
-            && turn_environment.cwd != *runtime_cwd
+            && turn_environment.cwd != PathUri::from_abs_path(runtime_cwd)
         {
-            turn_environment.cwd = runtime_cwd.clone();
+            turn_environment.cwd = PathUri::from_abs_path(runtime_cwd);
         }
     }
 }

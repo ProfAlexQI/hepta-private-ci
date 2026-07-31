@@ -121,13 +121,18 @@ impl ToolExecutor<ToolInvocation> for ExecCommandHandler {
                 "unified exec is unavailable in this session".to_string(),
             ));
         };
+        let native_environment_cwd = turn_environment.native_cwd().map_err(|error| {
+            FunctionCallError::RespondToModel(format!(
+                "unified exec requires a host-native cwd in this build: {error}"
+            ))
+        })?;
         let cwd = environment_args
             .workdir
             .as_deref()
             .filter(|workdir| !workdir.is_empty())
             .map_or_else(
-                || turn_environment.cwd.clone(),
-                |workdir| turn_environment.cwd.join(workdir),
+                || native_environment_cwd.clone(),
+                |workdir| native_environment_cwd.join(workdir),
             );
         let environment = Arc::clone(&turn_environment.environment);
         let fs = environment.get_filesystem();
@@ -262,7 +267,7 @@ impl ToolExecutor<ToolInvocation> for ExecCommandHandler {
                     yield_time_ms,
                     max_output_tokens: Some(max_output_tokens),
                     cwd,
-                    sandbox_cwd: turn_environment.cwd.clone(),
+                    sandbox_cwd: native_environment_cwd,
                     environment,
                     network: context.turn.network.clone(),
                     tty,

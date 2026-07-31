@@ -5,6 +5,7 @@ use crate::FileSystemSandboxContext;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use codex_protocol::config_types::ShellEnvironmentPolicyInherit;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_path_uri::PathUri;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -170,7 +171,7 @@ pub struct TerminateResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsReadFileParams {
-    pub path: AbsolutePathBuf,
+    pub path: PathUri,
     pub sandbox: Option<FileSystemSandboxContext>,
 }
 
@@ -222,7 +223,7 @@ pub struct FsCreateDirectoryResponse {}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsGetMetadataParams {
-    pub path: AbsolutePathBuf,
+    pub path: PathUri,
     pub sandbox: Option<FileSystemSandboxContext>,
 }
 
@@ -424,7 +425,10 @@ mod base64_bytes {
 
 #[cfg(test)]
 mod tests {
+    use super::FsGetMetadataParams;
     use super::HttpRequestParams;
+    use codex_utils_path_uri::LegacyAppPathString;
+    use codex_utils_path_uri::PathConvention;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -464,6 +468,27 @@ mod tests {
                 explicit_timeout.timeout_ms
             ),
             ("req-explicit-timeout", Some(1234))
+        );
+    }
+
+    #[test]
+    fn filesystem_metadata_path_preserves_foreign_windows_uri_on_wire() {
+        let path = LegacyAppPathString::from_string(r"C:\workspace\reports\result.csv")
+            .to_path_uri(PathConvention::Windows)
+            .expect("absolute Windows path");
+        let params = FsGetMetadataParams {
+            path: path.clone(),
+            sandbox: None,
+        };
+
+        let encoded = serde_json::to_value(&params).expect("serialize metadata params");
+        let decoded: FsGetMetadataParams =
+            serde_json::from_value(encoded).expect("deserialize metadata params");
+
+        assert_eq!(decoded.path, path);
+        assert_eq!(
+            decoded.path.inferred_native_path_string(),
+            r"C:\workspace\reports\result.csv"
         );
     }
 }
