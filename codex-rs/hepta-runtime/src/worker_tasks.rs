@@ -4990,7 +4990,7 @@ fn build_autonomous_coding_worker_artifacts(
     artifacts
 }
 
-include!("worker_tasks/report_builders.rs");
+include!("worker_tasks/builders.rs");
 
 #[cfg(test)]
 #[path = "worker_tasks/tests.rs"]

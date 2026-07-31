@@ -16,10 +16,10 @@ SPECS = [
   },
   {
     source: "codex-rs/hepta-runtime/src/worker_tasks.rs",
-    extracted: "codex-rs/hepta-runtime/src/worker_tasks/report_builders.rs",
+    extracted: "codex-rs/hepta-runtime/src/worker_tasks/builders.rs",
     start: "fn build_autonomous_coding_diff_summary(",
     finish: "fn is_zero(",
-    include: "worker_tasks/report_builders.rs"
+    include: "worker_tasks/builders.rs"
   },
   {
     source: "codex-rs/hepta-native-gateway/src/native_gateway.rs",
