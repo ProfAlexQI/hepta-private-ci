@@ -1,0 +1,249 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "pathname"
+
+ROOT = File.expand_path("..", __dir__)
+MAX_PART_LINES = 5_000
+
+SPECS = [
+  {
+    path: "codex-rs/hepta-core/src/upstream_codex_sync.rs",
+    original_sha256: "48185de2e75249b15c3353c7e40a5d830f89b01d66dcd8fed0c1ac75f8180e3e",
+    body_marker: nil,
+    split_marker: "impl HeptaUpstreamCodexActivationEvidenceFreshnessPolicyReport {\n",
+    footer: "\n#[cfg(test)]\nmod tests;\n",
+    parts: [
+      "codex-rs/hepta-core/src/upstream_codex_sync/intake_and_activation.rs",
+      "codex-rs/hepta-core/src/upstream_codex_sync/evidence_and_public_reports.rs",
+    ],
+  },
+  {
+    path: "codex-rs/hepta-kernel/src/lib.rs",
+    original_sha256: "9bc147c73b07da5d8c5ae2986ffedd4c7ecd250adecb3059c948c72624885bf8",
+    body_marker: "pub const HEPTA_KERNEL_CONTRACT: &str = \"hepta-kernel-v1\";\n",
+    split_marker: "#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]\npub enum HeptaKernelTurnChannel {\n",
+    footer: "\n#[cfg(test)]\n#[path = \"tests.rs\"]\nmod tests;\n",
+    parts: [
+      "codex-rs/hepta-kernel/src/kernel_parts/native_post.rs",
+      "codex-rs/hepta-kernel/src/kernel_parts/telegram_runtime.rs",
+    ],
+  },
+  {
+    path: "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/operator_packet_receipts.rs",
+    original_sha256: "206fa18f34e342463d0b23e743a0d5825845a30046446427fe81881a47a255f2",
+    body_marker: nil,
+    split_marker: "fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_redaction_privacy_payload_exposure_denial_report()\n",
+    footer: "\ninclude!(\"operator_packet_receipts/terminal_distribution.rs\");\n",
+    parts: [
+      "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/operator_packet_receipts/packet_acceptance_and_audit.rs",
+      "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/operator_packet_receipts/briefing_and_publication.rs",
+    ],
+  },
+  {
+    path: "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/canary_preflight_and_readback.rs",
+    original_sha256: "0bb8d3524fa2254853a8bed3d91cb64aad529848e3d98d648fed8c5d78d0f7d3",
+    body_marker: nil,
+    split_marker: "fn hepta_memory_live_mutation_operator_write_execution_activation_command_result_receipt_release_artifact_publication_denial_boundary_report()\n",
+    footer: "\ninclude!(\"canary_preflight_and_readback/post_write_and_rollback.rs\");\n",
+    parts: [
+      "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/canary_preflight_and_readback/activation_receipt_denials.rs",
+      "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/canary_preflight_and_readback/write_canary_preflight.rs",
+    ],
+  },
+  {
+    path: "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/canary_and_live_readiness.rs",
+    original_sha256: "a29ade0857026950e8f09f2067f078d5fb07389b898f7aa1d8ad8ea337b79740",
+    body_marker: nil,
+    split_marker: "fn hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_ordering_monotonicity_denial_report()\n",
+    footer: "\ninclude!(\"canary_and_live_readiness/publication_receipts.rs\");\n",
+    parts: [
+      "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/canary_and_live_readiness/canary_receipts.rs",
+      "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/canary_and_live_readiness/canary_receipt_denials.rs",
+    ],
+  },
+  {
+    path: "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
+    original_sha256: "ba1d73244b272f3970f4524ca179f7e27dc33fa728e2648852b6fcfbc027a379",
+    body_marker: nil,
+    split_marker: "fn hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_report()\n",
+    footer: "\ninclude!(\"production_dry_run_receipts/terminal_decisions.rs\");\n",
+    parts: [
+      "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/dry_run_receipts.rs",
+      "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/terminal_denials.rs",
+    ],
+  },
+].freeze
+
+def usage
+  warn "usage: scripts/hepta-backend-giant-module-split [split|verify]"
+  exit 2
+end
+
+def sha256(content)
+  Digest::SHA256.hexdigest(content)
+end
+
+def absolute(path)
+  File.join(ROOT, path)
+end
+
+def include_path(source_path, part_path)
+  source_dir = File.dirname(source_path)
+  Pathname.new(part_path).relative_path_from(Pathname.new(source_dir)).to_s
+end
+
+def stub_for(spec, prefix)
+  includes = spec.fetch(:parts).map do |part_path|
+    "include!(\"#{include_path(spec.fetch(:path), part_path)}\");\n"
+  end.join
+  prefix + includes + spec.fetch(:footer)
+end
+
+def split_source(spec, source)
+  footer = spec.fetch(:footer)
+  body_end = footer.empty? ? source.bytesize : source.index(footer)
+  raise "missing footer in #{spec.fetch(:path)}" unless body_end
+
+  body_start = if spec.fetch(:body_marker)
+    source.index(spec.fetch(:body_marker))
+  else
+    0
+  end
+  raise "missing body marker in #{spec.fetch(:path)}" unless body_start
+  raise "footer precedes body in #{spec.fetch(:path)}" if body_end < body_start
+
+  prefix = source.byteslice(0, body_start)
+  body = source.byteslice(body_start, body_end - body_start)
+  split_offset = body.index(spec.fetch(:split_marker))
+  raise "missing split marker in #{spec.fetch(:path)}" unless split_offset
+  raise "split marker produced an empty first part in #{spec.fetch(:path)}" if split_offset.zero?
+
+  parts = normalize_part_boundary([
+    body.byteslice(0, split_offset),
+    body.byteslice(split_offset, body.bytesize - split_offset),
+  ])
+  reconstructed = prefix + parts.join + footer
+  unless sha256(reconstructed) == spec.fetch(:original_sha256)
+    raise "reconstructed source hash mismatch for #{spec.fetch(:path)}"
+  end
+
+  [prefix, parts]
+end
+
+def normalize_part_boundary(parts)
+  first, second = parts
+  while first.end_with?("\n\n")
+    first = first.byteslice(0, first.bytesize - 1)
+    second = "\n#{second}"
+  end
+  [first, second]
+end
+
+def atomic_write(path, content)
+  FileUtils.mkdir_p(File.dirname(path))
+  staging = "#{path}.#{$$}.tmp"
+  File.binwrite(staging, content)
+  File.rename(staging, path)
+end
+
+def normalize_existing_footer(spec, source_path)
+  footer = spec.fetch(:footer)
+  return if footer.empty?
+
+  last_part_path = absolute(spec.fetch(:parts).last)
+  last_part = File.binread(last_part_path)
+  if last_part.end_with?(footer)
+    atomic_write(last_part_path, last_part.byteslice(0, last_part.bytesize - footer.bytesize))
+  end
+
+  first_part_path = absolute(spec.fetch(:parts).first)
+  first_part = File.binread(first_part_path)
+  second_part = File.binread(last_part_path)
+  normalized_parts = normalize_part_boundary([first_part, second_part])
+  atomic_write(first_part_path, normalized_parts.first)
+  atomic_write(last_part_path, normalized_parts.last)
+
+  source = File.binread(source_path)
+  first_include = source.index("include!(")
+  raise "missing split include while normalizing #{spec.fetch(:path)}" unless first_include
+  prefix = source.byteslice(0, first_include)
+  atomic_write(source_path, stub_for(spec, prefix))
+end
+
+def split(spec)
+  source_path = absolute(spec.fetch(:path))
+  source = File.binread(source_path)
+  expected_first_include = "include!(\"#{include_path(spec.fetch(:path), spec.fetch(:parts).first)}\");\n"
+  if source.include?(expected_first_include)
+    normalize_existing_footer(spec, source_path)
+    return verify(spec)
+  end
+  unless sha256(source) == spec.fetch(:original_sha256)
+    raise "unexpected unsplit source hash for #{spec.fetch(:path)}"
+  end
+
+  prefix, parts = split_source(spec, source)
+  spec.fetch(:parts).zip(parts).each do |part_path, content|
+    atomic_write(absolute(part_path), content)
+  end
+  atomic_write(source_path, stub_for(spec, prefix))
+  verify(spec)
+end
+
+def verify(spec)
+  source_path = absolute(spec.fetch(:path))
+  source = File.binread(source_path)
+  first_include = source.index("include!(")
+  raise "missing include stub in #{spec.fetch(:path)}" unless first_include
+  prefix = source.byteslice(0, first_include)
+  expected_stub = stub_for(spec, prefix)
+  raise "split stub mismatch for #{spec.fetch(:path)}" unless source == expected_stub
+
+  parts = spec.fetch(:parts).map do |part_path|
+    content = File.binread(absolute(part_path))
+    lines = content.lines.length
+    raise "split part exceeds #{MAX_PART_LINES} lines: #{part_path}=#{lines}" if lines > MAX_PART_LINES
+    {
+      path: part_path,
+      content: content,
+      lines: lines,
+      sha256: sha256(content),
+    }
+  end
+  reconstructed = prefix + parts.map { |part| part.fetch(:content) }.join + spec.fetch(:footer)
+  unless sha256(reconstructed) == spec.fetch(:original_sha256)
+    raise "verified parts do not reconstruct #{spec.fetch(:path)}"
+  end
+  {
+    path: spec.fetch(:path),
+    original_sha256: spec.fetch(:original_sha256),
+    stub_sha256: sha256(source),
+    parts: parts.map { |part| part.reject { |key, _value| key == :content } },
+  }
+end
+
+def verify_all
+  reports = SPECS.map { |spec| verify(spec) }
+  puts JSON.generate(
+    schema: "hepta_backend_giant_module_split_v1",
+    status: "ready",
+    max_part_lines: MAX_PART_LINES,
+    module_count: reports.length,
+    part_count: reports.sum { |report| report.fetch(:parts).length },
+    modules: reports,
+  )
+end
+
+case ARGV
+when ["split"]
+  SPECS.each { |spec| split(spec) }
+  verify_all
+when ["verify"]
+  verify_all
+else
+  usage
+end

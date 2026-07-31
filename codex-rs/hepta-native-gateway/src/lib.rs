@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 mod canonical_manifest;
 mod durability_anchor;
 mod effect_reconciliation;

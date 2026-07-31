@@ -1,0 +1,133 @@
+{
+  "schema": "hepta_backend_giant_module_p1_split_v1",
+  "status": "source_split_verified_history_anchor_pending",
+  "input_commit": "a71b7bce5593588fe98d8a00aacc16e8d592d048",
+  "input_tree": "dd034ccdb7ed7dab2c5ed52075a36fa6cf4ec4c2",
+  "result_commit": null,
+  "result_tree": null,
+  "git_history_recovery_bound": false,
+  "split_contract": {
+    "module_count": 6,
+    "part_count": 12,
+    "max_part_lines": 5000,
+    "lexical_order_preserved": true,
+    "original_source_sha256_reconstructed": true,
+    "runtime_behavior_intentionally_changed": false,
+    "split_verifier": "scripts/hepta-backend-giant-module-split"
+  },
+  "compiler_contract": {
+    "native_gateway_recursion_limit": 256,
+    "reason": "One include expansion layer is added around existing large serde_json macros; the crate recursion limit is raised without changing runtime behavior."
+  },
+  "ratchet": {
+    "first_party_modules_over_5000_before": 11,
+    "first_party_modules_over_5000_after": 5,
+    "first_party_modules_over_10000_after": 0,
+    "next_target": 2,
+    "terminal_target": 0
+  },
+  "modules": [
+    {
+      "source": "codex-rs/hepta-core/src/upstream_codex_sync.rs",
+      "original_sha256": "48185de2e75249b15c3353c7e40a5d830f89b01d66dcd8fed0c1ac75f8180e3e",
+      "stub_sha256": "28c622111a87e414625f4885f1bc97ccc6139f2eb9ad9a23fd778a86544fd4cb",
+      "parts": [
+        {
+          "path": "codex-rs/hepta-core/src/upstream_codex_sync/intake_and_activation.rs",
+          "lines": 4911,
+          "sha256": "e41bf533e17d1ec6c743803fec8af0b8bd59f11f74a487923d17efea33f05d54"
+        },
+        {
+          "path": "codex-rs/hepta-core/src/upstream_codex_sync/evidence_and_public_reports.rs",
+          "lines": 4453,
+          "sha256": "686fd3091944f40b570574aba3e383a6f05b0ad37d5e308268c323c37b252f2e"
+        }
+      ]
+    },
+    {
+      "source": "codex-rs/hepta-kernel/src/lib.rs",
+      "original_sha256": "9bc147c73b07da5d8c5ae2986ffedd4c7ecd250adecb3059c948c72624885bf8",
+      "stub_sha256": "6a490b963159542c03b6a09bb3e26023aecf453f39e3df41a15c2a1b0388e11d",
+      "parts": [
+        {
+          "path": "codex-rs/hepta-kernel/src/kernel_parts/native_post.rs",
+          "lines": 2816,
+          "sha256": "7510f47088de57b5904e48bcbcd7fcf920367987e24b8a7f371a4f112555cbc8"
+        },
+        {
+          "path": "codex-rs/hepta-kernel/src/kernel_parts/telegram_runtime.rs",
+          "lines": 4277,
+          "sha256": "65af3739c7b61702e80de956ed351cabc11d7827cb059c433d8faa9bc64f28d7"
+        }
+      ]
+    },
+    {
+      "source": "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/operator_packet_receipts.rs",
+      "original_sha256": "206fa18f34e342463d0b23e743a0d5825845a30046446427fe81881a47a255f2",
+      "stub_sha256": "48014e7225ea4dbe34a3065ba1c1003be64de606e6bd625e1e7bd0ddbf70db2c",
+      "parts": [
+        {
+          "path": "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/operator_packet_receipts/packet_acceptance_and_audit.rs",
+          "lines": 4651,
+          "sha256": "a25bb612f5206f2b5e803c093bff1f9b5c476319b5949f4eafcb18f18f213688"
+        },
+        {
+          "path": "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/operator_packet_receipts/briefing_and_publication.rs",
+          "lines": 4653,
+          "sha256": "21d2f5d1649a467acd9be8d02f453e7cb98f9b50244c4859d9b03535fd3934e3"
+        }
+      ]
+    },
+    {
+      "source": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/canary_preflight_and_readback.rs",
+      "original_sha256": "0bb8d3524fa2254853a8bed3d91cb64aad529848e3d98d648fed8c5d78d0f7d3",
+      "stub_sha256": "0814f887fa02f042f4531350808b00f467d04fb915d95b559e3beabbafa5c26b",
+      "parts": [
+        {
+          "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/canary_preflight_and_readback/activation_receipt_denials.rs",
+          "lines": 4672,
+          "sha256": "b0c60517ff9e280b2f608adbde1db484e4c5ed2139343b162e358d657d114178"
+        },
+        {
+          "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/canary_preflight_and_readback/write_canary_preflight.rs",
+          "lines": 4559,
+          "sha256": "78a91f177713fb80745d4ece0299efe5e9cdb65332e721088f2cc1043f775137"
+        }
+      ]
+    },
+    {
+      "source": "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/canary_and_live_readiness.rs",
+      "original_sha256": "a29ade0857026950e8f09f2067f078d5fb07389b898f7aa1d8ad8ea337b79740",
+      "stub_sha256": "8daa3d4d05adb86ea4fc71416d2e3224ff8e5e7d6e6b9ac8dfcab8aa42e08550",
+      "parts": [
+        {
+          "path": "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/canary_and_live_readiness/canary_receipts.rs",
+          "lines": 4818,
+          "sha256": "59e6e480f73281ab0ef90f886486d174e4e48414cd05298d355d6da091bc2d3e"
+        },
+        {
+          "path": "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/canary_and_live_readiness/canary_receipt_denials.rs",
+          "lines": 4160,
+          "sha256": "0a95759610a85b46491887e8e0bd7a60df1abff852e65cabdbd2b8ac1e9bcc78"
+        }
+      ]
+    },
+    {
+      "source": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
+      "original_sha256": "ba1d73244b272f3970f4524ca179f7e27dc33fa728e2648852b6fcfbc027a379",
+      "stub_sha256": "590bbead67f10dd22a597d46e0b85c7e1fc40db506da43a75c13e0277e2c58d8",
+      "parts": [
+        {
+          "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/dry_run_receipts.rs",
+          "lines": 4777,
+          "sha256": "531332ade723007188484d938c89aac6ce378f1bfaa407e6958e79d8ae9fd3d2"
+        },
+        {
+          "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/terminal_denials.rs",
+          "lines": 3902,
+          "sha256": "8394f61ba2928d182bfc92551d4d681437cf4e036dd9eb3762ceabb1dead92fa"
+        }
+      ]
+    }
+  ]
+}
