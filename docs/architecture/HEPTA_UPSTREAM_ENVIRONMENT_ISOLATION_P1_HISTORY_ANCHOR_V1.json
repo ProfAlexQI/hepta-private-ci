@@ -1,0 +1,22 @@
+{
+  "schema": "hepta.upstream-environment-isolation-p1-history-anchor.v1",
+  "status": "history_bound",
+  "input_commit": "7167dbfbec6c582209e3cf326cc4a49a5d28eed4",
+  "input_tree": "11c9503944748dbd53a24ccfd6ce5f4ccd591500",
+  "result_commit": "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+  "result_tree": "ad7f82ce578f91f16c6944efb57a6e92ca274dc3",
+  "receipts": [
+    {
+      "path": "docs/architecture/HEPTA_UPSTREAM_ENVIRONMENT_ISOLATION_P1_INTAKE_V1.json",
+      "sha256": "beeaf663e0da6ac292cbae06a97c8ee1e1cebfce10222bd9b4cb8df7c699c8c6"
+    }
+  ],
+  "recovery": {
+    "method": "git revert 96d497b20751b3be02cd58bf36d1bccb6b69af53 in an isolated clean worktree",
+    "baseline_recovery_available": true,
+    "git_history_recovery_bound": true
+  },
+  "source_progress_release_blocked": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}
