@@ -10,12 +10,20 @@ fn route_native_gateway_request_after_preflight(
             options.with_telegram_plugin,
             options.telegram_plugin_poll_ms,
         );
-        if let Some(response) = native_report_registry::render_registered_native_report(
-            path,
-            options,
-            telegram_plugin,
-        ) {
-            return response;
+        if let Some(report_id) = resolved_native_report_id(method, path) {
+            if let Some(response) = native_report_registry::render_registered_native_report(
+                report_id,
+                path,
+                options,
+                telegram_plugin,
+            ) {
+                return response;
+            }
+            return (
+                "503 Service Unavailable",
+                "application/json; charset=utf-8",
+                r#"{"error":"route_manifest.native_report_binding_mismatch"}"#.to_string(),
+            );
         }
 
         if let Some(query) = path
@@ -96,6 +104,21 @@ fn route_native_gateway_request_after_preflight(
             "not found".to_string(),
         )
     }
+}
+
+fn resolved_native_report_id(
+    method: &str,
+    path: &str,
+) -> Option<crate::route_definition::NativeReportId> {
+    let report_id = crate::route_manifest::route_manifest_entry(method, path)
+        .and_then(|definition| definition.native_report_id);
+    #[cfg(test)]
+    if report_id.is_none()
+        && crate::runtime_ingress::is_detached_control_ui_report_for_test(method, path)
+    {
+        return native_report_registry::native_report_id(path);
+    }
+    report_id
 }
 pub(crate) fn native_gateway_json(
     options: &NativeGatewayOptions,

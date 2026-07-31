@@ -111,6 +111,14 @@ pub(crate) fn validate_route_manifest() -> Result<()> {
                 entry.lifecycle.path_pattern
             );
         }
+        if (entry.report_binding == RouteReportBinding::NativeExact)
+            != entry.native_report_id.is_some()
+        {
+            anyhow::bail!(
+                "native report id does not match typed binding: {}",
+                entry.lifecycle.path_pattern
+            );
+        }
     }
     for path in WATCHDOG_PROBE_PATHS {
         let count = entries

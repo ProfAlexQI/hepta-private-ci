@@ -8,11 +8,11 @@ pub(super) fn dispatch_evidence_route(
     preflight: &RuntimeRequestPreflightReceipt,
     manifest_entry: crate::route_manifest::RouteDefinition,
 ) -> Result<()> {
-    let body = match evidence_api::requested_evidence_route(request_query) {
+    let body = match evidence_api::requested_evidence_selector(request_query) {
         Ok(None) => json_or_error(&evidence_api::evidence_index_report()),
-        Ok(Some(selected_route)) => {
-            let Some(definition) = crate::route_manifest::route_definition("GET", selected_route)
-                .filter(|definition| {
+        Ok(Some(selector)) => {
+            let Some(definition) =
+                evidence_api::evidence_definition(selector).filter(|definition| {
                     definition.legacy_compatibility_route
                         && definition.dispatch_handler == RouteDispatchHandler::NativeGateway
                 })

@@ -258,7 +258,7 @@ fn canonical_evidence_route_serves_legacy_reports_over_real_sockets() {
         .min_by_key(|route| route.pattern.len())
         .expect("legacy evidence route");
     let response = route_over_real_socket(
-        runtime,
+        Arc::clone(&runtime),
         test_gateway_options(false),
         "GET",
         &format!("{EVIDENCE_INDEX_ENDPOINT}?route={}", selected.pattern),
@@ -270,4 +270,25 @@ fn canonical_evidence_route_serves_legacy_reports_over_real_sockets() {
     assert_eq!(value["selected_route"], selected.pattern);
     assert_eq!(value["evidence"]["legacy_compatibility_route"], true);
     assert_eq!(value["source_http_status"], "200 OK");
+
+    let index = serde_json::to_value(evidence_api::evidence_index_report())
+        .expect("evidence index JSON");
+    let evidence_id = index["entries"]
+        .as_array()
+        .expect("evidence entries")
+        .iter()
+        .find(|entry| entry["route"] == selected.pattern)
+        .and_then(|entry| entry["evidence_id"].as_str())
+        .expect("stable evidence id");
+    let by_id = route_over_real_socket(
+        runtime,
+        test_gateway_options(false),
+        "GET",
+        &format!("{EVIDENCE_INDEX_ENDPOINT}?id={evidence_id}"),
+    );
+    assert!(by_id.starts_with("HTTP/1.1 200 OK"));
+    let body = by_id.split_once("\r\n\r\n").expect("response body").1;
+    let value: serde_json::Value = serde_json::from_str(body).expect("evidence JSON");
+    assert_eq!(value["selected_evidence_id"], evidence_id);
+    assert_eq!(value["selected_route"], selected.pattern);
 }

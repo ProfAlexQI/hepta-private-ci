@@ -1891,23 +1891,27 @@ const NATIVE_REPORT_DEFINITIONS: &[NativeReportDefinition] = &[
 ];
 
 pub(super) fn render_registered_native_report(
+    report_id: crate::route_definition::NativeReportId,
     path: &str,
     options: &NativeGatewayOptions,
     telegram_plugin: NativeTelegramPluginStatus,
 ) -> Option<NativeReportResponse> {
-    let definition = NATIVE_REPORT_DEFINITIONS
-        .iter()
-        .find(|definition| definition.paths.contains(&path))?;
+    let definition = NATIVE_REPORT_DEFINITIONS.get(usize::from(report_id.0))?;
+    if !definition.paths.contains(&path) {
+        return None;
+    }
     Some((definition.renderer)(NativeReportContext {
         options,
         telegram_plugin,
     }))
 }
 
-pub(crate) fn has_registered_native_report(path: &str) -> bool {
+pub(crate) fn native_report_id(path: &str) -> Option<crate::route_definition::NativeReportId> {
     NATIVE_REPORT_DEFINITIONS
         .iter()
-        .any(|definition| definition.paths.contains(&path))
+        .position(|definition| definition.paths.contains(&path))
+        .and_then(|index| u16::try_from(index).ok())
+        .map(crate::route_definition::NativeReportId)
 }
 
 #[cfg(test)]
@@ -1930,5 +1934,6 @@ mod tests {
         assert_eq!(unique.len(), paths.len());
         assert_eq!(paths.len(), 285);
         assert!(paths.iter().all(|path| path.starts_with('/')));
+        assert!(paths.iter().all(|path| native_report_id(path).is_some()));
     }
 }

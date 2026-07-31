@@ -60,6 +60,10 @@ pub(crate) enum RouteReportBinding {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub(crate) struct NativeReportId(pub(crate) u16);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub(crate) struct RouteDefinition {
     #[serde(flatten)]
     pub(crate) lifecycle: IngressLifecycleSpec,
@@ -68,6 +72,7 @@ pub(crate) struct RouteDefinition {
     pub(crate) watchdog_probe: bool,
     pub(crate) response_policy: RouteResponsePolicy,
     pub(crate) report_binding: RouteReportBinding,
+    pub(crate) native_report_id: Option<NativeReportId>,
     pub(crate) source_command: Option<&'static str>,
     pub(crate) capability: Option<&'static str>,
     pub(crate) side_effect_boundary: Option<&'static str>,
@@ -95,6 +100,7 @@ fn route_definition_from_lifecycle(lifecycle: IngressLifecycleSpec) -> RouteDefi
         .iter()
         .find(|gate| gate.method == lifecycle.method && gate.pattern == lifecycle.path_pattern);
     let receipt_state = gate.and_then(crate::gate_spec::GateSpec::receipt_state);
+    let (report_binding, native_report_id) = report_binding(lifecycle, dispatch_handler);
     RouteDefinition {
         lifecycle,
         dispatch_handler,
@@ -102,7 +108,8 @@ fn route_definition_from_lifecycle(lifecycle: IngressLifecycleSpec) -> RouteDefi
         watchdog_probe: lifecycle.method == "GET"
             && WATCHDOG_PROBE_PATHS.contains(&lifecycle.path_pattern),
         response_policy: response_policy(lifecycle),
-        report_binding: report_binding(lifecycle, dispatch_handler),
+        report_binding,
+        native_report_id,
         source_command: gate.map(|gate| gate.source_command),
         capability: gate.map(|gate| gate.capability),
         side_effect_boundary: gate.map(|gate| gate.side_effect_boundary),
@@ -121,29 +128,28 @@ fn route_definition_from_lifecycle(lifecycle: IngressLifecycleSpec) -> RouteDefi
 fn report_binding(
     lifecycle: IngressLifecycleSpec,
     dispatch_handler: RouteDispatchHandler,
-) -> RouteReportBinding {
+) -> (RouteReportBinding, Option<NativeReportId>) {
     if lifecycle.method != "GET" {
-        return RouteReportBinding::None;
+        return (RouteReportBinding::None, None);
     }
     match dispatch_handler {
-        RouteDispatchHandler::EvidenceIndex => RouteReportBinding::CanonicalEvidence,
-        RouteDispatchHandler::NativeGateway
-            if crate::native_gateway::native_report_registry::has_registered_native_report(
+        RouteDispatchHandler::EvidenceIndex => (RouteReportBinding::CanonicalEvidence, None),
+        RouteDispatchHandler::NativeGateway => {
+            if let Some(report_id) = crate::native_gateway::native_report_registry::native_report_id(
                 lifecycle.path_pattern,
-            ) =>
-        {
-            RouteReportBinding::NativeExact
+            ) {
+                return (RouteReportBinding::NativeExact, Some(report_id));
+            }
+            if crate::ui_domain::NATIVE_GATEWAY_BINARY_ASSET_PATHS.contains(&lifecycle.path_pattern)
+            {
+                return (RouteReportBinding::NativeBinaryAsset, None);
+            }
+            if lifecycle.path_pattern.contains('<') {
+                return (RouteReportBinding::NativeParameterized, None);
+            }
+            (RouteReportBinding::None, None)
         }
-        RouteDispatchHandler::NativeGateway
-            if crate::ui_domain::NATIVE_GATEWAY_BINARY_ASSET_PATHS
-                .contains(&lifecycle.path_pattern) =>
-        {
-            RouteReportBinding::NativeBinaryAsset
-        }
-        RouteDispatchHandler::NativeGateway if lifecycle.path_pattern.contains('<') => {
-            RouteReportBinding::NativeParameterized
-        }
-        _ => RouteReportBinding::None,
+        _ => (RouteReportBinding::None, None),
     }
 }
 
