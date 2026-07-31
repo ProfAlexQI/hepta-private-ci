@@ -1,0 +1,21 @@
+{
+  "schema": "hepta_o2_migration_history_anchor_v1",
+  "status": "history_bound",
+  "baseline_commit": "c8f1ad0e84539109415f1c57b6506a2620bb6b74",
+  "baseline_tree": "07817399938296ebd5b3e0b06bfa6962e4c9bd43",
+  "result_commit": "36a89c3d35d02604adbdd07d5c60ccbcef972904",
+  "result_tree": "57b4006e723d25ebf1a84ea61f22b4c29d663c8f",
+  "receipts": [
+    {"path":"docs/architecture/HEPTA_WORKGRAPH_O2_RETIREMENT_V1.json","sha256":"ba225d85fc26070a71531d706a678912d39cc2ed60cf97adabe5ff7cf656c3ad"},
+    {"path":"docs/architecture/HEPTA_GATE_COMPAT_O2_RETIREMENT_V1.json","sha256":"6a07b7e851711a51b8e839299814dbc96952f43f696b2e3060ef27572cf22b60"},
+    {"path":"docs/architecture/HEPTA_CONTEXT_GATE_COMPAT_O2_MIGRATION_V1.json","sha256":"65a53d246838bc22fb754a935190d4b0697ba1ee00ca33b5a2db1e9747173dbe"},
+    {"path":"docs/architecture/HEPTA_WORKGRAPH_GATE_COMPAT_O2_MIGRATION_V1.json","sha256":"c1a05ed20b7b1c99268e361ac8e3f1aa9c91cbb90b8ab2d1ba3f8991c5c4178e"},
+    {"path":"docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_O2_MIGRATION_V1.json","sha256":"acd212875140cfa19a8a02a9be110aabbd2e7309b0f2af30af7f62a7b76b6cee"}
+  ],
+  "baseline_recovery_available": true,
+  "git_history_recovery_bound": true,
+  "history_anchor_required": false,
+  "source_progress_release_blocked": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}
