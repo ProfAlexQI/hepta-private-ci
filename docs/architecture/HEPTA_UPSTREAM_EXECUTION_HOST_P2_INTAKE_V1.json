@@ -1,0 +1,90 @@
+{
+  "schema": "hepta.upstream-execution-host-p2-intake.v1",
+  "status": "partially_absorbed_with_fail_closed_deferrals",
+  "source": {
+    "hepta_commit": "79c6c855d9020e9e221a3d88f412aa2e0989ade1",
+    "hepta_tree": "3c0101761f389bc198b94303c333d79e1edc88f2",
+    "upstream_head": "3d1d26915a303c3b4765828f973f5464f8c28c5c",
+    "upstream_tree": "cc9f84a8b90cc32f196bc76e94b1d5af5862672b",
+    "common_git_ancestor": false,
+    "whole_tree_merge_allowed": false
+  },
+  "absorbed": [
+    {
+      "semantic": "environment-scoped MCP OAuth credential names and host/executor fallback isolation",
+      "upstream_commits": [
+        "164b3bfeabdbc8e33c7320437e7cd875f93a534e",
+        "bf4d3f51ea70ce70ab7fabce7a66f328fef49e57",
+        "ef293f7ac9d756f793f3e952a790f9bec16a6eeb"
+      ],
+      "hepta_commit": "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+      "history_anchor": "docs/architecture/HEPTA_UPSTREAM_ENVIRONMENT_ISOLATION_P1_HISTORY_ANCHOR_V1.json",
+      "authority_boundary_preserved": true
+    }
+  ],
+  "deferred": [
+    {
+      "semantic": "host skill provider catalog in world state",
+      "upstream_commit": "5e8b22488f224a1c426f3bdcd41c8715894ef3b4",
+      "upstream_tree": "952b4dda7f26208e646a4e328b184eca733bafbe",
+      "change_shape": {
+        "files": 11,
+        "insertions": 545,
+        "deletions": 166
+      },
+      "blocking_prerequisites": [
+        "Hepta has no codex-rs/ext/skills crate or provider-backed world-state contributor",
+        "Hepta separates host-local skills from executor skill authority through codex-rs/ext/executor-skills",
+        "provider catalog adoption needs explicit host-authority, immutable snapshot, budget, shadow-selection, and prompt-injection parity tests"
+      ],
+      "required_narrow_intake": [
+        "introduce a provider-neutral immutable host catalog interface without granting executor authority",
+        "keep selected host skill prompt contents sourced from the authenticated host snapshot",
+        "cache only metadata and digests in world state",
+        "preserve fail-closed empty-catalog and budget-overflow behavior"
+      ],
+      "direct_cherry_pick_allowed": false
+    },
+    {
+      "semantic": "standalone code-mode host with bundled-resource resolution",
+      "upstream_commits": [
+        "97576b1794872e342450ebd577123e052ab57626",
+        "53d06e24ea318a963812030fa8fed1bd0fc42d42"
+      ],
+      "upstream_trees": [
+        "d04df91585312751da0bc50e4485cf30bb8943c9",
+        "e849fb06b4c8937d63be45e2b479529ddd99fbff"
+      ],
+      "change_shape": {
+        "files": 52,
+        "insertions": 716,
+        "deletions": 412
+      },
+      "blocking_prerequisites": [
+        "Hepta has no codex-rs/code-mode-host crate",
+        "Hepta has no codex-rs/code-mode-protocol crate",
+        "Hepta has no codex-rs/code-mode-runtime split",
+        "Hepta has no compatible install-context bundled-resource resolver",
+        "the upstream change spans session, tool dispatch, feature, install, protocol, runtime, and packaging authority"
+      ],
+      "required_narrow_intake": [
+        "split the V8 runtime from the client service without changing tool authority",
+        "define a versioned process handshake and session-bound nested-tool identity",
+        "disable in-process fallback only after the standalone host is packaged and verified on every supported platform",
+        "route every nested tool call through the existing Hepta permission and host-tool protection registry",
+        "bind host binary resolution to an immutable bundled-resource digest"
+      ],
+      "direct_cherry_pick_allowed": false
+    }
+  ],
+  "permanent_hepta_authority_boundaries": [
+    "external or executor skills cannot become host authority",
+    "skills cannot bypass permission or effect approval",
+    "code-mode cannot register or override protected host tools",
+    "nested code-mode calls remain subject to the same environment, credential, sandbox, and receipt policy as direct calls",
+    "no upstream intake may mutate preference, memory authority, release gates, or live runtime"
+  ],
+  "decision": "keep source_progress_release_blocked; complete prerequisites in isolated auditable slices rather than importing incompatible upstream execution trees",
+  "runtime_mutated": false,
+  "deployment_performed": false
+}
