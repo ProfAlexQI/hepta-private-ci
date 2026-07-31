@@ -1,0 +1,22 @@
+{
+  "schema": "hepta.typed-route-definition-p2-history-anchor.v1",
+  "status": "history_bound",
+  "input_commit": "b5bad567076505d452a56f4099e9fc1f60a99702",
+  "input_tree": "918a53e8876fa6dc920b8684ebf832ebc766eb8c",
+  "result_commit": "17b443eb7495e88f00b3cd2d7e3305b46d9908eb",
+  "result_tree": "92649c6615e192b875144ac3db86efdf4df150fe",
+  "receipts": [
+    {
+      "path": "docs/architecture/HEPTA_TYPED_ROUTE_DEFINITION_P2_V1.json",
+      "sha256": "cae4eb25789359d342e0197a3fe3304f5bf3dfa666708e2575dd6086a7e312d2"
+    }
+  ],
+  "recovery": {
+    "method": "git revert 17b443eb7495e88f00b3cd2d7e3305b46d9908eb in an isolated clean worktree",
+    "baseline_recovery_available": true,
+    "git_history_recovery_bound": true
+  },
+  "source_progress_release_blocked": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}
