@@ -1,0 +1,65 @@
+{
+  "schema": "hepta_single_exec_wrapper_p1_migration_v1",
+  "status": "source_ready",
+  "source_commit": "17c7b69201003d07c332b4b51aaf80b084826e3f",
+  "source_tree": "b1b1304a4ddfb867e35939e2699c90ae8fb8c556",
+  "baseline_wrapper_count": 38,
+  "current_wrapper_count": 29,
+  "regular_wrappers_replaced": 9,
+  "public_paths_preserved": true,
+  "behavior_parity_verified": true,
+  "registry": {
+    "path": "scripts/hepta-gate-aliases-v1.json",
+    "sha256": "4d196ab4deb1c0ac8c3cf31992ff100908214d23d38be18b8c4b7c9f3ffd757b",
+    "path_set_sha256": "b6b5e48b7fba61b4fb561ae02db81b6d8547587769e6d2902369442164b67467",
+    "original_records_sha256": "b97e3c93de9d8563078b6957444160b2321c7d4a3dc5b16b3abf03eb8034f4bc"
+  },
+  "launcher": {
+    "path": "scripts/hepta-gate-alias-launch",
+    "sha256": "b8b2791219fccf48ec8f14063a9b9991a3d84c977572d08b1fa567c5b56e8b01"
+  },
+  "canonical_bindings": [
+    {
+      "runner": "scripts/hepta-core-activation-chain-gate-runner",
+      "runner_sha256": "c598b14e8efb8e707a9ff4e4aee9896b20d88dc96207759005f68afbacb0ea1c",
+      "spec": "scripts/hepta-core-activation-chain-gate-specs-v1.json",
+      "spec_sha256": "4ef38d289996bc4da99a5ea8e9580d9bc2f2d5c96f8b8471c5a2ef7bdec60bdb"
+    },
+    {
+      "runner": "scripts/hepta-provider-router-activation-chain-gate-runner",
+      "runner_sha256": "504c3d26b5eee39fab3bc5314ad71c5ea7adde72220a80caaf37a1bc8dc449e0",
+      "spec": "scripts/hepta-provider-router-activation-chain-gate-specs-v1.json",
+      "spec_sha256": "048b44b4e533c939eef592d288b49b93cb46df94fbeaee5469f717bf08e08f36"
+    },
+    {
+      "runner": "scripts/hepta-operator-canary-activation-chain-gate-runner",
+      "runner_sha256": "2d2a3e71b9032bdd628dd636f0a25c95a20b0631ddb649278cb8e2d5398b00db",
+      "spec": "scripts/hepta-operator-canary-activation-chain-gate-specs-v1.json",
+      "spec_sha256": "4615bd062d54a0b9d2a2c7ee084760a2336f0d8056de551f6568907e0bd77e65"
+    }
+  ],
+  "parity_records": [
+    {"id":"hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-replay-idempotency-denial","exit_code":1,"stdout_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","stderr_sha256":"5026e76ef831b9a0aaed53e2f694ba8d47efb6d9568ecd4fd8246172c2fb527e"},
+    {"id":"hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial","exit_code":1,"stdout_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","stderr_sha256":"d33bc8e1ce2d0d0fa435b2a4a731b32fcf5eab9a41edb6ed165c615a8963e844"},
+    {"id":"hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial","exit_code":1,"stdout_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","stderr_sha256":"1e32a0b29a20788872e7af53c3c3fb279b1f78f89113d92b2f3fe89225f11c16"},
+    {"id":"hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial","exit_code":101,"stdout_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","stderr_sha256":"a145846b7f92f0aa7096991942fc9e1a18da42c8510b91ae73a295dd69ea74fd"},
+    {"id":"hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial","exit_code":101,"stdout_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","stderr_sha256":"34f250cec11d11444e9cd22e2e686d8a2670fadea8ee9530c2044e92e633e70d"},
+    {"id":"hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial","exit_code":101,"stdout_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","stderr_sha256":"f738eec68dcd4389e88a3959bc8066999e182fc9f47314333f84c08910ead8ae"},
+    {"id":"hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial","exit_code":101,"stdout_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","stderr_sha256":"15bcf20062913f3fb409a470a730ac6f774c49686137b1bfe216f1a341a69fa6"},
+    {"id":"hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial","exit_code":101,"stdout_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","stderr_sha256":"1a2cebfdbdc4315ae52a2138e25ea5b8a906fd5825a21185e30558f0f58c1d98"},
+    {"id":"hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial","exit_code":101,"stdout_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","stderr_sha256":"2087c86f999253bb5893bc25fce50571e59b743733b553c6bc76f5f313c80fa1"}
+  ],
+  "validation": {
+    "alias_command": "scripts/hepta-gate-alias-launch --validate",
+    "alias_stdout_sha256": "a207d2ebdd53ace6c4695d832c79626e204778d632830c0318c1b1d0adb2fb74",
+    "wrapper_command": "scripts/hepta-single-exec-wrapper-count self-test",
+    "wrapper_stdout_sha256": "abacd7222b347230aa7559681c2d2e92a49816346e0823de851d15f908dd26f9",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exit_code": 0
+  },
+  "baseline_recovery_available": true,
+  "git_history_recovery_bound": false,
+  "history_anchor_required": true,
+  "runtime_mutated": false,
+  "deployment_performed": false
+}

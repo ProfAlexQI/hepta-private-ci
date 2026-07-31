@@ -126,6 +126,18 @@ verify_route_gate_alias() {
   ' scripts/hepta-route-gate-aliases-v1.json >/dev/null
 }
 
+verify_gate_alias() {
+  local alias_path="$1"
+  local expected_runner="$2"
+  verify_symlink_alias "$alias_path" hepta-gate-alias-launch
+  jq -e --arg alias_path "$alias_path" --arg expected_runner "$expected_runner" '
+    any(.entries[];
+      .logical_path == $alias_path
+      and .runner == $expected_runner
+    )
+  ' scripts/hepta-gate-aliases-v1.json >/dev/null
+}
+
 verify_total_max() {
   local max_lines="$1"
   shift
@@ -1138,6 +1150,25 @@ verify() {
     and .git_history_recovery_bound == false
     and .history_anchor_required == true
   ' docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_O2_MIGRATION_V1.json >/dev/null
+  verify_file_max docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_MIGRATION_V1.json 180
+  jq -e \
+    --arg registry_sha "$(architecture_sha256_file scripts/hepta-gate-aliases-v1.json)" \
+    --arg launcher_sha "$(architecture_sha256_file scripts/hepta-gate-alias-launch)" '
+    .schema == "hepta_single_exec_wrapper_p1_migration_v1"
+    and .status == "source_ready"
+    and .baseline_wrapper_count == 38
+    and .current_wrapper_count == 29
+    and .regular_wrappers_replaced == 9
+    and .public_paths_preserved == true
+    and .behavior_parity_verified == true
+    and .registry.sha256 == $registry_sha
+    and .launcher.sha256 == $launcher_sha
+    and (.canonical_bindings | length) == 3
+    and (.parity_records | length) == 9
+    and .validation.exit_code == 0
+    and .git_history_recovery_bound == false
+    and .history_anchor_required == true
+  ' docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_MIGRATION_V1.json >/dev/null
   verify_file_max docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json 50
   o2_history_result_commit="$(jq -r '.result_commit' docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json)"
   o2_history_result_tree="$(git show -s --format=%T "$o2_history_result_commit")"
@@ -1735,6 +1766,9 @@ verify() {
   verify_file_max scripts/hepta-route-gate-alias-launch 60
   verify_file_max scripts/hepta-route-gate-aliases-v1.json 400
   scripts/hepta-route-gate-alias-launch --validate >/dev/null
+  verify_file_max scripts/hepta-gate-alias-launch 100
+  verify_file_max scripts/hepta-gate-aliases-v1.json 180
+  scripts/hepta-gate-alias-launch --validate >/dev/null
   scripts/hepta-route-gate-runner --validate >/dev/null
   route_gate_family_count="$(jq '.families | length' scripts/hepta-route-gate-specs-v1.json)"
   if [[ "$route_gate_family_count" != 6 ]]; then
@@ -1778,9 +1812,9 @@ verify() {
     hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial \
     hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial
   do
-    verify_file_max "scripts/${core_activation_gate_id}-gate.sh" 5
-    rg -Fq 'scripts/hepta-core-activation-chain-gate-runner' \
-      "scripts/${core_activation_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${core_activation_gate_id}-gate.sh" \
+      scripts/hepta-core-activation-chain-gate-runner
   done
   [[ -x scripts/hepta-provider-router-activation-chain-gate-runner ]]
   verify_file_max scripts/hepta-provider-router-activation-chain-gate-runner 250
@@ -1792,9 +1826,9 @@ verify() {
     hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial \
     hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial
   do
-    verify_file_max "scripts/${provider_router_activation_gate_id}-gate.sh" 5
-    rg -Fq 'scripts/hepta-provider-router-activation-chain-gate-runner' \
-      "scripts/${provider_router_activation_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${provider_router_activation_gate_id}-gate.sh" \
+      scripts/hepta-provider-router-activation-chain-gate-runner
   done
   [[ -x scripts/hepta-operator-canary-activation-chain-gate-runner ]]
   verify_file_max scripts/hepta-operator-canary-activation-chain-gate-runner 250
@@ -1806,9 +1840,9 @@ verify() {
     hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial \
     hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial
   do
-    verify_file_max "scripts/${operator_canary_activation_gate_id}-gate.sh" 5
-    rg -Fq 'scripts/hepta-operator-canary-activation-chain-gate-runner' \
-      "scripts/${operator_canary_activation_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${operator_canary_activation_gate_id}-gate.sh" \
+      scripts/hepta-operator-canary-activation-chain-gate-runner
   done
   [[ -x scripts/hepta-release-publication-result-receipt-gate-runner ]]
   verify_file_max scripts/hepta-release-publication-result-receipt-gate-runner 220

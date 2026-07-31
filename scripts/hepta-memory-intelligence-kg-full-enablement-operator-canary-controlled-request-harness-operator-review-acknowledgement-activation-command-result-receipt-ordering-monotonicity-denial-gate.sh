@@ -1,5 +1,1 @@
-#!/usr/bin/env bash
-set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-exec "$ROOT/scripts/hepta-operator-canary-activation-chain-gate-runner" \
-  "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial"
+hepta-gate-alias-launch

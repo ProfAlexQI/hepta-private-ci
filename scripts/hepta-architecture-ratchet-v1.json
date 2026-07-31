@@ -11,7 +11,7 @@
     "work_graph_effective_lines": 150357,
     "gate_compat_pairs": 498,
     "gate_compat_effective_lines": 145377,
-    "single_exec_wrappers": 38,
+    "single_exec_wrappers": 29,
     "first_party_modules_over_5000": 11
   },
   "baselines": {
@@ -19,7 +19,7 @@
     "work_graph_effective_lines": 145977,
     "gate_compat_pairs": 498,
     "gate_compat_effective_lines": 141142,
-    "single_exec_wrappers": 38,
+    "single_exec_wrappers": 29,
     "first_party_modules_over_5000": 11
   },
   "decline_targets": {
@@ -28,7 +28,7 @@
       "work_graph_effective_lines": 100000,
       "gate_compat_pairs": 299,
       "gate_compat_effective_lines": 100000,
-      "single_exec_wrappers": 29,
+      "single_exec_wrappers": 20,
       "first_party_modules_over_5000": 5
     },
     "terminal": {
@@ -36,7 +36,7 @@
       "work_graph_effective_lines": 75000,
       "gate_compat_pairs": 199,
       "gate_compat_effective_lines": 75000,
-      "single_exec_wrappers": 20,
+      "single_exec_wrappers": 10,
       "first_party_modules_over_5000": 0
     }
   },

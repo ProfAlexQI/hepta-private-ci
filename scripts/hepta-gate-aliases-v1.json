@@ -1,0 +1,84 @@
+{
+  "schema_version": "hepta_gate_aliases_v1",
+  "status": "source_ready",
+  "source_commit": "17c7b69201003d07c332b4b51aaf80b084826e3f",
+  "source_tree": "b1b1304a4ddfb867e35939e2699c90ae8fb8c556",
+  "launcher": "scripts/hepta-gate-alias-launch",
+  "alias_count": 9,
+  "path_set_sha256": "b6b5e48b7fba61b4fb561ae02db81b6d8547587769e6d2902369442164b67467",
+  "original_records_sha256": "b97e3c93de9d8563078b6957444160b2321c7d4a3dc5b16b3abf03eb8034f4bc",
+  "entries": [
+    {
+      "logical_path": "scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+      "id": "hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-replay-idempotency-denial",
+      "runner": "scripts/hepta-core-activation-chain-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "2f1a4eb7c3b85b979ed7e1a523b2cbc31b3f45ad",
+      "original_sha256": "1afab57ab2f0a77958d46844629338ff6593ff6bf27b1bc17374a1d2feef9b37"
+    },
+    {
+      "logical_path": "scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+      "id": "hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial",
+      "runner": "scripts/hepta-core-activation-chain-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "8e639fefdc7c03c05467c375fae395952f425ff5",
+      "original_sha256": "31516c07576c7285a5948866c6b26a7189863e1d138509c2225b7222795ad087"
+    },
+    {
+      "logical_path": "scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+      "id": "hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial",
+      "runner": "scripts/hepta-core-activation-chain-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "c016ac4431869b77aa2fe5a471d3fa40cacc2462",
+      "original_sha256": "4f9aa87be8de82274ea6adcc9fbfcbf362f18f9ed88cb8b45fe4308cde871be5"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial",
+      "runner": "scripts/hepta-provider-router-activation-chain-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "992cce80bfc3e9c6a7a82ae10c3015fb3833c47f",
+      "original_sha256": "08c5e60654cdbe6963ba0983fb07f4ac5b7fb7a409ce2f409afa2efea780c838"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial",
+      "runner": "scripts/hepta-provider-router-activation-chain-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "e63613b61e1d7dab0fed70430282f008ea178fb4",
+      "original_sha256": "4fbfbfa21116dc6e8c8bd97fb00e1337eb3c0601c5dee7510edde5d82a332662"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial",
+      "runner": "scripts/hepta-provider-router-activation-chain-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "e800f9480d830e97d2793044a127b93c36e56a31",
+      "original_sha256": "ac470584e534e3fe29f3931cdc63950d71ee8d88d597a1da634f50dcbfeb56a0"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial",
+      "runner": "scripts/hepta-operator-canary-activation-chain-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "4bb8ceccf39432204506e298193b5b813b20fea6",
+      "original_sha256": "bc1ad633d9cd80429f1748190383e4ffeb7deccf28b8efd5817d65c04e1835d5"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial",
+      "runner": "scripts/hepta-operator-canary-activation-chain-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "a4c0cdfb1786d3df5f14a1cac274d7e1c1610522",
+      "original_sha256": "efcbf7a7db8291eb75ecbf3b2ac1d06947ca138f42e7a522d11a143dfbf5e7af"
+    },
+    {
+      "logical_path": "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+      "id": "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial",
+      "runner": "scripts/hepta-operator-canary-activation-chain-gate-runner",
+      "original_mode": "100755",
+      "original_blob": "d4e269ac6cfc9eb559a796bd15940e876ba4ea20",
+      "original_sha256": "2af322e098eb4a40db357414d014001f2b7f7c8e0f3fa156f82bb4d6c89145b5"
+    }
+  ]
+}
