@@ -3,13 +3,8 @@ use std::sync::Arc;
 use makepad_widgets::*;
 use tokio::sync::Notify;
 use crate::settings::app_preferences::effective_is_desktop;
-use crate::shared::popup_list::{PopupKind, enqueue_popup_notification};
 use crate::sliding_sync::{submit_async_request, MatrixRequest};
 use super::logout_state_machine::is_logout_past_point_of_no_return;
-
-pub const LOGOUT_CONFIRMATION_REQUEST_EVIDENCE: &str = "LogoutConfirmModal keeps Matrix Logout behind the confirmed Logout Now handler; open, cancel, dismissed, reset, progress, and final-result repaint send no extra logout, account/profile, message, room-state, membership, or live mutation request.";
-pub const LOGOUT_CONFIRMATION_COMPACT_LABEL: &str =
-    "Confirmation required before Matrix Logout runs.";
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -17,77 +12,34 @@ script_mod! {
 
 
     // A modal dialog that displays logout confirmation
-    mod.widgets.LogoutConfirmModal = #(LogoutConfirmModal::register_widget(vm)) {
-        width: Fit
-        height: Fit
+    mod.widgets.LogoutConfirmModal = set_type_default() do #(LogoutConfirmModal::register_widget(vm)) {
+        ..mod.widgets.SmallModal
 
-        RoundedView {
-            width: 400
-            height: Fit
-            align: Align{x: 0.5}
-            flow: Down
-            padding: Inset{top: 30, right: 25, bottom: 20, left: 25}
+        title := ModalTitle {
+            text: "Confirm Logout"
+        }
 
-            show_bg: true
-            draw_bg +: {
-                color: (COLOR_PRIMARY)
-                border_radius: 4.0
+        body := ModalBody {
+            text: "Are you sure you want to logout?"
+        }
+
+        buttons_view := ModalButtonsRow {
+            cancel_button := RobrixNeutralIconButton {
+                width: 120,
+                align: Align{x: 0.5, y: 0.5}
+                padding: 12,
+                draw_icon.svg: (ICON_FORBIDDEN)
+                icon_walk: Walk{width: 16, height: 16, margin: Inset{left: -2, right: -1} }
+                text: "Cancel"
             }
 
-            title_view := View {
-                width: Fill,
-                height: Fit,
-                padding: Inset{top: 0, bottom: 25}
-                align: Align{x: 0.5, y: 0.0}
-
-                title := Label {
-                    width: Fill
-                    height: Fit
-                    align: Align{x: 0.5}
-                    flow: Flow.Right{wrap: true},
-                    draw_text +: {
-                        text_style: TITLE_TEXT {font_size: 13},
-                        color: #000
-                    }
-                    text: "Confirm Logout"
-                }
-            }
-
-            message := Label {
-                width: Fill
-                height: Fit
-                flow: Flow.Right{wrap: true},
-                draw_text +: {
-                    text_style: REGULAR_TEXT {font_size: 11},
-                    color: #000
-                },
-                text: "Logout from this session? Confirmation required before Matrix Logout runs."
-            }
-
-            View {
-                width: Fill, height: Fit
-                flow: Right,
-                padding: Inset{top: 20, bottom: 10}
-                align: Align{x: 1.0, y: 0.5}
-                spacing: 20
-
-                cancel_button := RobrixNeutralIconButton {
-                    width: 120,
-                    align: Align{x: 0.5, y: 0.5}
-                    padding: 12,
-                    draw_icon.svg: (ICON_FORBIDDEN)
-                    icon_walk: Walk{width: 16, height: 16, margin: Inset{left: -2, right: -1} }
-                    text: "Cancel"
-                }
-
-                confirm_button := RobrixNegativeIconButton {
-                    width: 120
-                    align: Align{x: 0.5, y: 0.5}
-                    padding: 12,
-                    draw_icon.svg: (ICON_LOGOUT)
-                    icon_walk: Walk{width: 16, height: 16, margin: Inset{left: -2, right: -1} }
-                    text: "Logout Now"
-                }
+            confirm_button := RobrixNegativeIconButton {
+                width: 120
+                align: Align{x: 0.5, y: 0.5}
+                padding: 12,
+                draw_icon.svg: (ICON_LOGOUT)
+                icon_walk: Walk{width: 16, height: 16, margin: Inset{left: -2, right: -1} }
+                text: "Logout Now"
             }
         }
     }
@@ -96,17 +48,13 @@ script_mod! {
 /// A modal dialog that displays logout confirmation.
 #[derive(Script, ScriptHook, Widget)]
 pub struct LogoutConfirmModal {
-    #[deref]
-    view: View,
+    #[deref] view: View,
     /// Whether the modal is in a final state, meaning the user can only click "Okay" to close it.
     ///
     /// * Set to `Some(true)` after a successful logout Action
     /// * Set to `Some(false)` after a logout error occurs.
     /// * Set to `None` when the user is still able to interact with the modal.
-    #[rust]
-    final_success: Option<bool>,
-    #[rust]
-    logout_requested: bool,
+    #[rust] final_success: Option<bool>,
 }
 
 /// Actions handled by the parent widget of the [`LogoutConfirmModal`].
@@ -126,14 +74,16 @@ pub enum LogoutConfirmModalAction {
     None,
 }
 
-/// Actions related to logout process
+/// Actions related to logout process 
 pub enum LogoutAction {
     /// A positive response to a logout request from the Matrix homeserver.
     LogoutSuccess,
     /// A negative response to a logout request from the Matrix homeserver.
     LogoutFailure(String),
     /// A request from the background task to the main UI thread to clear all app state.
-    ClearAppState { on_clear_appstate: Arc<Notify> },
+    ClearAppState {
+        on_clear_appstate: Arc<Notify>,
+    },
     /// Signal that the application is in an invalid state and needs to be restarted.
     /// This happens when critical components have been cleaned up during a previous
     /// logout attempt that reached the point of no return, but the app wasn't restarted.
@@ -142,7 +92,10 @@ pub enum LogoutAction {
         cleared_component: ClearedComponentType,
     },
     /// Progress update from the logout state machine
-    ProgressUpdate { message: String, percentage: u8 },
+    ProgressUpdate {
+        message: String,
+        percentage: u8,
+    },
     /// Indicates logout is in progress or not
     InProgress(bool),
 }
@@ -156,10 +109,7 @@ impl std::fmt::Debug for LogoutAction {
             LogoutAction::ApplicationRequiresRestart { cleared_component } => {
                 write!(f, "ApplicationRequiresRestart({:?})", cleared_component)
             }
-            LogoutAction::ProgressUpdate {
-                message,
-                percentage,
-            } => {
+            LogoutAction::ProgressUpdate { message, percentage } => {
                 write!(f, "ProgressUpdate({}, {}%)", message, percentage)
             }
             LogoutAction::InProgress(value) => write!(f, "InProgress({})", value),
@@ -195,41 +145,11 @@ impl WidgetMatchEvent for LogoutConfirmModal {
         let cancel_button = self.button(cx, ids!(cancel_button));
         let mut confirm_button = self.button(cx, ids!(confirm_button));
 
-        let modal_dismissed = actions
-            .iter()
-            .any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)));
+        let modal_dismissed = actions.iter().any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)));
         let cancel_clicked = cancel_button.clicked(actions);
 
         if cancel_clicked || modal_dismissed {
-            // Account logout confirmation evidence: Cancel and backdrop
-            // dismiss only close/reset this local modal. They do not submit
-            // Matrix Logout, account/profile, message, room-state,
-            // membership, or live mutation requests.
-            if cancel_clicked {
-                if self.logout_requested {
-                    enqueue_popup_notification(
-                        "Logout dialog closed after logout started. No extra Matrix Logout was requested.",
-                        PopupKind::Info,
-                        Some(4.0),
-                    );
-                } else {
-                    enqueue_popup_notification(
-                        "Logout canceled locally. Matrix Logout was not requested.",
-                        PopupKind::Info,
-                        Some(3.0),
-                    );
-                }
-            } else if !self.logout_requested {
-                enqueue_popup_notification(
-                    "Logout dialog dismissed locally. Matrix Logout was not requested.",
-                    PopupKind::Info,
-                    Some(3.0),
-                );
-            }
-            cx.action(LogoutConfirmModalAction::Close {
-                successful: false,
-                was_internal: cancel_clicked,
-            });
+            cx.action(LogoutConfirmModalAction::Close { successful: false, was_internal: cancel_clicked });
             self.reset_state(cx);
             return;
         }
@@ -242,10 +162,7 @@ impl WidgetMatchEvent for LogoutConfirmModal {
                     cx.request_quit(QuitReason::App);
                 }
 
-                cx.action(LogoutConfirmModalAction::Close {
-                    successful,
-                    was_internal: true,
-                });
+                cx.action(LogoutConfirmModalAction::Close { successful, was_internal: true });
                 self.reset_state(cx);
                 return;
             } else {
@@ -256,15 +173,7 @@ impl WidgetMatchEvent for LogoutConfirmModal {
                 cancel_button.set_text(cx, "Abort");
                 cancel_button.set_enabled(cx, true);
 
-                // Account logout confirmation evidence: this confirmed
-                // handler is the only interactive branch that submits the
-                // existing Matrix Logout request. Progress/final repaint and
-                // modal close paths send no extra logout or account/profile,
-                // message, room-state, membership, or live mutation request.
-                submit_async_request(MatrixRequest::Logout {
-                    is_desktop: effective_is_desktop(cx),
-                });
-                self.logout_requested = true;
+                submit_async_request(MatrixRequest::Logout { is_desktop: effective_is_desktop(cx) });
                 needs_redraw = true;
             }
         }
@@ -284,9 +193,8 @@ impl WidgetMatchEvent for LogoutConfirmModal {
 
                 Some(LogoutAction::LogoutFailure(error)) => {
                     if is_logout_past_point_of_no_return() {
-                        self.label(cx, ids!(title))
-                            .set_text(cx, "Logout error, please restart Hepta Native.");
-                        self.set_message(cx, "The logout process encountered an error when communicating with the homeserver. Since your login session has been partially invalidated, Hepta Native must restart in order to continue to properly function.");
+                        self.label(cx, ids!(title)).set_text(cx, "Logout error, please restart Robrix.");
+                        self.set_message(cx, "The logout process encountered an error when communicating with the homeserver. Since your login session has been partially invalidated, Robrix must restart in order to continue to properly function.");
 
                         confirm_button.set_text(cx, "Restart now");
                         script_apply_eval!(cx, confirm_button, {
@@ -297,6 +205,7 @@ impl WidgetMatchEvent for LogoutConfirmModal {
                         confirm_button.set_enabled(cx, true);
 
                         cancel_button.set_visible(cx, false);
+
                     } else {
                         self.set_message(cx, &format!("Logout failed: {}", error));
                         confirm_button.set_text(cx, "Okay");
@@ -309,8 +218,7 @@ impl WidgetMatchEvent for LogoutConfirmModal {
                 }
 
                 Some(LogoutAction::ApplicationRequiresRestart { .. }) => {
-                    self.label(cx, ids!(title))
-                        .set_text(cx, "Logout error, please restart Hepta Native.");
+                    self.label(cx, ids!(title)).set_text(cx, "Logout error, please restart Robrix.");
                     self.set_message(cx, "Application is in an inconsistent state and needs to be restarted to continue.");
 
                     confirm_button.set_text(cx, "Restart now");
@@ -326,10 +234,7 @@ impl WidgetMatchEvent for LogoutConfirmModal {
                     needs_redraw = true;
                 }
 
-                Some(LogoutAction::ProgressUpdate {
-                    message,
-                    percentage,
-                }) => {
+                Some(LogoutAction::ProgressUpdate { message, percentage }) => {
                     // Just update the message text to show progress
                     self.set_message(cx, &format!("{} ({}%)", message, percentage));
                     // Disable confirm button during logout, but keep cancel/abort enabled
@@ -346,24 +251,21 @@ impl WidgetMatchEvent for LogoutConfirmModal {
         if needs_redraw {
             self.redraw(cx);
         }
+
     }
 }
 
 impl LogoutConfirmModal {
     /// Sets the message text displayed in the body of the modal.
     pub fn set_message(&mut self, cx: &mut Cx, message: &str) {
-        self.label(cx, ids!(message)).set_text(cx, message);
+        self.label(cx, ids!(body)).set_text(cx, message);
     }
 
     fn reset_state(&mut self, cx: &mut Cx) {
         let cancel_button = self.button(cx, ids!(cancel_button));
         let confirm_button = self.button(cx, ids!(confirm_button));
         self.final_success = None;
-        self.logout_requested = false;
-        self.set_message(
-            cx,
-            "Logout from this session? Confirmation required before Matrix Logout runs.",
-        );
+        self.set_message(cx, "Are you sure you want to logout?");
         confirm_button.set_enabled(cx, true);
         confirm_button.set_text(cx, "Logout Now");
         cancel_button.set_visible(cx, true);
@@ -373,6 +275,7 @@ impl LogoutConfirmModal {
         confirm_button.reset_hover(cx);
         self.redraw(cx);
     }
+
 }
 
 impl LogoutConfirmModalRef {
@@ -383,9 +286,10 @@ impl LogoutConfirmModalRef {
         }
     }
 
-    pub fn reset_state(&self, cx: &mut Cx) {
+    pub fn reset_state(&self,cx: &mut Cx) {
         if let Some(mut inner) = self.borrow_mut() {
             inner.reset_state(cx);
         }
     }
+
 }

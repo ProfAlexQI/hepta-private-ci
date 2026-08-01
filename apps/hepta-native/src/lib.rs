@@ -1,9 +1,6 @@
 #![recursion_limit = "256"]
 
-use std::{
-    path::{Path, PathBuf},
-    sync::OnceLock,
-};
+use std::{path::Path, sync::OnceLock};
 
 use makepad_widgets::ScriptNew;
 use robius_directories::ProjectDirs;
@@ -18,6 +15,7 @@ macro_rules! live {
 }
 
 pub type LivePtr = makepad_widgets::ScriptValue;
+
 
 pub fn widget_ref_from_live_ptr(
     cx: &mut makepad_widgets::Cx,
@@ -61,33 +59,8 @@ mod join_leave_room_modal;
 pub mod shared;
 /// Generating text previews of timeline events/messages.
 mod event_preview;
-/// Local Hepta fixture mode for Matrix-heart UI development.
-pub mod hepta_fixture;
-/// Local bounded fixture smoke report.
-pub mod hepta_fixture_smoke;
-/// Local Hepta composer command parser for the Matrix-heart action bridge.
-pub mod hepta_composer;
-/// Local validated quick-command templates.
-pub mod hepta_command_templates;
-/// Local read-only context snapshot model.
-pub mod hepta_context_snapshot;
-/// Local side-effect-free action bridge policy.
-pub mod hepta_action_bridge;
-/// Local side-effect-free action outbox model.
-pub mod hepta_action_queue;
-/// Local read-only runtime status model.
-pub mod hepta_runtime_status;
-/// Local mobile packaging gate status model.
-pub mod hepta_mobile_packaging;
-/// Local Hepta Native productization status model.
-pub mod hepta_productization;
-/// Local Hepta-runtime-to-Matrix event shape helpers.
-pub mod hepta_bridge;
-/// Local bridge to the current codex-rs/hepta-* runtime crates.
-pub mod hepta_runtime_bridge;
-/// Hepta custom Matrix-style event helpers.
-pub mod hepta_event;
 pub mod room;
+
 
 /// All content related to TSP (Trust Spanning Protocol) wallets/identities.
 #[cfg(feature = "tsp")]
@@ -95,6 +68,7 @@ pub mod tsp;
 /// Dummy TSP module with placeholder widgets, for builds without TSP.
 #[cfg(not(feature = "tsp"))]
 pub mod tsp_dummy;
+
 
 // Matrix stuff
 pub mod sliding_sync;
@@ -107,28 +81,25 @@ pub mod verification;
 pub mod utils;
 pub mod temp_storage;
 pub mod location;
+pub mod image_utils;
 
-pub const APP_QUALIFIER: &str = "ai";
-pub const APP_ORGANIZATION: &str = "hepta";
-pub const APP_NAME: &str = "hepta-native";
+pub const APP_QUALIFIER: &str = "rs";
+pub const APP_ORGANIZATION: &str = "robius";
+pub const APP_NAME: &str = "robrix";
 
 pub fn project_dir() -> &'static ProjectDirs {
     static ROBRIX_PROJECT_DIRS: OnceLock<ProjectDirs> = OnceLock::new();
 
     ROBRIX_PROJECT_DIRS.get_or_init(|| {
         ProjectDirs::from(APP_QUALIFIER, APP_ORGANIZATION, APP_NAME)
-            .expect("Failed to obtain Hepta Native project directory")
+            .expect("Failed to obtain Robrix project directory")
     })
 }
 
 pub fn app_data_dir() -> &'static Path {
-    static HEPTA_APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+    project_dir().data_dir()
+}
 
-    HEPTA_APP_DATA_DIR
-        .get_or_init(|| {
-            std::env::var_os("HEPTA_NATIVE_APP_DATA_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| project_dir().data_dir().to_path_buf())
-        })
-        .as_path()
+pub fn cache_dir() -> &'static Path {
+    project_dir().cache_dir()
 }

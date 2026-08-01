@@ -1,6 +1,6 @@
 //! The RoomsListHeader contains the title label and loading spinner for rooms list.
 //!
-//! This widget is designed to be reused across both Desktop and Mobile variants
+//! This widget is designed to be reused across both Desktop and Mobile variants 
 //! of the RoomsSideBar to avoid code duplication.
 
 use std::mem::discriminant;
@@ -27,38 +27,20 @@ script_mod! {
     mod.widgets.RoomsListHeader = #(RoomsListHeader::register_widget(vm)) {
         width: Fill,
         height: Fit,
-        padding: Inset{top: 4, bottom: 8, left: 2, right: 6}
+        padding: Inset{bottom: 4}
         flow: Right,
-        spacing: 8,
+        spacing: 3,
 
-        title_stack := View {
+        header_title := Label {
             width: Fill,
             height: Fit,
-            margin: Inset{left: 4, top: -1}
-            flow: Down,
-            spacing: 1,
-
-            header_title := Label {
-                width: Fill,
-                height: Fit,
-                padding: 0
-                flow: Right, // do not wrap
-                text: "Chats"
-                draw_text +: {
-                    color: (COLOR_TELEGRAM_TEXT)
-                    text_style: theme.font_bold { font_size: 14 },
-                }
-            }
-
-            header_scope_evidence := Label {
-                width: Fill,
-                height: Fit,
-                padding: 0
-                text: "Chats reset: local tab title\nno SpaceService/Matrix request"
-                draw_text +: {
-                    color: (COLOR_TELEGRAM_DIM)
-                    text_style: theme.font_regular { font_size: 11.0 },
-                }
+            padding: 0
+            margin: Inset{left: 5, top: -1}
+            flow: Right, // do not wrap
+            text: "All Rooms"
+            draw_text +: {
+                color: #x0
+                text_style: TITLE_TEXT {}
             }
         },
 
@@ -72,7 +54,7 @@ script_mod! {
                 width: 20,
                 height: 20,
                 draw_bg +: {
-                    color: (COLOR_TELEGRAM_BLUE)
+                    color: (COLOR_ACTIVE_PRIMARY)
                     border_size: 3.0
                 }
             }
@@ -83,7 +65,7 @@ script_mod! {
                 Icon {
                     draw_icon +: {
                         svg: (ICON_CLOUD_OFFLINE),
-                        color: (COLOR_TELEGRAM_DIM),
+                        color: (COLOR_FG_DANGER_RED),
                     }
                     icon_walk: Walk{width: 25, height: Fit, margin: Inset{left: 1, bottom: 1}}
                 }
@@ -95,7 +77,7 @@ script_mod! {
                 Icon {
                     draw_icon +: {
                         svg: (ICON_CLOUD_CHECKMARK),
-                        color: (COLOR_TELEGRAM_BLUE),
+                        color: (COLOR_FG_ACCEPT_GREEN),
                     }
                     icon_walk: Walk{width: 25, height: Fit, margin: Inset{left: 1, bottom: 2}}
                 }
@@ -106,17 +88,10 @@ script_mod! {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct RoomsListHeader {
-    #[deref]
-    view: View,
+    #[deref] view: View,
 
-    #[rust(State::Idle)]
-    sync_state: State,
+    #[rust(State::Idle)] sync_state: State,
 }
-
-const ROOMS_LIST_HEADER_SPACE_SCOPE_RESET_EVIDENCE: &str =
-    "Chats reset: local tab title\nno SpaceService/Matrix request";
-const ROOMS_LIST_HEADER_SPACE_SCOPE_SELECTED_EVIDENCE: &str =
-    "Space title: local TabSelected\nno SpaceService/Matrix request";
 
 impl Widget for RoomsListHeader {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
@@ -129,15 +104,9 @@ impl Widget for RoomsListHeader {
                         if matches!(self.sync_state, State::Offline) {
                             continue;
                         }
-                        self.view
-                            .view(cx, ids!(loading_spinner))
-                            .set_visible(cx, *is_syncing);
-                        self.view
-                            .view(cx, ids!(synced_icon))
-                            .set_visible(cx, !*is_syncing);
-                        self.view
-                            .view(cx, ids!(offline_icon))
-                            .set_visible(cx, false);
+                        self.view.view(cx, ids!(loading_spinner)).set_visible(cx, *is_syncing);
+                        self.view.view(cx, ids!(synced_icon)).set_visible(cx, !*is_syncing);
+                        self.view.view(cx, ids!(offline_icon)).set_visible(cx, false);
                         self.redraw(cx);
                         continue;
                     }
@@ -146,9 +115,7 @@ impl Widget for RoomsListHeader {
                             continue;
                         }
                         if matches!(new_state, State::Offline) {
-                            self.view
-                                .view(cx, ids!(loading_spinner))
-                                .set_visible(cx, false);
+                            self.view.view(cx, ids!(loading_spinner)).set_visible(cx, false);
                             self.view.view(cx, ids!(synced_icon)).set_visible(cx, false);
                             self.view.view(cx, ids!(offline_icon)).set_visible(cx, true);
                             enqueue_popup_notification(
@@ -157,19 +124,13 @@ impl Widget for RoomsListHeader {
                                 Some(4.0),
                             );
                             // Since there is no timeout for fetching media, send an action to ImageViewer when syncing is offline.
-                            cx.action(ImageViewerAction::Show(LoadState::Error(
-                                ImageViewerError::Offline,
-                            )));
+                            cx.action(ImageViewerAction::Show(LoadState::Error(ImageViewerError::Offline)));
                         } else if matches!(self.sync_state, State::Offline) {
                             // Transitioning away from Offline: reset to the default
                             // loading state so the sync indicator can take over again.
-                            self.view
-                                .view(cx, ids!(loading_spinner))
-                                .set_visible(cx, true);
+                            self.view.view(cx, ids!(loading_spinner)).set_visible(cx, true);
                             self.view.view(cx, ids!(synced_icon)).set_visible(cx, false);
-                            self.view
-                                .view(cx, ids!(offline_icon))
-                                .set_visible(cx, false);
+                            self.view.view(cx, ids!(offline_icon)).set_visible(cx, false);
 
                             // Clear stale `Requested`/`Failed` entries from global caches,
                             // as any requests submitted while offline have likely failed,
@@ -192,28 +153,12 @@ impl Widget for RoomsListHeader {
 
                 if let Some(NavigationBarAction::TabSelected(tab)) = action.downcast_ref() {
                     let header_title = self.view.label(cx, ids!(header_title));
-                    let header_scope_evidence = self.view.label(cx, ids!(header_scope_evidence));
                     match tab {
                         SelectedTab::Space { space_name_id } => {
-                            // RoomsListHeader space-scope evidence: the selected
-                            // space name is copied from TabSelected into a local
-                            // header label only. This emits no SpaceService fetch,
-                            // Matrix search, room-list pagination, message,
-                            // room-state, membership, or live mutation request.
-                            header_title.set_text(cx, &space_name_id.to_string());
+                            header_title.set_text(cx, &space_name_id.display());
                         }
-                        _ => {
-                            // RoomsListHeader reset evidence: non-space tabs reset
-                            // the title to Chats locally and do not clear the
-                            // filter by sending a Matrix or SpaceService request.
-                            header_title.set_text(cx, "Chats");
-                            header_scope_evidence
-                                .set_text(cx, ROOMS_LIST_HEADER_SPACE_SCOPE_RESET_EVIDENCE);
-                            continue;
-                        }
+                        _ => header_title.set_text(cx, "All Rooms"),
                     }
-                    header_scope_evidence
-                        .set_text(cx, ROOMS_LIST_HEADER_SPACE_SCOPE_SELECTED_EVIDENCE);
                     continue;
                 }
             }
@@ -221,21 +166,9 @@ impl Widget for RoomsListHeader {
 
         // Show tooltips for the sync status icons.
         for (view, text, bg_color) in [
-            (
-                self.view.view(cx, ids!(loading_spinner)),
-                "Syncing...",
-                vec4(0.059, 0.533, 0.996, 1.0),
-            ), // COLOR_ACTIVE_PRIMARY #0f88fe
-            (
-                self.view.view(cx, ids!(offline_icon)),
-                "Offline",
-                vec4(0.863, 0.0, 0.020, 1.0),
-            ), // COLOR_FG_DANGER_RED #DC0005
-            (
-                self.view.view(cx, ids!(synced_icon)),
-                "Fully synced",
-                vec4(0.075, 0.533, 0.031, 1.0),
-            ), // COLOR_FG_ACCEPT_GREEN #138808
+            (self.view.view(cx, ids!(loading_spinner)), "Syncing...",   vec4(0.059, 0.533, 0.996, 1.0)), // COLOR_ACTIVE_PRIMARY #0f88fe
+            (self.view.view(cx, ids!(offline_icon)),    "Offline",      vec4(0.863, 0.0, 0.020, 1.0)),   // COLOR_FG_DANGER_RED #DC0005
+            (self.view.view(cx, ids!(synced_icon)),     "Fully synced", vec4(0.075, 0.533, 0.031, 1.0)), // COLOR_FG_ACCEPT_GREEN #138808
         ] {
             if !view.visible() {
                 continue;

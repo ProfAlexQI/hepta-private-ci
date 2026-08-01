@@ -1,185 +1,49 @@
 //! The `RoomScreen` widget is the UI view that displays a single room or thread's timeline
 //! of events (messages，state changes, etc.), along with an input bar at the bottom.
 
-use std::{
-    borrow::Cow,
-    cell::{Cell, RefCell},
-    fs,
-    ops::{DerefMut, Range},
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{borrow::Cow, cell::RefCell, ops::{DerefMut, Range}, sync::Arc};
 
-use bytesize::ByteSize;
 use hashbrown::{HashMap, HashSet};
 use imbl::Vector;
 use makepad_widgets::{image_cache::ImageBuffer, *};
+use matrix_sdk::reqwest::StatusCode;
 use matrix_sdk::{
-    OwnedServerName, RoomDisplayName, RoomState,
-    media::{MediaFormat, MediaRequestParameters},
-    notification_settings::RoomNotificationMode,
-    room::RoomMember,
-    ruma::{
-        EventId, MatrixToUri, MatrixUri, MilliSecondsSinceUnixEpoch, OwnedEventId, OwnedMxcUri,
-        OwnedRoomAliasId, OwnedRoomId, OwnedRoomOrAliasId, UserId,
-        events::{
+    OwnedServerName, media::{MediaFormat, MediaRequestParameters}, room::RoomMember, ruma::{
+        EventId, MatrixToUri, MatrixUri, OwnedEventId, OwnedMxcUri, OwnedRoomId, UserId, events::{
             receipt::Receipt,
             room::{
-                ImageInfo, MediaSource,
-                message::{
-                    AudioMessageEventContent, EmoteMessageEventContent, FileMessageEventContent,
-                    FormattedBody, ImageMessageEventContent, KeyVerificationRequestEventContent,
-                    LocationMessageEventContent, MessageFormat, MessageType,
-                    NoticeMessageEventContent, TextMessageEventContent, VideoMessageEventContent,
-                },
+                ImageInfo, MediaSource, message::{
+                    AudioMessageEventContent, EmoteMessageEventContent, FileMessageEventContent, FormattedBody, ImageMessageEventContent, KeyVerificationRequestEventContent, LocationMessageEventContent, MessageFormat, MessageType, NoticeMessageEventContent, TextMessageEventContent, VideoMessageEventContent
+                }
             },
-            sticker::{StickerEventContent, StickerMediaSource},
-        },
-        matrix_uri::MatrixId,
-        uint,
-    },
+            sticker::StickerEventContent,
+        }, matrix_uri::MatrixId, uint
+    }
 };
 use matrix_sdk_ui::timeline::{
-    self, EmbeddedEvent, EncryptedMessage, EventSendState, EventTimelineItem, InReplyToDetails,
-    LiveLocationState, MemberProfileChange, MembershipChange, MsgLikeContent, MsgLikeKind,
-    OtherMessageLike, PollState, RoomMembershipChange, TimelineDetails, TimelineEventItemId,
-    TimelineItem, TimelineItemContent, TimelineItemKind, VirtualTimelineItem,
+    self, EmbeddedEvent, EncryptedMessage, EventTimelineItem, InReplyToDetails, LiveLocationState, MemberProfileChange, MembershipChange, MsgLikeContent, MsgLikeKind, OtherMessageLike, PollState, RoomMembershipChange, TimelineDetails, TimelineEventItemId, TimelineItem, TimelineItemContent, TimelineItemKind, VirtualTimelineItem
 };
-use ruma::{
-    OwnedUserId,
-    api::client::receipt::create_receipt::v3::ReceiptType,
-    events::{AnySyncMessageLikeEvent, AnySyncTimelineEvent, SyncMessageLikeEvent},
-    owned_room_id,
-    room::{JoinRuleSummary, RoomType},
-};
+use ruma::{OwnedUserId, api::client::receipt::create_receipt::v3::ReceiptType, events::{AnyRedactionEvent, AnySyncMessageLikeEvent, AnySyncTimelineEvent, SyncMessageLikeEvent}};
 
 use matrix_sdk_ui::sync_service::State;
 use crate::{
-    app::{AppStateAction, ConfirmDeleteAction, PositiveConfirmationModalAction, SelectedRoom},
-    avatar_cache,
-    event_preview::{
-        plaintext_body_of_timeline_item, text_preview_of_encrypted_message,
-        text_preview_of_member_profile_change, text_preview_of_other_message_like,
-        text_preview_of_other_state, text_preview_of_room_membership_change,
-        text_preview_of_timeline_item,
-    },
-    hepta_action_bridge::{
-        decide_hepta_action, HeptaActionBridgeRequest, MUTATION_APPROVE_TOOL_EXEC,
-    },
-    hepta_event::{card_text_for_event, is_hepta_event_type, HeptaEventEnvelope},
-    home::{
-        add_room::KnockResultAction,
-        edited_indicator::{
-            EditedIndicatorAction, EditedIndicatorWidgetRefExt, MESSAGE_EDIT_HISTORY_COMPACT_LABEL,
-            loaded_edit_history_target_metadata_label,
-        },
-        link_preview::{LinkPreviewCache, LinkPreviewRef, LinkPreviewWidgetRefExt},
-        loading_pane::{LoadingPaneState, LoadingPaneWidgetExt},
-        room_image_viewer::{get_image_name_and_filesize, populate_matrix_image_modal},
-        rooms_list::{RoomsListAction, RoomsListRef},
-        rooms_list_header::RoomsListHeaderAction,
-        search_messages::{SearchMessagesAction, SIDEBAR_MESSAGE_SEARCH_OPEN_HANDOFF_LABEL},
-        tombstone_footer::SuccessorRoomDetails,
-    },
-    media_cache::{MediaCache, MediaCacheEntry},
-    profile::{
-        user_profile::{
-            ShowUserProfileAction, UserProfile, UserProfileAndRoomId, UserProfilePaneInfo,
-            UserProfileSlidingPaneRef, UserProfileSlidingPaneWidgetExt,
-        },
+    app::{AppStateAction, ConfirmDeleteAction, SelectedRoom}, avatar_cache, event_preview::{plaintext_body_of_timeline_item, text_preview_of_encrypted_message, text_preview_of_member_profile_change, text_preview_of_other_message_like, text_preview_of_other_state, text_preview_of_room_membership_change, text_preview_of_timeline_item}, home::{edited_indicator::EditedIndicatorWidgetRefExt, link_preview::{LinkPreviewCache, LinkPreviewRef, LinkPreviewWidgetRefExt}, loading_pane::{LoadingPaneState, LoadingPaneWidgetExt}, room_image_viewer::{fetch_full_image_for_viewer, get_image_name_and_filesize}, rooms_list::{RoomsListAction, RoomsListRef}, rooms_list_header::RoomsListHeaderAction, tombstone_footer::SuccessorRoomDetails}, media_cache::{MediaCache, MediaCacheEntry}, profile::{
+        user_profile::{ShowUserProfileAction, UserProfile, UserProfileAndRoomId, UserProfilePaneInfo, UserProfileSlidingPaneRef, UserProfileSlidingPaneWidgetExt},
         user_profile_cache,
     },
-    room::{
-        BasicRoomDetails, FetchedRoomAvatar, FetchedRoomPreview,
-        room_input_bar::{RoomInputBarState, RoomInputBarWidgetRefExt},
-        typing_notice::TypingNoticeWidgetExt,
-    },
+    room::{BasicRoomDetails, reply_preview::{CollapsiblePreviewRef, CollapsiblePreviewWidgetRefExt}, room_input_bar::{RoomInputBarState, RoomInputBarWidgetRefExt}, typing_notice::TypingNoticeWidgetExt},
     shared::{
-        avatar::{AvatarState, AvatarWidgetRefExt},
-        confirmation_modal::ConfirmationModalContent,
-        html_or_plaintext::{
-            HtmlOrPlaintextRef, HtmlOrPlaintextWidgetRefExt, RobrixHtmlLinkAction,
-        },
-        image_viewer::{ImageViewerAction, ImageViewerMetaData, LoadState},
-        jump_to_bottom_button::{JumpToBottomButtonWidgetExt, UnreadMessageCount},
-        popup_list::{PopupKind, enqueue_popup_notification},
-        restore_status_view::RestoreStatusViewWidgetExt,
-        styles::*,
-        text_or_image::{TextOrImageAction, TextOrImageRef, TextOrImageWidgetRefExt},
-        timestamp::TimestampWidgetRefExt,
+        attachment_download::{enqueue_already_downloading_notification, DownloadDisplayState, DownloadKind, DownloadableAttachment, PendingDownload, PendingDownloadState, TimelineUpdateSenderOption, TransferKind, media_source_mxc, start_attachment_download, start_attachment_share}, avatar::{AvatarState, AvatarWidgetRefExt}, confirmation_modal::ConfirmationModalContent, file_upload_modal::FileUploadAttemptId, html_or_plaintext::{HtmlOrPlaintextRef, HtmlOrPlaintextWidgetRefExt, RobrixHtmlLinkAction}, image_viewer::{ImageViewerAction, ImageViewerMetaData, LoadState}, jump_to_bottom_button::{JumpToBottomButtonWidgetExt, UnreadMessageCount}, popup_list::{PopupKind, enqueue_popup_notification}, restore_status_view::RestoreStatusViewWidgetExt, room_input_popup_menu::{RoomInputPopupMenuAction, RoomInputPopupMenuRef, RoomInputPopupMenuWidgetExt}, styles::*, text_or_image::{TextOrImageAction, TextOrImageRef, TextOrImageWidgetRefExt}, timestamp::TimestampWidgetRefExt
     },
-    sliding_sync::{
-        BackwardsPaginateUntilEventRequest, MatrixRequest, NotificationDefaultRoomModeSummary,
-        NotificationKeywordMutation, NotificationKeywordRulesSummary,
-        NotificationPusherStatusSummary, PaginationDirection, TimelineEndpoints, TimelineKind,
-        TimelineRequestSender, UserPowerLevels, get_client, submit_async_request,
-        take_timeline_endpoints,
-    },
-    utils::{self, ImageFormat, MEDIA_THUMBNAIL_FORMAT, RoomNameId, unix_time_millis_to_datetime},
+    sliding_sync::{BackwardsPaginateUntilEventRequest, MatrixRequest, PaginationDirection, TimelineEndpoints, TimelineKind, TimelineRequestSender, UserPowerLevels, submit_async_request, take_timeline_endpoints}, utils::{self, MEDIA_THUMBNAIL_FORMAT, RoomNameId, unix_time_millis_to_datetime}
 };
 use crate::home::event_reaction_list::ReactionListWidgetRefExt;
-use crate::home::invite_modal::InviteModalAction;
-use crate::home::room_context_menu::RoomContextMenuDetails;
 use crate::home::room_read_receipt::AvatarRowWidgetRefExt;
-use crate::join_leave_room_modal::{JoinLeaveModalKind, JoinLeaveRoomModalAction};
 use crate::room::room_input_bar::RoomInputBarWidgetExt;
-use crate::shared::mentionable_text_input::MentionableTextInputAction;
 
 use rangemap::RangeSet;
 
-use super::{
-    event_reaction_list::ReactionData,
-    loading_pane::LoadingPaneRef,
-    new_message_context_menu::{MessageAbilities, MessageDetails, MessageReportTargetMetadata},
-    room_read_receipt::{self, populate_read_receipts, MAX_VISIBLE_AVATARS_IN_READ_RECEIPT},
-};
-
-pub const MESSAGE_SEARCH_LOADED_TIMELINE_BOUNDARY_EVIDENCE: &str = "RoomScreen message search is a loaded-timeline-only local helper while message_search remains a base gap. The search input, result count, active-match preview snippet, Prev/Next jumps, empty state, Close, Escape, and sidebar Messages button only scan timeline items already present in RoomScreen tl_state with plaintext_body_of_timeline_item. They do not submit Matrix-backed search, server-side history query, event context fetch, timeline pagination, room preview fetch, message send, edit, redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation requests.";
-pub const MESSAGE_SEARCH_LOADED_TIMELINE_BOUNDARY_LABEL: &str =
-    "Loaded timeline only: no Matrix-backed history search, event fetch, pagination, or mutation.";
-pub const MESSAGE_SEARCH_COMPACT_LABEL: &str = "Search scans loaded local messages only.";
-pub const MESSAGE_SEARCH_LOADED_METADATA_EVIDENCE: &str = "RoomScreen message search metadata summary is derived from already loaded RoomScreen tl_state items and local search state: query length, loaded timeline item count, match count, active match ordinal, active loaded index, and active loaded event-id availability. It sends no Matrix-backed search, server-side history query, event context fetch, timeline pagination or reload, room preview fetch, message send, edit, redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_SEARCH_LOADED_METADATA_LABEL: &str =
-    "Loaded search metadata only; no server-side search.";
-pub const MESSAGE_SEARCH_ACTIVE_RESULT_DETAIL_EVIDENCE: &str = "RoomScreen message search active-result detail is derived only from the currently loaded timeline match in tl_state. It shows the active ordinal, loaded item index, loaded event-id availability, query character count, local occurrence count inside the loaded plaintext body, and a compact snippet from plaintext_body_of_timeline_item. It sends no Matrix-backed search, server-side history query, event context fetch, timeline pagination or reload, event source open, room preview fetch, message send, edit, redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_SEARCH_ACTIVE_RESULT_DETAIL_LABEL: &str = "Active result detail is loaded-timeline local; no server-side search, event context, pagination, or mutation.";
-pub const MESSAGE_SEARCH_RESULT_ACTION_CONTROLS_EVIDENCE: &str = "RoomScreen message search result-action controls expose Jump, Copy, Source, Thread, and Sender as visible controls and real result-action handoffs while message_search remains a base gap. Jump, Copy, Thread, and Sender remain real loaded result-action handoffs that still derive from the current loaded timeline match. Jump scrolls/highlights the active loaded match locally. Copy writes the current loaded match plaintext to the local clipboard. Source opens the existing local EventSourceModal from the active loaded timeline row's room id, event id, and loaded latest_json data when available; if latest_json is missing but the last Matrix /search response returned a raw server hit source for the current room, Source opens that cached server-result source instead; if the current-room event id is known but no raw JSON is cached, Source submits only MatrixRequest::FetchEventSource so Room::load_or_fetch_event can return source JSON to the same EventSourceModal. Thread opens the existing thread-focused timeline path only when the active loaded row already carries a thread root id. Sender opens the existing UserProfileSlidingPane from the active loaded timeline row's sender id, loaded sender_profile data, and local room_members cache when available; if member details are missing, the pane may reuse its existing GetUserProfile/profile-member read path. The controls do not submit a new Matrix search, fetch extra event context, call MatrixRequest::PaginateTimeline outside the existing context action, reload timeline, send/edit/redact a message, mutate room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MESSAGE_SEARCH_RESULT_ACTION_CONTROLS_LABEL: &str = "Result actions are loaded handoffs: Jump scrolls/highlights the loaded match, Copy writes loaded plaintext, Source opens loaded/cached source or fetches source-only JSON, Thread opens a loaded thread root, and Sender opens the existing profile pane.";
-pub const MESSAGE_SEARCH_RESULT_JUMP_LOADED_MATCH_EVIDENCE: &str = "RoomScreen message search Jump is a real loaded scroll/highlight handoff for the active loaded timeline match. The action uses the already computed `telegram_message_search_matches` index, refreshes loaded matches from RoomScreen tl_state, smooth-scrolls the PortalList to the active loaded index, and stages the existing message highlight animation. Its metadata is derived from query, loaded item count, local match count, active ordinal, loaded index, event-id availability, and compact plaintext snippet. It sends no Matrix-backed search, server-side history query, event context fetch, MatrixRequest::PaginateTimeline, timeline reload, event source fetch, thread timeline open, sender/profile lookup, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_SEARCH_RESULT_JUMP_LOADED_MATCH_LABEL: &str =
-    "Search result Jump scrolls/highlights loaded local match only.";
-pub const MESSAGE_SEARCH_RESULT_THREAD_OPEN_EVIDENCE: &str = "RoomScreen message search Thread is a real loaded thread timeline handoff from the active loaded timeline match. The action derives the thread root id from the loaded `MsgLikeContent.thread_root` or loaded thread summary root event id, then dispatches `RoomsListAction::Selected(SelectedRoom::Thread)` for the current room. If that thread timeline is not already loaded, the existing `CreateThreadTimeline` read/open path may run exactly as it does when clicking a timeline thread summary. It sends no Matrix-backed search, server-side history query, event context fetch, MatrixRequest::PaginateTimeline, timeline reload, event source fetch, sender/profile lookup, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_SEARCH_RESULT_THREAD_OPEN_LABEL: &str =
-    "Thread opens only an already loaded thread root via the existing thread timeline path.";
-pub const MESSAGE_SEARCH_RESULT_SENDER_PROFILE_PANE_EVIDENCE: &str = "RoomScreen message search Sender is a real loaded profile-pane handoff that opens the existing UserProfileSlidingPane only from the active loaded timeline match. The action builds UserProfilePaneInfo from the loaded sender id, loaded TimelineDetails::Ready(sender_profile) display name/avatar when available, current TimelineKind room id, and a matching local room_members cache row when present. If the room member row is missing, the pane may reuse its existing user_profile_cache GetUserProfile/profile-member read path, exactly like clicking a timeline avatar. It sends no Matrix-backed search, server-side history query, event context fetch, MatrixRequest::PaginateTimeline, timeline reload, event source fetch, message send/edit/redact, profile mutation, direct-message start, room-state, membership mutation, account/profile mutation, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_SEARCH_RESULT_SENDER_PROFILE_PANE_LABEL: &str =
-    "Sender opens the existing profile pane from loaded timeline sender data.";
-pub const MESSAGE_SEARCH_RESULT_COPY_CLIPBOARD_EVIDENCE: &str = "RoomScreen message search Copy is a real loaded plaintext clipboard handoff that writes the active loaded timeline match plaintext to the local clipboard from plaintext_body_of_timeline_item. The copied payload is derived from already loaded RoomScreen tl_state and local search state: query, loaded item count, match count, active ordinal, active loaded index, event-id availability, plaintext character count, and byte count. It sends no Matrix-backed search, server-side history query, event context fetch, MatrixRequest::PaginateTimeline, timeline reload, event source open, thread timeline open, sender/profile lookup, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_SEARCH_RESULT_COPY_CLIPBOARD_LABEL: &str =
-    "Search result Copy uses loaded plaintext and local clipboard only.";
-pub const MESSAGE_SEARCH_RESULT_SOURCE_MODAL_EVIDENCE: &str = "RoomScreen message search Source is a real source modal handoff that opens the existing local EventSourceModal from either the active loaded timeline match, the cached Matrix /search server result, or a source-only MatrixRequest::FetchEventSource fallback for a current-room hit with a known event id. The loaded path remains a real loaded source modal handoff and uses the current TimelineKind room id, loaded event id when available, and latest_json from the loaded EventTimelineItem. The server-result path uses the current room id plus the raw event JSON cached from MatrixRequest::SearchMessagesServer when a server hit event id is available. The fallback path submits MatrixRequest::FetchEventSource for the current TimelineKind only, whose worker calls Room::load_or_fetch_event and returns TimelineUpdate::EventSourceFetched for the same EventSourceModal. Missing active match, missing event id, missing latest_json, missing cached server source, and failed source refetch leave Source as local metadata. The source metadata is derived from already loaded RoomScreen tl_state, local search state, and the last server search response: query, loaded item count, match count, active ordinal, loaded index, event-id availability, source origin, JSON character count, JSON line count, and source-only fetch state. It sends no new Matrix-backed search, event context fetch, MatrixRequest::PaginateTimeline, timeline reload, thread timeline open, sender/profile lookup, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_SEARCH_RESULT_SOURCE_MODAL_LABEL: &str =
-    "Search result Source opens loaded/cached EventSourceModal or requests source-only JSON.";
-pub const MESSAGE_SEARCH_QUERY_LIFECYCLE_METADATA_EVIDENCE: &str = "RoomScreen message search query lifecycle metadata stays local to the loaded timeline helper. Opening the strip shows local surface state, every query edit normalizes/trims the query, resets active_match to 0, rescans only already loaded RoomScreen tl_state items, reports loaded item count, match count, active index state, and timeline-loaded state, while Close/Escape clears the query and match vector locally. It sends no Matrix-backed search, server-side history query, event context fetch, timeline pagination or reload, room preview fetch, message send, edit, redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_SEARCH_QUERY_LIFECYCLE_METADATA_LABEL: &str = "Search query lifecycle is local: query edits reset active match and rescan loaded tl_state only.";
-pub const MESSAGE_SEARCH_SERVER_CONTEXT_BOUNDARY_EVIDENCE: &str = "RoomScreen message search server/context boundary metadata now separates live read paths from remaining context work: Server submits MatrixRequest::SearchMessagesServer, Media can add RoomEventFilter::url_filter=EventsWithUrl, Load older submits the returned next_batch cursor when available, failed Retry resubmits the current query from the first page, Context can use the first cached current-room server hit event id with the existing BackwardsPaginateUntilEvent/MatrixRequest::PaginateTimeline read path, server result labels parse and surface Matrix /search event_context before/after preview snippets, and Source can open raw event JSON cached from the last server result or submit a source-only MatrixRequest::FetchEventSource fallback for a known current-room event id. Cross-room context, remote date/pins scope adapters, room preview fetch, and full result cursor adapters remain blocked. The row reports query state, loaded item count, local match count, timeline availability, source availability, context-window preview availability, and cursor availability without message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_SEARCH_SERVER_CONTEXT_BOUNDARY_LABEL: &str = "Server/Older use live Matrix search reads; server context-window previews are parsed; Context paginates cached current-room hits; Source can fetch source-only JSON.";
-pub const MESSAGE_SEARCH_SERVER_CONTEXT_CONTROLS_EVIDENCE: &str = "RoomScreen exposes Server, Context, Older, and Source-backed result actions for message search. Server submits the first live MatrixRequest::SearchMessagesServer page for the current room/query; Media can add RoomEventFilter::url_filter=EventsWithUrl; Older submits the returned next_batch cursor through the same /_matrix/client/v3/search path when a cursor exists; Matrix /search event_context before/after windows are parsed into compact server-result previews; Context parses the first cached server hit event id and reuses the existing BackwardsPaginateUntilEvent/MatrixRequest::PaginateTimeline current-room timeline read path; Source can open cached raw event JSON returned by Matrix /search without a second request, or submit MatrixRequest::FetchEventSource through Room::load_or_fetch_event when only the current-room event id is known. Cross-room context, room preview fetch, remote date/pins/scope adapters, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, and live mutation remain blocked.";
-pub const MESSAGE_SEARCH_SERVER_CONTEXT_CONTROLS_LABEL: &str = "Message search controls: Server/Older are live Matrix search reads; server context-window previews are parsed; Context paginates cached current-room hits; Source opens or source-fetches current-room JSON.";
-pub const MESSAGE_SEARCH_ADVANCED_FILTER_CONTROLS_EVIDENCE: &str = "RoomScreen exposes Filter, From, Date, Media, and Pins as visible message-search advanced filter controls while message_search remains a base gap. From is the live sender filter: the sender input stays local until From or Return submits MatrixRequest::SearchMessagesServer with a RoomEventFilter::senders value. Media is the live URL/media filter: Media submits MatrixRequest::SearchMessagesServer with RoomEventFilter::url_filter=EventsWithUrl so the Matrix /search request asks for message events with a URL-backed media source. Older/Retry reuse the last sender/media filter with the same Matrix /search path. Filter, Date, and Pins are live loaded-scope filters over already loaded RoomScreen tl_state: Filter restores all loaded message matches, Date limits local matches to the latest loaded-day timestamp window, and Pins limits local matches to event ids already received from the SubscribeToPinnedEvents read subscription. They submit no remote date index query, pinned event fetch, PinEvent, event context fetch, MatrixRequest::PaginateTimeline, timeline reload, room preview fetch, event source open, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MESSAGE_SEARCH_ADVANCED_FILTER_CONTROLS_LABEL: &str = "Advanced search filters: From sender and Media URL filters are live server reads; Filter, Date, and Pins are live loaded-scope filters.";
-pub const MESSAGE_SEARCH_SERVER_PREFLIGHT_CONTROLS_EVIDENCE: &str = "RoomScreen exposes Server query, Packet, Contract, Result, Error, Retry, Scope, and Taxonomy beside the live message-search server controls. Server query submits the first MatrixRequest::SearchMessagesServer page, Retry resubmits the current query from the first page after an error through the same /_matrix/client/v3/search worker path, Older owns next_batch pagination, and Context owns cached current-room hit pagination. Packet/Contract/Result/Error/Scope/Taxonomy remain local metadata views. Taxonomy records remote date/pins/scope/full-result slots before any remote adapter can be promoted. The live controls do not submit remote date index query, remote pinned event fetch, cross-room scope search, full remote result adapter work, remote event context fetch, timeline reload outside BackwardsPaginateUntilEvent, search scope fetch, room preview fetch, event source open, sender/profile lookup, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MESSAGE_SEARCH_SERVER_PREFLIGHT_CONTROLS_LABEL: &str = "Server search preflight: Server query and Retry use live Matrix search reads; Packet, Contract, Result, Error, Scope, and Taxonomy stay local.";
-pub const MESSAGE_SEARCH_SERVER_PACKET_CLIPBOARD_EVIDENCE: &str = "RoomScreen message search Packet copies only a local server query/result packet snapshot to the local clipboard. The payload is built from already loaded RoomScreen tl_state and local search state: query, loaded item count, local match count, active match, timeline availability, pinned-event count, server/context metadata, and server preflight metadata. It creates no Matrix search request body, allocates no result cursor, submits no Matrix-backed search, server-side history query, event context fetch, MatrixRequest::PaginateTimeline, timeline reload, retry automation, result pagination, search scope fetch, room preview fetch, event source open, sender/profile lookup, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MESSAGE_SEARCH_SERVER_PACKET_CLIPBOARD_LABEL: &str =
-    "Search Packet copies loaded query/result preflight state to local clipboard only.";
-pub const MESSAGE_SEARCH_MATRIX_CONTRACT_PACKET_EVIDENCE: &str = "RoomScreen message search Contract renders only a local typed Matrix search acceptance contract from the loaded query/result packet and cached server preflight metadata. The contract names request slots for room scope, query term, keys, order, limit, filters, next_batch cursor, and event-context window; result slots for event id, sender, timestamp, snippet, highlights, context, source availability, and pagination; error slots for forbidden, rate-limited, offline, timeout, malformed query, and empty result; retry slots for confirmation, idempotency, and stale cursor; and scope/cursor promotion blockers before any real Matrix search adapter can be wired. It builds no Matrix search request body, allocates no result cursor, submits no Matrix-backed search, server-side history query, event context fetch, MatrixRequest::PaginateTimeline, timeline reload, retry automation, result pagination, search scope fetch, room preview fetch, event source open, sender/profile lookup, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MESSAGE_SEARCH_MATRIX_CONTRACT_PACKET_LABEL: &str = "Search Contract maps Packet to typed request/result/error/retry/scope/cursor acceptance locally.";
-pub const MESSAGE_SEARCH_REMOTE_RESULT_TAXONOMY_PACKET_EVIDENCE: &str = "RoomScreen message search Taxonomy renders only a local remote date/pins/scope/full-result taxonomy packet from the loaded query/result packet, current server/context metadata, pinned-event subscription count, and cached Matrix /search state. The packet names current live references as MatrixRequest::SearchMessagesServer first page, next_batch Older pagination, failed Retry first-page resubmit, From sender filter, Media url filter, parsed Matrix /search event_context preview snippets, current-room BackwardsPaginateUntilEvent/MatrixRequest::PaginateTimeline Context pagination, cached/raw-or-refetched EventSourceModal Source, loaded Jump/Copy/Thread/Sender handoffs, and loaded-scope Filter/Date/Pins over existing timeline rows and SubscribeToPinnedEvents ids. It records remote_date_index_operation_id, remote_pinned_fetch_operation_id, cross_room_scope_request_id, full_result_cursor_id, full_result_page_id, sort_order_result, room_preview_result, non_current_room_context_result, full_result_render_result, stale_query_result, retry_cancel_result, and audit redaction slots as not_assigned or not_wired before remote search adapters can be promoted. It submits no extra Matrix search beyond the existing explicit Server/Older/Retry/From/Media controls, no remote date index query, no remote pinned event fetch, no PinEvent, no cross-room scope search, no room preview fetch, no non-current-room event context fetch, no full result adapter rendering, no retry automation, no message send/edit/redact, no room-state or membership mutation, no account/profile mutation, no gateway/runtime/auth/provider call, and no live mutation.";
-pub const MESSAGE_SEARCH_REMOTE_RESULT_TAXONOMY_PACKET_LABEL: &str =
-    "Search Taxonomy records remote date/pins/scope/full-result slots locally.";
-pub const ATTACHMENT_TIMELINE_SEND_STATE_COMPACT_LABEL: &str =
-    "Timeline send state: SDK queue progress/error/sent from local echo.";
+use super::{event_reaction_list::ReactionData, loading_pane::LoadingPaneRef, new_message_context_menu::{MessageAbilities, MessageDetails}, room_read_receipt::{self, populate_read_receipts, MAX_VISIBLE_AVATARS_IN_READ_RECEIPT}};
 
 /// The maximum number of timeline items to search through
 /// when looking for a particular event.
@@ -187,417 +51,6 @@ pub const ATTACHMENT_TIMELINE_SEND_STATE_COMPACT_LABEL: &str =
 /// This is a safety measure to prevent the main UI thread
 /// from getting into a long-running loop if an event cannot be found quickly.
 const MAX_ITEMS_TO_SEARCH_THROUGH: usize = 100;
-#[allow(dead_code)]
-const ROOM_MEMBERS_READ_EVIDENCE: &str = "Member count uses existing SyncRoomMemberList plus GetRoomMembers local_only local cache; this info strip sends no JoinRoom, LeaveRoom, InviteUser, Knock, message, room-state, or membership mutation request.";
-#[allow(dead_code)]
-const ROOM_MEMBER_SYNC_READ_EVIDENCE: &str = "Member sync uses existing SyncRoomMemberList before local GetRoomMembers; it only refreshes local member profiles and sends no JoinRoom, LeaveRoom, InviteUser, Knock, message, room-state, or membership mutation request from Room info.";
-#[allow(dead_code)]
-const ROOM_POWER_LEVELS_READ_EVIDENCE: &str = "Permissions use existing GetRoomPowerLevels to display local UserPowerLevels for send, react, and @room permission state; this settings strip sends no power-level, room-state, message, or membership mutation request.";
-const ROOM_MEMBERS_COMPACT_LABEL: &str = "members from local SDK cache";
-const ROOM_POWER_LEVELS_COMPACT_LABEL: &str = "Permissions read-only from loaded power levels";
-pub const ROOM_SETTINGS_LOCAL_BOUNDARY_EVIDENCE: &str = "RoomScreen room settings now shows a compact partial-live summary from already loaded room name/id, RoomsList canonical alias/avatar/tombstone state, local room_members cache, the existing GetRoomPowerLevels/GetRoomMembers read path, confirmed m.room.name/m.room.topic/m.room.canonical_alias write controls, confirmed room avatar upload/removal, confirmed m.room.history_visibility/m.room.join_rules preset writes, and confirmed m.room.tombstone replacement writes. Opening settings, copying Name, Identity, Permissions, and Members, viewing Topic, and Close only update local labels, clipboard text, and preview copy. Save name and Save topic open PositiveConfirmationModal before MatrixRequest::SetRoomName or MatrixRequest::SetRoomTopic submits a Matrix SDK room-state write; Save alias opens PositiveConfirmationModal before MatrixRequest::SetRoomCanonicalAlias submits Room::send_state_event(RoomCanonicalAliasEventContent) while preserving loaded alt aliases; Avatar edit validates a desktop image selection and confirms before MatrixRequest::UploadRoomAvatar submits Room::upload_avatar; Remove avatar requires a loaded avatar and opens PositiveConfirmationModal before MatrixRequest::RemoveRoomAvatar submits Room::remove_avatar; History confirms before MatrixRequest::SetRoomHistoryVisibility submits Room::send_state_event(RoomHistoryVisibilityEventContent); Join rule confirms before MatrixRequest::SetRoomJoinRule submits Room::send_state_event(RoomJoinRulesEventContent); Tombstone validates a replacement Matrix room id and confirms before MatrixRequest::SetRoomTombstone submits Room::send_state_event(RoomTombstoneEventContent). power levels, membership moderation, invite, kick, ban, knock, notification rule, message send/edit/redact, account/profile, gateway/runtime/auth, Telegram delivery, and broader live mutation requests remain blocked.";
-pub const ROOM_SETTINGS_LOCAL_BOUNDARY_LABEL: &str = "Room settings partial-live: name/topic/avatar/alias/history/join-rule/tombstone writes require confirmation; power/member edits stay blocked.";
-pub const ROOM_SETTINGS_NAME_TOPIC_LIVE_WRITE_EVIDENCE: &str = "RoomScreen room settings Save name, Save topic, Save alias, Avatar edit, Remove avatar, History, Join rule, and Tombstone are wired to live Matrix room-state writes. The text inputs keep only local drafts until Save or Return opens PositiveConfirmationModal; accepting submits MatrixRequest::SetRoomName, MatrixRequest::SetRoomTopic, MatrixRequest::SetRoomCanonicalAlias, or MatrixRequest::SetRoomTombstone for the loaded TimelineKind. Canonical alias writes parse the draft room alias, preserve the loaded alternative alias list, and send m.room.canonical_alias through Room::send_state_event(RoomCanonicalAliasEventContent). Tombstone writes validate the draft replacement room id, build a local replacement body, and send m.room.tombstone through Room::send_state_event(RoomTombstoneEventContent). Avatar edit opens a desktop image picker, validates the selected local image, previews filename/MIME/size/extension metadata, then opens PositiveConfirmationModal before MatrixRequest::UploadRoomAvatar submits Room::upload_avatar for the loaded TimelineKind; the SDK uploads media and sets m.room.avatar through Room::set_avatar_url. Remove avatar first requires loaded room-list avatar identity, then opens PositiveConfirmationModal and submits MatrixRequest::RemoveRoomAvatar for the loaded TimelineKind. History opens PositiveConfirmationModal before MatrixRequest::SetRoomHistoryVisibility submits m.room.history_visibility through Room::send_state_event(RoomHistoryVisibilityEventContent). Join rule opens PositiveConfirmationModal before MatrixRequest::SetRoomJoinRule submits m.room.join_rules through Room::send_state_event(RoomJoinRulesEventContent). SlidingSync calls Room::set_name, Room::set_room_topic, Room::send_state_event(RoomCanonicalAliasEventContent), Room::upload_avatar, Room::remove_avatar, or Room::send_state_event for these fields and returns TimelineUpdate::RoomSettingsMutationResult with success/error metadata. Failed writes cache the field/value; failed-state Retry opens PositiveConfirmationModal and then resubmits the cached MatrixRequest::SetRoomName, MatrixRequest::SetRoomTopic, MatrixRequest::SetRoomCanonicalAlias, MatrixRequest::UploadRoomAvatar, MatrixRequest::RemoveRoomAvatar, MatrixRequest::SetRoomHistoryVisibility, MatrixRequest::SetRoomJoinRule, or MatrixRequest::SetRoomTombstone through the same submit path. The path sends no power levels, membership moderation, invite, kick, ban, knock, notification-rule handoff, message mutation, account/profile mutation, gateway/runtime/auth/provider call, Telegram delivery, or unrelated live mutation.";
-pub const ROOM_SETTINGS_NAME_TOPIC_LIVE_WRITE_LABEL: &str = "Name/topic/avatar/alias/history/join-rule/tombstone live writes use PositiveConfirmationModal and Matrix SDK room state only.";
-pub const ROOM_SETTINGS_NAME_ID_CLIPBOARD_EVIDENCE: &str = "RoomScreen room settings Name copies only the already loaded current room display label and Matrix room id from RoomNameId to the local clipboard. The payload is derived from the active RoomScreen selection and partial-live settings strip metadata; missing room id stays local-unavailable and writes no clipboard payload. It sends no m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, m.room.power_levels, membership list write, invite, kick, ban, knock, notification-rule handoff, message send/edit/redact, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const ROOM_SETTINGS_NAME_ID_CLIPBOARD_LABEL: &str =
-    "Room settings Name copies loaded room label/id to local clipboard only.";
-pub const ROOM_SETTINGS_PERMISSIONS_CLIPBOARD_EVIDENCE: &str = "RoomScreen room settings Permissions copies only the already loaded current-user permission summary from RoomScreen tl_state.user_power to the local clipboard: send message, send reaction, and @room notification allowance. Missing power-level state stays local-unavailable and writes no clipboard payload. It reuses the existing GetRoomPowerLevels read result and sends no m.room.power_levels mutation, m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, membership list write, invite, kick, ban, knock, notification-rule handoff, message send/edit/redact, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const ROOM_SETTINGS_PERMISSIONS_CLIPBOARD_LABEL: &str =
-    "Room settings Permissions copies loaded power-level summary to local clipboard only.";
-pub const ROOM_SETTINGS_MEMBERS_CLIPBOARD_EVIDENCE: &str = "RoomScreen room settings Members copies only the already loaded room_members cache summary to the local clipboard: loaded member count and a compact display-name/user-id sample. Missing member cache stays local-unavailable and writes no clipboard payload. It reuses the existing GetRoomMembers(server-backed refresh) / SyncRoomMemberList read result and sends no membership list write, invite, kick, ban, knock, m.room.member mutation, m.room.power_levels mutation, m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, notification-rule handoff, message send/edit/redact, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const ROOM_SETTINGS_MEMBERS_CLIPBOARD_LABEL: &str =
-    "Room settings Members copies loaded local member-cache summary to local clipboard only.";
-pub const ROOM_SETTINGS_IDENTITY_CLIPBOARD_EVIDENCE: &str = "RoomScreen room settings Identity copies only already loaded RoomsList RoomContextMenuDetails identity metadata plus RoomScreen member-cache availability to the local clipboard: current room label/id, canonical alias presence/value, alternative alias count, avatar cache state, tombstone state, and loaded member count. Missing RoomsList identity metadata stays local-unavailable and writes no clipboard payload. It sends no m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, m.room.tombstone, m.room.power_levels, membership list write, invite, kick, ban, knock, notification-rule handoff, message send/edit/redact, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const ROOM_SETTINGS_IDENTITY_CLIPBOARD_LABEL: &str =
-    "Room settings Identity copies loaded room-list identity metadata to local clipboard only.";
-pub const ROOM_SETTINGS_LOADED_IDENTITY_EVIDENCE: &str = "RoomScreen room settings identity preview reuses loaded RoomsList metadata for canonical alias presence, alternative alias count, avatar cache state, tombstone state, and room name/id, plus loaded member count from RoomScreen tl_state. It sends no m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, m.room.tombstone, m.room.power_levels, membership, notification rule, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const ROOM_SETTINGS_LOADED_IDENTITY_LABEL: &str =
-    "Identity preview uses loaded room-list state only; no room-state fetch or mutation.";
-pub const ROOM_SETTINGS_CLOSE_METADATA_EVIDENCE: &str = "RoomScreen room settings close metadata is derived only from the current local option-staging state, loaded RoomsList identity availability, local room_members cache count, and current power-level display readiness before hiding the local strip. Close does not submit m.room.name, m.room.topic, m.room.power_levels, membership, invite, kick, ban, knock, room avatar, canonical alias, notification rule, message send/edit/redact, account/profile, gateway/runtime/auth, or live mutation requests.";
-pub const ROOM_SETTINGS_CLOSE_METADATA_LABEL: &str =
-    "Close metadata is local only; no Matrix room-state request.";
-pub const ROOM_SETTINGS_REFRESH_METADATA_EVIDENCE: &str = "RoomScreen room settings Refresh reuses only existing read paths for the current loaded timeline: MatrixRequest::GetRoomPowerLevels and MatrixRequest::GetRoomMembers(server-backed). The refresh metadata summarizes timeline availability, loaded RoomsList identity metadata, cached member count, and power-level display readiness before the refreshed results arrive. It sends no m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, m.room.tombstone, m.room.power_levels mutation, invite, kick, ban, knock, notification rule write, message send/edit/redact, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const ROOM_SETTINGS_REFRESH_LIVE_READ_WIRING_EVIDENCE: &str = "RoomScreen room settings Refresh has live Matrix read wiring: when a timeline is loaded it submits MatrixRequest::GetRoomPowerLevels and MatrixRequest::GetRoomMembers with local_only=false/JOIN membership, then renders TimelineUpdate::UserPowerLevels and TimelineUpdate::RoomMembersListFetched into the settings strip. Editable m.room.* and membership writes remain blocked behind the room-state mutation contract.";
-pub const ROOM_SETTINGS_REFRESH_METADATA_LABEL: &str = "Refresh re-reads power levels and server members; Name/Topic/avatar/alias/history/join-rule/tombstone writes use confirmed live room-state path.";
-pub const ROOM_SETTINGS_EDIT_CONTROLS_BOUNDARY_EVIDENCE: &str = "RoomScreen room settings edit-controls boundary metadata is derived from the current partial-live settings strip: room label, loaded RoomsList identity readiness, cached member count, power-level display readiness, confirmed Name/Topic/Alias write controls, confirmed avatar upload/removal controls, confirmed History/Join rule preset controls, and confirmed Tombstone replacement controls. Save name and Save topic are live only after PositiveConfirmationModal, then MatrixRequest::SetRoomName or MatrixRequest::SetRoomTopic reaches SlidingSync and RoomSettingsMutationResult. Save alias is live only after PositiveConfirmationModal, then MatrixRequest::SetRoomCanonicalAlias reaches SlidingSync, preserves loaded alt aliases, sends RoomCanonicalAliasEventContent, and returns RoomSettingsMutationResult. Avatar edit is live only after a valid desktop image selection and PositiveConfirmationModal accepts MatrixRequest::UploadRoomAvatar. Remove avatar is live only when loaded room-list avatar identity exists and PositiveConfirmationModal accepts MatrixRequest::RemoveRoomAvatar. History visibility and Join rule are live only after PositiveConfirmationModal accepts MatrixRequest::SetRoomHistoryVisibility or MatrixRequest::SetRoomJoinRule. Tombstone is live only after a valid replacement Matrix room id and PositiveConfirmationModal accepts MatrixRequest::SetRoomTombstone. Power levels, Member moderation, Invite/Kick/Ban/Knock, notification-rule handoff, message send/edit/redact, account/profile, gateway/runtime/auth, Telegram delivery, and unrelated live mutation controls remain local blocked.";
-pub const ROOM_SETTINGS_EDIT_CONTROLS_BOUNDARY_LABEL: &str = "Name/Topic, alias, avatar upload/remove, history, join-rule, and tombstone writes confirm first; power levels and member moderation stay blocked.";
-pub const ROOM_SETTINGS_EDIT_INTENT_STAGING_EVIDENCE: &str = "RoomScreen room settings edit-intent staging keeps Power and Moderation as local buttons that only update the partial-live settings strip status using loaded room identity, cached member count, and power-level display readiness. Alias now uses the confirmed canonical alias write path through MatrixRequest::SetRoomCanonicalAlias. Avatar opens the confirmed room-avatar upload path, Name and Topic use the separate confirmed Save path through MatrixRequest::SetRoomName/SetRoomTopic, History/Join rule use separate confirmed preset writes through MatrixRequest::SetRoomHistoryVisibility/SetRoomJoinRule, and Tombstone uses the confirmed replacement-room write path through MatrixRequest::SetRoomTombstone. Power and Moderation remain product placeholders for the other editable room-state fields and do not submit m.room.power_levels, member moderation, invite, kick, ban, knock, notification-rule, message send/edit/redact, account/profile, gateway/runtime/auth, Telegram delivery, or unrelated live mutation requests.";
-pub const ROOM_SETTINGS_EDIT_INTENT_STAGING_LABEL: &str = "Edit intent staged locally for remaining fields; Name/Topic, Alias, Avatar, History, Join rule, and Tombstone use confirmed live writes.";
-pub const ROOM_SETTINGS_FIELD_EDIT_INTENT_CONTROLS_EVIDENCE: &str = "RoomScreen room settings field edit-intent controls add visible Name, Topic, Alias, Avatar, Remove avatar, Permissions, and Members buttons in the settings strip. Name, Topic, and Alias field intents stage draft/metadata before the separate confirmed Save path; Alias confirms before MatrixRequest::SetRoomCanonicalAlias submits RoomCanonicalAliasEventContent while preserving loaded alt aliases. Avatar opens a desktop image picker and confirms before MatrixRequest::UploadRoomAvatar submits Room::upload_avatar; Permissions and Members only update local field edit-intent metadata, settings strip status, and popup copy from loaded room identity, cached member count, and power-level display readiness. Remove avatar requires loaded avatar identity and opens PositiveConfirmationModal before MatrixRequest::RemoveRoomAvatar submits Room::remove_avatar. The settings options/write rows separately expose confirmed History, Join rule, and Tombstone writes. These field-intent controls do not submit power-level or membership writes, invite, kick, ban, knock, notification-rule handoff, message send/edit/redact, account/profile, gateway/runtime/auth, Telegram delivery, or unrelated live mutation requests.";
-pub const ROOM_SETTINGS_FIELD_EDIT_INTENT_CONTROLS_LABEL: &str = "Name/Topic/Alias field intents stage drafts; Avatar upload and Remove avatar confirm live; Permissions and Members stay local.";
-pub const ROOM_SETTINGS_REFRESH_RESULT_DETAIL_EVIDENCE: &str = "RoomScreen room settings refresh result detail adds visible Result, Members, Power, Failure, and Source local buttons in the settings strip. Clicking any one only updates local refresh result metadata, settings strip status, and popup copy from current timeline availability, loaded room identity, cached member count, power-level display state, and local status text. Refresh remains the only control that reuses MatrixRequest::GetRoomPowerLevels and MatrixRequest::GetRoomMembers(server-backed); the detail buttons do not submit extra reads, m.room.name, m.room.topic, m.room.avatar, m.room.power_levels mutation, membership list writes, invite, kick, ban, knock, canonical alias, history visibility, join rule, tombstone, notification-rule handoff, message send/edit/redact, account/profile, gateway/runtime/auth, or live mutation requests.";
-pub const ROOM_SETTINGS_REFRESH_RESULT_DETAIL_LABEL: &str = "Refresh result detail stays local: Result, Members, Power, Failure, and Source do not write room state.";
-pub const ROOM_SETTINGS_MUTATION_PREFLIGHT_DETAIL_CONTROLS_EVIDENCE: &str = "RoomScreen room settings mutation preflight detail adds visible Request, Packet, Contract, Taxonomy, Result, Error, Retry, and Source local buttons in the settings strip. Request renders a local room-state mutation packet snapshot from current timeline availability, loaded room identity, cached member count, power-level display state, and the last local edit-intent or refresh status. Packet copies field-by-field local acceptance criteria, Contract copies typed room-state mutation/result contracts, Taxonomy copies power/member permission-denial and result taxonomy slots, and Result, Error, Retry, and Source only update local mutation-preflight metadata, settings strip status, and popup copy from the same loaded state. The controls do not submit m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, m.room.history_visibility, m.room.join_rules, m.room.power_levels, membership list writes, invite, kick, ban, knock, tombstone, notification-rule handoff, retry automation, room-state mutation contract calls, message send/edit/redact, account/profile, gateway/runtime/auth, or live mutation requests. Request, Result, Error, Retry, and Source remain local-only status controls.";
-pub const ROOM_SETTINGS_MUTATION_PREFLIGHT_DETAIL_CONTROLS_LABEL: &str = "Room-state mutation preflight stays local: Request, Packet, Contract, Taxonomy, Result, Error, Retry, and Source do not write m.room.* state.";
-pub const ROOM_SETTINGS_FIELD_MUTATION_PACKET_DRILLDOWN_EVIDENCE: &str = "RoomScreen room settings Packet copies only a local field-by-field room-state mutation packet to the clipboard. The payload is derived from current timeline availability, loaded RoomsList identity readiness, cached member count, current power-level display state, and local settings/preflight status. It lists confirmation, request, result, error, retry, and source acceptance slots for m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias/aliases, m.room.history_visibility, m.room.join_rules, confirmed m.room.tombstone replacement writes, m.room.power_levels, m.room.member moderation, and notification handoff boundaries. It sends no m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, m.room.history_visibility, m.room.join_rules, m.room.power_levels, membership write, invite, kick, ban, knock, notification-rule handoff, retry automation, room-state mutation contract call, message mutation, account/profile, gateway/runtime/auth, or live mutation.";
-pub const ROOM_SETTINGS_FIELD_MUTATION_PACKET_DRILLDOWN_LABEL: &str =
-    "Room settings Packet copies field-by-field room-state mutation acceptance criteria locally.";
-pub const ROOM_SETTINGS_FIELD_MUTATION_CONTRACT_PACKET_EVIDENCE: &str = "RoomScreen room settings Contract copies only a local typed room-state mutation/result contract packet to the clipboard. The payload is derived from current timeline availability, loaded RoomsList identity readiness, cached member count, current power-level display state, the local settings/preflight status, and the existing field mutation packet boundary. It maps m.room.name, m.room.topic, m.room.avatar, current history visibility/join-rule/tombstone preset writes, canonical alias/aliases, power levels, member moderation, and notification handoff to typed request/result/error/retry/source contracts while broader room-state expansion stays contract-first. It sends no m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, m.room.history_visibility, m.room.join_rules, m.room.power_levels, membership write, invite, kick, ban, knock, notification-rule handoff, retry automation, room-state mutation contract call, message mutation, account/profile, gateway/runtime/auth, or live mutation.";
-pub const ROOM_SETTINGS_FIELD_MUTATION_CONTRACT_PACKET_LABEL: &str = "Room settings Contract maps the field packet to typed room-state mutation/result contracts locally.";
-pub const ROOM_SETTINGS_POWER_MEMBER_RESULT_TAXONOMY_PACKET_EVIDENCE: &str = "RoomScreen room settings Taxonomy copies only a local power/member permission-denial and result taxonomy packet to the clipboard. The payload is derived from current timeline availability, loaded RoomsList identity readiness, cached member count, current power-level display state, local settings/preflight status, and the existing field mutation contract boundary. Existing live references are limited to confirmed Name/Topic/Alias/avatar/history/join-rule/tombstone result paths and Refresh GetRoomPowerLevels/GetRoomMembers read paths; m.room.power_levels and m.room.member moderation slots record operation_id_slot not_assigned, permission_denied/forbidden/stale-baseline/invalid-delta/already-in-state/not-wired result mapping, retry/source-hash/stale-room policy, cancel policy, rollback/audit slots, and redaction requirements. It sends no m.room.power_levels write, m.room.member mutation, invite, kick, ban, knock, notification-rule handoff, retry automation, room-state mutation contract call, account/profile, gateway/runtime/auth, Telegram delivery, or live mutation.";
-pub const ROOM_SETTINGS_POWER_MEMBER_RESULT_TAXONOMY_PACKET_LABEL: &str =
-    "Room settings Taxonomy maps power/member permission denial and result slots locally.";
-pub const ROOM_SETTINGS_COMPACT_LABEL: &str = "Settings partial-live: Name/Topic/Alias, avatar, history, join-rule, and tombstone writes run after confirmation; power/member edits stay blocked.";
-#[allow(dead_code)]
-const PINNED_EVENTS_SUBSCRIPTION_READ_EVIDENCE: &str = "Pinned event count uses existing SubscribeToPinnedEvents for local pinned-event updates; this info strip sends no PinEvent, message, room-state, or membership request.";
-#[allow(dead_code)]
-const TYPING_NOTICES_SUBSCRIPTION_READ_EVIDENCE: &str = "Incoming typing notice display uses existing SubscribeToTypingNotices for local typing-user updates; this info strip sends no typing notice, message, room-state, or membership request.";
-#[allow(dead_code)]
-const OWN_READ_RECEIPT_SUBSCRIPTION_READ_EVIDENCE: &str = "Own read marker uses existing SubscribeToOwnUserReadReceiptsChanged for local marker updates; this info strip sends no ReadReceipt, message, room-state, or membership request.";
-const ROOM_PINNED_COMPACT_LABEL: &str = "Pinned count follows the live timeline subscription.";
-const ROOM_TYPING_COMPACT_LABEL: &str = "Typing display follows the live typing subscription.";
-const ROOM_READ_RECEIPT_COMPACT_LABEL: &str =
-    "Own read marker follows the local receipt subscription.";
-const ROOM_UNREAD_COMPACT_LABEL: &str = "Unread badge is read-only local badge state.";
-const ROOM_AVATAR_COMPACT_LABEL: &str = "Avatar uses the existing cache read path.";
-#[allow(dead_code)]
-const ROOM_AVATAR_FETCH_CACHE_READ_EVIDENCE: &str = avatar_cache::AVATAR_FETCH_CACHE_READ_EVIDENCE;
-pub const MESSAGE_COPY_CLIPBOARD_EVIDENCE: &str = "Message Copy Text, Copy Text as HTML, and Copy Link use loaded timeline item data or locally constructed matrix.to URIs to write clipboard text locally; they send no Matrix event fetch, message send, edit, redact, room-state, membership, or live mutation request.";
-pub const MESSAGE_COPY_CLIPBOARD_COMPACT_LABEL: &str = "Copied locally from the loaded timeline.";
-pub const MESSAGE_COPY_LOADED_METADATA_EVIDENCE: &str = "Message copy popups summarize already loaded clipboard payload metadata for Copy Text, Copy Text as HTML, and Copy Link: payload kind, event-id availability, character count, and byte count. The summary is derived from the same loaded timeline body, loaded formatted body, or locally constructed matrix.to URI that is copied to the local clipboard and sends no Matrix event fetch, event source request, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_COPY_LOADED_METADATA_LABEL: &str =
-    "Clipboard payload metadata is local; no event fetch.";
-pub const EXTERNAL_LINK_CONFIRMATION_EVIDENCE: &str = "External ordinary URL links and unhandled Matrix links open a local confirmation guard before the existing system browser handoff; opening the confirmation, Cancel, and guard display send no browser handoff, Matrix event fetch, room preview fetch, message send, room-state, membership, or live mutation request.";
-pub const EXTERNAL_LINK_CONFIRMATION_COMPACT_LABEL: &str =
-    "External link opens only after confirmation.";
-pub const MATRIX_LINK_LOCAL_PREVIEW_EVIDENCE: &str = "RoomScreen Matrix link handling keeps known room links on local room navigation, loaded room alias links on local RoomsList alias navigation, known user links on the profile pane handoff and its existing profile read path, and current-room event links on a loaded local jump when the event id is already present in RoomScreen tl_state or on the existing BackwardsPaginateUntilEvent/PaginateTimeline read path when the event is missing from loaded rows. Unknown room ids, unknown room aliases, non-current-room event links, and other event links stay on a compact MatrixRequest::PreviewMatrixLinkTarget read path routed back to the originating TimelineKind. Unknown room ids and aliases fetch room preview details through the existing get_room_preview path; event links can additionally fetch source JSON through Room::load_or_fetch_event when the previewed room is known to the current client. Cached room id or alias targets can refresh Server context through the same compact PreviewMatrixLinkTarget read or be promoted through PositiveConfirmationModal to MatrixRequest::JoinRoomByIdOrAlias or MatrixRequest::Knock, with RoomScreen consuming MatrixLinkJoinResultAction or KnockResultAction for the Matrix link strip. Cached Matrix user targets can be promoted through PositiveConfirmationModal to MatrixRequest::InviteUser for the current room, with InviteResultAction rendered back into the same Matrix link strip. Link parsing, preview staging, known-room navigation, loaded-alias navigation, profile-pane handoff, loaded-event local jump, current-room event pagination, compact room preview, source-only event fetch for known previewed rooms, preview result display, cached Server context refresh, failed-state Retry confirmation, confirmed room-or-alias Join, confirmed room-or-alias Knock, and confirmed current-room user Invite send no server-side event context window, external browser handoff before confirmation, message, room-state, account/profile, gateway/runtime/auth, or unrelated live mutation request.";
-pub const MATRIX_LINK_UNKNOWN_TARGET_LOCAL_BOUNDARY_EVIDENCE: &str = "RoomScreen keeps unknown Matrix room ids, unknown room aliases, non-current-room event links, and other unresolved Matrix targets on a compact Matrix link preview read while matrix_link_resolution remains a base gap. Unknown room ids and unknown room aliases use MatrixRequest::PreviewMatrixLinkTarget to fetch room preview details; non-current-room event links fetch only the containing room preview. Cached room id or alias targets can be refreshed from the Server context control through the same MatrixRequest::PreviewMatrixLinkTarget read, confirmed into MatrixRequest::JoinRoomByIdOrAlias, or confirmed into MatrixRequest::Knock with via servers, and cached Matrix user targets can be confirmed into MatrixRequest::InviteUser for the current room. Server-side event context remains blocked. Opening an external browser before confirmation, sending messages, mutating room-state, touching account/profile, gateway/runtime/auth, and unrelated live mutation paths remain unwired.";
-pub const MATRIX_LINK_UNKNOWN_TARGET_LOCAL_BOUNDARY_LABEL: &str = "Unknown Matrix link target: compact room preview plus confirmed room-or-alias Join/Knock; event context, browser handoff, and mutation stay bounded.";
-pub const MATRIX_LINK_KNOCK_ROOM_CONFIRMATION_EVIDENCE: &str = "RoomScreen Matrix link Knock parses a cached room id or alias target from the preview strip, opens PositiveConfirmationModal, and submits MatrixRequest::Knock with no reason only from the accept branch. KnockResultAction success/failure is rendered back into the same Matrix link strip with a failed-state retry cache preserving the room id or alias plus via servers. Invite targets, event context fetch, browser handoff, room-state, account/profile, gateway/runtime/auth, and unrelated live mutation remain blocked; cached Server context refresh stays read-only through PreviewMatrixLinkTarget.";
-pub const MATRIX_LINK_KNOCK_ROOM_CONFIRMATION_LABEL: &str =
-    "Matrix link Knock confirms before MatrixRequest::Knock for cached room ids or aliases.";
-pub const MATRIX_LINK_LOADED_EVENT_LOCAL_JUMP_EVIDENCE: &str = "Current-room Matrix event links jump locally when the target event id is already loaded in RoomScreen tl_state; the helper scrolls and highlights the loaded row without server-side event context fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request. Missing current-room event links now use the existing BackwardsPaginateUntilEvent/PaginateTimeline read path; non-current-room event links continue to use the compact MatrixRequest::PreviewMatrixLinkTarget room-preview read and keep event context as a gap.";
-pub const MATRIX_LINK_LOADED_EVENT_LOCAL_JUMP_LABEL: &str = "Loaded current-room event link jumped locally; missing current-room events paginate read-only.";
-pub const MATRIX_LINK_CURRENT_ROOM_EVENT_PAGINATION_LIVE_EVIDENCE: &str = "Missing current-room Matrix event links stage the Matrix link preview strip, then reuse the existing BackwardsPaginateUntilEvent request sender and MatrixRequest::PaginateTimeline read path to load older timeline items until the event appears. TargetEventFound scrolls and highlights the row and refreshes the Matrix link preview strip to loaded/source-ready state. Non-current-room event links, server-side alias resolution, server-side event context fetch, join/knock/invite, browser handoff, source-only preview event source fetch stays on compact preview; full remote event source fetch, message mutation, room-state, membership, account/profile, gateway/runtime/auth, and live mutation remain blocked.";
-pub const MATRIX_LINK_CURRENT_ROOM_EVENT_PAGINATION_LIVE_LABEL: &str =
-    "Missing current-room event link paginates older timeline items read-only.";
-pub const MATRIX_LINK_LOADED_EVENT_CONTEXT_METADATA_EVIDENCE: &str = "RoomScreen Matrix link loaded-event context metadata is derived only from the already loaded timeline row selected by jump_to_loaded_matrix_link_event. It shows the target event id, loaded item index, current-room relation, loaded event-id availability, loaded plaintext snippet, local scroll/highlight action, and visible Matrix link preview-strip source affordance before the row is highlighted. It sends no MatrixRequest::BackwardsPaginateUntilEvent, PreviewMatrixLinkTarget follow-up, event-context fetch, timeline pagination/reload, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MATRIX_LINK_LOADED_EVENT_CONTEXT_METADATA_LABEL: &str = "Loaded event context metadata only; no event-context fetch, pagination, source-only preview event source fetch stays on compact preview; full remote event source fetch, or mutation.";
-pub const MATRIX_LINK_LOADED_EVENT_SOURCE_MODAL_EVIDENCE: &str = "RoomScreen Matrix link Source opens the existing local EventSourceModal for either a current-room Matrix event link already loaded in RoomScreen tl_state or cached source JSON returned by MatrixRequest::PreviewMatrixLinkTarget for a known previewed room event. The loaded action uses the cached Matrix link preview target, current TimelineKind room id, loaded event id, loaded item index, and loaded EventTimelineItem.latest_json from the visible timeline cache when available. The preview-fetched action uses the preview result room id, requested event id, and source JSON fetched through Room::load_or_fetch_event. Missing, failed, unresolved, or source-less links keep Source as local metadata and send no Source-click follow-up request, BackwardsPaginateUntilEvent, event-context window fetch, timeline pagination/reload, join, knock, invite, external browser handoff, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MATRIX_LINK_LOADED_EVENT_SOURCE_MODAL_LABEL: &str =
-    "Matrix link Source opens loaded current-room JSON or preview-fetched event JSON.";
-pub const MATRIX_LINK_LOADED_ALIAS_LOCAL_NAVIGATION_EVIDENCE: &str = "Room alias Matrix links navigate locally only when the alias matches a loaded RoomsList canonical_alias or alt_aliases entry. The helper scans already loaded joined-room metadata and emits NavigateToRoom for that room without MatrixRequest::PreviewMatrixLinkTarget, server-side alias resolution, join, knock, invite, event context fetch, timeline pagination/reload, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request; unknown aliases continue to use compact room-preview metadata.";
-pub const MATRIX_LINK_LOADED_ALIAS_LOCAL_NAVIGATION_LABEL: &str =
-    "Loaded room alias opened locally; unknown aliases stay preview-only.";
-pub const MATRIX_LINK_TARGET_METADATA_EVIDENCE: &str = "RoomScreen Matrix link target metadata is computed from the clicked MatrixId, via server list, current RoomScreen room id, loaded RoomsList room/alias state, and already loaded timeline event ids before any action is taken. The popup metadata labels target kind, via count, current-room relation, loaded target state, event-id loaded state, and whether the path is local navigation, local scroll/highlight, profile-pane handoff, or compact PreviewMatrixLinkTarget room-preview read. It sends no extra Matrix request beyond the existing compact preview read for unknown targets, and no server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MATRIX_LINK_TARGET_METADATA_LABEL: &str =
-    "Target metadata is loaded locally; unresolved targets stay compact preview-only.";
-pub const MATRIX_LINK_PREVIEW_RESULT_METADATA_EVIDENCE: &str = "Matrix link compact preview result metadata is summarized after the existing PreviewMatrixLinkTarget get_room_preview read returns FetchedRoomPreview. The popup adds already fetched canonical alias presence, topic state, joined and active member counts, room type, join rule, world-readable history flag, current-user room state, direct-room flag, hero count, avatar fetch/fallback state, and the source-only Room::load_or_fetch_event status when an event id was requested for a room known to the current client. It sends no server-side alias resolution, event context window fetch, timeline pagination/reload, join, knock, invite, message send/edit/redact, room-state mutation, membership change, account/profile request, gateway/runtime/auth request, or live mutation.";
-pub const MATRIX_LINK_PREVIEW_RESULT_METADATA_LABEL: &str = "Preview result metadata uses fetched room preview plus source-only status; event context remains unwired.";
-pub const MATRIX_LINK_PREVIEW_FAILURE_METADATA_EVIDENCE: &str = "Matrix link compact preview failure metadata is summarized only after the existing PreviewMatrixLinkTarget get_room_preview read returns an error. The RoomScreen preview strip keeps the target, via server count, requested event-id state, error message length, and boundary note visible. Failed Retry reuses only the cached originating TimelineKind, room-or-alias id, via list, and optional event id, opens PositiveConfirmationModal first, and only submits the same compact PreviewMatrixLinkTarget read after confirmation. It sends no retry without confirmation, no follow-up Matrix request beyond the confirmed compact preview read, no server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, message send/edit/redact, room-state mutation, membership change, account/profile request, gateway/runtime/auth request, or live mutation.";
-pub const MATRIX_LINK_PREVIEW_FAILURE_METADATA_LABEL: &str =
-    "Preview failure metadata is error-only; Retry confirms before the same compact preview read.";
-pub const MATRIX_LINK_PREVIEW_RETRY_CONFIRMATION_EVIDENCE: &str = "Matrix link compact preview failed-state Retry reuses only the cached originating TimelineKind, room-or-alias id, via list, and optional event id from the failed PreviewMatrixLinkTarget attempt. Retry opens PositiveConfirmationModal before another compact room-preview read is submitted; unavailable cached target, unavailable TimelineKind, and confirmation cancel stay local. It sends no automatic retry, server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, external browser handoff, message send/edit/redact, room-state mutation, membership change, account/profile request, gateway/runtime/auth request, or live mutation.";
-pub const MATRIX_LINK_PREVIEW_RETRY_CONFIRMATION_LABEL: &str = "Failed Matrix link Retry confirms before PreviewMatrixLinkTarget; event context, join, knock, browser handoff, and mutation stay unwired.";
-pub const MATRIX_LINK_SERVER_CONTEXT_BOUNDARY_EVIDENCE: &str = "RoomScreen Matrix link server/context boundary metadata is derived from clicked target metadata and compact PreviewMatrixLinkTarget status: loading, resolved, failed, retry confirmation, confirmed room-or-alias join, confirmed room-or-alias knock, confirmed current-room user invite, cached Server context refresh, or loaded current-room or preview-fetched event source state; via server count, optional event id, and retry cache readiness remain visible. Cached room id or alias targets can refresh Server context through the same MatrixRequest::PreviewMatrixLinkTarget compact room-preview read. event context fetch, timeline pagination/reload, MatrixRequest::BackwardsPaginateUntilEvent outside current-room missing event pagination, external browser handoff before confirmation, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, account/profile, gateway/runtime/auth, and unrelated live mutation remain local blocked controls while active unresolved-target paths are MatrixRequest::PreviewMatrixLinkTarget for compact room preview metadata or cached Server context refresh, confirmed MatrixRequest::JoinRoomByIdOrAlias for cached room ids or aliases, confirmed MatrixRequest::Knock for cached room ids or aliases, and confirmed MatrixRequest::InviteUser for cached Matrix user ids in the current room.";
-pub const MATRIX_LINK_SERVER_CONTEXT_BOUNDARY_LABEL: &str = "Server context refresh uses cached PreviewMatrixLinkTarget read-only; event context window, extra pagination, browser handoff before confirmation, and full remote event source workflow stay blocked; cached room-or-alias Join/Knock, current-room user Invite, and source-only preview fetch are confirmed.";
-pub const MATRIX_LINK_CONTEXT_ACTIONS_ROW_EVIDENCE: &str = "RoomScreen exposes Server, Event, Alias, Join, Knock, Invite, Browser, and Source as visible Matrix link context controls while matrix_link_resolution remains a base gap. Clicking Server uses the cached room id or alias target, via servers, and optional event id to submit the same MatrixRequest::PreviewMatrixLinkTarget compact read as a standalone Server context refresh when a target is cached, and falls back to the local Matrix link server-context packet snapshot when no cached target is available. Clicking Event renders a local Matrix link server-context packet snapshot from the current preview status, target label, via server list, requested event id, metadata/error length, retry cache state, and loaded current-room or preview-fetched source availability. Clicking Alias only updates local Matrix link preview summary metadata, context-action metadata, server/context boundary text, visible strip state, and popup copy derived from the same cached target/retry state. Clicking Join parses the cached room id or alias target, opens PositiveConfirmationModal, and only the accept branch submits MatrixRequest::JoinRoomByIdOrAlias with cached via servers. Clicking Knock parses the same cached room id or alias target, opens PositiveConfirmationModal, and only the accept branch submits MatrixRequest::Knock with cached via servers and no reason. Clicking Invite parses the cached Matrix user target, requires a loaded current room, opens PositiveConfirmationModal, and only the accept branch submits MatrixRequest::InviteUser for that room/user pair. RoomScreen consumes MatrixLinkJoinResultAction, KnockResultAction, or InviteResultAction to render joined/knocked/invited/failed status and retry cache on the same Matrix link strip. Clicking Browser builds a cached matrix.to URL from the preview target/via/event state, opens PositiveConfirmationModal, and only the accept branch hands that URL to the system opener. Clicking Source may open the existing local EventSourceModal when the cached target is a current-room event already loaded in RoomScreen tl_state or when the compact preview result returned source-only JSON for a known previewed room event; otherwise it stays metadata-only. PreviewMatrixLinkTarget is limited to compact preview, confirmed failed-state Retry, or cached Server context refresh. It does not submit MatrixRequest::BackwardsPaginateUntilEvent outside current-room missing event pagination, event context fetch, timeline pagination/reload, unconfirmed invite, unconfirmed external browser handoff, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, account/profile, gateway/runtime/auth, or unrelated live mutation.";
-pub const MATRIX_LINK_CONTEXT_ACTIONS_ROW_LABEL: &str = "Matrix link context actions: Server refreshes cached PreviewMatrixLinkTarget, Event/Alias stay metadata, room-or-alias Join/Knock confirm, user Invite confirms, Browser confirms, Source opens loaded-local or preview-fetched.";
-pub const MATRIX_LINK_JOIN_ROOM_CONFIRMATION_EVIDENCE: &str = "RoomScreen Matrix link Join parses a cached room id or alias target from the preview strip, opens PositiveConfirmationModal, and submits MatrixRequest::JoinRoomByIdOrAlias only from the accept branch. MatrixLinkJoinResultAction success/failure is rendered back into the same Matrix link strip with a failed-state retry cache preserving the room id or alias plus via servers. Knock and Invite have their own confirmed MatrixRequest::Knock and MatrixRequest::InviteUser paths; event context fetch, browser handoff, room-state, account/profile, gateway/runtime/auth, and unrelated live mutation remain blocked; cached Server context refresh stays read-only through PreviewMatrixLinkTarget.";
-pub const MATRIX_LINK_JOIN_ROOM_CONFIRMATION_LABEL: &str = "Matrix link Join confirms before MatrixRequest::JoinRoomByIdOrAlias for cached room ids or aliases.";
-pub const MATRIX_LINK_INVITE_USER_CONFIRMATION_EVIDENCE: &str = "RoomScreen Matrix link Invite parses a cached Matrix user id target from the preview strip, requires a loaded current room id, opens PositiveConfirmationModal, and submits MatrixRequest::InviteUser only from the accept branch. InviteResultAction success/failure is rendered back into the same Matrix link strip with a failed-state retry cache preserving the current room id plus user id. Join and Knock have separate room-or-alias confirmation paths; event context fetch, browser handoff, message mutation, room-state, account/profile, gateway/runtime/auth, and unrelated live mutation remain blocked; cached Server context refresh stays read-only through PreviewMatrixLinkTarget.";
-pub const MATRIX_LINK_INVITE_USER_CONFIRMATION_LABEL: &str = "Matrix link Invite confirms before MatrixRequest::InviteUser for cached Matrix user ids in the current room.";
-pub const MATRIX_LINK_BROWSER_HANDOFF_CONFIRMATION_EVIDENCE: &str = "RoomScreen Matrix link Browser uses only the cached preview target, via server label, and requested event id to build a matrix.to URL. It opens PositiveConfirmationModal first and hands the URL to robius_open system opener only from the accept branch; missing cached target and cancel stay warning-only/local. It submits no PreviewMatrixLinkTarget, BackwardsPaginateUntilEvent, server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, Telegram delivery, or live mutation.";
-pub const MATRIX_LINK_BROWSER_HANDOFF_CONFIRMATION_LABEL: &str =
-    "Matrix link Browser confirms before matrix.to system opener handoff.";
-pub const MATRIX_LINK_ROUTE_SCOPE_CONTROLS_EVIDENCE: &str = "RoomScreen exposes Room, Event, Via, Preview, and Source as visible local Matrix link route-scope controls while matrix_link_resolution remains a base gap, plus Packet, Contract, and Taxonomy controls for local acceptance evidence. Clicking Room copies only the cached Matrix link target label/status/via/event metadata to the local clipboard when a target label exists. Clicking Via copies only the cached Matrix link via server list to the local clipboard when one exists. Clicking Event copies only the cached requested Matrix event id to the local clipboard when an event id exists. Clicking Preview copies only the already cached local preview metadata/status/target/via/event summary to the local clipboard when metadata exists. Clicking Source may open the existing local EventSourceModal when the cached target is a current-room event already loaded in RoomScreen tl_state or when the compact preview result returned source-only JSON for a known previewed room event; otherwise it stays metadata-only. Packet copies per-target route acceptance criteria; Contract copies typed route/result contracts for alias, room, event, preview, join, source, retry, server refresh, and browser handoff; Taxonomy copies route/event-context result slots locally before any richer route adapter is promoted. PreviewMatrixLinkTarget is limited to compact preview, confirmed failed-state Retry, or cached Server context refresh; it sends no MatrixRequest::BackwardsPaginateUntilEvent outside current-room missing event pagination, server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, external browser handoff, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MATRIX_LINK_ROUTE_SCOPE_CONTROLS_LABEL: &str = "Matrix link route scope: Room copies cached target metadata; Via copies cached via list; Event copies cached event id; Preview copies cached metadata; Source opens loaded or preview-fetched source; Contract and Taxonomy stay local.";
-pub const MATRIX_LINK_ROUTE_DRILLDOWN_PACKET_EVIDENCE: &str = "RoomScreen Matrix link Packet copies a per-target route drilldown from cached preview-strip state only. The packet records room target, event id, via servers, preview metadata, server-context packet, alias resolution, join/knock/invite, external browser handoff, and loaded and preview-fetched source acceptance slots before any route is promoted. PreviewMatrixLinkTarget is limited to compact preview, confirmed Retry, or cached Server context refresh. It submits no MatrixRequest::BackwardsPaginateUntilEvent, server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, external browser handoff, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MATRIX_LINK_ROUTE_DRILLDOWN_PACKET_LABEL: &str =
-    "Matrix link Packet copies per-target route acceptance criteria only.";
-pub const MATRIX_LINK_ROUTE_RESULT_CONTRACT_PACKET_EVIDENCE: &str = "RoomScreen Matrix link Contract copies a typed route/result contract packet from cached preview-strip state only. The packet maps room target identity, event id, via servers, preview request/result/error, server-context packet, alias resolution, event context, pagination cursor, join/knock/invite, external browser handoff, loaded source, preview-fetched source, full remote source, retry, and source-hash acceptance slots before any server-context work is promoted. PreviewMatrixLinkTarget is limited to compact preview, confirmed Retry, or cached Server context refresh. It submits no MatrixRequest::BackwardsPaginateUntilEvent, server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, external browser handoff, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MATRIX_LINK_ROUTE_RESULT_CONTRACT_PACKET_LABEL: &str =
-    "Matrix link Contract maps the route drilldown to typed route/result contracts locally.";
-pub const MATRIX_LINK_ROUTE_RESULT_TAXONOMY_PACKET_EVIDENCE: &str = "RoomScreen Matrix link Taxonomy copies a route/event-context result taxonomy packet from cached preview-strip state only. The packet names existing live references as loaded alias navigation, loaded current-room event jump, current-room missing-event MatrixRequest::BackwardsPaginateUntilEvent/MatrixRequest::PaginateTimeline read wiring, compact MatrixRequest::PreviewMatrixLinkTarget room-preview read, cached Server context refresh, confirmed failed-state Retry, source-only Room::load_or_fetch_event for known previewed room events, loaded or preview-fetched EventSourceModal Source, confirmed matrix.to Browser system-opener handoff, confirmed JoinRoomByIdOrAlias, confirmed MatrixRequest::Knock, and confirmed current-room MatrixRequest::InviteUser result/retry. It records route_adapter_request_id, alias_resolution_operation_id, non_current_room_event_context_operation_id, via_route_request_id, full_remote_source_request_id, room_preview_route_result, event_context_window_result, alias_resolution_result, via_resolution_result, full_remote_source_result, access_denied_result, stale_target_result, retry_cancel_result, and audit redaction slots as not_assigned or not_wired before a richer route adapter can be promoted. It submits no PreviewMatrixLinkTarget beyond explicit compact preview, Server refresh, or confirmed Retry controls, no BackwardsPaginateUntilEvent outside current-room missing event link pagination, no server-side alias resolution, no event-context fetch, no non-current-room timeline pagination/reload, no full remote source fetch, no unconfirmed browser handoff, no unconfirmed join/knock/invite, no message send/edit/redact, no room-state mutation, no membership mutation outside confirmed join/knock/invite paths, no account/profile mutation, no gateway/runtime/auth/provider call, and no live mutation.";
-pub const MATRIX_LINK_ROUTE_RESULT_TAXONOMY_PACKET_LABEL: &str =
-    "Matrix link Taxonomy maps route/event-context result slots locally.";
-pub const MATRIX_LINK_ROOM_TARGET_CLIPBOARD_EVIDENCE: &str = "RoomScreen Matrix link Room copies only the cached Matrix link target label from the preview strip to the local clipboard when one exists, together with preview status, via server count, requested event id, and retry-cache readiness. Missing target label stays local-unavailable and writes no clipboard payload. PreviewMatrixLinkTarget is limited to compact preview, confirmed Retry, or cached Server context refresh; it sends no BackwardsPaginateUntilEvent outside current-room missing event pagination, server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, external browser handoff, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MATRIX_LINK_ROOM_TARGET_CLIPBOARD_LABEL: &str =
-    "Matrix link Room copies cached target metadata only.";
-pub const MATRIX_LINK_VIA_SERVERS_CLIPBOARD_EVIDENCE: &str = "RoomScreen Matrix link Via copies only the cached Matrix link via server list from the preview strip to the local clipboard when one exists, together with preview status, target label, requested event id, and retry-cache readiness. Missing via server list stays local-unavailable and writes no clipboard payload. PreviewMatrixLinkTarget is limited to compact preview, confirmed Retry, or cached Server context refresh; it sends no BackwardsPaginateUntilEvent outside current-room missing event pagination, server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, external browser handoff, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MATRIX_LINK_VIA_SERVERS_CLIPBOARD_LABEL: &str =
-    "Matrix link Via copies cached via server list only.";
-pub const MATRIX_LINK_EVENT_ID_CLIPBOARD_EVIDENCE: &str = "RoomScreen Matrix link Event copies only the cached requested Matrix event id from the preview strip to the local clipboard when one exists. The popup metadata includes preview status, target label, via server count, requested event id, and retry-cache readiness. Missing event id stays local-unavailable and writes no clipboard payload. PreviewMatrixLinkTarget is limited to compact preview, confirmed Retry, or cached Server context refresh; it sends no BackwardsPaginateUntilEvent outside current-room missing event pagination, server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, external browser handoff, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MATRIX_LINK_EVENT_ID_CLIPBOARD_LABEL: &str =
-    "Matrix link Event copies cached requested event id only.";
-pub const MATRIX_LINK_PREVIEW_METADATA_CLIPBOARD_EVIDENCE: &str = "RoomScreen Matrix link Preview copies only the already cached preview strip metadata to the local clipboard: preview status, target label, via server count, requested event id, retry-cache readiness, and the current local preview metadata text. Missing metadata stays local-unavailable and writes no clipboard payload. PreviewMatrixLinkTarget is limited to compact preview, confirmed Retry, or cached Server context refresh; it sends no BackwardsPaginateUntilEvent outside current-room missing event pagination, server-side alias resolution, event context fetch, timeline pagination/reload, join, knock, invite, external browser handoff, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MATRIX_LINK_PREVIEW_METADATA_CLIPBOARD_LABEL: &str =
-    "Matrix link Preview copies cached local preview metadata only.";
-pub const MATRIX_LINK_UNRESOLVED_DETAIL_EVIDENCE: &str = "RoomScreen Matrix link unresolved detail state is derived only from the clicked target metadata, the compact MatrixRequest::PreviewMatrixLinkTarget status, cached retry context, cached room-or-alias join/knock state, cached Server context refresh state, and loaded current-room event source availability. The detail label reports selected Server/Event/Alias/Join/Knock/Source action, preview status, unresolved target, via server count, requested event-id state, metadata character count, optional error character count, and retry cache readiness. Clicking Server can submit a cached MatrixRequest::PreviewMatrixLinkTarget read-only refresh; clicking Join can submit only a confirmed MatrixRequest::JoinRoomByIdOrAlias for cached room id or alias targets; clicking Knock can submit only a confirmed MatrixRequest::Knock for cached room id or alias targets. Other context controls update only this local detail state, the summary, the server/context boundary label, and popup copy. Source may open only the already loaded current-room EventSourceModal. It submits no MatrixRequest::BackwardsPaginateUntilEvent outside current-room missing event pagination, event context fetch, timeline pagination/reload, invite, external browser handoff before confirmation, source-only preview event source fetch stays on compact preview; full remote event source fetch, message send/edit/redact, room-state, account/profile, gateway/runtime/auth, or unrelated live mutation.";
-pub const MATRIX_LINK_UNRESOLVED_DETAIL_LABEL: &str = "Unresolved Matrix link detail is local: target, via, event id, metadata chars, error chars, and retry cache only.";
-pub const MATRIX_LINK_UNKNOWN_TARGET_COMPACT_LABEL: &str =
-    "Matrix link preview reads room metadata only.";
-pub const ROOM_STATUS_CONFIRMATION_COMPACT_LABEL: &str =
-    "Room status changes run only after confirmation.";
-pub const ROOM_LINK_INVITE_LEAVE_COMPACT_LABEL: &str =
-    "Room action uses the existing guarded path.";
-pub const TIMELINE_INVITE_CONFIRMATION_COMPACT_LABEL: &str =
-    "Invite is sent only after confirmation.";
-pub const NOTIFICATIONS_OPTION_STAGING_LOCAL_EVIDENCE: &str = "RoomScreen notification surfaces now read the effective Matrix room notification mode through MatrixRequest::GetRoomNotificationMode and open a confirmation guard before supported All messages, Mentions, and Mute writes submit MatrixRequest::SetRoomNotificationMode. Refresh and Close remain read/local UI only. Timed mute choices such as 1h or 8h remain unwired and are not presented as real writes; no message, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request is sent.";
-pub const NOTIFICATIONS_MODE_WRITE_CONFIRMATION_EVIDENCE: &str = "RoomScreen notifications All messages, Mentions, and Mute options use PositiveConfirmationModal before MatrixRequest::SetRoomNotificationMode writes the current room's Matrix notification mode through NotificationSettings::set_room_notification_mode. The write returns TimelineUpdate::RoomNotificationModeSet, updates only the displayed room notification mode on success, and caches room id plus mode for a failed-state Retry that also requires PositiveConfirmationModal before resubmitting SetRoomNotificationMode. Keyword Add/Remove also uses PositiveConfirmationModal before MatrixRequest::SetNotificationKeywordRule reaches NotificationSettings::add_keyword/remove_keyword. This still sends no timed mute, global preference, pusher, message, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request beyond confirmed room-mode and confirmed keyword writes.";
-pub const NOTIFICATIONS_LOADED_ATTENTION_EVIDENCE: &str = "RoomScreen notifications strip reflects already loaded RoomsList unread count, mention count, and manual unread state next to the current-room notification mode. This preview sends no notification rule read beyond MatrixRequest::GetRoomNotificationMode, timed mute, global notification preference, keyword, push gateway/device, message, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const NOTIFICATIONS_MODE_CLIPBOARD_EVIDENCE: &str = "RoomScreen notifications Copy mode writes only the already loaded current room notification mode plus the loaded RoomsList unread/mention/manual-unread summary to the local clipboard. Missing notification mode stays local-unavailable with no clipboard payload. The action reuses the existing GetRoomNotificationMode read result and sends no SetRoomNotificationMode, timed mute, global notification preference, keyword rule, push gateway/device, pusher, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const NOTIFICATIONS_MODE_CLIPBOARD_LABEL: &str =
-    "Copy mode uses loaded notification state and local clipboard only.";
-pub const NOTIFICATIONS_MODE_TARGET_METADATA_EVIDENCE: &str = "RoomScreen notifications mode target metadata is derived only from local strip state before any confirmed write: current loaded room notification mode, requested All/Mentions/Mute mode when a confirmation or failed retry is staged, loaded RoomsList attention availability, retry cache availability, timeline availability, and current local status. Opening Notifications, staging All/Mentions/Mute, failed Retry visibility, Refresh, and Close send no MatrixRequest::SetRoomNotificationMode unless the user accepts PositiveConfirmationModal, and send no timed mute, global notification preference, keyword rule, push gateway/device, pusher, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const NOTIFICATIONS_MODE_TARGET_METADATA_LABEL: &str =
-    "Mode target metadata is local; SetRoomNotificationMode waits for confirmation.";
-pub const NOTIFICATIONS_CLOSE_REFRESH_METADATA_EVIDENCE: &str = "RoomScreen notifications Close and Refresh metadata is derived only from the current local notification status, current loaded notification mode state, loaded RoomsList unread/mention/manual-unread availability, and timeline availability. Refresh reuses the existing MatrixRequest::GetRoomNotificationMode read path; Close only hides the local strip. Neither action submits MatrixRequest::SetRoomNotificationMode, timed mute, global notification preference, keyword, push gateway/device, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation requests.";
-pub const NOTIFICATIONS_CLOSE_REFRESH_METADATA_LABEL: &str =
-    "Close/Refresh metadata is local/read-only; no notification mode write.";
-pub const NOTIFICATIONS_LOCAL_BOUNDARY_EVIDENCE: &str = "RoomScreen notifications now supports confirmed current-room Matrix notification mode writes for All messages, Mentions, and Mute, confirmed keyword Add/Remove writes through MatrixRequest::SetNotificationKeywordRule, confirmed default room-mode writes through MatrixRequest::SetDefaultRoomNotificationMode, confirmed failed-state Retry for cached SetRoomNotificationMode, keyword mutation, or default room-mode mutation state, loaded unread/mention/manual-unread reflection, live enabled-keyword reads, live pusher capability reads, and live default room-mode reads through MatrixRequest::GetDefaultRoomNotificationMode, while notifications remains a base gap for timed mute, raw global notification preference writes beyond SDK keyword/default APIs, push gateway/device configuration, and broader room-list notification indication. Refresh and Close only update local labels after MatrixRequest::GetRoomNotificationMode. Timed mute writes, account-data editing beyond SDK notification rules, push gateway mutation, raw default preference writes outside the SDK default-room-mode API, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, and unrelated live mutation paths remain unwired.";
-pub const NOTIFICATIONS_LOCAL_BOUNDARY_LABEL: &str =
-    "Notifications mode and keyword writes only after confirmation; timed mute stays unwired.";
-pub const NOTIFICATIONS_DEFAULT_ROOM_MODE_WRITE_EVIDENCE: &str = "RoomScreen notifications default All/Mentions/Mute controls use PositiveConfirmationModal before MatrixRequest::SetDefaultRoomNotificationMode writes the Matrix SDK default room notification mode for the loaded room's encrypted and one-to-one class through NotificationSettings::set_default_room_notification_mode. The worker reads NotificationSettings::get_default_room_notification_mode after success and returns TimelineUpdate::NotificationDefaultRoomModeMutated with a NotificationDefaultRoomModeSummary. Failure caches TimelineKind plus RoomNotificationMode for a failed-state Retry that also requires PositiveConfirmationModal. It sends no timed mute write, pusher set/delete mutation, push gateway/device configuration write, sound/badge tuning, raw account-data edit outside the SDK default-room-mode API, room-state, membership, account/profile, gateway/runtime/auth, or unrelated live mutation.";
-pub const NOTIFICATIONS_DEFAULT_ROOM_MODE_WRITE_LABEL: &str =
-    "Default All/Mentions/Mute writes confirm before SDK default room-mode mutation.";
-pub const NOTIFICATIONS_TIMED_GLOBAL_BOUNDARY_EVIDENCE: &str = "RoomScreen notifications timed/global boundary metadata keeps the unsupported notification controls visible in the local strip: timed mute durations, raw global notification preference writes beyond live default-mode SDK APIs and SDK keyword rules, push gateway/device or pusher configuration, broader room-list notification indication, and retry/failure automation remain unwired. The metadata is computed from the current loaded room notification mode, loaded RoomsList unread/mention/manual-unread attention state, keyword-list read/write status, MatrixRequest::GetDefaultRoomNotificationMode read status, live default room-mode read/write status, and current local status only; it sends no MatrixRequest::SetRoomNotificationMode unless All messages, Mentions, or Mute is explicitly confirmed, sends no MatrixRequest::SetNotificationKeywordRule unless Add keyword or Remove keyword is explicitly confirmed, and sends no MatrixRequest::SetDefaultRoomNotificationMode unless Default All/Mentions/Mute or failed-state Retry is explicitly confirmed. It sends no timed mute, raw default preference write outside the SDK default-room-mode API, unconfirmed keyword write, push gateway/device, pusher, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or unrelated live mutation request.";
-pub const NOTIFICATIONS_TIMED_GLOBAL_BOUNDARY_LABEL: &str =
-    "Timed/global notification controls are boundary metadata only.";
-pub const NOTIFICATIONS_PUSHER_KEYWORD_BOUNDARY_EVIDENCE: &str = "RoomScreen notifications pusher/keyword boundary metadata now separates live keyword-list reads, confirmed keyword mutations, pusher-status reads, default room-mode reads, and confirmed default room-mode writes from blocked pusher/global/timed writes. Keyword rules, Keyword list, and Keywords submit MatrixRequest::GetNotificationKeywordRules, which reads Matrix SDK NotificationSettings::contains_keyword_rules and enabled_keywords, then returns TimelineUpdate::NotificationKeywordRulesFetched to the strip. Add keyword and Remove keyword validate a typed keyword, open PositiveConfirmationModal, then submit MatrixRequest::SetNotificationKeywordRule so SlidingSync calls NotificationSettings::add_keyword or remove_keyword and returns TimelineUpdate::NotificationKeywordRulesMutated. Device push and Pushers submit MatrixRequest::GetNotificationPusherStatus, which reads Matrix SDK Client::can_homeserver_push_encrypted_event_to_device and returns TimelineUpdate::NotificationPusherStatusFetched to the strip. Global and Defaults submit MatrixRequest::GetDefaultRoomNotificationMode, which reads NotificationSettings::get_default_room_notification_mode for the loaded room class and returns TimelineUpdate::NotificationDefaultRoomModeFetched. Default All/Mentions/Mute validate the loaded timeline class, open PositiveConfirmationModal, then submit MatrixRequest::SetDefaultRoomNotificationMode so SlidingSync calls NotificationSettings::set_default_room_notification_mode and returns TimelineUpdate::NotificationDefaultRoomModeMutated. Raw global preference writes beyond SDK default APIs, Timed mute duration presets, Push gateway/device setup writes, Pusher enable/disable mutations, Sound/badge tuning, and broader room-list notification indication remain local blocked controls. The boundary is computed from the current loaded room notification mode, loaded RoomsList unread/mention/manual-unread attention state, retry cache readiness, keyword read/write status, pusher read status, default-mode read/write status, and local status. It does not submit Matrix notification rule account-data edits outside the SDK keyword/default APIs, pusher mutations, push gateway/device configuration write, timed mute writes, raw default preference writes outside the SDK default-room-mode API, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or unrelated live mutation while notifications stays a base gap beyond confirmed All/Mentions/Mute SetRoomNotificationMode, confirmed keyword writes, confirmed default writes, and live keyword-rule, default-mode, or pusher-status reads.";
-pub const NOTIFICATIONS_PUSHER_KEYWORD_BOUNDARY_LABEL: &str = "Keyword list, default mode, and pusher status read live Matrix settings; keyword Add/Remove and default mode writes confirm first; timed mute, pusher writes, sound, and badge stay blocked.";
-pub const NOTIFICATIONS_KEYWORD_LIST_LIVE_READ_EVIDENCE: &str = "RoomScreen notification Keyword rules, Keyword list, and Keywords controls are wired to a real Matrix SDK read. Each click submits MatrixRequest::GetNotificationKeywordRules for the loaded timeline, SlidingSync reads NotificationSettings::contains_keyword_rules() and NotificationSettings::enabled_keywords(), sorts the enabled custom keyword patterns, and returns TimelineUpdate::NotificationKeywordRulesFetched. The result updates the notification strip and popup with the enabled keyword count/list or an empty-state message. Add keyword and Remove keyword are separate confirmed live writes through MatrixRequest::SetNotificationKeywordRule. The read path itself submits no unconfirmed add/remove keyword rule write, no account-data mutation outside the SDK notification settings API, no pusher mutation, no push gateway/device configuration, no timed mute write, no global preference write, no sound/badge tuning, no SetRoomNotificationMode outside the existing confirmed room-mode path, no message mutation, no room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const NOTIFICATIONS_KEYWORD_LIST_LIVE_READ_LABEL: &str = "Keyword list reads live Matrix notification settings; Add/Remove keyword writes confirm first.";
-pub const NOTIFICATIONS_KEYWORD_MUTATION_EVIDENCE: &str = "RoomScreen notifications keyword Add/Remove is a confirmed Matrix SDK notification-rule mutation. The keyword input stays local until Add keyword, Remove keyword, or Return stages PositiveConfirmationModal. Accept submits MatrixRequest::SetNotificationKeywordRule for the loaded TimelineKind; SlidingSync calls NotificationSettings::add_keyword or NotificationSettings::remove_keyword and returns TimelineUpdate::NotificationKeywordRulesMutated. Success clears the failed keyword retry cache and refreshes MatrixRequest::GetNotificationKeywordRules; failure caches keyword plus operation and exposes Retry, which reopens PositiveConfirmationModal before resubmitting the same MatrixRequest. This path sends no unconfirmed keyword write, no raw Matrix notification account-data edit outside SDK notification settings, no pusher set/delete mutation, no push gateway/device configuration write, no timed mute write, no global preference write, no sound/badge tuning, no message send/edit/redact, no room-state, membership, account/profile, gateway/runtime/auth, or unrelated live mutation.";
-pub const NOTIFICATIONS_KEYWORD_MUTATION_LABEL: &str =
-    "Keyword Add/Remove writes use PositiveConfirmationModal and Matrix SDK notification settings.";
-pub const NOTIFICATIONS_PUSHER_STATUS_LIVE_READ_EVIDENCE: &str = "RoomScreen notification Device push and Pushers controls are wired to a real Matrix SDK read-only pusher capability check. Each click submits MatrixRequest::GetNotificationPusherStatus for the loaded timeline, SlidingSync calls Client::can_homeserver_push_encrypted_event_to_device(), and TimelineUpdate::NotificationPusherStatusFetched updates the notification strip and popup with supported, unsupported, or error status. This is read-only: it submits no pusher set/delete mutation, no push gateway/device configuration write, no account-data mutation, no push-rule write, no keyword mutation, no timed mute write, no global preference write, no sound/badge tuning, no SetRoomNotificationMode outside the existing confirmed room-mode path, no message mutation, no room-state, membership, account/profile, gateway/runtime/auth expansion, or live mutation.";
-pub const NOTIFICATIONS_PUSHER_STATUS_LIVE_READ_LABEL: &str =
-    "Device push and Pushers read live homeserver push capability; pusher writes stay blocked.";
-pub const NOTIFICATIONS_ADVANCED_CONTROLS_EVIDENCE: &str = "RoomScreen notifications advanced controls row exposes Timed, Keywords, Pusher, and Global on telegram_notifications_strip. Keywords is a live read-only Matrix SDK handoff through MatrixRequest::GetNotificationKeywordRules and TimelineUpdate::NotificationKeywordRulesFetched; Global is a live read-only Matrix SDK handoff through MatrixRequest::GetDefaultRoomNotificationMode and TimelineUpdate::NotificationDefaultRoomModeFetched; the adjacent keyword input row performs confirmed Add/Remove writes through MatrixRequest::SetNotificationKeywordRule. Timed and Pusher setup only update local notification status, boundary metadata, and popup from the current loaded room notification mode plus loaded RoomsList unread/mention/manual-unread state. It does not submit raw Matrix notification rule account-data edits, default preference writes, pusher mutations, push gateway/device configuration, timed mute writes, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or unrelated live mutation while confirmed All/Mentions/Mute SetRoomNotificationMode and confirmed keyword Add/Remove remain the notification write paths.";
-pub const NOTIFICATIONS_ADVANCED_CONTROLS_LABEL: &str = "Keywords and Global defaults read live; keyword Add/Remove confirms first; Timed and Pusher setup stay local blocked controls.";
-pub const NOTIFICATIONS_ADVANCED_DETAIL_CONTROLS_EVIDENCE: &str = "RoomScreen notifications advanced detail controls row exposes Quiet hours, Keyword list, Device push, Defaults, and Sound badge on telegram_notifications_strip. Keyword list is a live read-only Matrix SDK handoff through MatrixRequest::GetNotificationKeywordRules and TimelineUpdate::NotificationKeywordRulesFetched; Device push is a live read-only Matrix SDK handoff through MatrixRequest::GetNotificationPusherStatus and TimelineUpdate::NotificationPusherStatusFetched; Defaults is a live read-only Matrix SDK handoff through MatrixRequest::GetDefaultRoomNotificationMode and TimelineUpdate::NotificationDefaultRoomModeFetched. Quiet hours and Sound badge only update local advanced notification detail metadata, boundary labels, and popup copy from the current loaded room notification mode, loaded RoomsList unread/mention/manual-unread state, and retry cache readiness. It does not submit Matrix notification rule account-data edits, push-rule writes beyond the separate confirmed keyword Add/Remove row, pusher mutations, push gateway/device configuration writes, timed mute writes, default preference writes, sound/badge tuning, retry automation, MatrixRequest::SetRoomNotificationMode outside the existing confirmed All/Mentions/Mute or failed-state Retry paths, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const NOTIFICATIONS_ADVANCED_DETAIL_CONTROLS_LABEL: &str = "Keyword list, Device push, and Defaults read live; Quiet hours and Sound badge stay local status controls.";
-pub const NOTIFICATIONS_RESULT_DETAIL_CONTROLS_EVIDENCE: &str = "RoomScreen notifications result detail controls row exposes Result, Requested, Retry cache, Failure, and Source as visible local status buttons on telegram_notifications_strip. Clicking any one only updates local notification result detail metadata, boundary labels, and popup copy from the current loaded room notification mode, loaded RoomsList unread/mention/manual-unread state, retry cache readiness, timeline availability, and local status text. It does not submit MatrixRequest::GetRoomNotificationMode outside the existing Refresh/read-open path, MatrixRequest::SetRoomNotificationMode outside the existing confirmed All/Mentions/Mute or failed-state Retry paths, timed mute writes, global notification preference writes, unconfirmed keyword writes, push-rule writes beyond the confirmed keyword Add/Remove row, pusher mutations, push gateway/device configuration, sound/badge tuning, retry automation, cancel queue, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const NOTIFICATIONS_RESULT_DETAIL_CONTROLS_LABEL: &str =
-    "Result, Requested, Retry cache, Failure, and Source stay local result detail controls.";
-pub const NOTIFICATIONS_PREFLIGHT_DETAIL_CONTROLS_EVIDENCE: &str = "RoomScreen notifications timed/global/pusher preflight controls row exposes Schedule, Packet, Contract, Account data, Keywords, Pushers, and Defaults on telegram_notifications_strip. Keywords is a live read-only Matrix SDK handoff through MatrixRequest::GetNotificationKeywordRules and TimelineUpdate::NotificationKeywordRulesFetched; Pushers is a live read-only Matrix SDK handoff through MatrixRequest::GetNotificationPusherStatus and TimelineUpdate::NotificationPusherStatusFetched; Defaults is a live read-only Matrix SDK handoff through MatrixRequest::GetDefaultRoomNotificationMode and TimelineUpdate::NotificationDefaultRoomModeFetched. Schedule renders a local notification schedule packet snapshot from the current loaded room notification mode, loaded RoomsList unread/mention/manual-unread state, requested mode, retry cache readiness, timeline availability, and local status text; Contract copies a typed account-data/push-rule/pusher/result contract packet; Account data updates local preflight metadata, boundary labels, and popup copy from the same loaded state. It submits no Matrix notification rule account-data write, no push-rule write beyond SDK keyword/default reads, no unconfirmed keyword mutation outside the separate Add/Remove confirmation row, no pusher mutation, no push gateway/device configuration write, no timed mute write, no default preference write, no sound/badge tuning, no MatrixRequest::GetRoomNotificationMode outside the existing Refresh/read-open path, no MatrixRequest::SetRoomNotificationMode outside the existing confirmed All/Mentions/Mute or failed-state Retry paths, no retry automation, cancel queue, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const NOTIFICATIONS_PREFLIGHT_DETAIL_CONTROLS_LABEL: &str = "Schedule, Packet, Contract, Account data, Keywords, Pushers, and Defaults: Keywords, Pushers, and Defaults read live; other preflight controls stay local.";
-pub const NOTIFICATIONS_RULE_PACKET_DRILLDOWN_EVIDENCE: &str = "RoomScreen notifications Packet copies a local notification rule packet to the local clipboard from the current loaded room notification mode, loaded RoomsList unread/mention/manual-unread state, requested mode, retry cache readiness, timeline availability, and local status text. The packet persists request/result/error/retry acceptance criteria for room mode, timed mute, global preferences, keyword rules, pusher/device config, defaults, and sound/badge tuning while notifications remains a base gap beyond confirmed All/Mentions/Mute SetRoomNotificationMode, and before typed account-data, push-rule, pusher, or notification-result contracts exist. It submits no Matrix notification rule account-data read or write, no push-rule write, no pusher mutation, no push gateway/device configuration, no timed mute write, no global notification preference write, no sound/badge tuning, no extra GetRoomNotificationMode, no unconfirmed SetRoomNotificationMode, no retry automation, cancel queue, room-state, membership, gateway/runtime/auth, or live mutation.";
-pub const NOTIFICATIONS_RULE_PACKET_DRILLDOWN_LABEL: &str =
-    "Notification Packet copies local rule/result/retry acceptance criteria only.";
-pub const NOTIFICATIONS_RULE_CONTRACT_PACKET_EVIDENCE: &str = "RoomScreen notifications Contract copies a typed notification account-data/pusher contract packet to the local clipboard from the current loaded room notification mode, loaded RoomsList unread/mention/manual-unread state, requested mode, retry cache readiness, timeline availability, and local status text. The contract persists typed request/result/error/retry/source slots for room notification mode, account-data notification rules, push-rule keyword rules, pusher/device configuration, global preference defaults, timed mute scheduling, sound/badge tuning, stale requested-mode retries, and result reconciliation before timed/global/keyword/pusher writes can be promoted. It submits no Matrix notification rule account-data read or write, no push-rule write, no pusher mutation, no push gateway/device configuration, no timed mute write, no global notification preference write, no sound/badge tuning, no extra GetRoomNotificationMode, no unconfirmed SetRoomNotificationMode, no retry automation, cancel queue, room-state, membership, gateway/runtime/auth, or live mutation.";
-pub const NOTIFICATIONS_RULE_CONTRACT_PACKET_LABEL: &str =
-    "Notification Contract copies typed account-data/push-rule/pusher/result criteria only.";
-pub const NOTIFICATIONS_RESULT_TAXONOMY_PACKET_EVIDENCE: &str = "RoomScreen notifications Taxonomy copies a local notification timed/global/pusher result taxonomy packet to the local clipboard from the current loaded room notification mode, loaded RoomsList unread/mention/manual-unread state, requested mode, retry cache readiness, timeline availability, and local status text. The packet records operation_id_slot not_assigned for timed mute, raw account-data, pusher/device, and sound/badge writes; live-result references for the existing confirmed room mode, keyword, and default-mode SDK paths; not-wired result mappings for timed mute scheduled/applied/expired/failed/stale, raw account-data applied/failed/stale, pusher enabled/disabled/failed/stale, sound/badge applied/failed/stale, retry/cancel/source-hash policy, and audit redaction. It submits no Matrix notification rule account-data read or write outside SDK keyword/default APIs, no pusher mutation, no push gateway/device configuration, no timed mute write, no sound/badge tuning, no extra GetRoomNotificationMode, no unconfirmed SetRoomNotificationMode or SetDefaultRoomNotificationMode, no retry automation, cancel queue, room-state, membership, gateway/runtime/auth, or live mutation.";
-pub const NOTIFICATIONS_RESULT_TAXONOMY_PACKET_LABEL: &str =
-    "Notification Taxonomy copies timed/global/pusher result slots locally.";
-pub const NOTIFICATIONS_RETRY_CONFIRMATION_EVIDENCE: &str = "RoomScreen notification mode failed-state Retry reuses only the cached room id and RoomNotificationMode from the last confirmation-gated MatrixRequest::SetRoomNotificationMode attempt. Retry opens PositiveConfirmationModal before another SetRoomNotificationMode request is submitted; unavailable cached mode, unavailable room id, and confirmation cancel stay local. It sends no timed mute, global notification preference, keyword rule, push gateway/device, pusher, retry automation, cancel queue, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const NOTIFICATIONS_RETRY_CONFIRMATION_LABEL: &str = "Failed notification Retry confirms before SetRoomNotificationMode; timed/global/pusher work stays unwired.";
-pub const NOTIFICATIONS_LOADED_ATTENTION_LABEL: &str =
-    "Loaded unread/mention state is read-only; push and timed mute stay unwired.";
-pub const NOTIFICATIONS_COMPACT_LABEL: &str =
-    "All, Mentions, Mute, and default modes write after confirmation.";
-
-fn telegram_notification_mode_action_label(mode: RoomNotificationMode) -> &'static str {
-    match mode {
-        RoomNotificationMode::AllMessages => "All messages",
-        RoomNotificationMode::MentionsAndKeywordsOnly => "Mentions",
-        RoomNotificationMode::Mute => "Mute",
-    }
-}
-
-fn notification_mode_write_result_popup_message(
-    room_label: &str,
-    mode: RoomNotificationMode,
-    result: &Result<(), String>,
-) -> String {
-    let mode_label = telegram_notification_mode_action_label(mode);
-    match result {
-        Ok(()) => format!("Notification mode updated for {room_label}: {mode_label}."),
-        Err(error) => {
-            format!("Notification mode update failed for {room_label}: {mode_label}. {error}")
-        }
-    }
-}
-
-fn notification_default_room_mode_write_result_popup_message(
-    room_label: &str,
-    mode: RoomNotificationMode,
-    result: &Result<NotificationDefaultRoomModeSummary, String>,
-) -> String {
-    let mode_label = telegram_notification_mode_action_label(mode);
-    match result {
-        Ok(summary) => {
-            let default_summary = notification_default_room_mode_summary_label(summary);
-            format!(
-                "Default notification mode updated for {room_label}: {mode_label}; {default_summary}."
-            )
-        }
-        Err(error) => {
-            format!(
-                "Default notification mode update failed for {room_label}: {mode_label}. {error}"
-            )
-        }
-    }
-}
-
-fn notification_keyword_mutation_action_label(
-    mutation: NotificationKeywordMutation,
-) -> &'static str {
-    match mutation {
-        NotificationKeywordMutation::Add => "Add keyword",
-        NotificationKeywordMutation::Remove => "Remove keyword",
-    }
-}
-
-fn notification_keyword_mutation_verb(mutation: NotificationKeywordMutation) -> &'static str {
-    match mutation {
-        NotificationKeywordMutation::Add => "added",
-        NotificationKeywordMutation::Remove => "removed",
-    }
-}
-
-fn notification_keyword_mutation_result_popup_message(
-    room_label: &str,
-    keyword: &str,
-    mutation: NotificationKeywordMutation,
-    result: &Result<(), String>,
-) -> String {
-    let action = notification_keyword_mutation_action_label(mutation);
-    match result {
-        Ok(()) => format!("Notification keyword {action} succeeded for {room_label}: {keyword}."),
-        Err(error) => {
-            format!("Notification keyword {action} failed for {room_label}: {keyword}. {error}")
-        }
-    }
-}
-
-pub const MEDIA_DOWNLOAD_PLAYBACK_LOCAL_BOUNDARY_EVIDENCE: &str = "RoomScreen media download/playback now gives plain File, Audio, and Video messages Download and Play links that open PositiveConfirmationModal before the local save dialog. Confirmations preview already loaded timeline metadata such as type, filename, MIME type, size, duration, and dimensions when present. Confirmed Save/Play then submits MatrixRequest::SaveMedia, which fetches full-file media through the SDK media cache path and writes it to the selected path. Play saves first and then asks the system opener to open that saved file. Row-scoped Retry on recovery/preflight controls is the guarded exception: when the row carries a plain MXC, Retry opens PositiveConfirmationModal and reuses the same SaveMedia path after the user picks a save path. Encrypted file/audio/video rows show loaded timeline metadata, and encrypted image rows show loaded ImageInfo metadata, in local-disabled previews while Decrypt, codec/transcode work, image decode, thumbnail fetch, inline audio/video player controls, accepted queue cancel/resume controls, attachment send, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, and live mutation remain unwired local evidence while media_download_playback remains a base gap.";
-pub const MEDIA_DOWNLOAD_PLAYBACK_LOCAL_BOUNDARY_LABEL: &str = "Media Save/Play requires confirmation and local save; decrypt, codec, inline player, retry/cancel, and live mutation stay local.";
-pub const MEDIA_DOWNLOAD_PLAYBACK_METADATA_EVIDENCE: &str = "RoomScreen media Download/Play confirmations carry loaded file/audio/video metadata from the existing timeline content: media type, filename, MIME type, size, duration, and dimensions when already present. This metadata preview updates only the confirmation body and popup copy before the local save dialog; it sends no extra media fetch, decrypt, codec/transcode, inline playback, retry/cancel queue control, attachment send, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation before the confirmed MatrixRequest::SaveMedia branch.";
-pub const MEDIA_DOWNLOAD_PLAYBACK_METADATA_LABEL: &str =
-    "Loaded media metadata preview only; SaveMedia still waits for confirmation.";
-pub const MEDIA_METADATA_CLIPBOARD_EVIDENCE: &str = "RoomScreen media Copy metadata writes only already loaded File, Audio, and Video timeline metadata to the local clipboard: media kind, filename, MIME type, size, duration, dimensions, and a compact summary when present. It is available for plain and encrypted file/audio/video rows because it does not need media bytes. Missing fields stay labeled unavailable. It sends no FetchMedia, SaveMedia, decrypt, codec/transcode, inline playback, system opener, retry/cancel queue control, attachment send, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request while media_download_playback remains a base gap.";
-pub const MEDIA_METADATA_CLIPBOARD_LABEL: &str =
-    "Copy metadata uses loaded timeline media fields and local clipboard only.";
-pub const MEDIA_SAVE_DIALOG_LIFECYCLE_METADATA_EVIDENCE: &str = "RoomScreen media save dialog lifecycle metadata reuses only the already loaded media action metadata summary for confirmation opened, confirmation canceled, save dialog accepted, save dialog canceled, and unsupported save-dialog popup states. SaveMedia is still submitted only after confirmation accepts and the local save dialog returns a selected path; confirmation cancel, save dialog cancel, unsupported platforms, and popup metadata send no extra media fetch, decrypt, codec/transcode, inline playback, retry/cancel queue control, attachment send, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MEDIA_SAVE_DIALOG_LIFECYCLE_METADATA_LABEL: &str =
-    "Media save-dialog lifecycle metadata is local; SaveMedia waits for a picked path.";
-pub const MEDIA_SAVE_DESTINATION_METADATA_EVIDENCE: &str = "RoomScreen media save destination metadata shows the selected local destination path, loaded filename/type metadata, and whether Play will open the saved file before MatrixRequest::SaveMedia is submitted. The destination label is emitted only after PositiveConfirmationModal accept plus local save dialog picked; confirmation cancel, save dialog cancel, unsupported save dialog, retry/cancel queue controls, inline audio/video controls, decrypt, codec/transcode, attachment send, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, and live mutation remain unwired.";
-pub const MEDIA_SAVE_DESTINATION_METADATA_LABEL: &str = "Selected save destination is local metadata; SaveMedia still waits for confirmation + picked path.";
-pub const MEDIA_INLINE_PLAYBACK_QUEUE_BOUNDARY_EVIDENCE: &str = "RoomScreen media inline playback and queue boundary metadata is computed from already loaded file/audio/video action metadata before the save dialog opens. Download states that it only writes a picked local file after confirmation; Play states that it saves first through MatrixRequest::SaveMedia and then asks the system opener to open the saved file. inline audio/video controls, decrypt, codec/transcode, retry/cancel queue controls, attachment send, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, and live mutation remain unwired; no extra media fetch or SaveMedia request is submitted before confirmation accept plus a picked local path.";
-pub const MEDIA_INLINE_PLAYBACK_QUEUE_BOUNDARY_LABEL: &str =
-    "Inline playback and queue controls stay boundary metadata only.";
-pub const MEDIA_INLINE_PLAYER_DISABLED_CONTROLS_EVIDENCE: &str = "RoomScreen audio and video timeline rows now render a visible disabled inline-player control strip from already loaded timeline metadata: media kind, loaded filename, duration availability, MIME type, local size, and dimensions when present. The strip makes Playhead, Seek, Queue, Decrypt, and Codec controls visibly disabled while Download/Play remain the only active links. It sends no FetchMedia, SaveMedia, media cache read beyond the existing row render, decrypt, codec/transcode, inline player startup, playback progress subscription, retry/cancel queue control, attachment send, message mutation, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MEDIA_INLINE_PLAYER_DISABLED_CONTROLS_LABEL: &str = "Inline player disabled: Playhead/Seek/Queue/Decrypt/Codec stay local; Download/Play still confirm before SaveMedia.";
-pub const MEDIA_CODEC_TRANSCODE_CONTROLS_EVIDENCE: &str = "RoomScreen audio and video timeline rows expose Codec, Transcode, Captions, Quality, and Decrypt as visible local codec/transcode controls next to the disabled inline-player strip. Clicking any control only rebuilds already loaded media metadata from the local link query and shows popup copy; it does not submit FetchMedia, submit SaveMedia, start a decoder, start a transcoder, inspect codec support beyond loaded MIME/duration/dimensions labels, fetch captions, change playback quality, decrypt media, start inline playback, invoke the system opener, mutate retry/cancel queue state, attach/send media, mutate room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MEDIA_CODEC_TRANSCODE_CONTROLS_LABEL: &str =
-    "Codec, Transcode, Captions, Quality, and Decrypt are local codec/transcode controls.";
-pub const MEDIA_SAVE_RESULT_STATUS_BOUNDARY_EVIDENCE: &str = "RoomScreen media save result/open boundary metadata makes the remaining media_download_playback result gap explicit while counting the existing opener outcome mapping as live popup evidence. MatrixRequest::SaveMedia completion reports saved, download failed, save failed, system opener opened, opener failed, and invalid saved-path states through popup status via SaveMediaOpenOutcome, and sends a TimelineUpdate::MediaSaveResult so RoomScreen caches the successful plain-MXC destination for the result-row Open folder and Replay handoffs. Inline audio/video player state, seek controls, retry/cancel queue controls, decrypt retry, codec/transcode fallback, background download list, delivery/read receipts, attachment send, message mutation, room-state, membership, account/profile, gateway/runtime/auth, and live mutation remain local blocked controls. The metadata is derived only from the already loaded media action summary and the requested Download or Play mode before confirmation accept; it submits no extra FetchMedia, SaveMedia, retry, queue cancel, decrypt, codec, room-state, membership, gateway/runtime/auth, or live mutation request.";
-pub const MEDIA_SAVE_RESULT_STATUS_BOUNDARY_LABEL: &str = "Save/open result popup maps saved, failed, opened, opener-failed, and invalid-path states; successful plain saves cache Open folder and Replay targets while inline player, retry queue, decrypt, codec, and live mutation remain blocked.";
-pub const MEDIA_SAVE_RESULT_RECOVERY_CONTROLS_ROW_EVIDENCE: &str = "RoomScreen media save/open recovery controls row exposes Open folder, Replay, Retry, Queue, and Decrypt as visible result-recovery links on plain File, Audio, and Video timeline rows. Open folder is a live local OS handoff only after a successful MatrixRequest::SaveMedia result cached the selected destination for the same plain MXC; it first validates that the cached saved path is still a regular local file, clears stale cached destinations, then opens the saved file's parent folder through the system opener and sends no Matrix request. Replay is also a live local OS handoff from the same cached successful SaveMedia destination: it validates that the cached saved path is still a regular local file, clears stale cached destinations, converts it to a file URL, and opens it through the system opener without fetching media again. Queue renders a local media playback/download queue snapshot from requested action mode, loaded metadata, save-result boundary, opener state, and any cached saved-file status; if the cached destination is stale, Queue clears it locally. Retry is a guarded live resubmit: when the row carries a plain MXC, it opens PositiveConfirmationModal and then reuses the same MatrixRequest::SaveMedia Download/Play path after the user picks a save path. Decrypt only rebuilds loaded media metadata from the link query and shows local popup boundary labels. The row sends no unconfirmed FetchMedia, no unconfirmed SaveMedia, no automatic retry, no queue cancel/resume, no queue retry/resume, no decrypt retry, no codec/transcode, no background download list mutation, no delivery/read receipt, no attachment send, no message mutation, no room-state, membership, account/profile, gateway/runtime/auth, or live mutation request outside confirmed SaveMedia retry and cached-destination Open folder/Replay.";
-pub const MEDIA_SAVE_RESULT_RECOVERY_CONTROLS_ROW_LABEL: &str = "Open folder/Replay use cached SaveMedia destination; Queue/Decrypt remain local recovery controls.";
-pub const MEDIA_CACHED_SAVED_FILE_STATUS_EVIDENCE: &str = "RoomScreen media Queue can read only local filesystem metadata for an already cached successful SaveMedia destination: regular-file state, size, readonly bit, and modified timestamp seconds. Missing, inaccessible, or non-file destinations clear the cached MXC destination locally before any Open folder or Replay handoff. This submits no FetchMedia, no SaveMedia, no inline player, no decoder, no queue retry/resume/cancel, no system opener, no message mutation, no room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MEDIA_CACHED_SAVED_FILE_STATUS_LABEL: &str =
-    "Cached saved-file status is local metadata only; stale destinations clear the cache.";
-pub const MEDIA_SAVE_PREFLIGHT_DETAIL_CONTROLS_EVIDENCE: &str = "RoomScreen media SaveMedia preflight detail controls row exposes Request, Result, Error, Retry, and Source as visible links on plain File, Audio, and Video timeline rows. Request, Result, Error, and Source only rebuild loaded media metadata from the link query and show local popup copy for the requested SaveMedia phase, cached result/error shape, retry availability, and source metadata. Retry is a guarded live resubmit: when the row carries a plain MXC, it opens PositiveConfirmationModal and then reuses the same MatrixRequest::SaveMedia Download/Play path after the user picks a save path. It sends no unconfirmed FetchMedia, no unconfirmed extra SaveMedia, no cached-destination Open folder/Replay handoff from preflight details, no automatic retry, no queue cancel/resume, no decrypt retry, no codec/transcode, no background download mutation, no delivery/read receipt, no attachment send, no message mutation, no room-state, membership, account/profile, gateway/runtime/auth, or live mutation request outside the confirmed SaveMedia retry.";
-pub const MEDIA_SAVE_PREFLIGHT_DETAIL_CONTROLS_LABEL: &str =
-    "Request, Result, Error, Retry, and Source are local SaveMedia preflight details.";
-pub const MEDIA_OPERATION_PACKET_DRILLDOWN_EVIDENCE: &str = "RoomScreen media Packet copies a local media operation acceptance matrix to the clipboard from already loaded File, Audio, and Video timeline metadata. The packet records requested action, media metadata, SaveMedia request/result shape, cached Open folder/Replay destination slots, inline playback slot, decrypt/decode slot, codec/transcode slot, captions slot, queue retry/resume/cancel slot, system opener result slot, and promotion criteria for media_download_playback. It is available for plain and encrypted file/audio/video rows because it needs no media bytes. It submits no FetchMedia, SaveMedia, system opener request outside cached Open folder/Replay, inline player startup, playback progress subscription, key lookup, decrypt retry, decoder, transcoder, captions fetch, quality switch, retry/cancel queue mutation, background download mutation, delivery/read receipt, attachment send, message mutation, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MEDIA_OPERATION_PACKET_DRILLDOWN_LABEL: &str = "Media Packet copies local playback/decrypt/codec/queue acceptance criteria; no FetchMedia, SaveMedia, decrypt, codec, queue, opener, or live mutation runs.";
-pub const MEDIA_PLAYBACK_QUEUE_CONTRACT_PACKET_EVIDENCE: &str = "RoomScreen media Contract copies a local typed playback/media queue contract to the clipboard from the same already loaded File, Audio, and Video timeline metadata used by Packet. The contract names typed slots for media identity, SaveMedia request/result/error, cached Open folder/Replay destination result with stale cache validation and eviction, inline playback request/result/error/progress, decrypt/decode request/result/error, codec/transcode/captions/quality fallback, system opener result, queue retry/resume/cancel/background persistence, delivery/read receipt mapping, source metadata hashing, broader stale local file handling beyond cached Open folder/Replay validation, and adapter promotion blockers before true inline/decrypt/queue controls can be wired. It is available for plain and encrypted file/audio/video rows because it needs no media bytes. It submits no FetchMedia, SaveMedia, system opener request outside cached-destination Open folder/Replay, inline player startup, playback progress subscription, key lookup, decrypt retry, decoder, transcoder, captions fetch, quality switch, retry/cancel queue mutation, background download mutation, delivery/read receipt, attachment send, message mutation, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MEDIA_PLAYBACK_QUEUE_CONTRACT_PACKET_LABEL: &str = "Media Contract maps Packet to typed playback/decrypt/codec/opener/queue result contracts locally.";
-pub const MEDIA_PLAYBACK_RESULT_TAXONOMY_PACKET_EVIDENCE: &str = "RoomScreen media Taxonomy copies a local decrypt/decode/opener/queue result taxonomy packet to the clipboard from already loaded File, Audio, and Video timeline metadata. The packet names the only live references as existing MatrixRequest::FetchMedia image/cache reads, confirmed MatrixRequest::SaveMedia Download/Play result mapping, cached Open folder/Replay stale validation and local OS opener handoff, and guarded SaveMedia Retry. Inline playback session/progress, encrypted-media decrypt/decode, codec/transcode/captions/quality fallback, background queue retry/resume/cancel, delivery/read receipt mapping, and stale inline/decrypt local-file handling remain not-assigned/not-wired result slots. It submits no FetchMedia, SaveMedia, system opener request outside cached Open folder/Replay, inline player startup, playback progress subscription, key lookup, decrypt retry, decoder, transcoder, captions fetch, quality switch, retry/cancel queue mutation, background download mutation, delivery/read receipt, attachment send, message mutation, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MEDIA_PLAYBACK_RESULT_TAXONOMY_PACKET_LABEL: &str =
-    "Media Taxonomy maps decrypt/decode/opener/queue result slots locally.";
-pub const MEDIA_ENCRYPTED_METADATA_LOCAL_EVIDENCE: &str = "RoomScreen encrypted File, Audio, and Video message rows show already loaded timeline metadata such as filename, MIME type, size, duration, and dimensions inside the local disabled media preview. The preview does not start decrypt, SaveMedia, FetchMedia, codec/transcode, inline playback, retry/cancel queue control, attachment send, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation work.";
-pub const MEDIA_ENCRYPTED_METADATA_LOCAL_LABEL: &str =
-    "Encrypted media metadata stays visible; decrypt and Save/Play stay disabled.";
-pub const MEDIA_ENCRYPTED_IMAGE_METADATA_LOCAL_EVIDENCE: &str = "RoomScreen encrypted Image message rows show already loaded ImageInfo metadata such as filename/body, MIME type, size, dimensions, blurhash availability, and thumbnail-source availability inside the local disabled image preview. The preview does not start decrypt, SaveMedia, FetchMedia, image decode, thumbnail fetch, media cache mutation, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation work.";
-pub const MEDIA_ENCRYPTED_IMAGE_METADATA_LOCAL_LABEL: &str =
-    "Encrypted image metadata stays visible; decrypt and image decode stay disabled.";
-pub const MEDIA_IMAGE_FETCH_CACHE_COMPACT_LABEL: &str =
-    "Image preview uses cache; controls stay local.";
-pub const MEDIA_IMAGE_FETCH_FAILED_COMPACT_LABEL: &str =
-    "Image preview failed; cache state stays local.";
-pub const MEDIA_ENCRYPTED_IMAGE_COMPACT_LABEL: &str =
-    "Encrypted image preview only; decrypt stays local-disabled.";
-pub const MEDIA_FILE_COMPACT_LABEL: &str =
-    "File download confirms before local save; playback stays local.";
-pub const MEDIA_AUDIO_COMPACT_LABEL: &str =
-    "Audio download/play confirms before local save; codec controls stay local.";
-pub const MEDIA_VIDEO_COMPACT_LABEL: &str =
-    "Video download/play confirms before local save; codec controls stay local.";
-const MEDIA_DOWNLOAD_URL_SCHEME: &str = "hepta-media-download";
-const MEDIA_METADATA_CLIPBOARD_URL_SCHEME: &str = "hepta-media-metadata-copy";
-const MEDIA_RESULT_CONTROL_URL_SCHEME: &str = "hepta-media-result-control";
-const MEDIA_SAVE_PREFLIGHT_CONTROL_URL_SCHEME: &str = "hepta-media-save-preflight-control";
-const MEDIA_CODEC_TRANSCODE_CONTROL_URL_SCHEME: &str = "hepta-media-codec-transcode-control";
-const MEDIA_OPERATION_PACKET_URL_SCHEME: &str = "hepta-media-operation-packet";
-const MEDIA_PLAYBACK_QUEUE_CONTRACT_URL_SCHEME: &str = "hepta-media-playback-queue-contract";
-const MEDIA_PLAYBACK_RESULT_TAXONOMY_URL_SCHEME: &str = "hepta-media-playback-result-taxonomy";
-pub const POLL_MESSAGE_PREVIEW_READ_EVIDENCE: &str = "Poll timeline items render from already loaded matrix-sdk-ui PollState results inside populate_poll_message_content. Question, answers, vote counts, total votes, open/closed status, edited note, and max selections are formatted into local message-row HTML/plaintext only and send no poll response, edit, redact, message, room-state, membership, timeline reload, or live mutation request.";
-pub const POLL_MESSAGE_PREVIEW_COMPACT_LABEL: &str =
-    "Read-only poll preview from loaded timeline state.";
-pub const POLL_ANSWER_PREVIEW_RESULT_PACKET_EVIDENCE: &str = "Poll answer preview/result packet records loaded answer count, total votes, max selections, open/closed status, edited state, answer edit slot, vote response slot, result mapping, stale poll policy, and unsupported server capability boundary from already loaded PollState only. It sends no poll response, poll answer edit, timeline reload, message, room-state, membership, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_EDIT_HISTORY_DETAIL_SURFACE_EVIDENCE: &str = "RoomScreen renders a local Telegram edit-history detail strip after MatrixRequest::FetchEditHistory completes paginated m.replace relation reads. The strip shows target event id, replacement count, relation pages fetched/exhausted state, latest replacement event/timestamp, loaded original preview, latest replacement preview, cached latest replacement raw JSON availability, and a local preview-diff hint, then can be closed locally. Full can open a local synthetic EventSourceModal snapshot from this cached state. It reuses only the already loaded timeline row plus the complete paginated m.replace relation summary; it sends no remote full-history modal request, event-context fetch, timeline pagination/reload, replacement event source fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_EDIT_HISTORY_DETAIL_SURFACE_LABEL: &str = "Edit history detail is local read-only: complete m.replace pagination summary plus loaded original preview.";
-pub const MESSAGE_EDIT_HISTORY_RETRY_CONFIRMATION_EVIDENCE: &str = "RoomScreen edit-history failed-state Retry reuses only the cached event id and TimelineKind from the last MatrixRequest::FetchEditHistory attempt. Retry opens PositiveConfirmationModal before another compact MatrixRequest::FetchEditHistory m.replace summary read is submitted; unavailable cached event id, unavailable TimelineKind, and confirmation cancel stay local. It sends no remote full-history modal request, full diff rendering, event-context fetch, timeline pagination/reload, event source open, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_EDIT_HISTORY_RETRY_CONFIRMATION_LABEL: &str = "Failed edit-history Retry confirms before FetchEditHistory; full modal, event context, timeline reload, and event source stay unwired.";
-pub const MESSAGE_EDIT_HISTORY_FULL_MODAL_BOUNDARY_EVIDENCE: &str = "RoomScreen edit-history full modal boundary metadata is derived from the current paginated m.replace read state: loading, loaded, failed, or retry confirmation, replacement count when available, relation pages fetched/exhausted state, cached latest replacement raw JSON availability, and retry cache readiness. The Full control opens the existing local EventSourceModal with a synthetic full snapshot JSON built from the loaded target, complete paginated replacement summary, original preview, latest replacement preview, cached latest replacement raw JSON availability, cached error, and retry cache state. Remote/server-backed Full history modal UI, side-by-side full diff rendering, event-context fetch, timeline pagination/reload, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, and write-side live mutation remain local blocked controls while the real edit-history read is MatrixRequest::FetchEditHistory paginating Room::relations to next_batch exhaustion plus EventSourceModal handoff for cached latest replacement raw JSON, MatrixRequest::FetchEventSource room.event/load_or_fetch_event fallback for missing latest replacement source JSON, or loaded original latest_json.";
-pub const MESSAGE_EDIT_HISTORY_FULL_MODAL_BOUNDARY_LABEL: &str = "Full opens a local snapshot modal; full diff, event context, remote modal, and reload stay blocked; complete m.replace pagination is live.";
-pub const MESSAGE_EDIT_HISTORY_LOCAL_FULL_SNAPSHOT_MODAL_EVIDENCE: &str = "RoomScreen edit-history Full opens a local synthetic EventSourceModal snapshot from cached MatrixRequest::FetchEditHistory state only: target event id, replacement count, relation pages fetched/exhausted state, latest replacement event/timestamp, loaded original preview, latest replacement preview, cached latest replacement raw JSON availability, cached error, retry cache readiness, and read-only side-effect metadata. It sends no extra MatrixRequest::FetchEditHistory, no remote full-history modal request, no side-by-side full diff rendering, no event-context fetch, no timeline pagination/reload, no message send/edit/redact, no room-state, membership, account/profile, gateway/runtime/auth, or write-side live mutation.";
-pub const MESSAGE_EDIT_HISTORY_LOCAL_FULL_SNAPSHOT_MODAL_LABEL: &str =
-    "Full opens a local synthetic EventSourceModal snapshot from cached edit-history state only.";
-pub const MESSAGE_EDIT_HISTORY_FULL_CONTROLS_EVIDENCE: &str = "RoomScreen edit-history full controls row exposes Full, Diff, Context, Source, Packet, Contract, and Taxonomy on telegram_message_edit_history_strip. Full opens the existing local EventSourceModal with a synthetic full snapshot JSON from the current complete paginated m.replace summary surface, while Context updates only the local boundary label and popup status. Diff is a real loaded side-by-side preview/full-body diff handoff that opens the existing local EventSourceModal with a read-only JSON snapshot, using cached latest replacement raw JSON and the loaded original latest_json to render full-body rows when both sources are available, then falling back to compact original/latest preview rows as a real loaded side-by-side preview diff handoff; it also copies the compact preview summary to the local clipboard. Source remains a real loaded edit-source modal handoff that opens the existing local EventSourceModal for latest replacement raw JSON returned by MatrixRequest::FetchEditHistory when available, requests MatrixRequest::FetchEventSource through Room::load_or_fetch_event for the latest replacement when cached JSON is missing, and otherwise falls back to the already loaded original edited event row when loaded latest_json is available. Packet copies a loaded/full diff and remote modal acceptance contract to the local clipboard from the same cached state, including relation pages fetched/exhausted metadata. Contract maps that Packet to typed full-history modal/result, diff, source, context, and retry contracts locally. Taxonomy maps remote full-history, source reconciliation, server-backed diff, event-context, stale, retry/cancel, and source-hash result slots locally. The row does not request a remote full-history modal, server-backed side-by-side full diff rendering, event-context fetch, timeline pagination/reload, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or write-side live mutation; MatrixRequest::FetchEditHistory is the complete paginated edit-history read path and FetchEventSource is a source-only read fallback.";
-pub const MESSAGE_EDIT_HISTORY_FULL_CONTROLS_LABEL: &str = "Full opens a local snapshot modal; Context stays local; Diff opens a loaded side-by-side preview diff modal and, when cached source JSON is available, a loaded full-body diff modal plus clipboard handoff; Source opens cached latest replacement JSON or loaded original JSON locally; Packet copies acceptance contract; Contract maps typed full-history result contracts; Taxonomy copies remote full-history/source result slots.";
-pub const MESSAGE_EDIT_HISTORY_LOADED_DIFF_DETAIL_EVIDENCE: &str = "RoomScreen edit-history loaded diff detail state is derived only from the paginated MatrixRequest::FetchEditHistory m.replace summary and the already loaded original timeline row. The detail label reports selected Full/Diff/Context/Source/Packet/Contract/Taxonomy control, target event, replacement count, relation pages fetched/exhausted state, latest replacement event/timestamp availability, original/latest preview character counts, latest replacement raw JSON availability, local delta state, and retry cache readiness. Clicking Full opens a local synthetic EventSourceModal snapshot and updates this local detail state, boundary label, and popup copy; clicking Context updates only this local detail state, the boundary label, and popup copy; clicking Diff opens a loaded side-by-side preview/full-body diff snapshot in EventSourceModal from cached source JSON when available and falls back to compact previews, then copies only the compact loaded original/latest preview diff summary to the local clipboard; clicking Source opens the cached latest replacement raw JSON in the existing EventSourceModal when available, otherwise requests a source-only MatrixRequest::FetchEventSource for the latest replacement before falling back to the already loaded original event source; clicking Packet copies only the loaded/full diff remote modal acceptance contract locally; clicking Contract copies only typed full-history modal/result contracts locally; clicking Taxonomy copies only blocked remote full-history/source reconciliation result taxonomy locally. It submits no remote full-history modal request, server-backed side-by-side full diff rendering, event-context fetch, timeline pagination/reload, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or write-side live mutation.";
-pub const MESSAGE_EDIT_HISTORY_LOADED_DIFF_DETAIL_LABEL: &str =
-    "Loaded diff detail is local: original/latest previews, counts, delta, and timestamp only.";
-pub const MESSAGE_EDIT_HISTORY_FULL_DIFF_PACKET_EVIDENCE: &str = "RoomScreen edit-history Packet copies a loaded/full diff remote modal acceptance contract to the local clipboard only from cached paginated m.replace state: target event id, replacement count, relation pages fetched/exhausted state, latest replacement event/timestamp, loaded original preview, latest replacement preview, cached error, retry-cache readiness, loaded diff detail, preflight detail, and full-modal boundary metadata. The packet defines acceptance criteria for remote full-history modal request/result/error, server-backed side-by-side full diff rendering, event context, replacement event source, loaded original source, retry/cancel state, and source hashing before any backend/full-modal work can be promoted. It sends no extra MatrixRequest::FetchEditHistory, no retry without PositiveConfirmationModal, no remote full-history modal request, no server-backed side-by-side full diff rendering, no event-context fetch, no timeline pagination/reload, no replacement event source fetch, no message send/edit/redact, no room-state mutation, no membership mutation, no account/profile mutation, no gateway/runtime/auth/provider call, no Telegram delivery, and no live mutation.";
-pub const MESSAGE_EDIT_HISTORY_FULL_DIFF_PACKET_LABEL: &str =
-    "Edit-history Packet copies loaded/full diff remote modal acceptance locally.";
-pub const MESSAGE_EDIT_HISTORY_FULL_HISTORY_RESULT_CONTRACT_PACKET_EVIDENCE: &str = "RoomScreen edit-history Contract copies a typed full-history modal/result contract packet to the local clipboard only from cached paginated m.replace state and the loaded/full diff Packet boundary: target event id, replacement count, relation pages fetched/exhausted state, latest replacement event/timestamp, loaded original preview, latest replacement preview, cached error, retry-cache readiness, loaded diff detail, preflight detail, and full-modal boundary metadata. The contract maps typed request/result/error/retry/source slots for full-history modal rendering, side-by-side diff rendering, event context, replacement event source, loaded original source fallback, source-hash, retry/cancel, stale target handling, and promotion blockers before backend edit-history work can be promoted. It sends no extra MatrixRequest::FetchEditHistory, no retry without PositiveConfirmationModal, no remote full-history modal request, no side-by-side full diff rendering, no event-context fetch, no timeline pagination/reload, no replacement event source fetch, no message send/edit/redact, no room-state mutation, no membership mutation, no account/profile mutation, no gateway/runtime/auth/provider call, no Telegram delivery, and no live mutation.";
-pub const MESSAGE_EDIT_HISTORY_FULL_HISTORY_RESULT_CONTRACT_PACKET_LABEL: &str =
-    "Edit-history Contract maps Packet to typed full-history modal/result contracts locally.";
-pub const MESSAGE_EDIT_HISTORY_REMOTE_RESULT_TAXONOMY_PACKET_EVIDENCE: &str = "RoomScreen edit-history Taxonomy copies a remote full-history/source reconciliation result taxonomy packet to the local clipboard only from cached paginated m.replace state and loaded source/diff metadata. The packet names existing live references as paginated MatrixRequest::FetchEditHistory through Room::relations next_batch exhaustion, confirmed failed-state Retry, local synthetic Full EventSourceModal snapshot, loaded side-by-side preview/full-body diff EventSourceModal snapshot, compact diff clipboard handoff, cached latest replacement raw JSON EventSourceModal handoff, source-only MatrixRequest::FetchEventSource / Room::load_or_fetch_event fallback, and loaded original EventSourceModal fallback. The packet keeps remote full-history request ids, full-history cursor/page ids, server-backed full diff operation ids, replacement source reconciliation ids, event-context operation ids, per-replacement source result, stale-target result, retry/cancel result, and source-hash policy not-assigned/not-wired until backend edit-history contracts exist. It sends no extra MatrixRequest::FetchEditHistory, no retry without PositiveConfirmationModal, no remote full-history modal request, no server-backed side-by-side full diff rendering, no event-context fetch, no timeline pagination/reload, no replacement event source fetch beyond the existing Source control fallback, no message send/edit/redact, no room-state mutation, no membership mutation, no account/profile mutation, no gateway/runtime/auth/provider call, no Telegram delivery, and no live mutation.";
-pub const MESSAGE_EDIT_HISTORY_REMOTE_RESULT_TAXONOMY_PACKET_LABEL: &str =
-    "Edit-history Taxonomy maps remote full-history/source reconciliation result slots locally.";
-pub const MESSAGE_EDIT_HISTORY_LOADED_DIFF_CLIPBOARD_EVIDENCE: &str = "RoomScreen edit-history Diff control is a real loaded side-by-side preview/full-body diff modal plus compact diff clipboard handoff. It opens an EventSourceModal snapshot and copies a compact loaded original/latest preview diff summary to the local clipboard only from the current edit-history strip state: target event id, paginated m.replace replacement count, latest replacement event/timestamp, loaded original preview, latest replacement preview, cached latest replacement raw JSON, loaded original latest_json when available, side-by-side preview/full-body rows, and local delta hint. When source JSON is missing, the fallback remains a real loaded side-by-side preview diff modal. It does not request a full history modal, server-backed side-by-side full diff rendering, event-context fetch, timeline pagination/reload, replacement event source fetch beyond the Source control fallback, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MESSAGE_EDIT_HISTORY_LOADED_DIFF_CLIPBOARD_LABEL: &str = "Edit-history Diff opens a loaded side-by-side preview/full-body diff modal and copies compact preview to local clipboard.";
-pub const MESSAGE_EDIT_HISTORY_LOADED_SIDE_BY_SIDE_DIFF_MODAL_EVIDENCE: &str = "RoomScreen edit-history Diff opens an existing local EventSourceModal with a read-only loaded side-by-side preview/full-body diff snapshot. The snapshot is built only from the current MatrixRequest::FetchEditHistory cached result, cached latest replacement raw JSON, and loaded original timeline latest_json when available: target event id, replacement count, relation pages fetched/exhausted state, latest replacement id/timestamp, original rows, latest rows, changed row flags, body-source labels, and side-effect booleans. When source JSON is missing, the fallback remains a read-only loaded side-by-side preview diff snapshot. It sends no extra MatrixRequest::FetchEditHistory, no remote full-history modal request, no server-backed full-body side-by-side diff rendering, no event-context fetch, no timeline pagination/reload, no replacement event source fetch, no message send/edit/redact, no room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MESSAGE_EDIT_HISTORY_LOADED_SIDE_BY_SIDE_DIFF_MODAL_LABEL: &str =
-    "Edit-history Diff opens a loaded side-by-side preview/full-body snapshot modal only.";
-pub const MESSAGE_EDIT_HISTORY_PREFLIGHT_DETAIL_CONTROLS_EVIDENCE: &str = "RoomScreen edit-history preflight detail controls row exposes Request, Result, Error, Retry, and Source as visible local buttons on telegram_message_edit_history_strip. Clicking any control only updates cached paginated edit-history preflight metadata and popup copy from the current MatrixRequest::FetchEditHistory local state: target event id, replacement count, relation pages fetched/exhausted state, latest replacement event/timestamp, original/latest preview counts, cached latest replacement raw JSON availability, cached error text, retry cache readiness, and local source/boundary metadata. It submits no extra MatrixRequest::FetchEditHistory, no retry without PositiveConfirmationModal, no remote full-history modal request, side-by-side full diff rendering, event-context fetch, timeline pagination/reload, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation.";
-pub const MESSAGE_EDIT_HISTORY_PREFLIGHT_DETAIL_CONTROLS_LABEL: &str =
-    "Request, Result, Error, Retry, and Source edit-history preflight controls stay local.";
-pub const MESSAGE_EDIT_HISTORY_LOADED_SOURCE_MODAL_EVIDENCE: &str = "RoomScreen edit-history Source is a real loaded edit-source modal handoff that opens the existing local EventSourceModal for the latest replacement source when MatrixRequest::FetchEditHistory returned cached raw JSON for the m.replace relation; if no replacement raw JSON is cached and a latest replacement event id is known, it submits MatrixRequest::FetchEventSource, whose worker calls Room::load_or_fetch_event and opens EventSourceModal with the fetched raw JSON. If no replacement source is available, Source falls back to the already loaded original edited event row when loaded EventTimelineItem.latest_json is available. The action uses the paginated edit-history latest replacement event id, current TimelineKind room id, and raw JSON returned by Room::relations or room.event/load_or_fetch_event, or the original target event id plus loaded latest_json from the visible timeline cache. Missing event id, missing cached/fetched raw JSON, missing timeline row, or missing latest_json leaves Source as local metadata. It sends no event-context fetch, timeline pagination/reload, remote full-history modal request, side-by-side full diff rendering, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or write-side live mutation.";
-pub const MESSAGE_EDIT_HISTORY_LOADED_SOURCE_MODAL_LABEL: &str = "Edit-history Source opens cached latest replacement JSON or loaded original event source locally.";
-pub const MESSAGE_REPORT_STATUS_LIFECYCLE_EVIDENCE: &str = "RoomScreen message report status lifecycle shows the event-scoped submitted, succeeded, or failed state from the existing MatrixRequest::ReportContent and TimelineUpdate::MessageReportResult path. The strip records only the selected event id, compact reason metadata, and worker result text; failed status can open a local Retry confirmation while Close hides the local status. It sends no retry without confirmation, cancel queue, duplicate report automation, moderation policy lookup, redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_REPORT_STATUS_LIFECYCLE_LABEL: &str = "Report status follows ReportContent result; failed Retry confirms first, cancel queue and moderation tools stay unwired.";
-pub const MESSAGE_REPORT_STATUS_CLIPBOARD_EVIDENCE: &str = "RoomScreen message report Copy status writes only the current local report status cache to the local clipboard: status badge, cached event id, compact reason, result/error text, summary, lifecycle metadata, and preflight metadata when present. Missing status stays local-unavailable and writes no clipboard payload. It sends no extra MatrixRequest::ReportContent, retry without confirmation, cancel queue, duplicate report automation, moderation policy lookup, redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_REPORT_STATUS_CLIPBOARD_LABEL: &str =
-    "Report Copy status uses cached report status and local clipboard only.";
-pub const MESSAGE_REPORT_RETRY_CONFIRMATION_EVIDENCE: &str = "RoomScreen message report failed-state Retry reuses only the cached event id and compact reason from the last confirmed MatrixRequest::ReportContent. Retry opens PositiveConfirmationModal before another MatrixRequest::ReportContent is submitted; confirmation cancel and unavailable cached reason stay local. It sends no retry queue automation, cancel queue, moderation policy lookup, redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_REPORT_RETRY_CONFIRMATION_LABEL: &str = "Failed report Retry confirms before reusing ReportContent; cancel queue and moderation stay unwired.";
-pub const MESSAGE_REPORT_WORKFLOW_ACTIONS_ROW_EVIDENCE: &str = "RoomScreen message report workflow actions row exposes Queue, Policy, Assign, Appeal, Enforce, Packet, Contract, and Taxonomy as visible local blocked buttons on telegram_message_report_status_strip. Queue now renders a local moderation packet snapshot from the cached MatrixRequest::ReportContent status path: status badge, event id, reason, cached error, summary, workflow metadata, preflight detail, and retry-cache state. Packet copies a moderation reviewer acceptance matrix to the local clipboard from the same cached status path. Contract maps that packet to typed moderation workflow/result contracts locally. Taxonomy copies blocked queue/policy/reviewer/appeal/enforcement result taxonomy locally. Queue does not cancel a moderation queue. Policy, Assign, Appeal, and Enforce only update local report status metadata and popup copy. These controls do not fetch a server policy, assign a reviewer, open an appeal workflow, redact/delete content, ban, kick, ignore/block, mutate room-state, mutate membership, send or edit messages, touch account/profile, call gateway/runtime/auth, or perform live mutation.";
-pub const MESSAGE_REPORT_WORKFLOW_ACTIONS_ROW_LABEL: &str = "Queue, Policy, Assign, Appeal, Enforce, Packet, Contract, and Taxonomy stay local blocked report workflow controls.";
-pub const MESSAGE_REPORT_MODERATION_REVIEWER_PACKET_EVIDENCE: &str = "RoomScreen message report Packet copies a moderation reviewer acceptance matrix to the local clipboard only from the cached ReportContent status strip: status badge, cached event id, compact reason, cached error, summary, workflow metadata, preflight metadata, retry-cache state, and loaded-source availability. The packet defines acceptance criteria for moderation queue persistence, policy lookup, reviewer assignment, evidence/source retention, reporter and target audit trails, appeal workflow, enforcement actions, retry/cancel handling, and result/error mapping before any backend moderation workflow can be promoted. It sends no extra MatrixRequest::ReportContent, no retry without PositiveConfirmationModal, no queue persist/cancel/reorder, no policy lookup, no reviewer assignment, no evidence upload or event-context fetch, no appeal/enforcement workflow, no redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile mutation, gateway/runtime/auth/provider call, Telegram delivery, or live mutation.";
-pub const MESSAGE_REPORT_MODERATION_REVIEWER_PACKET_LABEL: &str =
-    "Report Packet copies moderation/reviewer acceptance criteria locally.";
-pub const MESSAGE_REPORT_WORKFLOW_RESULT_CONTRACT_PACKET_EVIDENCE: &str = "RoomScreen message report Contract copies a typed moderation workflow/result contract packet to the local clipboard only from the cached ReportContent status strip and moderation reviewer packet boundary: status badge, cached event id, compact reason, cached error, summary, workflow metadata, preflight metadata, retry-cache state, and loaded-source availability. The contract names typed queue, policy, reviewer assignment, evidence/source, reporter/target audit, appeal, enforcement, result/error, retry/cancel, and source-hash slots before any backend moderation workflow can be promoted. It sends no extra MatrixRequest::ReportContent, no retry without PositiveConfirmationModal, no queue persist/cancel/reorder, no policy lookup, no reviewer assignment, no evidence upload or event-context fetch, no appeal/enforcement workflow, no redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile mutation, gateway/runtime/auth/provider call, Telegram delivery, or live mutation.";
-pub const MESSAGE_REPORT_WORKFLOW_RESULT_CONTRACT_PACKET_LABEL: &str =
-    "Report Contract maps Packet to typed moderation workflow/result contracts locally.";
-pub const MESSAGE_REPORT_WORKFLOW_RESULT_TAXONOMY_PACKET_EVIDENCE: &str = "RoomScreen message report Taxonomy copies a blocked moderation workflow result taxonomy packet to the local clipboard only from the cached ReportContent status strip, moderation reviewer packet boundary, and loaded-source availability. The packet names existing live references as confirmed MatrixRequest::ReportContent send/result/retry and the loaded-or-source-fetch EventSourceModal handoff, then records queue, policy, reviewer, evidence, appeal, enforcement, retry, cancel, source-hash, and audit result slots as not_wired before backend moderation workflow promotion. It sends no extra MatrixRequest::ReportContent, no retry without PositiveConfirmationModal, no queue persist/cancel/reorder, no policy lookup, no reviewer assignment, no evidence upload or event-context fetch, no appeal/enforcement workflow, no redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile mutation, gateway/runtime/auth/provider call, Telegram delivery, or live mutation.";
-pub const MESSAGE_REPORT_WORKFLOW_RESULT_TAXONOMY_PACKET_LABEL: &str =
-    "Report Taxonomy records blocked moderation workflow result slots locally.";
-pub const MESSAGE_REPORT_PREFLIGHT_DETAIL_CONTROLS_EVIDENCE: &str = "RoomScreen message report preflight detail controls expose Request, Result, Error, Retry, and Source as visible local buttons on telegram_message_report_status_strip. Request, Result, Error, and Retry only update local report preflight detail metadata and popup copy from the existing MatrixRequest::ReportContent status cache: status badge, cached event id, compact reason, cached error text, retry availability, and status metadata source. Source is a real loaded-or-source-fetch modal handoff: it opens the existing local EventSourceModal when the cached reported event id is still present in the loaded timeline with latest_json available, or submits only MatrixRequest::FetchEventSource for current-room event JSON when the cached report event id is known but loaded latest_json is unavailable. Missing event id or timeline state stays local metadata. It sends no extra MatrixRequest::ReportContent, no retry without PositiveConfirmationModal, no event context fetch, no cancel queue, duplicate report automation, moderation policy lookup, redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MESSAGE_REPORT_PREFLIGHT_DETAIL_CONTROLS_LABEL: &str = "Report preflight details stay local; Source opens loaded event JSON or source-fetches current-room JSON.";
-pub const MESSAGE_REPORT_LOADED_SOURCE_MODAL_EVIDENCE: &str = "RoomScreen message report Source is a real loaded-or-source-fetch modal handoff. It opens the existing local EventSourceModal from the cached reported event id and already loaded RoomScreen timeline row when EventTimelineItem.latest_json is available. If loaded JSON is unavailable but the cached reported event id and current timeline are known, it submits MatrixRequest::FetchEventSource; the existing worker calls Room::load_or_fetch_event and returns TimelineUpdate::EventSourceFetched for the same EventSourceModal path. Missing cache, missing timeline, invalid state, fetch failure, or missing source leaves Source as local metadata. It sends no event-context fetch, report retry, extra MatrixRequest::ReportContent, moderation workflow, redact/delete, ban, kick, ignore/block, room-state, membership, gateway/runtime/auth, or write-side live mutation request.";
-pub const MESSAGE_REPORT_LOADED_SOURCE_MODAL_LABEL: &str = "Report Source opens loaded event JSON or requests source-only current-room JSON; no event-context fetch or moderation workflow.";
-
-#[derive(Clone, Debug)]
-pub struct EditHistorySummary {
-    pub replacement_count: usize,
-    pub pages_fetched: usize,
-    pub pagination_exhausted: bool,
-    pub latest_event_id: Option<OwnedEventId>,
-    pub latest_timestamp: Option<MilliSecondsSinceUnixEpoch>,
-    pub latest_preview_text: Option<String>,
-    pub latest_source_json: Option<String>,
-}
 
 /// The max size (width or height) of a blurhash image to decode.
 /// Blurhash is a blurred placeholder — it is designed to be decoded at a small
@@ -614,87 +67,114 @@ const COLOR_THREAD_SUMMARY_BG: Vec4 = vec4(1.0, 0.957, 0.898, 1.0);
 /// #FFEACC
 const COLOR_THREAD_SUMMARY_BG_HOVER: Vec4 = vec4(1.0, 0.918, 0.8, 1.0);
 
+
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
 
 
-    mod.widgets.COLOR_BG = (COLOR_TELEGRAM_BG)
+    mod.widgets.COLOR_BG = #xfff8ee
     mod.widgets.COLOR_OVERLAY_BG = #x000000d8
-    mod.widgets.COLOR_READ_MARKER = (COLOR_TELEGRAM_BLUE)
+    mod.widgets.COLOR_READ_MARKER = #xeb2733
 
-    mod.widgets.REACTION_TEXT_COLOR = (COLOR_TELEGRAM_BLUE)
+    mod.widgets.REACTION_TEXT_COLOR = #4c00b0
 
-    mod.widgets.COLOR_THREAD_SUMMARY_BG = #xEAF7FCD8
-    mod.widgets.COLOR_THREAD_SUMMARY_BG_HOVER = #xF4FCFFE8
-    mod.widgets.COLOR_THREAD_SUMMARY_BORDER = (COLOR_TELEGRAM_BORDER)
-    mod.widgets.COLOR_THREAD_SUMMARY_REPLY_COUNT = (COLOR_TELEGRAM_BLUE)
-
-    mod.widgets.TelegramRoomHeaderButton = RobrixNeutralIconButton {
-        width: Fit,
-        height: 34,
-        margin: 0,
-        padding: Inset{top: 7, bottom: 7, left: 7, right: 7},
-        spacing: 4,
-        align: Align{x: 0.5, y: 0.5}
-
-        draw_bg +: {
-            color: #x00000000
-            color_hover: (COLOR_TELEGRAM_INPUT)
-            color_down: (COLOR_TELEGRAM_DIALOG_ACTIVE)
-            border_radius: 17.0
-            border_size: 1.0
-            border_color: (COLOR_TELEGRAM_GLASS_HAIRLINE)
-        }
-        draw_icon.color: (COLOR_TELEGRAM_MUTED)
-        draw_text +: {
-            color: (COLOR_TELEGRAM_MUTED)
-            color_hover: (COLOR_TELEGRAM_TEXT)
-            color_down: (COLOR_TELEGRAM_TEXT)
-            text_style: theme.font_bold { font_size: 10.0 }
-        }
-        icon_walk: Walk{width: 14, height: 14, margin: Inset{right: -1}}
-    }
-
-    mod.widgets.TelegramRoomHeaderIconButton = RobrixNeutralIconButton {
-        width: 34,
-        height: 34,
-        margin: 0,
-        padding: Inset{top: 8, bottom: 8, left: 8, right: 8},
-        spacing: 0,
-        align: Align{x: 0.5, y: 0.5}
-
-        draw_bg +: {
-            color: #x00000000
-            color_hover: (COLOR_TELEGRAM_INPUT)
-            color_down: (COLOR_TELEGRAM_DIALOG_ACTIVE)
-            border_radius: 17.0
-            border_size: 1.0
-            border_color: (COLOR_TELEGRAM_GLASS_HAIRLINE)
-        }
-        draw_icon.color: (COLOR_TELEGRAM_MUTED)
-        draw_text +: {
-            color: #x00000000
-            color_hover: #x00000000
-            color_down: #x00000000
-            text_style: theme.font_bold { font_size: 0.1 }
-        }
-        icon_walk: Walk{width: 16, height: 16, margin: 0}
-    }
+    mod.widgets.COLOR_THREAD_SUMMARY_BG = #FFF4E5
+    mod.widgets.COLOR_THREAD_SUMMARY_BG_HOVER = #FFEACC
+    mod.widgets.COLOR_THREAD_SUMMARY_BORDER = #E8C99A
+    mod.widgets.COLOR_THREAD_SUMMARY_REPLY_COUNT = #A35A00
 
     // An empty view that takes up no space in the portal list.
     mod.widgets.Empty = View { }
+
+    // A download button or loading spinner shown beneath a message.
+    mod.widgets.MessageDownloadSection = View {
+        visible: false,
+        width: Fit, height: Fit,
+        flow: Right,
+        margin: Inset{top: 8, bottom: 2}
+
+        download_button := RobrixIconButton {
+            height: mod.widgets.SETTINGS_BUTTON_HEIGHT,
+            padding: Inset{left: 12, right: 12}
+            margin: 0
+            draw_icon.svg: (ICON_DOWNLOAD)
+            icon_walk: Walk{width: 16, height: 16}
+            text: "Download"
+        }
+
+        share_button := RobrixIconButton {
+            height: mod.widgets.SETTINGS_BUTTON_HEIGHT,
+            padding: Inset{left: 12, right: 12}
+            margin: Inset{left: 8}
+            draw_icon.svg: (ICON_SHARE)
+            icon_walk: Walk{width: 16, height: 16}
+            text: "Share"
+        }
+
+        downloading_view := View {
+            visible: false,
+            width: Fit, height: mod.widgets.SETTINGS_BUTTON_HEIGHT
+            flow: Right,
+            align: Align{y: 0.5}
+            spacing: 8,
+            padding: Inset{left: 12, right: 6}
+
+            spinner := LoadingSpinner {
+                width: 16, height: 16
+                draw_bg.color: (COLOR_ACTIVE_PRIMARY)
+            }
+            status_label := Label {
+                width: Fit, height: Fit,
+                padding: 0
+                margin: 0
+                draw_text +: {
+                    text_style: REGULAR_TEXT { font_size: 11 },
+                    color: (COLOR_ACTIVE_PRIMARY)
+                }
+                text: "Downloading…"
+            }
+            cancel_button := RobrixNegativeIconButton {
+                height: mod.widgets.SETTINGS_BUTTON_HEIGHT,
+                padding: Inset{left: 12, right: 12}
+                margin: 0
+                draw_icon.svg: (ICON_CLOSE)
+                icon_walk: Walk{width: 16, height: 16}
+                text: "Cancel"
+            }
+        }
+
+        success_button := RobrixPositiveIconButton {
+            visible: false,
+            height: mod.widgets.SETTINGS_BUTTON_HEIGHT,
+            padding: Inset{left: 12, right: 12}
+            margin: 0
+            draw_icon.svg: (ICON_CHECKMARK)
+            icon_walk: Walk{width: 16, height: 16}
+            text: "Downloaded"
+        }
+
+        failure_button := RobrixNegativeIconButton {
+            visible: false,
+            height: mod.widgets.SETTINGS_BUTTON_HEIGHT,
+            padding: Inset{left: 12, right: 12}
+            margin: 0
+            draw_icon.svg: (ICON_CLOSE)
+            icon_walk: Walk{width: 16, height: 16}
+            text: "Download Failed"
+        }
+    }
 
     // A summary at the bottom of a message that is the root of a thread.
     mod.widgets.ThreadRootSummary = RoundedView {
         visible: false
         width: Fill,
         height: Fit
-        flow: Down,
+        flow: Right,
         align: Align{x: 0.0, y: 0.5}
-        spacing: 4.0
+        spacing: 5.0
         margin: Inset{ top: 5.0 }
-        padding: Inset{top: 10, right: 12, bottom: 10, left: 12},
+        padding: 12,
         cursor: MouseCursor.Hand
 
         show_bg: true
@@ -705,49 +185,28 @@ script_mod! {
             border_color: (mod.widgets.COLOR_THREAD_SUMMARY_BORDER)
         }
 
-        thread_summary_row := View {
-            width: Fill,
-            height: Fit,
-            flow: Right,
-            align: Align{x: 0.0, y: 0.5}
-            spacing: 5.0
-
-            thread_summary_count := Label {
-                width: Fit,
-                draw_text +: {
-                    text_style: USERNAME_TEXT_STYLE { font_size: 11 }
-                    color: (mod.widgets.COLOR_THREAD_SUMMARY_REPLY_COUNT)
-                }
-                text: ""
+        thread_summary_count := Label {
+            width: Fit,
+            draw_text +: {
+                text_style: USERNAME_TEXT_STYLE { font_size: 11 }
+                color: (mod.widgets.COLOR_THREAD_SUMMARY_REPLY_COUNT)
             }
-
-            Icon {
-                width: Fit, height: Fit,
-                align: Align{x: 0.5, y: 0.5}
-                draw_icon +: {
-                    svg: crate_resource("self://resources/icons/double_chat.svg")
-                    color: (mod.widgets.COLOR_THREAD_SUMMARY_REPLY_COUNT)
-                }
-                icon_walk: Walk{ width: 25, height: 25, margin: Inset{top: 3, right: 7} }
-            }
-
-            thread_summary_latest := MessageHtml {
-                width: Fill,
-                flow: Right,
-                max_lines: 2
-                text_overflow: Ellipsis
-            }
+            text: ""
         }
 
-        thread_summary_evidence := Label {
-            width: Fill,
-            max_lines: 1
-            text_overflow: Ellipsis
-            draw_text +: {
-                text_style: theme.font_regular { font_size: 9.0 },
-                color: (COLOR_TELEGRAM_MUTED)
+        Icon {
+            width: Fit, height: Fit,
+            align: Align{x: 0.5, y: 0.5}
+            draw_icon +: {
+                svg: crate_resource("self://resources/icons/double_chat.svg")
+                color: (mod.widgets.COLOR_THREAD_SUMMARY_REPLY_COUNT)
             }
-            text: "Thread open uses existing FetchThreadSummaryDetails + CreateThreadTimeline read/open paths; no message, room-state, or membership mutation."
+            icon_walk: Walk{ width: 25, height: 25, margin: Inset{top: 3, right: 7} }
+        }
+
+        thread_summary_latest := MessageHtml {
+            max_lines: 2
+            text_overflow: Ellipsis
         }
     }
 
@@ -766,21 +225,21 @@ script_mod! {
         draw_bg +: {
             highlight: instance(0.0)
             hover: instance(0.0)
-            color: instance((COLOR_TELEGRAM_BG))
+            color: instance((COLOR_PRIMARY)) // default color)
 
-            mentions_bar_color: instance((COLOR_TELEGRAM_BG))
+            mentions_bar_color: instance((COLOR_PRIMARY))
             mentions_bar_width: instance(4.0)
 
             pixel: fn() {
                 let base_color = mix(
                     self.color,
-                    #xEAF7FCD8,
+                    #fafafa,
                     self.hover
                 );
 
                 let with_highlight = mix(
                     base_color,
-                    #xBDEFFF88,
+                    #c5d6fa,
                     self.highlight
                 );
 
@@ -831,9 +290,9 @@ script_mod! {
 
         // A preview of the earlier message that this message was in reply to.
         replied_to_message := mod.widgets.RepliedToMessage {
-            flow: Right
+            flow: Down
             margin: Inset{ bottom: 3, top: 10 }
-            replied_to_message_content +: {
+            preview_content +: {
                 margin +: { left: 29 }
                 padding +: { bottom: 10 }
             }
@@ -881,58 +340,15 @@ script_mod! {
                         text_overflow: Ellipsis
                         draw_text +: {
                             text_style: USERNAME_TEXT_STYLE {},
-                            color: (COLOR_TELEGRAM_BLUE)
+                            color: (USERNAME_TEXT_COLOR)
                         }
                         text: "<Username not available>"
                     }
                 }
-                sender_profile_read_evidence := View {
-                    visible: false
-                    width: Fill,
-                    height: Fit
-                    margin: Inset{top: -6.0, bottom: 7.0, right: 10.0}
-                    status := Label {
-                        width: Fill,
-                        height: Fit
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            text_style: MESSAGE_TEXT_STYLE { font_size: 10.0 },
-                            color: (COLOR_TELEGRAM_DIM)
-                        }
-                        text: ""
-                    }
-                }
 
-                message := HtmlOrPlaintext {
-                    plaintext_view +: {
-                        pt_label +: {
-                            draw_text +: { color: (COLOR_TELEGRAM_TEXT) }
-                        }
-                    }
-                    html_view +: {
-                        html +: {
-                            font_color: (COLOR_TELEGRAM_TEXT)
-                            draw_text +: { color: (COLOR_TELEGRAM_TEXT) }
-                        }
-                    }
-                }
-                local_send_status := View {
-                    visible: false
-                    width: Fill,
-                    height: Fit
-                    margin: Inset{top: 4.0, bottom: 5.0, right: 10.0}
-                    status := Label {
-                        width: Fill,
-                        height: Fit
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            text_style: MESSAGE_TEXT_STYLE { font_size: 10.0 },
-                            color: (COLOR_TELEGRAM_DIM)
-                        }
-                        text: ""
-                    }
-                }
+                message := HtmlOrPlaintext { }
                 link_preview_view := mod.widgets.LinkPreview {}
+                download_section := mod.widgets.MessageDownloadSection {}
                 View {
                     width: Fill,
                     height: Fit
@@ -950,7 +366,7 @@ script_mod! {
     mod.widgets.CondensedMessage = mod.widgets.Message {
         padding: Inset{ top: 2.0, bottom: 2.0 }
         replied_to_message +: {
-            replied_to_message_content +: {
+            preview_content +: {
                 margin: Inset{ left: 74, bottom: 5.0 }
             }
         }
@@ -976,36 +392,9 @@ script_mod! {
                 flow: Down,
                 padding: Inset{ left: 10.0 }
 
-                message := HtmlOrPlaintext {
-                    plaintext_view +: {
-                        pt_label +: {
-                            draw_text +: { color: (COLOR_TELEGRAM_TEXT) }
-                        }
-                    }
-                    html_view +: {
-                        html +: {
-                            font_color: (COLOR_TELEGRAM_TEXT)
-                            draw_text +: { color: (COLOR_TELEGRAM_TEXT) }
-                        }
-                    }
-                }
-                local_send_status := View {
-                    visible: false
-                    width: Fill,
-                    height: Fit
-                    margin: Inset{top: 4.0, bottom: 5.0, right: 10.0}
-                    status := Label {
-                        width: Fill,
-                        height: Fit
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            text_style: MESSAGE_TEXT_STYLE { font_size: 10.0 },
-                            color: (COLOR_TELEGRAM_DIM)
-                        }
-                        text: ""
-                    }
-                }
+                message := HtmlOrPlaintext { }
                 link_preview_view := mod.widgets.LinkPreview {}
+                download_section := mod.widgets.MessageDownloadSection {}
                 View {
                     width: Fill,
                     height: Fit
@@ -1018,37 +407,33 @@ script_mod! {
         }
     }
 
-    // A single, shared `Size::Fit{max: ...}` object on the script heap,
-    // referenced by every `Image` widget inside an `ImageMessage` /
-    // `CondensedImageMessage`. Having one heap object instead of many
-    // lets the "Maximum Image Thumbnail Height" App Setting mutate just
-    // this object's `max` field at runtime (see
-    // `AppPreferences::on_thumbnail_max_height_changed`) — every widget
-    // whose `walk.height` referenced this object observes the change
-    // through the same heap slot on the next `Event::ScriptReapply`.
-    //
-    // This sidesteps the override-chain divergence that would otherwise
-    // make the mutation invisible to derived templates (e.g., the
-    // `ImageMessage := mod.widgets.ImageMessage {}` local alias inside a
-    // PortalList's `list`).
-    mod.widgets.IMG_MSG_FIT = Fit{max: FitBound.Abs(200.0)}
+    // A single shared object on the script heap of type `Size::Fit{max: ...}`,
+    // which is used for the max image thumbnail height for every `Image` widget
+    // within a message widget.
+    // Also see: `AppPreferences::on_thumbnail_max_height_changed`).
+    mod.widgets.IMG_MSG_FIT = Fit{max: FitBound.Abs(300.0)}
 
     // The view used for each static image-based message event in a room's timeline.
     // This excludes stickers and other animated GIFs, video clips, audio clips, etc.
     mod.widgets.ImageMessage = mod.widgets.Message {
         body +: {
             content +: {
-                message := TextOrImage {
-                    // Cap the height on the `Image` itself (not the outer view) so
-                    // that `ImageFit.Smallest` scales the texture proportionally
-                    // instead of the outer view just clipping the drawn pixels.
-                    image_view +: { image +: {
-                        height: (mod.widgets.IMG_MSG_FIT)
-                    } }
-                    default_image_view +: { image +: {
-                        height: (mod.widgets.IMG_MSG_FIT)
-                    } }
+                message := View {
+                    width: Fill, height: Fit,
+                    flow: Down,
+                    caption_view := View {
+                        visible: false,
+                        width: Fill, height: Fit,
+                        margin: Inset{ bottom: 5.0 }
+                        caption := HtmlOrPlaintext {}
+                    }
+                    image := TextOrImage {
+                        image_view +: { image +: {
+                            height: (mod.widgets.IMG_MSG_FIT)
+                        } }
+                    }
                 }
+                download_section := mod.widgets.MessageDownloadSection {}
                 View {
                     width: Fill,
                     height: Fit,
@@ -1068,14 +453,22 @@ script_mod! {
     mod.widgets.CondensedImageMessage = mod.widgets.CondensedMessage {
         body +: {
             content +: {
-                message := TextOrImage {
-                    image_view +: { image +: {
-                        height: (mod.widgets.IMG_MSG_FIT)
-                    } }
-                    default_image_view +: { image +: {
-                        height: (mod.widgets.IMG_MSG_FIT)
-                    } }
+                message := View {
+                    width: Fill, height: Fit,
+                    flow: Down,
+                    caption_view := View {
+                        visible: false,
+                        width: Fill, height: Fit,
+                        margin: Inset{ bottom: 5.0 }
+                        caption := HtmlOrPlaintext {}
+                    }
+                    image := TextOrImage {
+                        image_view +: { image +: {
+                            height: (mod.widgets.IMG_MSG_FIT)
+                        } }
+                    }
                 }
+                download_section := mod.widgets.MessageDownloadSection {}
                 View {
                     width: Fill,
                     height: Fit,
@@ -1163,130 +556,6 @@ script_mod! {
         }
     }
 
-    // First-class card renderer for Hepta custom Matrix-style message events.
-    // This keeps Robrix's Matrix timeline substrate intact while making
-    // runtime/task/tool/approval events visibly Hepta-native in the UI.
-    mod.widgets.HeptaEventCard = RoundedView {
-        width: Fill,
-        height: Fit,
-        flow: Down,
-        margin: Inset{ top: 6.0, bottom: 6.0, left: 74.0, right: 14.0 }
-        padding: Inset{ top: 12.0, bottom: 12.0, left: 14.0, right: 14.0 }
-        spacing: 7.0
-        show_bg: true
-        draw_bg +: {
-            color: #xF4F7FF
-            border_color: #x8EA7FF
-            border_size: 1.0
-            border_radius: 7.0
-        }
-
-        header := View {
-            width: Fill,
-            height: Fit,
-            flow: Right,
-            spacing: 8.0,
-            align: Align{ y: 0.5 }
-
-            eyebrow := Label {
-                width: Fill,
-                height: Fit,
-                draw_text +: {
-                    color: #x324A7A,
-                    text_style: theme.font_bold { font_size: 11.5 }
-                }
-                text: "Hepta event"
-            }
-
-            status := Label {
-                width: Fit,
-                height: Fit,
-                padding: Inset{ left: 7.0, right: 7.0, top: 3.0, bottom: 3.0 }
-                draw_text +: {
-                    color: #x20345F,
-                    text_style: theme.font_bold { font_size: 10.5 }
-                }
-                text: "running"
-            }
-        }
-
-        title := Label {
-            width: Fill,
-            height: Fit,
-            flow: Flow.Right{ wrap: true }
-            draw_text +: {
-                color: #x16213D,
-                text_style: theme.font_bold { font_size: 14.0 }
-            }
-            text: "Runtime event"
-        }
-
-        body := Label {
-            width: Fill,
-            height: Fit,
-            flow: Flow.Right{ wrap: true }
-            draw_text +: {
-                color: #x263654,
-                text_style: theme.font_regular { font_size: 12.0 }
-            }
-            text: ""
-        }
-
-        meta := Label {
-            width: Fill,
-            height: Fit,
-            flow: Flow.Right{ wrap: true }
-            draw_text +: {
-                color: #x657292,
-                text_style: theme.font_regular { font_size: 10.5 }
-            }
-            text: ""
-        }
-
-        policy := Label {
-            width: Fill,
-            height: Fit,
-            flow: Flow.Right{ wrap: true }
-            draw_text +: {
-                color: #x43547C,
-                text_style: theme.font_bold { font_size: 10.5 }
-            }
-            text: "policy: local preview"
-        }
-
-        hepta_actions := View {
-            visible: true,
-            width: Fill,
-            height: Fit,
-            flow: Right,
-            spacing: 8.0,
-            margin: Inset{ top: 3.0 }
-
-            inspect_button := RobrixNeutralIconButton {
-                width: Fit,
-                height: Fit,
-                padding: Inset{ top: 5.0, bottom: 5.0, left: 10.0, right: 10.0 }
-                text: "Inspect payload"
-            }
-
-            approve_button := RobrixPositiveIconButton {
-                visible: false,
-                width: Fit,
-                height: Fit,
-                padding: Inset{ top: 5.0, bottom: 5.0, left: 10.0, right: 10.0 }
-                text: "Approve"
-            }
-
-            reject_button := RobrixNegativeIconButton {
-                visible: false,
-                width: Fit,
-                height: Fit,
-                padding: Inset{ top: 5.0, bottom: 5.0, left: 10.0, right: 10.0 }
-                text: "Reject"
-            }
-        }
-    }
-
 
     // The view used for each day divider in a room's timeline.
     // The date text is centered between two horizontal lines.
@@ -1305,7 +574,7 @@ script_mod! {
             padding: Inset{left: 7.0, right: 7.0}
             draw_text +: {
                 text_style: TEXT_SUB {},
-                color: (COLOR_TELEGRAM_DIM)
+                color: (COLOR_DIVIDER_DARK)
             }
             text: "<date>"
         }
@@ -1339,7 +608,7 @@ script_mod! {
         align: Align{x: 0.5, y: 0}
         flow: Right,
         show_bg: true,
-        draw_bg.color: (COLOR_TELEGRAM_PANEL)
+        draw_bg.color: #xDAF5E5F0, // mostly opaque light green
 
         label := Label {
             width: Fill,
@@ -1349,7 +618,7 @@ script_mod! {
             padding: Inset{ top: 10.0, bottom: 7.0, left: 15.0, right: 15.0 }
             draw_text +: {
                 text_style: MESSAGE_TEXT_STYLE { font_size: 10 },
-                color: (COLOR_TELEGRAM_MUTED)
+                color: (TIMESTAMP_TEXT_COLOR)
             }
             text: "Loading earlier messages..."
         }
@@ -1360,6 +629,7 @@ script_mod! {
         height: Fill,
         align: Align{x: 0.5, y: 0.0} // center horizontally, align to top vertically
         flow: Overlay,
+        new_batch: true
 
         list := PortalList {
             height: Fill,
@@ -1367,7 +637,13 @@ script_mod! {
             flow: Down
 
             auto_tail: true, // set to `true` to lock the view to the last item.
-            max_pull_down: 0.0, // set to `0.0` to disable the pulldown bounce animation.
+            // only bounce at the end, not the start because that triggers back pagination.
+            bounce_at_start: false,
+            bounce_at_end: true,
+            // Read-receipt logic listens for scroll position changes.
+            emit_scroll_actions: true,
+            // Prefetch older history shortly before the user actually hits the top.
+            reached_start_margin: 2,
             // TODO: enable `reuse_items: true` once Makepad's Html/TextFlow widget
             //   properly resets all internal state during `script_apply(Reload)`.
             //   Currently, stale TextFlow layout state (particularly related to
@@ -1402,7 +678,7 @@ script_mod! {
             flow: Overlay,
 
             show_bg: true
-            draw_bg.color: (COLOR_TELEGRAM_BG)
+            draw_bg.color: (COLOR_PRIMARY_DARKER)
 
             restore_status_view := RestoreStatusView {}
 
@@ -1412,2134 +688,8 @@ script_mod! {
                 width: Fill, height: Fill,
                 flow: Down,
 
-                telegram_room_header := RoundedView {
-                    width: Fill,
-                    height: 58,
-                    flow: Right,
-                    spacing: 10.0,
-                    align: Align{y: 0.5},
-                    padding: Inset{top: 8.0, bottom: 8.0, left: 14.0, right: 12.0}
-                    show_bg: true
-                    draw_bg +: {
-                        color: (COLOR_TELEGRAM_PANEL)
-                        border_color: (COLOR_TELEGRAM_GLASS_HAIRLINE)
-                        border_size: 1.0
-                        border_radius: 0.0
-                    }
-
-                    title_stack := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Down,
-                        spacing: 2.0
-
-                        title := Label {
-                            width: Fill,
-                            height: Fit,
-                            flow: Flow.Right{wrap: false},
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                text_style: theme.font_bold { font_size: 13.5 }
-                            }
-                            text: "Chat"
-                        }
-
-                        status := Label {
-                            width: Fill,
-                            height: Fit,
-                            flow: Flow.Right{wrap: false},
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_DIM)
-                                text_style: theme.font_regular { font_size: 10.5 }
-                            }
-                            text: "local chat ready"
-                        }
-                    }
-
-                    search_button := mod.widgets.TelegramRoomHeaderIconButton {
-                        draw_icon.svg: (ICON_SEARCH)
-                        text: ""
-                    }
-
-                    info_button := mod.widgets.TelegramRoomHeaderIconButton {
-                        draw_icon.svg: (ICON_INFO)
-                        text: ""
-                    }
-
-                    mute_button := mod.widgets.TelegramRoomHeaderIconButton {
-                        draw_icon.svg: (ICON_FORBIDDEN)
-                        text: ""
-                    }
-
-                    menu_button := mod.widgets.TelegramRoomHeaderIconButton {
-                        draw_icon.svg: (ICON_MENU)
-                        text: ""
-                    }
-                }
-
-                telegram_message_search_strip := RoundedView {
-                    visible: false
-                    width: Fill,
-                    height: 328,
-                    flow: Down,
-                    spacing: 6.0,
-                    padding: Inset{top: 7.0, bottom: 7.0, left: 14.0, right: 12.0}
-                    show_bg: true
-                    draw_bg +: {
-                        color: (COLOR_TELEGRAM_INPUT)
-                        border_color: (COLOR_TELEGRAM_BORDER)
-                        border_size: 1.0
-                        border_radius: 0.0
-                    }
-
-                    search_row := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 8.0,
-                        align: Align{y: 0.5}
-
-                        search_icon := Icon {
-                            width: Fit,
-                            height: Fit,
-                            draw_icon.svg: (ICON_SEARCH)
-                            draw_icon.color: (COLOR_TELEGRAM_MUTED)
-                            icon_walk: Walk{width: 15, height: 15}
-                        }
-
-                        search_input := RobrixTextInput {
-                            width: Fill,
-                            height: 30,
-                            flow: Right,
-                            padding: Inset{top: 5, bottom: 5, left: 8, right: 8}
-                            empty_text: "Search in this chat"
-
-                            draw_bg +: {
-                                border_radius: 15.0
-                                border_size: 1.0
-                                color: (COLOR_TELEGRAM_PANEL)
-                                color_hover: (COLOR_TELEGRAM_PANEL)
-                                color_focus: (COLOR_TELEGRAM_PANEL)
-                                color_down: (COLOR_TELEGRAM_PANEL)
-                                color_empty: (COLOR_TELEGRAM_PANEL)
-                                border_color: (COLOR_TELEGRAM_BORDER)
-                                border_color_hover: (COLOR_TELEGRAM_BLUE)
-                                border_color_focus: (COLOR_TELEGRAM_BLUE)
-                                border_color_down: (COLOR_TELEGRAM_BLUE)
-                                border_color_empty: (COLOR_TELEGRAM_BORDER)
-                            }
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                color_hover: (COLOR_TELEGRAM_TEXT)
-                                color_focus: (COLOR_TELEGRAM_TEXT)
-                                color_down: (COLOR_TELEGRAM_TEXT)
-                                color_empty: (COLOR_TELEGRAM_DIM)
-                                color_empty_hover: (COLOR_TELEGRAM_DIM)
-                                color_empty_focus: (COLOR_TELEGRAM_DIM)
-                                text_style: theme.font_regular { font_size: 11.5 }
-                            }
-                            draw_cursor +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                            }
-                        }
-
-                        status := Label {
-                            width: Fit,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_MUTED)
-                                text_style: theme.font_bold { font_size: 10.0 }
-                            }
-                            text: "local only"
-                        }
-
-                        prev_search_result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRIANGLE_UP)
-                            text: "Prev"
-                        }
-
-                        next_search_result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRIANGLE_DOWN)
-                            text: "Next"
-                        }
-
-                        close_search_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CLOSE)
-                            text: "Close"
-                        }
-                    }
-
-                    results_row := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 8.0,
-                        align: Align{y: 0.5}
-
-                        result_summary := Label {
-                            width: Fill,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_DIM)
-                                text_style: theme.font_regular { font_size: 10.5 }
-                            }
-                            text: "Loaded timeline only: no Matrix-backed history search, event fetch, pagination, or mutation."
-                        }
-                    }
-
-                    search_evidence := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Loaded timeline only; Close/Escape and 0-result states send no Matrix-backed search query."
-                    }
-
-                    loaded_search_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Loaded search metadata: query empty, 0 loaded items, 0 matches, no active match. Loaded search metadata only; no server-side search."
-                    }
-
-                    active_search_result_detail := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Active result detail waits for a loaded local match; no server-side search, event context, pagination, or mutation."
-                    }
-
-                    search_result_action_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        search_result_jump_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRIANGLE_DOWN)
-                            text: "Jump"
-                        }
-
-                        search_result_copy_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_COPY)
-                            text: "Copy"
-                        }
-
-                        search_result_source_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Source"
-                        }
-
-                        search_result_thread_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Thread"
-                        }
-
-                        search_result_sender_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Sender"
-                        }
-                    }
-
-                    search_result_action_controls_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Jump, Copy, Source, Thread, and Sender stay local result-action controls."
-                    }
-
-                    search_server_context_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        search_server_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Server"
-                        }
-
-                        search_event_context_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Context"
-                        }
-
-                        search_load_older_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRIANGLE_UP)
-                            text: "Older"
-                        }
-                    }
-
-                    search_advanced_filter_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        search_filter_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Filter"
-                        }
-
-                        search_from_input := RobrixTextInput {
-                            width: 220,
-                            height: 28,
-                            flow: Right,
-                            padding: Inset{top: 4, bottom: 4, left: 8, right: 8}
-                            empty_text: "@sender:server"
-
-                            draw_bg +: {
-                                border_radius: 14.0
-                                border_size: 1.0
-                                color: (COLOR_TELEGRAM_PANEL)
-                                color_hover: (COLOR_TELEGRAM_PANEL)
-                                color_focus: (COLOR_TELEGRAM_PANEL)
-                                color_down: (COLOR_TELEGRAM_PANEL)
-                                color_empty: (COLOR_TELEGRAM_PANEL)
-                                border_color: (COLOR_TELEGRAM_BORDER)
-                                border_color_hover: (COLOR_TELEGRAM_BLUE)
-                                border_color_focus: (COLOR_TELEGRAM_BLUE)
-                                border_color_down: (COLOR_TELEGRAM_BLUE)
-                                border_color_empty: (COLOR_TELEGRAM_BORDER)
-                            }
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                color_hover: (COLOR_TELEGRAM_TEXT)
-                                color_focus: (COLOR_TELEGRAM_TEXT)
-                                color_down: (COLOR_TELEGRAM_TEXT)
-                                color_empty: (COLOR_TELEGRAM_DIM)
-                                text_style: theme.font_regular { font_size: 10.0 }
-                            }
-                        }
-
-                        search_from_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "From"
-                        }
-
-                        search_date_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRIANGLE_DOWN)
-                            text: "Date"
-                        }
-
-                        search_media_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Media"
-                        }
-
-                        search_pins_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_PIN)
-                            text: "Pins"
-                        }
-                    }
-
-                    search_server_preflight_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        search_server_query_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Server query"
-                        }
-
-                        search_server_packet_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_COPY)
-                            text: "Packet"
-                        }
-
-                        search_server_contract_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Contract"
-                        }
-
-                        search_server_result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Result"
-                        }
-
-                        search_server_error_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Error"
-                        }
-
-                        search_server_retry_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRIANGLE_UP)
-                            text: "Retry"
-                        }
-
-                        search_server_scope_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Scope"
-                        }
-
-                        search_server_taxonomy_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Taxonomy"
-                        }
-                    }
-
-                    search_server_preflight_controls_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                            text: "Server query and Retry use live Matrix search; Packet, Contract, Result, Error, Scope, and Taxonomy stay local."
-                    }
-
-                    search_advanced_filter_controls_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "From/Media can run server filters; Filter/Date/Pins rescan loaded scope."
-                    }
-
-                    search_server_context_controls_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Server/Older use live Matrix search; context previews parse server windows."
-                    }
-
-                    server_context_boundary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Server/Older use live Matrix search; Context jumps current-room hits; Date/Pins stay loaded-scope."
-                    }
-                }
-
-                telegram_message_edit_history_strip := RoundedView {
-                    visible: false
-                    width: Fill,
-                    height: 282,
-                    flow: Down,
-                    spacing: 6.0,
-                    padding: Inset{top: 8.0, bottom: 8.0, left: 14.0, right: 12.0}
-                    show_bg: true
-                    draw_bg +: {
-                        color: (COLOR_TELEGRAM_INPUT)
-                        border_color: (COLOR_TELEGRAM_BORDER)
-                        border_size: 1.0
-                        border_radius: 0.0
-                    }
-
-                    edit_history_header := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 8.0,
-                        align: Align{y: 0.5}
-
-                        edit_history_title := Label {
-                            width: Fill,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                text_style: theme.font_bold { font_size: 12.0 }
-                            }
-                            text: "Edit history"
-                        }
-
-                        edit_history_status := Label {
-                            width: Fit,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_MUTED)
-                                text_style: theme.font_bold { font_size: 10.0 }
-                            }
-                            text: "read only"
-                        }
-
-                        retry_edit_history_button := mod.widgets.TelegramRoomHeaderButton {
-                            visible: false
-                            draw_icon.svg: (ICON_SEND)
-                            text: "Retry"
-                        }
-
-                        close_edit_history_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CLOSE)
-                            text: "Close"
-                        }
-                    }
-
-                    edit_history_full_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        full_history_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Full"
-                        }
-
-                        full_diff_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Diff"
-                        }
-
-                        event_context_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Context"
-                        }
-
-                        event_source_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_LINK)
-                            text: "Source"
-                        }
-
-                        edit_history_packet_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_COPY)
-                            text: "Packet"
-                        }
-
-                        edit_history_contract_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Contract"
-                        }
-
-                        edit_history_taxonomy_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Taxonomy"
-                        }
-                    }
-
-                    edit_history_preflight_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        edit_history_request_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEND)
-                            text: "Request"
-                        }
-
-                        edit_history_result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Result"
-                        }
-
-                        edit_history_error_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Error"
-                        }
-
-                        edit_history_retry_detail_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRIANGLE_UP)
-                            text: "Retry"
-                        }
-
-                        edit_history_source_detail_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_LINK)
-                            text: "Source"
-                        }
-                    }
-
-                    edit_history_summary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_TEXT)
-                            text_style: theme.font_regular { font_size: 11.0 }
-                        }
-                        text: "Click an edited badge to read a compact m.replace summary."
-                    }
-
-                    edit_history_diff := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Loaded original and latest replacement previews stay local."
-                    }
-
-                    edit_history_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "No event context, timeline reload, event source, message mutation, room-state, or live mutation."
-                    }
-
-                    edit_history_loaded_diff_detail := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Loaded diff detail waits for compact m.replace summary; no full modal, event context, event source, or mutation."
-                    }
-
-                    edit_history_preflight_detail := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Preflight detail waits for Request/Result/Error/Retry/Source; no extra FetchEditHistory."
-                    }
-
-                    edit_history_full_modal_boundary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Full history modal, full diff, event context, reload, and event source stay local blocked controls."
-                    }
-                }
-
-                telegram_message_report_status_strip := RoundedView {
-                    visible: false
-                    width: Fill,
-                    height: 202,
-                    flow: Down,
-                    spacing: 6.0,
-                    padding: Inset{top: 8.0, bottom: 8.0, left: 14.0, right: 12.0}
-                    show_bg: true
-                    draw_bg +: {
-                        color: (COLOR_TELEGRAM_INPUT)
-                        border_color: (COLOR_TELEGRAM_BORDER)
-                        border_size: 1.0
-                        border_radius: 0.0
-                    }
-
-                    report_status_header := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 8.0,
-                        align: Align{y: 0.5}
-
-                        report_status_title := Label {
-                            width: Fill,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                text_style: theme.font_bold { font_size: 12.0 }
-                            }
-                            text: "Report status"
-                        }
-
-                        report_status_badge := Label {
-                            width: Fit,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_MUTED)
-                                text_style: theme.font_bold { font_size: 10.0 }
-                            }
-                            text: "waiting"
-                        }
-
-                        retry_report_status_button := mod.widgets.TelegramRoomHeaderButton {
-                            visible: false
-                            draw_icon.svg: (ICON_SEND)
-                            text: "Retry"
-                        }
-
-                        close_report_status_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CLOSE)
-                            text: "Close"
-                        }
-                    }
-
-                    report_workflow_actions := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        report_queue_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Queue"
-                        }
-
-                        report_policy_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Policy"
-                        }
-
-                        report_assign_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_ADD_USER)
-                            text: "Assign"
-                        }
-
-                        report_appeal_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Appeal"
-                        }
-
-                        report_enforce_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TOMBSTONE)
-                            text: "Enforce"
-                        }
-
-                        report_moderation_packet_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_COPY)
-                            text: "Packet"
-                        }
-
-                        report_workflow_contract_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Contract"
-                        }
-
-                        report_workflow_taxonomy_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Taxonomy"
-                        }
-                    }
-
-                    report_preflight_detail_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        report_request_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEND)
-                            text: "Request"
-                        }
-
-                        report_result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Result"
-                        }
-
-                        report_copy_status_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_COPY)
-                            text: "Copy"
-                        }
-
-                        report_error_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Error"
-                        }
-
-                        report_retry_detail_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRIANGLE_UP)
-                            text: "Retry"
-                        }
-
-                        report_source_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Source"
-                        }
-                    }
-
-                    report_status_summary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_TEXT)
-                            text_style: theme.font_regular { font_size: 11.0 }
-                        }
-                        text: "Report status appears after a confirmed Matrix report_content request."
-                    }
-
-                    report_preflight_detail_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Request, Result, Error, Retry, and Source stay local ReportContent preflight details."
-                    }
-
-                    report_status_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Retry confirms before ReportContent; cancel queue, policy lookup, ban, kick, room-state, membership, and live mutation stay unwired."
-                    }
-                }
-
-                telegram_matrix_link_preview_strip := RoundedView {
-                    visible: false
-                    width: Fill,
-                    height: 304,
-                    flow: Down,
-                    spacing: 6.0,
-                    padding: Inset{top: 8.0, bottom: 8.0, left: 14.0, right: 12.0}
-                    show_bg: true
-                    draw_bg +: {
-                        color: (COLOR_TELEGRAM_INPUT)
-                        border_color: (COLOR_TELEGRAM_BORDER)
-                        border_size: 1.0
-                        border_radius: 0.0
-                    }
-
-                    matrix_link_preview_header := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 8.0,
-                        align: Align{y: 0.5}
-
-                        matrix_link_preview_title := Label {
-                            width: Fill,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                text_style: theme.font_bold { font_size: 12.0 }
-                            }
-                            text: "Matrix link"
-                        }
-
-                        matrix_link_preview_status := Label {
-                            width: Fit,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_MUTED)
-                                text_style: theme.font_bold { font_size: 10.0 }
-                            }
-                            text: "preview"
-                        }
-
-                        retry_matrix_link_preview_button := mod.widgets.TelegramRoomHeaderButton {
-                            visible: false
-                            draw_icon.svg: (ICON_SEND)
-                            text: "Retry"
-                        }
-
-                        close_matrix_link_preview_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CLOSE)
-                            text: "Close"
-                        }
-                    }
-
-                    matrix_link_preview_summary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_TEXT)
-                            text_style: theme.font_regular { font_size: 11.0 }
-                        }
-                        text: "Unknown Matrix links use compact room preview only."
-                    }
-
-                    matrix_link_preview_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Retry confirms before PreviewMatrixLinkTarget; event context, join, knock, browser handoff, and live mutation stay unwired."
-                    }
-
-                    matrix_link_unresolved_detail := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Unresolved detail waits for a compact Matrix link preview target; no alias resolution, event context, join, event source, or mutation."
-                    }
-
-                    matrix_link_route_scope_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        matrix_link_route_room_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Room"
-                        }
-
-                        matrix_link_route_event_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Event"
-                        }
-
-                        matrix_link_route_via_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Via"
-                        }
-
-                        matrix_link_route_preview_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Preview"
-                        }
-
-                        matrix_link_route_source_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Source"
-                        }
-
-                        matrix_link_route_packet_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_COPY)
-                            text: "Packet"
-                        }
-
-                        matrix_link_route_contract_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Contract"
-                        }
-
-                        matrix_link_route_taxonomy_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Taxonomy"
-                        }
-                    }
-
-                    matrix_link_route_scope_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Room, Event, Via, Preview, Source, Packet, Contract, and Taxonomy route-scope controls stay local."
-                    }
-
-                    matrix_link_context_actions := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        matrix_link_server_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Server"
-                        }
-
-                        matrix_link_event_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Event"
-                        }
-
-                        matrix_link_alias_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Alias"
-                        }
-
-                        matrix_link_join_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_ADD_USER)
-                            text: "Join"
-                        }
-
-                        matrix_link_knock_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_ADD_USER)
-                            text: "Knock"
-                        }
-
-                        matrix_link_invite_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_ADD_USER)
-                            text: "Invite"
-                        }
-
-                        matrix_link_browser_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_EXTERNAL_LINK)
-                            text: "Browser"
-                        }
-
-                        matrix_link_source_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Source"
-                        }
-                    }
-
-                    matrix_link_context_actions_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Server, Event, Alias, Join, Knock, Invite, and Source controls stay guarded; Browser confirms before matrix.to system opener."
-                    }
-
-                    matrix_link_server_context_boundary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Server context, event context, extra pagination, browser handoff before confirmation, and full event source stay bounded while Join/Knock/Invite confirm before membership handoff."
-                    }
-                }
-
-                telegram_room_actions_strip := RoundedView {
-                    visible: false
-                    width: Fill,
-                    height: 114,
-                    flow: Flow.Right{wrap: true},
-                    spacing: 6.0,
-                    align: Align{y: 0.5},
-                    padding: Inset{top: 7.0, bottom: 7.0, left: 14.0, right: 12.0}
-                    show_bg: true
-                    draw_bg +: {
-                        color: (COLOR_TELEGRAM_INPUT)
-                        border_color: (COLOR_TELEGRAM_BORDER)
-                        border_size: 1.0
-                        border_radius: 0.0
-                    }
-
-                    room_action_status := Label {
-                        width: Fit,
-                        height: Fit,
-                        flow: Flow.Right{wrap: false},
-                        margin: Inset{right: 4.0}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_TEXT)
-                            text_style: theme.font_bold { font_size: 11.5 }
-                        }
-                        text: "Room actions"
-                    }
-
-                    copy_link_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_LINK)
-                        text: "Link"
-                    }
-
-                    invite_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_ADD_USER)
-                        text: "Invite"
-                    }
-
-                    leave_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_LOGOUT)
-                        text: "Leave"
-                    }
-
-                    mark_unread_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_CHECKMARK)
-                        text: "Unread"
-                    }
-
-                    favorite_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_PIN)
-                        text: "Fav"
-                    }
-
-                    priority_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_TOMBSTONE)
-                        text: "Low"
-                    }
-
-                    room_settings_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_SETTINGS)
-                        text: "Settings"
-                    }
-
-                    room_info_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_INFO)
-                        text: "Info"
-                    }
-
-                    notifications_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_SETTINGS)
-                        text: "Mute"
-                    }
-
-                    close_room_actions_button := mod.widgets.TelegramRoomHeaderButton {
-                        draw_icon.svg: (ICON_CLOSE)
-                        text: "Close"
-                    }
-
-                    room_actions_close_evidence := Label {
-                        width: Fill,
-                        height: Fit,
-                        margin: Inset{top: 1.0}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Close only dismisses this local action preview; no Matrix search, room-state, notification, message, or membership request is sent."
-                    }
-                }
-
-                telegram_notifications_strip := RoundedView {
-                    visible: false
-                    width: Fill,
-                    height: 468,
-                    flow: Down,
-                    spacing: 6.0,
-                    padding: Inset{top: 8.0, bottom: 8.0, left: 14.0, right: 12.0}
-                    show_bg: true
-                    draw_bg +: {
-                        color: (COLOR_TELEGRAM_INPUT)
-                        border_color: (COLOR_TELEGRAM_BORDER)
-                        border_size: 1.0
-                        border_radius: 0.0
-                    }
-
-                    notifications_header := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 8.0,
-                        align: Align{y: 0.5}
-
-                        notifications_title := Label {
-                            width: Fill,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                text_style: theme.font_bold { font_size: 12.0 }
-                            }
-                            text: "Notifications"
-                        }
-
-                        notifications_status := Label {
-                            width: Fit,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_MUTED)
-                                text_style: theme.font_bold { font_size: 10.0 }
-                            }
-                            text: "local only"
-                        }
-
-                        retry_notifications_button := mod.widgets.TelegramRoomHeaderButton {
-                            visible: false
-                            draw_icon.svg: (ICON_SEND)
-                            text: "Retry"
-                        }
-
-                        close_notifications_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CLOSE)
-                            text: "Close"
-                        }
-                    }
-
-                    notification_options := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        mute_1h_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "All"
-                        }
-
-                        mute_8h_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Mentions"
-                        }
-
-                        mute_forever_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Mute"
-                        }
-
-                        unmute_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Refresh"
-                        }
-
-                        copy_mode_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_COPY)
-                            text: "Copy mode"
-                        }
-                    }
-
-                    notification_advanced_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        timed_mute_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Timed"
-                        }
-
-                        keyword_rules_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Keywords"
-                        }
-
-                        pusher_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SETTINGS)
-                            text: "Pusher"
-                        }
-
-                        global_preferences_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SETTINGS)
-                            text: "Global"
-                        }
-                    }
-
-                    notification_keyword_write_row := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        keyword_rule_input := RobrixTextInput {
-                            width: Fill,
-                            height: 28,
-                            flow: Right,
-                            padding: Inset{top: 4, bottom: 4, left: 8, right: 8}
-                            empty_text: "Keyword rule"
-
-                            draw_bg +: {
-                                border_radius: 8.0
-                                border_size: 1.0
-                                color: (COLOR_TELEGRAM_PANEL)
-                                color_hover: (COLOR_TELEGRAM_PANEL)
-                                color_focus: (COLOR_TELEGRAM_PANEL)
-                                color_down: (COLOR_TELEGRAM_PANEL)
-                                color_empty: (COLOR_TELEGRAM_PANEL)
-                                border_color: (COLOR_TELEGRAM_BORDER)
-                                border_color_hover: (COLOR_TELEGRAM_BLUE)
-                                border_color_focus: (COLOR_TELEGRAM_BLUE)
-                                border_color_down: (COLOR_TELEGRAM_BLUE)
-                                border_color_empty: (COLOR_TELEGRAM_BORDER)
-                            }
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                color_hover: (COLOR_TELEGRAM_TEXT)
-                                color_focus: (COLOR_TELEGRAM_TEXT)
-                                color_down: (COLOR_TELEGRAM_TEXT)
-                                color_empty: (COLOR_TELEGRAM_DIM)
-                                color_empty_hover: (COLOR_TELEGRAM_DIM)
-                                color_empty_focus: (COLOR_TELEGRAM_DIM)
-                                text_style: theme.font_regular { font_size: 11.0 }
-                            }
-                            draw_cursor +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                            }
-                        }
-
-                        add_keyword_rule_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Add keyword"
-                        }
-
-                        remove_keyword_rule_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRASH)
-                            text: "Remove keyword"
-                        }
-                    }
-
-                    notification_default_mode_write_row := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        default_all_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Default all"
-                        }
-
-                        default_mentions_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Default mentions"
-                        }
-
-                        default_mute_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TOMBSTONE)
-                            text: "Default mute"
-                        }
-                    }
-
-                    notification_advanced_detail_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        quiet_hours_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Quiet hours"
-                        }
-
-                        keyword_list_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Keyword list"
-                        }
-
-                        device_push_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SETTINGS)
-                            text: "Device push"
-                        }
-
-                        defaults_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Defaults"
-                        }
-
-                        sound_badge_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SETTINGS)
-                            text: "Sound badge"
-                        }
-                    }
-
-                    notification_result_detail_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Result"
-                        }
-
-                        requested_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Requested"
-                        }
-
-                        retry_cache_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEND)
-                            text: "Retry cache"
-                        }
-
-                        failure_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TOMBSTONE)
-                            text: "Failure"
-                        }
-
-                        source_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Source"
-                        }
-                    }
-
-                    notification_preflight_detail_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        schedule_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Schedule"
-                        }
-
-                        packet_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_COPY)
-                            text: "Packet"
-                        }
-
-                        contract_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Contract"
-                        }
-
-                        taxonomy_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Taxonomy"
-                        }
-
-                        account_data_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SETTINGS)
-                            text: "Account data"
-                        }
-
-                        keyword_source_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEARCH)
-                            text: "Keywords"
-                        }
-
-                        pushers_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SETTINGS)
-                            text: "Pushers"
-                        }
-
-                        preflight_defaults_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Defaults"
-                        }
-                    }
-
-                    notifications_summary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.5 }
-                        }
-                        text: "Notification mode is read from Matrix; All, Mentions, and Mute write only after confirmation."
-                    }
-
-                    notifications_option_evidence := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Timed mute remains unwired; no message, room-state, membership, gateway/runtime/auth, or live mutation request is sent."
-                    }
-
-                    notifications_mode_target_metadata := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Mode target metadata stays local until confirmation."
-                    }
-
-                    notifications_result_detail := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Notification result detail stays local."
-                    }
-
-                    notifications_preflight_detail := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Notification rule and pusher preflight stays local."
-                    }
-
-                    notifications_timed_global_boundary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Failed Retry confirms before SetRoomNotificationMode; timed/global notification controls, keywords, and push gateway/device setup stay local boundary metadata."
-                    }
-
-                    notifications_pusher_keyword_boundary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Keyword rules, global preferences, timed mute, pusher setup, sound, and badge controls stay local blocked."
-                    }
-                }
-
-                telegram_room_info_strip := RoundedView {
-                    visible: false
-                    width: Fill,
-                    height: 190,
-                    flow: Down,
-                    spacing: 6.0,
-                    padding: Inset{top: 8.0, bottom: 8.0, left: 14.0, right: 12.0}
-                    show_bg: true
-                    draw_bg +: {
-                        color: (COLOR_TELEGRAM_INPUT)
-                        border_color: (COLOR_TELEGRAM_BORDER)
-                        border_size: 1.0
-                        border_radius: 0.0
-                    }
-
-                    info_header := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 8.0,
-                        align: Align{y: 0.5}
-
-                        info_title := Label {
-                            width: Fill,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                text_style: theme.font_bold { font_size: 12.0 }
-                            }
-                            text: "Room info"
-                        }
-
-                        close_info_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CLOSE)
-                            text: "Close"
-                        }
-                    }
-
-                    info_summary := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_TEXT)
-                            text_style: theme.font_regular { font_size: 11.5 }
-                        }
-                        text: "Current room"
-                    }
-
-                    info_meta := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.5 }
-                        }
-                        text: "members: local cache / pinned: live timeline"
-                    }
-
-                    info_subscription := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "pinned events: existing subscription; no PinEvent or room-state mutation"
-                    }
-
-                    info_typing_subscription := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "incoming typing: existing subscription; no typing notice send"
-                    }
-
-                    info_read_receipt_subscription := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "own read marker: existing subscription; no ReadReceipt send"
-                    }
-
-                    info_unread_count_read := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "unread badge count: existing read path; no unread status mutation"
-                    }
-
-                    info_avatar_fetch := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "avatars: existing FetchAvatar cache; no SetAvatar or FetchMedia"
-                    }
-
-                    info_state := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_MUTED)
-                            text_style: theme.font_bold { font_size: 10.0 }
-                        }
-                        text: "state: local room list"
-                    }
-                }
-
-                telegram_room_settings_strip := RoundedView {
-                    visible: false
-                    width: Fill,
-                    height: 480,
-                    flow: Down,
-                    spacing: 6.0,
-                    padding: Inset{top: 8.0, bottom: 8.0, left: 14.0, right: 12.0}
-                    show_bg: true
-                    draw_bg +: {
-                        color: (COLOR_TELEGRAM_INPUT)
-                        border_color: (COLOR_TELEGRAM_BORDER)
-                        border_size: 1.0
-                        border_radius: 0.0
-                    }
-
-                    settings_header := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 8.0,
-                        align: Align{y: 0.5}
-
-                        settings_title := Label {
-                            width: Fill,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                text_style: theme.font_bold { font_size: 12.0 }
-                            }
-                            text: "Room settings"
-                        }
-
-                        settings_status := Label {
-                            width: Fit,
-                            height: Fit,
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_MUTED)
-                                text_style: theme.font_bold { font_size: 10.0 }
-                            }
-                            text: "local only"
-                        }
-
-                        close_settings_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CLOSE)
-                            text: "Close"
-                        }
-                    }
-
-                    settings_options := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        name_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SETTINGS)
-                            text: "Name"
-                        }
-
-                        topic_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Topic"
-                        }
-
-                        permissions_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Perms"
-                        }
-
-                        members_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_ADD_USER)
-                            text: "Members"
-                        }
-
-                        identity_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Identity"
-                        }
-
-                        avatar_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_UPLOAD)
-                            text: "Avatar"
-                        }
-
-                        alias_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_LINK)
-                            text: "Alias"
-                        }
-
-                        history_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "History"
-                        }
-
-                        join_rule_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_ADD_USER)
-                            text: "Join rule"
-                        }
-
-                        power_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Power"
-                        }
-
-                        moderation_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRASH)
-                            text: "Moderation"
-                        }
-
-                        refresh_settings_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Refresh"
-                        }
-                    }
-
-                    settings_field_edit_intents := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        name_edit_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SETTINGS)
-                            text: "Name edit"
-                        }
-
-                        topic_edit_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Topic edit"
-                        }
-
-                        avatar_edit_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_UPLOAD)
-                            text: "Avatar edit"
-                        }
-
-                        remove_avatar_live_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRASH)
-                            text: "Remove avatar"
-                        }
-
-                        permissions_edit_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Perms edit"
-                        }
-
-                        members_edit_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_ADD_USER)
-                            text: "Members edit"
-                        }
-                    }
-
-                    settings_name_write_row := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        name_live_input := RobrixTextInput {
-                            width: Fill,
-                            height: 28,
-                            flow: Right,
-                            padding: Inset{top: 4, bottom: 4, left: 8, right: 8}
-                            empty_text: "Room name"
-
-                            draw_bg +: {
-                                border_radius: 8.0
-                                border_size: 1.0
-                                color: (COLOR_TELEGRAM_PANEL)
-                                color_hover: (COLOR_TELEGRAM_PANEL)
-                                color_focus: (COLOR_TELEGRAM_PANEL)
-                                color_down: (COLOR_TELEGRAM_PANEL)
-                                color_empty: (COLOR_TELEGRAM_PANEL)
-                                border_color: (COLOR_TELEGRAM_BORDER)
-                                border_color_hover: (COLOR_TELEGRAM_BLUE)
-                                border_color_focus: (COLOR_TELEGRAM_BLUE)
-                                border_color_down: (COLOR_TELEGRAM_BLUE)
-                                border_color_empty: (COLOR_TELEGRAM_BORDER)
-                            }
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                color_hover: (COLOR_TELEGRAM_TEXT)
-                                color_focus: (COLOR_TELEGRAM_TEXT)
-                                color_down: (COLOR_TELEGRAM_TEXT)
-                                color_empty: (COLOR_TELEGRAM_DIM)
-                                color_empty_hover: (COLOR_TELEGRAM_DIM)
-                                color_empty_focus: (COLOR_TELEGRAM_DIM)
-                                text_style: theme.font_regular { font_size: 11.0 }
-                            }
-                            draw_cursor +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                            }
-                        }
-
-                        save_name_live_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Save name"
-                        }
-                    }
-
-                    settings_topic_write_row := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        topic_live_input := RobrixTextInput {
-                            width: Fill,
-                            height: 28,
-                            flow: Right,
-                            padding: Inset{top: 4, bottom: 4, left: 8, right: 8}
-                            empty_text: "Room topic"
-
-                            draw_bg +: {
-                                border_radius: 8.0
-                                border_size: 1.0
-                                color: (COLOR_TELEGRAM_PANEL)
-                                color_hover: (COLOR_TELEGRAM_PANEL)
-                                color_focus: (COLOR_TELEGRAM_PANEL)
-                                color_down: (COLOR_TELEGRAM_PANEL)
-                                color_empty: (COLOR_TELEGRAM_PANEL)
-                                border_color: (COLOR_TELEGRAM_BORDER)
-                                border_color_hover: (COLOR_TELEGRAM_BLUE)
-                                border_color_focus: (COLOR_TELEGRAM_BLUE)
-                                border_color_down: (COLOR_TELEGRAM_BLUE)
-                                border_color_empty: (COLOR_TELEGRAM_BORDER)
-                            }
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                color_hover: (COLOR_TELEGRAM_TEXT)
-                                color_focus: (COLOR_TELEGRAM_TEXT)
-                                color_down: (COLOR_TELEGRAM_TEXT)
-                                color_empty: (COLOR_TELEGRAM_DIM)
-                                color_empty_hover: (COLOR_TELEGRAM_DIM)
-                                color_empty_focus: (COLOR_TELEGRAM_DIM)
-                                text_style: theme.font_regular { font_size: 11.0 }
-                            }
-                            draw_cursor +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                            }
-                        }
-
-                        save_topic_live_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Save topic"
-                        }
-                    }
-
-                    settings_alias_write_row := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        alias_live_input := RobrixTextInput {
-                            width: Fill,
-                            height: 28,
-                            flow: Right,
-                            padding: Inset{top: 4, bottom: 4, left: 8, right: 8}
-                            empty_text: "Canonical alias"
-
-                            draw_bg +: {
-                                border_radius: 8.0
-                                border_size: 1.0
-                                color: (COLOR_TELEGRAM_PANEL)
-                                color_hover: (COLOR_TELEGRAM_PANEL)
-                                color_focus: (COLOR_TELEGRAM_PANEL)
-                                color_down: (COLOR_TELEGRAM_PANEL)
-                                color_empty: (COLOR_TELEGRAM_PANEL)
-                                border_color: (COLOR_TELEGRAM_BORDER)
-                                border_color_hover: (COLOR_TELEGRAM_BLUE)
-                                border_color_focus: (COLOR_TELEGRAM_BLUE)
-                                border_color_down: (COLOR_TELEGRAM_BLUE)
-                                border_color_empty: (COLOR_TELEGRAM_BORDER)
-                            }
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                color_hover: (COLOR_TELEGRAM_TEXT)
-                                color_focus: (COLOR_TELEGRAM_TEXT)
-                                color_down: (COLOR_TELEGRAM_TEXT)
-                                color_empty: (COLOR_TELEGRAM_DIM)
-                                color_empty_hover: (COLOR_TELEGRAM_DIM)
-                                color_empty_focus: (COLOR_TELEGRAM_DIM)
-                                text_style: theme.font_regular { font_size: 11.0 }
-                            }
-                            draw_cursor +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                            }
-                        }
-
-                        save_alias_live_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Save alias"
-                        }
-                    }
-
-                    settings_tombstone_write_row := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Right,
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        tombstone_replacement_live_input := RobrixTextInput {
-                            width: Fill,
-                            height: 28,
-                            flow: Right,
-                            padding: Inset{top: 4, bottom: 4, left: 8, right: 8}
-                            empty_text: "Replacement room ID"
-
-                            draw_bg +: {
-                                border_radius: 8.0
-                                border_size: 1.0
-                                color: (COLOR_TELEGRAM_PANEL)
-                                color_hover: (COLOR_TELEGRAM_PANEL)
-                                color_focus: (COLOR_TELEGRAM_PANEL)
-                                color_down: (COLOR_TELEGRAM_PANEL)
-                                color_empty: (COLOR_TELEGRAM_PANEL)
-                                border_color: (COLOR_TELEGRAM_BORDER)
-                                border_color_hover: (COLOR_TELEGRAM_BLUE)
-                                border_color_focus: (COLOR_TELEGRAM_BLUE)
-                                border_color_down: (COLOR_TELEGRAM_BLUE)
-                                border_color_empty: (COLOR_TELEGRAM_BORDER)
-                            }
-                            draw_text +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                                color_hover: (COLOR_TELEGRAM_TEXT)
-                                color_focus: (COLOR_TELEGRAM_TEXT)
-                                color_down: (COLOR_TELEGRAM_TEXT)
-                                color_empty: (COLOR_TELEGRAM_DIM)
-                                color_empty_hover: (COLOR_TELEGRAM_DIM)
-                                color_empty_focus: (COLOR_TELEGRAM_DIM)
-                                text_style: theme.font_regular { font_size: 11.0 }
-                            }
-                            draw_cursor +: {
-                                color: (COLOR_TELEGRAM_TEXT)
-                            }
-                        }
-
-                        save_tombstone_live_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Replace"
-                        }
-                    }
-
-                    settings_refresh_result_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Result"
-                        }
-
-                        members_result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_ADD_USER)
-                            text: "Members"
-                        }
-
-                        power_result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Power"
-                        }
-
-                        failure_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRASH)
-                            text: "Failure"
-                        }
-
-                        source_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Source"
-                        }
-                    }
-
-                    settings_mutation_preflight_controls := View {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true},
-                        spacing: 6.0,
-                        align: Align{y: 0.5}
-
-                        request_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_SEND)
-                            text: "Request"
-                        }
-
-                        packet_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_COPY)
-                            text: "Packet"
-                        }
-
-                        contract_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Contract"
-                        }
-
-                        taxonomy_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Taxonomy"
-                        }
-
-                        result_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_CHECKMARK)
-                            text: "Result"
-                        }
-
-                        error_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_INFO)
-                            text: "Error"
-                        }
-
-                        retry_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_TRIANGLE_UP)
-                            text: "Retry"
-                        }
-
-                        source_button := mod.widgets.TelegramRoomHeaderButton {
-                            draw_icon.svg: (ICON_LINK)
-                            text: "Source"
-                        }
-                    }
-
-                    settings_summary := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.5 }
-                        }
-                        text: "Read-only room settings summary. No Matrix room state event was sent."
-                    }
-
-                    settings_power_levels := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Permissions use existing GetRoomPowerLevels; no power-level, room-state, message, or membership mutation"
-                    }
-
-                    settings_identity := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Identity preview uses loaded room-list alias/avatar/tombstone state only; no room-state fetch or mutation."
-                    }
-
-                    settings_refresh_result_detail := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Refresh result detail stays local: Result, Members, Power, Failure, and Source do not write room state."
-                    }
-
-                    settings_mutation_preflight_detail := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Room-state mutation preflight stays local: Request, Packet, Contract, Result, Error, Retry, and Source do not write m.room.* state."
-                    }
-
-                    settings_option_evidence := Label {
-                        width: Fill,
-                        height: Fit,
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Room settings partial-live: loaded name/id, cached members, power levels, confirmed Name/Topic/avatar/alias/history/join-rule/tombstone writes; power/member edits stay blocked."
-                    }
-
-                    settings_edit_controls_boundary := Label {
-                        width: Fill,
-                        height: Fit,
-                        flow: Flow.Right{wrap: true}
-                        draw_text +: {
-                            color: (COLOR_TELEGRAM_DIM)
-                            text_style: theme.font_regular { font_size: 10.0 }
-                        }
-                        text: "Editable room-state controls: name, topic, avatar, canonical alias, history, and join rule confirm live; power levels and member moderation stay blocked."
-                    }
-                }
-
                 // First, display the timeline of all messages/events.
                 timeline := mod.widgets.Timeline { }
-
-                hepta_fixture_timeline := ScrollYView {
-                    visible: false
-                    width: Fill,
-                    height: Fill,
-                    flow: Down,
-                    padding: Inset{top: 14.0, bottom: 18.0, left: 14.0, right: 14.0}
-
-                    fixture_cockpit := mod.widgets.HeptaFixtureCockpit {}
-                }
 
                 // Below that, display a typing notice when other users in the room are typing.
                 typing_notice := TypingNotice { }
@@ -3560,6 +710,10 @@ script_mod! {
             // The loading pane appears while the user is waiting for something in the room screen
             // to finish loading, e.g., when loading an older replied-to message.
             loading_pane := LoadingPane { }
+
+            // The popup menu for uploading/sending other content to this room,
+            // which is controlled by actions from the RoomInputBar.
+            room_input_popup_menu := RoomInputPopupMenu { }
 
 
             /*
@@ -3587,348 +741,42 @@ script_mod! {
 /// The main widget that displays a single Matrix room.
 #[derive(Script, Widget)]
 pub struct RoomScreen {
-    #[deref]
-    view: View,
+    #[deref] view: View,
 
     /// The name and ID of the currently-shown room, if any.
-    #[rust]
-    room_name_id: Option<RoomNameId>,
+    #[rust] room_name_id: Option<RoomNameId>,
     /// The timeline currently displayed by this RoomScreen, if any.
-    #[rust]
-    timeline_kind: Option<TimelineKind>,
+    #[rust] timeline_kind: Option<TimelineKind>,
     /// The persistent UI-relevant states for the room that this widget is currently displaying.
-    #[rust]
-    tl_state: Option<TimelineUiState>,
+    #[rust] tl_state: Option<TimelineUiState>,
     /// The set of pinned events in this room.
-    #[rust]
-    pinned_events: Vec<OwnedEventId>,
+    #[rust] pinned_events: Vec<OwnedEventId>,
     /// Whether this room has been successfully loaded (received from the homeserver).
-    #[rust]
-    is_loaded: bool,
+    #[rust] is_loaded: bool,
     /// Whether or not all rooms have been loaded (received from the homeserver).
-    #[rust]
-    all_rooms_loaded: bool,
-    /// Whether the local-only Telegram message search preview strip is visible.
-    #[rust]
-    telegram_message_search_visible: bool,
-    /// Current query for the local-only Telegram message search preview.
-    #[rust]
-    telegram_message_search_query: String,
-    /// Local timeline item indices that match the current local-only search query.
-    #[rust]
-    telegram_message_search_matches: Vec<usize>,
-    /// Current selected index inside `telegram_message_search_matches`.
-    #[rust]
-    telegram_message_search_active_match: usize,
-    /// Active loaded-timeline scope used by Filter/Date/Pins local search controls.
-    #[rust]
-    telegram_message_search_loaded_scope: MessageSearchLoadedScope,
-    /// Current local server/context controls metadata for message search.
-    #[rust]
-    telegram_message_search_server_context_controls_metadata: String,
-    /// Current local advanced filter controls metadata for message search.
-    #[rust]
-    telegram_message_search_advanced_filter_controls_metadata: String,
-    /// Draft sender ID used by the live Matrix server-side From filter.
-    #[rust]
-    telegram_message_search_sender_filter_draft: String,
-    /// Current local result-action controls metadata for message search.
-    #[rust]
-    telegram_message_search_result_action_controls_metadata: String,
-    /// Current local server preflight controls metadata for message search.
-    #[rust]
-    telegram_message_search_server_preflight_controls_metadata: String,
-    /// Whether a live Matrix server-side message search request is currently in flight.
-    #[rust]
-    telegram_message_search_server_pending: bool,
-    /// Last live Matrix message search query submitted from this room screen.
-    #[rust]
-    telegram_message_search_server_last_query: String,
-    /// Last live Matrix message search filter submitted from this room screen.
-    #[rust]
-    telegram_message_search_server_last_filter: MessageSearchServerFilter,
-    /// Next server-side search cursor returned by the last successful Matrix search.
-    #[rust]
-    telegram_message_search_server_next_batch: Option<String>,
-    /// Room id returned by the last successful Matrix search result.
-    #[rust]
-    telegram_message_search_server_room_id: String,
-    /// Hits returned by the last successful Matrix search result.
-    #[rust]
-    telegram_message_search_server_hits: Vec<MessageSearchServerHit>,
-    /// Current cached server hit event id being opened through timeline pagination.
-    #[rust]
-    telegram_message_search_server_context_target_event_id: Option<OwnedEventId>,
-    /// Last server-side search error shown in the message-search strip.
-    #[rust]
-    telegram_message_search_server_last_error: String,
-    /// Whether the local Telegram edit-history detail strip is visible.
-    #[rust]
-    telegram_message_edit_history_visible: bool,
-    /// Current edit-history detail summary text.
-    #[rust]
-    telegram_message_edit_history_summary: String,
-    /// Current edit-history local diff text.
-    #[rust]
-    telegram_message_edit_history_diff: String,
-    /// Current edit-history metadata/boundary text.
-    #[rust]
-    telegram_message_edit_history_metadata: String,
-    /// Current edit-history loaded diff detail text.
-    #[rust]
-    telegram_message_edit_history_loaded_diff_detail: String,
-    /// Current edit-history request/result/error/retry/source preflight detail text.
-    #[rust]
-    telegram_message_edit_history_preflight_detail: String,
-    /// Current edit-history full-modal/full-diff boundary text.
-    #[rust]
-    telegram_message_edit_history_full_boundary: String,
-    /// Cached target event id for the latest compact edit-history summary.
-    #[rust]
-    telegram_message_edit_history_loaded_event_id: String,
-    /// Cached latest replacement event id label from the latest compact edit-history summary.
-    #[rust]
-    telegram_message_edit_history_latest_event: String,
-    /// Cached replacement count from the latest compact edit-history summary.
-    #[rust]
-    telegram_message_edit_history_replacement_count: Option<usize>,
-    /// Cached relation pages fetched by the latest edit-history read.
-    #[rust]
-    telegram_message_edit_history_pages_fetched: Option<usize>,
-    /// Whether the latest edit-history read reached the end of the relations cursor.
-    #[rust]
-    telegram_message_edit_history_pagination_exhausted: bool,
-    /// Cached latest replacement timestamp from the latest compact edit-history summary.
-    #[rust]
-    telegram_message_edit_history_latest_timestamp: Option<MilliSecondsSinceUnixEpoch>,
-    /// Cached loaded original preview for the latest compact edit-history summary.
-    #[rust]
-    telegram_message_edit_history_loaded_original_preview: String,
-    /// Cached latest replacement preview for the latest compact edit-history summary.
-    #[rust]
-    telegram_message_edit_history_latest_preview: String,
-    /// Cached latest replacement event JSON returned by the compact m.replace read.
-    #[rust]
-    telegram_message_edit_history_latest_source_json: String,
-    /// Cached error text from the latest failed compact edit-history read.
-    #[rust]
-    telegram_message_edit_history_result_error: String,
-    /// Cached edit-history retry event id after a failed compact history read.
-    #[rust]
-    telegram_message_edit_history_retry_event_id: Option<OwnedEventId>,
-    /// Cached edit-history retry timeline kind after a failed compact history read.
-    #[rust]
-    telegram_message_edit_history_retry_timeline_kind: Option<TimelineKind>,
-    /// Whether the local Telegram message report status strip is visible.
-    #[rust]
-    telegram_message_report_status_visible: bool,
-    /// Current report status badge text.
-    #[rust]
-    telegram_message_report_status_badge: String,
-    /// Current report status summary text.
-    #[rust]
-    telegram_message_report_status_summary: String,
-    /// Current report status lifecycle/boundary metadata.
-    #[rust]
-    telegram_message_report_status_metadata: String,
-    /// Current local report request/result/error/retry/source preflight detail metadata.
-    #[rust]
-    telegram_message_report_preflight_detail_metadata: String,
-    /// Cached report result error text for local preflight details.
-    #[rust]
-    telegram_message_report_result_error: String,
-    /// Last confirmed report event id that can be retried after a failed result.
-    #[rust]
-    telegram_message_report_retry_event_id: Option<OwnedEventId>,
-    /// Last confirmed report reason that can be retried after a failed result.
-    #[rust]
-    telegram_message_report_retry_reason: String,
-    /// Whether the local Matrix link preview result strip is visible.
-    #[rust]
-    telegram_matrix_link_preview_visible: bool,
-    /// Current Matrix link preview status badge text.
-    #[rust]
-    telegram_matrix_link_preview_status: String,
-    /// Current Matrix link preview summary text.
-    #[rust]
-    telegram_matrix_link_preview_summary: String,
-    /// Current Matrix link preview metadata/boundary text.
-    #[rust]
-    telegram_matrix_link_preview_metadata: String,
-    /// Current Matrix link unresolved-detail text.
-    #[rust]
-    telegram_matrix_link_unresolved_detail: String,
-    /// Cached Matrix link target label for the local unresolved-detail row.
-    #[rust]
-    telegram_matrix_link_preview_target_label: String,
-    /// Cached Matrix link room id or alias target for read-only Server context refresh.
-    #[rust]
-    telegram_matrix_link_preview_room_or_alias_id: Option<OwnedRoomOrAliasId>,
-    /// Cached Matrix link via count for the local unresolved-detail row.
-    #[rust]
-    telegram_matrix_link_preview_via_count: usize,
-    /// Cached Matrix link via server list for local route-scope clipboard controls.
-    #[rust]
-    telegram_matrix_link_preview_via_label: String,
-    /// Cached Matrix link requested event id label for the local unresolved-detail row.
-    #[rust]
-    telegram_matrix_link_preview_event_id_label: String,
-    /// Cached Matrix link preview error character count for the local unresolved-detail row.
-    #[rust]
-    telegram_matrix_link_preview_error_chars: Option<usize>,
-    /// Cached event source room id fetched during a compact Matrix link event preview.
-    #[rust]
-    telegram_matrix_link_preview_source_room_id: Option<OwnedRoomId>,
-    /// Cached event source event id fetched during a compact Matrix link event preview.
-    #[rust]
-    telegram_matrix_link_preview_source_event_id: Option<OwnedEventId>,
-    /// Cached event source JSON fetched during a compact Matrix link event preview.
-    #[rust]
-    telegram_matrix_link_preview_source_json: String,
-    /// Current Matrix link local route-scope controls metadata.
-    #[rust]
-    telegram_matrix_link_route_scope_metadata: String,
-    /// Current Matrix link local context-actions row metadata.
-    #[rust]
-    telegram_matrix_link_context_actions_metadata: String,
-    /// Current Matrix link server/context boundary text.
-    #[rust]
-    telegram_matrix_link_server_context_boundary: String,
-    /// Cached Matrix link preview retry target after a failed compact preview read.
-    #[rust]
-    telegram_matrix_link_preview_retry_room_or_alias_id: Option<OwnedRoomOrAliasId>,
-    /// Cached Matrix link preview retry via server list after a failed compact preview read.
-    #[rust]
-    telegram_matrix_link_preview_retry_via: Vec<OwnedServerName>,
-    /// Cached Matrix link preview retry event id after a failed compact preview read.
-    #[rust]
-    telegram_matrix_link_preview_retry_event_id: Option<OwnedEventId>,
-    /// Cached Matrix link preview retry timeline kind after a failed compact preview read.
-    #[rust]
-    telegram_matrix_link_preview_retry_timeline_kind: Option<TimelineKind>,
-    /// Cached Matrix link room id or alias join currently waiting for a result action.
-    #[rust]
-    telegram_matrix_link_join_pending_room_or_alias_id: Option<OwnedRoomOrAliasId>,
-    /// Cached Matrix link room id or alias join target after a failed result action.
-    #[rust]
-    telegram_matrix_link_join_retry_room_or_alias_id: Option<OwnedRoomOrAliasId>,
-    /// Cached Matrix link via server list for the current join-capable target.
-    #[rust]
-    telegram_matrix_link_join_via_servers: Vec<OwnedServerName>,
-    /// Cached Matrix link via server list after a failed join result.
-    #[rust]
-    telegram_matrix_link_join_retry_via_servers: Vec<OwnedServerName>,
-    /// Cached Matrix link room id or alias knock currently waiting for a result action.
-    #[rust]
-    telegram_matrix_link_knock_pending_room_or_alias_id: Option<OwnedRoomOrAliasId>,
-    /// Cached Matrix link room id or alias knock target after a failed result action.
-    #[rust]
-    telegram_matrix_link_knock_retry_room_or_alias_id: Option<OwnedRoomOrAliasId>,
-    /// Cached Matrix link via server list for the current knock-capable target.
-    #[rust]
-    telegram_matrix_link_knock_via_servers: Vec<OwnedServerName>,
-    /// Cached Matrix link via server list after a failed knock result.
-    #[rust]
-    telegram_matrix_link_knock_retry_via_servers: Vec<OwnedServerName>,
-    /// Cached Matrix link invite currently waiting for a result action.
-    #[rust]
-    telegram_matrix_link_invite_pending_room_id: Option<OwnedRoomId>,
-    /// Cached Matrix link invite user currently waiting for a result action.
-    #[rust]
-    telegram_matrix_link_invite_pending_user_id: Option<OwnedUserId>,
-    /// Cached Matrix link invite room after a failed result action.
-    #[rust]
-    telegram_matrix_link_invite_retry_room_id: Option<OwnedRoomId>,
-    /// Cached Matrix link invite user after a failed result action.
-    #[rust]
-    telegram_matrix_link_invite_retry_user_id: Option<OwnedUserId>,
-    /// Whether the Telegram-style room action strip is visible.
-    #[rust]
-    telegram_room_actions_visible: bool,
-    /// Current room management state used by the Telegram room actions strip.
-    #[rust]
-    telegram_room_action_details: Option<RoomContextMenuDetails>,
-    /// Whether the Telegram-style notifications mode strip is visible.
-    #[rust]
-    telegram_notifications_visible: bool,
-    /// Current notifications mode read/write status.
-    #[rust]
-    telegram_notifications_local_status: String,
-    /// Current local result-detail action staged from the notifications strip.
-    #[rust]
-    telegram_notifications_result_detail_action: String,
-    /// Current local timed/global/pusher preflight action staged from the notifications strip.
-    #[rust]
-    telegram_notifications_preflight_detail_action: String,
-    /// Last notification-mode room id that can be retried after a failed write.
-    #[rust]
-    telegram_notifications_retry_room_id: Option<OwnedRoomId>,
-    /// Last notification mode that can be retried after a failed write.
-    #[rust]
-    telegram_notifications_retry_mode: Option<RoomNotificationMode>,
-    /// Last default notification-mode timeline that can be retried after a failed write.
-    #[rust]
-    telegram_notifications_retry_default_timeline_kind: Option<TimelineKind>,
-    /// Last default notification mode that can be retried after a failed write.
-    #[rust]
-    telegram_notifications_retry_default_mode: Option<RoomNotificationMode>,
-    /// Draft keyword used by the notification keyword Add/Remove controls.
-    #[rust]
-    telegram_notifications_keyword_draft: String,
-    /// Last failed notification keyword mutation keyword that can be retried.
-    #[rust]
-    telegram_notifications_retry_keyword: String,
-    /// Last failed notification keyword mutation operation that can be retried.
-    #[rust]
-    telegram_notifications_retry_keyword_mutation: Option<NotificationKeywordMutation>,
-    /// Whether the Telegram-style read-only room info strip is visible.
-    #[rust]
-    telegram_room_info_visible: bool,
-    /// Whether the Telegram-style read-only room settings strip is visible.
-    #[rust]
-    telegram_room_settings_visible: bool,
-    /// Current read-only room settings preview status.
-    #[rust]
-    telegram_room_settings_local_status: String,
-    /// Last local refresh/result detail control selected in room settings.
-    #[rust]
-    telegram_room_settings_refresh_detail_action: String,
-    /// Last local room-state mutation preflight control selected in room settings.
-    #[rust]
-    telegram_room_settings_mutation_preflight_action: String,
-    /// Draft value for the live room name write field.
-    #[rust]
-    telegram_room_settings_name_draft: String,
-    /// Draft value for the live room topic write field.
-    #[rust]
-    telegram_room_settings_topic_draft: String,
-    /// Draft value for the live canonical alias write field.
-    #[rust]
-    telegram_room_settings_alias_draft: String,
-    /// Draft replacement room id for the live tombstone write field.
-    #[rust]
-    telegram_room_settings_tombstone_replacement_draft: String,
-    /// Last failed room settings mutation field that can be retried.
-    #[rust]
-    telegram_room_settings_retry_field: Option<RoomSettingsMutationField>,
-    /// Last failed room settings mutation value that can be retried.
-    #[rust]
-    telegram_room_settings_retry_value: String,
-    /// Last failed room avatar upload path that can be retried.
-    #[rust]
-    telegram_room_settings_retry_avatar_file_path: Option<PathBuf>,
-    /// Last failed room avatar upload MIME type that can be retried.
-    #[rust]
-    telegram_room_settings_retry_avatar_mime_type: Option<mime::Mime>,
-    /// Last failed room canonical alias write alt aliases that can be retried.
-    #[rust]
-    telegram_room_settings_retry_canonical_alias_alt_aliases: Vec<OwnedRoomAliasId>,
+    #[rust] all_rooms_loaded: bool,
+    /// A flag to set key focus for the text input after it has been drawn.
+    #[rust] focus_input_bar_on_show: bool,
+    /// After a reply preview collapses, redraw until the list is fills the viewport.
+    #[rust] relayout_redraws_left: u8,
+    #[rust] relayout_last_first_id: usize,
+    #[rust] relayout_last_scroll: f64,
+    #[rust] cached_refs: Option<RoomScreenWidgetRefs>,
+}
+
+/// Cached references to RoomScreen child widgets used in every event handler.
+#[derive(Clone)]
+struct RoomScreenWidgetRefs {
+    portal_list: PortalListRef,
+    user_profile_sliding_pane: UserProfileSlidingPaneRef,
+    loading_pane: LoadingPaneRef,
+    room_input_popup_menu: RoomInputPopupMenuRef,
 }
 
 impl Drop for RoomScreen {
     fn drop(&mut self) {
         // This ensures that the `TimelineUiState` instance owned by this room is *always* returned
-        // back to to `TIMELINE_STATES`, which ensures that its UI state(s) are not lost
+        // back to the timeline state store, which ensures that its UI state(s) are not lost
         // and that other RoomScreen instances can show this room in the future.
         // RoomScreen will be dropped whenever its widget instance is destroyed, e.g.,
         // when a Tab is closed or the app is resized to a different AdaptiveView layout.
@@ -3938,6 +786,8 @@ impl Drop for RoomScreen {
 
 impl ScriptHook for RoomScreen {
     fn on_after_reload(&mut self, vm: &mut ScriptVm) {
+        // A script reload changes the RoomScreen's children; invalidate the ones we cached.
+        self.cached_refs = None;
         vm.with_cx_mut(|cx| {
             if let Some(tl_state) = &mut self.tl_state.as_mut() {
                 // Clear the timeline's drawn items caches and redraw it.
@@ -3952,11 +802,18 @@ impl ScriptHook for RoomScreen {
 impl Widget for RoomScreen {
     // Handle events and actions for the RoomScreen widget and its inner Timeline view.
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
+        // Skip event handling if this RoomScreen is uninitialized (a background dock tab after dock restore).
+        if self.tl_state.is_none() && self.room_name_id.is_none() {
+            return;
+        }
+
         let room_screen_widget_uid = self.widget_uid();
-        let portal_list = self.portal_list(cx, ids!(timeline.list));
-        let user_profile_sliding_pane =
-            self.user_profile_sliding_pane(cx, ids!(user_profile_sliding_pane));
-        let loading_pane = self.loading_pane(cx, ids!(loading_pane));
+        let RoomScreenWidgetRefs {
+            portal_list,
+            user_profile_sliding_pane,
+            loading_pane,
+            room_input_popup_menu,
+        } = self.cached_widget_refs(cx);
 
         // Handle actions here before processing timeline updates.
         // Normally (in most other widgets), the order of event handling doesn't matter much.
@@ -3964,34 +821,9 @@ impl Widget for RoomScreen {
         // we want to handle those before processing any updates that might change
         // the set of timeline indices (which would invalidate the index values in any actions).
         if let Event::Actions(actions) = event {
-            for action in actions {
-                if let Some(SearchMessagesAction::LocalPreviewOpened) = action.downcast_ref() {
-                    if self.room_name_id.is_none() && self.tl_state.is_none() {
-                        continue;
-                    }
-                    let room_label = self
-                        .room_name_id
-                        .as_ref()
-                        .map_or_else(|| "this chat".to_string(), ToString::to_string);
-                    self.set_telegram_room_actions_visible(cx, false, None);
-                    self.set_telegram_search_mode_visible(cx, true);
-                    enqueue_popup_notification(
-                        format!(
-                            "Messages sidebar opened local search for {room_label}. {SIDEBAR_MESSAGE_SEARCH_OPEN_HANDOFF_LABEL} No Matrix search query was sent."
-                        ),
-                        PopupKind::Info,
-                        Some(4.0),
-                    );
-                    return;
-                }
+            if let Some(action) = room_input_popup_menu.selected(actions) {
+                self.handle_room_input_popup_menu_action(cx, action);
             }
-
-            self.handle_telegram_room_header_actions(
-                cx,
-                actions,
-                &portal_list,
-                &user_profile_sliding_pane,
-            );
 
             for (index, wr) in portal_list.items_with_actions(actions) {
                 // Handle a hover-in action on the reaction list: show a reaction summary.
@@ -3999,13 +831,9 @@ impl Widget for RoomScreen {
                 if let RoomScreenTooltipActions::HoverInReactionButton {
                     widget_rect,
                     reaction_data,
-                } = reaction_list.hovered_in(actions)
-                {
-                    let Some(_tl_state) = self.tl_state.as_ref() else {
-                        continue;
-                    };
-                    let tooltip_text_arr: Vec<String> = reaction_data
-                        .reaction_senders
+                } = reaction_list.hovered_in(actions) {
+                    let Some(_tl_state) = self.tl_state.as_ref() else { continue };
+                    let tooltip_text_arr: Vec<String> = reaction_data.reaction_senders
                         .iter()
                         .map(|(sender, _react_info)| {
                             user_profile_cache::get_user_display_name_for_room(
@@ -4019,13 +847,10 @@ impl Widget for RoomScreen {
                         })
                         .collect();
 
-                    let mut tooltip_text = utils::human_readable_list(
-                        &tooltip_text_arr,
-                        MAX_VISIBLE_AVATARS_IN_READ_RECEIPT,
-                    );
+                    let mut tooltip_text = utils::human_readable_list(&tooltip_text_arr, MAX_VISIBLE_AVATARS_IN_READ_RECEIPT);
                     tooltip_text.push_str(&format!(" reacted with: {}", reaction_data.reaction));
                     cx.widget_action(
-                        room_screen_widget_uid,
+                        room_screen_widget_uid, 
                         TooltipAction::HoverIn {
                             text: tooltip_text,
                             widget_rect,
@@ -4039,23 +864,24 @@ impl Widget for RoomScreen {
 
                 // Handle a hover-out action on the reaction list or avatar row.
                 let avatar_row_ref = wr.avatar_row(cx, ids!(avatar_row));
-                if reaction_list.hovered_out(actions) || avatar_row_ref.hover_out(actions) {
-                    cx.widget_action(room_screen_widget_uid, TooltipAction::HoverOut);
+                if reaction_list.hovered_out(actions)
+                    || avatar_row_ref.hover_out(actions)
+                {
+                    cx.widget_action(
+                        room_screen_widget_uid, 
+                        TooltipAction::HoverOut,
+                    );
                 }
 
                 // Handle a hover-in action on the avatar row: show a read receipts summary.
                 if let RoomScreenTooltipActions::HoverInReadReceipt {
                     widget_rect,
-                    read_receipts,
-                } = avatar_row_ref.hover_in(actions)
-                {
-                    let Some(room_id) = self.room_id() else {
-                        return;
-                    };
-                    let tooltip_text =
-                        room_read_receipt::populate_tooltip(cx, read_receipts, room_id);
+                    read_receipts
+                } = avatar_row_ref.hover_in(actions) {
+                    let Some(room_id) = self.room_id() else { return; };
+                    let tooltip_text= room_read_receipt::populate_tooltip(cx, read_receipts, room_id);
                     cx.widget_action(
-                        room_screen_widget_uid,
+                        room_screen_widget_uid, 
                         TooltipAction::HoverIn {
                             text: tooltip_text,
                             widget_rect,
@@ -4068,124 +894,40 @@ impl Widget for RoomScreen {
                 }
 
                 // Handle an image within the message being clicked.
-                let content_message = wr.text_or_image(cx, ids!(content.message));
-                if let TextOrImageAction::Clicked(mxc_uri) = actions
-                    .find_widget_action(content_message.widget_uid())
-                    .cast()
-                {
+                let content_message = wr.text_or_image(cx, ids!(content.message.image));
+                if let TextOrImageAction::Clicked(mxc_uri) = actions.find_widget_action(content_message.widget_uid()).cast() {
                     let texture = content_message.get_texture(cx);
-                    self.handle_image_click(cx, mxc_uri, texture, index);
+                    self.handle_image_click(
+                        cx,
+                        mxc_uri,
+                        texture,
+                        index,
+                    );
                     continue;
-                }
-
-                let edited_indicator = wr.edited_indicator(cx, ids!(profile.edited_indicator));
-                if let EditedIndicatorAction::ShowEditHistory {
-                    event_id,
-                    loaded_target_metadata,
-                } = actions
-                    .find_widget_action(edited_indicator.widget_uid())
-                    .cast()
-                {
-                    if let Some(tl) = self.tl_state.as_ref() {
-                        let timeline_kind = tl.kind.clone();
-                        self.telegram_message_edit_history_retry_event_id = Some(event_id.clone());
-                        self.telegram_message_edit_history_retry_timeline_kind =
-                            Some(timeline_kind.clone());
-                        submit_async_request(MatrixRequest::FetchEditHistory {
-                            timeline_kind,
-                            event_id: event_id.clone(),
-                        });
-                        let metadata_note = loaded_target_metadata
-                            .as_ref()
-                            .map(loaded_edit_history_target_metadata_label)
-                            .unwrap_or_else(|| {
-                                "Loaded edit target metadata unavailable.".to_string()
-                            });
-                        self.show_telegram_message_edit_history_loading(
-                            cx,
-                            &event_id,
-                            &metadata_note,
-                        );
-                        enqueue_popup_notification(
-                            format!(
-                                "Edit history lookup started for {event_id}. {metadata_note} {MESSAGE_EDIT_HISTORY_COMPACT_LABEL}"
-                            ),
-                            PopupKind::Info,
-                            Some(3.0),
-                        );
-                    }
                 }
 
                 // Handle the invite_user_button (in a SmallStateEvent) being clicked.
                 if wr.button(cx, ids!(invite_user_button)).clicked(actions) {
-                    let Some(tl) = self.tl_state.as_ref() else {
-                        continue;
-                    };
-                    if let Some(event_tl_item) =
-                        tl.items.get(index).and_then(|item| item.as_event())
-                    {
+                    let Some(tl) = self.tl_state.as_ref() else { continue };
+                    if let Some(event_tl_item) = tl.items.get(index).and_then(|item| item.as_event()) {
                         let user_id = event_tl_item.sender().to_owned();
-                        let username = if let TimelineDetails::Ready(profile) =
-                            event_tl_item.sender_profile()
-                        {
+                        let username = if let TimelineDetails::Ready(profile) = event_tl_item.sender_profile() {
                             profile.display_name.as_deref().unwrap_or(user_id.as_str())
                         } else {
                             user_id.as_str()
                         };
                         let room_id = tl.kind.room_id().clone();
-                        let username_for_cancel = username.to_string();
-                        let username_for_status = username.to_string();
                         let content = ConfirmationModalContent {
                             title_text: "Send Invitation".into(),
-                            body_text: format!(
-                                "Invite {username} to this room? {TIMELINE_INVITE_CONFIRMATION_COMPACT_LABEL}"
-                            )
-                            .into(),
+                            body_text: format!("Are you sure you want to invite {username} to this room?").into(),
                             accept_button_text: Some("Invite".into()),
-                            cancel_button_text: Some("Cancel".into()),
                             on_accept_clicked: Some(Box::new(move |_cx| {
                                 submit_async_request(MatrixRequest::InviteUser { room_id, user_id });
                             })),
-                            on_cancel_clicked: Some(Box::new(move |_cx| {
-                                enqueue_popup_notification(
-                                    format!(
-                                        "Timeline invite canceled for {username_for_cancel}. {TIMELINE_INVITE_CONFIRMATION_COMPACT_LABEL}"
-                                    ),
-                                    PopupKind::Info,
-                                    Some(3.0),
-                                );
-                            })),
+                            ..Default::default()
                         };
-                        enqueue_popup_notification(
-                            format!(
-                                "Timeline invite confirmation opened for {username_for_status}. {TIMELINE_INVITE_CONFIRMATION_COMPACT_LABEL}"
-                            ),
-                            PopupKind::Info,
-                            Some(3.0),
-                        );
-                        cx.action(InviteAction::ShowInviteConfirmationModal(RefCell::new(
-                            Some(content),
-                        )));
+                        cx.action(InviteAction::ShowInviteConfirmationModal(RefCell::new(Some(content))));
                     }
-                }
-
-                if wr
-                    .button(cx, ids!(hepta_actions.inspect_button))
-                    .clicked(actions)
-                {
-                    self.handle_hepta_inspect_event(cx, index);
-                }
-                if wr
-                    .button(cx, ids!(hepta_actions.approve_button))
-                    .clicked(actions)
-                {
-                    self.handle_hepta_approval_decision(cx, index, true);
-                }
-                if wr
-                    .button(cx, ids!(hepta_actions.reject_button))
-                    .clicked(actions)
-                {
-                    self.handle_hepta_approval_decision(cx, index, false);
                 }
             }
 
@@ -4193,276 +935,21 @@ impl Widget for RoomScreen {
 
             for action in actions {
                 // Handle actions related to restoring the previously-saved state of rooms.
-                if let Some(AppStateAction::RoomLoadedSuccessfully { room_name_id, .. }) =
-                    action.downcast_ref()
-                {
-                    if self
-                        .room_name_id
-                        .as_ref()
-                        .is_some_and(|rn| rn.room_id() == room_name_id.room_id())
-                    {
+                if let Some(AppStateAction::RoomLoadedSuccessfully { room_name_id, ..}) = action.downcast_ref() {
+                    if self.room_name_id.as_ref().is_some_and(|rn| rn.room_id() == room_name_id.room_id()) {
                         // `set_displayed_room()` does nothing if the room_name_id is unchanged, so we clear it first.
                         self.room_name_id = None;
-                        let thread_root_event_id = self
-                            .timeline_kind
-                            .as_ref()
+                        let thread_root_event_id = self.timeline_kind.as_ref()
                             .and_then(|k| k.thread_root_event_id().cloned());
                         self.set_displayed_room(cx, room_name_id, thread_root_event_id);
                         return;
                     }
                 }
 
-                if let Some(matrix_link_join_action) = action.downcast_ref::<MatrixLinkJoinAction>()
-                {
-                    match matrix_link_join_action {
-                        MatrixLinkJoinAction::Submitted {
-                            room_or_alias_id,
-                            target,
-                            via_count,
-                            event_id_label,
-                        } => {
-                            self.show_telegram_matrix_link_join_submitted(
-                                cx,
-                                room_or_alias_id.clone(),
-                                target.clone(),
-                                *via_count,
-                                event_id_label.clone(),
-                            );
-                        }
-                        MatrixLinkJoinAction::Canceled { target } => {
-                            self.show_telegram_matrix_link_join_canceled(cx, target.clone());
-                        }
-                    }
-                    continue;
-                }
-
-                if let Some(matrix_link_knock_action) =
-                    action.downcast_ref::<MatrixLinkKnockAction>()
-                {
-                    match matrix_link_knock_action {
-                        MatrixLinkKnockAction::Submitted {
-                            room_or_alias_id,
-                            target,
-                            via_count,
-                            event_id_label,
-                        } => {
-                            self.show_telegram_matrix_link_knock_submitted(
-                                cx,
-                                room_or_alias_id.clone(),
-                                target.clone(),
-                                *via_count,
-                                event_id_label.clone(),
-                            );
-                        }
-                        MatrixLinkKnockAction::Canceled { target } => {
-                            self.show_telegram_matrix_link_knock_canceled(cx, target.clone());
-                        }
-                    }
-                    continue;
-                }
-
-                if let Some(matrix_link_invite_action) =
-                    action.downcast_ref::<MatrixLinkInviteAction>()
-                {
-                    match matrix_link_invite_action {
-                        MatrixLinkInviteAction::Submitted {
-                            room_id,
-                            user_id,
-                            target,
-                            via_count,
-                        } => {
-                            self.show_telegram_matrix_link_invite_submitted(
-                                cx,
-                                room_id.clone(),
-                                user_id.clone(),
-                                target.clone(),
-                                *via_count,
-                            );
-                        }
-                        MatrixLinkInviteAction::Canceled { target } => {
-                            self.show_telegram_matrix_link_invite_canceled(cx, target.clone());
-                        }
-                    }
-                    continue;
-                }
-
-                if let Some(MatrixLinkJoinResultAction::Joined {
-                    room_or_alias_id,
-                    server_names,
-                    room_id,
-                }) = action.downcast_ref()
-                {
-                    let should_handle = self
-                        .telegram_matrix_link_join_pending_room_or_alias_id
-                        .as_ref()
-                        .is_some_and(|pending| pending == room_or_alias_id)
-                        || self
-                            .telegram_matrix_link_join_retry_room_or_alias_id
-                            .as_ref()
-                            .is_some_and(|retry| retry == room_or_alias_id);
-                    if should_handle {
-                        self.show_telegram_matrix_link_join_result(
-                            cx,
-                            room_or_alias_id.clone(),
-                            server_names.clone(),
-                            Some(room_id.clone()),
-                            None,
-                        );
-                        continue;
-                    }
-                }
-                if let Some(MatrixLinkJoinResultAction::Failed {
-                    room_or_alias_id,
-                    server_names,
-                    error,
-                }) = action.downcast_ref()
-                {
-                    let should_handle = self
-                        .telegram_matrix_link_join_pending_room_or_alias_id
-                        .as_ref()
-                        .is_some_and(|pending| pending == room_or_alias_id)
-                        || self
-                            .telegram_matrix_link_join_retry_room_or_alias_id
-                            .as_ref()
-                            .is_some_and(|retry| retry == room_or_alias_id);
-                    if should_handle {
-                        self.show_telegram_matrix_link_join_result(
-                            cx,
-                            room_or_alias_id.clone(),
-                            server_names.clone(),
-                            None,
-                            Some(error.to_string()),
-                        );
-                        continue;
-                    }
-                }
-                if let Some(KnockResultAction::Knocked {
-                    room_or_alias_id,
-                    room,
-                }) = action.downcast_ref()
-                {
-                    let retry_matches = self
-                        .telegram_matrix_link_knock_retry_room_or_alias_id
-                        .as_ref()
-                        .is_some_and(|retry| retry == room_or_alias_id);
-                    let should_handle = retry_matches
-                        || self
-                            .telegram_matrix_link_knock_pending_room_or_alias_id
-                            .as_ref()
-                            .is_some_and(|pending| pending == room_or_alias_id);
-                    if should_handle {
-                        let server_names = if retry_matches {
-                            self.telegram_matrix_link_knock_retry_via_servers.clone()
-                        } else {
-                            self.telegram_matrix_link_knock_via_servers.clone()
-                        };
-                        self.show_telegram_matrix_link_knock_result(
-                            cx,
-                            room_or_alias_id.clone(),
-                            server_names,
-                            Some(room.room_id().to_owned()),
-                            None,
-                        );
-                        continue;
-                    }
-                }
-                if let Some(KnockResultAction::Failed {
-                    room_or_alias_id,
-                    error,
-                }) = action.downcast_ref()
-                {
-                    let retry_matches = self
-                        .telegram_matrix_link_knock_retry_room_or_alias_id
-                        .as_ref()
-                        .is_some_and(|retry| retry == room_or_alias_id);
-                    let should_handle = retry_matches
-                        || self
-                            .telegram_matrix_link_knock_pending_room_or_alias_id
-                            .as_ref()
-                            .is_some_and(|pending| pending == room_or_alias_id);
-                    if should_handle {
-                        let server_names = if retry_matches {
-                            self.telegram_matrix_link_knock_retry_via_servers.clone()
-                        } else {
-                            self.telegram_matrix_link_knock_via_servers.clone()
-                        };
-                        self.show_telegram_matrix_link_knock_result(
-                            cx,
-                            room_or_alias_id.clone(),
-                            server_names,
-                            None,
-                            Some(error.to_string()),
-                        );
-                        continue;
-                    }
-                }
-
-                if let Some(InviteResultAction::Sent { room_id, user_id }) = action.downcast_ref() {
-                    let retry_matches = self
-                        .telegram_matrix_link_invite_retry_room_id
-                        .as_ref()
-                        .zip(self.telegram_matrix_link_invite_retry_user_id.as_ref())
-                        .is_some_and(|(retry_room, retry_user)| {
-                            retry_room == room_id && retry_user == user_id
-                        });
-                    let should_handle = retry_matches
-                        || self
-                            .telegram_matrix_link_invite_pending_room_id
-                            .as_ref()
-                            .zip(self.telegram_matrix_link_invite_pending_user_id.as_ref())
-                            .is_some_and(|(pending_room, pending_user)| {
-                                pending_room == room_id && pending_user == user_id
-                            });
-                    if should_handle {
-                        self.show_telegram_matrix_link_invite_result(
-                            cx,
-                            room_id.clone(),
-                            user_id.clone(),
-                            None,
-                        );
-                        continue;
-                    }
-                }
-                if let Some(InviteResultAction::Failed {
-                    room_id,
-                    user_id,
-                    error,
-                }) = action.downcast_ref()
-                {
-                    let retry_matches = self
-                        .telegram_matrix_link_invite_retry_room_id
-                        .as_ref()
-                        .zip(self.telegram_matrix_link_invite_retry_user_id.as_ref())
-                        .is_some_and(|(retry_room, retry_user)| {
-                            retry_room == room_id && retry_user == user_id
-                        });
-                    let should_handle = retry_matches
-                        || self
-                            .telegram_matrix_link_invite_pending_room_id
-                            .as_ref()
-                            .zip(self.telegram_matrix_link_invite_pending_user_id.as_ref())
-                            .is_some_and(|(pending_room, pending_user)| {
-                                pending_room == room_id && pending_user == user_id
-                            });
-                    if should_handle {
-                        self.show_telegram_matrix_link_invite_result(
-                            cx,
-                            room_id.clone(),
-                            user_id.clone(),
-                            Some(error.to_string()),
-                        );
-                        continue;
-                    }
-                }
-
                 // Handle InviteResultAction to show popup notifications.
                 if let Some(InviteResultAction::Sent { room_id, .. }) = action.downcast_ref() {
                     // Only handle if this is for the current room.
-                    if self
-                        .room_name_id
-                        .as_ref()
-                        .is_some_and(|rn| rn.room_id() == room_id)
-                    {
+                    if self.room_name_id.as_ref().is_some_and(|rn| rn.room_id() == room_id) {
                         enqueue_popup_notification(
                             "Sent invite successfully.",
                             PopupKind::Success,
@@ -4470,15 +957,9 @@ impl Widget for RoomScreen {
                         );
                     }
                 }
-                if let Some(InviteResultAction::Failed { room_id, error, .. }) =
-                    action.downcast_ref()
-                {
+                if let Some(InviteResultAction::Failed { room_id, error, .. }) = action.downcast_ref() {
                     // Only handle if this is for the current room.
-                    if self
-                        .room_name_id
-                        .as_ref()
-                        .is_some_and(|rn| rn.room_id() == room_id)
-                    {
+                    if self.room_name_id.as_ref().is_some_and(|rn| rn.room_id() == room_id) {
                         enqueue_popup_notification(
                             format!("Failed to send invite.\n\nError: {error}"),
                             PopupKind::Error,
@@ -4487,29 +968,33 @@ impl Widget for RoomScreen {
                     }
                 }
 
-                // When transitioning from offline to online, clear stale `Requested`/`Failed`
-                // entries from per-room caches so they can be re-fetched.
+                // When transitioning from offline to online, abort all pending downloads
+                // and clear stale `Requested`/`Failed` entries from per-room caches so they can be re-fetched.
                 if let Some(RoomsListHeaderAction::StateUpdate(new_state)) = action.downcast_ref() {
-                    if !matches!(new_state, State::Offline) {
+                    if matches!(new_state, State::Offline) {
                         if let Some(tl) = self.tl_state.as_mut() {
-                            tl.media_cache.clear_all_pending_and_failed_requests();
-                            tl.link_preview_cache
-                                .clear_all_pending_and_failed_requests();
+                            // Tell the worker to abort every in-flight download
+                            // for this room before we drop them from local state.
+                            for entry in tl.pending_downloads.drain(..) {
+                                submit_async_request(MatrixRequest::CancelDownload(entry.mxc));
+                            }
+                            self.view.portal_list(cx, ids!(timeline.list)).redraw(cx);
                         }
+                    } else if let Some(tl) = self.tl_state.as_mut() {
+                        tl.media_cache.clear_all_pending_and_failed_requests();
+                        tl.link_preview_cache.clear_all_pending_and_failed_requests();
+                        tl.content_drawn_since_last_update.clear();
+                        self.view.portal_list(cx, ids!(timeline.list)).redraw(cx);
                     }
                     continue;
                 }
 
                 // Handle the highlight animation for a message.
-                let Some(tl) = self.tl_state.as_mut() else {
-                    continue;
-                };
-                if let MessageHighlightAnimationState::Pending { item_id } =
-                    tl.message_highlight_animation_state
-                {
+                let Some(tl) = self.tl_state.as_mut() else { continue };
+                if let MessageHighlightAnimationState::Pending { item_id } = tl.message_highlight_animation_state {
                     if portal_list.smooth_scroll_reached(actions) {
                         cx.widget_action(
-                            room_screen_widget_uid,
+                            room_screen_widget_uid, 
                             MessageAction::HighlightMessage(item_id),
                         );
                         tl.message_highlight_animation_state = MessageHighlightAnimationState::Off;
@@ -4527,35 +1012,28 @@ impl Widget for RoomScreen {
             }
             */
 
-            // Set visibility of loading message banner based of pagination logic
-            self.send_pagination_request_based_on_scroll_pos(cx, actions, &portal_list);
+            // Back paginate the timeline when the start of the timeline comes into view.
+            self.send_pagination_request_on_reached_start(cx, actions, &portal_list);
             // Handle sending any read receipts for the current logged-in user.
             self.send_user_read_receipts_based_on_scroll_pos(cx, actions, &portal_list);
 
             // Handle the jump to bottom button: update its visibility, and handle clicks.
-            self.jump_to_bottom_button(cx, ids!(jump_to_bottom_button))
-                .update_from_actions(cx, &portal_list, actions);
+            self.jump_to_bottom_button(cx, ids!(jump_to_bottom_button)).update_from_actions(
+                cx,
+                &portal_list,
+                actions,
+            );
         }
 
         // Currently, a Signal event is only used to tell this widget:
         // 1. to check if the room has been loaded from the homeserver yet, or
         // 2. that its timeline events have been updated in the background.
         if let Event::Signal = event {
-            if self.room_name_id.is_some() {
-                self.refresh_telegram_room_action_details(cx);
-            }
-
-            if let (false, Some(room_name_id), true) = (
-                self.is_loaded,
-                self.room_name_id.as_ref(),
-                cx.has_global::<RoomsListRef>(),
-            ) {
+            if let (false, Some(room_name_id), true) = (self.is_loaded, self.room_name_id.as_ref(), cx.has_global::<RoomsListRef>()) {
                 let rooms_list_ref = cx.get_global::<RoomsListRef>();
                 if rooms_list_ref.is_room_loaded(room_name_id.room_id()) {
                     let room_name_clone = room_name_id.clone();
-                    let thread_root_event_id = self
-                        .timeline_kind
-                        .as_ref()
+                    let thread_root_event_id = self.timeline_kind.as_ref()
                         .and_then(|k| k.thread_root_event_id().cloned());
                     // This room has been loaded now, so we call `set_displayed_room()`.
                     // We first clear the `room_name_id`, otherwise that function will do nothing.
@@ -4575,9 +1053,6 @@ impl Widget for RoomScreen {
             }
 
             self.process_timeline_updates(cx, &portal_list);
-            if self.telegram_message_search_visible {
-                self.refresh_telegram_message_search_matches(cx);
-            }
 
             // Ideally we would do this elsewhere on the main thread, because it's not room-specific,
             // but it doesn't hurt to do it here.
@@ -4595,17 +1070,39 @@ impl Widget for RoomScreen {
         //
         let is_interactive_hit = utils::is_interactive_hit_event(event);
         let is_pane_shown: bool;
-        if loading_pane.is_currently_shown(cx) {
+        let mut close_room_input_popup_menu_after_forwarding = false;
+        if room_input_popup_menu.is_open() {
+            if event.back_pressed() || matches!(event, Event::KeyUp(KeyEvent { key_code: KeyCode::Escape, .. })) {
+                room_input_popup_menu.close(cx);
+                is_pane_shown = true;
+            }
+            else if is_interactive_hit {
+                if room_input_popup_menu.is_event_within_popup_menu(cx, event) {
+                    is_pane_shown = true;
+                    room_input_popup_menu.handle_event(cx, event, scope);
+                } else {
+                    // Let outside clicks, hovers, and mouse moves fall through to the underlying UI.
+                    close_room_input_popup_menu_after_forwarding =
+                        room_input_popup_menu.should_dismiss_for_outside_event(cx, event);
+                    is_pane_shown = false;
+                }
+            } else {
+                is_pane_shown = false;
+            }
+        }
+        else if loading_pane.is_currently_shown(cx) {
             is_pane_shown = true;
             if is_interactive_hit {
                 loading_pane.handle_event(cx, event, scope);
             }
-        } else if user_profile_sliding_pane.is_currently_shown(cx) {
+        }
+        else if user_profile_sliding_pane.is_currently_shown(cx) {
             is_pane_shown = true;
             if is_interactive_hit {
                 user_profile_sliding_pane.handle_event(cx, event, scope);
             }
-        } else {
+        }
+        else {
             is_pane_shown = false;
         }
 
@@ -4615,87 +1112,39 @@ impl Widget for RoomScreen {
         //       so the only thing we'd need here is the conditional below.
 
         if !is_pane_shown || !is_interactive_hit {
-            // Create a Scope with RoomScreenProps containing the room members.
-            // This scope is needed by child widgets like MentionableTextInput during event handling.
-            let room_props = if let Some(tl) = self.tl_state.as_ref() {
-                let room_id = tl.kind.room_id().clone();
-                let room_members = tl.room_members.clone();
-
-                // Fetch room data once to avoid duplicate expensive lookups
-                let (room_display_name, room_avatar_url) = get_client()
-                    .and_then(|client| client.get_room(&room_id))
-                    .map(|room| {
-                        (
-                            room.cached_display_name().unwrap_or(RoomDisplayName::Empty),
-                            room.avatar_url(),
-                        )
-                    })
-                    .unwrap_or((RoomDisplayName::Empty, None));
-
-                RoomScreenProps {
-                    room_screen_widget_uid,
-                    room_name_id: RoomNameId::new(room_display_name, room_id),
-                    timeline_kind: tl.kind.clone(),
-                    room_members,
-                    room_avatar_url,
-                }
-            } else if let Some(room_name) = &self.room_name_id {
-                // Fallback case: we have a room_name but no tl_state yet
-                RoomScreenProps {
-                    room_screen_widget_uid,
-                    room_name_id: room_name.clone(),
-                    timeline_kind: self
-                        .timeline_kind
-                        .clone()
-                        .expect("BUG: room_name_id was set but timeline_kind was missing"),
-                    room_members: None,
-                    room_avatar_url: None,
-                }
-            } else {
-                // No room selected yet, skip event handling that requires room context
-                if !is_pane_shown || !is_interactive_hit {
-                    return;
-                }
-                log!(
-                    "RoomScreen handling event with no room_name_id and no tl_state, skipping room-dependent event handling"
-                );
-                // Use a dummy room props for non-room-specific events
-                let room_id = owned_room_id!("!dummy:matrix.org");
-                RoomScreenProps {
-                    room_screen_widget_uid,
-                    room_name_id: RoomNameId::empty(room_id.clone()),
-                    timeline_kind: TimelineKind::MainRoom { room_id },
-                    room_members: None,
-                    room_avatar_url: None,
-                }
-            };
-            let mut room_scope = Scope::with_props(&room_props);
-
             // Forward the event to the inner timeline view, but capture any actions it produces
             // such that we can handle the ones relevant to only THIS RoomScreen widget right here and now,
             // ensuring they are not mistakenly handled by other RoomScreen widget instances.
-            let mut actions_generated_within_this_room_screen =
-                cx.capture_actions(|cx| self.view.handle_event(cx, event, &mut room_scope));
+            let mut actions_generated_within_this_room_screen = cx.capture_actions(|cx|
+                self.view.handle_event(cx, event, &mut Scope::empty())
+            );
             // Here, we handle and remove any general actions that are relevant to only this RoomScreen.
             // Removing the handled actions ensures they are not mistakenly handled by other RoomScreen widget instances.
             actions_generated_within_this_room_screen.retain(|action| {
-                if self.handle_link_clicked(cx, action, &user_profile_sliding_pane, &portal_list) {
+                if self.handle_link_clicked(cx, action, &user_profile_sliding_pane) {
                     return false;
                 }
 
+                // Handle actions related to the room input popup menu.
+                match action.as_widget_action().cast() {
+                    RoomInputPopupMenuAction::None => {}
+                    room_popup_menu_action => {
+                        self.handle_room_input_popup_menu_action(cx, room_popup_menu_action);
+                        return false;
+                    }
+                }
+
                 // Handle the action that requests to show the user profile sliding pane.
-                if let ShowUserProfileAction::ShowUserProfile(profile_and_room_id) =
-                    action.as_widget_action().cast()
-                {
+                if let ShowUserProfileAction::ShowUserProfile(profile_and_room_id) = action.as_widget_action().cast() {
                     self.show_user_profile(
                         cx,
                         &user_profile_sliding_pane,
                         UserProfilePaneInfo {
                             profile_and_room_id,
-                            room_name: self
-                                .room_name_id
-                                .as_ref()
-                                .map_or_else(|| UNNAMED_ROOM.to_string(), |r| r.to_string()),
+                            room_name: self.room_name_id.as_ref().map_or_else(
+                                || UNNAMED_ROOM.to_string(),
+                                |r| r.to_string(),
+                            ),
                             room_member: None,
                         },
                     );
@@ -4743,23 +1192,25 @@ impl Widget for RoomScreen {
             });
             // Add back any unhandled actions to the global action list.
             cx.extend_actions(actions_generated_within_this_room_screen);
+
+            if close_room_input_popup_menu_after_forwarding {
+                let room_input_popup_menu =
+                    self.room_input_popup_menu(cx, ids!(room_input_popup_menu));
+                if room_input_popup_menu.is_open() {
+                    room_input_popup_menu.close(cx);
+                }
+            }
         }
     }
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
-        if self.is_current_hepta_fixture_workspace() {
-            self.apply_hepta_fixture_timeline_visibility(cx, true);
-            return self.view.draw_walk(cx, scope, walk);
-        }
-
         // If the room isn't loaded yet, we show the restore status label only.
         if !self.is_loaded {
             let Some(room_name) = &self.room_name_id else {
                 // No room selected yet, nothing to show.
                 return DrawStep::done();
             };
-            let mut restore_status_view =
-                self.view.restore_status_view(cx, ids!(restore_status_view));
+            let mut restore_status_view = self.view.restore_status_view(cx, ids!(restore_status_view));
             restore_status_view.set_content(cx, self.all_rooms_loaded, room_name);
             return restore_status_view.draw(cx, scope);
         }
@@ -4769,14 +1220,13 @@ impl Widget for RoomScreen {
             return DrawStep::done();
         }
 
+
         let room_screen_widget_uid = self.widget_uid();
         while let Some(subview) = self.view.draw_walk(cx, scope, walk).step() {
             // Here, we only need to handle drawing the portal list.
             let portal_list_ref = subview.as_portal_list();
             let Some(mut list_ref) = portal_list_ref.borrow_mut() else {
-                error!(
-                    "!!! RoomScreen::draw_walk(): BUG: expected a PortalList widget, but got something else"
-                );
+                error!("!!! RoomScreen::draw_walk(): BUG: expected a PortalList widget, but got something else");
                 continue;
             };
             let Some(tl_state) = self.tl_state.as_mut() else {
@@ -4814,18 +1264,13 @@ impl Widget for RoomScreen {
                                     && msg_like_content.thread_root.is_some()
                                 {
                                     // Hide threaded replies from the main room timeline UI.
-                                    (
-                                        list.item(cx, item_id, id!(Empty)),
-                                        ItemDrawnStatus::both_drawn(),
-                                    )
+                                    (list.item(cx, item_id, id!(Empty)), ItemDrawnStatus::both_drawn())
                                 } else {
                                     match &msg_like_content.kind {
                                         MsgLikeKind::Message(_)
                                         | MsgLikeKind::Sticker(_)
-                                        | MsgLikeKind::Redacted
-                                        | MsgLikeKind::Poll(_) => {
-                                            let prev_event =
-                                                tl_idx.checked_sub(1).and_then(|i| tl_items.get(i));
+                                        | MsgLikeKind::Redacted => {
+                                            let prev_event = tl_idx.checked_sub(1).and_then(|i| tl_items.get(i));
                                             populate_message_view(
                                                 cx,
                                                 list,
@@ -4840,46 +1285,40 @@ impl Widget for RoomScreen {
                                                 &mut tl_state.pending_thread_summary_fetches,
                                                 &tl_state.user_power,
                                                 &self.pinned_events,
+                                                &tl_state.pending_downloads,
+                                                &tl_state.expanded_reply_previews,
                                                 item_drawn_status,
                                                 room_screen_widget_uid,
                                             )
-                                        }
-                                        MsgLikeKind::UnableToDecrypt(utd) => {
-                                            populate_small_state_event(
-                                                cx,
-                                                list,
-                                                item_id,
-                                                &tl_state.kind,
-                                                event_tl_item,
-                                                utd,
-                                                item_drawn_status,
-                                            )
-                                        }
-                                        MsgLikeKind::LiveLocation(live_loc) => {
-                                            populate_small_state_event(
-                                                cx,
-                                                list,
-                                                item_id,
-                                                &tl_state.kind,
-                                                event_tl_item,
-                                                live_loc,
-                                                item_drawn_status,
-                                            )
-                                        }
-                                        MsgLikeKind::Other(other)
-                                            if is_hepta_event_type(
-                                                &other.event_type().to_string(),
-                                            ) =>
-                                        {
-                                            populate_hepta_event_card(
-                                                cx,
-                                                list,
-                                                item_id,
-                                                event_tl_item,
-                                                other,
-                                                item_drawn_status,
-                                            )
-                                        }
+                                        },
+                                        // TODO: properly implement `Poll` as a regular Message-like timeline item.
+                                        MsgLikeKind::Poll(poll_state) => populate_small_state_event(
+                                            cx,
+                                            list,
+                                            item_id,
+                                            &tl_state.kind,
+                                            event_tl_item,
+                                            poll_state,
+                                            item_drawn_status,
+                                        ),
+                                        MsgLikeKind::UnableToDecrypt(utd) => populate_small_state_event(
+                                            cx,
+                                            list,
+                                            item_id,
+                                            &tl_state.kind,
+                                            event_tl_item,
+                                            utd,
+                                            item_drawn_status,
+                                        ),
+                                        MsgLikeKind::LiveLocation(live_loc) => populate_small_state_event(
+                                            cx,
+                                            list,
+                                            item_id,
+                                            &tl_state.kind,
+                                            event_tl_item,
+                                            live_loc,
+                                            item_drawn_status,
+                                        ),
                                         MsgLikeKind::Other(other) => populate_small_state_event(
                                             cx,
                                             list,
@@ -4891,29 +1330,25 @@ impl Widget for RoomScreen {
                                         ),
                                     }
                                 }
-                            }
-                            TimelineItemContent::MembershipChange(membership_change) => {
-                                populate_small_state_event(
-                                    cx,
-                                    list,
-                                    item_id,
-                                    &tl_state.kind,
-                                    event_tl_item,
-                                    membership_change,
-                                    item_drawn_status,
-                                )
-                            }
-                            TimelineItemContent::ProfileChange(profile_change) => {
-                                populate_small_state_event(
-                                    cx,
-                                    list,
-                                    item_id,
-                                    &tl_state.kind,
-                                    event_tl_item,
-                                    profile_change,
-                                    item_drawn_status,
-                                )
-                            }
+                            },
+                            TimelineItemContent::MembershipChange(membership_change) => populate_small_state_event(
+                                cx,
+                                list,
+                                item_id,
+                                &tl_state.kind,
+                                event_tl_item,
+                                membership_change,
+                                item_drawn_status,
+                            ),
+                            TimelineItemContent::ProfileChange(profile_change) => populate_small_state_event(
+                                cx,
+                                list,
+                                item_id,
+                                &tl_state.kind,
+                                event_tl_item,
+                                profile_change,
+                                item_drawn_status,
+                            ),
                             TimelineItemContent::OtherState(other) => populate_small_state_event(
                                 cx,
                                 list,
@@ -4925,18 +1360,19 @@ impl Widget for RoomScreen {
                             ),
                             unhandled => {
                                 let item = list.item(cx, item_id, id!(SmallStateEvent));
-                                item.label(cx, ids!(content))
-                                    .set_text(cx, &format!("[Unsupported] {:?}", unhandled));
+                                item.label(cx, ids!(content)).set_text(cx, &format!("[Unsupported] {:?}", unhandled));
                                 (item, ItemDrawnStatus::both_drawn())
                             }
-                        },
+                        }
                         TimelineItemKind::Virtual(VirtualTimelineItem::DateDivider(millis)) => {
-                            let item = list.item(cx, item_id, id!(DateDivider));
-                            let text = unix_time_millis_to_datetime(*millis)
-                                // format the time as a shortened date (Sat, Sept 5, 2021)
-                                .map(|dt| format!("{}", dt.date_naive().format("%a %b %-d, %Y")))
-                                .unwrap_or_else(|| format!("{:?}", millis));
-                            item.label(cx, ids!(date)).set_text(cx, &text);
+                            let (item, existed) = list.item_with_existed(cx, item_id, id!(DateDivider));
+                            if !(existed && item_drawn_status.content_drawn) {
+                                let text = unix_time_millis_to_datetime(*millis)
+                                    // format the time as a shortened date (Sat, Sept 5, 2021)
+                                    .map(|dt| format!("{}", dt.date_naive().format("%a %b %-d, %Y")))
+                                    .unwrap_or_else(|| format!("{:?}", millis));
+                                item.label(cx, ids!(date)).set_text(cx, &text);
+                            }
                             (item, ItemDrawnStatus::both_drawn())
                         }
                         TimelineItemKind::Virtual(VirtualTimelineItem::ReadMarker) => {
@@ -4951,14 +1387,10 @@ impl Widget for RoomScreen {
 
                     // Now that we've drawn the item, add its index to the set of drawn items.
                     if item_new_draw_status.content_drawn {
-                        tl_state
-                            .content_drawn_since_last_update
-                            .insert(tl_idx..tl_idx + 1);
+                        tl_state.content_drawn_since_last_update.insert(tl_idx .. tl_idx + 1);
                     }
                     if item_new_draw_status.profile_drawn {
-                        tl_state
-                            .profile_drawn_since_last_update
-                            .insert(tl_idx..tl_idx + 1);
+                        tl_state.profile_drawn_since_last_update.insert(tl_idx .. tl_idx + 1);
                     }
                     item
                 };
@@ -4967,11 +1399,12 @@ impl Widget for RoomScreen {
 
             // If the list is not filling the viewport, we need to back paginate the timeline
             // until we have enough events items to fill the viewport.
-            if !tl_state.fully_paginated && !list.is_filling_viewport() {
-                log!(
-                    "Automatically paginating timeline to fill viewport for room {:?}",
-                    self.room_name_id
-                );
+            if !tl_state.fully_paginated
+                && !tl_state.is_paginating
+                && !list.is_filling_viewport()
+            {
+                log!("Automatically paginating timeline to fill viewport for room {:?}", self.room_name_id);
+                tl_state.is_paginating = true;
                 submit_async_request(MatrixRequest::PaginateTimeline {
                     timeline_kind: tl_state.kind.clone(),
                     num_events: 50,
@@ -4979,16 +1412,4398 @@ impl Widget for RoomScreen {
                 });
             }
         }
+
+        // If this RoomScreen was just drawn for the first time after being opened for
+        // a "Reply In Thread", then then focus on the text input in the RoomInputBar.
+        if self.focus_input_bar_on_show {
+            self.focus_input_bar_on_show = false;
+            self.view.room_input_bar(cx, ids!(room_input_bar)).set_key_focus(cx);
+        }
+
+        // After a reply preview is collapsed, the timeline portallist will have empty space at the top.
+        // We need to keep drawing it until it's filled.
+        if self.relayout_redraws_left > 0 {
+            self.relayout_redraws_left -= 1;
+            let (first_id, scroll) = {
+                let list = self.view.portal_list(cx, ids!(timeline.list));
+                (list.first_id(), list.scroll_position())
+            };
+            if first_id != self.relayout_last_first_id
+                || (scroll - self.relayout_last_scroll).abs() > 0.5
+            {
+                self.relayout_last_first_id = first_id;
+                self.relayout_last_scroll = scroll;
+                self.redraw(cx);
+            } else {
+                self.relayout_redraws_left = 0;
+            }
+        }
+
         DrawStep::done()
     }
 }
 
-include!("room_screen/impl_part_01a.rs");
-include!("room_screen/impl_part_01b.rs");
-include!("room_screen/impl_part_02a.rs");
-include!("room_screen/impl_part_02b.rs");
-include!("room_screen/after_impl_part_01a.rs");
-include!("room_screen/after_impl_part_01b.rs");
-include!("room_screen/after_impl_part_02.rs");
-include!("room_screen/after_impl_part_03a.rs");
-include!("room_screen/after_impl_part_03b.rs");
+impl RoomScreen {
+    fn room_id(&self) -> Option<&OwnedRoomId> {
+        self.room_name_id.as_ref().map(|r| r.room_id())
+    }
+
+    fn show_room_input_popup_menu(&mut self, cx: &mut Cx, button_rect: Rect) {
+        let popup_menu = self.room_input_popup_menu(cx, ids!(room_input_popup_menu));
+        let room_screen_rect = self.view(cx, ids!(room_screen_wrapper)).area().rect(cx);
+        let margin = Inset {
+            left: button_rect.pos.x - room_screen_rect.pos.x,
+            top: 0.0,
+            right: 0.0,
+            bottom: room_screen_rect.pos.y + room_screen_rect.size.y
+                - button_rect.pos.y
+                + 9.0
+        };
+
+        let mut main_content = popup_menu.view(cx, ids!(main_content));
+        script_apply_eval!(cx, main_content, {
+            margin: #(margin)
+        });
+        popup_menu.show(cx);
+        self.view.redraw(cx);
+    }
+
+    fn handle_room_input_popup_menu_action(
+        &mut self,
+        cx: &mut Cx,
+        action: RoomInputPopupMenuAction,
+    ) {
+        let room_input_bar = self.view.room_input_bar(cx, ids!(room_input_bar));
+        match action {
+            RoomInputPopupMenuAction::Show { button_rect } => {
+                self.show_room_input_popup_menu(cx, button_rect);
+            }
+            RoomInputPopupMenuAction::UploadPhotoOrVideo => {
+                let Some(timeline_kind) = self.timeline_kind.clone() else { return };
+                room_input_bar.open_photo_video_picker(cx, timeline_kind);
+            }
+            RoomInputPopupMenuAction::UploadFile => {
+                let Some(timeline_kind) = self.timeline_kind.clone() else { return };
+                room_input_bar.open_file_picker(cx, timeline_kind);
+            }
+            RoomInputPopupMenuAction::SendCurrentLocation => {
+                room_input_bar.show_current_location_preview(cx);
+            }
+            RoomInputPopupMenuAction::None => {}
+        }
+    }
+
+    /// Processes all pending background updates to the currently-shown timeline.
+    ///
+    /// Redraws this RoomScreen view if any updates were applied.
+    fn process_timeline_updates(&mut self, cx: &mut Cx, portal_list: &PortalListRef) {
+        let top_space = self.view(cx, ids!(top_space));
+        let jump_to_bottom_button = self.jump_to_bottom_button(cx, ids!(jump_to_bottom_button));
+        let curr_first_id = portal_list.first_id();
+        let ui = self.widget_uid();
+        let Some(tl) = self.tl_state.as_mut() else { return };
+
+        let mut done_loading = false;
+        let mut should_continue_backwards_pagination = false;
+        let mut typing_users = None;
+        let mut num_updates = 0;
+        while let Ok(update) = tl.update_receiver.try_recv() {
+            num_updates += 1;
+            match update {
+                TimelineUpdate::FirstUpdate { initial_items } => {
+                    tl.content_drawn_since_last_update.clear();
+                    tl.profile_drawn_since_last_update.clear();
+                    // Upon first showing a timeline, assume it's not fully paginated nor currently paginating.
+                    tl.fully_paginated = false;
+                    tl.is_paginating = false;
+                    // Set the portal list to the very bottom of the timeline.
+                    portal_list.set_first_id_and_scroll(initial_items.len().saturating_sub(1), 0.0);
+                    portal_list.set_tail_range(true);
+                    jump_to_bottom_button.update_visibility(cx, true);
+
+                    tl.items = initial_items;
+                    done_loading = true;
+                }
+                TimelineUpdate::NewItems { new_items, changed_indices, is_append, clear_cache } => {
+                    if new_items.is_empty() {
+                        if !tl.items.is_empty() {
+                            log!("process_timeline_updates(): timeline (had {} items) was cleared for room {}", tl.items.len(), tl.kind.room_id());
+                            // For now, we paginate a cleared timeline in order to be able to show something at least.
+                            // A proper solution would be what's described below, which would be to save a few event IDs
+                            // and then either focus on them (if we're not close to the end of the timeline)
+                            // or paginate backwards until we find them (only if we are close the end of the timeline).
+                            should_continue_backwards_pagination = true;
+                        }
+
+                        // If the bottom of the timeline (the last event) is visible, then we should
+                        // set the timeline to live mode.
+                        // If the bottom of the timeline is *not* visible, then we should
+                        // set the timeline to Focused mode.
+
+                        // TODO: Save the event IDs of the top 3 items before we apply this update,
+                        //       which indicates this timeline is in the process of being restored,
+                        //       such that we can jump back to that position later after applying this update.
+
+                        // TODO: here we need to re-build the timeline via TimelineBuilder
+                        //       and set the TimelineFocus to one of the above-saved event IDs.
+
+                        // TODO: the docs for `TimelineBuilder::with_focus()` claim that the timeline's focus mode
+                        //       can be changed after creation, but I do not see any methods to actually do that.
+                        //       <https://matrix-org.github.io/matrix-rust-sdk/matrix_sdk_ui/timeline/struct.TimelineBuilder.html#method.with_focus>
+                        //
+                        //       As such, we probably need to create a new async request enum variant
+                        //       that tells the background async task to build a new timeline
+                        //       (either in live mode or focused mode around one or more events)
+                        //       and then replaces the existing timeline in ALL_ROOMS_INFO with the new one.
+                    }
+
+                    let prior_items_changed = clear_cache || changed_indices.start <= curr_first_id;
+
+                    if new_items.len() == tl.items.len() {
+                        // log!("process_timeline_updates(): no jump necessary for updated timeline of same length: {}", items.len());
+                    }
+                    else if curr_first_id > new_items.len() {
+                        log!("process_timeline_updates(): jumping to bottom: curr_first_id {} is out of bounds for {} new items", curr_first_id, new_items.len());
+                        portal_list.set_first_id_and_scroll(new_items.len().saturating_sub(1), 0.0);
+                        portal_list.set_tail_range(true);
+                        jump_to_bottom_button.update_visibility(cx, true);
+                    }
+                    // If the prior items changed, we need to find the new index of an item that was visible
+                    // in the timeline viewport so that we can maintain the scroll position of that item,
+                    // which ensures that the timeline doesn't jump around unexpectedly and ruin the user's experience.
+                    else if let Some((curr_item_idx, new_item_idx, new_item_scroll, _event_id)) =
+                        prior_items_changed.then(||
+                            find_new_item_matching_current_item(cx, portal_list, curr_first_id, &tl.items, &new_items)
+                        )
+                        .flatten()
+                    {
+                        if curr_item_idx != new_item_idx {
+                            log!("process_timeline_updates(): jumping view from event index {curr_item_idx} to new index {new_item_idx}, scroll {new_item_scroll}, event ID {_event_id}");
+                            portal_list.set_first_id_and_scroll(new_item_idx, new_item_scroll);
+                            tl.prev_first_index = Some(new_item_idx);
+                            // Set scrolled_past_read_marker false when we jump to a new event
+                            tl.scrolled_past_read_marker = false;
+                            // Hide the tooltip when the timeline jumps, as a hover-out event won't occur.
+                            cx.widget_action(ui,  RoomScreenTooltipActions::HoverOut);
+                        }
+                    }
+                    //
+                    // TODO: after an (un)ignore user event, all timelines are cleared. Handle that here.
+                    //
+                    else {
+                        // warning!("!!! Couldn't find new event with matching ID for ANY event currently visible in the portal list");
+                    }
+
+                    // If new items were appended to the end of the timeline, show an unread messages badge on the jump to bottom button.
+                    if is_append && !portal_list.is_at_end() {
+                        // We only show unread message badges on the jump to bottom button for main room timelines,
+                        // because the matrix SDK doesn't currently support querying unread message counts for threads.
+                        if matches!(tl.kind, TimelineKind::MainRoom { .. }) {
+                            // Immediately show the unread badge with no count while we fetch the actual count in the background.
+                            jump_to_bottom_button.show_unread_message_badge(cx, UnreadMessageCount::Unknown);
+                            submit_async_request(MatrixRequest::GetNumberUnreadMessages{
+                                timeline_kind: tl.kind.clone(),
+                            });
+                        }
+                    }
+
+                    if prior_items_changed {
+                        // If this RoomScreen is showing the loading pane and has an ongoing backwards pagination request,
+                        // then we should update the status message in that loading pane
+                        // and then continue paginating backwards until we find the target event.
+                        // Note that we do this here because `clear_cache` will always be true if backwards pagination occurred.
+                        let loading_pane = self.view.loading_pane(cx, ids!(loading_pane));
+                        let mut loading_pane_state = loading_pane.take_state();
+                        if let LoadingPaneState::BackwardsPaginateUntilEvent {
+                            events_paginated, target_event_id, ..
+                        } = &mut loading_pane_state {
+                            *events_paginated += new_items.len().saturating_sub(tl.items.len());
+                            log!("While finding target event {target_event_id}, we have now loaded {events_paginated} messages...");
+                            // Here, we assume that we have not yet found the target event,
+                            // so we need to continue paginating backwards.
+                            // If the target event has already been found, it will be handled
+                            // in the `TargetEventFound` match arm below, which will set
+                            // `should_continue_backwards_pagination` to `false`.
+                            // So either way, it's okay to set this to `true` here.
+                            should_continue_backwards_pagination = true;
+                        }
+                        loading_pane.set_state(cx, loading_pane_state);
+                    }
+
+                    if clear_cache {
+                        tl.content_drawn_since_last_update.clear();
+                        tl.profile_drawn_since_last_update.clear();
+                        let has_more_history = !tl.fully_paginated;
+                        tl.fully_paginated = false;
+                        tl.is_paginating = false;
+                        // If the top of the timeline is still visible after getting new items,
+                        // go ahead and fetch more items proactively so that the user
+                        // doesn't have to do some kind of annoying scroll-up gesture again.
+                        if has_more_history && portal_list.first_id() <= 2 {
+                            should_continue_backwards_pagination = true;
+                        }
+                    } else {
+                        tl.content_drawn_since_last_update.remove(changed_indices.clone());
+                        tl.profile_drawn_since_last_update.remove(changed_indices.clone());
+                        // log!("process_timeline_updates(): changed_indices: {changed_indices:?}, items len: {}\ncontent drawn: {:#?}\nprofile drawn: {:#?}", items.len(), tl.content_drawn_since_last_update, tl.profile_drawn_since_last_update);
+                    }
+                    tl.items = new_items;
+                    done_loading = true;
+                }
+                TimelineUpdate::NewUnreadMessagesCount(unread_messages_count) => {
+                    // We only show unread message badges on the jump to bottom button for main room timelines,
+                    // because the matrix SDK doesn't currently support querying unread message counts for threads.
+                    if matches!(tl.kind, TimelineKind::MainRoom { .. }) {
+                        jump_to_bottom_button.show_unread_message_badge(cx, unread_messages_count);
+                    }
+                }
+                TimelineUpdate::TargetEventFound { target_event_id, index } => {
+                    // log!("Target event found in room {}: {target_event_id}, index: {index}", tl.kind.room_id());
+                    tl.request_sender.send_if_modified(|req| {
+                        req.backwards_paginate.retain(|r| &r.room_id != tl.kind.room_id());
+                        // no need to notify/wake-up all receivers for a completed request
+                        false
+                    });
+
+                    // sanity check: ensure the target event is in the timeline at the given `index`.
+                    let item = tl.items.get(index);
+                    let is_valid = item.is_some_and(|item|
+                        item.as_event()
+                            .is_some_and(|ev| ev.event_id() == Some(&target_event_id))
+                    );
+                    let loading_pane = self.view.loading_pane(cx, ids!(loading_pane));
+
+                    // log!("TargetEventFound: is_valid? {is_valid}. room {}, event {target_event_id}, index {index} of {}\n  --> item: {item:?}", tl.kind.room_id(), tl.items.len());
+                    if is_valid {
+                        // We successfully found the target event, so we can close the loading pane,
+                        // reset the loading panestate to `None`, and stop issuing backwards pagination requests.
+                        loading_pane.set_status(cx, "Successfully found replied-to message!");
+                        loading_pane.set_state(cx, LoadingPaneState::None);
+
+                        // NOTE: this code was copied from the `MessageAction::JumpToRelated` handler;
+                        //       we should deduplicate them at some point.
+                        let speed = 50.0;
+                        portal_list.smooth_scroll_to(cx, index, speed, None, 10.0);
+                        // start highlight animation.
+                        tl.message_highlight_animation_state = MessageHighlightAnimationState::Pending {
+                            item_id: index
+                        };
+                    }
+                    else {
+                        // Here, the target event was not found in the current timeline,
+                        // or we found it previously but it is no longer in the timeline (or has moved),
+                        // which means we encountered an error and are unable to jump to the target event.
+                        error!("Target event index {index} of {} is out of bounds for room {}", tl.items.len(), tl.kind.room_id());
+                        // Show this error in the loading pane, which should already be open.
+                        loading_pane.set_state(cx, LoadingPaneState::Error(
+                            String::from("Unable to find related message; it may have been deleted.")
+                        ));
+                    }
+
+                    should_continue_backwards_pagination = false;
+
+                    // redraw now before any other items get added to the timeline list.
+                    self.view.redraw(cx);
+                }
+                TimelineUpdate::PaginationRunning(direction) => {
+                    if direction == PaginationDirection::Backwards {
+                        tl.is_paginating = true;
+                        top_space.set_visible(cx, true);
+                        done_loading = false;
+                    } else {
+                        error!("Unexpected PaginationRunning update in the Forwards direction");
+                    }
+                }
+                TimelineUpdate::PaginationError { error, direction } => {
+                    error!("Pagination error ({direction}) in {:?}: {error:?}", self.room_name_id);
+                    let room_name = self.room_name_id.as_ref().map(|r| r.to_string());
+                    enqueue_popup_notification(
+                        utils::stringify_pagination_error(&error, room_name.as_deref().unwrap_or(UNNAMED_ROOM)),
+                        PopupKind::Error,
+                        Some(10.0),
+                    );
+                    tl.is_paginating = false;
+                    // We could automatically retry here after a failure, but it's not
+                    // really that valuable when the user can just try to scroll again.
+                    tl.pending_reached_start = false;
+                    done_loading = true;
+                }
+                TimelineUpdate::PaginationIdle { fully_paginated, direction } => {
+                    if direction == PaginationDirection::Backwards {
+                        // Don't set `done_loading` to `true` here, because we want to keep the top space visible
+                        // (with the "loading" message) until the corresponding `NewItems` update is received.
+                        tl.fully_paginated = fully_paginated;
+                        tl.is_paginating = false;
+                        if fully_paginated {
+                            tl.pending_reached_start = false;
+                            done_loading = true;
+                        } else if tl.pending_reached_start || portal_list.first_id() <= 2 {
+                            tl.pending_reached_start = false;
+                            should_continue_backwards_pagination = true;
+                        }
+                    } else {
+                        error!("Unexpected PaginationIdle update in the Forwards direction");
+                    }
+                }
+                TimelineUpdate::EventDetailsFetched {event_id, result } => {
+                    if let Err(_e) = result {
+                        error!("Failed to fetch details fetched for event {event_id} in room {}. Error: {_e:?}", tl.kind.room_id());
+                    }
+                    // Here, to be most efficient, we could redraw only the updated event,
+                    // but for now we just fall through and let the final `redraw()` call re-draw the whole timeline view.
+                }
+                TimelineUpdate::ThreadSummaryDetailsFetched {
+                    thread_root_event_id,
+                    timeline_item_index,
+                    num_replies,
+                    latest_reply_preview_text,
+                } => {
+                    tl.pending_thread_summary_fetches.remove(&thread_root_event_id);
+                    tl.fetched_thread_summaries.insert(
+                        thread_root_event_id.clone(),
+                        FetchedThreadSummary {
+                            num_replies,
+                            latest_reply_preview_text,
+                        },
+                    );
+                    let event_id_matches_at_index = tl.items
+                        .get(timeline_item_index)
+                        .and_then(|item| item.as_event())
+                        .and_then(|ev| ev.event_id())
+                        .is_some_and(|id| id == thread_root_event_id);
+                    if event_id_matches_at_index {
+                        tl.content_drawn_since_last_update
+                            .remove(timeline_item_index .. timeline_item_index + 1);
+                    } else {
+                        tl.content_drawn_since_last_update.clear();
+                    }
+                }
+                TimelineUpdate::RoomMembersSynced => {
+                    // log!("process_timeline_updates(): room members fetched for room {}", tl.kind.room_id());
+                    // Here, to be most efficient, we could redraw only the user avatars and names in the timeline,
+                    // but for now we just fall through and let the final `redraw()` call re-draw the whole timeline view.
+                }
+                TimelineUpdate::RoomMembersListFetched { members } => {
+                    // Store room members directly in TimelineUiState
+                    tl.room_members = Some(Arc::new(members));
+                    self.view.room_input_bar(cx, ids!(room_input_bar))
+                        .set_room_context(cx, ui, tl.kind.clone(), tl.room_members.clone());
+                },
+                TimelineUpdate::MediaFetched(_request) => {
+                    log!("process_timeline_updates(): media fetched for room {}", tl.kind.room_id());
+                    // Here, to be most efficient, we could redraw only the media items in the timeline,
+                    // but for now we just fall through and let the final `redraw()` call re-draw the whole timeline view.
+                }
+                TimelineUpdate::MessageEdited { timeline_event_item_id: timeline_event_id, result } => {
+                    self.view.room_input_bar(cx, ids!(room_input_bar))
+                        .handle_edit_result(cx, timeline_event_id, result);
+                }
+                TimelineUpdate::PinResult { result, pin, .. } => {
+                    let (message, auto_dismissal_duration, kind) = match &result {
+                        Ok(true) => (
+                            format!("Successfully {} event.", if pin { "pinned" } else { "unpinned" }),
+                            Some(4.0),
+                            PopupKind::Success
+                        ),
+                        Ok(false) => (
+                            format!("Message was already {}.", if pin { "pinned" } else { "unpinned" }),
+                            Some(4.0),
+                            PopupKind::Info
+                        ),
+                        Err(e) => (
+                            format!("Failed to {} event. Error: {e}", if pin { "pin" } else { "unpin" }),
+                            None,
+                            PopupKind::Error
+                        ),
+                    };
+                    enqueue_popup_notification(message, kind, auto_dismissal_duration);
+                }
+                TimelineUpdate::TypingUsers { users } => {
+                    // This update loop should be kept tight & fast, so all we do here is
+                    // save the list of typing users for future use after the loop exits.
+                    // Then, we "process" it later (by turning it into a string) after the
+                    // update loop has completed, which avoids unnecessary expensive work
+                    // if the list of typing users gets updated many times in a row.
+                    typing_users = Some(users);
+                }
+                TimelineUpdate::PinnedEvents(pinned_events) => {
+                    self.pinned_events = pinned_events;
+                    // We need to redraw any events that might have been pinned or unpinned
+                    // in order to have all events properly reflect their pinned state.
+                    // However, it's intractable to find exactly which events in the timeline
+                    // had a change in their pinned state, so we just clear all draw caches.
+                    tl.content_drawn_since_last_update.clear();
+                    tl.profile_drawn_since_last_update.clear();
+                }
+                TimelineUpdate::UserPowerLevels(user_power_levels) => {
+                    tl.user_power = user_power_levels;
+                    self.view.room_input_bar(cx, ids!(room_input_bar))
+                        .update_user_power_levels(cx, user_power_levels);
+                    // We need to redraw all events in order to reflect the new power levels,
+                    // e.g., for the message context menu to be correctly populated.
+                    tl.content_drawn_since_last_update.clear();
+                    tl.profile_drawn_since_last_update.clear();
+                }
+                TimelineUpdate::OwnUserReadReceipt(receipt) => {
+                    tl.latest_own_user_receipt = Some(receipt);
+                }
+                TimelineUpdate::Tombstoned(successor_room_details) => {
+                    self.view.room_input_bar(cx, ids!(room_input_bar))
+                        .update_tombstone_footer(cx, tl.kind.room_id(), Some(&successor_room_details));
+                    tl.tombstone_info = Some(successor_room_details);
+                }
+                TimelineUpdate::RoomEncrypted => {
+                    tl.is_encrypted = true;
+                    self.view.room_input_bar(cx, ids!(room_input_bar))
+                        .update_encryption_state(cx, true);
+                }
+                TimelineUpdate::LinkPreviewFetched => {
+                    // fall through to this item being redrawn
+                }
+                TimelineUpdate::FileUploadStarted { upload_id, file_name, in_reply_to, abort_handle } => {
+                    self.view.room_input_bar(cx, ids!(room_input_bar))
+                        .handle_file_upload_started(cx, upload_id, &file_name, in_reply_to.as_ref(), abort_handle);
+                }
+                TimelineUpdate::FileUploadUpdate { upload_id, current, total } => {
+                    self.view.room_input_bar(cx, ids!(room_input_bar))
+                        .set_upload_progress(cx, upload_id, current, total);
+                }
+                TimelineUpdate::FileUploadError { upload_id, error, upload, retryable } => {
+                    self.view.room_input_bar(cx, ids!(room_input_bar))
+                        .show_upload_error(cx, upload_id, &error, upload, retryable);
+                }
+                TimelineUpdate::FileUploadComplete { upload_id } => {
+                    self.view.room_input_bar(cx, ids!(room_input_bar))
+                        .hide_upload_progress(cx, upload_id);
+                }
+                TimelineUpdate::AttachmentDownloadFinished(mxc, result) => {
+                    if let Some(entry) = tl.pending_downloads.iter_mut().find(|p| p.mxc == mxc) {
+                        entry.state = match result {
+                            Ok(()) => PendingDownloadState::JustSucceeded,
+                            Err(_) => PendingDownloadState::JustFailed,
+                        };
+                    }
+                    portal_list.redraw(cx);
+                }
+                TimelineUpdate::AttachmentDownloadReset(mxc) => {
+                    tl.pending_downloads.retain(|p| p.mxc != mxc);
+                    portal_list.redraw(cx);
+                }
+            }
+        }
+
+        if should_continue_backwards_pagination {
+            tl.is_paginating = true;
+            submit_async_request(MatrixRequest::PaginateTimeline {
+                timeline_kind: tl.kind.clone(),
+                num_events: 50,
+                direction: PaginationDirection::Backwards,
+            });
+        }
+
+        if done_loading {
+            top_space.set_visible(cx, false);
+        }
+
+        if let Some(users) = typing_users {
+            self.view
+                .typing_notice(cx, ids!(typing_notice))
+                .show_or_hide(cx, &users);
+        }
+
+        if num_updates > 0 {
+            // log!("Applied {} timeline updates for room {}, redrawing with {} items...", num_updates, tl.kind.room_id(), tl.items.len());
+            self.redraw(cx);
+        }
+    }
+
+
+    /// Handles a link being clicked in any child widgets of this RoomScreen.
+    ///
+    /// Returns `true` if the given `action` was handled as a link click.
+    fn handle_link_clicked(
+        &mut self,
+        cx: &mut Cx,
+        action: &Action,
+        pane: &UserProfileSlidingPaneRef,
+    ) -> bool {
+        // A closure that handles both MatrixToUri and MatrixUri links,
+        // and returns whether the link was handled.
+        let mut handle_matrix_link = |id: &MatrixId, _via: &[OwnedServerName]| -> bool {
+            match id {
+                MatrixId::User(user_id) => {
+                    let Some(room_name_id) = self.room_name_id.as_ref() else {
+                        return false;
+                    };
+                    // There is no synchronous way to get the user's full profile info
+                    // including the details of their room membership,
+                    // so we fill in with the details we *do* know currently,
+                    // show the UserProfileSlidingPane, and then after that,
+                    // the UserProfileSlidingPane itself will fire off
+                    // an async request to get the rest of the details.
+                    self.show_user_profile(
+                        cx,
+                        pane,
+                        UserProfilePaneInfo {
+                            profile_and_room_id: UserProfileAndRoomId {
+                                user_profile: UserProfile {
+                                    user_id: user_id.to_owned(),
+                                    username: None,
+                                    avatar_state: AvatarState::Unknown,
+                                },
+                                room_id: room_name_id.room_id().clone(),
+                            },
+                            room_name: room_name_id.to_string(),
+                            // TODO: use the extra `via` parameters
+                            room_member: None,
+                        },
+                    );
+                    true
+                }
+                MatrixId::Room(room_id) => {
+                    if self.room_name_id.as_ref().is_some_and(|r| r.room_id() == room_id) {
+                        enqueue_popup_notification(
+                            "You are already viewing that room.",
+                            PopupKind::Info,
+                            Some(4.0),
+                        );
+                        return true;
+                    }
+                    if let Some(room_name_id) = cx.get_global::<RoomsListRef>().get_room_name(room_id) {
+                        cx.action(AppStateAction::NavigateToRoom {
+                            room_to_close: None,
+                            destination_room: BasicRoomDetails::Name(room_name_id),
+                        });
+                        return true;
+                    } else {
+                        log!("TODO: fetch and display room preview for room {}", room_id);
+                    }
+                    false
+                }
+                MatrixId::RoomAlias(room_alias) => {
+                    log!("TODO: open room alias {}", room_alias);
+                    // TODO: open a room loading screen that shows a spinner
+                    //       while our background async task calls Client::resolve_room_alias()
+                    //       and then either jumps to the room if known, or fetches and displays
+                    //       a room preview for that room.
+                    false
+                }
+                MatrixId::Event(room_id, event_id) => {
+                    log!("TODO: open event {} in room {}", event_id, room_id);
+                    // TODO: this requires the same first step as the `MatrixId::Room` case above,
+                    //       but then we need to call Room::event_with_context() to get the event
+                    //       and its context (surrounding events ?).
+                    false
+                }
+                _ => false,
+            }
+        };
+
+        if let HtmlLinkAction::Clicked { url, .. } = action.as_widget_action().cast() {
+            let mut link_was_handled = false;
+            if let Ok(matrix_to_uri) = MatrixToUri::parse(&url) {
+                link_was_handled |= handle_matrix_link(matrix_to_uri.id(), matrix_to_uri.via());
+            }
+            else if let Ok(matrix_uri) = MatrixUri::parse(&url) {
+                link_was_handled |= handle_matrix_link(matrix_uri.id(), matrix_uri.via());
+            }
+
+            if !link_was_handled {
+                log!("Opening URL \"{}\"", url);
+                if let Err(e) = robius_open::Uri::new(&url).open() {
+                    error!("Failed to open URL {:?}. Error: {:?}", url, e);
+                    enqueue_popup_notification(
+                        format!("Could not open URL: {url}"),
+                        PopupKind::Error,
+                        Some(10.0),
+                    );
+                }
+            }
+            true
+        }
+        else if let RobrixHtmlLinkAction::ClickedMatrixLink { url, matrix_id, via, .. } = action.as_widget_action().cast() {
+            let link_was_handled = handle_matrix_link(&matrix_id, &via);
+            if !link_was_handled {
+                log!("Opening URL \"{}\"", url);
+                if let Err(e) = robius_open::Uri::new(&url).open() {
+                    error!("Failed to open URL {:?}. Error: {:?}", url, e);
+                    enqueue_popup_notification(
+                        format!("Could not open URL: {url}"),
+                        PopupKind::Error,
+                        Some(10.0),
+                    );
+                }
+            }
+            true
+        }
+        else {
+            false
+        }
+    }
+
+    /// Handles image clicks in message content by opening the image viewer.
+    fn handle_image_click(
+        &mut self,
+        cx: &mut Cx,
+        mxc_uri: Option<MediaSource>,
+        texture: Option<Texture>,
+        item_id: usize,
+    ) {
+        let Some(media_source) = mxc_uri else {
+            return;
+        };
+        let Some(tl_state) = self.tl_state.as_ref() else { return };
+        let Some(event_tl_item) = tl_state.items.get(item_id).and_then(|item| item.as_event()) else { return };
+
+        let timestamp_millis = event_tl_item.timestamp();
+        let (image_name, image_file_size) = get_image_name_and_filesize(event_tl_item);
+        let downloadable = Some(DownloadableAttachment {
+            media_source: media_source.clone(),
+            filename: image_name.clone(),
+            size: (image_file_size > 0).then_some(image_file_size),
+            kind: DownloadKind::Image,
+        });
+        cx.action(ImageViewerAction::Show(LoadState::Loading(
+            texture.clone(),
+            Some(ImageViewerMetaData {
+                image_name,
+                image_file_size,
+                timestamp: unix_time_millis_to_datetime(timestamp_millis),
+                avatar_parameter: Some((
+                    tl_state.kind.clone(),
+                    event_tl_item.clone(),
+                )),
+                downloadable,
+            }),
+        )));
+
+        fetch_full_image_for_viewer(media_source);
+    }
+
+    /// Looks up the event specified by the given message details in the given timeline.
+    ///
+    /// This will first try an instant index-based lookup via `details.item_id`,
+    /// and then fall back to searching the timeline in reverse for the `details.event_id`
+    /// if the index is "stale", meaning the timeline items have changed (e.g., due to pagination)
+    /// since the message context menu was opened or the `MessageAction` was received by the `RoomScreen`.
+    ///
+    /// We search in reverse because it is far more likely that the user is interacting
+    /// with an event that is close to the end of the timeline.
+    fn find_event_in_timeline<'a>(
+        items: &'a Vector<Arc<TimelineItem>>,
+        details: &MessageDetails,
+    ) -> Option<&'a EventTimelineItem> {
+        let target_event_id = details.event_id()?;
+        if let Some(event) = items.get(details.item_id)
+            .and_then(|item| item.as_event())
+            .filter(|ev| ev.event_id().is_some_and(|id| id == target_event_id))
+        {
+            return Some(event);
+        }
+        items.iter()
+            .rev()
+            .take(MAX_ITEMS_TO_SEARCH_THROUGH)
+            .filter_map(|item| item.as_event())
+            .find(|ev| ev.event_id().is_some_and(|id| id == target_event_id))
+    }
+
+    /// Registers a pending download for a media transfer (e.g., download, share)
+    /// and shows the loading spinner, then calls `start` to kick off the transfer.
+    ///
+    /// Does nothing if the transfer was already in progress.
+    fn begin_media_transfer(
+        &mut self,
+        cx: &mut Cx,
+        portal_list: &PortalListRef,
+        info: &DownloadableAttachment,
+        kind: TransferKind,
+        start: fn(DownloadableAttachment, TimelineUpdateSenderOption),
+    ) {
+        let Some(tl) = self.tl_state.as_mut() else { return };
+        let mxc = media_source_mxc(&info.media_source);
+        if tl.pending_downloads.iter().any(|p| &p.mxc == mxc) {
+            enqueue_already_downloading_notification();
+            return;
+        }
+        tl.pending_downloads.push(PendingDownload {
+            mxc: mxc.clone(),
+            state: PendingDownloadState::InProgress,
+            kind,
+        });
+        portal_list.redraw(cx);
+        let update_sender = tl.media_cache.timeline_update_sender().cloned();
+        start(info.clone(), update_sender);
+    }
+
+    /// Handles any [`MessageAction`]s received by this RoomScreen.
+    fn handle_message_actions(
+        &mut self,
+        cx: &mut Cx,
+        actions: &ActionsBuf,
+        portal_list: &PortalListRef,
+        loading_pane: &LoadingPaneRef,
+    ) {
+        let room_screen_widget_uid = self.widget_uid();
+        for action in actions {
+            match action.as_widget_action().widget_uid_eq(room_screen_widget_uid).cast_ref() {
+                MessageAction::React { details, reaction } => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    submit_async_request(MatrixRequest::ToggleReaction {
+                        timeline_kind: tl.kind.clone(),
+                        timeline_event_id: details.timeline_event_id.clone(),
+                        reaction: reaction.clone(),
+                    });
+                }
+                MessageAction::Reply(details) => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    if let Some(event_tl_item) = Self::find_event_in_timeline(&tl.items, details).cloned() {
+                        let replied_to_info = EmbeddedEvent::from_timeline_item(&event_tl_item);
+                        self.view.room_input_bar(cx, ids!(room_input_bar))
+                            .show_replying_to(cx, (event_tl_item, replied_to_info), &tl.kind);
+                    }
+                    else {
+                        enqueue_popup_notification(
+                            "Could not find message in timeline to reply to. Please try again.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                        error!("MessageAction::Reply: couldn't find event [{}] {:?} to reply to in room {:?}",
+                            details.item_id,
+                            details.timeline_event_id,
+                            self.room_id(),
+                        );
+                    }
+                }
+                MessageAction::ReplyInThread(details) => {
+                    let Some(room_name_id) = self.room_name_id.clone() else {
+                        error!("BUG: MessageAction::ReplyInThread: room_name_id was None in room {:?}", self.room_id());
+                        continue;
+                    };
+                    // If this message was already part of a thread, use that thread root.
+                    // If not, use the message's event ID as the root for a new thread.
+                    let Some(thread_root_event_id) = details.thread_root_event_id.clone()
+                        .or_else(|| details.event_id().cloned())
+                    else {
+                        enqueue_popup_notification(
+                            "Cannot reply in thread to an unsent message.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                        continue;
+                    };
+                    let thread_kind = TimelineKind::Thread {
+                        room_id: room_name_id.room_id().clone(),
+                        thread_root_event_id: thread_root_event_id.clone(),
+                    };
+                    if self.timeline_kind.as_ref() == Some(&thread_kind) {
+                        // We're already viewing this thread, so just focus the input bar.
+                        self.focus_input_bar_on_show = true;
+                        self.redraw(cx);
+                    } else {
+                        // Emit an action to open the thread's RoomScreen
+                        // and tell it to grab key focus once it's drawn.
+                        input_bar_focus::request(cx, thread_kind);
+                        cx.widget_action(
+                            room_screen_widget_uid,
+                            RoomsListAction::Selected(SelectedRoom::Thread {
+                                room_name_id,
+                                thread_root_event_id,
+                            }),
+                        );
+                    }
+                }
+                MessageAction::Edit(details) => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    if let Some(event_tl_item) = Self::find_event_in_timeline(&tl.items, details) {
+                        self.view.room_input_bar(cx, ids!(room_input_bar))
+                            .show_editing_pane(
+                                cx,
+                                event_tl_item.clone(),
+                                tl.kind.clone(),
+                            );
+                    }
+                    else {
+                        enqueue_popup_notification(
+                            "Could not find message in timeline to edit. Please try again.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                        error!("MessageAction::Edit: couldn't find event [{}] {:?} to edit in room {:?}",
+                            details.item_id,
+                            details.timeline_event_id,
+                            self.room_id(),
+                        );
+                    }
+                }
+                MessageAction::EditLatest => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    if let Some(latest_sent_msg) = tl.items
+                        .iter()
+                        .rev()
+                        .take(MAX_ITEMS_TO_SEARCH_THROUGH)
+                        .find_map(|item| item.as_event().filter(|ev| ev.is_editable()).cloned())
+                    {
+                        self.view.room_input_bar(cx, ids!(room_input_bar))
+                            .show_editing_pane(
+                                cx,
+                                latest_sent_msg,
+                                tl.kind.clone(),
+                            );
+                    }
+                    else {
+                        enqueue_popup_notification(
+                            "No recent message available to edit. Please manually select a message to edit.",
+                            PopupKind::Warning,
+                            Some(5.0),
+                        );
+                    }
+                }
+                MessageAction::Pin(details) => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    if let Some(event_id) = details.event_id() {
+                        submit_async_request(MatrixRequest::PinEvent {
+                            timeline_kind: tl.kind.clone(),
+                            event_id: event_id.clone(),
+                            pin: true,
+                        });
+                    } else {
+                        enqueue_popup_notification(
+                            "This event cannot be pinned.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                    }
+                }
+                MessageAction::Unpin(details) => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    if let Some(event_id) = details.event_id() {
+                        submit_async_request(MatrixRequest::PinEvent {
+                            timeline_kind: tl.kind.clone(),
+                            event_id: event_id.clone(),
+                            pin: false,
+                        });
+                    } else {
+                        enqueue_popup_notification(
+                            "This event cannot be unpinned.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                    }
+                }
+                MessageAction::CopyText(details) => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    if let Some(event_tl_item) = Self::find_event_in_timeline(&tl.items, details) {
+                        cx.copy_to_clipboard(&plaintext_body_of_timeline_item(event_tl_item));
+                    }
+                    else {
+                        enqueue_popup_notification(
+                            "Could not find message in timeline to copy text from. Please try again.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                        error!("MessageAction::CopyText: couldn't find event [{}] {:?} to copy text from in room {}",
+                            details.item_id,
+                            details.timeline_event_id,
+                            tl.kind.room_id(),
+                        );
+                    }
+                }
+                MessageAction::CopyHtml(details) => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    // The logic for getting the formatted body of a message is the same
+                    // as the logic used in `populate_message_view()`.
+                    let mut success = false;
+                    if let Some(event_tl_item) = Self::find_event_in_timeline(&tl.items, details) {
+                        if let Some(message) = event_tl_item.content().as_message() {
+                            match message.msgtype() {
+                                MessageType::Text(TextMessageEventContent { formatted: Some(FormattedBody { body, .. }), .. })
+                                | MessageType::Notice(NoticeMessageEventContent { formatted: Some(FormattedBody { body, .. }), .. })
+                                | MessageType::Emote(EmoteMessageEventContent { formatted: Some(FormattedBody { body, .. }), .. })
+                                | MessageType::Image(ImageMessageEventContent { formatted: Some(FormattedBody { body, .. }), .. })
+                                | MessageType::File(FileMessageEventContent { formatted: Some(FormattedBody { body, .. }), .. })
+                                | MessageType::Audio(AudioMessageEventContent { formatted: Some(FormattedBody { body, .. }), .. })
+                                | MessageType::Video(VideoMessageEventContent { formatted: Some(FormattedBody { body, .. }), .. })
+                                | MessageType::VerificationRequest(KeyVerificationRequestEventContent { formatted: Some(FormattedBody { body, .. }), .. }) =>
+                                {
+                                    cx.copy_to_clipboard(body);
+                                    success = true;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    if !success {
+                        enqueue_popup_notification(
+                            "Could not find message in timeline to copy HTML from. Please try again.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                        error!("MessageAction::CopyHtml: couldn't find event [{}] {:?} to copy HTML from in room {}",
+                            details.item_id,
+                            details.timeline_event_id,
+                            tl.kind.room_id(),
+                        );
+                    }
+                }
+                MessageAction::CopyLink(details) => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    if let Some(event_id) = details.event_id() {
+                        let matrix_to_uri = tl.kind.room_id().matrix_to_event_uri(event_id.clone());
+                        cx.copy_to_clipboard(&matrix_to_uri.to_string());
+                    } else {
+                        enqueue_popup_notification(
+                            "Couldn't create permalink to message. Please try again.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                        error!("MessageAction::CopyLink: no `event_id`: [{}] {:?} in room {}",
+                            details.item_id,
+                            details.timeline_event_id,
+                            tl.kind.room_id(),
+                        );
+                    }
+                }
+                MessageAction::ViewSource(details) => {
+                    let Some(tl) = self.tl_state.as_ref() else { continue };
+                    let Some(event_tl_item) = Self::find_event_in_timeline(&tl.items, details) else {
+                        enqueue_popup_notification(
+                            "Could not find message in timeline to view source.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                        continue;
+                    };
+                    // Get the latest JSON from the event and pretty-print it
+                    let latest_json: Option<String> = event_tl_item
+                        .latest_json()
+                        .and_then(|raw_event| serde_json::to_value(raw_event).ok())
+                        .and_then(|value| serde_json::to_string_pretty(&value).ok());
+
+                    let event_id = event_tl_item.event_id().map(|e| e.to_owned());
+
+                    cx.action(super::event_source_modal::EventSourceModalAction::Open {
+                        room_id: tl.kind.room_id().clone(),
+                        event_id,
+                        latest_json,
+                    });
+                }
+                MessageAction::JumpToRelated(details) => {
+                    let Some(related_event_id) = details.related_event_id.as_ref() else {
+                        error!("BUG: MessageAction::JumpToRelated had no related event ID.\n{details:#?}");
+                        enqueue_popup_notification(
+                            "Could not find related message or event in timeline.",
+                            PopupKind::Error,
+                            Some(5.0),
+                        );
+                        continue;
+                    };
+                    self.jump_to_event(
+                        cx,
+                        related_event_id,
+                        Some(details.item_id),
+                        portal_list,
+                        loading_pane
+                    );
+                }
+                MessageAction::ToggleReplyPreviewExpanded(message_id) => {
+                    if let Some(tl) = self.tl_state.as_mut() {
+                        if !tl.expanded_reply_previews.remove(message_id) {
+                            tl.expanded_reply_previews.insert(message_id.clone());
+                        }
+                    }
+
+                    // If we collapsed the preview, redraw until the list fills the viewport again.
+                    self.relayout_redraws_left = 12; // but not more than 12 times
+                    self.relayout_last_first_id = usize::MAX;
+                    self.redraw(cx);
+                }
+                MessageAction::JumpToEvent(event_id) => {
+                    self.jump_to_event(
+                        cx,
+                        event_id,
+                        None,
+                        portal_list,
+                        loading_pane
+                    );
+                }
+                MessageAction::OpenThread(thread_root_event_id) => {
+                    let Some(room_name_id) = self.room_name_id.as_ref().cloned() else {
+                        error!("### ERROR: MessageAction::OpenThread: thread_root_event_id: {thread_root_event_id}, but room_name_id was None!");
+                        continue
+                    };
+                    cx.widget_action(
+                        room_screen_widget_uid, 
+                        RoomsListAction::Selected(SelectedRoom::Thread {
+                            room_name_id,
+                            thread_root_event_id: thread_root_event_id.clone(),
+                        }),
+                    );
+                }
+                MessageAction::Redact { details, reason } => {
+                    let Some(tl) = self.tl_state.as_ref() else { return };
+                    let timeline_event_id = details.timeline_event_id.clone();
+                    let timeline_kind = tl.kind.clone();
+                    let reason = reason.clone();
+                    let content = ConfirmationModalContent {
+                        title_text: "Delete Message".into(),
+                        body_text: "Are you sure you want to delete this message? This cannot be undone.".into(),
+                        accept_button_text: Some("Delete".into()),
+                        on_accept_clicked: Some(Box::new(move |_cx| {
+                            submit_async_request(MatrixRequest::RedactMessage {
+                                timeline_kind,
+                                timeline_event_id,
+                                reason,
+                            });
+                        })),
+                        ..Default::default()
+                    };
+                    cx.action(ConfirmDeleteAction::Show(RefCell::new(Some(content))));
+                }
+                // MessageAction::Report(details) => {
+                //     // TODO
+                // }
+
+                MessageAction::DownloadAttachment(info) => {
+                    self.begin_media_transfer(cx, portal_list, info, TransferKind::Download, start_attachment_download);
+                }
+                MessageAction::ShareAttachment(info) => {
+                    self.begin_media_transfer(cx, portal_list, info, TransferKind::Share, start_attachment_share);
+                }
+                MessageAction::CancelDownload(mxc) => {
+                    submit_async_request(MatrixRequest::CancelDownload(mxc.clone()));
+                    if let Some(tl) = self.tl_state.as_mut()
+                        && let Some(i) = tl.pending_downloads.iter().position(|p| &p.mxc == mxc)
+                    {
+                        tl.pending_downloads.swap_remove(i);
+                        portal_list.redraw(cx);
+                    }
+                }
+                // This is handled within the Message widget itself.
+                MessageAction::HighlightMessage(..) => { }
+                // This is handled by the top-level App itself.
+                MessageAction::OpenMessageContextMenu { .. } => { }
+                // This isn't yet handled, as we need to completely redesign it.
+                MessageAction::ActionBarOpen { .. } => { }
+                // This isn't yet handled, as we need to completely redesign it.
+                MessageAction::ActionBarClose => { }
+                MessageAction::None => { }
+            }
+        }
+    }
+
+    /// Jumps to the target event ID in this timeline by smooth scrolling to it.
+    ///
+    /// This function searches backwards from the given `max_tl_idx` in the timeline
+    /// for the given `event_id`. If found, it smooth-scrolls the portal list to that event.
+    /// If not found, it displays the loading pane and starts a background search for the event.
+    fn jump_to_event(
+        &mut self,
+        cx: &mut Cx,
+        target_event_id: &OwnedEventId,
+        max_tl_idx: Option<usize>,
+        portal_list: &PortalListRef,
+        loading_pane: &LoadingPaneRef,
+    ) {
+        let Some(tl) = self.tl_state.as_mut() else { return };
+        let max_tl_idx = max_tl_idx.unwrap_or_else(|| tl.items.len());
+
+        // Attempt to find the index of replied-to message in the timeline.
+        // Start from the current item's index (`tl_idx`) and search backwards,
+        // since we know the related message must come before the current item.
+        let mut num_items_searched = 0;
+        let related_msg_tl_index = tl.items
+            .focus()
+            .narrow(..max_tl_idx)
+            .into_iter()
+            .rev()
+            .take(MAX_ITEMS_TO_SEARCH_THROUGH)
+            .position(|i| {
+                num_items_searched += 1;
+                i.as_event()
+                    .and_then(|e| e.event_id())
+                    .is_some_and(|ev_id| ev_id == target_event_id)
+            })
+            .map(|position| max_tl_idx.saturating_sub(position).saturating_sub(1));
+
+        if let Some(index) = related_msg_tl_index {
+            // log!("The related message {replied_to_event} was immediately found in room {}, scrolling to from index {reply_message_item_id} --> {index} (first ID {}).", tl.kind.room_id(), portal_list.first_id());
+            let speed = 50.0;
+            portal_list.smooth_scroll_to(cx, index, speed, None, 10.0);
+            // start highlight animation.
+            tl.message_highlight_animation_state = MessageHighlightAnimationState::Pending {
+                item_id: index
+            };
+        } else {
+            log!("The related event {target_event_id} wasn't immediately available in room {}, searching for it in the background...", tl.kind.room_id());
+            // Here, we set the state of the loading pane and display it to the user.
+            // The main logic will be handled in `process_timeline_updates()`, which is the only
+            // place where we can receive updates to the timeline from the background tasks.
+            loading_pane.set_state(
+                cx,
+                LoadingPaneState::BackwardsPaginateUntilEvent {
+                    target_event_id: target_event_id.clone(),
+                    events_paginated: 0,
+                    request_sender: tl.request_sender.clone(),
+                },
+            );
+            loading_pane.show(cx);
+
+            tl.request_sender.send_if_modified(|req| {
+                if let Some(existing) = req.backwards_paginate.iter_mut().find(|r| &r.room_id == tl.kind.room_id()) {
+                    warning!("Unexpected: room {} already had an existing timeline request in progress, event: {:?}", tl.kind.room_id(), existing.target_event_id);
+                    // We might as well re-use this existing request...
+                    existing.target_event_id = target_event_id.clone();
+                } else {
+                    req.backwards_paginate.push(BackwardsPaginateUntilEventRequest {
+                        room_id: tl.kind.room_id().clone(),
+                        target_event_id: target_event_id.clone(),
+                        // avoid re-searching through items we already searched through.
+                        starting_index: max_tl_idx.saturating_sub(num_items_searched),
+                        current_tl_len: tl.items.len(),
+                    });
+                }
+                true
+            });
+
+            // Don't unconditionally start backwards pagination here, because we want to give the
+            // background `timeline_subscriber_handler` task a chance to process the request first
+            // and search our locally-known timeline history for the replied-to message.
+        }
+        self.redraw(cx);
+    }
+
+    /// Shows the user profile sliding pane with the given avatar info.
+    fn show_user_profile(
+        &mut self,
+        cx: &mut Cx,
+        pane: &UserProfileSlidingPaneRef,
+        info: UserProfilePaneInfo,
+    ) {
+        pane.set_info(cx, info);
+        pane.show(cx);
+        self.redraw(cx);
+    }
+
+    /// Invoke this when this timeline is being shown,
+    /// e.g., when the user navigates to this timeline.
+    fn show_timeline(&mut self, cx: &mut Cx) {
+        let kind = self.timeline_kind.clone()
+            .expect("BUG: Timeline::show_timeline(): no timeline_kind was set.");
+        let room_id = kind.room_id().clone();
+        let owner = self.widget_uid();
+
+        let (mut tl_state, mut is_first_time_being_loaded) = match timeline_state_store::take(cx, &kind, owner) {
+            timeline_state_store::TakeResult::Taken(existing) => (existing, false),
+            timeline_state_store::TakeResult::AlreadyTaken { owner: current_owner } => {
+                error!("RoomScreen::show_timeline(): timeline {kind} is already taken by widget {current_owner:?}");
+                return;
+            }
+            timeline_state_store::TakeResult::Missing => {
+                let Some(timeline_endpoints) = take_timeline_endpoints(&kind) else {
+                    if let Some(thread_root_event_id) = kind.thread_root_event_id() {
+                        submit_async_request(MatrixRequest::CreateThreadTimeline {
+                            room_id: room_id.clone(),
+                            thread_root_event_id: thread_root_event_id.clone(),
+                        });
+                        return;
+                    }
+                    if !self.is_loaded && self.all_rooms_loaded {
+                        error!("BUG: timeline {kind} is not loaded, but its RoomScreen \
+                        was not waiting for its timeline to be loaded either.");
+                    }
+                    return;
+                };
+                let TimelineEndpoints {
+                    update_receiver,
+                    update_sender,
+                    request_sender,
+                    successor_room,
+                    is_encrypted,
+                } = timeline_endpoints;
+
+                // Start with the basic tombstone info, and fetch the full details
+                // if the room has been tombstoned.
+                let tombstone_info = if let Some(sr) = successor_room {
+                    submit_async_request(MatrixRequest::GetSuccessorRoomDetails {
+                        tombstoned_room_id: room_id.clone(),
+                    });
+                    Some(SuccessorRoomDetails::Basic(sr))
+                } else {
+                    None
+                };
+
+                let tl_state = TimelineUiState {
+                    kind,
+                    // Initially, we assume the user has all power levels by default.
+                    // This avoids unexpectedly hiding any UI elements that should be visible to the user.
+                    // This doesn't mean that the user can actually perform all actions;
+                    // the power levels will be updated from the homeserver once the room is opened.
+                    user_power: UserPowerLevels::all(),
+                    is_encrypted,
+                    // Room members start as None and get populated when fetched from the server
+                    room_members: None,
+                    // We assume timelines being viewed for the first time haven't been fully paginated.
+                    fully_paginated: false,
+                    is_paginating: false,
+                    items: Vector::new(),
+                    content_drawn_since_last_update: RangeSet::new(),
+                    profile_drawn_since_last_update: RangeSet::new(),
+                    update_receiver,
+                    request_sender,
+                    media_cache: MediaCache::new(Some(update_sender.clone())),
+                    link_preview_cache: LinkPreviewCache::new(Some(update_sender)),
+                    fetched_thread_summaries: HashMap::new(),
+                    pending_thread_summary_fetches: HashSet::new(),
+                    saved_state: SavedState::default(),
+                    message_highlight_animation_state: MessageHighlightAnimationState::default(),
+                    pending_reached_start: false,
+                    prev_first_index: None,
+                    scrolled_past_read_marker: false,
+                    latest_own_user_receipt: None,
+                    tombstone_info,
+                    pending_downloads: SmallVec::new(),
+                    expanded_reply_previews: HashSet::new(),
+                };
+                timeline_state_store::mark_taken(cx, &tl_state.kind, owner);
+                (tl_state, true)
+            }
+        };
+
+        // It is possible that this room has already been loaded (received from the server)
+        // but that the RoomsList doesn't yet know about it.
+        // In that case, `is_first_time_being_loaded` will already be `true` here,
+        // so we can bypass checking the RoomsList to determine if a room is loaded.
+        //
+        // Note that we *do* still need to check the RoomsList to see whether this room is loaded
+        // in order to handle the case when we're switching between rooms within
+        // the same RoomScreen widget, as one room may be loaded while another is not.
+        if is_first_time_being_loaded {
+            self.is_loaded = true;
+        } else if cx.has_global::<RoomsListRef>() {
+            let rooms_list_ref = cx.get_global::<RoomsListRef>();
+            let is_loaded_now = rooms_list_ref.is_room_loaded(&room_id);
+            if is_loaded_now && !self.is_loaded {
+                // log!("Detected that {}} is now loaded for the first time", tl_state.kind);
+                is_first_time_being_loaded = true;
+            }
+            self.is_loaded = is_loaded_now;
+        }
+
+        self.view.restore_status_view(cx, ids!(restore_status_view)).set_visible(cx, !self.is_loaded);
+
+        // Kick off a back pagination request if it's the first time loading this room,
+        // because we want to show the user some messages as soon as possible
+        // when they first open the room, and there might not be any messages yet.
+        if is_first_time_being_loaded {
+            if !tl_state.fully_paginated && !tl_state.is_paginating {
+                log!("Sending a first-time backwards pagination request for {}", tl_state.kind);
+                tl_state.is_paginating = true;
+                submit_async_request(MatrixRequest::PaginateTimeline {
+                    timeline_kind: tl_state.kind.clone(),
+                    num_events: 50,
+                    direction: PaginationDirection::Backwards,
+                });
+            }
+
+            // Even though we specify that room member profiles should be lazy-loaded,
+            // the matrix server still doesn't consistently send them to our client properly.
+            // So we kick off a request to fetch the room members here upon first viewing the room.
+            submit_async_request(MatrixRequest::SyncRoomMemberList {
+                timeline_kind: tl_state.kind.clone(),
+            });
+        }
+
+        // Hide the typing notice view initially.
+        self.view(cx, ids!(typing_notice)).set_visible(cx, false);
+        // If the room is loaded, we need to get a few key states:
+        // 1. Get the current user's power levels for this room so that we can
+        //    show/hide UI elements based on the user's permissions.
+        // 2. Get the list of members in this room (from the SDK's local cache).
+        // 3. Subscribe to our own user's read receipts so that we can update the
+        //    read marker and properly send read receipts while scrolling through the timeline.
+        // 4. Subscribe to typing notices again, now that the room is being shown.
+        if self.is_loaded {
+            submit_async_request(MatrixRequest::GetRoomPowerLevels {
+                timeline_kind: tl_state.kind.clone(),
+            });
+            submit_async_request(MatrixRequest::GetRoomMembers {
+                timeline_kind: tl_state.kind.clone(),
+                memberships: matrix_sdk::RoomMemberships::JOIN,
+                // Fetch from the local cache, as we already requested to sync
+                // the room members from the homeserver above.
+                local_only: true,
+            });
+            submit_async_request(MatrixRequest::SubscribeToOwnUserReadReceiptsChanged {
+                timeline_kind: tl_state.kind.clone(),
+                subscribe: true,
+            });
+            // Only main room timelines can subscribe to typing notices and pinned events.
+            if matches!(tl_state.kind, TimelineKind::MainRoom { .. }) {
+                submit_async_request(MatrixRequest::SubscribeToTypingNotices {
+                    room_id: room_id.clone(),
+                    subscribe: true,
+                });
+                submit_async_request(MatrixRequest::SubscribeToPinnedEvents {
+                    room_id: room_id.clone(),
+                    subscribe: true,
+                });
+            }
+        }
+
+        // Now, restore the visual state of this timeline from its previously-saved state.
+        self.restore_state(cx, &mut tl_state);
+
+        // Store the tl_state for this room into this RoomScreen widget,
+        // such that it can be accessed in future functions like event/draw handlers.
+        self.tl_state = Some(tl_state);
+
+        // Tell the background subscriber that this timeline is now open (if it was previously closed).
+        if let Some(tl) = self.tl_state.as_ref() {
+            tl.request_sender.send_if_modified(|req| !std::mem::replace(&mut req.is_timeline_open, true));
+        }
+
+        // Now that we have restored the TimelineUiState into this RoomScreen widget,
+        // we can proceed to processing pending background updates.
+        self.process_timeline_updates(cx, &self.portal_list(cx, ids!(list)));
+
+        self.redraw(cx);
+    }
+
+    /// Invoke this when this RoomScreen/timeline is being hidden or no longer being shown.
+    fn hide_timeline(&mut self) {
+        let Some(timeline_kind) = self.timeline_kind.clone() else { return };
+        if self.tl_state.is_none() {
+            return;
+        }
+
+        // Tell the background subscriber that this timeline is now closed.
+        if let Some(tl) = self.tl_state.as_ref() {
+            tl.request_sender.send_if_modified(|req| std::mem::replace(&mut req.is_timeline_open, false));
+        }
+
+        self.save_state();
+
+        // When closing a room view, we do the following with non-persistent states.
+        // (This should be the inverse of what's done in `show_timeline()`.)
+        // * Unsubscribe from typing notices, since we don't care about them
+        //   when a given room isn't visible.
+        // * Unsubscribe from updates to this room's pinned events, for the same reason.
+        // * Unsubscribe from updates to our own user's read receipts, for the same reason.
+        if matches!(timeline_kind, TimelineKind::MainRoom { .. }) {
+            submit_async_request(MatrixRequest::SubscribeToTypingNotices {
+                room_id: timeline_kind.room_id().clone(),
+                subscribe: false,
+            });
+            submit_async_request(MatrixRequest::SubscribeToPinnedEvents {
+                room_id: timeline_kind.room_id().clone(),
+                subscribe: false,
+            });
+        }
+        submit_async_request(MatrixRequest::SubscribeToOwnUserReadReceiptsChanged {
+            timeline_kind,
+            subscribe: false,
+        });
+    }
+
+    /// Removes the current room's visual UI state from this widget
+    /// and saves it to the timeline state store such that it can be restored later.
+    ///
+    /// Note: after calling this function, the widget's `tl_state` will be `None`.
+    fn save_state(&mut self) {
+        let Some(mut tl) = self.tl_state.take() else {
+            error!("Timeline::save_state(): skipping due to missing state, room {:?}, {:?}", self.timeline_kind, self.room_name_id.as_ref().map(|r| r.display_name()));
+            return;
+        };
+
+        let portal_list = self.child_by_path(ids!(timeline.list)).as_portal_list();
+        let room_input_bar = self.child_by_path(ids!(room_input_bar)).as_room_input_bar();
+        log!("Saving state for room {:?}\n\t{:?}\n\tfirst_id: {:?}, scroll: {}", self.room_name_id.as_ref().map(|r| r.display_name()), self.timeline_kind, portal_list.first_id(), portal_list.scroll_position());
+        let state = SavedState {
+            first_index_and_scroll: Some((portal_list.first_id(), portal_list.scroll_position())),
+            room_input_bar_state: room_input_bar.save_state(),
+        };
+        tl.saved_state = state;
+        // Clear room_members to avoid wasting memory (in case this room is never re-opened).
+        tl.room_members = None;
+        // Store this Timeline's `TimelineUiState` until a RoomScreen shows it again.
+        timeline_state_store::put_back(self.widget_uid(), tl);
+    }
+
+    /// Restores the previously-saved visual UI state of this room.
+    ///
+    /// Note: this accepts a direct reference to the timeline's UI state,
+    /// so this function must not try to re-obtain it by accessing `self.tl_state`.
+    fn restore_state(&mut self, cx: &mut Cx, tl_state: &mut TimelineUiState) {
+        let SavedState {
+            first_index_and_scroll,
+            room_input_bar_state,
+        } = &mut tl_state.saved_state;
+
+        // 1. Restore the position of the timeline.
+        let portal_list = self.portal_list(cx, ids!(timeline.list));
+        if let Some((first_index, scroll_from_first_id)) = first_index_and_scroll {
+            log!("Restoring state for room {:?}: first_id: {:?}, scroll: {}", self.room_name_id, first_index, scroll_from_first_id);
+            portal_list.set_first_id_and_scroll(*first_index, *scroll_from_first_id);
+            portal_list.set_tail_range(false);
+        } else {
+            // If the first index is not set, then the timeline has not yet been scrolled by the user,
+            // so we reset the portal list's scroll position and set it to "tail" (track) the bottom.
+            // The explicit reset is necessary when the same RoomScreen widget is reused for a
+            // different room (e.g., via stack navigation view alternation), otherwise the portal list
+            // would retain the previous room's scroll position which may be out of bounds.
+            log!("Restoring state for room {:?}: first_id: None, scroll: None", self.room_name_id);
+            portal_list.set_first_id_and_scroll(0, 0.0);
+            portal_list.set_tail_range(true);
+        }
+
+        // 2. Restore the state of the room input bar.
+        let room_input_bar = self.child_by_path(ids!(room_input_bar)).as_room_input_bar();
+        let saved_room_input_bar_state = std::mem::take(room_input_bar_state);
+        room_input_bar.restore_state(
+            cx,
+            tl_state.kind.clone(),
+            saved_room_input_bar_state,
+            tl_state.user_power,
+            tl_state.tombstone_info.as_ref(),
+            tl_state.is_encrypted,
+        );
+    }
+
+    /// Sets this `RoomScreen` widget to display the timeline for the given room.
+    pub fn set_displayed_room(
+        &mut self,
+        cx: &mut Cx,
+        room_name_id: &RoomNameId,
+        thread_root_event_id: Option<OwnedEventId>,
+    ) {
+        let timeline_kind = if let Some(thread_root_event_id) = thread_root_event_id {
+            TimelineKind::Thread {
+                room_id: room_name_id.room_id().clone(),
+                thread_root_event_id,
+            }
+        } else {
+            TimelineKind::MainRoom {
+                room_id: room_name_id.room_id().clone(),
+            }
+        };
+
+        // If we opened this timelien to reply in thread, give the text input key focus.
+        if input_bar_focus::take_if_matches(cx, &timeline_kind) {
+            self.focus_input_bar_on_show = true;
+        }
+
+        // If this timeline is already displayed, we don't need to do anything major,
+        // but we do need update the `room_name_id` in case it has changed/cleared.
+        if self.tl_state.is_some() && self.timeline_kind.as_ref().is_some_and(|k| k == &timeline_kind) {
+            self.room_name_id = Some(room_name_id.clone());
+            return;
+        }
+
+        self.hide_timeline();
+        // Reset the the state of the inner loading pane.
+        self.loading_pane(cx, ids!(loading_pane)).take_state();
+        // Reset the user profile sliding pane so a previous room's open profile
+        // pane doesn't remain shown when this RoomScreen is reused for a new room.
+        self.user_profile_sliding_pane(cx, ids!(user_profile_sliding_pane)).reset(cx);
+
+        self.room_name_id = Some(room_name_id.clone());
+        self.timeline_kind = Some(timeline_kind.clone());
+
+        // Tell the room input bar which room/thread we're now displaying.
+        // The list of room members is None for now, it'll get updated later.
+        self.view.room_input_bar(cx, ids!(room_input_bar))
+            .set_room_context(cx, self.widget_uid(), timeline_kind.clone(), None);
+
+        self.show_timeline(cx);
+    }
+
+    pub fn hide_displayed_room(&mut self, cx: &mut Cx) {
+        if self.tl_state.is_some() {
+            self.hide_timeline();
+        }
+        self.room_name_id = None;
+        self.timeline_kind = None;
+        self.pinned_events.clear();
+        self.is_loaded = false;
+        self.all_rooms_loaded = false;
+        self.view.restore_status_view(cx, ids!(restore_status_view)).set_visible(cx, false);
+        self.redraw(cx);
+    }
+
+    /// Sends read receipts based on the current scroll position of the timeline.
+    fn send_user_read_receipts_based_on_scroll_pos(
+        &mut self,
+        _cx: &mut Cx,
+        actions: &ActionsBuf,
+        portal_list: &PortalListRef,
+    ) {
+        //stopped scrolling
+        if portal_list.scrolled(actions) {
+            return;
+        }
+        let first_index = portal_list.first_id();
+        let Some(tl_state) = self.tl_state.as_mut() else { return };
+
+        if let Some(ref mut index) = tl_state.prev_first_index {
+            // to detect change of scroll when scroll ends
+            if *index != first_index {
+                if first_index >= *index {
+                    // Get event_id and timestamp for the last visible event
+                    let Some((last_event_id, last_timestamp)) = tl_state
+                        .items
+                        .get(std::cmp::min(
+                            first_index + portal_list.visible_items(),
+                            tl_state.items.len().saturating_sub(1)
+                        ))
+                        .and_then(|f| f.as_event())
+                        .and_then(|f| f.event_id().map(|e| (e, f.timestamp())))
+                    else {
+                        *index = first_index;
+                        return;
+                    };
+                    submit_async_request(MatrixRequest::ReadReceipt {
+                        timeline_kind: tl_state.kind.clone(),
+                        event_id: last_event_id.to_owned(),
+                        receipt_type: ReceiptType::Read,
+                    });
+                    if tl_state.scrolled_past_read_marker {
+                        submit_async_request(MatrixRequest::ReadReceipt {
+                            timeline_kind: tl_state.kind.clone(),
+                            event_id: last_event_id.to_owned(),
+                            receipt_type: ReceiptType::FullyRead,
+                        });
+                    } else {
+                        if let Some(own_user_receipt_timestamp) = tl_state.latest_own_user_receipt
+                            .as_ref().and_then(|receipt| receipt.ts)
+                        {
+                            let Some((_first_event_id, first_timestamp)) = tl_state
+                                .items
+                                .get(first_index)
+                                .and_then(|f| f.as_event())
+                                .and_then(|f| f.event_id().map(|e| (e, f.timestamp())))
+                                else {
+                                    *index = first_index;
+                                    return;
+                                };
+                            if own_user_receipt_timestamp >= first_timestamp
+                                && own_user_receipt_timestamp <= last_timestamp
+                            {
+                                tl_state.scrolled_past_read_marker = true;
+                                submit_async_request(MatrixRequest::ReadReceipt {
+                                    timeline_kind: tl_state.kind.clone(),
+                                    event_id: last_event_id.to_owned(),
+                                    receipt_type: ReceiptType::FullyRead,
+                                });
+                            }
+
+                        }
+                    }
+                }
+                *index = first_index;
+            }
+        } else {
+            tl_state.prev_first_index = Some(first_index);
+        }
+    }
+
+    /// Returns the widget refs used on every event, caching them if None.
+    fn cached_widget_refs(&mut self, cx: &mut Cx) -> RoomScreenWidgetRefs {
+        if let Some(refs) = &self.cached_refs {
+            return refs.clone();
+        }
+        let refs = RoomScreenWidgetRefs {
+            portal_list: self.portal_list(cx, ids!(timeline.list)),
+            user_profile_sliding_pane: self.user_profile_sliding_pane(cx, ids!(user_profile_sliding_pane)),
+            loading_pane: self.loading_pane(cx, ids!(loading_pane)),
+            room_input_popup_menu: self.room_input_popup_menu(cx, ids!(room_input_popup_menu)),
+        };
+        self.cached_refs = Some(refs.clone());
+        refs
+    }
+
+    /// Sends a backwards pagination request if the first item(s) in the timeline are visible.
+    fn send_pagination_request_on_reached_start(
+        &mut self,
+        _cx: &mut Cx,
+        actions: &ActionsBuf,
+        portal_list: &PortalListRef,
+    ) {
+        let Some(tl) = self.tl_state.as_mut() else { return };
+        if !portal_list.reached_start(actions) { return };
+        if tl.fully_paginated { return };
+        if tl.is_paginating {
+            tl.pending_reached_start = true;
+            return;
+        }
+
+        log!("Timeline hit first item, sending back pagination request for room {}", tl.kind);
+        tl.is_paginating = true;
+        submit_async_request(MatrixRequest::PaginateTimeline {
+            timeline_kind: tl.kind.clone(),
+            num_events: 50,
+            direction: PaginationDirection::Backwards,
+        });
+    }
+}
+
+impl RoomScreenRef {
+    /// See [`RoomScreen::set_displayed_room()`].
+    pub fn set_displayed_room(
+        &self,
+        cx: &mut Cx,
+        room_name_id: &RoomNameId,
+        thread_root_event_id: Option<OwnedEventId>,
+    ) {
+        let Some(mut inner) = self.borrow_mut() else { return };
+        inner.set_displayed_room(cx, room_name_id, thread_root_event_id);
+    }
+
+    pub fn hide_displayed_room(&self, cx: &mut Cx) {
+        let Some(mut inner) = self.borrow_mut() else { return };
+        inner.hide_displayed_room(cx);
+    }
+}
+
+
+/// Actions for the room screen's tooltip.
+#[derive(Clone, Debug, Default)]
+pub enum RoomScreenTooltipActions {
+    /// Mouse over event when the mouse is over the read receipt.
+    HoverInReadReceipt {
+        /// The rect of the moused over widget
+        widget_rect: Rect,
+        /// Includes the list of users who have seen this event
+        read_receipts: indexmap::IndexMap<matrix_sdk::ruma::OwnedUserId, Receipt>,
+    },
+    /// Mouse over event when the mouse is over the reaction button.
+    HoverInReactionButton {
+        /// The rectangle (bounds) of the hovered-over widget.
+        widget_rect: Rect,
+        /// Includes the list of users who have reacted to the emoji.
+        reaction_data: ReactionData,
+    },
+    /// Mouse out event and clear tooltip.
+    HoverOut,
+    #[default]
+    None,
+}
+
+/// A message that is sent from a background async task to a room's timeline view
+/// for the purpose of update the Timeline UI contents or metadata.
+pub enum TimelineUpdate {
+    /// The very first update a given room's timeline receives.
+    FirstUpdate {
+        /// The initial list of timeline items (events) for a room.
+        initial_items: Vector<Arc<TimelineItem>>,
+    },
+    /// The content of a room's timeline was updated in the background.
+    NewItems {
+        /// The entire list of timeline items (events) for a room.
+        new_items: Vector<Arc<TimelineItem>>,
+        /// The range of indices in the `items` list that have been changed in this update
+        /// and thus must be removed from any caches of drawn items in the timeline.
+        /// Any items outside of this range are assumed to be unchanged and need not be redrawn.
+        changed_indices: Range<usize>,
+        /// An optimization that informs the UI whether the changes to the timeline
+        /// resulted in new items being *appended to the end* of the timeline.
+        is_append: bool,
+        /// Whether to clear the entire cache of drawn items in the timeline.
+        /// This supersedes `index_of_first_change` and is used when the entire timeline is being redrawn.
+        clear_cache: bool,
+    },
+    /// The updated number of unread messages in the room.
+    NewUnreadMessagesCount(UnreadMessageCount),
+    /// The target event ID was found at the given `index` in the timeline items vector.
+    ///
+    /// This means that the RoomScreen widget can scroll the timeline up to this event,
+    /// and the background `timeline_subscriber_handler` async task can stop looking for this event.
+    TargetEventFound {
+        target_event_id: OwnedEventId,
+        index: usize,
+    },
+    /// A notice that the background task doing pagination for this room is currently running
+    /// a pagination request in the given direction, and is waiting for that request to complete.
+    PaginationRunning(PaginationDirection),
+    /// An error occurred while paginating the timeline for this room.
+    PaginationError {
+        error: timeline::Error,
+        direction: PaginationDirection,
+    },
+    /// A notice that the background task doing pagination for this room has become idle,
+    /// meaning that it has completed its recent pagination request(s).
+    PaginationIdle {
+        /// If `true`, the start of the timeline has been reached, meaning that
+        /// there is no need to send further pagination requests.
+        fully_paginated: bool,
+        direction: PaginationDirection,
+    },
+    /// A notice that event details have been fetched from the server,
+    /// including a `result` that indicates whether the request was successful.
+    EventDetailsFetched {
+        event_id: OwnedEventId,
+        result: Result<(), matrix_sdk_ui::timeline::Error>,
+    },
+    /// A notice that fresh thread-summary details were fetched for a thread root.
+    ThreadSummaryDetailsFetched {
+        thread_root_event_id: OwnedEventId,
+        timeline_item_index: usize,
+        num_replies: u32,
+        latest_reply_preview_text: Option<String>,
+    },
+    /// The result of a request to edit a message in this timeline.
+    MessageEdited {
+        timeline_event_item_id: TimelineEventItemId,
+        result: Result<(), matrix_sdk_ui::timeline::Error>,
+    },
+    /// A notice that the room's members have been fetched from the server,
+    /// though the success or failure of the request is not yet known until the client
+    /// requests the member info via a timeline event's `sender_profile()` method.
+    RoomMembersSynced,
+    /// A notice that the room's full member list has been fetched from the server,
+    /// includes a complete list of room members that can be shared across components.
+    /// This is different from RoomMembersSynced which only indicates members were fetched
+    /// but doesn't provide the actual data.
+    RoomMembersListFetched {
+        members: Vec<RoomMember>,
+    },
+    /// A notice with an option of Media Request Parameters that one or more requested media items (images, videos, etc.)
+    /// that should be displayed in this timeline have now been fetched and are available.
+    MediaFetched(MediaRequestParameters),
+    /// A notice that one or more members of a this room are currently typing.
+    TypingUsers {
+        /// The list of users (their displayable name) who are currently typing in this room.
+        users: Vec<String>,
+    },
+    /// The result of a pin/unpin request ([`MatrixRequest::PinEvent`]).
+    PinResult {
+        event_id: OwnedEventId,
+        result: Result<bool, matrix_sdk::Error>,
+        pin: bool,
+    },
+    /// An update containing the set of pinned events in this room.
+    PinnedEvents(Vec<OwnedEventId>),
+    /// An update containing the currently logged-in user's power levels for this room.
+    UserPowerLevels(UserPowerLevels),
+    /// A notice that this room has been changed to use encryption.
+    /// It's only possible to go from unencrypted --> encrypted, not the other way.
+    RoomEncrypted,
+    /// An update to the currently logged-in user's own read receipt for this room.
+    OwnUserReadReceipt(Receipt),
+    /// A notice that the given room has been tombstoned (closed)
+    /// and replaced by the given successor room.
+    Tombstoned(SuccessorRoomDetails),
+    /// A notice that link preview data for a URL has been fetched and is now available.
+    LinkPreviewFetched,
+    /// A file upload has been started in the background for this timeline.
+    FileUploadStarted {
+        upload_id: FileUploadAttemptId,
+        file_name: String,
+        in_reply_to: Option<OwnedEventId>,
+        abort_handle: futures_util::future::AbortHandle,
+    },
+    /// Progress update for a specific file-upload attempt.
+    FileUploadUpdate {
+        upload_id: FileUploadAttemptId,
+        current: u64,
+        total: u64,
+    },
+    /// An error occurred during a specific file-upload attempt.
+    FileUploadError {
+        upload_id: FileUploadAttemptId,
+        error: String,
+        upload: crate::shared::file_upload_modal::AttachmentUpload,
+        retryable: bool,
+    },
+    /// A specific file-upload attempt completed successfully.
+    FileUploadComplete {
+        upload_id: FileUploadAttemptId,
+    },
+    /// Download finished. `Ok` if bytes hit disk, `Err(msg)` otherwise.
+    /// The inline button briefly shows a success/failure indicator, then
+    /// `AttachmentDownloadReset` clears the entry from `pending_downloads`.
+    AttachmentDownloadFinished(OwnedMxcUri, Result<(), String>),
+    /// Drop the entry so the inline button goes back to its default "Download …" label.
+    AttachmentDownloadReset(OwnedMxcUri),
+}
+
+/// Stores timeline UI state that is not currently owned by a `RoomScreen`.
+mod timeline_state_store {
+    use super::*;
+
+    /// The current ownership state for a timeline's UI state.
+    #[allow(clippy::large_enum_variant)]
+    enum StateEntry {
+        /// No widget is displaying this timeline, so its state is parked here,
+        /// and can be taken by another `RoomScreen` in the future.
+        Stored(TimelineUiState),
+        /// A `RoomScreen` is displaying this timeline, so it's not available.
+        Taken {
+            /// The widget UID of the RoomScreen that is currently displaying this timeline.
+            owner: WidgetUid,
+            /// A flag indicating that this timeline's backend async task that handles
+            /// timeline sync & updates was closed while the timeline was still being shown.
+            /// See [`put_back()`] for more info. 
+            invalidated: bool,
+        },
+    }
+
+    /// Result of trying to take ownership of a timeline's UI state.
+    #[allow(clippy::large_enum_variant)]
+    pub(super) enum TakeResult {
+        /// A previously-saved state existed and has been taken by the caller.
+        Taken(TimelineUiState),
+        /// Another widget already took this timeline state and is displaying it.
+        AlreadyTaken { owner: WidgetUid },
+        /// No saved state exists, so a new `TimelineUiState` can be created
+        /// from newly-available timeline endpoints.
+        Missing,
+    }
+
+    thread_local! {
+        /// All timeline states (for timelines that have been shown),
+        /// one per room/thread timeline. Only relevant from the main UI thread.
+        static TIMELINE_STATES: RefCell<HashMap<TimelineKind, StateEntry>> = RefCell::new(HashMap::new());
+    }
+
+    /// Attempts to take ownership of the saved UI state for `kind`.
+    pub(super) fn take(_cx: &mut Cx, kind: &TimelineKind, owner: WidgetUid) -> TakeResult {
+        TIMELINE_STATES.with_borrow_mut(|states| {
+            match states.remove(kind) {
+                Some(StateEntry::Stored(state)) => {
+                    states.insert(kind.clone(), StateEntry::Taken { owner, invalidated: false });
+                    TakeResult::Taken(state)
+                }
+                Some(StateEntry::Taken { owner: current_owner, invalidated }) => {
+                    states.insert(kind.clone(), StateEntry::Taken { owner: current_owner, invalidated });
+                    TakeResult::AlreadyTaken { owner: current_owner }
+                }
+                None => TakeResult::Missing,
+            }
+        })
+    }
+
+    /// Records that `owner` has created and taken ownership of a new timeline state.
+    ///
+    /// This is only supposed to be used when a new timeline is created by taking
+    /// the backend timeline endpoints.
+    pub(super) fn mark_taken(_cx: &mut Cx, kind: &TimelineKind, owner: WidgetUid) {
+        TIMELINE_STATES.with_borrow_mut(|states| {
+            match states.insert(kind.clone(), StateEntry::Taken { owner, invalidated: false }) {
+                Some(StateEntry::Stored(_)) => {
+                    error!("RoomScreen::show_timeline(): timeline {kind} unexpectedly had a stored state while creating a new state");
+                }
+                Some(StateEntry::Taken { owner: current_owner, .. }) if current_owner != owner => {
+                    error!("RoomScreen::show_timeline(): timeline {kind} was already taken by widget {current_owner:?}, but widget {owner:?} created a new state");
+                }
+                Some(StateEntry::Taken { .. }) | None => {}
+            }
+        });
+    }
+
+    /// Puts a timeline's UI state back into the store after a `RoomScreen` hides it,
+    /// which allows a future RoomScreen to take it again.
+    ///
+    /// Note: this function gets called from drop handlers so it can't take `&mut Cx`,
+    ///       but those drop handlers are only reachable from the main UI thread anyway.
+    pub(super) fn put_back(owner: WidgetUid, state: TimelineUiState) {
+        let kind = state.kind.clone();
+        TIMELINE_STATES.with_borrow_mut(|states| {
+            match states.remove(&kind) {
+                Some(StateEntry::Taken { owner: current_owner, invalidated }) if current_owner == owner => {
+                    // If it was invalidated and we (the `owner`) was the RoomScreen currently showing it,
+                    // just return here to keep it removed from the TIMELINE_STATES.
+                    if invalidated {
+                        return;
+                    }
+                }
+                Some(StateEntry::Taken { owner: current_owner, .. }) => {
+                    error!("RoomScreen::save_state(): timeline {kind} was put back by widget {owner:?}, but it was taken by widget {current_owner:?}");
+                }
+                Some(StateEntry::Stored(_)) => {
+                    error!("RoomScreen::save_state(): timeline {kind} was put back by widget {owner:?}, but a stored state already existed");
+                }
+                None => {
+                    log!("RoomScreen::save_state(): timeline {kind} was put back by widget {owner:?} without a taken marker");
+                }
+            }
+            states.insert(kind, StateEntry::Stored(state));
+        });
+    }
+
+    /// Drops every stored timeline state and `Taken` marker.
+    ///
+    /// This is used when all timeline UI state is being reset globally, such as
+    /// during logout or session teardown.
+    pub(super) fn clear_all(_cx: &mut Cx) {
+        TIMELINE_STATES.with_borrow_mut(|states| {
+            states.clear();
+        });
+    }
+
+    /// Marks the given timeline's cached UI state as invalidated because we closed/stopped
+    /// the corresponding backend async timeline sync loop task for it.
+    ///
+    /// This ensures that a new timeline (and async sync task) will be re-created for it
+    /// the next time that we want to show it.
+    pub(super) fn invalidate(_cx: &mut Cx, kind: &TimelineKind) {
+        TIMELINE_STATES.with_borrow_mut(|states| {
+            if let Some(StateEntry::Taken { invalidated, .. }) = states.get_mut(kind) {
+                // If this timeline is currently being shown (it was `Taken`), just set the flag
+                // so it'll be dropped (see `put_back()`) when it's hidden by the RoomScreen.
+                *invalidated = true;
+                return;
+            }
+
+            // Otherwise, if it's not being shown, just remove it now.
+            states.remove(kind);
+        });
+    }
+}
+
+/// The UI-side state of a single room's timeline, which is only accessed/updated by the UI thread.
+///
+/// This struct should only include states that need to be persisted for a given room
+/// across multiple `Hide`/`Show` cycles of that room's timeline within a RoomScreen.
+/// If a state is more temporary and shouldn't be persisted when the timeline is hidden,
+/// then it should be stored in the RoomScreen widget itself, not in this struct.
+struct TimelineUiState {
+    /// Info determining whether this is a main room timeline is a thread-focused timeline.
+    kind: TimelineKind,
+
+    /// The power levels of the currently logged-in user in this room.
+    user_power: UserPowerLevels,
+
+    /// Whether this room is encrypted. Once enabled it can never be disabled.
+    is_encrypted: bool,
+
+    /// The list of room members for this room.
+    room_members: Option<Arc<Vec<RoomMember>>>,
+
+    /// Whether this room's timeline has been fully paginated, which means
+    /// that the oldest (first) event in the timeline is locally synced and available.
+    /// When `true`, further backwards pagination requests will not be sent.
+    ///
+    /// This must be reset to `false` whenever the timeline is fully cleared.
+    fully_paginated: bool,
+
+    /// Whether a pagination request is currently in flight.
+    is_paginating: bool,
+
+    /// The list of items (events) in this room's timeline that our client currently knows about.
+    items: Vector<Arc<TimelineItem>>,
+
+    /// The range of items (indices in the above `items` list) whose event **contents** have been drawn
+    /// since the last update and thus do not need to be re-populated on future draw events.
+    ///
+    /// This range is partially cleared on each background update (see below) to ensure that
+    /// items modified during the update are properly redrawn. Thus, it is a conservative
+    /// "cache tracker" that may not include all items that have already been drawn,
+    /// but that's okay because big updates that clear out large parts of the rangeset
+    /// only occur during back pagination, which is both rare and slow in and of itself.
+    /// During typical usage, new events are appended to the end of the timeline,
+    /// meaning that the range of already-drawn items doesn't need to be cleared.
+    ///
+    /// Upon a background update, only item indices greater than or equal to the
+    /// `index_of_first_change` are removed from this set.
+    content_drawn_since_last_update: RangeSet<usize>,
+
+    /// Same as `content_drawn_since_last_update`, but for the event **profiles** (avatar, username).
+    profile_drawn_since_last_update: RangeSet<usize>,
+
+    /// The channel receiver for timeline updates for this room.
+    ///
+    /// Here we use a synchronous (non-async) channel because the receiver runs
+    /// in a sync context and the sender runs in an async context,
+    /// which is okay because a sender on an unbounded channel never needs to block.
+    update_receiver: crossbeam_channel::Receiver<TimelineUpdate>,
+
+    /// The sender for timeline requests from a RoomScreen showing this room
+    /// to the background async task that handles this room's timeline updates.
+    request_sender: TimelineRequestSender,
+
+    /// The cache of media items (images, videos, etc.) that appear in this timeline.
+    ///
+    /// Currently this excludes avatars, as those are shared across multiple rooms.
+    media_cache: MediaCache,
+
+    /// Cache for link preview data indexed by URL to avoid redundant network requests.
+    link_preview_cache: LinkPreviewCache,
+    /// Cached fetched thread-summary details, keyed by thread-root event ID.
+    fetched_thread_summaries: HashMap<OwnedEventId, FetchedThreadSummary>,
+    /// Set of thread roots currently being fetched to avoid duplicate in-flight requests.
+    pending_thread_summary_fetches: HashSet<OwnedEventId>,
+
+    /// The states relevant to the UI display of this timeline that are saved upon
+    /// a `Hide` action and restored upon a `Show` action.
+    saved_state: SavedState,
+
+    /// The state of the message highlight animation.
+    ///
+    /// We need to run the animation once the scrolling, triggered by the click of of a
+    /// a reply preview, ends. so we keep a small state for it.
+    /// By default, it starts in Off.
+    /// Once the scrolling is started, the state becomes Pending.
+    /// If the animation was triggered, the state goes back to Off.
+    message_highlight_animation_state: MessageHighlightAnimationState,
+
+    /// Whether the first item(s) in the timeline became visible while an existing
+    /// pagination request was already in flight.
+    pending_reached_start: bool,
+
+    /// The index of the first item shown in the timeline's PortalList from *before* the last "jump".
+    ///
+    /// This index is saved before the timeline undergoes any jumps, e.g.,
+    /// receiving new items, major scroll changes, or other timeline view jumps.
+    prev_first_index: Option<usize>,
+
+    /// Whether the user has scrolled past their latest read marker.
+    ///
+    /// This is used to determine whether we should send a fully-read receipt
+    /// after the user scrolls past their "read marker", i.e., their latest fully-read receipt.
+    /// Its value is determined by comparing the fully-read event's timestamp with the
+    /// first and last timestamp of displayed events in the timeline.
+    /// When scrolling down, if the value is true, we send a fully-read receipt
+    /// for the last visible event in the timeline.
+    ///
+    /// When new message come in, this value is reset to `false`.
+    scrolled_past_read_marker: bool,
+    latest_own_user_receipt: Option<Receipt>,
+
+    /// If `Some`, this room has been tombstoned and the details of its successor room
+    /// are contained within. If `None`, the room has not been tombstoned.
+    tombstone_info: Option<SuccessorRoomDetails>,
+
+    /// Media/file attachments in this timeline that are currently being downloaded.
+    pending_downloads: SmallVec<[PendingDownload; 1]>,
+
+    /// Reply previews the user has eaxpanded that should be shown in full.
+    /// Collapsed reply previews (their default state) are absent from this set.
+    expanded_reply_previews: HashSet<TimelineEventItemId>,
+}
+
+#[derive(Default, Debug)]
+enum MessageHighlightAnimationState {
+    Pending { item_id: usize },
+    #[default]
+    Off,
+}
+
+/// States that are necessary to save in order to maintain a consistent UI display for a timeline.
+///
+/// These are saved when navigating away from a timeline (upon `Hide`)
+/// and restored when navigating back to a timeline (upon `Show`).
+#[derive(Default)]
+struct SavedState {
+    /// The index of the first item in the timeline's PortalList that is currently visible,
+    /// and the scroll offset from the top of the list's viewport to the beginning of that item.
+    /// If this is `None`, then the timeline has not yet been scrolled by the user
+    /// and the portal list will be set to "tail" (track) the bottom of the list.
+    first_index_and_scroll: Option<(usize, f64)>,
+    /// The state of all UI elements in the `RoomInputBar`.
+    room_input_bar_state: RoomInputBarState,
+}
+
+/// Returns info about the item in the list of `new_items` that matches the event ID
+/// of a visible item in the given `curr_items` list.
+///
+/// This info includes a tuple of:
+/// 1. the index of the item in the current items list,
+/// 2. the index of the item in the new items list,
+/// 3. the positional "scroll" offset of the corresponding current item in the portal list,
+/// 4. the unique event ID of the item.
+fn find_new_item_matching_current_item(
+    cx: &mut Cx,
+    portal_list: &PortalListRef,
+    starting_at_curr_idx: usize,
+    curr_items: &Vector<Arc<TimelineItem>>,
+    new_items: &Vector<Arc<TimelineItem>>,
+) -> Option<(usize, usize, f64, OwnedEventId)> {
+    let mut curr_item_focus = curr_items.focus();
+    let mut idx_curr = starting_at_curr_idx;
+    let mut curr_items_with_ids: Vec<(usize, OwnedEventId)> = Vec::with_capacity(
+        portal_list.visible_items()
+    );
+
+    // Find all items with real event IDs that are currently visible in the portal list.
+    // TODO: if this is slow, we could limit it to 3-5 events at the most.
+    if curr_items_with_ids.len() <= portal_list.visible_items() {
+        while let Some(curr_item) = curr_item_focus.get(idx_curr) {
+            if let Some(event_id) = curr_item.as_event().and_then(|ev| ev.event_id()) {
+                curr_items_with_ids.push((idx_curr, event_id.to_owned()));
+            }
+            if curr_items_with_ids.len() >= portal_list.visible_items() {
+                break;
+            }
+            idx_curr += 1;
+        }
+    }
+
+    // Find a new item that has the same real event ID as any of the current items.
+    for (idx_new, new_item) in new_items.iter().enumerate() {
+        let Some(event_id) = new_item.as_event().and_then(|ev| ev.event_id()) else {
+            continue;
+        };
+        if let Some((idx_curr, _)) = curr_items_with_ids
+            .iter()
+            .find(|(_, ev_id)| ev_id == event_id)
+        {
+            // Not all items in the portal list are guaranteed to have a position offset,
+            // some may be zeroed-out, so we need to account for that possibility by only
+            // using events that have a real non-zero area
+            if let Some(pos_offset) = portal_list.position_of_item(cx, *idx_curr) {
+                log!("Found matching event ID {event_id} at index {idx_new} in new items list, corresponding to current item index {idx_curr} at pos offset {pos_offset}");
+                return Some((*idx_curr, idx_new, pos_offset, event_id.to_owned()));
+            }
+        }
+    }
+
+    None
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct ItemDrawnStatus {
+    /// Whether the profile info (avatar and displayable username) were drawn for this item.
+    profile_drawn: bool,
+    /// Whether the content of the item was drawn (e.g., the message text, image, video, sticker, etc).
+    content_drawn: bool,
+}
+
+#[derive(Clone, Debug)]
+struct FetchedThreadSummary {
+    num_replies: u32,
+    latest_reply_preview_text: Option<String>,
+}
+impl ItemDrawnStatus {
+    /// Returns a new `ItemDrawnStatus` with both `profile_drawn` and `content_drawn` set to `false`.
+    const fn new() -> Self {
+        Self {
+            profile_drawn: false,
+            content_drawn: false,
+        }
+    }
+    /// Returns a new `ItemDrawnStatus` with both `profile_drawn` and `content_drawn` set to `true`.
+    const fn both_drawn() -> Self {
+        Self {
+            profile_drawn: true,
+            content_drawn: true,
+        }
+    }
+}
+
+/// Creates, populates, and adds a Message liveview widget to the given `PortalList`
+/// with the given `item_id`.
+///
+/// The content of the returned `Message` widget is populated with data from a message
+/// or sticker and its containing `EventTimelineItem`.
+fn populate_message_view(
+    cx: &mut Cx2d,
+    list: &mut PortalList,
+    item_id: usize,
+    timeline_kind: &TimelineKind,
+    event_tl_item: &EventTimelineItem,
+    msg_like_content: &MsgLikeContent,
+    prev_event: Option<&Arc<TimelineItem>>,
+    media_cache: &mut MediaCache,
+    link_preview_cache: &mut LinkPreviewCache,
+    fetched_thread_summaries: &HashMap<OwnedEventId, FetchedThreadSummary>,
+    pending_thread_summary_fetches: &mut HashSet<OwnedEventId>,
+    user_power_levels: &UserPowerLevels,
+    pinned_events: &[OwnedEventId],
+    pending_downloads: &[PendingDownload],
+    expanded_reply_previews: &HashSet<TimelineEventItemId>,
+    item_drawn_status: ItemDrawnStatus,
+    room_screen_widget_uid: WidgetUid,
+) -> (WidgetRef, ItemDrawnStatus) {
+    let mut new_drawn_status = item_drawn_status;
+    let ts_millis = event_tl_item.timestamp();
+
+    let mut is_notice = false; // whether this message is a Notice (automated bot message)
+    let mut is_server_notice = false; // whether this message is a Server Notice
+
+    // Determine whether we can use a more compact UI view that hides the user's profile info
+    // if the previous message (including stickers) was sent by the same user within 10 minutes.
+    let use_compact_view = match prev_event.map(|p| p.kind()) {
+        Some(TimelineItemKind::Event(prev_event_tl_item)) => match prev_event_tl_item.content() {
+            TimelineItemContent::MsgLike(_msg_like_content) => {
+                let prev_msg_sender = prev_event_tl_item.sender();
+                prev_msg_sender == event_tl_item.sender()
+                    && ts_millis.0
+                        .checked_sub(prev_event_tl_item.timestamp().0)
+                        .is_some_and(|d| d < uint!(600000)) // 10 mins in millis
+            }
+            _ => false,
+        },
+        _ => false,
+    };
+
+    let has_html_body: bool;
+
+    // Sometimes we need to get the username/avatar up-front,
+    // so we save that here to avoid calling the function twice.
+    let mut set_username_and_get_avatar_retval = None;
+    let mut has_room_mention = false;
+    let mut download_info: Option<DownloadableAttachment> = None;
+
+    let (item, used_cached_item) = match &msg_like_content.kind {
+        MsgLikeKind::Message(msg) => {
+            let room_mention_room_id = if msg.mentions().is_some_and(|m| m.room) {
+                has_room_mention = true;
+                Some(timeline_kind.room_id())
+            } else {
+                None
+            };
+            match msg.msgtype() {
+                MessageType::Text(TextMessageEventContent { body, formatted, .. }) => {
+                    has_html_body = formatted.as_ref().is_some_and(|f| f.format == MessageFormat::Html);
+                    let template = if use_compact_view {
+                        id!(CondensedMessage)
+                    } else {
+                        id!(Message)
+                    };
+                    let (item, existed) = list.item_with_existed(cx, item_id, template);
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        let html_or_plaintext_ref =
+                            item.html_or_plaintext(cx, ids!(content.message));
+                        let mut link_preview_ref =
+                            item.link_preview(cx, ids!(content.link_preview_view));
+                        new_drawn_status.content_drawn = populate_text_message_content(
+                            cx,
+                            &html_or_plaintext_ref,
+                            body,
+                            formatted.as_ref(),
+                            room_mention_room_id,
+                            Some(&mut link_preview_ref),
+                            Some(media_cache),
+                            Some(link_preview_cache),
+                        );
+                        (item, false)
+                    }
+                }
+                // A notice message is just a message sent by an automated bot,
+                // so we treat it just like a message but use a different font color.
+                MessageType::Notice(NoticeMessageEventContent{body, formatted, ..}) => {
+                    is_notice = true;
+                    has_html_body = formatted.as_ref().is_some_and(|f| f.format == MessageFormat::Html);
+                    let template = if use_compact_view {
+                        id!(CondensedMessage)
+                    } else {
+                        id!(Message)
+                    };
+                    let (item, existed) = list.item_with_existed(cx, item_id, template);
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        let html_or_plaintext_ref = item.html_or_plaintext(cx, ids!(content.message));
+                        // Apply gray color to all text styles for notice messages.
+                        // This covers both rendering paths in HtmlOrPlaintext: the rich
+                        // `html_view.html` widget (used when the message has an HTML body)
+                        // and the `plaintext_view.pt_label` (used for plain-text notices).
+                        let mut html_widget = html_or_plaintext_ref.html(cx, ids!(html_view.html));
+                        script_apply_eval!(cx, html_widget, {
+                            font_color: mod.widgets.COLOR_MESSAGE_NOTICE_TEXT,
+                            draw_block +: {
+                                quote_fg_color: mod.widgets.COLOR_MESSAGE_NOTICE_TEXT,
+                            }
+                        });
+                        let mut pt_label = html_or_plaintext_ref.label(cx, ids!(plaintext_view.pt_label));
+                        script_apply_eval!(cx, pt_label, {
+                            draw_text +: {
+                                color: mod.widgets.COLOR_MESSAGE_NOTICE_TEXT
+                            }
+                        });
+                        let mut link_preview_ref =
+                            item.link_preview(cx, ids!(content.link_preview_view));
+                        new_drawn_status.content_drawn = populate_text_message_content(
+                            cx,
+                            &html_or_plaintext_ref,
+                            body,
+                            formatted.as_ref(),
+                            room_mention_room_id,
+                            Some(&mut link_preview_ref),
+                            Some(media_cache),
+                            Some(link_preview_cache),
+                        );
+                        (item, false)
+                    }
+                }
+                MessageType::ServerNotice(sn) => {
+                    is_server_notice = true;
+                    has_html_body = false;
+                    let (item, existed) = list.item_with_existed(cx, item_id, id!(Message));
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        let html_or_plaintext_ref = item.html_or_plaintext(cx, ids!(content.message));
+                        // Apply red color to all text styles for server notices.
+                        let mut html_widget = html_or_plaintext_ref.html(cx, ids!(html_view.html));
+                        script_apply_eval!(cx, html_widget, {
+                            font_color: mod.widgets.COLOR_FG_DANGER_RED
+                            draw_text +: { color: mod.widgets.COLOR_FG_DANGER_RED }
+                            draw_block +: {
+                                line_color: mod.widgets.COLOR_FG_DANGER_RED
+                                quote_fg_color: mod.widgets.COLOR_FG_DANGER_RED
+                            }
+                        });
+                        let formatted = format!(
+                            "<b>Server notice:</b> {}\n\n<i>Notice type:</i>: {}{}{}",
+                            sn.body,
+                            sn.server_notice_type.as_str(),
+                            sn.limit_type.as_ref()
+                                .map(|l| format!("\n<i>Limit type:</i> {}", l.as_str()))
+                                .unwrap_or_default(),
+                            sn.admin_contact.as_ref()
+                                .map(|c| format!("\n<i>Admin contact:</i> {}", c))
+                                .unwrap_or_default(),
+                        );
+                        let mut link_preview_ref =
+                            item.link_preview(cx, ids!(content.link_preview_view));
+                        new_drawn_status.content_drawn = populate_text_message_content(
+                            cx,
+                            &html_or_plaintext_ref,
+                            &sn.body,
+                            Some(&FormattedBody {
+                                format: MessageFormat::Html,
+                                body: formatted,
+                            }),
+                            room_mention_room_id,
+                            Some(&mut link_preview_ref),
+                            Some(media_cache),
+                            Some(link_preview_cache),
+                        );
+                        (item, false)
+                    }
+                }
+                // An emote is just like a message but is prepended with the user's name
+                // to indicate that it's an "action" that the user is performing.
+                MessageType::Emote(EmoteMessageEventContent { body, formatted, .. }) => {
+                    has_html_body = formatted.as_ref().is_some_and(|f| f.format == MessageFormat::Html);
+                    let template = if use_compact_view {
+                        id!(CondensedMessage)
+                    } else {
+                        id!(Message)
+                    };
+                    let (item, existed) = list.item_with_existed(cx, item_id, template);
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        // Draw the profile up front here because we need the username for the emote body.
+                        let (username, profile_drawn) = item.avatar(cx, ids!(profile.avatar)).set_avatar_and_get_username(
+                            cx,
+                            timeline_kind,
+                            event_tl_item.sender(),
+                            Some(event_tl_item.sender_profile()),
+                            event_tl_item.event_id(),
+                            true,
+                        );
+
+                        // Prepend a "* <username> " to the emote body, as suggested by the Matrix spec.
+                        let (body, formatted) = if let Some(fb) = formatted.as_ref() {
+                            (
+                                Cow::from(&fb.body),
+                                Some(FormattedBody {
+                                    format: fb.format.clone(),
+                                    body: format!("* {} {}", username, fb.body),
+                                })
+                            )
+                        } else {
+                            (Cow::from(format!("* {} {}", username, body)), None)
+                        };
+                        let html_or_plaintext_ref =
+                            item.html_or_plaintext(cx, ids!(content.message));
+                        let mut link_preview_ref =
+                            item.link_preview(cx, ids!(content.link_preview_view));
+                        let link_previews_drawn = populate_text_message_content(
+                            cx,
+                            &html_or_plaintext_ref,
+                            &body,
+                            formatted.as_ref(),
+                            room_mention_room_id,
+                            Some(&mut link_preview_ref),
+                            Some(media_cache),
+                            Some(link_preview_cache),
+                        );
+                        set_username_and_get_avatar_retval = Some((username, profile_drawn));
+                        new_drawn_status.content_drawn = link_previews_drawn;
+                        (item, false)
+                    }
+                }
+                MessageType::Image(image) => {
+                    has_html_body = image.formatted.as_ref()
+                        .is_some_and(|f| f.format == MessageFormat::Html);
+                    let template = if use_compact_view {
+                        id!(CondensedImageMessage)
+                    } else {
+                        id!(ImageMessage)
+                    };
+                    let (item, existed) = list.item_with_existed(cx, item_id, template);
+                    let was_cached = existed && item_drawn_status.content_drawn;
+                    let text_or_image_ref = item.text_or_image(cx, ids!(content.message.image));
+                    let fallback = if was_cached {
+                        // Cached path re-reads the status the widget already has.
+                        text_or_image_ref.status().is_text().then(|| DownloadableAttachment {
+                            media_source: image.source.clone(),
+                            filename: image.filename().to_owned(),
+                            size: image.info.as_ref().and_then(|i| i.size).map(u64::from),
+                            kind: DownloadKind::Image,
+                        })
+                    } else {
+                        let (is_image_fully_drawn, fallback) = populate_image_message_content_with_fallback(
+                            cx,
+                            &text_or_image_ref,
+                            image.info.as_deref(),
+                            image.source.clone(),
+                            msg.body(),
+                            media_cache,
+                            image.filename(),
+                            image.info.as_ref().and_then(|i| i.size).map(u64::from),
+                            DownloadKind::Image,
+                        );
+                        new_drawn_status.content_drawn = is_image_fully_drawn;
+                        populate_media_caption(cx, &item, image.formatted_caption(), image.caption());
+                        fallback
+                    };
+                    download_info = fallback;
+                    (item, was_cached)
+                }
+                MessageType::Location(location) => {
+                    has_html_body = false;
+                    let template = if use_compact_view {
+                        id!(CondensedMessage)
+                    } else {
+                        id!(Message)
+                    };
+                    let (item, existed) = list.item_with_existed(cx, item_id, template);
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        let html_or_plaintext_ref =
+                            item.html_or_plaintext(cx, ids!(content.message));
+                        item.link_preview(cx, ids!(content.link_preview_view)).clear(cx);
+                        let is_location_fully_drawn = populate_location_message_content(
+                            cx,
+                            &html_or_plaintext_ref,
+                            location,
+                        );
+                        new_drawn_status.content_drawn = is_location_fully_drawn;
+                        (item, false)
+                    }
+                }
+                MessageType::File(file_content) => {
+                    has_html_body = file_content.formatted.as_ref().is_some_and(|f| f.format == MessageFormat::Html);
+                    download_info = Some(DownloadableAttachment {
+                        media_source: file_content.source.clone(),
+                        filename: file_content.filename().to_owned(),
+                        size: file_content.info.as_ref().and_then(|i| i.size).map(u64::from),
+                        kind: DownloadKind::File,
+                    });
+                    let template = if use_compact_view {
+                        id!(CondensedMessage)
+                    } else {
+                        id!(Message)
+                    };
+                    let (item, existed) = list.item_with_existed(cx, item_id, template);
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        let html_or_plaintext_ref =
+                            item.html_or_plaintext(cx, ids!(content.message));
+                        item.link_preview(cx, ids!(content.link_preview_view)).clear(cx);
+                        new_drawn_status.content_drawn = populate_file_message_content(
+                            cx,
+                            &html_or_plaintext_ref,
+                            file_content,
+                        );
+                        (item, false)
+                    }
+                }
+                MessageType::Audio(audio) => {
+                    has_html_body = audio.formatted.as_ref().is_some_and(|f| f.format == MessageFormat::Html);
+                    download_info = Some(DownloadableAttachment {
+                        media_source: audio.source.clone(),
+                        filename: audio.filename().to_owned(),
+                        size: audio.info.as_ref().and_then(|i| i.size).map(u64::from),
+                        kind: DownloadKind::Audio,
+                    });
+                    let template = if use_compact_view {
+                        id!(CondensedMessage)
+                    } else {
+                        id!(Message)
+                    };
+                    let (item, existed) = list.item_with_existed(cx, item_id, template);
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        let html_or_plaintext_ref =
+                            item.html_or_plaintext(cx, ids!(content.message));
+                        item.link_preview(cx, ids!(content.link_preview_view)).clear(cx);
+                        new_drawn_status.content_drawn = populate_audio_message_content(
+                            cx,
+                            &html_or_plaintext_ref,
+                            audio,
+                        );
+                        (item, false)
+                    }
+                }
+                MessageType::Video(video) => {
+                    has_html_body = video.formatted.as_ref().is_some_and(|f| f.format == MessageFormat::Html);
+                    download_info = Some(DownloadableAttachment {
+                        media_source: video.source.clone(),
+                        filename: video.filename().to_owned(),
+                        size: video.info.as_ref().and_then(|i| i.size).map(u64::from),
+                        kind: DownloadKind::Video,
+                    });
+                    let template = if use_compact_view {
+                        id!(CondensedMessage)
+                    } else {
+                        id!(Message)
+                    };
+                    let (item, existed) = list.item_with_existed(cx, item_id, template);
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        let html_or_plaintext_ref =
+                            item.html_or_plaintext(cx, ids!(content.message));
+                        item.link_preview(cx, ids!(content.link_preview_view)).clear(cx);
+                        new_drawn_status.content_drawn = populate_video_message_content(
+                            cx,
+                            &html_or_plaintext_ref,
+                            video,
+                        );
+                        (item, false)
+                    }
+                }
+                MessageType::VerificationRequest(verification) => {
+                    has_html_body = verification.formatted.as_ref().is_some_and(|f| f.format == MessageFormat::Html);
+                    let template = id!(Message);
+                    let (item, existed) = list.item_with_existed(cx, item_id, template);
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        // Use `FormattedBody` to hold our custom summary of this verification request.
+                        let formatted = FormattedBody {
+                            format: MessageFormat::Html,
+                            body: format!(
+                                "<i>Sent a <b>verification request</b> to {}.<br>(Supported methods: {})</i>",
+                                verification.to,
+                                verification.methods
+                                    .iter()
+                                    .map(|m| m.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                            ),
+                        };
+                        let html_or_plaintext_ref =
+                            item.html_or_plaintext(cx, ids!(content.message));
+                        let mut link_preview_ref =
+                            item.link_preview(cx, ids!(content.link_preview_view));
+
+                        new_drawn_status.content_drawn = populate_text_message_content(
+                            cx,
+                            &html_or_plaintext_ref,
+                            &verification.body,
+                            Some(&formatted),
+                            room_mention_room_id,
+                            Some(&mut link_preview_ref),
+                            Some(media_cache),
+                            Some(link_preview_cache),
+                        );
+                        (item, false)
+                    }
+                }
+                _ => {
+                    has_html_body = false;
+                    let (item, existed) = list.item_with_existed(cx, item_id, id!(Message));
+                    if existed && item_drawn_status.content_drawn {
+                        (item, true)
+                    } else {
+                        item.link_preview(cx, ids!(content.link_preview_view)).clear(cx);
+                        item.label(cx, ids!(content.message)).set_text(
+                            cx,
+                            &format!("[Unsupported {:?}]", msg_like_content.kind),
+                        );
+                        new_drawn_status.content_drawn = true;
+                        (item, false)
+                    }
+                }
+            }
+        }
+        // Handle sticker messages that are static images.
+        MsgLikeKind::Sticker(sticker) => {
+            has_html_body = false;
+            let StickerEventContent { body, info, source, .. } = sticker.content();
+            let template = if use_compact_view {
+                id!(CondensedImageMessage)
+            } else {
+                id!(ImageMessage)
+            };
+            let (item, existed) = list.item_with_existed(cx, item_id, template);
+            let was_cached = existed && item_drawn_status.content_drawn;
+
+            let text_or_image_ref = item.text_or_image(cx, ids!(content.message.image));
+            let media_source: MediaSource = source.clone().into();
+            let filename = if body.is_empty() { "sticker" } else { body.as_str() };
+            let size = info.size.map(u64::from);
+            download_info = if was_cached {
+                text_or_image_ref.status().is_text().then(|| DownloadableAttachment {
+                    media_source,
+                    filename: filename.to_owned(),
+                    size,
+                    kind: DownloadKind::Image,
+                })
+            } else {
+                let (is_image_fully_drawn, fallback) = populate_image_message_content_with_fallback(
+                    cx,
+                    &text_or_image_ref,
+                    Some(info),
+                    media_source,
+                    body,
+                    media_cache,
+                    filename,
+                    size,
+                    DownloadKind::Image,
+                );
+                new_drawn_status.content_drawn = is_image_fully_drawn;
+                populate_media_caption(cx, &item, None, None);
+                fallback
+            };
+            (item, was_cached)
+        }
+        // Handle messages that have been redacted (deleted).
+        MsgLikeKind::Redacted => {
+            has_html_body = false;
+            let template = if use_compact_view {
+                id!(CondensedMessage)
+            } else {
+                id!(Message)
+            };
+            let (item, existed) = list.item_with_existed(cx, item_id, template);
+            if existed && item_drawn_status.content_drawn {
+                (item, true)
+            } else {
+                let html_or_plaintext_ref = item.html_or_plaintext(cx, ids!(content.message));
+                // Redacted messages have no link preview; clear any stale one from a reused row.
+                item.link_preview(cx, ids!(content.link_preview_view)).clear(cx);
+                // Apply a smaller font size for redacted messages.
+                let mut html_widget = html_or_plaintext_ref.html(cx, ids!(html_view.html));
+                script_apply_eval!(cx, html_widget, {
+                    font_size: mod.widgets.REDACTED_MESSAGE_FONT_SIZE
+                    text_style_normal +: { font_size: mod.widgets.REDACTED_MESSAGE_FONT_SIZE }
+                    text_style_italic +: { font_size: mod.widgets.REDACTED_MESSAGE_FONT_SIZE }
+                    text_style_bold +: { font_size: mod.widgets.REDACTED_MESSAGE_FONT_SIZE }
+                    text_style_bold_italic +: { font_size: mod.widgets.REDACTED_MESSAGE_FONT_SIZE }
+                    text_style_fixed +: { font_size: mod.widgets.REDACTED_MESSAGE_FONT_SIZE }
+                });
+                new_drawn_status.content_drawn = populate_redacted_message_content(
+                    cx,
+                    &html_or_plaintext_ref,
+                    event_tl_item,
+                    timeline_kind.room_id(),
+                );
+                (item, false)
+            }
+        }
+        other => {
+            has_html_body = false;
+            let (item, existed) = list.item_with_existed(cx, item_id, id!(Message));
+            if existed && item_drawn_status.content_drawn {
+                (item, true)
+            } else {
+                item.link_preview(cx, ids!(content.link_preview_view)).clear(cx);
+                item.label(cx, ids!(content.message)).set_text(
+                    cx,
+                    &format!("[Unsupported {:?}] ", other),
+                );
+                new_drawn_status.content_drawn = true;
+                (item, false)
+            }
+        }
+    };
+
+    let timeline_event_id = event_tl_item.identifier();
+
+    // If we didn't use a cached item, we need to draw all other message content:
+    // the reactions, the read receipts avatar row, the reply preview.
+    if !used_cached_item {
+        // Redacted messages must never show reactions, even if the SDK still reports some.
+        let reactions = (!matches!(msg_like_content.kind, MsgLikeKind::Redacted))
+            .then(|| event_tl_item.content().reactions())
+            .flatten();
+        item.reaction_list(cx, ids!(content.reaction_list)).set_list(
+            cx,
+            reactions,
+            timeline_kind,
+            &timeline_event_id,
+            item_id,
+        );
+        populate_read_receipts(&item, cx, timeline_kind, event_tl_item);
+        let is_reply_fully_drawn = draw_replied_to_message(
+            cx,
+            &item.widget(cx, ids!(replied_to_message)),
+            timeline_kind,
+            msg_like_content.in_reply_to.as_ref(),
+            event_tl_item.event_id(),
+        );
+        let is_thread_summary_fully_drawn = populate_thread_root_summary(
+            cx,
+            &item,
+            item_id,
+            timeline_kind,
+            msg_like_content,
+            event_tl_item,
+            fetched_thread_summaries,
+            pending_thread_summary_fetches,
+        );
+
+        // The content is only considered to be fully drawn if the logic above marked it as such
+        // *and* if the reply preview was also fully drawn
+        // *and* if the thread root summary (if applicable) was also fully drawn.
+        new_drawn_status.content_drawn &= is_reply_fully_drawn;
+        new_drawn_status.content_drawn &= is_thread_summary_fully_drawn;
+    }
+
+
+    // Re-set even for cached items: the portal list recycles widgets, so
+    // the same template might now be showing a totally different message.
+    let message_details = MessageDetails {
+        thread_root_event_id: msg_like_content.thread_root.clone().or_else(|| {
+            msg_like_content.thread_summary.as_ref()
+                .and_then(|_| event_tl_item.event_id().map(|id| id.to_owned()))
+        }),
+        timeline_event_id,
+        item_id,
+        related_event_id: msg_like_content.in_reply_to.as_ref().map(|r| r.event_id.clone()),
+        room_screen_widget_uid,
+        abilities: MessageAbilities::from_user_power_and_event(
+            user_power_levels,
+            event_tl_item,
+            msg_like_content,
+            pinned_events,
+            has_html_body,
+            timeline_kind.thread_root_event_id().is_some(),
+        ),
+        should_be_highlighted: event_tl_item.is_highlighted() || has_room_mention,
+    };
+    let download_state = download_info.as_ref()
+        .and_then(|info| {
+            let mxc = media_source_mxc(&info.media_source);
+            pending_downloads.iter()
+                .find(|p| &p.mxc == mxc)
+                .map(|p| p.state.display(p.kind))
+        })
+        .unwrap_or_default();
+    let is_reply_expanded = expanded_reply_previews.contains(&message_details.timeline_event_id);
+    item.as_message().set_data(cx, message_details, download_info, download_state, is_reply_expanded);
+
+
+    // If `used_cached_item` is false, we should always redraw the profile, even if profile_drawn is true.
+    let skip_draw_profile =
+        use_compact_view || (used_cached_item && item_drawn_status.profile_drawn);
+    if skip_draw_profile {
+        // log!("\t --> populate_message_view(): SKIPPING profile draw for item_id: {item_id}");
+        new_drawn_status.profile_drawn = true;
+    } else {
+        // log!("\t --> populate_message_view(): DRAWING  profile draw for item_id: {item_id}");
+        let mut username_label = item.label(cx, ids!(content.username));
+
+        if !is_server_notice { // the normal case
+            let (username, profile_drawn) = set_username_and_get_avatar_retval.unwrap_or_else(||
+                item.avatar(cx, ids!(profile.avatar)).set_avatar_and_get_username(
+                    cx,
+                    timeline_kind,
+                    event_tl_item.sender(),
+                    Some(event_tl_item.sender_profile()),
+                    event_tl_item.event_id(),
+                    true,
+                )
+            );
+            if is_notice {
+                script_apply_eval!(cx, username_label, {
+                    draw_text +: {
+                        color: mod.widgets.COLOR_MESSAGE_NOTICE_TEXT
+                    }
+                });
+            }
+            username_label.set_text(cx, &username);
+            new_drawn_status.profile_drawn = profile_drawn;
+        }
+        else {
+            // Server notices are drawn with a red color avatar background and username.
+            let avatar = item.avatar(cx, ids!(profile.avatar));
+            avatar.show_text(cx, Some(COLOR_FG_DANGER_RED), None, "⚠");
+            username_label.set_text(cx, "Server notice");
+            script_apply_eval!(cx, username_label, {
+                draw_text +: {
+                    color: (mod.widgets.COLOR_FG_DANGER_RED)
+                }
+            });
+            new_drawn_status.profile_drawn = true;
+        }
+    }
+
+    // If we've previously drawn the item content, skip all other steps.
+    if used_cached_item && item_drawn_status.content_drawn && item_drawn_status.profile_drawn {
+        return (item, new_drawn_status);
+    }
+
+    // Set the timestamp.
+    if let Some(dt) = unix_time_millis_to_datetime(ts_millis) {
+        item.timestamp(cx, ids!(profile.timestamp)).set_date_time(cx, dt);
+    }
+
+    // Set the "edited" indicator if this message was edited, otherwise hide it
+    // (this widget may be reused for a non-edited message at the same row).
+    let edited_indicator = item.edited_indicator(cx, ids!(profile.edited_indicator));
+    if msg_like_content.as_message().is_some_and(|m| m.is_edited()) {
+        edited_indicator.set_latest_edit(cx, event_tl_item);
+    } else {
+        edited_indicator.hide(cx);
+    }
+
+    #[cfg(feature = "tsp")] {
+        use matrix_sdk::ruma::serde::Base64;
+        use crate::tsp::{self, tsp_sign_indicator::{TspSignState, TspSignIndicatorWidgetRefExt}};
+
+        if let Some(mut tsp_sig) = event_tl_item.latest_json()
+            .and_then(|raw| raw.get_field::<serde_json::Value>("content").ok())
+            .flatten()
+            .and_then(|content_obj| content_obj.get("org.robius.tsp_signature").cloned())
+            .and_then(|tsp_sig_value| serde_json::from_value::<Base64>(tsp_sig_value).ok())
+            .map(|b64| b64.into_inner())
+        {
+            log!("Found event {:?} with TSP signature.", event_tl_item.event_id());
+            let tsp_sign_state = if let Some(sender_vid) = tsp::tsp_state_ref().lock().unwrap()
+                .get_verified_vid_for(event_tl_item.sender())
+            {
+                log!("Found verified VID for sender {}: \"{}\"", event_tl_item.sender(), sender_vid.identifier());
+                tsp_sdk::crypto::verify(&*sender_vid, &mut tsp_sig).map_or(
+                    TspSignState::WrongSignature,
+                    |(msg, msg_type)| {
+                        log!("TSP signature verified successfully!\n    Msg type: {msg_type:?}\n    Message: {:?} ({msg:X?})", std::str::from_utf8(msg));
+                        TspSignState::Verified
+                    }
+                )
+            } else {
+                TspSignState::Unknown
+            };
+
+            log!("TSP signature state for event {:?} is {:?}", event_tl_item.event_id(), tsp_sign_state);
+            item.tsp_sign_indicator(cx, ids!(profile.tsp_sign_indicator))
+                .show_with_state(cx, tsp_sign_state);
+        } else {
+            // Hide the TSP indicator (in case we reused the message widget at this item index).
+            item.tsp_sign_indicator(cx, ids!(profile.tsp_sign_indicator)).hide(cx);
+        }
+    }
+
+    (item, new_drawn_status)
+}
+
+/// Draws the Html or plaintext body of the given Text or Notice message into the `message_content_widget`.
+/// Also populates link previews if a link_preview_ref is provided.
+///
+/// Returns whether the text items were fully drawn.
+fn populate_text_message_content(
+    cx: &mut Cx,
+    message_content_widget: &HtmlOrPlaintextRef,
+    body: &str,
+    formatted_body: Option<&FormattedBody>,
+    room_mention_room_id: Option<&OwnedRoomId>,
+    link_preview_ref: Option<&mut LinkPreviewRef>,
+    media_cache: Option<&mut MediaCache>,
+    link_preview_cache: Option<&mut LinkPreviewCache>,
+) -> bool {
+    /// If this is a room mention, replace `@room` text in `html` with a pill
+    /// link to the room so it renders as a red room pill with the room's avatar.
+    fn apply_room_mention<'a>(html: Cow<'a, str>, room_id: Option<&OwnedRoomId>) -> Cow<'a, str> {
+        if let Some(room_id) = room_id {
+            // Only replace @room if it's NOT already inside an <a> tag
+            // (some clients pre-link @room in the formatted_body).
+            if html.contains("@room") && !html.contains("\">@room</a>") {
+                return Cow::Owned(html.replace(
+                    "@room",
+                    &format!("<a href=\"https://matrix.to/#/{room_id}\">@room</a>"),
+                ));
+            }
+        }
+        html
+    }
+
+    // The message was HTML-formatted rich text.
+    let mut links = Vec::new();
+    if let Some(fb) = formatted_body.as_ref()
+        .and_then(|fb| (fb.format == MessageFormat::Html).then_some(fb))
+    {
+        let linkified_html = utils::linkify_get_urls(
+            utils::trim_start_html_whitespace(&fb.body),
+            true,
+            Some(&mut links),
+        );
+        let html = apply_room_mention(linkified_html, room_mention_room_id);
+        message_content_widget.show_html(cx, html);
+    }
+    // The message was non-HTML plaintext.
+    else {
+        let linkified_html = utils::linkify_get_urls(body, false, Some(&mut links));
+        let html = apply_room_mention(linkified_html, room_mention_room_id);
+        match html {
+            Cow::Owned(linkified_html) => message_content_widget.show_html(cx, &linkified_html),
+            Cow::Borrowed(plaintext) => message_content_widget.show_plaintext(cx, plaintext),
+        }
+    };
+
+    // Populate link previews if all required parameters are provided
+    if let (Some(link_preview_ref), Some(media_cache), Some(link_preview_cache)) = 
+        (link_preview_ref, media_cache, link_preview_cache)
+    {
+        link_preview_ref.populate_below_message(
+            cx,
+            &links,
+            media_cache,
+            link_preview_cache,
+            &populate_image_message_content,
+        )
+    } else {
+        true
+    }
+}
+
+
+/// Populates the caption (and makes its view visible) for the given message `item`.
+///
+/// Prefers the formatted caption (HTML), with an optional plaintext caption as fallback.
+fn populate_media_caption(
+    cx: &mut Cx,
+    item: &WidgetRef,
+    formatted_caption: Option<&FormattedBody>,
+    backup_caption: Option<&str>,
+) {
+    let caption_view = item.view(cx, ids!(content.message.caption_view));
+    let caption_ref = item.html_or_plaintext(cx, ids!(content.message.caption_view.caption));
+    let should_show = if let Some(fb) = formatted_caption
+        .filter(|fb| fb.format == MessageFormat::Html && !fb.body.trim().is_empty())
+    {
+        caption_ref.show_html(cx, &fb.body);
+        true
+    } else if let Some(text) = backup_caption.filter(|c| !c.trim().is_empty()) {
+        caption_ref.show_plaintext(cx, text);
+        true
+    } else {
+        false
+    };
+    caption_view.set_visible(cx, should_show);
+}
+
+/// Like `populate_image_message_content`, but also returns metadata
+/// about how to download the image if we were unable to show a preview of it.
+fn populate_image_message_content_with_fallback(
+    cx: &mut Cx,
+    text_or_image_ref: &TextOrImageRef,
+    image_info_source: Option<&ImageInfo>,
+    original_source: MediaSource,
+    body: &str,
+    media_cache: &mut MediaCache,
+    filename: &str,
+    size: Option<u64>,
+    kind: DownloadKind,
+) -> (bool, Option<DownloadableAttachment>) {
+    let fully_drawn = populate_image_message_content(
+        cx,
+        text_or_image_ref,
+        image_info_source,
+        original_source.clone(),
+        body,
+        media_cache,
+    );
+    let fallback = text_or_image_ref.status().is_text().then(|| DownloadableAttachment {
+        media_source: original_source,
+        filename: filename.to_owned(),
+        size,
+        kind,
+    });
+    (fully_drawn, fallback)
+}
+
+/// Draws an image into the given `text_or_image_ref`.
+///
+/// Returns whether it was fully drawn (meaning its content was fully loaded/available).
+fn populate_image_message_content(
+    cx: &mut Cx,
+    text_or_image_ref: &TextOrImageRef,
+    image_info_source: Option<&ImageInfo>,
+    original_source: MediaSource,
+    body: &str,
+    media_cache: &mut MediaCache,
+) -> bool {
+    let (mimetype, _width, _height) = image_info_source
+        .map(|info| (info.mimetype.as_deref(), info.width, info.height))
+        .unwrap_or_default();
+
+    // If the mimetype is known but isn't an image format makepad can decode,
+    // show a message that it's unsupported.
+    if let Some(mime) = mimetype.as_ref() {
+        if !utils::is_supported_image_mimetype(mime) {
+            text_or_image_ref.show_text(
+                cx,
+                format!("{}{}Unsupported type {:?}",
+                    body,
+                    if body.trim().is_empty() { "" } else { "\n" },
+                    mime,
+                ),
+            );
+            return true; // consider this as fully drawn
+        }
+    }
+
+    let mut fully_drawn = false;
+
+    // Fall back to fetching the full-size image instead of a failed thumbnail if it's not too big.
+    const MAX_FULL_IMAGE_SIZE: u64 = 1024 * 1024; // 1MiB
+    let should_fetch_full_size = image_info_source
+        .and_then(|info| info.size)
+        .is_none_or(|size| u64::from(size) <= MAX_FULL_IMAGE_SIZE);
+
+    let mut fetch_and_show_media_source = |cx: &mut Cx, media_source: MediaSource, image_info: &ImageInfo| {
+        match media_cache.try_get_media_or_fetch(&media_source, MEDIA_THUMBNAIL_FORMAT.into()) {
+            (MediaCacheEntry::Loaded(data), media_format) => {
+                // Include the file type (full or thumbnail) in the cache key to disambiguate.
+                let variant = if matches!(media_format, MediaFormat::File) { "full" } else { "thumb" };
+                let cache_key = format!("{}#{variant}", media_source_mxc(&media_source));
+                let show_image_result = text_or_image_ref.show_image(cx, Some(media_source), |cx, img| {
+                    utils::load_image_with_cache_key(&img, cx, std::path::Path::new(&cache_key), Arc::clone(&data))
+                        .map(|()| img.size_in_pixels(cx).unwrap_or_default())
+                });
+                if let Err(e) = show_image_result {
+                    let err_str = format!("{body}\n\nFailed to display image: {e:?}");
+                    error!("{err_str}");
+                    text_or_image_ref.show_text(cx, &err_str);
+                }
+
+                // We're done drawing the image, so mark it as fully drawn.
+                fully_drawn = true;
+            }
+            (MediaCacheEntry::Requested, _media_format) => {
+                // If the image is being fetched, we try to show its blurhash.
+                if let (Some(blurhash), Some(width), Some(height)) = (image_info.blurhash.as_deref(), image_info.width, image_info.height) {
+                    let show_image_result = text_or_image_ref.show_image(cx, Some(media_source), |cx, img| {
+                        let (Ok(width), Ok(height)) = (width.try_into(), height.try_into()) else {
+                            return Err(image_cache::ImageError::EmptyData)
+                        };
+                        let (width, height): (u32, u32) = (width, height);
+                        if width == 0 || height == 0 {
+                            warning!("Image had an invalid aspect ratio (width or height of 0).");
+                            return Err(image_cache::ImageError::EmptyData);
+                        }
+                        let aspect_ratio: f32 = width as f32 / height as f32;
+                        // Cap the blurhash to a max size of 500 pixels in each dimension
+                        // because the `blurhash::decode()` function can be rather expensive.
+                        let (mut capped_width, mut capped_height) = (width, height);
+                        if capped_height > BLURHASH_IMAGE_MAX_SIZE {
+                            capped_height = BLURHASH_IMAGE_MAX_SIZE;
+                            capped_width = (capped_height as f32 * aspect_ratio).floor() as u32;
+                        }
+                        if capped_width > BLURHASH_IMAGE_MAX_SIZE {
+                            capped_width = BLURHASH_IMAGE_MAX_SIZE;
+                            capped_height = (capped_width as f32 / aspect_ratio).floor() as u32;
+                        }
+
+                        match blurhash::decode(blurhash, capped_width, capped_height, 1.0) {
+                            Ok(data) => {
+                                ImageBuffer::new(&data, capped_width as usize, capped_height as usize).map(|img_buff| {
+                                    let texture = Some(img_buff.into_new_texture(cx));
+                                    img.set_texture(cx, texture);
+                                    img.size_in_pixels(cx).unwrap_or_default()
+                                })
+                            }
+                            Err(e) => {
+                                error!("Failed to decode blurhash {e:?}");
+                                Err(image_cache::ImageError::EmptyData)
+                            }
+                        }
+                    });
+                    if let Err(e) = show_image_result {
+                        let err_str = format!("{body}\n\nFailed to display image: {e:?}");
+                        error!("{err_str}");
+                        text_or_image_ref.show_text(cx, &err_str);
+                    }
+                }
+                fully_drawn = false;
+            }
+            (MediaCacheEntry::Failed(status_code), MediaFormat::Thumbnail(_))
+                if should_fetch_full_size && status_code != StatusCode::NOT_FOUND =>
+            {
+                match media_cache.try_get_media_or_fetch(&media_source, MediaFormat::File) {
+                    (MediaCacheEntry::Loaded(data), _) => {
+                        let cache_key = format!("{}#full", media_source_mxc(&media_source));
+                        let res = text_or_image_ref.show_image(cx, Some(media_source.clone()), |cx, img| {
+                            utils::load_image_with_cache_key(&img, cx, std::path::Path::new(&cache_key), Arc::clone(&data))
+                                .map(|()| img.size_in_pixels(cx).unwrap_or_default())
+                        });
+                        if let Err(e) = res {
+                            error!("Failed to display full-size image: {e:?}");
+                        }
+                        fully_drawn = true;
+                    }
+                    (MediaCacheEntry::Requested, _) => fully_drawn = false,
+                    (MediaCacheEntry::Failed(_), _) => fully_drawn = true,
+                }
+            }
+            (MediaCacheEntry::Failed(_status_code), _media_format) => {
+                text_or_image_ref.show_text(
+                    cx,
+                    format!("{body}\n\nFailed to fetch image from {:?}", media_source_mxc(&media_source)),
+                );
+                // For now, we consider this as being "complete". In the future, we could support
+                // retrying to fetch thumbnail of the image on a user click/tap.
+                fully_drawn = true;
+            }
+        }
+    };
+
+    match image_info_source {
+        Some(image_info) => {
+            // Use the provided thumbnail URI if it exists; otherwise use the original URI.
+            let media_source = image_info.thumbnail_source.clone()
+                .unwrap_or(original_source);
+            fetch_and_show_media_source(cx, media_source, image_info);
+        }
+        None => {
+            text_or_image_ref.show_text(cx, format!("{body}\n\nImage message had no source URL."));
+            fully_drawn = true;
+        }
+    }
+
+    fully_drawn
+}
+
+
+/// Draws a file message's content into the given `message_content_widget`.
+///
+/// Returns whether the file message content was fully drawn.
+fn populate_file_message_content(
+    cx: &mut Cx,
+    message_content_widget: &HtmlOrPlaintextRef,
+    file_content: &FileMessageEventContent,
+) -> bool {
+    let filename = htmlize::escape_text(file_content.filename());
+    let size = file_content
+        .info
+        .as_ref()
+        .and_then(|info| info.size)
+        .map(|bytes| format!("  ({})", utils::format_decimal_file_size(bytes.into())))
+        .unwrap_or_default();
+    let caption = file_content.formatted_caption()
+        .filter(|fb| fb.format == MessageFormat::Html)
+        .map(|fb| format!("{}<br>", fb.body))
+        .or_else(|| file_content.caption().map(|c| format!("{}<br>", htmlize::escape_text(c))))
+        .unwrap_or_default();
+
+    message_content_widget.show_html(
+        cx,
+        format!("<b>File: </b>{caption}{filename}{size}"),
+    );
+    true
+}
+
+/// Draws an audio message's content into the given `message_content_widget`.
+///
+/// Returns whether the audio message content was fully drawn.
+fn populate_audio_message_content(
+    cx: &mut Cx,
+    message_content_widget: &HtmlOrPlaintextRef,
+    audio: &AudioMessageEventContent,
+) -> bool {
+    let filename = htmlize::escape_text(audio.filename());
+    let (duration, mime, size) = audio
+        .info
+        .as_ref()
+        .map(|info| (
+            info.duration
+                .map(|d| format!(",  {:.2} sec", d.as_secs_f64()))
+                .unwrap_or_default(),
+            info.mimetype
+                .as_ref()
+                .map(|m| format!("  {},", htmlize::escape_text(m)))
+                .unwrap_or_default(),
+            info.size
+                .map(|bytes| format!("  ({})", utils::format_decimal_file_size(bytes.into())))
+                .unwrap_or_default(),
+        ))
+        .unwrap_or_default();
+    let caption = audio.formatted_caption()
+        .filter(|fb| fb.format == MessageFormat::Html)
+        .map(|fb| format!("{}<br>", fb.body))
+        .or_else(|| audio.caption().map(|c| format!("{}<br>", htmlize::escape_text(c))))
+        .unwrap_or_default();
+
+    // TODO: add an audio to play the audio file
+
+    message_content_widget.show_html(
+        cx,
+        format!("<b>Audio: </b>{caption}File: <i>{filename}</i>{size}{mime}{duration}<br> → <i>Video playback not yet supported.</i>"),
+    );
+    true
+}
+
+
+/// Draws a video message's content into the given `message_content_widget`.
+///
+/// Returns whether the video message content was fully drawn.
+fn populate_video_message_content(
+    cx: &mut Cx,
+    message_content_widget: &HtmlOrPlaintextRef,
+    video: &VideoMessageEventContent,
+) -> bool {
+    let filename = htmlize::escape_text(video.filename());
+    let (duration, mime, size, dimensions) = video
+        .info
+        .as_ref()
+        .map(|info| (
+            info.duration
+                .map(|d| format!(",  {:.2} sec", d.as_secs_f64()))
+                .unwrap_or_default(),
+            info.mimetype
+                .as_ref()
+                .map(|m| format!(",  {}", htmlize::escape_text(m)))
+                .unwrap_or_default(),
+            info.size
+                .map(|bytes| format!("  ({})", utils::format_decimal_file_size(bytes.into())))
+                .unwrap_or_default(),
+            info.width.and_then(|width|
+                info.height.map(|height| format!(",  {width}x{height}"))
+            ).unwrap_or_default(),
+        ))
+        .unwrap_or_default();
+    let caption = video.formatted_caption()
+        .filter(|fb| fb.format == MessageFormat::Html)
+        .map(|fb| format!("{}<br>", fb.body))
+        .or_else(|| video.caption().map(|c| format!("{}<br>", htmlize::escape_text(c))))
+        .unwrap_or_default();
+
+    // TODO: populate a video widget here, once makepad supports that
+
+    message_content_widget.show_html(
+        cx,
+        format!("<b>Video: </b>{caption}File: <i>{filename}</i>{size}{mime}{duration}{dimensions}<br> → <i>Video playback not yet supported.</i>"),
+    );
+    true
+}
+
+
+
+/// Draws the given location message's content into the `message_content_widget`.
+///
+/// Returns whether the location message content was fully drawn.
+fn populate_location_message_content(
+    cx: &mut Cx,
+    message_content_widget: &HtmlOrPlaintextRef,
+    location: &LocationMessageEventContent,
+) -> bool {
+    let coords = location.geo_uri
+        .get(utils::GEO_URI_SCHEME.len() ..)
+        .and_then(|s| {
+            let mut iter = s.split(',');
+            if let (Some(lat), Some(long)) = (iter.next(), iter.next()) {
+                Some((lat, long))
+            } else {
+                None
+            }
+        });
+    if let Some((lat, long)) = coords {
+        let short_lat = lat.find('.').and_then(|dot| lat.get(..dot + 7)).unwrap_or(lat);
+        let short_long = long.find('.').and_then(|dot| long.get(..dot + 7)).unwrap_or(long);
+        let safe_lat = htmlize::escape_attribute(lat);
+        let safe_long = htmlize::escape_attribute(long);
+        let safe_geo_uri = htmlize::escape_attribute(&location.geo_uri);
+        let safe_short_lat = htmlize::escape_text(short_lat);
+        let safe_short_long = htmlize::escape_text(short_long);
+        let html_body = format!(
+            "Location: <a href=\"{}\">{safe_short_lat},{safe_short_long}</a><br>\
+            <ul>\
+            <li><a href=\"https://www.openstreetmap.org/?mlat={safe_lat}&amp;mlon={safe_long}#map=15/{safe_lat}/{safe_long}\">Open in OpenStreetMap</a></li>\
+            <li><a href=\"https://www.google.com/maps/search/?api=1&amp;query={safe_lat},{safe_long}\">Open in Google Maps</a></li>\
+            <li><a href=\"https://maps.apple.com/?ll={safe_lat},{safe_long}&amp;q={safe_lat},{safe_long}\">Open in Apple Maps</a></li>\
+            </ul>",
+            safe_geo_uri,
+        );
+        message_content_widget.show_html(cx, html_body);
+    } else {
+        message_content_widget.show_html(
+            cx,
+            format!("<i>[Location invalid]</i> {}", htmlize::escape_text(&location.body))
+        );
+    }
+
+    // Currently we do not fetch location thumbnail previews, so we consider this as fully drawn.
+    // In the future, when we do support this, we'll return false until the thumbnail is fetched,
+    // at which point we can return true.
+    true
+}
+
+
+/// Draws the given redacted message's content into the `message_content_widget`.
+///
+/// Returns whether the redacted message content was fully drawn.
+fn populate_redacted_message_content(
+    cx: &mut Cx,
+    message_content_widget: &HtmlOrPlaintextRef,
+    event_tl_item: &EventTimelineItem,
+    room_id: &OwnedRoomId,
+) -> bool {
+    let fully_drawn: bool;
+    let mut redactor_id_and_reason = None;
+    if let Some(redacted_msg) = event_tl_item.latest_json() {
+        if let Ok(AnySyncTimelineEvent::MessageLike(
+            AnySyncMessageLikeEvent::RoomMessage(
+                SyncMessageLikeEvent::Redacted(redaction)
+            )
+        )) = redacted_msg.deserialize() {
+            if let Ok(redacted_because) = redaction.unsigned.redacted_because.deserialize() {
+                let reason = match &redacted_because {
+                    AnyRedactionEvent::RoomRedaction(e) => e.content.reason.clone(),
+                    _ => None,
+                };
+                redactor_id_and_reason = Some((
+                    redacted_because.sender().to_owned(),
+                    reason,
+                ));
+            }
+        }
+    }
+
+    let html = if let Some((redactor, reason)) = redactor_id_and_reason {
+        if redactor == event_tl_item.sender() {
+            fully_drawn = true;
+            match reason {
+                Some(r) => format!("⛔ <i>Deleted their own message. Reason: \"{}\".</i>", htmlize::escape_text(r)),
+                None => String::from("⛔ <i>Deleted their own message.</i>"),
+            }
+        } else {
+            // Try to get the displayable name of the user who redacted this message.
+            let redactor_name = user_profile_cache::get_user_display_name_for_room(
+                cx,
+                redactor.clone(),
+                Some(room_id),
+                true,
+            );
+            fully_drawn = redactor_name.was_found();
+            let redactor_name_esc = htmlize::escape_text(redactor_name.as_deref().unwrap_or(redactor.as_str()));
+            match reason {
+                Some(r) => format!("⛔ <i>{} deleted this message. Reason: \"{}\".</i>",
+                    redactor_name_esc,
+                    htmlize::escape_text(r),
+                ),
+                None => format!("⛔ <i>{} deleted this message.</i>", redactor_name_esc),
+            }
+        }
+    } else {
+        fully_drawn = true;
+        String::from("⛔ <i>Message deleted.</i>")
+    };
+    message_content_widget.show_html(cx, html);
+    fully_drawn
+}
+
+
+/// Draws a ReplyPreview above a message if it was in-reply to another message.
+///
+/// ## Arguments
+/// * `replied_to_message_view`: the destination `RepliedToMessage` view that will be populated.
+/// * `timeline_kind`: the [`TimelineKind`] of the timeline that is being drawn.
+/// * `in_reply_to`: if `Some`, the details that will be used to populate the `replied_to_message_view`.
+///   If `None`, this function will mark it as non-visible and consider it fully drawn.
+/// * `message_event_id`: the [`EventId`] of the message that is the reply itself (the response).
+///   This is needed to fetch the details of the replied-to message (if not yet available).
+///
+/// Returns whether the in-reply-to information was available and fully drawn,
+/// i.e., whether it can be considered cached and not needing to be redrawn later.
+fn draw_replied_to_message(
+    cx: &mut Cx2d,
+    replied_to_message_view: &WidgetRef,
+    timeline_kind: &TimelineKind,
+    in_reply_to: Option<&InReplyToDetails>,
+    message_event_id: Option<&EventId>,
+) -> bool {
+    let fully_drawn: bool;
+    let show_reply: bool;
+
+    if let Some(in_reply_to_details) = in_reply_to {
+        show_reply = true;
+        match &in_reply_to_details.event {
+            TimelineDetails::Ready(replied_to_event) => {
+                let (in_reply_to_username, is_avatar_fully_drawn) =
+                    replied_to_message_view
+                        .avatar(cx, ids!(preview_content.reply_preview_avatar))
+                        .set_avatar_and_get_username(
+                            cx,
+                            timeline_kind,
+                            &replied_to_event.sender,
+                            Some(&replied_to_event.sender_profile),
+                            Some(in_reply_to_details.event_id.as_ref()),
+                            true,
+                        );
+
+                fully_drawn = is_avatar_fully_drawn;
+
+                replied_to_message_view
+                    .label(cx, ids!(preview_content.reply_preview_username))
+                    .set_text(cx, in_reply_to_username.as_str());
+                let msg_body = replied_to_message_view.html_or_plaintext(cx, ids!(reply_preview_body));
+                populate_preview_of_timeline_item(
+                    cx,
+                    &msg_body,
+                    &replied_to_event.content,
+                    &replied_to_event.sender,
+                    &in_reply_to_username,
+                );
+            }
+            TimelineDetails::Error(_e) => {
+                fully_drawn = true;
+                replied_to_message_view
+                    .label(cx, ids!(preview_content.reply_preview_username))
+                    .set_text(cx, "[Error fetching username]");
+                replied_to_message_view
+                    .avatar(cx, ids!(preview_content.reply_preview_avatar))
+                    .show_text(cx, None, None, "?");
+                replied_to_message_view
+                    .html_or_plaintext(cx, ids!(preview_content.reply_preview_body))
+                    .show_plaintext(cx, "[Error fetching replied-to event]");
+            }
+            td @ TimelineDetails::Pending | td @ TimelineDetails::Unavailable => {
+                // We don't have the replied-to message yet, so we can't fully draw the preview.
+                fully_drawn = false;
+                replied_to_message_view
+                    .label(cx, ids!(preview_content.reply_preview_username))
+                    .set_text(cx, "[Loading username...]");
+                replied_to_message_view
+                    .avatar(cx, ids!(preview_content.reply_preview_avatar))
+                    .show_text(cx, None, None, "?");
+                replied_to_message_view
+                    .html_or_plaintext(cx, ids!(preview_content.reply_preview_body))
+                    .show_plaintext(cx, "[Loading replied-to message...]");
+
+                // Confusingly, we need to fetch the details of the `message` (the event that is the reply),
+                // not the details of the original event that this `message` is replying to.
+                if matches!(td, TimelineDetails::Unavailable) {
+                    if let Some(event_id) = message_event_id {
+                        submit_async_request(MatrixRequest::FetchDetailsForEvent {
+                            timeline_kind: timeline_kind.clone(),
+                            event_id: event_id.to_owned(),
+                        });
+                    }
+                }
+            }
+        }
+    } else {
+        // This message was not in reply to another message, so we don't need to show a reply.
+        show_reply = false;
+        fully_drawn = true;
+    }
+
+    replied_to_message_view.set_visible(cx, show_reply);
+    // After we changed a reply preview's content, we need to clear its cached view and measured height.
+    replied_to_message_view.view(cx, ids!(preview_content)).redraw_texture_cache();
+    replied_to_message_view.as_collapsible_preview().reset_measured_height();
+    fully_drawn
+}
+
+/// Draws a one-line thread summary at the bottom of a message if it is the root of a thread.
+///
+/// Returns whether the thread summary information was available and fully drawn,
+/// i.e., whether it can be considered cached and not needing to be redrawn later.
+fn populate_thread_root_summary(
+    cx: &mut Cx2d,
+    item: &WidgetRef,
+    timeline_item_index: usize,
+    timeline_kind: &TimelineKind,
+    msg_like_content: &MsgLikeContent,
+    event_tl_item: &EventTimelineItem,
+    fetched_thread_summaries: &HashMap<OwnedEventId, FetchedThreadSummary>,
+    pending_thread_summary_fetches: &mut HashSet<OwnedEventId>,
+) -> bool {
+    let thread_summary_view = item.view(cx, ids!(thread_root_summary));
+    thread_summary_view.set_visible(cx, false); // hide by default
+    let fully_drawn: bool;
+
+    if matches!(timeline_kind, TimelineKind::Thread { .. }) {
+        // If we're already drawing a message in a thread-focused timeline,
+        // it doesn't make sense to show a redundant thread summary.
+        fully_drawn = true;
+        return fully_drawn;
+    }
+
+    let Some(thread_summary) = msg_like_content.thread_summary.as_ref() else {
+        // consider this as fully drawn since there's no thread summary to show.
+        fully_drawn = true;
+        return fully_drawn;
+    };
+
+    // Here, we actually need to show the thread summary.
+    thread_summary_view.set_visible(cx, true);
+    let local_num_replies = thread_summary.num_replies;
+    let thread_root_event_id = event_tl_item.event_id().map(|id| id.to_owned());
+    let fetched_summary = thread_root_event_id
+        .as_ref()
+        .and_then(|root_id| fetched_thread_summaries.get(root_id));
+    let replies_count = fetched_summary
+        .map(|f| f.num_replies)
+        .unwrap_or(local_num_replies);
+
+    let latest_preview: Cow<str> = match &thread_summary.latest_event {
+        TimelineDetails::Ready(embedded_event) => {
+            fully_drawn = true;
+            let sender_username = match &embedded_event.sender_profile {
+                TimelineDetails::Ready(profile) => profile
+                    .display_name
+                    .as_deref()
+                    .unwrap_or(embedded_event.sender.as_str()),
+                _ => embedded_event.sender.as_str(),
+            };
+            let preview = text_preview_of_timeline_item(
+                &embedded_event.content,
+                &embedded_event.sender,
+                sender_username,
+            ).format_with(sender_username, true);
+            match utils::replace_linebreaks_separators(&preview, true) {
+                Cow::Borrowed(_) => Cow::Owned(preview),
+                Cow::Owned(replaced) => Cow::Owned(replaced),
+            }
+        }
+        td @ TimelineDetails::Pending | td @ TimelineDetails::Unavailable => {
+            fully_drawn = true;
+            if td.is_unavailable()
+                && let Some(thread_root_event_id) = thread_root_event_id.clone()
+            {
+                let needs_refresh = fetched_summary
+                    .is_none_or(|fs| fs.latest_reply_preview_text.is_none());
+                if needs_refresh && pending_thread_summary_fetches.insert(thread_root_event_id.clone()) {
+                    submit_async_request(MatrixRequest::FetchThreadSummaryDetails {
+                        timeline_kind: timeline_kind.clone(),
+                        thread_root_event_id,
+                        timeline_item_index,
+                    });
+                }
+            }
+            fetched_summary.and_then(|fs| fs.latest_reply_preview_text.as_deref())
+                .unwrap_or("<i>Loading latest reply...</i>")
+                .into()
+        }
+        TimelineDetails::Error(_) => {
+            fully_drawn = true; // consider this fully drawn since there's no point retrying.
+            "<i>Unable to load latest reply</i>".into()
+        }
+    };
+
+    let replies_count_text = match replies_count {
+        1 => Cow::Borrowed("1 reply"),
+        n => Cow::Owned(format!("{n} replies"))
+    };
+    item.label(cx, ids!(thread_summary_count))
+        .set_text(cx, &replies_count_text);
+    item.html(cx, ids!(thread_summary_latest))
+        .set_text(cx, &latest_preview);
+    fully_drawn
+}
+
+/// Generates a rich HTML text preview of the given `timeline_item_content`
+/// and populates the given `widget_out` with that content.
+pub fn populate_preview_of_timeline_item(
+    cx: &mut Cx,
+    widget_out: &HtmlOrPlaintextRef,
+    timeline_item_content: &TimelineItemContent,
+    sender_user_id: &UserId,
+    sender_username: &str,
+) {
+    if let Some(m) = timeline_item_content.as_message() {
+        match m.msgtype() {
+            MessageType::Text(TextMessageEventContent { body, formatted, .. })
+            | MessageType::Notice(NoticeMessageEventContent { body, formatted, .. }) => {
+                let _ = populate_text_message_content(cx, widget_out, body, formatted.as_ref(), None, None, None, None);
+                return;
+            }
+            _ => { } // fall through to the general case for all timeline items below.
+        }
+    }
+    let html = text_preview_of_timeline_item(
+        timeline_item_content,
+        sender_user_id,
+        sender_username,
+    ).format_with(sender_username, true);
+    widget_out.show_html(cx, html);
+}
+
+
+/// A trait for abstracting over the different types of timeline events
+/// that can be displayed in a `SmallStateEvent` widget.
+trait SmallStateEventContent {
+    /// Populates the *content* (not the profile) of the given `item` with data from
+    /// the given `event_tl_item` and `self` (the specific type of event content).
+    ///
+    /// ## Arguments
+    /// * `item`: a `SmallStateEvent` widget that has already been added to
+    ///   the given `PortalList` at the given `item_id`.
+    ///   This function may either modify that item or completely replace it
+    ///   with a different widget if needed.
+    /// * `item_drawn_status`: the old (prior) drawn status of the item.
+    /// * `new_drawn_status`: the new drawn status of the item, which may have already
+    ///   been updated to reflect the item's profile having been drawn right before this function.
+    ///
+    /// ## Return
+    /// Returns a tuple of the drawn `item` and its `new_drawn_status`.
+    fn populate_item_content(
+        &self,
+        cx: &mut Cx,
+        list: &mut PortalList,
+        item_id: usize,
+        item: WidgetRef,
+        event_tl_item: &EventTimelineItem,
+        username: &str,
+        item_drawn_status: ItemDrawnStatus,
+        new_drawn_status: ItemDrawnStatus,
+    ) -> (WidgetRef, ItemDrawnStatus);
+}
+
+// For unable to decrypt messages.
+impl SmallStateEventContent for EncryptedMessage {
+    fn populate_item_content(
+        &self,
+        cx: &mut Cx,
+        _list: &mut PortalList,
+        _item_id: usize,
+        item: WidgetRef,
+        _event_tl_item: &EventTimelineItem,
+        username: &str,
+        _item_drawn_status: ItemDrawnStatus,
+        mut new_drawn_status: ItemDrawnStatus,
+    ) -> (WidgetRef, ItemDrawnStatus) {
+        item.label(cx, ids!(content)).set_text(
+            cx,
+            &text_preview_of_encrypted_message(self).format_with(username, false),
+        );
+        new_drawn_status.content_drawn = true;
+        (item, new_drawn_status)
+    }
+}
+
+// For other message-like content (custom message-like events).
+impl SmallStateEventContent for LiveLocationState {
+    fn populate_item_content(
+        &self,
+        cx: &mut Cx,
+        _list: &mut PortalList,
+        _item_id: usize,
+        item: WidgetRef,
+        _event_tl_item: &EventTimelineItem,
+        username: &str,
+        _item_drawn_status: ItemDrawnStatus,
+        mut new_drawn_status: ItemDrawnStatus,
+    ) -> (WidgetRef, ItemDrawnStatus) {
+        item.label(cx, ids!(content)).set_text(
+            cx,
+            &format!("{username} shared a live location."),
+        );
+        new_drawn_status.content_drawn = true;
+        (item, new_drawn_status)
+    }
+}
+
+impl SmallStateEventContent for OtherMessageLike {
+    fn populate_item_content(
+        &self,
+        cx: &mut Cx,
+        _list: &mut PortalList,
+        _item_id: usize,
+        item: WidgetRef,
+        _event_tl_item: &EventTimelineItem,
+        username: &str,
+        _item_drawn_status: ItemDrawnStatus,
+        mut new_drawn_status: ItemDrawnStatus,
+    ) -> (WidgetRef, ItemDrawnStatus) {
+        item.label(cx, ids!(content)).set_text(
+            cx,
+            &text_preview_of_other_message_like(self).format_with(username, false),
+        );
+        new_drawn_status.content_drawn = true;
+        (item, new_drawn_status)
+    }
+}
+
+// TODO: once we properly display polls, we should remove this,
+//       because Polls shouldn't be displayed using the SmallStateEvent widget.
+impl SmallStateEventContent for PollState {
+    fn populate_item_content(
+        &self,
+        cx: &mut Cx,
+        _list: &mut PortalList,
+        _item_id: usize,
+        item: WidgetRef,
+        _event_tl_item: &EventTimelineItem,
+        _username: &str,
+        _item_drawn_status: ItemDrawnStatus,
+        mut new_drawn_status: ItemDrawnStatus,
+    ) -> (WidgetRef, ItemDrawnStatus) {
+        item.label(cx, ids!(content)).set_text(
+            cx,
+            self.fallback_text().unwrap_or_else(|| self.results().question).as_str(),
+        );
+        new_drawn_status.content_drawn = true;
+        (item, new_drawn_status)
+    }
+}
+
+impl SmallStateEventContent for timeline::OtherState {
+    fn populate_item_content(
+        &self,
+        cx: &mut Cx,
+        list: &mut PortalList,
+        item_id: usize,
+        item: WidgetRef,
+        _event_tl_item: &EventTimelineItem,
+        username: &str,
+        _item_drawn_status: ItemDrawnStatus,
+        mut new_drawn_status: ItemDrawnStatus,
+    ) -> (WidgetRef, ItemDrawnStatus) {
+        let item = if let Some(text_preview) = text_preview_of_other_state(self, false) {
+            item.label(cx, ids!(content))
+                .set_text(cx, &text_preview.format_with(username, false));
+            new_drawn_status.content_drawn = true;
+            item
+        } else {
+            let item = list.item(cx, item_id, id!(Empty));
+            new_drawn_status = ItemDrawnStatus::new();
+            item
+        };
+        (item, new_drawn_status)
+    }
+}
+
+impl SmallStateEventContent for MemberProfileChange {
+    fn populate_item_content(
+        &self,
+        cx: &mut Cx,
+        _list: &mut PortalList,
+        _item_id: usize,
+        item: WidgetRef,
+        _event_tl_item: &EventTimelineItem,
+        username: &str,
+        _item_drawn_status: ItemDrawnStatus,
+        mut new_drawn_status: ItemDrawnStatus,
+    ) -> (WidgetRef, ItemDrawnStatus) {
+        item.label(cx, ids!(content)).set_text(
+            cx,
+            &text_preview_of_member_profile_change(self, username, false)
+                .format_with(username, false),
+        );
+        new_drawn_status.content_drawn = true;
+        (item, new_drawn_status)
+    }
+}
+
+impl SmallStateEventContent for RoomMembershipChange {
+    fn populate_item_content(
+        &self,
+        cx: &mut Cx,
+        list: &mut PortalList,
+        item_id: usize,
+        item: WidgetRef,
+        _event_tl_item: &EventTimelineItem,
+        username: &str,
+        _item_drawn_status: ItemDrawnStatus,
+        mut new_drawn_status: ItemDrawnStatus,
+    ) -> (WidgetRef, ItemDrawnStatus) {
+        let Some(preview) = text_preview_of_room_membership_change(self, false) else {
+            // Don't actually display anything for nonexistent/unimportant membership changes.
+            return (
+                list.item(cx, item_id, id!(Empty)),
+                ItemDrawnStatus::new(),
+            );
+        };
+
+        item.label(cx, ids!(content))
+            .set_text(cx, &preview.format_with(username, false));
+
+        // The invite_user_button is only used for "Knocked" membership change events.
+        item.button(cx, ids!(invite_user_button)).set_visible(
+            cx,
+            matches!(self.change(), Some(MembershipChange::Knocked)),
+        );
+
+        new_drawn_status.content_drawn = true;
+        (item, new_drawn_status)
+    }
+}
+
+/// Creates, populates, and adds a SmallStateEvent liveview widget to the given `PortalList`
+/// with the given `item_id`.
+///
+/// The content of the returned widget is populated with data from the
+/// given room membership change and its parent `EventTimelineItem`.
+fn populate_small_state_event(
+    cx: &mut Cx,
+    list: &mut PortalList,
+    item_id: usize,
+    timeline_kind: &TimelineKind,
+    event_tl_item: &EventTimelineItem,
+    event_content: &impl SmallStateEventContent,
+    item_drawn_status: ItemDrawnStatus,
+) -> (WidgetRef, ItemDrawnStatus) {
+    let mut new_drawn_status = item_drawn_status;
+    let (item, existed) = list.item_with_existed(cx, item_id, id!(SmallStateEvent));
+    // The content of a small state event view may depend on the profile info,
+    // so we can only mark the content as drawn after the profile has been fully drawn and cached.
+    let skip_redrawing_profile = existed && item_drawn_status.profile_drawn;
+    let skip_redrawing_content = skip_redrawing_profile && item_drawn_status.content_drawn;
+    populate_read_receipts(&item, cx, timeline_kind, event_tl_item);
+    if skip_redrawing_content {
+        return (item, new_drawn_status);
+    }
+
+    // If the profile has been drawn, we can just quickly grab the user's display name
+    // instead of having to call `set_avatar_and_get_username` again.
+    let username_opt = skip_redrawing_profile
+        .then(|| get_profile_display_name(event_tl_item))
+        .flatten();
+
+    let username = username_opt.unwrap_or_else(|| {
+        // As a fallback, call `set_avatar_and_get_username` to get the user's display name.
+        let avatar_ref = item.avatar(cx, ids!(avatar));
+
+        let (username, profile_drawn) = avatar_ref.set_avatar_and_get_username(
+            cx,
+            timeline_kind,
+            event_tl_item.sender(),
+            Some(event_tl_item.sender_profile()),
+            event_tl_item.event_id(),
+            true,
+        );
+        // Draw the timestamp as part of the profile.
+        if let Some(dt) = unix_time_millis_to_datetime(event_tl_item.timestamp()) {
+            item.timestamp(cx, ids!(left_container.timestamp)).set_date_time(cx, dt);
+        }
+        new_drawn_status.profile_drawn = profile_drawn;
+        username
+    });
+
+    // Proceed to draw the actual event content.
+    event_content.populate_item_content(
+        cx,
+        list,
+        item_id,
+        item,
+        event_tl_item,
+        &username,
+        item_drawn_status,
+        new_drawn_status,
+    )
+}
+
+
+/// Returns the display name of the sender of the given `event_tl_item`, if available.
+fn get_profile_display_name(event_tl_item: &EventTimelineItem) -> Option<String> {
+    if let TimelineDetails::Ready(profile) = event_tl_item.sender_profile() {
+        profile.display_name.clone()
+    } else {
+        None
+    }
+}
+
+
+/// Actions related to invites within a room.
+///
+/// These are NOT widget actions, just regular actions.
+#[derive(Debug)]
+pub enum InviteAction {
+    /// Show a confirmation modal for sending an invite.
+    ///
+    /// The content is wrapped in a `RefCell` to ensure that only one entity handles it
+    /// and that that one entity can take ownership of the content object,
+    /// which avoids having to clone it.
+    ShowInviteConfirmationModal(RefCell<Option<ConfirmationModalContent>>),
+}
+
+/// The result of inviting a user to a room.
+///
+#[derive(Debug)]
+pub enum InviteResultAction {
+    /// The invite was sent successfully.
+    ///
+    /// This action is posted in response to the [`MatrixRequest::InviteUser`] request.
+    Sent {
+        room_id: OwnedRoomId,
+        user_id: OwnedUserId,
+    },
+    /// The invite failed to be sent.
+    ///
+    /// This action is posted in response to the [`MatrixRequest::InviteUser`] request.
+    Failed {
+        room_id: OwnedRoomId,
+        user_id: OwnedUserId,
+        error: matrix_sdk::Error,
+    },
+}
+
+
+/// Actions related to a specific message within a room timeline.
+#[derive(Clone, Default, Debug)]
+pub enum MessageAction {
+    /// The user clicked the "react" button on a message
+    /// and wants to send the given `reaction` to that message.
+    React {
+        details: MessageDetails,
+        reaction: String,
+    },
+    /// The user clicked the "reply" button on a message.
+    Reply(MessageDetails),
+    /// The user clicked the "reply in thread" button on a message, indicating
+    /// they want to open (or start) that message's thread and reply within it.
+    ReplyInThread(MessageDetails),
+    /// The user clicked the "edit" button on a message.
+    Edit(MessageDetails),
+    /// The user requested to edit their latest message in this room.
+    EditLatest,
+    /// The user clicked the "pin" button on a message.
+    Pin(MessageDetails),
+    /// The user clicked the "unpin" button on a message.
+    Unpin(MessageDetails),
+    /// The user clicked the "copy text" button on a message.
+    CopyText(MessageDetails),
+    /// The user clicked the "copy HTML" button on a message.
+    CopyHtml(MessageDetails),
+    /// The user clicked the "copy link" button on a message.
+    CopyLink(MessageDetails),
+    /// The user clicked the "view source" button on a message.
+    ViewSource(MessageDetails),
+    /// The user clicked the "jump to related" button on a message,
+    /// indicating that they want to auto-scroll back to the related message,
+    /// e.g., a replied-to message.
+    JumpToRelated(MessageDetails),
+    /// The user clicked the "Show more" or "Show less" button on a tall reply preview.
+    ToggleReplyPreviewExpanded(TimelineEventItemId),
+    /// The user clicked the thread summary on a thread-root message.
+    OpenThread(OwnedEventId),
+    /// The user requested to jump to a specific event in this room.
+    JumpToEvent(OwnedEventId),
+    /// The user clicked the "delete" button on a message.
+    #[doc(alias("delete"))]
+    Redact {
+        details: MessageDetails,
+        reason: Option<String>,
+    },
+
+    // /// The user clicked the "report" button on a message.
+    // Report(MessageDetails),
+
+    /// The user clicked the "Download" button on a media/file message.
+    DownloadAttachment(DownloadableAttachment),
+    /// The user clicked the "Share" button on a media/file message.
+    ShareAttachment(DownloadableAttachment),
+    /// User clicked the cancel × next to the in-progress spinner.
+    CancelDownload(OwnedMxcUri),
+    /// The message at the given item index in the timeline should be highlighted.
+    HighlightMessage(usize),
+    /// The user requested that we show a context menu with actions
+    /// that can be performed on a given message.
+    OpenMessageContextMenu {
+        details: MessageDetails,
+        /// The absolute position where we should show the context menu,
+        /// in which the (0,0) origin coordinate is the top left corner of the app window.
+        abs_pos: DVec2,
+    },
+    /// The user requested opening the message action bar
+    ActionBarOpen {
+        /// At the given timeline item index
+        item_id: usize,
+        /// The message rect, so the action bar can be positioned relative to it
+        message_rect: Rect,
+    },
+    /// The user requested closing the message action bar
+    ActionBarClose,
+    #[default]
+    None,
+}
+
+impl ActionDefaultRef for MessageAction {
+    fn default_ref() -> &'static Self {
+        static DEFAULT: MessageAction = MessageAction::None;
+        &DEFAULT
+    }
+}
+
+/// A widget representing a single message of any kind within a room timeline.
+#[derive(Script, Widget, Animator)]
+pub struct Message {
+    #[source] source: ScriptObjectRef,
+    #[deref] view: View,
+    #[apply_default] animator: Animator,
+
+    #[rust] details: Option<MessageDetails>,
+    /// Set on file/image/audio/video messages so the download button knows
+    /// what to save when the user clicks it. `None` for plain text messages,
+    /// which hide the download button entirely.
+    #[rust] download_info: Option<DownloadableAttachment>,
+    /// Cached so `set_data` can reset_hover only on the button that just
+    /// transitioned into visibility, not on every redraw.
+    #[rust] download_state: DownloadDisplayState,
+
+    // Belowhere: cached references to child widgets, for efficiency.
+    #[rust] replied_to_message_view: Option<CollapsiblePreviewRef>,
+    #[rust] thread_root_summary_view: Option<ViewRef>,
+}
+
+impl ScriptHook for Message {
+    fn on_after_reload(&mut self, _vm: &mut ScriptVm) {
+        // A script reload changes the Message's children; invalidate the ones we cached.
+        self.replied_to_message_view = None;
+        self.thread_root_summary_view = None;
+    }
+}
+
+impl Widget for Message {
+    fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
+        if self.animator_handle_event(cx, event).must_redraw() {
+            self.redraw(cx);
+        }
+
+        if !self.animator.is_track_animating(id!(highlight))
+            && self.animator_in_state(cx, ids!(highlight.on))
+        {
+            self.animator_play(cx, ids!(highlight.off));
+        }
+
+        let Some(d) = self.details.as_ref() else { return };
+        let room_screen_widget_uid = d.room_screen_widget_uid;
+        let thread_root_event_id = d.thread_root_event_id.clone();
+
+        // We first handle a click on the replied-to message preview, if present,
+        // because we don't want any widgets within the replied-to message to be
+        // clickable or otherwise interactive.
+        let reply = self.replied_to_message_view(cx);
+        let reply_content_area = reply.content_area(cx);
+        match event.hits(cx, reply_content_area) {
+            Hit::FingerHoverIn(..) => {
+                self.animator_play(cx, ids!(hover.on));
+            }
+            Hit::FingerHoverOut(_fho) => {
+                self.animator_play(cx, ids!(hover.off));
+            }
+            Hit::FingerDown(fe) if fe.device.mouse_button().is_some_and(|b| b.is_secondary()) => {
+                cx.widget_action(
+                    room_screen_widget_uid,
+                    MessageAction::OpenMessageContextMenu {
+                        details: self.details.clone().unwrap(), // guaranteed to be Some()
+                        abs_pos: fe.abs,
+                    }
+                );
+            }
+            Hit::FingerLongPress(lp) => {
+                cx.widget_action(
+                    room_screen_widget_uid,
+                    MessageAction::OpenMessageContextMenu {
+                        details: self.details.clone().unwrap(), // guaranteed to be Some()
+                        abs_pos: lp.abs,
+                    }
+                );
+            }
+            Hit::FingerUp(fe) if fe.is_over && fe.is_primary_hit() && fe.was_tap() => {
+                // Tapping on a collapsed reply preview expands it.
+                // Tapping on an expanded reply preview jumps to the replied-to message.
+                let action = if reply.is_collapsed() {
+                    MessageAction::ToggleReplyPreviewExpanded(
+                        self.details.as_ref().unwrap().timeline_event_id.clone(), // guaranteed to be Some()
+                    )
+                } else {
+                    MessageAction::JumpToRelated(self.details.clone().unwrap()) // guaranteed to be Some()
+                };
+                cx.widget_action(room_screen_widget_uid, action);
+            }
+            _ => { }
+        }
+
+        // Handle clicks on the thread summary shown beneath a thread-root message.
+        if let Some(thread_root_event_id) = thread_root_event_id.as_ref() {
+            let thread_root_summary = self.thread_root_summary_view(cx);
+            let apply_hover = |cx: &mut Cx, bg_color: Vec4| {
+                let mut thread_root_summary_ref = thread_root_summary.clone();
+                script_apply_eval!(cx, thread_root_summary_ref, {
+                    draw_bg.color: #(bg_color)
+                });
+            };
+            match event.hits(cx, thread_root_summary.area()) {
+                Hit::FingerDown(fe) => {
+                    apply_hover(cx, COLOR_THREAD_SUMMARY_BG_HOVER);
+                    if fe.device.mouse_button().is_some_and(|b| b.is_secondary()) {
+                        cx.widget_action(
+                            room_screen_widget_uid, 
+                            MessageAction::OpenMessageContextMenu {
+                                details: self.details.clone().unwrap(), // guaranteed to be Some()
+                                abs_pos: fe.abs,
+                            }
+                        );
+                    }
+                }
+                Hit::FingerHoverIn(_) => {
+                    apply_hover(cx, COLOR_THREAD_SUMMARY_BG_HOVER);
+                }
+                Hit::FingerHoverOut(_) => {
+                    apply_hover(cx, COLOR_THREAD_SUMMARY_BG);
+                }
+                Hit::FingerLongPress(lp) => {
+                    cx.widget_action(
+                        room_screen_widget_uid, 
+                        MessageAction::OpenMessageContextMenu {
+                            details: self.details.clone().unwrap(), // guaranteed to be Some()
+                            abs_pos: lp.abs,
+                        }
+                    );
+                }
+                Hit::FingerUp(fe) => {
+                    apply_hover(cx, COLOR_THREAD_SUMMARY_BG);
+                    if fe.is_over && fe.is_primary_hit() && fe.was_tap() {
+                        cx.widget_action(
+                            room_screen_widget_uid, 
+                            MessageAction::OpenThread(thread_root_event_id.clone()),
+                        );
+                    }
+                }
+                _ => { }
+            }
+        }
+
+        // Next, we forward the event to the child view such that it has the chance
+        // to handle it before the Message widget handles it.
+        // This ensures that events like right-clicking/long-pressing a reaction button
+        // or a link within a message will be treated as an action upon that child view
+        // rather than an action upon the message itself.
+        self.view.handle_event(cx, event, scope);
+
+        // Finally, handle any hits on the rest of the message body itself.
+        let message_view_area = self.view.area();
+        match event.hits(cx, message_view_area) {
+            Hit::FingerDown(fe) => {
+                cx.set_key_focus(message_view_area);
+                // A right click means we should display the context menu.
+                if fe.device.mouse_button().is_some_and(|b| b.is_secondary()) {
+                    cx.widget_action(
+                        room_screen_widget_uid, 
+                        MessageAction::OpenMessageContextMenu {
+                            details: self.details.clone().unwrap(), // guaranteed to be Some()
+                            abs_pos: fe.abs,
+                        }
+                    );
+                }
+            }
+            Hit::FingerLongPress(lp) => {
+                cx.widget_action(
+                    room_screen_widget_uid, 
+                    MessageAction::OpenMessageContextMenu {
+                        details: self.details.clone().unwrap(), // guaranteed to be Some()
+                        abs_pos: lp.abs,
+                    }
+                );
+            }
+            Hit::FingerHoverIn(..) => {
+                self.animator_play(cx, ids!(hover.on));
+                // TODO: here, show the "action bar" buttons upon hover-in
+            }
+            Hit::FingerHoverOut(_fho) => {
+                self.animator_play(cx, ids!(hover.off));
+                // TODO: here, hide the "action bar" buttons upon hover-out
+            }
+            _ => { }
+        }
+
+        if let Event::Actions(actions) = event {
+            for action in actions {
+                match action.as_widget_action().widget_uid_eq(room_screen_widget_uid).cast_ref() {
+                    MessageAction::HighlightMessage(id) if id == &self.details.as_ref().unwrap().item_id => { // guaranteed to be Some()
+                        self.animator_play(cx, ids!(highlight.on));
+                        self.redraw(cx);
+                    }
+                    _ => {}
+                }
+            }
+
+            // Handle clicks on the reply preview's "show more" or "show less" buttons.
+            let reply_expand_button = self.button(cx, ids!(replied_to_message.reply_expand_button));
+            let reply_collapse_button = self.button(cx, ids!(replied_to_message.reply_collapse_button));
+            if reply_expand_button.clicked(actions) || reply_collapse_button.clicked(actions)             {
+                cx.widget_action(
+                    room_screen_widget_uid,
+                    MessageAction::ToggleReplyPreviewExpanded(
+                        self.details.as_ref().unwrap().timeline_event_id.clone(), // guaranteed to be Some()
+                    ),
+                );
+                reply_expand_button.reset_hover(cx);
+                reply_collapse_button.reset_hover(cx);
+            }
+
+            // Handle clicks on the media-related buttons (download, share, cancel) beneath media messages.
+            if let Some(info) = self.download_info.as_ref() {
+                if self.view.button(cx, ids!(content.download_section.download_button)).clicked(actions) {
+                    cx.widget_action(
+                        room_screen_widget_uid,
+                        MessageAction::DownloadAttachment(info.clone()),
+                    );
+                }
+                if self.view.button(cx, ids!(content.download_section.share_button)).clicked(actions) {
+                    cx.widget_action(
+                        room_screen_widget_uid,
+                        MessageAction::ShareAttachment(info.clone()),
+                    );
+                }
+                if self.view.button(cx, ids!(content.download_section.downloading_view.cancel_button)).clicked(actions) {
+                    cx.widget_action(
+                        room_screen_widget_uid,
+                        MessageAction::CancelDownload(media_source_mxc(&info.media_source).clone()),
+                    );
+                }
+            }
+        }
+    }
+
+    fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
+        if self.details.as_ref().is_some_and(|d| d.should_be_highlighted) {
+            script_apply_eval!(cx, self, {
+                draw_bg +: {
+                    color: #ffffd1,
+                    mentions_bar_color: #ffd54f
+                }
+            });
+        }
+
+        self.view.draw_walk(cx, scope, walk)
+    }
+}
+
+impl Message {
+    fn replied_to_message_view(&mut self, cx: &mut Cx) -> CollapsiblePreviewRef {
+        if let Some(reply) = &self.replied_to_message_view {
+            return reply.clone();
+        }
+        let reply = self.view.widget(cx, ids!(replied_to_message)).as_collapsible_preview();
+        self.replied_to_message_view = Some(reply.clone());
+        reply
+    }
+
+    fn thread_root_summary_view(&mut self, cx: &mut Cx) -> ViewRef {
+        if let Some(view) = &self.thread_root_summary_view {
+            return view.clone();
+        }
+        let view = self.view(cx, ids!(thread_root_summary));
+        self.thread_root_summary_view = Some(view.clone());
+        view
+    }
+
+    /// Called every time `populate_message_view` runs, including on cached
+    /// items, so all states must be re-set unconditionally.
+    fn set_data(
+        &mut self,
+        cx: &mut Cx,
+        details: MessageDetails,
+        download_info: Option<DownloadableAttachment>,
+        download_state: DownloadDisplayState,
+        is_reply_expanded: bool,
+    ) {
+        let prev_section_visible = self.download_info.is_some();
+        let prev_state = self.download_state;
+
+        self.details = Some(details);
+        self.download_info = download_info;
+
+        // Re-apply this every time to ensure a re-used portallist item is still correctly expanded.
+        self.view.widget(cx, ids!(replied_to_message)).as_collapsible_preview().set_expanded(is_reply_expanded);
+
+        let section_visible = self.download_info.is_some();
+        self.view.view(cx, ids!(content.download_section)).set_visible(cx, section_visible);
+        if section_visible {
+            let download_button  = self.view.button(cx, ids!(content.download_section.download_button));
+            let share_button     = self.view.button(cx, ids!(content.download_section.share_button));
+            let downloading_view = self.view.view(cx, ids!(content.download_section.downloading_view));
+            let cancel_button    = self.view.button(cx, ids!(content.download_section.downloading_view.cancel_button));
+            let success_button   = self.view.button(cx, ids!(content.download_section.success_button));
+            let failure_button   = self.view.button(cx, ids!(content.download_section.failure_button));
+            let is_idle = matches!(download_state, DownloadDisplayState::Idle);
+            download_button.set_visible(cx, is_idle);
+            share_button.set_visible(cx, is_idle);
+            downloading_view.set_visible(cx, matches!(download_state, DownloadDisplayState::InProgress));
+            success_button.set_visible(cx, matches!(download_state, DownloadDisplayState::Succeeded(_)));
+            failure_button.set_visible(cx, matches!(download_state, DownloadDisplayState::Failed));
+            if let DownloadDisplayState::Succeeded(kind) = download_state {
+                success_button.set_text(cx, match kind {
+                    TransferKind::Download => "Downloaded",
+                    TransferKind::Share => "Shared",
+                });
+            }
+            // Only reset hover for the button(s) just now becoming visible.
+            let newly_visible = !prev_section_visible || prev_state != download_state;
+            if newly_visible {
+                match download_state {
+                    DownloadDisplayState::Idle => {
+                        download_button.reset_hover(cx);
+                        share_button.reset_hover(cx);
+                    }
+                    DownloadDisplayState::InProgress => cancel_button.reset_hover(cx),
+                    DownloadDisplayState::Succeeded(_) => success_button.reset_hover(cx),
+                    DownloadDisplayState::Failed => failure_button.reset_hover(cx),
+                }
+            }
+        }
+        self.download_state = download_state;
+    }
+}
+
+impl MessageRef {
+    fn set_data(
+        &self,
+        cx: &mut Cx,
+        details: MessageDetails,
+        download_info: Option<DownloadableAttachment>,
+        download_state: DownloadDisplayState,
+        is_reply_expanded: bool,
+    ) {
+        let Some(mut inner) = self.borrow_mut() else { return };
+        inner.set_data(cx, details, download_info, download_state, is_reply_expanded);
+    }
+}
+
+/// Clears all UI-related timeline states for all known rooms.
+///
+/// Takes `&mut Cx` (unused) to enforce that it's only called from the main UI thread.
+pub fn clear_timeline_states(cx: &mut Cx) {
+    timeline_state_store::clear_all(cx);
+}
+
+/// Invalidates the UI-side cached state for a timeline whose backend was just closed, so the
+/// next show rebuilds it instead of reusing the stale cache.
+///
+/// Takes `&mut Cx` (unused) to enforce that it's only called from the main UI thread.
+pub fn invalidate_timeline_state(cx: &mut Cx, kind: &TimelineKind) {
+    timeline_state_store::invalidate(cx, kind);
+}
+
+/// A pending "Reply In Thread" request to focus a thread's input bar once its RoomScreen is
+/// shown, stored as a `Cx` global so whichever screen ends up showing it can pick it up.
+mod input_bar_focus {
+    use super::*;
+
+    /// The timeline whose RoomScreen should focus its input bar when next shown.
+    #[derive(Default)]
+    struct PendingInputBarFocus(Option<TimelineKind>);
+
+    /// Requests that the RoomScreen showing `kind` focus its input bar once it's shown.
+    pub(super) fn request(cx: &mut Cx, kind: TimelineKind) {
+        cx.global::<PendingInputBarFocus>().0 = Some(kind);
+    }
+
+    /// If a focus request is pending for `kind`, consumes it and returns `true`.
+    pub(super) fn take_if_matches(cx: &mut Cx, kind: &TimelineKind) -> bool {
+        let pending = cx.global::<PendingInputBarFocus>();
+        if pending.0.as_ref() == Some(kind) {
+            pending.0 = None;
+            true
+        } else {
+            false
+        }
+    }
+}

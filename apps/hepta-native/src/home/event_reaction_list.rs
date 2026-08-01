@@ -113,24 +113,19 @@ pub struct ReactionData {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct ReactionList {
-    #[uid]
-    uid: WidgetUid,
-    #[redraw]
-    #[rust]
-    area: Area,
-    #[live]
-    item: Option<LivePtr>,
-    #[rust]
-    children: Vec<(ButtonRef, ReactionData)>,
-    #[layout]
-    layout: Layout,
-    #[walk]
-    walk: Walk,
+    #[uid] uid: WidgetUid,
+    #[redraw] #[rust] area: Area,
+    #[live] item: Option<LivePtr>,
+    #[rust] children: Vec<(ButtonRef, ReactionData)>,
+    #[layout] layout: Layout,
+    #[walk] walk: Walk,
 
-    #[rust]
-    timeline_kind: Option<TimelineKind>,
-    #[rust]
-    timeline_event_id: Option<TimelineEventItemId>,
+    #[rust] timeline_kind: Option<TimelineKind>,
+    #[rust] timeline_event_id: Option<TimelineEventItemId>,
+
+    /// A cheap hash of the last reaction list populuated in this widget.
+    /// Consists of: `(reaction count, total senders, num sent by me)`.
+    #[rust] last_reaction_counts: Option<(usize, usize, usize)>,
 }
 impl Widget for ReactionList {
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
@@ -172,9 +167,7 @@ impl Widget for ReactionList {
                     }
                     // Otherwise, a primary click/press over the button should toggle the reaction.
                     else if fue.is_primary_hit() && fue.was_tap() {
-                        let Some(kind) = &self.timeline_kind else {
-                            return;
-                        };
+                        let Some(kind) = &self.timeline_kind else { return };
                         let Some(timeline_event_id) = &self.timeline_event_id else {
                             return;
                         };
@@ -187,10 +180,7 @@ impl Widget for ReactionList {
                         let (bg_color, border_color) = if !reaction_data.includes_user {
                             (EMOJI_BG_COLOR_INCLUDE_SELF, EMOJI_BORDER_COLOR_INCLUDE_SELF)
                         } else {
-                            (
-                                EMOJI_BG_COLOR_NOT_INCLUDE_SELF,
-                                EMOJI_BORDER_COLOR_NOT_INCLUDE_SELF,
-                            )
+                            (EMOJI_BG_COLOR_NOT_INCLUDE_SELF, EMOJI_BORDER_COLOR_NOT_INCLUDE_SELF)
                         };
                         let mut reaction_button = button_ref.clone();
                         script_apply_eval!(cx, reaction_button, {
@@ -220,7 +210,7 @@ impl ReactionList {
         reaction_data: ReactionData,
     ) {
         cx.widget_action(
-            self.widget_uid(),
+            self.widget_uid(), 
             RoomScreenTooltipActions::HoverInReactionButton {
                 widget_rect: button_ref.area().rect(cx),
                 reaction_data,
@@ -232,13 +222,19 @@ impl ReactionList {
     }
 
     /// Deals with to any event/hit that triggers a hover-out action.
-    fn do_hover_out(&self, cx: &mut Cx, _scope: &mut Scope, button_ref: &ButtonRef) {
-        cx.widget_action(self.widget_uid(), RoomScreenTooltipActions::HoverOut);
+    fn do_hover_out(
+        &self,
+        cx: &mut Cx,
+        _scope: &mut Scope,
+        button_ref: &ButtonRef,
+    ) {
+        cx.widget_action(self.widget_uid(),  RoomScreenTooltipActions::HoverOut);
         let mut button_ref = button_ref.clone();
         script_apply_eval!(cx, button_ref, { draw_bg +: { hover: 0.0 } });
         cx.set_cursor(MouseCursor::Default);
     }
 }
+
 
 impl ReactionListRef {
     /// Set the list of reactions and their counts to display in the ReactionList widget,
@@ -257,37 +253,50 @@ impl ReactionListRef {
         &mut self,
         cx: &mut Cx,
         event_tl_item_reactions: Option<&ReactionsByKeyBySender>,
-        timeline_kind: TimelineKind,
-        timeline_event_item_id: TimelineEventItemId,
+        timeline_kind: &TimelineKind,
+        timeline_event_item_id: &TimelineEventItemId,
         _id: usize,
     ) {
-        let Some(client_user_id) = current_user_id() else {
-            return;
-        };
-        let Some(mut inner) = self.borrow_mut() else {
-            return;
-        };
+        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(curr_user_id) = current_user_id() else { return };
         let Some(event_tl_item_reactions) = event_tl_item_reactions else {
             inner.children.clear();
+            inner.last_reaction_counts = None;
             return;
         };
-        inner.children.clear(); //Inefficient but we don't want to compare the event_tl_item_reactions
+
+        // try to see if we can skip populating/redrawing if nothing's changed.
+        let mut total_senders = 0;
+        let mut num_sent_by_me = 0;
+        for (_, reaction_senders) in event_tl_item_reactions.iter() {
+            total_senders += reaction_senders.len();
+            num_sent_by_me += reaction_senders.contains_key(&curr_user_id) as usize;
+        }
+        let new_counts = (event_tl_item_reactions.len(), total_senders, num_sent_by_me);
+        if inner.last_reaction_counts == Some(new_counts)
+            && inner.timeline_event_id.as_ref() == Some(timeline_event_item_id)
+        {
+            return;
+        }
+        // here, things have changed, so we need to repopulate the list of reactions and redraw it.
+        inner.last_reaction_counts = Some(new_counts);
+        inner.children.clear();
         for (reaction_text, reaction_senders) in event_tl_item_reactions.iter() {
-            // // Just take the first char of the emoji, which ignores any variant selectors.
-            // let reaction_first_char = reaction_text.chars().next().map(|c| c.to_string());
-            // let reaction_str = reaction_first_char.as_deref().unwrap_or(reaction_text);
             let mut includes_user: bool = false;
             for (sender, _) in reaction_senders.iter() {
-                if sender == &client_user_id {
+                if sender == &curr_user_id {
                     includes_user = true;
                 }
-                // Prefill each reactor's user profile into the cache so the tooltip will show their display name.
+                // Pre-fetch the profile of each reaction sender into the cache for future use in the tooltip.
+                // TODO: we shouldn't do this, it's wasteful. Instead, fetch it on demand
+                //       when showing the tooltip; we just need to add a way to update a live tooltip.
+                //       And now that we have room member lists, we can just use that (especially once
+                //       we convert them to a hashmap in the async backend, in the future)
                 let _ = user_profile_cache::with_user_profile(
                     cx,
                     sender.clone(),
                     Some(timeline_kind.room_id()),
-                    true,
-                    |_, _| {},
+                    true, |_, _| { },
                 );
             }
 
@@ -298,10 +307,10 @@ impl ReactionListRef {
                 room_id: timeline_kind.room_id().clone(),
             };
             let mut button = widget_ref_from_live_ptr(cx, inner.item).as_button();
-            button.set_text(
-                cx,
-                &format!("{}  {}", reaction_data.reaction, reaction_senders.len()),
-            );
+            button.set_text(cx, &format!("{}  {}",
+                reaction_data.reaction,
+                reaction_senders.len()
+            ));
             let (bg_color, border_color) = if reaction_data.includes_user {
                 (EMOJI_BG_COLOR_INCLUDE_SELF, EMOJI_BORDER_COLOR_INCLUDE_SELF)
             } else {
@@ -315,8 +324,8 @@ impl ReactionListRef {
             });
             inner.children.push((button, reaction_data));
         }
-        inner.timeline_kind = Some(timeline_kind);
-        inner.timeline_event_id = Some(timeline_event_item_id);
+        inner.timeline_kind = Some(timeline_kind.clone());
+        inner.timeline_event_id = Some(timeline_event_item_id.clone());
     }
 
     /// Returns any `RoomScreenTooltipActions` that occurred in the given list of `actions`.

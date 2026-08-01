@@ -4,6 +4,7 @@
 use chrono::{DateTime, Local};
 use makepad_widgets::*;
 
+
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
@@ -30,11 +31,9 @@ script_mod! {
 /// See the module-level docs for more detail.
 #[derive(Script, ScriptHook, Widget)]
 pub struct Timestamp {
-    #[deref]
-    view: View,
+    #[deref] view: View,
 
-    #[rust]
-    dt: DateTime<Local>,
+    #[rust] dt: DateTime<Local>,
 }
 
 impl Widget for Timestamp {
@@ -43,22 +42,22 @@ impl Widget for Timestamp {
 
         let area = self.view.area();
         let should_hover_in = match event.hits(cx, area) {
-            Hit::FingerLongPress(_) | Hit::FingerHoverIn(..) => true,
+            Hit::FingerLongPress(_)
+            | Hit::FingerHoverIn(..) => true,
             Hit::FingerUp(fue) if fue.is_over && fue.is_primary_hit() => true,
             Hit::FingerHoverOut(_) => {
-                cx.widget_action(self.widget_uid(), TooltipAction::HoverOut);
+                cx.widget_action(self.widget_uid(),  TooltipAction::HoverOut);
                 false
             }
             _ => false,
         };
         if should_hover_in {
-            // Use a locale-neutral, unambiguous ordering until an app locale
-            // preference is wired through the Makepad text stack.
-            let locale_neutral_extended_fmt = "%Y-%m-%d %H:%M:%S";
+            // TODO: use pure_rust_locales crate to format the time based on the chosen Locale.
+            let locale_extended_fmt_en_us= "%a %b %-d, %Y, %r";
             cx.widget_action(
-                self.widget_uid(),
+                self.widget_uid(), 
                 TooltipAction::HoverIn {
-                    text: self.dt.format(locale_neutral_extended_fmt).to_string(),
+                    text: self.dt.format(locale_extended_fmt_en_us).to_string(),
                     widget_rect: area.rect(cx),
                     options: CalloutTooltipOptions {
                         position: TooltipPosition::Right,
@@ -76,9 +75,12 @@ impl Widget for Timestamp {
 
 impl Timestamp {
     pub fn set_date_time(&mut self, cx: &mut Cx, dt: DateTime<Local>) {
-        let locale_neutral_time_fmt = "%H:%M";
-        self.label(cx, ids!(ts_label))
-            .set_text(cx, &dt.format(locale_neutral_time_fmt).to_string());
+        // TODO: use pure_rust_locales crate to format the time based on the chosen Locale.
+        let locale_fmt_en_us = "%-I:%M %P";
+        self.label(cx, ids!(ts_label)).set_text(
+            cx,
+            &dt.format(locale_fmt_en_us).to_string()
+        );
         self.dt = dt;
     }
 }

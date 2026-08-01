@@ -88,10 +88,7 @@ pub fn enqueue_room_preview_update(update: RoomPreviewUpdate) {
 pub fn process_room_preview_updates(_cx: &mut Cx) {
     ROOM_PREVIEW_CACHE.with_borrow_mut(|cache| {
         while let Some(update) = PENDING_ROOM_PREVIEW_UPDATES.pop() {
-            let RoomPreviewUpdate {
-                room_or_alias_id,
-                fetched,
-            } = update;
+            let RoomPreviewUpdate { room_or_alias_id, fetched } = update;
             cache.insert(
                 room_or_alias_id,
                 CacheEntry {
@@ -141,11 +138,7 @@ pub fn get_or_fetch_room_preview(
         match cache.raw_entry_mut().from_key(room_or_alias_id) {
             RawEntryMut::Occupied(mut occupied) => {
                 // Fast path: a fresh `Loaded` entry is returned as-is.
-                if let CacheEntryState::Loaded {
-                    room_name_id,
-                    room_avatar,
-                } = &occupied.get().state
-                {
+                if let CacheEntryState::Loaded { room_name_id, room_avatar } = &occupied.get().state {
                     if occupied.get().loaded_at.elapsed() < CACHE_ENTRY_LIFETIME {
                         return CachedRoomPreview::Loaded {
                             room_name_id: room_name_id.clone(),

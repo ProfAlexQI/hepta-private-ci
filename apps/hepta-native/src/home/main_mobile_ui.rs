@@ -1,11 +1,7 @@
 use makepad_widgets::*;
 
 use crate::{
-    app::{AppState, AppStateAction, SelectedRoom},
-    home::{
-        room_screen::RoomScreenWidgetExt, rooms_list::RoomsListAction,
-        space_lobby::SpaceLobbyScreenWidgetExt,
-    },
+    app::{AppState, AppStateAction, SelectedRoom}, home::{room_screen::RoomScreenWidgetExt, rooms_list::RoomsListAction, space_lobby::SpaceLobbyScreenWidgetExt}
 };
 
 use super::invite_screen::InviteScreenWidgetExt;
@@ -24,7 +20,7 @@ script_mod! {
 
         show_bg: true
         draw_bg +: {
-            color: COLOR_TELEGRAM_BG
+            color: COLOR_PRIMARY_DARKER
         }
 
         welcome := mod.widgets.WelcomeScreen {}
@@ -33,24 +29,16 @@ script_mod! {
         room_view := View {
             align: Align{x: 0.5, y: 0.5}
             width: Fill, height: Fill
-            flow: Down
-            show_bg: true
-            draw_bg.color: #x070B1200
-            hepta_mobile_safety := mod.widgets.HeptaMobileSafetyBar {}
             room_screen := mod.widgets.RoomScreen {}
         }
         invite_view := View {
             align: Align{x: 0.5, y: 0.5}
             width: Fill, height: Fill
-            show_bg: true
-            draw_bg.color: #x070B1200
             invite_screen := mod.widgets.InviteScreen {}
         }
         space_lobby_view := View {
             align: Align{x: 0.5, y: 0.5}
             width: Fill, height: Fill
-            show_bg: true
-            draw_bg.color: #x070B1200
             space_lobby_screen := mod.widgets.SpaceLobbyScreen {}
         }
     }
@@ -73,12 +61,8 @@ impl Widget for MainMobileUI {
                     RoomsListAction::Selected(_selected_room) => {}
                     // Because the MainMobileUI is drawn based on the AppState only,
                     // all we need to do is update the AppState here.
-                    RoomsListAction::InviteAccepted {
-                        room_name_id: room_name,
-                    } => {
-                        cx.action(AppStateAction::UpgradedInviteToJoinedRoom(
-                            room_name.room_id().clone(),
-                        ));
+                    RoomsListAction::InviteAccepted { room_name_id: room_name } => {
+                        cx.action(AppStateAction::UpgradedInviteToJoinedRoom(room_name.room_id().clone()));
                     }
                     RoomsListAction::OpenRoomContextMenu { .. } => {}
                     RoomsListAction::None => {}
@@ -123,10 +107,7 @@ impl Widget for MainMobileUI {
                     .space_lobby_screen(cx, ids!(space_lobby_screen))
                     .set_displayed_space(cx, space_name_id);
             }
-            Some(SelectedRoom::Thread {
-                room_name_id,
-                thread_root_event_id,
-            }) => {
+            Some(SelectedRoom::Thread { room_name_id, thread_root_event_id }) => {
                 show_welcome = false;
                 show_room = true;
                 show_invite = false;
@@ -143,18 +124,10 @@ impl Widget for MainMobileUI {
             }
         }
 
-        self.view
-            .view(cx, ids!(welcome))
-            .set_visible(cx, show_welcome);
-        self.view
-            .view(cx, ids!(room_view))
-            .set_visible(cx, show_room);
-        self.view
-            .view(cx, ids!(invite_view))
-            .set_visible(cx, show_invite);
-        self.view
-            .view(cx, ids!(space_lobby_view))
-            .set_visible(cx, show_space_lobby);
+        self.view.view(cx, ids!(welcome)).set_visible(cx, show_welcome);
+        self.view.view(cx, ids!(room_view)).set_visible(cx, show_room);
+        self.view.view(cx, ids!(invite_view)).set_visible(cx, show_invite);
+        self.view.view(cx, ids!(space_lobby_view)).set_visible(cx, show_space_lobby);
         self.view.draw_walk(cx, scope, walk)
     }
 }

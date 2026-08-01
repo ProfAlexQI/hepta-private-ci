@@ -1,6 +1,6 @@
 # Splash Script Manual (Terse AI Reference)
 
-Splash is Makepad's UI scripting language. It is whitespace-delimited, but Robrix prefers either newlines or commas to separate properties, for readability's sake.
+Splash is Makepad's UI scripting language. It is whitespace-delimited, but Robrix prefers either newlines or commas to separate properties, for readability's sake. 
 **Please always use newlines or commas to separate properties, not just whitespace.**
 
 **Do NOT use `Root{}` or `Window{}`** — those are host-level wrappers handled externally. Your output is the content inside a body/splash widget.
@@ -2359,3 +2359,4 @@ MathView{text: "\\alpha + \\beta" font_size: 24.0}
 - Backslashes must be escaped as `\\` in Splash strings
 - The widget sizes itself to fit the rendered equation by default (`width: Fit`, `height: Fit`)
 - An empty `text` produces no output
+

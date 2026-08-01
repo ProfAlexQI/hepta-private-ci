@@ -1,32 +1,13 @@
 //! Widgets and types related to displaying info about a user profile.
 
-use std::{
-    borrow::Cow,
-    cell::RefCell,
-    ops::{Deref, DerefMut},
-};
+use std::{borrow::Cow, ops::{Deref, DerefMut}};
 use makepad_widgets::*;
-use matrix_sdk::{
-    room::{RoomMember, RoomMemberRole},
-    ruma::{events::room::member::MembershipState, OwnedRoomId, OwnedUserId},
-};
+use matrix_sdk::{room::{RoomMember, RoomMemberRole}, ruma::{events::room::member::MembershipState, OwnedRoomId, OwnedUserId}};
 use crate::{
-    app::{ConfirmDeleteAction, PositiveConfirmationModalAction},
-    avatar_cache,
-    shared::{
-        avatar::{AvatarState, AvatarWidgetExt},
-        confirmation_modal::ConfirmationModalContent,
-        popup_list::{PopupKind, enqueue_popup_notification},
-    },
-    sliding_sync::{MatrixRequest, current_user_id, is_user_ignored, submit_async_request},
-    utils,
+    avatar_cache, shared::{avatar::{AvatarState, AvatarWidgetExt}, popup_list::{PopupKind, enqueue_popup_notification}}, sliding_sync::{MatrixRequest, current_user_id, is_user_ignored, submit_async_request}, utils
 };
 use super::user_profile_cache;
 
-pub const PROFILE_MEMBER_READ_EVIDENCE: &str = "Profile pane uses loaded user_profile_cache state or the existing GetUserProfile/profile-member read path for display name, avatar, membership, and role; opening or refreshing this pane sends no profile mutation, ignore/block, direct-message, message, room-state, or membership mutation request.";
-pub const PROFILE_ACCOUNT_IDENTITY_CLIPBOARD_EVIDENCE: &str = "Profile/account identity copy uses already loaded Matrix user ids to write clipboard text locally; Copy Link to User sends no Matrix profile lookup, account request, event fetch, message send, room-state, membership, or live mutation request.";
-const PROFILE_CONFIRMATION_COMPACT_LABEL: &str =
-    "Confirmation required before the Matrix profile action runs.";
 
 /// Information retrieved about a user: their displayable name, ID, and known avatar state.
 #[derive(Clone, Debug)]
@@ -53,13 +34,13 @@ impl UserProfile {
     /// skipping any leading "@" characters.
     #[allow(unused)]
     pub fn first_letter(&self) -> &str {
-        self.username
-            .as_deref()
+        self.username.as_deref()
             .and_then(|un| utils::user_name_first_letter(un))
             .or_else(|| utils::user_name_first_letter(self.user_id.as_str()))
             .unwrap_or_default()
     }
 }
+
 
 /// Basic info needed to populate the contents of an avatar widget.
 #[derive(Clone, Debug)]
@@ -140,7 +121,7 @@ script_mod! {
         }
 
         LineH { padding: 15 }
-
+        
         membership := View {
             width: Fill,
             height: Fit,
@@ -180,17 +161,6 @@ script_mod! {
                 }
                 text: "Unknown"
             }
-
-            profile_cache_read_label := Label {
-                margin: Inset{ left: 7, top: 3 }
-                width: Fill, height: Fit
-                flow: Flow.Right{wrap: true}
-                draw_text +: {
-                    color: (MESSAGE_TEXT_COLOR),
-                    text_style: MESSAGE_TEXT_STYLE { font_size: 10.5 },
-                }
-                text: "Profile pane uses loaded cache or GetUserProfile read path. No profile mutation, ignore/block, direct-message, message, room-state, or membership mutation request was started."
-            }
         }
 
         LineH { padding: 15 }
@@ -228,50 +198,12 @@ script_mod! {
             }
 
             jump_to_read_receipt_button := RobrixNeutralIconButton {
+                enabled: false, // TODO: support this button
                 padding: Inset{top: 10, bottom: 10, left: 12, right: 15}
                 margin: 0,
                 draw_icon.svg: (ICON_JUMP)
                 icon_walk: Walk{width: 14, height: 16, margin: Inset{left: -1, right: 1.5}}
                 text: "Jump to Read Receipt"
-            }
-
-            profile_read_receipt_preview := RoundedView {
-                visible: false
-                width: Fill,
-                height: Fit,
-                flow: Down,
-                spacing: 5.0,
-                margin: Inset{top: -2, bottom: 2}
-                padding: Inset{top: 8, bottom: 8, left: 10, right: 10}
-                show_bg: true,
-                draw_bg +: {
-                    color: #F4F7FA
-                    border_color: #D9E2EA
-                    border_size: 1.0
-                    border_radius: 6.0
-                }
-
-                profile_read_receipt_title := Label {
-                    width: Fill,
-                    height: Fit,
-                    flow: Flow.Right{wrap: true}
-                    draw_text +: {
-                        color: #000,
-                        text_style: USERNAME_TEXT_STYLE { font_size: 11.0 }
-                    }
-                    text: "Read receipt preview"
-                }
-
-                profile_read_receipt_summary := Label {
-                    width: Fill,
-                    height: Fit,
-                    flow: Flow.Right{wrap: true}
-                    draw_text +: {
-                        color: (MESSAGE_TEXT_COLOR),
-                        text_style: MESSAGE_TEXT_STYLE { font_size: 10.5 }
-                    }
-                    text: "Local read receipt jump preview. No read receipt lookup or Matrix request was started."
-                }
             }
 
             ignore_user_button := RobrixNegativeIconButton {
@@ -353,6 +285,7 @@ script_mod! {
     }
 }
 
+
 #[derive(Clone, Default, Debug)]
 pub enum ShowUserProfileAction {
     ShowUserProfile(UserProfileAndRoomId),
@@ -388,60 +321,48 @@ impl UserProfilePaneInfo {
     }
 
     fn membership_status(&self) -> &str {
-        self.room_member
-            .as_ref()
-            .map_or("Not a Member", |member| match member.membership() {
+        self.room_member.as_ref().map_or(
+            "Not a Member",
+            |member| match member.membership() {
                 MembershipState::Join => "Status: Joined",
                 MembershipState::Leave => "Status: Left",
                 MembershipState::Ban => "Status: Banned",
                 MembershipState::Invite => "Status: Invited",
                 MembershipState::Knock => "Status: Knocking",
                 _ => "Status: Unknown",
-            })
+            }
+        )
     }
 
     fn role_in_room(&self) -> Cow<'_, str> {
-        self.room_member
-            .as_ref()
-            .map_or("Role: Unknown".into(), |member| {
-                match member.suggested_role_for_power_level() {
-                    RoomMemberRole::Creator => "Role: Creator".into(),
-                    RoomMemberRole::Administrator => "Role: Admin".into(),
-                    RoomMemberRole::Moderator => "Role: Moderator".into(),
-                    RoomMemberRole::User => "Role: Standard User".into(),
-                }
-            })
+        self.room_member.as_ref().map_or(
+            "Role: Unknown".into(),
+            |member| match member.suggested_role_for_power_level() {
+                RoomMemberRole::Creator => "Role: Creator".into(),
+                RoomMemberRole::Administrator => "Role: Admin".into(),
+                RoomMemberRole::Moderator => "Role: Moderator".into(),
+                RoomMemberRole::User => "Role: Standard User".into(),
+            }
+        )
     }
 }
 
 #[derive(Script, ScriptHook, Widget, Animator)]
 pub struct UserProfileSlidingPane {
-    #[source]
-    source: ScriptObjectRef,
-    #[deref]
-    view: View,
-    #[apply_default]
-    animator: Animator,
-    #[live]
-    slide: f32,
+    #[source] source: ScriptObjectRef,
+    #[deref] view: View,
+    #[apply_default] animator: Animator,
+    #[live] slide: f32,
 
-    #[rust]
-    info: Option<UserProfilePaneInfo>,
-    #[rust]
-    is_animating_out: bool,
-    #[rust]
-    read_receipt_preview_visible: bool,
-    #[rust]
-    read_receipt_preview_status: String,
+    #[rust] info: Option<UserProfilePaneInfo>,
+    #[rust] is_animating_out: bool,
 }
 
 impl Widget for UserProfileSlidingPane {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         self.view.handle_event(cx, event, scope);
 
-        if !self.visible {
-            return;
-        }
+        if !self.visible { return; }
 
         let animator_action = self.animator_handle_event(cx, event);
         if animator_action.must_redraw() {
@@ -472,23 +393,20 @@ impl Widget for UserProfileSlidingPane {
             matches!(
                 event,
                 Event::Actions(actions) if self.button(cx, ids!(close_button)).clicked(actions)
-            ) || event.back_pressed()
-                || match event.hits_with_capture_overload(cx, area, true) {
-                    Hit::KeyUp(key) => key.key_code == KeyCode::Escape,
-                    Hit::FingerDown(_fde) => {
-                        cx.set_key_focus(area);
-                        false
-                    }
-                    Hit::FingerUp(fue) if fue.is_over => {
-                        fue.mouse_button().is_some_and(|b| b.is_back())
-                            || !self
-                                .view(cx, ids!(main_content))
-                                .area()
-                                .rect(cx)
-                                .contains(fue.abs)
-                    }
-                    _ => false,
+            )
+            || event.back_pressed()
+            || match event.hits_with_capture_overload(cx, area, true) {
+                Hit::KeyUp(key) => key.key_code == KeyCode::Escape,
+                Hit::FingerDown(_fde) => {
+                    cx.set_key_focus(area);
+                    false
                 }
+                Hit::FingerUp(fue) if fue.is_over => {
+                    fue.mouse_button().is_some_and(|b| b.is_back())
+                    || !self.view(cx, ids!(main_content)).area().rect(cx).contains(fue.abs)
+                }
+                _ => false,
+            }
         };
         if close_pane {
             self.is_animating_out = true;
@@ -510,16 +428,14 @@ impl Widget for UserProfileSlidingPane {
                     our_info.user_id.clone(),
                     Some(&our_info.room_id),
                     false,
-                    |profile, rooms| (profile.clone(), rooms.get(&our_info.room_id).cloned()),
+                    |profile, rooms| (profile.clone(), rooms.get(&our_info.room_id).cloned())
                 ) {
                     let prev_avatar_state = our_info.avatar_state.clone();
                     our_info.user_profile = new_profile;
                     our_info.room_member = room_member;
                     // Use the avatar URI from the `room_member`, as it will be the most up-to-date
                     // and specific to the room that this user profile sliding pane is currently being shown for.
-                    if let Some(avatar_uri) = our_info
-                        .room_member
-                        .as_ref()
+                    if let Some(avatar_uri) = our_info.room_member.as_ref()
                         .and_then(|rm| rm.avatar_url().map(|u| u.to_owned()))
                     {
                         our_info.avatar_state = AvatarState::Known(Some(avatar_uri));
@@ -530,11 +446,11 @@ impl Widget for UserProfileSlidingPane {
                     // If the new avatar state is fully `Loaded`, keep it as is.
                     // If the new avatar state is *not* fully `Loaded`, but the previous one was, keep the previous one.
                     match (prev_avatar_state, &mut our_info.avatar_state) {
-                        (_, AvatarState::Loaded(_)) => {}
-                        (prev @ AvatarState::Loaded(_), existing_avatar_state) => {
+                        (_,                             AvatarState::Loaded(_)) => { }
+                        (prev @ AvatarState::Loaded(_), existing_avatar_state ) => {
                             *existing_avatar_state = prev;
                         }
-                        _ => {}
+                        _ => { }
                     }
                     redraw_this_pane = true;
                 }
@@ -544,56 +460,48 @@ impl Widget for UserProfileSlidingPane {
             }
         }
 
-        let Some(info) = self.info.clone() else {
-            return;
-        };
+        let Some(info) = self.info.as_ref() else { return };
 
         if let Event::Actions(actions) = event {
-            if self
-                .button(cx, ids!(direct_message_button))
-                .clicked(actions)
-            {
-                self.open_direct_message_confirmation(cx, info.clone());
+            if self.button(cx, ids!(direct_message_button)).clicked(actions) {
+                submit_async_request(MatrixRequest::OpenOrCreateDirectMessage {
+                    user_profile: info.user_profile.clone(),
+                    // Don't just create a new DM room; we want to first get confirmation from the user.
+                    allow_create: false,
+                });
             }
 
-            if self
-                .button(cx, ids!(copy_link_to_user_button))
-                .clicked(actions)
-            {
+            if self.button(cx, ids!(copy_link_to_user_button)).clicked(actions) {
                 let matrix_to_uri = info.user_id.matrix_to_uri().to_string();
-                // Profile/account identity clipboard evidence: the link is
-                // built from the loaded user id and only writes local
-                // clipboard text. It sends no Matrix profile lookup, account
-                // request, event fetch, message send, room-state, membership,
-                // or live mutation request.
                 cx.copy_to_clipboard(&matrix_to_uri);
                 enqueue_popup_notification(
-                    "Copied user link locally. No Matrix profile lookup, account request, event fetch, message send, room-state, membership, or live mutation request was sent.",
+                    "Copied User ID to the clipboard.",
                     PopupKind::Success,
                     Some(3.0),
                 );
             }
 
-            if self
-                .button(cx, ids!(jump_to_read_receipt_button))
-                .clicked(actions)
-            {
-                self.stage_read_receipt_jump_preview(cx, info.displayable_name());
-            }
+            // TODO: implement the third button: `jump_to_read_receipt_button`,
+            //       which involves calling `Timeline::latest_user_read_receipt()`
+            //       or `Room::load_user_receipt()`, which are async functions.
 
             // The `ignore_user_button` require room membership info.
             if let Some(room_member) = info.room_member.as_ref() {
                 if self.button(cx, ids!(ignore_user_button)).clicked(actions) {
-                    self.open_ignore_user_confirmation(
-                        cx,
-                        info.clone(),
-                        room_member.clone(),
-                        is_user_ignored(room_member.user_id()),
+                    submit_async_request(MatrixRequest::IgnoreUser {
+                        ignore: !room_member.is_ignored(),
+                        room_id: info.room_id.clone(),
+                        room_member: room_member.clone(),
+                    });
+                    log!("Submitting request to {}ignore user {}.",
+                        if room_member.is_ignored() { "un" } else { "" },
+                        info.user_id,
                     );
                 }
             }
         }
     }
+
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
         let Some(info) = self.info.as_ref() else {
@@ -620,38 +528,20 @@ impl Widget for UserProfileSlidingPane {
         });
 
         // Set the user name, using the user ID as a fallback.
-        self.label(cx, ids!(user_name))
-            .set_text(cx, info.displayable_name());
-        self.label(cx, ids!(user_id))
-            .set_text(cx, info.user_id.as_str());
+        self.label(cx, ids!(user_name)).set_text(cx, info.displayable_name());
+        self.label(cx, ids!(user_id)).set_text(cx, info.user_id.as_str());
 
         // Set the avatar image, using the user name as a fallback.
         let avatar_ref = self.avatar(cx, ids!(avatar));
         info.avatar_state
-            .data()
-            .and_then(|data| {
-                avatar_ref
-                    .show_image(cx, None, |cx, img| utils::load_png_or_jpg(&img, cx, data))
-                    .ok()
-            })
+            .image()
+            .and_then(|image| avatar_ref.show_image(cx, None, |cx, img| utils::load_avatar_image(&img, cx, image)).ok())
             .unwrap_or_else(|| avatar_ref.show_text(cx, None, None, info.displayable_name()));
 
         // Set the membership status and role in the room.
-        self.label(cx, ids!(membership_title_label))
-            .set_text(cx, &info.membership_title());
-        self.label(cx, ids!(membership_status_label))
-            .set_text(cx, info.membership_status());
-        self.label(cx, ids!(role_info_label))
-            .set_text(cx, info.role_in_room().as_ref());
-        self.label(cx, ids!(profile_cache_read_label)).set_text(
-            cx,
-            &format!(
-                "{} {} {}",
-                PROFILE_MEMBER_READ_EVIDENCE,
-                user_profile_cache::USER_PROFILE_CACHE_READ_EVIDENCE,
-                PROFILE_ACCOUNT_IDENTITY_CLIPBOARD_EVIDENCE
-            ),
-        );
+        self.label(cx, ids!(membership_title_label)).set_text(cx, &info.membership_title());
+        self.label(cx, ids!(membership_status_label)).set_text(cx, info.membership_status());
+        self.label(cx, ids!(role_info_label)).set_text(cx, info.role_in_room().as_ref());
 
         // Draw and show/hide the buttons according to user and room membership info:
         // * `direct_message_button` is hidden if the user is the same as the account user,
@@ -661,198 +551,29 @@ impl Widget for UserProfileSlidingPane {
         // * `ignore_user_button` is hidden if the user is not a member of the room,
         //    or if the user is the same as the account user, since you cannot ignore yourself.
         //    * The button text changes to "Unignore" if the user is already ignored.
-        let is_pane_showing_current_account = info
-            .room_member
-            .as_ref()
+        let is_pane_showing_current_account = info.room_member.as_ref()
             .map(|rm| rm.is_account_user())
             .unwrap_or_else(|| current_user_id().is_some_and(|uid| uid == info.user_id));
 
-        self.button(cx, ids!(direct_message_button))
-            .set_visible(cx, !is_pane_showing_current_account);
+        self.button(cx, ids!(direct_message_button)).set_visible(cx, !is_pane_showing_current_account);
 
         let ignore_user_button = self.button(cx, ids!(ignore_user_button));
-        ignore_user_button.set_visible(
-            cx,
-            !is_pane_showing_current_account && info.room_member.is_some(),
-        );
+        ignore_user_button.set_visible(cx, !is_pane_showing_current_account && info.room_member.is_some());
         // Unfortunately the Matrix SDK's RoomMember type does not properly track
         // the `ignored` state of a user, so we have to maintain it separately.
-        let is_ignored = info
-            .room_member
-            .as_ref()
+        let is_ignored = info.room_member.as_ref()
             .is_some_and(|rm| is_user_ignored(rm.user_id()));
         ignore_user_button.set_text(
             cx,
-            if is_ignored {
-                "Unignore (Unblock) User"
-            } else {
-                "Ignore (Block) User"
-            },
+            if is_ignored { "Unignore (Unblock) User" } else { "Ignore (Block) User" }
         );
 
         self.view.draw_walk(cx, scope, walk)
     }
 }
 
+
 impl UserProfileSlidingPane {
-    fn update_read_receipt_preview(&mut self, cx: &mut Cx) {
-        let status = if self.read_receipt_preview_status.trim().is_empty() {
-            "Read receipt jump preview staged locally"
-        } else {
-            self.read_receipt_preview_status.as_str()
-        };
-        self.view
-            .label(
-                cx,
-                ids!(profile_read_receipt_preview.profile_read_receipt_summary),
-            )
-            .set_text(
-                cx,
-                &format!("{status}. No read receipt lookup or Matrix request was started."),
-            );
-    }
-
-    fn set_read_receipt_preview_visible(&mut self, cx: &mut Cx, visible: bool) {
-        if self.read_receipt_preview_visible == visible {
-            return;
-        }
-        self.read_receipt_preview_visible = visible;
-        self.view
-            .view(cx, ids!(profile_read_receipt_preview))
-            .set_visible(cx, visible);
-        self.redraw(cx);
-    }
-
-    fn stage_read_receipt_jump_preview(&mut self, cx: &mut Cx, display_name: &str) {
-        self.read_receipt_preview_status =
-            format!("Read receipt jump preview staged locally for {display_name}");
-        self.update_read_receipt_preview(cx);
-        self.set_read_receipt_preview_visible(cx, true);
-        enqueue_popup_notification(
-            format!(
-                "Read receipt jump preview was staged locally for {display_name}. No read receipt lookup or Matrix request was started."
-            ),
-            PopupKind::Info,
-            Some(4.0),
-        );
-    }
-
-    fn open_direct_message_confirmation(&mut self, cx: &mut Cx, info: UserProfilePaneInfo) {
-        let display_name = info.displayable_name().to_string();
-        let user_id = info.user_id.clone();
-        let user_profile_for_request = info.user_profile.clone();
-        let popup_display_name = display_name.clone();
-        let content = ConfirmationModalContent {
-            title_text: "Open Direct Message".into(),
-            body_text: format!(
-                "Open DM with {display_name} ({user_id})? {PROFILE_CONFIRMATION_COMPACT_LABEL}"
-            )
-            .into(),
-            accept_button_text: Some("Open".into()),
-            cancel_button_text: Some("Cancel".into()),
-            on_accept_clicked: Some(Box::new(move |_cx| {
-                submit_async_request(MatrixRequest::OpenOrCreateDirectMessage {
-                    user_profile: user_profile_for_request,
-                    allow_create: false,
-                });
-                enqueue_popup_notification(
-                    format!(
-                        "Direct Message confirmed for {popup_display_name}. Existing Matrix direct-message lookup path was requested."
-                    ),
-                    PopupKind::Info,
-                    Some(4.0),
-                );
-            })),
-            on_cancel_clicked: Some(Box::new(|_cx| {
-                enqueue_popup_notification(
-                    "Direct Message canceled. Matrix DM lookup was not requested.",
-                    PopupKind::Info,
-                    Some(3.0),
-                );
-            })),
-        };
-        enqueue_popup_notification(
-            format!(
-                "Direct Message confirmation opened for {display_name}. {PROFILE_CONFIRMATION_COMPACT_LABEL}"
-            ),
-            PopupKind::Info,
-            Some(4.0),
-        );
-        cx.action(PositiveConfirmationModalAction::Show(RefCell::new(Some(
-            content,
-        ))));
-    }
-
-    fn open_ignore_user_confirmation(
-        &mut self,
-        cx: &mut Cx,
-        info: UserProfilePaneInfo,
-        room_member: RoomMember,
-        is_ignored: bool,
-    ) {
-        let ignore = !is_ignored;
-        let action_title = if ignore {
-            "Ignore User"
-        } else {
-            "Unignore User"
-        };
-        let confirmation_popup = if ignore {
-            "Ignore confirmation opened"
-        } else {
-            "Unignore confirmation opened"
-        };
-        let accept_button_text = if ignore { "Ignore" } else { "Unignore" };
-        let display_name = info.displayable_name().to_string();
-        let user_id = info.user_id.clone();
-        let room_id = info.room_id.clone();
-        let popup_display_name = display_name.clone();
-        let log_user_id = user_id.clone();
-        let room_member_for_request = room_member;
-        let content = ConfirmationModalContent {
-            title_text: action_title.into(),
-            body_text: format!(
-                "{action_title} {display_name} ({user_id})? {PROFILE_CONFIRMATION_COMPACT_LABEL}"
-            )
-            .into(),
-            accept_button_text: Some(accept_button_text.into()),
-            cancel_button_text: Some("Cancel".into()),
-            on_accept_clicked: Some(Box::new(move |_cx| {
-                submit_async_request(MatrixRequest::IgnoreUser {
-                    ignore,
-                    room_id,
-                    room_member: room_member_for_request,
-                });
-                log!(
-                    "Submitting request to {}ignore user {}.",
-                    if ignore { "" } else { "un" },
-                    log_user_id,
-                );
-                enqueue_popup_notification(
-                    format!(
-                        "{action_title} confirmed for {popup_display_name}. Existing Matrix ignore/block path was requested."
-                    ),
-                    PopupKind::Info,
-                    Some(4.0),
-                );
-            })),
-            on_cancel_clicked: Some(Box::new(|_cx| {
-                enqueue_popup_notification(
-                    "Ignore canceled. Matrix ignore/block path was not requested.",
-                    PopupKind::Info,
-                    Some(3.0),
-                );
-            })),
-        };
-        enqueue_popup_notification(
-            format!(
-                "{confirmation_popup} for {display_name}. {PROFILE_CONFIRMATION_COMPACT_LABEL}"
-            ),
-            PopupKind::Info,
-            Some(4.0),
-        );
-        cx.action(ConfirmDeleteAction::Show(RefCell::new(Some(content))));
-    }
-
     /// Returns `true` if this pane is currently being shown.
     pub fn is_currently_shown(&self, _cx: &mut Cx) -> bool {
         self.visible
@@ -866,23 +587,19 @@ impl UserProfileSlidingPane {
     /// if it's not found in the cache.
     pub fn set_info(&mut self, cx: &mut Cx, mut info: UserProfilePaneInfo) {
         if info.room_member.is_none() {
-            // Profile member read evidence: opening the pane first consults the
-            // UI-thread user_profile_cache, then may use the existing GetUserProfile
-            // read path via fetch_if_missing to fill missing room membership details.
-            // It sends no profile mutation, ignore/block, direct-message, message,
-            // room-state, or membership mutation request.
             if let Some((new_profile, Some(room_member))) = user_profile_cache::with_user_profile(
                 cx,
                 info.user_id.clone(),
                 Some(&info.room_id),
                 true,
-                |profile, rooms| (profile.clone(), rooms.get(&info.room_id).cloned()),
+                |profile, rooms| (profile.clone(), rooms.get(&info.room_id).cloned())
             ) {
                 log!("Found user {} room member info in cache", info.user_id);
                 // Update avatar state, preferring that of the room member info.
                 if let Some(uri) = room_member.avatar_url() {
                     info.avatar_state = AvatarState::Known(Some(uri.to_owned()));
-                } else {
+                }
+                else {
                     match new_profile.avatar_state {
                         s @ AvatarState::Known(Some(_)) | s @ AvatarState::Loaded(_) => {
                             info.avatar_state = s.clone();
@@ -892,8 +609,7 @@ impl UserProfileSlidingPane {
                 }
                 // Update displayable username.
                 if info.username.is_none() {
-                    info.username = room_member
-                        .display_name()
+                    info.username = room_member.display_name()
                         .map(|dn| dn.to_owned())
                         .or_else(|| new_profile.username.clone());
                 }
@@ -901,15 +617,11 @@ impl UserProfileSlidingPane {
             }
         }
         info.avatar_state.update_from_cache(cx);
-        self.read_receipt_preview_status.clear();
-        self.set_read_receipt_preview_visible(cx, false);
 
         // If TSP is enabled, populate the TSP verification info for this user.
-        #[cfg(feature = "tsp")]
-        {
+        #[cfg(feature = "tsp")] {
             use crate::tsp::verify_user::TspVerifyUserWidgetExt;
-            self.view
-                .tsp_verify_user(cx, ids!(tsp_verify_user))
+            self.view.tsp_verify_user(cx, ids!(tsp_verify_user))
                 .show(cx, info.user_id.clone());
         }
 
@@ -924,18 +636,10 @@ impl UserProfileSlidingPane {
         self.view(cx, ids!(bg_view)).set_visible(cx, true);
 
         self.view.button(cx, ids!(close_button)).reset_hover(cx);
-        self.view
-            .button(cx, ids!(direct_message_button))
-            .reset_hover(cx);
-        self.view
-            .button(cx, ids!(copy_link_to_user_button))
-            .reset_hover(cx);
-        self.view
-            .button(cx, ids!(jump_to_read_receipt_button))
-            .reset_hover(cx);
-        self.view
-            .button(cx, ids!(ignore_user_button))
-            .reset_hover(cx);
+        self.view.button(cx, ids!(direct_message_button)).reset_hover(cx);
+        self.view.button(cx, ids!(copy_link_to_user_button)).reset_hover(cx);
+        self.view.button(cx, ids!(jump_to_read_receipt_button)).reset_hover(cx);
+        self.view.button(cx, ids!(ignore_user_button)).reset_hover(cx);
         self.redraw(cx);
     }
 }
@@ -943,25 +647,33 @@ impl UserProfileSlidingPane {
 impl UserProfileSlidingPaneRef {
     /// See [`UserProfileSlidingPane::is_currently_shown()`]
     pub fn is_currently_shown(&self, cx: &mut Cx) -> bool {
-        let Some(inner) = self.borrow() else {
-            return false;
-        };
+        let Some(inner) = self.borrow() else { return false };
         inner.is_currently_shown(cx)
     }
 
     /// See [`UserProfileSlidingPane::set_info()`]
     pub fn set_info(&self, cx: &mut Cx, info: UserProfilePaneInfo) {
-        let Some(mut inner) = self.borrow_mut() else {
-            return;
-        };
+        let Some(mut inner) = self.borrow_mut() else { return };
         inner.set_info(cx, info);
     }
 
     /// See [`UserProfileSlidingPane::show()`]
     pub fn show(&self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else {
-            return;
-        };
+        let Some(mut inner) = self.borrow_mut() else { return };
         inner.show(cx);
+    }
+
+    /// Hides the pane immediately and clears its state without animating it out.
+    pub fn reset(&self, cx: &mut Cx) {
+        let Some(mut inner) = self.borrow_mut() else { return };
+        inner.visible = false;
+        inner.animator_cut(cx, ids!(panel.hide));
+        inner.is_animating_out = false;
+        inner.info = None;
+        inner.view(cx, ids!(bg_view)).set_visible(cx, false);
+        if cx.has_key_focus(inner.view.area()) {
+            cx.revert_key_focus();
+        }
+        inner.redraw(cx);
     }
 }
