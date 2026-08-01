@@ -401,6 +401,11 @@ typed_report_contract() {
       source_stem="workflow_temporal_lite_${suffix//-/_}"
       printf '%s\t%s\n' "${source_stem}_gate" "${source_stem}_v1"
       ;;
+    hepta-systems-workflow-durable-store-*)
+      suffix="${id#hepta-systems-workflow-durable-store-}"
+      source_stem="workflow_durable_store_${suffix//-/_}"
+      printf '%s\t%s\n' "hepta_${source_stem}_gate" "${source_stem}_v1"
+      ;;
     *)
       echo "unsupported typed Hepta report id: $id" >&2
       return 1
@@ -439,7 +444,7 @@ execute_typed_rust_report() {
     exit 1
   }
   jq -e --arg id "$id" '
-    .schema == "hepta_gate_typed_report_bindings_v1"
+    .schema == "hepta_gate_typed_report_bindings_v2"
     and .status == "ready"
     and (.report_ids | index($id) != null)
     and (.report_ids | length == (unique | length))

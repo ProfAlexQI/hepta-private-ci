@@ -11,7 +11,7 @@ require_relative "hepta-workgraph-readable-token-source-v1"
 
 ROOT = File.expand_path("..", __dir__)
 SPEC_PATH = File.join(ROOT, "scripts/hepta-gate-pair-specs-v1.json")
-BINDINGS_PATH = File.join(ROOT, "scripts/hepta-gate-typed-report-bindings-v1.json")
+BINDINGS_PATH = File.join(ROOT, "scripts/hepta-gate-typed-report-bindings-v2.json")
 REPORT_SOURCE = File.join(ROOT, "codex-rs/hepta-runtime/src/typed_compat_report.rs")
 REPORT_CLI_SOURCE = File.join(ROOT, "codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs")
 REPORT_RUNNER = File.join(ROOT, "scripts/hepta-typed-compat-report")
@@ -27,11 +27,15 @@ FAMILY_RECEIPT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-family-receipt-
 DEBT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-debt-v1.json")
 ARCHITECTURE_RATCHET_PATH = File.join(ROOT, "scripts/hepta-architecture-ratchet-v1.json")
 ENTRYPOINT_REGISTRY_PATH = File.join(ROOT, "scripts/hepta-gate-pair-entrypoints-v2.json")
+CURRENT_REALITY_REGISTRY_PATH = File.join(
+  BUNDLE_ROOT,
+  "current-reality-capabilities.json"
+)
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 DOMAIN = "hepta_gate_pair_compat_payloads"
 TARGET_PAIR_COUNT = 299
-TARGET_CAPTURED_COUNT = 199
-TARGET_DECLARATIVE_COUNT = 100
+TARGET_CAPTURED_COUNT = 123
+TARGET_DECLARATIVE_COUNT = 176
 
 def usage
   warn "usage: scripts/hepta-gate-compat-typed-report-migrate-v1 <plan|apply>"
@@ -48,9 +52,9 @@ end
 def binding_ids
   registry = JSON.parse(File.binread(BINDINGS_PATH))
   raise "invalid typed report binding schema" unless registry.fetch("schema") ==
-    "hepta_gate_typed_report_bindings_v1"
+    "hepta_gate_typed_report_bindings_v2"
   ids = registry.fetch("report_ids")
-  raise "typed report binding count drifted" unless ids.length == 37 && ids.uniq.length == 37
+  raise "typed report binding count drifted" unless ids.length == 113 && ids.uniq.length == 113
   ids
 end
 
@@ -106,12 +110,12 @@ def rewrite_spec(spec, sources, ids)
         "source_report" => "codex-rs/hepta-runtime/src/typed_compat_report.rs",
         "typed_report_runner" => "scripts/hepta-typed-compat-report",
         "typed_report_runner_sha256" => runner_sha,
-        "typed_report_registry" => "scripts/hepta-gate-typed-report-bindings-v1.json",
+        "typed_report_registry" => "scripts/hepta-gate-typed-report-bindings-v2.json",
         "typed_report_registry_sha256" => registry_sha,
         "typed_report_source_sha256" => source_sha,
         "typed_report_cli_source" => "codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs",
         "typed_report_cli_source_sha256" => cli_source_sha,
-        "side_effect_boundary" => "read-only typed Rust compatibility report; never mutates, publishes, sends, installs, or restarts",
+        "side_effect_boundary" => "read-only #{pair.fetch('receipt_state')} typed Rust compatibility report; never mutates, publishes, sends, installs, or restarts",
         "next_migration_step" => "typed_rust_report_semantics_preserved_without_shell_payload",
         "missing_source_message" => "missing typed Rust compatibility report source",
         "missing_report_message" => "missing typed Rust compatibility report runner",
@@ -161,6 +165,18 @@ def rewrite_bundle(spec, sources, ids)
     artifact_file: "payloads.bundle.gz",
     atomic_write: method(:atomic_write),
     source_chunk_lines: 8
+  )
+end
+
+def refresh_current_reality_registry(sources, ids)
+  registry = JSON.parse(File.binread(CURRENT_REALITY_REGISTRY_PATH))
+  source_path = registry.fetch("source_payload")
+  source = transform_source(sources.fetch(source_path), ids)
+  registry["source_sha256"] = Digest::SHA256.hexdigest(source)
+  atomic_write(
+    CURRENT_REALITY_REGISTRY_PATH,
+    JSON.pretty_generate(registry) + "\n",
+    0o644
   )
 end
 
@@ -274,7 +290,7 @@ def refresh_contracts(ids)
     "status" => "ready",
     "converted_state_count" => ids.length,
     "template" => "typed_rust_report_v1",
-    "binding_registry" => "scripts/hepta-gate-typed-report-bindings-v1.json",
+    "binding_registry" => "scripts/hepta-gate-typed-report-bindings-v2.json",
     "binding_registry_sha256" => Digest::SHA256.file(BINDINGS_PATH).hexdigest,
     "report_source_sha256" => Digest::SHA256.file(REPORT_SOURCE).hexdigest,
     "report_cli_source_sha256" => Digest::SHA256.file(REPORT_CLI_SOURCE).hexdigest,
@@ -302,10 +318,34 @@ def refresh_contracts(ids)
   debt["ceilings"] = current
   debt["baselines"] = current.merge("declarative_pair_count" => TARGET_DECLARATIVE_COUNT)
   debt.fetch("floors")["declarative_pair_count"] = TARGET_DECLARATIVE_COUNT
-  debt.fetch("decline_targets")["next"].merge!(
-    "captured_shell_pair_count" => 149,
-    "declarative_pair_count" => 150
+  terminal = debt.fetch("decline_targets").fetch("terminal")
+  next_target = debt.fetch("decline_targets").fetch("next")
+  bounded_next = lambda do |current, preferred, terminal_value|
+    raise "no room for an honest next decline target" unless current > terminal_value + 1
+    [[preferred, current - 1].min, terminal_value + 1].max
+  end
+  next_captured = bounded_next.call(TARGET_CAPTURED_COUNT, 49, 0)
+  next_target.merge!(
+    "captured_shell_pair_count" => next_captured,
+    "declarative_pair_count" => TARGET_PAIR_COUNT - next_captured,
+    "compatibility_payload_count" => bounded_next.call(
+      result.fetch("normalized_payload_count"), 250,
+      terminal.fetch("compatibility_payload_count")
+    ),
+    "logical_compatibility_payload_count" => bounded_next.call(
+      result.fetch("logical_compatibility_payload_count"), 600,
+      terminal.fetch("logical_compatibility_payload_count")
+    ),
+    "normalized_effective_lines" => bounded_next.call(
+      result.fetch("normalized_effective_lines"), 75_000,
+      terminal.fetch("normalized_effective_lines")
+    ),
+    "physical_entrypoint_count" => bounded_next.call(
+      result.fetch("physical_entrypoint_count"), 59,
+      terminal.fetch("physical_entrypoint_count")
+    )
   )
+  terminal["declarative_pair_count"] = terminal.fetch("pair_count")
   debt.fetch("migration_policy").merge!(
     "typed_report_bindings_are_sha256_bound" => true,
     "typed_reports_reuse_existing_rust_semantics" => true,
@@ -320,6 +360,13 @@ def refresh_contracts(ids)
       "normalized_effective_lines"
     )
   end
+  architecture_terminal = architecture.fetch("decline_targets").fetch("terminal")
+  architecture.fetch("decline_targets").fetch("next")[
+    "gate_compat_effective_lines"
+  ] = bounded_next.call(
+    result.fetch("normalized_effective_lines"), 75_000,
+    architecture_terminal.fetch("gate_compat_effective_lines")
+  )
   atomic_write(ARCHITECTURE_RATCHET_PATH, JSON.pretty_generate(architecture) + "\n", 0o644)
 end
 
@@ -346,6 +393,7 @@ def apply
   updated = rewrite_spec(spec, sources, ids)
   atomic_write(SPEC_PATH, JSON.pretty_generate(updated) + "\n", 0o644)
   rewrite_bundle(updated, sources, ids)
+  refresh_current_reality_registry(sources, ids)
   rewrite_family_bundle(ids)
   system(PAYLOAD_TOOL, "pack") || raise("typed compatibility payload repack failed")
   system(ENTRYPOINT_TOOL, "pack") || raise("typed compatibility entrypoint repack failed")

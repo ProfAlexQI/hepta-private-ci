@@ -221,6 +221,27 @@ fn migrated_and_promoted_pair_specs_use_the_receipt_state_machine() {
     assert_eq!(value["receipt_state"], "terminal");
     assert_eq!(value["report_execution_performed"], false);
 
+    let typed_id = "hepta-systems-work-graph-adapter-projection-fixture";
+    let typed_value: serde_json::Value = serde_json::from_str(
+        &migrated_pair_spec_json(typed_id)
+            .expect("typed migrated pair lookup")
+            .expect("typed migrated pair json"),
+    )
+    .expect("typed migrated pair value");
+    assert_eq!(typed_value["template"], "typed_rust_report_v1");
+    assert_eq!(
+        typed_value["typed_report_runner"],
+        "scripts/hepta-typed-compat-report"
+    );
+    assert_eq!(
+        typed_value["typed_report_registry"],
+        "scripts/hepta-gate-typed-report-bindings-v2.json"
+    );
+    assert_eq!(
+        typed_value["typed_report_cli_source"],
+        "codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs"
+    );
+
     let id = "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview";
     let registry_path = repo_root().join("scripts/hepta-workgraph-source-report-specs-v1.json");
     let registry: serde_json::Value = serde_json::from_str(

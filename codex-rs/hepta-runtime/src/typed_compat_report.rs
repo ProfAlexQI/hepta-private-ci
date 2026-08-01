@@ -122,6 +122,8 @@ pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
 pub enum TypedCompatReportError {
     #[error("unknown typed compatibility report: {0}")]
     UnknownReport(String),
+    #[error("typed compatibility report contract violation: {0}")]
+    ContractViolation(String),
     #[error("typed compatibility report serialization failed: {0}")]
     Serialization(#[from] serde_json::Error),
 }
@@ -130,6 +132,192 @@ macro_rules! serialize_report {
     ($report:expr) => {
         serde_json::to_value($report).map_err(TypedCompatReportError::from)
     };
+}
+
+fn contract_object_mut<'a>(
+    value: &'a mut Value,
+    context: &str,
+) -> Result<&'a mut serde_json::Map<String, Value>, TypedCompatReportError> {
+    value.as_object_mut().ok_or_else(|| {
+        TypedCompatReportError::ContractViolation(format!("{context} must be a JSON object"))
+    })
+}
+
+fn take_contract_field(
+    object: &mut serde_json::Map<String, Value>,
+    field: &str,
+    context: &str,
+) -> Result<Value, TypedCompatReportError> {
+    object.remove(field).ok_or_else(|| {
+        TypedCompatReportError::ContractViolation(format!(
+            "{context} must expose required field {field}"
+        ))
+    })
+}
+
+fn workflow_durable_store_adapter_compat_report() -> Result<Value, TypedCompatReportError> {
+    let append_plan = crate::hepta_workflow_durable_store_append_plan_report();
+    let harness = crate::hepta_workflow_durable_store_adapter_harness_report();
+    let adapter = crate::workflow_durable_store_adapter_report(&append_plan, &harness);
+    let mut report = serde_json::to_value(adapter)?;
+    let object = contract_object_mut(&mut report, "workflow durable store adapter report")?;
+
+    let source_harness_surface =
+        take_contract_field(object, "source_harness_surface", "typed adapter report")?;
+    let source_harness_ready =
+        take_contract_field(object, "source_harness_ready", "typed adapter report")?;
+    object.insert(
+        "source_adapter_harness_surface".to_string(),
+        source_harness_surface,
+    );
+    object.insert(
+        "source_adapter_harness_ready".to_string(),
+        source_harness_ready,
+    );
+    object.insert(
+        "source_append_only_event_intake_surface".to_string(),
+        Value::String(append_plan.source_gate.to_string()),
+    );
+    object.insert(
+        "source_append_only_event_intake_ready".to_string(),
+        Value::Bool(append_plan.source_append_only_event_intake_ready),
+    );
+    object.insert(
+        "source_append_only_event_contract_count".to_string(),
+        Value::from(append_plan.event_contract_count),
+    );
+    object.insert("lib_export_present".to_string(), Value::Bool(true));
+    object.insert(
+        "local_gate".to_string(),
+        Value::String(
+            "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-workflow-durable-store-adapter.gate"
+                .to_string(),
+        ),
+    );
+    object.insert(
+        "architecture_note".to_string(),
+        Value::String(
+            "docs/architecture/HEPTA_SYSTEMS_WORKFLOW_DURABLE_STORE_ADAPTER_2026-06-27.md"
+                .to_string(),
+        ),
+    );
+    object.insert("side_effect_free".to_string(), Value::Bool(true));
+    object.insert(
+        "source_files".to_string(),
+        serde_json::json!({
+            "adapter": "codex-rs/hepta-runtime/src/workflow_durable_store_adapter.rs",
+            "append_only_intake_report": "scripts/hepta-systems-work-graph-append-only-event-intake-preview-report.sh",
+            "append_plan": "codex-rs/hepta-runtime/src/workflow_durable_store_append_plan.rs",
+            "harness": "codex-rs/hepta-runtime/src/workflow_durable_store_adapter_harness.rs"
+        }),
+    );
+    object.remove("recommended_next_gate");
+    object.insert(
+        "next_migration_step".to_string(),
+        Value::String(crate::WORKFLOW_DURABLE_STORE_ADAPTER_RECOMMENDED_NEXT_GATE.to_string()),
+    );
+    object.insert(
+        "next_actions".to_string(),
+        serde_json::json!([
+            crate::WORKFLOW_DURABLE_STORE_ADAPTER_RECOMMENDED_NEXT_GATE,
+            "keep_event_log_sqlite_replay_rollback_and_live_execution_disabled_until_explicit_cutover"
+        ]),
+    );
+
+    let entries = object
+        .get_mut("entries")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| {
+            TypedCompatReportError::ContractViolation(
+                "typed adapter report must expose entries as a JSON array".to_string(),
+            )
+        })?;
+    if entries.len() != append_plan.append_plans.len() || entries.len() != harness.receipts.len() {
+        return Err(TypedCompatReportError::ContractViolation(format!(
+            "typed adapter entry count {} does not match append-plan count {} and harness count {}",
+            entries.len(),
+            append_plan.append_plans.len(),
+            harness.receipts.len()
+        )));
+    }
+    for (index, ((entry, plan), receipt)) in entries
+        .iter_mut()
+        .zip(&append_plan.append_plans)
+        .zip(&harness.receipts)
+        .enumerate()
+    {
+        let entry_event_contract_id = entry
+            .get("event_contract_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                TypedCompatReportError::ContractViolation(format!(
+                    "typed adapter entry {index} must expose string event_contract_id"
+                ))
+            })?;
+        if entry_event_contract_id != plan.event_contract_id
+            || plan.event_contract_id != receipt.event_contract_id
+        {
+            return Err(TypedCompatReportError::ContractViolation(format!(
+                "typed adapter entry {index} event contract mismatch: report={entry_event_contract_id}, append_plan={}, harness={}",
+                plan.event_contract_id, receipt.event_contract_id
+            )));
+        }
+        let entry = contract_object_mut(entry, "typed adapter entry")?;
+        entry.insert(
+            "target_collection_ids".to_string(),
+            serde_json::to_value(&plan.target_collection_ids)?,
+        );
+        entry.insert(
+            "required_fields".to_string(),
+            serde_json::to_value(&plan.required_fields)?,
+        );
+        entry.insert(
+            "idempotency_key_fields".to_string(),
+            serde_json::to_value(&plan.idempotency_key_fields)?,
+        );
+        entry.insert(
+            "append_policy".to_string(),
+            Value::String(plan.append_policy.to_string()),
+        );
+        entry.insert(
+            "append_suppressed_by_feature_gate".to_string(),
+            Value::Bool(receipt.append_suppressed_by_feature_gate),
+        );
+        entry.insert(
+            "noop_receipt_projected".to_string(),
+            Value::Bool(receipt.noop_receipt_projected),
+        );
+        entry.insert(
+            "checkpoint_write_enabled".to_string(),
+            Value::Bool(plan.checkpoint_write_enabled),
+        );
+    }
+
+    let side_effects = object
+        .get_mut("side_effects")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| {
+            TypedCompatReportError::ContractViolation(
+                "typed adapter report must expose side_effects as a JSON object".to_string(),
+            )
+        })?;
+    side_effects.remove("live_execution_started");
+    for key in [
+        "report_written",
+        "git_index_mutated",
+        "workflow_event_log_mutated",
+        "provider_invoked",
+        "model_invoked",
+        "gateway_or_auth_mutated",
+        "native_post_mutation_performed",
+        "channel_send_performed",
+        "package_or_release_written",
+        "public_ga_promoted",
+    ] {
+        side_effects.insert(key.to_string(), Value::Bool(false));
+    }
+
+    Ok(report)
 }
 
 pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
@@ -233,7 +421,9 @@ pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
         "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-operator-review-packet-rerun-preview" => serialize_report!(crate::hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_operator_review_packet_rerun_preview_report()),
         "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-enablement-rerun-preview" => serialize_report!(crate::hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_enablement_rerun_preview_report()),
         "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-persistence-guard-rerun-preview" => serialize_report!(crate::hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_persistence_guard_rerun_preview_report()),
-        "hepta-systems-workflow-durable-store-adapter" => serialize_report!(crate::hepta_workflow_durable_store_adapter_report()),
+        "hepta-systems-workflow-durable-store-adapter" => {
+            workflow_durable_store_adapter_compat_report()
+        }
         "hepta-systems-workflow-durable-store-test-only-append-fixture" => serialize_report!(crate::hepta_workflow_durable_store_test_only_append_fixture_report()),
         "hepta-systems-workflow-temporal-lite-append-only-event-store-minimal-local-persistence" => serialize_report!(crate::hepta_workflow_temporal_lite_append_only_event_store_minimal_local_persistence_report()),
         "hepta-systems-workflow-temporal-lite-append-only-event-store-test-implementation" => serialize_report!(crate::hepta_workflow_temporal_lite_append_only_event_store_test_implementation_report()),
@@ -288,6 +478,96 @@ mod tests {
                 .values()
                 .all(|value| value == &Value::Bool(false))
         );
+    }
+
+    #[test]
+    fn durable_store_compatibility_report_preserves_legacy_business_fields() {
+        let report = typed_compat_report("hepta-systems-workflow-durable-store-adapter")
+            .expect("durable store compatibility report should render");
+        let object = report
+            .as_object()
+            .expect("durable store compatibility report should be an object");
+        for field in [
+            "source_append_only_event_intake_surface",
+            "source_append_only_event_intake_ready",
+            "source_append_only_event_contract_count",
+            "source_append_plan_surface",
+            "source_append_plan_ready",
+            "source_adapter_harness_surface",
+            "source_adapter_harness_ready",
+            "adapter_contract_ready",
+            "temporal_lite_adapter_ready",
+            "next_actions",
+            "next_migration_step",
+            "local_gate",
+            "architecture_note",
+            "source_files",
+            "side_effect_free",
+        ] {
+            assert!(object.contains_key(field), "missing legacy field {field}");
+        }
+        assert!(!object.contains_key("source_harness_surface"));
+        assert!(!object.contains_key("source_harness_ready"));
+        assert!(!object.contains_key("recommended_next_gate"));
+
+        let entries = object
+            .get("entries")
+            .and_then(Value::as_array)
+            .expect("durable store compatibility report should expose entries");
+        assert_eq!(entries.len(), 9);
+        for entry in entries {
+            let entry = entry
+                .as_object()
+                .expect("durable store compatibility entry should be an object");
+            for field in [
+                "target_collection_ids",
+                "required_fields",
+                "idempotency_key_fields",
+                "append_policy",
+                "append_suppressed_by_feature_gate",
+                "noop_receipt_projected",
+                "checkpoint_write_enabled",
+            ] {
+                assert!(entry.contains_key(field), "missing entry field {field}");
+            }
+        }
+
+        let side_effects = object
+            .get("side_effects")
+            .and_then(Value::as_object)
+            .expect("durable store compatibility report should expose side effects");
+        for field in [
+            "report_written",
+            "git_index_mutated",
+            "workflow_event_log_mutated",
+            "provider_invoked",
+            "model_invoked",
+            "gateway_or_auth_mutated",
+            "native_post_mutation_performed",
+            "channel_send_performed",
+            "package_or_release_written",
+            "public_ga_promoted",
+        ] {
+            assert_eq!(side_effects.get(field), Some(&Value::Bool(false)));
+        }
+        assert!(!side_effects.contains_key("live_execution_started"));
+    }
+
+    #[test]
+    fn durable_store_contract_helpers_fail_closed_without_panicking() {
+        let mut non_object = Value::Null;
+        assert!(matches!(
+            contract_object_mut(&mut non_object, "fixture"),
+            Err(TypedCompatReportError::ContractViolation(message))
+                if message == "fixture must be a JSON object"
+        ));
+
+        let mut object = serde_json::Map::new();
+        assert!(matches!(
+            take_contract_field(&mut object, "required", "fixture"),
+            Err(TypedCompatReportError::ContractViolation(message))
+                if message == "fixture must expose required field required"
+        ));
     }
 
     #[test]

@@ -19,10 +19,16 @@ jq -e '
       and .gate_compat_effective_lines >= 0
       and .single_exec_wrappers >= 0
       and .first_party_modules_over_5000 >= 0))
-  and .decline_targets.next.work_graph_logical_modules < .baselines.work_graph_logical_modules
-  and .decline_targets.terminal.work_graph_logical_modules < .decline_targets.next.work_graph_logical_modules
-  and .decline_targets.next.work_graph_effective_lines < .baselines.work_graph_effective_lines
-  and .decline_targets.terminal.work_graph_effective_lines < .decline_targets.next.work_graph_effective_lines
+  and ((.baselines.work_graph_logical_modules == 4
+        and .decline_targets.next.work_graph_logical_modules == 4
+        and .decline_targets.terminal.work_graph_logical_modules == 4)
+       or (.decline_targets.next.work_graph_logical_modules < .baselines.work_graph_logical_modules
+           and .decline_targets.terminal.work_graph_logical_modules < .decline_targets.next.work_graph_logical_modules))
+  and ((.decline_targets.next.work_graph_effective_lines == 25000
+        and .decline_targets.terminal.work_graph_effective_lines == 25000
+        and .decline_targets.terminal.work_graph_effective_lines < .baselines.work_graph_effective_lines)
+       or (.decline_targets.next.work_graph_effective_lines < .baselines.work_graph_effective_lines
+           and .decline_targets.terminal.work_graph_effective_lines < .decline_targets.next.work_graph_effective_lines))
   and .decline_targets.next.gate_compat_pairs <= .baselines.gate_compat_pairs
   and .decline_targets.terminal.gate_compat_pairs < .decline_targets.next.gate_compat_pairs
   and .decline_targets.next.gate_compat_effective_lines < .baselines.gate_compat_effective_lines
@@ -32,8 +38,11 @@ jq -e '
         and .decline_targets.terminal.single_exec_wrappers == 0)
        or (.decline_targets.next.single_exec_wrappers < .baselines.single_exec_wrappers
            and .decline_targets.terminal.single_exec_wrappers < .decline_targets.next.single_exec_wrappers))
-  and .decline_targets.next.first_party_modules_over_5000 < .baselines.first_party_modules_over_5000
-  and .decline_targets.terminal.first_party_modules_over_5000 < .decline_targets.next.first_party_modules_over_5000
+  and ((.baselines.first_party_modules_over_5000 == 0
+        and .decline_targets.next.first_party_modules_over_5000 == 0
+        and .decline_targets.terminal.first_party_modules_over_5000 == 0)
+       or (.decline_targets.next.first_party_modules_over_5000 < .baselines.first_party_modules_over_5000
+           and .decline_targets.terminal.first_party_modules_over_5000 < .decline_targets.next.first_party_modules_over_5000))
 ' "$ARCHITECTURE_RATCHET" >/dev/null
 
 architecture_sha256_file() {
@@ -400,6 +409,8 @@ verify() {
   verify_file_max codex-rs/hepta-native-gateway/src/native_gateway.rs 5800
   verify_file_max codex-rs/hepta-native-gateway/src/route_manifest.rs 230
   verify_file_max codex-rs/hepta-native-gateway/src/route_definition.rs 220
+  scripts/hepta-native-route-catalog verify >/dev/null
+  verify_file_max codex-rs/hepta-native-gateway/src/route_registry.rs 700
   rg -Fq 'pub(crate) struct RouteDefinition' \
     codex-rs/hepta-native-gateway/src/route_definition.rs
   if [[ -e codex-rs/hepta-native-gateway/src/native_gateway/report_registry.rs ]]; then
@@ -409,6 +420,7 @@ verify() {
   verify_file_max \
     codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs \
     2000
+  scripts/hepta-native-report-registry-compact verify >/dev/null
   rg -Fq 'const NATIVE_REPORT_DEFINITIONS' \
     codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs
   if rg -Fq 'match path' \
@@ -1114,11 +1126,11 @@ verify() {
     .schema == "hepta_workgraph_family_state_machine_verify_v1"
     and .status == "ready"
     and .baseline_module_count == 284
-    and .active_module_count == 49
-    and .module_reduction == 235
-    and .normalized_template_count <= 48
-    and .normalized_effective_lines <= 70552
-    and .canonical_max_record_bytes <= 17363
+    and .active_module_count == 4
+    and .module_reduction == 280
+    and .normalized_template_count <= 4
+    and .normalized_effective_lines <= 39776
+    and .canonical_max_record_bytes <= 20958
     and .preserved_public_symbol_count == 4611
     and .caller_file_count == 3
     and (.recovery_commit | length) == 40
@@ -1130,8 +1142,8 @@ verify() {
     and .normalized_template_count == $report.normalized_template_count
     and .normalized_effective_lines == $report.normalized_effective_lines
     and .bundle_sha256 == $report.bundle_sha256
-    and .monotonic_ratchet.logical_module_ceiling == 49
-    and .monotonic_ratchet.normalized_effective_line_ceiling == 75000
+    and .monotonic_ratchet.logical_module_ceiling == 4
+    and .monotonic_ratchet.normalized_effective_line_ceiling == 40000
   ' codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json >/dev/null
   verify_file_max \
     docs/architecture/HEPTA_O2_GATE_COMPAT_RATCHET_2026-07-31.json \
@@ -2269,7 +2281,7 @@ verify() {
       scripts \
       || true
   )"
-  [[ "$stale_native_source_consumer" == "scripts/hepta-route-gate-dynamic-count-regression-gate.sh" ]] \
+  [[ -z "$stale_native_source_consumer" ]] \
     || {
       echo "unexpected direct Native Gateway monolith assignment: $stale_native_source_consumer" >&2
       return 1

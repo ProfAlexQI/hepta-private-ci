@@ -7,29 +7,29 @@
     "generated_effective_source_counted": true
   },
   "ceilings": {
-    "work_graph_logical_modules": 49,
-    "work_graph_effective_lines": 70626,
+    "work_graph_logical_modules": 4,
+    "work_graph_effective_lines": 39850,
     "gate_compat_pairs": 299,
-    "gate_compat_effective_lines": 87973,
+    "gate_compat_effective_lines": 74305,
     "single_exec_wrappers": 0,
-    "first_party_modules_over_5000": 2
+    "first_party_modules_over_5000": 0
   },
   "baselines": {
-    "work_graph_logical_modules": 49,
-    "work_graph_effective_lines": 70626,
+    "work_graph_logical_modules": 4,
+    "work_graph_effective_lines": 39850,
     "gate_compat_pairs": 299,
-    "gate_compat_effective_lines": 87973,
+    "gate_compat_effective_lines": 74305,
     "single_exec_wrappers": 0,
-    "first_party_modules_over_5000": 2
+    "first_party_modules_over_5000": 0
   },
   "decline_targets": {
     "next": {
-      "work_graph_logical_modules": 24,
-      "work_graph_effective_lines": 50000,
+      "work_graph_logical_modules": 4,
+      "work_graph_effective_lines": 25000,
       "gate_compat_pairs": 299,
-      "gate_compat_effective_lines": 75000,
+      "gate_compat_effective_lines": 74304,
       "single_exec_wrappers": 0,
-      "first_party_modules_over_5000": 1
+      "first_party_modules_over_5000": 0
     },
     "terminal": {
       "work_graph_logical_modules": 4,

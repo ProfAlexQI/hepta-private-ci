@@ -17,9 +17,9 @@ RECEIPT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-family-receipt-v1.json
 STATE_MACHINE = File.join(ROOT, "scripts/hepta-gate-compat-family-state-machine")
 PAYLOAD_REGISTRY_PATH = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2/registry.json")
 TARGET_PAIR_COUNT = 299
-TARGET_CAPTURED_COUNT = 199
-TARGET_DECLARATIVE_COUNT = 100
-TARGET_TYPED_COUNT = 37
+TARGET_CAPTURED_COUNT = 123
+TARGET_DECLARATIVE_COUNT = 176
+TARGET_TYPED_COUNT = 113
 TARGET_FAMILY_COUNT = 56
 TARGET_MIGRATED_STATE_COUNT = 148
 TARGET_RETIRED_MEMBER_COUNT = 92
@@ -79,7 +79,7 @@ def verify
   raise "family declarative count drifted" unless declarative == TARGET_DECLARATIVE_COUNT
   raise "typed report count drifted" unless typed.length == TARGET_TYPED_COUNT
   raise "typed report retained shell payload binding" unless typed.all? do |pair|
-    pair.fetch("typed_report_registry") == "scripts/hepta-gate-typed-report-bindings-v1.json" &&
+    pair.fetch("typed_report_registry") == "scripts/hepta-gate-typed-report-bindings-v2.json" &&
       !pair.key?("gate_implementation") && !pair.key?("report_implementation")
   end
   conversion = receipt.fetch("typed_conversion")

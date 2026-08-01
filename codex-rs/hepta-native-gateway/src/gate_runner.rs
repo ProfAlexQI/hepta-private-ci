@@ -21,9 +21,13 @@ use crate::gate_spec::ReceiptStateMachine;
 
 mod script_kind;
 mod supplemental_payload;
+mod typed_report;
 use script_kind::GateScriptKind;
 use supplemental_payload::SupplementalPayloadSpec;
 use supplemental_payload::validate_supplemental_payloads;
+use typed_report::source_report_is_bounded;
+use typed_report::validate_source_report;
+use typed_report::validate_typed_report_binding;
 
 const SHELL_GATE_PAIR_SPECS_JSON: &str =
     include_str!("../../../scripts/hepta-gate-pair-specs-v1.json");
@@ -386,6 +390,13 @@ struct ShellPairMigrationSpec {
     family_default_state: Option<String>,
     family_state_count: Option<u64>,
     family_call_routing: Option<String>,
+    typed_report_runner: Option<String>,
+    typed_report_runner_sha256: Option<String>,
+    typed_report_registry: Option<String>,
+    typed_report_registry_sha256: Option<String>,
+    typed_report_source_sha256: Option<String>,
+    typed_report_cli_source: Option<String>,
+    typed_report_cli_source_sha256: Option<String>,
 }
 
 pub(crate) fn execute_gate(id: &str) -> Result<String> {
@@ -448,6 +459,13 @@ pub(crate) fn migrated_pair_spec_json(id: &str) -> Result<Option<String>> {
             "family_default_state": spec.family_default_state,
             "family_state_count": spec.family_state_count,
             "family_call_routing": spec.family_call_routing,
+            "typed_report_runner": spec.typed_report_runner,
+            "typed_report_runner_sha256": spec.typed_report_runner_sha256,
+            "typed_report_registry": spec.typed_report_registry,
+            "typed_report_registry_sha256": spec.typed_report_registry_sha256,
+            "typed_report_source_sha256": spec.typed_report_source_sha256,
+            "typed_report_cli_source": spec.typed_report_cli_source,
+            "typed_report_cli_source_sha256": spec.typed_report_cli_source_sha256,
             "report_execution_performed": false,
             "side_effect_free": true,
         }))
@@ -533,6 +551,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
             "captured_shell_compat_v1"
                 | "compat_family_state_machine_v1"
                 | "legacy_workgraph_projection_v1"
+                | "typed_rust_report_v1"
                 | "signing_final_ack_readback"
                 | "signing_final_ack_final_index"
                 | "signing_terminal_status_attachment"
@@ -558,18 +577,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                 spec.report_path
             );
         }
-        if !spec.source_report.starts_with("scripts/")
-            || (!matches!(
-                spec.template.as_str(),
-                "captured_shell_compat_v1" | "legacy_workgraph_projection_v1"
-            ) && !spec.source_report.ends_with("-report.sh"))
-        {
-            anyhow::bail!(
-                "Hepta migrated gate pair {} has invalid source report: {}",
-                spec.id,
-                spec.source_report
-            );
-        }
+        validate_source_report(&spec)?;
         if !ReceiptStateMachine::contains_label(&spec.receipt_state) {
             anyhow::bail!(
                 "Hepta migrated gate pair {} has invalid receipt state: {}",
@@ -698,6 +706,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                 spec.id
             );
         }
+        validate_typed_report_binding(&spec)?;
         if spec.template == "legacy_workgraph_projection_v1" {
             let required_compatibility_fields = [
                 spec.retired_gate_implementation.as_deref(),
@@ -907,9 +916,11 @@ fn validate_migrated_pairs(
         let expected_gate = repo_root.join(&gate_relative);
         let expected_report = repo_root.join(&spec.report_path);
         let source_report = repo_root.join(&spec.source_report);
+        let source_report_is_bounded =
+            source_report_is_bounded(repo_root, &scripts_root, &source_report, spec);
         if availability.gate.as_ref() != Some(&expected_gate)
             || availability.report.as_ref() != Some(&expected_report)
-            || !source_report.starts_with(&scripts_root)
+            || !source_report_is_bounded
         {
             anyhow::bail!("migrated Hepta gate pair path mismatch: {id}");
         }
