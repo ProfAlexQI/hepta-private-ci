@@ -1,40 +1,40 @@
 {
   "schema": "hepta_workgraph_normalized_bundle_v3",
   "status": "normalized",
-  "module_count": 49,
-  "source_bytes": 9542348,
-  "source_lines": 129328,
-  "aggregate_source_sha256": "7d915e7b4d0d287b65932b899100e52302e3b4aff12b1d509ed858a6aa352e87",
-  "bundle_bytes": 800280,
-  "bundle_sha256": "16670013b77d8c9185d862399a26920647230ac453c5076145fdc425049495a1",
-  "normalized_template_count": 48,
-  "normalized_template_limit": 49,
-  "normalized_parameter_row_count": 49,
-  "normalized_effective_lines": 70552,
-  "normalized_effective_line_limit": 75000,
+  "module_count": 4,
+  "source_bytes": 8757229,
+  "source_lines": 45469,
+  "aggregate_source_sha256": "e37dd5dc178eca26e5be52806e526de127d255716378056e4f7d7b20356597dd",
+  "bundle_bytes": 735630,
+  "bundle_sha256": "cabacaa4af16a06511f2500699ed2bd2916b8e707c9f1af73755ddc40ecdc88e",
+  "normalized_template_count": 4,
+  "normalized_template_limit": 4,
+  "normalized_parameter_row_count": 4,
+  "normalized_effective_lines": 39776,
+  "normalized_effective_line_limit": 40000,
   "canonical_source_schema": "hepta_readable_normalized_token_source_v1",
   "canonical_source_files": [
     "templates.jsonl",
     "parameters.jsonl"
   ],
-  "canonical_schema_sha256": "119d6b11b695d5f1a2115c4b7b69cf32ecc2e157887d1a368c38bfe2502258c6",
-  "canonical_templates_sha256": "0c52149c1152d1c997d8b3ec26a33baf0dc56849c1703272ac67cde8368b2307",
-  "canonical_parameters_sha256": "91082b02744705cf62836a736c197c18cfa724d74dfc596dd3cedf915fe8b14e",
-  "canonical_max_record_bytes": 16649,
+  "canonical_schema_sha256": "449a5b388ddfe2837399657b439a99b7df1eedf1e79f9bdbea3866d8341268d2",
+  "canonical_templates_sha256": "5061f29cebda76c345128448366ead395f629f0b47a3f9a05885a10fbc6166bb",
+  "canonical_parameters_sha256": "30127fd3001b2b246553de33cb3fc376ab2de363b2551a992e5cbf833f2ae9e7",
+  "canonical_max_record_bytes": 20958,
   "canonical_max_record_byte_limit": 89270,
   "canonical_record_byte_semantics": "record_including_lf",
   "gzip_mtime": 1,
   "gzip_os": 255,
   "monotonic_ratchet": {
-    "logical_module_ceiling": 49,
-    "normalized_template_ceiling": 49,
-    "normalized_effective_line_ceiling": 75000
+    "logical_module_ceiling": 4,
+    "normalized_template_ceiling": 4,
+    "normalized_effective_line_ceiling": 40000
   },
   "decline_targets": {
     "next": {
-      "logical_module_count": 49,
-      "normalized_template_count": 49,
-      "normalized_effective_lines": 50000
+      "logical_module_count": 4,
+      "normalized_template_count": 4,
+      "normalized_effective_lines": 25000
     },
     "terminal": {
       "logical_module_count": 4,

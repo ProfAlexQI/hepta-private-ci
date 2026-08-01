@@ -15,7 +15,7 @@ const CODEGEN_DIRECTORY: &str = "codegen/workgraph-v3";
 const BUNDLE_FILE: &str = "modules.bundle.gz";
 const FAMILY_ALIAS_PREFIX: &str = "/*workgraph-family-alias:";
 const CONTROL_PLANE_TESTS: &str = "src/work_graph_control_plane_tests.rs";
-const EXPECTED_MODULE_COUNT: usize = 49;
+const EXPECTED_MODULE_COUNT: usize = 4;
 const MAX_COMPRESSED_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_DECODED_BUNDLE_BYTES: u64 = 64 * 1024 * 1024;
 
