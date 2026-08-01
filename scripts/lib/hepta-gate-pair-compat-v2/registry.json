@@ -12,7 +12,7 @@
   "aggregate_source_sha256": "4b9f4cc0d1fea9439a32964d555c902841d794bb621aeefd4ceae85067a06f0d",
   "bundle_bytes": 495708,
   "bundle_sha256": "7e832eb49fdefca69847460be1d54b8dccd2de1fd0e78be06176c9d6c8291c64",
-  "source_registry_sha256": "d85e8a562ac463865e088607e535f371849be6e9dc550b0a4db2cb08222e060b",
+  "source_registry_sha256": "9ffe4b70c87d5f86b632a959e8197933147364fa29e1dd31e798d1dde3560ab3",
   "canonical_schema_sha256": "a26e8e61845e988f2811a08a8b6b0c8b525482e51737ab0dcbadc8aaeeadd6f0",
   "canonical_templates_sha256": "a87f2fac353ad116743f731d3cf54a43148f062cb2be7a922813e80b508856cc",
   "canonical_parameters_sha256": "4acd94e49d0b8fc2afb1d0401a1a5f125adf213360afb30c83d96a411c2b3fa1",

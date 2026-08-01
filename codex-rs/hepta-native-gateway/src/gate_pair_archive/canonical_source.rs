@@ -14,6 +14,10 @@ const TEMPLATES_PATH: &str = "scripts/lib/hepta-gate-pair-compat-v2/templates.js
 const PARAMETERS_PATH: &str = "scripts/lib/hepta-gate-pair-compat-v2/parameters.jsonl";
 const SOURCE_SCHEMA: &str = "hepta_readable_normalized_token_source_v1";
 const SOURCE_DOMAIN: &str = "hepta_gate_pair_compat_payloads";
+const CANONICAL_LAYOUT: &str = "chunked_source_sequence_v1";
+const TOKENIZER: &str = "shell_v1";
+const SOURCE_CHUNK_LINES: usize = 8;
+const SOURCE_CHUNK_BOUNDARY: &str = "blank_line_preferred_v1";
 const RECORD_BYTE_SEMANTICS: &str = "record_including_lf";
 const MAX_RECORD_BYTE_LIMIT: usize = 355_618;
 
@@ -23,10 +27,18 @@ struct SourceSchema {
     schema: String,
     domain: String,
     artifact_schema: String,
+    canonical_layout: String,
     canonical_files: Vec<String>,
     generated_artifact: String,
+    tokenizer: String,
+    source_chunk_lines: usize,
+    source_chunk_boundary: String,
     template_count: usize,
+    template_record_count: usize,
+    template_fixed_chunk_bytes: Option<usize>,
     parameter_row_count: usize,
+    parameter_record_count: usize,
+    source_sequence_count: usize,
     source_bytes: usize,
     source_lines: usize,
     aggregate_source_sha256: String,
@@ -41,6 +53,8 @@ struct SourceSchema {
     source_is_canonical: bool,
     artifact_is_generated: bool,
     exact_reassembly: bool,
+    block_instances_are_counted: bool,
+    source_sequences_are_counted: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,7 +67,7 @@ struct GzipProfile {
 
 pub(super) fn validate(repo_root: &Path, registry: &PayloadRegistry) -> Result<()> {
     if registry.canonical_max_record_bytes == 0
-        || registry.canonical_max_record_bytes != registry.canonical_max_record_byte_limit
+        || registry.canonical_max_record_bytes > registry.canonical_max_record_byte_limit
         || registry.canonical_max_record_byte_limit != MAX_RECORD_BYTE_LIMIT
         || registry.canonical_record_byte_semantics != RECORD_BYTE_SEMANTICS
     {
@@ -85,12 +99,20 @@ pub(super) fn validate(repo_root: &Path, registry: &PayloadRegistry) -> Result<(
     if schema.schema != SOURCE_SCHEMA
         || schema.domain != SOURCE_DOMAIN
         || schema.artifact_schema != PAYLOAD_REGISTRY_SCHEMA
+        || schema.canonical_layout != CANONICAL_LAYOUT
         || schema.canonical_files != ["templates.jsonl", "parameters.jsonl"]
         || schema.generated_artifact != "payloads.bundle.gz"
+        || schema.tokenizer != TOKENIZER
+        || schema.source_chunk_lines != SOURCE_CHUNK_LINES
+        || schema.source_chunk_boundary != SOURCE_CHUNK_BOUNDARY
         || schema.template_count != template_count
-        || schema.template_count != registry.normalized_payload_count
-        || schema.parameter_row_count != parameter_row_count
-        || schema.parameter_row_count != registry.normalized_parameter_row_count
+        || schema.template_record_count != template_count
+        || schema.template_fixed_chunk_bytes.is_some()
+        || schema.parameter_record_count != parameter_row_count
+        || schema.parameter_row_count + schema.source_sequence_count
+            != schema.parameter_record_count
+        || schema.source_sequence_count != registry.payload_count
+        || schema.source_sequence_count != registry.normalized_parameter_row_count
         || schema.source_bytes != registry.source_bytes
         || schema.source_lines == 0
         || schema.aggregate_source_sha256 != registry.aggregate_source_sha256
@@ -110,6 +132,8 @@ pub(super) fn validate(repo_root: &Path, registry: &PayloadRegistry) -> Result<(
         || !schema.source_is_canonical
         || !schema.artifact_is_generated
         || !schema.exact_reassembly
+        || !schema.block_instances_are_counted
+        || !schema.source_sequences_are_counted
     {
         anyhow::bail!("invalid Hepta gate-pair canonical source contract");
     }

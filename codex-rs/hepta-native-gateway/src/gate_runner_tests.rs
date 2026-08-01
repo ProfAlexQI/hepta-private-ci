@@ -381,7 +381,6 @@ fn shell_snapshot_matches_the_append_only_parity_ledger() {
     assert_eq!(retirement["retired_pair_count"], 84);
     assert_eq!(retirement["migrated_pair_count"], 16);
     assert_eq!(retirement["remaining_pair_count"], 498);
-    assert_eq!(specs.len(), 498);
     assert_eq!(
         retirement["original_pair_count"].as_u64(),
         retirement["retired_pair_count"]
@@ -391,13 +390,35 @@ fn shell_snapshot_matches_the_append_only_parity_ledger() {
             .map(|((retired, migrated), remaining)| retired + migrated + remaining)
     );
 
+    let family_receipt_path = repo_root().join("scripts/hepta-gate-compat-family-receipt-v1.json");
+    let family_receipt: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&family_receipt_path)
+            .with_context(|| format!("failed to read {}", family_receipt_path.display()))
+            .expect("compatibility family receipt"),
+    )
+    .expect("compatibility family receipt value");
+    assert_eq!(
+        family_receipt["schema"],
+        "hepta_gate_compat_family_current_baseline_receipt_v1"
+    );
+    assert_eq!(family_receipt["status"], "ready");
+    assert_eq!(family_receipt["baseline"]["pair_count"], 498);
+    assert_eq!(
+        family_receipt["baseline"]["spec_sha256"],
+        retirement["result_spec_sha256"]
+    );
+    assert_eq!(
+        family_receipt["result"]["pair_count"].as_u64(),
+        Some(specs.len() as u64)
+    );
+
     let spec_path = repo_root().join("scripts/hepta-gate-pair-specs-v1.json");
     let spec_bytes = fs::read(&spec_path)
         .with_context(|| format!("failed to read {}", spec_path.display()))
         .expect("current gate-pair specs");
     assert_eq!(
         format!("{:x}", Sha256::digest(&spec_bytes)),
-        retirement["result_spec_sha256"]
+        family_receipt["result"]["spec_sha256"]
     );
     assert_eq!(
         snapshot["thin_wrapper_pair_count"].as_u64(),
@@ -421,7 +442,10 @@ fn shell_snapshot_matches_the_append_only_parity_ledger() {
         .values()
         .filter(|spec| spec.template == "captured_shell_compat_v1")
         .collect::<Vec<_>>();
-    assert_eq!(captured_specs.len(), 463);
+    assert_eq!(
+        family_receipt["result"]["captured_pair_count"].as_u64(),
+        Some(captured_specs.len() as u64)
+    );
     assert_eq!(
         specs
             .values()
@@ -429,7 +453,10 @@ fn shell_snapshot_matches_the_append_only_parity_ledger() {
             .count(),
         0
     );
-    assert_eq!(specs.len() - captured_specs.len(), 35);
+    assert_eq!(
+        family_receipt["result"]["declarative_pair_count"].as_u64(),
+        Some((specs.len() - captured_specs.len()) as u64)
+    );
     for spec in captured_specs {
         let input = input_entries.get(&spec.id).expect("captured pair input");
         assert_eq!(
@@ -747,12 +774,11 @@ fn parameterized_release_publication_result_receipt_fixtures_match_canonical_gat
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized release-publication result-receipt wrapper");
-        assert_eq!(wrapper.lines().count(), 5, "thin wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-release-publication-result-receipt-gate-runner"));
-        assert!(wrapper.contains(id));
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-release-publication-result-receipt-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -816,14 +842,11 @@ fn parameterized_artifact_download_install_affordance_result_receipt_fixtures_ma
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized artifact-download/install-affordance result-receipt wrapper");
-        assert_eq!(wrapper.lines().count(), 5, "thin wrapper for {id}");
-        assert!(wrapper.contains(
-            "scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner"
-        ));
-        assert!(wrapper.contains(id));
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1134,14 +1157,11 @@ fn parameterized_runtime_provider_router_activation_command_result_receipt_route
                 .as_str()
                 .expect("runtime provider-router result-receipt route wrapper path"),
         );
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized runtime provider-router result-receipt route wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-        assert!(wrapper.contains(
-            "scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner"
-        ));
-        assert!(wrapper.contains(id));
+        assert_route_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1271,23 +1291,11 @@ fn parameterized_artifact_signing_receipt_route_fixtures_match_canonical_gate_sp
                 .as_str()
                 .expect("artifact-signing receipt route wrapper path"),
         );
-        if fs::symlink_metadata(&wrapper_path)
-            .expect("artifact-signing route alias metadata")
-            .file_type()
-            .is_symlink()
-        {
-            assert_eq!(
-                fs::read_link(&wrapper_path).expect("artifact-signing route alias"),
-                Path::new("hepta-artifact-signing-receipt-route-gate-runner")
-            );
-        } else {
-            let wrapper = fs::read_to_string(&wrapper_path)
-                .with_context(|| format!("failed to read {}", wrapper_path.display()))
-                .expect("parameterized artifact-signing receipt route wrapper");
-            assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-            assert!(wrapper.contains("scripts/hepta-artifact-signing-receipt-route-gate-runner"));
-            assert!(wrapper.contains(id));
-        }
+        assert_route_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-artifact-signing-receipt-route-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1484,12 +1492,11 @@ fn parameterized_operator_canary_receipt_route_fixtures_match_canonical_gate_spe
                 .as_str()
                 .expect("operator-canary receipt route wrapper path"),
         );
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized operator-canary receipt route wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-operator-canary-receipt-route-gate-runner"));
-        assert!(wrapper.contains(id));
+        assert_route_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-operator-canary-receipt-route-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1620,12 +1627,11 @@ fn parameterized_memory_live_mutation_result_receipt_fixtures_match_canonical_ga
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized Memory live-mutation result-receipt wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-memory-live-mutation-result-receipt-gate-runner"));
-        assert!(wrapper.contains(id));
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-memory-live-mutation-result-receipt-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1687,14 +1693,11 @@ fn parameterized_terminal_public_claim_delivery_receipt_fixtures_match_canonical
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized terminal-public-claim delivery-receipt wrapper");
-        assert_eq!(wrapper.lines().count(), 3, "thin wrapper for {id}");
-        assert!(
-            wrapper.contains("scripts/hepta-terminal-public-claim-delivery-receipt-gate-runner")
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-terminal-public-claim-delivery-receipt-gate-runner",
         );
-        assert!(wrapper.contains(id));
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1753,12 +1756,11 @@ fn parameterized_packet_acceptance_receipt_fixtures_match_canonical_gate_specs()
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized packet-acceptance receipt wrapper");
-        assert_eq!(wrapper.lines().count(), 5, "thin wrapper for {id}");
-        assert!(wrapper.contains("scripts/hepta-packet-acceptance-receipt-gate-runner"));
-        assert!(wrapper.contains(id));
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-packet-acceptance-receipt-gate-runner",
+        );
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1902,16 +1904,11 @@ fn parameterized_operator_identity_session_replay_reinstatement_fixtures_match_c
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized operator identity/session replay/reinstatement wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin wrapper for {id}");
-        assert!(
-            wrapper.contains(
-                "scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner"
-            )
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner",
         );
-        assert!(wrapper.contains(id));
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()
@@ -1974,16 +1971,11 @@ fn parameterized_durable_memory_dry_run_result_receipt_boundary_fixtures_match_c
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
-        let wrapper = fs::read_to_string(&wrapper_path)
-            .with_context(|| format!("failed to read {}", wrapper_path.display()))
-            .expect("parameterized durable Memory dry-run result-receipt boundary wrapper");
-        assert_eq!(wrapper.lines().count(), 4, "thin wrapper for {id}");
-        assert!(
-            wrapper.contains(
-                "scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner"
-            )
+        assert_gate_alias(
+            &wrapper_path,
+            id,
+            "scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner",
         );
-        assert!(wrapper.contains(id));
         assert!(
             fixture["baseline_normalized_output_sha256"]
                 .as_str()

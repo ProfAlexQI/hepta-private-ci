@@ -3,7 +3,7 @@
   "status": "bounded_family_migration_debt",
   "registry": {
     "path": "scripts/hepta-gate-pair-specs-v1.json",
-    "sha256": "d85e8a562ac463865e088607e535f371849be6e9dc550b0a4db2cb08222e060b"
+    "sha256": "9ffe4b70c87d5f86b632a959e8197933147364fa29e1dd31e798d1dde3560ab3"
   },
   "compatibility_store": "scripts/lib/hepta-gate-pair-compat-v2",
   "logical_overlay_store": "scripts/lib/hepta-gate-pair-compat-v1",

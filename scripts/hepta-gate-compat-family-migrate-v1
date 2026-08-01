@@ -595,7 +595,7 @@ def update_spec(plan, family_registry, exact_sources)
         "family_default_state" => id,
         "family_state_count" => family.fetch(:states).length,
         "family_call_routing" => "caller_route_precedence_fail_closed_v2",
-        "side_effect_boundary" => "read-only parameterized compatibility family; never mutates, publishes, sends, installs, or restarts"
+        "side_effect_boundary" => "read-only #{pair.fetch("receipt_state")} parameterized compatibility family; never mutates, publishes, sends, installs, or restarts"
       )
     elsif pair.fetch("template") == "captured_shell_compat_v1"
       gate_path = pair.fetch("gate_implementation")

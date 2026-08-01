@@ -19,7 +19,9 @@ use crate::gate_pair_archive::GatePairArchive;
 use crate::gate_spec::GateSpec;
 use crate::gate_spec::ReceiptStateMachine;
 
+mod script_kind;
 mod supplemental_payload;
+use script_kind::GateScriptKind;
 use supplemental_payload::SupplementalPayloadSpec;
 use supplemental_payload::validate_supplemental_payloads;
 
@@ -379,12 +381,11 @@ struct ShellPairMigrationSpec {
     report_implementation: Option<String>,
     report_source_sha256: Option<String>,
     report_implementation_sha256: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GateScriptKind {
-    Gate,
-    Report,
+    family_registry: Option<String>,
+    family_registry_sha256: Option<String>,
+    family_default_state: Option<String>,
+    family_state_count: Option<u64>,
+    family_call_routing: Option<String>,
 }
 
 pub(crate) fn execute_gate(id: &str) -> Result<String> {
@@ -442,6 +443,11 @@ pub(crate) fn migrated_pair_spec_json(id: &str) -> Result<Option<String>> {
             "retired_gate_implementation_sha256": spec.retired_gate_implementation_sha256,
             "report_source_sha256": spec.report_source_sha256,
             "report_implementation_sha256": spec.report_implementation_sha256,
+            "family_registry": spec.family_registry,
+            "family_registry_sha256": spec.family_registry_sha256,
+            "family_default_state": spec.family_default_state,
+            "family_state_count": spec.family_state_count,
+            "family_call_routing": spec.family_call_routing,
             "report_execution_performed": false,
             "side_effect_free": true,
         }))
@@ -525,6 +531,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
         if !matches!(
             spec.template.as_str(),
             "captured_shell_compat_v1"
+                | "compat_family_state_machine_v1"
                 | "legacy_workgraph_projection_v1"
                 | "signing_final_ack_readback"
                 | "signing_final_ack_final_index"
@@ -673,6 +680,23 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                     spec.id
                 );
             }
+        }
+        if spec.template == "compat_family_state_machine_v1"
+            && (spec.family_registry.as_deref()
+                != Some("scripts/lib/hepta-gate-pair-compat-v2/family-state-v1/registry.json")
+                || !spec
+                    .family_registry_sha256
+                    .as_deref()
+                    .is_some_and(is_sha256)
+                || spec.family_default_state.as_deref() != Some(spec.id.as_str())
+                || spec.family_state_count.is_none_or(|count| count == 0)
+                || spec.family_call_routing.as_deref()
+                    != Some("caller_route_precedence_fail_closed_v2"))
+        {
+            anyhow::bail!(
+                "Hepta compatibility family {} has invalid state-machine binding",
+                spec.id
+            );
         }
         if spec.template == "legacy_workgraph_projection_v1" {
             let required_compatibility_fields = [
@@ -1406,26 +1430,6 @@ fn validate_id(id: &str) -> Result<()> {
 fn json_or_error(value: &serde_json::Value) -> String {
     serde_json::to_string(value)
         .unwrap_or_else(|err| format!(r#"{{"error":"gate runner serialization failed: {err}"}}"#))
-}
-
-impl GateScriptKind {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Gate => "gate",
-            Self::Report => "report",
-        }
-    }
-
-    fn candidate_names(self, id: &str) -> Vec<String> {
-        match self {
-            Self::Gate => vec![
-                format!("{id}-gate.sh"),
-                format!("{id}-route-gate.sh"),
-                format!("{id}-lane-gate.sh"),
-            ],
-            Self::Report => vec![format!("{id}-report.sh")],
-        }
-    }
 }
 
 #[cfg(test)]
