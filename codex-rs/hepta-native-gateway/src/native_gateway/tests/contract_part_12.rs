@@ -1,17 +1,6 @@
 #[test]
 fn hepta_provider_channel_dry_run_plan_endpoint_is_side_effect_free() {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_ENDPOINT);
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("provider channel dry run plan json");

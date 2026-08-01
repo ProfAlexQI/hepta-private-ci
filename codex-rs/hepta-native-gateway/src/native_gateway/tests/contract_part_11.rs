@@ -1,18 +1,7 @@
 #[test]
 fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_plan_accepts_plan_without_memory_or_external_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_PLAN_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_PLAN_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("minimal scoped Memory real-write canary durable store write plan json");
@@ -337,18 +326,7 @@ fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_
 #[test]
 fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_preflight_accepts_preflight_without_memory_or_external_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_PREFLIGHT_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_PREFLIGHT_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("minimal scoped Memory real-write canary durable store write preflight json");
@@ -598,18 +576,7 @@ fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_
 #[test]
 fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_readiness_accepts_readiness_without_memory_or_external_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_READINESS_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_READINESS_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
             .expect("minimal scoped Memory real-write canary durable store write guarded execution readiness json");
@@ -855,18 +822,7 @@ fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_
 #[test]
 fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_accepts_boundary_without_memory_or_external_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_GUARDED_EXECUTION_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
         "minimal scoped Memory real-write canary durable store write guarded execution json",
@@ -1133,18 +1089,7 @@ fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_
 #[test]
 fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_single_shot_execution_executes_canary_store_with_zero_residue_without_production_or_external_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_SINGLE_SHOT_EXECUTION_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_SINGLE_SHOT_EXECUTION_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
         "minimal scoped Memory real-write canary durable store write single-shot execution json",
@@ -1418,18 +1363,7 @@ fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_
 #[test]
 fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_receipt_acceptance_accepts_single_shot_receipt_without_new_memory_or_external_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_RECEIPT_ACCEPTANCE_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_RECEIPT_ACCEPTANCE_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
         "minimal scoped Memory real-write canary durable store write receipt acceptance json",
@@ -1798,18 +1732,7 @@ fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_
 #[test]
 fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_accepts_cleanup_evidence_without_new_memory_or_external_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_ROLLBACK_TOMBSTONE_ZERO_RESIDUE_ACCEPTANCE_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_MINIMAL_SCOPED_MEMORY_REAL_WRITE_CANARY_DURABLE_STORE_WRITE_ROLLBACK_TOMBSTONE_ZERO_RESIDUE_ACCEPTANCE_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "minimal scoped Memory real-write canary durable store write rollback/tombstone zero-residue acceptance json",
@@ -2189,18 +2112,7 @@ fn hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_
 #[test]
 fn hepta_upstream_codex_latest_multisurface_absorption_endpoint_classifies_without_fetch_merge_or_activation_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("upstream Codex latest multisurface absorption native route json");
@@ -2606,18 +2518,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
 }
 #[test]
 fn hepta_release_hardening_status_gate_endpoint_is_local_only() {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_RELEASE_HARDENING_STATUS_GATE_ENDPOINT);
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("release hardening status gate json");

@@ -1,18 +1,7 @@
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_query_export_observability_endpoint_blocks_observability_exports()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt query export observability route json",
@@ -241,18 +230,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_distribution_artifact_manifest_status_endpoint_blocks_manifest_status_surfaces()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_DISTRIBUTION_ARTIFACT_MANIFEST_STATUS_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_DISTRIBUTION_ARTIFACT_MANIFEST_STATUS_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt distribution artifact manifest status route json",
@@ -491,18 +469,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_package_release_channel_status_endpoint_blocks_package_channel_status_exposure()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_PACKAGE_RELEASE_CHANNEL_STATUS_EXPOSURE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_PACKAGE_RELEASE_CHANNEL_STATUS_EXPOSURE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt package release channel status exposure route json",
@@ -729,18 +696,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_distribution_signing_notarization_surface_endpoint_blocks_signing_notarization_surfaces()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_SURFACE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_SURFACE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact distribution signing notarization route json",
@@ -982,18 +938,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_endpoint_blocks_download_and_install_surfaces()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance route json",
@@ -1221,18 +1166,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_endpoint_blocks_persistence()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_NO_PERSISTENCE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_NO_PERSISTENCE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt no persistence route json",
@@ -1455,18 +1389,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_endpoint_blocks_replay_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt replay idempotency route json",
@@ -1695,18 +1618,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_endpoint_blocks_ordering_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt ordering monotonicity route json",
@@ -1907,18 +1819,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_endpoint_blocks_cancellation_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt cancellation supersession route json",
@@ -2144,18 +2045,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_audit_trail_immutable_evidence_endpoint_blocks_evidence_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_AUDIT_TRAIL_IMMUTABLE_EVIDENCE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt audit trail immutable evidence route json",
@@ -2345,18 +2235,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_retention_expiry_garbage_collection_endpoint_blocks_lifecycle_mutation()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_RETENTION_EXPIRY_GARBAGE_COLLECTION_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt retention expiry garbage collection route json",
@@ -2562,18 +2441,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_export_query_observability_endpoint_blocks_views()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt export query observability route json",
@@ -2799,18 +2667,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_facing_summary_briefing_endpoint_blocks_delivery()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt operator-facing summary briefing route json",
@@ -3047,18 +2904,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_final_operator_acknowledgement_endpoint_blocks_acknowledgement_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt final operator acknowledgement route json",
@@ -3271,18 +3117,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_terminal_decision_status_endpoint_blocks_status_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt terminal decision status route json",
@@ -3526,18 +3361,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_intent_consent_endpoint_blocks_reconfirmation_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_INTENT_CONSENT_RECONFIRMATION_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_INTENT_CONSENT_RECONFIRMATION_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt operator intent consent route json",
@@ -3758,18 +3582,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_endpoint_blocks_binding_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_BINDING_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_BINDING_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt operator identity session route json",
@@ -3992,18 +3805,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_replay_cross_binding_endpoint_blocks_replay_and_cross_binding_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REPLAY_CROSS_BINDING_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REPLAY_CROSS_BINDING_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt operator identity session replay cross binding route json",
@@ -4210,18 +4012,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_endpoint_blocks_revocation_logout_and_session_lifecycle_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body).expect(
             "operator readiness packet template packet acceptance receipt release publication result receipt terminal distribution delivery receipt artifact download install affordance result receipt operator identity session revocation logout route json",

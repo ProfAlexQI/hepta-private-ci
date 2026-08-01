@@ -1,3 +1,4 @@
+include!("tests/contract_fixture.rs");
 include!("tests/contract_part_01.rs");
 include!("tests/contract_part_02.rs");
 include!("tests/contract_part_03.rs");

@@ -1,18 +1,7 @@
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_export_query_observability_endpoint_blocks_views_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("artifact signing receipt export query observability route json");
@@ -279,18 +268,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_ex
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_operator_summary_briefing_endpoint_blocks_delivery_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("artifact signing receipt operator summary briefing route json");
@@ -545,18 +523,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_op
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_final_operator_acknowledgement_endpoint_blocks_acceptance_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("artifact signing receipt final operator acknowledgement route json");
@@ -812,18 +779,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_fi
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_terminal_public_claim_status_exposure_endpoint_blocks_public_exposure_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("artifact signing receipt terminal public claim/status exposure route json");
@@ -1066,18 +1022,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_te
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_terminal_public_claim_delivery_readback_endpoint_blocks_delivery_receipts_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_TERMINAL_PUBLIC_CLAIM_DELIVERY_READBACK_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_TERMINAL_PUBLIC_CLAIM_DELIVERY_READBACK_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("artifact signing receipt terminal public claim delivery/readback route json");
@@ -1341,18 +1286,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_te
 #[test]
 fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_release_public_artifact_publication_endpoint_blocks_publication_and_authority()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_RELEASE_PUBLIC_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_RELEASE_PUBLIC_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("artifact signing receipt release/public artifact publication route json");
@@ -1616,18 +1550,7 @@ fn hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_re
 #[test]
 fn hepta_minimal_memory_canary_endpoint_runs_ephemeral_write_readback_rollback_idempotency_without_durable_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT);
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("minimal memory canary route json");
@@ -1764,18 +1687,7 @@ fn hepta_minimal_memory_canary_endpoint_runs_ephemeral_write_readback_rollback_i
 #[test]
 fn hepta_intelligence_bounded_context_preview_endpoint_renders_readback_without_provider_or_kg_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT);
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("intelligence bounded context preview route json");
@@ -1884,18 +1796,7 @@ fn hepta_intelligence_bounded_context_preview_endpoint_renders_readback_without_
 #[test]
 fn hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_endpoint_blocks_prompt_injection_and_provider_invocation()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("bounded Intelligence handoff prompt preview boundary route json");
@@ -2070,18 +1971,7 @@ fn hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_endpoint_b
 #[test]
 fn hepta_kg_read_only_adapter_shadow_rank_canary_endpoint_compares_without_live_kg_or_secret_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_KG_READ_ONLY_ADAPTER_SHADOW_RANK_CANARY_ENDPOINT);
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("KG read-only shadow rank canary route json");
@@ -2202,18 +2092,7 @@ fn hepta_kg_read_only_adapter_shadow_rank_canary_endpoint_compares_without_live_
 #[test]
 fn hepta_provider_router_dry_run_envelope_readback_audit_endpoint_builds_preview_without_provider_model_or_persistence_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("provider-router dry-run envelope readback audit route json");
@@ -2333,18 +2212,7 @@ fn hepta_provider_router_dry_run_envelope_readback_audit_endpoint_builds_preview
 #[test]
 fn hepta_activation_evidence_no_write_provider_router_dry_run_boundary_endpoint_blocks_evidence_persistence_and_invocation_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("activation evidence no-write provider-router boundary route json");
@@ -2515,18 +2383,7 @@ fn hepta_activation_evidence_no_write_provider_router_dry_run_boundary_endpoint_
 #[test]
 fn hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundary_endpoint_blocks_approval_acceptance_and_invocation_side_effects()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_FIRST_MODEL_INVOCATION_EXPLICIT_APPROVAL_EVIDENCE_NO_INVOCATION_BOUNDARY_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_FIRST_MODEL_INVOCATION_EXPLICIT_APPROVAL_EVIDENCE_NO_INVOCATION_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("first-model explicit approval evidence no-invocation boundary route json");
@@ -2694,18 +2551,7 @@ fn hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundar
 
 #[test]
 fn hepta_full_live_activation_closure_index_endpoint_summarizes_blockers_without_side_effects() {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT);
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("full live activation closure index json");
@@ -2850,18 +2696,7 @@ fn hepta_full_live_activation_closure_index_endpoint_summarizes_blockers_without
 
 #[test]
 fn hepta_memory_write_approval_packet_boundary_endpoint_exposes_packet_shape_without_execution() {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_APPROVAL_PACKET_BOUNDARY_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_APPROVAL_PACKET_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("memory write approval packet boundary json");
@@ -3026,18 +2861,7 @@ fn hepta_memory_write_approval_packet_boundary_endpoint_exposes_packet_shape_wit
 
 #[test]
 fn hepta_memory_write_execution_preflight_boundary_endpoint_exposes_preflight_without_execution() {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_PREFLIGHT_BOUNDARY_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_PREFLIGHT_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("memory write execution preflight boundary json");
@@ -3195,18 +3019,7 @@ fn hepta_memory_write_execution_preflight_boundary_endpoint_exposes_preflight_wi
 #[test]
 fn hepta_memory_write_execution_denial_matrix_boundary_endpoint_exposes_attempt_denials_without_execution()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_DENIAL_MATRIX_BOUNDARY_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_DENIAL_MATRIX_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("memory write execution denial matrix boundary json");
@@ -3371,18 +3184,7 @@ fn hepta_memory_write_execution_denial_matrix_boundary_endpoint_exposes_attempt_
 #[test]
 fn hepta_memory_write_execution_no_write_sink_contract_boundary_endpoint_exposes_validation_without_store_write()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_NO_WRITE_SINK_CONTRACT_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_NO_WRITE_SINK_CONTRACT_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("memory write execution no-write sink contract boundary json");
@@ -3584,18 +3386,7 @@ fn hepta_memory_write_execution_no_write_sink_contract_boundary_endpoint_exposes
 #[test]
 fn hepta_memory_write_execution_write_enable_fixture_boundary_endpoint_blocks_write_enablement_without_store_write()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-        "GET",
-        HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_WRITE_ENABLE_FIXTURE_BOUNDARY_ENDPOINT,
-        &options,
-    );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_WRITE_ENABLE_FIXTURE_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("memory write execution write-enable fixture boundary json");
@@ -3790,18 +3581,7 @@ fn hepta_memory_write_execution_write_enable_fixture_boundary_endpoint_blocks_wr
 #[test]
 fn hepta_memory_write_execution_post_write_validation_dry_run_boundary_endpoint_blocks_validation_without_store_write()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_VALIDATION_DRY_RUN_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_VALIDATION_DRY_RUN_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("memory write execution post-write validation dry-run boundary json");
@@ -3998,18 +3778,7 @@ fn hepta_memory_write_execution_post_write_validation_dry_run_boundary_endpoint_
 #[test]
 fn hepta_memory_write_execution_post_write_operator_acceptance_denial_boundary_endpoint_blocks_operator_acceptance_without_activation()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_OPERATOR_ACCEPTANCE_DENIAL_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_POST_WRITE_OPERATOR_ACCEPTANCE_DENIAL_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("memory write execution post-write operator acceptance denial boundary json");
@@ -4234,18 +4003,7 @@ fn hepta_memory_write_execution_post_write_operator_acceptance_denial_boundary_e
 #[test]
 fn hepta_memory_write_execution_activation_closure_denial_boundary_endpoint_blocks_closure_without_activation()
  {
-    let options = NativeGatewayOptions {
-        bind_addr: "127.0.0.1:7373".to_string(),
-        with_telegram_plugin: true,
-        telegram_plugin_poll_ms: 1500,
-    };
-    let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_CLOSURE_DENIAL_BOUNDARY_ENDPOINT,
-            &options,
-        );
-    assert_eq!(status, "200 OK");
-    assert_eq!(content_type, "application/json; charset=utf-8");
+    let body = route_contract_body(HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_ACTIVATION_CLOSURE_DENIAL_BOUNDARY_ENDPOINT);
 
     let value: serde_json::Value = serde_json::from_str(&body)
         .expect("memory write execution activation closure denial boundary json");

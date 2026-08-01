@@ -5,7 +5,9 @@ fn runtime_ingress_registry_covers_all_declared_routes_and_serializes_lifecycle_
     let registry = runtime_ingress_lifecycle_registry();
     assert_eq!(
         registry.len(),
-        SPECIAL_INGRESS_LIFECYCLES.len() + CONTROL_UI_ROUTE_SPECS.len()
+        SPECIAL_INGRESS_LIFECYCLES.len()
+            + CONTROL_UI_STATIC_ASSET_LIFECYCLES.len()
+            + CONTROL_UI_ROUTE_SPECS.len()
     );
     for route in CONTROL_UI_ROUTE_SPECS {
         let probe = route
