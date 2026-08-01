@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "kind": "hepta-native-robrix-main-product-shell-evidence",
+  "generated_at_utc": "2026-08-01T15:49:36Z",
+  "branch": "ui/robrix-main-product-shell",
+  "commits": {
+    "frozen_previous_ui": "cd1834c579c33431cc5086e7619d87c1501f7285",
+    "pristine_upstream_import": "7ac362f9690aa870591f4edcf533934af18921cb",
+    "implementation": "3e0031afc4ab7ddb44e29ab6545a7b1b05f681e0"
+  },
+  "upstream": {
+    "repository": "https://github.com/project-robius/robrix.git",
+    "commit": "a5a664da569c577ab1a3e5a33f45dcc9364954a0",
+    "tree": "e620da0561b6632e85eed31008f811bf94c4c24a",
+    "upstream_file_count": 242,
+    "imported_file_count": 232,
+    "excluded_file_count": 10,
+    "downstream_drift_path_count": 72,
+    "downstream_overlay_accounted": true,
+    "push_url_disabled": true
+  },
+  "product_shell": {
+    "source_gate_status": "ready",
+    "native_ui_ready": true,
+    "real_robrix_modules_ready": true,
+    "real_shell_relationships_ready": true,
+    "cockpit_is_default": false,
+    "developer_diagnostics_feature_gated": true,
+    "control_ui_changed": false
+  },
+  "screenshots": [
+    {
+      "file": "desktop-login-1200x720@2x.png",
+      "capture_method": "Makepad Metal GPU framebuffer via Cx::capture_next_frame_to_file behind developer-diagnostics",
+      "requested_logical_window": "1200x720",
+      "host_visible_logical_window": "1200x720",
+      "pixel_dimensions": "2400x1440",
+      "sha256": "0640617f3aa906bf1b86adc485fbdce93476a187f6f63aae418482996309e589",
+      "visually_reviewed": true,
+      "route": "logged-out login",
+      "current_ui_source_equivalent": true
+    },
+    {
+      "file": "mobile-login-390x828@2x.png",
+      "capture_method": "Makepad Metal GPU framebuffer via Cx::capture_next_frame_to_file behind developer-diagnostics",
+      "requested_logical_window": "390x844",
+      "host_visible_logical_window": "390x828",
+      "pixel_dimensions": "780x1656",
+      "sha256": "3e1cd1de9b41a3f6c7726528f5fd7cc53a88a08dad34416405914623e3b8be80",
+      "visually_reviewed": true,
+      "route": "logged-out login",
+      "current_ui_source_equivalent": true
+    }
+  ],
+  "capture_provenance": {
+    "external_host_capture_succeeded": false,
+    "external_host_capture_issue": "ScreenCaptureKit/Peekaboo returned an internal error or black frames despite permission and an unlocked desktop",
+    "in_process_capture_is_default_product_behavior": false,
+    "capture_feature": "developer-diagnostics",
+    "post_capture_rendered_ui_changes": false,
+    "post_capture_non_rendering_changes": [
+      "resources/icon.ico was normalized to a multi-resolution RGBA-compatible ICO for cargo-packager",
+      "packaging/Info.plist was aligned with cargo-packager's generated Hepta.icns filename",
+      "DOWNSTREAM_PATCHES.md wording was expanded"
+    ]
+  },
+  "verification": {
+    "rust_toolchain": "1.95.0",
+    "cargo_test_locked_lib": {
+      "passed": 105,
+      "failed": 0
+    },
+    "cargo_check_locked_no_default_features": true,
+    "cargo_check_locked_all_features": true,
+    "cargo_release_build": true,
+    "cargo_packager_app": true,
+    "product_shell_gate_v2": true,
+    "product_shell_gate_v2_self_test": true,
+    "strict_upstream_sync_gate_v2": true,
+    "shell_syntax": true,
+    "git_diff_check": true,
+    "independent_security_review": "PASS"
+  },
+  "security": {
+    "matrix_session_store_tests": "24/24",
+    "matrix_state_tests": "3/3",
+    "hepta_bridge_tests": "14/14",
+    "production_bridge_forced_disabled": true,
+    "matrix_credentials_in_plaintext_metadata": false,
+    "secure_session_envelope": "ChaCha20-Poly1305 with keyed BLAKE3 binding and generation-specific keyring master key",
+    "https_only_homeserver": true,
+    "logout_cleanup_fail_closed": true
+  },
+  "network": {
+    "matrix_discovery_request_observed": true,
+    "matrix_discovery_mutating": false,
+    "live_matrix_login_performed": false,
+    "live_room_timeline_exercised": false,
+    "hepta_live_bridge_exercised": false
+  },
+  "boundaries": {
+    "logged_in_matrix_route_visual_evidence": false,
+    "real_ios_android_device_lab": false,
+    "voiceover_talkback_rtl_dynamic_type_lab": false,
+    "developer_id_signing": false,
+    "notarization": false,
+    "stapling": false,
+    "public_distribution": false,
+    "public_ga_ready": false,
+    "full_product_ready": false,
+    "push_performed": false,
+    "pull_request_created": false
+  }
+}
