@@ -1,0 +1,3790 @@
+{
+  "schema": "hepta_gate_compat_family_state_registry_v1",
+  "status": "ready",
+  "selection": "reachable_nonprotected_dependency_safe_identical_normalized_templates",
+  "family_count": 56,
+  "migrated_state_count": 148,
+  "exact_parameterized_state_count": 148,
+  "declarative_projection_state_count": 0,
+  "call_route_encoding": "sorted_symbol_index_pairs_v1",
+  "call_route_symbols": [
+    "hepta-systems-current-canonical-closure",
+    "hepta-systems-current-canonical-closure-alias-readback-index",
+    "hepta-systems-current-canonical-consumer",
+    "hepta-systems-current-canonical-governance",
+    "hepta-systems-current-canonical-governance-readback",
+    "hepta-systems-current-canonical-wrapper-promoted-consumer-migration-preflight",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-approval-acceptance-boundary-readback-without-acceptance",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-checklist-packet-readback-without-git-mutation",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-checklist-without-git-mutation",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-evidence-recording-boundary-readback-without-recording",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-git-mutation-boundary-readback",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-without-send",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-outcome-readback",
+    "hepta-systems-historical-canonical-gate-alias-readback",
+    "hepta-systems-historical-canonical-name-reintroduction-decision",
+    "hepta-systems-plugin-tool-invocation-router-preflight-binding",
+    "hepta-systems-post-canonical-closure-compact-capability-summary",
+    "hepta-systems-promoted-current-canonical-closure",
+    "hepta-systems-promoted-current-canonical-closure-index",
+    "hepta-systems-promoted-current-canonical-consumer",
+    "hepta-systems-promoted-current-canonical-consumer-cutover-final-gate",
+    "hepta-systems-promoted-current-canonical-consumer-cutover-packet-acceptance-preflight",
+    "hepta-systems-promoted-current-canonical-consumer-cutover-packet-readback",
+    "hepta-systems-promoted-current-canonical-consumer-cutover-preflight",
+    "hepta-systems-promoted-current-canonical-wrapper",
+    "hepta-systems-promoted-post-canonical-closure-compact-capability-summary",
+    "hepta-systems-session-reconstruction-map",
+    "hepta-systems-tool-execution-adapter-preflight",
+    "hepta-systems-tool-execution-canary-cutover-plan",
+    "hepta-systems-tool-execution-canary-readback-receipt-projection",
+    "hepta-systems-tool-execution-canary-result-acceptance-preflight",
+    "hepta-systems-tool-execution-canonical-summary-attachment-phase-index",
+    "hepta-systems-tool-execution-cutover-preflight",
+    "hepta-systems-tool-execution-dispatch-shadow",
+    "hepta-systems-tool-execution-live-cutover-closure-index",
+    "hepta-systems-tool-execution-live-cutover-final-gate",
+    "hepta-systems-tool-execution-live-cutover-operator-decision-preflight",
+    "hepta-systems-tool-execution-live-cutover-operator-packet",
+    "hepta-systems-tool-execution-live-cutover-operator-receipt-projection",
+    "hepta-systems-tool-execution-live-cutover-preflight",
+    "hepta-systems-tool-execution-live-cutover-receipt-rollback-packet",
+    "hepta-systems-tool-execution-operator-approval-decision-preflight",
+    "hepta-systems-tool-execution-operator-approval-packet",
+    "hepta-systems-tool-execution-operator-approval-receipt-projection",
+    "hepta-systems-tool-invocation-ledger-approval-preflight",
+    "hepta-systems-tool-invocation-receipt-projection",
+    "hepta-systems-tool-registry-invocation-source-of-truth",
+    "hepta-systems-tool-registry-read-only-dispatch-preflight",
+    "hepta-systems-tool-registry-registration-lookup-cutover-preflight",
+    "hepta-systems-tool-registry-router-lookup-shadow",
+    "hepta-systems-work-graph-activation-enforcement-blocker-preview",
+    "hepta-systems-work-graph-adapter-projection-fixture",
+    "hepta-systems-work-graph-adapter-task-result-index",
+    "hepta-systems-work-graph-append-only-store-enablement-precondition-application-preview",
+    "hepta-systems-work-graph-append-only-store-enablement-precondition-preview",
+    "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-application-preview",
+    "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-preview",
+    "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-readback-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-durable-store-switch-application-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-durable-store-switch-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-durable-store-switch-readback-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-enablement-application-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-enablement-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-enablement-readback-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-application-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-readback-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-rollback-readback-execution-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-write-boundary-application-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-write-boundary-preview",
+    "hepta-systems-work-graph-append-only-store-runtime-write-boundary-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-operator-review-packet-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-operator-review-packet-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-readiness-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-replay-readback-execution-closure-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-replay-readback-execution-closure-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-replay-readback-execution-closure-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-side-effect-lock-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-side-effect-lock-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-closeout-packet-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-closeout-packet-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-closeout-packet-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-operator-review-packet-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-operator-review-packet-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-operator-review-packet-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-enablement-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-enablement-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-promotion-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-promotion-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-event-store-promotion-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-replay-readback-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-replay-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-replay-readback-readback-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-shadow-write-application-preview",
+    "hepta-systems-work-graph-append-only-work-graph-events-shadow-write-readback-preview",
+    "hepta-systems-work-graph-observability-timeline-preview",
+    "hepta-systems-work-graph-persistence-acceptance-authority-blocker-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-blocker-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-replay-idempotency-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-replay-idempotency-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-acknowledgement-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-acknowledgement-replay-idempotency-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-receipt-preview",
+    "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-receipt-preview",
+    "hepta-systems-work-graph-persistence-acceptance-record-intake-preview",
+    "hepta-systems-work-graph-persistence-acceptance-record-receipt-acknowledgement-preview",
+    "hepta-systems-work-graph-persistence-acceptance-record-receipt-preview",
+    "hepta-systems-work-graph-persistence-canary-dry-run-preview",
+    "hepta-systems-work-graph-persistence-canary-readback-receipt-preview",
+    "hepta-systems-work-graph-persistence-enforcement-rollout-blocker-preview",
+    "hepta-systems-work-graph-persistence-feature-flag-preview",
+    "hepta-systems-work-graph-persistence-operator-readiness-packet-preview",
+    "hepta-systems-work-graph-persistence-operator-readiness-receipt-acknowledgement-preview",
+    "hepta-systems-work-graph-persistence-operator-readiness-receipt-preview",
+    "hepta-systems-work-graph-persistence-promotion-blocker-preview",
+    "hepta-systems-work-graph-persistence-shadow-live-readback-comparison-preview",
+    "hepta-systems-work-graph-role-manifest-contract-preview",
+    "hepta-systems-work-graph-role-manifest-enforcement-gap-closure-application-preview",
+    "hepta-systems-work-graph-role-manifest-enforcement-gap-closure-preview",
+    "hepta-systems-work-graph-role-manifest-enforcement-gap-closure-readback-preview",
+    "hepta-systems-work-graph-runtime-application-promotion-gap-closure-application-preview",
+    "hepta-systems-work-graph-runtime-application-promotion-gap-closure-readback-preview",
+    "hepta-systems-work-graph-scheduler-admission-controller-preview",
+    "hepta-systems-work-graph-scheduler-admission-enforcement-gap-closure-application-preview",
+    "hepta-systems-work-graph-scheduler-admission-enforcement-gap-closure-preview",
+    "hepta-systems-work-graph-scheduler-admission-enforcement-gap-closure-readback-preview",
+    "hepta-systems-work-graph-shadow-adapter-readback-preview",
+    "hepta-systems-work-graph-store-idempotency-guard-gap-closure-application-preview",
+    "hepta-systems-work-graph-store-idempotency-guard-gap-closure-readback-preview",
+    "hepta-systems-work-graph-task-result-contract-field-gap-readback",
+    "hepta-systems-work-graph-task-result-contract-preview",
+    "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-ack-replay-idempotency-preview",
+    "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-preview",
+    "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-acknowledgement-replay-idempotency-preview",
+    "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-preview",
+    "hepta-systems-work-graph-terminal-task-result-enforcement-gap-closure-preview",
+    "hepta-systems-work-graph-terminal-task-result-wrapper-fixture-preview",
+    "hepta-systems-work-graph-terminal-task-result-wrapper-readback-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-append-only-store-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-append-only-store-runtime-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-operator-review-side-effect-lock-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-role-manifest-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-application-promotion-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-durable-store-switch-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-idempotency-mutation-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-rollback-readback-execution-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-write-boundary-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-scheduler-admission-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-store-guard-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-terminal-task-result-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-activation-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-adapter-projection-gap-closure-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-append-only-events-enablement-closure-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-final-no-enablement-readiness-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-no-cutover-guard-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-readiness-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-side-effect-lock-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-closeout-packet-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-operator-review-packet-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-enablement-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-promotion-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-persistence-guard-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-replay-readback-rerun-preview",
+    "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-shadow-write-rerun-preview",
+    "hepta-systems-work-graph-unified-state-store-preview",
+    "hepta-systems-workflow-temporal-lite-checkpoint-and-rollback-anchor-local-persistence-readback",
+    "hepta-systems-workflow-temporal-lite-event-log-sqlite-adapter-local-persistence-readback",
+    "hepta-systems-workflow-temporal-lite-lease-idempotency-index-local-persistence-readback",
+    "hepta-systems-workflow-temporal-lite-replay-alignment-checkpoint-consistency-feature-gated-readback",
+    "hepta-systems-workflow-temporal-lite-replay-alignment-checkpoint-consistency-local-persistence-readback",
+    "hepta-systems-workflow-temporal-lite-replay-alignment-recovery-window-feature-gated-readback",
+    "hepta-systems-workflow-temporal-lite-replay-alignment-recovery-window-local-persistence-readback",
+    "hepta-systems-workflow-temporal-lite-replay-alignment-rollback-consistency-feature-gated-readback",
+    "hepta-systems-workflow-temporal-lite-replay-alignment-rollback-consistency-local-persistence-readback",
+    "hepta-systems-workflow-temporal-lite-work-graph-projection-local-persistence-readback",
+    "hepta-systems-workflow-temporal-lite-work-graph-projection-replay-alignment-feature-gated-readback",
+    "hepta-systems-workflow-temporal-lite-work-graph-projection-replay-alignment-local-persistence-readback"
+  ],
+  "families": [
+    {
+      "id": "hepta-systems-current-canonical-closure",
+      "default_state": "hepta-systems-current-canonical-closure",
+      "state_count": 1,
+      "template_ids": [
+        71,
+        72
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-current-canonical-closure",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "c1f88e40f116bed67f07b571148593f1a7f32d5e324738d1861db57fbaf40d96",
+          "original_report_sha256": "37dff3673274edd5a88199cd9f183e90712bcc0ce9536fa53b8c63a91fdbd404",
+          "gate_sha256": "a25e422b71648cf5ef925f44aaf7f6ec0224eea64691d60abcc7186256c7471e",
+          "report_sha256": "414520bc3503e5436d7f479e2b846784fc8a9fd5e93818783545ab38cb389ffc",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-current-canonical-closure"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            1,
+            0
+          ],
+          [
+            14,
+            0
+          ]
+        ],
+        "report": [
+          [
+            1,
+            0
+          ],
+          [
+            14,
+            0
+          ],
+          [
+            17,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-current-canonical-closure-alias-readback-index",
+      "default_state": "hepta-systems-current-canonical-closure-alias-readback-index",
+      "state_count": 1,
+      "template_ids": [
+        71,
+        72
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-current-canonical-closure-alias-readback-index",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "284958b32fd49bb380e5be75a49de88fa06518b27dd0b40d61385bac2979e5b3",
+          "original_report_sha256": "50b15c76bcbf0b4d81bb27faab3cff88020cf63e6e415bb65be29f6438ebccdc",
+          "gate_sha256": "d2129f8dc1281c4d59724d0a30ad4f33895a70d3f7419f3aa7db765c18dc8fa0",
+          "report_sha256": "86615fafd54c9392ffda89dd7dfb426ee94bf8f182e7dfd0c2c738107903ed12",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-current-canonical-closure-alias-readback-index"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            17,
+            1
+          ]
+        ],
+        "report": [
+          [
+            17,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-current-canonical-consumer",
+      "default_state": "hepta-systems-current-canonical-consumer",
+      "state_count": 2,
+      "template_ids": [
+        73,
+        53
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-current-canonical-consumer",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "9ffa17581df3348810a598bcb1d0754e7cbb3d38f843b9acb1948154b10a8565",
+          "original_report_sha256": "5cdc37eda43859940983fb9792c995abf9c3495eda7f2ab29e4da106f4dbdcc7",
+          "gate_sha256": "2bcf6d47d7db2e9ecdd2aff833270f149a554b6939ecded997061ab6d6109607",
+          "report_sha256": "1a7b798540964f5cab10c07ea79ef0f349f7cb85ac9f061ed933d746fb58f238",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-current-canonical-consumer"
+        },
+        {
+          "id": "hepta-systems-historical-canonical-name-reintroduction-decision",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "66e519132b9010759114200d30cc035ce3ee757711763f7e821be300ad1690e4",
+          "original_report_sha256": "6b4727d2170dafd42658d2e89fada0859a8ec0595a56b6b695d7acecc4471293",
+          "gate_sha256": "afb81656b6043446d1dc579e6f28c2c2be87cd67a0cfa440a50da4553122649c",
+          "report_sha256": "0da1907ba51b8a07cd6b7d743381138eee1f0887de75ef98b3da0951c8acc658",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-historical-canonical-name-reintroduction-decision"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            3,
+            2
+          ],
+          [
+            5,
+            2
+          ],
+          [
+            19,
+            2
+          ],
+          [
+            25,
+            2
+          ],
+          [
+            32,
+            15
+          ]
+        ],
+        "report": [
+          [
+            3,
+            2
+          ],
+          [
+            5,
+            2
+          ],
+          [
+            19,
+            2
+          ],
+          [
+            24,
+            2
+          ],
+          [
+            25,
+            2
+          ],
+          [
+            26,
+            2
+          ],
+          [
+            32,
+            15
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-current-canonical-governance",
+      "default_state": "hepta-systems-current-canonical-governance",
+      "state_count": 2,
+      "template_ids": [
+        71,
+        77
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-current-canonical-governance",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "2920ccb9f9707866b820bf5293e4bd5e48556eac389b2b0860ffff21646ab138",
+          "original_report_sha256": "2fb3426c479d4fc3995a2834c09a3be5616f48bf406cb27b22359dd7d84f9dc6",
+          "gate_sha256": "5a10b8d4b96db95762693d9ae6bd70095ef4c9883fb078ac4be4a05cc2a5c333",
+          "report_sha256": "dfaafc1483104417b3bcc1469a5d9ecce105105a9c57a52df066f044b5bbbbad",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-current-canonical-governance"
+        },
+        {
+          "id": "hepta-systems-promoted-current-canonical-closure",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "c424cb4ed34ea35e0376f6db9c9508703298f30b2d05f001bfadd6752e19ee80",
+          "original_report_sha256": "1d520001dc9550d7dcef2042caa9445a1bbca92beb29b715f90bf02be24a4489",
+          "gate_sha256": "f8e206f0ef5bc6217e4ca049c78f49578a93d86f234e9f5f429b5f737d8cb498",
+          "report_sha256": "d0f7195e29563659e2d52bbddc3565f3a11bec7afcf0688b4413970b653f637e",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-promoted-current-canonical-closure"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            19,
+            18
+          ]
+        ],
+        "report": [
+          [
+            4,
+            3
+          ],
+          [
+            19,
+            18
+          ],
+          [
+            26,
+            18
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-current-canonical-wrapper-promoted-consumer-migration-preflight",
+      "default_state": "hepta-systems-current-canonical-wrapper-promoted-consumer-migration-preflight",
+      "state_count": 2,
+      "template_ids": [
+        73,
+        77
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-current-canonical-wrapper-promoted-consumer-migration-preflight",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "3eaaea7fed9869de79f054edcc2984151a342dd146eef2bead89878cb25b01b3",
+          "original_report_sha256": "609e728198961a65be03e6aad78314dc2bea9a71a7e0689de1979b2eb3fd6471",
+          "gate_sha256": "cbdc2bf7c5c5f32f8de50f48fddd0ade69bb75679c90e11ad3b29b93818164d1",
+          "report_sha256": "e46d77511d973efe0191cc453f45fb085910fdea6f7b552b1ecd27c8296ea51d",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-current-canonical-wrapper-promoted-consumer-migration-preflight"
+        },
+        {
+          "id": "hepta-systems-promoted-current-canonical-wrapper",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "905ba2cff08f1fc557660ae04ebfe33765272a0b3ee1304ede63dad7bf81148c",
+          "original_report_sha256": "d9f5a330a8e1f34d5a055ebab9a0f5b2d144ddb8fb4528cf7060a3b4d8c05819",
+          "gate_sha256": "8fa85b97f5a7ca5ffb163d2c819579413c1a18ea80b4ff4c15201ce522fb858b",
+          "report_sha256": "f9a56e4d6c944530df935d89504f6322de0168e9e98f80357ee58e0539b09352",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-promoted-current-canonical-wrapper"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            18,
+            25
+          ],
+          [
+            25,
+            5
+          ]
+        ],
+        "report": [
+          [
+            5,
+            25
+          ],
+          [
+            18,
+            25
+          ],
+          [
+            25,
+            5
+          ],
+          [
+            26,
+            25
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-approval-acceptance-boundary-readback-without-acceptance",
+      "default_state": "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-approval-acceptance-boundary-readback-without-acceptance",
+      "state_count": 6,
+      "template_ids": [
+        86,
+        88
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-approval-acceptance-boundary-readback-without-acceptance",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "620adeb983b3870175432fd51dc0db44814f13213fcf2419a81baa94f9af2935",
+          "original_report_sha256": "37c1d97b26be92a61fc5621d01dad6563a76a70e9ecaae81ebc15c9b10c36bb3",
+          "gate_sha256": "94836e528e04e4708e36fad00a9d6ab5ab8f09628ecb893b49b48cf01e28d5cf",
+          "report_sha256": "7d011317e0c5154a03d4b663381abccc79fb1976593ad9fa65bad10b8ad55437",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-approval-acceptance-boundary-readback-without-acceptance"
+        },
+        {
+          "id": "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-checklist-packet-readback-without-git-mutation",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "107a8c8231cb3f978f6a7139d321b53817f58d3463af7764aef374baeda32d04",
+          "original_report_sha256": "d2d84a20709301cdc264b121ebd9b1943bba175622b63890f3c70c6562b574cb",
+          "gate_sha256": "aefaa159cf6f2121e1de484146bacf1a371b890f19b5edab990daf616c0daf29",
+          "report_sha256": "c8903b752547b280d9a5b3a1ac7b40a6fcf8842dcc25221383c1cae30e7c0a48",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-checklist-packet-readback-without-git-mutation"
+        },
+        {
+          "id": "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-checklist-without-git-mutation",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "4fb00d85447002c5f964dc24ee047585a4f3abf68fab7dcfb9cb8deb09e0ac8c",
+          "original_report_sha256": "12ef2456a78fc8accffde6c114436fdea912eb064a415cb2d41016d7790745c2",
+          "gate_sha256": "8db9955089a92daf11a335d4bdf066e236f03bad2cf8ab88131a67c0b7de3f11",
+          "report_sha256": "6d510a71afde0ae84b358ccd4ec1e2e67ebf0d90ec24d8adb7dc4b659559c1bd",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-checklist-without-git-mutation"
+        },
+        {
+          "id": "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-git-mutation-boundary-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "925649b76a0c1772be8f13a62c5eb1b7186d896be673455174a3aaf5bcb60cdd",
+          "original_report_sha256": "95ba4648ac7cb473c1614c6d1589b64d1c3111f7f3dcb9a3b2a140f3d2e2fd67",
+          "gate_sha256": "3feac114ad0a3703474500a382f40f157006656a13379866ded3cdd0b55e0055",
+          "report_sha256": "cc83e9be42485e4bbb65f9e21fbeb133f05ff9f3e6fe140d1ca6e1481259d476",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-git-mutation-boundary-readback"
+        },
+        {
+          "id": "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-without-send",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "00c5cd366735393ac8ec101bffb3440b80c8c14d0770fea55b3b7e0d68baef9e",
+          "original_report_sha256": "d5dcf5ed8195e950d8d2999c68513049471028e88f9117acf5382c594fd50af5",
+          "gate_sha256": "27687589d20d83789f9397a15099e36e153ef46bf75c9040a43a1cba49e08008",
+          "report_sha256": "e1e7b74024f89c4964ced412eca2d17dc2ed2895369f2f640a9457d2d0c189c8",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-without-send"
+        },
+        {
+          "id": "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-outcome-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "7e20006228000843400c669cede7d5c659e47fc52cc29641ca64fb6ee4752d32",
+          "original_report_sha256": "6aeb3d79d4792959771e12ff4a2b1daab65c003b602797520b9a9dea1e884aa9",
+          "gate_sha256": "e68ca99339eb1ac633d1a7e5d7bf53a5a3de3e25f75fa1d4cd305419ef59460d",
+          "report_sha256": "5f56006cef6fa8128ede41e62dc2aa0b3cc5f71da2f4f07f218a8f44895e0396",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-outcome-readback"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+
+        ],
+        "report": [
+          [
+            7,
+            8
+          ],
+          [
+            8,
+            11
+          ],
+          [
+            9,
+            7
+          ],
+          [
+            10,
+            6
+          ],
+          [
+            11,
+            12
+          ],
+          [
+            12,
+            13
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-plugin-tool-invocation-router-preflight-binding",
+      "default_state": "hepta-systems-plugin-tool-invocation-router-preflight-binding",
+      "state_count": 9,
+      "template_ids": [
+        58,
+        113
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-plugin-tool-invocation-router-preflight-binding",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "763196fd558743aa39d984440e26350221c7676aeba567e857f09ddc2520b552",
+          "original_report_sha256": "bcf3f8afde545a680ef851083939f1ac0eb182da79bce62dd82b0428c7164083",
+          "gate_sha256": "76ed8e3c574cabad55756875676f646184519ffbbfcb75cb592c7209d6f9498b",
+          "report_sha256": "b56212180b251b8da11aa0261250768c849bc559b6acbeecc5f5d015e68477a2",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-plugin-tool-invocation-router-preflight-binding"
+        },
+        {
+          "id": "hepta-systems-tool-execution-canary-readback-receipt-projection",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "b4b0eb634348f3865e6ad22a2ea957de4c74c773129d4db24d5b21250c59d70b",
+          "original_report_sha256": "7e6c4dad7bdc5e2b9cf4564812712c18991cf751b05ded908d1aa0f5a3c5e176",
+          "gate_sha256": "4cff34fa38849e85b45f76513b26c1150570c9da8f49171ad330f2d975883fc9",
+          "report_sha256": "0a56661b41221c2b8d59b2888e402fc20bddac6233133f85ab8c454e1c83bef5",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-canary-readback-receipt-projection"
+        },
+        {
+          "id": "hepta-systems-tool-execution-canary-result-acceptance-preflight",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "989fea429eca41209ca3c1956fe98395a4fea018fde3eb359158990d7bb6d14d",
+          "original_report_sha256": "a18708e76db6eb458881abcf9b72477937e4f564f4a1e1c347cd6acc9ce52dda",
+          "gate_sha256": "8716903ad48e30d67da68a2f0c4f913f775cc14e8118e45ac4ed4bbb90ded415",
+          "report_sha256": "a59a0e67313316c04e5c0b2d550bdaa24b5e6e31bf01a2d42b3e65b887ce1868",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-canary-result-acceptance-preflight"
+        },
+        {
+          "id": "hepta-systems-tool-execution-cutover-preflight",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "0d7e8b877e9157ca959caa7926e8d51a8d36ae05ce2558e6763ffbfb62e94284",
+          "original_report_sha256": "c00ea5b5e2f6521185a48e9057cfe5bd2e9341b37eda46f97f7a0917a1ef4a14",
+          "gate_sha256": "804ce205993b566091e845c39c02dca991fad1de3fcd44cb19481840eedda638",
+          "report_sha256": "4e4acc8c4c1516d09f6ea88b8a771e84304389f58401ddadbb059e02ff5f9479",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-cutover-preflight"
+        },
+        {
+          "id": "hepta-systems-tool-execution-live-cutover-final-gate",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "8fbf51786a9ba5f82ded1f4633ecb8271294b3b068a1f8829e7ae7c0a5a35287",
+          "original_report_sha256": "08061166c5017bf12340be9281adf0e488af3560a0630327fb337b42bf661101",
+          "gate_sha256": "904211f34819db33c6dda8faae13b7bba9657ce62737a4aeacbf8279db709a9a",
+          "report_sha256": "fbb8acf5d016b8b4886e4bf22c3e86c84df08ae9d73e2d9ae28d613ac5ecbb15",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-live-cutover-final-gate"
+        },
+        {
+          "id": "hepta-systems-tool-execution-live-cutover-operator-decision-preflight",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "aa976154ed21be8acd2f225fbbd2a511e21ddd61ecc2179e24095afdda1b3733",
+          "original_report_sha256": "86e6722ee9d60d6fa2facd051a5dc43f5f1b3fffe3c8ee89fbb717b2872ce4ec",
+          "gate_sha256": "4951ca29e385551b0ae775eda615d7fd8b1d0c40f46ea940f88a5463cc96e72f",
+          "report_sha256": "fad2871a6f998064f4a734e4868186316fa6e51ed3fc7478eb865746a514a245",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-live-cutover-operator-decision-preflight"
+        },
+        {
+          "id": "hepta-systems-tool-execution-live-cutover-operator-packet",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "f8a5f12424ab59c509a5d7e9eca651eec744ff983a288f296b8872e4f6f38c9f",
+          "original_report_sha256": "f4626a8d425a364d2e3440eefd2592668bad53bc00738719ebbe5ab0144e7f29",
+          "gate_sha256": "177c8021e05583466bcd0fd10e6ebe1ad2faa818cddbfb87d91bc929baec703f",
+          "report_sha256": "d8c0387c2d1a7a3ce52e3a2a5be9603924b972d1b3218740c916dd1a81a07ba8",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-live-cutover-operator-packet"
+        },
+        {
+          "id": "hepta-systems-tool-execution-live-cutover-preflight",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "0e0f9af2da861866fe969fdb9cca030e53d050b527ccfbad390e17b9014a154e",
+          "original_report_sha256": "4b316354219d572b4f8f43d4c1cd35386e4b263ecfe5cf9fe8efb268d8cf221c",
+          "gate_sha256": "916bd4381e67fe4126d98b95b0ac76a2648d8cd22fa02463898d8d991278c44e",
+          "report_sha256": "7d0238d7678b9de8bc4efd6bfbdafdf36636e96b4b9d709e348c81f43a989ffe",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-live-cutover-preflight"
+        },
+        {
+          "id": "hepta-systems-tool-execution-operator-approval-decision-preflight",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "5e278bda4aaff84f1459494776b55c1b0371a543c715ac8771bdcdabdfd189c9",
+          "original_report_sha256": "f2757432b08636fb2b97030282eb26d7447e23e79d539a1fe1a9353d4036a2e9",
+          "gate_sha256": "496eb9dc0dc5b16594ff2be1e945f1045685df1c1750c694d449187371ad9d90",
+          "report_sha256": "b6b81261cff9dec19374c3cbff7e95b5166832c542924c789adb35e30a4e9ac2",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-operator-approval-decision-preflight"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            29,
+            42
+          ],
+          [
+            31,
+            30
+          ],
+          [
+            35,
+            36
+          ],
+          [
+            38,
+            40
+          ],
+          [
+            39,
+            38
+          ],
+          [
+            40,
+            31
+          ],
+          [
+            41,
+            37
+          ],
+          [
+            43,
+            33
+          ],
+          [
+            47,
+            16
+          ]
+        ],
+        "report": [
+          [
+            29,
+            42
+          ],
+          [
+            31,
+            30
+          ],
+          [
+            35,
+            36
+          ],
+          [
+            38,
+            40
+          ],
+          [
+            39,
+            38
+          ],
+          [
+            40,
+            31
+          ],
+          [
+            41,
+            37
+          ],
+          [
+            43,
+            33
+          ],
+          [
+            47,
+            16
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-post-canonical-closure-compact-capability-summary",
+      "default_state": "hepta-systems-post-canonical-closure-compact-capability-summary",
+      "state_count": 3,
+      "template_ids": [
+        122,
+        53
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-post-canonical-closure-compact-capability-summary",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "d548bb7e91df520608fba2669a56b7f367aa68149b23b3ca5a3db275a8532690",
+          "original_report_sha256": "41973af098a25056b271482bb0448875b9516e4c1923b591f444f95229449a11",
+          "gate_sha256": "a296a9c355b18d89f541e9557378fdacb2469a3855e23bd611222abccf22169d",
+          "report_sha256": "aee17091f21c06a1f3c6f4a00b8730acb4d976905948c7dcf74f54245c08340c",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-post-canonical-closure-compact-capability-summary"
+        },
+        {
+          "id": "hepta-systems-promoted-current-canonical-consumer",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "431b666a0c8cbba8cbca9523cc56ba539af1af37541a75c8fb4901f0c696e4cc",
+          "original_report_sha256": "c9dd1453f4a0454c46a137ed4d6e616cea4b00154b647aea336a8a13f043bf65",
+          "gate_sha256": "01ec0c21373e08830d346666127ccadc32ee7b3f1f9d3158114ce56586e38f30",
+          "report_sha256": "47faec7e40f3206b3d0041db5e7a25c5e5147cf00efaae25a0d10b613fb51e66",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-promoted-current-canonical-consumer"
+        },
+        {
+          "id": "hepta-systems-promoted-post-canonical-closure-compact-capability-summary",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "f6b9b7e6ef5d5ae0bc20c7fc32de4518da00c2a53ce621a25cad32377fe781cb",
+          "original_report_sha256": "dc41a6d8707af3507d35f39b228f5aa33657bc33ff6b2c621041ff515f6e5584",
+          "gate_sha256": "5d1fdcf1ad6c9dd0ef97eb4cbddc6da7bb9a1b3bf03601c2724721a0a52a316e",
+          "report_sha256": "ed956968a1822ad0361ead4dff4460c637c6b9ac41fdbf72cb55f0c7775294f7",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-promoted-post-canonical-closure-compact-capability-summary"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            2,
+            17
+          ],
+          [
+            20,
+            26
+          ]
+        ],
+        "report": [
+          [
+            2,
+            17
+          ],
+          [
+            20,
+            26
+          ],
+          [
+            24,
+            20
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-promoted-current-canonical-closure-index",
+      "default_state": "hepta-systems-promoted-current-canonical-closure-index",
+      "state_count": 1,
+      "template_ids": [
+        71,
+        77
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-promoted-current-canonical-closure-index",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "3d2a5668862ed0c66e277e6a385a8d679fd0808cf6452eae20083d6a129ff081",
+          "original_report_sha256": "c986ce8994e0e9944787f6555e0048d181dfac2c4138ffa5c3d76d71af6432df",
+          "gate_sha256": "3483e743ad3485bc233b10a071c22e456b9794ddf3a0207eb4a50362211b757c",
+          "report_sha256": "95736eee541ca5e0279ae71096e1d11b8e7d0f484495472b9ca2bd000a3a9996",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-promoted-current-canonical-closure-index"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            26,
+            19
+          ]
+        ],
+        "report": [
+          [
+            26,
+            19
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-promoted-current-canonical-consumer-cutover-packet-acceptance-preflight",
+      "default_state": "hepta-systems-promoted-current-canonical-consumer-cutover-packet-acceptance-preflight",
+      "state_count": 2,
+      "template_ids": [
+        122,
+        76
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-promoted-current-canonical-consumer-cutover-packet-acceptance-preflight",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "368c4e037ff7e76f633e3afe1ebe6007ee80998b15de36ee758409c228909c77",
+          "original_report_sha256": "92407ebb50855759415c9b5094a5ef1cbaea5145a1ee3da759ab95b69ba406c8",
+          "gate_sha256": "83422d6a08ade3c55a200f77e01a3bcc323ccc5e53143c2aeb852a0458aef2b8",
+          "report_sha256": "1e51755479658fae4bf641b1eae2db275457032b37624f0f9c9ed9675592f2f7",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-promoted-current-canonical-consumer-cutover-packet-acceptance-preflight"
+        },
+        {
+          "id": "hepta-systems-promoted-current-canonical-consumer-cutover-packet-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "e37e8618e603bd70528831138f3780e619c0f6bf6773de13c3fce25b0278a4aa",
+          "original_report_sha256": "2570d1ffa214c8c05236298afbd5dd3c5dc750fb45a856d3deb0b64d8a33dd44",
+          "gate_sha256": "697e2e4e33a40ce0180b613f5b2bab8caff154fd6298b214db2e0e688cd90b4a",
+          "report_sha256": "e74ae8a6f9c4b8bc7784eab0c9325906e278df02076011c8dce61d21c7b07cd8",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-promoted-current-canonical-consumer-cutover-packet-readback"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            21,
+            22
+          ]
+        ],
+        "report": [
+          [
+            21,
+            22
+          ],
+          [
+            22,
+            23
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-tool-execution-adapter-preflight",
+      "default_state": "hepta-systems-tool-execution-adapter-preflight",
+      "state_count": 3,
+      "template_ids": [
+        58,
+        132
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-tool-execution-adapter-preflight",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "15a99fb0a9ab6a56c06ed9d72bee0f44e49950ac19d279c1fb2287e7d9af25e8",
+          "original_report_sha256": "059627d215eec79aea92a5415da4794790e17c2dd605556ffed298b922893c4e",
+          "gate_sha256": "39aee97cbdc58b0c64e0caf13cf7baa84a09cb8c441c8b24253b825ff69eabca",
+          "report_sha256": "deff608a629067ee4af8e6c77b2c52249b58d49444ef57877d1b41363ac6071c",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-adapter-preflight"
+        },
+        {
+          "id": "hepta-systems-tool-execution-dispatch-shadow",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "e12c639241e0ed8cc7554b06012a895bbc08a19d1fb8e64d3be9c4ad5272473c",
+          "original_report_sha256": "2a1b67036a2d56d8119ab1ad8e24be8ba866ac7b1f30d4692691a19859ab86a4",
+          "gate_sha256": "147108f3476e93f39e1ec8dc9dc34eedd3ee04ca2eec53af83b8e4bf070e0086",
+          "report_sha256": "a047a31cb1995b44f19e3cc7e5caa0559c2be34223019ca5db62be95926b5dea",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-dispatch-shadow"
+        },
+        {
+          "id": "hepta-systems-tool-invocation-receipt-projection",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "ec327cd55ac81066fdfdfaaf44b54dc0eb8c9ef160785ac25dcdd6e4f368788a",
+          "original_report_sha256": "253faa6ac6be927e3a77b8b270a22965789c89e9f49f07eff545660a7a7b7303",
+          "gate_sha256": "5ce0cbac45f4475d67cbabb7e37a6ca43884d68b026bc3c9e1c012b82481970c",
+          "report_sha256": "77c87a3c723e08ad608df732cfe66d65eda6c45389dc3f8ff594c7257db14fa5",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-invocation-receipt-projection"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            28,
+            46
+          ],
+          [
+            33,
+            34
+          ],
+          [
+            34,
+            28
+          ],
+          [
+            48,
+            46
+          ]
+        ],
+        "report": [
+          [
+            28,
+            46
+          ],
+          [
+            33,
+            34
+          ],
+          [
+            34,
+            28
+          ],
+          [
+            48,
+            46
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-tool-execution-live-cutover-operator-receipt-projection",
+      "default_state": "hepta-systems-tool-execution-live-cutover-operator-receipt-projection",
+      "state_count": 2,
+      "template_ids": [
+        140,
+        113
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-tool-execution-live-cutover-operator-receipt-projection",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "9c981d1a8bdb3210c5a21bd9b52bcdd3d76b4c375ff2b0c3b983ef57a1927e9b",
+          "original_report_sha256": "9cba9348f98e5d51f36c7c3abb7517aa6ec95f7c6d5112b9c05f47ea7c2e49be",
+          "gate_sha256": "e47585f4037edc11588c03fcf6072d68fb4baff2899776c3dd08166fb890f2ec",
+          "report_sha256": "ed6eb2ce5b1c10b58e7aca84df4fd0183ae341b6975c77b77d301e219b85fce0",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-live-cutover-operator-receipt-projection"
+        },
+        {
+          "id": "hepta-systems-tool-execution-live-cutover-receipt-rollback-packet",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "fb78bcf665a4e70f00727bcf52da7108d0e82e26ff850402468a9715c1dfb709",
+          "original_report_sha256": "1a5533caeea2d218aeeaa3ccf97d9a542db46d82038af63b2a0cb2e70f2afeff",
+          "gate_sha256": "f9f3c554d965a5af6b235f743deb1a8a0d59de8668dd9286577c83dd5ca601a8",
+          "report_sha256": "151e43943e6c22f40c1763d8dada77d25a69feb1fa9a79be44ba3fbbb3b5a179",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-live-cutover-receipt-rollback-packet"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            36,
+            41
+          ],
+          [
+            37,
+            39
+          ]
+        ],
+        "report": [
+          [
+            36,
+            41
+          ],
+          [
+            37,
+            39
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-tool-execution-operator-approval-packet",
+      "default_state": "hepta-systems-tool-execution-operator-approval-packet",
+      "state_count": 1,
+      "template_ids": [
+        58,
+        113
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-tool-execution-operator-approval-packet",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "d8094b890034553e95f71c81164ad89375937d46250fdbf7476336ade1905513",
+          "original_report_sha256": "c3de88520e587693665e9040a9e801fbc509860f7c8d08d6cb9051fe4b75a334",
+          "gate_sha256": "a1bac5df17097c93a731afa623d2379e62a9961e9d5a37ddaf3b966a3ca0fb71",
+          "report_sha256": "9b4de5fd2ef1d7f2d7055f7aea7939162f0ecd13026e747fd70e79b19d9e6594",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-operator-approval-packet"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            44,
+            43
+          ]
+        ],
+        "report": [
+          [
+            44,
+            43
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-tool-execution-operator-approval-receipt-projection",
+      "default_state": "hepta-systems-tool-execution-operator-approval-receipt-projection",
+      "state_count": 1,
+      "template_ids": [
+        58,
+        113
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-tool-execution-operator-approval-receipt-projection",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "1845660eeedb5ad7b037dcea2b47439c8d01d69f1837ac558fabfed2175554aa",
+          "original_report_sha256": "d368a5f1f359698163446ef38a9f89c33af14fb395d462dd1012600d8cd6783d",
+          "gate_sha256": "2596650463b4dde1b34492046b97e620a2f25241a337c79defd26983d33d777a",
+          "report_sha256": "86efc1f2dc9cea77c7c98fa137e5b3afff2b9e5dbca1feaabca5ce86c0f96496",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-execution-operator-approval-receipt-projection"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            42,
+            44
+          ]
+        ],
+        "report": [
+          [
+            42,
+            44
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-tool-registry-registration-lookup-cutover-preflight",
+      "default_state": "hepta-systems-tool-registry-registration-lookup-cutover-preflight",
+      "state_count": 1,
+      "template_ids": [
+        58,
+        113
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-tool-registry-registration-lookup-cutover-preflight",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "7e0536fcc0a37b80980995264da718e5999f31ff5a7065df7ad35667f752eda4",
+          "original_report_sha256": "6dd76b6c015aa75ec1607e9b24566c27d7631ee5c07b8846b050b95c23239736",
+          "gate_sha256": "9d07400197f25bd1c0672a9b07141942612b13434dd9556eb629b280f9fe3aef",
+          "report_sha256": "8f01d0eb9a1610d4236ca0a43f0ac63d33c6062c13d7e87ba64430a1c3845a56",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-registry-registration-lookup-cutover-preflight"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            50,
+            49
+          ]
+        ],
+        "report": [
+          [
+            50,
+            49
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-tool-registry-router-lookup-shadow",
+      "default_state": "hepta-systems-tool-registry-router-lookup-shadow",
+      "state_count": 1,
+      "template_ids": [
+        58,
+        113
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-tool-registry-router-lookup-shadow",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "084b624629749071fe33aa40ccec2ef8ea84313b93c7649af5775ee0e9531230",
+          "original_report_sha256": "8108fff46c96aadfaf7643d059813fdefb88a5d8e41ec05e64535f665d7d8c4f",
+          "gate_sha256": "9fe6fade2183f013bc4ede7e04146d12e425c16bbf904a37542d180155828baa",
+          "report_sha256": "614bb07e70ac27edb6907893bd32a3910c2f6dda233bd1c35937f911b287a1a2",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-tool-registry-router-lookup-shadow"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            27,
+            50
+          ],
+          [
+            45,
+            50
+          ],
+          [
+            48,
+            50
+          ]
+        ],
+        "report": [
+          [
+            27,
+            50
+          ],
+          [
+            45,
+            50
+          ],
+          [
+            48,
+            50
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-activation-enforcement-blocker-preview",
+      "default_state": "hepta-systems-work-graph-activation-enforcement-blocker-preview",
+      "state_count": 2,
+      "template_ids": [
+        198,
+        199
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-activation-enforcement-blocker-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "02c3a6177e829cd0dda91a98a7ba36fd6bf14576f38331528f96b34b32d0528f",
+          "original_report_sha256": "14cde8449a7927e4fa6cd28274bf852daffd81d2700ce4f8cad011ac5bd0d8d8",
+          "gate_sha256": "bddcd744109987053ecd433c080ffa9dee829010b8aefb39c28468ccaa9562ce",
+          "report_sha256": "7be276893a401267248dfe38e7f62b446c2a7ecd197c47016b56e873fa3d8b34",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-activation-enforcement-blocker-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-feature-flag-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "d6889c2195619767bd1a62261cc2ba1d0f502ae076eddf8d94aece90620a1167",
+          "original_report_sha256": "514f8300d5cd2eab38598b2457ef3e2c82f300787c9baf0e10b73391516eebe6",
+          "gate_sha256": "5e733b586bc121a761594e1ee21a1480b98b0bcede0a6be9cc53f74a26550ee9",
+          "report_sha256": "844c5b0742b5290e17c9805a73aec2b15df9e6c4e11a7200f9b8cb981f305be1",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-feature-flag-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            139,
+            142
+          ],
+          [
+            140,
+            142
+          ],
+          [
+            142,
+            51
+          ],
+          [
+            158,
+            51
+          ]
+        ],
+        "report": [
+          [
+            158,
+            51
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-store-enablement-precondition-application-preview",
+      "default_state": "hepta-systems-work-graph-append-only-store-enablement-precondition-application-preview",
+      "state_count": 4,
+      "template_ids": [
+        205,
+        206
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-store-enablement-precondition-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "0563d262c2fbe54d815e6fb350943aa7b0fe15c93602e8333ffb72c55ca0aad8",
+          "original_report_sha256": "6173166143ebeacbc23a682e4f7917c1a027cd0ba3eaa4e9c9d04c31a92022cd",
+          "gate_sha256": "833c4fe58f3daff9970c03a9d07a83547c3915d035a9b624a1a9ce54b6ffb4ea",
+          "report_sha256": "4110c5fa4a0603d6f10e6a6d571410d3ebb0cd4a70f0d478ad42063797ed24df",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-enablement-precondition-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-store-runtime-enablement-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "e43865abb85d55912a471a1f17c94c1239eaf92ca4ff58e40658e9ea599b6177",
+          "original_report_sha256": "be142f65d66936a2323a467ebfe238d626e6950886b78e1a085c07d2765c8081",
+          "gate_sha256": "ee10e376af28c1bc405b7e62a8ca8c28536f232a53f795fd86134cf4f941e779",
+          "report_sha256": "e6e6698f609f4d639f91337ee1f5d5b0dab0958065c040335ec17abc1664827e",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-runtime-enablement-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-role-manifest-enforcement-gap-closure-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "9f95e36d27ce2d7608840562778dd31c889b33399ce6e414c4568311643d12b1",
+          "original_report_sha256": "5127a62f8e39be0b505028437de49f181aed0054a309ba213ef20448cf822abe",
+          "gate_sha256": "0fc3177995078b73f4860d15a6a9f8888cdab8bcc23c3350800d0b5e68c0e15a",
+          "report_sha256": "f83515c9cd30c3a7a61a9de8a19ad52bcc09de38e68fe9a773d813127ce0c661",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-role-manifest-enforcement-gap-closure-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-scheduler-admission-enforcement-gap-closure-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "ebb562c9b1c110a8fe75163341b9b14068edd1e23f49114ae2d05cfebe086652",
+          "original_report_sha256": "1b777ec3061de64ddb90df088a836876e51bc8bc4bc7e263610dd29a4cf58c3a",
+          "gate_sha256": "614df76a0fa3443b659ebbf3c09a0bc615790d4d17c46a199b338e6c0e12bc51",
+          "report_sha256": "e79e5c62f2ff20f6847d0182b24ed4c454df7c74cd265f145843aaba40e82735",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-scheduler-admission-enforcement-gap-closure-application-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            62,
+            64
+          ],
+          [
+            170,
+            54
+          ],
+          [
+            174,
+            149
+          ],
+          [
+            180,
+            155
+          ]
+        ],
+        "report": [
+          [
+            62,
+            64
+          ],
+          [
+            170,
+            54
+          ],
+          [
+            174,
+            149
+          ],
+          [
+            180,
+            155
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-application-preview",
+      "default_state": "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-application-preview",
+      "state_count": 2,
+      "template_ids": [
+        210,
+        211
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "ca487e0974b9cb1907ad1e6824cb250c910590ea0e0b2c651433c655a33aeb37",
+          "original_report_sha256": "8a77b78a5bc99166a6498f3e61160ecb74e7ad154803d10ed29920cdada4a5cd",
+          "gate_sha256": "321111ed43a145a3a173b1778e157978d0a9236fab859f398257494c60c49899",
+          "report_sha256": "7697129e4a96e63f1272d2086ddafbcd4f502b9e50e230d5b2df2297229e7d6a",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "adfc1123455ab58931b95d6da289a25c2dcb76b4189d4587dc2c2c11ea5399d3",
+          "original_report_sha256": "1a713d525a13fc5b0806c1958865920f21fe12c1caa850a75067410a3b227956",
+          "gate_sha256": "430012e6e8543a75d7dc8f2bbcc84cf15592817a1755dfb9f4028da56cfc9bd5",
+          "report_sha256": "e9d276b0e75ca659dcb89dcd63ebf0aca0b9913aff1ae8fef546a101a669ae60",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            56,
+            58
+          ],
+          [
+            172,
+            56
+          ]
+        ],
+        "report": [
+          [
+            56,
+            58
+          ],
+          [
+            172,
+            56
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-preview",
+      "default_state": "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-preview",
+      "state_count": 2,
+      "template_ids": [
+        212,
+        213
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "7bbc1823c509ae6a53c83c36eeb26cc3bfd45b7088eeae7eb93180a9f67f107f",
+          "original_report_sha256": "d9d4aa38bb9b397857a86760d37d3e2127aaca1f75699e3b529e0630250e8892",
+          "gate_sha256": "4a94aacbfb19872cf4a912c32cf5d381984b9652c57c2a8c5a4a526811a31310",
+          "report_sha256": "9d574d95c75f1b7e93a26f779b6289484ee3583c38b36362e62a2ba732f48416",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-store-runtime-durable-store-switch-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "6becae8b8a16efe714c9478307819713c4ec67f2f5f92789015fb002be1bfbfe",
+          "original_report_sha256": "ac22a03d5e941e81503112c0d7339554d97ac043013c1be21d4209e1695b67bb",
+          "gate_sha256": "4abe656874c3f65ac8cb46954aef1a7f1dde4765a1b82b87576b64770943c025",
+          "report_sha256": "d15ebb52a470aec24202559646d686978d47e1bfbdfd050a58772a7a0cd326e2",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-runtime-durable-store-switch-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            58,
+            57
+          ],
+          [
+            59,
+            61
+          ]
+        ],
+        "report": [
+          [
+            58,
+            57
+          ],
+          [
+            59,
+            61
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-preview",
+      "default_state": "hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-preview",
+      "state_count": 2,
+      "template_ids": [
+        221,
+        215
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "357f4caad0628b2464a7ebef03cec0bf22ecf47bd46fc244eef40cd90386a651",
+          "original_report_sha256": "f44de8a5385dad0e3c24a7721a985503c71ac86a90478325655d873c2ee8a99b",
+          "gate_sha256": "1cfd1810e118be133284895233be80d30050ff462e5e756991089519cdf80b11",
+          "report_sha256": "268cc2a04e9714f2af8446d132789700b6c03177769e8bdcad3a844b8cc713fc",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-store-runtime-write-boundary-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "98eff1818b1bead24ae74243a0ea65f4ad03f44b2a2c9e1dba073aec80f8581f",
+          "original_report_sha256": "603c9d563418c034c94089636e2b783f23be8f2c1ab9c0e5ca6277afc5453e21",
+          "gate_sha256": "ea6e05b69ee0bfaf0a6783c0e4053bc54f537e002e5fbbd32164dd51690a6eb0",
+          "report_sha256": "d5824081678bfc9998ec75a7bff4326a49192d39bdbd169923e660546f2b9d55",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-runtime-write-boundary-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            67,
+            66
+          ],
+          [
+            71,
+            70
+          ]
+        ],
+        "report": [
+          [
+            67,
+            66
+          ],
+          [
+            71,
+            70
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-readback-preview",
+      "default_state": "hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-readback-preview",
+      "state_count": 2,
+      "template_ids": [
+        222,
+        215
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "7146a0ccd6e68ea6e4bf4290bffc7ea0c491cfe5172a747db12350c156901f09",
+          "original_report_sha256": "e40add5c8b59ee8811a7596ea27d023a1f684e4561cfac5ad2007923d3e38bd1",
+          "gate_sha256": "23a19a664b69aa0e1912e6d9b327c86cef0a93a9707e230195997fc1a92e73e8",
+          "report_sha256": "0853ea1e149cdbf31375ecd54c19a18be8f5800834dbab90ddd8d3270ad46e2a",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-runtime-idempotency-mutation-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-store-runtime-write-boundary-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "43850ff674fa3851fcf5b0b67e88ed0397724a58a4a88ca012878c7aff254438",
+          "original_report_sha256": "385f3e5c592717f7cb9d0141ab7e885e14f7ee9bc976c30707867fff82cfb5c1",
+          "gate_sha256": "9426fa9b30ea3d26ca504cb3c4dd2140da7f2a959a0fb19fe105933fa7b3a404",
+          "report_sha256": "d346284dba73422b5ae35d22af9a47af3c01319fec48ec72e0c7c2c761778ccf",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-store-runtime-write-boundary-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            65,
+            67
+          ],
+          [
+            69,
+            71
+          ]
+        ],
+        "report": [
+          [
+            65,
+            67
+          ],
+          [
+            69,
+            71
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-application-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-application-preview",
+      "state_count": 3,
+      "template_ids": [
+        226,
+        227
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "b1baabc1fe46336c6b0fa7d7480a12dd8d220bb757b927f4d6910b3175010cc6",
+          "original_report_sha256": "7bb4741b56f0be6bc5cf466fec040cf406cb6a50caa90cd526465a2b36dc1d93",
+          "gate_sha256": "a6b0b709fe3ae4239bb27793d206578491906fef6f18d0a0f0ef6f4971a271fd",
+          "report_sha256": "6c25d8b3af2160299716e5ec93bfcb1d2ea3982a8c3bf6cf06f9c882f39f13fc",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-enablement-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "c745d688f56374c8ec720a7c8ea42cb6c887f1d4397c81b8de58026af287ec5e",
+          "original_report_sha256": "3d7ef8e32364a83f3f4aaa1fdfae3b013ce7b86b0aec41817d34d25d06238069",
+          "gate_sha256": "5a2732f6a2da7f81b38cfc69cf8ed07bbc51a18fca44c6ea17ffbcf7bb091696",
+          "report_sha256": "998b9246afaa0fcdc2ab39fc5e22e77625f83f2f6fd86333839efd420aaf4e84",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-enablement-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-promotion-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "e40d826fa29b7d903745783eae63c6795ffc0cd64ac8c570fad0e19c62b35d28",
+          "original_report_sha256": "6c24eefc927d45703c04e6a3da4e6d9abcd61f7a2227eabaf034f24e50d3bfb7",
+          "gate_sha256": "8b12902ae710494e80cba61201e73f38f5fdd94f6e4054edafda682dc9b1f710",
+          "report_sha256": "24400c80be63444545cd017612fceaccb809d472ba9d65086ec1e97f324c7d14",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-promotion-application-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            183,
+            72
+          ],
+          [
+            194,
+            111
+          ],
+          [
+            195,
+            113
+          ]
+        ],
+        "report": [
+          [
+            183,
+            72
+          ],
+          [
+            194,
+            111
+          ],
+          [
+            195,
+            113
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-preview",
+      "state_count": 2,
+      "template_ids": [
+        228,
+        229
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "9e1bf6ef1262bb618a623efb3b567cc8d3007e9cc30bd6010fedde5f04a384b5",
+          "original_report_sha256": "aae1b07b99c24691058f66b0f4450167903e9fc877426906dd20f6b8fb87e3d2",
+          "gate_sha256": "d11436a4f3adf2e035d06cc36d3a08da5d5fd83885dffb562f0f66fed275022c",
+          "report_sha256": "059c9e82c39c0b5b34f564b17a82c61dfd3eb3a71a62aadb5fb38bc4021ad2dc",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-promotion-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "b5017526fdd858af43d13b7e38872e708668e73d0659bf39acafb74963da6c41",
+          "original_report_sha256": "a101482de66769d3a9497a5ffec917601c6a0ed703780baef5c116ed75fee30b",
+          "gate_sha256": "34e53c5f6279e98f7c0f21ce4162dddaf2a8764aeb352d4cdade7072c01e1277",
+          "report_sha256": "b2721fc36184236ea459c58f9ee3b072cf7ad2d1fd80f3fdef23a1904aef294f",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-promotion-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            74,
+            73
+          ],
+          [
+            115,
+            114
+          ]
+        ],
+        "report": [
+          [
+            74,
+            73
+          ],
+          [
+            115,
+            114
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-readback-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-readback-preview",
+      "state_count": 3,
+      "template_ids": [
+        226,
+        230
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "853b94135ba8f8b3d83e8a6334a330753105d4d2fdf4838cdaa24b5678535c48",
+          "original_report_sha256": "dbca935a8314a94b592b4c4fd1a6e5894e674e5c39a8d19dcc5991fd1d665343",
+          "gate_sha256": "0b9e8cf438b47ef2106e1ca350d9dda32629d4f33b1e6f102d25aa4deae3b450",
+          "report_sha256": "404f66017aca3beee11c6239fe3281912799ed4bdad4928e8f77463ce93e6d4a",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-activation-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-enablement-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "ed8bf547f99d76fda798505a384f32c4e9d6cb2d4470f741fa72c9d1d8b7883b",
+          "original_report_sha256": "712b630424588da057b208c27658e03679484673698f859567d7eda519675053",
+          "gate_sha256": "11faa736bf4d2a9633d4531db0a3a84521b660b32515928d212f5268695850b1",
+          "report_sha256": "86f0cc34d610d00a28aa24dc38bb151363f77258ad367a0ec085f7f0dbf4d1a5",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-enablement-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-promotion-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "218fa7f323d701b0371cb662d8cf8b3745fca7aa14af313ed5a2b5a936821ad9",
+          "original_report_sha256": "f515489dcd8f1386fb99a870f25eae576d1e6979ad1dca1cadc118dd24ebf5b0",
+          "gate_sha256": "9e454b4717a38869a9192487192cebdadaed4d1069b51a189e4d52bb92c0c657",
+          "report_sha256": "1739fac81126f22503af7616585cb2deb54e7411eeb012dc162742a192fc35d4",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-promotion-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            72,
+            74
+          ],
+          [
+            111,
+            112
+          ],
+          [
+            113,
+            115
+          ]
+        ],
+        "report": [
+          [
+            72,
+            74
+          ],
+          [
+            111,
+            112
+          ],
+          [
+            113,
+            115
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-application-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-application-preview",
+      "state_count": 4,
+      "template_ids": [
+        231,
+        232
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "3df8af39f6d058113237efb99e7e835123bfe25320f84c8611d1250677a21292",
+          "original_report_sha256": "40a46e386bbd0f522177c405a3ce01262c8cfd39fdbfc58abd2c4b141d77fe1d",
+          "gate_sha256": "e1ba89e6c9d0de56ba513414435418ec3645b6e5ad9bcd407fc234428bb4aab5",
+          "report_sha256": "9e6e372d32014ee9e5ec3377f6f698b97bff491d4e4664d66d6a69e1b11523fd",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "3803cb02d67a47fe4688bbb6ae7d31f4d81c9dbe2357e93e4158e4dff124461b",
+          "original_report_sha256": "8a0765ad9fed85de714d9a896b869d7f605c13228383dd11ff19f8301d8dd945",
+          "gate_sha256": "0e720c4b59535b97536537d78600fcfc5909a2bc9a7eafde616d8276b2601c28",
+          "report_sha256": "aa9fe8612fbbf3c713a91995edcac185affd12a7f1bd667cde04a38b8f43a973",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "eae9d2c48d46b14a256b8c1b2f18e51b1b18505c4d67a2d76d25777a135fed19",
+          "original_report_sha256": "e66f5a9430cea83e1182584df75bfa7490cc9c28d14ee6aa80f6bcae9a6ea0c3",
+          "gate_sha256": "f146a592536f2c847fccffa2669943a83ca5b7b56a2a1dd0837528d865b83b0d",
+          "report_sha256": "59bce1c74813416eadd3f3282cd78885ca69cb721464fd73e56b2fcb63fabd42",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-operator-review-packet-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "bb43a86b6882127eaf864eb929fac0eebb503812f06ece0b05120b68d0ef0abc",
+          "original_report_sha256": "2816a0f61b19b0fa9c2ec22f651a142da8342ed5edcfca666d80091c8438e8dc",
+          "gate_sha256": "cff0546a39b5d54e3df521130f3e8639a9e02c1f6369e6d97b089d022b9c7c51",
+          "report_sha256": "62e9c92d61ea01744db1587acc5d8b8cf5f35a4f99c68dc7db9bda95d1ffe296",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-operator-review-packet-application-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            184,
+            75
+          ],
+          [
+            186,
+            80
+          ],
+          [
+            192,
+            105
+          ],
+          [
+            193,
+            108
+          ]
+        ],
+        "report": [
+          [
+            184,
+            75
+          ],
+          [
+            186,
+            80
+          ],
+          [
+            192,
+            105
+          ],
+          [
+            193,
+            108
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-readback-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-readback-preview",
+      "state_count": 6,
+      "template_ids": [
+        231,
+        235
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "a2e7ae8f408802ca5346389c67de487e9b691444ce62b923681afa930b687f06",
+          "original_report_sha256": "89d186d0f8fc2e52e1106d06714236c446caf6c8c80b8352d8d6064d5dbe577a",
+          "gate_sha256": "54b2663daae3e11d6fbc5b69b64929a6d4cebcbbf42b699e3c46f504a3a17773",
+          "report_sha256": "810a74e5eedc3e1db3bad198a173d7d59b2d6f3e33312ef96b727206358d58dc",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-adapter-projection-gap-closure-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "123058709052d8464ab28036863472026d2037238396400b13ec703c5383ecbd",
+          "original_report_sha256": "e37f8c01f9bc42f40a7ed43b1f919c91113618f51c5f6aa15919de87f12d0f6a",
+          "gate_sha256": "c3da9ed6de95befa5567d85edd37b32ab7dcb7506d1f05518cddcece8b7852d7",
+          "report_sha256": "d35271702ba4d45ffbc713fc3accf434a6ef01ce6aea0841d2da77b9ef9863d0",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-replay-readback-execution-closure-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "cf0efce4381af9e6417d341e9d32ce63abf4ba57cf4973b7873d645090756582",
+          "original_report_sha256": "557caceef32c5fde0a43c75b1d57fcf9aba81b19647880713986a29cccce4be1",
+          "gate_sha256": "a991d5b3c5a8e780985a2bab9ece302821afb80b4cef4b99adbb4d6a45754f62",
+          "report_sha256": "75d7ec663cdfde39b1bd7e59307f59d121040dbea29d0ac66464f71180b21d26",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-replay-readback-execution-closure-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "88022cfcc56e4e76addc16e8b8d97f39209d7a37ef8b09a26ba1a27723949027",
+          "original_report_sha256": "f8332bd1606739e24ede70a4b74fa6d2a25bc08ce2f365a70214d3368fab29be",
+          "gate_sha256": "69e6b90511f75c8a95761a44ec4cf813303d0a0f2ed33cd3d04798462e181f99",
+          "report_sha256": "7a12464c3af014eb1e66950076c59887d9f5587ed66192b2acc73053901354df",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "fb7b4e353552001e811713be7e58ad5b8e2bbcc79d8eb59521947e0e746b20c0",
+          "original_report_sha256": "f3a57cac29b99f6f8b67c547b524e1bc63c6a76283b371e5afd1a748d89cb28f",
+          "gate_sha256": "520e200d76fd11413e7a5528ea5f32ea7b5d7f267d1f528aa200fe28546135bf",
+          "report_sha256": "04e8fe51eabb6dbe7414adef9810d4baf2713a482b18a5c02b941eeb23c9ab77",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-operator-review-packet-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "a264888db7e87fdcd000adad8b37b2bae4098681837aacce7f21b52bafcfec70",
+          "original_report_sha256": "e2fe545a4c62371e44ecd9fbd6035bd69eb0a17c33ed561490bd7af58227ec13",
+          "gate_sha256": "b9a1167abdb15b92695d717452613d63c4c773490bf63b1802b7818296ab7cc7",
+          "report_sha256": "02cb520289a1889d58facdee6190c6a7fce6d0ea7f5f3cf189972276d7bd028a",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-operator-review-packet-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            75,
+            76
+          ],
+          [
+            80,
+            82
+          ],
+          [
+            88,
+            90
+          ],
+          [
+            91,
+            93
+          ],
+          [
+            105,
+            107
+          ],
+          [
+            108,
+            110
+          ]
+        ],
+        "report": [
+          [
+            75,
+            76
+          ],
+          [
+            80,
+            82
+          ],
+          [
+            88,
+            90
+          ],
+          [
+            91,
+            93
+          ],
+          [
+            105,
+            107
+          ],
+          [
+            108,
+            110
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-application-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-application-preview",
+      "state_count": 3,
+      "template_ids": [
+        236,
+        234
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "ed1d8d58909ded27d3e6d63baace98c287299c7f96e8bc67b8a4e1ba7d1e0197",
+          "original_report_sha256": "a2d308396f52571e1291b8b21abd063a2a9f898582c21fb42b1290d5a391ab90",
+          "gate_sha256": "c408d5c7deda69332dc542a7373aee4445e55cbb8365ca8b87c22a97e2cef156",
+          "report_sha256": "8bf686352fd656cb5c51766d77c5734ad743cb8d8e6940d870f5fae35579c0c6",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-closeout-packet-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "75bd3685daddb9f317315cf19b535a2958ce72a089492762bbe2d84082e853be",
+          "original_report_sha256": "3053e93d77c3670b871156ee490589e9b5856c9e658ec9bdf2fe495e75d719a2",
+          "gate_sha256": "08cb7dac4c2b62bb90230f4dc66854d7319244e59c918fac59f31a81c29392e1",
+          "report_sha256": "6278eee7a19204a8fce74ff1de416ea6ec72debf99d3f23045767929063843ea",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-closeout-packet-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "765897fdab5f0f02acacc663edc1ffdf0ea9f06ca92859dd8343d4abfb1c5697",
+          "original_report_sha256": "797bb70111d1a8d0237fa3c8cf67841f005c97974c975fd987ae41c10189dfcd",
+          "gate_sha256": "764d0c377dd7dbf07d7b98aa942a2a1ddbdfec669780640ad61a031c21973d29",
+          "report_sha256": "183dda7936174998b36e31556010a96db1913e3f6e69d9f98035c279f9b8b91d",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-application-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            185,
+            77
+          ],
+          [
+            190,
+            96
+          ],
+          [
+            191,
+            99
+          ]
+        ],
+        "report": [
+          [
+            185,
+            77
+          ],
+          [
+            190,
+            96
+          ],
+          [
+            191,
+            99
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-preview",
+      "state_count": 3,
+      "template_ids": [
+        231,
+        237
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "6f9cca4f13ab8743ac4c461b0be9d4657c7375cc3e1a0399636f36d4a582d9de",
+          "original_report_sha256": "cdbf15d7186481de7a0fd43189dfa2f0533bfc8db900b88bd67b55efade9d03e",
+          "gate_sha256": "da68d19033c5ffd2bb62db579f018a8961dfedf7496024d79bd9749f6807e8bb",
+          "report_sha256": "b85addf318d8b38422a131cf48798f3fa0b734c3e34328c1a0f72d6ed7c7dc5e",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "c1d250c34d3d727ac5d3f14f532881fddde1d337e3f65e582c276cfca4df270c",
+          "original_report_sha256": "c319d1cbe7f7e4df77edc4be1ef3c3a3ee510685b403ff379298869a63e4d661",
+          "gate_sha256": "613241b7b171cb847d67b4b5ffc8f6e29ff32853d964d26da26037ba1ad34965",
+          "report_sha256": "0ff98a570c31f30e14bce2a9bb5c02a03f9efbb66c9cbd34043141d4228bd5da",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "03f1f06232c87ed1ced7f5525007c9297b3044b47ae8f8473cb722862603fc0c",
+          "original_report_sha256": "f91d4eb2ec29acc43f6ac19857b1ab2b6c5c31cbbd37f5cfcf7a43373e3cbcc5",
+          "gate_sha256": "ceb265bb88e57dbc72ca2e7546caaa3bf80c5cb3d6ab700c20abf62c219265a1",
+          "report_sha256": "f88890d020673ee51ddd372293d24d1aaca6f6e525a4ea5484d9ed51d67b44a0",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            79,
+            78
+          ],
+          [
+            101,
+            100
+          ],
+          [
+            104,
+            103
+          ]
+        ],
+        "report": [
+          [
+            79,
+            78
+          ],
+          [
+            101,
+            100
+          ],
+          [
+            104,
+            103
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-readback-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-readback-preview",
+      "state_count": 4,
+      "template_ids": [
+        236,
+        232
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "4b4606c46ee7036f1a693c71a5c9900cf77bd5656fe9dd99924de940aa68a1a6",
+          "original_report_sha256": "4fe5e9ce21c3b8f94c45636ecf12889cb4e1660b5ccc7da3f78df63af15fe3fc",
+          "gate_sha256": "b181ca838e70d757f6d3c2d3cec82b26cccf8178bed0eb8c70f4f901d47d827f",
+          "report_sha256": "5ef2235efd12675b343b4c558cd9bf1e53d3e2edb695638e4ed25acf5f2318c4",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-append-only-events-enablement-closure-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-closeout-packet-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "a48241791e6c9704e4bf7bf54611868b9d14c1692eeaed578965cf43fd7d81ba",
+          "original_report_sha256": "673309c86e0b30880fcac92d30bf59a5e2fc76b7bf19a7380b73a3302c1d33f1",
+          "gate_sha256": "e88b4a83e6aee86a4693becb7d6c8fa36df2c9efbac8c881a3dcf15cd0490ef1",
+          "report_sha256": "c0256f78740f9bc5c455914fc4ce1655940a73e731da464aa4ac5587907a4ad7",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-closeout-packet-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "251bfbcaceeb47141a6a335fab18bf3ca647916fa00837f079f8de07764c0242",
+          "original_report_sha256": "9885c239e0b72f4cb1fd46610dbaf56036939546c44ec9152d7418f718658838",
+          "gate_sha256": "ff613f419461e0c86046c3666c5ff27e59bb08ba5d8aa2e41df1edcdb675b81d",
+          "report_sha256": "3979cf2872ec58967ecfa5c9f7af06d6a4b754ed46c3a2e9a5a08dac9e35e19d",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "9126e2fd2a9fe11867a09213ae0b7e014bed51a4a3f5414995a8d0eaaba9b3ce",
+          "original_report_sha256": "829250016e195ae76eed68de821c38c5b8f710ae66d36964a0b96d42ff875d8c",
+          "gate_sha256": "2786e0e05c402937d5c81583612b6bb3c4dc3067c3759b30d4cb1a3b76052a6d",
+          "report_sha256": "efa226717f6484d5161ccd0ce66fb6c705e7420153bd14e79d374cb0e2c67708",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            77,
+            79
+          ],
+          [
+            96,
+            98
+          ],
+          [
+            99,
+            101
+          ],
+          [
+            102,
+            104
+          ]
+        ],
+        "report": [
+          [
+            77,
+            79
+          ],
+          [
+            96,
+            98
+          ],
+          [
+            99,
+            101
+          ],
+          [
+            102,
+            104
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-preview",
+      "state_count": 2,
+      "template_ids": [
+        233,
+        241
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "73881f437375dd3cafbba5e2e5d4414487506cf9f946acf03f7de80d5d610c6f",
+          "original_report_sha256": "43bb89828aa90f98dd23711ee653eec719c7b265055ef15c6316307d62ee65aa",
+          "gate_sha256": "08da6c3b8ca3b893bcbbfc7af26281184e510a8f0cc4420e8532feadbb2a7409",
+          "report_sha256": "0950524f37ef53674e60ad953477d07047bf20995c8684b182d60b261410bad9",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-final-no-enablement-readiness-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "49c330af884c1d0119718c6df650b2f3fb1fc19b7de94d7913e15d07af4177ef",
+          "original_report_sha256": "97c7f7156a9c559e53836b66a4625e2d11afbeca13eb62a7629ed16408f2583a",
+          "gate_sha256": "9bdbc0945111dcb3ab2cbb0af349301d6bb1a240b6054ab224e1b5ae721bb3aa",
+          "report_sha256": "51f73ee8f0bbc9152575a331e969c7cc9139d69be04d4e3ad9f44f45ac2269a3",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            82,
+            81
+          ],
+          [
+            107,
+            106
+          ]
+        ],
+        "report": [
+          [
+            82,
+            81
+          ],
+          [
+            107,
+            106
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-application-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-application-preview",
+      "state_count": 2,
+      "template_ids": [
+        233,
+        235
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "5d93f95d1476ad923c659818d8d1a8598b425b0d2398d5a73ef73734caa210c5",
+          "original_report_sha256": "844d7eaaf496223eac720d1323ddf3d1ab1e7f1d6beb6f2cd746ec6e72b1cd3f",
+          "gate_sha256": "c8bd50c2e0af0be9cdbbd648028b1e78b73cec49b5dee05a294fa7b2284782b2",
+          "report_sha256": "592cdc3b84e9ffaf23fd4b930ac034e6a2d9742647a2852200f256cf45320771",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-side-effect-lock-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "224759f16f74e03bfd4b7ebecd673478488cd3c3d9080e6d621a0b5706a92542",
+          "original_report_sha256": "1fb2fed26f738b6f6b08af2dcc1f263d6ec5ed2a8a6fffb2ce098cf5aa2ea6c0",
+          "gate_sha256": "98de04a1ccf3b5ea7bf9759e946e277937eab8f3f3f664b37b8e07772bfbeddb",
+          "report_sha256": "a44de584b27049818e783c1b453cababe5ad861686d7a7bffc3e75b25eef2005",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-side-effect-lock-application-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            187,
+            83
+          ],
+          [
+            189,
+            94
+          ]
+        ],
+        "report": [
+          [
+            187,
+            83
+          ],
+          [
+            189,
+            94
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-readback-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-readback-preview",
+      "state_count": 3,
+      "template_ids": [
+        233,
+        229
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "1d16873f270237822ba2ae85841c42f40306ae61cde5d66887da55014c148e56",
+          "original_report_sha256": "06e7fadf3201b65dde789a76f33fa199c5fe552ed0a236a4c5b5fd49079b4c13",
+          "gate_sha256": "225dddf1fb1a1dbdc13cd6f6a749c72e3f4626fc5f28faed8089fa5e344d74b6",
+          "report_sha256": "8975daf3885ad0595fbf1a49e22fb4e5981eb0d19069378eabbf6537798511f5",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-no-cutover-guard-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-operator-review-packet-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "7fe50d6cb4bc7ce4b13f9f73733996b1bfbde1e407ddad29d510a4bfce0a4849",
+          "original_report_sha256": "ffd4cd045c920ed317c53faf884a27b0a28fc93d65612460595ec57c3e4f3be6",
+          "gate_sha256": "fbd39490f6d8f8d44cc6d18ffcf3dd5570bb085ec53937d0306c4938dd88012f",
+          "report_sha256": "d27a31f7427fe76213050e46a62c47a5d897f9a9f1486a2d0e0c586dcc46de8c",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-operator-review-packet-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-side-effect-lock-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "3f5b4619f2939c2f79609efe165903df97e7ef4e9960ffb7c0fffa0799ab503f",
+          "original_report_sha256": "db471c2218d801720e4c3032c778bf6205102cd5c99e0de68e6f584c10f904c7",
+          "gate_sha256": "504c902cd48b51beb85c2f97e278bb13f9aa5e4fb47aa8389b782536ff22d9da",
+          "report_sha256": "861c115b0cc94cc07eb739d50053ab47534b11534ce9af0926145bfcb2d963af",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-side-effect-lock-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            83,
+            84
+          ],
+          [
+            85,
+            86
+          ],
+          [
+            94,
+            95
+          ]
+        ],
+        "report": [
+          [
+            83,
+            84
+          ],
+          [
+            85,
+            86
+          ],
+          [
+            94,
+            95
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-replay-readback-execution-closure-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-replay-readback-execution-closure-preview",
+      "state_count": 3,
+      "template_ids": [
+        233,
+        237
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-replay-readback-execution-closure-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "7013696e68ff18052059273b3b668e76612d6b3a23cdda2fdaba8533e77c690e",
+          "original_report_sha256": "2af366870f6cfd3612200eb5df7ad56d5b55e0d52b47c3f2914b6fca5aca2af9",
+          "gate_sha256": "16ee5380296ef6cca9b8ff9a3e697a6df30e194425204aa498581653a9877a3f",
+          "report_sha256": "deeb994040fcadccf8812956bd86f3829b167023055b509cd589226c39e41539",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-replay-readback-execution-closure-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "600112c00dce30f1a1722ae2e0859b2d46ecebd5a2f2ca446a973273e4fcd9d3",
+          "original_report_sha256": "84ad09e6c99231a9f92af521809797f22a25c1d9b6a749b07843a3dec0e67d46",
+          "gate_sha256": "398a8c7836f307e9636450e6e27876ea3d31ac24e74400a0399324c8a7e8d685",
+          "report_sha256": "cdd71fbce3e8da1fbd4494ff48b373e0e908d3fef47548d12aecf2a124c6e8af",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-operator-review-packet-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "6fdf9bce7a633f8378ba7d951c9d9894c4b1bec7d0e1e63bcde80c562bea803a",
+          "original_report_sha256": "e00ef6a228bd9307d0fb2ed1dcaaba7dd63a4603624103b648ad9e55ba618c3f",
+          "gate_sha256": "eed7a4c3bd470a6400eb0c94dedf6441db1094ae17a992d1e073289c71b50588",
+          "report_sha256": "95fbabd8ec0bb90086100dde13c5cedb7200091872de03ae20b4cdf4bd2f459c",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-event-store-cutover-terminal-operator-review-packet-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            90,
+            89
+          ],
+          [
+            93,
+            92
+          ],
+          [
+            110,
+            109
+          ]
+        ],
+        "report": [
+          [
+            90,
+            89
+          ],
+          [
+            93,
+            92
+          ],
+          [
+            110,
+            109
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-preview",
+      "state_count": 2,
+      "template_ids": [
+        254,
+        240
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "33cd73ec781a5139e67ebdeb597005f1a16d04a40cd0f75aadad2a8f292f78ff",
+          "original_report_sha256": "49322a8f8ea4e511031c61d8f22f0b38be121479943ed01b6b1e76d741127472",
+          "gate_sha256": "c87c17f571bc01f5ca4b997ac7e37ae3a1a25aae4d0c433dcd483ec043c073a8",
+          "report_sha256": "2abeb3a564e2fe42456108939ea77e55f76c92118ab3b5c827c3fc98c27fad1a",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-replay-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "127f01f923b861d2dfd18f8e5cdc30d5afe5647a4d34f42aa121b92ed37b56d9",
+          "original_report_sha256": "41d4afade3f5fe65c349a595b71549ac4afe7686359c55a4a983b4f8ae220a9c",
+          "gate_sha256": "b2a9da12009c8146656767076aebee44936f8f2e365c1913127ba86acccbb86a",
+          "report_sha256": "6df5aadb9028cc87cc11c30c749ffac9179ce75ca53998fb0afe16d2eaf5e8bf",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-replay-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            118,
+            117
+          ],
+          [
+            121,
+            120
+          ]
+        ],
+        "report": [
+          [
+            118,
+            117
+          ],
+          [
+            121,
+            120
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-readback-preview",
+      "default_state": "hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-readback-preview",
+      "state_count": 3,
+      "template_ids": [
+        228,
+        255
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "a3275bef77c484d4a5847c1126d6cb4f91e3c05d312d6aef9327112fead42ee8",
+          "original_report_sha256": "26e4e216300e5019da12f3a67f2c8f2d829035c15fb979bf9c9a4fa4d376cc8d",
+          "gate_sha256": "de9223154c3517d54059ec1782f5e56572f0a9465006c44e5ffcbda423077768",
+          "report_sha256": "1635b60a259a202630f38a61abb538678abebfe75d41d9442791a28a89e38eac",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-persistence-guard-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-replay-readback-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "3459beb56657115fdf050ca5df5c3fee73ee28641de0c4bff27e2b981723206f",
+          "original_report_sha256": "941788e72a4aef30b4cdca3099fa8ff25269bea2262d1289d976c28799eb6913",
+          "gate_sha256": "19ce1301c7a0cccd47d7b865fea1eaa0e97b99ac3ed16c0a28dea0943476d5c0",
+          "report_sha256": "c0bf5eeaab7497ae7d6d392c93c1f47b414439a9b94d8c4eaa50ebb89ff48589",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-replay-readback-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-append-only-work-graph-events-shadow-write-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "1c5d0742ffa1f6a3cbbb618050b06ce5e25f23189bdea2ce8022049dd57306cb",
+          "original_report_sha256": "bb3e766ab30c8a447cd784c39712279c48912d19ad855ea68f9e15b76ecbf8fd",
+          "gate_sha256": "8b59b72c70f20744e5b0e2dcdc51c9f675555c4096a0e3905558e4d72a5be0f2",
+          "report_sha256": "5d61484ea6dceff4a5ea3fda08271b0d99d0b296fbd7a0be12e487f6309e17c8",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-append-only-work-graph-events-shadow-write-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            116,
+            118
+          ],
+          [
+            119,
+            121
+          ],
+          [
+            122,
+            123
+          ]
+        ],
+        "report": [
+          [
+            116,
+            118
+          ],
+          [
+            119,
+            121
+          ],
+          [
+            122,
+            123
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-persistence-acceptance-authority-blocker-preview",
+      "default_state": "hepta-systems-work-graph-persistence-acceptance-authority-blocker-preview",
+      "state_count": 8,
+      "template_ids": [
+        271,
+        272
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-authority-blocker-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "b183302ae767b8cc6bbd39615e0f889d36bd16cf086a508ab7c85cdfd97e2543",
+          "original_report_sha256": "755e028d47f217d735ce3a633070ce9d1ab895d20b9ffd9e15a4e50571d19f32",
+          "gate_sha256": "b2b0f0f4eaa4bca8675c02613c1ce963d7f0b995e3ede7e24012290abd7cc0d3",
+          "report_sha256": "4b36eb2f21d555c8d3fd8963ac41b95457aa5ad73ea69c7fd014abe3d320f9de",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-authority-blocker-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-record-intake-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "d0da983d2e0b8a0118d5a32b274b6fe531335c5a536701c8946fe9192cfc198d",
+          "original_report_sha256": "09224e6888eb531419254648eac553fd8690f687f443d96e7fe5428c74a62f4b",
+          "gate_sha256": "b097d99d064959aaa0444072e456c0bd0c22425213a89b8f366692743b577e03",
+          "report_sha256": "b26af5ded86d50194fe2eec779b85ad817072392814e14181067ca5048f81564",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-record-intake-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-record-receipt-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "214fc8c64cc382b1c26fd6ad560f912719d2b2d6a7e008d8661da99580f37820",
+          "original_report_sha256": "767816b12bd112491d9d07bc0439e55623850eac8a5d31c262e9db57acb0849e",
+          "gate_sha256": "772bbdbe64664f80c08f8241e8c14791d15458438d565d2c632f43692a8b75af",
+          "report_sha256": "d3ac0f7d92e6c799f99248d2d5328230295f8710601220059b6952c2d7e2e9be",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-record-receipt-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-canary-dry-run-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "22ea289f56d09558aa4881569cd5c92ce37105a34eab24b7c7666320a30eb33c",
+          "original_report_sha256": "af21be92041da8dda16b011188c51d6f3a79242448048ffd0a276faf6fceed98",
+          "gate_sha256": "3ee1ff20cffa5b10f3fa803ea635d76020db5cabf9ddc99240b13899035585f9",
+          "report_sha256": "9c3e8018d1ef2f630217dbcd277370f3665058d676fa727bfc7d2a1ae272f2eb",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-canary-dry-run-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-canary-readback-receipt-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "e2d0d1c50ecd7bec62ea35a3aa6e66808da027e0e2a4a7993322e0418f50a397",
+          "original_report_sha256": "f4afeecc22bb9d4204ec47c31813292aea0a7ed1b9e1d1a8af413c8c8df2decc",
+          "gate_sha256": "4f35ea82a211d47377def900c561a10c7669ee32444c86ff0b4b70ba03256ca6",
+          "report_sha256": "a3cdc7266f6c83bf54ac7d677fc6804b811a852e0d6463485b4898affecc950e",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-canary-readback-receipt-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-enforcement-rollout-blocker-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "f54fe72693972ca8c1e0c386d463789059437c7e881830fbee20fcbbbfa748cd",
+          "original_report_sha256": "ad8dd46b033b184c1e510b52ee63a890e17cda470478ff8d40bda1f6fbc86fdb",
+          "gate_sha256": "da43705fe101435629c694309ed858f50803668ca034dba769df41c552090ca6",
+          "report_sha256": "31782b798bf97fafeb5b61e461aac16add010ce4cd08fc3e9b0f655890c94e84",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-enforcement-rollout-blocker-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-operator-readiness-packet-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "016550960f6b55b627433c0dbd7ff84387ab62e4eff9403a15e6f10d315e4547",
+          "original_report_sha256": "b46f29c98d28222abe49a25735c0c33d7db9ff1b0068a2d13e2b4d588ccc2f4c",
+          "gate_sha256": "b8bc8c3c0d0b0900e2e0efcc3aa15f367ac3870a6fb4617847be61a251c17cec",
+          "report_sha256": "1f31024ab659618e450e9a30e21298470204feb5a49e6eeb787021e0ce2ab368",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-operator-readiness-packet-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-operator-readiness-receipt-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "5443975b4e20cfeedf22131c5db261adeb9fd9390509f9ae20bc0edd1efb436f",
+          "original_report_sha256": "76617b9ffebafe672cd982b5e6084dcb57a0231f0c79990043bea4fe718f6a33",
+          "gate_sha256": "baaf4ea06695b9a2383fd8ec54de0d927eac164590c93b8bf7d8dc6b53223489",
+          "report_sha256": "890c09d90c35c879f91b67a192fe4d5f2c79e3d4993fc8ff883ea091fc1c8585",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-operator-readiness-receipt-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            136,
+            125
+          ],
+          [
+            137,
+            138
+          ],
+          [
+            138,
+            136
+          ],
+          [
+            140,
+            139
+          ],
+          [
+            143,
+            141
+          ],
+          [
+            144,
+            145
+          ],
+          [
+            145,
+            143
+          ],
+          [
+            146,
+            140
+          ]
+        ],
+        "report": [
+
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-blocker-preview",
+      "default_state": "hepta-systems-work-graph-persistence-acceptance-effect-application-blocker-preview",
+      "state_count": 4,
+      "template_ids": [
+        273,
+        272
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-blocker-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "01b3cbbaad2e4ce5f5e15e394c8d16c5c41cea3f801c922f3d27d3547b9f5548",
+          "original_report_sha256": "2db65c26441657c76dce1e94afbe7ba301ff8f3a4d2cc11fddd336121cf9c9a9",
+          "gate_sha256": "7ff17e3a759a9e7c6f424ae001e0ac54408a1fc9e5cf2ee775f4e790a9c98539",
+          "report_sha256": "40d99ff859e58b99c6bb56aa863aab8778f7a5d380a7995507f192d233f33077",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-effect-application-blocker-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-record-receipt-acknowledgement-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "4b4f617f2f237d7f4f446a5f7581b24743a3f36edf2b3eac02e96953c7d4f23a",
+          "original_report_sha256": "5377098d9b45c653d4c6dec74300fc8dcf44e98fc36b4c14daacc49a16139021",
+          "gate_sha256": "039e4422a471ba9b3df44c492b5ededf912007641ff1cd67d1b51b130a2579b6",
+          "report_sha256": "dd206ece78b57e80ddc7b6b44ed19eda720e9349eb2377a0d47c200cfac960e3",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-record-receipt-acknowledgement-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-operator-readiness-receipt-acknowledgement-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "1bbea96de8387db7f3f3dbc624dddd9f0749ed9be34110bd64a1144c15455d6a",
+          "original_report_sha256": "57be14df2f24a28a5483ff3ea8244e03b5eccefec149f8223acec6b6686df6e7",
+          "gate_sha256": "0580ac89976b725ab6e0a8279b67c041297301fdd8203ab2e8bd77bf4d5490b9",
+          "report_sha256": "3b4213900e44740c3649c54338b395cb627666bb0a522d58bb0e3c0cc5ecae18",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-operator-readiness-receipt-acknowledgement-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-shadow-live-readback-comparison-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "4d96985ebebb5022356f860c7ef509589a609958520ed46daa34ae3526a5a408",
+          "original_report_sha256": "8c57d24cbd79c8cf4ae7f5d6feaa22ca7313e1fe82bda68f1dd3fb14b9711d69",
+          "gate_sha256": "33f02f54630b6ed3588697b8061a6f2764892b9ebeb3b6ddd161ebbcfdfaa6d4",
+          "report_sha256": "8dee40cd3b2e3fd4dfcc1fc99759b3c5defc33e85493ce342a0f76a66c2bf139",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-shadow-live-readback-comparison-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            125,
+            144
+          ],
+          [
+            126,
+            137
+          ],
+          [
+            127,
+            126
+          ],
+          [
+            141,
+            147
+          ]
+        ],
+        "report": [
+
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-replay-idempotency-preview",
+      "default_state": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-replay-idempotency-preview",
+      "state_count": 2,
+      "template_ids": [
+        276,
+        272
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-replay-idempotency-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "2a083b3ce356bd040309e3165f23a50d976e3ead4c4c4eb1180ee48d3acfe70b",
+          "original_report_sha256": "6b1279a5c45c6bc3f145c5bd81a1b4ea5086c35f22a5d136df44ebf78c40107a",
+          "gate_sha256": "a215c3658c1e024d12d78a3454251f9e9010c047e2dca0b5702e40a7fb8b7c3b",
+          "report_sha256": "0da23b0207c0cad137cbea36bfff54826db36ee165f9a66868ce0ee0225107dd",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-replay-idempotency-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "498827976ec06377da62017dea14dc7b1ba4dfb2d4bbbddcc841d2b484447c9a",
+          "original_report_sha256": "268c58b97b7766006c75f3829fe682bd8bf37ce468b0ade892911b5f6dcc87db",
+          "gate_sha256": "01cb58a885e35d2efa8c8f57da4946725dd87e15a02ab91d0fa237494f2b016b",
+          "report_sha256": "12d5ecdde37125c4a92f2fe76b02b65873922074992be4ebf049c4fd928b740c",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            129,
+            128
+          ],
+          [
+            135,
+            129
+          ]
+        ],
+        "report": [
+
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-preview",
+      "default_state": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-preview",
+      "state_count": 2,
+      "template_ids": [
+        277,
+        272
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "ca7ef8defd719886f920593ea0d2dbafa7d306b72318d8e82aee4980db0c01fb",
+          "original_report_sha256": "dbd16011a9459048d95da218664051742d0620b8c8466054b7a52478958a22b9",
+          "gate_sha256": "ae9831f924d1fd182e2cd2a760133de826aa622a07affce96c9d9cadf7dbfc50",
+          "report_sha256": "40bbde776dd037fccf08889d19a88d390016394540e8a781bec6bb4ee9193f21",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-receipt-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "ad6ed15d5b1aa569aaed3621f49cb2a9d74264f772ef05527eff8bf3e0863ad1",
+          "original_report_sha256": "b25612e5d80545c87a5e8f0703f57bf4e3f49866bed5e3354b3fe708d03921db",
+          "gate_sha256": "d9aecaae7e57b28da65a1b06f459199aa35f9249c3e9fa2f303b7f6200dd45be",
+          "report_sha256": "91380e70f63872d9b7f9d86ffa96e58dba64eb1ac2da0f77548464d08443b6cc",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-receipt-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            130,
+            135
+          ],
+          [
+            131,
+            130
+          ]
+        ],
+        "report": [
+
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-acknowledgement-preview",
+      "default_state": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-acknowledgement-preview",
+      "state_count": 2,
+      "template_ids": [
+        285,
+        284
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-acknowledgement-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "9f8207ec54946e61282cf049cc8fbfbf7e356a649494729f2b6e96ce23d118e8",
+          "original_report_sha256": "271e49410f3116aa45b5591b35077ad6a018bb53a721af1f113b160695dfab8f",
+          "gate_sha256": "43800b8a996f28a66bb73dc65b6fd1ed7a8849e3673f94ccbfabc65c982f3a9b",
+          "report_sha256": "4a236fb253a0dd16c6271f199ade007f2bc7ec6c587f0d42a81826fc3125cb4e",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-acknowledgement-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-receipt-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "e69bea70763bad59f86d602e8cfff0e57083f240d072158642b9410db76cd2ed",
+          "original_report_sha256": "57c292551767db0f0fface65992356de8a356dfcdeba4e3aef860b68de40d5f8",
+          "gate_sha256": "972e9c3fcbcfe84468e237e4466dbef68264c970a3ec5b67591d219d0e9f7db7",
+          "report_sha256": "e048cbcb2a627655dcc192134700c82a31f9d490a63d1aa7ff8fe682963a937a",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-receipt-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            132,
+            134
+          ],
+          [
+            133,
+            132
+          ]
+        ],
+        "report": [
+          [
+            132,
+            134
+          ],
+          [
+            133,
+            132
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-role-manifest-contract-preview",
+      "default_state": "hepta-systems-work-graph-role-manifest-contract-preview",
+      "state_count": 2,
+      "template_ids": [
+        198,
+        265
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-role-manifest-contract-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "fc63a7c2b92ed0e671247593e39d7cebddb72720124d9c36dfcd68075f27ef3a",
+          "original_report_sha256": "9d950395b72f4e13f7b68b522ed264b24c26c9d1a3433fc8a8b54579acb6c3c0",
+          "gate_sha256": "b515e3dfd6b2fa600b4618bdb9280113a9d66260b09101740d4a53aabc95c3d5",
+          "report_sha256": "01505c76ab190e51aa5448b021fdb40a4ed41c429944be24362274519ebe05ce",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-role-manifest-contract-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-unified-state-store-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "60f6ab9376c5ed571cc888c5da61d2595b61e02c12a90c4a1a78f37d8d788848",
+          "original_report_sha256": "68547e84f1c233507494d9f872c3b5acd99fb8021be5bec412c75b83d1c8cf8e",
+          "gate_sha256": "148e9092bb94a307a828bec1cc55440b57cbbd06965c6efc5178d8e2ca8f9b02",
+          "report_sha256": "da0a3cf5817e5fc03ac10783a48f330f42050b699bf62b501dc9a4c07000f16d",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-state-store-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            52,
+            199
+          ],
+          [
+            150,
+            148
+          ],
+          [
+            199,
+            148
+          ]
+        ],
+        "report": [
+          [
+            52,
+            199
+          ],
+          [
+            150,
+            148
+          ],
+          [
+            173,
+            148
+          ],
+          [
+            199,
+            148
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-role-manifest-enforcement-gap-closure-readback-preview",
+      "default_state": "hepta-systems-work-graph-role-manifest-enforcement-gap-closure-readback-preview",
+      "state_count": 4,
+      "template_ids": [
+        221,
+        206
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-role-manifest-enforcement-gap-closure-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "3a054251a7e78cb4bf4a62880e7e0a88ed9fbe44b06dae72ffc3a33572bcb75b",
+          "original_report_sha256": "6f88a6a02ecabcc9e6cd946a3230d73c2bec9b8082a942d6c147bf28be25f665",
+          "gate_sha256": "305dcc373885b14dc01cccee25d24e1d0140cb500bd1d4e2f67a6c24fdd7c6fa",
+          "report_sha256": "7af24556a0adb58d179472946721b5d657d13a2553245231c79b1b70c247320a",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-role-manifest-enforcement-gap-closure-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-scheduler-admission-enforcement-gap-closure-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "cd11eef115495ae77582b07c71d4854c698857d791034c9cd299953e4ee65fc4",
+          "original_report_sha256": "9622bbadf072f978969489bab42a27d657d1250cf42c7b1c94e8962be373fe49",
+          "gate_sha256": "72a6cfb147769d1d0d2907822bf259d74be03032513278329d7afb609e12d131",
+          "report_sha256": "4ad8e5ea3647d1b6324d444f5ca98eac4083cf4e02d64f518d11913dac091482",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-scheduler-admission-enforcement-gap-closure-readback-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-store-idempotency-guard-gap-closure-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "99cafbacc18649ba16ce35d68e64b84d3943dd2d7578426eb4970a8b854485d9",
+          "original_report_sha256": "5f0cebffd83facb1427595b6444f349fa4b076afdddb1ec3c004a5889621e613",
+          "gate_sha256": "887ddd5c77ad953af4640ee91045e663777df1df450c415d65534d67c55171a4",
+          "report_sha256": "aab20a75a4f80fd7e1f3080206c31c0f1e1831d3afb5dc31b6e9b161e1d2c06c",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-store-idempotency-guard-gap-closure-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-store-idempotency-guard-gap-closure-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "41b48a050d33e4960e0b5cc39ea5db823344530c65f54d18b14f8124115e0e65",
+          "original_report_sha256": "0d58bc913662516f819d2f266ff2529a1a0bcce9db9506681cc4df81e71c610a",
+          "gate_sha256": "a8e4163ea3bf99b66466ab06cc265ef32959d309eabe33ae6851b89c7cbd9180",
+          "report_sha256": "3311e7dd63c05e2308e64c69cc4a8d4e528455005613e10e3991178037cd0728",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-store-idempotency-guard-gap-closure-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            149,
+            151
+          ],
+          [
+            155,
+            157
+          ],
+          [
+            159,
+            160
+          ],
+          [
+            181,
+            159
+          ]
+        ],
+        "report": [
+          [
+            55,
+            159
+          ],
+          [
+            149,
+            151
+          ],
+          [
+            155,
+            157
+          ],
+          [
+            159,
+            160
+          ],
+          [
+            181,
+            159
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-runtime-application-promotion-gap-closure-application-preview",
+      "default_state": "hepta-systems-work-graph-runtime-application-promotion-gap-closure-application-preview",
+      "state_count": 2,
+      "template_ids": [
+        294,
+        295
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-runtime-application-promotion-gap-closure-application-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "ffbcb0f8f3b0f1e3742f9a78a63d0f3d2ba0b6b41aeea17e8d6385672d0cf950",
+          "original_report_sha256": "a1bfc41ebc9679159ccc2879b44fada8daacfbd4f852970371f02f636692ef54",
+          "gate_sha256": "29dd5ad8194747ad3fb00b088bfbc9683170582e36c6e798d5dda57fe48aef19",
+          "report_sha256": "68c6699fedebe2cbdbbf836d4873f3217578f48bef162c1541e469124326b6c7",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-runtime-application-promotion-gap-closure-application-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-runtime-application-promotion-gap-closure-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "90abc40433bc23fc9660376093d3c9488f158111fdac6daa6e393507f56dc973",
+          "original_report_sha256": "d23eb2d0978437055f1231dfd1e3708d80a7a137a2984d2647ed08059694d069",
+          "gate_sha256": "a0f0fd1c96a12ff0e1640290ef4ab35aa6ff6015af76b555031a190b9d5be8c5",
+          "report_sha256": "17f600e057cd891190ef1943101d1e687fea2c8a79ac6f5422eb8bb7ac1cfadf",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-runtime-application-promotion-gap-closure-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            152,
+            153
+          ],
+          [
+            175,
+            152
+          ]
+        ],
+        "report": [
+          [
+            152,
+            153
+          ],
+          [
+            175,
+            152
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-scheduler-admission-controller-preview",
+      "default_state": "hepta-systems-work-graph-scheduler-admission-controller-preview",
+      "state_count": 1,
+      "template_ids": [
+        198,
+        265
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-scheduler-admission-controller-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "13f4007ca346c71b4fb99e6ee71f753596703d8490b8d5c8c14ce44de71ffd90",
+          "original_report_sha256": "f998a292051937c2e675b255a06451911cb33abdbeb4355e7f14d8c19a2ad1f1",
+          "gate_sha256": "1ab3d0704d9485f3e079823d133c4b09cd84f1d13c8544a5d1ad81e51e8cab6f",
+          "report_sha256": "ecaed7c0d81749f69888ea4f6e7dc211e8d96d1d993a837566037ab6528d9171",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-scheduler-admission-controller-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            124,
+            154
+          ],
+          [
+            156,
+            154
+          ]
+        ],
+        "report": [
+          [
+            124,
+            154
+          ],
+          [
+            156,
+            154
+          ],
+          [
+            173,
+            154
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-task-result-contract-preview",
+      "default_state": "hepta-systems-work-graph-task-result-contract-preview",
+      "state_count": 1,
+      "template_ids": [
+        198,
+        265
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-task-result-contract-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "21a32a17afd7d613f7ff642d3ce36ba4e47e632ffa64da0c7ea92b82fa49b1ca",
+          "original_report_sha256": "e4c2accd1d4fb032af63a24cf249be11b6cbc65ec3a85a25e733f1502af32977",
+          "gate_sha256": "786dcb33d633dfe381ca9edf6aba9101f226f3b171fdf58ecff19b3eb6410ffd",
+          "report_sha256": "67c69e5eddd0da0793a4f12dafb93cbeeb97069e7328ec6d579f141441379c47",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-task-result-contract-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            154,
+            162
+          ]
+        ],
+        "report": [
+          [
+            53,
+            162
+          ],
+          [
+            154,
+            162
+          ],
+          [
+            161,
+            162
+          ],
+          [
+            173,
+            162
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-ack-replay-idempotency-preview",
+      "default_state": "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-ack-replay-idempotency-preview",
+      "state_count": 2,
+      "template_ids": [
+        269,
+        314
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-ack-replay-idempotency-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "6b3b749ef591b5d628d6ac6fd7d38a10d4cb7a86b1c5db886233f73b5443af5c",
+          "original_report_sha256": "7c7b6fc4dfbfd665ddba38ee062fc736ae05974c0d76986b896a57436cc882cb",
+          "gate_sha256": "2ccfcd344a19b9274c363ece0064086b88e6c48371f11bb02cbc52d8a9debf67",
+          "report_sha256": "d8c64f93b6a0b6768d2dbbf0ae10790dff274daed17453d848aa9bd21bf48ab5",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-ack-replay-idempotency-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-acknowledgement-replay-idempotency-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "34252f5b8c00daf6d5cb7e26eb04f7768720b7e93e97147966b03ba217fb8103",
+          "original_report_sha256": "5d824439d79b47cb2d0f7981ca9edd96b4d2dc2aee9e1cd1721298f09351b7e4",
+          "gate_sha256": "a1136c32ef76cd3b6e487aee50584e77fcfcf90aebbe35b7d4e55e53f160e8b2",
+          "report_sha256": "8cde641ecb151b5f242fe542e86ec8668de090ee71d06d43a4b877edfb1f1179",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-acknowledgement-replay-idempotency-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            164,
+            163
+          ],
+          [
+            166,
+            165
+          ]
+        ],
+        "report": [
+          [
+            164,
+            163
+          ],
+          [
+            166,
+            165
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-terminal-task-result-wrapper-fixture-preview",
+      "default_state": "hepta-systems-work-graph-terminal-task-result-wrapper-fixture-preview",
+      "state_count": 2,
+      "template_ids": [
+        273,
+        324
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-terminal-task-result-wrapper-fixture-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "488f9cbd8da2564fafbdd3f9080d5db461793b4e495b88db587d6677244efe64",
+          "original_report_sha256": "a84f622ed6d1c69ae2a36fd10b425ca0e44ae4cac0309baf6c8c3b111cb1a5e4",
+          "gate_sha256": "ac01a538053bbaf67a2a676b2f8c5153470400f0c4b65825a56d7d09b9d7aee7",
+          "report_sha256": "e3bda2e0ed9aef91400942e8e10d4f8821f99ff4162a2b7a898b903050f69314",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-terminal-task-result-wrapper-fixture-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-terminal-task-result-wrapper-readback-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "ac7b46e2ce7ad4174873dc9e46c13863a5ca816ea2743c7d06904f4037a1aef7",
+          "original_report_sha256": "5e5cd19f5416a18d5894ddd8341da25e139fd9c8190d96af3c0a6a7a302ab126",
+          "gate_sha256": "53e69193b26f5f91dd867a0c1e5f5d24fd69bfdfa724b9e17471b1905bdc9982",
+          "report_sha256": "b0eec54d8f956aa10585dfc18b284aff8c369d244009f77d4a7eec11039bcf2d",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-terminal-task-result-wrapper-readback-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            167,
+            169
+          ],
+          [
+            169,
+            168
+          ]
+        ],
+        "report": [
+          [
+            167,
+            169
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-append-only-store-rerun-preview",
+      "default_state": "hepta-systems-work-graph-unified-projection-enforcement-readiness-append-only-store-rerun-preview",
+      "state_count": 2,
+      "template_ids": [
+        256,
+        327
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-append-only-store-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "4304e97089e3b08bc4fa241477473b1070efc1a3321721c220031f1c177f31a2",
+          "original_report_sha256": "41b7d40bff1e56d20562e87cb60b2998d8086e10e1ea131b2d1b85d68314c244",
+          "gate_sha256": "b4c1af5155e6c766f3d530fab7a3635235d98ca0be0990d087ae0d8cded94a45",
+          "report_sha256": "59a1a7395272589c6fbfcacbe76a26026faf5a69df65c28c3158cb53a815aa70",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-append-only-store-rerun-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-terminal-task-result-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "538ba5b809b63cabfab904b1931e3db7ba1b1f888dc69228121f13e4b6e5f3f6",
+          "original_report_sha256": "682148b85f84513fc0e6f5173962fda94814afaa58ff92dd3c1e5284e0f5efa6",
+          "gate_sha256": "498861a18159a05ca6416af17ee5ecc1b6119eee586b12431d96aefa2625c22f",
+          "report_sha256": "3c0c3374f1cb323ea58f445660533cc2b2d94afaf3a9de402a3f7c68b4091025",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-terminal-task-result-rerun-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            55,
+            182
+          ],
+          [
+            180,
+            170
+          ]
+        ],
+        "report": [
+          [
+            55,
+            182
+          ],
+          [
+            156,
+            170
+          ],
+          [
+            170,
+            182
+          ],
+          [
+            180,
+            170
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-role-manifest-rerun-preview",
+      "default_state": "hepta-systems-work-graph-unified-projection-enforcement-readiness-role-manifest-rerun-preview",
+      "state_count": 2,
+      "template_ids": [
+        216,
+        335
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-role-manifest-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "cd5d96899f2328a43ed9752e16636e627c66248c5c3aa00562b2b5b07039fb04",
+          "original_report_sha256": "863065a4bca1ca38da8c615b060c441752bd6ff5b922b40dac0eda8fcb49da0d",
+          "gate_sha256": "448782a1e512345e657da00a9d464b0c999a2c6f9295c346e98465c55e2b2d78",
+          "report_sha256": "b1c57875e270a8d445e3d8ca2d481432790a59004b9d468511dac4edcbcd389b",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-role-manifest-rerun-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-scheduler-admission-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "df10ce83d9a3885a8c16fd7b9e616ecd7f1dcafd8b1f88042b448a1e091271aa",
+          "original_report_sha256": "c121ea63bd24c74d52d91ceb96e2e3796d04506adce1354bc9650224b92f26be",
+          "gate_sha256": "4e9df233bcef6bf111c9037b4742926893853b95c6ea060d71683978233edb55",
+          "report_sha256": "ab6ec97d6f1164c28dc6385ded57bfe9bf146e77bc810df9e34cc5b3d7a79121",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-scheduler-admission-rerun-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            63,
+            174
+          ],
+          [
+            150,
+            180
+          ],
+          [
+            171,
+            174
+          ],
+          [
+            174,
+            180
+          ]
+        ],
+        "report": [
+          [
+            63,
+            174
+          ],
+          [
+            150,
+            180
+          ],
+          [
+            171,
+            174
+          ],
+          [
+            174,
+            180
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-idempotency-mutation-rerun-preview",
+      "default_state": "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-idempotency-mutation-rerun-preview",
+      "state_count": 2,
+      "template_ids": [
+        256,
+        337
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-idempotency-mutation-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "c41242feabe50c08a0b80de184b15f0ab10d60efea0ac21052d8f86eecaee8cc",
+          "original_report_sha256": "38dd7c408fe4c8880b7053e2f2e5d53bbf722901fc40ae775ba9c00e9840fde7",
+          "gate_sha256": "5ad8fb61c019c892116b01a3b9d636ad71abca007f4e07aa3b5c317cb2429e15",
+          "report_sha256": "1c77158f25bc15cdb7a1fa88b804baff2980bb16b51f334d266bb2b8fed94f8a",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-idempotency-mutation-rerun-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-write-boundary-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "3cab3c91bd9e9583a1727831bbc5ca8c796e9a6fcae99007e34ee436106c82ea",
+          "original_report_sha256": "f9f14f09b01bf91ab8c7c0a2051f42c85d6635c57ef120e243f557cf4c9bc9ca",
+          "gate_sha256": "a0649c9feeedde2913dc655657f80be0c763b5dd20574bc2d7932d4a52b8fa49",
+          "report_sha256": "6502cfcb5f57a03df2f4e149ace2e0da2780a1ba64ed401c16a659642f17a440",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-write-boundary-rerun-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            60,
+            179
+          ],
+          [
+            68,
+            177
+          ],
+          [
+            176,
+            179
+          ],
+          [
+            178,
+            177
+          ]
+        ],
+        "report": [
+          [
+            60,
+            179
+          ],
+          [
+            68,
+            177
+          ],
+          [
+            176,
+            179
+          ],
+          [
+            178,
+            177
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-activation-rerun-preview",
+      "default_state": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-activation-rerun-preview",
+      "state_count": 2,
+      "template_ids": [
+        238,
+        339
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-activation-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "68b8f1136373423b42f9f7c8a55781cdd0095c5f0b8183307c48e1ca12e429eb",
+          "original_report_sha256": "6921976ef9cc49096a0420ac78a6f064f0f2e5adf71f18f5ccd4ea5ba602bc98",
+          "gate_sha256": "31000d99da3c17c3dc579667321222de9a2ca25a203cd1d0e524136a6f200b57",
+          "report_sha256": "fc32a8c4a14b1c4f4c8e7b50ba066b589b70d0b880fb3f2e75bf0e638220acbe",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-activation-rerun-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-promotion-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "6cd550cc41a6c4e75efaf9a0190a73e61927bf0d639d5098db7ae6e6dbaa5236",
+          "original_report_sha256": "648845d1644bc8b46998d07e611669755e4ccf6ee50483ff42b8ae66422c1d24",
+          "gate_sha256": "c950349ae69ba19a80d4fafc73470b1f5b7f5025c42d368d1e2716f431f818f5",
+          "report_sha256": "71670582799f74c57acb8a4ebea7cbe2c3e67ef40847f9d51f90d25a76f10c98",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-promotion-rerun-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            87,
+            195
+          ],
+          [
+            114,
+            183
+          ]
+        ],
+        "report": [
+          [
+            87,
+            195
+          ],
+          [
+            114,
+            183
+          ],
+          [
+            188,
+            195
+          ],
+          [
+            195,
+            183
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-append-only-events-enablement-closure-rerun-preview",
+      "default_state": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-append-only-events-enablement-closure-rerun-preview",
+      "state_count": 2,
+      "template_ids": [
+        242,
+        341
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-append-only-events-enablement-closure-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "7103471d57a4e1413803aa7905e9585d044aac05dc13e85e17c374e7409cd365",
+          "original_report_sha256": "17809e8504a745676bd3461c356299949b6d060c26806fea3f6104c0165ec064",
+          "gate_sha256": "6ed4a9aa9d3deae2d250a6bc746c4b9154c3df53d1f7da9e9b6694e606a6c741",
+          "report_sha256": "aacc3b73b255119e32625256ad67eb3386b2c0427005d717be8c216789020c8c",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-append-only-events-enablement-closure-rerun-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "e893832d3e879e313df5bf79c75e6b6ed9dcd0d6f078545f375809a0b77a9019",
+          "original_report_sha256": "99bd5e3fedf9a97cf7f6c9fad24cbd61c89b7475a3a43cdb21fca31f3099f383",
+          "gate_sha256": "ce974c76461fc5fbc3aae458c38b96f0a7cc06bf862e7ee9fdae17882779c0d2",
+          "report_sha256": "8304a8ffc565f8aefb02f8f9fa47ed164a883f1a06d44c95d0c52e84b3d9d137",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-decision-readback-rerun-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            81,
+            185
+          ],
+          [
+            97,
+            191
+          ]
+        ],
+        "report": [
+          [
+            81,
+            185
+          ],
+          [
+            97,
+            191
+          ],
+          [
+            186,
+            185
+          ],
+          [
+            190,
+            191
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-replay-readback-rerun-preview",
+      "default_state": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-replay-readback-rerun-preview",
+      "state_count": 2,
+      "template_ids": [
+        239,
+        337
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-replay-readback-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "4b679095ccd6f57c7352c3343f880e1e937a5f0fab8ae031aa34a7de6b307801",
+          "original_report_sha256": "ce30fd3392f63103735fdbb541a8f8948faffe2c849d33bd861fecd2673bc31a",
+          "gate_sha256": "42ed127eb6e2f844c37e077f55c2f04a31de6420a9f7a3a3508f5830810c1e82",
+          "report_sha256": "3df483cce2f30235b85a065def358ad6d278aedc7cb46f4c675c7028d39fb74b",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-replay-readback-rerun-preview"
+        },
+        {
+          "id": "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-shadow-write-rerun-preview",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "13566b9eb751223f9e46907741fb14c791d14c102c71f2bba1ea1517569ced55",
+          "original_report_sha256": "ef51060c822bd1970cee19f049cff7a42286c385dce79d7b140046b559baefea",
+          "gate_sha256": "385a79ddcd2727bdf38e037a39353590dec8736d3a2542d0fc98954a61d45640",
+          "report_sha256": "2dfc5f1f7a4c488c803d1573c7184083f8661ed6bdea9ea8f0c751218411f108",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-shadow-write-rerun-preview"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            117,
+            197
+          ],
+          [
+            120,
+            198
+          ],
+          [
+            197,
+            198
+          ]
+        ],
+        "report": [
+          [
+            117,
+            197
+          ],
+          [
+            120,
+            198
+          ],
+          [
+            196,
+            197
+          ],
+          [
+            197,
+            198
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-workflow-temporal-lite-checkpoint-and-rollback-anchor-local-persistence-readback",
+      "default_state": "hepta-systems-workflow-temporal-lite-checkpoint-and-rollback-anchor-local-persistence-readback",
+      "state_count": 6,
+      "template_ids": [
+        58,
+        358
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-workflow-temporal-lite-checkpoint-and-rollback-anchor-local-persistence-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "a7628d29a45293e4892320b9d09b070cb350e98c80a9161a32ef5e8e321127bc",
+          "original_report_sha256": "ba1810a848019499a74701ebf946fe12e0cc4b0f9f700d673b8a55d367f311c4",
+          "gate_sha256": "1bd599690f3ce465aa250e4e98e765ef5c73bbdac229f52fd3bde11721f1fcd6",
+          "report_sha256": "e04682d1c2e9938d7d1e8fa04cd5e12af26d11eac51316978432ede44e6c8b59",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-workflow-temporal-lite-checkpoint-and-rollback-anchor-local-persistence-readback"
+        },
+        {
+          "id": "hepta-systems-workflow-temporal-lite-event-log-sqlite-adapter-local-persistence-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "6011377eb80d53f84ba6bd60054a6913383b8790462b1ed373c8d4e184821ef0",
+          "original_report_sha256": "ecd1d551cb83ba5e6416d5177cbc40032a2b6e0a6cec4cb7bbd9bc2a784ad89f",
+          "gate_sha256": "1dde5a8f5d4ac5e8536cce717bc06b16cd1dd65915e14c1433acdff6ed114d9d",
+          "report_sha256": "8e9bd8d1f9a95a9a68b5304e9fd6e8227d29de907b4c37b27ae3999945133250",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-workflow-temporal-lite-event-log-sqlite-adapter-local-persistence-readback"
+        },
+        {
+          "id": "hepta-systems-workflow-temporal-lite-replay-alignment-checkpoint-consistency-local-persistence-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "2d8cfc65567d74ca65be26962ad823d7380ad610d5aa760b894b128e5c9b72fc",
+          "original_report_sha256": "c76e4bc91c64d8c68307090248b6cb9af41c61d2d7fd78fedd1a2573a1a9ad53",
+          "gate_sha256": "81a4fb790ca776359cc5d059d4008a65c7cd27aeb1f8a20d448ae16d554480f3",
+          "report_sha256": "3d369610a2409d42add0c632d1693436d25c379138e5f8dbd51cef422e05a87f",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-workflow-temporal-lite-replay-alignment-checkpoint-consistency-local-persistence-readback"
+        },
+        {
+          "id": "hepta-systems-workflow-temporal-lite-replay-alignment-rollback-consistency-local-persistence-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "b1c3d99d7fe26eefc6bc589d0f31194a12407832f2733e695cce3490af203496",
+          "original_report_sha256": "62fe061a4d9839aab4454cd551160551c0904681bd99fcfdce177866597112aa",
+          "gate_sha256": "a5c4d27377d0396a9649324e9486c53f95361341a5dcd0365a55a52d15b79355",
+          "report_sha256": "16ce8b7be26152f94b300c8e0881ce0d5f3da2715bca307510e6c332b04c08fd",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-workflow-temporal-lite-replay-alignment-rollback-consistency-local-persistence-readback"
+        },
+        {
+          "id": "hepta-systems-workflow-temporal-lite-work-graph-projection-local-persistence-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "b9a25df1c928d56ea48d19ca8dedf4d464f434b414709c324abbba68e64bcea4",
+          "original_report_sha256": "cc95007e66ce01ef38a5e58f063d0da7ca02439c9ab2e0ca14c5dfe7901ad9da",
+          "gate_sha256": "ff17f160b1238c7560949c13ebc29f9010f6107ae35082f7c86f461fcec1ee3f",
+          "report_sha256": "bc18a0a7c5aed4092e4481238f1c54471d3627c391c8da4dbadf9d031e3bd1ee",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-workflow-temporal-lite-work-graph-projection-local-persistence-readback"
+        },
+        {
+          "id": "hepta-systems-workflow-temporal-lite-work-graph-projection-replay-alignment-local-persistence-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "6d642f3f2b64506246ec3b2e8de6a24f9effb848a756fcb29834f1f5ad7a746d",
+          "original_report_sha256": "661744e70063e31bd1c2c5cf1f21d22028196215bb9b8924f37c51e8845715ae",
+          "gate_sha256": "01208b813b718504caa8735d42e1bb2294f4555e3a0cad9cf7bc0a2fbc8a1d26",
+          "report_sha256": "984ee9ad76d0ba9d5224c76e9ce1e8527e4df637cbe93903efb6917008a77877",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-workflow-temporal-lite-work-graph-projection-replay-alignment-local-persistence-readback"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            202,
+            200
+          ],
+          [
+            204,
+            211
+          ],
+          [
+            208,
+            204
+          ],
+          [
+            209,
+            201
+          ],
+          [
+            211,
+            209
+          ]
+        ],
+        "report": [
+          [
+            202,
+            200
+          ],
+          [
+            204,
+            211
+          ],
+          [
+            206,
+            208
+          ],
+          [
+            208,
+            204
+          ],
+          [
+            209,
+            201
+          ],
+          [
+            211,
+            209
+          ]
+        ]
+      }
+    },
+    {
+      "id": "hepta-systems-workflow-temporal-lite-replay-alignment-checkpoint-consistency-feature-gated-readback",
+      "default_state": "hepta-systems-workflow-temporal-lite-replay-alignment-checkpoint-consistency-feature-gated-readback",
+      "state_count": 3,
+      "template_ids": [
+        58,
+        357
+      ],
+      "states": [
+        {
+          "id": "hepta-systems-workflow-temporal-lite-replay-alignment-checkpoint-consistency-feature-gated-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "0e08e4a0ec6b84a6c8251825bfeddd049f3cea7661cdad14794df2ff19163bd8",
+          "original_report_sha256": "8a2b13784ab68fc5e18522c6e29243d9ba30b030744a0767057a580bb134e4d8",
+          "gate_sha256": "acb4953391d63b2c1bd6ad50e10c43362b1f09aa8bbddbff28728fa934d8a7b4",
+          "report_sha256": "a76fad3c401267b3bea4fc0b0abe6f4017f3289afc767ca8dba7510081b87186",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-workflow-temporal-lite-replay-alignment-checkpoint-consistency-feature-gated-readback"
+        },
+        {
+          "id": "hepta-systems-workflow-temporal-lite-replay-alignment-rollback-consistency-feature-gated-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "46fb377ef20e08480fafa1beb8f982623ae0eeeb326ba39b668a38d45169d3c3",
+          "original_report_sha256": "9354701ee2b1d98ad8fb1d6504ae10b124c25ee834b04a9dbaf22ea4e8d046e0",
+          "gate_sha256": "34118b6e1bf6b6a63ca9d7244a006461fe88b72071663764d496ad16bf25d62e",
+          "report_sha256": "ee4f078503b1020fcc656c9bd7a248ab3c4ea1bba3aed1bcc942466bfead9cfa",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-workflow-temporal-lite-replay-alignment-rollback-consistency-feature-gated-readback"
+        },
+        {
+          "id": "hepta-systems-workflow-temporal-lite-work-graph-projection-replay-alignment-feature-gated-readback",
+          "mode": "exact_parameterized",
+          "original_gate_sha256": "7d65eb2e9e793848d42b729f87579c256b7fb65e4468a7e9ff1f5c010bcbd2a6",
+          "original_report_sha256": "02c08dfee74c676ca7bb2f1ce03ac5f630543c9a550424b84ef9015d15560994",
+          "gate_sha256": "838c071ead1095af4f6a095eb6e70e66a2749e9710bbd2f1eda9e46e4d5142e0",
+          "report_sha256": "55f4716628e537fbf9c5be137a324073cca62970ea9e1d6ad516d7ce7683f70a",
+          "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-workflow-temporal-lite-work-graph-projection-replay-alignment-feature-gated-readback"
+        }
+      ],
+      "call_routes": {
+        "gate": [
+          [
+            203,
+            210
+          ],
+          [
+            205,
+            207
+          ],
+          [
+            207,
+            203
+          ]
+        ],
+        "report": [
+          [
+            203,
+            210
+          ],
+          [
+            205,
+            207
+          ],
+          [
+            207,
+            203
+          ]
+        ]
+      }
+    }
+  ],
+  "metrics": {
+    "logical_family_payload_count": 296,
+    "normalized_family_payload_count": 72,
+    "exact_parameter_row_count": 296,
+    "exact_normalized_effective_lines": 31575,
+    "semantic_registry_effective_lines": 7844
+  }
+}

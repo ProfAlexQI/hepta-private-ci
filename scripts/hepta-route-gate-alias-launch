@@ -9,7 +9,7 @@ validate() {
     .schema_version == "hepta_route_gate_aliases_v1"
     and .status == "source_ready"
     and .launcher == "scripts/hepta-route-gate-alias-launch"
-    and .alias_count == 21
+    and .alias_count == 30
     and (.entries | length) == .alias_count
     and ((.entries | map(.logical_path) | unique | length) == .alias_count)
     and ((.entries | map(.id) | unique | length) == .alias_count)
@@ -24,6 +24,8 @@ validate() {
   ' "$REGISTRY" >/dev/null
   actual_path_sha="$(jq -r '.entries[].logical_path' "$REGISTRY" | shasum -a 256 | awk '{print $1}')"
   [[ "$actual_path_sha" == "$(jq -r '.path_set_sha256' "$REGISTRY")" ]] || { echo "route alias path-set SHA drifted" >&2; exit 1; }
+  actual_records_sha="$(jq -cS '[.entries[] | {logical_path,original_mode,original_blob,original_sha256}]' "$REGISTRY" | shasum -a 256 | awk '{print $1}')"
+  [[ "$actual_records_sha" == "$(jq -r '.original_records_sha256' "$REGISTRY")" ]] || { echo "route alias original-record SHA drifted" >&2; exit 1; }
   while IFS=$'\t' read -r logical_path runner; do
     [[ -L "$ROOT/$logical_path" ]] || { echo "missing route gate alias: $logical_path" >&2; exit 1; }
     [[ "$(readlink "$ROOT/$logical_path")" == "hepta-route-gate-alias-launch" ]] || { echo "route gate alias target drifted: $logical_path" >&2; exit 1; }
@@ -34,7 +36,7 @@ validate() {
 [[ -f "$REGISTRY" ]] || { echo "missing Hepta route gate alias registry" >&2; exit 1; }
 if [[ $# == 1 && "$1" == "--validate" ]]; then
   validate
-  echo '{"schema":"hepta_route_gate_aliases_validation_v1","status":"ready","alias_count":21}'
+  echo '{"schema":"hepta_route_gate_aliases_validation_v1","status":"ready","alias_count":30}'
   exit 0
 fi
 [[ $# == 0 ]] || { echo "usage: scripts/hepta-route-gate-alias-launch [--validate]" >&2; exit 2; }

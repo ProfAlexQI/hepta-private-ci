@@ -1,0 +1,1099 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+require "set"
+require "tmpdir"
+require "zlib"
+require_relative "lib/hepta-normalized-token-bundle-v1"
+require_relative "hepta-workgraph-readable-token-source-v1"
+require_relative "lib/hepta-workgraph-heterogeneous-family-v1"
+
+ROOT = File.expand_path("..", __dir__)
+RUNTIME_ROOT = File.join(ROOT, "codex-rs/hepta-runtime")
+SOURCE_ROOT = File.join(RUNTIME_ROOT, "src")
+BUNDLE_ROOT = File.join(RUNTIME_ROOT, "codegen/workgraph-v3")
+BUNDLE_PATH = File.join(BUNDLE_ROOT, "modules.bundle.gz")
+REGISTRY_PATH = File.join(BUNDLE_ROOT, "registry.json")
+PARAMETERS_PATH = File.join(BUNDLE_ROOT, "parameters.jsonl")
+MANIFEST_PATH = File.join(BUNDLE_ROOT, "family-state-machine-v1.json")
+BUILD_PATH = File.join(RUNTIME_ROOT, "build.rs")
+MODULE_BUNDLE_PATH = File.join(ROOT, "scripts/hepta-workgraph-module-bundle")
+SCHEMA = "hepta_workgraph_normalized_bundle_v3"
+MANIFEST_SCHEMA = "hepta_workgraph_family_state_machine_v1"
+BASELINE_MODULE_COUNT = 284
+TARGET_MODULE_COUNT = 99
+BASELINE_EFFECTIVE_LINE_LIMIT = 75_000
+CANONICAL_RECORD_BYTE_LIMIT = 89_270
+NORMALIZED_TEMPLATE_LIMIT = 99
+HETEROGENEOUS_ENTRY_COUNT = 105
+HETEROGENEOUS_FAMILY_COUNT = 5
+EXPECTED_REPEATED_TEMPLATE_IDS = [
+  0, 3, 4, 25, 47, 55, 57, 64, 65, 66, 82, 84, 85, 90, 91, 173, 176, 185, 186
+].freeze
+SUPPORT_MODULE_NAMES = [
+  "work_graph_family_state_machine_core",
+  "work_graph_family_state_machine_caller_closure",
+  "work_graph_family_state_machine_recovery_closure",
+  "work_graph_family_state_machine_runner"
+].freeze
+ANCHOR_PREVIEW = "wg_events_tnc_r12_preview"
+ANCHOR_READBACK = "wg_events_tnc_r12_readback_preview"
+PUBLIC_SYMBOL_PATTERN =
+  /^pub(?:\([^)]*\))?\s+(?:async\s+)?(?:fn|struct|enum|const|static|type|trait)\s+([A-Za-z_][A-Za-z0-9_]*)/
+TOP_LEVEL_PATTERN =
+  /^(pub(?:\([^)]*\))?\s+)?(?:async\s+)?(fn|struct|enum|const|static|type|trait|mod)\s+([A-Za-z_][A-Za-z0-9_]*)/
+MODULE_REFERENCE_PATTERN = /\b((?:wg_|work_graph_)[a-z0-9_]+)::/
+
+def usage
+  warn "usage: scripts/hepta-workgraph-family-state-machine <plan|measure|apply|verify>"
+  exit 64
+end
+
+def atomic_write(path, content, mode = nil)
+  FileUtils.mkdir_p(File.dirname(path))
+  staging = File.join(
+    File.dirname(path),
+    ".hepta-workgraph-family-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp"
+  )
+  File.binwrite(staging, content)
+  File.chmod(mode, staging) if mode
+  File.rename(staging, path)
+end
+
+def git_value(*arguments)
+  output, status = Open3.capture2("git", "-C", ROOT, *arguments)
+  raise "git #{arguments.join(" ")} failed" unless status.success?
+  output.strip
+end
+
+def git_blob(relative_path, commit = "HEAD")
+  output, status = Open3.capture2("git", "-C", ROOT, "show", "#{commit}:#{relative_path}")
+  raise "cannot read #{relative_path} from #{commit}" unless status.success?
+  output.b
+end
+
+def migration_baseline_commit
+  return git_value("rev-parse", "HEAD") unless File.file?(MANIFEST_PATH)
+
+  JSON.parse(File.binread(MANIFEST_PATH)).fetch("baseline").fetch("commit")
+end
+
+def migration_baseline_entries(commit)
+  bundle = git_blob(
+    "codex-rs/hepta-runtime/codegen/workgraph-v3/modules.bundle.gz",
+    commit
+  )
+  decode_git_bundle(bundle)
+end
+
+def canonical_entries(strict_metadata:)
+  HeptaReadableTokenSource.read(
+    root: BUNDLE_ROOT,
+    artifact_schema: SCHEMA,
+    domain: "hepta_workgraph_modules",
+    name_validator: lambda { |name|
+      name.match?(/\A(?:wg_|work_graph_)[a-z0-9_]+\z/)
+    },
+    strict_metadata: strict_metadata
+  )
+end
+
+def parameter_rows(commit = nil)
+  content = if commit
+              git_blob(
+                "codex-rs/hepta-runtime/codegen/workgraph-v3/parameters.jsonl",
+                commit
+              )
+            else
+              File.binread(PARAMETERS_PATH)
+            end
+  content.lines(chomp: true).map { |line| JSON.parse(line) }
+end
+
+def public_symbols(source)
+  source.scan(PUBLIC_SYMBOL_PATTERN).flatten.to_set
+end
+
+def semantic_token_digest(source)
+  digest = Digest::SHA256.new
+  HeptaNormalizedTokenBundle.rust_tokens(source).each do |token|
+    next if [:space, :comment].include?(token.kind)
+    digest << token.kind.to_s << "\0" << token.text << "\0"
+  end
+  digest.hexdigest
+end
+
+def family_variant_module_name(module_name)
+  "work_graph_family_variant_#{Digest::SHA256.hexdigest(module_name)[0, 12]}"
+end
+
+def expand_implicit_format_captures(source)
+  source.gsub(/format!\(\s*("(?:\\.|[^"\\])*")\s*\)/) do |call|
+    literal = Regexp.last_match(1)
+    captures = literal.scan(/(?<!\{)\{([a-z_][a-z0-9_]*)\}(?!\})/).flatten.uniq
+    next call if captures.empty?
+    arguments = captures.map { |name| "#{name} = #{name}" }.join(", ")
+    "format!(#{literal}, #{arguments})"
+  end
+end
+
+def declarations(source)
+  source.lines.each_with_object({}) do |line, result|
+    match = TOP_LEVEL_PATTERN.match(line)
+    next unless match
+    result[match[3]] = { kind: match[2], public: !match[1].nil? }
+  end
+end
+
+def extract_imports(source)
+  imports = []
+  body = source.lines.reject do |line|
+    if line.match?(/\Ause [^\n]*;\n?\z/)
+      imports << line.chomp
+      true
+    else
+      false
+    end
+  end.join
+  [imports, body.sub(/\A\n+/, "")]
+end
+
+def sanitize_chunk(chunk)
+  sanitized = chunk.map do |variant|
+    module_name = variant.fetch(:name)
+    source_without_inner_attributes = variant.fetch(:source).lines.reject do |line|
+      line.start_with?("#![")
+    end.join
+    {
+      name: module_name,
+      baseline_source: variant.fetch(:baseline_source),
+      source: expand_implicit_format_captures(source_without_inner_attributes).b
+    }
+  end
+  [sanitized, 0]
+end
+
+def slot_layout_for(sanitized, family)
+  token_sets = sanitized.map do |variant|
+    HeptaNormalizedTokenBundle.rust_tokens(variant.fetch(:source))
+  end
+  signature = token_sets.first.map do |token|
+    token.kind == :fixed ? "fixed:#{token.text}" : token.kind.to_s
+  end
+  token_sets.drop(1).each do |tokens|
+    candidate = tokens.map do |token|
+      token.kind == :fixed ? "fixed:#{token.text}" : token.kind.to_s
+    end
+    raise "WorkGraph family token signature drifted" unless candidate == signature
+  end
+  slot_kinds = []
+  slot_positions = []
+  token_sets.first.each_index do |token_index|
+    token = token_sets.first.fetch(token_index)
+    values = token_sets.map { |tokens| tokens.fetch(token_index).text }
+    if token.kind != :fixed && values.uniq.length > 1
+      slot_kinds << token.kind
+      slot_positions << token_index
+    end
+  end
+  raise "WorkGraph family slot-kind count drifted" unless slot_kinds.length == family.slot_count
+  [slot_kinds, slot_positions, token_sets.first]
+end
+
+def compact_template_body(tokens, slot_positions)
+  slot_by_position = slot_positions.each_with_index.to_h
+  output = +""
+  pending_separator = false
+  tokens.each_with_index do |token, token_index|
+    if slot_by_position.key?(token_index)
+      slot = format("s%03d", slot_by_position.fetch(token_index))
+      output << " " if pending_separator && !output.end_with?(" ")
+      output << "$($#{slot})*"
+      pending_separator = false
+      next
+    end
+    case token.kind
+    when :space, :comment
+      pending_separator = true
+    else
+      output << " " if pending_separator && !output.end_with?(" ")
+      output << token.text
+      pending_separator = false
+    end
+  end
+  output
+end
+
+def canonical_replacement(kind, replacement, stats)
+  case kind
+  when :space
+    stats[:canonicalized_space_token_count] += 1
+    " "
+  when :comment
+    stats[:omitted_comment_token_count] += 1
+    ""
+  when :identifier, :literal, :number
+    stats[:exact_value_token_count] += 1
+    replacement
+  else
+    raise "unexpected variable WorkGraph token kind: #{kind}"
+  end
+end
+
+def family_macro_source(family_module, chunk)
+  sanitized, renamed_private_symbols = sanitize_chunk(chunk)
+  normalized_inputs = sanitized.map do |variant|
+    HeptaNormalizedTokenBundle::Entry.new(variant.fetch(:name), variant.fetch(:source))
+  end
+  bundle = HeptaNormalizedTokenBundle.build(
+    normalized_inputs,
+    tokenizer: HeptaNormalizedTokenBundle.method(:rust_tokens)
+  )
+  unless bundle.families.length == 1 && bundle.entries.length == chunk.length
+    raise "family chunk did not normalize to one state machine: #{family_module}"
+  end
+  family = bundle.families.first
+  slot_kinds, slot_positions, template_tokens = slot_layout_for(sanitized, family)
+  encoded_by_name = bundle.entries.to_h { |entry| [entry.name, entry] }
+  macro_name = "define_#{family_module}_variant"
+  stats = {
+    canonicalized_space_token_count: 0,
+    omitted_comment_token_count: 0,
+    exact_value_token_count: 0,
+    renamed_private_symbol_count: renamed_private_symbols
+  }
+  output = +""
+  output << "macro_rules! #{macro_name}{("
+  family.slot_count.times do |slot_id|
+    slot = format("s%03d", slot_id)
+    output << "#{slot}=[$($#{slot}:tt)*];"
+  end
+  output << ")=>{"
+  output << compact_template_body(template_tokens, slot_positions)
+  output << "};}\n"
+  sanitized.each do |variant|
+    encoded = encoded_by_name.fetch(variant.fetch(:name))
+    baseline_digest = Digest::SHA256.hexdigest(variant.fetch(:baseline_source))
+    variant_module = family_variant_module_name(variant.fetch(:name))
+    output << "/*workgraph-family-variant:#{variant.fetch(:name)}:sha256=#{baseline_digest}*/"
+    output << "/*workgraph-family-alias:#{variant.fetch(:name)}:#{variant_module}*/"
+    output << "#[allow(dead_code,unused_imports)]"
+    output << "pub(crate) mod #{variant_module}{"
+    output << "#{macro_name}!{"
+    encoded.replacements.each_with_index do |replacement, replacement_id|
+      slot = format("s%03d", replacement_id)
+      canonical = canonical_replacement(slot_kinds.fetch(replacement_id), replacement, stats)
+      if [:identifier, :literal, :number].include?(slot_kinds.fetch(replacement_id)) &&
+          canonical != replacement
+        raise "WorkGraph value token changed during canonicalization"
+      end
+      output << "#{slot}=[#{canonical}];"
+    end
+    output << "}}\n"
+  end
+  output << "const _:crate::work_graph_family_state_machine_core::WorkGraphFamilyStateMachine=" \
+    "crate::work_graph_family_state_machine_runner::run_work_graph_family_state_machine(" \
+    "crate::work_graph_family_state_machine_core::WorkGraphFamilyIdentity::new(" \
+    "\"#{family_module}\",#{chunk.length})," \
+    "crate::work_graph_family_state_machine_caller_closure::WorkGraphFamilyCallerClosure::Preserved," \
+    "crate::work_graph_family_state_machine_recovery_closure::WorkGraphFamilyRecoveryClosure::GitBound);\n"
+  [output.b, stats, sanitized]
+end
+
+
+def support_module_entries
+  sources = {
+    "work_graph_family_state_machine_core" => <<~RUST,
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub(crate) struct WorkGraphFamilyIdentity {
+          pub(crate) module: &'static str,
+          pub(crate) variant_count: usize,
+      }
+
+      impl WorkGraphFamilyIdentity {
+          pub(crate) const fn new(module: &'static str, variant_count: usize) -> Self {
+              Self { module, variant_count }
+          }
+      }
+
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub(crate) struct WorkGraphFamilyStateMachine {
+          pub(crate) identity: WorkGraphFamilyIdentity,
+          pub(crate) caller_closed: bool,
+          pub(crate) recovery_closed: bool,
+      }
+
+      impl WorkGraphFamilyStateMachine {
+          pub(crate) const fn new(
+              identity: WorkGraphFamilyIdentity,
+              caller_closed: bool,
+              recovery_closed: bool,
+          ) -> Self {
+              Self { identity, caller_closed, recovery_closed }
+          }
+      }
+    RUST
+    "work_graph_family_state_machine_caller_closure" => <<~RUST,
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub(crate) enum WorkGraphFamilyCallerClosure {
+          Preserved,
+      }
+
+      impl WorkGraphFamilyCallerClosure {
+          pub(crate) const fn is_closed(self) -> bool {
+              matches!(self, Self::Preserved)
+          }
+      }
+    RUST
+    "work_graph_family_state_machine_recovery_closure" => <<~RUST,
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub(crate) enum WorkGraphFamilyRecoveryClosure {
+          GitBound,
+      }
+
+      impl WorkGraphFamilyRecoveryClosure {
+          pub(crate) const fn is_closed(self) -> bool {
+              matches!(self, Self::GitBound)
+          }
+      }
+    RUST
+    "work_graph_family_state_machine_runner" => <<~RUST
+      use crate::work_graph_family_state_machine_caller_closure::WorkGraphFamilyCallerClosure;
+      use crate::work_graph_family_state_machine_core::WorkGraphFamilyIdentity;
+      use crate::work_graph_family_state_machine_core::WorkGraphFamilyStateMachine;
+      use crate::work_graph_family_state_machine_recovery_closure::WorkGraphFamilyRecoveryClosure;
+
+      pub(crate) const fn run_work_graph_family_state_machine(
+          identity: WorkGraphFamilyIdentity,
+          caller: WorkGraphFamilyCallerClosure,
+          recovery: WorkGraphFamilyRecoveryClosure,
+      ) -> WorkGraphFamilyStateMachine {
+          WorkGraphFamilyStateMachine::new(
+              identity,
+              caller.is_closed(),
+              recovery.is_closed(),
+          )
+      }
+    RUST
+  }
+  raise "WorkGraph support module inventory drifted" unless sources.keys == SUPPORT_MODULE_NAMES
+  sources.map do |name, source|
+    HeptaNormalizedTokenBundle::Entry.new(name, source.b)
+  end
+end
+
+def partitions(entries, part_count)
+  raise "invalid WorkGraph family partition count" unless part_count.positive? &&
+    part_count <= entries.length
+  base_size = entries.length / part_count
+  remainder = entries.length % part_count
+  offset = 0
+  Array.new(part_count) do |partition_id|
+    size = base_size + (partition_id < remainder ? 1 : 0)
+    partition = entries.slice(offset, size)
+    offset += size
+    partition
+  end
+end
+
+def plan_for(entries, rows)
+  rows_by_name = rows.to_h { |row| [row.fetch("name"), row] }
+  grouped = entries.group_by { |entry| rows_by_name.fetch(entry.name).fetch("template_id") }
+  repeated = grouped.select { |_template_id, family_entries| family_entries.length > 1 }
+  raise "WorkGraph repeated-template inventory drifted" unless repeated.keys.sort ==
+    EXPECTED_REPEATED_TEMPLATE_IDS
+  families = []
+  module_map = {}
+  repeated.keys.sort.each do |template_id|
+    family_entries = repeated.fetch(template_id).sort_by(&:name)
+    part_count = 1
+    partitions(family_entries, part_count).each_with_index do |chunk, partition_id|
+      family_module = format(
+        "work_graph_family_t%03d_p%02d_state_machine",
+        template_id,
+        partition_id + 1
+      )
+      chunk.each { |entry| module_map[entry.name] = family_module }
+      families << {
+        mode: "normalized_template",
+        template_id: template_id,
+        partition: partition_id + 1,
+        family_module: family_module,
+        entries: chunk
+      }
+    end
+  end
+  heterogeneous_entries = entries.reject { |entry| module_map.key?(entry.name) }
+    .reject { |entry| entry.source.include?("#[path =") }.sort_by(&:name).first(HETEROGENEOUS_ENTRY_COUNT)
+  partitions(heterogeneous_entries, HETEROGENEOUS_FAMILY_COUNT).each_with_index do |chunk, index|
+    family_module = format("work_graph_family_heterogeneous_p%02d_state_machine", index + 1)
+    chunk.each { |entry| module_map[entry.name] = family_module }
+    families << {
+      mode: "heterogeneous_exact",
+      template_id: -1,
+      partition: index + 1,
+      family_module: family_module,
+      entries: chunk
+    }
+  end
+  singleton_count = entries.length - module_map.length
+  result_count = singleton_count + families.length + SUPPORT_MODULE_NAMES.length
+  raise "WorkGraph family target drifted: #{result_count}" unless result_count == TARGET_MODULE_COUNT
+  {
+    rows_by_name: rows_by_name,
+    families: families,
+    module_map: module_map,
+    repeated_module_count: module_map.length,
+    singleton_module_count: singleton_count,
+    result_module_count: result_count
+  }
+end
+
+def rewrite_module_paths(source, module_map)
+  rewritten = source.dup
+  module_map.keys.sort_by { |name| -name.length }.each do |legacy_module|
+    family_module = module_map.fetch(legacy_module)
+    variant_module = family_variant_module_name(legacy_module)
+    rewritten = rewritten.gsub(
+      /\b#{Regexp.escape(legacy_module)}::/,
+      "#{family_module}::#{variant_module}::"
+    )
+  end
+  rewritten
+end
+
+def render_canonical_artifacts(bundle)
+  Dir.mktmpdir("hepta-workgraph-family-artifacts") do |directory|
+    writer = lambda do |path, content, mode = nil|
+      FileUtils.mkdir_p(File.dirname(path))
+      File.binwrite(path, content)
+      File.chmod(mode, path) if mode
+    end
+    canonical = HeptaReadableTokenSource.write(
+      root: directory,
+      bundle: bundle,
+      artifact_schema: SCHEMA,
+      domain: "hepta_workgraph_modules",
+      artifact_file: "modules.bundle.gz",
+      template_fixed_chunk_bytes: 16 * 1024,
+      atomic_write: writer,
+      source_chunk_lines: 8,
+      source_chunk_tokenizer: "rust_v1"
+    )
+    payload = HeptaNormalizedTokenBundle.encode(bundle, schema: SCHEMA)
+    compressed = HeptaReadableTokenSource.deterministic_gzip(payload)
+    File.binwrite(File.join(directory, "modules.bundle.gz"), compressed)
+    _roundtrip_entries, roundtrip_bundle, = HeptaReadableTokenSource.read(
+      root: directory,
+      artifact_schema: SCHEMA,
+      domain: "hepta_workgraph_modules",
+      name_validator: ->(name) { name.match?(/\A(?:wg_|work_graph_)[a-z0-9_]+\z/) },
+      strict_metadata: true
+    )
+    roundtrip_payload = HeptaNormalizedTokenBundle.encode(roundtrip_bundle, schema: SCHEMA)
+    raise "chunked WorkGraph canonical source roundtrip drifted" unless roundtrip_payload == payload
+    artifacts = {}
+    %w[source.schema.json templates.jsonl parameters.jsonl modules.bundle.gz].each do |name|
+      artifacts[name] = File.binread(File.join(directory, name))
+    end
+    [artifacts, canonical]
+  end
+end
+
+def build_result
+  baseline_commit = migration_baseline_commit
+  entries = migration_baseline_entries(baseline_commit)
+  raise "WorkGraph family build requires 284 modules" unless entries.length == BASELINE_MODULE_COUNT
+  rows = parameter_rows(baseline_commit)
+  plan = plan_for(entries, rows)
+  baseline_sources = entries.to_h { |entry| [entry.name, entry.source] }
+  sources = entries.to_h { |entry| [entry.name, entry.source.dup] }
+
+  result_entries = entries.each_with_object([]) do |entry, result|
+    next if plan.fetch(:module_map).key?(entry.name)
+    result << HeptaNormalizedTokenBundle::Entry.new(entry.name, sources.fetch(entry.name))
+  end
+  result_entries.concat(support_module_entries)
+  family_records = []
+  token_stats = {
+    canonicalized_space_token_count: 0,
+    omitted_comment_token_count: 0,
+    exact_value_token_count: 0,
+    renamed_private_symbol_count: 0
+  }
+  plan.fetch(:families).each do |family|
+    chunk = family.fetch(:entries).map do |entry|
+      {
+        name: entry.name,
+        baseline_source: baseline_sources.fetch(entry.name),
+        source: sources.fetch(entry.name)
+      }
+    end
+    family_source, family_stats, sanitized = if family.fetch(:mode) == "heterogeneous_exact"
+                                               heterogeneous_family_source(
+                                                 family.fetch(:family_module),
+                                                 chunk
+                                               )
+                                             else
+                                               family_macro_source(
+                                                 family.fetch(:family_module),
+                                                 chunk
+                                               )
+                                             end
+    token_stats.each_key { |key| token_stats[key] += family_stats.fetch(key) }
+    result_entries << HeptaNormalizedTokenBundle::Entry.new(
+      family.fetch(:family_module),
+      family_source
+    )
+    family_records << {
+      mode: family.fetch(:mode),
+      template_id: family.fetch(:template_id),
+      partition: family.fetch(:partition),
+      family_module: family.fetch(:family_module),
+      variant_count: chunk.length,
+      variants: sanitized.map do |variant|
+        baseline_source = baseline_sources.fetch(variant.fetch(:name))
+        {
+          name: variant.fetch(:name),
+          source_sha256: Digest::SHA256.hexdigest(baseline_source),
+          source_bytes: baseline_source.bytesize,
+          source_lines: baseline_source.lines.count,
+          public_symbol_count: public_symbols(baseline_source).length,
+          consolidated_semantic_token_sha256: semantic_token_digest(variant.fetch(:source))
+        }
+      end
+    }
+  end
+  module_map = plan.fetch(:module_map)
+  result_entries.map! do |entry|
+    HeptaNormalizedTokenBundle::Entry.new(
+      entry.name,
+      rewrite_module_paths(entry.source, module_map)
+    )
+  end
+  result_entries.sort_by!(&:name)
+  raise "WorkGraph result module count drifted" unless result_entries.length == TARGET_MODULE_COUNT
+
+  runtime_changes = {}
+  source_prefix = "codex-rs/hepta-runtime/src"
+  baseline_runtime_paths = git_value(
+    "ls-tree", "-r", "--name-only", baseline_commit, "--", source_prefix
+  ).lines(chomp: true).select { |path| path.end_with?(".rs") }
+  baseline_runtime_paths.each do |relative_path|
+    path = File.join(ROOT, relative_path)
+    source = git_blob(relative_path, baseline_commit)
+    rewritten = rewrite_module_paths(source, module_map)
+    runtime_changes[path] = rewritten if rewritten != source
+  end
+  bundle = HeptaNormalizedTokenBundle.build(
+    result_entries,
+    tokenizer: HeptaNormalizedTokenBundle.method(:rust_tokens)
+  )
+  artifacts, canonical = render_canonical_artifacts(bundle)
+  source_entries = HeptaReadableTokenSource.entries_for(bundle)
+  registry = {
+    schema: SCHEMA,
+    status: "normalized",
+    module_count: source_entries.length,
+    source_bytes: source_entries.sum { |entry| entry.source.bytesize },
+    source_lines: source_entries.sum { |entry| entry.source.lines.count },
+    aggregate_source_sha256: HeptaNormalizedTokenBundle.aggregate_sha(source_entries),
+    bundle_bytes: artifacts.fetch("modules.bundle.gz").bytesize,
+    bundle_sha256: Digest::SHA256.hexdigest(artifacts.fetch("modules.bundle.gz")),
+    normalized_template_count: bundle.metrics.fetch(:normalized_template_count),
+    normalized_template_limit: NORMALIZED_TEMPLATE_LIMIT,
+    normalized_parameter_row_count: bundle.metrics.fetch(:normalized_parameter_row_count),
+    normalized_effective_lines: canonical.fetch(:normalized_effective_lines),
+    normalized_effective_line_limit: BASELINE_EFFECTIVE_LINE_LIMIT,
+    canonical_source_schema: canonical.fetch(:schema),
+    canonical_source_files: canonical.fetch(:canonical_files),
+    canonical_schema_sha256: Digest::SHA256.hexdigest(artifacts.fetch("source.schema.json")),
+    canonical_templates_sha256: canonical.fetch(:templates_sha256),
+    canonical_parameters_sha256: canonical.fetch(:parameters_sha256),
+    canonical_max_record_bytes: canonical.fetch(:canonical_max_record_bytes),
+    canonical_max_record_byte_limit: CANONICAL_RECORD_BYTE_LIMIT,
+    canonical_record_byte_semantics: canonical.fetch(:jsonl_record_byte_semantics),
+    gzip_mtime: HeptaReadableTokenSource::FIXED_GZIP_MTIME,
+    gzip_os: HeptaReadableTokenSource::FIXED_GZIP_OS,
+    monotonic_ratchet: {
+      logical_module_ceiling: TARGET_MODULE_COUNT,
+      normalized_template_ceiling: NORMALIZED_TEMPLATE_LIMIT,
+      normalized_effective_line_ceiling: BASELINE_EFFECTIVE_LINE_LIMIT
+    },
+    decline_targets: {
+      next: {
+        logical_module_count: 49,
+        normalized_template_count: 49,
+        normalized_effective_lines: 50_000
+      },
+      terminal: {
+        logical_module_count: 4,
+        normalized_template_count: 4,
+        normalized_effective_lines: 25_000
+      }
+    },
+    source_files_materialized: false,
+    canonical_source_is_readable: true,
+    gzip_is_generated_artifact: true,
+    byte_identical_repack_verified: true,
+    build_time_module_generation: true,
+    reversible_unpack: true
+  }
+  artifacts["registry.json"] = JSON.pretty_generate(registry) + "\n"
+  current_by_name = result_entries.to_h { |entry| [entry.name, entry.source] }
+  family_records.each do |record|
+    family_source = current_by_name.fetch(record.fetch(:family_module))
+    record[:family_source_sha256] = Digest::SHA256.hexdigest(family_source)
+    record[:family_source_bytes] = family_source.bytesize
+    record[:family_source_lines] = family_source.lines.count
+  end
+  legacy_module_map = family_records.each_with_object({}) do |record, mapping|
+    record.fetch(:variants).each do |variant|
+      mapping[variant.fetch(:name)] = {
+        family_module: record.fetch(:family_module),
+        variant_module: family_variant_module_name(variant.fetch(:name)),
+        source_sha256: variant.fetch(:source_sha256),
+        consolidated_semantic_token_sha256: variant.fetch(
+          :consolidated_semantic_token_sha256
+        )
+      }
+    end
+  end
+  {
+    baseline_entries: entries,
+    result_entries: result_entries,
+    plan: plan,
+    family_records: family_records,
+    legacy_module_map: legacy_module_map,
+    token_stats: token_stats,
+    runtime_changes: runtime_changes,
+    bundle: bundle,
+    artifacts: artifacts,
+    canonical: canonical,
+    registry: registry
+  }
+end
+
+def measurement(result)
+  largest_family = result.fetch(:family_records).max_by { |record| record.fetch(:family_source_lines) }
+  {
+    schema: "hepta_workgraph_family_state_machine_measure_v1",
+    status: "ready",
+    baseline_module_count: result.fetch(:baseline_entries).length,
+    result_module_count: result.fetch(:result_entries).length,
+    module_reduction: result.fetch(:baseline_entries).length - result.fetch(:result_entries).length,
+    family_module_count: result.fetch(:family_records).length,
+    support_module_count: SUPPORT_MODULE_NAMES.length,
+    normalized_template_count: result.fetch(:registry).fetch(:normalized_template_count),
+    normalized_effective_lines: result.fetch(:registry).fetch(:normalized_effective_lines),
+    baseline_normalized_effective_lines: BASELINE_EFFECTIVE_LINE_LIMIT,
+    normalized_effective_line_delta:
+      result.fetch(:registry).fetch(:normalized_effective_lines) - BASELINE_EFFECTIVE_LINE_LIMIT,
+    preferred_effective_line_target_met:
+      result.fetch(:registry).fetch(:normalized_effective_lines) <= 100_000,
+    baseline_effective_line_limit_met:
+      result.fetch(:registry).fetch(:normalized_effective_lines) <= BASELINE_EFFECTIVE_LINE_LIMIT,
+    canonical_max_record_bytes: result.fetch(:canonical).fetch(:canonical_max_record_bytes),
+    canonical_record_byte_limit: CANONICAL_RECORD_BYTE_LIMIT,
+    canonical_record_byte_limit_met:
+      result.fetch(:canonical).fetch(:canonical_max_record_bytes) <= CANONICAL_RECORD_BYTE_LIMIT,
+    largest_family_module: largest_family.fetch(:family_module),
+    largest_family_source_lines: largest_family.fetch(:family_source_lines),
+    runtime_caller_file_count: result.fetch(:runtime_changes).length,
+    runtime_caller_files: result.fetch(:runtime_changes).keys.map do |path|
+      path.delete_prefix("#{ROOT}/")
+    end,
+    token_canonicalization: result.fetch(:token_stats)
+  }
+end
+
+def assert_measurement!(result)
+  measured = measurement(result)
+  raise "WorkGraph result module count is #{measured.fetch(:result_module_count)}, expected #{TARGET_MODULE_COUNT}" unless measured.fetch(
+    :result_module_count
+  ) == TARGET_MODULE_COUNT
+  unless measured.fetch(:baseline_effective_line_limit_met)
+    raise "WorkGraph normalized_effective_lines=#{measured.fetch(:normalized_effective_lines)} exceeds baseline=#{BASELINE_EFFECTIVE_LINE_LIMIT}"
+  end
+  unless measured.fetch(:canonical_record_byte_limit_met)
+    raise "WorkGraph canonical_max_record_bytes=#{measured.fetch(:canonical_max_record_bytes)} exceeds limit=#{CANONICAL_RECORD_BYTE_LIMIT}"
+  end
+  raise "WorkGraph normalized template limit exceeded" if measured.fetch(
+    :normalized_template_count
+  ) > NORMALIZED_TEMPLATE_LIMIT
+end
+
+def patch_count_sources
+  build = File.binread(BUILD_PATH)
+  updated_build = build.sub(
+    "const EXPECTED_MODULE_COUNT: usize = 149;",
+    "const EXPECTED_MODULE_COUNT: usize = 99;"
+  )
+  unless updated_build.include?("const EXPECTED_MODULE_COUNT: usize = 99;")
+    raise "hepta-runtime build count drifted"
+  end
+  unless updated_build.include?("FAMILY_ALIAS_PREFIX")
+    updated_build = updated_build.sub(
+      "const BUNDLE_FILE: &str = \"modules.bundle.gz\";\n",
+      "const BUNDLE_FILE: &str = \"modules.bundle.gz\";\n" \
+        "const FAMILY_ALIAS_PREFIX: &str = \"/*workgraph-family-alias:\";\n"
+    )
+    updated_build = updated_build.sub(
+      "    for module in modules {\n",
+      "    for module in modules {\n" \
+        "        let family_aliases = decode_family_aliases(&module.source);\n"
+    )
+    alias_declarations = <<~'RUST'
+            .expect("write generated WorkGraph declaration");
+            for (legacy_module, variant_module) in family_aliases {
+                writeln!(
+                    &mut declarations,
+                    "#[allow(unused_imports)]\npub(crate) use {}::{} as {};",
+                    module.name, variant_module, legacy_module
+                )
+                .expect("write generated WorkGraph family alias");
+            }
+    RUST
+    updated_build = updated_build.sub(
+      "        .expect(\"write generated WorkGraph declaration\");\n",
+      alias_declarations
+    )
+    alias_decoder = <<~'RUST'
+      fn decode_family_aliases(source: &[u8]) -> Vec<(String, String)> {
+          let source = std::str::from_utf8(source).expect("WorkGraph module source must be UTF-8");
+          let mut remaining = source;
+          let mut aliases = Vec::new();
+          while let Some(offset) = remaining.find(FAMILY_ALIAS_PREFIX) {
+              let marker = &remaining[offset + FAMILY_ALIAS_PREFIX.len()..];
+              let end = marker
+                  .find("*/")
+                  .expect("unterminated WorkGraph family alias");
+              let (legacy_module, variant_module) = marker[..end]
+                  .split_once(':')
+                  .expect("invalid WorkGraph family alias");
+              assert!(valid_module_name(legacy_module));
+              assert!(valid_module_name(variant_module));
+              aliases.push((legacy_module.to_owned(), variant_module.to_owned()));
+              remaining = &marker[end + 2..];
+          }
+          aliases
+      }
+
+    RUST
+    updated_build = updated_build.sub(
+      "fn valid_module_name(name: &str) -> bool {\n",
+      "#{alias_decoder}fn valid_module_name(name: &str) -> bool {\n"
+    )
+  end
+  unless updated_build.include?("decode_family_aliases(&module.source)") &&
+      updated_build.include?("write generated WorkGraph family alias")
+    raise "hepta-runtime WorkGraph family alias generation drifted"
+  end
+
+  module_bundle = File.binread(MODULE_BUNDLE_PATH)
+  updated_module_bundle = module_bundle
+    .sub("EXPECTED_MODULE_COUNT = 149", "EXPECTED_MODULE_COUNT = 99")
+    .sub("MAX_NORMALIZED_TEMPLATE_COUNT = 149", "MAX_NORMALIZED_TEMPLATE_COUNT = 99")
+  unless updated_module_bundle.include?("EXPECTED_MODULE_COUNT = 99") &&
+      updated_module_bundle.include?("MAX_NORMALIZED_TEMPLATE_COUNT = 99") &&
+      updated_module_bundle.include?("MAX_NORMALIZED_EFFECTIVE_LINES = 75_000")
+    raise "WorkGraph module-bundle count or line limit drifted"
+  end
+  updated_module_bundle = updated_module_bundle.sub(
+    "        logical_module_count: 99,\n        normalized_template_count: 99,",
+    "        logical_module_count: 49,\n        normalized_template_count: 49,"
+  ).sub(
+    "        logical_module_count: 49,\n        normalized_template_count: 49,\n        normalized_effective_lines: 25_000",
+    "        logical_module_count: 4,\n        normalized_template_count: 4,\n        normalized_effective_lines: 25_000"
+  )
+  family_manifest_constant = <<~RUBY
+    FAMILY_MANIFEST_PATH = File.join(BUNDLE_ROOT, "family-state-machine-v1.json")
+  RUBY
+  unless updated_module_bundle.include?("FAMILY_MANIFEST_PATH =")
+    updated_module_bundle = updated_module_bundle.sub(
+      "REGISTRY_PATH = File.join(BUNDLE_ROOT, \"registry.json\")\n",
+      "REGISTRY_PATH = File.join(BUNDLE_ROOT, \"registry.json\")\n#{family_manifest_constant}"
+    )
+  end
+  contains_method = <<~'RUBY'
+
+    def contains_module?(module_name)
+      entries = normalized_entries.to_h { |entry| [entry.name, entry.source] }
+      return true if entries.key?(module_name)
+      return false unless File.file?(FAMILY_MANIFEST_PATH)
+
+      manifest = JSON.parse(File.binread(FAMILY_MANIFEST_PATH))
+      mapping = manifest.fetch("legacy_module_map", {})[module_name]
+      return false unless mapping
+      family_source = entries[mapping.fetch("family_module")]
+      return false unless family_source
+      marker = "/*workgraph-family-variant:#{module_name}:sha256=#{mapping.fetch("source_sha256")}*/"
+      family_source.include?(marker)
+    end
+  RUBY
+  unless updated_module_bundle.include?("def contains_module?(module_name)")
+    updated_module_bundle = updated_module_bundle.sub(
+      "def atomic_write(path, content, mode = nil)\n",
+      "#{contains_method}\ndef atomic_write(path, content, mode = nil)\n"
+    )
+  end
+  updated_module_bundle = updated_module_bundle.sub(
+    "exit(normalized_entries.any? { |entry| entry.name == ARGV.last } ? 0 : 1)",
+    "exit(contains_module?(ARGV.last) ? 0 : 1)"
+  )
+  [updated_build, updated_module_bundle]
+end
+
+def manifest_for(result)
+  baseline_commit = migration_baseline_commit
+  baseline_tree = git_value("show", "-s", "--format=%T", baseline_commit)
+  baseline_bundle = git_blob(
+    "codex-rs/hepta-runtime/codegen/workgraph-v3/modules.bundle.gz",
+    baseline_commit
+  )
+  baseline_public_symbols = result.fetch(:baseline_entries).each_with_object(Set.new) do |entry, symbols|
+    symbols.merge(public_symbols(entry.source))
+  end
+  {
+    schema: MANIFEST_SCHEMA,
+    status: "ready",
+    strategy: "parameterized_family_macro_state_machine_namespaced_variants_v3",
+    module_count_semantics: "compiled_top_level_workgraph_modules",
+    baseline: {
+      commit: baseline_commit,
+      tree: baseline_tree,
+      module_count: result.fetch(:baseline_entries).length,
+      bundle_sha256: Digest::SHA256.hexdigest(baseline_bundle),
+      aggregate_source_sha256:
+        HeptaNormalizedTokenBundle.aggregate_sha(result.fetch(:baseline_entries)),
+      public_symbol_count: baseline_public_symbols.length,
+      normalized_effective_lines: BASELINE_EFFECTIVE_LINE_LIMIT
+    },
+    result: {
+      module_count: result.fetch(:result_entries).length,
+      module_reduction:
+        result.fetch(:baseline_entries).length - result.fetch(:result_entries).length,
+      singleton_module_count: result.fetch(:plan).fetch(:singleton_module_count),
+      family_module_count: result.fetch(:family_records).length,
+      support_module_count: SUPPORT_MODULE_NAMES.length,
+      consolidated_legacy_module_count: result.fetch(:legacy_module_map).length,
+      bundle_sha256: result.fetch(:registry).fetch(:bundle_sha256),
+      aggregate_source_sha256: result.fetch(:registry).fetch(:aggregate_source_sha256),
+      normalized_template_count: result.fetch(:registry).fetch(:normalized_template_count),
+      normalized_effective_lines: result.fetch(:registry).fetch(:normalized_effective_lines),
+      canonical_max_record_bytes: result.fetch(:canonical).fetch(:canonical_max_record_bytes)
+    },
+    token_canonicalization: result.fetch(:token_stats).merge(
+      variable_whitespace: "one_ascii_space",
+      variable_comments: "omitted",
+      identifiers_literals_numbers: "byte_exact",
+      macro_slot_layout: "compact_single_assignment_stream"
+    ),
+    closure: {
+      caller_module_paths_rewritten: true,
+      bundled_legacy_paths_resolve_through_generated_aliases: true,
+      public_symbols_preserved_in_family_parameters: true,
+      legacy_contains_resolves_implemented_variants: true,
+      baseline_git_recovery_bound: true,
+      rewritten_runtime_files: result.fetch(:runtime_changes).keys.map do |path|
+        path.delete_prefix("#{ROOT}/")
+      end
+    },
+    families: result.fetch(:family_records),
+    legacy_module_map: result.fetch(:legacy_module_map)
+  }
+end
+
+def apply_result(result)
+  assert_measurement!(result)
+  updated_build, updated_module_bundle = patch_count_sources
+  manifest = manifest_for(result)
+  writes = {}
+  result.fetch(:artifacts).each do |name, content|
+    writes[File.join(BUNDLE_ROOT, name)] = [content, 0o644]
+  end
+  writes[MANIFEST_PATH] = [JSON.pretty_generate(manifest) + "\n", 0o644]
+  result.fetch(:runtime_changes).each do |path, content|
+    writes[path] = [content, File.stat(path).mode & 0o777]
+  end
+  writes[BUILD_PATH] = [updated_build, File.stat(BUILD_PATH).mode & 0o777]
+  writes[MODULE_BUNDLE_PATH] = [
+    updated_module_bundle,
+    File.stat(MODULE_BUNDLE_PATH).mode & 0o777
+  ]
+  backups = writes.to_h do |path, _content|
+    if File.exist?(path)
+      [path, { exists: true, content: File.binread(path), mode: File.stat(path).mode & 0o777 }]
+    else
+      [path, { exists: false }]
+    end
+  end
+  begin
+    writes.each do |path, (content, mode)|
+      atomic_write(path, content, mode)
+    end
+  rescue StandardError
+    backups.each do |path, backup|
+      if backup.fetch(:exists)
+        atomic_write(path, backup.fetch(:content), backup.fetch(:mode))
+      else
+        FileUtils.rm_f(path)
+      end
+    end
+    raise
+  end
+  puts JSON.generate(measurement(result).merge(
+    schema: "hepta_workgraph_family_state_machine_apply_v1",
+    status: "ready"
+  ))
+end
+
+def decode_git_bundle(compressed)
+  payload = Zlib::GzipReader.new(StringIO.new(compressed)).read
+  HeptaNormalizedTokenBundle.decode(
+    payload,
+    schema: SCHEMA,
+    name_validator: ->(name) { name.match?(/\A(?:wg_|work_graph_)[a-z0-9_]+\z/) }
+  )
+end
+
+def verify_result
+  manifest = JSON.parse(File.binread(MANIFEST_PATH))
+  raise "invalid WorkGraph family manifest schema" unless manifest.fetch("schema") ==
+    MANIFEST_SCHEMA
+  entries, = canonical_entries(strict_metadata: true)
+  registry = JSON.parse(File.binread(REGISTRY_PATH))
+  raise "WorkGraph active module count drifted" unless entries.length == TARGET_MODULE_COUNT
+  raise "WorkGraph registry module count drifted" unless registry.fetch("module_count") ==
+    TARGET_MODULE_COUNT
+  effective_lines = registry.fetch("normalized_effective_lines")
+  raise "WorkGraph effective-line baseline regressed: #{effective_lines}" if effective_lines >
+    BASELINE_EFFECTIVE_LINE_LIMIT
+  raise "WorkGraph canonical record limit regressed" if registry.fetch(
+    "canonical_max_record_bytes"
+  ) > CANONICAL_RECORD_BYTE_LIMIT
+
+  baseline = manifest.fetch("baseline")
+  baseline_commit = baseline.fetch("commit")
+  baseline_tree = git_value("show", "-s", "--format=%T", baseline_commit)
+  raise "WorkGraph recovery tree drifted" unless baseline_tree == baseline.fetch("tree")
+  baseline_bundle = git_blob(
+    "codex-rs/hepta-runtime/codegen/workgraph-v3/modules.bundle.gz",
+    baseline_commit
+  )
+  raise "WorkGraph recovery bundle drifted" unless Digest::SHA256.hexdigest(baseline_bundle) ==
+    baseline.fetch("bundle_sha256")
+  baseline_entries = decode_git_bundle(baseline_bundle)
+  raise "WorkGraph recovery module count drifted" unless baseline_entries.length ==
+    BASELINE_MODULE_COUNT
+  raise "WorkGraph recovery aggregate drifted" unless HeptaNormalizedTokenBundle.aggregate_sha(
+    baseline_entries
+  ) == baseline.fetch("aggregate_source_sha256")
+
+  current_by_name = entries.to_h { |entry| [entry.name, entry.source] }
+  baseline_by_name = baseline_entries.to_h { |entry| [entry.name, entry.source] }
+  legacy_map = manifest.fetch("legacy_module_map")
+  legacy_map.each do |legacy_module, mapping|
+    baseline_source = baseline_by_name.fetch(legacy_module)
+    expected_sha = Digest::SHA256.hexdigest(baseline_source)
+    raise "WorkGraph legacy source digest drifted: #{legacy_module}" unless mapping.fetch(
+      "source_sha256"
+    ) == expected_sha
+    family_source = current_by_name.fetch(mapping.fetch("family_module"))
+    marker = "/*workgraph-family-variant:#{legacy_module}:sha256=#{expected_sha}*/"
+    raise "WorkGraph family marker missing: #{legacy_module}" unless family_source.include?(marker)
+  end
+
+  current_source = entries.map(&:source).join("\n")
+  baseline_public_symbols = baseline_entries.each_with_object(Set.new) do |entry, symbols|
+    symbols.merge(public_symbols(entry.source))
+  end
+  missing_symbols = baseline_public_symbols.reject do |symbol|
+    current_source.match?(/\b#{Regexp.escape(symbol)}\b/)
+  end
+  unless missing_symbols.empty?
+    raise "WorkGraph public symbols missing: #{missing_symbols.first(5).join(", ")}"
+  end
+
+  legacy_names = legacy_map.keys.sort_by { |name| -name.length }
+  entries.each do |entry|
+    legacy_names.each do |legacy_module|
+      if entry.source.match?(/\b#{Regexp.escape(legacy_module)}::/)
+        raise "legacy WorkGraph module path remains in #{entry.name}: #{legacy_module}"
+      end
+    end
+  end
+  Dir[File.join(SOURCE_ROOT, "**/*.rs")].sort.each do |path|
+    source = File.binread(path)
+    legacy_names.each do |legacy_module|
+      if source.match?(/\b#{Regexp.escape(legacy_module)}::/)
+        raise "legacy WorkGraph caller path remains in #{path}: #{legacy_module}"
+      end
+    end
+  end
+  manifest.fetch("families").each do |family|
+    source = current_by_name.fetch(family.fetch("family_module"))
+    marker_count = source.scan(/\/\*workgraph-family-variant:/).length
+    unless marker_count == family.fetch("variant_count")
+      raise "WorkGraph family variant count drifted: #{family.fetch("family_module")}"
+    end
+    aliases = source.scan(
+      /\/\*workgraph-family-alias:([a-z0-9_]+):([a-z0-9_]+)\*\//
+    ).to_h
+    expected_aliases = family.fetch("variants").to_h do |variant|
+      name = variant.fetch("name")
+      [name, family_variant_module_name(name)]
+    end
+    unless aliases == expected_aliases
+      raise "WorkGraph family alias mapping drifted: #{family.fetch("family_module")}"
+    end
+    variant_module_count = source.scan(/pub\(crate\) mod work_graph_family_variant_/).length
+    unless variant_module_count == family.fetch("variant_count")
+      raise "WorkGraph family variant namespace drifted: #{family.fetch("family_module")}"
+    end
+  end
+  puts JSON.generate(
+    schema: "hepta_workgraph_family_state_machine_verify_v1",
+    status: "ready",
+    baseline_module_count: baseline_entries.length,
+    active_module_count: entries.length,
+    module_reduction: baseline_entries.length - entries.length,
+    normalized_template_count: registry.fetch("normalized_template_count"),
+    normalized_effective_lines: effective_lines,
+    canonical_max_record_bytes: registry.fetch("canonical_max_record_bytes"),
+    preserved_public_symbol_count: baseline_public_symbols.length,
+    caller_file_count: manifest.fetch("closure").fetch("rewritten_runtime_files").length,
+    recovery_commit: baseline_commit,
+    recovery_tree: baseline_tree,
+    bundle_sha256: registry.fetch("bundle_sha256")
+  )
+end
+
+case ARGV
+when ["plan"]
+  baseline_commit = migration_baseline_commit
+  entries = migration_baseline_entries(baseline_commit)
+  plan = plan_for(entries, parameter_rows(baseline_commit))
+  puts JSON.pretty_generate(
+    schema: "hepta_workgraph_family_state_machine_plan_v1",
+    status: "ready",
+    baseline_module_count: entries.length,
+    repeated_module_count: plan.fetch(:repeated_module_count),
+    singleton_module_count: plan.fetch(:singleton_module_count),
+    family_module_count: plan.fetch(:families).length,
+    result_module_count: plan.fetch(:result_module_count),
+    reduction: entries.length - plan.fetch(:result_module_count)
+  )
+when ["measure"]
+  puts JSON.pretty_generate(measurement(build_result))
+when ["apply"]
+  apply_result(build_result)
+when ["verify"]
+  verify_result
+else
+  usage
+end

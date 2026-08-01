@@ -1,50 +1,53 @@
 {
-  "schema_version": "hepta_gate_compat_debt_v4",
-  "status": "bounded_migration_debt",
+  "schema_version": "hepta_gate_compat_debt_v5",
+  "status": "bounded_family_migration_debt",
   "registry": {
     "path": "scripts/hepta-gate-pair-specs-v1.json",
-    "sha256": "25e987bb2f8691c591b505b460f75f637c513689d7638f60ae4b028f6e69e311"
+    "sha256": "d85e8a562ac463865e088607e535f371849be6e9dc550b0a4db2cb08222e060b"
   },
   "compatibility_store": "scripts/lib/hepta-gate-pair-compat-v2",
   "logical_overlay_store": "scripts/lib/hepta-gate-pair-compat-v1",
   "payload_registry": "scripts/lib/hepta-gate-pair-compat-v2/registry.json",
+  "family_registry": "scripts/lib/hepta-gate-pair-compat-v2/family-state-v1/registry.json",
+  "family_receipt": "scripts/hepta-gate-compat-family-receipt-v1.json",
+  "family_verifier": "scripts/hepta-gate-compat-family-verify",
   "entrypoint_registry": "scripts/hepta-gate-pair-entrypoints-v2.json",
   "ceilings": {
-    "pair_count": 498,
-    "captured_shell_pair_count": 463,
+    "pair_count": 299,
+    "captured_shell_pair_count": 236,
     "legacy_workgraph_pair_count": 0,
-    "compatibility_payload_count": 361,
-    "logical_compatibility_payload_count": 952,
-    "normalized_effective_lines": 145377,
+    "compatibility_payload_count": 357,
+    "logical_compatibility_payload_count": 794,
+    "normalized_effective_lines": 97191,
     "unregistered_payload_count": 0,
     "physical_entrypoint_count": 69,
     "virtual_entrypoint_count": 2,
-    "logical_virtual_entrypoint_count": 927
+    "logical_virtual_entrypoint_count": 529
   },
   "baselines": {
-    "pair_count": 498,
-    "captured_shell_pair_count": 463,
+    "pair_count": 299,
+    "captured_shell_pair_count": 236,
     "legacy_workgraph_pair_count": 0,
-    "compatibility_payload_count": 361,
-    "logical_compatibility_payload_count": 952,
-    "normalized_effective_lines": 141142,
+    "compatibility_payload_count": 357,
+    "logical_compatibility_payload_count": 794,
+    "normalized_effective_lines": 97191,
     "unregistered_payload_count": 0,
     "physical_entrypoint_count": 69,
     "virtual_entrypoint_count": 2,
-    "logical_virtual_entrypoint_count": 927,
-    "declarative_pair_count": 35
+    "logical_virtual_entrypoint_count": 529,
+    "declarative_pair_count": 63
   },
   "decline_targets": {
     "next": {
       "pair_count": 299,
-      "captured_shell_pair_count": 299,
+      "captured_shell_pair_count": 199,
       "legacy_workgraph_pair_count": 0,
       "compatibility_payload_count": 250,
       "logical_compatibility_payload_count": 600,
-      "normalized_effective_lines": 100000,
+      "normalized_effective_lines": 75000,
       "unregistered_payload_count": 0,
       "physical_entrypoint_count": 59,
-      "logical_virtual_entrypoint_count": 600,
+      "logical_virtual_entrypoint_count": 529,
       "declarative_pair_count": 100
     },
     "terminal": {
@@ -53,7 +56,7 @@
       "legacy_workgraph_pair_count": 0,
       "compatibility_payload_count": 149,
       "logical_compatibility_payload_count": 299,
-      "normalized_effective_lines": 75000,
+      "normalized_effective_lines": 50000,
       "unregistered_payload_count": 0,
       "physical_entrypoint_count": 20,
       "logical_virtual_entrypoint_count": 199,
@@ -62,12 +65,12 @@
   },
   "ratchet": {
     "discrete_debt_growth_percent": 0,
-    "effective_line_maintenance_headroom_percent": 3,
+    "effective_line_maintenance_headroom_percent": 0,
     "baseline_updates_require_verified_decrease": true,
     "decline_targets_are_not_release_claims": true
   },
   "floors": {
-    "declarative_pair_count": 35
+    "declarative_pair_count": 63
   },
   "migration_policy": {
     "counts_may_only_improve": true,
@@ -75,6 +78,9 @@
     "public_entrypoints_remain_thin_wrappers": true,
     "virtual_entrypoints_are_manifest_bound": true,
     "payloads_are_normalized_templates_with_parameter_rows": true,
+    "family_state_parameters_are_measured": true,
+    "family_exact_variants_count_as_logical_payloads": true,
+    "declarative_projections_are_forbidden": true,
     "virtual_entrypoints_are_normalized_templates_with_parameter_rows": true,
     "legacy_logical_surfaces_remain_reversible": true,
     "unregistered_payloads_must_not_grow": true,

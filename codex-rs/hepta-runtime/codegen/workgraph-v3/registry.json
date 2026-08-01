@@ -1,45 +1,45 @@
 {
   "schema": "hepta_workgraph_normalized_bundle_v3",
   "status": "normalized",
-  "module_count": 284,
-  "source_bytes": 10904788,
-  "source_lines": 201605,
-  "aggregate_source_sha256": "d61e8c442587972fd2e4b1637ff66ac58861ab849c0efafa049fdcb96441a0c1",
-  "bundle_bytes": 708379,
-  "bundle_sha256": "43151f09cfe65bf944d19677df66bc329d304c327f344b830e4d3d331c67a216",
-  "normalized_template_count": 195,
-  "normalized_template_limit": 201,
-  "normalized_parameter_row_count": 284,
-  "normalized_effective_lines": 141612,
-  "normalized_effective_line_limit": 150357,
+  "module_count": 99,
+  "source_bytes": 9513325,
+  "source_lines": 129180,
+  "aggregate_source_sha256": "65a7742fc4efac1718981d37066fbe93e97ed74226b26f9c0847ad360fd901a6",
+  "bundle_bytes": 792223,
+  "bundle_sha256": "644386ab25ce0c7317a62d38237da42e61e8cb7052f44fa54615b81b89136959",
+  "normalized_template_count": 98,
+  "normalized_template_limit": 99,
+  "normalized_parameter_row_count": 99,
+  "normalized_effective_lines": 71160,
+  "normalized_effective_line_limit": 75000,
   "canonical_source_schema": "hepta_readable_normalized_token_source_v1",
   "canonical_source_files": [
     "templates.jsonl",
     "parameters.jsonl"
   ],
-  "canonical_schema_sha256": "357dbcaa1ecf1e6f73a587db66b3314ae2d65aa8c006141eb0a777f94988c48d",
-  "canonical_templates_sha256": "a6aef8df35d542e5d137f69fa03086ee0fe3b9474f41bb9642b9586a59bea120",
-  "canonical_parameters_sha256": "9706d307875583cf9b6e00d4897c9dfca62a4d45e3ffc8e5d30d887d89e870f5",
-  "canonical_max_record_bytes": 89270,
+  "canonical_schema_sha256": "b92173faa74754d55499d6be638e7aaae564bc0d944a51ac38ea66e93b8a1178",
+  "canonical_templates_sha256": "105be993c5767c84c1bcc9f61a76ad9ca0c00d7bfa435043cf82a6dab0d6a142",
+  "canonical_parameters_sha256": "5eb6460a26f2972e487af9e190ce42b9218f108a055844b82a876d99198d099e",
+  "canonical_max_record_bytes": 16649,
   "canonical_max_record_byte_limit": 89270,
   "canonical_record_byte_semantics": "record_including_lf",
   "gzip_mtime": 1,
   "gzip_os": 255,
   "monotonic_ratchet": {
-    "logical_module_ceiling": 284,
-    "normalized_template_ceiling": 201,
-    "normalized_effective_line_ceiling": 150357
+    "logical_module_ceiling": 99,
+    "normalized_template_ceiling": 99,
+    "normalized_effective_line_ceiling": 75000
   },
   "decline_targets": {
     "next": {
-      "logical_module_count": 199,
-      "normalized_template_count": 149,
-      "normalized_effective_lines": 100000
+      "logical_module_count": 49,
+      "normalized_template_count": 49,
+      "normalized_effective_lines": 50000
     },
     "terminal": {
-      "logical_module_count": 99,
-      "normalized_template_count": 99,
-      "normalized_effective_lines": 75000
+      "logical_module_count": 4,
+      "normalized_template_count": 4,
+      "normalized_effective_lines": 25000
     }
   },
   "source_files_materialized": false,

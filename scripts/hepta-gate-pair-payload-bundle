@@ -198,7 +198,7 @@ def aggregate_sha(entries)
   end
   digest.hexdigest
 end
-def write_registry(entries, metrics, _canonical)
+def write_registry(entries, metrics, canonical)
   registry = {
     schema: SCHEMA,
     status: "normalized",
@@ -206,7 +206,7 @@ def write_registry(entries, metrics, _canonical)
     normalized_payload_count: metrics.fetch(:normalized_template_count),
     normalized_payload_limit: MAX_NORMALIZED_PAYLOAD_COUNT,
     normalized_parameter_row_count: metrics.fetch(:normalized_parameter_row_count),
-    normalized_effective_lines: metrics.fetch(:normalized_effective_lines),
+    normalized_effective_lines: canonical.fetch(:normalized_effective_lines),
     normalized_effective_line_limit: MAX_NORMALIZED_EFFECTIVE_LINES,
     registered_payload_count: registered_hashes.length,
     source_bytes: entries.sum { |_logical_path, source| source.bytesize },
@@ -217,11 +217,11 @@ def write_registry(entries, metrics, _canonical)
     canonical_schema_sha256: Digest::SHA256.file(
       File.join(BUNDLE_ROOT, HeptaReadableTokenSource::SCHEMA_FILE)
     ).hexdigest,
-    canonical_templates_sha256: _canonical.fetch(:templates_sha256),
-    canonical_parameters_sha256: _canonical.fetch(:parameters_sha256),
-    canonical_max_record_bytes: _canonical.fetch(:canonical_max_record_bytes),
+    canonical_templates_sha256: canonical.fetch(:templates_sha256),
+    canonical_parameters_sha256: canonical.fetch(:parameters_sha256),
+    canonical_max_record_bytes: canonical.fetch(:canonical_max_record_bytes),
     canonical_max_record_byte_limit: MAX_CANONICAL_RECORD_BYTES,
-    canonical_record_byte_semantics: _canonical.fetch(:jsonl_record_byte_semantics),
+    canonical_record_byte_semantics: canonical.fetch(:jsonl_record_byte_semantics),
     legacy_blob_generation: "deterministic_raw_or_gzip_default_mtime_zero_v1",
     legacy_blob_count: entries.length,
     legacy_blob_aggregate_sha256: legacy_blob_aggregate_sha(entries),
@@ -240,12 +240,6 @@ def write_bundle(entries)
     normalized_entries,
     tokenizer: HeptaNormalizedTokenBundle.method(:shell_tokens)
   )
-  if bundle.metrics.fetch(:normalized_template_count) > MAX_NORMALIZED_PAYLOAD_COUNT
-    raise "normalized gate payload budget exceeded: #{bundle.metrics.fetch(:normalized_template_count)}"
-  end
-  if bundle.metrics.fetch(:normalized_effective_lines) > MAX_NORMALIZED_EFFECTIVE_LINES
-    raise "normalized gate payload effective-line budget exceeded: #{bundle.metrics.fetch(:normalized_effective_lines)}"
-  end
   FileUtils.mkdir_p(BUNDLE_ROOT)
   canonical = HeptaReadableTokenSource.write(
     root: BUNDLE_ROOT,
@@ -253,8 +247,14 @@ def write_bundle(entries)
     artifact_schema: SCHEMA,
     domain: "hepta_gate_pair_compat_payloads",
     artifact_file: File.basename(BUNDLE_PATH),
-    atomic_write: method(:atomic_write)
+    atomic_write: method(:atomic_write), source_chunk_lines: 8
   )
+  if bundle.metrics.fetch(:normalized_template_count) > MAX_NORMALIZED_PAYLOAD_COUNT
+    raise "normalized gate payload budget exceeded: #{bundle.metrics.fetch(:normalized_template_count)}"
+  end
+  if canonical.fetch(:normalized_effective_lines) > MAX_NORMALIZED_EFFECTIVE_LINES
+    raise "normalized gate payload effective-line budget exceeded: #{canonical.fetch(:normalized_effective_lines)}"
+  end
   payload = HeptaNormalizedTokenBundle.encode(bundle, schema: SCHEMA)
   atomic_write(
     BUNDLE_PATH,
@@ -353,7 +353,7 @@ def verify
   raise "normalized gate payload parameter rows drifted" unless registry["normalized_parameter_row_count"] == EXPECTED_PAYLOAD_COUNT
   raise "normalized gate effective lines drifted" unless registry[
     "normalized_effective_lines"
-  ] == rebuilt.metrics.fetch(:normalized_effective_lines)
+  ] == canonical_bundle.metrics.fetch(:normalized_effective_lines)
   raise "normalized gate effective-line budget exceeded" unless registry[
     "normalized_effective_lines"
   ].between?(1, MAX_NORMALIZED_EFFECTIVE_LINES)

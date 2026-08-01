@@ -1,0 +1,197 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "set"
+require "tmpdir"
+
+ROOT = File.expand_path("..", __dir__)
+SPEC_PATH = File.join(ROOT, "scripts/hepta-gate-pair-specs-v1.json")
+STORE_ROOT = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2/family-state-v1")
+REGISTRY_PATH = ENV.fetch(
+  "HEPTA_GATE_COMPAT_FAMILY_REGISTRY",
+  File.join(STORE_ROOT, "registry.json")
+)
+RECEIPT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-family-receipt-v1.json")
+STATE_MACHINE = File.join(ROOT, "scripts/hepta-gate-compat-family-state-machine")
+PAYLOAD_REGISTRY_PATH = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2/registry.json")
+TARGET_PAIR_COUNT = 299
+TARGET_CAPTURED_COUNT = 236
+TARGET_DECLARATIVE_COUNT = 63
+TARGET_FAMILY_COUNT = 56
+TARGET_MIGRATED_STATE_COUNT = 148
+TARGET_RETIRED_MEMBER_COUNT = 92
+BASELINE_NORMALIZED_EFFECTIVE_LINES = 141_142
+
+def usage
+  warn "usage: scripts/hepta-gate-compat-family-verify <verify|self-test>"
+  exit 64
+end
+
+def semantic_json_cost(value)
+  case value
+  when Hash
+    1 + value.sum { |key, child| 1 + (key.bytesize + 79) / 80 + semantic_json_cost(child) }
+  when Array
+    1 + value.sum { |child| semantic_json_cost(child) }
+  when String
+    1 + (value.bytesize + 79) / 80 + value.count("\n")
+  else
+    1
+  end
+end
+
+def verify
+  spec = JSON.parse(File.binread(SPEC_PATH))
+  registry = JSON.parse(File.binread(REGISTRY_PATH))
+  receipt = JSON.parse(File.binread(RECEIPT_PATH))
+  raise "invalid family receipt schema" unless receipt.fetch("schema") ==
+    "hepta_gate_compat_family_current_baseline_receipt_v1"
+  raise "family receipt is not current-baseline bound" unless receipt.fetch("baseline").fetch(
+    "basis"
+  ) == "current_source_graph_independent_of_historical_o2"
+  raise "family result spec SHA drifted" unless receipt.fetch("result").fetch("spec_sha256") ==
+    Digest::SHA256.file(SPEC_PATH).hexdigest
+  raise "family registry SHA drifted" unless receipt.fetch("result").fetch("family_registry_sha256") ==
+    Digest::SHA256.file(REGISTRY_PATH).hexdigest
+  shortfall = receipt.fetch("honest_shortfall")
+  raise "family shortfall status drifted" unless shortfall.fetch("status") ==
+    "exact_parameterized_floor"
+  raise "family shortfall conversion count drifted" unless shortfall.fetch(
+    "additional_true_declarative_conversions_required"
+  ) == 37
+  raise "family shortfall exact reduction drifted" unless shortfall.fetch(
+    "exact_pair_reduction"
+  ) == TARGET_RETIRED_MEMBER_COUNT
+  raise "family shortfall preserved retired aliases" if shortfall.fetch(
+    "retired_full_shell_bodies_preserved_as_supplemental_aliases"
+  )
+  pairs = spec.fetch("pairs")
+  captured = pairs.count { |pair| pair.fetch("template") == "captured_shell_compat_v1" }
+  legacy = pairs.count { |pair| pair.fetch("template") == "legacy_workgraph_projection_v1" }
+  declarative = pairs.length - captured - legacy
+  raise "family pair count drifted" unless pairs.length == TARGET_PAIR_COUNT
+  raise "family captured count drifted" unless captured == TARGET_CAPTURED_COUNT
+  raise "family legacy count drifted" unless legacy.zero?
+  raise "family declarative count drifted" unless declarative == TARGET_DECLARATIVE_COUNT
+  family_pairs = pairs.select { |pair| pair.fetch("template") == "compat_family_state_machine_v1" }
+  raise "family pair registry count drifted" unless family_pairs.length == TARGET_FAMILY_COUNT
+  raise "family caller routing contract drifted" unless family_pairs.all? do |pair|
+    pair.fetch("family_call_routing") == "caller_route_precedence_fail_closed_v2"
+  end
+  family_ids = registry.fetch("families").map { |family| family.fetch("id") }
+  raise "family spec/registry mismatch" unless family_pairs.map { |pair| pair.fetch("id") }.sort ==
+    family_ids.sort
+  protected = receipt.fetch("baseline").fetch("protected_pairs").to_set
+  result_ids = pairs.map { |pair| pair.fetch("id") }.to_set
+  raise "externally protected pair was removed" unless protected.subset?(result_ids)
+  dead = receipt.fetch("retirement").fetch("dead_pairs").to_set
+  raise "dead pair remains registered" unless (dead & result_ids).empty?
+  migrated = registry.fetch("families").flat_map do |family|
+    family.fetch("states").map { |state| state.fetch("id") }
+  end
+  raise "migrated state count drifted" unless migrated.length == TARGET_MIGRATED_STATE_COUNT &&
+    migrated.uniq.length == TARGET_MIGRATED_STATE_COUNT
+  retired = migrated.to_set - family_ids.to_set
+  raise "retired family member count drifted" unless retired.length == TARGET_RETIRED_MEMBER_COUNT
+  parameter_body = File.binread(
+    File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2/parameters.jsonl")
+  )
+  retired.each do |id|
+    raise "retired payload survived in captured bundle: #{id}" if parameter_body.include?(
+      "hepta-gate-pair-compat-v1/#{id}."
+    )
+  end
+  family_source = [
+    File.binread(File.join(STORE_ROOT, "templates.jsonl")),
+    File.binread(File.join(STORE_ROOT, "parameters.jsonl"))
+  ].join
+  retired.each do |id|
+    raise "retired logical payload path survived in family source: #{id}" if family_source.include?(
+      "scripts/lib/hepta-gate-pair-compat-v1/#{id}."
+    )
+  end
+  raise "family registry contains shell source blobs" if File.binread(REGISTRY_PATH).match?(
+    /#!\/usr\/bin\/env bash|set -euo pipefail|\beval\s+['\"]/
+  )
+  projections = File.readlines(File.join(STORE_ROOT, "projections.jsonl"), chomp: true).map do |line|
+    JSON.parse(line)
+  end
+  raise "projection registry contains shell source blobs" if projections.any? do |projection|
+    JSON.generate(projection).match?(/#!\/usr\/bin\/env bash|set -euo pipefail/)
+  end
+  semantic_cost = semantic_json_cost(registry) + projections.sum do |projection|
+    semantic_json_cost(projection)
+  end
+  raise "family semantic registry cost drifted" unless semantic_cost == registry.fetch(
+    "metrics"
+  ).fetch("semantic_registry_effective_lines")
+  raise "family semantic registry is not compact" unless semantic_cost <= 25_000
+  payload_registry = JSON.parse(File.binread(PAYLOAD_REGISTRY_PATH))
+  metrics = registry.fetch("metrics")
+  logical_payload_count = payload_registry.fetch("payload_count") +
+    metrics.fetch("logical_family_payload_count")
+  normalized_payload_count = payload_registry.fetch("normalized_payload_count") +
+    metrics.fetch("normalized_family_payload_count")
+  normalized_effective_lines = payload_registry.fetch("normalized_effective_lines") +
+    metrics.fetch("exact_normalized_effective_lines") + semantic_cost
+  result = receipt.fetch("result")
+  raise "family logical payload accounting drifted" unless logical_payload_count == result.fetch(
+    "logical_compatibility_payload_count"
+  )
+  raise "family normalized payload accounting drifted" unless normalized_payload_count == result.fetch(
+    "normalized_payload_count"
+  )
+  raise "family effective-line accounting drifted" unless normalized_effective_lines == result.fetch(
+    "normalized_effective_lines"
+  )
+  raise "family migration relocated normalized debt" unless normalized_effective_lines <
+    BASELINE_NORMALIZED_EFFECTIVE_LINES
+  system("#{STATE_MACHINE} verify >/dev/null") || raise("family state-machine verification failed")
+  puts JSON.generate(
+    schema: "hepta_gate_compat_family_verification_receipt_v1",
+    status: "ready",
+    pair_count: pairs.length,
+    captured_pair_count: captured,
+    declarative_pair_count: declarative,
+    family_pair_count: family_pairs.length,
+    migrated_state_count: migrated.length,
+    retired_member_count: retired.length,
+    protected_pair_count: protected.length,
+    dead_pair_count: dead.length,
+    semantic_registry_effective_lines: semantic_cost,
+    current_baseline_independent_of_historical_o2: true
+  )
+end
+
+def self_test
+  original = JSON.parse(File.binread(REGISTRY_PATH))
+  temporary = File.join(Dir.tmpdir, "hepta-gate-family-negative-#{$$}.json")
+  mutated = Marshal.load(Marshal.dump(original))
+  mutated.fetch("families").first.fetch("states").first["id"] = "unregistered-negative-state"
+  File.binwrite(temporary, JSON.pretty_generate(mutated) + "\n")
+  accepted = system(
+    {"HEPTA_GATE_COMPAT_FAMILY_REGISTRY" => temporary},
+    __FILE__,
+    "verify",
+    out: File::NULL,
+    err: File::NULL
+  )
+  File.unlink(temporary) if File.exist?(temporary)
+  raise "family verifier accepted a drifted state registry" if accepted
+  puts JSON.generate(
+    schema: "hepta_gate_compat_family_self_test_v1",
+    status: "ready",
+    negative_fixtures: 1
+  )
+end
+
+case ARGV
+when ["verify"]
+  verify
+when ["self-test"]
+  self_test
+else
+  usage
+end

@@ -18,37 +18,39 @@ module HeptaReadableTokenSource
 
   module_function
 
-  def deterministic_gzip(payload)
-    buffer = StringIO.new(+"".b)
-    writer = Zlib::GzipWriter.new(buffer, Zlib::BEST_COMPRESSION)
-    writer.mtime = FIXED_GZIP_MTIME
-    writer.write(payload)
-    writer.close
-    gzip = buffer.string
-    gzip[4, 4] = [FIXED_GZIP_MTIME].pack("V")
-    gzip.setbyte(9, FIXED_GZIP_OS)
-    gzip
-  end
 
-  def write(root:, bundle:, artifact_schema:, domain:, artifact_file:, atomic_write:)
-    templates = bundle.families.each_with_index.map do |family, template_id|
-      slot_id = 0
-      segments = family.segments.map do |segment|
-        if segment.kind == :fixed
-          { fixed: utf8(segment.text) }
-        else
-          value = { slot: slot_id }
-          slot_id += 1
-          value
-        end
-      end
-      raise "readable token template slot count drifted" unless slot_id == family.slot_count
-      JSON.generate(
-        template_id: template_id,
-        slot_count: family.slot_count,
-        segments: segments
+  def write(
+    root:,
+    bundle:,
+    artifact_schema:,
+    domain:,
+    artifact_file:,
+    atomic_write:,
+    template_fixed_chunk_bytes: nil,
+    source_chunk_lines: nil,
+    source_chunk_tokenizer: "shell_v1"
+  )
+    if source_chunk_lines
+      return write_chunked(
+        root: root,
+        bundle: bundle,
+        artifact_schema: artifact_schema,
+        domain: domain,
+        artifact_file: artifact_file,
+        atomic_write: atomic_write,
+        source_chunk_lines: source_chunk_lines,
+        source_chunk_tokenizer: source_chunk_tokenizer,
+        template_fixed_chunk_bytes: template_fixed_chunk_bytes
       )
-    end.join("\n") + "\n"
+    end
+    template_records = bundle.families.each_with_index.flat_map do |family, template_id|
+      template_records(
+        family,
+        template_id,
+        fixed_chunk_bytes: template_fixed_chunk_bytes
+      )
+    end
+    templates = template_records.map { |record| JSON.generate(record) }.join("\n") + "\n"
     parameters = bundle.entries.sort_by(&:name).map do |entry|
       family = bundle.families.fetch(entry.family_index)
       source = HeptaNormalizedTokenBundle.expand(family, entry)
@@ -73,6 +75,8 @@ module HeptaReadableTokenSource
       canonical_files: [TEMPLATE_FILE, PARAMETER_FILE],
       generated_artifact: artifact_file,
       template_count: bundle.families.length,
+      template_record_count: template_records.length,
+      template_fixed_chunk_bytes: template_fixed_chunk_bytes,
       parameter_row_count: bundle.entries.length,
       source_bytes: entries.sum { |entry| entry.source.bytesize },
       source_lines: entries.sum { |entry| entry.source.lines.count },
@@ -104,6 +108,7 @@ module HeptaReadableTokenSource
     metadata
   end
 
+
   def read(root:, artifact_schema:, domain:, name_validator:, strict_metadata:)
     metadata = JSON.parse(File.binread(File.join(root, SCHEMA_FILE)))
     raise "invalid readable token source schema" unless metadata["schema"] == SCHEMA
@@ -112,6 +117,15 @@ module HeptaReadableTokenSource
       artifact_schema
     templates_body = File.binread(File.join(root, TEMPLATE_FILE))
     parameters_body = File.binread(File.join(root, PARAMETER_FILE))
+    if metadata["canonical_layout"] == "chunked_source_sequence_v1"
+      return read_chunked(
+        metadata: metadata,
+        templates_body: templates_body,
+        parameters_body: parameters_body,
+        name_validator: name_validator,
+        strict_metadata: strict_metadata
+      )
+    end
     families = parse_templates(templates_body)
     encoded_entries = parse_parameters(
       parameters_body,
@@ -149,6 +163,12 @@ module HeptaReadableTokenSource
         "artifact_is_generated" => true,
         "exact_reassembly" => true
       }
+      if metadata.key?("template_record_count")
+        expected["template_record_count"] = templates_body.lines.length
+      end
+      if metadata.key?("template_fixed_chunk_bytes")
+        expected["template_fixed_chunk_bytes"] = metadata["template_fixed_chunk_bytes"]
+      end
       expected.each do |key, value|
         raise "readable token source metadata drifted: #{key}" unless metadata[key] == value
       end
@@ -161,6 +181,7 @@ module HeptaReadableTokenSource
     end
     [entries, bundle, metadata]
   end
+
 
   def present?(root)
     [SCHEMA_FILE, TEMPLATE_FILE, PARAMETER_FILE].all? do |name|
@@ -194,27 +215,6 @@ module HeptaReadableTokenSource
       normalized_effective_lines:
         fixed_breaks + replacement_breaks + families.length + entries.length
     }
-  end
-
-  def parse_templates(body)
-    json_lines(body, TEMPLATE_FILE).each_with_index.map do |record, template_id|
-      raise "readable token template order drifted" unless record.fetch("template_id") ==
-        template_id
-      slot_id = 0
-      segments = record.fetch("segments").map do |segment|
-        if segment.keys == ["fixed"]
-          HeptaNormalizedTokenBundle::Segment.new(:fixed, segment.fetch("fixed").b)
-        elsif segment.keys == ["slot"] && segment.fetch("slot") == slot_id
-          slot_id += 1
-          HeptaNormalizedTokenBundle::Segment.new(:slot, nil)
-        else
-          raise "invalid readable token template segment"
-        end
-      end
-      raise "readable token template slot count drifted" unless record.fetch("slot_count") ==
-        slot_id
-      HeptaNormalizedTokenBundle::Family.new(segments, slot_id)
-    end
   end
 
   def parse_parameters(body, families, name_validator, strict_metadata)
@@ -260,6 +260,7 @@ module HeptaReadableTokenSource
     entries
   end
 
+
   def json_lines(body, name)
     lines = body.lines(chomp: true)
     raise "empty readable token source: #{name}" if lines.empty?
@@ -272,3 +273,6 @@ module HeptaReadableTokenSource
     value
   end
 end
+
+require_relative "lib/hepta-readable-token-template-v1"
+require_relative "lib/hepta-chunked-readable-token-source-v1"

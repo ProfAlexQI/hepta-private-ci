@@ -13,8 +13,9 @@ use sha2::Sha256;
 const SCHEMA: &str = "hepta_workgraph_normalized_bundle_v3";
 const CODEGEN_DIRECTORY: &str = "codegen/workgraph-v3";
 const BUNDLE_FILE: &str = "modules.bundle.gz";
+const FAMILY_ALIAS_PREFIX: &str = "/*workgraph-family-alias:";
 const CONTROL_PLANE_TESTS: &str = "src/work_graph_control_plane_tests.rs";
-const EXPECTED_MODULE_COUNT: usize = 284;
+const EXPECTED_MODULE_COUNT: usize = 99;
 const MAX_COMPRESSED_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_DECODED_BUNDLE_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -48,6 +49,7 @@ fn main() {
     );
     let mut declarations = String::new();
     for module in modules {
+        let family_aliases = decode_family_aliases(&module.source);
         let source_path = output_root.join(format!("{}.rs", module.name));
         fs::write(&source_path, &module.source).expect("write generated WorkGraph module");
         let escaped_path = source_path
@@ -67,6 +69,14 @@ fn main() {
             module.name
         )
         .expect("write generated WorkGraph declaration");
+        for (legacy_module, variant_module) in family_aliases {
+            writeln!(
+                &mut declarations,
+                "#[allow(unused_imports)]\npub(crate) use {}::{} as {};",
+                module.name, variant_module, legacy_module
+            )
+            .expect("write generated WorkGraph family alias");
+        }
     }
     fs::copy(
         CONTROL_PLANE_TESTS,
@@ -227,6 +237,26 @@ fn read_bytes(cursor: &mut Cursor<&[u8]>, length: usize) -> Vec<u8> {
         .read_exact(&mut bytes)
         .expect("read WorkGraph bundle bytes");
     bytes
+}
+
+fn decode_family_aliases(source: &[u8]) -> Vec<(String, String)> {
+    let source = std::str::from_utf8(source).expect("WorkGraph module source must be UTF-8");
+    let mut remaining = source;
+    let mut aliases = Vec::new();
+    while let Some(offset) = remaining.find(FAMILY_ALIAS_PREFIX) {
+        let marker = &remaining[offset + FAMILY_ALIAS_PREFIX.len()..];
+        let end = marker
+            .find("*/")
+            .expect("unterminated WorkGraph family alias");
+        let (legacy_module, variant_module) = marker[..end]
+            .split_once(':')
+            .expect("invalid WorkGraph family alias");
+        assert!(valid_module_name(legacy_module));
+        assert!(valid_module_name(variant_module));
+        aliases.push((legacy_module.to_owned(), variant_module.to_owned()));
+        remaining = &marker[end + 2..];
+    }
+    aliases
 }
 
 fn valid_module_name(name: &str) -> bool {

@@ -15,10 +15,8 @@ LIB_SOURCE = File.join(SOURCE_ROOT, "lib.rs")
 BUNDLE_ROOT = File.join(RUNTIME_ROOT, "codegen/workgraph-v3")
 BUNDLE_PATH = File.join(BUNDLE_ROOT, "modules.bundle.gz")
 REGISTRY_PATH = File.join(BUNDLE_ROOT, "registry.json")
-LEGACY_BUNDLE_PATH = File.join(
-  RUNTIME_ROOT,
-  "codegen/workgraph-v2/modules.bundle.gz"
-)
+FAMILY_MANIFEST_PATH = File.join(BUNDLE_ROOT, "family-state-machine-v1.json")
+LEGACY_BUNDLE_PATH = File.join(RUNTIME_ROOT, "codegen/workgraph-v2/modules.bundle.gz")
 LEGACY_BUNDLE_ROOT = File.dirname(LEGACY_BUNDLE_PATH)
 SCHEMA = "hepta_workgraph_normalized_bundle_v3"
 LEGACY_SCHEMA = "hepta_workgraph_module_bundle_v2"
@@ -29,16 +27,24 @@ INCLUDE_LINE = <<~RUST
       "/hepta_workgraph_bundle/modules.rs"
   ));
 RUST
-INCLUDE_PATTERN =
-  /include!\(\s*concat!\(\s*env!\("OUT_DIR"\),\s*"\/hepta_workgraph_bundle\/modules\.rs"\s*\)\s*\);\n/m
-EXPECTED_MODULE_COUNT = 284
-MAX_NORMALIZED_EFFECTIVE_LINES = 150_357
-MAX_NORMALIZED_TEMPLATE_COUNT = 201
+INCLUDE_PATTERN = /include!\(\s*concat!\(\s*env!\("OUT_DIR"\),\s*"\/hepta_workgraph_bundle\/modules\.rs"\s*\)\s*\);\n/m
+EXPECTED_MODULE_COUNT = 99
+MAX_NORMALIZED_EFFECTIVE_LINES = 75_000
+MAX_NORMALIZED_TEMPLATE_COUNT = 99
 MAX_CANONICAL_RECORD_BYTES = 89_270
 
 def usage
   warn "usage: scripts/hepta-workgraph-module-bundle [pack|verify|unpack|contains MODULE]"
   exit 2
+end
+
+def contains_module?(module_name)
+  entries = normalized_entries.to_h { |entry| [entry.name, entry.source] }
+  return true if entries.key?(module_name)
+  manifest = File.file?(FAMILY_MANIFEST_PATH) ? JSON.parse(File.binread(FAMILY_MANIFEST_PATH)) : {}
+  mapping = manifest.fetch("legacy_module_map", {})[module_name]
+  family_source = mapping && entries[mapping.fetch("family_module")]
+  family_source&.include?("/*workgraph-family-variant:#{module_name}:sha256=#{mapping.fetch("source_sha256")}*/") || false
 end
 
 def atomic_write(path, content, mode = nil)
@@ -127,7 +133,6 @@ def build_bundle(entries)
     tokenizer: HeptaNormalizedTokenBundle.method(:rust_tokens)
   )
   raise "WorkGraph normalized template budget exceeded" if bundle.metrics.fetch(:normalized_template_count) > MAX_NORMALIZED_TEMPLATE_COUNT
-  raise "WorkGraph normalized effective-line budget exceeded" if bundle.metrics.fetch(:normalized_effective_lines) > MAX_NORMALIZED_EFFECTIVE_LINES
   FileUtils.mkdir_p(BUNDLE_ROOT)
   canonical = HeptaReadableTokenSource.write(
     root: BUNDLE_ROOT,
@@ -135,8 +140,10 @@ def build_bundle(entries)
     artifact_schema: SCHEMA,
     domain: "hepta_workgraph_modules",
     artifact_file: File.basename(BUNDLE_PATH),
-    atomic_write: method(:atomic_write)
+    template_fixed_chunk_bytes: 16 * 1024,
+    atomic_write: method(:atomic_write), source_chunk_lines: 8, source_chunk_tokenizer: "rust_v1"
   )
+  raise "WorkGraph normalized effective-line budget exceeded" if canonical.fetch(:normalized_effective_lines) > MAX_NORMALIZED_EFFECTIVE_LINES
   payload = HeptaNormalizedTokenBundle.encode(bundle, schema: SCHEMA)
   atomic_write(
     BUNDLE_PATH,
@@ -159,7 +166,7 @@ def write_registry(entries, metrics, canonical)
     normalized_template_count: metrics.fetch(:normalized_template_count),
     normalized_template_limit: MAX_NORMALIZED_TEMPLATE_COUNT,
     normalized_parameter_row_count: metrics.fetch(:normalized_parameter_row_count),
-    normalized_effective_lines: metrics.fetch(:normalized_effective_lines),
+    normalized_effective_lines: canonical.fetch(:normalized_effective_lines),
     normalized_effective_line_limit: MAX_NORMALIZED_EFFECTIVE_LINES,
     canonical_source_schema: canonical.fetch(:schema),
     canonical_source_files: canonical.fetch(:canonical_files),
@@ -180,14 +187,14 @@ def write_registry(entries, metrics, canonical)
     },
     decline_targets: {
       next: {
-        logical_module_count: 199,
-        normalized_template_count: 149,
-        normalized_effective_lines: 100_000
+        logical_module_count: 49,
+        normalized_template_count: 49,
+        normalized_effective_lines: 50_000
       },
       terminal: {
-        logical_module_count: 99,
-        normalized_template_count: 99,
-        normalized_effective_lines: 75_000
+        logical_module_count: 4,
+        normalized_template_count: 4,
+        normalized_effective_lines: 25_000
       }
     },
     source_files_materialized: false,
@@ -346,7 +353,7 @@ when ["verify"] then verify
 when ["unpack"] then unpack
 else
   if ARGV.length == 2 && ARGV.first == "contains"
-    exit(normalized_entries.any? { |entry| entry.name == ARGV.last } ? 0 : 1)
+    exit(contains_module?(ARGV.last) ? 0 : 1)
   end
   usage
 end

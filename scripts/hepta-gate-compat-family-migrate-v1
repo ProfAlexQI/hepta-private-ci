@@ -1,0 +1,793 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+require "set"
+require "tmpdir"
+require "timeout"
+require_relative "lib/hepta-normalized-token-bundle-v1"
+require_relative "hepta-workgraph-readable-token-source-v1"
+
+ROOT = File.expand_path("..", __dir__)
+SPEC_PATH = File.join(ROOT, "scripts/hepta-gate-pair-specs-v1.json")
+BUNDLE_ROOT = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2")
+FAMILY_ROOT = File.join(BUNDLE_ROOT, "family-state-v1")
+FAMILY_REGISTRY_PATH = File.join(FAMILY_ROOT, "registry.json")
+FAMILY_PROJECTIONS_PATH = File.join(FAMILY_ROOT, "projections.jsonl")
+RECEIPT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-family-receipt-v1.json")
+PAYLOAD_TOOL = File.join(ROOT, "scripts/hepta-gate-pair-payload-bundle")
+ENTRYPOINT_TOOL = File.join(ROOT, "scripts/hepta-gate-pair-entrypoint-prune")
+SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
+DOMAIN = "hepta_gate_pair_compat_payloads"
+FAMILY_SCHEMA = "hepta_gate_compat_family_payloads_v1"
+FAMILY_DOMAIN = "hepta_gate_compat_family_payloads"
+BASELINE_SPEC_SHA256 = "25e987bb2f8691c591b505b460f75f637c513689d7638f60ae4b028f6e69e311"
+BASELINE_COMMIT = "a0edebd37af6b9e8d4621c7f970a06af91bd2b23"
+BASELINE_PAIR_COUNT = 498
+TARGET_PAIR_COUNT = 299
+TARGET_CAPTURED_COUNT = 236
+TARGET_DECLARATIVE_COUNT = 63
+TARGET_FAMILY_COUNT = 56
+TARGET_MIGRATED_STATE_COUNT = 148
+TARGET_EXACT_STATE_COUNT = 148
+TARGET_PROJECTION_STATE_COUNT = 0
+REQUESTED_CAPTURED_COUNT = 199
+REQUESTED_DECLARATIVE_COUNT = 100
+REQUESTED_FAMILY_COUNT = 93
+REQUESTED_MIGRATED_STATE_COUNT = 185
+
+def usage
+  warn "usage: scripts/hepta-gate-compat-family-migrate-v1 <plan|apply>"
+  exit 64
+end
+
+def atomic_write(path, content, mode = nil)
+  FileUtils.mkdir_p(File.dirname(path))
+  staging = File.join(
+    File.dirname(path),
+    ".hepta-gate-family-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp"
+  )
+  File.binwrite(staging, content)
+  File.chmod(mode, staging) if mode
+  File.rename(staging, path)
+end
+
+def canonical_entries(root)
+  HeptaReadableTokenSource.read(
+    root: root,
+    artifact_schema: SCHEMA,
+    domain: DOMAIN,
+    name_validator: lambda { |name|
+      name.match?(%r{\Ascripts/lib/hepta-gate-pair-compat-v1/[a-z0-9-]+\.(?:gate|report)\z})
+    },
+    strict_metadata: true
+  ).first
+end
+
+def parameter_rows(root)
+  File.readlines(File.join(root, "parameters.jsonl"), chomp: true).to_h do |line|
+    row = JSON.parse(line)
+    [row.fetch("name"), row]
+  end
+end
+
+def with_baseline_snapshot
+  Dir.mktmpdir("hepta-gate-compat-baseline.") do |snapshot|
+    statuses = Open3.pipeline(
+      ["git", "-C", ROOT, "archive", BASELINE_COMMIT, "codex-rs", "scripts"],
+      ["tar", "-x", "-C", snapshot]
+    )
+    raise "cannot materialize compatibility migration baseline" unless statuses.all?(&:success?)
+    yield snapshot
+  end
+end
+
+def source_graph(spec, sources, scan_root:)
+  pairs = spec.fetch("pairs")
+  ids = pairs.map { |pair| pair.fetch("id") }
+  id_set = ids.to_set
+  pair_by_id = pairs.to_h { |pair| [pair.fetch("id"), pair] }
+  entrypoint_paths = pairs.flat_map do |pair|
+    ["scripts/#{pair.fetch("id")}-gate.sh", pair.fetch("report_path")]
+  end.to_set
+  protected = Set.new
+  external_references = Hash.new { |hash, key| hash[key] = Set.new }
+  spec.fetch("supplemental_payloads", []).each do |payload|
+    source = sources.fetch(payload.fetch("path"))
+    scan_pair_references(source, id_set).each do |_kind, target|
+      protected << target
+      external_references[target] << payload.fetch("path")
+    end
+  end
+  Dir.glob(File.join(scan_root, "{codex-rs,scripts}/**/*"), File::FNM_DOTMATCH).sort.each do |path|
+    next unless File.file?(path)
+    relative = path.delete_prefix("#{scan_root}/")
+    next if relative == "scripts/hepta-gate-pair-specs-v1.json" ||
+      relative == "scripts/hepta-gate-pair-entrypoints-v2.json" ||
+      relative.start_with?("scripts/hepta-gate-compat-family-") ||
+      entrypoint_paths.include?(relative) ||
+      relative.start_with?("scripts/lib/hepta-gate-pair-compat-v1/") ||
+      relative.start_with?("scripts/lib/hepta-gate-pair-compat-v2/") ||
+      relative.include?("/target/") ||
+      File.size(path) > 20 * 1024 * 1024
+    source = File.binread(path)
+    next unless source.valid_encoding?
+    ids.each do |id|
+      next unless source.include?(id)
+      protected << id
+      external_references[id] << relative
+    end
+  end
+  outgoing = ids.to_h { |id| [id, Set.new] }
+  incoming_routes = Hash.new do |hash, target|
+    hash[target] = {"gate" => Hash.new { |inner, caller| inner[caller] = 0 },
+                    "report" => Hash.new { |inner, caller| inner[caller] = 0 }}
+  end
+  pairs.each do |pair|
+    [pair["gate_implementation"], pair["report_implementation"]].compact.uniq.each do |path|
+      scan_pair_references(sources.fetch(path), id_set).each do |kind, target|
+        next if target == pair.fetch("id")
+        outgoing.fetch(pair.fetch("id")) << target
+        incoming_routes[target].fetch(kind)[pair.fetch("id")] += 1
+      end
+    end
+  end
+  closure = protected.dup
+  queue = protected.to_a
+  until queue.empty?
+    outgoing.fetch(queue.shift).each do |target|
+      next if closure.include?(target)
+      closure << target
+      queue << target
+    end
+  end
+  {
+    pairs: pairs,
+    pair_by_id: pair_by_id,
+    protected: protected,
+    external_references: external_references,
+    outgoing: outgoing,
+    incoming_routes: incoming_routes,
+    closure: closure,
+    dead: id_set - closure
+  }
+end
+
+def scan_pair_references(source, id_set)
+  references = []
+  %w[gate report].each do |kind|
+    source.scan(%r{scripts/lib/hepta-gate-pair-compat-v1/([a-z0-9-]+)\.#{kind}}) do |match|
+      references << [kind, match.first] if id_set.include?(match.first)
+    end
+    source.scan(%r{scripts/([a-z0-9-]+)-#{kind}\.sh}) do |match|
+      references << [kind, match.first] if id_set.include?(match.first)
+    end
+  end
+  references.uniq
+end
+
+def route_conflict?(left, right, incoming_routes)
+  %w[gate report].any? do |kind|
+    left_callers = incoming_routes.fetch(left).fetch(kind).keys.to_set
+    right_callers = incoming_routes.fetch(right).fetch(kind).keys.to_set
+    !(left_callers & right_callers).empty?
+  end
+end
+
+def exact_family_buckets(graph, rows)
+  captured = graph.fetch(:closure).select do |id|
+    graph.fetch(:pair_by_id).fetch(id).fetch("template") == "captured_shell_compat_v1"
+  end
+  groups = captured.group_by do |id|
+    pair = graph.fetch(:pair_by_id).fetch(id)
+    [
+      rows.fetch(pair.fetch("gate_implementation")).fetch("template_id"),
+      rows.fetch(pair.fetch("report_implementation")).fetch("template_id")
+    ]
+  end
+  candidate_groups = groups.select { |_key, members| members.length > 1 }
+  nonprotected_groups = candidate_groups.map do |key, members|
+    [key, members.reject { |id| graph.fetch(:protected).include?(id) }]
+  end.select { |_key, members| members.length > 1 }
+  buckets = []
+  nonprotected_groups.sort.each do |template_ids, members|
+    colors = []
+    members.sort.each do |id|
+      bucket = colors.find do |candidate|
+        candidate.none? do |other|
+          route_conflict?(id, other, graph.fetch(:incoming_routes))
+        end
+      end
+      if bucket
+        bucket << id
+      else
+        colors << [id]
+      end
+    end
+    colors.each do |states|
+      buckets << {template_ids: template_ids, states: states.sort}
+    end
+  end
+  while buckets.length < 56
+    selected = buckets.select { |bucket| bucket.fetch(:states).length > 1 }.max_by do |bucket|
+      [bucket.fetch(:states).length, bucket.fetch(:states).last]
+    end
+    raise "cannot split exact family buckets to target" unless selected
+    moved = selected.fetch(:states).pop
+    buckets << {template_ids: selected.fetch(:template_ids), states: [moved]}
+  end
+  raise "exact family bucket count drifted" unless buckets.length == 56
+  raise "exact family state count drifted" unless buckets.sum do |bucket|
+    bucket.fetch(:states).length
+  end == TARGET_EXACT_STATE_COUNT
+  buckets.sort_by { |bucket| bucket.fetch(:states).first }
+end
+
+def singleton_candidates(graph, rows, sources, exact_states)
+  captured = graph.fetch(:closure).select do |id|
+    graph.fetch(:pair_by_id).fetch(id).fetch("template") == "captured_shell_compat_v1"
+  end
+  available = captured.reject do |id|
+    graph.fetch(:protected).include?(id) || exact_states.include?(id)
+  end
+  template_frequency = Hash.new(0)
+  graph.fetch(:closure).each do |id|
+    pair = graph.fetch(:pair_by_id).fetch(id)
+    [pair["gate_implementation"], pair["report_implementation"]].compact.each do |path|
+      template_frequency[rows.fetch(path).fetch("template_id")] += 1
+    end
+  end
+  graph.fetch(:pair_by_id)
+  available.select do |id|
+    pair = graph.fetch(:pair_by_id).fetch(id)
+    report = sources.fetch(pair.fetch("report_implementation"))
+    graph.fetch(:outgoing).fetch(id).length <= 1 &&
+      report.include?("jq -n") &&
+      !report.include?("cargo test")
+  end.sort_by do |id|
+    pair = graph.fetch(:pair_by_id).fetch(id)
+    gate_row = rows.fetch(pair.fetch("gate_implementation"))
+    report_row = rows.fetch(pair.fetch("report_implementation"))
+    uniqueness = [gate_row, report_row].count do |row|
+      template_frequency.fetch(row.fetch("template_id")) == 1
+    end
+    lines = sources.fetch(pair.fetch("gate_implementation")).lines.count +
+      sources.fetch(pair.fetch("report_implementation")).lines.count
+    [-uniqueness, -lines, id]
+  end
+end
+
+def singleton_uniqueness(id, graph, rows)
+  frequency = Hash.new(0)
+  graph.fetch(:closure).each do |pair_id|
+    pair = graph.fetch(:pair_by_id).fetch(pair_id)
+    [pair["gate_implementation"], pair["report_implementation"]].compact.each do |path|
+      frequency[rows.fetch(path).fetch("template_id")] += 1
+    end
+  end
+  pair = graph.fetch(:pair_by_id).fetch(id)
+  [pair.fetch("gate_implementation"), pair.fetch("report_implementation")].count do |path|
+    frequency.fetch(rows.fetch(path).fetch("template_id")) == 1
+  end
+end
+
+def capture_projection(id, overlay, cache)
+  projection_cache = File.join(
+    Dir.tmpdir,
+    "hepta-gate-family-projections-#{BASELINE_SPEC_SHA256[0, 16]}"
+  )
+  FileUtils.mkdir_p(projection_cache)
+  cached = File.join(projection_cache, "#{id}.json")
+  return JSON.parse(File.binread(cached)) if File.file?(cached)
+  environment = {
+    "HEPTA_COMPAT_OVERLAY_ROOT" => overlay,
+    "HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR" => cache
+  }
+  output, error, status = Timeout.timeout(30) do
+    Open3.capture3(
+      environment,
+      File.join(ROOT, "scripts/hepta-gate-pair-runner"),
+      "report",
+      id
+    )
+  end
+  raise "cannot capture declarative report projection for #{id}: #{error}" unless status.success?
+  report = JSON.parse(output)
+  raise "declarative report projection is not an object: #{id}" unless report.is_a?(Hash)
+  atomic_write(cached, JSON.generate(report) + "\n", 0o600)
+  report
+end
+
+def referenced_source_fingerprints(*sources)
+  excluded = [
+    "scripts/hepta-gate-pair-specs-v1.json",
+    "scripts/hepta-gate-pair-entrypoints-v2.json",
+    "scripts/hepta-gate-pair-runner",
+    "scripts/hepta-gate-compat-debt",
+    "scripts/hepta-gate-compat-debt-v1.json"
+  ].to_set
+  paths = sources.flat_map do |source|
+    source.scan(%r{(?:\$\{?(?:ROOT|repo_root|REPO_ROOT)\}?/)?((?:codex-rs|scripts|docs|plugins|apps|\.github)/[A-Za-z0-9_./@+\-]+)}).flatten
+  end.map { |path| path.sub(/["')\],;:]+\z/, "") }.uniq.sort
+  paths.each_with_object([]) do |relative, records|
+    next if excluded.include?(relative) ||
+      relative.start_with?("scripts/lib/hepta-gate-pair-compat-v1/") ||
+      relative.start_with?("scripts/lib/hepta-gate-pair-compat-v2/")
+    path = File.join(ROOT, relative)
+    next unless File.file?(path)
+    records << {"path" => relative, "sha256" => Digest::SHA256.file(path).hexdigest}
+  end
+end
+
+def transform_source(source, member_to_family)
+  transformed = source.dup
+  member_to_family.sort.each do |member, family|
+    transformed = transformed.gsub(
+      "scripts/lib/hepta-gate-pair-compat-v1/#{member}.gate",
+      "scripts/#{family}-gate.sh"
+    ).gsub(
+      "scripts/lib/hepta-gate-pair-compat-v1/#{member}.report",
+      "scripts/#{family}-report.sh"
+    ).gsub(
+      "scripts/#{member}-gate.sh",
+      "scripts/#{family}-gate.sh"
+    ).gsub(
+      "scripts/#{member}-report.sh",
+      "scripts/#{family}-report.sh"
+    )
+  end
+  transformed
+end
+
+def bind_caller(source, id)
+  raise "invalid compatibility caller id" unless id.match?(/\A[a-z0-9-]+\z/)
+  lines = source.lines
+  raise "compatibility payload is missing a shell shebang" unless lines.first&.start_with?("#!")
+  lines.insert(1, "export HEPTA_GATE_COMPAT_CALLER_ID=#{id.dump}\n")
+  lines.join
+end
+
+def call_routes(states, graph)
+  state_set = states.to_set
+  %w[gate report].to_h do |kind|
+    routes = {}
+    states.each do |state|
+      graph.fetch(:incoming_routes).fetch(state).fetch(kind).each_key do |caller|
+        existing = routes[caller]
+        raise "ambiguous family caller route #{kind}:#{caller}" if existing && existing != state
+        routes[caller] = state
+      end
+    end
+    [kind, routes.sort.to_h]
+  end
+end
+
+def semantic_json_cost(value)
+  case value
+  when Hash
+    1 + value.sum { |key, child| 1 + (key.bytesize + 79) / 80 + semantic_json_cost(child) }
+  when Array
+    1 + value.sum { |child| semantic_json_cost(child) }
+  when String
+    1 + (value.bytesize + 79) / 80 + value.count("\n")
+  else
+    1
+  end
+end
+
+def build_plan(capture_reports:)
+  raise "declarative projection capture is no longer supported" if capture_reports &&
+    !TARGET_PROJECTION_STATE_COUNT.zero?
+  baseline = with_baseline_snapshot do |snapshot|
+    spec_path = File.join(snapshot, "scripts/hepta-gate-pair-specs-v1.json")
+    bundle_root = File.join(snapshot, "scripts/lib/hepta-gate-pair-compat-v2")
+    raise "family migration baseline spec drifted" unless Digest::SHA256.file(spec_path).hexdigest ==
+      BASELINE_SPEC_SHA256
+    spec = JSON.parse(File.binread(spec_path))
+    raise "family migration baseline pair count drifted" unless spec.fetch("pairs").length ==
+      BASELINE_PAIR_COUNT
+    entries = canonical_entries(bundle_root)
+    sources = entries.to_h { |entry| [entry.name, entry.source] }
+    {
+      spec: spec,
+      entries: entries,
+      sources: sources,
+      rows: parameter_rows(bundle_root),
+      graph: source_graph(spec, sources, scan_root: snapshot)
+    }
+  end
+  spec = baseline.fetch(:spec)
+  entries = baseline.fetch(:entries)
+  sources = baseline.fetch(:sources)
+  rows = baseline.fetch(:rows)
+  graph = baseline.fetch(:graph)
+  raise "protected root count drifted" unless graph.fetch(:protected).length == 107
+  raise "protected closure count drifted" unless graph.fetch(:closure).length == 391
+  raise "dead pair count drifted" unless graph.fetch(:dead).length == 107
+  exact_buckets = exact_family_buckets(graph, rows)
+  raise "unexpected declarative projection target" unless TARGET_PROJECTION_STATE_COUNT.zero?
+  families = exact_buckets.map do |bucket|
+    states = bucket.fetch(:states)
+    {id: states.first, mode: "exact_parameterized", states: states,
+     template_ids: bucket.fetch(:template_ids)}
+  end
+  raise "family count drifted" unless families.length == TARGET_FAMILY_COUNT
+  migrated_states = families.flat_map { |family| family.fetch(:states) }
+  raise "migrated state count drifted" unless migrated_states.length ==
+    TARGET_MIGRATED_STATE_COUNT && migrated_states.uniq.length == TARGET_MIGRATED_STATE_COUNT
+  member_to_family = families.each_with_object({}) do |family, mapping|
+    family.fetch(:states).each { |state| mapping[state] = family.fetch(:id) }
+  end
+  {
+    spec: spec,
+    entries: entries,
+    sources: sources,
+    rows: rows,
+    graph: graph,
+    families: families.sort_by { |family| family.fetch(:id) },
+    member_to_family: member_to_family,
+    singleton_reports: {}
+  }
+end
+
+def write_exact_family_source(plan)
+  pair_by_id = plan.fetch(:graph).fetch(:pair_by_id)
+  exact_entries = plan.fetch(:families).select do |family|
+    family.fetch(:mode) == "exact_parameterized"
+  end.flat_map do |family|
+    family.fetch(:states).flat_map do |id|
+      pair = pair_by_id.fetch(id)
+      %w[gate report].map do |kind|
+        source = plan.fetch(:sources).fetch(pair.fetch("#{kind}_implementation"))
+        transformed = transform_source(source, plan.fetch(:member_to_family))
+        HeptaNormalizedTokenBundle::Entry.new("#{id}.#{kind}", transformed)
+      end
+    end
+  end
+  bundle = HeptaNormalizedTokenBundle.build(
+    exact_entries,
+    tokenizer: HeptaNormalizedTokenBundle.method(:shell_tokens)
+  )
+  FileUtils.mkdir_p(FAMILY_ROOT)
+  metadata = HeptaReadableTokenSource.write(
+    root: FAMILY_ROOT,
+    bundle: bundle,
+    artifact_schema: FAMILY_SCHEMA,
+    domain: FAMILY_DOMAIN,
+    artifact_file: "payloads.bundle.gz",
+    atomic_write: method(:atomic_write),
+    source_chunk_lines: 8
+  )
+  encoded = HeptaNormalizedTokenBundle.encode(bundle, schema: FAMILY_SCHEMA)
+  atomic_write(
+    File.join(FAMILY_ROOT, "payloads.bundle.gz"),
+    HeptaReadableTokenSource.deterministic_gzip(encoded),
+    0o644
+  )
+  [bundle, metadata, exact_entries.to_h { |entry| [entry.name, entry.source] }]
+end
+
+def projection_records(plan)
+  pair_by_id = plan.fetch(:graph).fetch(:pair_by_id)
+  plan.fetch(:families).select do |family|
+    family.fetch(:mode) == "declarative_projection"
+  end.map do |family|
+    id = family.fetch(:id)
+    pair = pair_by_id.fetch(id)
+    gate_source = plan.fetch(:sources).fetch(pair.fetch("gate_implementation"))
+    report_source = plan.fetch(:sources).fetch(pair.fetch("report_implementation"))
+    dependencies = plan.fetch(:graph).fetch(:outgoing).fetch(id).map do |dependency|
+      plan.fetch(:member_to_family).fetch(dependency, dependency)
+    end.reject { |dependency| dependency == id }.uniq.sort
+    {
+      "state" => id,
+      "original_gate_sha256" => pair.fetch("gate_implementation_sha256"),
+      "original_report_sha256" => pair.fetch("report_implementation_sha256"),
+      "report" => plan.fetch(:singleton_reports).fetch(id),
+      "dependencies" => dependencies,
+      "source_fingerprints" => referenced_source_fingerprints(gate_source, report_source)
+    }
+  end.sort_by { |record| record.fetch("state") }
+end
+
+def write_family_registry(plan, exact_bundle, exact_metadata, exact_sources, projections)
+  pair_by_id = plan.fetch(:graph).fetch(:pair_by_id)
+  families = plan.fetch(:families).map do |family|
+    state_records = family.fetch(:states).map do |id|
+      pair = pair_by_id.fetch(id)
+      if family.fetch(:mode) == "exact_parameterized"
+        {
+          "id" => id,
+          "mode" => family.fetch(:mode),
+          "original_gate_sha256" => pair.fetch("gate_implementation_sha256"),
+          "original_report_sha256" => pair.fetch("report_implementation_sha256"),
+          "gate_sha256" => Digest::SHA256.hexdigest(exact_sources.fetch("#{id}.gate")),
+          "report_sha256" => Digest::SHA256.hexdigest(exact_sources.fetch("#{id}.report")),
+          "pass_message" => pair.fetch("pass_message")
+        }
+      else
+        {
+          "id" => id,
+          "mode" => family.fetch(:mode),
+          "original_gate_sha256" => pair.fetch("gate_implementation_sha256"),
+          "original_report_sha256" => pair.fetch("report_implementation_sha256"),
+          "pass_message" => pair.fetch("pass_message")
+        }
+      end
+    end
+    {
+      "id" => family.fetch(:id),
+      "default_state" => family.fetch(:id),
+      "state_count" => state_records.length,
+      "template_ids" => family.fetch(:template_ids),
+      "states" => state_records,
+      "call_routes" => call_routes(family.fetch(:states), plan.fetch(:graph))
+    }
+  end
+  call_route_symbols = families.flat_map do |family|
+    family.fetch("call_routes").values.flat_map do |routes|
+      routes.flat_map { |caller, state| [caller, state] }
+    end
+  end.uniq.sort
+  call_route_symbol_index = call_route_symbols.each_with_index.to_h
+  families.each do |family|
+    family.fetch("call_routes").transform_values! do |routes|
+      routes.map do |caller, state|
+        [call_route_symbol_index.fetch(caller), call_route_symbol_index.fetch(state)]
+      end
+    end
+  end
+  registry = {
+    "schema" => "hepta_gate_compat_family_state_registry_v1",
+    "status" => "ready",
+    "selection" => "reachable_nonprotected_dependency_safe_identical_normalized_templates",
+    "family_count" => families.length,
+    "migrated_state_count" => families.sum { |family| family.fetch("states").length },
+    "exact_parameterized_state_count" => TARGET_EXACT_STATE_COUNT,
+    "declarative_projection_state_count" => TARGET_PROJECTION_STATE_COUNT,
+    "call_route_encoding" => "sorted_symbol_index_pairs_v1",
+    "call_route_symbols" => call_route_symbols,
+    "families" => families,
+    "metrics" => {
+      "logical_family_payload_count" => exact_bundle.entries.length + projections.length,
+      "normalized_family_payload_count" => exact_bundle.metrics.fetch(
+        :normalized_template_count
+      ),
+      "exact_parameter_row_count" => exact_bundle.entries.length,
+      "exact_normalized_effective_lines" => exact_metadata.fetch(:normalized_effective_lines),
+      "semantic_registry_effective_lines" => 0
+    }
+  }
+  loop do
+    cost = semantic_json_cost(registry) + projections.sum { |projection| semantic_json_cost(projection) }
+    break if registry.fetch("metrics").fetch("semantic_registry_effective_lines") == cost
+    registry.fetch("metrics")["semantic_registry_effective_lines"] = cost
+  end
+  atomic_write(FAMILY_REGISTRY_PATH, JSON.pretty_generate(registry) + "\n", 0o644)
+  atomic_write(
+    FAMILY_PROJECTIONS_PATH,
+    projections.empty? ? "" : projections.map { |projection| JSON.generate(projection) }.join("\n") + "\n",
+    0o644
+  )
+  registry
+end
+
+def update_spec(plan, family_registry, exact_sources)
+  graph = plan.fetch(:graph)
+  family_by_id = plan.fetch(:families).to_h { |family| [family.fetch(:id), family] }
+  family_states = plan.fetch(:families).flat_map { |family| family.fetch(:states) }.to_set
+  removed = graph.fetch(:dead) | (family_states - family_by_id.keys.to_set)
+  updated_pairs = graph.fetch(:pairs).reject { |pair| removed.include?(pair.fetch("id")) }.map do |pair|
+    id = pair.fetch("id")
+    if family_by_id.key?(id)
+      family = family_by_id.fetch(id)
+      pair.reject do |key, _value|
+        %w[gate_implementation gate_implementation_sha256 report_implementation
+           report_implementation_sha256].include?(key)
+      end.merge(
+        "template" => "compat_family_state_machine_v1",
+        "source_report" => "scripts/#{id}-report.sh",
+        "family_registry" => "scripts/lib/hepta-gate-pair-compat-v2/family-state-v1/registry.json",
+        "family_registry_sha256" => Digest::SHA256.file(FAMILY_REGISTRY_PATH).hexdigest,
+        "family_default_state" => id,
+        "family_state_count" => family.fetch(:states).length,
+        "family_call_routing" => "caller_route_precedence_fail_closed_v2",
+        "side_effect_boundary" => "read-only parameterized compatibility family; never mutates, publishes, sends, installs, or restarts"
+      )
+    elsif pair.fetch("template") == "captured_shell_compat_v1"
+      gate_path = pair.fetch("gate_implementation")
+      report_path = pair.fetch("report_implementation")
+      gate_source = bind_caller(
+        transform_source(plan.fetch(:sources).fetch(gate_path), plan.fetch(:member_to_family)),
+        id
+      )
+      report_source = bind_caller(
+        transform_source(plan.fetch(:sources).fetch(report_path), plan.fetch(:member_to_family)),
+        id
+      )
+      pair.merge(
+        "gate_implementation_sha256" => Digest::SHA256.hexdigest(gate_source),
+        "report_implementation_sha256" => Digest::SHA256.hexdigest(report_source)
+      )
+    else
+      pair
+    end
+  end.sort_by { |pair| pair.fetch("id") }
+  captured = updated_pairs.count { |pair| pair.fetch("template") == "captured_shell_compat_v1" }
+  legacy = updated_pairs.count { |pair| pair.fetch("template") == "legacy_workgraph_projection_v1" }
+  declarative = updated_pairs.length - captured - legacy
+  raise "result pair count drifted" unless updated_pairs.length == TARGET_PAIR_COUNT
+  raise "result captured count drifted" unless captured == TARGET_CAPTURED_COUNT
+  raise "result declarative count drifted" unless declarative == TARGET_DECLARATIVE_COUNT
+  supplemental_payloads = plan.fetch(:spec).fetch("supplemental_payloads", []).map do |payload|
+    source = transform_source(
+      plan.fetch(:sources).fetch(payload.fetch("path")),
+      plan.fetch(:member_to_family)
+    )
+    payload.merge("sha256" => Digest::SHA256.hexdigest(source))
+  end
+  updated = plan.fetch(:spec).merge(
+    "pairs" => updated_pairs,
+    "supplemental_payloads" => supplemental_payloads
+  )
+  atomic_write(SPEC_PATH, JSON.pretty_generate(updated) + "\n", 0o644)
+  updated
+end
+
+def rewrite_captured_bundle(plan, updated_spec)
+  caller_by_path = {}
+  updated_spec.fetch("pairs").each do |pair|
+    [pair["gate_implementation"], pair["report_implementation"]].compact.each do |path|
+      existing = caller_by_path[path]
+      raise "compatibility payload has ambiguous callers: #{path}" if existing &&
+        existing != pair.fetch("id")
+      caller_by_path[path] = pair.fetch("id")
+    end
+  end
+  registered_paths = caller_by_path.keys.to_set |
+    updated_spec.fetch("supplemental_payloads", []).map { |payload| payload.fetch("path") }.to_set
+  entries = registered_paths.sort.map do |path|
+    source = transform_source(plan.fetch(:sources).fetch(path), plan.fetch(:member_to_family))
+    source = bind_caller(source, caller_by_path.fetch(path)) if caller_by_path.key?(path)
+    HeptaNormalizedTokenBundle::Entry.new(path, source)
+  end
+  bundle = HeptaNormalizedTokenBundle.build(
+    entries,
+    tokenizer: HeptaNormalizedTokenBundle.method(:shell_tokens)
+  )
+  HeptaReadableTokenSource.write(
+    root: BUNDLE_ROOT,
+    bundle: bundle,
+    artifact_schema: SCHEMA,
+    domain: DOMAIN,
+    artifact_file: "payloads.bundle.gz",
+    atomic_write: method(:atomic_write),
+    source_chunk_lines: 8
+  )
+  system(PAYLOAD_TOOL, "pack") || raise("captured payload repack failed")
+end
+
+def write_receipt(plan, registry)
+  payload_registry = JSON.parse(File.binread(File.join(BUNDLE_ROOT, "registry.json")))
+  entrypoint_registry = JSON.parse(
+    File.binread(File.join(ROOT, "scripts/hepta-gate-pair-entrypoints-v2.json"))
+  )
+  receipt = {
+    schema: "hepta_gate_compat_family_current_baseline_receipt_v1",
+    status: "ready",
+    baseline: {
+      basis: "current_source_graph_independent_of_historical_o2",
+      spec_sha256: BASELINE_SPEC_SHA256,
+      pair_count: BASELINE_PAIR_COUNT,
+      protected_pair_count: plan.fetch(:graph).fetch(:protected).length,
+      protected_pairs: plan.fetch(:graph).fetch(:protected).to_a.sort,
+      protected_closure_count: plan.fetch(:graph).fetch(:closure).length,
+      reachable_captured_pair_count: 384,
+      reachable_declarative_pair_count: 7
+    },
+    retirement: {
+      dead_pair_count: plan.fetch(:graph).fetch(:dead).length,
+      dead_pairs: plan.fetch(:graph).fetch(:dead).to_a.sort,
+      reference_graph_proof: "current_external_roots_transitive_payload_dependency_closure_v1"
+    },
+    migration: {
+      family_pair_count: registry.fetch("family_count"),
+      migrated_state_count: registry.fetch("migrated_state_count"),
+      exact_parameterized_state_count: registry.fetch("exact_parameterized_state_count"),
+      declarative_projection_state_count: registry.fetch("declarative_projection_state_count"),
+      retired_member_count: TARGET_MIGRATED_STATE_COUNT - TARGET_FAMILY_COUNT,
+      old_member_payloads_preserved_as_supplemental_aliases: false,
+      in_bundle_callers_rewritten_to_family_surfaces: true,
+      state_registry_contains_full_shell_bodies: false
+    },
+    honest_shortfall: {
+      status: "exact_parameterized_floor",
+      requested_migrated_state_count: REQUESTED_MIGRATED_STATE_COUNT,
+      requested_family_pair_count: REQUESTED_FAMILY_COUNT,
+      requested_captured_pair_count: REQUESTED_CAPTURED_COUNT,
+      requested_declarative_pair_count: REQUESTED_DECLARATIVE_COUNT,
+      additional_true_declarative_conversions_required: REQUESTED_MIGRATED_STATE_COUNT -
+        TARGET_MIGRATED_STATE_COUNT,
+      exact_duplicate_state_count: TARGET_EXACT_STATE_COUNT,
+      route_safe_exact_family_pair_count: TARGET_FAMILY_COUNT,
+      exact_pair_reduction: TARGET_EXACT_STATE_COUNT - TARGET_FAMILY_COUNT,
+      rejected_declarative_snapshot_count: REQUESTED_MIGRATED_STATE_COUNT -
+        TARGET_MIGRATED_STATE_COUNT,
+      rejected_reason: "captured report snapshots preserve full semantic payloads, are not compact state parameters, and exceed measured debt ceilings",
+      retired_full_shell_bodies_preserved_as_supplemental_aliases: false
+    },
+    result: {
+      pair_count: TARGET_PAIR_COUNT,
+      captured_pair_count: TARGET_CAPTURED_COUNT,
+      declarative_pair_count: TARGET_DECLARATIVE_COUNT,
+      spec_sha256: Digest::SHA256.file(SPEC_PATH).hexdigest,
+      family_registry_sha256: Digest::SHA256.file(FAMILY_REGISTRY_PATH).hexdigest,
+      logical_compatibility_payload_count: payload_registry.fetch("payload_count") +
+        registry.fetch("metrics").fetch("logical_family_payload_count"),
+      normalized_payload_count: payload_registry.fetch("normalized_payload_count") +
+        registry.fetch("metrics").fetch("normalized_family_payload_count"),
+      normalized_effective_lines: payload_registry.fetch("normalized_effective_lines") +
+        registry.fetch("metrics").fetch("exact_normalized_effective_lines") +
+        registry.fetch("metrics").fetch("semantic_registry_effective_lines"),
+      physical_entrypoint_count: entrypoint_registry.fetch("retained_entrypoint_count"),
+      logical_virtual_entrypoint_count: entrypoint_registry.fetch("virtual_entrypoint_count")
+    },
+    side_effects: {
+      provider_invoked: false,
+      model_invoked: false,
+      credential_read: false,
+      channel_send_performed: false,
+      production_state_mutated: false,
+      service_restarted: false
+    }
+  }
+  atomic_write(RECEIPT_PATH, JSON.pretty_generate(receipt) + "\n", 0o644)
+end
+
+def plan_summary(plan)
+  puts JSON.pretty_generate(
+    baseline_pair_count: BASELINE_PAIR_COUNT,
+    protected_pair_count: plan.fetch(:graph).fetch(:protected).length,
+    protected_closure_count: plan.fetch(:graph).fetch(:closure).length,
+    dead_pair_count: plan.fetch(:graph).fetch(:dead).length,
+    family_pair_count: plan.fetch(:families).length,
+    migrated_state_count: plan.fetch(:families).sum { |family| family.fetch(:states).length },
+    exact_parameterized_state_count: plan.fetch(:families).sum do |family|
+      family.fetch(:mode) == "exact_parameterized" ? family.fetch(:states).length : 0
+    end,
+    declarative_projection_state_count: plan.fetch(:families).sum do |family|
+      family.fetch(:mode) == "declarative_projection" ? family.fetch(:states).length : 0
+    end,
+    target_pair_count: TARGET_PAIR_COUNT
+  )
+end
+
+def apply
+  plan = build_plan(capture_reports: true)
+  exact_bundle, exact_metadata, exact_sources = write_exact_family_source(plan)
+  projections = projection_records(plan)
+  registry = write_family_registry(plan, exact_bundle, exact_metadata, exact_sources, projections)
+  updated_spec = update_spec(plan, registry, exact_sources)
+  rewrite_captured_bundle(plan, updated_spec)
+  system(ENTRYPOINT_TOOL, "pack") || raise("entrypoint repack failed")
+  write_receipt(plan, registry)
+  puts JSON.pretty_generate(
+    status: "ready",
+    pair_count: updated_spec.fetch("pairs").length,
+    family_count: registry.fetch("family_count"),
+    family_registry: FAMILY_REGISTRY_PATH.delete_prefix("#{ROOT}/"),
+    receipt: RECEIPT_PATH.delete_prefix("#{ROOT}/")
+  )
+end
+
+case ARGV
+when ["plan"]
+  plan_summary(build_plan(capture_reports: false))
+when ["apply"]
+  apply
+else
+  usage
+end

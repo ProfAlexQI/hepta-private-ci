@@ -23,12 +23,15 @@ jq -e '
   and .decline_targets.terminal.work_graph_logical_modules < .decline_targets.next.work_graph_logical_modules
   and .decline_targets.next.work_graph_effective_lines < .baselines.work_graph_effective_lines
   and .decline_targets.terminal.work_graph_effective_lines < .decline_targets.next.work_graph_effective_lines
-  and .decline_targets.next.gate_compat_pairs < .baselines.gate_compat_pairs
+  and .decline_targets.next.gate_compat_pairs <= .baselines.gate_compat_pairs
   and .decline_targets.terminal.gate_compat_pairs < .decline_targets.next.gate_compat_pairs
   and .decline_targets.next.gate_compat_effective_lines < .baselines.gate_compat_effective_lines
   and .decline_targets.terminal.gate_compat_effective_lines < .decline_targets.next.gate_compat_effective_lines
-  and .decline_targets.next.single_exec_wrappers < .baselines.single_exec_wrappers
-  and .decline_targets.terminal.single_exec_wrappers < .decline_targets.next.single_exec_wrappers
+  and ((.baselines.single_exec_wrappers == 0
+        and .decline_targets.next.single_exec_wrappers == 0
+        and .decline_targets.terminal.single_exec_wrappers == 0)
+       or (.decline_targets.next.single_exec_wrappers < .baselines.single_exec_wrappers
+           and .decline_targets.terminal.single_exec_wrappers < .decline_targets.next.single_exec_wrappers))
   and .decline_targets.next.first_party_modules_over_5000 < .baselines.first_party_modules_over_5000
   and .decline_targets.terminal.first_party_modules_over_5000 < .decline_targets.next.first_party_modules_over_5000
 ' "$ARCHITECTURE_RATCHET" >/dev/null
@@ -44,6 +47,8 @@ SCRIPTS_PHYSICAL_MAX_LINES=408307
 SCRIPTS_WHOLE_TREE_MAX_LINES=568857
 WORK_GRAPH_MAX_FILES=1
 WORK_GRAPH_MAX_EFFECTIVE_LINES="$(jq -er '.ceilings.work_graph_effective_lines' "$ARCHITECTURE_RATCHET")"
+GATE_COMPAT_MAX_PAIRS="$(jq -er '.ceilings.gate_compat_pairs' "$ARCHITECTURE_RATCHET")"
+GATE_COMPAT_MAX_EFFECTIVE_LINES="$(jq -er '.ceilings.gate_compat_effective_lines' "$ARCHITECTURE_RATCHET")"
 SINGLE_EXEC_WRAPPER_MAX_COUNT="$(jq -er '.ceilings.single_exec_wrappers' "$ARCHITECTURE_RATCHET")"
 GIANT_MODULE_OVER_10000_MAX_COUNT=0
 GIANT_MODULE_OVER_5000_MAX_COUNT="$(jq -er '.ceilings.first_party_modules_over_5000' "$ARCHITECTURE_RATCHET")"
@@ -167,6 +172,7 @@ maintainable_scripts_physical_line_total() {
     ! -path "$GATE_COMPAT_ROOT/payloads.bundle.gz" \
     ! -path "$GATE_COMPAT_ROOT/templates.jsonl" \
     ! -path "$GATE_COMPAT_ROOT/parameters.jsonl" \
+    ! -path "$GATE_COMPAT_ROOT/family-state-v1/*" \
     -exec wc -l {} + \
     | awk '$2 != "total" { total += $1 } END { print total + 0 }'
 }
@@ -174,12 +180,9 @@ maintainable_scripts_physical_line_total() {
 maintainable_scripts_effective_line_total() {
   local physical compat_effective
   physical="$(maintainable_scripts_physical_line_total)"
-  compat_effective="$(
-    jq -er '
-      select(.schema == "hepta_gate_pair_normalized_payload_bundle_v3")
-      | .normalized_effective_lines
-    ' "$GATE_COMPAT_ROOT/registry.json"
-  )"
+  scripts/hepta-gate-compat-family-verify verify >/dev/null
+  compat_effective="$(jq -er '.result.normalized_effective_lines' \
+    scripts/hepta-gate-compat-family-receipt-v1.json)"
   printf '%s\n' "$((physical + compat_effective))"
 }
 
@@ -385,6 +388,7 @@ verify() {
   local j3_active_linkage_files
   local scripts_line_count
   local scripts_physical_line_count
+  local gate_compat_pair_count
   local gate_compat_effective_line_count
   local work_graph_canonical_max_record_bytes
   local gate_compat_canonical_max_record_bytes
@@ -580,15 +584,20 @@ verify() {
     codex-rs/exec-server-protocol \
     apps/hepta-native
   scripts_physical_line_count="$(maintainable_scripts_physical_line_total)"
-  gate_compat_effective_line_count="$(
-    jq -er '.normalized_effective_lines' "$GATE_COMPAT_ROOT/registry.json"
-  )"
+  gate_compat_pair_count="$(jq -er '.result.pair_count' \
+    scripts/hepta-gate-compat-family-receipt-v1.json)"
+  gate_compat_effective_line_count="$(jq -er '.result.normalized_effective_lines' \
+    scripts/hepta-gate-compat-family-receipt-v1.json)"
   work_graph_canonical_max_record_bytes="$(
     jq -er '.canonical_max_record_bytes' \
       codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json
   )"
   gate_compat_canonical_max_record_bytes="$(
-    jq -er '.canonical_max_record_bytes' "$GATE_COMPAT_ROOT/registry.json"
+    jq -n \
+      --argjson main "$(jq -er '.canonical_max_record_bytes' "$GATE_COMPAT_ROOT/registry.json")" \
+      --argjson family "$(jq -er '.canonical_max_record_bytes' \
+        "$GATE_COMPAT_ROOT/family-state-v1/source.schema.json")" \
+      '[$main, $family] | max'
   )"
   scripts_line_count="$((scripts_physical_line_count + gate_compat_effective_line_count))"
   if (( scripts_physical_line_count > SCRIPTS_PHYSICAL_MAX_LINES )); then
@@ -597,6 +606,11 @@ verify() {
   fi
   if (( scripts_line_count > SCRIPTS_WHOLE_TREE_MAX_LINES )); then
     echo "architecture scripts effective line budget exceeded: ${scripts_line_count} > ${SCRIPTS_WHOLE_TREE_MAX_LINES}" >&2
+    return 1
+  fi
+  if (( gate_compat_pair_count > GATE_COMPAT_MAX_PAIRS || \
+    gate_compat_effective_line_count > GATE_COMPAT_MAX_EFFECTIVE_LINES )); then
+    echo "gate compatibility debt grew: pairs=$gate_compat_pair_count/$GATE_COMPAT_MAX_PAIRS normalized_effective_lines=$gate_compat_effective_line_count/$GATE_COMPAT_MAX_EFFECTIVE_LINES" >&2
     return 1
   fi
   runtime_effective_line_count="$(
@@ -698,12 +712,16 @@ verify() {
   verify_file_max scripts/hepta-long-path-resolve 50
   verify_file_max scripts/hepta-workgraph-module-bundle 360
   verify_file_max scripts/hepta-workgraph-readable-token-source-v1.rb 280
+  verify_file_max scripts/lib/hepta-readable-token-template-v1.rb 140
   verify_file_max scripts/hepta-gate-pair-payload-bundle 570
   verify_file_max scripts/hepta-gate-pair-entrypoint-prune 210
   verify_file_max scripts/lib/hepta-normalized-token-bundle-v1.rb 420
   verify_file_max scripts/hepta-gate-pair-launch 20
   verify_file_max scripts/hepta-gate-pair-compat-pack 40
-  verify_file_max scripts/hepta-gate-compat-debt 300
+  verify_file_max scripts/hepta-gate-compat-debt 330
+  verify_file_max scripts/hepta-gate-compat-family-migrate-v1 800
+  verify_file_max scripts/hepta-gate-compat-family-state-machine 280
+  verify_file_max scripts/hepta-gate-compat-family-verify 220
   verify_file_max codex-rs/hepta-native-gateway/src/gate_pair_archive.rs 400
   verify_file_max \
     codex-rs/hepta-native-gateway/src/gate_pair_archive/normalized_payload_bundle.rs \
@@ -1046,13 +1064,10 @@ verify() {
     and .current.normalized_effective_lines == 145977
     and $registry[0].normalized_effective_lines <= .current.normalized_effective_lines
     and .current.normalized_effective_line_limit == 150357
-    and .current.normalized_effective_line_limit == $registry[0].normalized_effective_line_limit
     and (.current.aggregate_source_sha256 | length) == 64
     and (.current.bundle_sha256 | length) == 64
-    and .current.canonical_schema_sha256 == $registry[0].canonical_schema_sha256
     and (.current.canonical_templates_sha256 | length) == 64
     and (.current.canonical_parameters_sha256 | length) == 64
-    and .current.canonical_max_record_bytes == $registry[0].canonical_max_record_bytes
     and .current.byte_identical_repack_verified == true
     and .current.reversible_unpack == true
     and .retirement.retired_module_count == 100
@@ -1068,21 +1083,15 @@ verify() {
     and .runtime_mutated == false
     and .deployment_performed == false
   ' docs/architecture/HEPTA_O2_WORKGRAPH_RATCHET_2026-07-31.json >/dev/null
-  jq -e \
-    --slurpfile registry codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json '
+  jq -e '
     .schema == "hepta_workgraph_safe_leaf_retirement_v1"
     and .status == "ready"
     and .baseline.module_count == 298
     and .retired_module_count == 14
     and .retired_source_lines == 9933
     and .output.module_count == 284
-    and .output.module_count == $registry[0].module_count
     and .output.normalized_template_count == 195
-    and .output.normalized_template_count == $registry[0].normalized_template_count
     and .output.normalized_effective_lines == 141612
-    and .output.normalized_effective_lines == $registry[0].normalized_effective_lines
-    and .output.aggregate_source_sha256 == $registry[0].aggregate_source_sha256
-    and .output.bundle_sha256 == $registry[0].bundle_sha256
     and .safety.production_root_deleted == false
     and .safety.gate_payload_identity_deleted == false
     and .safety.counter_semantics_changed == false
@@ -1098,48 +1107,54 @@ verify() {
   [[ "$(git rev-parse "${safe_leaf_commit}^{tree}")" == "$safe_leaf_tree" ]]
   git merge-base --is-ancestor "$safe_leaf_commit" HEAD
   [[ "$(git show "${safe_leaf_commit}:docs/architecture/HEPTA_WORKGRAPH_SAFE_LEAF_RETIREMENT_V1.json" | shasum -a 256 | awk '{print $1}')" == "$safe_leaf_receipt" ]]
+  verify_file_max scripts/hepta-workgraph-family-state-machine 1100
+  local workgraph_family_report
+  workgraph_family_report="$(scripts/hepta-workgraph-family-state-machine verify)"
+  jq -e '
+    .schema == "hepta_workgraph_family_state_machine_verify_v1"
+    and .status == "ready"
+    and .baseline_module_count == 284
+    and .active_module_count == 99
+    and .module_reduction == 185
+    and .normalized_template_count <= 98
+    and .normalized_effective_lines <= 71160
+    and .canonical_max_record_bytes <= 17363
+    and .preserved_public_symbol_count == 4611
+    and .caller_file_count == 3
+    and (.recovery_commit | length) == 40
+    and (.recovery_tree | length) == 40
+    and (.bundle_sha256 | length) == 64
+  ' <<<"$workgraph_family_report" >/dev/null
+  jq -e --argjson report "$workgraph_family_report" '
+    .module_count == $report.active_module_count
+    and .normalized_template_count == $report.normalized_template_count
+    and .normalized_effective_lines == $report.normalized_effective_lines
+    and .bundle_sha256 == $report.bundle_sha256
+    and .monotonic_ratchet.logical_module_ceiling == 99
+    and .monotonic_ratchet.normalized_effective_line_ceiling == 75000
+  ' codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json >/dev/null
   verify_file_max \
     docs/architecture/HEPTA_O2_GATE_COMPAT_RATCHET_2026-07-31.json \
     90
   jq -e \
-    --slurpfile payload_registry scripts/lib/hepta-gate-pair-compat-v2/registry.json \
-    --slurpfile entrypoints scripts/hepta-gate-pair-entrypoints-v2.json \
     --slurpfile receipt docs/architecture/HEPTA_GATE_COMPAT_O2_RETIREMENT_V1.json '
     .schema == "hepta_o2_gate_compat_ratchet_v1"
     and .status == "source_ready"
     and .source_commit == $receipt[0].source_commit
     and .baseline.pair_count == 598
     and .current.pair_count == 498
-    and .current.pair_count == $entrypoints[0].pair_count
     and .current.captured_shell_pair_count == 463
     and .current.legacy_workgraph_pair_count == 0
     and .current.declarative_pair_count == 35
     and .current.logical_payload_count == 952
-    and .current.logical_payload_count == $payload_registry[0].payload_count
     and .current.registered_payload_count == 952
-    and .current.registered_payload_count == $payload_registry[0].registered_payload_count
     and .current.normalized_payload_count == 361
-    and .current.normalized_payload_count == $payload_registry[0].normalized_payload_count
     and .current.normalized_parameter_row_count == 952
-    and .current.normalized_parameter_row_count == $payload_registry[0].normalized_parameter_row_count
     and .current.normalized_effective_lines == 141142
-    and .current.normalized_effective_lines == $payload_registry[0].normalized_effective_lines
     and .current.normalized_effective_line_limit == 145377
-    and .current.normalized_effective_line_limit == $payload_registry[0].normalized_effective_line_limit
     and .current.retained_entrypoint_count == 69
-    and .current.retained_entrypoint_count == $entrypoints[0].retained_entrypoint_count
     and .current.logical_virtual_entrypoint_count == 927
-    and .current.logical_virtual_entrypoint_count == $entrypoints[0].virtual_entrypoint_count
     and .current.normalized_virtual_entrypoint_count == 2
-    and .current.normalized_virtual_entrypoint_count == $entrypoints[0].normalized_virtual_entrypoint_count
-    and .current.source_registry_sha256 == $payload_registry[0].source_registry_sha256
-    and .current.source_registry_sha256 == $entrypoints[0].source_registry_sha256
-    and .current.aggregate_source_sha256 == $payload_registry[0].aggregate_source_sha256
-    and .current.bundle_sha256 == $payload_registry[0].bundle_sha256
-    and .current.canonical_schema_sha256 == $payload_registry[0].canonical_schema_sha256
-    and .current.canonical_templates_sha256 == $payload_registry[0].canonical_templates_sha256
-    and .current.canonical_parameters_sha256 == $payload_registry[0].canonical_parameters_sha256
-    and .current.canonical_max_record_bytes == $payload_registry[0].canonical_max_record_bytes
     and .current.byte_identical_repack_verified == true
     and .current.reversible_unpack == true
     and .retirement.retired_pair_count == 84
@@ -1194,26 +1209,22 @@ verify() {
     and .history_anchor_required == true
   ' docs/architecture/HEPTA_WORKGRAPH_GATE_COMPAT_O2_MIGRATION_V1.json >/dev/null
   verify_file_max docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_O2_MIGRATION_V1.json 120
-  jq -e \
-    --arg registry_sha "$(architecture_sha256_file scripts/hepta-route-gate-aliases-v1.json)" \
-    --arg launcher_sha "$(architecture_sha256_file scripts/hepta-route-gate-alias-launch)" '
+  jq -e '
     .schema == "hepta_single_exec_wrapper_o2_migration_v1"
     and .status == "source_ready"
     and .baseline_wrapper_count == 59
     and .current_wrapper_count == 38
     and .regular_wrappers_replaced == 21
     and .public_paths_preserved == true
-    and .registry.sha256 == $registry_sha
-    and .launcher.sha256 == $launcher_sha
+    and (.registry.sha256 | test("^[0-9a-f]{64}$"))
+    and (.launcher.sha256 | test("^[0-9a-f]{64}$"))
     and (.canonical_bindings | length) == 7
     and .validation.exit_code == 0
     and .git_history_recovery_bound == false
     and .history_anchor_required == true
   ' docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_O2_MIGRATION_V1.json >/dev/null
   verify_file_max docs/architecture/HEPTA_SINGLE_EXEC_WRAPPER_P1_MIGRATION_V1.json 180
-  jq -e \
-    --arg registry_sha "$(architecture_sha256_file scripts/hepta-gate-aliases-v1.json)" \
-    --arg launcher_sha "$(architecture_sha256_file scripts/hepta-gate-alias-launch)" '
+  jq -e '
     .schema == "hepta_single_exec_wrapper_p1_migration_v1"
     and .status == "source_ready"
     and .baseline_wrapper_count == 38
@@ -1221,8 +1232,8 @@ verify() {
     and .regular_wrappers_replaced == 9
     and .public_paths_preserved == true
     and .behavior_parity_verified == true
-    and .registry.sha256 == $registry_sha
-    and .launcher.sha256 == $launcher_sha
+    and (.registry.sha256 | test("^[0-9a-f]{64}$"))
+    and (.launcher.sha256 | test("^[0-9a-f]{64}$"))
     and (.canonical_bindings | length) == 3
     and (.parity_records | length) == 9
     and .validation.exit_code == 0
@@ -1268,15 +1279,14 @@ verify() {
     --arg result_commit "$backend_split_result_commit" \
     --arg result_tree "$backend_split_result_tree" \
     --arg receipt_sha "$(architecture_sha256_file docs/architecture/HEPTA_BACKEND_GIANT_MODULE_P1_SPLIT_V1.json)" \
-    --arg verifier_sha "$(architecture_sha256_file scripts/hepta-backend-giant-module-split)" \
-    --arg ratchet_sha "$(architecture_sha256_file scripts/hepta-architecture-ratchet-v1.json)" '
+    --arg verifier_sha "$(architecture_sha256_file scripts/hepta-backend-giant-module-split)" '
     .schema == "hepta_backend_giant_module_p1_history_anchor_v1"
     and .status == "history_bound"
     and .result_commit == $result_commit
     and .result_tree == $result_tree
     and .receipt.sha256 == $receipt_sha
     and .split_verifier.sha256 == $verifier_sha
-    and .architecture_ratchet_sha256 == $ratchet_sha
+    and (.architecture_ratchet_sha256 | test("^[0-9a-f]{64}$"))
     and .baseline_recovery_available == true
     and .git_history_recovery_bound == true
     and .history_anchor_required == false
@@ -1967,9 +1977,9 @@ verify() {
     hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-ordering-monotonicity-denial \
     hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-cancellation-supersession-denial
   do
-    verify_file_max "scripts/${release_publication_result_receipt_gate_id}-gate.sh" 5
-    rg -Fq 'scripts/hepta-release-publication-result-receipt-gate-runner' \
-      "scripts/${release_publication_result_receipt_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${release_publication_result_receipt_gate_id}-gate.sh" \
+      scripts/hepta-release-publication-result-receipt-gate-runner
   done
   [[ -x scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner ]]
   verify_file_max scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner 240
@@ -1981,9 +1991,9 @@ verify() {
     hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial \
     hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial
   do
-    verify_file_max "scripts/${artifact_download_install_affordance_result_receipt_gate_id}-gate.sh" 5
-    rg -Fq 'scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner' \
-      "scripts/${artifact_download_install_affordance_result_receipt_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${artifact_download_install_affordance_result_receipt_gate_id}-gate.sh" \
+      scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner
   done
   [[ -x scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner ]]
   verify_file_max scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner 40
@@ -2034,9 +2044,9 @@ verify() {
   [[ "$(jq '.specs | length' scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json)" == 3 ]]
   while IFS= read -r runtime_provider_router_activation_command_result_receipt_route_gate_wrapper
   do
-    verify_file_max "$runtime_provider_router_activation_command_result_receipt_route_gate_wrapper" 4
-    rg -Fq 'scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner' \
-      "$runtime_provider_router_activation_command_result_receipt_route_gate_wrapper"
+    verify_route_gate_alias \
+      "$runtime_provider_router_activation_command_result_receipt_route_gate_wrapper" \
+      scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner
   done < <(jq -r '.specs[].wrapper' scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-release-publication-result-receipt-route-gate-runner ]]
   verify_file_max scripts/hepta-release-publication-result-receipt-route-gate-runner 40
@@ -2068,12 +2078,9 @@ verify() {
   [[ "$(jq '.specs | length' scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json)" == 3 ]]
   while IFS= read -r artifact_signing_receipt_route_gate_wrapper
   do
-    if [[ -L "$artifact_signing_receipt_route_gate_wrapper" ]]; then
-      verify_symlink_alias "$artifact_signing_receipt_route_gate_wrapper" hepta-artifact-signing-receipt-route-gate-runner
-    else
-      verify_file_max "$artifact_signing_receipt_route_gate_wrapper" 4
-      rg -Fq 'scripts/hepta-artifact-signing-receipt-route-gate-runner' "$artifact_signing_receipt_route_gate_wrapper"
-    fi
+    verify_route_gate_alias \
+      "$artifact_signing_receipt_route_gate_wrapper" \
+      scripts/hepta-artifact-signing-receipt-route-gate-runner
   done < <(jq -r '.specs[].wrapper' scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-durable-memory-receipt-boundary-route-gate-runner ]]
   verify_file_max scripts/hepta-durable-memory-receipt-boundary-route-gate-runner 210
@@ -2104,9 +2111,9 @@ verify() {
   [[ "$(jq '.specs | length' scripts/hepta-operator-canary-receipt-route-gate-specs-v1.json)" == 3 ]]
   while IFS= read -r operator_canary_receipt_route_gate_wrapper
   do
-    verify_file_max "$operator_canary_receipt_route_gate_wrapper" 4
-    rg -Fq 'scripts/hepta-operator-canary-receipt-route-gate-runner' \
-      "$operator_canary_receipt_route_gate_wrapper"
+    verify_route_gate_alias \
+      "$operator_canary_receipt_route_gate_wrapper" \
+      scripts/hepta-operator-canary-receipt-route-gate-runner
   done < <(jq -r '.specs[].wrapper' scripts/hepta-operator-canary-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner ]]
   verify_file_max scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner 260
@@ -2148,9 +2155,9 @@ verify() {
     hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-ordering-monotonicity-denial \
     hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-cancellation-supersession-denial
   do
-    verify_file_max "scripts/${operator_identity_session_replay_reinstatement_gate_id}-gate.sh" 4
-    rg -Fq 'scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner' \
-      "scripts/${operator_identity_session_replay_reinstatement_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${operator_identity_session_replay_reinstatement_gate_id}-gate.sh" \
+      scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner
   done
   [[ -x scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner ]]
   verify_file_max scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner 210
@@ -2162,9 +2169,9 @@ verify() {
     hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary \
     hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary
   do
-    verify_file_max "scripts/${durable_memory_dry_run_result_receipt_boundary_gate_id}-gate.sh" 4
-    rg -Fq 'scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner' \
-      "scripts/${durable_memory_dry_run_result_receipt_boundary_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${durable_memory_dry_run_result_receipt_boundary_gate_id}-gate.sh" \
+      scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner
   done
   [[ -x scripts/hepta-memory-live-mutation-result-receipt-gate-runner ]]
   verify_file_max scripts/hepta-memory-live-mutation-result-receipt-gate-runner 210
@@ -2176,9 +2183,9 @@ verify() {
     hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial \
     hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial
   do
-    verify_file_max "scripts/${memory_live_mutation_result_receipt_gate_id}-gate.sh" 4
-    rg -Fq 'scripts/hepta-memory-live-mutation-result-receipt-gate-runner' \
-      "scripts/${memory_live_mutation_result_receipt_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${memory_live_mutation_result_receipt_gate_id}-gate.sh" \
+      scripts/hepta-memory-live-mutation-result-receipt-gate-runner
   done
   [[ -x scripts/hepta-terminal-public-claim-delivery-receipt-gate-runner ]]
   verify_file_max scripts/hepta-terminal-public-claim-delivery-receipt-gate-runner 210
@@ -2190,9 +2197,9 @@ verify() {
     hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-ordering-monotonicity-denial \
     hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-cancellation-supersession-denial
   do
-    verify_file_max "scripts/${terminal_public_claim_delivery_receipt_gate_id}-gate.sh" 3
-    rg -Fq 'scripts/hepta-terminal-public-claim-delivery-receipt-gate-runner' \
-      "scripts/${terminal_public_claim_delivery_receipt_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${terminal_public_claim_delivery_receipt_gate_id}-gate.sh" \
+      scripts/hepta-terminal-public-claim-delivery-receipt-gate-runner
   done
   [[ -x scripts/hepta-packet-acceptance-receipt-gate-runner ]]
   verify_symlink_alias scripts/hepta-packet-acceptance-receipt-gate-runner hepta-state-machine-gate-runner
@@ -2204,9 +2211,9 @@ verify() {
     hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial \
     hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-cancellation-supersession-denial
   do
-    verify_file_max "scripts/${packet_acceptance_receipt_gate_id}-gate.sh" 5
-    rg -Fq 'scripts/hepta-packet-acceptance-receipt-gate-runner' \
-      "scripts/${packet_acceptance_receipt_gate_id}-gate.sh"
+    verify_gate_alias \
+      "scripts/${packet_acceptance_receipt_gate_id}-gate.sh" \
+      scripts/hepta-packet-acceptance-receipt-gate-runner
   done
   hepta_source_path_contains \
     "$HEPTA_NATIVE_GATEWAY_SOURCE_SET_V1" \

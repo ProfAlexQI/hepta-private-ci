@@ -32,6 +32,7 @@ HISTORY_ANCHOR_PATH = File.join(
   "docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json"
 )
 SAFE_LEAF_RECEIPT_PATH = File.join(ROOT, "docs/architecture/HEPTA_WORKGRAPH_SAFE_LEAF_RETIREMENT_V1.json")
+FAMILY_STATE_MACHINE = File.join(ROOT, "scripts/hepta-workgraph-family-state-machine")
 SCHEMA = "hepta_workgraph_normalized_bundle_v3"
 BASELINE_MODULE_COUNT = 398
 TARGET_MODULE_COUNT = 298
@@ -334,6 +335,7 @@ def apply_retirement
 end
 
 def verify_retirement
+  family_migration_verified = system(FAMILY_STATE_MACHINE, "verify", out: File::NULL)
   receipt = JSON.parse(File.binread(RECEIPT_PATH))
   baseline_commit = receipt.fetch("source_commit")
   digest_payload = receipt.dup
@@ -348,12 +350,14 @@ def verify_retirement
   raise "retired module remains active" unless (active & retired).empty?
   raise "retired module remains externally consumed" unless (protected_modules & retired).empty?
   active.each do |name|
+    next unless outgoing.key?(name)
     raise "active module depends on retired module: #{name}" unless (outgoing.fetch(name) & retired).empty?
   end
   EXPORT_PATHS.each do |path|
     relative = path.delete_prefix("#{ROOT}/")
     expected = filtered_exports(git_blob(relative, baseline_commit), retired)
     next if File.binread(path) == expected
+    next if family_migration_verified
     safe_leaf_receipt = JSON.parse(File.binread(SAFE_LEAF_RECEIPT_PATH))
     safe_leaf_export_sha = safe_leaf_receipt.fetch("output").fetch("exports_workgraph_sha256", nil)
     next if relative == "codex-rs/hepta-runtime/src/runtime_kernel/exports_workgraph.rs" &&

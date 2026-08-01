@@ -9,7 +9,7 @@ validate() {
     .schema_version == "hepta_gate_aliases_v1"
     and .status == "source_ready"
     and .launcher == "scripts/hepta-gate-alias-launch"
-    and .alias_count == 9
+    and .alias_count == 30
     and (.entries | length) == .alias_count
     and ((.entries | map(.logical_path) | unique | length) == .alias_count)
     and ((.entries | map(.id) | unique | length) == .alias_count)
@@ -25,6 +25,11 @@ validate() {
   actual_path_sha="$(jq -r '.entries[].logical_path' "$REGISTRY" | shasum -a 256 | awk '{print $1}')"
   [[ "$actual_path_sha" == "$(jq -r '.path_set_sha256' "$REGISTRY")" ]] || {
     echo "gate alias path-set SHA drifted" >&2
+    exit 1
+  }
+  actual_records_sha="$(jq -cS '[.entries[] | {logical_path,original_mode,original_blob,original_sha256}]' "$REGISTRY" | shasum -a 256 | awk '{print $1}')"
+  [[ "$actual_records_sha" == "$(jq -r '.original_records_sha256' "$REGISTRY")" ]] || {
+    echo "gate alias original-record SHA drifted" >&2
     exit 1
   }
   while IFS=$'\t' read -r logical_path runner; do
@@ -49,7 +54,7 @@ validate() {
 }
 if [[ $# == 1 && "$1" == "--validate" ]]; then
   validate
-  echo '{"schema":"hepta_gate_aliases_validation_v1","status":"ready","alias_count":9}'
+  echo '{"schema":"hepta_gate_aliases_validation_v1","status":"ready","alias_count":30}'
   exit 0
 fi
 [[ $# == 0 ]] || {

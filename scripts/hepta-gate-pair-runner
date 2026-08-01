@@ -2,9 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
+SPEC_FILE_OVERRIDE="${HEPTA_GATE_PAIR_SPEC_FILE:-}"
+SPEC_FILE="${SPEC_FILE_OVERRIDE:-$ROOT/scripts/hepta-gate-pair-specs-v1.json}"
 COMPAT_EXECUTOR="$ROOT/scripts/hepta-gate-pair-compat-exec"
 PAYLOAD_BUNDLE="$ROOT/scripts/hepta-gate-pair-payload-bundle"
+FAMILY_STATE_MACHINE="$ROOT/scripts/hepta-gate-compat-family-state-machine"
 LONG_PATH_RESOLVER="$ROOT/scripts/hepta-long-path-resolve"
 source "$ROOT/scripts/lib/hepta-gate-pair-terminal-status-v1.sh"
 source "$ROOT/scripts/lib/hepta-gate-pair-terminal-final-index-v1.sh"
@@ -28,6 +30,16 @@ command -v jq >/dev/null 2>&1 || {
   echo "missing Hepta gate pair spec registry: $SPEC_FILE" >&2
   exit 1
 }
+if [[ -n "${HEPTA_GATE_PAIR_SPEC_FILE:-}" ]]; then
+  [[ "$SPEC_FILE" == /* && "${HEPTA_GATE_PAIR_SPEC_FILE_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "invalid SHA-bound Hepta compatibility spec override" >&2
+    exit 1
+  }
+  [[ "$(shasum -a 256 "$SPEC_FILE" | awk '{print $1}')" == "$HEPTA_GATE_PAIR_SPEC_FILE_SHA256" ]] || {
+    echo "Hepta compatibility spec override SHA-256 drifted" >&2
+    exit 1
+  }
+fi
 
 resolve_repo_file() {
   local logical_path="$1"
@@ -51,6 +63,19 @@ resolve_repo_file() {
     return
   fi
   return 1
+}
+
+use_compatibility_overlay_root() {
+  local compatibility_root="${HEPTA_COMPAT_OVERLAY_ROOT:-}"
+  if [[ -z "$compatibility_root" ]]; then
+    compatibility_root="$("$PAYLOAD_BUNDLE" materialize-overlay)"
+    export HEPTA_COMPAT_OVERLAY_ROOT="$compatibility_root"
+  fi
+  [[ -d "$compatibility_root" ]] || {
+    echo "missing Hepta gate-pair compatibility overlay: $compatibility_root" >&2
+    exit 1
+  }
+  ROOT="$compatibility_root"
 }
 
 run_repo_executable() {
@@ -108,7 +133,7 @@ report_implementation_sha256="$(jq -r '.report_implementation_sha256 // empty' <
   echo "unexpected Hepta migrated receipt state for: $id" >&2
   exit 1
 }
-[[ "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" || "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_public_status_final_index" || "$template" == "signing_summary_attachment" || "$template" == "signing_summary_readback" ]] || {
+[[ "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" || "$template" == "compat_family_state_machine_v1" || "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_public_status_final_index" || "$template" == "signing_summary_attachment" || "$template" == "signing_summary_readback" ]] || {
   echo "unexpected Hepta migrated pair template for: $id" >&2
   exit 1
 }
@@ -126,7 +151,7 @@ report_implementation_sha256="$(jq -r '.report_implementation_sha256 // empty' <
 }
 
 owned_capture_cache=""
-if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" && ( "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" ) ]]; then
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" && ( "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" || "$template" == "compat_family_state_machine_v1" ) ]]; then
   owned_capture_cache="$(mktemp -d "${TMPDIR:-/tmp}/hepta-report-dag.XXXXXX")"
   export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$owned_capture_cache"
   trap 'rm -rf "$owned_capture_cache"' EXIT
@@ -332,7 +357,25 @@ execute_captured_shell_compat() {
     command git "$@"
   }
   export -f hepta_context_test_source_path hepta_compat_release_manifest_contains grep rg cargo git
-  "$compatibility_executor" "$implementation"
+  export HEPTA_GATE_COMPAT_CALLER_ID="$id"
+  unset HEPTA_GATE_PAIR_SPEC_FILE HEPTA_GATE_PAIR_SPEC_FILE_SHA256
+  if [[ -n "$SPEC_FILE_OVERRIDE" ]]; then
+    [[ "$(shasum -a 256 "$implementation" | awk '{print $1}')" == "$expected_sha" ]] || {
+      echo "captured Hepta $kind implementation SHA-256 mismatch: $id" >&2
+      exit 1
+    }
+    bash "$implementation"
+  else
+    "$compatibility_executor" "$implementation"
+  fi
+}
+
+execute_compat_family_state_machine() {
+  [[ -x "$FAMILY_STATE_MACHINE" ]] || {
+    echo "missing Hepta compatibility family state machine: $FAMILY_STATE_MACHINE" >&2
+    exit 1
+  }
+  "$FAMILY_STATE_MACHINE" exec "$kind" "$id"
 }
 
 verify_legacy_workgraph_projection() {
@@ -990,10 +1033,20 @@ verify_summary_gate() {
   printf '%s\n' "$pass_message"
 }
 
+if [[ "$template" != "compat_family_state_machine_v1" ]]; then
+  export HEPTA_GATE_COMPAT_CALLER_ID="$id"
+fi
+if [[ "$template" != "captured_shell_compat_v1" \
+  && "$template" != "legacy_workgraph_projection_v1" \
+  && "$template" != "compat_family_state_machine_v1" ]]; then
+  use_compatibility_overlay_root
+fi
+
 case "$kind:$template" in
   gate:captured_shell_compat_v1|report:captured_shell_compat_v1) execute_captured_shell_compat ;;
   report:legacy_workgraph_projection_v1) execute_captured_shell_compat ;;
   gate:legacy_workgraph_projection_v1) verify_legacy_workgraph_projection ;;
+  gate:compat_family_state_machine_v1|report:compat_family_state_machine_v1) execute_compat_family_state_machine ;;
   report:signing_final_ack_readback) render_report ;;
   gate:signing_final_ack_readback) verify_gate ;;
   report:signing_final_ack_final_index) render_final_index_report ;;

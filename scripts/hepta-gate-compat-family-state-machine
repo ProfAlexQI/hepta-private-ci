@@ -1,0 +1,280 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+require "tempfile"
+require_relative "lib/hepta-normalized-token-bundle-v1"
+require_relative "lib/hepta-gate-compat-call-routes-v1"
+require_relative "hepta-workgraph-readable-token-source-v1"
+
+ROOT = File.expand_path("..", __dir__)
+STORE_ROOT = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2/family-state-v1")
+MANIFEST_PATH = File.join(STORE_ROOT, "registry.json")
+PROJECTIONS_PATH = File.join(STORE_ROOT, "projections.jsonl")
+PAYLOAD_BUNDLE = File.join(ROOT, "scripts/hepta-gate-pair-payload-bundle")
+PAIR_RUNNER = File.join(ROOT, "scripts/hepta-gate-pair-runner")
+SPEC_PATH = File.join(ROOT, "scripts/hepta-gate-pair-specs-v1.json")
+SCHEMA = "hepta_gate_compat_family_payloads_v1"
+DOMAIN = "hepta_gate_compat_family_payloads"
+
+def usage
+  warn "usage: scripts/hepta-gate-compat-family-state-machine <exec KIND FAMILY|verify>"
+  exit 64
+end
+
+def manifest
+  @manifest ||= JSON.parse(File.binread(MANIFEST_PATH))
+end
+
+def families_by_id
+  @families_by_id ||= manifest.fetch("families").to_h do |family|
+    [family.fetch("id"), family]
+  end
+end
+
+def projections_by_state
+  @projections_by_state ||= File.readlines(PROJECTIONS_PATH, chomp: true).to_h do |line|
+    projection = JSON.parse(line)
+    [projection.fetch("state"), projection]
+  end
+end
+
+def exact_sources
+  @exact_sources ||= HeptaReadableTokenSource.read(
+    root: STORE_ROOT,
+    artifact_schema: SCHEMA,
+    domain: DOMAIN,
+    name_validator: lambda { |name|
+      name.match?(/\A[a-z0-9-]+\.(?:gate|report)\z/)
+    },
+    strict_metadata: true
+  ).first.to_h { |entry| [entry.name, entry.source] }
+end
+
+def state_for(family, kind, caller: ENV.fetch("HEPTA_GATE_COMPAT_CALLER_ID", ""))
+  return family.fetch("default_state") if caller.empty?
+  routes = HeptaGateCompatCallRoutes.decode(family.fetch("call_routes").fetch(kind), manifest.fetch("call_route_symbols"))
+  route = routes[caller]
+  return route if route
+  return caller if family.fetch("states").any? { |state| state.fetch("id") == caller }
+  raise "unregistered #{kind} caller #{caller} for compatibility family #{family.fetch("id")}"
+end
+
+def family_state(family, state)
+  family.fetch("states").find { |candidate| candidate.fetch("id") == state } ||
+    raise("unknown family state #{state}")
+end
+
+def self_test
+  family = {
+    "id" => "family-a",
+    "default_state" => "state-a",
+    "states" => [
+      {"id" => "state-a"},
+      {"id" => "state-b"}
+    ],
+    "call_routes" => {
+      "gate" => {"state-a" => "state-b", "root" => "state-a"},
+      "report" => {}
+    }
+  }
+  raise "default family routing failed" unless state_for(family, "gate", caller: "") == "state-a"
+  raise "external family routing failed" unless state_for(family, "gate", caller: "root") == "state-a"
+  raise "intra-family route precedence failed" unless state_for(family, "gate", caller: "state-a") == "state-b"
+  raise "direct family state routing failed" unless state_for(family, "report", caller: "state-b") == "state-b"
+  begin
+    state_for(family, "gate", caller: "unknown")
+  rescue RuntimeError => error
+    raise unless error.message.include?("unregistered gate caller unknown")
+  else
+    raise "unknown family caller did not fail closed"
+  end
+  puts JSON.generate(
+    schema: "hepta_gate_compat_family_state_machine_self_test_v1",
+    status: "ready",
+    negative_fixtures: 1
+  )
+end
+
+def verify_fingerprints(projection)
+  projection.fetch("source_fingerprints").each do |record|
+    relative = record.fetch("path")
+    path = File.join(ROOT, relative)
+    raise "missing family source fingerprint input: #{relative}" unless File.file?(path)
+    actual = Digest::SHA256.file(path).hexdigest
+    raise "family source fingerprint drifted: #{relative}" unless actual == record.fetch("sha256")
+  end
+end
+
+def execute_exact(kind, family, state)
+  state_record = family_state(family, state)
+  raise "family state mode drifted" unless state_record.fetch("mode") == "exact_parameterized"
+  name = "#{state}.#{kind}"
+  source = exact_sources.fetch(name)
+  expected_sha = state_record.fetch("#{kind}_sha256")
+  raise "family state payload drifted: #{name}" unless Digest::SHA256.hexdigest(source) == expected_sha
+  overlay = ENV.fetch("HEPTA_COMPAT_OVERLAY_ROOT", "")
+  if overlay.empty?
+    overlay, status = Open3.capture2e(PAYLOAD_BUNDLE, "materialize-overlay")
+    raise "cannot materialize compatibility family overlay: #{overlay}" unless status.success?
+    overlay = overlay.strip
+  end
+  raise "missing compatibility family overlay" unless File.directory?(overlay)
+  pair = JSON.parse(File.binread(SPEC_PATH)).fetch("pairs").find do |candidate|
+    candidate.fetch("id") == family.fetch("id")
+  end
+  raise "missing compatibility family pair #{family.fetch("id")}" unless pair
+  source_paths = %w[gate report].to_h do |source_kind|
+    relative = "scripts/lib/hepta-gate-pair-compat-v1/#{state}.#{source_kind}"
+    materialized = File.join(overlay, relative)
+    FileUtils.mkdir_p(File.dirname(materialized))
+    payload = exact_sources.fetch("#{state}.#{source_kind}")
+    staging = "#{materialized}.#{$$}.tmp"
+    File.binwrite(staging, payload)
+    File.chmod(0o700, staging)
+    File.rename(staging, materialized)
+    [source_kind, relative]
+  end
+  compatibility_pair = pair.merge(
+    "id" => state,
+    "template" => "captured_shell_compat_v1",
+    "source_report" => "scripts/#{state}-report.sh",
+    "report_path" => "scripts/#{state}-report.sh",
+    "gate_implementation" => source_paths.fetch("gate"),
+    "gate_implementation_sha256" => state_record.fetch("gate_sha256"),
+    "report_implementation" => source_paths.fetch("report"),
+    "report_implementation_sha256" => state_record.fetch("report_sha256"),
+    "pass_message" => state_record.fetch("pass_message")
+  )
+  Tempfile.create(["hepta-gate-compat-family-spec-", ".json"]) do |file|
+    file.binmode
+    file.write(JSON.generate("pairs" => [compatibility_pair]) + "\n")
+    file.flush
+    spec_sha256 = Digest::SHA256.file(file.path).hexdigest
+    file.close
+    environment = {
+      "HEPTA_COMPAT_OVERLAY_ROOT" => overlay,
+      "HEPTA_GATE_PAIR_SPEC_FILE" => file.path,
+      "HEPTA_GATE_PAIR_SPEC_FILE_SHA256" => spec_sha256
+    }
+    exec(environment, PAIR_RUNNER, kind, state)
+  end
+end
+
+def execute_projection(kind, family, state)
+  state_record = family_state(family, state)
+  raise "family projection mode drifted" unless state_record.fetch("mode") == "declarative_projection"
+  projection = projections_by_state.fetch(state)
+  verify_fingerprints(projection)
+  if kind == "report"
+    puts JSON.pretty_generate(projection.fetch("report"))
+    return
+  end
+  projection.fetch("dependencies").each do |dependency|
+    environment = {"HEPTA_GATE_COMPAT_CALLER_ID" => state}
+    command = [File.join(ROOT, "scripts/hepta-gate-pair-runner"), "gate", dependency]
+    _output, status = Open3.capture2e(environment, *command)
+    raise "family dependency gate failed: #{dependency}" unless status.success?
+  end
+  puts state_record.fetch("pass_message")
+end
+
+def execute(kind, family_id)
+  raise "invalid family kind" unless ["gate", "report"].include?(kind)
+  family = families_by_id.fetch(family_id)
+  state = state_for(family, kind)
+  mode = family_state(family, state).fetch("mode")
+  case mode
+  when "exact_parameterized"
+    execute_exact(kind, family, state)
+  when "declarative_projection"
+    execute_projection(kind, family, state)
+  else
+    raise "unknown compatibility family state mode: #{mode}"
+  end
+end
+
+def verify
+  raise "invalid family registry schema" unless manifest.fetch("schema") ==
+    "hepta_gate_compat_family_state_registry_v1"
+  family_count = manifest.fetch("families").length
+  state_count = manifest.fetch("families").sum { |family| family.fetch("states").length }
+  raise "family registry count drifted" unless family_count == manifest.fetch("family_count")
+  raise "family state count drifted" unless state_count == manifest.fetch("migrated_state_count")
+  exact_state_count = manifest.fetch("families").sum do |family|
+    family.fetch("states").count { |state| state.fetch("mode") == "exact_parameterized" }
+  end
+  projection_state_count = manifest.fetch("families").sum do |family|
+    family.fetch("states").count { |state| state.fetch("mode") == "declarative_projection" }
+  end
+  raise "exact family state count drifted" unless exact_state_count == manifest.fetch(
+    "exact_parameterized_state_count"
+  )
+  raise "projection family state count drifted" unless projection_state_count == manifest.fetch(
+    "declarative_projection_state_count"
+  )
+  HeptaGateCompatCallRoutes.verify!(manifest)
+  symbols = manifest.fetch("call_route_symbols")
+  overlay, overlay_status = Open3.capture2e(PAYLOAD_BUNDLE, "materialize-overlay")
+  raise "cannot materialize family verification overlay: #{overlay}" unless overlay_status.success?
+  overlay = overlay.strip
+  manifest.fetch("families").each do |family|
+    state_ids = family.fetch("states").map { |state| state.fetch("id") }
+    raise "duplicate family state" unless state_ids.uniq.length == state_ids.length
+    raise "family default state drifted" unless state_ids.include?(family.fetch("default_state"))
+    %w[gate report].each do |kind|
+      HeptaGateCompatCallRoutes.decode(family.fetch("call_routes").fetch(kind), symbols).each_value do |state|
+        raise "family call route escaped family" unless state_ids.include?(state)
+      end
+    end
+    family.fetch("states").each do |state|
+      next unless state.fetch("mode") == "exact_parameterized"
+      %w[gate report].each do |kind|
+        source = exact_sources.fetch("#{state.fetch("id")}.#{kind}")
+        raise "exact family state SHA drifted" unless Digest::SHA256.hexdigest(source) ==
+          state.fetch("#{kind}_sha256")
+        source.scan(
+          %r{\$ROOT/(scripts/[A-Za-z0-9._/-]+(?:\.gate|\.report|-gate\.sh|-report\.sh))}
+        ).flatten.uniq.each do |relative|
+          raise "missing exact family dependency: #{relative}" unless File.executable?(
+            File.join(overlay, relative)
+          )
+        end
+      end
+    end
+  end
+  expected_projection_ids = manifest.fetch("families").flat_map do |family|
+    family.fetch("states").select do |state|
+      state.fetch("mode") == "declarative_projection"
+    end.map { |state| state.fetch("id") }
+  end.sort
+  raise "family projection registry drifted" unless projections_by_state.keys.sort ==
+    expected_projection_ids
+  projections_by_state.each_value do |projection|
+    report = projection.fetch("report")
+    raise "family report projection must be an object" unless report.is_a?(Hash)
+    side_effects = report["side_effects"]
+    if side_effects.is_a?(Hash)
+      raise "family report projection permits a side effect" unless side_effects.values.none?(true)
+    end
+    projection.fetch("source_fingerprints").each do |record|
+      raise "invalid family fingerprint path" if record.fetch("path").start_with?("/") ||
+        record.fetch("path").split("/").include?("..")
+      raise "invalid family fingerprint SHA" unless record.fetch("sha256").match?(/\A[0-9a-f]{64}\z/)
+    end
+  end
+  puts "hepta-gate-compat-family-state-machine: PASS: #{family_count} families, #{state_count} states"
+end
+
+case ARGV
+when ["verify"]
+  verify
+when ["self-test"]
+  self_test
+else
+  usage unless ARGV.length == 3 && ARGV.first == "exec" && ["gate", "report"].include?(ARGV[1])
+  execute(ARGV.fetch(1), ARGV.fetch(2))
+end
