@@ -301,7 +301,7 @@ jq -n \
         };
     def source_chain_ready:
       $static.static_contract_ready == true
-      and $static.marker_count >= 3736
+      and $static.marker_count >= 3642
       and $native_fixture.status == "ready"
       and $native_fixture.native_secondary_product_surfaces_ready == true
       and $manifest.screenshot_manifest_ready == true

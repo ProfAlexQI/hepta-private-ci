@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/hepta-ui-rust-toolchain.sh
+source "scripts/lib/hepta-ui-rust-toolchain.sh"
+
 APP_MANIFEST="apps/hepta-native/Cargo.toml"
 OUT_DIR="${HEPTA_NATIVE_WINDOW_SECONDARY_MOBILE_SMOKE_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/hepta-native-window-secondary-mobile-smoke.XXXXXX")}"
 REPORT_PATH="${HEPTA_NATIVE_WINDOW_SECONDARY_MOBILE_SMOKE_REPORT_PATH:-$OUT_DIR/native-window-secondary-mobile-smoke.json}"
@@ -41,7 +44,7 @@ json_bool_for_flag() {
 }
 
 cargo_with_window_target() {
-  CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR" cargo "$@"
+  CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR" hepta_ui_cargo "$@"
 }
 
 run_window_smoke_preflight_test() {
@@ -192,6 +195,8 @@ for surface in "${SURFACES[@]}"; do
       and .fixture_mobile_secondary_content_visible_ready == true
       and .native_makepad_secondary_surface_ready == true
       and .native_makepad_secondary_mobile_surface_ready == true
+      and .native_makepad_mobile_host_window_ready == true
+      and .host_window_contract_ready == true
       and .native_app_log_error_free == true
       and (.screenshots | length) == 1
       and (.screenshots | all(.visual_probe.ready == true))
@@ -228,6 +233,10 @@ jq -s \
     },
     blocked_allowed:$blocked_allowed,
     true_window_capture_performed:true,
+    native_makepad_highlight_area_ready:($reports | all(.native_makepad_highlight_area_ready == true)),
+    native_makepad_highlight_pixel_luma_threshold:245,
+    native_makepad_highlight_pixel_fraction_threshold:0.75,
+    native_makepad_highlight_pixel_fraction_max:([$reports[].screenshots[].visual_probe.highlight_pixel_fraction] | max),
     native_makepad_secondary_mobile_surfaces_ready:(
       ($reports | length) == 5
       and ($reports | all(.status == "ready"))
@@ -237,6 +246,8 @@ jq -s \
       and ($reports | all(.fixture_mobile_secondary_content_visible_ready == true))
       and ($reports | all(.native_makepad_secondary_surface_ready == true))
       and ($reports | all(.native_makepad_secondary_mobile_surface_ready == true))
+      and ($reports | all(.native_makepad_mobile_host_window_ready == true))
+      and ($reports | all(.host_window_contract_ready == true))
       and ($reports | all(.native_app_log_error_free == true))
       and ($reports | all((.screenshots | length) == 1))
       and ($reports | all(.screenshots | all(.visual_probe.ready == true)))
@@ -254,6 +265,9 @@ jq -s \
     mobile_secondary_content_visible_count:(
       [$reports[].fixture_mobile_secondary_content_visible_count] | add
     ),
+    mobile_host_window_ready:($reports | all(.native_makepad_mobile_host_window_ready == true and .host_window_contract_ready == true)),
+    exact_390x844_ready:($reports | all(.native_makepad_mobile_390x844_ready == true and .viewport_contract_ready == true)),
+    host_constrained_count:([$reports[].screenshots[] | select(.viewport_contract.host_constrained == true)] | length),
     surfaces:($reports | map({
       surface:.fixture_secondary_surface_slug,
       label:.fixture_secondary_surface,
@@ -279,5 +293,21 @@ jq -s \
       external_mutation:false
     }
   }' "${REPORT_PATHS[@]}" | tee "$REPORT_PATH"
+
+jq -e '
+  .status == "ready"
+  and .native_makepad_highlight_area_ready == true
+  and .native_makepad_highlight_pixel_fraction_max <= .native_makepad_highlight_pixel_fraction_threshold
+  and .native_makepad_secondary_mobile_surfaces_ready == true
+  and .mobile_secondary_content_probe_ready == true
+  and .mobile_secondary_content_visible_count >= 5
+  and .mobile_host_window_ready == true
+  and .surface_count == 5
+  and .surface_screenshot_unique_count == 5
+  and .surface_screenshot_unique_ready == true
+  and .screenshot_count == 5
+  and .native_app_log_error_free == true
+  and .side_effects.external_mutation == false
+' "$REPORT_PATH" >/dev/null
 
 echo "Hepta Native secondary mobile true-window smoke passed" >&2

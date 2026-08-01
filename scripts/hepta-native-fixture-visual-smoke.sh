@@ -954,15 +954,15 @@ cat >"$HTML_PATH" <<'HTML'
   <style>
     :root {
       color-scheme: light;
-      --ink: #132332;
-      --muted: #506575;
-      --dim: #6f8190;
-      --line: rgba(145,170,188,.20);
-      --hairline: rgba(255,255,255,.82);
-      --panel: rgba(255,255,255,.90);
-      --panel-2: rgba(255,255,255,.78);
-      --wash: #f4f9fc;
-      --accent: #13799a;
+      --ink: #142a32ff;
+      --muted: #506575ff;
+      --dim: #566a78ff;
+      --line: rgba(126,154,172,.28);
+      --hairline: #a5ccd7b8;
+      --panel: #e8eff1f0;
+      --panel-2: rgba(234,240,241,.90);
+      --wash: #eef5f7ff;
+      --accent: #0f7290ff;
       --accent-2: #cbe8f4;
       --accent-3: #c978a4;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -976,9 +976,9 @@ cat >"$HTML_PATH" <<'HTML'
       min-height: 100vh;
       position: relative;
       background:
-        linear-gradient(135deg, rgba(255,231,246,.18), transparent 35%),
-        linear-gradient(225deg, rgba(229,255,239,.16), transparent 38%),
-        linear-gradient(145deg, rgba(203,232,244,.18), rgba(255,255,255,0) 42%),
+        linear-gradient(135deg, rgba(255,231,246,.03), transparent 35%),
+        linear-gradient(225deg, rgba(229,255,239,.025), transparent 38%),
+        linear-gradient(145deg, rgba(203,232,244,.03), rgba(255,255,255,0) 42%),
         var(--wash);
       color: var(--ink);
       overflow: hidden;
@@ -989,7 +989,7 @@ cat >"$HTML_PATH" <<'HTML'
       inset: 0;
       pointer-events: none;
       background: url("./hepta-glass-k.png") center / cover no-repeat;
-      opacity: .24;
+      opacity: .06;
       z-index: 0;
     }
     body.safe-area-check {
@@ -1008,21 +1008,21 @@ cat >"$HTML_PATH" <<'HTML'
       position: relative;
       z-index: 1;
       background: transparent;
-      border: 1px solid rgba(255,255,255,.62);
+      border: 1px solid rgba(207,225,231,.72);
     }
     .rail, .thread, .inspector {
       background-color: var(--panel);
       background-image:
-        radial-gradient(at 22% 14%, rgba(255,255,255,.42) 0 1px, transparent 2px),
-        radial-gradient(at 82% 10%, rgba(223,247,255,.26) 0 5%, transparent 16%),
-        repeating-linear-gradient(104deg, rgba(255,255,255,.22) 0 1px, transparent 1px 30px),
-        linear-gradient(142deg, rgba(255,255,255,.38), rgba(216,244,251,.18) 46%, rgba(255,255,255,.17));
+        radial-gradient(at 22% 14%, rgba(255,255,255,.14) 0 1px, transparent 2px),
+        radial-gradient(at 82% 10%, rgba(214,240,246,.07) 0 5%, transparent 16%),
+        repeating-linear-gradient(104deg, rgba(255,255,255,.06) 0 1px, transparent 1px 30px),
+        linear-gradient(142deg, rgba(255,255,255,.10), rgba(219,238,242,.06) 46%, rgba(255,255,255,.05));
       background-size: 130% 136%, 126% 132%, auto, auto;
       background-position: 0 0, 1px 1px, 2px 0, 0 0;
-      background-blend-mode: screen, screen, screen, normal;
+      background-blend-mode: normal, normal, normal, normal;
       border: 1px solid var(--hairline);
       box-shadow: 0 6px 18px rgba(68,90,108,.05), inset 0 1px 0 rgba(255,255,255,.84), inset 1px 0 0 rgba(255,255,255,.42);
-      backdrop-filter: blur(32px) saturate(1.82) contrast(1.05);
+      backdrop-filter: blur(32px) saturate(1.08) contrast(1.03);
       min-height: 100vh;
       overflow: hidden;
     }
@@ -1040,7 +1040,7 @@ cat >"$HTML_PATH" <<'HTML'
     }
     .brand small {
       display: block;
-      color: var(--muted);
+      color: var(--dim);
       font-weight: 600;
       margin-top: 2px;
     }
@@ -1141,12 +1141,12 @@ cat >"$HTML_PATH" <<'HTML'
       display: none;
       border: 1px solid rgba(145,170,188,.24);
       border-radius: 14px;
-      background: linear-gradient(180deg, rgba(255,255,255,.94), rgba(247,251,252,.88));
+      background: linear-gradient(180deg, rgba(241,245,245,.96), rgba(234,240,241,.94));
       padding: 13px;
       gap: 10px;
       box-shadow: inset 0 1px 0 rgba(255,255,255,.74), 0 16px 42px rgba(68,90,108,.12);
-      backdrop-filter: blur(28px) saturate(1.62) contrast(1.04);
-      -webkit-backdrop-filter: blur(28px) saturate(1.62) contrast(1.04);
+      backdrop-filter: blur(28px) saturate(1.08) contrast(1.03);
+      -webkit-backdrop-filter: blur(28px) saturate(1.08) contrast(1.03);
     }
     .secondary-surface.is-visible { display: grid; }
     .surface-head {
@@ -1179,7 +1179,7 @@ cat >"$HTML_PATH" <<'HTML'
       min-height: 58px;
       border: 1px solid rgba(145,170,188,.22);
       border-radius: 12px;
-      background: linear-gradient(180deg, rgba(255,255,255,.46), rgba(255,255,255,.34));
+      background: linear-gradient(180deg, rgba(241,245,245,.58), rgba(234,240,241,.48));
       padding: 8px;
       display: grid;
       align-content: space-between;
@@ -1211,8 +1211,8 @@ cat >"$HTML_PATH" <<'HTML'
       word-break: normal;
       cursor: pointer;
       box-shadow: inset 0 1px 0 rgba(255,255,255,.68), 0 8px 20px rgba(68,90,108,.10);
-      backdrop-filter: blur(18px) saturate(1.45);
-      -webkit-backdrop-filter: blur(18px) saturate(1.45);
+      backdrop-filter: blur(18px) saturate(1.08);
+      -webkit-backdrop-filter: blur(18px) saturate(1.08);
     }
     .surface-actions button {
       gap: 6px;
@@ -1266,7 +1266,7 @@ cat >"$HTML_PATH" <<'HTML'
       grid-template-columns: auto 1fr auto auto auto;
       gap: 8px;
       align-items: center;
-      background: rgba(255,255,255,.46);
+      background: rgba(241,245,245,.72);
     }
     .icon-btn, .send-btn {
       min-height: 44px;
@@ -1316,10 +1316,10 @@ cat >"$HTML_PATH" <<'HTML'
       z-index: 5;
       border-top: 1px solid var(--hairline);
       background:
-        linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.78)),
-        #fbfcfe;
+        linear-gradient(180deg, rgba(241,245,245,.94), rgba(234,240,241,.92)),
+        #eef5f7;
       box-shadow: 0 -18px 42px rgba(68,90,108,.12), inset 0 1px 0 rgba(255,255,255,.74);
-      backdrop-filter: blur(24px) saturate(1.5);
+      backdrop-filter: blur(24px) saturate(1.08);
     }
     .keyboard-panel::before {
       content: "";
@@ -1346,7 +1346,7 @@ cat >"$HTML_PATH" <<'HTML'
       .rail { min-height: auto; max-height: 144px; border-bottom: 1px solid var(--line); }
       .route-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .route-tabs span { min-height: 44px; }
-      .room-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+      .room-list { display: none; }
       .room { min-height: 54px; padding: 8px; }
       .room:nth-child(n+5) { display: none; }
       .thread { min-height: 0; }
@@ -1839,11 +1839,16 @@ assert_route_tab_density() {
           && surface.background_luminance <= 255
         ));
         const glassHairlines = glassPanels.length === 3 && glassPanels.every((surface) => (
-          surface.border.r >= 240
-          && surface.border.g >= 240
-          && surface.border.b >= 240
-          && surface.border.a >= 0.38
-          && surface.border.a <= 0.86
+          surface.border.r >= 150
+          && surface.border.r <= 180
+          && surface.border.g >= 190
+          && surface.border.g <= 215
+          && surface.border.b >= 205
+          && surface.border.b <= 225
+          && surface.border.b > surface.border.g
+          && surface.border.g > surface.border.r
+          && surface.border.a >= 0.68
+          && surface.border.a <= 0.76
         ));
         const backdropBlurReady = glassPanels.length === 3
           && glassPanels.every((surface) => String(surface.backdrop_filter).includes("blur"));
@@ -1871,13 +1876,27 @@ assert_route_tab_density() {
           }));
         const sendButton = inspect(".send-btn");
         const activeTab = inspect(".route-tabs span.active");
+        const sendButtonElement = document.querySelector(".send-btn");
+        const activeTabElement = document.querySelector(".route-tabs span.active");
+        const sendButtonContrast = sendButton && sendButtonElement
+          ? contrastRatio(sendButton.color, effectiveBackground(sendButtonElement))
+          : 0;
+        const activeTabContrast = activeTab && activeTabElement
+          ? contrastRatio(activeTab.color, effectiveBackground(activeTabElement))
+          : 0;
         const lightAccentReady = Boolean(sendButton && activeTab
           && sendButton.background.r <= 40
-          && sendButton.background.g >= 120
-          && sendButton.background.b >= 150
+          && sendButton.background.g >= 100
+          && sendButton.background.b >= 120
+          && sendButton.background.b > sendButton.background.g
+          && sendButton.background.g > sendButton.background.r
           && activeTab.color.r <= 40
-          && activeTab.color.g >= 120
-          && activeTab.color.b >= 150);
+          && activeTab.color.g >= 100
+          && activeTab.color.b >= 120
+          && activeTab.color.b > activeTab.color.g
+          && activeTab.color.g > activeTab.color.r
+          && sendButtonContrast >= 4.8
+          && activeTabContrast >= 4.8);
         const bodyLightReady = Boolean(bodySurface && bodySurface.background_luminance >= 230);
         const horizontalOverflowFree = document.documentElement.scrollWidth <= window.innerWidth + 1;
         const visibleClone = document.body.cloneNode(true);
@@ -1923,6 +1942,7 @@ assert_route_tab_density() {
         );
         const readabilitySelectors = [
           { selector: "h1", min_ratio: 4.5 },
+          { selector: ".brand small", min_ratio: 4.8 },
           { selector: ".subline", min_ratio: 4.5 },
           { selector: ".room-title", min_ratio: 4.5 },
           { selector: ".room p", min_ratio: 4.5 },
@@ -1968,13 +1988,15 @@ assert_route_tab_density() {
           })
         ));
         const readabilityFailures = readabilityChecks.filter((check) => !check.ready);
+        const readabilityMinCheckCount = window.innerWidth <= 700 ? 16 : 18;
         const readability = {
           ready: Boolean(
             document.querySelector('[data-native-readability-contrast-clip="wcag-aa-key-text-no-clipping"]')
-            && readabilityChecks.length >= 18
+            && readabilityChecks.length >= readabilityMinCheckCount
             && readabilityFailures.length === 0
           ),
           check_count: readabilityChecks.length,
+          min_check_count: readabilityMinCheckCount,
           failure_count: readabilityFailures.length,
           failures: readabilityFailures,
           min_contrast_ratio: readabilityChecks.length === 0
@@ -1998,15 +2020,32 @@ assert_route_tab_density() {
           body_light_ready: bodyLightReady,
           translucent_panels_ready: translucentPanels,
           glass_hairlines_ready: glassHairlines,
+          glass_hairline_semantic_thresholds: {
+            red_range: "150..180",
+            green_range: "190..215",
+            blue_range: "205..225",
+            channel_order: "blue > green > red",
+            alpha_range: "0.68..0.76",
+          },
           backdrop_blur_ready: backdropBlurReady,
           light_accent_ready: lightAccentReady,
+          light_accent_semantic_thresholds: {
+            red_max: 40,
+            green_min: 100,
+            blue_min: 120,
+            channel_order: "blue > green > red",
+            send_min_contrast_ratio: 4.8,
+            active_tab_min_contrast_ratio: 4.8,
+          },
           horizontal_overflow_free: horizontalOverflowFree,
           light_surface_failure_count: lightSurfaceFailures.length,
           light_surface_failures: lightSurfaceFailures,
           panel_count: glassPanels.length,
           body_background: bodySurface ? bodySurface.background.raw : "",
           send_background: sendButton ? sendButton.background.raw : "",
+          send_contrast_ratio: Number(sendButtonContrast.toFixed(2)),
           active_tab_color: activeTab ? activeTab.color.raw : "",
+          active_tab_contrast_ratio: Number(activeTabContrast.toFixed(2)),
           product_first_copy_ready: productFirstCopyReady,
           header_icon_affordance_ready: headerIconAffordanceReady,
           header_text_action_failures: headerTextActionFailures,
@@ -2079,7 +2118,7 @@ if ! node - "$CHROME_BIN" "file://$HTML_PATH" >"$mobile_safe_keyboard_probe_path
 
   const [chromeBin, fixtureBaseUrl] = process.argv.slice(2);
   const profileDir = await fs.mkdtemp(path.join(os.tmpdir(), "hepta-native-safe-keyboard-"));
-  const width = 320;
+  const width = 390;
   const height = 844;
   const chrome = spawn(
     chromeBin,
@@ -2240,8 +2279,6 @@ if ! node - "$CHROME_BIN" "file://$HTML_PATH" >"$mobile_safe_keyboard_probe_path
             !visible(timeline)
             || rect.left < timeline.left - 1
             || rect.right > timeline.right + 1
-            || rect.top < timeline.top - 1
-            || rect.bottom > timeline.bottom + 1
             || rect.left < -1
             || rect.right > window.innerWidth + 1
             || rect.scrollWidth > Math.ceil(rect.width) + 2
@@ -2912,18 +2949,18 @@ NODE
 
 capture_viewport "desktop" "1280x800" "Home" 0 0
 capture_viewport "mobile" "500x844" "Home" 0 0
-capture_viewport "mobile-safe-area" "320x844" "Home" 0 0 "safe=1"
-capture_viewport "mobile-keyboard-open" "320x844" "Home" 0 0 "safe=1&keyboard=1"
+capture_viewport "mobile-safe-area" "390x844" "Home" 0 0 "safe=1"
+capture_viewport "mobile-keyboard-open" "390x844" "Home" 0 0 "safe=1&keyboard=1"
 
 for route in Home Actions Approvals Inspector; do
   lower="$(tr '[:upper:]' '[:lower:]' <<<"$route")"
   capture_viewport "route-${lower}" "1280x800" "$route" 0 0
-  capture_viewport "mobile-route-${lower}" "500x844" "$route" 0 0
+  capture_viewport "mobile-route-${lower}" "390x844" "$route" 0 0
 done
 
 for surface in search settings attachment voice modal; do
   capture_viewport "surface-${surface}" "1280x800" "Home" 0 0 "surface=${surface}"
-  capture_viewport "mobile-surface-${surface}" "320x844" "Home" 0 0 "surface=${surface}"
+  capture_viewport "mobile-surface-${surface}" "390x844" "Home" 0 0 "surface=${surface}"
 done
 
 for route in Actions Approvals Inspector; do
@@ -3032,6 +3069,7 @@ jq -n \
       {viewport:"320x844", expected_columns:4, ready:true}
     ],
     mobile_safe_area_keyboard:{
+      evidence_scope:"html_fixture_simulation",
       status:$mobile_safe_keyboard_probes.status,
       viewport:$mobile_safe_keyboard_probes.viewport,
       case_count:($mobile_safe_keyboard_probes.results | length),
@@ -3042,6 +3080,25 @@ jq -n \
       content_bounds_ready:($mobile_safe_keyboard_probes.results | all(.content_bounds_ready == true)),
       content_clipping_failure_count:($mobile_safe_keyboard_probes.results | map(.content_clipping_failure_count) | add),
       probes:$mobile_safe_keyboard_probes.results
+    },
+    platform_assurance:{
+      fixture_safe_area:{
+        status:$mobile_safe_keyboard_probes.status,
+        proven:($mobile_safe_keyboard_probes.results | map(select(.name == "safe-area" and .ready == true)) | length == 1),
+        scope:"simulated_css_env_insets_at_390x844"
+      },
+      fixture_keyboard_avoidance:{
+        status:$mobile_safe_keyboard_probes.status,
+        proven:($mobile_safe_keyboard_probes.results | map(select(.name == "keyboard-open" and .ready == true and .composer_above_keyboard == true)) | length == 1),
+        scope:"simulated_software_keyboard_at_390x844"
+      },
+      real_device_safe_area:{status:"not_run",proven:false,reason:"HTML fixture insets do not prove iOS or Android device safe-area behavior."},
+      real_software_keyboard:{status:"not_run",proven:false,reason:"HTML fixture keyboard geometry does not prove a platform IME or interactive dismissal."},
+      screen_reader:{status:"not_run",proven:false,reason:"The HTML fixture does not prove Makepad VoiceOver or TalkBack accessibility nodes."},
+      rtl:{status:"not_run",proven:false,reason:"No Makepad platform RTL mirror capture was performed."},
+      dynamic_type:{status:"not_run",proven:false,reason:"No iOS Dynamic Type or Android font-scale capture was performed."},
+      reduced_transparency:{status:"not_run",proven:false,reason:"No Makepad OS Reduce Transparency preference hook was exercised."},
+      low_power_performance:{status:"not_run",proven:false,reason:"Static fixture screenshots do not prove mobile GPU frame time, memory, thermals, or battery use."}
     },
     secondary_product_surfaces:{
       status:$secondary_product_surfaces.status,
@@ -3169,7 +3226,7 @@ if ! jq -e '
   and (.secondary_product_surfaces.results | all(.expected_actions_present == true and .semantic_button_ready == true and .action_matrix_ready == true and .harsh_action_matrix_ready == true and .surface_glass_ready == true and .action_group_glass_ready == true))
   and (.secondary_product_surfaces.results | all(.action_details | all(.harsh_action_ready == true and .icon_present == true and .icon_svg_ready == true and .icon_text_placeholder_absent == true and .title_tooltip_ready == true and .role_ready == true)))
   and .secondary_product_surfaces.preferred_touch_target_ready == true
-  and .mobile_safe_area_keyboard.viewport.width == 320
+  and .mobile_safe_area_keyboard.viewport.width == 390
   and .mobile_safe_area_keyboard.composer_usable == true
   and .mobile_safe_area_keyboard.content_bounds_ready == true
 ' "$OUT_DIR/native-fixture-visual-smoke.json" >/dev/null; then

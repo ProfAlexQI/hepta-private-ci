@@ -3,6 +3,17 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/hepta-ui-rust-toolchain.sh
+source "scripts/lib/hepta-ui-rust-toolchain.sh"
+hepta_ui_activate_rust_toolchain
+# shellcheck source=scripts/lib/hepta-control-ui-runtime-fixture.sh
+source "scripts/lib/hepta-control-ui-runtime-fixture.sh"
+PACKAGING_RUST_TOOLCHAIN="$(hepta_ui_rustc --version)"
+[[ "$PACKAGING_RUST_TOOLCHAIN" == rustc\ 1.95.0* ]] || {
+  echo "Hepta Native packaging gate requires Rust 1.95.0, got: $PACKAGING_RUST_TOOLCHAIN" >&2
+  exit 1
+}
+
 export HEPTA_AUTOLOAD=0
 export HEPTA_AUTOSAVE=0
 export CARGO_INCREMENTAL=0
@@ -24,6 +35,7 @@ BUNDLE_BUILD_PROFILE="${HEPTA_NATIVE_PACKAGING_BUNDLE_PROFILE:-debug}"
 STAGE_UNSIGNED_APP_BUNDLE="${HEPTA_NATIVE_PACKAGING_STAGE_UNSIGNED_APP_BUNDLE:-1}"
 UNSIGNED_APP_STAGE_DIR="${HEPTA_NATIVE_PACKAGING_UNSIGNED_APP_STAGE_DIR:-}"
 runner_server_mode="local-loopback"
+runtime_fixture_initialized=false
 if [[ -n "${HEPTA_NATIVE_PACKAGING_CARGO_TARGET_DIR:-}" ]]; then
   SERVER_CARGO_TARGET_DIR="$HEPTA_NATIVE_PACKAGING_CARGO_TARGET_DIR"
 elif [[ -n "${HEPTA_NATIVE_CARGO_TARGET_DIR:-}" ]]; then
@@ -81,7 +93,7 @@ stage_unsigned_app_bundle() {
   esac
 
   mkdir -p "$BUNDLE_CARGO_TARGET_DIR"
-  CARGO_TARGET_DIR="$BUNDLE_CARGO_TARGET_DIR" cargo "${cargo_build_args[@]}"
+  CARGO_TARGET_DIR="$BUNDLE_CARGO_TARGET_DIR" hepta_ui_cargo "${cargo_build_args[@]}"
 
   local binary_path="$BUNDLE_CARGO_TARGET_DIR/$profile_dir/$BUNDLE_BINARY_NAME"
   if [[ ! -x "$binary_path" ]]; then
@@ -236,19 +248,33 @@ else
   BASE_URL="http://${BIND_ADDR}"
 
   mkdir -p "$SERVER_CARGO_TARGET_DIR"
-  CARGO_TARGET_DIR="$SERVER_CARGO_TARGET_DIR" cargo build --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
+  CARGO_TARGET_DIR="$SERVER_CARGO_TARGET_DIR" hepta_ui_cargo build --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
   SERVER_BINARY_PATH="$SERVER_CARGO_TARGET_DIR/debug/hepta"
   if [[ ! -x "$SERVER_BINARY_PATH" ]]; then
     echo "missing built Hepta serve-ui binary for native packaging gate: $SERVER_BINARY_PATH" >&2
     exit 1
   fi
-  "$SERVER_BINARY_PATH" --serve-ui "$BIND_ADDR" >"$SERVER_LOG" 2>&1 &
+  hepta_control_ui_runtime_fixture_init
+  runtime_fixture_initialized=true
+  HEPTA_RUNTIME_OUTCOME_DATABASE="$HEPTA_CONTROL_UI_RUNTIME_DATABASE" \
+    HEPTA_RUNTIME_STATE_DATABASE="$HEPTA_CONTROL_UI_RUNTIME_STATE_DATABASE" \
+    HEPTA_RUNTIME_INTEGRITY_KEY_FILE="$HEPTA_CONTROL_UI_RUNTIME_KEY_FILE" \
+    HEPTA_RUNTIME_OUTCOME_MODE="bootstrap-new" \
+    HEPTA_PREFERENCE_DATABASE="$HEPTA_CONTROL_UI_PREFERENCE_DATABASE" \
+    HEPTA_PREFERENCE_INTEGRITY_KEY_FILE="$HEPTA_CONTROL_UI_PREFERENCE_INTEGRITY_KEY_FILE" \
+    HEPTA_PREFERENCE_INGRESS_AUTH_KEY_FILE="$HEPTA_CONTROL_UI_PREFERENCE_AUTH_KEY_FILE" \
+    HEPTA_PREFERENCE_STORE_MODE="bootstrap-new" \
+    "$SERVER_BINARY_PATH" --serve-ui "$BIND_ADDR" >"$SERVER_LOG" 2>&1 &
   server_pid="$!"
 
   cleanup() {
     if kill -0 "$server_pid" 2>/dev/null; then
       kill "$server_pid" 2>/dev/null || true
       wait "$server_pid" 2>/dev/null || true
+    fi
+    if [[ "$runtime_fixture_initialized" == "true" ]]; then
+      hepta_control_ui_runtime_fixture_cleanup || true
+      runtime_fixture_initialized=false
     fi
   }
   trap cleanup EXIT
@@ -339,15 +365,15 @@ if (( resource_count < resource_count_floor )); then
   exit 1
 fi
 
-cargo metadata --manifest-path "$APP_DIR/Cargo.toml" --no-deps --format-version 1 >/dev/null
+hepta_ui_cargo metadata --manifest-path "$APP_DIR/Cargo.toml" --no-deps --format-version 1 >/dev/null
 bash -n "$PACKAGING_DIR/build-macos-dmg.sh"
 bash -n "$PACKAGING_DIR/fix-dmg-applications-icon.sh"
 plutil -lint "$PACKAGING_DIR/Info.plist" "$PACKAGING_DIR/Entitlements.plist" >/dev/null
 
 if [[ "${HEPTA_NATIVE_PACKAGING_RUN_CARGO:-0}" == "1" ]]; then
   target_dir="${HEPTA_NATIVE_TARGET_DIR:-apps/hepta-native/target}"
-  CARGO_TARGET_DIR="$target_dir" cargo check --manifest-path "$APP_DIR/Cargo.toml"
-  CARGO_TARGET_DIR="$target_dir" cargo test --manifest-path "$APP_DIR/Cargo.toml" hepta_ -- --nocapture
+  CARGO_TARGET_DIR="$target_dir" hepta_ui_cargo check --manifest-path "$APP_DIR/Cargo.toml"
+  CARGO_TARGET_DIR="$target_dir" hepta_ui_cargo test --manifest-path "$APP_DIR/Cargo.toml" hepta_ -- --nocapture
 fi
 
 unsigned_app_bundle_json="$(stage_unsigned_app_bundle)"
@@ -383,6 +409,7 @@ report="$(jq -n \
   --arg runner_server_mode "$runner_server_mode" \
   --arg server_log "$SERVER_LOG" \
   --arg server_cargo_target_dir "$SERVER_CARGO_TARGET_DIR" \
+  --arg rust_toolchain "$PACKAGING_RUST_TOOLCHAIN" \
   --argjson startup_timeout_sec "$STARTUP_TIMEOUT_SEC" \
   --argjson gate "$GATE_JSON" \
   --argjson ga "$GA_JSON" \
@@ -403,10 +430,12 @@ report="$(jq -n \
       server_log:$server_log,
       server_cargo_target_dir:$server_cargo_target_dir,
       server_binary_path:($server_cargo_target_dir + "/debug/hepta"),
+      rust_toolchain:$rust_toolchain,
       bundle_cargo_target_dir:$unsigned_app_bundle.cargo_target_dir,
       startup_timeout_sec:$startup_timeout_sec,
       local_loopback_spawned:($runner_server_mode == "local-loopback"),
       provided_live_url:($runner_server_mode == "provided-live-url"),
+      ephemeral_runtime_fixture_initialized:($runner_server_mode == "local-loopback"),
       local_unsigned_app_bundle_probe_created:$unsigned_app_bundle.ready
     },
     endpoint:"/api/hepta-native-packaging-gate",
@@ -470,5 +499,23 @@ if [[ "$(jq -r '.local_unsigned_app_bundle_probe_ready' <<<"$report")" != "true"
   echo "Hepta Native local unsigned app bundle probe did not pass" >&2
   exit 1
 fi
+
+jq -e '
+  .status == "ready"
+  and (.runner.rust_toolchain | startswith("rustc 1.95.0 "))
+  and (
+    (.runner.server_mode != "local-loopback")
+    or (
+      .runner.local_loopback_spawned == true
+      and .runner.ephemeral_runtime_fixture_initialized == true
+    )
+  )
+  and .local_unsigned_app_bundle.codesign_status == "unsigned_expected"
+  and .local_unsigned_app_bundle.distribution_signed == false
+  and .local_unsigned_app_bundle.distribution_notarized == false
+  and .local_unsigned_app_bundle.distribution_stapled == false
+  and .public_distribution_artifact_written == false
+  and .public_ga_ready == false
+' <<<"$report" >/dev/null
 
 echo "Hepta native packaging gate passed with local unsigned app bundle probe"

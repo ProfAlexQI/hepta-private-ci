@@ -3,6 +3,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+source scripts/lib/hepta-ui-rust-toolchain.sh
+source scripts/lib/hepta-control-ui-runtime-fixture.sh
+hepta_ui_activate_rust_toolchain
+
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-${1:-}}"
 REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V4_REPORT_PATH:-}"
 V3_REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V3_REPORT_PATH:-}"
@@ -95,15 +99,12 @@ cleanup() {
     wait "$server_pid" 2>/dev/null || true
   fi
   rm -f "$tmp_report"
+  hepta_control_ui_runtime_fixture_cleanup
 }
 trap cleanup EXIT
 
 start_server() {
-  : >"$SERVER_LOG"
-  HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 CARGO_INCREMENTAL=0 \
-    cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
-    >"$SERVER_LOG" 2>&1 &
-  server_pid="$!"
+  hepta_control_ui_runtime_fixture_start_server "$MANIFEST" "$BIND_ADDR" "$SERVER_LOG"
 }
 
 wait_for_server() {
@@ -386,15 +387,17 @@ async function main() {
                 ? rect.width >= 44 && rect.height >= 32
                 : rect.width >= 24 && rect.height >= 24;
           const lightGlassReady = luma >= 0.68 && luma <= 0.99;
-          const ancestorGlass = element.closest(".tg-compose-bar,.tg-search-shell,.command-palette__input-row,.tg-composer-popover,.tg-thread-command-menu__panel,.tg-row-action-popover");
+          const ancestorGlass = element.closest(".tg-mobile-layer-tabs,.v2-diagnostic details,.tg-compose-bar,.tg-search-shell,.command-palette__input-row,.tg-composer-popover,.tg-thread-command-menu__panel,.tg-row-action-popover");
           const ancestorStyle = ancestorGlass ? getComputedStyle(ancestorGlass) : null;
+          const groupGlassReady = Boolean(ancestorStyle && (
+            String(ancestorStyle.backdropFilter || ancestorStyle.webkitBackdropFilter || "").includes("blur(")
+            || (ancestorStyle.boxShadow && ancestorStyle.boxShadow !== "none")
+            || (ancestorStyle.borderTopColor && ancestorStyle.borderTopStyle !== "none")
+          ));
           const glassTreatmentReady = String(style.backdropFilter || style.webkitBackdropFilter || "").includes("blur(")
             || (style.boxShadow && style.boxShadow !== "none")
             || (style.borderTopColor && style.borderTopStyle !== "none")
-            || Boolean(ancestorStyle && (
-              String(ancestorStyle.backdropFilter || ancestorStyle.webkitBackdropFilter || "").includes("blur(")
-              || (ancestorStyle.boxShadow && ancestorStyle.boxShadow !== "none")
-            ));
+            || groupGlassReady;
           const readableReady = ratio >= 4.5;
           const iconReady = fieldLike || !iconOnly || hasSvgIcon(element);
           const inViewport = rect.left >= -1 && rect.top >= -1 && rect.right <= window.innerWidth + 1 && rect.bottom <= window.innerHeight + 1;
@@ -420,6 +423,8 @@ async function main() {
             light_glass_ready: lightGlassReady,
             effective_luminance: Number(luma.toFixed(3)),
             glass_treatment_ready: glassTreatmentReady,
+            group_glass_ready: groupGlassReady,
+            group_glass_selector: ancestorGlass ? selectorOf(ancestorGlass) : "",
             in_viewport: inViewport,
             visually_unobscured: visuallyUnobscured(element),
             icon_ready: iconReady,

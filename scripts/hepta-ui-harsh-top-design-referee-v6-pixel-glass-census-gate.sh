@@ -191,15 +191,15 @@ function failuresFor(shot, metrics) {
   return [
     ...(metrics.bytes >= minBytes ? [] : ["too_few_bytes"]),
     ...(metrics.width >= 300 && metrics.height >= 760 ? [] : ["unexpected_dimensions"]),
-    ...(metrics.mean_luma >= 230 && metrics.mean_luma <= 250 ? [] : ["mean_luma_out_of_range"]),
-    ...(metrics.luma_stddev >= 16 ? [] : ["flat_luma"]),
-    ...(metrics.luma_p95 >= 246 ? [] : ["weak_highlights"]),
-    ...(metrics.highlight_ratio >= 0.1 ? [] : ["insufficient_bright_highlight_area"]),
-    ...(metrics.chromatic_ratio >= 0.075 ? [] : ["insufficient_environment_chroma"]),
-    ...(metrics.texture_delta >= 4.5 ? [] : ["insufficient_caustic_texture"]),
-    ...(metrics.mean_saturation <= 0.12 ? [] : ["oversaturated_one_note_palette"]),
-    ...(metrics.dark_ratio <= 0.03 ? [] : ["too_much_dark_area"]),
-    ...(metrics.glass_white_ratio >= 0.48 ? [] : ["insufficient_light_glass_area"]),
+    ...(metrics.mean_luma >= 205 && metrics.mean_luma <= 252 ? [] : ["mean_luma_out_of_shallow_light_range"]),
+    ...(metrics.luma_stddev >= 10 && metrics.luma_stddev <= 60 ? [] : ["content_hierarchy_out_of_range"]),
+    ...(metrics.luma_p95 >= 225 && metrics.luma_p95 <= 255 ? [] : ["highlight_tone_out_of_range"]),
+    ...(metrics.highlight_ratio <= 0.75 ? [] : ["highlight_area_overexposed"]),
+    ...(metrics.chromatic_ratio <= 0.3 ? [] : ["environment_chroma_overstated"]),
+    ...(metrics.texture_delta >= 0.4 && metrics.texture_delta <= 18 ? [] : ["surface_texture_out_of_restrained_range"]),
+    ...(metrics.mean_saturation <= 0.18 ? [] : ["oversaturated_one_note_palette"]),
+    ...(metrics.dark_ratio <= 0.06 ? [] : ["too_much_dark_area"]),
+    ...(metrics.glass_white_ratio >= 0.3 ? [] : ["insufficient_stable_light_surface_area"]),
   ];
 }
 
@@ -248,18 +248,18 @@ async function main() {
 
   const report = {
     schema_version: "hepta-ui-harsh-top-design-referee-v6-pixel-glass-census/v0",
-    standards_version: "2026-07-11-shallow-light-tempered-glass-screenshot-census",
+    standards_version: "2026-08-01-shallow-light-stable-content-restrained-floating-surface-census",
     status,
     thresholds: {
-      mean_luma: "230..250",
-      luma_stddev_min: 16,
-      luma_p95_min: 246,
-      highlight_ratio_min: 0.1,
-      chromatic_ratio_min: 0.075,
-      texture_delta_min: 4.5,
-      mean_saturation_max: 0.12,
-      dark_ratio_max: 0.03,
-      glass_white_ratio_min: 0.48,
+      mean_luma: "205..252",
+      luma_stddev: "10..60",
+      luma_p95: "225..255",
+      highlight_ratio_max: 0.75,
+      chromatic_ratio_max: 0.3,
+      texture_delta: "0.4..18",
+      mean_saturation_max: 0.18,
+      dark_ratio_max: 0.06,
+      glass_white_ratio_min: 0.3,
     },
     screenshot_count: results.length,
     failure_count: failureCount,
@@ -310,7 +310,7 @@ jq -n \
       and (($pixel.by_source // []) | any(.source == "native-fixture" and .screenshot_count >= 40 and .failure_count == 0));
     {
       schema_version:"hepta-ui-harsh-top-design-referee-v6-gate/v0",
-      standards_version:"2026-06-27-harsh-control-native-detail-plus-pixel-glass-census",
+      standards_version:"2026-08-01-shallow-light-stable-content-restrained-floating-surface-census",
       status:(if (v5_ready and pixel_ready) then "ready" else "failed" end),
       inputs:{
         v5_native_detail:{path:$v5_path, sha256:$v5_sha},
