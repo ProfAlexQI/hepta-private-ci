@@ -22,10 +22,10 @@ use crate::original_image_detail::can_request_original_image_detail;
 use crate::original_image_detail::sanitize_original_image_detail as sanitize_image_detail_items;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
-use crate::tools::ToolRouter;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::SharedTurnDiffTracker;
 use crate::tools::context::ToolPayload;
+use crate::tools::parallel::StepToolPlan;
 use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::router::ToolCall;
 use crate::tools::router::ToolCallSource;
@@ -98,10 +98,10 @@ impl CodeModeService {
     pub(crate) async fn start_turn_worker(
         &self,
         session: &Arc<Session>,
-        turn: &Arc<TurnContext>,
-        router: Arc<ToolRouter>,
+        step_tool_plan: Arc<StepToolPlan>,
         tracker: SharedTurnDiffTracker,
     ) -> Option<codex_code_mode::CodeModeTurnWorker> {
+        let turn = &step_tool_plan.step_context.turn;
         if !turn.features.enabled(Feature::CodeMode) {
             return None;
         }
@@ -110,8 +110,7 @@ impl CodeModeService {
             session: Arc::clone(session),
             turn: Arc::clone(turn),
         };
-        let tool_runtime =
-            ToolCallRuntime::new(router, Arc::clone(session), Arc::clone(turn), tracker);
+        let tool_runtime = ToolCallRuntime::new(Arc::clone(session), step_tool_plan, tracker);
         let host = Arc::new(CoreTurnHost { exec, tool_runtime });
         Some(self.inner.start_turn_worker(host))
     }

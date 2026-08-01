@@ -11,7 +11,7 @@ use tracing::trace_span;
 
 use crate::function_tool::FunctionCallError;
 use crate::session::session::Session;
-use crate::session::turn_context::TurnContext;
+use crate::session::step_context::StepContext;
 use crate::tools::context::AbortedToolOutput;
 use crate::tools::context::SharedTurnDiffTracker;
 use crate::tools::context::ToolPayload;
@@ -19,30 +19,37 @@ use crate::tools::registry::AnyToolResult;
 use crate::tools::registry::ToolArgumentDiffConsumer;
 use crate::tools::router::ToolCall;
 use crate::tools::router::ToolCallSource;
-use crate::tools::router::ToolRouter;
 use codex_protocol::error::CodexErr;
 use codex_protocol::models::ResponseInputItem;
 
 #[derive(Clone)]
+pub(crate) struct StepToolPlan {
+    pub(crate) step_context: Arc<StepContext>,
+}
+
+impl StepToolPlan {
+    pub(crate) fn new(step_context: Arc<StepContext>) -> Self {
+        Self { step_context }
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct ToolCallRuntime {
-    router: Arc<ToolRouter>,
     session: Arc<Session>,
-    turn_context: Arc<TurnContext>,
+    step_tool_plan: Arc<StepToolPlan>,
     tracker: SharedTurnDiffTracker,
     parallel_execution: Arc<RwLock<()>>,
 }
 
 impl ToolCallRuntime {
     pub(crate) fn new(
-        router: Arc<ToolRouter>,
         session: Arc<Session>,
-        turn_context: Arc<TurnContext>,
+        step_tool_plan: Arc<StepToolPlan>,
         tracker: SharedTurnDiffTracker,
     ) -> Self {
         Self {
-            router,
             session,
-            turn_context,
+            step_tool_plan,
             tracker,
             parallel_execution: Arc::new(RwLock::new(())),
         }
@@ -52,7 +59,10 @@ impl ToolCallRuntime {
         &self,
         tool_name: &codex_tools::ToolName,
     ) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
-        self.router.create_diff_consumer(tool_name)
+        self.step_tool_plan
+            .step_context
+            .tool_router
+            .create_diff_consumer(tool_name)
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -89,10 +99,10 @@ impl ToolCallRuntime {
         source: ToolCallSource,
         cancellation_token: CancellationToken,
     ) -> impl std::future::Future<Output = Result<AnyToolResult, FunctionCallError>> {
-        let supports_parallel = self.router.tool_supports_parallel(&call);
-        let router = Arc::clone(&self.router);
+        let step_context = Arc::clone(&self.step_tool_plan.step_context);
+        let supports_parallel = step_context.tool_router.tool_supports_parallel(&call);
+        let router = Arc::clone(&step_context.tool_router);
         let session = Arc::clone(&self.session);
-        let turn = Arc::clone(&self.turn_context);
         let tracker = Arc::clone(&self.tracker);
         let lock = Arc::clone(&self.parallel_execution);
         let invocation_cancellation_token = cancellation_token.clone();
@@ -122,9 +132,9 @@ impl ToolCallRuntime {
                         };
 
                         router
-                            .dispatch_tool_call_with_code_mode_result(
+                            .dispatch_step_tool_call(
                                 session,
-                                turn,
+                                step_context,
                                 invocation_cancellation_token,
                                 tracker,
                                 call.clone(),

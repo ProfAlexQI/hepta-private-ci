@@ -200,7 +200,7 @@ impl LocalThreadStore {
         Ok(())
     }
 
-    async fn acquire_paginated_writer_locks(
+    async fn acquire_writer_locks(
         &self,
         thread_ids: &[ThreadId],
     ) -> ThreadStoreResult<Vec<WriterLockGuard>> {
@@ -216,22 +216,7 @@ impl LocalThreadStore {
                 continue;
             }
 
-            // Only a readable legacy header proves no paginated writer can own this id. Missing
-            // lazy rollouts and damaged headers must conservatively try the lock.
-            let history_mode = match read_thread::resolve_rollout_path(
-                self, thread_id, /*include_archived*/ true,
-            )
-            .await?
-            {
-                Some(rollout_path) => codex_rollout::read_session_meta_line(rollout_path.as_path())
-                    .await
-                    .ok()
-                    .map(|meta_line| meta_line.meta.history_mode),
-                None => None,
-            };
-            if !matches!(history_mode, Some(ThreadHistoryMode::Legacy)) {
-                writer_locks.push(self.writer_lock_coordinator.acquire(thread_id)?);
-            }
+            writer_locks.push(self.writer_lock_coordinator.acquire(thread_id)?);
         }
         Ok(writer_locks)
     }
@@ -1250,63 +1235,67 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn paginated_writer_lock_allows_reads_and_transfers_after_shutdown() {
+    async fn writer_lock_covers_all_history_modes_and_transfers_after_shutdown() {
         let home = TempDir::new().expect("temp dir");
         let config = test_config(home.path());
-        let uuid = uuid::Uuid::from_u128(409);
-        let thread_id = ThreadId::from_string(&uuid.to_string()).expect("valid thread id");
-        let rollout_path = write_session_file_with_history_mode(
-            home.path(),
-            "2025-01-04T12-30-00",
-            uuid,
-            ThreadHistoryMode::Paginated,
-        )
-        .expect("session file");
-        let primary = LocalThreadStore::new(config.clone(), /*state_db*/ None);
-        let secondary = LocalThreadStore::new(config, /*state_db*/ None);
-        let resume_params = ResumeThreadParams {
-            thread_id,
-            rollout_path: Some(rollout_path),
-            history: None,
-            include_archived: false,
-            metadata: thread_metadata(),
-            event_persistence_mode: ThreadEventPersistenceMode::default(),
-        };
-
-        primary
-            .resume_thread(resume_params.clone())
-            .await
-            .expect("primary writer should acquire ownership");
-
-        let read = secondary
-            .read_thread(ReadThreadParams {
+        for (offset, history_mode) in [ThreadHistoryMode::Legacy, ThreadHistoryMode::Paginated]
+            .into_iter()
+            .enumerate()
+        {
+            let uuid = uuid::Uuid::from_u128(409 + offset as u128);
+            let thread_id = ThreadId::from_string(&uuid.to_string()).expect("valid thread id");
+            let rollout_path = write_session_file_with_history_mode(
+                home.path(),
+                &format!("2025-01-04T12-30-0{offset}"),
+                uuid,
+                history_mode,
+            )
+            .expect("session file");
+            let primary = LocalThreadStore::new(config.clone(), /*state_db*/ None);
+            let secondary = LocalThreadStore::new(config.clone(), /*state_db*/ None);
+            let resume_params = ResumeThreadParams {
                 thread_id,
+                rollout_path: Some(rollout_path),
+                history: None,
                 include_archived: false,
-                include_history: false,
-            })
-            .await
-            .expect("writer ownership must not block metadata readers");
-        assert_eq!(read.thread_id, thread_id);
-        assert_eq!(read.history_mode, ThreadHistoryMode::Paginated);
+                metadata: thread_metadata(),
+                event_persistence_mode: ThreadEventPersistenceMode::default(),
+            };
 
-        let err = secondary
-            .resume_thread(resume_params.clone())
-            .await
-            .expect_err("secondary writer should be rejected");
-        assert!(matches!(
-            err,
-            ThreadStoreError::Conflict { message }
-                if message == format!("thread {thread_id} already has an active writer")
-        ));
+            primary
+                .resume_thread(resume_params.clone())
+                .await
+                .expect("primary writer should acquire ownership");
+            let read = secondary
+                .read_thread(ReadThreadParams {
+                    thread_id,
+                    include_archived: false,
+                    include_history: false,
+                })
+                .await
+                .expect("writer ownership must not block metadata readers");
+            assert_eq!(read.thread_id, thread_id);
+            assert_eq!(read.history_mode, history_mode);
 
-        primary
-            .shutdown_thread(thread_id)
-            .await
-            .expect("primary writer should shut down");
-        secondary
-            .resume_thread(resume_params)
-            .await
-            .expect("ownership should transfer after primary shutdown");
+            let err = secondary
+                .resume_thread(resume_params.clone())
+                .await
+                .expect_err("secondary writer should be rejected");
+            assert!(matches!(
+                err,
+                ThreadStoreError::Conflict { message }
+                    if message == format!("thread {thread_id} already has an active writer")
+            ));
+
+            primary
+                .shutdown_thread(thread_id)
+                .await
+                .expect("primary writer should shut down");
+            secondary
+                .resume_thread(resume_params)
+                .await
+                .expect("ownership should transfer after primary shutdown");
+        }
     }
 
     #[tokio::test]

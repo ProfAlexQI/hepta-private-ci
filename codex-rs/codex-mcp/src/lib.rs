@@ -1,3 +1,4 @@
+pub use binding::McpBinding;
 pub use connection_manager::McpConnectionManager;
 pub use elicitation::ElicitationReviewRequest;
 pub use elicitation::ElicitationReviewer;
@@ -54,6 +55,7 @@ pub use mcp::qualified_mcp_tool_name_prefix;
 pub use tools::declared_openai_file_input_param_names;
 
 pub(crate) mod auth_elicitation;
+pub(crate) mod binding;
 pub(crate) mod codex_apps;
 pub(crate) mod connection_manager;
 pub(crate) mod elicitation;

@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::config::Config;
@@ -387,6 +386,36 @@ fn mcp_tool_info(
     }
 }
 
+#[test]
+fn mcp_binding_derives_tool_names_and_resource_helpers_from_one_catalog() {
+    let direct = mcp_tool_info("echo", false, "mcp__echo__", "query");
+    let deferred = mcp_tool_info("search", true, "mcp__search__", "lookup");
+    let direct_name = direct.canonical_tool_name();
+    let deferred_name = deferred.canonical_tool_name();
+    let binding = codex_mcp::McpBinding::from_tools(
+        7,
+        std::slice::from_ref(&direct),
+        std::slice::from_ref(&deferred),
+        /*has_servers*/ true,
+    );
+
+    assert_eq!(binding.generation(), 7);
+    assert!(binding.has_servers());
+    assert_eq!(
+        binding
+            .tools()
+            .iter()
+            .map(codex_mcp::ToolInfo::canonical_tool_name)
+            .collect::<Vec<_>>(),
+        vec![direct_name.clone(), deferred_name.clone()]
+    );
+    assert!(binding.contains(&direct_name));
+    assert!(binding.contains(&deferred_name));
+    assert!(binding.contains(&ToolName::plain("list_mcp_resources")));
+    assert!(binding.contains(&ToolName::plain("list_mcp_resource_templates")));
+    assert!(binding.contains(&ToolName::plain("read_mcp_resource")));
+}
+
 #[tokio::test]
 async fn advertised_mcp_tool_fails_closed_after_manager_generation_changes() {
     let (session, turn) = make_session_and_context().await;
@@ -403,6 +432,12 @@ async fn advertised_mcp_tool_fails_closed_after_manager_generation_changes() {
         .read()
         .await
         .generation();
+    let binding = Arc::new(codex_mcp::McpBinding::from_tools(
+        advertised_generation,
+        std::slice::from_ref(&tool),
+        &[],
+        /*has_servers*/ true,
+    ));
     let router = ToolRouter::from_config(
         &turn.tools_config,
         ToolRouterParams {
@@ -413,7 +448,7 @@ async fn advertised_mcp_tool_fails_closed_after_manager_generation_changes() {
             dynamic_tools: turn.dynamic_tools.as_slice(),
         },
     )
-    .bind_mcp_generation(advertised_generation, HashSet::from([tool_name.clone()]));
+    .bind_mcp(binding);
 
     let replacement = codex_mcp::McpConnectionManager::new_uninitialized_with_permission_profile(
         &turn.approval_policy,
@@ -480,6 +515,12 @@ async fn advertised_mcp_tool_fails_closed_after_config_source_generation_changes
         .read()
         .await
         .generation();
+    let binding = Arc::new(codex_mcp::McpBinding::from_tools(
+        advertised_generation,
+        std::slice::from_ref(&tool),
+        &[],
+        /*has_servers*/ true,
+    ));
     let router = ToolRouter::from_config(
         &turn.tools_config,
         ToolRouterParams {
@@ -490,7 +531,7 @@ async fn advertised_mcp_tool_fails_closed_after_config_source_generation_changes
             dynamic_tools: turn.dynamic_tools.as_slice(),
         },
     )
-    .bind_mcp_generation(advertised_generation, HashSet::from([tool_name.clone()]));
+    .bind_mcp(binding);
     let source = turn.config.config_generation().source();
     source.publish(turn.config.config_generation().value().saturating_add(1));
 

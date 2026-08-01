@@ -18,6 +18,8 @@ use async_channel::Sender;
 use codex_protocol::approvals::ElicitationRequest;
 use codex_protocol::approvals::ElicitationRequestEvent;
 use codex_protocol::mcp::RequestId as ProtocolRequestId;
+use codex_protocol::mcp_approval_meta::APPROVALS_REVIEWER_KEY;
+use codex_protocol::mcp_approval_meta::STRICT_AUTO_REVIEW_KEY;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::Event;
@@ -29,7 +31,11 @@ use futures::future::FutureExt;
 use rmcp::model::CreateElicitationRequestParams;
 use rmcp::model::ElicitationAction;
 use rmcp::model::RequestId;
+use serde_json::Value;
 use tokio::sync::oneshot;
+
+const STRICT_AUTO_REVIEW_DECLINE_MESSAGE: &str =
+    "Strict automated review failed. Do not proceed or ask the user for approval.";
 
 #[derive(Debug, Clone)]
 pub struct ElicitationReviewRequest {
@@ -156,6 +162,26 @@ impl ElicitationRequestManager {
                     .lock()
                     .map(|profile| profile.clone())
                     .unwrap_or_default();
+                match strict_auto_review_requested(&elicitation) {
+                    Ok(true) => {
+                        if strict_auto_review_is_explicitly_denied(approval_policy) {
+                            return Ok(strict_auto_review_decline());
+                        }
+                        let Some(reviewer) = reviewer.as_ref() else {
+                            return Ok(strict_auto_review_decline());
+                        };
+                        let response = reviewer
+                            .review(ElicitationReviewRequest {
+                                server_name,
+                                request_id: id,
+                                elicitation,
+                            })
+                            .await;
+                        return Ok(strict_auto_review_response(response));
+                    }
+                    Ok(false) => {}
+                    Err(()) => return Ok(strict_auto_review_decline()),
+                }
                 if mcp_permission_prompt_is_auto_approved(
                     approval_policy,
                     &permission_profile,
@@ -261,6 +287,60 @@ impl ElicitationRequestManager {
     }
 }
 
+fn strict_auto_review_requested(elicitation: &CreateElicitationRequestParams) -> Result<bool, ()> {
+    let meta = match elicitation {
+        CreateElicitationRequestParams::FormElicitationParams { meta, .. }
+        | CreateElicitationRequestParams::UrlElicitationParams { meta, .. } => meta.as_ref(),
+    };
+    let Some(meta) = meta else {
+        return Ok(false);
+    };
+    let value = serde_json::to_value(meta).map_err(|_| ())?;
+    match value.get(STRICT_AUTO_REVIEW_KEY) {
+        None | Some(Value::Bool(false)) => Ok(false),
+        Some(Value::Bool(true)) => Ok(true),
+        Some(_) => Err(()),
+    }
+}
+
+fn strict_auto_review_is_explicitly_denied(approval_policy: AskForApproval) -> bool {
+    matches!(
+        approval_policy,
+        AskForApproval::Granular(config) if !config.allows_mcp_elicitations()
+    )
+}
+
+fn strict_auto_review_response(
+    response: Result<Option<ElicitationResponse>>,
+) -> ElicitationResponse {
+    match response {
+        Ok(Some(response))
+            if response.action == ElicitationAction::Accept
+                && response.content == Some(serde_json::json!({}))
+                && response
+                    .meta
+                    .as_ref()
+                    .and_then(Value::as_object)
+                    .and_then(|meta| meta.get(APPROVALS_REVIEWER_KEY))
+                    .and_then(Value::as_str)
+                    == Some("auto_review") =>
+        {
+            response
+        }
+        Ok(Some(_)) | Ok(None) | Err(_) => strict_auto_review_decline(),
+    }
+}
+
+fn strict_auto_review_decline() -> ElicitationResponse {
+    ElicitationResponse {
+        action: ElicitationAction::Decline,
+        content: None,
+        meta: Some(serde_json::json!({
+            "message": STRICT_AUTO_REVIEW_DECLINE_MESSAGE,
+        })),
+    }
+}
+
 pub(crate) fn elicitation_is_rejected_by_policy(approval_policy: AskForApproval) -> bool {
     match approval_policy {
         AskForApproval::Never => true,
@@ -282,5 +362,71 @@ fn can_auto_accept_elicitation(elicitation: &CreateElicitationRequestParams) -> 
             requested_schema.properties.is_empty()
         }
         CreateElicitationRequestParams::UrlElicitationParams { .. } => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codex_protocol::protocol::GranularApprovalConfig;
+
+    #[test]
+    fn strict_review_cannot_override_explicit_mcp_elicitation_denial() {
+        assert!(strict_auto_review_is_explicitly_denied(
+            AskForApproval::Granular(GranularApprovalConfig {
+                sandbox_approval: true,
+                rules: true,
+                skill_approval: true,
+                request_permissions: true,
+                mcp_elicitations: false,
+            })
+        ));
+        assert!(!strict_auto_review_is_explicitly_denied(
+            AskForApproval::Granular(GranularApprovalConfig {
+                sandbox_approval: false,
+                rules: false,
+                skill_approval: false,
+                request_permissions: false,
+                mcp_elicitations: true,
+            })
+        ));
+    }
+
+    #[test]
+    fn strict_review_accepts_only_empty_auto_review_response() {
+        let accepted = ElicitationResponse {
+            action: ElicitationAction::Accept,
+            content: Some(serde_json::json!({})),
+            meta: Some(serde_json::json!({
+                APPROVALS_REVIEWER_KEY: "auto_review",
+            })),
+        };
+        assert_eq!(
+            strict_auto_review_response(Ok(Some(accepted))).action,
+            ElicitationAction::Accept
+        );
+
+        for response in [
+            None,
+            Some(ElicitationResponse {
+                action: ElicitationAction::Accept,
+                content: Some(serde_json::json!({"approved": true})),
+                meta: Some(serde_json::json!({
+                    APPROVALS_REVIEWER_KEY: "auto_review",
+                })),
+            }),
+            Some(ElicitationResponse {
+                action: ElicitationAction::Accept,
+                content: Some(serde_json::json!({})),
+                meta: Some(serde_json::json!({
+                    APPROVALS_REVIEWER_KEY: "approve_for_me",
+                })),
+            }),
+        ] {
+            assert_eq!(
+                strict_auto_review_response(Ok(response)).action,
+                ElicitationAction::Decline
+            );
+        }
     }
 }

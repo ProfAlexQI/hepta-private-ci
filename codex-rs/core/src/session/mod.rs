@@ -205,6 +205,7 @@ mod review;
 mod rollout_reconstruction;
 #[allow(clippy::module_inception)]
 pub(crate) mod session;
+pub(crate) mod step_context;
 pub(crate) mod turn;
 pub(crate) mod turn_context;
 use self::config_lock::export_config_lock_if_configured;

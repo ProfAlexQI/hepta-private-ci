@@ -1121,7 +1121,7 @@ async fn run_sampling_request(
     prepared_tool_recommendations: &PreparedToolRecommendations,
     cancellation_token: CancellationToken,
 ) -> CodexResult<SamplingRequestResult> {
-    let router = built_tools_with_recommendations(
+    let built_tools = built_tools_with_recommendations(
         sess.as_ref(),
         turn_context.as_ref(),
         &input,
@@ -1131,24 +1131,26 @@ async fn run_sampling_request(
         &cancellation_token,
     )
     .await?;
+    let step_context = Arc::new(crate::session::step_context::StepContext::new(
+        Arc::clone(&turn_context),
+        Arc::clone(&built_tools.mcp),
+        Arc::clone(&built_tools.router),
+    ));
 
     let base_instructions = sess.get_base_instructions().await;
 
+    let step_tool_plan = Arc::new(crate::tools::parallel::StepToolPlan::new(Arc::clone(
+        &step_context,
+    )));
     let tool_runtime = ToolCallRuntime::new(
-        Arc::clone(&router),
         Arc::clone(&sess),
-        Arc::clone(&turn_context),
+        Arc::clone(&step_tool_plan),
         Arc::clone(&turn_diff_tracker),
     );
     let _code_mode_worker = sess
         .services
         .code_mode_service
-        .start_turn_worker(
-            &sess,
-            &turn_context,
-            Arc::clone(&router),
-            Arc::clone(&turn_diff_tracker),
-        )
+        .start_turn_worker(&sess, step_tool_plan, Arc::clone(&turn_diff_tracker))
         .await;
     let mut retries = 0;
     let mut initial_input = Some(input);
@@ -1162,7 +1164,7 @@ async fn run_sampling_request(
         };
         let prompt = build_prompt(
             prompt_input,
-            router.as_ref(),
+            step_context.tool_router.as_ref(),
             turn_context.as_ref(),
             base_instructions.clone(),
         );
@@ -1346,7 +1348,7 @@ pub(crate) async fn built_tools(
     let prepared_tool_recommendations = prepare_tool_recommendations(sess, turn_context)
         .or_cancel(cancellation_token)
         .await?;
-    built_tools_with_recommendations(
+    Ok(built_tools_with_recommendations(
         sess,
         turn_context,
         input,
@@ -1355,7 +1357,13 @@ pub(crate) async fn built_tools(
         &prepared_tool_recommendations,
         cancellation_token,
     )
-    .await
+    .await?
+    .router)
+}
+
+struct BuiltStepTools {
+    router: Arc<ToolRouter>,
+    mcp: Arc<codex_mcp::McpBinding>,
 }
 
 #[expect(
@@ -1370,7 +1378,7 @@ async fn built_tools_with_recommendations(
     skills_outcome: Option<&SkillLoadOutcome>,
     prepared_tool_recommendations: &PreparedToolRecommendations,
     cancellation_token: &CancellationToken,
-) -> CodexResult<Arc<ToolRouter>> {
+) -> CodexResult<BuiltStepTools> {
     if !turn_context.config.config_generation().is_current() {
         return Err(CodexErr::InvalidRequest(
             "MCP configuration source generation is stale; reload the current runtime before \
@@ -1443,27 +1451,18 @@ async fn built_tools_with_recommendations(
         &turn_context.config,
         &turn_context.tools_config,
     );
-    let mut mcp_tool_names = mcp_tool_exposure
-        .direct_tools
-        .iter()
-        .chain(
-            mcp_tool_exposure
-                .deferred_tools
-                .as_deref()
-                .unwrap_or_default(),
-        )
-        .map(codex_mcp::ToolInfo::canonical_tool_name)
-        .collect::<HashSet<_>>();
-    if has_mcp_servers {
-        mcp_tool_names.extend([
-            codex_tools::ToolName::plain("list_mcp_resources"),
-            codex_tools::ToolName::plain("list_mcp_resource_templates"),
-            codex_tools::ToolName::plain("read_mcp_resource"),
-        ]);
-    }
+    let mcp_binding = Arc::new(codex_mcp::McpBinding::from_tools(
+        mcp_generation,
+        &mcp_tool_exposure.direct_tools,
+        mcp_tool_exposure
+            .deferred_tools
+            .as_deref()
+            .unwrap_or_default(),
+        has_mcp_servers,
+    ));
     let mcp_tools = has_mcp_servers.then_some(mcp_tool_exposure.direct_tools);
     let deferred_mcp_tools = mcp_tool_exposure.deferred_tools;
-    Ok(Arc::new(
+    let router = Arc::new(
         ToolRouter::from_config(
             &turn_context.tools_config,
             ToolRouterParams {
@@ -1477,8 +1476,12 @@ async fn built_tools_with_recommendations(
                 dynamic_tools: turn_context.dynamic_tools.as_slice(),
             },
         )
-        .bind_mcp_generation(mcp_generation, mcp_tool_names),
-    ))
+        .bind_mcp(Arc::clone(&mcp_binding)),
+    );
+    Ok(BuiltStepTools {
+        router,
+        mcp: mcp_binding,
+    })
 }
 
 #[derive(Debug)]

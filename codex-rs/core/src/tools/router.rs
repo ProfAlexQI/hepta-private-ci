@@ -1,5 +1,6 @@
 use crate::function_tool::FunctionCallError;
 use crate::session::session::Session;
+use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
 use crate::tools::context::SharedTurnDiffTracker;
 use crate::tools::context::ToolInvocation;
@@ -8,6 +9,7 @@ use crate::tools::registry::AnyToolResult;
 use crate::tools::registry::ToolArgumentDiffConsumer;
 use crate::tools::registry::ToolRegistry;
 use crate::tools::spec_plan::build_tool_router;
+use codex_mcp::McpBinding;
 use codex_mcp::ToolInfo;
 use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::models::ResponseItem;
@@ -19,7 +21,6 @@ use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 use codex_tools::ToolsConfig;
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
@@ -67,8 +68,7 @@ pub(crate) fn tool_log_payload<'a>(
 pub struct ToolRouter {
     registry: ToolRegistry,
     model_visible_specs: Vec<ToolSpec>,
-    mcp_generation: Option<u64>,
-    mcp_tool_names: HashSet<ToolName>,
+    mcp_binding: Option<Arc<McpBinding>>,
 }
 
 pub(crate) struct ToolRouterParams<'a> {
@@ -88,18 +88,12 @@ impl ToolRouter {
         Self {
             registry,
             model_visible_specs,
-            mcp_generation: None,
-            mcp_tool_names: HashSet::new(),
+            mcp_binding: None,
         }
     }
 
-    pub(crate) fn bind_mcp_generation(
-        mut self,
-        generation: u64,
-        tool_names: HashSet<ToolName>,
-    ) -> Self {
-        self.mcp_generation = Some(generation);
-        self.mcp_tool_names = tool_names;
+    pub(crate) fn bind_mcp(mut self, binding: Arc<McpBinding>) -> Self {
+        self.mcp_binding = Some(binding);
         self
     }
 
@@ -180,30 +174,75 @@ impl ToolRouter {
         call: ToolCall,
         source: ToolCallSource,
     ) -> Result<AnyToolResult, FunctionCallError> {
+        self.dispatch_tool_call_with_mcp_binding(
+            session,
+            turn,
+            cancellation_token,
+            tracker,
+            call,
+            source,
+            self.mcp_binding.as_deref(),
+        )
+        .await
+    }
+
+    pub(crate) async fn dispatch_step_tool_call(
+        &self,
+        session: Arc<Session>,
+        step_context: Arc<StepContext>,
+        cancellation_token: CancellationToken,
+        tracker: SharedTurnDiffTracker,
+        call: ToolCall,
+        source: ToolCallSource,
+    ) -> Result<AnyToolResult, FunctionCallError> {
+        self.dispatch_tool_call_with_mcp_binding(
+            session,
+            Arc::clone(&step_context.turn),
+            cancellation_token,
+            tracker,
+            call,
+            source,
+            Some(step_context.mcp.as_ref()),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn dispatch_tool_call_with_mcp_binding(
+        &self,
+        session: Arc<Session>,
+        turn: Arc<TurnContext>,
+        cancellation_token: CancellationToken,
+        tracker: SharedTurnDiffTracker,
+        call: ToolCall,
+        source: ToolCallSource,
+        mcp_binding: Option<&McpBinding>,
+    ) -> Result<AnyToolResult, FunctionCallError> {
         let ToolCall {
             tool_name,
             call_id,
             payload,
         } = call;
         let manager = Arc::clone(&session.services.mcp_connection_manager);
-        let mcp_generation_guard = if self.mcp_tool_names.contains(&tool_name) {
-            if !turn.config.config_generation().is_current() {
-                return Err(FunctionCallError::RespondToModel(
+        let mcp_generation_guard =
+            if let Some(binding) = mcp_binding.filter(|binding| binding.contains(&tool_name)) {
+                if !turn.config.config_generation().is_current() {
+                    return Err(FunctionCallError::RespondToModel(
                     "MCP configuration source generation is stale; retry on the current runtime"
                         .to_string(),
                 ));
-            }
-            let guard = manager.read().await;
-            if self.mcp_generation != Some(guard.generation()) {
-                return Err(FunctionCallError::RespondToModel(
-                    "MCP tool catalog generation is stale; retry on the current runtime"
-                        .to_string(),
-                ));
-            }
-            Some(guard)
-        } else {
-            None
-        };
+                }
+                let guard = manager.read().await;
+                if binding.generation() != guard.generation() {
+                    return Err(FunctionCallError::RespondToModel(
+                        "MCP tool catalog generation is stale; retry on the current runtime"
+                            .to_string(),
+                    ));
+                }
+                Some(guard)
+            } else {
+                None
+            };
 
         let invocation = ToolInvocation {
             session,

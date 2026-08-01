@@ -549,7 +549,12 @@ fn test_tool_runtime(session: Arc<Session>, turn_context: Arc<TurnContext>) -> T
         },
     ));
     let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
-    ToolCallRuntime::new(router, session, turn_context, tracker)
+    let step_context = Arc::new(crate::session::step_context::StepContext::for_test(
+        turn_context,
+        router,
+    ));
+    let step_tool_plan = Arc::new(crate::tools::parallel::StepToolPlan::new(step_context));
+    ToolCallRuntime::new(session, step_tool_plan, tracker)
 }
 
 fn make_connector(id: &str, name: &str) -> AppInfo {

@@ -7,13 +7,12 @@ use serde_json::Value as JsonValue;
 
 use crate::function_tool::FunctionCallError;
 use crate::session::session::Session;
-use crate::session::turn_context::TurnContext;
-use crate::tools::ToolRouter;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::SharedTurnDiffTracker;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolPayload;
 use crate::tools::context::boxed_tool_output;
+use crate::tools::parallel::StepToolPlan;
 use crate::tools::registry::CoreToolRuntime;
 use crate::tools::registry::ToolExecutor;
 use codex_tools::ToolName;
@@ -49,8 +48,7 @@ impl CodeModeService {
     pub(crate) async fn start_turn_worker(
         &self,
         _session: &Arc<Session>,
-        _turn: &Arc<TurnContext>,
-        _router: Arc<ToolRouter>,
+        _step_tool_plan: Arc<StepToolPlan>,
         _tracker: SharedTurnDiffTracker,
     ) -> Option<CodeModeTurnWorker> {
         None

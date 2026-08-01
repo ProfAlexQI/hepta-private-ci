@@ -38,9 +38,7 @@ pub(super) async fn archive_threads(
             });
         }
     }
-    let _writer_guards = store
-        .acquire_paginated_writer_locks(&lock_thread_ids)
-        .await?;
+    let _writer_guards = store.acquire_writer_locks(&lock_thread_ids).await?;
 
     let parent_thread_id = thread_ids[0];
     let mut archived_thread_ids = Vec::new();
