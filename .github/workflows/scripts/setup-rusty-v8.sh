@@ -4,13 +4,14 @@ set -euo pipefail
 target="${1:?target triple is required}"
 destination="${2:?destination directory is required}"
 env_file="${3:?environment output file is required}"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 if command -v cygpath >/dev/null 2>&1; then
   destination="$(cygpath --unix "$destination")"
   env_file="$(cygpath --unix "$env_file")"
 fi
 
-version="$(sed -n 's/^v8 = "=\([^"]*\)"$/\1/p' codex-rs/Cargo.toml)"
+version="$(sed -n 's/^v8 = "=\([^"]*\)"$/\1/p' "${repo_root}/codex-rs/Cargo.toml")"
 if [[ -z "$version" ]]; then
   echo "Unable to resolve the workspace v8 version" >&2
   exit 1
@@ -27,25 +28,60 @@ else
 fi
 binding_name="src_binding_${profile}_${target}.rs"
 checksums_name="rusty_v8_${profile}_${target}.sha256"
+checksums_path="${repo_root}/third_party/v8/rusty_v8_${version//./_}.sha256"
 
-mkdir -p "$destination"
-for artifact in "$archive_name" "$binding_name" "$checksums_name"; do
-  curl --fail --location --silent --show-error \
-    --retry 5 --retry-all-errors \
-    "${base_url}/${artifact}" \
-    --output "${destination}/${artifact}"
-done
-
-if [[ "$(wc -l <"${destination}/${checksums_name}")" -ne 2 ]]; then
-  echo "Expected exactly two checksums in ${checksums_name}" >&2
+if [[ ! -f "$checksums_path" ]]; then
+  echo "Missing checked V8 checksum manifest: ${checksums_path}" >&2
   exit 1
 fi
 
-if command -v sha256sum >/dev/null 2>&1; then
-  (cd "$destination" && sha256sum --check "$checksums_name")
-else
-  (cd "$destination" && shasum -a 256 --check "$checksums_name")
-fi
+checksum_for() {
+  local artifact="$1"
+  awk -v artifact="$artifact" '$2 == artifact { print $1 }' "$checksums_path"
+}
+
+file_checksum() {
+  local artifact_path="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$artifact_path" | awk '{ print $1 }'
+  else
+    shasum -a 256 "$artifact_path" | awk '{ print $1 }'
+  fi
+}
+
+ensure_artifact() {
+  local artifact="$1"
+  local expected
+  expected="$(checksum_for "$artifact")"
+  if [[ -z "$expected" ]]; then
+    echo "No checked checksum for ${artifact} in ${checksums_path}" >&2
+    exit 1
+  fi
+
+  local artifact_path="${destination}/${artifact}"
+  if [[ -f "$artifact_path" ]] && [[ "$(file_checksum "$artifact_path")" == "$expected" ]]; then
+    return
+  fi
+
+  local temporary_path="${artifact_path}.tmp.$$"
+  rm -f "$temporary_path"
+  curl --fail --location --silent --show-error \
+    --retry 5 --retry-all-errors \
+    "${base_url}/${artifact}" \
+    --output "$temporary_path"
+  local actual
+  actual="$(file_checksum "$temporary_path")"
+  if [[ "$actual" != "$expected" ]]; then
+    rm -f "$temporary_path"
+    echo "Checksum mismatch for ${artifact}: expected ${expected}, got ${actual}" >&2
+    exit 1
+  fi
+  mv "$temporary_path" "$artifact_path"
+}
+
+mkdir -p "$destination"
+ensure_artifact "$archive_name"
+ensure_artifact "$binding_name"
 
 archive_path="${destination}/${archive_name}"
 binding_path="${destination}/${binding_name}"

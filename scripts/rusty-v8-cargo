@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+print_env=0
+if [[ "${1:-}" == "--hepta-print-v8-env" ]]; then
+  print_env=1
+  shift
+fi
+
+if [[ -n "${V8_FROM_SOURCE:-}" ]]; then
+  exec cargo "$@"
+fi
+
+if [[ -n "${RUSTY_V8_ARCHIVE:-}" || -n "${RUSTY_V8_SRC_BINDING_PATH:-}" ]]; then
+  if [[ -z "${RUSTY_V8_ARCHIVE:-}" || -z "${RUSTY_V8_SRC_BINDING_PATH:-}" ]]; then
+    echo "RUSTY_V8_ARCHIVE and RUSTY_V8_SRC_BINDING_PATH must be set together" >&2
+    exit 1
+  fi
+  if [[ "$print_env" == 1 ]]; then
+    printf 'RUSTY_V8_ARCHIVE=%s\n' "$RUSTY_V8_ARCHIVE"
+    printf 'RUSTY_V8_SRC_BINDING_PATH=%s\n' "$RUSTY_V8_SRC_BINDING_PATH"
+    exit 0
+  fi
+  exec cargo "$@"
+fi
+
+target=""
+previous=""
+for argument in "$@"; do
+  if [[ "$previous" == "--target" ]]; then
+    target="$argument"
+    break
+  fi
+  case "$argument" in
+    --target=*)
+      target="${argument#--target=}"
+      break
+      ;;
+  esac
+  previous="$argument"
+done
+if [[ -z "$target" ]]; then
+  target="$(rustc -vV | sed -n 's/^host: //p')"
+fi
+if [[ -z "$target" ]]; then
+  echo "Unable to determine Cargo target triple" >&2
+  exit 1
+fi
+
+cache_root="${HEPTA_RUSTY_V8_CACHE_ROOT:-${XDG_CACHE_HOME:-${HOME}/.cache}/hepta/rusty-v8}"
+environment_file="$(mktemp)"
+trap 'rm -f "$environment_file"' EXIT
+bash "${repo_root}/.github/workflows/scripts/setup-rusty-v8.sh" \
+  "$target" \
+  "${cache_root}/${target}" \
+  "$environment_file"
+
+while IFS='=' read -r name value; do
+  case "$name" in
+    RUSTY_V8_ARCHIVE|RUSTY_V8_SRC_BINDING_PATH)
+      export "${name}=${value}"
+      ;;
+    *)
+      echo "Unexpected V8 environment key: ${name}" >&2
+      exit 1
+      ;;
+  esac
+done < "$environment_file"
+
+if [[ "$print_env" == 1 ]]; then
+  printf 'RUSTY_V8_ARCHIVE=%s\n' "$RUSTY_V8_ARCHIVE"
+  printf 'RUSTY_V8_SRC_BINDING_PATH=%s\n' "$RUSTY_V8_SRC_BINDING_PATH"
+  exit 0
+fi
+
+exec cargo "$@"

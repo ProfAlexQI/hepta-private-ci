@@ -2,6 +2,7 @@ set working-directory := "codex-rs"
 set positional-arguments
 
 rust_min_stack := "8388608" # 8 MiB
+rusty_v8_cargo := justfile_directory() + "/scripts/rusty-v8-cargo"
 
 # Display help
 help:
@@ -11,15 +12,15 @@ help:
 alias h := hepta
 alias c := codex
 hepta *args:
-    cargo run -p hepta-cli --bin hepta -- "$@"
+    {{ rusty_v8_cargo }} run -p hepta-cli --bin hepta -- "$@"
 
 # `codex` compatibility convenience for old local muscle memory.
 codex *args:
-    cargo run -p codex-cli --bin hepta-codex-compat -- "$@"
+    {{ rusty_v8_cargo }} run -p codex-cli --bin hepta-codex-compat -- "$@"
 
 # Legacy full-feature `exec` compatibility.
 exec *args:
-    cargo run -p codex-cli --bin hepta-codex-compat -- exec "$@"
+    {{ rusty_v8_cargo }} run -p codex-cli --bin hepta-codex-compat -- exec "$@"
 
 # Start the Hepta TUI through the exec-server harness.
 [no-cd]
@@ -28,12 +29,19 @@ tui-with-exec-server *args:
 
 # Run the CLI version of the file-search crate.
 file-search *args:
-    cargo run --bin codex-file-search -- "$@"
+    {{ rusty_v8_cargo }} run --bin codex-file-search -- "$@"
 
 # Build the Hepta CLI and run the app-server test client.
 app-server-test-client *args:
-    cargo build -p codex-cli --bin hepta-codex-compat
-    cargo run -p codex-app-server-test-client -- --hepta-bin ./target/debug/hepta-codex-compat "$@"
+    {{ rusty_v8_cargo }} build -p codex-cli --bin hepta-codex-compat
+    {{ rusty_v8_cargo }} run -p codex-app-server-test-client -- --hepta-bin ./target/debug/hepta-codex-compat "$@"
+
+# Run Cargo with the exact sandboxed V8 archive and binding for the selected target.
+cargo *args:
+    {{ rusty_v8_cargo }} "$@"
+
+check *args:
+    {{ rusty_v8_cargo }} check "$@"
 
 # Format the repository-native Just and Rust sources.
 fmt:
@@ -46,10 +54,10 @@ fmt-check:
     cargo fmt -- --config imports_granularity=Item --check
 
 fix *args:
-    cargo clippy --fix --tests --allow-dirty "$@"
+    {{ rusty_v8_cargo }} clippy --fix --tests --allow-dirty "$@"
 
 clippy *args:
-    cargo clippy --tests "$@"
+    {{ rusty_v8_cargo }} clippy --tests "$@"
 
 install:
     rustup show active-toolchain
@@ -62,7 +70,7 @@ install:
 # Prefer this for routine local runs. Workspace crate features are banned, so
 # there should be no need to add `--all-features`.
 test:
-    RUST_MIN_STACK={{ rust_min_stack }} cargo nextest run --no-fail-fast
+    RUST_MIN_STACK={{ rust_min_stack }} {{ rusty_v8_cargo }} nextest run --no-fail-fast
 
 # Build and run the legacy Bazel CLI target from source.
 # Note we have to use the combination of `[no-cd]` and `--run_under="cd $PWD &&"`
@@ -98,19 +106,19 @@ build-for-release:
 
 # Run the MCP server
 mcp-server-run *args:
-    cargo run -p codex-mcp-server -- "$@"
+    {{ rusty_v8_cargo }} run -p codex-mcp-server -- "$@"
 
 # Regenerate the json schema for config.toml from the current config types.
 write-config-schema:
-    cargo run -p codex-core --bin codex-write-config-schema
+    {{ rusty_v8_cargo }} run -p codex-core --bin codex-write-config-schema
 
 # Regenerate vendored app-server protocol schema artifacts.
 write-app-server-schema *args:
-    cargo run -p codex-app-server-protocol --bin write_schema_fixtures -- "$@"
+    {{ rusty_v8_cargo }} run -p codex-app-server-protocol --bin write_schema_fixtures -- "$@"
 
 [no-cd]
 write-hooks-schema:
-    cargo run --manifest-path {{ justfile_directory() }}/codex-rs/Cargo.toml -p codex-hooks --bin write_hooks_schema_fixtures
+    {{ rusty_v8_cargo }} run --manifest-path {{ justfile_directory() }}/codex-rs/Cargo.toml -p codex-hooks --bin write_hooks_schema_fixtures
 
 # Run the argument-comment Dylint checks across codex-rs.
 [no-cd]
@@ -127,4 +135,4 @@ argument-comment-lint-from-source *args:
 
 # Tail logs from the state SQLite database
 log *args:
-    if [ "${1:-}" = "--" ]; then shift; fi; cargo run -p codex-state --bin logs_client -- "$@"
+    if [ "${1:-}" = "--" ]; then shift; fi; {{ rusty_v8_cargo }} run -p codex-state --bin logs_client -- "$@"

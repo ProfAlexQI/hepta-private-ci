@@ -6,11 +6,12 @@ Bazel consumer builds use sandbox-enabled artifacts throughout:
 - Codex release archives on Windows MSVC
 - source-built V8 archives on Darwin, GNU Linux, musl Linux, and Windows GNU
 
-Local Cargo builds still use upstream prebuilt `rusty_v8` archives by default.
-Selected Cargo CI, release, and package builds override
-`RUSTY_V8_ARCHIVE`/`RUSTY_V8_SRC_BINDING_PATH` with Codex release assets. Bazel
-sets those variables independently in `MODULE.bazel` to select source-built
-local archives and bindings or the exact Windows MSVC release archive.
+Repository Cargo builds should run through `just cargo`, `just check`, or another
+Just recipe. Those paths use `scripts/rusty-v8-cargo` to resolve the exact
+sandbox archive and binding from the checked SHA-256 manifest before invoking
+Cargo. CI and release jobs use the same resolver. Bazel sets the variables
+independently in `MODULE.bazel` to select source-built local archives and
+bindings or the exact Windows MSVC release archive.
 
 The Bazel `v8` crate feature selection enables V8's in-process sandbox for
 every supported target, including Windows MSVC.
@@ -87,11 +88,14 @@ it cannot truthfully reproduce upstream's `*-pc-windows-msvc` archives until we
 add a real MSVC-targeting C++ toolchain to the artifact graph. Native Windows
 CI consumes the exact sandbox-enabled Codex release archive instead.
 
-Release and CI Cargo builds use `RUSTY_V8_ARCHIVE` plus a
+Repository, release, and CI Cargo builds use `RUSTY_V8_ARCHIVE` plus a
 downloaded `RUSTY_V8_SRC_BINDING_PATH` to point at those `openai/codex` release
-assets directly. We do not use `RUSTY_V8_MIRROR` because the upstream `v8` crate
-hardcodes a `v<crate_version>` tag layout, while our artifacts are published
-under `rusty-v8-v<crate_version>`.
+assets directly. `scripts/rusty-v8-cargo` caches them under
+`$XDG_CACHE_HOME/hepta/rusty-v8` (or `~/.cache/hepta/rusty-v8`) and validates
+both files against `rusty_v8_150_4_0.sha256`. We do not use
+`RUSTY_V8_MIRROR` because the upstream `v8` crate hardcodes a
+`v<crate_version>` tag layout, while our artifacts are published under
+`rusty-v8-v<crate_version>`.
 
 Do not mix artifacts across crate versions. The archive and binding must match
 the exact resolved `v8` crate version in `codex-rs/Cargo.lock`.
