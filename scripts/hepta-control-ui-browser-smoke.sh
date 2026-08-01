@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+source scripts/lib/hepta-ui-rust-toolchain.sh
+
 export HEPTA_AUTOLOAD=0
 export HEPTA_AUTOSAVE=0
 export CARGO_INCREMENTAL=0
@@ -66,7 +68,7 @@ start_server() {
     HEPTA_PREFERENCE_INTEGRITY_KEY_FILE="$preference_integrity_key_file" \
     HEPTA_PREFERENCE_INGRESS_AUTH_KEY_FILE="$preference_auth_key_file" \
     HEPTA_PREFERENCE_STORE_MODE="$preference_mode" \
-    cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
+    hepta_ui_cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
     >"$SERVER_LOG" 2>&1 &
   server_pid="$!"
 }
@@ -124,6 +126,19 @@ run_browser_smoke_once() {
       cat "$stdout_log" >&2 || true
       cat "$stderr_log" >&2 || true
       return 1
+    fi
+    local subresource_error_count
+    subresource_error_count="$(grep -Ec 'RuntimeKernel request preflight rejected GET /(assets/[^ ]+|favicon\.ico)' "$SERVER_LOG" || true)"
+    if [[ "$subresource_error_count" -ne 0 ]]; then
+      echo "Hepta Control UI browser smoke observed ${subresource_error_count} rejected subresource requests" >&2
+      grep -E 'RuntimeKernel request preflight rejected GET /(assets/[^ ]+|favicon\.ico)' "$SERVER_LOG" >&2 || true
+      return 1
+    fi
+    if [[ -n "$REPORT_PATH" ]]; then
+      local augmented_report
+      augmented_report="$(mktemp "${TMPDIR:-/tmp}/hepta-control-ui-browser-report.XXXXXX")"
+      jq '. + {subresource_error_count:0,subresource_requests_clean:true}' "$REPORT_PATH" >"$augmented_report"
+      mv "$augmented_report" "$REPORT_PATH"
     fi
     cat "$stdout_log"
     if [[ -s "$stderr_log" ]]; then

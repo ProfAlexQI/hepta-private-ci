@@ -35,13 +35,17 @@ tool execution, or task-registry writes.
 
 Run these from the Hepta repository root:
 
+The UI lane is pinned to Rust `1.95.0`. Repository-root commands must select it
+explicitly because the host default may be older; the checked-in UI scripts do
+the same through `scripts/lib/hepta-ui-rust-toolchain.sh`.
+
 ```sh
-cargo check --manifest-path apps/hepta-native/Cargo.toml
-cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture
+rustup run 1.95.0 cargo check --manifest-path apps/hepta-native/Cargo.toml
+rustup run 1.95.0 cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_ -- --nocapture
 ./scripts/hepta-native-fixture-visual-smoke.sh
 ./scripts/hepta-native-packaging-gate.sh
 ./scripts/hepta-native-distribution-preflight-gate.sh
-cargo test -q -p hepta-core control_ui_report_is_complete_and_asset_backed -- --nocapture
+rustup run 1.95.0 cargo test -q -p hepta-core control_ui_report_is_complete_and_asset_backed -- --nocapture
 ./scripts/hepta-control-ui-smoke.sh
 ./scripts/hepta-ui-product-readiness-gate.sh
 git diff --check
@@ -50,7 +54,8 @@ git diff --check
 Run fixture mode without requiring a homeserver login:
 
 ```sh
-HEPTA_NATIVE_FIXTURE_MODE=1 cargo run --manifest-path apps/hepta-native/Cargo.toml
+HEPTA_NATIVE_FIXTURE_MODE=1 \
+rustup run 1.95.0 cargo run --manifest-path apps/hepta-native/Cargo.toml
 ```
 
 Fixture route and selected-row variants are controllable without enabling
@@ -60,7 +65,7 @@ mutation:
 HEPTA_NATIVE_FIXTURE_MODE=1 \
 HEPTA_NATIVE_FIXTURE_ROUTE=Actions \
 HEPTA_NATIVE_FIXTURE_ROW=2 \
-cargo run --manifest-path apps/hepta-native/Cargo.toml
+rustup run 1.95.0 cargo run --manifest-path apps/hepta-native/Cargo.toml
 ```
 
 The fixture visual smoke is a deterministic desktop/mobile screenshot gate for
@@ -407,7 +412,10 @@ When the available widget width is 620px or narrower, or when
 chat layout: mobile chat header, message thread, and composer remain visible
 while command palette, desktop route cards, detailed row cards, metrics, safety
 status, active-route previews, route-state cards, shell states, review queue,
-and evidence timeline collapse out of the first screen.
+and evidence timeline collapse out of the first screen. In local fixture mode,
+an explicitly selected non-Home route instead opens its compact route header,
+selected detail, and active surface at the same task-first width; horizontal
+desktop row/action strips remain hidden.
 
 For a true macOS app-window capture, run the Peekaboo-backed gate:
 
@@ -422,7 +430,11 @@ and trigger the expected desktop/mobile layout markers. It requires an unlocked
 macOS desktop plus Screen Recording and Accessibility permission for
 Peekaboo/the invoking terminal. Set `HEPTA_NATIVE_WINDOW_SMOKE_PREBUILD=1` to
 compile before the app launch so cold Rust builds are not counted as window
-startup time. Each smoke artifact uses an isolated Cargo target directory by
+startup time. The default phone bound requests `390×844`; every screenshot
+records requested and actual bounds plus `exact_size_ready`, `host_constrained`,
+and the primary-screen visible area. A host-constrained macOS capture can satisfy
+the usable mobile-host contract without being reported as exact `390×844`. Each
+smoke artifact uses an isolated Cargo target directory by
 default (`$OUT_DIR/cargo-target`, or `$OUT_DIR/cargo-target/hepta-ui-native` for
 the combined product-readiness gate) so concurrent UI lanes do not contend for a
 shared build directory; set `HEPTA_NATIVE_WINDOW_SMOKE_CARGO_TARGET_DIR` or the
@@ -438,6 +450,35 @@ phone-window screenshot to pass the first-viewport mobile content probe. These
 gates prove more than uniqueness/nonblank pixels. On locked or
 permission-blocked machines, use the blocked-report mode only to record the
 explicit local blocker without claiming a visual pass:
+
+```sh
+# Four desktop-full routes.
+./scripts/hepta-native-window-route-smoke.sh
+
+# The same four routes in 390×844-requested task-first windows.
+./scripts/hepta-native-window-route-mobile-smoke.sh
+
+# Five secondary surfaces at desktop and 390×844-requested mobile bounds.
+./scripts/hepta-native-window-secondary-smoke.sh
+./scripts/hepta-native-window-secondary-mobile-smoke.sh
+```
+
+The mobile route wrapper verifies four unique screenshot hashes, exact route
+selection and content-visible log signatures, requested `390×844` dimensions,
+usable actual host-window bounds, and the light-surface pixel probe. Exactness is
+reported separately and is never inferred from host usability. The old
+non-product probe required at least 25%
+near-black pixels; that was a stale dark-theme condition and is intentionally
+replaced by the current light-surface range. Reports include calibrated region
+thresholds and raw measurements, so a pass is not based on an injected route
+state alone.
+
+True macOS window evidence does **not** prove iOS/Android safe areas, a mobile
+software keyboard, VoiceOver/TalkBack traversal, RTL mirroring, Dynamic Type,
+Reduce Transparency, or low-power GPU/memory/battery behavior. Those fields are
+emitted as explicit `not_run` platform-assurance entries. The HTML fixture gate
+does exercise a simulated `390×844` safe-area and keyboard-avoidance state, but
+labels that evidence as simulation rather than real-device proof.
 
 ```sh
 HEPTA_NATIVE_WINDOW_SMOKE_ALLOW_BLOCKED=1 ./scripts/hepta-native-window-smoke.sh

@@ -109,9 +109,9 @@ require_contains "apps/hepta-native/src/home/room_screen.rs" "POLL_MESSAGE_PREVI
 require_contains "apps/hepta-native/src/home/room_screen.rs" "POLL_ANSWER_PREVIEW_RESULT_PACKET_EVIDENCE"
 require_contains "apps/hepta-native/src/home/room_screen.rs" "populate_poll_message_content"
 require_contains "apps/hepta-native/src/home/room_screen.rs" "Poll answer preview/result packet"
-require_contains "apps/hepta-native/src/home/room_screen.rs" "answer_edit_slot not_built"
-require_contains "apps/hepta-native/src/home/room_screen.rs" "vote_response_slot not_sent"
-require_contains "apps/hepta-native/src/home/room_screen.rs" "result_mapping read_only_loaded_pollstate"
+require_contains "apps/hepta-native/src/home/room_screen.rs" "edited state, answer edit slot"
+require_contains "apps/hepta-native/src/home/room_screen.rs" "answer edit slot, vote response slot"
+require_contains "apps/hepta-native/src/home/room_screen.rs" "result mapping, stale poll policy, and unsupported server capability boundary from already loaded PollState only"
 require_contains "apps/hepta-native/src/home/room_screen.rs" "Read-only poll preview from loaded timeline state."
 require_contains "apps/hepta-native/src/home/room_screen.rs" "send no poll response, edit, redact"
 

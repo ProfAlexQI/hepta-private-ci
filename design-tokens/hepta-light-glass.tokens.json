@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "name": "Hepta light tempered glass",
+  "version": 1,
+  "description": "Single source for the shared Control and Native light-glass palette.",
+  "color": {
+    "environment": "#eef5f7ff",
+    "panel": "#e8eff1f0",
+    "input": "#f1f5f5f2",
+    "text": "#142a32ff",
+    "muted": "#506575ff",
+    "dim": "#566a78ff",
+    "hairline": "#a5ccd7b8",
+    "focus": "#0f7290ff",
+    "secondaryAccent": "#14b8a6ff",
+    "activeSurface": "#eaf7fcee",
+    "success": "#128a61ff",
+    "glassShadow": "#1730471f",
+    "glassGlow": "#0f72901f"
+  },
+  "radius": {
+    "control": 10,
+    "panel": 16,
+    "floating": 18
+  },
+  "motion": {
+    "fastMs": 100,
+    "normalMs": 180
+  }
+}

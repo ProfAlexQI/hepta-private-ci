@@ -3,6 +3,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+source scripts/lib/hepta-ui-rust-toolchain.sh
+source scripts/lib/hepta-control-ui-runtime-fixture.sh
+hepta_ui_activate_rust_toolchain
+
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-${1:-}}"
 REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V13_REPORT_PATH:-}"
 V12_REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V12_REPORT_PATH:-}"
@@ -97,15 +101,12 @@ cleanup() {
     wait "$server_pid" 2>/dev/null || true
   fi
   rm -f "$tmp_report"
+  hepta_control_ui_runtime_fixture_cleanup
 }
 trap cleanup EXIT
 
 start_server() {
-  : >"$SERVER_LOG"
-  HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 CARGO_INCREMENTAL=0 \
-    cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
-    >"$SERVER_LOG" 2>&1 &
-  server_pid="$!"
+  hepta_control_ui_runtime_fixture_start_server "$MANIFEST" "$BIND_ADDR" "$SERVER_LOG"
 }
 
 wait_for_server() {

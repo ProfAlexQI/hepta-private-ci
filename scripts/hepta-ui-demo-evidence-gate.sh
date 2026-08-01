@@ -9,7 +9,9 @@ MIN_SCREENSHOT_BYTES="${HEPTA_UI_DEMO_EVIDENCE_MIN_SCREENSHOT_BYTES:-10000}"
 
 MANIFEST_PATH="$READINESS_DIR/screenshot-manifest.json"
 STATIC_CONTRACT_PATH="$READINESS_DIR/static-contract.json"
+DESIGN_SYSTEM_PATH="$READINESS_DIR/ui-design-system-gate.json"
 CONTROL_BROWSER_PATH="$READINESS_DIR/control-ui-browser-smoke.json"
+CONTROL_REAL_CLICK_V7_PATH="$READINESS_DIR/ui-harsh-top-design-referee-v7-real-click-gate.json"
 NATIVE_FIXTURE_PATH="$READINESS_DIR/native-fixture/native-fixture-visual-smoke.json"
 PACKAGING_PATH="$READINESS_DIR/native-packaging-gate.json"
 DISTRIBUTION_PREFLIGHT_PATH="$READINESS_DIR/native-distribution-preflight-gate.json"
@@ -23,6 +25,7 @@ PRODUCTIZATION_ROLLUP_PATH="$READINESS_DIR/native-productization-blocker-rollup.
 PLAN_BOUNDARY_PATH="$READINESS_DIR/ui-plan-boundary-gate.json"
 NATIVE_WINDOW_PATH="$READINESS_DIR/native-window-smoke.json"
 NATIVE_WINDOW_ROUTE_PATH="$READINESS_DIR/native-window-routes-smoke.json"
+NATIVE_WINDOW_ROUTE_MOBILE_PATH="$READINESS_DIR/native-window-routes-mobile-smoke.json"
 NATIVE_WINDOW_SECONDARY_PATH="$READINESS_DIR/native-window-secondary-smoke.json"
 NATIVE_WINDOW_SECONDARY_MOBILE_PATH="$READINESS_DIR/native-window-secondary-mobile-smoke.json"
 
@@ -47,7 +50,9 @@ require_command sips
 
 require_file "$MANIFEST_PATH"
 require_file "$STATIC_CONTRACT_PATH"
+require_file "$DESIGN_SYSTEM_PATH"
 require_file "$CONTROL_BROWSER_PATH"
+require_file "$CONTROL_REAL_CLICK_V7_PATH"
 require_file "$NATIVE_FIXTURE_PATH"
 require_file "$PACKAGING_PATH"
 require_file "$DISTRIBUTION_PREFLIGHT_PATH"
@@ -59,6 +64,27 @@ require_file "$BACKEND_CONTRACT_GATES_PATH"
 require_file "$NON_BASE_EDGE_GATES_PATH"
 require_file "$PRODUCTIZATION_ROLLUP_PATH"
 require_file "$PLAN_BOUNDARY_PATH"
+
+jq -e '
+  .status == "ready"
+  and .real_click_ready == true
+  and .summary.control_real_click_activation.viewport_count == 4
+  and .summary.control_real_click_activation.target_count == 26
+  and .summary.control_real_click_activation.failure_count == 0
+  and .summary.control_real_click_activation.mobile_routes_ready == true
+  and .summary.control_real_click_activation.popover_switch_sequence_ready == true
+  and .summary.control_real_click_activation.popover_switch_step_count == 26
+  and (.control_real_click_activation.viewports | all(
+    .ready == true
+    and .mobile_pane_routes.ready == true
+    and .popover_switch_sequence.ready == true
+    and (.targets | all(
+      .light_dismiss.ready == true
+      and .escape_close.ready == true
+      and .escape_close.focus_returned_to_trigger == true
+    ))
+  ))
+' "$CONTROL_REAL_CLICK_V7_PATH" >/dev/null
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-demo-evidence.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -209,7 +235,9 @@ fi
 for spec in \
   "core|screenshot_manifest|$MANIFEST_PATH|true" \
   "core|static_contract|$STATIC_CONTRACT_PATH|true" \
+  "core|ui_design_system|$DESIGN_SYSTEM_PATH|true" \
   "control|browser_smoke|$CONTROL_BROWSER_PATH|true" \
+  "control|native_popover_real_click_v7|$CONTROL_REAL_CLICK_V7_PATH|true" \
   "native|fixture_visual_smoke|$NATIVE_FIXTURE_PATH|true" \
   "native|packaging|$PACKAGING_PATH|true" \
   "native|distribution_preflight|$DISTRIBUTION_PREFLIGHT_PATH|true" \
@@ -223,6 +251,7 @@ for spec in \
   "ui|plan_boundary|$PLAN_BOUNDARY_PATH|true" \
   "native_true_window|main|$NATIVE_WINDOW_PATH|$hard_required_json" \
   "native_true_window|route|$NATIVE_WINDOW_ROUTE_PATH|$hard_required_json" \
+  "native_true_window|route_mobile|$NATIVE_WINDOW_ROUTE_MOBILE_PATH|$hard_required_json" \
   "native_true_window|secondary_desktop|$NATIVE_WINDOW_SECONDARY_PATH|$hard_required_json" \
   "native_true_window|secondary_mobile|$NATIVE_WINDOW_SECONDARY_MOBILE_PATH|$hard_required_json"; do
   IFS='|' read -r group name path required <<<"$spec"
@@ -231,6 +260,7 @@ done
 
 NATIVE_WINDOW_INPUT_PATH="$(json_input_path_or_default "$NATIVE_WINDOW_PATH" '{"screenshots":[]}' "native-window-default.json")"
 NATIVE_WINDOW_ROUTE_INPUT_PATH="$(json_input_path_or_default "$NATIVE_WINDOW_ROUTE_PATH" '{"screenshots":[]}' "native-window-route-default.json")"
+NATIVE_WINDOW_ROUTE_MOBILE_INPUT_PATH="$(json_input_path_or_default "$NATIVE_WINDOW_ROUTE_MOBILE_PATH" '{"screenshots":[]}' "native-window-route-mobile-default.json")"
 NATIVE_WINDOW_SECONDARY_INPUT_PATH="$(json_input_path_or_default "$NATIVE_WINDOW_SECONDARY_PATH" '{"screenshots":[]}' "native-window-secondary-default.json")"
 NATIVE_WINDOW_SECONDARY_MOBILE_INPUT_PATH="$(json_input_path_or_default "$NATIVE_WINDOW_SECONDARY_MOBILE_PATH" '{"screenshots":[]}' "native-window-secondary-mobile-default.json")"
 
@@ -239,6 +269,7 @@ jq -c \
   --slurpfile manifest "$MANIFEST_PATH" \
   --slurpfile native_window "$NATIVE_WINDOW_INPUT_PATH" \
   --slurpfile route "$NATIVE_WINDOW_ROUTE_INPUT_PATH" \
+  --slurpfile route_mobile "$NATIVE_WINDOW_ROUTE_MOBILE_INPUT_PATH" \
   --slurpfile secondary "$NATIVE_WINDOW_SECONDARY_INPUT_PATH" \
   --slurpfile mobile "$NATIVE_WINDOW_SECONDARY_MOBILE_INPUT_PATH" \
   -n '
@@ -256,6 +287,7 @@ jq -c \
       [($manifest[0].key_screenshots // [])[] as $s | shot("key_screenshots"; true; $s)]
       + [($native_window[0].screenshots // [])[] as $s | shot("native_true_window_main"; $hard_required; $s)]
       + [($route[0].screenshots // [])[] as $s | shot("native_true_window_route"; $hard_required; $s)]
+      + [($route_mobile[0].screenshots // [])[] as $s | shot("native_true_window_route_mobile"; $hard_required; $s)]
       + [($secondary[0].screenshots // [])[] as $s | shot("native_true_window_secondary_desktop"; $hard_required; $s)]
       + [($mobile[0].screenshots // [])[] as $s | shot("native_true_window_secondary_mobile"; $hard_required; $s)]
     )[]
@@ -288,14 +320,18 @@ jq -n \
   --slurpfile reports "$REPORT_ITEMS_JSON" \
   --slurpfile screenshots "$SCREENSHOT_ITEMS_JSON" \
   --slurpfile manifest "$MANIFEST_PATH" \
+  --slurpfile design_system "$DESIGN_SYSTEM_PATH" \
   --slurpfile plan "$PLAN_BOUNDARY_PATH" \
+  --slurpfile route_mobile_report "$NATIVE_WINDOW_ROUTE_MOBILE_INPUT_PATH" \
   --slurpfile packaging "$PACKAGING_PATH" \
   --slurpfile distribution "$DISTRIBUTION_PREFLIGHT_PATH" \
   '
     ($reports[0]) as $reports
     | ($screenshots[0]) as $screenshots
     | ($manifest[0]) as $manifest
+    | ($design_system[0]) as $design_system
     | ($plan[0]) as $plan
+    | ($route_mobile_report[0]) as $route_mobile_report
     | ($packaging[0]) as $packaging
     | ($distribution[0]) as $distribution
     | def required_reports: $reports | map(select(.required == true));
@@ -312,12 +348,20 @@ jq -n \
       ($plan.claim_boundary.r33_minimum_hard_demo_ready == true)
       and required_group_count("native_true_window_main") == 2
       and required_group_count("native_true_window_route") == 4
+      and required_group_count("native_true_window_route_mobile") == 4
+      and $route_mobile_report.status == "ready"
+      and $route_mobile_report.native_makepad_mobile_route_variants_ready == true
+      and $route_mobile_report.mobile_host_window_ready == true
       and required_group_count("native_true_window_secondary_desktop") == 5
       and required_group_count("native_true_window_secondary_mobile") == 5
       and required_screenshots_ready;
     def local_fixture_demo_evidence_ready:
       report_evidence_ready
       and key_screenshot_ready
+      and $design_system.status == "ready"
+      and $design_system.generated_token_sync_ready == true
+      and $design_system.documentation_token_sync_ready == true
+      and $design_system.native.fixture_generated_tokens_consumed == true
       and $plan.claim_boundary.local_fixture_demo_ready == true
       and $packaging.local_packaging_gate_ready == true
       and $packaging.local_unsigned_app_bundle_probe_ready == true
@@ -354,6 +398,7 @@ jq -n \
         key_screenshot_count:group_count("key_screenshots"),
         native_true_window_main_count:group_count("native_true_window_main"),
         native_true_window_route_count:group_count("native_true_window_route"),
+        native_true_window_route_mobile_count:group_count("native_true_window_route_mobile"),
         native_true_window_secondary_desktop_count:group_count("native_true_window_secondary_desktop"),
         native_true_window_secondary_mobile_count:group_count("native_true_window_secondary_mobile"),
         all_required_screenshots_present:(required_screenshots | all(.present == true)),
@@ -403,6 +448,7 @@ jq -e '
       .claim_boundary.r33_hard_demo_evidence_ready == true
       and .screenshot_evidence.native_true_window_main_count == 2
       and .screenshot_evidence.native_true_window_route_count == 4
+      and .screenshot_evidence.native_true_window_route_mobile_count == 4
       and .screenshot_evidence.native_true_window_secondary_desktop_count == 5
       and .screenshot_evidence.native_true_window_secondary_mobile_count == 5
     )

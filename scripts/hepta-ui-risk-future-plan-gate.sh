@@ -264,7 +264,7 @@ jq -n \
       and $delivery_roundtrip.source_alignment.present_branch_backend_delivery_claim_ready == true
       and ($delivery_roundtrip.source_alignment.present_branch_real_backend_receipt_present | type) == "boolean"
       and ($delivery_roundtrip.source_alignment.present_branch_backend_receipt_valid | type) == "boolean"
-      and $delivery_roundtrip.source_alignment.root_report_replay_required_count_after_roundtrip == 43
+      and $delivery_roundtrip.source_alignment.root_report_replay_required_count_after_roundtrip == 45
       and $delivery_roundtrip.claim_boundary.local_backend_delivery_receipt_roundtrip_ready == true
       and $delivery_roundtrip.claim_boundary.backend_delivery_claim_ready == false
       and $delivery_roundtrip.claim_boundary.real_backend_receipt_claim_ready == false
@@ -355,7 +355,7 @@ jq -n \
 	        native_secondary_title_tooltip_ready:$top.referee_matrix.control_level.secondary_surface_title_tooltip_ready,
 	        native_secondary_title_tooltip_failure_count:$top.referee_matrix.control_level.secondary_surface_title_tooltip_failure_count,
         requested_scope:$top.referee_matrix.control_level.requested_scope,
-        root_report_replay_required_count_after_risk_future_plan:43,
+        root_report_replay_required_count_after_risk_future_plan:45,
         current_plan_root_report_required_count:$current.current_minimum_gate.root_report_replay_required_count_after_current_plan_refresh,
         top_design_control_phone320_ready:$top.referee_matrix.control_ui.persisted_phone320_screenshot_ready,
         selected_row_variant_count:$top.referee_matrix.control_level.selected_row_variant_count,
@@ -486,7 +486,7 @@ jq -n \
         evidence_archive_ready:$archive.evidence_archive_gate_ready,
         screenshot_manifest_ready:$manifest.screenshot_manifest_ready,
         selected_ids_match:($delivery.delivery_state.selected_ids == selected_ids),
-        root_report_replay_required_count_after_risk_future_plan:43
+        root_report_replay_required_count_after_risk_future_plan:45
       },
       claim_boundary:{
         local_risk_future_plan_ready:$ready,
@@ -623,7 +623,7 @@ jq -e '
   and .latest_minimum_gate.tempered_glass_2026_ready == true
   and .latest_minimum_gate.tempered_glass_min_contrast_ratio >= 4.5
   and .latest_minimum_gate.tempered_glass_clipping_failure_count == 0
-  and .latest_minimum_gate.root_report_replay_required_count_after_risk_future_plan == 43
+  and .latest_minimum_gate.root_report_replay_required_count_after_risk_future_plan == 45
   and .latest_minimum_gate.current_plan_root_report_required_count == 41
   and .latest_minimum_gate.selected_row_variant_count == 18
   and .latest_minimum_gate.secondary_surface_case_count == 15
@@ -709,10 +709,10 @@ jq -e '
   and .source_alignment.backend_delivery_receipt_roundtrip_ready == true
   and .source_alignment.backend_delivery_receipt_roundtrip_present_branch_ready == true
   and .source_alignment.backend_delivery_receipt_roundtrip_present_branch_valid == true
-  and .source_alignment.backend_delivery_receipt_roundtrip_root_report_required_count == 43
+  and .source_alignment.backend_delivery_receipt_roundtrip_root_report_required_count == 45
   and (.source_alignment.real_backend_receipt_present | type) == "boolean"
   and (.source_alignment.backend_receipt_valid | type) == "boolean"
-  and .source_alignment.root_report_replay_required_count_after_risk_future_plan == 43
+  and .source_alignment.root_report_replay_required_count_after_risk_future_plan == 45
   and .claim_boundary.local_risk_future_plan_ready == true
   and .claim_boundary.local_backend_delivery_receipt_roundtrip_ready == true
   and (.claim_boundary.real_backend_receipt_claim_ready | type) == "boolean"

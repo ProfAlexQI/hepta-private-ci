@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/hepta-ui-rust-toolchain.sh
+source "scripts/lib/hepta-ui-rust-toolchain.sh"
+
 APP_MANIFEST="apps/hepta-native/Cargo.toml"
 OUT_DIR="${HEPTA_NATIVE_WINDOW_ROUTE_SMOKE_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/hepta-native-window-route-smoke.XXXXXX")}"
 REPORT_PATH="${HEPTA_NATIVE_WINDOW_ROUTE_SMOKE_REPORT_PATH:-$OUT_DIR/native-window-route-smoke.json}"
@@ -41,7 +44,7 @@ json_bool_for_flag() {
 }
 
 cargo_with_window_target() {
-  CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR" cargo "$@"
+  CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR" hepta_ui_cargo "$@"
 }
 
 run_window_smoke_preflight_test() {
@@ -218,6 +221,10 @@ jq -s \
     },
     blocked_allowed:$blocked_allowed,
     true_window_capture_performed:true,
+    native_makepad_highlight_area_ready:($reports | all(.native_makepad_highlight_area_ready == true)),
+    native_makepad_highlight_pixel_luma_threshold:245,
+    native_makepad_highlight_pixel_fraction_threshold:0.75,
+    native_makepad_highlight_pixel_fraction_max:([$reports[].screenshots[].visual_probe.highlight_pixel_fraction] | max),
     native_makepad_route_variants_ready:(
       ($reports | length) == 4
       and ($reports | all(.status == "ready"))
@@ -264,5 +271,20 @@ jq -s \
       external_mutation:false
     }
   }' "${REPORT_PATHS[@]}" | tee "$REPORT_PATH"
+
+jq -e '
+  .status == "ready"
+  and .native_makepad_highlight_area_ready == true
+  and .native_makepad_highlight_pixel_fraction_max <= .native_makepad_highlight_pixel_fraction_threshold
+  and .native_makepad_route_variants_ready == true
+  and .route_count == 4
+  and .route_content_probe_ready == true
+  and .route_screenshot_unique_count == 4
+  and .route_screenshot_unique_ready == true
+  and .route_top_design_referee_ready == true
+  and .screenshot_count == 4
+  and .native_app_log_error_free == true
+  and .side_effects.external_mutation == false
+' "$REPORT_PATH" >/dev/null
 
 echo "Hepta Native route true-window smoke passed" >&2

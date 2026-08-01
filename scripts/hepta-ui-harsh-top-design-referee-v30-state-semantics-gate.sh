@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+source scripts/lib/hepta-ui-rust-toolchain.sh
+source scripts/lib/hepta-control-ui-runtime-fixture.sh
+
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-${1:-}}"
 REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V30_REPORT_PATH:-}"
 V30_CENSUS_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V30_CENSUS_PATH:-}"
@@ -70,6 +73,7 @@ if [[ -z "$BIND_ADDR" ]]; then
   exit 1
 fi
 
+hepta_control_ui_runtime_fixture_init
 BASE_URL="http://${BIND_ADDR}"
 server_pid=""
 
@@ -86,15 +90,12 @@ cleanup() {
     kill -9 "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
+  hepta_control_ui_runtime_fixture_cleanup
 }
 trap cleanup EXIT
 
 start_server() {
-  : >"$SERVER_LOG"
-  HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 CARGO_INCREMENTAL=0 \
-    cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
-    >"$SERVER_LOG" 2>&1 &
-  server_pid="$!"
+  hepta_control_ui_runtime_fixture_start_server "$MANIFEST" "$BIND_ADDR" "$SERVER_LOG"
 }
 
 wait_for_server() {
@@ -145,36 +146,36 @@ const targetGroups = [
     railOnly: true,
     triggerSelector: "[data-chat-row-menu-toggle]",
     panelForTrigger: (trigger) => `[data-chat-row-menu-panel="${trigger.getAttribute("data-chat-row-menu-toggle")}"]`,
-    expectedPopup: "menu",
-    expectedPanelRole: "menu",
+    expectedPopup: "",
+    expectedPanelRole: "group",
   },
   {
     key: "thread-tools",
     triggerSelector: "[data-control-ui-thread-tools-trigger='light-glass']",
     panelSelector: "[data-control-ui-thread-tools-panel='light-glass']",
-    expectedPopup: "menu",
-    expectedPanelRole: "menu",
+    expectedPopup: "",
+    expectedPanelRole: "group",
   },
   {
     key: "composer-tools",
     triggerSelector: "[data-control-ui-composer-tools-trigger='light-glass']",
     panelSelector: "[data-control-ui-composer-tools-panel='light-glass']",
-    expectedPopup: "menu",
-    expectedPanelRole: "menu",
+    expectedPopup: "",
+    expectedPanelRole: "group",
   },
   {
     key: "artifact-popover",
     triggerSelector: "[data-chat-composer-popover-toggle='artifact']",
     panelSelector: "[data-chat-composer-popover='artifact']",
-    expectedPopup: "menu",
-    expectedPanelRole: "menu",
+    expectedPopup: "",
+    expectedPanelRole: "group",
   },
   {
     key: "command-popover",
     triggerSelector: "[data-chat-composer-popover-toggle='command']",
     panelSelector: "[data-chat-composer-popover='command']",
-    expectedPopup: "menu",
-    expectedPanelRole: "menu",
+    expectedPopup: "",
+    expectedPanelRole: "group",
   },
   {
     key: "command-palette",
@@ -390,11 +391,12 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
       controlled_panel_visibility_failure_count: countFailures(["controlled_panel_not_visible", "controlled_panel_still_visible", "controlled_panel_visible"]),
       failure_count: failures.length,
       thresholds: {
-        popup_triggers_require_aria_haspopup: true,
+        generic_action_popovers_do_not_overclaim_aria_menu: true,
+        command_palette_trigger_requires_aria_haspopup_dialog: true,
         popup_triggers_require_aria_controls_to_existing_panel_id: true,
       popup_triggers_require_expanded_state_sync: "explicit aria-expanded or native popover implicit state",
-        controlled_menus_require_role_menu_and_name: true,
-      controlled_dialogs_require_role_name_and_truthful_aria_modal_state: true,
+        controlled_action_popovers_require_role_group_and_name: true,
+        controlled_dialogs_require_role_name_and_truthful_aria_modal_state: true,
         browser_note: "Browser plugin unavailable in this run; regular Playwright with local Chrome was used.",
       },
     },

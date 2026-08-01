@@ -6,13 +6,21 @@ cd "$(dirname "$0")/.."
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-/Users/qianqi/.openclaw/tmp/hepta-ui-product-readiness.mention-taxonomy-20260615}"
 REPORT_PATH="${HEPTA_UI_ROOT_REPORT_REPLAY_REPORT_PATH:-$READINESS_DIR/ui-root-report-replay-gate.json}"
 
+# The replay report is authoritative. Clear only this explicit output before
+# any configuration validation can fail, so a previous ready report cannot be
+# mistaken for the result of the current invocation.
+rm -f -- "$REPORT_PATH"
+
 STATIC_CONTRACT_PATH="$READINESS_DIR/static-contract.json"
+DESIGN_SYSTEM_REPORT_PATH="$READINESS_DIR/ui-design-system-gate.json"
 CONTROL_BROWSER_REPORT_PATH="$READINESS_DIR/control-ui-browser-smoke.json"
+CONTROL_REAL_CLICK_V7_REPORT_PATH="$READINESS_DIR/ui-harsh-top-design-referee-v7-real-click-gate.json"
 NATIVE_FIXTURE_REPORT_PATH="$READINESS_DIR/native-fixture/native-fixture-visual-smoke.json"
 NATIVE_PACKAGING_REPORT_PATH="$READINESS_DIR/native-packaging-gate.json"
 NATIVE_DISTRIBUTION_PREFLIGHT_REPORT_PATH="$READINESS_DIR/native-distribution-preflight-gate.json"
 NATIVE_WINDOW_REPORT_PATH="$READINESS_DIR/native-window-smoke.json"
 NATIVE_WINDOW_ROUTE_REPORT_PATH="$READINESS_DIR/native-window-routes-smoke.json"
+NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH="$READINESS_DIR/native-window-routes-mobile-smoke.json"
 NATIVE_WINDOW_SECONDARY_REPORT_PATH="$READINESS_DIR/native-window-secondary-smoke.json"
 NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH="$READINESS_DIR/native-window-secondary-mobile-smoke.json"
 SCREENSHOT_MANIFEST_PATH="$READINESS_DIR/screenshot-manifest.json"
@@ -50,6 +58,26 @@ BACKEND_DELIVERY_AUDIT_REPORT_PATH="$READINESS_DIR/ui-backend-delivery-audit-gat
 BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_REPORT_PATH="$READINESS_DIR/ui-backend-delivery-receipt-roundtrip-gate.json"
 RISK_FUTURE_PLAN_REPORT_PATH="$READINESS_DIR/ui-risk-future-plan-gate.json"
 
+STRICT_CURRENT_SOURCE_RAW="${HEPTA_UI_PRODUCT_READINESS_STRICT_CURRENT_SOURCE:-0}"
+case "$STRICT_CURRENT_SOURCE_RAW" in
+  1 | true | TRUE | yes | YES | on | ON)
+    STRICT_CURRENT_SOURCE_MODE=1
+    ;;
+  0 | false | FALSE | no | NO | off | OFF | "")
+    STRICT_CURRENT_SOURCE_MODE=0
+    ;;
+  *)
+    printf 'Invalid HEPTA_UI_PRODUCT_READINESS_STRICT_CURRENT_SOURCE value: %s\n' "$STRICT_CURRENT_SOURCE_RAW" >&2
+    exit 2
+    ;;
+esac
+
+if [[ "$STRICT_CURRENT_SOURCE_MODE" == "1" ]]; then
+  TRUE_WINDOW_REPORT_KIND="strict_current_source_true_window"
+else
+  TRUE_WINDOW_REPORT_KIND="optional_true_window"
+fi
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     printf '%s is required for the Hepta UI root-report replay gate\n' "$1" >&2
@@ -70,8 +98,222 @@ file_sha256() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
 
+validate_true_window_screenshot_file_set() {
+  local report_path="$1"
+  local expected_count="$2"
+  local evidence_label="$3"
+  local readiness_real_path
+  local screenshot_count
+  local screenshot_index
+  local screenshot_path
+  local screenshot_real_path
+  local reported_bytes
+  local actual_bytes
+  local reported_sha
+  local actual_sha
+
+  if ! readiness_real_path="$(realpath "$READINESS_DIR" 2>/dev/null)"; then
+    printf 'Strict current-source screenshot root is not resolvable: %s\n' "$READINESS_DIR" >&2
+    return 1
+  fi
+
+  screenshot_count="$(jq -r '(.screenshots // []) | length' "$report_path")"
+  if [[ "$screenshot_count" != "$expected_count" ]]; then
+    printf 'Strict current-source %s screenshot count mismatch: expected %s, found %s\n' \
+      "$evidence_label" "$expected_count" "$screenshot_count" >&2
+    return 1
+  fi
+
+  for ((screenshot_index = 0; screenshot_index < expected_count; screenshot_index += 1)); do
+    if ! screenshot_path="$(jq -er --argjson index "$screenshot_index" \
+      '.screenshots[$index].path | select(type == "string" and length > 0)' "$report_path")"; then
+      printf 'Strict current-source %s screenshot %s has no valid path\n' \
+        "$evidence_label" "$screenshot_index" >&2
+      return 1
+    fi
+    if ! reported_bytes="$(jq -er --argjson index "$screenshot_index" \
+      '.screenshots[$index].bytes | select(type == "number" and . >= 0 and . == floor) | tostring' "$report_path")"; then
+      printf 'Strict current-source %s screenshot %s has no valid byte count\n' \
+        "$evidence_label" "$screenshot_index" >&2
+      return 1
+    fi
+    if ! reported_sha="$(jq -er --argjson index "$screenshot_index" \
+      '.screenshots[$index].sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' "$report_path")"; then
+      printf 'Strict current-source %s screenshot %s has no valid SHA-256\n' \
+        "$evidence_label" "$screenshot_index" >&2
+      return 1
+    fi
+
+    if [[ ! -f "$screenshot_path" || ! -s "$screenshot_path" ]]; then
+      printf 'Strict current-source %s screenshot is missing or empty: %s\n' \
+        "$evidence_label" "$screenshot_path" >&2
+      return 1
+    fi
+    if ! screenshot_real_path="$(realpath "$screenshot_path" 2>/dev/null)"; then
+      printf 'Strict current-source %s screenshot path is not resolvable: %s\n' \
+        "$evidence_label" "$screenshot_path" >&2
+      return 1
+    fi
+    case "$screenshot_real_path" in
+      "$readiness_real_path"/*)
+        ;;
+      *)
+        printf 'Strict current-source %s screenshot escapes readiness directory: %s\n' \
+          "$evidence_label" "$screenshot_real_path" >&2
+        return 1
+        ;;
+    esac
+
+    actual_bytes="$(wc -c <"$screenshot_real_path" | tr -d ' ')"
+    if [[ "$actual_bytes" != "$reported_bytes" || "$actual_bytes" -lt 10000 ]]; then
+      printf 'Strict current-source %s screenshot byte mismatch: %s (reported %s, actual %s)\n' \
+        "$evidence_label" "$screenshot_real_path" "$reported_bytes" "$actual_bytes" >&2
+      return 1
+    fi
+
+    actual_sha="$(file_sha256 "$screenshot_real_path")"
+    if [[ "$actual_sha" != "$reported_sha" ]]; then
+      printf 'Strict current-source %s screenshot SHA-256 mismatch: %s\n' \
+        "$evidence_label" "$screenshot_real_path" >&2
+      return 1
+    fi
+  done
+}
+
+validate_strict_current_source_inputs() {
+  if [[ "$STRICT_CURRENT_SOURCE_MODE" != "1" ]]; then
+    return
+  fi
+
+  require_report "$DESIGN_SYSTEM_REPORT_PATH"
+  require_report "$NATIVE_WINDOW_REPORT_PATH"
+  require_report "$NATIVE_WINDOW_ROUTE_REPORT_PATH"
+  require_report "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH"
+  require_report "$NATIVE_WINDOW_SECONDARY_REPORT_PATH"
+  require_report "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH"
+
+  if ! jq -e -n \
+    --slurpfile design_system_file "$DESIGN_SYSTEM_REPORT_PATH" \
+    --slurpfile native_window_file "$NATIVE_WINDOW_REPORT_PATH" \
+    --slurpfile native_window_route_file "$NATIVE_WINDOW_ROUTE_REPORT_PATH" \
+    --slurpfile native_window_route_mobile_file "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" \
+    --slurpfile native_window_secondary_file "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" \
+    --slurpfile native_window_secondary_mobile_file "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH" \
+    '
+    ($design_system_file[0]) as $design_system
+    | ($native_window_file[0]) as $native_window
+    | ($native_window_route_file[0]) as $native_window_route
+    | ($native_window_route_mobile_file[0]) as $native_window_route_mobile
+    | ($native_window_secondary_file[0]) as $native_window_secondary
+    | ($native_window_secondary_mobile_file[0]) as $native_window_secondary_mobile
+    | def screenshot_files_ready($items; $expected):
+        ($items | length) == $expected
+        and ($items | all(
+          (.bytes // 0) >= 10000
+          and ((.sha256 // "") | test("^[0-9a-f]{64}$"))
+          and ((.path // "") | length) > 0
+          and .visual_probe.ready == true
+        ))
+        and ($items | map(.sha256 // "") | unique | length) == $expected;
+      ($design_system.status == "ready")
+      and ($design_system.rust_toolchain | test("^rustc 1\\.95\\.0([[:space:]]|$)"))
+      and $native_window.enabled == true
+      and $native_window.status == "ready"
+      and ($native_window.blocked_allowed // false) != true
+      and $native_window.true_window_capture_performed == true
+      and $native_window.fixture_product_shell_selected_ready == true
+      and $native_window.fixture_matrix_composer_hidden_ready == true
+      and $native_window.fixture_desktop_product_layout_ready == true
+      and $native_window.fixture_mobile_task_first_layout_ready == true
+      and $native_window.native_makepad_fixture_script_error_free == true
+      and $native_window.native_app_log_error_free == true
+      and screenshot_files_ready(($native_window.screenshots // []); 2)
+      and $native_window.side_effects.external_mutation == false
+      and $native_window_route.enabled == true
+      and $native_window_route.status == "ready"
+      and ($native_window_route.blocked_allowed // false) != true
+      and $native_window_route.true_window_capture_performed == true
+      and $native_window_route.native_makepad_route_variants_ready == true
+      and $native_window_route.route_top_design_referee_ready == true
+      and $native_window_route.route_content_probe_ready == true
+      and $native_window_route.route_count == 4
+      and $native_window_route.screenshot_count == 4
+      and $native_window_route.route_screenshot_unique_count == 4
+      and $native_window_route.route_screenshot_unique_ready == true
+      and $native_window_route.native_app_log_error_free == true
+      and screenshot_files_ready(($native_window_route.screenshots // []); 4)
+      and (($native_window_route.screenshots // []) | all(.visual_probe.route_content_ready == true))
+      and $native_window_route.side_effects.external_mutation == false
+      and $native_window_route_mobile.enabled == true
+      and $native_window_route_mobile.status == "ready"
+      and ($native_window_route_mobile.blocked_allowed // false) != true
+      and $native_window_route_mobile.true_window_capture_performed == true
+      and $native_window_route_mobile.native_makepad_mobile_route_variants_ready == true
+      and $native_window_route_mobile.route_count == 4
+      and $native_window_route_mobile.screenshot_count == 4
+      and $native_window_route_mobile.route_screenshot_unique_count == 4
+      and $native_window_route_mobile.route_screenshot_unique_ready == true
+      and $native_window_route_mobile.non_home_content_log_signature_count >= 3
+      and $native_window_route_mobile.mobile_host_window_ready == true
+      and $native_window_route_mobile.native_app_log_error_free == true
+      and screenshot_files_ready(($native_window_route_mobile.screenshots // []); 4)
+      and (($native_window_route_mobile.screenshots // []) | all(
+        .viewport_contract.expected_width == 390
+        and .viewport_contract.expected_height == 844
+        and .viewport_contract.host_window_usable_ready == true
+        and .visual_probe.mobile_route_content_ready == true
+      ))
+      and $native_window_route_mobile.side_effects.external_mutation == false
+      and $native_window_secondary.enabled == true
+      and $native_window_secondary.status == "ready"
+      and ($native_window_secondary.blocked_allowed // false) != true
+      and $native_window_secondary.true_window_capture_performed == true
+      and $native_window_secondary.native_makepad_secondary_surfaces_ready == true
+      and $native_window_secondary.surface_count == 5
+      and $native_window_secondary.screenshot_count == 5
+      and $native_window_secondary.surface_screenshot_unique_count == 5
+      and $native_window_secondary.surface_screenshot_unique_ready == true
+      and $native_window_secondary.native_app_log_error_free == true
+      and screenshot_files_ready(($native_window_secondary.screenshots // []); 5)
+      and $native_window_secondary.side_effects.external_mutation == false
+      and $native_window_secondary_mobile.enabled == true
+      and $native_window_secondary_mobile.status == "ready"
+      and ($native_window_secondary_mobile.blocked_allowed // false) != true
+      and $native_window_secondary_mobile.true_window_capture_performed == true
+      and $native_window_secondary_mobile.native_makepad_secondary_mobile_surfaces_ready == true
+      and $native_window_secondary_mobile.mobile_secondary_content_probe_ready == true
+      and $native_window_secondary_mobile.mobile_secondary_content_visible_count >= 5
+      and $native_window_secondary_mobile.mobile_host_window_ready == true
+      and $native_window_secondary_mobile.surface_count == 5
+      and $native_window_secondary_mobile.screenshot_count == 5
+      and $native_window_secondary_mobile.surface_screenshot_unique_count == 5
+      and $native_window_secondary_mobile.surface_screenshot_unique_ready == true
+      and $native_window_secondary_mobile.native_app_log_error_free == true
+      and screenshot_files_ready(($native_window_secondary_mobile.screenshots // []); 5)
+      and (($native_window_secondary_mobile.screenshots // []) | all(
+        .viewport_contract.expected_width == 390
+        and .viewport_contract.expected_height == 844
+        and .viewport_contract.host_window_usable_ready == true
+        and .visual_probe.mobile_secondary_content_ready == true
+      ))
+      and $native_window_secondary_mobile.side_effects.external_mutation == false
+    ' >/dev/null; then
+    printf 'Strict current-source root replay rejected the Rust/toolchain or five-report true-window evidence matrix\n' >&2
+    exit 1
+  fi
+
+  validate_true_window_screenshot_file_set "$NATIVE_WINDOW_REPORT_PATH" 2 "main-window"
+  validate_true_window_screenshot_file_set "$NATIVE_WINDOW_ROUTE_REPORT_PATH" 4 "desktop-route"
+  validate_true_window_screenshot_file_set "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" 4 "mobile-route"
+  validate_true_window_screenshot_file_set "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" 5 "desktop-secondary"
+  validate_true_window_screenshot_file_set "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH" 5 "mobile-secondary"
+}
+
 require_command jq
 require_command shasum
+require_command realpath
+validate_strict_current_source_inputs
+require_report "$CONTROL_REAL_CLICK_V7_REPORT_PATH"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-root-report-replay.XXXXXX")"
 ROOT_REPORTS_NDJSON="$TMP_DIR/root-reports.ndjson"
@@ -113,14 +355,16 @@ append_report() {
 }
 
 append_report "static_contract" "$STATIC_CONTRACT_PATH" "contract"
+append_report "ui_design_system_gate" "$DESIGN_SYSTEM_REPORT_PATH" "design_system"
 append_report "control_ui_browser_smoke" "$CONTROL_BROWSER_REPORT_PATH" "surface_smoke"
 append_report "native_fixture_visual_smoke" "$NATIVE_FIXTURE_REPORT_PATH" "surface_smoke"
 append_report "native_packaging_gate" "$NATIVE_PACKAGING_REPORT_PATH" "packaging"
 append_report "native_distribution_preflight_gate" "$NATIVE_DISTRIBUTION_PREFLIGHT_REPORT_PATH" "distribution"
-append_report "native_window_smoke" "$NATIVE_WINDOW_REPORT_PATH" "optional_true_window"
-append_report "native_window_route_smoke" "$NATIVE_WINDOW_ROUTE_REPORT_PATH" "optional_true_window"
-append_report "native_window_secondary_smoke" "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" "optional_true_window"
-append_report "native_window_secondary_mobile_smoke" "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH" "optional_true_window"
+append_report "native_window_smoke" "$NATIVE_WINDOW_REPORT_PATH" "$TRUE_WINDOW_REPORT_KIND"
+append_report "native_window_route_smoke" "$NATIVE_WINDOW_ROUTE_REPORT_PATH" "$TRUE_WINDOW_REPORT_KIND"
+append_report "native_window_route_mobile_smoke" "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" "$TRUE_WINDOW_REPORT_KIND"
+append_report "native_window_secondary_smoke" "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" "$TRUE_WINDOW_REPORT_KIND"
+append_report "native_window_secondary_mobile_smoke" "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH" "$TRUE_WINDOW_REPORT_KIND"
 append_report "screenshot_manifest" "$SCREENSHOT_MANIFEST_PATH" "manifest"
 append_report "native_base_gap_drilldown" "$BASE_GAP_DRILLDOWN_PATH" "backend_handoff"
 append_report "native_base_gap_work_queue" "$BASE_GAP_WORK_QUEUE_PATH" "backend_handoff"
@@ -164,14 +408,18 @@ jq -n \
   --arg gate "hepta_ui_root_report_replay_gate" \
   --arg readiness_dir "$READINESS_DIR" \
   --arg report_path "$REPORT_PATH" \
+  --argjson strict_current_source_mode "$STRICT_CURRENT_SOURCE_MODE" \
   --slurpfile root_reports_file "$ROOT_REPORTS_JSON" \
   --slurpfile static_contract_file "$STATIC_CONTRACT_PATH" \
+  --slurpfile design_system_file "$DESIGN_SYSTEM_REPORT_PATH" \
   --slurpfile control_browser_file "$CONTROL_BROWSER_REPORT_PATH" \
+  --slurpfile control_real_click_v7_file "$CONTROL_REAL_CLICK_V7_REPORT_PATH" \
   --slurpfile native_fixture_file "$NATIVE_FIXTURE_REPORT_PATH" \
   --slurpfile native_packaging_file "$NATIVE_PACKAGING_REPORT_PATH" \
   --slurpfile native_distribution_file "$NATIVE_DISTRIBUTION_PREFLIGHT_REPORT_PATH" \
   --slurpfile native_window_file "$NATIVE_WINDOW_REPORT_PATH" \
   --slurpfile native_window_route_file "$NATIVE_WINDOW_ROUTE_REPORT_PATH" \
+  --slurpfile native_window_route_mobile_file "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" \
   --slurpfile native_window_secondary_file "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" \
   --slurpfile native_window_secondary_mobile_file "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH" \
   --slurpfile screenshot_manifest_file "$SCREENSHOT_MANIFEST_PATH" \
@@ -211,12 +459,15 @@ jq -n \
   '
   ($root_reports_file[0]) as $root_reports
   | ($static_contract_file[0]) as $static_contract
+  | ($design_system_file[0]) as $design_system
   | ($control_browser_file[0]) as $control_browser
+  | ($control_real_click_v7_file[0]) as $control_real_click_v7
   | ($native_fixture_file[0]) as $native_fixture
   | ($native_packaging_file[0]) as $native_packaging
   | ($native_distribution_file[0]) as $native_distribution
   | ($native_window_file[0]) as $native_window
   | ($native_window_route_file[0]) as $native_window_route
+  | ($native_window_route_mobile_file[0]) as $native_window_route_mobile
   | ($native_window_secondary_file[0]) as $native_window_secondary
   | ($native_window_secondary_mobile_file[0]) as $native_window_secondary_mobile
   | ($screenshot_manifest_file[0]) as $screenshot_manifest
@@ -270,12 +521,14 @@ jq -n \
   def report_names: ($root_reports | map(.name) | sort);
   def required_report_names: [
     "static_contract",
+    "ui_design_system_gate",
     "control_ui_browser_smoke",
     "native_fixture_visual_smoke",
     "native_packaging_gate",
     "native_distribution_preflight_gate",
     "native_window_smoke",
     "native_window_route_smoke",
+    "native_window_route_mobile_smoke",
     "native_window_secondary_smoke",
     "native_window_secondary_mobile_smoke",
     "screenshot_manifest",
@@ -314,9 +567,28 @@ jq -n \
     "ui_risk_future_plan_gate"
   ] | sort;
   def root_reports_ready:
-    ($root_reports | length) == 43
+    ($root_reports | length) == 45
     and report_names == required_report_names
     and ($root_reports | all(.ready == true and .json_valid == true and .bytes > 0 and (.sha256 | test("^[0-9a-f]{64}$"))));
+  def control_real_click_v7_ready:
+    $control_real_click_v7.status == "ready"
+    and $control_real_click_v7.real_click_ready == true
+    and $control_real_click_v7.summary.control_real_click_activation.viewport_count == 4
+    and $control_real_click_v7.summary.control_real_click_activation.target_count == 26
+    and $control_real_click_v7.summary.control_real_click_activation.failure_count == 0
+    and $control_real_click_v7.summary.control_real_click_activation.mobile_routes_ready == true
+    and $control_real_click_v7.summary.control_real_click_activation.popover_switch_sequence_ready == true
+    and $control_real_click_v7.summary.control_real_click_activation.popover_switch_step_count == 26
+    and ($control_real_click_v7.control_real_click_activation.viewports | all(
+      .ready == true
+      and .mobile_pane_routes.ready == true
+      and .popover_switch_sequence.ready == true
+      and (.targets | all(
+        .light_dismiss.ready == true
+        and .escape_close.ready == true
+        and .escape_close.focus_returned_to_trigger == true
+      ))
+    ));
   def base_gap_alignment_ready:
     $drilldown.native_base_gap_drilldown_ready == true
     and $drilldown.schema_version == 2
@@ -1535,7 +1807,7 @@ jq -n \
     and ($backend_delivery_receipt_roundtrip.source_alignment.present_branch_backend_receipt_valid | type) == "boolean"
     and $backend_delivery_receipt_roundtrip.source_alignment.dispatch_archive_match == true
     and $backend_delivery_receipt_roundtrip.source_alignment.payload_manifest_match == true
-    and $backend_delivery_receipt_roundtrip.source_alignment.root_report_replay_required_count_after_roundtrip == 43
+    and $backend_delivery_receipt_roundtrip.source_alignment.root_report_replay_required_count_after_roundtrip == 45
     and $backend_delivery_receipt_roundtrip.claim_boundary.local_backend_delivery_receipt_roundtrip_ready == true
     and $backend_delivery_receipt_roundtrip.claim_boundary.local_backend_delivery_audit_ready == true
     and $backend_delivery_receipt_roundtrip.claim_boundary.backend_delivery_claim_ready == false
@@ -1591,7 +1863,7 @@ jq -n \
     and $risk_future_plan.latest_minimum_gate.tempered_glass_min_contrast_ratio >= 4.5
     and $risk_future_plan.latest_minimum_gate.tempered_glass_clipping_failure_count == 0
     and $risk_future_plan.latest_minimum_gate.requested_scope == "desktop_mobile_all_modules_buttons_submenus"
-    and $risk_future_plan.latest_minimum_gate.root_report_replay_required_count_after_risk_future_plan == 43
+    and $risk_future_plan.latest_minimum_gate.root_report_replay_required_count_after_risk_future_plan == 45
     and $risk_future_plan.latest_minimum_gate.current_plan_root_report_required_count == 41
     and $risk_future_plan.latest_minimum_gate.selected_row_variant_count == 18
     and $risk_future_plan.latest_minimum_gate.secondary_surface_case_count == 15
@@ -1633,10 +1905,10 @@ jq -n \
     and $risk_future_plan.source_alignment.backend_delivery_receipt_roundtrip_ready == true
     and $risk_future_plan.source_alignment.backend_delivery_receipt_roundtrip_present_branch_ready == true
     and $risk_future_plan.source_alignment.backend_delivery_receipt_roundtrip_present_branch_valid == true
-    and $risk_future_plan.source_alignment.backend_delivery_receipt_roundtrip_root_report_required_count == 43
+    and $risk_future_plan.source_alignment.backend_delivery_receipt_roundtrip_root_report_required_count == 45
     and ($risk_future_plan.source_alignment.real_backend_receipt_present | type) == "boolean"
     and ($risk_future_plan.source_alignment.backend_receipt_valid | type) == "boolean"
-    and $risk_future_plan.source_alignment.root_report_replay_required_count_after_risk_future_plan == 43
+    and $risk_future_plan.source_alignment.root_report_replay_required_count_after_risk_future_plan == 45
     and $risk_future_plan.claim_boundary.local_risk_future_plan_ready == true
     and $risk_future_plan.claim_boundary.local_backend_delivery_receipt_roundtrip_ready == true
     and ($risk_future_plan.claim_boundary.real_backend_receipt_claim_ready | type) == "boolean"
@@ -1649,9 +1921,110 @@ jq -n \
     and $risk_future_plan.side_effects.external_mutation == false
     and ($risk_future_plan.risk_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
     and $risk_future_plan.risk_plan_markdown_bytes > 0;
+  def screenshot_files_ready($items; $expected):
+    ($items | length) == $expected
+    and ($items | all(
+      (.bytes // 0) >= 10000
+      and ((.sha256 // "") | test("^[0-9a-f]{64}$"))
+      and ((.path // "") | length) > 0
+      and .visual_probe.ready == true
+    ))
+    and ($items | map(.sha256 // "") | unique | length) == $expected;
+  def native_window_current_source_ready:
+    $native_window.enabled == true
+    and $native_window.status == "ready"
+    and ($native_window.blocked_allowed // false) != true
+    and $native_window.true_window_capture_performed == true
+    and $native_window.fixture_product_shell_selected_ready == true
+    and $native_window.fixture_matrix_composer_hidden_ready == true
+    and $native_window.fixture_desktop_product_layout_ready == true
+    and $native_window.fixture_mobile_task_first_layout_ready == true
+    and $native_window.native_makepad_fixture_script_error_free == true
+    and $native_window.native_app_log_error_free == true
+    and screenshot_files_ready(($native_window.screenshots // []); 2)
+    and $native_window.side_effects.external_mutation == false;
+  def native_window_route_current_source_ready:
+    $native_window_route.enabled == true
+    and $native_window_route.status == "ready"
+    and ($native_window_route.blocked_allowed // false) != true
+    and $native_window_route.true_window_capture_performed == true
+    and $native_window_route.native_makepad_route_variants_ready == true
+    and $native_window_route.route_top_design_referee_ready == true
+    and $native_window_route.route_content_probe_ready == true
+    and $native_window_route.route_count == 4
+    and $native_window_route.screenshot_count == 4
+    and $native_window_route.route_screenshot_unique_count == 4
+    and $native_window_route.route_screenshot_unique_ready == true
+    and $native_window_route.native_app_log_error_free == true
+    and screenshot_files_ready(($native_window_route.screenshots // []); 4)
+    and (($native_window_route.screenshots // []) | all(.visual_probe.route_content_ready == true))
+    and $native_window_route.side_effects.external_mutation == false;
+  def native_window_route_mobile_current_source_ready:
+    $native_window_route_mobile.enabled == true
+    and $native_window_route_mobile.status == "ready"
+    and ($native_window_route_mobile.blocked_allowed // false) != true
+    and $native_window_route_mobile.true_window_capture_performed == true
+    and $native_window_route_mobile.native_makepad_mobile_route_variants_ready == true
+    and $native_window_route_mobile.route_count == 4
+    and $native_window_route_mobile.screenshot_count == 4
+    and $native_window_route_mobile.route_screenshot_unique_count == 4
+    and $native_window_route_mobile.route_screenshot_unique_ready == true
+    and $native_window_route_mobile.non_home_content_log_signature_count >= 3
+    and $native_window_route_mobile.mobile_host_window_ready == true
+    and $native_window_route_mobile.native_app_log_error_free == true
+    and screenshot_files_ready(($native_window_route_mobile.screenshots // []); 4)
+    and (($native_window_route_mobile.screenshots // []) | all(
+      .viewport_contract.expected_width == 390
+      and .viewport_contract.expected_height == 844
+      and .viewport_contract.host_window_usable_ready == true
+      and .visual_probe.mobile_route_content_ready == true
+    ))
+    and $native_window_route_mobile.side_effects.external_mutation == false;
+  def native_window_secondary_current_source_ready:
+    $native_window_secondary.enabled == true
+    and $native_window_secondary.status == "ready"
+    and ($native_window_secondary.blocked_allowed // false) != true
+    and $native_window_secondary.true_window_capture_performed == true
+    and $native_window_secondary.native_makepad_secondary_surfaces_ready == true
+    and $native_window_secondary.surface_count == 5
+    and $native_window_secondary.screenshot_count == 5
+    and $native_window_secondary.surface_screenshot_unique_count == 5
+    and $native_window_secondary.surface_screenshot_unique_ready == true
+    and $native_window_secondary.native_app_log_error_free == true
+    and screenshot_files_ready(($native_window_secondary.screenshots // []); 5)
+    and $native_window_secondary.side_effects.external_mutation == false;
+  def native_window_secondary_mobile_current_source_ready:
+    $native_window_secondary_mobile.enabled == true
+    and $native_window_secondary_mobile.status == "ready"
+    and ($native_window_secondary_mobile.blocked_allowed // false) != true
+    and $native_window_secondary_mobile.true_window_capture_performed == true
+    and $native_window_secondary_mobile.native_makepad_secondary_mobile_surfaces_ready == true
+    and $native_window_secondary_mobile.mobile_secondary_content_probe_ready == true
+    and $native_window_secondary_mobile.mobile_secondary_content_visible_count >= 5
+    and $native_window_secondary_mobile.mobile_host_window_ready == true
+    and $native_window_secondary_mobile.surface_count == 5
+    and $native_window_secondary_mobile.screenshot_count == 5
+    and $native_window_secondary_mobile.surface_screenshot_unique_count == 5
+    and $native_window_secondary_mobile.surface_screenshot_unique_ready == true
+    and $native_window_secondary_mobile.native_app_log_error_free == true
+    and screenshot_files_ready(($native_window_secondary_mobile.screenshots // []); 5)
+    and (($native_window_secondary_mobile.screenshots // []) | all(
+      .viewport_contract.expected_width == 390
+      and .viewport_contract.expected_height == 844
+      and .viewport_contract.host_window_usable_ready == true
+      and .visual_probe.mobile_secondary_content_ready == true
+    ))
+    and $native_window_secondary_mobile.side_effects.external_mutation == false;
+  def current_source_true_window_matrix_ready:
+    native_window_current_source_ready
+    and native_window_route_current_source_ready
+    and native_window_route_mobile_current_source_ready
+    and native_window_secondary_current_source_ready
+    and native_window_secondary_mobile_current_source_ready;
   def true_window_alignment_ready:
     (($native_window.enabled != true) or $native_window.status == "ready" or (($native_window.blocked_allowed // false) == true))
     and (($native_window_route.enabled != true) or ($native_window_route.status == "ready" and $native_window_route.route_content_probe_ready == true) or (($native_window_route.blocked_allowed // false) == true))
+    and (($native_window_route_mobile.enabled != true) or ($native_window_route_mobile.status == "ready" and $native_window_route_mobile.native_makepad_mobile_route_variants_ready == true and $native_window_route_mobile.route_count == 4 and $native_window_route_mobile.mobile_host_window_ready == true) or (($native_window_route_mobile.blocked_allowed // false) == true))
     and (($native_window_secondary.enabled != true) or ($native_window_secondary.status == "ready" and $native_window_secondary.surface_count == 5) or (($native_window_secondary.blocked_allowed // false) == true))
     and (($native_window_secondary_mobile.enabled != true) or ($native_window_secondary_mobile.status == "ready" and $native_window_secondary_mobile.mobile_secondary_content_probe_ready == true) or (($native_window_secondary_mobile.blocked_allowed // false) == true));
   def claim_boundary_locked:
@@ -1675,7 +2048,33 @@ jq -n \
     root_reports_ready
     and $static_contract.static_contract_ready == true
     and $static_contract.marker_count >= 3642
+    and $design_system.status == "ready"
+    and $design_system.generated_token_sync_ready == true
+    and $design_system.documentation_token_sync_ready == true
+    and $design_system.control.css_layer_count == 6
+    and $design_system.control.runtime_css_bytes < 300000
+    and $design_system.control.important_count <= $design_system.control.important_budget
+    and $design_system.control.important_budget == 2100
+    and $design_system.control.accessibility_media_queries_ready == true
+    and $design_system.control.static_light_theme_ready == true
+    and $design_system.control.renderer_light_theme_ready == true
+    and $design_system.control.document_direction_source_ready == true
+    and $design_system.control.legacy_texture_asset_reference_count == 0
+    and $design_system.control.retired_texture_asset_free == true
+    and $design_system.native.generated_tokens_registered == true
+    and $design_system.native.fixture_generated_tokens_consumed == true
+    and $design_system.native.fixture_unified_radius_scale_ready == true
+    and $design_system.native.fixture_key_surface_shadows_ready == true
+    and $design_system.robrix.selective_module_count == 6
+    and (
+      $strict_current_source_mode != 1
+      or (
+        ($design_system.rust_toolchain | test("^rustc 1\\.95\\.0([[:space:]]|$)"))
+        and current_source_true_window_matrix_ready
+      )
+    )
     and $control_browser.status == "ready"
+    and control_real_click_v7_ready
     and $native_fixture.status == "ready"
     and $native_fixture.native_secondary_product_surfaces_ready == true
     and $screenshot_manifest.screenshot_manifest_ready == true
@@ -1750,6 +2149,74 @@ jq -n \
       gate:$gate,
       status:(if $ready then "ready" else "failed" end),
       root_report_replay_gate_ready:$ready,
+      strict_current_source_mode:($strict_current_source_mode == 1),
+      current_source_true_window_matrix_ready:current_source_true_window_matrix_ready,
+      current_source_true_window_matrix:{
+        expected_screenshot_counts:{
+          main:2,
+          desktop_routes:4,
+          mobile_routes:4,
+          desktop_secondary:5,
+          mobile_secondary:5
+        },
+        main:{
+          enabled:($native_window.enabled == true),
+          status:($native_window.status // "not_run"),
+          blocked_allowed:($native_window.blocked_allowed // false),
+          true_window_capture_performed:($native_window.true_window_capture_performed // false),
+          screenshot_count:(($native_window.screenshots // []) | length),
+          app_log_error_free:($native_window.native_app_log_error_free // false),
+          evidence_ready:native_window_current_source_ready
+        },
+        desktop_routes:{
+          enabled:($native_window_route.enabled == true),
+          status:($native_window_route.status // "not_run"),
+          blocked_allowed:($native_window_route.blocked_allowed // false),
+          true_window_capture_performed:($native_window_route.true_window_capture_performed // false),
+          screenshot_count:(($native_window_route.screenshots // []) | length),
+          unique_screenshot_count:($native_window_route.route_screenshot_unique_count // 0),
+          content_probe_ready:($native_window_route.route_content_probe_ready // false),
+          app_log_error_free:($native_window_route.native_app_log_error_free // false),
+          evidence_ready:native_window_route_current_source_ready
+        },
+        mobile_routes:{
+          enabled:($native_window_route_mobile.enabled == true),
+          status:($native_window_route_mobile.status // "not_run"),
+          blocked_allowed:($native_window_route_mobile.blocked_allowed // false),
+          true_window_capture_performed:($native_window_route_mobile.true_window_capture_performed // false),
+          screenshot_count:(($native_window_route_mobile.screenshots // []) | length),
+          unique_screenshot_count:($native_window_route_mobile.route_screenshot_unique_count // 0),
+          content_log_signature_count:($native_window_route_mobile.non_home_content_log_signature_count // 0),
+          host_window_ready:($native_window_route_mobile.mobile_host_window_ready // false),
+          exact_390x844_ready:($native_window_route_mobile.exact_390x844_ready // false),
+          app_log_error_free:($native_window_route_mobile.native_app_log_error_free // false),
+          evidence_ready:native_window_route_mobile_current_source_ready
+        },
+        desktop_secondary:{
+          enabled:($native_window_secondary.enabled == true),
+          status:($native_window_secondary.status // "not_run"),
+          blocked_allowed:($native_window_secondary.blocked_allowed // false),
+          true_window_capture_performed:($native_window_secondary.true_window_capture_performed // false),
+          screenshot_count:(($native_window_secondary.screenshots // []) | length),
+          unique_screenshot_count:($native_window_secondary.surface_screenshot_unique_count // 0),
+          app_log_error_free:($native_window_secondary.native_app_log_error_free // false),
+          evidence_ready:native_window_secondary_current_source_ready
+        },
+        mobile_secondary:{
+          enabled:($native_window_secondary_mobile.enabled == true),
+          status:($native_window_secondary_mobile.status // "not_run"),
+          blocked_allowed:($native_window_secondary_mobile.blocked_allowed // false),
+          true_window_capture_performed:($native_window_secondary_mobile.true_window_capture_performed // false),
+          screenshot_count:(($native_window_secondary_mobile.screenshots // []) | length),
+          unique_screenshot_count:($native_window_secondary_mobile.surface_screenshot_unique_count // 0),
+          content_probe_ready:($native_window_secondary_mobile.mobile_secondary_content_probe_ready // false),
+          content_visible_count:($native_window_secondary_mobile.mobile_secondary_content_visible_count // 0),
+          host_window_ready:($native_window_secondary_mobile.mobile_host_window_ready // false),
+          exact_390x844_ready:($native_window_secondary_mobile.exact_390x844_ready // false),
+          app_log_error_free:($native_window_secondary_mobile.native_app_log_error_free // false),
+          evidence_ready:native_window_secondary_mobile_current_source_ready
+        }
+      },
       readiness_dir:$readiness_dir,
       report_path:$report_path,
       root_report_count:($root_reports | length),
@@ -1759,8 +2226,32 @@ jq -n \
       source_alignment:{
         static_contract_ready:$static_contract.static_contract_ready,
         static_marker_count:$static_contract.marker_count,
+        ui_design_system_ready:($design_system.status == "ready" and $design_system.generated_token_sync_ready == true),
+        ui_design_system_rust_toolchain:($design_system.rust_toolchain // ""),
+        ui_design_system_css_layer_count:$design_system.control.css_layer_count,
+        ui_design_system_runtime_css_bytes:$design_system.control.runtime_css_bytes,
+        ui_design_system_important_count:$design_system.control.important_count,
+        ui_design_system_important_budget:$design_system.control.important_budget,
+        ui_design_system_static_light_theme_ready:$design_system.control.static_light_theme_ready,
+        ui_design_system_renderer_light_theme_ready:$design_system.control.renderer_light_theme_ready,
+        ui_design_system_document_direction_source_ready:$design_system.control.document_direction_source_ready,
+        ui_design_system_legacy_texture_asset_reference_count:$design_system.control.legacy_texture_asset_reference_count,
+        ui_design_system_retired_texture_asset_free:$design_system.control.retired_texture_asset_free,
+        ui_design_system_native_fixture_tokens_ready:$design_system.native.fixture_generated_tokens_consumed,
+        native_window_route_mobile_status:($native_window_route_mobile.status // "not_run"),
+        native_window_route_mobile_ready:($native_window_route_mobile.native_makepad_mobile_route_variants_ready // false),
+        native_window_route_mobile_screenshot_count:(($native_window_route_mobile.screenshots // []) | length),
+        native_window_route_mobile_exact_390x844_ready:($native_window_route_mobile.exact_390x844_ready // false),
+        native_window_route_mobile_host_window_ready:($native_window_route_mobile.mobile_host_window_ready // false),
         screenshot_manifest_ready:$screenshot_manifest.screenshot_manifest_ready,
         control_ui_ready:($control_browser.status == "ready"),
+        control_ui_real_click_v7_ready:control_real_click_v7_ready,
+        control_ui_real_click_v7_viewport_count:$control_real_click_v7.summary.control_real_click_activation.viewport_count,
+        control_ui_real_click_v7_target_count:$control_real_click_v7.summary.control_real_click_activation.target_count,
+        control_ui_real_click_v7_failure_count:$control_real_click_v7.summary.control_real_click_activation.failure_count,
+        control_ui_real_click_v7_mobile_routes_ready:$control_real_click_v7.summary.control_real_click_activation.mobile_routes_ready,
+        control_ui_real_click_v7_popover_switch_sequence_ready:$control_real_click_v7.summary.control_real_click_activation.popover_switch_sequence_ready,
+        control_ui_real_click_v7_popover_switch_step_count:$control_real_click_v7.summary.control_real_click_activation.popover_switch_step_count,
         native_fixture_ready:($native_fixture.status == "ready"),
         native_packaging_ready:$native_packaging.local_packaging_gate_ready,
         native_distribution_preflight_ready:$native_distribution.distribution_preflight_gate_ready,
@@ -2224,12 +2715,91 @@ fi
 jq -e '
   .status == "ready"
   and .root_report_replay_gate_ready == true
+  and (
+    .strict_current_source_mode != true
+    or (
+      .current_source_true_window_matrix_ready == true
+      and (.source_alignment.ui_design_system_rust_toolchain | test("^rustc 1\\.95\\.0([[:space:]]|$)"))
+      and ([.source_reports[] | select(.kind == "strict_current_source_true_window")] | length) == 5
+      and .current_source_true_window_matrix.main.enabled == true
+      and .current_source_true_window_matrix.main.status == "ready"
+      and .current_source_true_window_matrix.main.blocked_allowed != true
+      and .current_source_true_window_matrix.main.true_window_capture_performed == true
+      and .current_source_true_window_matrix.main.screenshot_count == 2
+      and .current_source_true_window_matrix.main.app_log_error_free == true
+      and .current_source_true_window_matrix.main.evidence_ready == true
+      and .current_source_true_window_matrix.desktop_routes.enabled == true
+      and .current_source_true_window_matrix.desktop_routes.status == "ready"
+      and .current_source_true_window_matrix.desktop_routes.blocked_allowed != true
+      and .current_source_true_window_matrix.desktop_routes.true_window_capture_performed == true
+      and .current_source_true_window_matrix.desktop_routes.screenshot_count == 4
+      and .current_source_true_window_matrix.desktop_routes.unique_screenshot_count == 4
+      and .current_source_true_window_matrix.desktop_routes.content_probe_ready == true
+      and .current_source_true_window_matrix.desktop_routes.app_log_error_free == true
+      and .current_source_true_window_matrix.desktop_routes.evidence_ready == true
+      and .current_source_true_window_matrix.mobile_routes.enabled == true
+      and .current_source_true_window_matrix.mobile_routes.status == "ready"
+      and .current_source_true_window_matrix.mobile_routes.blocked_allowed != true
+      and .current_source_true_window_matrix.mobile_routes.true_window_capture_performed == true
+      and .current_source_true_window_matrix.mobile_routes.screenshot_count == 4
+      and .current_source_true_window_matrix.mobile_routes.unique_screenshot_count == 4
+      and .current_source_true_window_matrix.mobile_routes.content_log_signature_count >= 3
+      and .current_source_true_window_matrix.mobile_routes.host_window_ready == true
+      and .current_source_true_window_matrix.mobile_routes.app_log_error_free == true
+      and .current_source_true_window_matrix.mobile_routes.evidence_ready == true
+      and .current_source_true_window_matrix.desktop_secondary.enabled == true
+      and .current_source_true_window_matrix.desktop_secondary.status == "ready"
+      and .current_source_true_window_matrix.desktop_secondary.blocked_allowed != true
+      and .current_source_true_window_matrix.desktop_secondary.true_window_capture_performed == true
+      and .current_source_true_window_matrix.desktop_secondary.screenshot_count == 5
+      and .current_source_true_window_matrix.desktop_secondary.unique_screenshot_count == 5
+      and .current_source_true_window_matrix.desktop_secondary.app_log_error_free == true
+      and .current_source_true_window_matrix.desktop_secondary.evidence_ready == true
+      and .current_source_true_window_matrix.mobile_secondary.enabled == true
+      and .current_source_true_window_matrix.mobile_secondary.status == "ready"
+      and .current_source_true_window_matrix.mobile_secondary.blocked_allowed != true
+      and .current_source_true_window_matrix.mobile_secondary.true_window_capture_performed == true
+      and .current_source_true_window_matrix.mobile_secondary.screenshot_count == 5
+      and .current_source_true_window_matrix.mobile_secondary.unique_screenshot_count == 5
+      and .current_source_true_window_matrix.mobile_secondary.content_probe_ready == true
+      and .current_source_true_window_matrix.mobile_secondary.content_visible_count >= 5
+      and .current_source_true_window_matrix.mobile_secondary.host_window_ready == true
+      and .current_source_true_window_matrix.mobile_secondary.app_log_error_free == true
+      and .current_source_true_window_matrix.mobile_secondary.evidence_ready == true
+    )
+  )
   and .claim_boundary.local_root_report_replay_ready == true
-  and .root_report_count == 43
-  and .root_json_report_count == 43
+  and .root_report_count == 45
+  and .root_json_report_count == 45
+  and .source_alignment.control_ui_real_click_v7_ready == true
+  and .source_alignment.control_ui_real_click_v7_viewport_count == 4
+  and .source_alignment.control_ui_real_click_v7_target_count == 26
+  and .source_alignment.control_ui_real_click_v7_failure_count == 0
+  and .source_alignment.control_ui_real_click_v7_mobile_routes_ready == true
+  and .source_alignment.control_ui_real_click_v7_popover_switch_sequence_ready == true
+  and .source_alignment.control_ui_real_click_v7_popover_switch_step_count == 26
   and .root_report_sha256_ready == true
   and .source_alignment.static_contract_ready == true
   and .source_alignment.static_marker_count >= 3642
+  and .source_alignment.ui_design_system_ready == true
+  and .source_alignment.ui_design_system_css_layer_count == 6
+  and .source_alignment.ui_design_system_runtime_css_bytes < 300000
+  and .source_alignment.ui_design_system_important_count <= .source_alignment.ui_design_system_important_budget
+  and .source_alignment.ui_design_system_important_budget == 2100
+  and .source_alignment.ui_design_system_static_light_theme_ready == true
+  and .source_alignment.ui_design_system_renderer_light_theme_ready == true
+  and .source_alignment.ui_design_system_document_direction_source_ready == true
+  and .source_alignment.ui_design_system_legacy_texture_asset_reference_count == 0
+  and .source_alignment.ui_design_system_retired_texture_asset_free == true
+  and .source_alignment.ui_design_system_native_fixture_tokens_ready == true
+  and (
+    .source_alignment.native_window_route_mobile_status != "ready"
+    or (
+      .source_alignment.native_window_route_mobile_ready == true
+      and .source_alignment.native_window_route_mobile_screenshot_count == 4
+      and .source_alignment.native_window_route_mobile_host_window_ready == true
+    )
+  )
   and .source_alignment.screenshot_manifest_ready == true
   and .source_alignment.control_ui_ready == true
   and .source_alignment.native_fixture_ready == true
@@ -2458,7 +3028,7 @@ jq -e '
   and .source_alignment.backend_delivery_receipt_roundtrip_simulated_receipt_ready == true
   and .source_alignment.backend_delivery_receipt_roundtrip_present_branch_valid == true
   and .source_alignment.backend_delivery_receipt_roundtrip_present_branch_claim_ready == true
-  and .source_alignment.backend_delivery_receipt_roundtrip_root_report_required_count == 43
+  and .source_alignment.backend_delivery_receipt_roundtrip_root_report_required_count == 45
   and (.source_alignment.backend_delivery_receipt_roundtrip_simulated_receipt_sha256 | test("^[0-9a-f]{64}$"))
   and (.source_alignment.backend_delivery_receipt_roundtrip_present_report_sha256 | test("^[0-9a-f]{64}$"))
   and .source_alignment.risk_future_plan_ready == true
@@ -2508,7 +3078,7 @@ jq -e '
   and .source_alignment.risk_future_plan_harsh_action_matrix_ready == true
   and .source_alignment.risk_future_plan_harsh_action_failure_count == 0
   and (.source_alignment.risk_future_plan_critical_blocker_count >= 0 and .source_alignment.risk_future_plan_critical_blocker_count <= 10)
-  and .source_alignment.risk_future_plan_root_report_required_count == 43
+  and .source_alignment.risk_future_plan_root_report_required_count == 45
   and (.source_alignment.risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
   and (.source_alignment.evidence_archive_sha256 | test("^[0-9a-f]{64}$"))
   and (.source_alignment.release_operator_dry_run_manifest_sha256 | test("^[0-9a-f]{64}$"))
@@ -2646,7 +3216,7 @@ jq -e '
   and .future_plan_replay.backend_delivery_receipt_roundtrip_ready == true
   and .future_plan_replay.backend_delivery_receipt_roundtrip_present_branch_ready == true
   and .future_plan_replay.backend_delivery_receipt_roundtrip_present_branch_valid == true
-  and .future_plan_replay.backend_delivery_receipt_roundtrip_root_report_required_count == 43
+  and .future_plan_replay.backend_delivery_receipt_roundtrip_root_report_required_count == 45
   and .future_plan_replay.risk_future_plan_ready == true
   and .future_plan_replay.risk_future_plan_latest_minimum_gate_id == "r151_harsh_top_design_v46_badge_micro_surface_light_glass_minimum_ui_demo_gate"
   and .future_plan_replay.risk_future_plan_latest_plan_ids == ["r151_harsh_top_design_v46_badge_micro_surface_light_glass_minimum_ui_demo_gate","backend_delivery_receipt_return","backend_real_receipt_return","ui_refresh_after_real_receipt","release_artifact_roundtrip_and_signed_artifact_gate"]
@@ -2705,7 +3275,7 @@ jq -e '
   and .future_plan_replay.risk_future_plan_tempered_glass_clipping_failure_count == 0
   and .future_plan_replay.risk_future_plan_action_matrix_ready == true
   and .future_plan_replay.risk_future_plan_action_matrix_case_count == 15
-  and .future_plan_replay.risk_future_plan_root_report_required_count == 43
+  and .future_plan_replay.risk_future_plan_root_report_required_count == 45
   and (.future_plan_replay.risk_future_plan_critical_blocker_count >= 0 and .future_plan_replay.risk_future_plan_critical_blocker_count <= 10)
   and ((.future_plan_replay.risk_future_plan_next_unblock_sequence | length) >= 1 and (.future_plan_replay.risk_future_plan_next_unblock_sequence | length) <= 6)
   and (.future_plan_replay.backend_priority_ids | length) == 12

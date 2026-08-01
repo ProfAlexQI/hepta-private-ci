@@ -30,17 +30,17 @@ script_mod! {
         padding: Inset{top: 10.0, bottom: 10.0, left: 11.0, right: 11.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE8
-            border_color: #x7FC8DE42
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 7.0
+            border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
         }
 
         value := Label {
             width: Fill,
             height: Fit,
             draw_text +: {
-                color: #x132332FF,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                 text_style: theme.font_bold { font_size: 17.0 }
             }
             text: "0"
@@ -51,7 +51,7 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x506575,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                 text_style: theme.font_regular { font_size: 10.0 }
             }
             text: "metric"
@@ -67,14 +67,14 @@ script_mod! {
             color: #x60E6B626
             border_color: #x60E6B680
             border_size: 1.0
-            border_radius: 7.0
+            border_radius: (mod.widgets.HEPTA_GLASS_CONTROL_RADIUS)
         }
 
         label := Label {
             width: Fit,
             height: Fit,
             draw_text +: {
-                color: #x128A61,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_SUCCESS),
                 text_style: theme.font_bold { font_size: 10.5 }
             }
             text: "Local preview"
@@ -89,10 +89,10 @@ script_mod! {
         padding: Inset{top: 11.0, bottom: 11.0, left: 11.0, right: 11.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE8
-            border_color: #x7FC8DE42
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 7.0
+            border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
         }
 
         label := Label {
@@ -100,8 +100,8 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x0E87B2,
-                text_style: theme.font_bold { font_size: 10.0 }
+                color: (mod.widgets.COLOR_HEPTA_GLASS_FOCUS),
+                text_style: theme.font_bold { font_size: 11.0 }
             }
             text: "Workbench"
         }
@@ -111,8 +111,8 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x132332FF,
-                text_style: theme.font_bold { font_size: 12.5 }
+                color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
+                text_style: theme.font_bold { font_size: 13.0 }
             }
             text: "Operation lane"
         }
@@ -122,8 +122,8 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x26394A,
-                text_style: theme.font_regular { font_size: 10.5 }
+                color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
+                text_style: theme.font_regular { font_size: 11.0 }
             }
             text: ""
         }
@@ -137,10 +137,10 @@ script_mod! {
         padding: Inset{top: 10.0, bottom: 10.0, left: 11.0, right: 11.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE0
-            border_color: #x68C9E0A8
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 7.0
+            border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
         }
 
         label := Label {
@@ -148,7 +148,7 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x0E87B2,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_FOCUS),
                 text_style: theme.font_bold { font_size: 10.0 }
             }
             text: "State"
@@ -159,7 +159,7 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x132332FF,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                 text_style: theme.font_bold { font_size: 12.5 }
             }
             text: "Shell state"
@@ -170,23 +170,26 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x26394A,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                 text_style: theme.font_regular { font_size: 10.5 }
             }
             text: ""
         }
     }
 
-    mod.widgets.HeptaFixtureActionDockItem = RoundedView {
+    mod.widgets.HeptaFixtureActionDockItem = RoundedShadowView {
         width: 210,
         height: Fit,
         padding: Inset{top: 8.0, bottom: 8.0, left: 8.0, right: 8.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE8
-            border_color: #x7FC8DE42
+            color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 7.0
+            border_radius: (mod.widgets.HEPTA_GLASS_CONTROL_RADIUS)
+            shadow_color: (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+            shadow_radius: 6.0
+            shadow_offset: vec2(0.0, 1.0)
         }
 
         label := Label {
@@ -194,14 +197,14 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x132332FF,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                 text_style: theme.font_bold { font_size: 10.5 }
             }
             text: "Action"
         }
     }
 
-    mod.widgets.HeptaFixtureChromeCard = RoundedView {
+    mod.widgets.HeptaFixtureChromeCard = RoundedShadowView {
         width: 210,
         height: Fit,
         flow: Down,
@@ -209,10 +212,13 @@ script_mod! {
         padding: Inset{top: 10.0, bottom: 10.0, left: 11.0, right: 11.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE0
-            border_color: #x7FC8DE42
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 7.0
+            border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
+            shadow_color: (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+            shadow_radius: 8.0
+            shadow_offset: vec2(0.0, 2.0)
         }
 
         label := Label {
@@ -220,8 +226,8 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x0E87B2,
-                text_style: theme.font_bold { font_size: 10.0 }
+                color: (mod.widgets.COLOR_HEPTA_GLASS_FOCUS),
+                text_style: theme.font_bold { font_size: 11.0 }
             }
             text: "Chrome"
         }
@@ -231,8 +237,8 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x132332FF,
-                text_style: theme.font_bold { font_size: 12.5 }
+                color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
+                text_style: theme.font_bold { font_size: 13.0 }
             }
             text: "Route"
         }
@@ -242,8 +248,8 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x26394A,
-                text_style: theme.font_regular { font_size: 10.5 }
+                color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
+                text_style: theme.font_regular { font_size: 11.0 }
             }
             text: ""
         }
@@ -258,10 +264,10 @@ script_mod! {
         padding: Inset{top: 7.0, bottom: 7.0, left: 10.0, right: 10.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFD8
-            border_color: #x7FC8DE42
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 7.0
+            border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
         }
 
         title := Label {
@@ -269,7 +275,7 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x132332FF,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                 text_style: theme.font_bold { font_size: 11.5 }
             }
             text: "Event group"
@@ -279,7 +285,7 @@ script_mod! {
             width: Fit,
             height: Fit,
             draw_text +: {
-                color: #x0E87B2,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_FOCUS),
                 text_style: theme.font_bold { font_size: 10.0 }
             }
             text: "0 cards"
@@ -294,10 +300,10 @@ script_mod! {
         padding: Inset{top: 11.0, bottom: 11.0, left: 11.0, right: 11.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFEA
-            border_color: #x7FC8DE42
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 7.0
+            border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
         }
 
         header := View {
@@ -311,7 +317,7 @@ script_mod! {
                 width: Fill,
                 height: Fit,
                 draw_text +: {
-                    color: #x132332FF,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                     text_style: theme.font_bold { font_size: 11.0 }
                 }
                 text: "Hepta event"
@@ -320,7 +326,7 @@ script_mod! {
                 width: Fit,
                 height: Fit,
                 draw_text +: {
-                    color: #x128A61,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_SUCCESS),
                     text_style: theme.font_bold { font_size: 10.0 }
                 }
                 text: "running"
@@ -332,7 +338,7 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x132332FF,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                 text_style: theme.font_bold { font_size: 13.0 }
             }
             text: "Runtime event"
@@ -343,7 +349,7 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x26394A,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                 text_style: theme.font_regular { font_size: 11.5 }
             }
             text: ""
@@ -354,7 +360,7 @@ script_mod! {
             height: Fit,
             flow: Right,
             draw_text +: {
-                color: #x506575,
+                color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                 text_style: theme.font_regular { font_size: 10.0 }
             }
             text: ""
@@ -375,10 +381,10 @@ script_mod! {
         padding: Inset{top: 8.0, bottom: 8.0, left: 10.0, right: 10.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE8
-            border_color: #xF5FCFFE8
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
             border_size: 0.0
-            border_radius: 6.0
+            border_radius: (mod.widgets.HEPTA_GLASS_CONTROL_RADIUS)
         }
 
         avatar := mod.widgets.HeptaTelegramAvatar {}
@@ -439,10 +445,10 @@ script_mod! {
         padding: Inset{top: 7.0, bottom: 7.0, left: 11.0, right: 11.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE0
-            border_color: #x7FC8DE42
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 10.0
+            border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
         }
 
         sender := Label {
@@ -509,10 +515,10 @@ script_mod! {
         padding: Inset{top: 8.0, bottom: 8.0, left: 10.0, right: 10.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE0
-            border_color: #x68C9E0A8
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 10.0
+            border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
         }
 
         sender := Label {
@@ -547,7 +553,7 @@ script_mod! {
             color: #xA8E9F9C8
             border_color: #x52C5E2C8
             border_size: 1.0
-            border_radius: 8.0
+            border_radius: (mod.widgets.HEPTA_GLASS_CONTROL_RADIUS)
         }
 
         label := Label {
@@ -573,11 +579,11 @@ script_mod! {
             color: #x00000000
             color_hover: #xDDF6FCE8
             color_down: #x9DE5F6C8
-            border_color: #x68C9E0A8
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
             border_radius: 17.0
         }
-        draw_icon.color: #x6F8190
+        draw_icon.color: (mod.widgets.COLOR_HEPTA_GLASS_DIM)
         draw_text +: {
             color: #x00000000
             color_hover: #x00000000
@@ -596,8 +602,8 @@ script_mod! {
         padding: Inset{top: 8.0, bottom: 8.0, left: 12.0, right: 12.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE8
-            border_color: #x68C9E0A8
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
             border_radius: 0.0
         }
@@ -664,10 +670,10 @@ script_mod! {
         padding: Inset{top: 10.0, bottom: 10.0, left: 10.0, right: 10.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF5FCFFE8
-            border_color: #x7FC8DE42
+            color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
             border_size: 1.0
-            border_radius: 8.0
+            border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
         }
 
         title := Label {
@@ -703,8 +709,8 @@ script_mod! {
         padding: Inset{top: 0.0, bottom: 0.0, left: 0.0, right: 0.0},
         show_bg: true,
         draw_bg +: {
-            color: #xF3FCFFE8
-            border_color: #xF3FCFFE8
+            color: (mod.widgets.COLOR_HEPTA_GLASS_ENVIRONMENT)
+            border_color: (mod.widgets.COLOR_HEPTA_GLASS_ENVIRONMENT)
             border_size: 0.0
             border_radius: 0.0
         }
@@ -723,8 +729,8 @@ script_mod! {
                 padding: Inset{top: 12.0, bottom: 12.0, left: 10.0, right: 10.0},
                 show_bg: true,
                 draw_bg +: {
-                    color: #xF5FCFFE8
-                    border_color: #x7FC8DE42
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+                    border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                     border_size: 1.0
                     border_radius: 0.0
                 }
@@ -752,8 +758,8 @@ script_mod! {
                         padding: Inset{top: 8.0, bottom: 8.0, left: 12.0, right: 12.0},
                         show_bg: true,
                         draw_bg +: {
-                            color: #xEAF7FCD8
-                            border_color: #xEAF7FCD8
+                            color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                             border_size: 1.0
                             border_radius: 16.0
                         }
@@ -775,8 +781,8 @@ script_mod! {
                         padding: Inset{top: 8.0, bottom: 8.0, left: 12.0, right: 12.0},
                         show_bg: true,
                         draw_bg +: {
-                            color: #xEAF7FCD8
-                            border_color: #xBDEFFF88
+                            color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                            border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                             border_size: 1.0
                             border_radius: 16.0
                         }
@@ -806,8 +812,8 @@ script_mod! {
                 spacing: 0.0,
                 show_bg: true,
                 draw_bg +: {
-                    color: #xF3FCFFE8
-                    border_color: #x7FC8DE42
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_ENVIRONMENT)
+                    border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                     border_size: 1.0
                     border_radius: 0.0
                 }
@@ -940,8 +946,8 @@ script_mod! {
                 padding: Inset{top: 12.0, bottom: 12.0, left: 10.0, right: 10.0},
                 show_bg: true,
                 draw_bg +: {
-                    color: #xF5FCFFE8
-                    border_color: #x7FC8DE42
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+                    border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                     border_size: 1.0
                     border_radius: 0.0
                 }
@@ -969,8 +975,8 @@ script_mod! {
             spacing: 0.0,
             show_bg: true,
             draw_bg +: {
-                color: #xF3FCFFE8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ENVIRONMENT)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
                 border_radius: 0.0
             }
@@ -1123,7 +1129,7 @@ script_mod! {
             mode_badge := mod.widgets.HeptaFixtureModeBadge {}
         }
 
-        mobile_top_app_bar := RoundedView {
+        mobile_top_app_bar := RoundedShadowView {
             width: Fill,
             height: Fit,
             flow: Right,
@@ -1132,10 +1138,13 @@ script_mod! {
             padding: Inset{top: 12.0, bottom: 12.0, left: 12.0, right: 12.0},
             show_bg: true,
             draw_bg +: {
-                color: #xF5FCFFE8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 8.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
+                shadow_color: (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+                shadow_radius: 8.0
+                shadow_offset: vec2(0.0, 2.0)
             }
 
             mobile_title := Label {
@@ -1143,7 +1152,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x132332FF,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                     text_style: theme.font_bold { font_size: 12.0 }
                 }
                 text: "Hepta Native"
@@ -1170,7 +1179,7 @@ script_mod! {
             }
         }
 
-        command_bar := RoundedView {
+        command_bar := RoundedShadowView {
             width: Fill,
             height: Fit,
             flow: Down,
@@ -1178,10 +1187,13 @@ script_mod! {
             padding: Inset{top: 12.0, bottom: 12.0, left: 14.0, right: 14.0},
             show_bg: true,
             draw_bg +: {
-                color: #xF5FCFFE8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_INPUT)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
+                shadow_color: (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+                shadow_radius: 10.0
+                shadow_offset: vec2(0.0, 2.0)
             }
 
             command_title := Label {
@@ -1189,8 +1201,8 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x132332FF,
-                    text_style: theme.font_bold { font_size: 12.5 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
+                    text_style: theme.font_bold { font_size: 13.0 }
                 }
                 text: "Ask Hepta"
             }
@@ -1200,14 +1212,14 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x26394A,
-                    text_style: theme.font_regular { font_size: 10.5 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
+                    text_style: theme.font_regular { font_size: 11.0 }
                 }
                 text: ""
             }
         }
 
-        command_palette_header := RoundedView {
+        command_palette_header := RoundedShadowView {
             width: Fill,
             height: Fit,
             flow: Down,
@@ -1215,18 +1227,21 @@ script_mod! {
             padding: Inset{top: 9.0, bottom: 9.0, left: 10.0, right: 10.0},
             show_bg: true,
             draw_bg +: {
-                color: #xEAF7FCD8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
+                shadow_color: (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+                shadow_radius: 8.0
+                shadow_offset: vec2(0.0, 2.0)
             }
 
             palette_title := Label {
                 width: Fill,
                 height: Fit,
                 draw_text +: {
-                    color: #x132332FF,
-                    text_style: theme.font_bold { font_size: 12.0 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
+                    text_style: theme.font_bold { font_size: 13.0 }
                 }
                 text: "Ask / Plan / Evidence / Approve"
             }
@@ -1236,8 +1251,8 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x506575,
-                    text_style: theme.font_regular { font_size: 10.0 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
+                    text_style: theme.font_regular { font_size: 11.0 }
                 }
                 text: "Start with one request, then move through plan, evidence, and approval."
             }
@@ -1263,18 +1278,18 @@ script_mod! {
             padding: Inset{top: 9.0, bottom: 9.0, left: 10.0, right: 10.0},
             show_bg: true,
             draw_bg +: {
-                color: #xEAF7FCD8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
             }
 
             chrome_title := Label {
                 width: Fill,
                 height: Fit,
                 draw_text +: {
-                    color: #x132332FF,
-                    text_style: theme.font_bold { font_size: 12.0 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
+                    text_style: theme.font_bold { font_size: 13.0 }
                 }
                 text: "Work modes"
             }
@@ -1284,8 +1299,8 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x506575,
-                    text_style: theme.font_regular { font_size: 10.0 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
+                    text_style: theme.font_regular { font_size: 11.0 }
                 }
                 text: "Ask, review, approve, and inspect are always one tap away."
             }
@@ -1311,18 +1326,18 @@ script_mod! {
             padding: Inset{top: 9.0, bottom: 9.0, left: 10.0, right: 10.0},
             show_bg: true,
             draw_bg +: {
-                color: #xEAF7FCD8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
             }
 
             route_shell_title := Label {
                 width: Fill,
                 height: Fit,
                 draw_text +: {
-                    color: #x132332FF,
-                    text_style: theme.font_bold { font_size: 12.0 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
+                    text_style: theme.font_bold { font_size: 13.0 }
                 }
                 text: "Ask / Plan / Evidence / Approve"
             }
@@ -1332,8 +1347,8 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x506575,
-                    text_style: theme.font_regular { font_size: 10.0 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
+                    text_style: theme.font_regular { font_size: 11.0 }
                 }
                 text: "One flow keeps the request, plan, evidence, and approval in view."
             }
@@ -1357,7 +1372,7 @@ script_mod! {
             flow: Down,
             spacing: 8.0
 
-            route_main_header := RoundedView {
+            route_main_header := RoundedShadowView {
                 width: Fill,
                 height: Fit,
                 flow: Down,
@@ -1365,10 +1380,13 @@ script_mod! {
                 padding: Inset{top: 13.0, bottom: 13.0, left: 14.0, right: 14.0},
                 show_bg: true,
                 draw_bg +: {
-                    color: #xF5FCFFE8
-                    border_color: #x7FC8DE42
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+                    border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                     border_size: 1.0
-                    border_radius: 7.0
+                    border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
+                    shadow_color: (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+                    shadow_radius: 10.0
+                    shadow_offset: vec2(0.0, 2.0)
                 }
 
                 route_main_title := Label {
@@ -1376,7 +1394,7 @@ script_mod! {
                     height: Fit,
                     flow: Right,
                     draw_text +: {
-                        color: #x132332FF,
+                        color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                         text_style: theme.font_bold { font_size: 12.0 }
                     }
                 text: "Current work"
@@ -1387,7 +1405,7 @@ script_mod! {
                     height: Fit,
                     flow: Right,
                     draw_text +: {
-                        color: #x506575,
+                        color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                         text_style: theme.font_regular { font_size: 10.0 }
                     }
                     text: "Review the current task, evidence, and approval state in one place."
@@ -1400,10 +1418,10 @@ script_mod! {
                 flow: Right,
                 spacing: 7.0
 
-                preview_action := mod.widgets.HeptaFixtureActionDockItem {}
-                inspect_action := mod.widgets.HeptaFixtureActionDockItem {}
-                copy_action := mod.widgets.HeptaFixtureActionDockItem {}
-                execute_action := mod.widgets.HeptaFixtureActionDockItem {}
+                preview_action := mod.widgets.HeptaFixtureActionDockItem { width: Fill }
+                inspect_action := mod.widgets.HeptaFixtureActionDockItem { width: Fill }
+                copy_action := mod.widgets.HeptaFixtureActionDockItem { width: Fill }
+                execute_action := mod.widgets.HeptaFixtureActionDockItem { width: Fill }
             }
 
             route_main_rows := View {
@@ -1412,13 +1430,14 @@ script_mod! {
                 flow: Right,
                 spacing: 7.0
 
-                row_one := mod.widgets.HeptaFixtureChromeCard {}
-                row_two := mod.widgets.HeptaFixtureChromeCard {}
-                row_three := mod.widgets.HeptaFixtureChromeCard {}
+                row_one := mod.widgets.HeptaFixtureChromeCard { width: Fill }
+                row_two := mod.widgets.HeptaFixtureChromeCard { width: Fill }
+                row_three := mod.widgets.HeptaFixtureChromeCard { width: Fill }
+                row_four := mod.widgets.HeptaFixtureChromeCard { width: Fill }
             }
         }
 
-        selected_row_detail := RoundedView {
+        selected_row_detail := RoundedShadowView {
             width: Fill,
             height: Fit,
             flow: Down,
@@ -1426,10 +1445,13 @@ script_mod! {
             padding: Inset{top: 14.0, bottom: 14.0, left: 14.0, right: 14.0},
             show_bg: true,
             draw_bg +: {
-                color: #xF5FCFFE8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
+                shadow_color: (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+                shadow_radius: 10.0
+                shadow_offset: vec2(0.0, 2.0)
             }
 
             selected_row_route := Label {
@@ -1437,8 +1459,8 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x0E87B2,
-                    text_style: theme.font_bold { font_size: 10.0 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_FOCUS),
+                    text_style: theme.font_bold { font_size: 11.0 }
                 }
                 text: "Home · selected item"
             }
@@ -1448,8 +1470,8 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x132332FF,
-                    text_style: theme.font_bold { font_size: 12.5 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
+                    text_style: theme.font_bold { font_size: 13.0 }
                 }
                 text: "Selected work detail"
             }
@@ -1459,8 +1481,8 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x26394A,
-                    text_style: theme.font_regular { font_size: 10.5 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
+                    text_style: theme.font_regular { font_size: 11.0 }
                 }
                 text: ""
             }
@@ -1470,8 +1492,8 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x26394A,
-                    text_style: theme.font_regular { font_size: 10.0 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
+                    text_style: theme.font_regular { font_size: 11.0 }
                 }
                 text: ""
             }
@@ -1481,14 +1503,14 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x506575,
-                    text_style: theme.font_regular { font_size: 10.0 }
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_DIM),
+                    text_style: theme.font_regular { font_size: 11.0 }
                 }
                 text: ""
             }
         }
 
-        active_route_surface := RoundedView {
+        active_route_surface := RoundedShadowView {
             width: Fill,
             height: Fit,
             flow: Down,
@@ -1496,10 +1518,13 @@ script_mod! {
             padding: Inset{top: 11.0, bottom: 11.0, left: 12.0, right: 12.0},
             show_bg: true,
             draw_bg +: {
-                color: #xEAF7FCD8
-                border_color: #x7FC8DE88
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_FLOATING_RADIUS)
+                shadow_color: (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+                shadow_radius: 12.0
+                shadow_offset: vec2(0.0, 3.0)
             }
 
             surface_route := Label {
@@ -1507,7 +1532,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x0E87B2,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_FOCUS),
                     text_style: theme.font_bold { font_size: 10.0 }
                 }
                 text: "Home"
@@ -1518,7 +1543,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x132332FF,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                     text_style: theme.font_bold { font_size: 13.0 }
                 }
                 text: "Active route surface"
@@ -1529,7 +1554,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x26394A,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                     text_style: theme.font_regular { font_size: 10.5 }
                 }
                 text: ""
@@ -1540,7 +1565,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x26394A,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                     text_style: theme.font_regular { font_size: 10.0 }
                 }
                 text: ""
@@ -1551,7 +1576,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x26394A,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                     text_style: theme.font_regular { font_size: 10.0 }
                 }
                 text: ""
@@ -1562,7 +1587,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x26394A,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                     text_style: theme.font_regular { font_size: 10.0 }
                 }
                 text: ""
@@ -1573,7 +1598,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x26394A,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                     text_style: theme.font_regular { font_size: 10.0 }
                 }
                 text: ""
@@ -1588,17 +1613,17 @@ script_mod! {
             padding: Inset{top: 9.0, bottom: 9.0, left: 10.0, right: 10.0},
             show_bg: true,
             draw_bg +: {
-                color: #xEAF7FCD8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
             }
 
             route_state_title := Label {
                 width: Fill,
                 height: Fit,
                 draw_text +: {
-                    color: #x132332FF,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                     text_style: theme.font_bold { font_size: 12.0 }
                 }
                 text: "Next step preview"
@@ -1609,7 +1634,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x506575,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                     text_style: theme.font_regular { font_size: 10.0 }
                 }
                 text: "Every flow shows what is selected and the next available step."
@@ -1651,7 +1676,7 @@ script_mod! {
                 color: #xFFF7D8E8
                 border_color: #xD4AE4366
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
             }
 
             safety_title := Label {
@@ -1684,17 +1709,17 @@ script_mod! {
             padding: Inset{top: 9.0, bottom: 9.0, left: 10.0, right: 10.0},
             show_bg: true,
             draw_bg +: {
-                color: #xEAF7FCD8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
             }
 
             shell_state_title := Label {
                 width: Fill,
                 height: Fit,
                 draw_text +: {
-                    color: #x132332FF,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                     text_style: theme.font_bold { font_size: 12.0 }
                 }
                 text: "Screen states"
@@ -1705,7 +1730,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x506575,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                     text_style: theme.font_regular { font_size: 10.0 }
                 }
                 text: "Loading, empty, and error surfaces stay readable while the workspace is local."
@@ -1731,17 +1756,17 @@ script_mod! {
             padding: Inset{top: 9.0, bottom: 9.0, left: 10.0, right: 10.0},
             show_bg: true,
             draw_bg +: {
-                color: #xEAF7FCD8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
             }
 
             workbench_title := Label {
                 width: Fill,
                 height: Fit,
                 draw_text +: {
-                    color: #x132332FF,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                     text_style: theme.font_bold { font_size: 12.0 }
                 }
                 text: "Review queue"
@@ -1752,7 +1777,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x506575,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                     text_style: theme.font_regular { font_size: 10.0 }
                 }
                 text: "Drafts, approval requests, and queued steps stay visible before anything can run."
@@ -1778,17 +1803,17 @@ script_mod! {
             padding: Inset{top: 9.0, bottom: 9.0, left: 10.0, right: 10.0},
             show_bg: true,
             draw_bg +: {
-                color: #xEAF7FCD8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 7.0
+                border_radius: (mod.widgets.HEPTA_GLASS_PANEL_RADIUS)
             }
 
             event_stack_title := Label {
                 width: Fill,
                 height: Fit,
                 draw_text +: {
-                    color: #x132332FF,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_TEXT),
                     text_style: theme.font_bold { font_size: 12.0 }
                 }
                 text: "Evidence timeline"
@@ -1799,7 +1824,7 @@ script_mod! {
                 height: Fit,
                 flow: Right,
                 draw_text +: {
-                    color: #x506575,
+                    color: (mod.widgets.COLOR_HEPTA_GLASS_MUTED),
                     text_style: theme.font_regular { font_size: 10.0 }
                 }
                 text: "Runtime, task, tool, approval, agent, memory, and bridge cards stay grouped for review."
@@ -1842,7 +1867,7 @@ script_mod! {
             event7 := mod.widgets.HeptaFixtureMiniCard {}
         }
 
-        mobile_action_dock := RoundedView {
+        mobile_action_dock := RoundedShadowView {
             width: Fill,
             height: Fit,
             flow: Right,
@@ -1850,10 +1875,13 @@ script_mod! {
             padding: Inset{top: 8.0, bottom: 8.0, left: 8.0, right: 8.0},
             show_bg: true,
             draw_bg +: {
-                color: #xF5FCFFE8
-                border_color: #x7FC8DE42
+                color: (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
+                border_color: (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
                 border_size: 1.0
-                border_radius: 8.0
+                border_radius: (mod.widgets.HEPTA_GLASS_FLOATING_RADIUS)
+                shadow_color: (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+                shadow_radius: 12.0
+                shadow_offset: vec2(0.0, 3.0)
             }
 
             dock_plan := mod.widgets.HeptaFixtureActionDockItem {}
@@ -1880,6 +1908,8 @@ pub struct HeptaFixtureCockpit {
     top_design_route_workspace_logged: bool,
     #[rust(false)]
     mobile_secondary_content_visible_logged: bool,
+    #[rust(false)]
+    mobile_route_content_visible_logged: bool,
     #[rust(HeptaFixtureRouteKey::Home)]
     selected_route: HeptaFixtureRouteKey,
     #[rust(HeptaFixtureSecondarySurfaceKey::None)]
@@ -2037,6 +2067,9 @@ impl HeptaFixtureCockpit {
             selected_secondary_surface_visible && has_secondary_surface;
         let mobile_secondary_surface_visible =
             mobile_task_first && selected_secondary_surface_visible;
+        let mobile_route_workspace_visible = mobile_task_first
+            && !has_secondary_surface
+            && self.selected_route != HeptaFixtureRouteKey::Home;
         let desktop_home_workspace_visible = layout.is_secondary_surface_visible()
             && !has_secondary_surface
             && self.selected_route == HeptaFixtureRouteKey::Home;
@@ -2045,7 +2078,8 @@ impl HeptaFixtureCockpit {
             && self.selected_route != HeptaFixtureRouteKey::Home;
         let route_workspace_visible = selected_secondary_surface_visible
             || desktop_home_workspace_visible
-            || desktop_route_workspace_visible;
+            || desktop_route_workspace_visible
+            || mobile_route_workspace_visible;
         let generic_route_scaffold_visible =
             selected_secondary_surface_visible || desktop_home_workspace_visible;
         let telegram_product_visible = !route_workspace_visible;
@@ -2055,8 +2089,7 @@ impl HeptaFixtureCockpit {
         let route_shell_visible = route_workspace_visible;
         let detail_metric_stack_visible = generic_route_scaffold_visible;
         let route_detail_visible = route_workspace_visible;
-        let horizontal_detail_rows_visible =
-            route_workspace_visible && !mobile_secondary_surface_visible;
+        let horizontal_detail_rows_visible = route_workspace_visible && !mobile_task_first;
 
         if !self.top_design_route_workspace_logged {
             log!(
@@ -2084,6 +2117,17 @@ impl HeptaFixtureCockpit {
             );
             self.mobile_secondary_content_visible_logged = true;
         }
+        if mobile_route_workspace_visible && !self.mobile_route_content_visible_logged {
+            log!(
+                "Hepta Native fixture mobile route content visible: route={} route_shell_visible={} route_detail_visible={} primary_panel_visible={} horizontal_detail_rows_visible={} desktop_card_row_hidden=true action_dock_hidden=true",
+                self.selected_route.label(),
+                route_shell_visible,
+                route_detail_visible,
+                route_detail_visible,
+                horizontal_detail_rows_visible,
+            );
+            self.mobile_route_content_visible_logged = true;
+        }
 
         for (widget, visible) in [
             (
@@ -2105,7 +2149,8 @@ impl HeptaFixtureCockpit {
             ),
             (
                 self.view.widget(cx, ids!(mobile_top_app_bar)),
-                selected_secondary_surface_visible && mobile_task_first,
+                mobile_task_first
+                    && (selected_secondary_surface_visible || mobile_route_workspace_visible),
             ),
             (
                 self.view.widget(cx, ids!(command_bar)),
@@ -3004,8 +3049,21 @@ impl HeptaFixtureCockpit {
                 .widget(cx, ids!(route_main_content.route_main_rows.row_two)),
             self.view
                 .widget(cx, ids!(route_main_content.route_main_rows.row_three)),
+            self.view
+                .widget(cx, ids!(route_main_content.route_main_rows.row_four)),
         ];
-        for (index, (widget, row)) in row_widgets.into_iter().zip(content.rows.iter()).enumerate() {
+        let boundary_row = HeptaFixtureRouteMainRow {
+            route: content.route,
+            label: "Boundary",
+            title: "Approval boundary",
+            detail: "review evidence before any confirmed handoff",
+            live_side_effects: false,
+        };
+        for (index, (widget, row)) in row_widgets
+            .into_iter()
+            .zip(content.rows.iter().chain(std::iter::once(&boundary_row)))
+            .enumerate()
+        {
             self.set_route_main_row(cx, widget, row, index == selected_row_index);
         }
     }

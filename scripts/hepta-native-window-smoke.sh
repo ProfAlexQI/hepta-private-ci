@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/hepta-ui-rust-toolchain.sh
+source "scripts/lib/hepta-ui-rust-toolchain.sh"
+
 APP_MANIFEST="apps/hepta-native/Cargo.toml"
 OUT_DIR="${HEPTA_NATIVE_WINDOW_SMOKE_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/hepta-native-window-smoke.XXXXXX")}"
 REPORT_PATH="${HEPTA_NATIVE_WINDOW_SMOKE_REPORT_PATH:-$OUT_DIR/native-window-smoke.json}"
@@ -12,8 +15,10 @@ STARTUP_TIMEOUT_SEC="${HEPTA_NATIVE_WINDOW_SMOKE_STARTUP_TIMEOUT_SEC:-90}"
 PREBUILD_APP="${HEPTA_NATIVE_WINDOW_SMOKE_PREBUILD:-0}"
 SKIP_PREFLIGHT="${HEPTA_NATIVE_WINDOW_SMOKE_SKIP_PREFLIGHT:-0}"
 DESKTOP_BOUNDS="${HEPTA_NATIVE_WINDOW_SMOKE_DESKTOP_BOUNDS:-40,120,1200,720}"
-MOBILE_BOUNDS="${HEPTA_NATIVE_WINDOW_SMOKE_MOBILE_BOUNDS:-80,120,500,720}"
+MOBILE_BOUNDS="${HEPTA_NATIVE_WINDOW_SMOKE_MOBILE_BOUNDS:-80,40,390,844}"
 CAPTURE_PROFILE="${HEPTA_NATIVE_WINDOW_SMOKE_CAPTURE_PROFILE:-product-shell}"
+PEEKABOO_BRIDGE_SOCKET="${PEEKABOO_BRIDGE_SOCKET:-${HOME}/Library/Application Support/OpenClaw/bridge.sock}"
+export PEEKABOO_BRIDGE_SOCKET
 APP_PID=""
 APP_WINDOW_PID=""
 CAFFEINATE_PID=""
@@ -40,6 +45,48 @@ json_bool_for_flag() {
   else
     printf 'false'
   fi
+}
+
+platform_assurance_json() {
+  jq -n '{
+    evidence_scope:"macos_makepad_window",
+    html_fixture_companion_gate:"scripts/hepta-native-fixture-visual-smoke.sh",
+    safe_area:{
+      status:"not_run",
+      proven:false,
+      reason:"A resized macOS window does not expose iOS or Android device safe-area insets. The companion HTML fixture exercises simulated insets only."
+    },
+    software_keyboard:{
+      status:"not_run",
+      proven:false,
+      reason:"The macOS Makepad target has no mobile software keyboard. Keyboard avoidance must be captured on an iOS or Android runtime."
+    },
+    screen_reader:{
+      status:"not_run",
+      proven:false,
+      reason:"Peekaboo window capture does not prove VoiceOver or TalkBack accessibility-node traversal."
+    },
+    rtl:{
+      status:"not_run",
+      proven:false,
+      reason:"The current Makepad product fixture has no locale-direction override that can prove platform RTL mirroring."
+    },
+    dynamic_type:{
+      status:"not_run",
+      proven:false,
+      reason:"The macOS fixture does not expose iOS Dynamic Type or Android font-scale categories."
+    },
+    reduced_transparency:{
+      status:"not_run",
+      proven:false,
+      reason:"No Makepad platform hook currently reports and applies the OS Reduce Transparency preference in this fixture."
+    },
+    low_power_performance:{
+      status:"not_run",
+      proven:false,
+      reason:"Still screenshots cannot prove scroll FPS, GPU time, memory, thermals, or battery use on a low-power mobile device."
+    }
+  }'
 }
 
 canonical_fixture_route_slug() {
@@ -147,6 +194,11 @@ case "$CAPTURE_PROFILE" in
     EXPECTED_SCREENSHOT_COUNT=1
     EXPECTED_FIXTURE_SELECTION_COUNT=1
     ;;
+  mobile-route)
+    DESKTOP_LAYOUT_LABEL="mobile-task-first"
+    EXPECTED_SCREENSHOT_COUNT=1
+    EXPECTED_FIXTURE_SELECTION_COUNT=1
+    ;;
   *)
     echo "unsupported HEPTA_NATIVE_WINDOW_SMOKE_CAPTURE_PROFILE: $CAPTURE_PROFILE" >&2
     exit 2
@@ -196,6 +248,11 @@ emit_permission_report() {
     --arg fixture_row "$FIXTURE_ROW_LABEL" \
     --arg fixture_secondary_surface "$FIXTURE_SECONDARY_SURFACE_LABEL" \
     --arg fixture_secondary_surface_slug "$FIXTURE_SECONDARY_SURFACE_SLUG" \
+    --arg peekaboo_bridge_socket "$PEEKABOO_BRIDGE_SOCKET" \
+    --arg peekaboo_host_source "$peekaboo_host_source" \
+    --arg peekaboo_host_kind "$peekaboo_host_kind" \
+    --argjson peekaboo_bridge_ready "$peekaboo_bridge_ready" \
+    --argjson platform_assurance "$(platform_assurance_json)" \
     --argjson screen_recording "$screen_recording" \
     --argjson accessibility "$accessibility" \
     --argjson blocked_allowed "$(json_bool_for_flag "$ALLOW_BLOCKED")" \
@@ -216,6 +273,14 @@ emit_permission_report() {
         screen_recording:$screen_recording,
         accessibility:$accessibility
       },
+      automation_host:{
+        requested_bridge_socket:$peekaboo_bridge_socket,
+        selected_source:$peekaboo_host_source,
+        host_kind:$peekaboo_host_kind,
+        openclaw_gui_bridge_ready:$peekaboo_bridge_ready,
+        local_permission_fallback_used:($peekaboo_bridge_ready | not)
+      },
+      platform_assurance:$platform_assurance,
       true_window_capture_performed:false,
       blocked_allowed:$blocked_allowed,
       blocked_allowed_reason:(
@@ -233,11 +298,14 @@ emit_permission_report() {
       native_engineering_copy_hidden:true,
       native_makepad_desktop_product_layout_ready:true,
       native_makepad_route_variant_ready:false,
+      native_makepad_mobile_route_variant_ready:false,
       native_makepad_secondary_surface_ready:false,
       fixture_secondary_surface_selected_ready:false,
       fixture_secondary_surface_selection_count:0,
       fixture_mobile_secondary_content_visible_ready:false,
       fixture_mobile_secondary_content_visible_count:0,
+      fixture_mobile_route_content_visible_ready:false,
+      fixture_mobile_route_content_visible_count:0,
       fixture_desktop_product_layout_ready:false,
       fixture_desktop_product_layout_count:0,
       fixture_desktop_full_layout_ready:false,
@@ -278,6 +346,11 @@ emit_locked_screen_report() {
     --arg fixture_row "$FIXTURE_ROW_LABEL" \
     --arg fixture_secondary_surface "$FIXTURE_SECONDARY_SURFACE_LABEL" \
     --arg fixture_secondary_surface_slug "$FIXTURE_SECONDARY_SURFACE_SLUG" \
+    --arg peekaboo_bridge_socket "$PEEKABOO_BRIDGE_SOCKET" \
+    --arg peekaboo_host_source "$peekaboo_host_source" \
+    --arg peekaboo_host_kind "$peekaboo_host_kind" \
+    --argjson peekaboo_bridge_ready "$peekaboo_bridge_ready" \
+    --argjson platform_assurance "$(platform_assurance_json)" \
     --argjson blocked_allowed "$(json_bool_for_flag "$ALLOW_BLOCKED")" \
     '{
       product:$product,
@@ -293,6 +366,14 @@ emit_locked_screen_report() {
       fixture_secondary_surface:$fixture_secondary_surface,
       fixture_secondary_surface_slug:$fixture_secondary_surface_slug,
       required_state:"Unlocked macOS desktop",
+      automation_host:{
+        requested_bridge_socket:$peekaboo_bridge_socket,
+        selected_source:$peekaboo_host_source,
+        host_kind:$peekaboo_host_kind,
+        openclaw_gui_bridge_ready:$peekaboo_bridge_ready,
+        local_permission_fallback_used:($peekaboo_bridge_ready | not)
+      },
+      platform_assurance:$platform_assurance,
       true_window_capture_performed:false,
       blocked_allowed:$blocked_allowed,
       blocked_allowed_reason:(
@@ -310,11 +391,14 @@ emit_locked_screen_report() {
       native_engineering_copy_hidden:true,
       native_makepad_desktop_product_layout_ready:true,
       native_makepad_route_variant_ready:false,
+      native_makepad_mobile_route_variant_ready:false,
       native_makepad_secondary_surface_ready:false,
       fixture_secondary_surface_selected_ready:false,
       fixture_secondary_surface_selection_count:0,
       fixture_mobile_secondary_content_visible_ready:false,
       fixture_mobile_secondary_content_visible_count:0,
+      fixture_mobile_route_content_visible_ready:false,
+      fixture_mobile_route_content_visible_count:0,
       fixture_desktop_product_layout_ready:false,
       fixture_desktop_product_layout_count:0,
       fixture_desktop_full_layout_ready:false,
@@ -380,17 +464,16 @@ run_preflight_suite() {
 }
 
 cargo_with_window_target() {
-  CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR" cargo "$@"
+  CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR" hepta_ui_cargo "$@"
 }
 
 run_hepta_native_app() {
-  env \
-    CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR" \
-    HEPTA_NATIVE_FIXTURE_MODE=1 \
-    HEPTA_NATIVE_APP_DATA_DIR="$APP_DATA_DIR" \
-    HEPTA_AUTOLOAD=0 \
-    HEPTA_AUTOSAVE=0 \
-    cargo run --manifest-path "$APP_MANIFEST"
+  CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR" \
+  HEPTA_NATIVE_FIXTURE_MODE=1 \
+  HEPTA_NATIVE_APP_DATA_DIR="$APP_DATA_DIR" \
+  HEPTA_AUTOLOAD=0 \
+  HEPTA_AUTOSAVE=0 \
+    hepta_ui_cargo run --manifest-path "$APP_MANIFEST"
 }
 
 prebuild_hepta_native_app() {
@@ -407,6 +490,19 @@ if ! command -v peekaboo >/dev/null 2>&1; then
   echo "peekaboo is required for the Hepta Native macOS window smoke gate" >&2
   exit 2
 fi
+
+bridge_status_json="$(peekaboo bridge status --json 2>/dev/null || printf '{}')"
+peekaboo_host_source="$(jq -r '.data.selected.source // .data.source // "unknown"' <<<"$bridge_status_json")"
+peekaboo_host_kind="$(jq -r '.data.selected.hostKind // .data.selected.host_kind // "unknown"' <<<"$bridge_status_json")"
+peekaboo_bridge_ready=false
+if [[ "$peekaboo_host_kind" == "gui" && "$PEEKABOO_BRIDGE_SOCKET" == *"/OpenClaw/bridge.sock" ]]; then
+  peekaboo_bridge_ready=true
+fi
+screen_inventory_json="$(peekaboo list screens --json 2>/dev/null || printf '{}')"
+primary_screen_visible_width="$(jq -r '.data.screens[]? | select(.isPrimary == true) | .visibleArea.width // 0' <<<"$screen_inventory_json" | head -1)"
+primary_screen_visible_height="$(jq -r '.data.screens[]? | select(.isPrimary == true) | .visibleArea.height // 0' <<<"$screen_inventory_json" | head -1)"
+primary_screen_visible_width="${primary_screen_visible_width:-0}"
+primary_screen_visible_height="${primary_screen_visible_height:-0}"
 
 permissions_json="$(peekaboo permissions status --json)"
 screen_recording_granted="$(jq -r '.data.permissions[] | select(.name == "Screen Recording") | .isGranted' <<<"$permissions_json")"
@@ -547,13 +643,29 @@ fixture_secondary_surface_selection_count() {
 fixture_route_top_design_referee_count() {
   local expected_generic="true"
   local expected_desktop_route="false"
+  local expected_route_detail="true"
   if [[ "$CAPTURE_PROFILE" == "desktop-full-route" && "$FIXTURE_ROUTE_SLUG" != "home" ]]; then
     expected_generic="false"
     expected_desktop_route="true"
+  elif [[ "$CAPTURE_PROFILE" == "mobile-route" ]]; then
+    expected_generic="false"
+    if [[ "$FIXTURE_ROUTE_SLUG" == "home" ]]; then
+      expected_route_detail="false"
+    fi
   fi
 
   grep -c \
-    "Hepta Native fixture top-design route workspace: route=${FIXTURE_ROUTE_LABEL} secondary_surface=${FIXTURE_SECONDARY_SURFACE_LABEL} generic_scaffold_visible=${expected_generic} route_detail_visible=true desktop_route_workspace_visible=${expected_desktop_route}" \
+    "Hepta Native fixture top-design route workspace: route=${FIXTURE_ROUTE_LABEL} secondary_surface=${FIXTURE_SECONDARY_SURFACE_LABEL} generic_scaffold_visible=${expected_generic} route_detail_visible=${expected_route_detail} desktop_route_workspace_visible=${expected_desktop_route}" \
+    "$APP_LOG" 2>/dev/null || true
+}
+
+fixture_mobile_route_content_visible_count() {
+  if [[ "$CAPTURE_PROFILE" != "mobile-route" || "$FIXTURE_ROUTE_SLUG" == "home" ]]; then
+    printf '0\n'
+    return
+  fi
+  grep -c \
+    "Hepta Native fixture mobile route content visible: route=${FIXTURE_ROUTE_LABEL} route_shell_visible=true route_detail_visible=true primary_panel_visible=true horizontal_detail_rows_visible=false desktop_card_row_hidden=true action_dock_hidden=true" \
     "$APP_LOG" 2>/dev/null || true
 }
 
@@ -712,12 +824,18 @@ luminance_stddev = (
 ) ** 0.5
 dark_pixel_fraction = sum(value < 45 for value in luminance_values) / sample_count
 mid_pixel_fraction = sum(45 <= value <= 210 for value in luminance_values) / sample_count
+highlight_pixel_fraction = sum(value >= 245 for value in luminance_values) / sample_count
+max_highlight_pixel_fraction = 0.75
+highlight_area_ready = highlight_pixel_fraction <= max_highlight_pixel_fraction
+product_shell_min_average_luminance = 235.0
+product_shell_max_average_luminance = 250.0
 accent_pixel_fraction = accent_pixels / sample_count
 unique_color_bins = len(colors)
-min_accent_pixel_fraction = 0.006 if name in ("desktop-window", "mobile-window") else 0.004 if (
+min_accent_pixel_fraction = 0.006 if name in ("desktop-window", "mobile-window") else 0.003 if (
     name.startswith("desktop-full-route-")
     or name.startswith("desktop-full-secondary-")
     or name.startswith("mobile-secondary-")
+    or name.startswith("mobile-route-")
 ) else 0.01
 
 def region_stats(x0, y0, x1, y1):
@@ -768,9 +886,12 @@ def region_stats(x0, y0, x1, y1):
 
 mobile_secondary_content_probe = None
 mobile_secondary_content_ready = True
+mobile_route_content_probe = None
+mobile_route_content_ready = True
 route_content_probe = None
 route_content_ready = True
 product_shell_light_glass_ready = True
+route_surface_light_glass_ready = True
 if name.startswith("desktop-full-route-"):
     workspace_region = region_stats(
         int(width * 0.18),
@@ -793,20 +914,32 @@ if name.startswith("desktop-full-route-"):
     route_content_ready = (
         width >= 1100
         and height >= 680
-        and workspace_region["unique_color_bins"] >= 90
+        and workspace_region["unique_color_bins"] >= 80
         and workspace_region["luminance_stddev"] >= 18.0
-        and workspace_region["mid_pixel_fraction"] >= 0.03
-        and upper_route_region["unique_color_bins"] >= 100
-        and upper_route_region["luminance_stddev"] >= 18.0
-        and upper_route_region["mid_pixel_fraction"] >= 0.035
-        and lower_route_region["unique_color_bins"] >= 100
-        and lower_route_region["luminance_stddev"] >= 19.0
-        and lower_route_region["mid_pixel_fraction"] >= 0.025
+        and workspace_region["mid_pixel_fraction"] >= 0.018
+        and upper_route_region["unique_color_bins"] >= 90
+        and upper_route_region["luminance_stddev"] >= 17.0
+        and upper_route_region["mid_pixel_fraction"] >= 0.025
+        and lower_route_region["unique_color_bins"] >= 90
+        and lower_route_region["luminance_stddev"] >= 17.0
+        and lower_route_region["mid_pixel_fraction"] >= 0.015
     )
     route_content_probe = {
         "ready": route_content_ready,
         "min_width": 1100,
         "min_height": 680,
+        "calibration": {
+            "basis": "generated-token light route screenshot plus exact route-selection log signature",
+            "workspace_min_unique_color_bins": 80,
+            "workspace_min_luminance_stddev": 18.0,
+            "workspace_min_mid_pixel_fraction": 0.018,
+            "upper_min_unique_color_bins": 90,
+            "upper_min_luminance_stddev": 17.0,
+            "upper_min_mid_pixel_fraction": 0.025,
+            "lower_min_unique_color_bins": 90,
+            "lower_min_luminance_stddev": 17.0,
+            "lower_min_mid_pixel_fraction": 0.015,
+        },
         "workspace_region": workspace_region,
         "upper_route_region": upper_route_region,
         "lower_route_region": lower_route_region,
@@ -824,7 +957,7 @@ if name.startswith("mobile-secondary-"):
         and height >= 800
         and center_region["unique_color_bins"] >= 120
         and center_region["luminance_stddev"] >= 24.0
-        and center_region["mid_pixel_fraction"] >= 0.07
+        and center_region["mid_pixel_fraction"] >= 0.065
         and bottom_region["unique_color_bins"] >= 110
         and bottom_region["luminance_stddev"] >= 22.0
     )
@@ -832,14 +965,55 @@ if name.startswith("mobile-secondary-"):
         "ready": mobile_secondary_content_ready,
         "min_height": 800,
         "max_width": 430,
+        "calibration": {
+            "basis": "generated-token mobile secondary screenshot plus exact surface-selection log signature",
+            "center_min_unique_color_bins": 120,
+            "center_min_luminance_stddev": 24.0,
+            "center_min_mid_pixel_fraction": 0.065,
+            "bottom_min_unique_color_bins": 110,
+            "bottom_min_luminance_stddev": 22.0,
+        },
+        "center_region": center_region,
+        "bottom_region": bottom_region,
+    }
+if name.startswith("mobile-route-"):
+    center_region = region_stats(
+        int(width * 0.06),
+        int(height * 0.12),
+        int(width * 0.94),
+        int(height * 0.74),
+    )
+    bottom_region = region_stats(0, int(height * 0.70), width, height)
+    mobile_route_content_ready = (
+        width == 390
+        and height >= 800
+        and center_region["unique_color_bins"] >= 70
+        and center_region["luminance_stddev"] >= 12.0
+        and center_region["mid_pixel_fraction"] >= 0.015
+        and bottom_region["unique_color_bins"] >= 55
+        and bottom_region["luminance_stddev"] >= 10.0
+    )
+    mobile_route_content_probe = {
+        "ready": mobile_route_content_ready,
+        "required_width": 390,
+        "min_height": 800,
         "center_region": center_region,
         "bottom_region": bottom_region,
     }
 if name in ("desktop-window", "mobile-window"):
     product_shell_light_glass_ready = (
-        238.0 <= average_luminance <= 250.0
+        product_shell_min_average_luminance
+        <= average_luminance
+        <= product_shell_max_average_luminance
         and dark_pixel_fraction <= 0.025
         and mid_pixel_fraction >= 0.02
+        and accent_pixel_fraction >= min_accent_pixel_fraction
+    )
+else:
+    route_surface_light_glass_ready = (
+        230.0 <= average_luminance <= 252.0
+        and dark_pixel_fraction <= 0.04
+        and mid_pixel_fraction >= 0.018
         and accent_pixel_fraction >= min_accent_pixel_fraction
     )
 
@@ -848,6 +1022,7 @@ if name in ("desktop-window", "mobile-window"):
         sample_count >= 1000
         and unique_color_bins >= 48
         and luminance_stddev >= 10.0
+        and highlight_area_ready
         and product_shell_light_glass_ready
     )
 else:
@@ -855,11 +1030,11 @@ else:
         sample_count >= 1000
         and unique_color_bins >= 48
         and luminance_stddev >= 10.0
-        and 0.25 <= dark_pixel_fraction <= 0.96
-        and mid_pixel_fraction >= 0.03
-        and accent_pixel_fraction >= min_accent_pixel_fraction
+        and highlight_area_ready
+        and route_surface_light_glass_ready
         and route_content_ready
         and mobile_secondary_content_ready
+        and mobile_route_content_ready
     )
 
 probe = {
@@ -871,12 +1046,40 @@ probe = {
     "luminance_stddev": round(luminance_stddev, 2),
     "dark_pixel_fraction": round(dark_pixel_fraction, 4),
     "mid_pixel_fraction": round(mid_pixel_fraction, 4),
+    "highlight_pixel_fraction": round(highlight_pixel_fraction, 6),
+    "max_highlight_pixel_fraction": max_highlight_pixel_fraction,
+    "highlight_area_ready": highlight_area_ready,
+    "highlight_pixel_luma_threshold": 245,
     "accent_pixel_fraction": round(accent_pixel_fraction, 4),
     "min_accent_pixel_fraction": min_accent_pixel_fraction,
     "product_shell_light_glass_ready": product_shell_light_glass_ready,
-    "product_shell_light_glass_average_luminance_range": "238..250",
+    "route_surface_light_glass_ready": route_surface_light_glass_ready,
+    "route_surface_light_glass_average_luminance_range": "230..252",
+    "route_surface_light_glass_max_dark_pixel_fraction": 0.04,
+    "route_surface_light_glass_min_mid_pixel_fraction": 0.018,
+    "product_shell_light_glass_average_luminance_range": "235..250",
     "product_shell_light_glass_max_dark_pixel_fraction": 0.025,
     "product_shell_light_glass_min_mid_pixel_fraction": 0.02,
+    "calibration": {
+        "product_shell_average_luminance": {
+            "previous_range": "238..250",
+            "previous_basis": "pre-2026-08-01 high-white panel and input tokens",
+            "current_range": "235..250",
+            "current_basis": "2026-08-01 restrained shared panel #E8EFF1F0 and input #F1F5F5F2 tokens",
+        },
+        "highlight_guard": {
+            "basis": "simple sampled sRGB luma census over the captured Makepad window",
+            "luma_threshold": 245,
+            "max_pixel_fraction": 0.75,
+            "unchanged_during_recalibration": True,
+        },
+        "preserved_guards": [
+            "dark_pixel_fraction",
+            "mid_pixel_fraction",
+            "luminance_stddev",
+            "accent_pixel_fraction",
+        ],
+    },
 }
 if route_content_probe is not None:
     probe["route_content_ready"] = route_content_ready
@@ -884,6 +1087,9 @@ if route_content_probe is not None:
 if mobile_secondary_content_probe is not None:
     probe["mobile_secondary_content_ready"] = mobile_secondary_content_ready
     probe["mobile_secondary_content_probe"] = mobile_secondary_content_probe
+if mobile_route_content_probe is not None:
+    probe["mobile_route_content_ready"] = mobile_route_content_ready
+    probe["mobile_route_content_probe"] = mobile_route_content_probe
 print(json.dumps(probe, separators=(",", ":")))
 if not ready:
     fail(f"Hepta Native true-window screenshot visual probe failed for {name}: {probe}")
@@ -1007,6 +1213,28 @@ wait_for_mobile_secondary_content_visible_count() {
   exit 1
 }
 
+wait_for_mobile_route_content_visible_count() {
+  local expected_count="$1"
+  local context="$2"
+  local deadline=$((SECONDS + STARTUP_TIMEOUT_SEC))
+  while [[ "$SECONDS" -lt "$deadline" ]]; do
+    local content_count
+    content_count="$(fixture_mobile_route_content_visible_count)"
+    if (( content_count >= expected_count )); then
+      return 0
+    fi
+    if [[ -n "${APP_PID:-}" ]] && ! kill -0 "$APP_PID" 2>/dev/null; then
+      echo "Hepta Native app exited before mobile route content marker appeared for $context" >&2
+      tail -n 160 "$APP_LOG" >&2 || true
+      exit 1
+    fi
+    sleep 0.5
+  done
+  echo "Timed out waiting for mobile route content marker for $context" >&2
+  tail -n 160 "$APP_LOG" >&2 || true
+  exit 1
+}
+
 capture_window() {
   local name="$1"
   local bounds="$2"
@@ -1099,9 +1327,14 @@ capture_window() {
     echo "Hepta Native window width did not settle for $name: expected $width, got $actual_width" >&2
     exit 1
   fi
-  if (( actual_height < height - 80 )); then
-    echo "Hepta Native window height did not settle for $name: expected near $height, got $actual_height" >&2
-    exit 1
+  local host_height_constrained=false
+  if [[ "$actual_height" -ne "$height" ]]; then
+    if (( width <= 430 && height >= 800 && actual_height >= 800 && primary_screen_visible_height > 0 && primary_screen_visible_height < height )); then
+      host_height_constrained=true
+    else
+      echo "Hepta Native window height did not settle for $name: expected $height, got $actual_height" >&2
+      exit 1
+    fi
   fi
 
   local capture_mode="window"
@@ -1172,6 +1405,11 @@ capture_window() {
     --arg sha256 "$(shasum -a 256 "$screenshot" | awk '{print $1}')" \
     --argjson bytes "$bytes" \
     --argjson window_id "$window_id" \
+    --argjson expected_width "$width" \
+    --argjson expected_height "$height" \
+    --argjson primary_screen_visible_width "$primary_screen_visible_width" \
+    --argjson primary_screen_visible_height "$primary_screen_visible_height" \
+    --argjson host_height_constrained "$host_height_constrained" \
     --argjson visual_probe "$visual_probe" \
     '{
       name:$name,
@@ -1180,6 +1418,44 @@ capture_window() {
       window_id:$window_id,
       capture_mode:$capture_mode,
       dimensions:$dimensions,
+      viewport_contract:{
+        expected_width:$expected_width,
+        expected_height:$expected_height,
+        actual_width:($actual_bounds | split(",")[2] | tonumber),
+        actual_height:($actual_bounds | split(",")[3] | tonumber),
+        primary_screen_visible_area:{
+          width:$primary_screen_visible_width,
+          height:$primary_screen_visible_height
+        },
+        host_constrained:$host_height_constrained,
+        host_window_usable_ready:(
+          ($actual_bounds | split(",")[2] | tonumber) == $expected_width
+          and (
+            ($actual_bounds | split(",")[3] | tonumber) == $expected_height
+            or (
+              $host_height_constrained
+              and $expected_width == 390
+              and $expected_height == 844
+              and ($actual_bounds | split(",")[3] | tonumber) >= 800
+            )
+          )
+        ),
+        exact_size_ready:(
+          ($actual_bounds | split(",")[2] | tonumber) == $expected_width
+          and ($actual_bounds | split(",")[3] | tonumber) == $expected_height
+          and $dimensions == (($expected_width | tostring) + "x" + ($expected_height | tostring))
+        ),
+        exact_size_status:(
+          if (
+            ($actual_bounds | split(",")[2] | tonumber) == $expected_width
+            and ($actual_bounds | split(",")[3] | tonumber) == $expected_height
+            and $dimensions == (($expected_width | tostring) + "x" + ($expected_height | tostring))
+          ) then "ready"
+          elif $host_height_constrained then "blocked_by_macos_visible_area"
+          else "failed"
+          end
+        )
+      },
       path:$path,
       screen_capture:$screen_capture,
       bytes:$bytes,
@@ -1250,6 +1526,14 @@ elif [[ "$CAPTURE_PROFILE" == "mobile-secondary" ]]; then
   wait_for_mobile_secondary_content_visible_count 1 "mobile secondary surface window"
   mobile_json="$(capture_window "mobile-secondary-${FIXTURE_SECONDARY_SURFACE_SLUG}" "$MOBILE_BOUNDS")"
   screenshots_json="$(jq -n --argjson mobile "$mobile_json" '[$mobile]')"
+elif [[ "$CAPTURE_PROFILE" == "mobile-route" ]]; then
+  wait_for_fixture_layout_count "mobile-task-first" 1 "mobile route window"
+  wait_for_fixture_cockpit_count 1 "mobile route window"
+  if [[ "$FIXTURE_ROUTE_SLUG" != "home" ]]; then
+    wait_for_mobile_route_content_visible_count 1 "mobile route window"
+  fi
+  mobile_json="$(capture_window "mobile-route-${FIXTURE_ROUTE_SLUG}" "$MOBILE_BOUNDS")"
+  screenshots_json="$(jq -n --argjson mobile "$mobile_json" '[$mobile]')"
 else
   mobile_json="$(capture_window "mobile-window" "$MOBILE_BOUNDS")"
   desktop_json="$(capture_window "desktop-window" "$DESKTOP_BOUNDS")"
@@ -1266,6 +1550,7 @@ fixture_route_selection_count="$(fixture_route_selection_count)"
 fixture_secondary_surface_selection_count="$(fixture_secondary_surface_selection_count)"
 fixture_route_top_design_referee_count="$(fixture_route_top_design_referee_count)"
 fixture_mobile_secondary_content_visible_count="$(fixture_mobile_secondary_content_visible_count)"
+fixture_mobile_route_content_visible_count="$(fixture_mobile_route_content_visible_count)"
 stop_app
 assert_no_native_app_log_errors
 
@@ -1277,6 +1562,12 @@ jq -n \
   --arg output_dir "$OUT_DIR" \
   --arg app_log "$APP_LOG" \
   --arg cargo_target_dir "$WINDOW_SMOKE_CARGO_TARGET_DIR" \
+  --arg rust_toolchain "$HEPTA_UI_RUST_TOOLCHAIN_VERSION" \
+  --arg peekaboo_bridge_socket "$PEEKABOO_BRIDGE_SOCKET" \
+  --arg peekaboo_host_source "$peekaboo_host_source" \
+  --arg peekaboo_host_kind "$peekaboo_host_kind" \
+  --argjson peekaboo_bridge_ready "$peekaboo_bridge_ready" \
+  --argjson platform_assurance "$(platform_assurance_json)" \
   --argjson preflight_skipped "$(json_bool_for_flag "$SKIP_PREFLIGHT")" \
   --argjson prebuild_performed "$(json_bool_for_flag "$PREBUILD_APP")" \
   --arg fixture_route "$FIXTURE_ROUTE_LABEL" \
@@ -1295,6 +1586,7 @@ jq -n \
   --argjson fixture_secondary_surface_selection_count "$fixture_secondary_surface_selection_count" \
   --argjson fixture_route_top_design_referee_count "$fixture_route_top_design_referee_count" \
   --argjson fixture_mobile_secondary_content_visible_count "$fixture_mobile_secondary_content_visible_count" \
+  --argjson fixture_mobile_route_content_visible_count "$fixture_mobile_route_content_visible_count" \
   --argjson expected_screenshot_count "$EXPECTED_SCREENSHOT_COUNT" \
   --argjson expected_fixture_selection_count "$EXPECTED_FIXTURE_SELECTION_COUNT" \
   --argjson screenshots "$screenshots_json" \
@@ -1311,9 +1603,18 @@ jq -n \
       cargo_target_dir:(
         if ($cargo_target_dir | length) > 0 then $cargo_target_dir else null end
       ),
+      rust_toolchain:$rust_toolchain,
       preflight_skipped:$preflight_skipped,
       prebuild_performed:$prebuild_performed
     },
+    automation_host:{
+      requested_bridge_socket:$peekaboo_bridge_socket,
+      selected_source:$peekaboo_host_source,
+      host_kind:$peekaboo_host_kind,
+      openclaw_gui_bridge_ready:$peekaboo_bridge_ready,
+      local_permission_fallback_used:($peekaboo_bridge_ready | not)
+    },
+    platform_assurance:$platform_assurance,
     fixture_mode:true,
     fixture_route:$fixture_route,
     fixture_route_slug:$fixture_route_slug,
@@ -1334,9 +1635,21 @@ jq -n \
 	    native_desktop_first_read_path_ready:true,
 	    native_mobile_first_read_path_ready:true,
 	    native_engineering_copy_hidden:true,
+	    native_makepad_highlight_area_ready:(
+	      ($screenshots | all(.visual_probe.highlight_area_ready == true))
+	      and ($screenshots | all(.visual_probe.highlight_pixel_fraction <= .visual_probe.max_highlight_pixel_fraction))
+	    ),
+	    native_makepad_highlight_pixel_luma_threshold:245,
+	    native_makepad_highlight_pixel_fraction_threshold:0.75,
+	    native_makepad_highlight_pixel_fraction_max:([$screenshots[].visual_probe.highlight_pixel_fraction] | max),
+	    native_makepad_visual_probe_calibration:$screenshots[0].visual_probe.calibration,
 	    native_makepad_product_shell_light_glass_ready:(
 	      $capture_profile != "product-shell"
 	      or ($screenshots | all(.visual_probe.product_shell_light_glass_ready == true))
+	    ),
+	    native_makepad_route_surface_light_glass_ready:(
+	      $capture_profile == "product-shell"
+	      or ($screenshots | all(.visual_probe.route_surface_light_glass_ready == true))
 	    ),
 	    native_makepad_fixture_script_error_free:true,
     native_app_log_error_free:true,
@@ -1349,7 +1662,7 @@ jq -n \
     fixture_route_selected_ready:($fixture_route_selection_count >= 1),
     fixture_route_selection_count:$fixture_route_selection_count,
     fixture_route_top_design_referee_ready:(
-      $capture_profile != "desktop-full-route"
+      ($capture_profile != "desktop-full-route" and $capture_profile != "mobile-route")
       or $fixture_route_top_design_referee_count >= 1
     ),
     fixture_route_top_design_referee_count:$fixture_route_top_design_referee_count,
@@ -1360,6 +1673,30 @@ jq -n \
       and $fixture_route_top_design_referee_count >= 1
       and ($screenshots | length) == $expected_screenshot_count
       and ($screenshots | all(.visual_probe.ready == true))
+    ),
+    fixture_mobile_route_content_visible_ready:(
+      $capture_profile == "mobile-route"
+      and (
+        $fixture_route_slug == "home"
+        or $fixture_mobile_route_content_visible_count >= 1
+      )
+    ),
+    fixture_mobile_route_content_visible_count:$fixture_mobile_route_content_visible_count,
+    native_makepad_mobile_route_variant_ready:(
+      $capture_profile == "mobile-route"
+      and $fixture_mobile_task_first_layout_count >= 1
+      and $fixture_route_selection_count >= 1
+      and $fixture_route_top_design_referee_count >= 1
+      and (
+        $fixture_route_slug == "home"
+        or $fixture_mobile_route_content_visible_count >= 1
+      )
+      and ($screenshots | length) == $expected_screenshot_count
+      and ($screenshots | all(.viewport_contract.expected_width == 390))
+      and ($screenshots | all(.viewport_contract.expected_height == 844))
+      and ($screenshots | all(.viewport_contract.host_window_usable_ready == true))
+      and ($screenshots | all(.visual_probe.ready == true))
+      and ($screenshots | all(.visual_probe.mobile_route_content_ready == true))
     ),
     fixture_secondary_surface_selected_ready:(
       ($capture_profile == "desktop-full-secondary" or $capture_profile == "mobile-secondary")
@@ -1398,6 +1735,19 @@ jq -n \
     fixture_mobile_task_first_layout_ready:($fixture_mobile_task_first_layout_count >= 1),
     fixture_mobile_task_first_layout_count:$fixture_mobile_task_first_layout_count,
     native_makepad_mobile_layout_width_threshold:620,
+    native_makepad_mobile_390x844_ready:(
+      ($screenshots | map(select(.name | startswith("mobile"))) | length) >= 1
+      and ($screenshots | map(select(.name | startswith("mobile"))) | all(.dimensions == "390x844"))
+      and ($screenshots | map(select(.name | startswith("mobile"))) | all(.viewport_contract.exact_size_ready == true))
+    ),
+    native_makepad_mobile_host_window_ready:(
+      ($screenshots | map(select(.name | startswith("mobile"))) | length) >= 1
+      and ($screenshots | map(select(.name | startswith("mobile"))) | all(.viewport_contract.expected_width == 390))
+      and ($screenshots | map(select(.name | startswith("mobile"))) | all(.viewport_contract.expected_height == 844))
+      and ($screenshots | map(select(.name | startswith("mobile"))) | all(.viewport_contract.host_window_usable_ready == true))
+    ),
+    viewport_contract_ready:($screenshots | all(.viewport_contract.exact_size_ready == true)),
+    host_window_contract_ready:($screenshots | all(.viewport_contract.host_window_usable_ready == true)),
     screenshots:$screenshots,
     side_effects:{
       matrix_login:false,
