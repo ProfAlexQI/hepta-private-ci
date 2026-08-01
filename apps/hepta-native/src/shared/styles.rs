@@ -1,5 +1,11 @@
 use makepad_widgets::*;
 
+pub use super::hepta_theme::{
+    COLOR_HEPTA_CONTENT as COLOR_PRIMARY, COLOR_HEPTA_FOCUS as COLOR_ACTIVE_PRIMARY,
+    COLOR_HEPTA_FOCUS_HOVER as COLOR_ACTIVE_PRIMARY_DARKER,
+    COLOR_HEPTA_SUCCESS as COLOR_ROBRIX_CYAN,
+};
+
 script_mod! {
 
     use mod.prelude.widgets.*
@@ -68,24 +74,26 @@ script_mod! {
 
     mod.widgets.USERNAME_FONT_SIZE = 11
 
-    mod.widgets.USERNAME_TEXT_COLOR = #x2
+    mod.widgets.USERNAME_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_TEXT)
     mod.widgets.USERNAME_TEXT_STYLE = theme.font_bold {
         font_size: (mod.widgets.USERNAME_FONT_SIZE),
     }
 
-    mod.widgets.COLOR_ROBRIX_PURPLE = #572DCC; // the purple color from the Robrix logo
+    // Compatibility names keep the upstream widget graph easy to rebase while
+    // routing product-facing accents through Hepta semantic tokens.
+    mod.widgets.COLOR_ROBRIX_PURPLE = (mod.widgets.COLOR_HEPTA_FOCUS)
 
-    mod.widgets.COLOR_ROBRIX_CYAN = #05CDC7; // the cyan color from the Robrix logo
+    mod.widgets.COLOR_ROBRIX_CYAN = (mod.widgets.COLOR_HEPTA_SUCCESS)
 
-    mod.widgets.TYPING_NOTICE_TEXT_COLOR = #121570
+    mod.widgets.TYPING_NOTICE_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_FOCUS)
 
 
     mod.widgets.MESSAGE_FONT_SIZE = 11
     mod.widgets.REDACTED_MESSAGE_FONT_SIZE = 10
 
-    mod.widgets.MESSAGE_TEXT_COLOR = #x333
+    mod.widgets.MESSAGE_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_TEXT)
     // notices (automated messages from bots) use a lighter color
-    mod.widgets.COLOR_MESSAGE_NOTICE_TEXT = #x888
+    mod.widgets.COLOR_MESSAGE_NOTICE_TEXT = (mod.widgets.COLOR_HEPTA_MUTED)
     mod.widgets.MESSAGE_TEXT_LINE_SPACING = 1.3
     // This font should only be used for plaintext labels. Don't use this for Html content,
     // as the Html widget sets different fonts for different text styles (e.g., bold, italic).
@@ -98,36 +106,36 @@ script_mod! {
 
 
 
-    mod.widgets.SMALL_STATE_FONT_SIZE = 9.0
+    mod.widgets.SMALL_STATE_FONT_SIZE = 10.0
 
 
-    mod.widgets.SMALL_STATE_TEXT_COLOR = #x888
+    mod.widgets.SMALL_STATE_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_MUTED)
     mod.widgets.SMALL_STATE_TEXT_STYLE = theme.font_regular {
         font_size: (mod.widgets.SMALL_STATE_FONT_SIZE),
     }
 
-    mod.widgets.TIMESTAMP_FONT_SIZE = 8.5
+    mod.widgets.TIMESTAMP_FONT_SIZE = 9.5
 
-    mod.widgets.TIMESTAMP_TEXT_COLOR = #x999
+    mod.widgets.TIMESTAMP_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_DIM)
     mod.widgets.TIMESTAMP_TEXT_STYLE = theme.font_regular {
         font_size: (mod.widgets.TIMESTAMP_FONT_SIZE),
     }
 
-    mod.widgets.ROOM_NAME_TEXT_COLOR = #x0
+    mod.widgets.ROOM_NAME_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_TEXT)
 
-    mod.widgets.COLOR_META = #xccc
+    mod.widgets.COLOR_META = (mod.widgets.COLOR_HEPTA_HAIRLINE)
 
-    mod.widgets.COLOR_DIVIDER = #00000018
+    mod.widgets.COLOR_DIVIDER = (mod.widgets.COLOR_HEPTA_HAIRLINE)
 
-    mod.widgets.COLOR_DIVIDER_DARK = #00000044
+    mod.widgets.COLOR_DIVIDER_DARK = (mod.widgets.COLOR_HEPTA_HAIRLINE_STRONG)
 
-    mod.widgets.COLOR_FG_ACCEPT_GREEN = #138808
-    mod.widgets.COLOR_BG_ACCEPT_GREEN = #F0FFF0
-    mod.widgets.COLOR_FG_DANGER_RED = #DC0005
-    mod.widgets.COLOR_BG_DANGER_RED = #FFF0F0
-    mod.widgets.COLOR_FG_DISABLED = #B3B3B3
-    mod.widgets.COLOR_BG_DISABLED = #E0E0E0
-    mod.widgets.COLOR_INFO_BLUE = #0f88fe
+    mod.widgets.COLOR_FG_ACCEPT_GREEN = (mod.widgets.COLOR_HEPTA_SUCCESS)
+    mod.widgets.COLOR_BG_ACCEPT_GREEN = (mod.widgets.COLOR_HEPTA_SUCCESS_SURFACE)
+    mod.widgets.COLOR_FG_DANGER_RED = (mod.widgets.COLOR_HEPTA_DANGER)
+    mod.widgets.COLOR_BG_DANGER_RED = (mod.widgets.COLOR_HEPTA_DANGER_SURFACE)
+    mod.widgets.COLOR_FG_DISABLED = (mod.widgets.COLOR_HEPTA_DISABLED)
+    mod.widgets.COLOR_BG_DISABLED = (mod.widgets.COLOR_HEPTA_DISABLED_SURFACE)
+    mod.widgets.COLOR_INFO_BLUE = (mod.widgets.COLOR_HEPTA_FOCUS)
     mod.widgets.COLOR_WARNING_YELLOW = #fcdb03
     mod.widgets.COLOR_TEXT_WARNING_NOT_FOUND = #953800
 
@@ -137,26 +145,26 @@ script_mod! {
     // mod.widgets.COLOR_SELECT_TEXT = #57A3FB44
     // 0x4C is ~30% opacity , which results in #B5D8FE when atop pure white
     // But i like the look of 0x33 20% opacity a little better.
-    mod.widgets.COLOR_SELECT_TEXT = #087DFC33
+    mod.widgets.COLOR_SELECT_TEXT = (mod.widgets.COLOR_HEPTA_SELECTION)
     // mod.widgets.COLOR_SELECT_TEXT = #4D9BFD88 // results in #A6CDFE when mixed halfway with white
 
-    mod.widgets.COLOR_PRIMARY = #ffffff
+    mod.widgets.COLOR_PRIMARY = (mod.widgets.COLOR_HEPTA_CONTENT)
 
-    mod.widgets.COLOR_PRIMARY_DARKER = #fefefe
-    mod.widgets.COLOR_SECONDARY = #E3E3E3
-    mod.widgets.COLOR_SECONDARY_DARKER = #C8C8C8
+    mod.widgets.COLOR_PRIMARY_DARKER = (mod.widgets.COLOR_HEPTA_SURFACE)
+    mod.widgets.COLOR_SECONDARY = (mod.widgets.COLOR_HEPTA_GLASS)
+    mod.widgets.COLOR_SECONDARY_DARKER = (mod.widgets.COLOR_HEPTA_HAIRLINE_STRONG)
 
-    mod.widgets.COLOR_ACTIVE_PRIMARY = #0f88fe
+    mod.widgets.COLOR_ACTIVE_PRIMARY = (mod.widgets.COLOR_HEPTA_FOCUS)
 
-    mod.widgets.COLOR_ACTIVE_PRIMARY_DARKER = #106fcc
+    mod.widgets.COLOR_ACTIVE_PRIMARY_DARKER = (mod.widgets.COLOR_HEPTA_FOCUS_HOVER)
 
-    mod.widgets.COLOR_BG_PREVIEW = #F0F5FF
+    mod.widgets.COLOR_BG_PREVIEW = (mod.widgets.COLOR_HEPTA_FOCUS_SURFACE)
 
-    mod.widgets.COLOR_BG_PREVIEW_HOVER = #CDEDDF
+    mod.widgets.COLOR_BG_PREVIEW_HOVER = (mod.widgets.COLOR_HEPTA_FOCUS_SURFACE_HOVER)
 
-    mod.widgets.COLOR_AVATAR_BG = #52b2ac
+    mod.widgets.COLOR_AVATAR_BG = (mod.widgets.COLOR_HEPTA_FOCUS)
 
-    mod.widgets.COLOR_AVATAR_BG_IDLE = #d8d8d8
+    mod.widgets.COLOR_AVATAR_BG_IDLE = (mod.widgets.COLOR_HEPTA_DISABLED)
 
 
     mod.widgets.COLOR_UNREAD_BADGE_MENTIONS = #FF0000;
@@ -166,17 +174,17 @@ script_mod! {
     mod.widgets.COLOR_UNREAD_BADGE_MESSAGES = #AAAAAA
 
 
-    mod.widgets.COLOR_TEXT_IDLE = #d8d8d8
+    mod.widgets.COLOR_TEXT_IDLE = (mod.widgets.COLOR_HEPTA_DIM)
 
 
-    mod.widgets.COLOR_TEXT = #1C274C
-    mod.widgets.COLOR_TEXT_INPUT_IDLE = #d8d8d8
+    mod.widgets.COLOR_TEXT = (mod.widgets.COLOR_HEPTA_TEXT)
+    mod.widgets.COLOR_TEXT_INPUT_IDLE = (mod.widgets.COLOR_HEPTA_DIM)
 
     mod.widgets.COLOR_TRANSPARENT = #00000000
 
     mod.widgets.COLOR_WARNING = #fcdb03
 
-    mod.widgets.COLOR_LINK_HOVER = #21B070
+    mod.widgets.COLOR_LINK_HOVER = (mod.widgets.COLOR_HEPTA_FOCUS_HOVER)
 
 
     // Use an even value for this, not odd, such that it can be divided in half,
@@ -186,12 +194,12 @@ script_mod! {
     mod.widgets.NAVIGATION_TAB_BAR_AVATAR_FONT_SIZE = (mod.widgets.NAVIGATION_TAB_BAR_AVATAR_SIZE * 0.4)
 
 
-    mod.widgets.COLOR_NAVIGATION_TAB_FG = (mod.widgets.COLOR_TEXT)
+    mod.widgets.COLOR_NAVIGATION_TAB_FG = (mod.widgets.COLOR_HEPTA_MUTED)
     mod.widgets.COLOR_NAVIGATION_TAB_FG_HOVER = (mod.widgets.COLOR_TEXT)
-    mod.widgets.COLOR_NAVIGATION_TAB_FG_ACTIVE = (mod.widgets.COLOR_TEXT)
-    mod.widgets.COLOR_NAVIGATION_TAB_BG = (mod.widgets.COLOR_SECONDARY)
-    mod.widgets.COLOR_NAVIGATION_TAB_BG_HOVER = (mod.widgets.COLOR_SECONDARY * 0.85)
-    mod.widgets.COLOR_NAVIGATION_TAB_BG_ACTIVE = #9
+    mod.widgets.COLOR_NAVIGATION_TAB_FG_ACTIVE = (mod.widgets.COLOR_HEPTA_FOCUS)
+    mod.widgets.COLOR_NAVIGATION_TAB_BG = (mod.widgets.COLOR_HEPTA_GLASS)
+    mod.widgets.COLOR_NAVIGATION_TAB_BG_HOVER = (mod.widgets.COLOR_HEPTA_GLASS_STRONG)
+    mod.widgets.COLOR_NAVIGATION_TAB_BG_ACTIVE = (mod.widgets.COLOR_HEPTA_FOCUS_SURFACE)
 
     mod.widgets.COLOR_IMAGE_VIEWER_BACKGROUND = #333333CC // 80% Opacity
 
@@ -211,7 +219,7 @@ script_mod! {
 
     // A text input widget styled for Robrix.
     mod.widgets.RobrixTextInput = TextInput {
-        width: Fill, height: Fit
+        width: Fill, height: Fit{min: FitBound.Abs(44)}
         flow: Flow.Right{wrap: true},
         align: Align{y: 0.5}
         margin: 0,
@@ -227,7 +235,7 @@ script_mod! {
         }
 
         draw_bg +: {
-            border_radius: 4.0 // was previously 2.0
+            border_radius: (mod.widgets.HEPTA_RADIUS_CONTROL)
             border_size: 1.0
 
             color: (mod.widgets.COLOR_PRIMARY)
@@ -268,9 +276,9 @@ script_mod! {
             color_focus: (mod.widgets.MESSAGE_TEXT_COLOR),
             color_down: (mod.widgets.MESSAGE_TEXT_COLOR),
             color_disabled: (mod.widgets.COLOR_FG_DISABLED),
-            color_empty: #B,
-            color_empty_hover: #9,
-            color_empty_focus: #9,
+            color_empty: (mod.widgets.COLOR_HEPTA_DIM),
+            color_empty_hover: (mod.widgets.COLOR_HEPTA_DIM),
+            color_empty_focus: (mod.widgets.COLOR_HEPTA_DIM),
 
             text_style: mod.widgets.MESSAGE_TEXT_STYLE {},
         }
@@ -332,45 +340,36 @@ script_mod! {
     }
 }
 
-
-/// #FFFFFF
-pub const COLOR_PRIMARY:               Vec4 = vec4(1.0, 1.0, 1.0, 1.0);
-/// #0F88FE
-pub const COLOR_ACTIVE_PRIMARY:        Vec4 = vec4(0.059, 0.533, 0.996, 1.0);
-/// #106FCC
-pub const COLOR_ACTIVE_PRIMARY_DARKER: Vec4 = vec4(0.063, 0.435, 0.682, 1.0);
 /// #138808
-pub const COLOR_FG_ACCEPT_GREEN:       Vec4 = vec4(0.074, 0.533, 0.031, 1.0);
+pub const COLOR_FG_ACCEPT_GREEN: Vec4 = vec4(0.074, 0.533, 0.031, 1.0);
 /// #F0FFF0
-pub const COLOR_BG_ACCEPT_GREEN:       Vec4 = vec4(0.941, 1.0, 0.941, 1.0);
+pub const COLOR_BG_ACCEPT_GREEN: Vec4 = vec4(0.941, 1.0, 0.941, 1.0);
 /// #B3B3B3
-pub const COLOR_FG_DISABLED:           Vec4 = vec4(0.7, 0.7, 0.7, 1.0);
+pub const COLOR_FG_DISABLED: Vec4 = vec4(0.7, 0.7, 0.7, 1.0);
 /// #E0E0E0
-pub const COLOR_BG_DISABLED:           Vec4 = vec4(0.878, 0.878, 0.878, 1.0);
+pub const COLOR_BG_DISABLED: Vec4 = vec4(0.878, 0.878, 0.878, 1.0);
 /// #DC0005
-pub const COLOR_FG_DANGER_RED:         Vec4 = vec4(0.863, 0.0, 0.02, 1.0);
+pub const COLOR_FG_DANGER_RED: Vec4 = vec4(0.863, 0.0, 0.02, 1.0);
 /// #FFF0F0
-pub const COLOR_BG_DANGER_RED:         Vec4 = vec4(1.0, 0.941, 0.941, 1.0);
-/// #572DCC
-pub const COLOR_ROBRIX_PURPLE:         Vec4 = vec4(0.341, 0.176, 0.8, 1.0);
-/// #05CDC7
-pub const COLOR_ROBRIX_CYAN:           Vec4 = vec4(0.031, 0.804, 0.78, 1.0);
+pub const COLOR_BG_DANGER_RED: Vec4 = vec4(1.0, 0.941, 0.941, 1.0);
+/// Compatibility alias for upstream call sites; product-facing accents use Hepta focus teal.
+pub const COLOR_ROBRIX_PURPLE: Vec4 = COLOR_ACTIVE_PRIMARY;
 /// #FF0000
 pub const COLOR_UNREAD_BADGE_MENTIONS: Vec4 = vec4(1.0, 0.0, 0.0, 1.0);
-/// #572DCC
-pub const COLOR_UNREAD_BADGE_MARKED:   Vec4 = COLOR_ROBRIX_CYAN;
+/// Hepta success accent (compatibility name retained for upstream call sites).
+pub const COLOR_UNREAD_BADGE_MARKED: Vec4 = COLOR_ROBRIX_CYAN;
 /// #AAAAAA
 pub const COLOR_UNREAD_BADGE_MESSAGES: Vec4 = vec4(0.667, 0.667, 0.667, 1.0);
 /// #FF6e00
-pub const COLOR_UNKNOWN_ROOM_AVATAR:   Vec4 = vec4(1.0, 0.431, 0.0, 1.0);
-/// #888888
-pub const COLOR_MESSAGE_NOTICE_TEXT:   Vec4 = vec4(0.5, 0.5, 0.5, 1.0);
+pub const COLOR_UNKNOWN_ROOM_AVATAR: Vec4 = vec4(1.0, 0.431, 0.0, 1.0);
+/// Hepta muted text; remains readable on all light content surfaces.
+pub const COLOR_MESSAGE_NOTICE_TEXT: Vec4 = vec4(0.337, 0.416, 0.471, 1.0);
 /// #953800
 pub const COLOR_TEXT_WARNING_NOT_FOUND: Vec4 = vec4(0.584, 0.219, 0.0, 1.0);
 /// #F0F5FF
-pub const COLOR_BG_PREVIEW:            Vec4 = vec4(0.941, 0.961, 1.0, 1.0);
+pub const COLOR_BG_PREVIEW: Vec4 = vec4(0.941, 0.961, 1.0, 1.0);
 /// #CDEDDF
-pub const COLOR_BG_PREVIEW_HOVER:      Vec4 = vec4(0.804, 0.929, 0.875, 1.0);
+pub const COLOR_BG_PREVIEW_HOVER: Vec4 = vec4(0.804, 0.929, 0.875, 1.0);
 
 /// Applies positive (green) button styling to the given button.
 pub fn apply_positive_button_style(cx: &mut Cx, button: &mut ButtonRef) {
@@ -432,13 +431,13 @@ pub fn apply_neutral_button_style(cx: &mut Cx, button: &mut ButtonRef) {
     });
 }
 
-/// Applies the primary (blue) button styling to the given button.
+/// Applies the primary Hepta focus styling to the given button.
 pub fn apply_primary_button_style(cx: &mut Cx, button: &mut ButtonRef) {
     script_apply_eval!(cx, button, {
         draw_bg +: {
             color: mod.widgets.COLOR_ACTIVE_PRIMARY,
             color_hover: mod.widgets.COLOR_ACTIVE_PRIMARY_DARKER,
-            color_down: #0C5DAA,
+            color_down: mod.widgets.COLOR_HEPTA_FOCUS_HOVER,
             border_color: #0000,
             border_color_hover: #0000,
             border_color_down: #0000,

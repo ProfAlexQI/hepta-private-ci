@@ -1,6 +1,6 @@
 #![recursion_limit = "256"]
 
-use std::{path::Path, sync::OnceLock};
+use std::{path::{Path, PathBuf}, sync::OnceLock};
 
 use makepad_widgets::ScriptNew;
 use robius_directories::ProjectDirs;
@@ -43,6 +43,10 @@ pub mod persistence;
 /// The settings screen and settings-related content/widgets.
 pub mod settings;
 
+/// Side-effect-free contract boundary for optional Hepta runtime integration.
+#[cfg(feature = "hepta-bridge")]
+pub mod hepta_bridge;
+
 /// Login screen
 pub mod login;
 /// Logout confirmation and state management
@@ -83,21 +87,37 @@ pub mod temp_storage;
 pub mod location;
 pub mod image_utils;
 
-pub const APP_QUALIFIER: &str = "rs";
-pub const APP_ORGANIZATION: &str = "robius";
-pub const APP_NAME: &str = "robrix";
+pub const APP_QUALIFIER: &str = "ai";
+pub const APP_ORGANIZATION: &str = "hepta";
+// Keep the historical ProjectDirs component stable across the upstream-first
+// migration so existing encrypted Matrix state is neither orphaned nor paired
+// with a newly-written credential generation after rollback.
+pub const APP_NAME: &str = "hepta-native";
 
 pub fn project_dir() -> &'static ProjectDirs {
-    static ROBRIX_PROJECT_DIRS: OnceLock<ProjectDirs> = OnceLock::new();
+    static HEPTA_PROJECT_DIRS: OnceLock<ProjectDirs> = OnceLock::new();
 
-    ROBRIX_PROJECT_DIRS.get_or_init(|| {
+    HEPTA_PROJECT_DIRS.get_or_init(|| {
         ProjectDirs::from(APP_QUALIFIER, APP_ORGANIZATION, APP_NAME)
-            .expect("Failed to obtain Robrix project directory")
+            .expect("Failed to obtain Hepta project directory")
     })
 }
 
 pub fn app_data_dir() -> &'static Path {
-    project_dir().data_dir()
+    static HEPTA_APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+    HEPTA_APP_DATA_DIR
+        .get_or_init(|| {
+            // Test and explicit diagnostics builds may isolate local state.
+            // Product builds ignore this environment variable so an injected
+            // process environment cannot silently redirect credential metadata.
+            #[cfg(any(test, feature = "developer-diagnostics"))]
+            if let Some(path) = std::env::var_os("HEPTA_NATIVE_APP_DATA_DIR") {
+                return PathBuf::from(path);
+            }
+            project_dir().data_dir().to_path_buf()
+        })
+        .as_path()
 }
 
 pub fn cache_dir() -> &'static Path {

@@ -126,7 +126,7 @@ fn use_android_tls_roots(builder: matrix_sdk::ClientBuilder) -> matrix_sdk::Clie
     builder
 }
 
-/// Creates and returns a `ClientBuilder` configured with every setting Robrix needs.
+/// Creates and returns a `ClientBuilder` configured with every setting Hepta needs.
 pub(crate) fn base_client_builder(db_path: &Path, passphrase: &str) -> matrix_sdk::ClientBuilder {
     let store_config = build_sqlite_store_config(db_path, passphrase);
     // Store event and media cache content in the platform's intended cache dir.
@@ -238,7 +238,7 @@ async fn login(
             let login_result = client
                 .matrix_auth()
                 .login_username(&cli.user_id, &cli.password)
-                .initial_device_display_name("robrix-un-pw")
+                .initial_device_display_name("hepta-un-pw")
                 .send()
                 .await?;
             if client.matrix_auth().logged_in() {
@@ -2874,7 +2874,7 @@ async fn start_matrix_client_login_and_sync(rt: Handle) {
                         },
                         None => {
                             error!("BUG: login_receiver hung up unexpectedly");
-                            let err = String::from("Please restart Robrix.\n\nUnable to listen for login requests.");
+                            let err = String::from("Please restart Hepta.\n\nUnable to listen for login requests.");
                             Cx::post_action(LoginAction::LoginFailure(err.clone()));
                             enqueue_rooms_list_update(RoomsListUpdate::Status {
                                 status: err,
@@ -2930,7 +2930,7 @@ async fn start_matrix_client_login_and_sync(rt: Handle) {
                 let err_msg = if is_invalid_token_error(&e) {
                     "Your login token is no longer valid.\n\nPlease log in again.".to_string()
                 } else {
-                    format!("Please restart Robrix.\n\nFailed to create Matrix sync service: {e}.")
+                    format!("Please restart Hepta.\n\nFailed to create Matrix sync service: {e}.")
                 };
                 Cx::post_action(LoginAction::LoginFailure(err_msg.clone()));
                 enqueue_popup_notification(err_msg.clone(), PopupKind::Error, None);
@@ -3904,7 +3904,7 @@ fn handle_sync_service_state_subscriber(mut subscriber: Subscriber<sync_service:
                             apply_sync_service_desired_state("sync service error restart").await;
                         } else {
                             enqueue_popup_notification(
-                                "Unable to restart the Matrix sync service.\n\nPlease quit and restart Robrix.",
+                                "Unable to restart the Matrix sync service.\n\nPlease quit and restart Hepta.",
                                 PopupKind::Error,
                                 None,
                             );
@@ -4790,13 +4790,13 @@ async fn spawn_sso_server(
         let mut is_logged_in = false;
 
         // Desktop's `login_sso` uses a local HTTP server for the OAuth
-        // redirect, which iOS suspends when Robrix backgrounds for Safari.
+        // redirect, which iOS suspends when Hepta backgrounds for Safari.
         // iOS uses ASWebAuthenticationSession to keep the app foregrounded.
         #[cfg(not(target_os = "ios"))]
         let login_result = {
             Cx::post_action(LoginAction::Status {
                 title: "Opening your browser...".into(),
-                status: "Please finish logging in using your browser, and then come back to Robrix.".into(),
+                status: "Please finish logging in using your browser, and then come back to Hepta.".into(),
             });
             client
                 .matrix_auth()
@@ -4814,7 +4814,7 @@ async fn spawn_sso_server(
                     )
                 })
                 .identity_provider_id(&identity_provider_id)
-                .initial_device_display_name(&format!("robrix-sso-{brand}"))
+                .initial_device_display_name(&format!("hepta-sso-{brand}"))
                 .await
         };
         #[cfg(target_os = "ios")]
@@ -4882,7 +4882,7 @@ async fn warmup_homeserver_connection(client: &Client) -> matrix_sdk::HttpResult
 }
 
 /// Drives iOS SSO via `ASWebAuthenticationSession`. Gets the SSO URL with a
-/// `robrix://` redirect, opens it in the auth sheet, and feeds the callback
+/// `hepta-native://` redirect, opens it in the auth sheet, and feeds the callback
 /// URL through `login_with_sso_callback` to finish.
 #[cfg(target_os = "ios")]
 async fn run_ios_sso_flow(
@@ -4897,8 +4897,8 @@ async fn run_ios_sso_flow(
 
     // Session-scoped scheme, so no Info.plist registration needed. Synapse
     // doesn't validate redirectUrl, so the URL shape is up to us.
-    const REDIRECT_URL: &str = "robrix://login";
-    const CALLBACK_SCHEME: &str = "robrix";
+    const REDIRECT_URL: &str = "hepta-native://login";
+    const CALLBACK_SCHEME: &str = "hepta-native";
 
     let auth = client.matrix_auth();
     let sso_url = auth
@@ -4957,7 +4957,7 @@ async fn run_ios_sso_flow(
                 "Failed to parse SSO callback for loginToken: {e}"
             )))
         })?
-        .initial_device_display_name(&format!("robrix-sso-{brand}"))
+        .initial_device_display_name(&format!("hepta-sso-{brand}"))
         .await
 }
 

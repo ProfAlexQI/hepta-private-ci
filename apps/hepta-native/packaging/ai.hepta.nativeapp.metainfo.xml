@@ -1,29 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>rs.robius.robrix</id>
+  <id>ai.hepta.nativeapp</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
 
-  <name>Robrix</name>
-  <summary>Powerful Matrix chat with dockable tabs for many rooms at once</summary>
+  <name>Hepta</name>
+  <summary>Cross-platform Matrix chat and explicit agent collaboration</summary>
 
   <description>
     <p>
-      Robrix is a new, powerful Matrix client that offers the full experience of a desktop
-      chat app, and beyond, without sacrificing performance or functionality.
+      Hepta is a cross-platform Matrix client built on the complete Robrix application shell,
+      with an explicit local-first boundary for agent tasks, tools, and approvals.
     </p>
     <p>
       We even bring some cool new features to the world of Matrix, like our customizable
       dockable tabs layout that lets you view and interact with multiple rooms or threads
       simultaneously. This looks just like your favorite multi-tab web browser or programming
       IDE. Now you can keep tabs on as many conversations as you want, all at once, and
-      Robrix won't jump or jerk the view around while you scroll through your rooms.
+      Hepta won't jump or jerk the view around while you scroll through your rooms.
     </p>
     <p>
-      Robrix adapts to any screen size, but doesn't limit what you can do. We wrote it from
-      scratch in Rust to provide the same functionality and quality on all platforms, thanks
-      to the Makepad UI toolkit and the Robius framework, which we also wrote from scratch.
-      So you can look forward to the same sleek design, fast startup, and fluid experience on
+      Hepta adapts to any screen size without limiting what you can do. Its upstream shell is
+      written in Rust on the Makepad UI toolkit and Project Robius platform abstractions.
+      You can look forward to fast startup and a fluid experience on
       any device, even when scrolling through dozens of rooms with thousands of messages, and
       move between Linux, macOS, Windows, Android, and iOS without giving up any features or
       learning a new app UI.
@@ -36,7 +35,7 @@
       across the world. Basically, it's like email, but fully encrypted and real-time.
       No ads, no analytics, no data brokers.
     </p>
-    <p>Robrix supports nearly all the main Matrix client features you'd expect:</p>
+    <p>Hepta inherits the main Matrix client features provided by Robrix:</p>
     <ul>
       <li>End-to-end encryption and verification for encrypted chat across public, private, and DM rooms</li>
       <li>Fast login and room updates via native sliding sync</li>
@@ -51,28 +50,24 @@
       <li>Login to supported homeservers via SSO or username and password</li>
     </ul>
     <p>
-      Robrix is free and open source. Contributions and issues are welcome.
+      Hepta retains the MIT license and full Robrix attribution.
     </p>
     <p>
-      Robrix is just getting started and is under active development. Not all features are
-      complete yet, such as admin tools for kicking and banning users, message search, and
-      media upload and playback.
+      Hepta is under active development. Not all features are
+      complete yet, including some room administration and media playback workflows.
     </p>
   </description>
 
-  <launchable type="desktop-id">robrix.desktop</launchable>
-  <pkgname>robrix</pkgname>
+  <launchable type="desktop-id">hepta-native.desktop</launchable>
+  <pkgname>hepta-native</pkgname>
 
-  <developer id="rs.robius">
-    <name translate="no">Project Robius</name>
+  <developer id="ai.hepta">
+    <name translate="no">Hepta contributors</name>
   </developer>
-  <developer_name translate="no">Project Robius</developer_name>
+  <developer_name translate="no">Hepta contributors</developer_name>
 
-  <url type="homepage">https://robius.rs/</url>
-  <url type="bugtracker">https://github.com/project-robius/robrix/issues</url>
-  <url type="vcs-browser">https://github.com/project-robius/robrix</url>
-  <url type="contribute">https://github.com/orgs/project-robius/projects/4/</url>
-  <url type="contact">https://matrix.to/#/#robius-robrix:matrix.org</url>
+  <url type="homepage">https://github.com/ProfAlexQI/Hepta</url>
+  <url type="vcs-browser">https://github.com/ProfAlexQI/Hepta</url>
 
   <categories>
     <category>Network</category>
@@ -95,7 +90,7 @@
   </keywords>
 
   <provides>
-    <binary>robrix</binary>
+    <binary>hepta-native</binary>
   </provides>
 
   <supports>

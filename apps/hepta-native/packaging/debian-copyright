@@ -9,28 +9,28 @@ Files: *
 Copyright: 2023-2026 Project Robius Developers
 License: MIT
 
-Files: usr/lib/robrix/makepad_widgets/resources/IBMPlexSans-*.ttf
+Files: usr/lib/hepta-native/makepad_widgets/resources/IBMPlexSans-*.ttf
 Copyright: 2018 IBM Corp.
 License: OFL-1.1
 Comment: Reserved Font Name "Plex". Bundled via the makepad-widgets dependency.
  Upstream declares the RFN and a 2017 year; 2018 above is the shipped binaries'
  own embedded copyright string.
 
-Files: usr/lib/robrix/makepad_widgets/resources/LXGWWenKai*.ttf
+Files: usr/lib/hepta-native/makepad_widgets/resources/LXGWWenKai*.ttf
 Copyright: 2021-2024 LXGW <https://github.com/lxgw/LxgwWenKai>
            2020 The Klee Project Authors <https://github.com/fontworks-fonts/Klee>
 License: OFL-1.1
 
-Files: usr/lib/robrix/makepad_widgets/resources/NotoColorEmoji.ttf
-       usr/lib/robrix/makepad_widgets/resources/NotoSans-Regular.ttf
+Files: usr/lib/hepta-native/makepad_widgets/resources/NotoColorEmoji.ttf
+       usr/lib/hepta-native/makepad_widgets/resources/NotoSans-Regular.ttf
 Copyright: 2012, 2022 Google Inc.
 License: OFL-1.1
 
-Files: usr/lib/robrix/makepad_widgets/resources/jetbrains_mono_variable.ttf
+Files: usr/lib/hepta-native/makepad_widgets/resources/jetbrains_mono_variable.ttf
 Copyright: 2020 The JetBrains Mono Project Authors <https://github.com/JetBrains/JetBrainsMono>
 License: OFL-1.1
 
-Files: usr/lib/robrix/makepad_widgets/resources/fa-solid-900.ttf
+Files: usr/lib/hepta-native/makepad_widgets/resources/fa-solid-900.ttf
 Copyright: 2024 Fonticons, Inc. <https://fontawesome.com>
 License: OFL-1.1
 Comment: Font Awesome 6 Free 6.7.2, Reserved Font Name "Font Awesome".
@@ -38,7 +38,7 @@ Comment: Font Awesome 6 Free 6.7.2, Reserved Font Name "Font Awesome".
  CC-BY-4.0 terms cover only the .svg and .js icon packagings, which are not
  shipped in this package.
 
-Files: usr/lib/robrix/makepad_widgets/resources/LiberationMono-Regular.ttf
+Files: usr/lib/hepta-native/makepad_widgets/resources/LiberationMono-Regular.ttf
 Copyright: 2007 Red Hat, Inc.
            2007 Ascender Corporation (digitized data)
 License: GPL-2-with-Liberation-exceptions
@@ -46,14 +46,14 @@ Comment: Liberation Mono 1.04. LIBERATION is a trademark of Red Hat, Inc.
  Liberation 2.00 and later are licensed under OFL-1.1 instead; this package
  bundles a 1.x release, which predates that relicensing.
 
-Files: usr/lib/robrix/makepad_widgets/resources/NewCMMath-Regular.otf
+Files: usr/lib/hepta-native/makepad_widgets/resources/NewCMMath-Regular.otf
 Copyright: 2019-2021 Antonis Tsolomitis
 License: GUST-Font-License
 Comment: New Computer Modern Math 4.0.
 
-Files: usr/lib/robrix/robrix/resources/icons/*
-       usr/lib/robrix/robrix/resources/*.svg
-       usr/lib/robrix/makepad_widgets/resources/icons/*
+Files: usr/lib/hepta-native/hepta-native/resources/icons/*
+       usr/lib/hepta-native/hepta-native/resources/*.svg
+       usr/lib/hepta-native/makepad_widgets/resources/icons/*
 Copyright: various, see the upstream icon sources
 License: SVG-Repo-terms
 Comment: Nearly all icons are obtained from SVG Repo and used in accordance with
@@ -61,29 +61,29 @@ Comment: Nearly all icons are obtained from SVG Repo and used in accordance with
  so no single licence applies and no grant is claimed here beyond those terms.
  See licenses/ATTRIBUTIONS.md in the upstream source.
 
-Files: usr/lib/robrix/robrix/resources/icons/add_wallet.svg
+Files: usr/lib/hepta-native/hepta-native/resources/icons/add_wallet.svg
 Copyright: Creative Stall
 License: CC-BY-3.0
 Comment: "Add Wallet" by Creative Stall from Noun Project.
  <https://thenounproject.com/browse/icons/term/add-wallet/>
 
-Files: usr/lib/robrix/robrix/resources/img/apple.png
-       usr/lib/robrix/robrix/resources/img/facebook.png
-       usr/lib/robrix/robrix/resources/img/github.png
-       usr/lib/robrix/robrix/resources/img/gitlab.png
-       usr/lib/robrix/robrix/resources/img/google.png
+Files: usr/lib/hepta-native/hepta-native/resources/img/apple.png
+       usr/lib/hepta-native/hepta-native/resources/img/facebook.png
+       usr/lib/hepta-native/hepta-native/resources/img/github.png
+       usr/lib/hepta-native/hepta-native/resources/img/gitlab.png
+       usr/lib/hepta-native/hepta-native/resources/img/google.png
 Copyright: the respective trademark owners
 License: brand-logo-no-grant
 Comment: Third-party brand logos, shown only to identify the corresponding
  single-sign-on provider. No copyright licence is asserted over them.
 
-Files: usr/lib/robrix/robrix/resources/img/x.png
+Files: usr/lib/hepta-native/hepta-native/resources/img/x.png
 Copyright: shobumiah
 License: Vecteezy-Free
 Comment: X logo obtained from Vecteezy, attribution as required by their free
  licence. <https://www.vecteezy.com/png/42148611-new-twitter-x-logo-twitter-icon-x-social-media-icon>
 
-Files: usr/bin/robrix
+Files: usr/bin/hepta-native
 Copyright: 2023-2026 Project Robius Developers
 License: MIT
 Comment: Robrix's own code is MIT. This binary also statically links Rust crates

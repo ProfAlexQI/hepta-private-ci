@@ -1,16 +1,15 @@
-//! An "About Robrix" section within the SettingsScreen.
+//! The Hepta product identity and its upstream/runtime provenance.
 //!
 //! Shows the app version and a set of external links (e.g., privacy policy).
 
 use makepad_widgets::*;
 use crate::shared::popup_list::{enqueue_popup_notification, PopupKind};
 
-const HOMEPAGE_URL: &str = "https://robrix.app";
-const PRIVACY_POLICY_URL: &str = "https://robrix.app/privacy/";
 const SOURCE_URL: &str = "https://github.com/project-robius/robrix";
-const NEW_ISSUE_URL: &str = "https://github.com/project-robius/robrix/issues/new";
 
 const ROBRIX_VERSION: &str = env!("CARGO_PKG_VERSION");
+const HEPTA_GIT_COMMIT_HASH: &str = env!("HEPTA_GIT_COMMIT_HASH");
+const HEPTA_GIT_COMMIT_URL: &str = env!("HEPTA_GIT_COMMIT_URL");
 const ROBRIX_GIT_COMMIT_HASH: &str = env!("ROBRIX_GIT_COMMIT_HASH");
 const ROBRIX_GIT_COMMIT_URL: &str = env!("ROBRIX_GIT_COMMIT_URL");
 const MATRIX_SDK_VERSION: &str = env!("MATRIX_SDK_VERSION");
@@ -18,7 +17,8 @@ const MATRIX_SDK_GIT_REV: &str = env!("MATRIX_SDK_GIT_REV");
 const TESTFLIGHT_BUILD_NUMBER: &str = env!("TESTFLIGHT_BUILD_NUMBER");
 const MATRIX_SDK_URL: &str = env!("MATRIX_SDK_URL");
 
-const ROBRIX_PREFIX: &str = "Robrix: ";
+const ROBRIX_PREFIX: &str = "Hepta Native: ";
+const UPSTREAM_PREFIX: &str = "Robrix upstream: ";
 const TESTFLIGHT_PREFIX: &str = "TestFlight build: ";
 const SDK_PREFIX: &str = "Matrix Rust SDK: ";
 
@@ -49,7 +49,7 @@ script_mod! {
         flow: Down
 
         TitleLabel {
-            text: "About Robrix"
+            text: "About Hepta"
         }
 
         SubsectionLabel {
@@ -64,6 +64,15 @@ script_mod! {
 
             copy_robrix_version_button := mod.widgets.SmallCopyButton {}
             robrix_version_html := mod.widgets.VersionHtml {}
+        }
+
+        upstream_version_row := View {
+            width: Fill, height: Fit
+            flow: Right,
+            spacing: 10
+            margin: Inset{top: 3, bottom: 3, left: 48}
+
+            upstream_version_html := mod.widgets.VersionHtml {}
         }
 
         testflight_row := View {
@@ -93,6 +102,7 @@ script_mod! {
         }
 
         privacy_policy_button := RobrixIconButton {
+            visible: false,
             height: mod.widgets.SETTINGS_BUTTON_HEIGHT,
             padding: Inset{left: 12, right: 15}
             margin: Inset{left: 5, top: 5, bottom: 5}
@@ -114,12 +124,13 @@ script_mod! {
             wrap_spacing: 2
 
             homepage_button := RobrixIconButton {
+                visible: false,
                 height: mod.widgets.SETTINGS_BUTTON_HEIGHT,
                 padding: Inset{left: 12, right: 15}
                 margin: Inset{left: 5, top: 5, bottom: 5}
                 draw_icon.svg: (ICON_EXTERNAL_LINK)
                 icon_walk: Walk{width: 16, height: 16}
-                text: "Robrix Homepage"
+                text: "Hepta Homepage"
             }
 
             source_button := RobrixIconButton {
@@ -128,10 +139,11 @@ script_mod! {
                 margin: Inset{left: 5, top: 5, bottom: 5}
                 draw_icon.svg: (ICON_EXTERNAL_LINK)
                 icon_walk: Walk{width: 16, height: 16}
-                text: "Source Code (GitHub)"
+                text: "Robrix upstream source"
             }
 
             issues_button := RobrixNegativeIconButton {
+                visible: false,
                 height: mod.widgets.SETTINGS_BUTTON_HEIGHT,
                 padding: Inset{left: 12, right: 15}
                 margin: Inset{left: 5, top: 5, bottom: 5}
@@ -179,7 +191,7 @@ impl Widget for AboutSettings {
         // Long-press / hover tooltips per copy button, same pattern as
         // the user-id copy button in account_settings.rs.
         let robrix_btn = self.view.button(cx, ids!(copy_robrix_version_button));
-        Self::handle_copy_tooltip(cx, event, &robrix_btn, "Copy Robrix version");
+        Self::handle_copy_tooltip(cx, event, &robrix_btn, "Copy Hepta Native version");
         if !TESTFLIGHT_BUILD_NUMBER.is_empty() {
             let testflight_btn = self.view.button(cx, ids!(copy_testflight_button));
             Self::handle_copy_tooltip(cx, event, &testflight_btn, "Copy TestFlight build");
@@ -198,7 +210,7 @@ impl Widget for AboutSettings {
 impl AboutSettings {
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
         if self.view.button(cx, ids!(copy_robrix_version_button)).clicked(actions) {
-            Self::copy_with_toast(cx, &robrix_plaintext(), "Copied Robrix version.");
+            Self::copy_with_toast(cx, &robrix_plaintext(), "Copied Hepta Native version.");
         }
         if !TESTFLIGHT_BUILD_NUMBER.is_empty()
             && self.view.button(cx, ids!(copy_testflight_button)).clicked(actions)
@@ -209,23 +221,16 @@ impl AboutSettings {
             Self::copy_with_toast(cx, &sdk_plaintext(), "Copied Matrix SDK version.");
         }
 
-        if self.view.button(cx, ids!(privacy_policy_button)).clicked(actions) {
-            open_url(PRIVACY_POLICY_URL);
-        }
-        if self.view.button(cx, ids!(homepage_button)).clicked(actions) {
-            open_url(HOMEPAGE_URL);
-        }
         if self.view.button(cx, ids!(source_button)).clicked(actions) {
             open_url(SOURCE_URL);
-        }
-        if self.view.button(cx, ids!(issues_button)).clicked(actions) {
-            open_url(NEW_ISSUE_URL);
         }
     }
 
     fn populate_text(cx: &mut Cx, view: &View) {
         view.html(cx, ids!(robrix_version_html))
             .set_text(cx, &robrix_html());
+        view.html(cx, ids!(upstream_version_html))
+            .set_text(cx, &upstream_html());
         view.html(cx, ids!(sdk_version_html))
             .set_text(cx, &sdk_html());
 
@@ -269,18 +274,26 @@ impl AboutSettings {
 
 fn robrix_html() -> String {
     let value = robrix_plaintext();
-    if ROBRIX_GIT_COMMIT_URL.is_empty() {
+    if HEPTA_GIT_COMMIT_URL.is_empty() {
         format!("<b>{ROBRIX_PREFIX}</b>{value}")
     } else {
-        format!("<b>{ROBRIX_PREFIX}</b><a href=\"{ROBRIX_GIT_COMMIT_URL}\">{value}</a>")
+        format!("<b>{ROBRIX_PREFIX}</b><a href=\"{HEPTA_GIT_COMMIT_URL}\">{value}</a>")
     }
 }
 
 fn robrix_plaintext() -> String {
-    if ROBRIX_GIT_COMMIT_HASH.is_empty() {
+    if HEPTA_GIT_COMMIT_HASH.is_empty() {
         format!("v{ROBRIX_VERSION}")
     } else {
-        format!("v{ROBRIX_VERSION} ({ROBRIX_GIT_COMMIT_HASH})")
+        format!("v{ROBRIX_VERSION} ({HEPTA_GIT_COMMIT_HASH})")
+    }
+}
+
+fn upstream_html() -> String {
+    if ROBRIX_GIT_COMMIT_URL.is_empty() {
+        format!("<b>{UPSTREAM_PREFIX}</b>{ROBRIX_GIT_COMMIT_HASH}")
+    } else {
+        format!("<b>{UPSTREAM_PREFIX}</b><a href=\"{ROBRIX_GIT_COMMIT_URL}\">{ROBRIX_GIT_COMMIT_HASH}</a>")
     }
 }
 

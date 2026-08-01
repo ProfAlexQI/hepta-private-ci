@@ -44,16 +44,16 @@ script_mod! {
         // line up with the boundaries of its parent widgets.
         // This only works if the border_color is the same as its parents,
         // which is currently `COLOR_SECONDARY`.
-        margin: Inset{left: -4, right: -4, bottom: -4 }
+        margin: Inset{left: 10, right: 10, bottom: 10 }
         show_bg: true,
         draw_bg +: {
-            color: (COLOR_PRIMARY)
-            border_radius: 5.0
-            border_color: (COLOR_SECONDARY)
-            border_size: 2.0
-            // shadow_color: #0006
-            // shadow_radius: 0.0
-            // shadow_offset: vec2(0.0,0.0)
+            color: (COLOR_HEPTA_GLASS_STRONG)
+            border_radius: (HEPTA_RADIUS_FLOATING)
+            border_color: (COLOR_HEPTA_HAIRLINE)
+            border_size: 1.0
+            shadow_color: (COLOR_HEPTA_SHADOW)
+            shadow_radius: 8.0
+            shadow_offset: vec2(0.0, 2.0)
         }
 
         // The top-most element is a preview of the message that the user is replying to, if any.
@@ -83,7 +83,7 @@ script_mod! {
                 // Bottom-align everything to ensure that buttons always stick to the bottom
                 // even when the mentionable_text_input box is very tall.
                 align: Align{y: 1.0},
-                padding: 6,
+                padding: 7,
 
                 open_popup_menu_button := RobrixIconButton {
                     padding: 9
@@ -95,8 +95,8 @@ script_mod! {
                     },
                     draw_bg +: {
                         color: (COLOR_BG_PREVIEW)
-                        color_hover: #xE0E8F0
-                        color_down: #xD0D8E8
+                        color_hover: (COLOR_HEPTA_FOCUS_SURFACE_HOVER)
+                        color_down: (COLOR_HEPTA_HAIRLINE)
                     }
                     icon_walk: Walk{width: 21, height: 21}
                 }
