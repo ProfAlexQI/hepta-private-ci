@@ -5,18 +5,14 @@
 //! the option to join the successor room or stay in the current tombstoned room.
 
 use makepad_widgets::*;
-use matrix_sdk::{ruma::OwnedRoomId, RoomState, SuccessorRoom};
-
-use crate::{
-    app::AppStateAction,
-    room::{BasicRoomDetails, FetchedRoomAvatar, FetchedRoomPreview},
-    shared::avatar::AvatarWidgetExt,
-    utils,
+use matrix_sdk::{
+    ruma::OwnedRoomId, RoomState, SuccessorRoom
 };
+
+use crate::{app::AppStateAction, room::{BasicRoomDetails, FetchedRoomAvatar, FetchedRoomPreview}, shared::avatar::AvatarWidgetExt, utils};
 
 const DEFAULT_TOMBSTONE_REASON: &str = "This room has been replaced and is no longer active.";
 const DEFAULT_JOIN_BUTTON_TEXT: &str = "Go to the replacement room";
-const SUCCESSOR_ROOM_DETAILS_READ_EVIDENCE: &str = "Replacement details use existing GetSuccessorRoomDetails; footer display sends no JoinRoom, Knock, membership, message, or room-state mutation.";
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -82,17 +78,6 @@ script_mod! {
                 color: (COLOR_TEXT)
             }
         }
-
-        successor_read_path_evidence := Label {
-            width: Fill, height: Fit,
-            flow: Flow.Right{wrap: true},
-            align: Align{x: 0.5}
-            draw_text +: {
-                color: (TYPING_NOTICE_TEXT_COLOR),
-                text_style: REGULAR_TEXT {font_size: 10}
-            }
-            text: "Replacement details use existing GetSuccessorRoomDetails; footer display sends no JoinRoom, Knock, membership, message, or room-state mutation."
-        }
     }
 }
 
@@ -110,34 +95,26 @@ pub enum SuccessorRoomDetails {
     Full {
         room_preview: FetchedRoomPreview,
         reason: Option<String>,
-    },
+    }
 }
+
 
 /// A view that shows information about a tombstoned room and its successor.
 #[derive(Script, ScriptHook, Widget)]
 pub struct TombstoneFooter {
-    #[deref]
-    view: View,
+    #[deref] view: View,
     /// The ID of the current tombstoned room.
-    #[rust]
-    room_id: Option<OwnedRoomId>,
+    #[rust] room_id: Option<OwnedRoomId>,
     /// The details of the successor room.
-    #[rust]
-    successor_info: Option<BasicRoomDetails>,
+    #[rust] successor_info: Option<BasicRoomDetails>,
 }
 
 impl Widget for TombstoneFooter {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         if let Event::Actions(actions) = event {
-            if self
-                .view
-                .button(cx, ids!(join_successor_button))
-                .clicked(actions)
-            {
+            if self.view.button(cx, ids!(join_successor_button)).clicked(actions) {
                 let Some(destination_room) = self.successor_info.clone() else {
-                    error!(
-                        "BUG: cannot navigate to replacement room: no successor room information."
-                    );
+                    error!("BUG: cannot navigate to replacement room: no successor room information.");
                     return;
                 };
                 cx.action(AppStateAction::NavigateToRoom {
@@ -166,47 +143,47 @@ impl TombstoneFooter {
         let join_successor_button = self.view.button(cx, ids!(join_successor_button));
         let successor_room_avatar = self.view.avatar(cx, ids!(successor_room_avatar));
         let successor_room_name = self.view.label(cx, ids!(successor_room_name));
-        let successor_read_path_evidence = self.view.label(cx, ids!(successor_read_path_evidence));
 
-        log!(
-            "Showing TombstoneFooter for room {tombstoned_room_id}, Successor: {successor_room_details:?}"
-        );
+        log!("Showing TombstoneFooter for room {tombstoned_room_id}, Successor: {successor_room_details:?}");
         match successor_room_details {
             SuccessorRoomDetails::None => {
                 replacement_reason.set_text(cx, DEFAULT_TOMBSTONE_REASON);
                 join_successor_button.set_text(cx, DEFAULT_JOIN_BUTTON_TEXT);
                 successor_room_avatar.show_text(cx, None, None, "?");
-                successor_room_name.set_text(cx, "(Unknown successor room)");
+                successor_room_name.set_text(cx, "(Unknown successor room");
                 self.successor_info = None;
             }
             SuccessorRoomDetails::Basic(sr) => {
-                replacement_reason
-                    .set_text(cx, sr.reason.as_deref().unwrap_or(DEFAULT_TOMBSTONE_REASON));
+                replacement_reason.set_text(
+                    cx,
+                    sr.reason.as_deref().unwrap_or(DEFAULT_TOMBSTONE_REASON)
+                );
                 join_successor_button.set_text(cx, DEFAULT_JOIN_BUTTON_TEXT);
                 successor_room_avatar.show_text(cx, None, None, "#");
                 successor_room_name.set_text(cx, &format!("Room ID {}", sr.room_id));
                 self.successor_info = Some(sr.into());
-            }
-            SuccessorRoomDetails::Full {
-                room_preview,
-                reason,
-            } => {
-                replacement_reason
-                    .set_text(cx, reason.as_deref().unwrap_or(DEFAULT_TOMBSTONE_REASON));
+            },
+            SuccessorRoomDetails::Full { room_preview, reason } => {
+                replacement_reason.set_text(
+                    cx,
+                    reason.as_deref().unwrap_or(DEFAULT_TOMBSTONE_REASON)
+                );
                 join_successor_button.set_text(
                     cx,
                     matches!(room_preview.state, Some(RoomState::Joined))
                         .then_some(DEFAULT_JOIN_BUTTON_TEXT)
-                        .unwrap_or("Join the replacement room"),
+                        .unwrap_or("Join the replacement room")
                 );
                 match &room_preview.room_avatar {
                     FetchedRoomAvatar::Text(text) => {
                         successor_room_avatar.show_text(cx, None, None, text);
                     }
-                    FetchedRoomAvatar::Image(image_data) => {
-                        let res = successor_room_avatar.show_image(cx, None, |cx, img_ref| {
-                            utils::load_png_or_jpg(&img_ref, cx, image_data)
-                        });
+                    FetchedRoomAvatar::Image(avatar_image) => {
+                        let res = successor_room_avatar.show_image(
+                            cx,
+                            None,
+                            |cx, img_ref| utils::load_avatar_image(&img_ref, cx, avatar_image),
+                        );
                         if res.is_err() {
                             successor_room_avatar.show_text(
                                 cx,
@@ -219,20 +196,12 @@ impl TombstoneFooter {
                 }
                 match room_preview.room_name_id.name_for_avatar() {
                     Some(n) => successor_room_name.set_text(cx, n),
-                    _ => successor_room_name.set_text(
-                        cx,
-                        &format!("Unnamed Room, ID: {}", room_preview.room_name_id.room_id()),
-                    ),
+                    _ => successor_room_name.set_text(cx, &format!("Unnamed Room, ID: {}", room_preview.room_name_id.room_id())),
                 }
                 self.successor_info = Some(room_preview.clone().into());
             }
         }
 
-        // TombstoneFooter successor-room read evidence: this footer only
-        // displays the replacement-room details fetched by the existing
-        // GetSuccessorRoomDetails path. Rendering it sends no JoinRoom, Knock,
-        // membership, message, or room-state mutation request.
-        successor_read_path_evidence.set_text(cx, SUCCESSOR_ROOM_DETAILS_READ_EVIDENCE);
         join_successor_button.reset_hover(cx);
         self.room_id = Some(tombstoned_room_id.clone());
         self.set_visible(cx, true);
@@ -253,17 +222,13 @@ impl TombstoneFooterRef {
         tombstoned_room_id: &OwnedRoomId,
         successor_room_details: &SuccessorRoomDetails,
     ) {
-        let Some(mut inner) = self.borrow_mut() else {
-            return;
-        };
+        let Some(mut inner) = self.borrow_mut() else { return };
         inner.show(cx, tombstoned_room_id, successor_room_details);
     }
 
     /// See [`TombstoneFooter::hide()`].
     pub fn hide(&self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else {
-            return;
-        };
+        let Some(mut inner) = self.borrow_mut() else { return };
         inner.hide(cx);
     }
 }

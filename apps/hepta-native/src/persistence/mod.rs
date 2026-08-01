@@ -1,10 +1,7 @@
 //! Modules for saving/restoring  application data to persistent storage.
 
 /// For persisting the state of a user's logged-in Matrix session.
-mod matrix_session_store;
 pub mod matrix_state;
-pub use matrix_session_store::ClientSessionPersisted;
-pub use matrix_session_store::SlidingSyncVersion;
 pub use matrix_state::*;
 
 /// For persisting application state not related to Matrix.

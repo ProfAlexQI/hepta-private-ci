@@ -1,28 +1,21 @@
 use std::fmt::Write;
 use std::sync::Arc;
 use futures_util::StreamExt;
-use makepad_widgets::{log, Cx};
+use makepad_widgets::{error, log, Cx};
 use matrix_sdk_base::crypto::{AcceptedProtocols, CancelInfo, EmojiShortAuthString};
 use matrix_sdk::{
     encryption::{
-        verification::{
-            SasState, SasVerification, Verification, VerificationRequest, VerificationRequestState,
-        },
-        VerificationState,
-    },
-    ruma::{
+        verification::{SasState, SasVerification, Verification, VerificationRequest, VerificationRequestState}, VerificationState}, ruma::{
         events::{
             key::verification::{request::ToDeviceKeyVerificationRequestEvent, VerificationMethod},
             room::message::{MessageType, OriginalSyncRoomMessageEvent},
         },
         UserId,
-    },
-    Client,
+    }, Client
 };
-use tokio::{
-    runtime::Handle,
-    sync::mpsc::{UnboundedReceiver, UnboundedSender},
-};
+use tokio::{runtime::Handle, sync::mpsc::{UnboundedReceiver, UnboundedSender}};
+
+use crate::shared::popup_list::{enqueue_popup_notification, PopupKind};
 
 #[derive(Clone, Debug, Default)]
 pub enum VerificationStateAction {
@@ -31,14 +24,10 @@ pub enum VerificationStateAction {
     None,
 }
 
-pub fn add_verification_event_handlers_and_sync_client(
-    client: Client,
-) -> tokio::task::JoinHandle<()> {
+
+pub fn add_verification_event_handlers_and_sync_client(client: Client) -> tokio::task::JoinHandle<()> {
     let mut verification_state_subscriber = client.encryption().verification_state();
-    log!(
-        "Initial verification state is {:?}",
-        verification_state_subscriber.get()
-    );
+    log!("Initial verification state is {:?}", verification_state_subscriber.get());
     let verification_state_handle = Handle::current().spawn(async move {
         while let Some(state) = verification_state_subscriber.next().await {
             log!("Received a verification state update: {state:?}");
@@ -57,7 +46,8 @@ pub fn add_verification_event_handlers_and_sync_client(
                 .await
             {
                 Handle::current().spawn(request_verification_handler(client, request));
-            } else {
+            }
+            else {
                 // warning!("Skipping invalid verification request from {}, transaction ID: {}\n   Content: {:?}",
                 //     ev.sender, ev.content.transaction_id, ev.content,
                 // );
@@ -74,32 +64,25 @@ pub fn add_verification_event_handlers_and_sync_client(
                     .await
                 {
                     Handle::current().spawn(request_verification_handler(client, request));
-                } else {
+                }
+                else {
                     // warning!("Skipping invalid verification request from {}, event ID: {}\n   Content: {:?}",
                     //     ev.sender, ev.event_id, ev.content,
                     // );
                 }
             }
-        },
+        }
     );
 
     verification_state_handle
 }
 
+
 async fn dump_devices(user_id: &UserId, client: &Client) -> String {
     let mut devices = String::new();
-    for device in client
-        .encryption()
-        .get_user_devices(user_id)
-        .await
-        .unwrap()
-        .devices()
-    {
-        let current = client
-            .device_id()
-            .is_some_and(|id| id == device.device_id());
-        let _ = writeln!(
-            &mut devices,
+    for device in client.encryption().get_user_devices(user_id).await.unwrap().devices() {
+        let current = client.device_id().is_some_and(|id| id == device.device_id());
+        let _ = writeln!(&mut devices,
             "    {:<10} {:<30} {:<}{}",
             device.device_id(),
             device.display_name().unwrap_or("(unknown name)"),
@@ -107,15 +90,11 @@ async fn dump_devices(user_id: &UserId, client: &Client) -> String {
             if current { " <-- this device" } else { "" },
         );
     }
-    format!(
-        "Currently-known devices of user {user_id}:\n{}",
-        if devices.is_empty() {
-            "    (none)"
-        } else {
-            &devices
-        },
+    format!("Currently-known devices of user {user_id}:\n{}",
+        if devices.is_empty() { "    (none)" } else { &devices },
     )
 }
+
 
 async fn sas_verification_handler(
     client: Client,
@@ -127,10 +106,7 @@ async fn sas_verification_handler(
         &sas.other_device().user_id(),
         &sas.other_device().device_id()
     );
-    log!(
-        "[Pre-verification] {}",
-        dump_devices(sas.other_device().user_id(), &client).await
-    );
+    log!("[Pre-verification] {}", dump_devices(sas.other_device().user_id(), &client).await);
 
     let mut stream = sas.changes();
     // Accept the SAS verification with both default methods: emoji and decimal.
@@ -144,11 +120,12 @@ async fn sas_verification_handler(
     let mut receiver_opt = Some(response_receiver);
     while let Some(state) = stream.next().await {
         match state {
-            SasState::Created { .. } | SasState::Started { .. } => {} // we've already passed these states
+            SasState::Created { .. }
+            | SasState::Started { .. } => { } // we've already passed these states
 
-            SasState::Accepted { accepted_protocols } => {
-                Cx::post_action(VerificationAction::SasAccepted(accepted_protocols))
-            }
+            SasState::Accepted { accepted_protocols } => Cx::post_action(
+                VerificationAction::SasAccepted(accepted_protocols)
+            ),
 
             SasState::KeysExchanged { emojis, decimals } => {
                 Cx::post_action(VerificationAction::KeysExchanged { emojis, decimals });
@@ -161,9 +138,7 @@ async fn sas_verification_handler(
                                 log!("User confirmed SAS verification keys");
                                 if let Err(e) = sas2.confirm().await {
                                     log!("Failed to confirm SAS verification keys; error: {:?}", e);
-                                    Cx::post_action(VerificationAction::SasConfirmationError(
-                                        Arc::new(e),
-                                    ));
+                                    Cx::post_action(VerificationAction::SasConfirmationError(Arc::new(e)));
                                 }
                                 // If successful, SAS verification will now transition to the Confirmed state,
                                 // which will be sent to the main UI thread in the `SasState::Confirmed` match arm below.
@@ -179,17 +154,14 @@ async fn sas_verification_handler(
                     // confirmed their keys match the ones we have *before* we confirmed them.
                     log!("The other side confirmed that the displayed keys matched.");
                 };
+
             }
 
             SasState::Confirmed => Cx::post_action(VerificationAction::SasConfirmed),
 
-            SasState::Done {
-                verified_devices,
-                verified_identities,
-            } => {
+            SasState::Done { verified_devices, verified_identities } => {
                 let device = sas.other_device();
-                log!(
-                    "SAS verification done.
+                log!("SAS verification done.
                     Devices: {verified_devices:?}
                     Identities: {verified_identities:?}",
                 );
@@ -199,10 +171,7 @@ async fn sas_verification_handler(
                     device.device_id(),
                     device.local_trust_state()
                 );
-                log!(
-                    "[Post-verification] {}",
-                    dump_devices(sas.other_device().user_id(), &client).await
-                );
+                log!("[Post-verification] {}", dump_devices(sas.other_device().user_id(), &client).await);
                 // We go ahead and send the RequestCompleted action here,
                 // because it is not guaranteed that the VerificationRequestState stream loop
                 // will receive an update an enter the `Done` state.
@@ -210,10 +179,7 @@ async fn sas_verification_handler(
                 break;
             }
             SasState::Cancelled(cancel_info) => {
-                log!(
-                    "SAS verification has been cancelled, reason: {}",
-                    cancel_info.reason()
-                );
+                log!("SAS verification has been cancelled, reason: {}", cancel_info.reason());
                 // We go ahead and send the RequestCancelled action here,
                 // because it is not guaranteed that the VerificationRequestState stream loop
                 // will receive an update an enter the `Cancelled` state.
@@ -225,78 +191,61 @@ async fn sas_verification_handler(
 }
 
 async fn request_verification_handler(client: Client, request: VerificationRequest) {
-    log!(
-        "Received a verification request in room {:?}: {:?}",
-        request.room_id(),
-        request.state()
+    log!("Received a verification request in room {:?}: {:?}", request.room_id(), request.state());
+    let (sender, mut response_receiver) = tokio::sync::mpsc::unbounded_channel::<VerificationUserResponse>();
+    Cx::post_action(
+        VerificationAction::RequestReceived(
+            VerificationRequestActionState {
+                request: request.clone(),
+                response_sender: sender.clone(),
+            }
+        )
     );
-    let (sender, mut response_receiver) =
-        tokio::sync::mpsc::unbounded_channel::<VerificationUserResponse>();
-    Cx::post_action(VerificationAction::RequestReceived(
-        VerificationRequestActionState {
-            request: request.clone(),
-            response_sender: sender.clone(),
-        },
-    ));
 
     let mut stream = request.changes();
 
     // We currently only support SAS verification.
     let supported_methods = vec![VerificationMethod::SasV1];
     match response_receiver.recv().await {
-        Some(VerificationUserResponse::Accept) => {
-            match request.accept_with_methods(supported_methods).await {
-                Ok(()) => {
-                    Cx::post_action(VerificationAction::RequestAccepted);
-                    // Fall through to the stream loop below.
-                }
-                Err(e) => {
-                    Cx::post_action(VerificationAction::RequestAcceptError(Arc::new(e)));
-                    return;
-                }
+        Some(VerificationUserResponse::Accept) => match request.accept_with_methods(supported_methods).await {
+            Ok(()) => {
+                Cx::post_action(VerificationAction::RequestAccepted);
+                // Fall through to the stream loop below.
+            }
+            Err(e) => {
+                Cx::post_action(VerificationAction::RequestAcceptError(Arc::new(e)));
+                return;
             }
         }
         Some(VerificationUserResponse::Cancel) | None => match request.cancel().await {
-            Ok(()) => {} // response will be sent in the stream loop below
+            Ok(()) => { } // response will be sent in the stream loop below
             Err(e) => {
                 Cx::post_action(VerificationAction::RequestCancelError(Arc::new(e)));
                 return;
             }
-        },
+        }
     };
 
     while let Some(state) = stream.next().await {
         match state {
             VerificationRequestState::Created { .. }
             | VerificationRequestState::Requested { .. }
-            | VerificationRequestState::Ready { .. } => {}
+            | VerificationRequestState::Ready { .. } => { }
             VerificationRequestState::Transitioned { verification } => match verification {
                 // We only support SAS verification.
                 Verification::SasV1(sas) => {
                     log!("Verification request transitioned to SAS V1.");
-                    Handle::current().spawn(sas_verification_handler(
-                        client,
-                        sas,
-                        response_receiver,
-                    ));
+                    Handle::current().spawn(sas_verification_handler(client, sas, response_receiver));
                     return;
                 }
                 unsupported => {
-                    log!(
-                        "Verification request transitioned to unsupported method: {:?}",
-                        unsupported
-                    );
-                    Cx::post_action(VerificationAction::RequestTransitionedToUnsupportedMethod(
-                        unsupported,
-                    ));
+                    log!("Verification request transitioned to unsupported method: {:?}", unsupported);
+                    Cx::post_action(VerificationAction::RequestTransitionedToUnsupportedMethod(unsupported));
                     return;
                 }
-            },
+            }
             VerificationRequestState::Cancelled(info) => {
-                log!(
-                    "Verification request was cancelled, reason: {}",
-                    info.reason()
-                );
+                log!("Verification request was cancelled, reason: {}", info.reason());
                 Cx::post_action(VerificationAction::RequestCancelled(info));
             }
             VerificationRequestState::Done => {
@@ -307,6 +256,102 @@ async fn request_verification_handler(client: Client, request: VerificationReque
         }
     }
 }
+
+
+/// Sends a self-verification request to the user's other logged-in sessions,
+pub async fn request_self_verification_handler(client: Client) {
+    let Some(user_id) = client.user_id() else {
+        enqueue_popup_notification("Can't verify this device: you are not logged in.", PopupKind::Error, Some(5.0));
+        return;
+    };
+
+    let identity = match client.encryption().get_user_identity(user_id).await {
+        Ok(Some(identity)) => identity,
+        Ok(None) => {
+            enqueue_popup_notification(
+                "Can't verify this device yet: no cross-signing identity exists. \
+                Verify from another client first, or reset your identity.",
+                PopupKind::Error,
+                Some(8.0),
+            );
+            return;
+        }
+        Err(e) => {
+            error!("Failed to get own user identity for self-verification: {e:?}");
+            enqueue_popup_notification(format!("Couldn't start verification: {e}"), PopupKind::Error, Some(6.0));
+            return;
+        }
+    };
+
+    let request = match identity.request_verification_with_methods(vec![VerificationMethod::SasV1]).await {
+        Ok(request) => request,
+        Err(e) => {
+            error!("Failed to send self-verification request: {e:?}");
+            enqueue_popup_notification(format!("Couldn't send verification request: {e}"), PopupKind::Error, Some(6.0));
+            return;
+        }
+    };
+    log!("Sent self-verification request, flow ID: {}", request.flow_id());
+
+    // we use the same verification modal as we do for incoming requests.
+    let (sender, mut response_receiver) = tokio::sync::mpsc::unbounded_channel::<VerificationUserResponse>();
+    Cx::post_action(VerificationAction::RequestReceived(
+        VerificationRequestActionState {
+            request: request.clone(),
+            response_sender: sender,
+        }
+    ));
+
+    // Wait for another session to respond, then start SAS verification.
+    let mut stream = request.changes();
+    let sas = loop {
+        // Use `select` so we can receive a cancel request from the modal
+        tokio::select! {
+            // The user canceled from the modal while we were waiting on another session.
+            response = response_receiver.recv() => {
+                if !matches!(response, Some(VerificationUserResponse::Accept)) {
+                    let _ = request.cancel().await;
+                    return;
+                }
+            }
+            state = stream.next() => {
+                let Some(state) = state else { return };
+                match state {
+                    VerificationRequestState::Created { .. }
+                    | VerificationRequestState::Requested { .. } => { }
+                    // Another session accepted, so we can now start SAS
+                    VerificationRequestState::Ready { .. } => match request.start_sas().await {
+                        Ok(Some(sas)) => break sas,
+                        // If the other side already started SAS, handle it in the `Transitioned` state below.
+                        Ok(None) => { }
+                        Err(e) => {
+                            Cx::post_action(VerificationAction::RequestAcceptError(Arc::new(e)));
+                            return;
+                        }
+                    }
+                    VerificationRequestState::Transitioned { verification } => match verification {
+                        Verification::SasV1(sas) => break sas,
+                        unsupported => {
+                            Cx::post_action(VerificationAction::RequestTransitionedToUnsupportedMethod(unsupported));
+                            return;
+                        }
+                    }
+                    VerificationRequestState::Cancelled(info) => {
+                        Cx::post_action(VerificationAction::RequestCancelled(info));
+                        return;
+                    }
+                    VerificationRequestState::Done => {
+                        Cx::post_action(VerificationAction::RequestCompleted);
+                        return;
+                    }
+                }
+            }
+        }
+    };
+
+    sas_verification_handler(client, sas, response_receiver).await;
+}
+
 
 /// Actions related to verification that should be handled by the top-level app context.
 #[derive(Clone, Debug, Default)]

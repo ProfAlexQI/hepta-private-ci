@@ -7,6 +7,7 @@ use crate::{
     verification::VerificationStateAction,
 };
 
+
 // First, define the verification icons component layout
 script_mod! {
     use mod.prelude.widgets.*
@@ -184,9 +185,18 @@ impl VerificationBadgeRef {
     /// Returns verification-related string content and background color for a tooltip.
     pub fn tooltip_content(&self) -> (&'static str, Option<Vec4>) {
         match self.borrow().map(|v| v.verification_state) {
-            Some(VerificationState::Verified) => ("and verified ", Some(COLOR_FG_ACCEPT_GREEN)),
-            Some(VerificationState::Unverified) => ("but not verified ", Some(COLOR_FG_DANGER_RED)),
-            _ => ("", None),
+            Some(VerificationState::Verified) => (
+                "and verified ",
+                Some(COLOR_FG_ACCEPT_GREEN),
+            ),
+            Some(VerificationState::Unverified) => (
+                "but not verified ",
+                Some(COLOR_FG_DANGER_RED),
+            ),
+            _ => (
+                "",
+                None,
+            ),
         }
     }
 }

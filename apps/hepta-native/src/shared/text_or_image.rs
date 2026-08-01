@@ -9,9 +9,6 @@ script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
 
-    mod.widgets.DEFAULT_IMAGE = crate_resource("self://resources/img/default_image.png")
-
-
     mod.widgets.TextOrImage = #(TextOrImage::register_widget(vm)) {
 
         width: Fill, height: Fit,
@@ -41,18 +38,9 @@ script_mod! {
                 fit: ImageFit.Smallest,
             }
         }
-        default_image_view := View {
-            visible: false,
-            cursor: MouseCursor.Default, // Use `Hand` once we support clicking on the image
-            width: Fill, height: Fit,
-            image := Image {
-                width: Fill, height: Fit,
-                fit: ImageFit.Smallest,
-                src: (mod.widgets.DEFAULT_IMAGE)
-            }
-        }
     }
 }
+
 
 /// A view that holds an image or text content, and can switch between the two.
 ///
@@ -61,13 +49,10 @@ script_mod! {
 /// is being fetched.
 #[derive(Script, Widget, ScriptHook)]
 pub struct TextOrImage {
-    #[deref]
-    view: View,
-    #[rust]
-    status: TextOrImageStatus,
+    #[deref] view: View,
+    #[rust] status: TextOrImageStatus,
     // #[rust(TextOrImageStatus::Text)] status: TextOrImageStatus,
-    #[rust]
-    size_in_pixels: (usize, usize),
+    #[rust] size_in_pixels: (usize, usize),
 }
 
 impl Widget for TextOrImage {
@@ -81,7 +66,7 @@ impl Widget for TextOrImage {
                 }
                 Hit::FingerUp(fe) if fe.is_over && fe.is_primary_hit() && fe.was_tap() => {
                     cx.widget_action(
-                        self.widget_uid(),
+                        self.widget_uid(), 
                         TextOrImageAction::Clicked(mxc_uri.clone()),
                     );
                     cx.set_cursor(MouseCursor::Default);
@@ -111,12 +96,8 @@ impl TextOrImage {
     ///   a message like "Loading..." or an error message.
     pub fn show_text<T: AsRef<str>>(&mut self, cx: &mut Cx, text: T) {
         self.view(cx, ids!(image_view)).set_visible(cx, false);
-        self.view(cx, ids!(default_image_view))
-            .set_visible(cx, false);
         self.view(cx, ids!(text_view)).set_visible(cx, true);
-        self.view
-            .label(cx, ids!(text_view.label))
-            .set_text(cx, text.as_ref());
+        self.view.label(cx, ids!(text_view.label)).set_text(cx, text.as_ref());
         self.status = TextOrImageStatus::Text;
     }
 
@@ -129,14 +110,8 @@ impl TextOrImage {
     ///   * If successful, the `image_set_function` should return the size of the image
     ///     in pixels as a tuple, `(width, height)`.
     ///   * If `image_set_function` returns an error, no change is made to this `TextOrImage`.
-    pub fn show_image<F, E>(
-        &mut self,
-        cx: &mut Cx,
-        source_url: Option<MediaSource>,
-        image_set_function: F,
-    ) -> Result<(), E>
-    where
-        F: FnOnce(&mut Cx, ImageRef) -> Result<(usize, usize), E>,
+    pub fn show_image<F, E>(&mut self, cx: &mut Cx, source_url: Option<MediaSource>, image_set_function: F) -> Result<(), E>
+        where F: FnOnce(&mut Cx, ImageRef) -> Result<(usize, usize), E>
     {
         let image_ref = self.view.image(cx, ids!(image_view.image));
         match image_set_function(cx, image_ref) {
@@ -145,8 +120,6 @@ impl TextOrImage {
                 self.size_in_pixels = size_in_pixels;
                 self.view(cx, ids!(image_view)).set_visible(cx, true);
                 self.view(cx, ids!(text_view)).set_visible(cx, false);
-                self.view(cx, ids!(default_image_view))
-                    .set_visible(cx, false);
                 Ok(())
             }
             Err(e) => {
@@ -161,12 +134,14 @@ impl TextOrImage {
         self.status.clone()
     }
 
-    /// Displays the default image that is used when no image is available.
-    pub fn show_default_image(&self, cx: &mut Cx) {
-        self.view(cx, ids!(default_image_view))
-            .set_visible(cx, true);
+    /// Hides all content, leaving this widget blank.
+    ///
+    /// Note that a newly-created `TextOrImage` shows its (empty) text view, so call
+    /// this to blank it out, or to drop a previous image when reusing the widget.
+    pub fn clear(&mut self, cx: &mut Cx) {
         self.view(cx, ids!(text_view)).set_visible(cx, false);
         self.view(cx, ids!(image_view)).set_visible(cx, false);
+        self.status = TextOrImageStatus::Text;
     }
 }
 
@@ -179,14 +154,8 @@ impl TextOrImageRef {
     }
 
     /// See [TextOrImage::show_image()].
-    pub fn show_image<F, E>(
-        &self,
-        cx: &mut Cx,
-        source_url: Option<MediaSource>,
-        image_set_function: F,
-    ) -> Result<(), E>
-    where
-        F: FnOnce(&mut Cx, ImageRef) -> Result<(usize, usize), E>,
+    pub fn show_image<F, E>(&self, cx: &mut Cx, source_url: Option<MediaSource>, image_set_function: F) -> Result<(), E>
+        where F: FnOnce(&mut Cx, ImageRef) -> Result<(usize, usize), E>
     {
         if let Some(mut inner) = self.borrow_mut() {
             inner.show_image(cx, source_url, image_set_function)
@@ -204,10 +173,10 @@ impl TextOrImageRef {
         }
     }
 
-    /// See [TextOrImage::show_default_image()].
-    pub fn show_default_image(&self, cx: &mut Cx) {
-        if let Some(inner) = self.borrow() {
-            inner.show_default_image(cx);
+    /// See [TextOrImage::clear()].
+    pub fn clear(&self, cx: &mut Cx) {
+        if let Some(mut inner) = self.borrow_mut() {
+            inner.clear(cx);
         }
     }
 
@@ -232,8 +201,17 @@ impl TextOrImageRef {
 pub enum TextOrImageStatus {
     #[default]
     Text,
-    /// Image source URL stored in this variant to be used
+    /// Image source URL stored in this variant to be used 
     Image(Option<MediaSource>),
+}
+impl TextOrImageStatus {
+    pub fn is_text(&self) -> bool {
+        matches!(self, TextOrImageStatus::Text)
+    }
+
+    pub fn is_image(&self) -> bool {
+        matches!(self, TextOrImageStatus::Image(_))
+    }
 }
 
 /// Actions emitted by the `TextOrImage` based on user interaction with it.
@@ -242,5 +220,5 @@ pub enum TextOrImageAction {
     /// The user has clicked the `TextOrImage`, with source URL stored in this variant.
     Clicked(Option<MediaSource>),
     #[default]
-    None,
+    None
 }

@@ -1,22 +1,12 @@
 //! A `HtmlOrPlaintext` view can display either plaintext or rich HTML content.
 
-use std::sync::Arc;
 
 use makepad_widgets::*;
-use matrix_sdk::{
-    ruma::{matrix_uri::MatrixId, MatrixToUri, MatrixUri, RoomOrAliasId},
-    OwnedServerName,
-};
+use matrix_sdk::{ruma::{matrix_uri::MatrixId, MatrixToUri, MatrixUri, RoomOrAliasId}, OwnedServerName};
 
-use crate::{
-    avatar_cache::{self, AvatarCacheEntry},
-    profile::user_profile_cache,
-    room_preview_cache::{self, CachedRoomPreview},
-    sliding_sync::current_user_id,
-    utils,
-};
+use crate::{avatar_cache::{self, AvatarCacheEntry}, profile::user_profile_cache, room_preview_cache::{self, CachedRoomPreview}, sliding_sync::current_user_id, utils};
 
-use super::avatar::{AvatarState, AvatarWidgetExt};
+use super::avatar::{AvatarImage, AvatarState, AvatarWidgetExt};
 
 /// The color of the text used to print the spoiler reason before the hidden text.
 const COLOR_SPOILER_REASON: Vec4 = vec4(0.6, 0.6, 0.6, 1.0);
@@ -153,7 +143,6 @@ script_mod! {
         text_style_fixed: theme.font_code {
             font_size: (MESSAGE_FONT_SIZE)
             line_spacing: (MESSAGE_TEXT_LINE_SPACING)
-            top_drop: 0.11
         }
         draw_block +: {
             line_color: (MESSAGE_TEXT_COLOR)
@@ -177,8 +166,9 @@ script_mod! {
         heading_margin: Inset{ top: 1.0, bottom: 0.1 }
         paragraph_margin: Inset{ top: 0.33, bottom: 0.33 }
 
-        inline_code_padding: Inset{top: 3, bottom: 3, left: 5, right: 5 }
+        inline_code_padding: Inset{top: 2.5, bottom: 1.5, left: 5, right: 5 }
         inline_code_margin: Inset{ left: 0, right: 0, bottom: 2, top: 2 }
+        fixed_font_size_scale: 0.9 // 90% of the normal font size (slightly smaller)
 
         font := mod.widgets.MatrixHtmlSpan { }
         span := mod.widgets.MatrixHtmlSpan { }
@@ -242,18 +232,19 @@ pub enum RobrixHtmlLinkAction {
 /// Matrix links are displayed using the [`MatrixLinkPill`] widget.
 #[derive(Script, Widget)]
 struct RobrixHtmlLink {
-    #[deref]
-    view: View,
+    #[deref] view: View,
 
     /// The displayable text of the link.
     /// This should be set automatically by the Html widget
     /// when it parses and draws an Html `<a>` tag.
-    #[live]
-    pub text: ArcStringMut,
+    #[live] pub text: ArcStringMut,
     /// The URL of the link.
     /// This is set by the `on_after_new_scoped()` hook below.
-    #[live]
-    pub url: String,
+    #[live] pub url: String,
+
+    // Matrix link details parsed from `url` one time (in `on_after_new_scoped`).
+    #[rust] matrix_id: Option<MatrixId>,
+    #[rust] via: Vec<OwnedServerName>,
 }
 
 impl ScriptHook for RobrixHtmlLink {
@@ -266,10 +257,18 @@ impl ScriptHook for RobrixHtmlLink {
                         self.url = attr.into();
                         break;
                     }
-                    _ => {}
+                    _ => { }
                 }
             }
         }
+
+        (self.matrix_id, self.via) = if let Ok(uri) = MatrixToUri::parse(&self.url) {
+            (Some(uri.id().to_owned()), uri.via().to_vec())
+        } else if let Ok(uri) = MatrixUri::parse(&self.url) {
+            (Some(uri.id().to_owned()), uri.via().to_vec())
+        } else {
+            (None, Vec::new())
+        };
     }
 }
 
@@ -279,14 +278,12 @@ impl Widget for RobrixHtmlLink {
     }
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
-        // If the URL is a Matrix user/room/event link, render it as a pill.
-        // Otherwise fall back to an inline-wrapping HTML link.
-        if let Ok(matrix_to_uri) = MatrixToUri::parse(&self.url) {
-            return self.draw_matrix_pill(cx, scope, walk, matrix_to_uri.id(), matrix_to_uri.via());
-        } else if let Ok(matrix_uri) = MatrixUri::parse(&self.url) {
-            return self.draw_matrix_pill(cx, scope, walk, matrix_uri.id(), matrix_uri.via());
+        // A Matrix link renders as a pill; anything else as regular inline Html link.
+        if self.matrix_id.is_some() {
+            self.draw_matrix_pill(cx, scope, walk)
+        } else {
+            self.draw_html_link(cx, scope, walk)
         }
-        self.draw_html_link(cx, scope, walk)
     }
 
     fn text(&self) -> String {
@@ -313,11 +310,11 @@ impl RobrixHtmlLink {
         cx: &mut Cx2d,
         scope: &mut Scope,
         walk: Walk,
-        matrix_id: &MatrixId,
-        via: &[OwnedServerName],
     ) -> DrawStep {
-        if let Some(mut pill) = self.matrix_link_pill(cx, ids!(matrix_link)).borrow_mut() {
-            pill.populate_pill(cx, self.url.clone(), matrix_id, via, self.text.as_ref());
+        if let Some(matrix_id) = self.matrix_id.as_ref() {
+            if let Some(mut pill) = self.matrix_link_pill(cx, ids!(matrix_link)).borrow_mut() {
+                pill.populate_pill(cx, self.url.clone(), matrix_id, &self.via, self.text.as_ref());
+            }
         }
         let matrix_link_view_ref = self.view(cx, ids!(matrix_link_view));
         matrix_link_view_ref.set_visible(cx, true);
@@ -337,7 +334,12 @@ impl RobrixHtmlLink {
     /// lines. By calling `draw_walk` directly on the `HtmlLink`, the current
     /// turtle remains the parent Html widget's `TextFlow` turtle, which has
     /// the full message width and wraps correctly.
-    fn draw_html_link(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
+    fn draw_html_link(
+        &mut self,
+        cx: &mut Cx2d,
+        scope: &mut Scope,
+        walk: Walk,
+    ) -> DrawStep {
         // Hide the pill view in case we're switching away from pill mode.
         // (No-op if it was already hidden.) `HtmlLink` has no `visible` field
         // so there's nothing analogous to set on it.
@@ -359,22 +361,20 @@ impl RobrixHtmlLink {
 /// This can be a link to a user, a room, or an event in a room.
 #[derive(Script, ScriptHook, Widget)]
 struct MatrixLinkPill {
-    #[deref]
-    view: View,
+    #[deref] view: View,
 
-    #[rust]
-    matrix_id: Option<MatrixId>,
-    #[rust]
-    via: Vec<OwnedServerName>,
-    #[rust]
-    url: String,
+    #[rust] matrix_id: Option<MatrixId>,
+    #[rust] via: Vec<OwnedServerName>,
+    #[rust] url: String,
+    /// Whether this pill is still waiting for its name or avatar to arrive.
+    #[rust] is_waiting_for_data: bool,
 }
 
 impl Widget for MatrixLinkPill {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, _scope: &mut Scope) {
         if matches!(event, Event::Signal) {
             room_preview_cache::process_room_preview_updates(cx);
-            if self.matrix_id.is_some() {
+            if self.matrix_id.is_some() && self.is_waiting_for_data {
                 self.redraw(cx);
             }
         }
@@ -396,7 +396,7 @@ impl Widget for MatrixLinkPill {
                             via: self.via.clone(),
                             key_modifiers: fe.modifiers,
                             url: self.url.clone(),
-                        },
+                        }
                     );
                 }
             }
@@ -415,14 +415,7 @@ impl Widget for MatrixLinkPill {
 
 impl MatrixLinkPill {
     /// Populates this pill's info based on the given Matrix ID and via servers.
-    fn populate_pill(
-        &mut self,
-        cx: &mut Cx,
-        url: String,
-        matrix_id: &MatrixId,
-        via: &[OwnedServerName],
-        link_text: &str,
-    ) {
+    fn populate_pill(&mut self, cx: &mut Cx, url: String, matrix_id: &MatrixId, via: &[OwnedServerName], link_text: &str) {
         self.url = url;
         self.matrix_id = Some(matrix_id.clone());
         self.via = via.to_vec();
@@ -444,23 +437,19 @@ impl MatrixLinkPill {
 
         // Handle a user ID link by querying the user profile cache.
         if let MatrixId::User(user_id) = matrix_id {
-            let (name, avatar_state) = match user_profile_cache::with_user_profile(
+            let profile_pair = user_profile_cache::with_user_profile(
                 cx,
                 user_id.clone(),
                 None,
                 true,
-                |profile, _| {
-                    (
-                        profile.displayable_name().to_owned(),
-                        profile.avatar_state.clone(),
-                    )
-                },
-            ) {
-                Some(pair) => pair,
-                None => (user_id.to_string(), AvatarState::Unknown),
-            };
+                |profile, _| { (profile.displayable_name().to_owned(), profile.avatar_state.clone()) }
+            );
+            let profile_found = profile_pair.is_some();
+            let (name, avatar_state) = profile_pair
+                .unwrap_or_else(|| (user_id.to_string(), AvatarState::Unknown));
             self.set_text(cx, &name);
-            self.populate_avatar(cx, &avatar_state, &name);
+            let avatar_final = self.populate_avatar(cx, &avatar_state, &name);
+            self.is_waiting_for_data = !(profile_found && avatar_final);
             return;
         }
 
@@ -472,10 +461,8 @@ impl MatrixLinkPill {
             _ => None,
         };
         if let Some(room_or_alias_id) = room_or_alias_id {
-            if let CachedRoomPreview::Loaded {
-                room_name_id,
-                room_avatar,
-            } = room_preview_cache::get_or_fetch_room_preview(cx, room_or_alias_id, via)
+            if let CachedRoomPreview::Loaded { room_name_id, room_avatar } =
+                room_preview_cache::get_or_fetch_room_preview(cx, room_or_alias_id, via)
             {
                 // `RoomNameId::Display` would print "Room ID !xyz:server" for
                 // empty names; the pill should show just the bare room ID
@@ -486,13 +473,10 @@ impl MatrixLinkPill {
                     room_name_id.to_string()
                 };
                 // For @room mentions, show "@room" as the title, not the room name.
-                let display_name = if is_room_mention {
-                    "@room"
-                } else {
-                    resolved_name.as_str()
-                };
+                let display_name = if is_room_mention { "@room" } else { resolved_name.as_str() };
                 self.label(cx, ids!(title)).set_text(cx, display_name);
-                self.populate_avatar(cx, &room_avatar, display_name);
+                let avatar_final = self.populate_avatar(cx, &room_avatar, display_name);
+                self.is_waiting_for_data = !avatar_final;
                 return;
             }
         }
@@ -503,14 +487,13 @@ impl MatrixLinkPill {
             match matrix_id {
                 MatrixId::Room(room_id) => room_id.as_str().to_owned(),
                 MatrixId::RoomAlias(alias) => alias.as_str().to_owned(),
-                MatrixId::Event(room_or_alias, _) => {
-                    format!("Message in {}", room_or_alias.as_str())
-                }
+                MatrixId::Event(room_or_alias, _) => format!("Message in {}", room_or_alias.as_str()),
                 _ => String::new(),
             }
         };
         self.set_text(cx, &fallback_name);
         self.populate_avatar(cx, &AvatarState::Unknown, &fallback_name);
+        self.is_waiting_for_data = true;
     }
 
     /// Renders the pill avatar from the given [`AvatarState`], falling back to
@@ -520,66 +503,65 @@ impl MatrixLinkPill {
     /// * `Loaded(bytes)` — paint bytes directly (room link cache).
     /// * `Known(Some(uri))` — fetch bytes via [`avatar_cache`] (user link).
     /// * `Known(None)` / `Unknown` / `Failed` — text fallback.
-    fn populate_avatar(&self, cx: &mut Cx, avatar: &AvatarState, display_name: &str) {
+    ///
+    /// Returns whether the avatar is "finished":
+    /// * `true` if the image was fully drawn or there is no image to draw.
+    /// * `false` if there is an image to draw but it hasn't arrived yet.
+    fn populate_avatar(&self, cx: &mut Cx, avatar: &AvatarState, display_name: &str) -> bool {
         let avatar_ref = self.avatar(cx, ids!(avatar));
-        let bytes: Option<Arc<[u8]>> = match avatar {
-            AvatarState::Loaded(data) => Some(data.clone()),
+        let (image, can_improve): (Option<AvatarImage>, bool) = match avatar {
+            AvatarState::Loaded(image) => (Some(image.clone()), false),
             AvatarState::Known(Some(uri)) => match avatar_cache::get_or_fetch_avatar(cx, uri) {
-                AvatarCacheEntry::Loaded(data) => Some(data),
-                _ => None,
+                AvatarCacheEntry::Loaded(data) => {
+                    (Some((uri.clone(), data).into()), false)
+                }
+                AvatarCacheEntry::Failed => (None, false),
+                _ => (None, true),
             },
-            _ => None,
+            AvatarState::Known(None) | AvatarState::Failed => (None, false),
+            AvatarState::Unknown => (None, true),
         };
-        if let Some(data) = bytes {
+        if let Some(image) = image {
             let res = avatar_ref.show_image(
                 cx,
                 None, // Don't make this avatar clickable
-                |cx, img_ref| utils::load_png_or_jpg(&img_ref, cx, &data),
+                |cx, img_ref| utils::load_avatar_image(&img_ref, cx, &image),
             );
             if res.is_ok() {
-                return;
+                return true;
             }
         }
         avatar_ref.show_text(cx, None, None, display_name);
+        !can_improve
     }
 }
+
 
 /// A widget used to display a single HTML `<span>` tag or a `<font>` tag.
 #[derive(Script, Widget)]
 struct MatrixHtmlSpan {
-    #[uid]
-    uid: WidgetUid,
+    #[uid] uid: WidgetUid,
     // TODO: this is unused; just here to invalidly satisfy the area provider.
     //       I'm not sure how to implement `fn area()` given that it has multiple area rects.
-    #[redraw]
-    #[area]
-    area: Area,
+    #[redraw] #[area] area: Area,
 
     // TODO: remove these if they're unneeded
-    #[walk]
-    walk: Walk,
-    #[layout]
-    layout: Layout,
+    #[walk] walk: Walk,
+    #[layout] layout: Layout,
 
-    #[rust]
-    drawn_areas: SmallVec<[Area; 2]>,
+    #[rust] drawn_areas: SmallVec<[Area; 2]>,
 
     /// Whether to grab key focus when pressed.
-    #[live(true)]
-    grab_key_focus: bool,
+    #[live(true)] grab_key_focus: bool,
 
     /// The text content within the `<span>` tag.
-    #[live]
-    text: ArcStringMut,
+    #[live] text: ArcStringMut,
     /// The current display state of the spoiler.
-    #[rust]
-    spoiler: SpoilerDisplay,
+    #[rust] spoiler: SpoilerDisplay,
     /// Foreground (text) color: the `data-mx-color` or `color` attributes.
-    #[rust]
-    fg_color: Option<Vec4>,
+    #[rust] fg_color: Option<Vec4>,
     /// Background color: the `data-mx-bg-color` attribute.
-    #[rust]
-    bg_color: Option<Vec4>,
+    #[rust] bg_color: Option<Vec4>,
 }
 
 impl ScriptHook for MatrixHtmlSpan {
@@ -594,21 +576,19 @@ impl ScriptHook for MatrixHtmlSpan {
             while let Some((lc, attr)) = walker.while_attr_lc() {
                 let attr = attr.trim_matches(['"', '\'']);
                 match lc {
-                    id!(color) | id!(data - mx - color) => {
-                        self.fg_color = utils::vec4_from_hex_str(attr)
-                    }
-                    id!(data - mx - bg - color) => self.bg_color = utils::vec4_from_hex_str(attr),
-                    id!(data - mx - spoiler) => {
-                        self.spoiler = SpoilerDisplay::Hidden {
-                            reason: attr.into(),
-                        }
-                    }
-                    _ => (),
+                    id!(color)
+                    | id!(data-mx-color) => self.fg_color = utils::vec4_from_hex_str(attr),
+                    id!(data-mx-bg-color) => self.bg_color = utils::vec4_from_hex_str(attr),
+                    id!(data-mx-spoiler) => self.spoiler = SpoilerDisplay::Hidden { reason: attr.into() },
+                    _ => ()
                 }
             }
         }
     }
 }
+
+
+
 
 /// The possible states that a spoiler can be in: hidden or revealed.
 ///
@@ -636,7 +616,7 @@ impl SpoilerDisplay {
                 let s = std::mem::take(reason);
                 *self = SpoilerDisplay::Hidden { reason: s };
             }
-            SpoilerDisplay::None => {}
+            SpoilerDisplay::None => { }
         }
     }
 
@@ -697,7 +677,8 @@ impl Widget for MatrixHtmlSpan {
         }
 
         match &self.spoiler {
-            SpoilerDisplay::Hidden { reason } | SpoilerDisplay::Revealed { reason } => {
+            SpoilerDisplay::Hidden { reason }
+            | SpoilerDisplay::Revealed { reason } => {
                 // Draw the spoiler reason text in an italic gray font.
                 tf.font_colors.push(COLOR_SPOILER_REASON);
                 tf.italic.push();
@@ -712,12 +693,11 @@ impl Widget for MatrixHtmlSpan {
                 tf.font_colors.pop();
 
                 // Now, draw the spoiler context text itself, either hidden or revealed.
-                if matches!(self.spoiler, SpoilerDisplay::Hidden { .. }) {
+                if matches!(self.spoiler, SpoilerDisplay::Hidden {..}) {
                     // Use a background color that is the same as the foreground color,
                     // which is a hacky way to make the spoiled text non-readable.
                     // In the future, we should use a proper blur effect.
-                    let spoiler_bg_color = self
-                        .fg_color
+                    let spoiler_bg_color = self.fg_color
                         .or_else(|| tf.font_colors.last().copied())
                         .unwrap_or(tf.font_color);
 
@@ -729,6 +709,7 @@ impl Widget for MatrixHtmlSpan {
 
                     tf.draw_block.code_color = old_bg_color;
                     tf.inline_code.pop();
+
                 } else {
                     tf.draw_text(cx, self.text.as_ref());
                 }
@@ -749,7 +730,9 @@ impl Widget for MatrixHtmlSpan {
         }
 
         let (start, end) = tf.areas_tracker.pop_tracker();
-        self.drawn_areas = SmallVec::from(&tf.areas_tracker.areas[start..end]);
+        self.drawn_areas = SmallVec::from(
+            &tf.areas_tracker.areas[start..end]
+        );
 
         DrawStep::done()
     }
@@ -764,12 +747,11 @@ impl Widget for MatrixHtmlSpan {
     }
 }
 
+
 #[derive(ScriptHook, Script, Widget)]
 pub struct HtmlOrPlaintext {
-    #[source]
-    source: ScriptObjectRef,
-    #[deref]
-    view: View,
+    #[source] source: ScriptObjectRef,
+    #[deref] view: View,
 }
 
 impl Widget for HtmlOrPlaintext {
@@ -787,16 +769,33 @@ impl HtmlOrPlaintext {
     pub fn show_plaintext<T: AsRef<str>>(&mut self, cx: &mut Cx, text: T) {
         self.view(cx, ids!(html_view)).set_visible(cx, false);
         self.view(cx, ids!(plaintext_view)).set_visible(cx, true);
-        self.label(cx, ids!(plaintext_view.pt_label))
-            .set_text(cx, text.as_ref());
+        self.label(cx, ids!(plaintext_view.pt_label)).set_text(cx, text.as_ref());
     }
 
     /// Sets the HTML content, making the HTML visible and the plaintext invisible.
     pub fn show_html<T: AsRef<str>>(&mut self, cx: &mut Cx, html_body: T) {
-        self.html(cx, ids!(html_view.html))
-            .set_text(cx, html_body.as_ref());
+        self.html(cx, ids!(html_view.html)).set_text(cx, html_body.as_ref());
         self.view(cx, ids!(html_view)).set_visible(cx, true);
         self.view(cx, ids!(plaintext_view)).set_visible(cx, false);
+    }
+}
+
+impl HtmlOrPlaintext {
+    /// Sets the color of all links in the HTML content.
+    ///
+    /// This modifies the cached `HtmlLink` widget instances inside the inner
+    /// `Html` widget's `TextFlow` items.
+    /// This does nothing on the very first draw (before items are created),
+    /// but future draws will have the given color.
+    pub fn set_link_color(&mut self, cx: &mut Cx, color: Option<Vec4>) {
+        let html_ref = self.html(cx, ids!(html_view.html));
+        let Some(html) = html_ref.borrow() else { return };
+        // Visit all of the TextFlow's cached items to see if any are RobrixHtmlLinks.
+        html.text_flow.children(&mut |_id, item| {
+            if let Some(link) = item.borrow_mut::<RobrixHtmlLink>() {
+                link.html_link(cx, ids!(html_link)).set_color(cx, color);
+            }
+        });
     }
 }
 
@@ -815,51 +814,10 @@ impl HtmlOrPlaintextRef {
         }
     }
 
-    /// Sets the color of links in the HTML content.
-    ///
-    /// This modifies the cached `HtmlLink` widget instances inside the inner
-    /// `Html` widget's `TextFlow` items. On the very first draw (before items
-    /// are created), this is a no-op, but subsequent frames will have the
-    /// correct color.
+    /// See [`HtmlOrPlaintext::set_link_color()`].
     pub fn set_link_color(&self, cx: &mut Cx, color: Option<Vec4>) {
         if let Some(mut inner) = self.borrow_mut() {
             inner.set_link_color(cx, color);
-        }
-    }
-}
-
-impl HtmlOrPlaintext {
-    /// See [`HtmlOrPlaintextRef::set_link_color()`].
-    pub fn set_link_color(&mut self, cx: &mut Cx, color: Option<Vec4>) {
-        let html_ref = self.html(cx, ids!(html_view.html));
-        let Some(mut html) = html_ref.borrow_mut() else {
-            return;
-        };
-        // Iterate over cached TextFlow items (auto-generated IDs start at 1)
-        // until we hit a non-existent item.
-        let mut i = 1u64;
-        loop {
-            let item = html.existing_item(LiveId(i));
-            if item.is_empty() {
-                break;
-            }
-            // Check if this item is a RobrixHtmlLink and modify its inner HtmlLink.
-            if let Some(link) = item.borrow_mut::<RobrixHtmlLink>() {
-                let mut html_link = link.html_link(cx, ids!(html_link));
-                match color {
-                    Some(c) => {
-                        script_apply_eval!(cx, html_link, {
-                            color: #(c)
-                        });
-                    }
-                    None => {
-                        script_apply_eval!(cx, html_link, {
-                            color: nil
-                        });
-                    }
-                }
-            }
-            i += 1;
         }
     }
 }

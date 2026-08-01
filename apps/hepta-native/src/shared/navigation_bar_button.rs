@@ -57,9 +57,9 @@ script_mod! {
             color_hover: instance((COLOR_NAVIGATION_TAB_BG_HOVER))
             color_active: instance((COLOR_NAVIGATION_TAB_BG_ACTIVE))
 
-            border_color: instance((COLOR_TELEGRAM_GLASS_HAIRLINE))
-            border_size: uniform(1.0)
-            border_radius: uniform(10.0)
+            border_color: instance(#0000)
+            border_size: uniform(0.0)
+            border_radius: uniform(4.0)
             border_inset: uniform(vec4(0.0))
 
             // Fade `color_hover` in/out by scaling its own alpha rather than
@@ -124,20 +124,16 @@ script_mod! {
 /// See the [module docs](self) for behavior and the selection model.
 #[derive(Script, ScriptHook, Widget, Animator)]
 pub struct NavigationBarButton {
-    #[source]
-    source: ScriptObjectRef,
+    #[source] source: ScriptObjectRef,
     /// The inner View. Public so that wrapper widgets (e.g. `ProfileIcon`,
     /// `SpacesBarEntry`) which embed a `NavigationBarButton` via `#[deref]` can
     /// reach its child widgets via `child_by_path` for configuration during draw.
-    #[deref]
-    pub view: View,
-    #[apply_default]
-    animator: Animator,
+    #[deref] pub view: View,
+    #[apply_default] animator: Animator,
 
     /// The text shown in a built-in tooltip when this button is hovered.
     /// If empty, no tooltip action is emitted (the parent may provide its own).
-    #[live]
-    tooltip_text: String,
+    #[live] tooltip_text: String,
 }
 
 impl Widget for NavigationBarButton {
@@ -166,9 +162,7 @@ impl Widget for NavigationBarButton {
                 NavigationBarButtonAction::HoverIn { widget_rect },
             );
             // If a built-in tooltip text is set, additionally emit a TooltipAction.
-            if this.tooltip_text.is_empty() {
-                return;
-            }
+            if this.tooltip_text.is_empty() { return; }
             let is_desktop = effective_is_desktop(cx);
             cx.widget_action(
                 widget_uid,
@@ -273,13 +267,7 @@ impl NavigationBarButton {
     /// the caller is responsible for clearing the selection on the other
     /// `NavigationBarButton`s in the group.
     pub fn set_selected(&mut self, cx: &mut Cx, is_selected: bool) {
-        self.animator_toggle(
-            cx,
-            is_selected,
-            Animate::No,
-            ids!(active.on),
-            ids!(active.off),
-        );
+        self.animator_toggle(cx, is_selected, Animate::No, ids!(active.on), ids!(active.off));
     }
 
     /// Returns `true` if this button was clicked (primary tap) in the given actions.
@@ -303,9 +291,7 @@ impl NavigationBarButton {
 impl NavigationBarButtonRef {
     /// See [`NavigationBarButton::set_selected`].
     pub fn set_selected(&self, cx: &mut Cx, is_selected: bool) {
-        let Some(mut inner) = self.borrow_mut() else {
-            return;
-        };
+        let Some(mut inner) = self.borrow_mut() else { return };
         inner.set_selected(cx, is_selected);
     }
 
@@ -316,8 +302,7 @@ impl NavigationBarButtonRef {
 
     /// See [`NavigationBarButton::secondary_clicked`].
     pub fn secondary_clicked(&self, actions: &Actions) -> bool {
-        self.borrow()
-            .is_some_and(|inner| inner.secondary_clicked(actions))
+        self.borrow().is_some_and(|inner| inner.secondary_clicked(actions))
     }
 }
 

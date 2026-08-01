@@ -11,6 +11,7 @@ use matrix_sdk_ui::timeline::EventTimelineItem;
 
 use std::cmp;
 
+
 /// The maximum number of items to display in the read receipts AvatarRow
 /// and its accompanying tooltip.
 pub const MAX_VISIBLE_AVATARS_IN_READ_RECEIPT: usize = 3;
@@ -84,7 +85,15 @@ pub struct AvatarRow {
 }
 
 impl Widget for AvatarRow {
-    fn handle_event(&mut self, cx: &mut Cx, event: &Event, _scope: &mut Scope) {
+    fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
+        // The avatars aren't children of this widget (they're created from a template),
+        // so we have to manually forward events to them (mostly async image loads).
+        if let Event::Actions(_) = event {
+            for (avatar_ref, _) in self.buttons.iter() {
+                avatar_ref.handle_event(cx, event, scope);
+            }
+        }
+
         let Some(read_receipts) = &self.read_receipts else {
             return;
         };
@@ -95,10 +104,11 @@ impl Widget for AvatarRow {
         let widget_rect = self.area.rect(cx);
 
         let should_hover_in = match event.hits(cx, self.area) {
-            Hit::FingerLongPress(_) | Hit::FingerHoverIn(..) => true,
+            Hit::FingerLongPress(_)
+            | Hit::FingerHoverIn(..) => true,
             Hit::FingerUp(fue) if fue.is_over && fue.is_primary_hit() => true,
             Hit::FingerHoverOut(_) => {
-                cx.widget_action(uid, RoomScreenTooltipActions::HoverOut);
+                cx.widget_action(uid,  RoomScreenTooltipActions::HoverOut);
                 false
             }
             _ => false,
@@ -106,7 +116,7 @@ impl Widget for AvatarRow {
         if should_hover_in {
             if let Some(read_receipts) = &self.read_receipts {
                 cx.widget_action(
-                    uid,
+                    uid, 
                     RoomScreenTooltipActions::HoverInReadReceipt {
                         widget_rect,
                         read_receipts: read_receipts.clone(),
@@ -129,13 +139,6 @@ impl Widget for AvatarRow {
         }
         if read_receipts.len() > MAX_VISIBLE_AVATARS_IN_READ_RECEIPT {
             if let Some(label) = &mut self.label {
-                label.set_text(
-                    cx,
-                    &format!(
-                        " + {}",
-                        read_receipts.len() - MAX_VISIBLE_AVATARS_IN_READ_RECEIPT
-                    ),
-                );
                 let _ = label.draw(cx, scope);
             }
         }
@@ -159,7 +162,14 @@ impl AvatarRow {
         event_id: Option<&EventId>,
         receipts_map: &IndexMap<OwnedUserId, Receipt>,
     ) {
-        if receipts_map.len() != self.buttons.len() {
+        // Rebuild the list of avatars if anything visible changes.
+        let receipts_changed = self.read_receipts.as_ref().is_none_or(|existing| {
+            existing.len() != receipts_map.len() ||
+                !existing.keys().rev().take(MAX_VISIBLE_AVATARS_IN_READ_RECEIPT).eq(
+                    receipts_map.keys().rev().take(MAX_VISIBLE_AVATARS_IN_READ_RECEIPT)
+                )
+        });
+        if receipts_changed {
             self.buttons.clear();
             for _ in 0..cmp::min(MAX_VISIBLE_AVATARS_IN_READ_RECEIPT, receipts_map.len()) {
                 self.buttons.push((
@@ -167,7 +177,14 @@ impl AvatarRow {
                     false,
                 ));
             }
-            self.label = Some(widget_ref_from_live_ptr(cx, self.plus_template).as_label());
+            let label = widget_ref_from_live_ptr(cx, self.plus_template).as_label();
+            if receipts_map.len() > MAX_VISIBLE_AVATARS_IN_READ_RECEIPT {
+                label.set_text(cx, &format!(
+                    " + {}",
+                    receipts_map.len() - MAX_VISIBLE_AVATARS_IN_READ_RECEIPT,
+                ));
+            }
+            self.label = Some(label);
             self.read_receipts = Some(receipts_map.clone());
         }
         for ((avatar_ref, drawn), (user_id, _)) in
