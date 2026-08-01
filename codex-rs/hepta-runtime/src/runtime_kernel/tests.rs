@@ -110,6 +110,54 @@ fn write_fake_workspace_backup(logical_path: &str, ts: u64, content: &str) -> Pa
     backup_path
 }
 
+#[cfg(unix)]
+#[test]
+fn committed_sealed_parent_reopens_suffix_created_by_authorized_write() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let canonical_root = fs::canonicalize(workspace.path()).expect("canonical workspace");
+    let target = canonical_root.join("new-parent").join("nested").join("target.txt");
+    let resolved = super::resolve_write_path_within_root(&canonical_root, &target)
+        .expect("resolve missing parent target");
+    let (sealed, before) =
+        super::seal_write_target(&canonical_root, resolved).expect("seal missing parent target");
+
+    assert!(before.is_none());
+    super::create_new_through_seal(&sealed, b"committed\n", false)
+        .expect("authorized write creates missing parent suffix");
+    let (after, _) = super::read_committed_sealed_target(&sealed)
+        .expect("post-commit read reopens materialized parent suffix");
+
+    assert_eq!(after, b"committed\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn committed_sealed_parent_rejects_symlinked_missing_component() {
+    use std::os::unix::fs::symlink;
+
+    let workspace = tempfile::tempdir().expect("workspace");
+    let outside = tempfile::tempdir().expect("outside");
+    let canonical_root = fs::canonicalize(workspace.path()).expect("canonical workspace");
+    let target = canonical_root.join("new-parent").join("target.txt");
+    let resolved = super::resolve_write_path_within_root(&canonical_root, &target)
+        .expect("resolve missing parent target");
+    let (sealed, before) =
+        super::seal_write_target(&canonical_root, resolved).expect("seal missing parent target");
+
+    assert!(before.is_none());
+    symlink(outside.path(), canonical_root.join("new-parent"))
+        .expect("install hostile parent symlink");
+    let error = super::open_committed_sealed_parent(&sealed)
+        .expect_err("post-commit traversal must not follow a symlink");
+
+    assert!(
+        error.0.contains("failed to reopen committed sealed write parent"),
+        "{}",
+        error.0
+    );
+    assert!(!outside.path().join("target.txt").exists());
+}
+
 #[path = "tests/part_01.rs"]
 mod part_01;
 #[path = "tests/part_02.rs"]

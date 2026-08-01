@@ -3061,6 +3061,28 @@ fn open_sealed_parent(
     Ok(Some(directory))
 }
 
+/// Reopens a parent suffix that this authorized mutation has already created.
+///
+/// Pre-commit callers must use `open_sealed_parent`: an entry appearing in a
+/// previously missing suffix is a namespace race until the authorized write
+/// itself materializes it. Post-commit callers instead need to traverse that
+/// now-existing suffix without creating anything. Each hop remains relative
+/// to the retained anchor descriptor and rejects symlinks via
+/// `O_NOFOLLOW | O_DIRECTORY | O_CLOEXEC` in `openat_directory`.
+#[cfg(unix)]
+fn open_committed_sealed_parent(target: &SealedWriteTarget) -> Result<fs::File, HeptaError> {
+    let mut directory = validate_sealed_anchor(target)?;
+    for component in &target.missing_parent_components {
+        directory = openat_directory(&directory, component).map_err(|error| {
+            HeptaError(format!(
+                "failed to reopen committed sealed write parent at {:?}: {}",
+                component, error.0
+            ))
+        })?;
+    }
+    Ok(directory)
+}
+
 #[cfg(unix)]
 fn open_checked_existing_target(
     target: &SealedWriteTarget,
@@ -3331,8 +3353,7 @@ fn read_committed_sealed_target(
 ) -> Result<(Vec<u8>, FileIdentity), HeptaError> {
     use std::io::Read as _;
 
-    let parent = open_sealed_parent(target, false)?
-        .ok_or_else(|| HeptaError("sealed target parent disappeared after commit".into()))?;
+    let parent = open_committed_sealed_parent(target)?;
     let mut file = openat_file(
         &parent,
         &target.leaf_name,
@@ -3746,8 +3767,7 @@ fn mark_prepared_target_written(
 ) -> Result<(), HeptaError> {
     #[cfg(unix)]
     {
-        let parent = open_sealed_parent(&prepared.sealed_target, false)?
-            .ok_or_else(|| HeptaError("sealed write parent disappeared after commit".into()))?;
+        let parent = open_committed_sealed_parent(&prepared.sealed_target)?;
         let file = openat_file(
             &parent,
             &prepared.sealed_target.leaf_name,
