@@ -10,7 +10,6 @@
 use makepad_widgets::*;
 use makepad_widgets::animator::Animate;
 
-use crate::home::rooms_list::RoomsListScopeProps;
 
 use super::expand_arrow::ExpandArrow;
 use super::unread_badge::UnreadBadgeWidgetRefExt as _;
@@ -22,7 +21,7 @@ script_mod! {
 
     mod.widgets.COLOR_HEADER_FG = #F;
 
-    mod.widgets.COLOR_HEADER_BG = (mod.widgets.COLOR_ROBRIX_PURPLE); // Hepta primary accent via legacy Matrix-heart color slot.
+    mod.widgets.COLOR_HEADER_BG = (mod.widgets.COLOR_ROBRIX_PURPLE); // the purple color from the Robrix logo
 
     mod.widgets.CollapsibleHeader = set_type_default() do #(CollapsibleHeader::register_widget(vm)) {
         ..mod.widgets.RoundedView
@@ -98,58 +97,45 @@ impl HeaderCategory {
 #[derive(Clone, Debug, Default)]
 pub enum CollapsibleHeaderAction {
     /// The header was clicked to toggled its expanded/collapsed state.
-    Toggled { category: HeaderCategory },
+    Toggled {
+        category: HeaderCategory,
+    },
     #[default]
     None,
 }
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct CollapsibleHeader {
-    #[deref]
-    view: View,
-    #[rust(true)]
-    is_expanded: bool,
-    #[rust]
-    category: HeaderCategory,
-    #[rust]
-    num_unread_mentions: u64,
+    #[deref] view: View,
+    #[rust(true)] is_expanded: bool,
+    #[rust] category: HeaderCategory,
+    #[rust] num_unread_mentions: u64,
 }
 
 impl Widget for CollapsibleHeader {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         // Handle hits on this view as a whole before passing the event to the inner view.
-        let rooms_list_props = scope.props.get::<RoomsListScopeProps>().unwrap();
         match event.hits(cx, self.view.area()) {
             Hit::FingerDown(..) => {
                 cx.set_key_focus(self.view.area());
             }
             Hit::FingerUp(fe)
-                if !rooms_list_props.was_scrolling
-                    && fe.is_over
-                    && fe.is_primary_hit()
-                    && fe.was_tap() =>
+                if fe.is_over && fe.is_primary_hit() && fe.was_tap() =>
             {
                 self.toggle_collapse(cx, scope);
             }
-            _ => {}
+            _ => { }
         }
         self.view.handle_event(cx, event, scope);
     }
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
         // Set arrow and label state during draw to ensure child widgets are available.
-        if let Some(mut arrow) = self
-            .view
-            .child_by_path(ids!(collapse_icon))
-            .borrow_mut::<ExpandArrow>()
-        {
+        if let Some(mut arrow) = self.view.child_by_path(ids!(collapse_icon)).borrow_mut::<ExpandArrow>() {
             arrow.set_is_open_no_animate(self.is_expanded);
         }
-        self.view
-            .child_by_path(ids!(label))
-            .set_text(cx, self.category.as_str());
-        self.view
-            .child_by_path(ids!(unread_badge))
+        self.view.child_by_path(ids!(label)).set_text(cx, self.category.as_str());
+        self.view.child_by_path(ids!(unread_badge))
             .as_unread_badge()
             .update_counts(false, self.num_unread_mentions, 0);
         self.view.draw_walk(cx, scope, walk)
@@ -159,16 +145,12 @@ impl Widget for CollapsibleHeader {
 impl CollapsibleHeader {
     fn toggle_collapse(&mut self, cx: &mut Cx, _scope: &mut Scope) {
         self.is_expanded = !self.is_expanded;
-        if let Some(mut arrow) = self
-            .view
-            .child_by_path(ids!(collapse_icon))
-            .borrow_mut::<ExpandArrow>()
-        {
+        if let Some(mut arrow) = self.view.child_by_path(ids!(collapse_icon)).borrow_mut::<ExpandArrow>() {
             arrow.set_is_open(cx, self.is_expanded, Animate::Yes);
         }
         self.redraw(cx);
         cx.widget_action(
-            self.widget_uid(),
+            self.widget_uid(), 
             CollapsibleHeaderAction::Toggled {
                 category: self.category,
             },

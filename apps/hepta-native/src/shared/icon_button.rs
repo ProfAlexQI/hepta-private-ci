@@ -15,42 +15,43 @@ script_mod! {
         padding: 10,
         align: Align{x: 0, y: 0.5}
 
-        // Keep keyboard focus visible. Pointer-down and hover remain separate
-        // animator states, so the ring does not get confused with a pressed state.
+        // Disable focus visual styling entirely so that clicking a button
+        // and hovering away doesn't leave it stuck on the theme's focus color.
+        // This works by keeping the `focus` uniform at 0.0 in both on/off states,
+        // so the shader's `mix(color, color_focus, focus)` always evaluates to just `color`.
         animator +: {
             focus: {
                 default: @off
                 off: AnimatorState {
-                    from: {all: Forward {duration: 0.12}}
+                    from: {all: Forward {duration: 0.0}}
                     apply: {
                         draw_bg: {focus: 0.0}
                         draw_text: {focus: 0.0}
                     }
                 }
                 on: AnimatorState {
-                    from: {all: Forward {duration: 0.12}}
+                    from: {all: Forward {duration: 0.0}}
                     apply: {
-                        draw_bg: {focus: 1.0}
-                        draw_text: {focus: 1.0}
+                        draw_bg: {focus: 0.0}
+                        draw_text: {focus: 0.0}
                     }
                 }
             }
         }
 
         draw_bg +: {
-            border_size: 1.0
-            border_radius: 8.0
+            border_size: 0.0
+            border_radius: 4.0
 
             color: (COLOR_ACTIVE_PRIMARY)
             color_hover: (COLOR_ACTIVE_PRIMARY_DARKER)
-            color_focus: (COLOR_ACTIVE_PRIMARY)
             color_down: #0C5DAA
             color_disabled: (COLOR_BG_DISABLED)
 
-            border_color: #FFFFFF66
-            border_color_hover: (COLOR_ROBRIX_CYAN)
-            border_color_down: (COLOR_ACTIVE_PRIMARY_DARKER)
-            border_color_focus: (COLOR_ROBRIX_CYAN)
+            border_color: #0000
+            border_color_hover: #0000
+            border_color_down: #0000
+            border_color_focus: #0000
             border_color_disabled: #0000
 
             // Disable gradient (color_2) by default
@@ -66,7 +67,7 @@ script_mod! {
             color_hover: (COLOR_PRIMARY)
             color_down: (COLOR_PRIMARY)
             color_disabled: (COLOR_FG_DISABLED)
-            text_style: mod.widgets.REGULAR_TEXT {font_size: 13},
+            text_style: mod.widgets.REGULAR_TEXT {font_size: 10},
         }
         text: ""
     }

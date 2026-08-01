@@ -1,22 +1,9 @@
-use std::{
-    ops::{Deref, DerefMut},
-    sync::{Arc, Mutex},
-    time::SystemTime,
-};
+use std::{ops::{Deref, DerefMut}, sync::{Arc, Mutex}};
 use hashbrown::{hash_map::RawEntryMut, HashMap};
-use makepad_widgets::{error, log, SignalToUI};
-use matrix_sdk::{
-    media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
-    ruma::{events::room::MediaSource, OwnedMxcUri},
-    Error, HttpError,
-};
+use makepad_widgets::{error, SignalToUI};
+use matrix_sdk::{media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings}, ruma::{events::room::MediaSource, OwnedMxcUri}, Error, HttpError};
 use matrix_sdk::reqwest::StatusCode;
-use crate::{
-    home::room_screen::TimelineUpdate,
-    sliding_sync::{self, MatrixRequest},
-};
-
-pub const MEDIA_FETCH_CACHE_READ_EVIDENCE: &str = "MediaCache may submit the existing Matrix FetchMedia read request only for a missing MXC thumbnail or full-file cache entry used by image and sticker previews. Cache hits, Requested, Loaded, Failed, clear pending/failed, insert_into_cache, TimelineUpdate::MediaFetched, and SignalToUI only update local media cache/redraw state and send no manual Download, Play, Decrypt, message, room-state, membership, account, profile, or live mutation request.";
+use crate::{home::room_screen::TimelineUpdate, shared::attachment_download::media_source_mxc, sliding_sync::{self, MatrixRequest}};
 
 /// The value type in the media cache, one per Matrix URI.
 #[derive(Debug, Clone)]
@@ -38,6 +25,7 @@ pub enum MediaCacheEntry {
 
 /// A reference to a media cache entry and its associated format.
 pub type MediaCacheEntryRef = Arc<Mutex<MediaCacheEntry>>;
+
 
 /// A cache of fetched media, indexed by Matrix URI.
 ///
@@ -69,11 +57,17 @@ impl MediaCache {
     ///
     /// It will also optionally send updates to the given timeline update sender
     /// when a media request has completed.
-    pub fn new(timeline_update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>) -> Self {
+    pub fn new(
+        timeline_update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+    ) -> Self {
         Self {
             cache: HashMap::new(),
             timeline_update_sender,
         }
+    }
+
+    pub fn timeline_update_sender(&self) -> Option<&crossbeam_channel::Sender<TimelineUpdate>> {
+        self.timeline_update_sender.as_ref()
     }
 
     /// Tries to get the media from the cache, or submits an async request to fetch it.
@@ -90,9 +84,10 @@ impl MediaCache {
     /// Returns a tuple of the media cache entry and the media format of that cached entry.
     pub fn try_get_media_or_fetch(
         &mut self,
-        mxc_uri: &OwnedMxcUri,
+        source: &MediaSource,
         requested_format: MediaFormat,
     ) -> (MediaCacheEntry, MediaFormat) {
+        let mxc_uri = media_source_mxc(source);
         let mut post_request_retval = (MediaCacheEntry::Requested, requested_format.clone());
         let entry_ref_to_fetch: MediaCacheEntryRef;
 
@@ -114,11 +109,11 @@ impl MediaCache {
                             value.thumbnail = Some((Arc::clone(&entry_ref), requested_mts.clone()));
                             // If a full-size image is already loaded, return it.
                             if let Some(existing_file) = value.full_file.as_ref() {
-                                if let MediaCacheEntry::Loaded(d) =
-                                    existing_file.lock().unwrap().deref()
-                                {
-                                    post_request_retval =
-                                        (MediaCacheEntry::Loaded(Arc::clone(d)), MediaFormat::File);
+                                if let MediaCacheEntry::Loaded(d) = existing_file.lock().unwrap().deref() {
+                                    post_request_retval = (
+                                        MediaCacheEntry::Loaded(Arc::clone(d)),
+                                        MediaFormat::File,
+                                    );
                                 }
                             }
                             entry_ref_to_fetch = entry_ref;
@@ -126,18 +121,17 @@ impl MediaCache {
                     }
                     MediaFormat::File => {
                         if let Some(entry_ref) = value.full_file.as_ref() {
-                            return (entry_ref.lock().unwrap().deref().clone(), MediaFormat::File);
+                            return (
+                                entry_ref.lock().unwrap().deref().clone(),
+                                MediaFormat::File,
+                            );
                         } else {
                             // Here, a full-size image was requested but not found, so fetch it.
                             let entry_ref = Arc::new(Mutex::new(MediaCacheEntry::Requested));
                             value.full_file = Some(entry_ref.clone());
                             // If a thumbnail is already loaded, return it.
-                            if let Some((existing_thumbnail, existing_mts)) =
-                                value.thumbnail.as_ref()
-                            {
-                                if let MediaCacheEntry::Loaded(d) =
-                                    existing_thumbnail.lock().unwrap().deref()
-                                {
+                            if let Some((existing_thumbnail, existing_mts)) = value.thumbnail.as_ref() {
+                                if let MediaCacheEntry::Loaded(d) = existing_thumbnail.lock().unwrap().deref() {
                                     post_request_retval = (
                                         MediaCacheEntry::Loaded(Arc::clone(d)),
                                         MediaFormat::Thumbnail(existing_mts.clone()),
@@ -166,13 +160,9 @@ impl MediaCache {
             }
         }
 
-        // Media fetch/cache read evidence: only the first missing thumbnail or full-file
-        // cache entry submits the existing Matrix FetchMedia read request. Cache hits and
-        // in-flight Requested entries return locally without manual Download/Play/Decrypt
-        // or any message, room-state, membership, account, profile, or live mutation request.
         sliding_sync::submit_async_request(MatrixRequest::FetchMedia {
             media_request: MediaRequestParameters {
-                source: MediaSource::Plain(mxc_uri.clone()),
+                source: source.clone(),
                 format: requested_format,
             },
             on_fetched: insert_into_cache,
@@ -189,8 +179,6 @@ impl MediaCache {
     /// because any in-flight requests that were submitted while offline have likely
     /// failed, leaving stale entries that permanently block re-fetching.
     pub fn clear_all_pending_and_failed_requests(&mut self) {
-        // This cache repair only removes local Requested/Failed entries so they may be
-        // fetched again by the existing read/cache path after connectivity returns.
         self.cache.retain(|_, value| {
             // Remove `Requested`/`Failed` sub-entries, keeping `Loaded` ones.
             if let Some(ref entry_ref) = value.full_file {
@@ -208,62 +196,14 @@ impl MediaCache {
         });
     }
 
-    /// Removes a specific media format from the cache for the given MXC URI.
-    /// If `format` is None, removes the entire cache entry for the URI.
-    /// Returns the removed cache entry if found, None otherwise.
-    pub fn remove_cache_entry(
-        &mut self,
-        mxc_uri: &OwnedMxcUri,
-        format: Option<MediaFormat>,
-    ) -> Option<MediaCacheEntryRef> {
-        match format {
-            Some(MediaFormat::Thumbnail(_)) => {
-                if let Some(cache_value) = self.cache.get_mut(mxc_uri) {
-                    if let Some((removed_entry, _)) = cache_value.thumbnail.take() {
-                        // If both thumbnail and full_file are None, remove the entire entry
-                        if cache_value.full_file.is_none() {
-                            self.cache.remove(mxc_uri);
-                        }
-                        return Some(removed_entry);
-                    }
-                }
-                None
-            }
-            Some(MediaFormat::File) => {
-                if let Some(cache_value) = self.cache.get_mut(mxc_uri) {
-                    if let Some(removed_entry) = cache_value.full_file.take() {
-                        // If both thumbnail and full_file are None, remove the entire entry
-                        if cache_value.thumbnail.is_none() {
-                            self.cache.remove(mxc_uri);
-                        }
-                        return Some(removed_entry);
-                    }
-                }
-                None
-            }
-            None => {
-                // Remove the entire entry for this MXC URI
-                self.cache.remove(mxc_uri).map(|cache_value| {
-                    // Return the full_file entry if it exists, otherwise the thumbnail entry
-                    cache_value
-                        .full_file
-                        .or_else(|| cache_value.thumbnail.map(|(entry, _)| entry))
-                        .unwrap_or_else(|| Arc::new(Mutex::new(MediaCacheEntry::Requested)))
-                })
-            }
-        }
-    }
 }
 
 /// Converts a Matrix SDK error to a MediaCacheEntry::Failed with appropriate status codes.
-fn error_to_media_cache_entry(error: Error, request: &MediaRequestParameters) -> MediaCacheEntry {
+pub(crate) fn error_to_media_cache_entry(error: Error, request: &MediaRequestParameters) -> MediaCacheEntry {
     match error {
         Error::Http(http_error) => {
             if let Some(client_error) = http_error.as_client_api_error() {
-                error!(
-                    "Client error for media cache: {client_error} for request: {:?}",
-                    request
-                );
+                error!("Error {client_error} for request: {:?}", request);
                 MediaCacheEntry::Failed(client_error.status_code)
             } else {
                 match *http_error {
@@ -272,11 +212,9 @@ fn error_to_media_cache_entry(error: Error, request: &MediaRequestParameters) ->
                         if !reqwest_error.is_connect() {
                             MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR)
                         } else if reqwest_error.is_status() {
-                            MediaCacheEntry::Failed(
-                                reqwest_error
-                                    .status()
-                                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                            )
+                            MediaCacheEntry::Failed(reqwest_error
+                                .status()
+                                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
                         } else {
                             MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR)
                         }
@@ -287,7 +225,7 @@ fn error_to_media_cache_entry(error: Error, request: &MediaRequestParameters) ->
         }
         Error::InsufficientData => MediaCacheEntry::Failed(StatusCode::PARTIAL_CONTENT),
         Error::AuthenticationRequired => MediaCacheEntry::Failed(StatusCode::UNAUTHORIZED),
-        _ => MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR),
+        _ => MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR)
     }
 }
 
@@ -301,34 +239,11 @@ fn insert_into_cache<D: Into<Arc<[u8]>>>(
     let new_value = match data {
         Ok(data) => {
             let data = data.into();
-
-            // debugging: dump out the media image to disk
-            if false {
-                if let MediaSource::Plain(mxc_uri) = &request.source {
-                    log!("Fetched media for {mxc_uri}");
-                    let mut path = crate::temp_storage::get_temp_dir_path().clone();
-                    let filename = format!(
-                        "{}_{}_{}",
-                        SystemTime::now()
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis(),
-                        mxc_uri.server_name().unwrap(),
-                        mxc_uri.media_id().unwrap(),
-                    );
-                    path.push(filename);
-                    path.set_extension("png");
-                    log!("Writing user media image to disk: {:?}", path);
-                    std::fs::write(path, &data).expect("Failed to write user media image to disk");
-                }
-            }
             MediaCacheEntry::Loaded(data)
         }
-        Err(e) => error_to_media_cache_entry(e, &request),
+        Err(e) => error_to_media_cache_entry(e, &request)
     };
 
-    // FetchMedia completion only swaps the local cache entry and wakes the UI so the
-    // already-loaded timeline/image preview can redraw.
     *value_ref.lock().unwrap() = new_value;
 
     if let Some(sender) = update_sender {

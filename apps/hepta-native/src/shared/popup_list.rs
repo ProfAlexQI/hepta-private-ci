@@ -271,7 +271,7 @@ script_mod! {
                 main_content := mod.widgets.MainContent {}
             }
             progress_bar := mod.widgets.ProgressBar {}
-            // Add a small gap between the progress bar and the end of the popup
+            // Add a small gap between the progress bar and the end of the popup 
             // to ensure the progress bar is within the popup.
             View {
                 height: 0.2
@@ -360,25 +360,16 @@ struct PopupEntry {
 /// A widget that displays a vertical list of popups.
 #[derive(Script, Widget)]
 pub struct RobrixPopupNotification {
-    #[uid]
-    uid: WidgetUid,
-    #[source]
-    source: ScriptObjectRef,
-    #[live]
-    pub content: Option<LivePtr>,
+    #[uid] uid: WidgetUid,
+    #[source] source: ScriptObjectRef,
+    #[live] pub content: Option<LivePtr>,
 
-    #[rust]
-    draw_list: Option<DrawList2d>,
-    #[redraw]
-    #[live]
-    draw_bg: DrawQuad,
-    #[layout]
-    layout: Layout,
-    #[walk]
-    walk: Walk,
+    #[rust] draw_list: Option<DrawList2d>,
+    #[redraw] #[live] draw_bg: DrawQuad,
+    #[layout] layout: Layout,
+    #[walk] walk: Walk,
     // A list of tuples containing individual widgets, its content and the close timer in the order they were added.
-    #[rust]
-    popups: Vec<PopupEntry>,
+    #[rust] popups: Vec<PopupEntry>,
 }
 
 impl ScriptHook for RobrixPopupNotification {
@@ -580,7 +571,10 @@ impl RobrixPopupNotification {
             progress_bar.animator_cut(cx, ids!(progress.off));
             Timer::empty()
         };
-        self.popups.push(PopupEntry { view, close_timer });
+        self.popups.push(PopupEntry {
+            view,
+            close_timer,
+        });
         self.redraw_overlay(cx);
     }
 
@@ -597,27 +591,6 @@ impl RobrixPopupNotification {
     /// The `auto_dismissal_duration` field of the `PopupItem` parameter will be used to automatically dismiss the popup after the given duration.
     /// If `auto_dismissal_duration` is `None`, the popup will not be automatically dismissed and the user will have to manually close it.
     /// The maximum auto dismissal duration is 3 minutes.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// crate::shared::popup_list::set_global_popup_list(cx, &self.ui);
-    /// let content = crate::shared::popup_list::get_global_popup_list(cx).content();
-    /// let view = View::new_from_ptr(cx, content);
-    /// let popup_item = PopupItem {
-    ///     kind: PopupKind::Info,
-    ///     message: Cow::Borrowed("Welcome!"),
-    ///     auto_dismissal_duration: Some(4.0),
-    /// };
-    ///  view.label(cx, ids!(popup_label))
-    ///     .set_text(cx, &popup_item.message);
-    ///  let close_timer = if let Some(duration) = popup_item.auto_dismissal_duration {
-    ///     cx.start_timeout(duration)
-    /// } else {
-    ///     Timer::empty()
-    /// };
-    /// crate::shared::popup_list::get_global_popup_list(cx).push_with_custom_view(popup_item, view, close_timer);
-    /// ```
     pub fn push_with_custom_view(
         &mut self,
         mut popup_item: PopupItem,
@@ -627,7 +600,10 @@ impl RobrixPopupNotification {
         popup_item.auto_dismissal_duration = popup_item
             .auto_dismissal_duration
             .map(|duration| duration.min(3. * 60.));
-        self.popups.push(PopupEntry { view, close_timer });
+        self.popups.push(PopupEntry {
+            view,
+            close_timer,
+        });
     }
 
     /// Returns a clone of the template for each  popup in the list.

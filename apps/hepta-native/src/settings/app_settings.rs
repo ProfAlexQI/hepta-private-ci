@@ -4,33 +4,25 @@ use makepad_widgets::*;
 
 use crate::{
     app::AppState,
-    settings::app_preferences::{
-        AppPreferences, AppPreferencesAction, AppPreferencesGlobal, ThumbnailMaxHeight, UiZoom,
-        ViewModeOverride,
-    },
+    settings::app_preferences::{AppPreferences, AppPreferencesAction, AppPreferencesGlobal, ThumbnailMaxHeight, UiZoom, ViewModeOverride},
     shared::popup_list::{enqueue_popup_notification, PopupKind},
 };
 
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 const SEND_SHORTCUT_TOGGLE_LABEL: &str = "Send with Cmd⌘ + Enter";
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(target_vendor = "apple"))]
 const SEND_SHORTCUT_TOGGLE_LABEL: &str = "Send with Ctrl + Enter";
 
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 const SEND_SHORTCUT_DESC_CMD: &str = "Currently: 'Cmd⌘ + Enter' to send, 'Enter' for a new line";
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(target_vendor = "apple"))]
 const SEND_SHORTCUT_DESC_CMD: &str = "Currently: 'Ctrl + Enter' to send, 'Enter' for a new line";
 
-#[cfg(target_os = "macos")]
-const UI_ZOOM_DESCRIPTION: &str =
-    "Scales the entire UI uniformly.\n'Cmd⌘ + +/-' zooms in or out, 'Cmd⌘ + 0' resets zoom";
-#[cfg(not(target_os = "macos"))]
-const UI_ZOOM_DESCRIPTION: &str =
-    "Scales the entire UI uniformly.\n'Ctrl + +/-' zooms in or out, 'Ctrl + 0' resets zoom.";
+#[cfg(target_vendor = "apple")]
+const UI_ZOOM_DESCRIPTION: &str = "Scales the entire UI uniformly.\n'Cmd⌘ + +/-' zooms in or out, 'Cmd⌘ + 0' resets zoom";
+#[cfg(not(target_vendor = "apple"))]
+const UI_ZOOM_DESCRIPTION: &str = "Scales the entire UI uniformly.\n'Ctrl + +/-' zooms in or out, 'Ctrl + 0' resets zoom.";
 
-pub const SEND_SHORTCUT_LOCAL_PREFERENCE_EVIDENCE: &str = "Send shortcut changes are local AppPreferences only: the Settings toggle broadcasts AppPreferencesAction::SendOnEnterChanged, RoomInputBar and EditingPane update submit_on_enter, and no message send, typing notice, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request is emitted.";
-pub const SEND_SHORTCUT_LOCAL_PREFERENCE_LABEL: &str =
-    "Local shortcut preference only; no message, typing, room-state, or membership request.";
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -268,6 +260,8 @@ script_mod! {
                     align: Align {y: 0.5}
                     padding: Inset{left: 8, right: 8, top: 5, bottom: 5}
                     empty_text: "100%"
+                    autocapitalize: None,
+                    autocorrect: Disabled,
                 }
 
                 ui_zoom_plus_button := RobrixNeutralIconButton {
@@ -288,11 +282,11 @@ script_mod! {
 
 
         SubsectionLabel {
-            text: "Send Message Keyboard Shortcut"
+            text: "Keyboard Shortcut to Send Message"
         }
 
         send_on_cmd_enter_toggle := ToggleFlat {
-            margin: Inset{left: 6.5, top: 5, bottom: 5}
+            margin: Inset{left: 6.5, top: 5, bottom: 6}
             padding: Inset { left: 15}
             active: false,
             draw_bg +: { size: 21 }
@@ -306,8 +300,10 @@ script_mod! {
             text: "Current setting: \"Enter\" to send, \"Shift + Enter\" for a new line"
         }
 
-        send_shortcut_evidence := mod.widgets.SettingsSectionDescription {
-            text: "Local shortcut preference only; no message, typing, room-state, or membership request."
+        send_shortcut_soft_keyboard_warning := mod.widgets.SettingsSectionDescription {
+            visible: false // shown only on iOS/Android, see `populate_safe()``
+            draw_text +: { color: (COLOR_TEXT_WARNING_NOT_FOUND) }
+            text: "Note: this only applies to physical (hardware) keyboards."
         }
 
         SubsectionLabel {
@@ -321,15 +317,15 @@ script_mod! {
             spacing: 4,
 
             thumb_small_radio := mod.widgets.RobrixSettingsRadioButton {
-                text: "Small (200 pixels, default)"
+                text: "Small (200 pixels)"
             }
 
             thumb_medium_radio := mod.widgets.RobrixSettingsRadioButton {
-                text: "Medium (400 pixels)"
+                text: "Medium (300 pixels, default)"
             }
 
-            thumb_unlimited_radio := mod.widgets.RobrixSettingsRadioButton {
-                text: "Unlimited (not recommended)"
+            thumb_large_radio := mod.widgets.RobrixSettingsRadioButton {
+                text: "Large (400 pixels)"
             }
 
             View {
@@ -347,6 +343,8 @@ script_mod! {
                     width: 60, height: Fit
                     padding: Inset{left: 8, right: 8, top: 5, bottom: 5}
                     empty_text: "300"
+                    autocapitalize: None,
+                    autocorrect: Disabled,
                     is_read_only: true
                 }
 
@@ -363,6 +361,7 @@ script_mod! {
     }
 }
 
+
 /// The "App Settings" widget: controls app-wide user preferences.
 ///
 /// Field-level state lives in [`AppState::app_prefs`]; this widget reads and
@@ -370,8 +369,7 @@ script_mod! {
 /// [`AppPreferencesAction`]s so other widgets can apply changes live.
 #[derive(Script, Widget)]
 pub struct AppSettings {
-    #[deref]
-    view: View,
+    #[deref] view: View,
 }
 
 impl ScriptHook for AppSettings {
@@ -392,9 +390,10 @@ impl ScriptHook for AppSettings {
         if !apply.is_script_reapply() {
             return;
         }
-        let cx = vm.cx_mut();
-        let prefs = cx.global::<AppPreferencesGlobal>().0.clone();
-        Self::populate_safe(cx, &self.view, &prefs);
+        vm.with_cx_mut(|cx| {
+            let prefs = cx.global::<AppPreferencesGlobal>().0.clone();
+            Self::populate_safe(cx, &self.view, &prefs);
+        });
     }
 }
 
@@ -469,7 +468,7 @@ impl AppSettings {
                     );
                     ui_zoom_input.set_text(cx, &app_state.app_prefs.ui_zoom.format_percent());
                 }
-                None => {}
+                None => { }
             }
         }
 
@@ -499,15 +498,12 @@ impl AppSettings {
             }
         }
 
-        let radios = self.view.radio_button_set(
-            cx,
-            ids_array!(
-                thumb_small_radio,
-                thumb_medium_radio,
-                thumb_unlimited_radio,
-                thumb_custom_radio,
-            ),
-        );
+        let radios = self.view.radio_button_set(cx, ids_array!(
+            thumb_small_radio,
+            thumb_medium_radio,
+            thumb_large_radio,
+            thumb_custom_radio,
+        ));
         let custom_input = self.view.text_input(cx, ids!(thumb_custom_input));
         if let Some(selected) = radios.selected(cx, actions) {
             let existing_custom = match app_state.app_prefs.thumbnail_max_height {
@@ -517,10 +513,8 @@ impl AppSettings {
             let new_thumb = match selected {
                 0 => ThumbnailMaxHeight::Small,
                 1 => ThumbnailMaxHeight::Medium,
-                2 => ThumbnailMaxHeight::Unlimited,
-                3 => ThumbnailMaxHeight::Custom(
-                    existing_custom.unwrap_or(DEFAULT_CUSTOM_THUMB_HEIGHT),
-                ),
+                2 => ThumbnailMaxHeight::Large,
+                3 => ThumbnailMaxHeight::Custom(existing_custom.unwrap_or(DEFAULT_CUSTOM_THUMB_HEIGHT)),
                 _ => ThumbnailMaxHeight::default(),
             };
             let custom_now = matches!(new_thumb, ThumbnailMaxHeight::Custom(_));
@@ -591,24 +585,16 @@ impl AppSettings {
         let send_toggle = self.view.check_box(cx, ids!(send_on_cmd_enter_toggle));
         send_toggle.set_active(cx, !prefs.send_on_enter, Animate::No);
 
-        let (small, medium, unlimited, custom, custom_text) = match prefs.thumbnail_max_height {
+        let (small, medium, large, custom, custom_text) = match prefs.thumbnail_max_height {
             ThumbnailMaxHeight::Small => (true, false, false, false, String::new()),
             ThumbnailMaxHeight::Medium => (false, true, false, false, String::new()),
-            ThumbnailMaxHeight::Unlimited => (false, false, true, false, String::new()),
+            ThumbnailMaxHeight::Large => (false, false, true, false, String::new()),
             ThumbnailMaxHeight::Custom(v) => (false, false, false, true, v.to_string()),
         };
-        self.view
-            .radio_button(cx, ids!(thumb_small_radio))
-            .set_active(cx, small, Animate::No);
-        self.view
-            .radio_button(cx, ids!(thumb_medium_radio))
-            .set_active(cx, medium, Animate::No);
-        self.view
-            .radio_button(cx, ids!(thumb_unlimited_radio))
-            .set_active(cx, unlimited, Animate::No);
-        self.view
-            .radio_button(cx, ids!(thumb_custom_radio))
-            .set_active(cx, custom, Animate::No);
+        self.view.radio_button(cx, ids!(thumb_small_radio)).set_active(cx, small, Animate::No);
+        self.view.radio_button(cx, ids!(thumb_medium_radio)).set_active(cx, medium, Animate::No);
+        self.view.radio_button(cx, ids!(thumb_large_radio)).set_active(cx, large, Animate::No);
+        self.view.radio_button(cx, ids!(thumb_custom_radio)).set_active(cx, custom, Animate::No);
         // `populate_safe` set `is_read_only`; pair it with the animator's
         // disabled state here so the input lands in the right state on
         // first paint. ScriptReapply only needs `is_read_only`.
@@ -616,15 +602,12 @@ impl AppSettings {
 
         // Only write `thumb_custom_input`'s text on initial populate.
         // `on_after_apply` leaves it alone so in-progress edits survive.
-        self.view
-            .text_input(cx, ids!(thumb_custom_input))
-            .set_text(cx, &custom_text);
+        self.view.text_input(cx, ids!(thumb_custom_input)).set_text(cx, &custom_text);
     }
 
-    /// Restores the code-set fields the apply walk just reset to DSL defaults:
-    /// toggle label, description, dropdown index, custom-input read-only flag.
-    /// None of these go through `cx.with_vm`, so it's safe to call from
-    /// `on_after_apply`. Doing it inline is what prevents the one-frame flicker.
+    /// Re-populated fields set by code, for use after an apply action reset things to DSL defaults.
+    ///
+    /// This is safe to call from `on_after_apply` since it doesn't use `cx.with_vm`.
     fn populate_safe(cx: &mut Cx, view: &View, prefs: &AppPreferences) {
         view.drop_down(cx, ids!(view_mode_dropdown))
             .set_selected_item(cx, prefs.view_mode.to_index());
@@ -638,20 +621,22 @@ impl AppSettings {
             .set_text(SEND_SHORTCUT_TOGGLE_LABEL);
         Self::update_send_shortcut_description(cx, view, prefs.send_on_enter);
 
+        // The send shortcut only applies to a physical keyboard, so the
+        // soft-keyboard caveat is only relevant on iOS/Android.
+        view.widget(cx, ids!(send_shortcut_soft_keyboard_warning))
+            .set_visible(cx, cfg!(any(target_os = "ios", target_os = "android")));
+
         let custom_active = matches!(prefs.thumbnail_max_height, ThumbnailMaxHeight::Custom(_));
         Self::set_thumb_custom_input_read_only(cx, view, custom_active);
     }
 
     fn update_send_shortcut_description(cx: &mut Cx, view: &View, send_on_enter: bool) {
         let text = if send_on_enter {
-            "Current choice: 'Enter' to send, 'Shift + Enter' for a new line"
+            "Currently: 'Enter' to send, 'Shift + Enter' for a new line"
         } else {
             SEND_SHORTCUT_DESC_CMD
         };
-        view.label(cx, ids!(send_shortcut_description))
-            .set_text(cx, text);
-        view.label(cx, ids!(send_shortcut_evidence))
-            .set_text(cx, SEND_SHORTCUT_LOCAL_PREFERENCE_LABEL);
+        view.label(cx, ids!(send_shortcut_description)).set_text(cx, text);
     }
 
     /// Sets `is_read_only` based on whether the custom radio is selected.
@@ -676,12 +661,11 @@ impl AppSettings {
     }
 }
 
+
 impl AppSettingsRef {
     /// See [`AppSettings::populate`].
     pub fn populate(&self, cx: &mut Cx, prefs: &AppPreferences) {
-        let Some(mut inner) = self.borrow_mut() else {
-            return;
-        };
+        let Some(mut inner) = self.borrow_mut() else { return };
         inner.populate(cx, prefs);
     }
 }

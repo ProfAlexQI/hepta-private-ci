@@ -1,173 +1,41 @@
 use std::borrow::Cow;
 
 use makepad_widgets::*;
-use matrix_sdk::encryption::verification::{Verification, VerificationRequest};
+use matrix_sdk::encryption::verification::Verification;
 
-use crate::verification::{
-    VerificationAction, VerificationRequestActionState, VerificationUserResponse,
-};
-
-#[allow(dead_code)]
-pub const VERIFICATION_REQUEST_METADATA_EVIDENCE: &str = "VerificationModal shows loaded Matrix verification metadata from VerificationRequest plus local modal stage: own user, other user, room/to-device scope, flow id availability, self-verification, local/remote origin, passive/ready state, and supported-method count. Rendering metadata starts no Matrix verification accept, cancel, SAS confirm, device trust write, account/profile, gateway/runtime/auth, or live mutation; Accept, Cancel, and SAS confirmation keep the existing response_sender and async verification handler paths unchanged.";
-
-fn bool_label(value: bool) -> &'static str {
-    if value { "yes" } else { "no" }
-}
-
-fn loaded_label(value: &str) -> &'static str {
-    if value.trim().is_empty() {
-        "missing"
-    } else {
-        "loaded"
-    }
-}
-
-fn verification_request_metadata_label(
-    own_user_id: &str,
-    other_user_id: &str,
-    flow_id: &str,
-    room_id: Option<&str>,
-    is_self_verification: bool,
-    we_started: bool,
-    is_passive: bool,
-    is_ready: bool,
-    supported_method_count: Option<usize>,
-    stage: &str,
-) -> String {
-    let stage = if stage.trim().is_empty() {
-        "received"
-    } else {
-        stage.trim()
-    };
-    let scope = room_id
-        .filter(|room_id| !room_id.trim().is_empty())
-        .unwrap_or("to-device");
-    let origin = if we_started {
-        "local-started"
-    } else {
-        "remote-started"
-    };
-    let supported_methods = supported_method_count
-        .map(|count| count.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    format!(
-        "Verification metadata: stage {stage}; own {own_user_id}; other {other_user_id}; scope {scope}; flow {}; self {}; origin {origin}; passive {}; ready {}; supported methods {supported_methods}. Metadata preview starts no Matrix verification accept, cancel, SAS confirm, device trust write, account/profile, gateway/runtime/auth, or live mutation.",
-        loaded_label(flow_id),
-        bool_label(is_self_verification),
-        bool_label(is_passive),
-        bool_label(is_ready),
-    )
-}
-
-fn verification_request_metadata_from_request(
-    request: &VerificationRequest,
-    stage: &str,
-) -> String {
-    let supported_method_count = request
-        .their_supported_methods()
-        .map(|methods| methods.len());
-    verification_request_metadata_label(
-        request.own_user_id().as_str(),
-        request.other_user_id().as_str(),
-        request.flow_id(),
-        request.room_id().map(|room_id| room_id.as_str()),
-        request.is_self_verification(),
-        request.we_started(),
-        request.is_passive(),
-        request.is_ready(),
-        supported_method_count,
-        stage,
-    )
-}
+use crate::verification::{VerificationAction, VerificationRequestActionState, VerificationUserResponse};
 
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
 
 
-    mod.widgets.VerificationModal = #(VerificationModal::register_widget(vm)) {
-        width: Fit
-        height: Fit
+    mod.widgets.VerificationModal = set_type_default() do #(VerificationModal::register_widget(vm)) {
+        ..mod.widgets.SmallModal
 
-        RoundedView {
-            flow: Down
-            width: 400
-            height: Fit
-            padding: Inset{top: 25, right: 30 bottom: 30 left: 45}
-            spacing: 10
+        title := ModalTitle {
+            text: "Verification Request"
+        }
 
-            show_bg: true
-            draw_bg +: {
-                color: (COLOR_PRIMARY)
-                border_radius: 3.0
+        body := ModalBody {}
+
+        buttons_view := ModalButtonsRow {
+            margin: Inset{top: 30}
+
+            cancel_button := RobrixNegativeIconButton {
+                align: Align{x: 0.5, y: 0.5}
+                padding: 15,
+                draw_icon.svg: (ICON_FORBIDDEN)
+                icon_walk: Walk{width: 16, height: 16, margin: Inset{left: -2, right: -1} }
+                text: "Cancel"
             }
 
-            title := View {
-                width: Fill,
-                height: Fit,
-                flow: Right
-                padding: Inset{top: 0, bottom: 40}
-                align: Align{x: 0.5, y: 0.0}
-
-                Label {
-                    text: "Verification Request"
-                    draw_text +: {
-                        text_style: TITLE_TEXT {font_size: 13},
-                        color: #000
-                    }
-                }
-            }
-
-            body := View {
-                width: Fill,
-                height: Fit,
-                flow: Down,
-                spacing: 40,
-
-                prompt := Label {
-                    width: Fill
-                    flow: Flow.Right{wrap: true}
-                    draw_text +: {
-                        text_style: REGULAR_TEXT {
-                            font_size: 11.5,
-                        },
-                        color: #000
-                    }
-                }
-
-                request_metadata := Label {
-                    width: Fill
-                    flow: Flow.Right{wrap: true}
-                    draw_text +: {
-                        text_style: REGULAR_TEXT {
-                            font_size: 10.0,
-                        },
-                        color: #444
-                    }
-                }
-
-                View {
-                    width: Fill, height: Fit
-                    flow: Right,
-                    align: Align{x: 1.0, y: 0.5}
-                    spacing: 20
-
-                    cancel_button := RobrixNegativeIconButton {
-                        align: Align{x: 0.5, y: 0.5}
-                        padding: 15,
-                        draw_icon.svg: (ICON_FORBIDDEN)
-                        icon_walk: Walk{width: 16, height: 16, margin: Inset{left: -2, right: -1} }
-                        text: "Cancel"
-                    }
-
-                    accept_button := RobrixPositiveIconButton {
-                        align: Align{x: 0.5, y: 0.5}
-                        padding: 15,
-                        draw_icon.svg: (ICON_CHECKMARK)
-                        icon_walk: Walk{width: 16, height: 16, margin: Inset{left: -2, right: -1} }
-                        text: "Yes"
-                    }
-                }
+            accept_button := RobrixPositiveIconButton {
+                align: Align{x: 0.5, y: 0.5}
+                padding: 15,
+                draw_icon.svg: (ICON_CHECKMARK)
+                icon_walk: Walk{width: 16, height: 16, margin: Inset{left: -2, right: -1} }
+                text: "Yes"
             }
         }
     }
@@ -175,15 +43,12 @@ script_mod! {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct VerificationModal {
-    #[deref]
-    view: View,
-    #[rust]
-    state: Option<VerificationRequestActionState>,
+    #[deref] view: View,
+    #[rust] state: Option<VerificationRequestActionState>,
     /// Whether the modal is in a "final" state,
     /// meaning that the verification process has ended
     /// and that any further interaction with it should close the modal.
-    #[rust(false)]
-    is_final: bool,
+    #[rust(false)] is_final: bool,
 }
 
 /// Actions emitted by the `VerificationModal`.
@@ -243,16 +108,15 @@ impl WidgetMatchEvent for VerificationModal {
             // `VerificationAction`s come from a background thread, so they are NOT widget actions.
             // Therefore, we cannot use `as_widget_action().cast()` to match them.
             if let Some(verification_action) = action.downcast_ref::<VerificationAction>() {
+                // Outgoing verification requests start with the accept button hidden
+                // since we're still in the waiting state then, so show it now
+                accept_button.set_visible(cx, true);
                 match verification_action {
                     VerificationAction::RequestCancelled(cancel_info) => {
-                        self.label(cx, ids!(prompt)).set_text(
+                        self.label(cx, ids!(body)).set_text(
                             cx,
-                            &format!(
-                                "Verification request was cancelled: {}",
-                                cancel_info.reason()
-                            ),
+                            &format!("Verification request was cancelled: {}", cancel_info.reason())
                         );
-                        self.set_request_metadata_stage(cx, "cancelled");
                         accept_button.set_enabled(cx, true);
                         accept_button.set_text(cx, "Ok");
                         cancel_button.set_visible(cx, false);
@@ -260,12 +124,11 @@ impl WidgetMatchEvent for VerificationModal {
                     }
 
                     VerificationAction::RequestAccepted => {
-                        self.label(cx, ids!(prompt)).set_text(
+                        self.label(cx, ids!(body)).set_text(
                             cx,
                             "You successfully accepted the verification request.\n\n\
-                            Waiting for the other device to agree on verification methods...",
+                            Waiting for the other device to agree on verification methods..."
                         );
-                        self.set_request_metadata_stage(cx, "accepted-waiting-methods");
                         accept_button.set_enabled(cx, false);
                         accept_button.set_text(cx, "Waiting...");
                         cancel_button.set_text(cx, "Cancel");
@@ -274,15 +137,13 @@ impl WidgetMatchEvent for VerificationModal {
                     }
 
                     VerificationAction::RequestAcceptError(error) => {
-                        self.label(cx, ids!(prompt)).set_text(
-                            cx,
+                        self.label(cx, ids!(body)).set_text(cx, 
                             &format!(
                                 "Error accepting verification request: {}\n\n\
                                 Please try the verification process again.",
                                 error,
                             ),
                         );
-                        self.set_request_metadata_stage(cx, "accept-error");
                         accept_button.set_enabled(cx, true);
                         accept_button.set_text(cx, "Ok");
                         cancel_button.set_visible(cx, false);
@@ -290,11 +151,10 @@ impl WidgetMatchEvent for VerificationModal {
                     }
 
                     VerificationAction::RequestCancelError(error) => {
-                        self.label(cx, ids!(prompt)).set_text(
+                        self.label(cx, ids!(body)).set_text(
                             cx,
-                            &format!("Error cancelling verification request: {}.", error),
+                            &format!("Error cancelling verification request: {}.", error)
                         );
-                        self.set_request_metadata_stage(cx, "cancel-error");
                         accept_button.set_enabled(cx, true);
                         accept_button.set_text(cx, "Ok");
                         cancel_button.set_visible(cx, false);
@@ -302,7 +162,7 @@ impl WidgetMatchEvent for VerificationModal {
                     }
 
                     VerificationAction::RequestTransitionedToUnsupportedMethod(method) => {
-                        self.label(cx, ids!(prompt)).set_text(
+                        self.label(cx, ids!(body)).set_text(
                             cx,
                             &format!(
                                 "Verification request transitioned to unsupported method: {}\n\nPlease try the verification process again.",
@@ -313,7 +173,6 @@ impl WidgetMatchEvent for VerificationModal {
                                 },
                             )
                         );
-                        self.set_request_metadata_stage(cx, "unsupported-method");
                         accept_button.set_enabled(cx, true);
                         accept_button.set_text(cx, "Ok");
                         cancel_button.set_visible(cx, false);
@@ -321,12 +180,11 @@ impl WidgetMatchEvent for VerificationModal {
                     }
 
                     VerificationAction::SasAccepted(_accepted_protocols) => {
-                        self.label(cx, ids!(prompt)).set_text(
+                        self.label(cx, ids!(body)).set_text(
                             cx,
                             "Both sides have accepted the same verification method(s).\n\n\
-                            Waiting for both devices to exchange keys...",
+                            Waiting for both devices to exchange keys..."
                         );
-                        self.set_request_metadata_stage(cx, "sas-accepted");
                         accept_button.set_enabled(cx, false);
                         accept_button.set_text(cx, "Waiting...");
                         cancel_button.set_text(cx, "Cancel");
@@ -340,8 +198,7 @@ impl WidgetMatchEvent for VerificationModal {
                                 "Keys have been exchanged. Please verify the following emoji:\
                                 \n   {}\n\n\
                                 Do these emoji keys match?",
-                                emoji_list
-                                    .emojis
+                                emoji_list.emojis
                                     .iter()
                                     .map(|em| format!("{}  ({})", em.symbol, em.description))
                                     .collect::<Vec<_>>()
@@ -355,8 +212,7 @@ impl WidgetMatchEvent for VerificationModal {
                                 decimals.0, decimals.1, decimals.2,
                             )
                         };
-                        self.label(cx, ids!(prompt)).set_text(cx, &text);
-                        self.set_request_metadata_stage(cx, "keys-exchanged");
+                        self.label(cx, ids!(body)).set_text(cx, &text);
                         accept_button.set_enabled(cx, true);
                         accept_button.set_text(cx, "Yes");
                         cancel_button.set_text(cx, "No");
@@ -365,12 +221,11 @@ impl WidgetMatchEvent for VerificationModal {
                     }
 
                     VerificationAction::SasConfirmed => {
-                        self.label(cx, ids!(prompt)).set_text(
+                        self.label(cx, ids!(body)).set_text(
                             cx,
                             "You successfully confirmed the Short Auth String keys.\n\n\
-                            Waiting for the other device to confirm...",
+                            Waiting for the other device to confirm..."
                         );
-                        self.set_request_metadata_stage(cx, "sas-confirmed");
                         accept_button.set_enabled(cx, false);
                         accept_button.set_text(cx, "Waiting...");
                         cancel_button.set_text(cx, "Cancel");
@@ -379,11 +234,10 @@ impl WidgetMatchEvent for VerificationModal {
                     }
 
                     VerificationAction::SasConfirmationError(error) => {
-                        self.label(cx, ids!(prompt)).set_text(
+                        self.label(cx, ids!(body)).set_text(
                             cx,
                             &format!("Error confirming keys: {}\n\nPlease retry the verification process.", error)
                         );
-                        self.set_request_metadata_stage(cx, "sas-confirm-error");
                         accept_button.set_text(cx, "Ok");
                         accept_button.set_enabled(cx, true);
                         cancel_button.set_visible(cx, false);
@@ -391,15 +245,13 @@ impl WidgetMatchEvent for VerificationModal {
                     }
 
                     VerificationAction::RequestCompleted => {
-                        self.label(cx, ids!(prompt))
-                            .set_text(cx, "Verification completed successfully!");
-                        self.set_request_metadata_stage(cx, "completed");
+                        self.label(cx, ids!(body)).set_text(cx, "Verification completed successfully!");
                         accept_button.set_text(cx, "Ok");
                         accept_button.set_enabled(cx, true);
                         cancel_button.set_visible(cx, false);
                         self.is_final = true;
                     }
-                    _ => {}
+                    _ => { }
                 }
                 // If we received a `VerificationAction`, we need to redraw the modal content.
                 needs_redraw = true;
@@ -418,47 +270,38 @@ impl VerificationModal {
         self.is_final = false;
     }
 
-    fn set_request_metadata_stage(&mut self, cx: &mut Cx, stage: &str) {
-        let metadata = self
-            .state
-            .as_ref()
-            .map(|state| verification_request_metadata_from_request(&state.request, stage))
-            .unwrap_or_else(|| {
-                verification_request_metadata_label(
-                    "unknown", "unknown", "", None, false, false, false, false, None, stage,
-                )
-            });
-        self.label(cx, ids!(request_metadata))
-            .set_text(cx, &metadata);
-    }
-
-    fn initialize_with_data(&mut self, cx: &mut Cx, state: VerificationRequestActionState) {
+    fn initialize_with_data(
+        &mut self,
+        cx: &mut Cx,
+        state: VerificationRequestActionState,
+    ) {
         log!("Initializing verification modal with state: {:?}", state);
         let request = &state.request;
-        let prompt_text = if request.is_self_verification() {
+        // `we_started` means this is an outgoing request we just sent, so we don't need
+        // to accept it, but rather just wait for another device to accept & respond.
+        let we_started = request.we_started();
+        let prompt_text = if we_started {
+            Cow::from("Send a verification request to your other logged-in devices.\n\n\
+                Accept it on one of those devices to continue verifying this device.")
+        } else if request.is_self_verification() {
             Cow::from("Do you wish to verify your own device?")
+        } else if let Some(room_id) = request.room_id() {
+            format!("Do you wish to verify user {} in room {}?",
+                request.other_user_id(),
+                room_id,
+            ).into()
         } else {
-            if let Some(room_id) = request.room_id() {
-                format!(
-                    "Do you wish to verify user {} in room {}?",
-                    request.other_user_id(),
-                    room_id,
-                )
-                .into()
-            } else {
-                format!("Do you wish to verify user {}?", request.other_user_id()).into()
-            }
+            format!("Do you wish to verify user {}?",
+                request.other_user_id()
+            ).into()
         };
-        self.label(cx, ids!(prompt)).set_text(cx, &prompt_text);
-        let request_metadata_text = verification_request_metadata_from_request(request, "received");
-        self.label(cx, ids!(request_metadata))
-            .set_text(cx, &request_metadata_text);
+        self.label(cx, ids!(body)).set_text(cx, &prompt_text);
 
         let accept_button = self.button(cx, ids!(accept_button));
         let cancel_button = self.button(cx, ids!(cancel_button));
         accept_button.set_text(cx, "Yes");
-        accept_button.set_enabled(cx, true);
-        accept_button.set_visible(cx, true);
+        accept_button.set_enabled(cx, !we_started);
+        accept_button.set_visible(cx, !we_started);
         cancel_button.set_text(cx, "Cancel");
         cancel_button.set_enabled(cx, true);
         cancel_button.set_visible(cx, true);
@@ -469,60 +312,13 @@ impl VerificationModal {
 }
 
 impl VerificationModalRef {
-    pub fn initialize_with_data(&self, cx: &mut Cx, state: VerificationRequestActionState) {
+    pub fn initialize_with_data(
+        &self,
+        cx: &mut Cx, 
+        state: VerificationRequestActionState,
+    ) {
         if let Some(mut inner) = self.borrow_mut() {
             inner.initialize_with_data(cx, state);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn verification_request_metadata_summarizes_loaded_request() {
-        let label = verification_request_metadata_label(
-            "@alice:example.org",
-            "@bob:example.org",
-            "flow-123",
-            Some("!room:example.org"),
-            false,
-            false,
-            false,
-            true,
-            Some(1),
-            "keys-exchanged",
-        );
-
-        assert!(label.contains("stage keys-exchanged"));
-        assert!(label.contains("own @alice:example.org"));
-        assert!(label.contains("other @bob:example.org"));
-        assert!(label.contains("scope !room:example.org"));
-        assert!(label.contains("flow loaded"));
-        assert!(label.contains("self no"));
-        assert!(label.contains("origin remote-started"));
-        assert!(label.contains("ready yes"));
-        assert!(label.contains("supported methods 1"));
-        assert!(label.contains("no Matrix verification accept"));
-        assert!(label.contains("device trust write"));
-        assert!(label.contains("live mutation"));
-    }
-
-    #[test]
-    fn verification_request_metadata_uses_safe_fallbacks() {
-        let label = verification_request_metadata_label(
-            "unknown", "unknown", "", None, true, true, true, false, None, " ",
-        );
-
-        assert!(label.contains("stage received"));
-        assert!(label.contains("scope to-device"));
-        assert!(label.contains("flow missing"));
-        assert!(label.contains("self yes"));
-        assert!(label.contains("origin local-started"));
-        assert!(label.contains("passive yes"));
-        assert!(label.contains("ready no"));
-        assert!(label.contains("supported methods unknown"));
-        assert!(label.contains("gateway/runtime/auth"));
     }
 }
