@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Robrix's AndroidManifest, used by `cargo makepad android build-aab` (and
+  Hepta's AndroidManifest, used by `cargo makepad android build-aab` (and
   `build`). cargo-makepad substitutes the {token} placeholders below at build
   time. See `cargo makepad android help` for the supported tokens.
 -->

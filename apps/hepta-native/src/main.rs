@@ -10,5 +10,5 @@
 )]
 
 fn main() {
-    robrix::app::app_main()
+    hepta_native::app::app_main()
 }

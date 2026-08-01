@@ -64,6 +64,8 @@ script_mod! {
 
                 // Add other settings sections here. (Don't forget to add a `show()` fn)
 
+                developer_diagnostics := DeveloperDiagnostics {}
+
                 LineH { width: 425, padding: 10, margin: Inset{top: 20, bottom: 5} }
 
                 // The About section, which should be the last item.

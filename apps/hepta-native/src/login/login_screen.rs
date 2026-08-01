@@ -11,21 +11,22 @@ script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
 
-    mod.widgets.IMG_APP_LOGO = crate_resource("self://resources/robrix_logo_alpha.png")
+    mod.widgets.IMG_APP_LOGO = crate_resource("self://resources/icon_512.png")
     mod.widgets.ICON_EYE_OPEN   = crate_resource("self://resources/icons/eye_open.svg")
     mod.widgets.ICON_EYE_CLOSED = crate_resource("self://resources/icons/eye_closed.svg")
 
     mod.widgets.SsoButton = RoundedView {
-        width: Fit,
-        height: Fit,
+        width: 44,
+        height: 44,
         cursor: MouseCursor.Hand,
         visible: true,
-        padding: 10,
-        margin: Inset{ left: 16.6, right: 16.6, top: 10, bottom: 10}
+        padding: 7,
+        margin: Inset{ left: 20, right: 20, top: 5, bottom: 5}
         draw_bg +: {
-            border_size: 0.5
-            border_color: #6c6c6c
-            color: (COLOR_PRIMARY)
+            border_size: 1.0
+            border_radius: (HEPTA_RADIUS_CONTROL)
+            border_color: (COLOR_HEPTA_HAIRLINE)
+            color: (COLOR_HEPTA_GLASS_STRONG)
         }
     }
 
@@ -50,7 +51,7 @@ script_mod! {
         align: Align{x: 0.5, y: 0.5}
         show_bg: true,
         draw_bg +: {
-            color: COLOR_SECONDARY
+            color: COLOR_HEPTA_ENVIRONMENT
         }
 
         ScrollYView {
@@ -58,7 +59,7 @@ script_mod! {
             flow: Down, // Required for vertical scrolling to work.
             align: Align{x: 0.5, y: 0.5}
             show_bg: true,
-            draw_bg.color: (COLOR_SECONDARY)
+            draw_bg.color: (COLOR_HEPTA_ENVIRONMENT)
 
             // allow the view to be scrollable but hide the actual scroll bar
             scroll_bars: {
@@ -70,45 +71,51 @@ script_mod! {
                 }
             }
 
-            RoundedView {
-                margin: Inset{top: 50, bottom: 50}
-                width: Fill
+            RoundedShadowView {
+                margin: Inset{top: 18, bottom: 18, left: 4, right: 4}
+                padding: 16
+                width: Fit
                 height: Fit
                 align: Align{x: 0.5, y: 0.5}
                 flow: Overlay,
 
                 show_bg: true,
                 draw_bg +: {
-                    color: (COLOR_SECONDARY)
-                    border_radius: 6.0
+                    color: (COLOR_HEPTA_GLASS_STRONG)
+                    border_radius: (HEPTA_RADIUS_FLOATING)
+                    border_size: 1.0
+                    border_color: (COLOR_HEPTA_HAIRLINE)
+                    shadow_color: (COLOR_HEPTA_SHADOW)
+                    shadow_radius: 12.0
+                    shadow_offset: vec2(0.0, 4.0)
                 }
 
                 View {
-                    width: Fill
+                    width: 275
                     height: Fit
                     flow: Down
                     align: Align{x: 0.5, y: 0.5}
-                    spacing: 15.0
+                    spacing: 10.0
 
                     logo_image := Image {
                         fit: ImageFit.Smallest,
-                        width: 80
+                        width: 56
                         src: (mod.widgets.IMG_APP_LOGO),
                     }
 
                     title := Label {
                         width: Fit, height: Fit
-                        margin: Inset{ bottom: 5 }
+                        margin: Inset{ bottom: 2 }
                         padding: 0,
                         draw_text +: {
                             color: (COLOR_TEXT)
-                            text_style: TITLE_TEXT {font_size: 16.0}
+                            text_style: theme.font_bold {font_size: 18.0}
                         }
-                        text: "Login to Robrix"
+                        text: "Sign in to Hepta"
                     }
 
                     user_id_input := RobrixTextInput {
-                        width: 275, height: Fit
+                        width: 275, height: Fit{min: FitBound.Abs(44)}
                         flow: Right, // do not wrap
                         padding: 10,
                         empty_text: "User ID"
@@ -118,12 +125,12 @@ script_mod! {
                     }
 
                     View {
-                        width: 275, height: Fit
+                        width: 275, height: Fit{min: FitBound.Abs(44)}
                         flow: Overlay
                         align: Align{x: 1.0, y: 0.5}
 
                         password_input := RobrixTextInput {
-                            width: Fill, height: Fit
+                            width: Fill, height: Fit{min: FitBound.Abs(44)}
                             flow: Right, // do not wrap
                             padding: Inset{top: 10, bottom: 10, left: 10, right: 38}
                             empty_text: "Password"
@@ -134,21 +141,21 @@ script_mod! {
                         }
 
                         View {
-                            width: 38, height: Fill
+                            width: 44, height: Fill
                             align: Align{x: 0.5, y: 0.5}
 
                             show_password_button := RobrixNeutralIconButton {
-                                width: Fit, height: Fit,
+                                width: 44, height: 44,
                                 align: Align{x: 0.5, y: 0.5}
                                 padding: 5
                                 spacing: 0
                                 margin: 0
                                 draw_bg +: {
-                                    color: (COLOR_SECONDARY * 1.05)
+                                    color: (COLOR_HEPTA_GLASS_STRONG)
                                 }
                                 draw_icon +: {
                                     svg: (mod.widgets.ICON_EYE_CLOSED),
-                                    color: #8C8C8C,
+                                    color: (COLOR_HEPTA_MUTED),
                                 }
                                 icon_walk: Walk{width: 18, height: 18, margin: 0}
                                 text: ""
@@ -157,16 +164,16 @@ script_mod! {
                             hide_password_button := RobrixNeutralIconButton {
                                 visible: false,
                                 align: Align{x: 0.5, y: 0.5}
-                                width: Fit, height: Fit,
+                                width: 44, height: 44,
                                 padding: 5
                                 spacing: 0
                                 margin: 0
                                 draw_bg +: {
-                                    color: (COLOR_SECONDARY * 1.05)
+                                    color: (COLOR_HEPTA_GLASS_STRONG)
                                 }
                                 draw_icon +: {
                                     svg: (mod.widgets.ICON_EYE_OPEN),
-                                    color: #8C8C8C,
+                                    color: (COLOR_HEPTA_MUTED),
                                 }
                                 icon_walk: Walk{width: 18, height: 18, margin: 0}
                                 text: ""
@@ -179,7 +186,7 @@ script_mod! {
                         flow: Down,
 
                         homeserver_input := RobrixTextInput {
-                            width: 275, height: Fit,
+                            width: 275, height: Fit{min: FitBound.Abs(44)},
                             flow: Right, // do not wrap
                             padding: Inset{top: 5, bottom: 5, left: 10, right: 10}
                             empty_text: "matrix.org"
@@ -200,28 +207,28 @@ script_mod! {
                             spacing: 0.0,
                             align: Align{x: 0.5, y: 0.5} // center horizontally and vertically
 
-                            LineH { draw_bg.color: #C8C8C8 }
+                            LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
 
                             Label {
                                 width: Fit, height: Fit
                                 padding: 0
                                 draw_text +: {
-                                    color: #8C8C8C
-                                    text_style: REGULAR_TEXT {font_size: 9}
+                                    color: (COLOR_HEPTA_MUTED)
+                                    text_style: REGULAR_TEXT {font_size: 10}
                                 }
                                 text: "Homeserver URL (optional)"
                             }
 
-                            LineH { draw_bg.color: #C8C8C8 }
+                            LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
                         }
                     }
                     
 
                     login_button := RobrixIconButton {
                         width: 275,
-                        height: 40
+                        height: 44
                         padding: 10
-                        margin: Inset{top: 5, bottom: 10}
+                        margin: Inset{top: 4, bottom: 6}
                         align: Align{x: 0.5, y: 0.5}
                         text: "Login"
                     }
@@ -229,7 +236,7 @@ script_mod! {
                     LineH {
                         width: 275
                         margin: Inset{bottom: -5}
-                        draw_bg.color: #C8C8C8
+                        draw_bg.color: (COLOR_HEPTA_HAIRLINE)
                     }
 
                     Label {
@@ -244,7 +251,7 @@ script_mod! {
 
                     sso_view := View {
                         width: 275, height: Fit,
-                        margin: Inset{left: 30, right: 5} // make the inner view 240 pixels wide
+                        margin: Inset{left: 10, right: 10}
                         flow: Flow.Right{wrap: true},
                         apple_button := mod.widgets.SsoButton {
                             image := mod.widgets.SsoImage {
@@ -286,19 +293,19 @@ script_mod! {
                         spacing: 0.0,
                         align: Align{x: 0.5, y: 0.5} // center horizontally and vertically
 
-                        LineH { draw_bg.color: #C8C8C8 }
+                        LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
 
                         Label {
                             width: Fit, height: Fit
                             padding: Inset{left: 1, right: 1, top: 0, bottom: 0}
                             draw_text +: {
-                                color: #x6c6c6c
+                                color: (COLOR_HEPTA_MUTED)
                                 text_style: REGULAR_TEXT {}
                             }
                             text: "Don't have an account?"
                         }
 
-                        LineH { draw_bg.color: #C8C8C8 }
+                        LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
                     }
                     
                     signup_button := RobrixIconButton {

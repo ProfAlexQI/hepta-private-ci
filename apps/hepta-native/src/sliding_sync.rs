@@ -3919,7 +3919,7 @@ async fn spawn_sso_server(
         let mut is_logged_in = false;
 
         // Desktop's `login_sso` uses a local HTTP server for the OAuth
-        // redirect, which iOS suspends when Robrix backgrounds for Safari.
+        // redirect, which iOS suspends when Hepta Native backgrounds for Safari.
         // iOS uses ASWebAuthenticationSession to keep the app foregrounded.
         #[cfg(not(target_os = "ios"))]
         let login_result = {

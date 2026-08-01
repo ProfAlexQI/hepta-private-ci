@@ -12,18 +12,16 @@ script_mod! {
         // max_vertical: theme.splitter_max_vertical
 
         draw_bg +: {
-            color: COLOR_SECONDARY
-            color_hover: COLOR_ROBRIX_PURPLE
-            color_drag: COLOR_ROBRIX_PURPLE
+            color: COLOR_HEPTA_HAIRLINE
+            color_hover: COLOR_HEPTA_FOCUS
+            color_drag: COLOR_HEPTA_FOCUS
 
             pixel: fn() {
                 let sdf = Sdf2d.viewport(self.pos * self.rect_size)
 
-                // Body: dark gray by default (matches the default dark theme's
-                // `color_bg_app`), transitions to purple on hover/drag.
-                // Mildly rounded corners soften the edges where panels meet.
+                // A quiet hairline until the user reaches for the divider.
                 let body_color = mix(
-                    #4D4D4D
+                    self.color
                     mix(self.color_hover, self.color_drag, self.drag)
                     self.hover
                 )
@@ -56,8 +54,7 @@ script_mod! {
                     )
                 }
 
-                // Grab bar: white when hovered/dragged, otherwise matches body
-                let grab_color = mix(self.color, #fff, self.hover)
+                let grab_color = mix(self.color, self.color_hover, self.hover)
                 return sdf.fill_keep(grab_color)
             }
         }
@@ -103,9 +100,9 @@ script_mod! {
         width: 10.0
         margin: Inset{ right: theme.space_2, left: -1 }
         draw_button +: {
-            color: #0
-            color_hover: #FE8610
-            color_active: COLOR_PRIMARY
+            color: COLOR_HEPTA_MUTED
+            color_hover: COLOR_HEPTA_DANGER
+            color_active: COLOR_HEPTA_TEXT
         }
 
         animator: Animator{
@@ -134,32 +131,28 @@ script_mod! {
         height: Fill
 
         align: Align{x: 0.0, y: 0.5}
-        padding: 9
-        margin: 0
+        padding: Inset{left: 12, right: 12, top: 8, bottom: 8}
+        margin: Inset{left: 2, right: 2, top: 3, bottom: 3}
 
         close_button: mod.widgets.RobrixTabCloseButton {}
         draw_text +: {
             text_style: theme.font_regular {}
 
-            color: #000
-            color_hover: #fe8610
-            color_active: COLOR_PRIMARY
+            color: COLOR_HEPTA_MUTED
+            color_hover: COLOR_HEPTA_TEXT
+            color_active: COLOR_HEPTA_FOCUS
         }
 
         draw_bg +: {
-            // Light blue-ish color, de-saturated from COLOR_ACTIVE_PRIMARY
-            color: #E1EEFA
-            color_2: #E1EEFA
-            // A slightly darker shade of the tab color for hover visibility
-            color_hover: #C8DDEF
-            color_2_hover: #C8DDEF
-            // Active (selected) tabs are a deeper blue, with a vertical gradient
-            // to a slightly lighter blue.
-            color_active: #0660FE
-            color_2_active: #398CFE
-            // Remove the border and rounded corners from the default Tab style
-            border_size: 0.0
-            border_radius: 3.0
+            color: #xFFFFFF00
+            color_2: #xFFFFFF00
+            color_hover: COLOR_HEPTA_GLASS
+            color_2_hover: COLOR_HEPTA_GLASS_STRONG
+            color_active: COLOR_HEPTA_FOCUS_SURFACE
+            color_2_active: COLOR_HEPTA_GLASS_STRONG
+            border_size: 1.0
+            border_color: COLOR_HEPTA_HAIRLINE
+            border_radius: (HEPTA_RADIUS_CONTROL)
         }
 
         animator: Animator{
@@ -215,10 +208,10 @@ script_mod! {
             color: #x0
         }
         draw_fill +: {
-            color: COLOR_PRIMARY * 0.96
+            color: COLOR_HEPTA_GLASS_STRONG
         }
         draw_bg +: {
-            color: COLOR_PRIMARY * 0.96
+            color: COLOR_HEPTA_GLASS_STRONG
         }
 
         width: Fill
@@ -238,7 +231,7 @@ script_mod! {
         flow: Down
 
         round_corner +: {
-            color: COLOR_SECONDARY
+            color: COLOR_HEPTA_ENVIRONMENT
         }
 
         padding: Inset{left: theme.dock_border_size, top: 0, right: theme.dock_border_size, bottom: theme.dock_border_size}

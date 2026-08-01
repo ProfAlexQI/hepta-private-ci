@@ -9,49 +9,25 @@ script_mod! {
     // See also the preset variants below:
     //   RobrixPositiveIconButton, RobrixNegativeIconButton, RobrixNeutralIconButton.
     mod.widgets.RobrixIconButton = Button {
-        width: Fit,
-        height: Fit,
+        width: Fit{min: FitBound.Abs(44)},
+        height: Fit{min: FitBound.Abs(44)},
         spacing: 10,
-        padding: 10,
+        padding: Inset{left: 14, right: 14, top: 10, bottom: 10},
         align: Align{x: 0, y: 0.5}
 
-        // Disable focus visual styling entirely so that clicking a button
-        // and hovering away doesn't leave it stuck on the theme's focus color.
-        // This works by keeping the `focus` uniform at 0.0 in both on/off states,
-        // so the shader's `mix(color, color_focus, focus)` always evaluates to just `color`.
-        animator +: {
-            focus: {
-                default: @off
-                off: AnimatorState {
-                    from: {all: Forward {duration: 0.0}}
-                    apply: {
-                        draw_bg: {focus: 0.0}
-                        draw_text: {focus: 0.0}
-                    }
-                }
-                on: AnimatorState {
-                    from: {all: Forward {duration: 0.0}}
-                    apply: {
-                        draw_bg: {focus: 0.0}
-                        draw_text: {focus: 0.0}
-                    }
-                }
-            }
-        }
-
         draw_bg +: {
-            border_size: 0.0
-            border_radius: 4.0
+            border_size: 2.0
+            border_radius: (mod.widgets.HEPTA_RADIUS_CONTROL)
 
             color: (COLOR_ACTIVE_PRIMARY)
             color_hover: (COLOR_ACTIVE_PRIMARY_DARKER)
-            color_down: #0C5DAA
+            color_down: (COLOR_HEPTA_FOCUS_HOVER)
             color_disabled: (COLOR_BG_DISABLED)
 
             border_color: #0000
             border_color_hover: #0000
             border_color_down: #0000
-            border_color_focus: #0000
+            border_color_focus: (COLOR_HEPTA_CONTENT)
             border_color_disabled: #0000
 
             // Disable gradient (color_2) by default
@@ -66,6 +42,7 @@ script_mod! {
             color: (COLOR_PRIMARY)
             color_hover: (COLOR_PRIMARY)
             color_down: (COLOR_PRIMARY)
+            color_focus: (COLOR_PRIMARY)
             color_disabled: (COLOR_FG_DISABLED)
             text_style: mod.widgets.REGULAR_TEXT {font_size: 10},
         }
@@ -81,12 +58,14 @@ script_mod! {
             color: (COLOR_BG_ACCEPT_GREEN)
             color_hover: #D4EED4
             color_down: #B8E0B8
+            border_color_focus: (COLOR_HEPTA_FOCUS)
         }
         draw_icon.color: (COLOR_FG_ACCEPT_GREEN)
         draw_text +: {
             color: (COLOR_FG_ACCEPT_GREEN)
             color_hover: (COLOR_FG_ACCEPT_GREEN)
             color_down: (COLOR_FG_ACCEPT_GREEN)
+            color_focus: (COLOR_FG_ACCEPT_GREEN)
         }
     }
 
@@ -99,12 +78,14 @@ script_mod! {
             color: (COLOR_BG_DANGER_RED)
             color_hover: #F0D4D4
             color_down: #E0B8B8
+            border_color_focus: (COLOR_HEPTA_DANGER)
         }
         draw_icon.color: (COLOR_FG_DANGER_RED)
         draw_text +: {
             color: (COLOR_FG_DANGER_RED)
             color_hover: (COLOR_FG_DANGER_RED)
             color_down: (COLOR_FG_DANGER_RED)
+            color_focus: (COLOR_FG_DANGER_RED)
         }
     }
 
@@ -117,12 +98,14 @@ script_mod! {
             color: (COLOR_SECONDARY)
             color_hover: #D0D0D0
             color_down: #C0C0C0
+            border_color_focus: (COLOR_HEPTA_FOCUS)
         }
         draw_icon.color: (COLOR_TEXT)
         draw_text +: {
             color: (COLOR_TEXT)
             color_hover: (COLOR_TEXT)
             color_down: (COLOR_TEXT)
+            color_focus: (COLOR_TEXT)
         }
     }
 }

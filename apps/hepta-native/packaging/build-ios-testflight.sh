@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build, sign, and package the Robrix iOS .ipa, then optionally upload it to
+# Build, sign, and package the Hepta iOS .ipa, then optionally upload it to
 # TestFlight. This is the CI-runnable version of the local testflight.sh flow:
 # it builds with distribution flags, compiles the asset catalog, patches
 # Info.plist (compliance flag, numeric version, unique build number), re-signs,
@@ -13,7 +13,7 @@ set -euo pipefail
 #   ASC_KEY_ID / ASC_ISSUER_ID     App Store Connect API key ids (required to upload)
 #   IOS_UPLOAD_TESTFLIGHT          "true" to upload after packaging (default false)
 #   TESTFLIGHT_BUILD_NUMBER        CFBundleVersion (default: Pacific-time timestamp)
-#   ORG / APP                      makepad org + app (default rs.robius / robrix)
+#   ORG / APP                      makepad org + app (default ai.hepta / nativeapp)
 #
 # altool auto-discovers the API key from ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8.
 
@@ -21,8 +21,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-ORG="${ORG:-rs.robius}"
-APP="${APP:-robrix}"
+ORG="${ORG:-ai.hepta}"
+APP="${APP:-nativeapp}"
 SIGNING_IDENTITY="${IOS_SIGNING_IDENTITY:-Apple Distribution}"
 PROFILE_UUID="${IOS_PROVISIONING_PROFILE_UUID:?set IOS_PROVISIONING_PROFILE_UUID}"
 BUILD_NUMBER="${TESTFLIGHT_BUILD_NUMBER:-$(TZ=America/Los_Angeles date +%Y%m%d.%H%M)}"
@@ -94,7 +94,7 @@ set_or_add UILaunchScreen:UIColorName string LaunchScreenBackground
 set_or_add ITSAppUsesNonExemptEncryption bool false
 
 VERSION=$(cargo metadata --no-deps --format-version 1 \
-  | jq -r '.packages[] | select(.name=="robrix") | .version' \
+  | jq -r '.packages[] | select(.name=="hepta-native") | .version' \
   | sed 's/-.*$//')
 echo "Version $VERSION (build $BUILD_NUMBER)"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
@@ -118,7 +118,7 @@ codesign -d --entitlements - "$APP_BUNDLE"
 # ---- 7. Package .ipa ----
 BUILD_DIR="$REPO_ROOT/target/apple/makepad-apple-app/aarch64-apple-ios/release"
 cd "$BUILD_DIR"
-IPA_NAME="Robrix-${VERSION}-ios.ipa"
+IPA_NAME="Hepta-${VERSION}-ios.ipa"
 rm -rf Payload "$IPA_NAME"
 ditto "${APP}.app" "Payload/${APP}.app"
 ditto -c -k --sequesterRsrc --keepParent Payload "$IPA_NAME"

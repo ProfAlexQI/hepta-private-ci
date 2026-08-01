@@ -185,8 +185,10 @@ script_mod! {
             height: Fill
 
             draw_bg +: {
-                color: (COLOR_SECONDARY)
-                border_radius: 4.0
+                color: (COLOR_HEPTA_GLASS)
+                border_radius: (HEPTA_RADIUS_PANEL)
+                border_size: 1.0
+                border_color: (COLOR_HEPTA_HAIRLINE)
             }
 
             CachedWidget {
@@ -222,8 +224,10 @@ script_mod! {
             }
 
             draw_bg +: {
-                color: (COLOR_SECONDARY)
-                border_radius: 4.0
+                color: (COLOR_HEPTA_GLASS_STRONG)
+                border_radius: (HEPTA_RADIUS_PANEL)
+                border_size: 1.0
+                border_color: (COLOR_HEPTA_HAIRLINE)
             }
 
             CachedWidget {

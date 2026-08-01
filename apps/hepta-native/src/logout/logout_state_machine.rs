@@ -46,7 +46,8 @@
 //! 1. **PreChecking**: Validate CLIENT, SYNC_SERVICE, and access_token existence
 //! 2. **StoppingSyncService**: Stop sync service to prevent new data
 //! 3. **LoggingOutFromServer**: Call `client.matrix_auth().logout()` (60s timeout)
-//! 4. **PointOfNoReturn**: Set global flags, delete saved user ID
+//! 4. **PointOfNoReturn**: Set global flags, remove the authoritative current
+//!    user's persisted credential, authenticated metadata, and navigation pointer
 //! 5. **ClosingTabs**: Close desktop tabs via `MainDesktopUiAction::CloseAllTabs`
 //! 6. **CleaningAppState**: Drops globals and signals `LOGOUT_NOTIFY`. The
 //!    login loop in `start_matrix_client_login_and_sync` does the actual
@@ -65,7 +66,7 @@ use anyhow::{anyhow, Result};
 use makepad_widgets::{Cx, log};
 
 use crate::home::navigation_tab_bar::NavigationBarAction;
-use crate::persistence::delete_latest_user_id;
+use crate::persistence::clear_persisted_session;
 use crate::sliding_sync::clear_app_state;
 use crate::{
     home::main_desktop_ui::MainDesktopUiAction,
@@ -251,16 +252,20 @@ impl LogoutStateMachine {
             10
         ).await?;
         
-        // Pre-checks
-        if let Err(e) = self.perform_prechecks().await {
-            self.transition_to(
-                LogoutState::Failed(e.clone()),
-                format!("Precheck failed: {}", e),
-                0
-            ).await?;
-            self.handle_error(&e).await;
-            return Err(anyhow!(e));
-        }
+        // Pre-checks also capture the live Matrix client's identity. This is
+        // the only authority used later to select local credential material.
+        let authoritative_user_id = match self.perform_prechecks().await {
+            Ok(user_id) => user_id,
+            Err(e) => {
+                self.transition_to(
+                    LogoutState::Failed(e.clone()),
+                    format!("Precheck failed: {}", e),
+                    0
+                ).await?;
+                self.handle_error(&e).await;
+                return Err(anyhow!(e));
+            }
+        };
         
         // Stop sync service
         self.transition_to(
@@ -296,12 +301,6 @@ impl LogoutStateMachine {
                     50
                 ).await?;
                 
-                // We delete latest_user_id after reaching LOGOUT_POINT_OF_NO_RETURN:
-                // 1. To prevent auto-login with invalid session on next start
-                // 2. While keeping session file intact for potential future login
-                if let Err(e) = delete_latest_user_id().await {
-                    log!("Warning: Failed to delete latest user ID: {}", e);
-                }
             }
             Err(e) => {
                 // Check if it's an M_UNKNOWN_TOKEN error
@@ -315,10 +314,6 @@ impl LogoutStateMachine {
                         50
                     ).await?;
                     
-                    // Same delete operation as in the success case above
-                    if let Err(e) = delete_latest_user_id().await {
-                        log!("Warning: Failed to delete latest user ID: {}", e);
-                    }
                 } else {
                     // Restart sync service since we haven't reached point of no return
                     if let Some(sync_service) = get_sync_service() {
@@ -336,7 +331,28 @@ impl LogoutStateMachine {
             }
         }
         
-        // From here on, all failures are unrecoverable
+        // From here on, all failures are unrecoverable.
+
+        // The server-side token is now invalid. Remove the secure local
+        // session using the identity captured from the live Matrix client
+        // before logout. The latest-user pointer is navigation state only and
+        // must never select which credential is deleted. A local cleanup
+        // failure cannot be downgraded to a warning or followed by
+        // LogoutSuccess, because that would leave invalid credentials behind.
+        if let Err(e) = clear_persisted_session(&authoritative_user_id).await {
+            let error = LogoutError::Unrecoverable(
+                UnrecoverableError::PostPointOfNoReturnFailure(format!(
+                    "failed to clear the authoritative Matrix session: {e:#}"
+                ))
+            );
+            self.transition_to(
+                LogoutState::Failed(error.clone()),
+                "Failed to clear local session credentials".to_string(),
+                0
+            ).await?;
+            self.handle_error(&error).await;
+            return Err(anyhow!(error));
+        }
         
         // Close tabs (desktop only)
         if self.config.is_desktop {
@@ -396,14 +412,21 @@ impl LogoutStateMachine {
     }
     
     // Individual step implementations
-    async fn perform_prechecks(&self) -> Result<(), LogoutError> {
+    async fn perform_prechecks(&self) -> Result<matrix_sdk::ruma::OwnedUserId, LogoutError> {
         log!("perform_prechecks started");
         
         // Check client existence
-        if get_client().is_none() {
+        let Some(client) = get_client() else {
             log!("perform_prechecks: client cleared");
             return Err(LogoutError::Unrecoverable(UnrecoverableError::ComponentsCleared));
-        }
+        };
+
+        // Capture the live client's identity before server logout. Persisted
+        // navigation state is never authoritative for credential cleanup.
+        let Some(authoritative_user_id) = client.user_id().map(ToOwned::to_owned) else {
+            log!("perform_prechecks: client has no authoritative user identity");
+            return Err(LogoutError::Unrecoverable(UnrecoverableError::ComponentsCleared));
+        };
         
         // Check sync service
         if get_sync_service().is_none() {
@@ -413,16 +436,14 @@ impl LogoutStateMachine {
         log!("perform_prechecks: sync service exists");
         
         // Check access token
-        if let Some(client) = get_client() {
-            if client.access_token().is_none() {
-                log!("perform_prechecks: no access token");
-                return Err(LogoutError::Recoverable(RecoverableError::NoAccessToken));
-            }
-            log!("perform_prechecks: access token exists");
+        if client.access_token().is_none() {
+            log!("perform_prechecks: no access token");
+            return Err(LogoutError::Recoverable(RecoverableError::NoAccessToken));
         }
+        log!("perform_prechecks: access token exists");
         
         log!("perform_prechecks completed successfully");
-        Ok(())
+        Ok(authoritative_user_id)
     }
     
     async fn stop_sync_service(&self) -> Result<(), LogoutError> {

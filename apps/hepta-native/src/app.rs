@@ -31,14 +31,14 @@ script_mod! {
         ui: Root {
             main_window := Window {
                 window.inner_size: vec2(1280, 800)
-                window.title: "Robrix"
-                pass.clear_color: #FFFFFF00
+                window.title: "Hepta"
+                pass.clear_color: (mod.widgets.COLOR_HEPTA_ENVIRONMENT)
                 caption_bar +: {
-                    draw_bg.color: #F3F3F3
+                    draw_bg.color: (mod.widgets.COLOR_HEPTA_GLASS_STRONG)
                     caption_label +: {
                         label +: {
-                            draw_text +: { color: #0 }
-                            text: "Robrix"
+                            draw_text +: { color: (mod.widgets.COLOR_HEPTA_TEXT) }
+                            text: "Hepta"
                         }
                     }
                 }
@@ -59,6 +59,8 @@ script_mod! {
                     overlay_container := View {
                         width: Fill, height: Fill,
                         flow: Overlay,
+                        show_bg: true,
+                        draw_bg.color: (mod.widgets.COLOR_HEPTA_ENVIRONMENT)
 
                         home_screen_view := View {
                             visible: false
@@ -156,6 +158,12 @@ pub struct App {
     /// The top-level app state, shared across various parts of the app.
     #[rust] app_state: AppState,
     #[rust] lifecycle: AppLifecycle,
+    #[cfg(feature = "developer-diagnostics")]
+    #[rust]
+    diagnostic_capture_timer: Timer,
+    #[cfg(feature = "developer-diagnostics")]
+    #[rust]
+    diagnostic_capture_path: Option<std::path::PathBuf>,
     /// The details of a room we're waiting on to be loaded so that we can navigate to it.
     /// This can be either a room we're waiting to join, or one we're waiting to be invited to.
     /// Also includes an optional room ID to be closed once the awaited room has been loaded.
@@ -213,6 +221,21 @@ impl MatchEvent for App {
 
         if let Err(e) = persistence::load_window_state(self.ui.window(cx, ids!(main_window)), cx) {
             error!("Failed to load window state: {}", e);
+        }
+
+        // The normal product build has no screenshot side channel. Explicit
+        // developer-diagnostics builds may request one GPU-rendered frame for
+        // repeatable visual review when host screen-capture APIs are blocked.
+        #[cfg(feature = "developer-diagnostics")]
+        if let Some(path) = std::env::var_os("HEPTA_NATIVE_CAPTURE_FRAME_PATH") {
+            let delay_seconds = std::env::var("HEPTA_NATIVE_CAPTURE_DELAY_MS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(1200) as f64
+                / 1000.0;
+            self.diagnostic_capture_path = Some(std::path::PathBuf::from(path));
+            self.diagnostic_capture_timer = cx.start_timeout(delay_seconds);
+            log!("Developer diagnostics: scheduled rendered-frame capture after {delay_seconds}s");
         }
 
         #[cfg(target_os = "macos")]
@@ -669,6 +692,15 @@ impl AppMain for App {
     }
 
     fn handle_event(&mut self, cx: &mut Cx, event: &Event) {
+        #[cfg(feature = "developer-diagnostics")]
+        if self.diagnostic_capture_timer.is_event(event).is_some() {
+            self.diagnostic_capture_timer = Timer::empty();
+            if let Some(path) = self.diagnostic_capture_path.take() {
+                log!("Developer diagnostics: capturing rendered frame to {path:?}");
+                cx.capture_next_frame_to_file(path);
+            }
+        }
+
         if let Event::LiveEdit = event {
             self.app_state.app_prefs.broadcast_all(cx);
         }
@@ -718,9 +750,9 @@ impl App {
         cx.update_macos_menu(MacosMenu::Main {
             items: vec![
                 MacosMenu::Sub {
-                    name: "Robrix".into(),
+                    name: "Hepta".into(),
                     items: vec![MacosMenu::Item {
-                        name: "Quit Robrix".into(),
+                        name: "Quit Hepta".into(),
                         command: live_id!(quit),
                         key: KeyCode::KeyQ,
                         shift: false,

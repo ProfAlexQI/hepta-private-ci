@@ -5,14 +5,14 @@ script_mod! {
     use mod.widgets.*
 
 
-    mod.widgets.WELCOME_TEXT_COLOR = #x4
+    mod.widgets.WELCOME_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_TEXT)
 
     mod.widgets.WelcomeScreen = SolidView {
         width: Fill, height: Fill
         align: Align{x: 0.0, y: 0.5}
 
         show_bg: true,
-        draw_bg.color: (COLOR_PRIMARY)
+        draw_bg.color: (COLOR_HEPTA_CONTENT)
 
         // make this a ScrollYView
         scroll_bars: mod.widgets.ScrollBars {
@@ -21,16 +21,16 @@ script_mod! {
         }
 
         welcome_message := RoundedView {
-            padding: 40.
+            padding: 44.
             width: Fill, height: Fit
-            flow: Down, spacing: 20
+            flow: Down, spacing: 16
 
-            draw_bg.color: (COLOR_PRIMARY)
+            draw_bg.color: (COLOR_HEPTA_CONTENT)
 
             title := Label {
                 padding: 0
                 margin: 0
-                text: "Welcome to Robrix!",
+                text: "Welcome to Hepta",
                 draw_text +: {
                     color: (mod.widgets.WELCOME_TEXT_COLOR),
                     text_style: theme.font_bold {
@@ -54,13 +54,9 @@ script_mod! {
                     //     color_hover: #0f0,
                     // }
                 }
-                body:"<p>Our Matrix client is under active development, so you may need to use other clients to perform admin actions like creating rooms, kicking/banning users, and starting verification requests.</p>
+                body:"<p>Select a room to continue a conversation, or start a new one from the navigation bar.</p>
                 <p><br></p>
-                <p>But don't worry, we're constantly expanding the featureset of Robrix!</p>
-                <p><br></p>
-                <p>Look for the latest announcements in our Matrix channel:</p>
-                <p><b>#robrix:matrix.org</b></p>
-                "
+                <p>Hepta uses Matrix for secure rooms, timelines, media, and encrypted messaging. Agent tasks and approvals remain a separate, explicit local activity surface.</p>"
             }
         }
     }

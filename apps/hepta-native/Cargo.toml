@@ -1,39 +1,49 @@
 [package]
-name = "robrix"
-authors = ["Kevin Boos <kevinaboos@gmail.com>", "Robius Project Maintainers"]
-description = "A powerful multi-platform Matrix chat client written in Rust using Makepad + Robius app dev framework."
-documentation = "https://docs.rs/robrix"
+name = "hepta-native"
+authors = ["Qianqi + Hepta contributors", "Kevin Boos <kevinaboos@gmail.com>", "Robius Project Maintainers"]
+description = "Hepta's cross-platform Matrix chat client, built on Robrix, Makepad, and Robius."
+documentation = "https://github.com/ProfAlexQI/Hepta"
 edition = "2024" ## mostly just to allow let-chains
-homepage = "https://robius.rs/"
-keywords = ["matrix", "chat", "client", "robius", "makepad"]
+homepage = "https://github.com/ProfAlexQI/Hepta"
+keywords = ["hepta", "matrix", "chat", "client", "makepad"]
 license = "MIT"
 readme = "README.md"
 categories = ["gui"]
-repository = "https://github.com/project-robius/robrix"
+repository = "https://github.com/ProfAlexQI/Hepta"
 version = "1.0.0-alpha.1"
 metadata.makepad-auto-version = "zqpv-Yj-K7WNVK2I8h5Okhho46Q="
+
+[lib]
+name = "hepta_native"
+
+[[bin]]
+name = "hepta-native"
+path = "src/main.rs"
 
 [dependencies]
 # makepad-widgets = { git = "https://github.com/makepad/makepad", branch = "dev", features = ["serde"] }
 # makepad-code-editor = { git = "https://github.com/makepad/makepad", branch = "dev" }
 
-makepad-widgets = { git = "https://github.com/kevinaboos/makepad", branch = "inline_code_fix_cfg", features = ["serde"] }
-makepad-code-editor = { git = "https://github.com/kevinaboos/makepad", branch = "inline_code_fix_cfg" }
+makepad-widgets = { git = "https://github.com/kevinaboos/makepad", rev = "c4335cee10b22aca768510c9d072b0ca1bba15c8", features = ["serde"] }
+makepad-code-editor = { git = "https://github.com/kevinaboos/makepad", rev = "c4335cee10b22aca768510c9d072b0ca1bba15c8" }
 
 
-robius-directories = { git = "https://github.com/project-robius/robius" }
-robius-file-picker = { git = "https://github.com/project-robius/robius" }
-robius-location    = { git = "https://github.com/project-robius/robius" }
-robius-open        = { git = "https://github.com/project-robius/robius" }
-robius-share       = { git = "https://github.com/project-robius/robius" }
+robius-directories = { git = "https://github.com/project-robius/robius", rev = "b766e62b0600f5d2ee21cc6995648346fc277bd8" }
+robius-file-picker = { git = "https://github.com/project-robius/robius", rev = "b766e62b0600f5d2ee21cc6995648346fc277bd8" }
+robius-location    = { git = "https://github.com/project-robius/robius", rev = "b766e62b0600f5d2ee21cc6995648346fc277bd8" }
+robius-open        = { git = "https://github.com/project-robius/robius", rev = "b766e62b0600f5d2ee21cc6995648346fc277bd8" }
+robius-share       = { git = "https://github.com/project-robius/robius", rev = "b766e62b0600f5d2ee21cc6995648346fc277bd8" }
 robius-use-makepad = "0.1.1" ## auto-configures all `robius-*` crates to work with Makepad.
 
 
 anyhow = "1.0"
+codex-keyring-store = { path = "../../codex-rs/keyring-store" }
 bitflags = "2.6.0"
+blake3 = "1.8"
 blurhash = { version = "0.2.3", default-features = false }
 bytesize = "2.0"
 chrono = "0.4"
+chacha20poly1305 = "0.10"
 clap = { version = "4.0.16", features = ["derive"] }
 crossbeam-channel = "0.5.10"
 crossbeam-queue = "0.3.8"
@@ -49,8 +59,8 @@ libc = "0.2"
 mime = "0.3"
 mime_guess = "2.0"
 linkify = "0.10.0"
-matrix-sdk-base = { git = "https://github.com/matrix-org/matrix-rust-sdk" }
-matrix-sdk = { git = "https://github.com/matrix-org/matrix-rust-sdk", default-features = false, features = [
+matrix-sdk-base = { git = "https://github.com/matrix-org/matrix-rust-sdk", rev = "5a0b002aeaf687edf9fb5a2bdd465886c325f48d" }
+matrix-sdk = { git = "https://github.com/matrix-org/matrix-rust-sdk", rev = "5a0b002aeaf687edf9fb5a2bdd465886c325f48d", default-features = false, features = [
     "e2e-encryption",
     "automatic-room-key-forwarding",
     "markdown",
@@ -58,7 +68,7 @@ matrix-sdk = { git = "https://github.com/matrix-org/matrix-rust-sdk", default-fe
     "bundled-sqlite",
     "sso-login",
 ] }
-matrix-sdk-ui = { git = "https://github.com/matrix-org/matrix-rust-sdk", default-features = false }
+matrix-sdk-ui = { git = "https://github.com/matrix-org/matrix-rust-sdk", rev = "5a0b002aeaf687edf9fb5a2bdd465886c325f48d", default-features = false }
 ## Use the same ruma version as what's specified in matrix-sdk's Cargo.toml.
 ## Enable a few extra features:
 ## * "compat-optional" feature to allow missing body field in m.room.tombstone event.
@@ -83,6 +93,7 @@ tokio = { version = "1.43.1", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 unicode-segmentation = "1.11.0"
 url = "2.5.0"
+zeroize = "1.8.2"
 
 
 ## Dependencies for TSP support.
@@ -112,16 +123,26 @@ reqwest = { version = "0.12", default-features = false, optional = true, feature
 
 ## For OAuth/SSO login on iOS, via `ASWebAuthenticationSession`. Ugh....
 [target.'cfg(target_os = "ios")'.dependencies]
-robius-web-auth-session = { git = "https://github.com/project-robius/robius" }
+## `codex-keyring-store` owns the abstraction, while this target-specific edge
+## enables keyring's Apple backend on iOS as well as macOS.
+keyring = { version = "3.6", default-features = false, features = ["apple-native", "crypto-rust"] }
+robius-web-auth-session = { git = "https://github.com/project-robius/robius", rev = "b766e62b0600f5d2ee21cc6995648346fc277bd8" }
 
 ## On Android, the matrix-sdk no longer sets up TLS roots for rustls by default,
 ## so we have to do it manually.
 [target.'cfg(target_os = "android")'.dependencies]
 webpki-root-certs = "1"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
 
 [features]
-default = []
+default = ["hepta-bridge"]
+## Compiles the side-effect-free Hepta bridge contract and disabled adapter.
+hepta-bridge = []
+## Reveals a read-only Settings diagnostics section; never enabled in product builds.
+developer-diagnostics = ["hepta-bridge"]
 ## Enables experimental support for using TSP wallets.
 tsp = ["dep:tsp_sdk", "dep:quinn", "dep:aws-lc-rs", "dep:percent-encoding", "dep:reqwest"]
 
@@ -140,6 +161,10 @@ log_timeline_diffs = []
 log_space_service_diffs = []
 
 
+[dev-dependencies]
+tempfile = "3.20"
+
+
 [patch.crates-io]
 ## This is required to avoid a version conflict on the libsqlite3-sys crate,
 ## which is a native crate that can only exist once in the dependency graph.
@@ -152,12 +177,12 @@ log_space_service_diffs = []
 ## dependency to version 0.35.0, which is compatible with the version required by
 ## the matrix-sdk crate.
 ## See <https://github.com/launchbadge/sqlx/pull/3928/files#diff-4f4849707ed063bc5de6d9f6d105f0e7baf62d1085b3c8aee4a547468b89248fR57>
-sqlx = { git = "https://github.com/project-robius/sqlx.git", branch = "update_libsqlite3-sys_version" }
+sqlx = { git = "https://github.com/project-robius/sqlx.git", rev = "345c0446a0eee02acec01ec4635e3945fdf4693b" }
 
 ## The main branch of the `tsp_sdk` repo already includes this patch, so we copy it here.
 ## This is required for the askar repos to work with the above-patched `sqlx` crate.
 ## See <https://github.com/openwallet-foundation/askar/pull/386>
-askar-storage = { git = "https://github.com/openwallet-foundation/askar.git" }
+askar-storage = { git = "https://github.com/openwallet-foundation/askar.git", rev = "49086e28d1995966bb2b2054d2450a76f19bda30" }
 
 
 ## This is a temporary patch to add the TSP signature field to the `RoomMessageEventContent` type.
@@ -174,7 +199,7 @@ askar-storage = { git = "https://github.com/openwallet-foundation/askar.git" }
 ## Note: matrix-sdk currently uses a git dependency for ruma,
 ## so we patch the git source, not crates-io.
 [patch."https://github.com/ruma/ruma"]
-ruma = { git = "https://github.com/project-robius/ruma.git", branch = "tsp" }
+ruma = { git = "https://github.com/project-robius/ruma.git", rev = "921e2886367b371068aa3c079ce434db608600cf" }
 
 [build-dependencies]
 toml = "1"
@@ -229,27 +254,26 @@ version_code = "auto"
 
 ## Configuration for `cargo packager`
 [package.metadata.packager]
-product_name = "Robrix"
-identifier = "rs.robius.robrix"
+product_name = "Hepta"
+identifier = "ai.hepta.nativeapp"
 category = "SocialNetworking"
 authors = [
+    "Qianqi + Hepta contributors",
     "Project Robius <contact@robius.rs>",
     "Kevin Boos <kevinaboos@gmail.com>",
 ]
-publisher = "GOSIM Foundation"
+publisher = "Hepta"
 license_file = "LICENSE-MIT"
-copyright = "Copyright 2023-2026, Project Robius"
-homepage = "https://github.com/project-robius/robrix"
+copyright = "Copyright 2026, Hepta contributors; Robrix portions copyright 2023-2026 Project Robius"
+homepage = "https://github.com/ProfAlexQI/Hepta"
 ### Note: there is an 80-character max for the one-line summary.
-description = "A powerful multi-platform Matrix chat client written from scratch in Rust"
+description = "Cross-platform Matrix chat and explicit Hepta agent collaboration"
 ### Note: there is an 80-character max for each line of the `long_description`.
 long_description = """
-Robrix is a powerful open-source Matrix chat client written in pure Rust
-using the Makepad UI framework (https://github.com/makepad/makepad)
-and the Project Robius app dev framework and platform abstractions
-(https://github.com/project-robius).
-Robrix runs on all major desktop and mobile platforms:
-macOS, Windows, Linux, Android, and iOS.
+Hepta Native is a cross-platform Matrix chat client built on the complete
+Robrix application shell. Rooms, timelines, media, encryption, navigation,
+and the composer remain native Robrix/Matrix flows. Hepta agent activity is
+integrated through a separate, explicit, local-first bridge boundary.
 """
 icons = [
     "./resources/icon_32.png",
@@ -262,7 +286,7 @@ icons = [
 ]
 out_dir = "./dist"
 
-## Here, we define the list of resource directories for both Makepad and Robrix.
+## Here, we define the list of resource directories for Makepad and Hepta.
 ## The `src` directory is based on `./dist/` as the `out_dir` (above), which is where the
 ## `robius-packaging-commands` tool outputs the resources that it discovers after each build.
 ## See the README from the `robius-packaging-commands` repo for more details.
@@ -274,59 +298,58 @@ resources = [
     { src = "./dist/resources/makepad_fonts_chinese_regular", target = "makepad_fonts_chinese_regular" },
     { src = "./dist/resources/makepad_fonts_chinese_regular_2", target = "makepad_fonts_chinese_regular_2" },
     { src = "./dist/resources/makepad_fonts_emoji", target = "makepad_fonts_emoji" },
-    # Robrix resources
-    { src = "./dist/resources/robrix", target = "robrix" },
+    # Hepta Native resources
+    { src = "./dist/resources/hepta-native", target = "hepta-native" },
 ]
 
-## We use the `robius-packaging-commands` tool to build the entire Robrix app project,
+## We use `robius-packaging-commands` to build the Hepta Native app project,
 ## which properly configures the release build settings for each target platform
 ## (e.g., it sets the `MAKEPAD`/`MAKEPAD_PACKAGE_DIR` env vars to the appropriate value).
 before-each-package-command = """
 robius-packaging-commands before-each-package \
     --force-makepad \
-    --binary-name robrix \
-    --path-to-binary ./target/release/robrix
+    --binary-name hepta-native \
+    --path-to-binary ./target/release/hepta-native
 """
 
 deep_link_protocols = [
     { schemes = [
-        "robrix",
+        "hepta-native",
         "matrix",
     ], role = "viewer" }, ## `name` is left as default
 ]
 
 [package.metadata.packager.deb]
 depends = "./dist/depends_deb.txt"
-desktop_template = "./packaging/robrix.desktop"
+desktop_template = "./packaging/hepta-native.desktop"
 section = "utils"
 
 ## These metainfo and licensing files are needed for package manager compliance.
 [package.metadata.packager.deb.files]
-"./packaging/rs.robius.robrix.metainfo.xml" = "/usr/share/metainfo/rs.robius.robrix.metainfo.xml"
-"./packaging/debian-copyright" = "/usr/share/doc/robrix/copyright"
-"./licenses/THIRD-PARTY-NOTICES.html" = "/usr/share/doc/robrix/THIRD-PARTY-NOTICES.html"
+"./packaging/ai.hepta.nativeapp.metainfo.xml" = "/usr/share/metainfo/ai.hepta.nativeapp.metainfo.xml"
+"./packaging/debian-copyright" = "/usr/share/doc/hepta-native/copyright"
+"./licenses/THIRD-PARTY-NOTICES.html" = "/usr/share/doc/hepta-native/THIRD-PARTY-NOTICES.html"
 
 [package.metadata.packager.appimage.files]
-"./packaging/rs.robius.robrix.metainfo.xml" = "/usr/share/metainfo/rs.robius.robrix.metainfo.xml"
-"./packaging/debian-copyright" = "/usr/share/doc/robrix/copyright"
-"./licenses/THIRD-PARTY-NOTICES.html" = "/usr/share/doc/robrix/THIRD-PARTY-NOTICES.html"
+"./packaging/ai.hepta.nativeapp.metainfo.xml" = "/usr/share/metainfo/ai.hepta.nativeapp.metainfo.xml"
+"./packaging/debian-copyright" = "/usr/share/doc/hepta-native/copyright"
+"./licenses/THIRD-PARTY-NOTICES.html" = "/usr/share/doc/hepta-native/THIRD-PARTY-NOTICES.html"
 
 [package.metadata.packager.pacman.files]
-"./packaging/rs.robius.robrix.metainfo.xml" = "/usr/share/metainfo/rs.robius.robrix.metainfo.xml"
-"./packaging/debian-copyright" = "/usr/share/licenses/robrix/copyright"
-"./licenses/THIRD-PARTY-NOTICES.html" = "/usr/share/licenses/robrix/THIRD-PARTY-NOTICES.html"
+"./packaging/ai.hepta.nativeapp.metainfo.xml" = "/usr/share/metainfo/ai.hepta.nativeapp.metainfo.xml"
+"./packaging/debian-copyright" = "/usr/share/licenses/hepta-native/copyright"
+"./licenses/THIRD-PARTY-NOTICES.html" = "/usr/share/licenses/hepta-native/THIRD-PARTY-NOTICES.html"
 
 [package.metadata.packager.macos]
 minimum_system_version = "11.0"
 frameworks = []
 info_plist_path = "./packaging/Info.plist"
 entitlements = "./packaging/Entitlements.plist"
-signing_identity = "Developer ID Application: GOSIM FOUNDATION LTD. (HMX6XGJZ3R)"
 
 
 ## Configuration for `cargo packager`'s generation of a macOS `.dmg`.
 [package.metadata.packager.dmg]
-background = "./packaging/Robrix macOS dmg background.png"
+background = "./packaging/Hepta Native macOS dmg background.png"
 window_size = { width = 960, height = 540 }
 app_position = { x = 200, y = 250 }
 application_folder_position = { x = 760, y = 250 }
