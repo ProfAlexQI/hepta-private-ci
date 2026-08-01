@@ -1143,7 +1143,7 @@ verify() {
     and .normalized_effective_lines == $report.normalized_effective_lines
     and .bundle_sha256 == $report.bundle_sha256
     and .monotonic_ratchet.logical_module_ceiling == 4
-    and .monotonic_ratchet.normalized_effective_line_ceiling == 40000
+    and .monotonic_ratchet.normalized_effective_line_ceiling == 39776
   ' codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json >/dev/null
   verify_file_max \
     docs/architecture/HEPTA_O2_GATE_COMPAT_RATCHET_2026-07-31.json \

@@ -28,13 +28,56 @@ INCLUDE_LINE = <<~RUST
   ));
 RUST
 INCLUDE_PATTERN = /include!\(\s*concat!\(\s*env!\("OUT_DIR"\),\s*"\/hepta_workgraph_bundle\/modules\.rs"\s*\)\s*\);\n/m
-EXPECTED_MODULE_COUNT = 4
-MAX_NORMALIZED_EFFECTIVE_LINES = 39_776
-MAX_NORMALIZED_TEMPLATE_COUNT = 4
-MAX_CANONICAL_RECORD_BYTES = 89_270
-MAX_SIGNIFICANT_RUST_TOKENS = 961_903
-MAX_SOURCE_BYTES = 8_757_229
-MAX_BUNDLE_BYTES = 735_630
+WORKGRAPH_CONTRACT = {
+  module_count: 4,
+  normalized_effective_lines: 39_776,
+  normalized_template_count: 4,
+  canonical_record_bytes: 89_270,
+  significant_rust_tokens: 961_903,
+  source_bytes: 8_757_229,
+  bundle_bytes: 735_630
+}.freeze
+EXPECTED_MODULE_COUNT = WORKGRAPH_CONTRACT.fetch(:module_count)
+MAX_NORMALIZED_EFFECTIVE_LINES = WORKGRAPH_CONTRACT.fetch(:normalized_effective_lines)
+MAX_NORMALIZED_TEMPLATE_COUNT = WORKGRAPH_CONTRACT.fetch(:normalized_template_count)
+MAX_CANONICAL_RECORD_BYTES = WORKGRAPH_CONTRACT.fetch(:canonical_record_bytes)
+MAX_SIGNIFICANT_RUST_TOKENS = WORKGRAPH_CONTRACT.fetch(:significant_rust_tokens)
+MAX_SOURCE_BYTES = WORKGRAPH_CONTRACT.fetch(:source_bytes)
+MAX_BUNDLE_BYTES = WORKGRAPH_CONTRACT.fetch(:bundle_bytes)
+WORKGRAPH_REGISTRY_CONTRACT = {
+  "schema" => SCHEMA,
+  "module_count" => EXPECTED_MODULE_COUNT,
+  "significant_rust_token_limit" => MAX_SIGNIFICANT_RUST_TOKENS,
+  "source_byte_limit" => MAX_SOURCE_BYTES,
+  "bundle_byte_limit" => MAX_BUNDLE_BYTES,
+  "normalized_template_limit" => MAX_NORMALIZED_TEMPLATE_COUNT,
+  "normalized_parameter_row_count" => EXPECTED_MODULE_COUNT,
+  "normalized_effective_line_limit" => MAX_NORMALIZED_EFFECTIVE_LINES,
+  "canonical_source_schema" => HeptaReadableTokenSource::SCHEMA,
+  "canonical_max_record_byte_limit" => MAX_CANONICAL_RECORD_BYTES,
+  "canonical_record_byte_semantics" => "record_including_lf",
+  "gzip_mtime" => HeptaReadableTokenSource::FIXED_GZIP_MTIME,
+  "gzip_os" => HeptaReadableTokenSource::FIXED_GZIP_OS,
+  "monotonic_ratchet" => {
+    "logical_module_ceiling" => EXPECTED_MODULE_COUNT,
+    "normalized_template_ceiling" => MAX_NORMALIZED_TEMPLATE_COUNT,
+    "normalized_effective_line_ceiling" => MAX_NORMALIZED_EFFECTIVE_LINES,
+    "significant_rust_token_ceiling" => MAX_SIGNIFICANT_RUST_TOKENS,
+    "source_byte_ceiling" => MAX_SOURCE_BYTES,
+    "bundle_byte_ceiling" => MAX_BUNDLE_BYTES
+  },
+  "anti_gaming_baseline" => {
+    "normalized_effective_lines" => MAX_NORMALIZED_EFFECTIVE_LINES,
+    "significant_rust_token_count" => MAX_SIGNIFICANT_RUST_TOKENS,
+    "source_bytes" => MAX_SOURCE_BYTES,
+    "bundle_bytes" => MAX_BUNDLE_BYTES
+  }
+}.freeze
+DECLINE_TARGET = {
+  "logical_module_count" => 4,
+  "normalized_template_count" => 4,
+  "normalized_effective_lines" => 25_000
+}.freeze
 
 def usage
   warn "usage: scripts/hepta-workgraph-module-bundle [pack|verify|unpack|contains MODULE]"
@@ -52,10 +95,7 @@ end
 
 def atomic_write(path, content, mode = nil)
   FileUtils.mkdir_p(File.dirname(path))
-  staging = File.join(
-    File.dirname(path),
-    ".hepta-workgraph-bundle-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp"
-  )
+  staging = File.join(File.dirname(path), ".hepta-workgraph-bundle-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp")
   File.binwrite(staging, content)
   File.chmod(mode, staging) if mode
   File.rename(staging, path)
@@ -164,78 +204,40 @@ def build_bundle(entries)
   payload = HeptaNormalizedTokenBundle.encode(bundle, schema: SCHEMA)
   compressed = HeptaReadableTokenSource.deterministic_gzip(payload)
   raise "WorkGraph bundle-byte anti-gaming budget exceeded" if compressed.bytesize > MAX_BUNDLE_BYTES
-  atomic_write(
-    BUNDLE_PATH,
-    compressed,
-    0o644
-  )
+  atomic_write(BUNDLE_PATH, compressed, 0o644)
   write_registry(entries, bundle.metrics, canonical)
 end
 
 def write_registry(entries, metrics, canonical)
-  registry = {
-    schema: SCHEMA,
-    status: "normalized",
-    module_count: entries.length,
-    source_bytes: entries.sum { |entry| entry.source.bytesize },
-    source_lines: entries.sum { |entry| entry.source.lines.count },
-    significant_rust_token_count: significant_rust_token_count(entries),
-    significant_rust_token_limit: MAX_SIGNIFICANT_RUST_TOKENS,
-    source_byte_limit: MAX_SOURCE_BYTES,
-    aggregate_source_sha256: HeptaNormalizedTokenBundle.aggregate_sha(entries),
-    bundle_bytes: File.size(BUNDLE_PATH),
-    bundle_byte_limit: MAX_BUNDLE_BYTES,
-    bundle_sha256: Digest::SHA256.file(BUNDLE_PATH).hexdigest,
-    normalized_template_count: metrics.fetch(:normalized_template_count),
-    normalized_template_limit: MAX_NORMALIZED_TEMPLATE_COUNT,
-    normalized_parameter_row_count: metrics.fetch(:normalized_parameter_row_count),
-    normalized_effective_lines: canonical.fetch(:normalized_effective_lines),
-    normalized_effective_line_limit: MAX_NORMALIZED_EFFECTIVE_LINES,
-    canonical_source_schema: canonical.fetch(:schema),
-    canonical_source_files: canonical.fetch(:canonical_files),
-    canonical_schema_sha256: Digest::SHA256.file(
+  registry = WORKGRAPH_REGISTRY_CONTRACT.merge(
+    "status" => "normalized",
+    "module_count" => entries.length,
+    "source_bytes" => entries.sum { |entry| entry.source.bytesize },
+    "source_lines" => entries.sum { |entry| entry.source.lines.count },
+    "significant_rust_token_count" => significant_rust_token_count(entries),
+    "aggregate_source_sha256" => HeptaNormalizedTokenBundle.aggregate_sha(entries),
+    "bundle_bytes" => File.size(BUNDLE_PATH),
+    "bundle_sha256" => Digest::SHA256.file(BUNDLE_PATH).hexdigest,
+    "normalized_template_count" => metrics.fetch(:normalized_template_count),
+    "normalized_parameter_row_count" => metrics.fetch(:normalized_parameter_row_count),
+    "normalized_effective_lines" => canonical.fetch(:normalized_effective_lines),
+    "canonical_source_schema" => canonical.fetch(:schema),
+    "canonical_source_files" => canonical.fetch(:canonical_files),
+    "canonical_schema_sha256" => Digest::SHA256.file(
       File.join(BUNDLE_ROOT, HeptaReadableTokenSource::SCHEMA_FILE)
     ).hexdigest,
-    canonical_templates_sha256: canonical.fetch(:templates_sha256),
-    canonical_parameters_sha256: canonical.fetch(:parameters_sha256),
-    canonical_max_record_bytes: canonical.fetch(:canonical_max_record_bytes),
-    canonical_max_record_byte_limit: MAX_CANONICAL_RECORD_BYTES,
-    canonical_record_byte_semantics: canonical.fetch(:jsonl_record_byte_semantics),
-    gzip_mtime: HeptaReadableTokenSource::FIXED_GZIP_MTIME,
-    gzip_os: HeptaReadableTokenSource::FIXED_GZIP_OS,
-    monotonic_ratchet: {
-      logical_module_ceiling: EXPECTED_MODULE_COUNT,
-      normalized_template_ceiling: MAX_NORMALIZED_TEMPLATE_COUNT,
-      normalized_effective_line_ceiling: MAX_NORMALIZED_EFFECTIVE_LINES,
-      significant_rust_token_ceiling: MAX_SIGNIFICANT_RUST_TOKENS,
-      source_byte_ceiling: MAX_SOURCE_BYTES,
-      bundle_byte_ceiling: MAX_BUNDLE_BYTES
-    },
-    anti_gaming_baseline: {
-      normalized_effective_lines: MAX_NORMALIZED_EFFECTIVE_LINES,
-      significant_rust_token_count: MAX_SIGNIFICANT_RUST_TOKENS,
-      source_bytes: MAX_SOURCE_BYTES,
-      bundle_bytes: MAX_BUNDLE_BYTES
-    },
-    decline_targets: {
-      next: {
-        logical_module_count: 4,
-        normalized_template_count: 4,
-        normalized_effective_lines: 25_000
-      },
-      terminal: {
-        logical_module_count: 4,
-        normalized_template_count: 4,
-        normalized_effective_lines: 25_000
-      }
-    },
-    source_files_materialized: false,
-    canonical_source_is_readable: true,
-    gzip_is_generated_artifact: true,
-    byte_identical_repack_verified: true,
-    build_time_module_generation: true,
-    reversible_unpack: true
-  }
+    "canonical_templates_sha256" => canonical.fetch(:templates_sha256),
+    "canonical_parameters_sha256" => canonical.fetch(:parameters_sha256),
+    "canonical_max_record_bytes" => canonical.fetch(:canonical_max_record_bytes),
+    "canonical_record_byte_semantics" => canonical.fetch(:jsonl_record_byte_semantics),
+    "decline_targets" => { "next" => DECLINE_TARGET, "terminal" => DECLINE_TARGET },
+    "source_files_materialized" => false,
+    "canonical_source_is_readable" => true,
+    "gzip_is_generated_artifact" => true,
+    "byte_identical_repack_verified" => true,
+    "build_time_module_generation" => true,
+    "reversible_unpack" => true
+  )
   atomic_write(REGISTRY_PATH, JSON.pretty_generate(registry) + "\n", 0o644)
 end
 
@@ -266,11 +268,7 @@ def rewrite_lib_to_sources(entries)
   source = File.binread(LIB_SOURCE)
   raise "WorkGraph bundle include is missing" unless source.scan(INCLUDE_PATTERN).length == 1
   declarations = entries.map { |entry| "mod #{entry.name};\n" }.join
-  atomic_write(
-    LIB_SOURCE,
-    source.sub(INCLUDE_PATTERN, declarations),
-    File.stat(LIB_SOURCE).mode & 0o777
-  )
+  atomic_write(LIB_SOURCE, source.sub(INCLUDE_PATTERN, declarations), File.stat(LIB_SOURCE).mode & 0o777)
 end
 
 def pack
@@ -297,116 +295,48 @@ def verify
     File.file?(REGISTRY_PATH) &&
     HeptaReadableTokenSource.present?(BUNDLE_ROOT)
   entries, canonical_bundle, canonical = canonical_entries(strict_metadata: true)
-  rebuilt = HeptaNormalizedTokenBundle.build(
-    entries,
-    tokenizer: HeptaNormalizedTokenBundle.method(:rust_tokens)
-  )
+  rebuilt = HeptaNormalizedTokenBundle.build(entries, tokenizer: HeptaNormalizedTokenBundle.method(:rust_tokens))
   canonical_payload = HeptaNormalizedTokenBundle.encode(canonical_bundle, schema: SCHEMA)
   rebuilt_payload = HeptaNormalizedTokenBundle.encode(rebuilt, schema: SCHEMA)
   raise "WorkGraph canonical normalization drifted" unless canonical_payload == rebuilt_payload
   expected_gzip = HeptaReadableTokenSource.deterministic_gzip(rebuilt_payload)
-  raise "WorkGraph generated gzip is not byte-identical" unless File.binread(BUNDLE_PATH) ==
-    expected_gzip
+  raise "WorkGraph generated gzip is not byte-identical" unless File.binread(BUNDLE_PATH) == expected_gzip
   artifact_entries = normalized_entries
-  raise "WorkGraph artifact reassembly drifted" unless HeptaNormalizedTokenBundle.aggregate_sha(
-    artifact_entries
-  ) == HeptaNormalizedTokenBundle.aggregate_sha(entries)
+  raise "WorkGraph artifact reassembly drifted" unless HeptaNormalizedTokenBundle.aggregate_sha(artifact_entries) == HeptaNormalizedTokenBundle.aggregate_sha(entries)
   registry = JSON.parse(File.binread(REGISTRY_PATH))
-  raise "invalid normalized WorkGraph registry schema" unless registry["schema"] == SCHEMA
   raise "unexpected WorkGraph module count" unless entries.length == EXPECTED_MODULE_COUNT
-  raise "WorkGraph module count drifted" unless registry["module_count"] == entries.length
-  raise "WorkGraph aggregate SHA drifted" unless registry["aggregate_source_sha256"] == HeptaNormalizedTokenBundle.aggregate_sha(entries)
-  raise "WorkGraph source byte count drifted" unless registry["source_bytes"] == entries.sum { |entry| entry.source.bytesize }
-  raise "WorkGraph source line count drifted" unless registry["source_lines"] == entries.sum { |entry| entry.source.lines.count }
   significant_tokens = significant_rust_token_count(entries)
-  raise "WorkGraph significant token count drifted" unless registry[
-    "significant_rust_token_count"
-  ] == significant_tokens
-  raise "WorkGraph significant-token anti-gaming budget exceeded" unless significant_tokens <=
-    MAX_SIGNIFICANT_RUST_TOKENS
-  raise "WorkGraph significant-token limit drifted" unless registry[
-    "significant_rust_token_limit"
-  ] == MAX_SIGNIFICANT_RUST_TOKENS
-  raise "WorkGraph source-byte anti-gaming budget exceeded" unless registry[
-    "source_bytes"
-  ] <= MAX_SOURCE_BYTES
-  raise "WorkGraph source-byte limit drifted" unless registry[
-    "source_byte_limit"
-  ] == MAX_SOURCE_BYTES
-  raise "WorkGraph bundle SHA drifted" unless registry["bundle_sha256"] == Digest::SHA256.file(BUNDLE_PATH).hexdigest
-  raise "WorkGraph bundle byte count drifted" unless registry["bundle_bytes"] == File.size(BUNDLE_PATH)
-  raise "WorkGraph bundle-byte anti-gaming budget exceeded" unless registry[
-    "bundle_bytes"
-  ] <= MAX_BUNDLE_BYTES
-  raise "WorkGraph bundle-byte limit drifted" unless registry[
-    "bundle_byte_limit"
-  ] == MAX_BUNDLE_BYTES
-  raise "WorkGraph normalized template budget exceeded" unless registry[
-    "normalized_template_count"
-  ].between?(1, MAX_NORMALIZED_TEMPLATE_COUNT)
-  raise "WorkGraph normalized template limit drifted" unless registry[
-    "normalized_template_limit"
-  ] == MAX_NORMALIZED_TEMPLATE_COUNT
-  raise "WorkGraph normalized parameter rows drifted" unless registry["normalized_parameter_row_count"] == EXPECTED_MODULE_COUNT
-  raise "WorkGraph normalized effective-line budget exceeded" unless registry["normalized_effective_lines"].between?(1, MAX_NORMALIZED_EFFECTIVE_LINES)
-  raise "WorkGraph normalized effective-line limit drifted" unless registry[
-    "normalized_effective_line_limit"
-  ] == MAX_NORMALIZED_EFFECTIVE_LINES
-  expected_ratchet = {
-    "logical_module_ceiling" => EXPECTED_MODULE_COUNT,
-    "normalized_template_ceiling" => MAX_NORMALIZED_TEMPLATE_COUNT,
-    "normalized_effective_line_ceiling" => MAX_NORMALIZED_EFFECTIVE_LINES,
-    "significant_rust_token_ceiling" => MAX_SIGNIFICANT_RUST_TOKENS,
-    "source_byte_ceiling" => MAX_SOURCE_BYTES,
-    "bundle_byte_ceiling" => MAX_BUNDLE_BYTES
-  }
-  raise "WorkGraph monotonic anti-gaming ratchet drifted" unless registry[
-    "monotonic_ratchet"
-  ] == expected_ratchet
-  expected_anti_gaming_baseline = {
-    "normalized_effective_lines" => MAX_NORMALIZED_EFFECTIVE_LINES,
-    "significant_rust_token_count" => MAX_SIGNIFICANT_RUST_TOKENS,
-    "source_bytes" => MAX_SOURCE_BYTES,
-    "bundle_bytes" => MAX_BUNDLE_BYTES
-  }
-  raise "WorkGraph anti-gaming baseline drifted" unless registry[
-    "anti_gaming_baseline"
-  ] == expected_anti_gaming_baseline
-  raise "WorkGraph readable canonical schema drifted" unless registry[
-    "canonical_source_schema"
-  ] == HeptaReadableTokenSource::SCHEMA
-  raise "WorkGraph readable canonical SHA drifted" unless registry[
-    "canonical_schema_sha256"
-  ] == Digest::SHA256.file(
-    File.join(BUNDLE_ROOT, HeptaReadableTokenSource::SCHEMA_FILE)
-  ).hexdigest
-  raise "WorkGraph canonical template SHA drifted" unless registry[
-    "canonical_templates_sha256"
-  ] == canonical.fetch("templates_sha256")
-  raise "WorkGraph canonical parameter SHA drifted" unless registry[
-    "canonical_parameters_sha256"
-  ] == canonical.fetch("parameters_sha256")
-  raise "WorkGraph canonical record size drifted" unless registry[
-    "canonical_max_record_bytes"
-  ] == canonical.fetch("canonical_max_record_bytes")
-  raise "WorkGraph canonical record-size budget exceeded" unless registry[
-    "canonical_max_record_bytes"
-  ].between?(1, MAX_CANONICAL_RECORD_BYTES)
-  raise "WorkGraph canonical record-size limit drifted" unless registry[
-    "canonical_max_record_byte_limit"
-  ] == MAX_CANONICAL_RECORD_BYTES
-  raise "WorkGraph canonical record byte semantics drifted" unless registry[
-    "canonical_record_byte_semantics"
-  ] == "record_including_lf"
-  raise "WorkGraph gzip profile drifted" unless registry["gzip_mtime"] ==
-    HeptaReadableTokenSource::FIXED_GZIP_MTIME &&
-    registry["gzip_os"] == HeptaReadableTokenSource::FIXED_GZIP_OS
+  expected_registry = WORKGRAPH_REGISTRY_CONTRACT.merge(
+    "aggregate_source_sha256" => HeptaNormalizedTokenBundle.aggregate_sha(entries),
+    "source_bytes" => entries.sum { |entry| entry.source.bytesize },
+    "source_lines" => entries.sum { |entry| entry.source.lines.count },
+    "significant_rust_token_count" => significant_tokens,
+    "bundle_sha256" => Digest::SHA256.file(BUNDLE_PATH).hexdigest,
+    "bundle_bytes" => File.size(BUNDLE_PATH),
+    "canonical_schema_sha256" => Digest::SHA256.file(
+      File.join(BUNDLE_ROOT, HeptaReadableTokenSource::SCHEMA_FILE)
+    ).hexdigest,
+    "canonical_templates_sha256" => canonical.fetch("templates_sha256"),
+    "canonical_parameters_sha256" => canonical.fetch("parameters_sha256"),
+    "canonical_max_record_bytes" => canonical.fetch("canonical_max_record_bytes")
+  )
+  expected_registry.each do |field, expected|
+    raise "WorkGraph registry #{field} drifted" unless registry[field] == expected
+  end
+  {
+    "significant_rust_token_count" => [0, MAX_SIGNIFICANT_RUST_TOKENS],
+    "source_bytes" => [0, MAX_SOURCE_BYTES],
+    "bundle_bytes" => [0, MAX_BUNDLE_BYTES],
+    "normalized_template_count" => [1, MAX_NORMALIZED_TEMPLATE_COUNT],
+    "normalized_effective_lines" => [1, MAX_NORMALIZED_EFFECTIVE_LINES],
+    "canonical_max_record_bytes" => [1, MAX_CANONICAL_RECORD_BYTES]
+  }.each do |field, bounds|
+    raise "WorkGraph registry #{field} anti-gaming budget exceeded" unless registry[field].between?(*bounds)
+  end
   source = File.binread(LIB_SOURCE)
   raise "WorkGraph bundle include count drifted" unless source.scan(INCLUDE_PATTERN).length == 1
   raise "materialized WorkGraph declarations remain" unless source_declarations.empty?
-  entries.each do |entry|
-    raise "materialized WorkGraph source remains: #{entry.name}" if File.exist?(source_path(entry.name))
-  end
+  entries.each { |entry| raise "materialized WorkGraph source remains: #{entry.name}" if File.exist?(source_path(entry.name)) }
   raise "legacy WorkGraph bundle remains active" if File.exist?(LEGACY_BUNDLE_ROOT)
   puts "hepta-workgraph-module-bundle: PASS: #{entries.length} modules, #{registry.fetch("normalized_template_count")} templates, #{registry.fetch("normalized_effective_lines")} normalized lines"
 end
@@ -414,9 +344,7 @@ end
 def unpack
   entries = normalized_entries
   rewrite_lib_to_sources(entries)
-  entries.each do |entry|
-    atomic_write(source_path(entry.name), entry.source, 0o644)
-  end
+  entries.each { |entry| atomic_write(source_path(entry.name), entry.source, 0o644) }
   puts "hepta-workgraph-module-bundle: unpacked #{entries.length} modules"
 end
 
