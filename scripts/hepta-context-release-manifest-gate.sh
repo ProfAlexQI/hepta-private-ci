@@ -329,6 +329,8 @@ codex-rs/hepta-memory/src/tests/snapshot_restore/preview.rs
 codex-rs/hepta-memory/src/tests/snapshot_restore/readiness.rs
 codex-rs/hepta-memory/src/tests/snapshot_restore/roundtrip.rs
 codex-rs/hepta-memory/src/tests/store.rs
+codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs
+codex-rs/hepta-runtime/src/typed_compat_report.rs
 codex-rs/protocol/src/protocol.rs
 codex-rs/response-debug-context/BUILD.bazel
 codex-rs/response-debug-context/Cargo.toml
@@ -340,6 +342,10 @@ codex-rs/response-debug-context/src/tests.rs
 scripts/hepta-context-gate-launch
 scripts/hepta-context-gate-runner
 scripts/hepta-context-gate-specs-v1.json
+scripts/hepta-gate-pair-runner
+scripts/hepta-gate-pair-specs-v1.json
+scripts/hepta-gate-typed-report-bindings-v2.json
+scripts/hepta-typed-compat-report
 EOF
   (cd "$repo_root" && find scripts -maxdepth 1 \( -type f -o -type l \) -name 'hepta-context*.sh' -print | sort)
   (cd "$repo_root" && find scripts/lib/hepta-context-gates-v1 -maxdepth 1 -type f -print | sort)

@@ -391,6 +391,11 @@ execute_compat_family_state_machine() {
 typed_report_contract() {
   local suffix source_stem
   case "$id" in
+    hepta-context-memory-*)
+      suffix="${id#hepta-context-memory-}"
+      source_stem="context_memory_${suffix//-/_}"
+      printf '%s\t%s\n' "hepta_${source_stem}_gate" "${source_stem}_v1"
+      ;;
     hepta-systems-work-graph-*)
       suffix="${id#hepta-systems-work-graph-}"
       source_stem="work_graph_${suffix//-/_}"

@@ -162,7 +162,7 @@ assert_file_contains "$release_manifest" "scripts/lib/hepta-context-gates-v1/hep
 
 assert_line_before \
   "$debug_gate" \
-  "hepta-context-memory-ranked-recall-shadow-eval-gate.sh" \
+  "hepta-context-memory-ranked-recall-shadow-eval" \
   "hepta-context-memory-provider-boundary-gate.sh" \
   "memory provider debug order"
 assert_line_before \

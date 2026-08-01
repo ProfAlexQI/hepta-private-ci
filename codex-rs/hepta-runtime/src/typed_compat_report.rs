@@ -2,6 +2,10 @@ use serde_json::Value;
 use thiserror::Error;
 
 pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
+    "hepta-context-memory-ranked-recall-shadow-eval",
+    "hepta-context-memory-shadow-quality-summary",
+    "hepta-context-memory-shadow-quality-trend-snapshot",
+    "hepta-context-memory-shadow-regression-dashboard",
     "hepta-systems-current-reality-matrix-compact-cache-boundary-readback",
     "hepta-systems-work-graph-adapter-projection-fixture",
     "hepta-systems-work-graph-append-only-event-intake-preview",
@@ -153,6 +157,71 @@ fn take_contract_field(
             "{context} must expose required field {field}"
         ))
     })
+}
+
+fn context_memory_shadow_fixture() -> (
+    hepta_core::ContextMemoryRankedRecallShadowEvalReport,
+    hepta_core::ContextMemoryShadowRegressionDashboardReport,
+    hepta_core::ContextMemoryShadowQualitySummaryReport,
+    hepta_core::ContextMemoryShadowQualityTrendSnapshotReport,
+) {
+    let snapshot = hepta_memory::StoreSnapshot {
+        sessions: Vec::new(),
+        memories: Vec::new(),
+        transcripts: Vec::new(),
+    };
+    let request = hepta_core::ContextRecallRequest {
+        session_id: hepta_core::SessionId("typed-compat-shadow".to_string()),
+        query_text: None,
+        recent_window_limit: 1,
+        transcript_limit: 1,
+        memory_limit: 1,
+        allow_cross_session: false,
+    };
+    let ranked_recall = snapshot.context_memory_ranked_recall_shadow_eval_report();
+    let dashboard = snapshot.context_memory_shadow_regression_dashboard_report(&request);
+    let summary = snapshot.context_memory_shadow_quality_summary_report(&request);
+    let trend = snapshot.context_memory_shadow_quality_trend_snapshot_report(&request);
+    (ranked_recall, dashboard, summary, trend)
+}
+
+fn context_memory_typed_report<T: serde::Serialize>(
+    report: &T,
+    integrity: bool,
+    gate: &str,
+    schema: &str,
+) -> Result<Value, TypedCompatReportError> {
+    if !integrity {
+        return Err(TypedCompatReportError::ContractViolation(format!(
+            "{gate} source report failed its read-only integrity contract"
+        )));
+    }
+    let mut value = serde_json::to_value(report)?;
+    let object = contract_object_mut(&mut value, "context-memory typed report")?;
+    let context_schema_version =
+        take_contract_field(object, "schema_version", "context-memory source report")?;
+    object.insert("context_schema_version".to_string(), context_schema_version);
+    object.insert("runtime".to_string(), Value::String("hepta".to_string()));
+    object.insert("product".to_string(), Value::String("Hepta".to_string()));
+    object.insert("status".to_string(), Value::String("pass".to_string()));
+    object.insert("gate".to_string(), Value::String(gate.to_string()));
+    object.insert(
+        "schema_version".to_string(),
+        Value::String(schema.to_string()),
+    );
+    object.insert(
+        "side_effects".to_string(),
+        serde_json::json!({
+            "channel_send_performed": false,
+            "external_send_performed": false,
+            "filesystem_written": false,
+            "graph_state_persisted": false,
+            "model_invoked": false,
+            "provider_invoked": false,
+            "runtime_mutation_performed": false
+        }),
+    );
+    Ok(value)
 }
 
 fn workflow_durable_store_adapter_compat_report() -> Result<Value, TypedCompatReportError> {
@@ -322,6 +391,42 @@ fn workflow_durable_store_adapter_compat_report() -> Result<Value, TypedCompatRe
 
 pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
     match id {
+        "hepta-context-memory-ranked-recall-shadow-eval" => {
+            let (report, _, _, _) = context_memory_shadow_fixture();
+            context_memory_typed_report(
+                &report,
+                report.has_ranked_recall_shadow_integrity(),
+                "hepta_context_memory_ranked_recall_shadow_eval_gate",
+                "context_memory_ranked_recall_shadow_eval_v1",
+            )
+        }
+        "hepta-context-memory-shadow-regression-dashboard" => {
+            let (_, report, _, _) = context_memory_shadow_fixture();
+            context_memory_typed_report(
+                &report,
+                report.has_shadow_regression_dashboard_integrity(),
+                "hepta_context_memory_shadow_regression_dashboard_gate",
+                "context_memory_shadow_regression_dashboard_v1",
+            )
+        }
+        "hepta-context-memory-shadow-quality-summary" => {
+            let (_, _, report, _) = context_memory_shadow_fixture();
+            context_memory_typed_report(
+                &report,
+                report.has_shadow_quality_summary_integrity(),
+                "hepta_context_memory_shadow_quality_summary_gate",
+                "context_memory_shadow_quality_summary_v1",
+            )
+        }
+        "hepta-context-memory-shadow-quality-trend-snapshot" => {
+            let (_, _, _, report) = context_memory_shadow_fixture();
+            context_memory_typed_report(
+                &report,
+                report.has_shadow_quality_trend_snapshot_integrity(),
+                "hepta_context_memory_shadow_quality_trend_snapshot_gate",
+                "context_memory_shadow_quality_trend_snapshot_v1",
+            )
+        }
         "hepta-systems-current-reality-matrix-compact-cache-boundary-readback" => serialize_report!(crate::hepta_current_reality_matrix_compact_cache_boundary_readback_report()),
         "hepta-systems-work-graph-adapter-projection-fixture" => serialize_report!(crate::hepta_work_graph_adapter_projection_fixture_report()),
         "hepta-systems-work-graph-append-only-event-intake-preview" => serialize_report!(crate::hepta_work_graph_append_only_event_intake_preview_report()),
@@ -478,6 +583,46 @@ mod tests {
                 .values()
                 .all(|value| value == &Value::Bool(false))
         );
+    }
+
+    #[test]
+    fn context_memory_shadow_reports_are_typed_and_read_only() {
+        for id in [
+            "hepta-context-memory-ranked-recall-shadow-eval",
+            "hepta-context-memory-shadow-regression-dashboard",
+            "hepta-context-memory-shadow-quality-summary",
+            "hepta-context-memory-shadow-quality-trend-snapshot",
+        ] {
+            let report = typed_compat_report(id).expect("context-memory report should render");
+            let object = report
+                .as_object()
+                .expect("context-memory report should be an object");
+            assert_eq!(object.get("runtime"), Some(&Value::String("hepta".into())));
+            assert_eq!(object.get("status"), Some(&Value::String("pass".into())));
+            assert!(object.get("context_schema_version").is_some());
+            assert!(
+                object
+                    .get("side_effects")
+                    .and_then(Value::as_object)
+                    .is_some_and(|effects| effects
+                        .values()
+                        .all(|value| value == &Value::Bool(false)))
+            );
+            for field in [
+                "production_route",
+                "production_write",
+                "graph_write",
+                "runtime_activation",
+                "prompt_assembly_change",
+                "operator_activation_allowed",
+            ] {
+                assert_eq!(
+                    object.get(field),
+                    Some(&Value::Bool(false)),
+                    "{id}: {field}"
+                );
+            }
+        }
     }
 
     #[test]

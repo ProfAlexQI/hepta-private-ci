@@ -161,7 +161,7 @@ assert_line_before \
 assert_line_before \
   "$debug_gate" \
   "hepta-context-memory-provider-v2-boundary-gate.sh" \
-  "hepta-context-memory-shadow-regression-dashboard-gate.sh" \
+  "hepta-context-memory-shadow-regression-dashboard" \
   "memory provider v2 dashboard debug order"
 assert_line_before \
   "$preflight_script" \

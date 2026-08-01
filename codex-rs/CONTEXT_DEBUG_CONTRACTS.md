@@ -1568,13 +1568,15 @@ requires `canary_feature_flag_default_disabled`,
 denial coverage, operator review required, and `canary_precondition_route_opened=false`
 before any later canary proposal may be considered.
 
-`scripts/hepta-context-memory-ranked-recall-shadow-eval-report.sh` emits the
-payload-light scoreboard, and
-`scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh` verifies the
+`scripts/hepta-gate-pair-runner report hepta-context-memory-ranked-recall-shadow-eval`
+emits the payload-light typed scoreboard, and
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-ranked-recall-shadow-eval`
+verifies the
 report, Rust-backed fixture boundary, hepta-core/hepta-memory helper tests,
 debug/preflight wiring, source-aware front-door static check, release manifest
 entries, and no-leak constraints. The context debug gate and preflight must run
-`scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh` after
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-ranked-recall-shadow-eval`
+after
 `scripts/hepta-context-memory-recall-quality-gate.sh` and before
 `scripts/hepta-context-plane-status-report-gate.sh`. The gate output must
 include `ranked-recall-shadow-eval=pass`,
@@ -1634,7 +1636,8 @@ payload-light fixed report with `memory-provider-boundary=pass`,
 `memory-provider-boundary.runtime-activation=disabled`.
 `scripts/hepta-context-memory-provider-boundary-gate.sh` must run the focused
 provider tests and must be wired into debug/preflight after
-`scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh` and before
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-ranked-recall-shadow-eval`
+and before
 `scripts/hepta-context-plane-status-report-gate.sh`.
 
 MemoryProviderV2 boundary: the next provider surface must keep the full
@@ -1672,7 +1675,7 @@ fixed payload-light report with `memory-provider-v2-boundary=pass`,
 `scripts/hepta-context-memory-provider-v2-boundary-gate.sh` must run the
 focused V2 provider tests and must be wired into debug/preflight after
 `scripts/hepta-context-memory-provider-boundary-gate.sh` and before
-`scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh`.
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-regression-dashboard`.
 
 Memory shadow regression dashboard: recall diagnostics may expose a
 payload-light shadow-only dashboard that aggregates the ranked recall shadow,
@@ -1730,7 +1733,8 @@ zero recall-quality blocking reasons, `provider_payload_light=true`, operator
 approval required, no
 production route, no production memory write, no graph write, no prompt
 assembly change, no runtime activation, and no operator activation allowance.
-`scripts/hepta-context-memory-shadow-regression-dashboard-report.sh` must emit
+`scripts/hepta-gate-pair-runner report hepta-context-memory-shadow-regression-dashboard`
+must emit
 `memory-shadow-regression-dashboard=pass`,
 `memory-shadow-regression-dashboard.payload-light=pass`,
 `memory-shadow-regression-dashboard.input-report-pass-count=4`,
@@ -1748,7 +1752,8 @@ assembly change, no runtime activation, and no operator activation allowance.
 `memory-shadow-regression-dashboard.ranked-recall-canary-precondition-route-opened-count=0`,
 `memory-shadow-regression-dashboard.regression-blocking-count=0`, and
 `memory-shadow-regression-dashboard.runtime-activation=disabled`.
-`scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh` must verify
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-regression-dashboard`
+must verify
 the Rust-backed report, helper tests, release manifest, front-door static
 contract, debug/preflight wiring, and no-leak constraints. The context debug
 gate and preflight must run it after
@@ -1800,7 +1805,8 @@ delta, routing diff shadow-only thresholds met, real workload trace SLO pass
 counts met with zero leaks, operator
 approval required, no production route, no production memory write, no graph
 write, no prompt assembly change, no runtime activation, and no operator
-activation allowance. `scripts/hepta-context-memory-shadow-quality-summary-report.sh`
+activation allowance.
+`scripts/hepta-gate-pair-runner report hepta-context-memory-shadow-quality-summary`
 must emit `memory-shadow-quality-summary=pass`,
 `memory-shadow-quality-summary.payload-light=pass`,
 `memory-shadow-quality-summary.quality-trend=stable-pass`,
@@ -1819,11 +1825,13 @@ must emit `memory-shadow-quality-summary=pass`,
 `memory-shadow-quality-summary.ranked-recall-canary-precondition-route-opened-count=0`,
 `memory-shadow-quality-summary.regression-blocking-count=0`, and
 `memory-shadow-quality-summary.runtime-activation=disabled`.
-`scripts/hepta-context-memory-shadow-quality-summary-gate.sh` must verify the
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-quality-summary`
+must verify the
 dashboard-derived Rust report, helper tests, release manifest, front-door
 static contract, debug/preflight wiring, and no-leak constraints. The context
 debug gate and preflight must run it after
-`scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh` and before
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-regression-dashboard`
+and before
 `scripts/hepta-context-plane-status-report-gate.sh`.
 
 Memory shadow quality trend snapshot: recall diagnostics may expose a
@@ -1882,7 +1890,8 @@ precision at least 8000 basis points, total positive real workload token saved
 required, no history persistence write, no production route, no production
 memory write, no graph write, no prompt assembly change, no runtime activation,
 and no operator activation allowance.
-`scripts/hepta-context-memory-shadow-quality-trend-snapshot-report.sh` must
+`scripts/hepta-gate-pair-runner report hepta-context-memory-shadow-quality-trend-snapshot`
+must
 emit `memory-shadow-quality-trend-snapshot=pass`,
 `memory-shadow-quality-trend-snapshot.payload-light=pass`,
 `memory-shadow-quality-trend-snapshot.trend-window=stable-window`,
@@ -1901,11 +1910,13 @@ emit `memory-shadow-quality-trend-snapshot=pass`,
 `memory-shadow-quality-trend-snapshot.regression-window-blocking-count=0`,
 `memory-shadow-quality-trend-snapshot.history-persistence-write=disabled`, and
 `memory-shadow-quality-trend-snapshot.runtime-activation=disabled`.
-`scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh` must verify
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-quality-trend-snapshot`
+must verify
 the summary-derived Rust report, helper tests, release manifest, front-door
 static contract, debug/preflight wiring, and no-leak constraints. The context
 debug gate and preflight must run it after
-`scripts/hepta-context-memory-shadow-quality-summary-gate.sh` and before
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-quality-summary`
+and before
 `scripts/hepta-context-plane-status-report-gate.sh`.
 
 Memory shadow canary promotion readiness: recall diagnostics may expose a
@@ -1958,7 +1969,8 @@ emit `memory-shadow-canary-promotion-readiness=pass`,
 verify the trend-derived Rust report, helper tests, debug/preflight wiring, and
 no-leak constraints.
 The context debug gate and preflight must run it after
-`scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh` and before
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-quality-trend-snapshot`
+and before
 `scripts/hepta-context-plane-status-report-gate.sh`. This readiness surface is
 rehearsal-only and must not open a production graph/provider/canary route.
 

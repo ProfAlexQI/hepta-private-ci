@@ -98,12 +98,12 @@ memory_temporal_graph_shadow_retrieval_rollback_kill_switch_gate_script="hepta-c
 memory_eval_harness_seed_gate_script="hepta-context-memory-eval-harness-seed-gate.sh"
 memory_adaptive_allocator_eval_shadow_gate_script="hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 memory_recall_quality_gate_script="hepta-context-memory-recall-quality-gate.sh"
-memory_ranked_recall_shadow_eval_gate_script="hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
+memory_ranked_recall_shadow_eval_pair_id="hepta-context-memory-ranked-recall-shadow-eval"
 memory_provider_boundary_gate_script="hepta-context-memory-provider-boundary-gate.sh"
 memory_provider_v2_boundary_gate_script="hepta-context-memory-provider-v2-boundary-gate.sh"
-memory_shadow_regression_dashboard_gate_script="hepta-context-memory-shadow-regression-dashboard-gate.sh"
-memory_shadow_quality_summary_gate_script="hepta-context-memory-shadow-quality-summary-gate.sh"
-memory_shadow_quality_trend_snapshot_gate_script="hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
+memory_shadow_regression_dashboard_pair_id="hepta-context-memory-shadow-regression-dashboard"
+memory_shadow_quality_summary_pair_id="hepta-context-memory-shadow-quality-summary"
+memory_shadow_quality_trend_snapshot_pair_id="hepta-context-memory-shadow-quality-trend-snapshot"
 memory_shadow_canary_promotion_readiness_gate_script="hepta-context-memory-shadow-canary-promotion-readiness-gate.sh"
 memory_shadow_canary_promotion_negative_rehearsal_gate_script="hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh"
 memory_shadow_canary_promotion_audit_digest_gate_script="hepta-context-memory-shadow-canary-promotion-audit-digest-gate.sh"
@@ -397,8 +397,8 @@ required_contract_terms=(
   "ContextMemoryRankedRecallShadowEvalReport"
   "ContextMemoryRankedRecallShadowHybridSignal"
   "context_memory_ranked_recall_shadow_eval_report"
-  "hepta-context-memory-ranked-recall-shadow-eval-report.sh"
-  "hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-ranked-recall-shadow-eval"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-ranked-recall-shadow-eval"
   "Temporal graph shadow eval"
   "temporal-graph-shadow-eval=pass"
   "temporal-graph-shadow-eval.payload-light=pass"
@@ -510,8 +510,8 @@ required_contract_terms=(
   "ranked_recall_min_positive_reranking_delta_basis_points"
   "ranked_recall_min_positive_token_tradeoff_basis_points"
   "provider_payload_light"
-  "hepta-context-memory-shadow-regression-dashboard-report.sh"
-  "hepta-context-memory-shadow-regression-dashboard-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-shadow-regression-dashboard"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-regression-dashboard"
   "Memory shadow quality summary"
   "memory-shadow-quality-summary=pass"
   "memory-shadow-quality-summary.payload-light=pass"
@@ -527,8 +527,8 @@ required_contract_terms=(
   "ranked_recall_min_positive_reranking_delta_basis_points"
   "ready_shadow_only"
   "stable_pass"
-  "hepta-context-memory-shadow-quality-summary-report.sh"
-  "hepta-context-memory-shadow-quality-summary-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-shadow-quality-summary"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-quality-summary"
   "Memory shadow quality trend snapshot"
   "memory-shadow-quality-trend-snapshot=pass"
   "memory-shadow-quality-trend-snapshot.payload-light=pass"
@@ -547,8 +547,8 @@ required_contract_terms=(
   "operator_snapshot_redacted"
   "history_persistence_write"
   "stable_window"
-  "hepta-context-memory-shadow-quality-trend-snapshot-report.sh"
-  "hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-shadow-quality-trend-snapshot"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-shadow-quality-trend-snapshot"
   "Memory shadow canary promotion readiness"
   "memory-shadow-canary-promotion-readiness=pass"
   "memory-shadow-canary-promotion-readiness.payload-light=pass"
@@ -967,7 +967,7 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_ranked_recall_shadow_eval_gate_script" \
+  "$memory_ranked_recall_shadow_eval_pair_id" \
   "memory ranked recall shadow eval debug gate"
 
 assert_file_contains \
@@ -982,17 +982,17 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_shadow_regression_dashboard_gate_script" \
+  "$memory_shadow_regression_dashboard_pair_id" \
   "memory shadow regression dashboard debug gate"
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_shadow_quality_summary_gate_script" \
+  "$memory_shadow_quality_summary_pair_id" \
   "memory shadow quality summary debug gate"
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_shadow_quality_trend_snapshot_gate_script" \
+  "$memory_shadow_quality_trend_snapshot_pair_id" \
   "memory shadow quality trend snapshot debug gate"
 
 assert_file_contains \
@@ -1629,7 +1629,7 @@ assert_line_before \
 
 assert_line_before \
   "$debug_gate" \
-  "$memory_ranked_recall_shadow_eval_gate_script" \
+  "$memory_ranked_recall_shadow_eval_pair_id" \
   "$memory_provider_boundary_gate_script" \
   "memory provider boundary debug gate order"
 
@@ -1642,24 +1642,24 @@ assert_line_before \
 assert_line_before \
   "$debug_gate" \
   "$memory_provider_v2_boundary_gate_script" \
-  "$memory_shadow_regression_dashboard_gate_script" \
+  "$memory_shadow_regression_dashboard_pair_id" \
   "memory shadow regression dashboard debug gate order"
 
 assert_line_before \
   "$debug_gate" \
-  "$memory_shadow_regression_dashboard_gate_script" \
-  "$memory_shadow_quality_summary_gate_script" \
+  "$memory_shadow_regression_dashboard_pair_id" \
+  "$memory_shadow_quality_summary_pair_id" \
   "memory shadow quality summary debug gate order"
 
 assert_line_before \
   "$debug_gate" \
-  "$memory_shadow_quality_summary_gate_script" \
-  "$memory_shadow_quality_trend_snapshot_gate_script" \
+  "$memory_shadow_quality_summary_pair_id" \
+  "$memory_shadow_quality_trend_snapshot_pair_id" \
   "memory shadow quality trend snapshot debug gate order"
 
 assert_line_before \
   "$debug_gate" \
-  "$memory_shadow_quality_trend_snapshot_gate_script" \
+  "$memory_shadow_quality_trend_snapshot_pair_id" \
   "$memory_shadow_canary_promotion_readiness_gate_script" \
   "memory shadow canary promotion readiness debug gate order"
 

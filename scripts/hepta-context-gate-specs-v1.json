@@ -40,7 +40,7 @@
       "gate": {
         "path": "scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-boundary.gate",
         "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-boundary.gate",
-        "sha256": "faa10fe21a105e452598aa14378d7b352a3757e90e7344dcb1ab17cf223a96aa",
+        "sha256": "68766f6cf82ce1b02bdbc24735cfce5a380c10e4fa03776c930b248212b01845",
         "lines": 204
       },
       "report": {
@@ -55,7 +55,7 @@
       "gate": {
         "path": "scripts/lib/hepta-context-gates-v1/hepta-context-memory-provider-v2-boundary.gate",
         "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-v2-boundary.gate",
-        "sha256": "25f924fb2165df63b6b3c4c90f05aec3f39269a2836db43653bf5510d00116fe",
+        "sha256": "3b6a42edbef12c4794e18b5f84c09327e3ab34bf87323a9b14bbc5266e71107e",
         "lines": 198
       },
       "report": {
@@ -100,7 +100,7 @@
       "gate": {
         "path": "scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate",
         "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-front-door.gate",
-        "sha256": "bc303c07281b77116cfff05fbdb0488ab27c916790618de35a30f487306c5127",
+        "sha256": "e7715d0ef69c30630a13ce3b71ef8fb11c725be78e2e0855ba34d008b599a047",
         "lines": 1992
       },
       "report": {

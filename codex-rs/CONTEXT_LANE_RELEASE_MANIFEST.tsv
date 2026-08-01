@@ -214,6 +214,8 @@ codex-rs/hepta-memory/src/tests/snapshot_restore/preview.rs	rust_memory	hepta-co
 codex-rs/hepta-memory/src/tests/snapshot_restore/readiness.rs	rust_memory	hepta-context	required
 codex-rs/hepta-memory/src/tests/snapshot_restore/roundtrip.rs	rust_memory	hepta-context	required
 codex-rs/hepta-memory/src/tests/store.rs	rust_memory	hepta-context	required
+codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs	rust_memory	hepta-context	required
+codex-rs/hepta-runtime/src/typed_compat_report.rs	rust_memory	hepta-context	required
 codex-rs/protocol/src/protocol.rs	rust_protocol	hepta-context	required
 codex-rs/response-debug-context/BUILD.bazel	response_debug	hepta-context	required
 codex-rs/response-debug-context/Cargo.toml	response_debug	hepta-context	required
@@ -243,8 +245,6 @@ scripts/hepta-context-memory-provider-boundary-gate.sh	gate_script	hepta-context
 scripts/hepta-context-memory-provider-boundary-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-provider-v2-boundary-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-provider-v2-boundary-report.sh	gate_script	hepta-context	required
-scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh	gate_script	hepta-context	required
-scripts/hepta-context-memory-ranked-recall-shadow-eval-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-recall-helper-boundary-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-recall-manifest-payload-light-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-recall-quality-gate.sh	gate_script	hepta-context	required
@@ -256,12 +256,6 @@ scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh	
 scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-shadow-canary-promotion-readiness-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-shadow-canary-promotion-readiness-report.sh	gate_script	hepta-context	required
-scripts/hepta-context-memory-shadow-quality-summary-gate.sh	gate_script	hepta-context	required
-scripts/hepta-context-memory-shadow-quality-summary-report.sh	gate_script	hepta-context	required
-scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh	gate_script	hepta-context	required
-scripts/hepta-context-memory-shadow-quality-trend-snapshot-report.sh	gate_script	hepta-context	required
-scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh	gate_script	hepta-context	required
-scripts/hepta-context-memory-shadow-regression-dashboard-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-snapshot-helper-boundary-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-taxonomy-report-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-fact-graph-gate.sh	gate_script	hepta-context	required
@@ -344,6 +338,10 @@ scripts/hepta-context-source-aware-compression-readiness-gate.sh	gate_script	hep
 scripts/hepta-context-source-registry-catalog-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-source-registry-health-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-source-registry-rust-gate.sh	gate_script	hepta-context	required
+scripts/hepta-gate-pair-runner	gate_script	hepta-context	required
+scripts/hepta-gate-pair-specs-v1.json	registry	hepta-context	required
+scripts/hepta-gate-typed-report-bindings-v2.json	registry	hepta-context	required
+scripts/hepta-typed-compat-report	gate_script	hepta-context	required
 scripts/lib/hepta-context-gates-v1/hepta-context-generated-context-inventory.gate	gate_script	hepta-context	required
 scripts/lib/hepta-context-gates-v1/hepta-context-generated-context-inventory.report	gate_script	hepta-context	required
 scripts/lib/hepta-context-gates-v1/hepta-context-health.gate	gate_script	hepta-context	required

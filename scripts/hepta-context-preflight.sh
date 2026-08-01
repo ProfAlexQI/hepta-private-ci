@@ -140,7 +140,8 @@ run_stage "context memory recall quality gate" \
   bash "$repo_root/scripts/hepta-context-memory-recall-quality-gate.sh"
 
 run_stage "context memory ranked recall shadow eval gate" \
-  bash "$repo_root/scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-ranked-recall-shadow-eval"
 
 run_stage "context memory provider boundary gate" \
   bash "$repo_root/scripts/hepta-context-memory-provider-boundary-gate.sh"
@@ -149,13 +150,16 @@ run_stage "context memory provider v2 boundary gate" \
   bash "$repo_root/scripts/hepta-context-memory-provider-v2-boundary-gate.sh"
 
 run_stage "context memory shadow regression dashboard gate" \
-  bash "$repo_root/scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-shadow-regression-dashboard"
 
 run_stage "context memory shadow quality summary gate" \
-  bash "$repo_root/scripts/hepta-context-memory-shadow-quality-summary-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-shadow-quality-summary"
 
 run_stage "context memory shadow quality trend snapshot gate" \
-  bash "$repo_root/scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-shadow-quality-trend-snapshot"
 
 run_stage "context memory shadow canary promotion readiness gate" \
   bash "$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-readiness-gate.sh"

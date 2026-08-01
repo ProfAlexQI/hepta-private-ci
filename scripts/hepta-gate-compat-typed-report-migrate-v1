@@ -34,8 +34,8 @@ CURRENT_REALITY_REGISTRY_PATH = File.join(
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 DOMAIN = "hepta_gate_pair_compat_payloads"
 TARGET_PAIR_COUNT = 299
-TARGET_CAPTURED_COUNT = 123
-TARGET_DECLARATIVE_COUNT = 176
+TARGET_CAPTURED_COUNT = 119
+TARGET_DECLARATIVE_COUNT = 180
 
 def usage
   warn "usage: scripts/hepta-gate-compat-typed-report-migrate-v1 <plan|apply>"
@@ -54,7 +54,7 @@ def binding_ids
   raise "invalid typed report binding schema" unless registry.fetch("schema") ==
     "hepta_gate_typed_report_bindings_v2"
   ids = registry.fetch("report_ids")
-  raise "typed report binding count drifted" unless ids.length == 113 && ids.uniq.length == 113
+  raise "typed report binding count drifted" unless ids.length == 117 && ids.uniq.length == 117
   ids
 end
 

@@ -34,12 +34,16 @@ bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-retrieval-ro
 bash "$repo_root/scripts/hepta-context-memory-eval-harness-seed-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-recall-quality-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-ranked-recall-shadow-eval"
 bash "$repo_root/scripts/hepta-context-memory-provider-boundary-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-provider-v2-boundary-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-shadow-quality-summary-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-shadow-regression-dashboard"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-shadow-quality-summary"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-shadow-quality-trend-snapshot"
 bash "$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-readiness-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-audit-digest-gate.sh"
