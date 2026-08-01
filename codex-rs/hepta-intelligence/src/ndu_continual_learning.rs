@@ -11,6 +11,8 @@ use sha2::Digest;
 use sha2::Sha256;
 
 mod contracts;
+mod h1_shadow;
+mod h1_shadow_journal;
 
 pub use contracts::BoundedUtilityScore;
 pub use contracts::HardFeasibilityMask;
@@ -19,6 +21,16 @@ pub use contracts::NduDatasetManifestRef;
 pub use contracts::NduUtilityEventRef;
 pub use contracts::NduUtilityTransitionRef;
 pub use contracts::UtilityVector;
+pub use h1_shadow::NduH1ShadowConfig;
+pub use h1_shadow::NduH1ShadowController;
+pub use h1_shadow::NduH1ShadowError;
+pub use h1_shadow::NduH1ShadowReceipt;
+pub use h1_shadow::NduH1ShadowRequest;
+pub use h1_shadow_journal::NduH1Journal;
+pub use h1_shadow_journal::NduH1JournalError;
+pub use h1_shadow_journal::NduH1ShadowService;
+pub use h1_shadow_journal::NduH1ShadowServiceError;
+pub use h1_shadow_journal::NduH1ShadowServiceResult;
 
 const SCORE_LIMIT: i32 = 10_000;
 
@@ -105,7 +117,7 @@ impl NduThreatModel {
 }
 
 impl NduBaselineKind {
-    fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::CurrentHeuristic => "current_heuristic",
             Self::ContextualBandit => "contextual_bandit",
@@ -297,6 +309,16 @@ pub fn evaluate_ndu_shadow_arm(
         "hepta_ndu_paired_replay_receipt_v1",
         baseline.as_str(),
         next_state_hash.as_str(),
+        &utility.task_value().basis_points().to_string(),
+        &utility.learning_value().basis_points().to_string(),
+        &utility.trust().basis_points().to_string(),
+        &utility.memory_pollution_risk().basis_points().to_string(),
+        &utility.resource_cost().basis_points().to_string(),
+        &utility.uncertainty().basis_points().to_string(),
+        feasibility_verdict(feasibility.safety()),
+        feasibility_verdict(feasibility.permission()),
+        feasibility_verdict(feasibility.budget()),
+        feasibility_verdict(feasibility.correctability()),
         &observation.propensity_basis_points.to_string(),
         observation
             .delayed_outcome_hash
@@ -309,6 +331,14 @@ pub fn evaluate_ndu_shadow_arm(
         transition,
         replay_receipt_hash,
     })
+}
+
+pub(crate) const fn feasibility_verdict(verdict: HardFeasibilityVerdict) -> &'static str {
+    match verdict {
+        HardFeasibilityVerdict::Satisfied => "satisfied",
+        HardFeasibilityVerdict::Violated => "violated",
+        HardFeasibilityVerdict::Unknown => "unknown",
+    }
 }
 
 /// Reason a bounded H2 canary abstained instead of recommending a budget.

@@ -1,0 +1,15 @@
+pub(crate) const WATCHDOG_PROBE_PATHS: &[&str] = &[
+    "/health",
+    "/api/watchdog-state",
+    "/api/control-ui-route-parity",
+    "/api/operator-security",
+    "/api/telegram-owner-handoff",
+    "/api/telegram-poll-loop",
+    "/api/native-post-activation-plan",
+    "/api/native-post-execution-stores",
+    "/api/hepta-engine-adapter-boundary",
+    "/api/hepta-codex-engine-adapter-boundary",
+    "/api/hepta-core-fusion-readiness",
+    "/api/hepta-name-repository-closure",
+    "/api/hepta-engine-dependency-closure",
+];

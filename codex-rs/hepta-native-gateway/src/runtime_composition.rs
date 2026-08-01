@@ -9,6 +9,9 @@ use anyhow::Result;
 #[cfg(test)]
 use hepta_contracts::RevisionStamp;
 use hepta_memory::DurableIntegrityKey;
+use hepta_runtime::NduH1Runtime;
+use hepta_runtime::NduH1RuntimeStatus;
+use hepta_runtime::NduH1ShadowEvent;
 use hepta_runtime::RuntimeExecutionReceipt;
 use hepta_runtime::RuntimeKernel;
 use serde::Serialize;
@@ -46,6 +49,17 @@ const OUTCOME_DATABASE_ENV: &str = "HEPTA_RUNTIME_OUTCOME_DATABASE";
 const STATE_DATABASE_ENV: &str = "HEPTA_RUNTIME_STATE_DATABASE";
 const INTEGRITY_KEY_FILE_ENV: &str = "HEPTA_RUNTIME_INTEGRITY_KEY_FILE";
 const OUTCOME_MODE_ENV: &str = "HEPTA_RUNTIME_OUTCOME_MODE";
+pub(crate) const NDU_H1_STATUS_ENDPOINT: &str = "/api/ndu/h1/status";
+const NDU_H1_ENABLED_ENV: &str = "HEPTA_NDU_H1_SHADOW_ENABLED";
+const NDU_H1_JOURNAL_ENV: &str = "HEPTA_NDU_H1_JOURNAL";
+const NDU_H1_KILL_SWITCH_FILE_ENV: &str = "HEPTA_NDU_H1_KILL_SWITCH_FILE";
+const NDU_H1_TENANT_SCOPE_HASH_ENV: &str = "HEPTA_NDU_H1_TENANT_SCOPE_HASH";
+const NDU_H1_CONSENT_SCOPE_HASH_ENV: &str = "HEPTA_NDU_H1_CONSENT_SCOPE_HASH";
+const NDU_H1_REVOCATION_SNAPSHOT_HASH_ENV: &str = "HEPTA_NDU_H1_REVOCATION_SNAPSHOT_HASH";
+const NDU_H1_MODEL_HASH_ENV: &str = "HEPTA_NDU_H1_MODEL_HASH";
+const NDU_H1_SCORER_CONFIG_HASH_ENV: &str = "HEPTA_NDU_H1_SCORER_CONFIG_HASH";
+const NDU_H1_INITIAL_STATE_HASH_ENV: &str = "HEPTA_NDU_H1_INITIAL_STATE_HASH";
+const NDU_H1_MAX_EVENTS_ENV: &str = "HEPTA_NDU_H1_MAX_EVENTS";
 const OPEN_EXISTING_MODE: &str = "open-existing";
 const BOOTSTRAP_NEW_MODE: &str = "bootstrap-new";
 pub(crate) const RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT: &str = "/api/actions/runtime-kernel-canary";
@@ -55,7 +69,25 @@ pub struct NativeGatewayRuntime {
     effect_reconciliation: Option<EffectReconciliationAuthority>,
     monotonic_anchor: Option<Arc<ExternalMonotonicAnchor>>,
     telegram_authority: Option<TelegramAuthority>,
+    ndu_h1_runtime: Option<NduH1Runtime>,
     outcome_mode: RuntimeOutcomeMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NduH1GatewayStatus {
+    schema: &'static str,
+    enabled: bool,
+    ready: bool,
+    accepting_observations: bool,
+    kill_switch_active: bool,
+    shadow_only: bool,
+    production_authority_granted: bool,
+    observed_event_count: u64,
+    recorded_count: u64,
+    replay_count: u64,
+    rejected_count: u64,
+    journal_head: Option<String>,
+    last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -269,6 +301,48 @@ struct RuntimeCompositionConfig {
     outcome_mode: RuntimeOutcomeMode,
 }
 
+struct NduH1RuntimeConfig {
+    config: hepta_intelligence::NduH1ShadowConfig,
+    journal_path: PathBuf,
+    kill_switch_path: PathBuf,
+}
+
+impl NduH1RuntimeConfig {
+    fn from_env() -> Result<Option<Self>> {
+        let enabled = env::var(NDU_H1_ENABLED_ENV)
+            .ok()
+            .is_some_and(|value| value.trim() == "1");
+        if !enabled {
+            return Ok(None);
+        }
+        let journal_path = required_absolute_path(NDU_H1_JOURNAL_ENV)?;
+        let kill_switch_path = required_absolute_path(NDU_H1_KILL_SWITCH_FILE_ENV)?;
+        let max_events = required_env(NDU_H1_MAX_EVENTS_ENV)?
+            .parse::<u64>()
+            .with_context(|| format!("{NDU_H1_MAX_EVENTS_ENV} must be a positive integer"))?;
+        if max_events == 0 {
+            anyhow::bail!("{NDU_H1_MAX_EVENTS_ENV} must be greater than zero");
+        }
+        let hash = |name| -> Result<hepta_contracts::ContentHash> {
+            Ok(hepta_contracts::ContentHash::new(required_env(name)?))
+        };
+        Ok(Some(Self {
+            config: hepta_intelligence::NduH1ShadowConfig::new(
+                hash(NDU_H1_TENANT_SCOPE_HASH_ENV)?,
+                hash(NDU_H1_CONSENT_SCOPE_HASH_ENV)?,
+                hash(NDU_H1_REVOCATION_SNAPSHOT_HASH_ENV)?,
+                hash(NDU_H1_MODEL_HASH_ENV)?,
+                hash(NDU_H1_SCORER_CONFIG_HASH_ENV)?,
+                hash(NDU_H1_INITIAL_STATE_HASH_ENV)?,
+                max_events,
+                true,
+            ),
+            journal_path,
+            kill_switch_path,
+        }))
+    }
+}
+
 impl RuntimeCompositionConfig {
     fn from_env() -> Result<Self> {
         let outcome_database = required_absolute_path(OUTCOME_DATABASE_ENV)?;
@@ -307,6 +381,7 @@ impl NativeGatewayRuntime {
             EffectReconciliationConfig::from_env()?,
             ExternalMonotonicAnchorConfig::from_env()?,
             TelegramAuthorityConfig::from_env()?,
+            NduH1RuntimeConfig::from_env()?,
         )
     }
 
@@ -315,7 +390,7 @@ impl NativeGatewayRuntime {
         config: RuntimeCompositionConfig,
         preference_config: NativePreferenceIngressConfig,
     ) -> Result<Self> {
-        Self::open_with_operational_controls(config, preference_config, None, None, None)
+        Self::open_with_operational_controls(config, preference_config, None, None, None, None)
     }
 
     fn open_with_operational_controls(
@@ -324,6 +399,7 @@ impl NativeGatewayRuntime {
         reconciliation_config: Option<EffectReconciliationConfig>,
         anchor_config: Option<ExternalMonotonicAnchorConfig>,
         telegram_config: Option<TelegramAuthorityConfig>,
+        ndu_h1_config: Option<NduH1RuntimeConfig>,
     ) -> Result<Self> {
         require_live_mutation_anchor(
             crate::operator_mutation::enabled(),
@@ -371,12 +447,23 @@ impl NativeGatewayRuntime {
             .map(TelegramAuthority::open)
             .transpose()
             .context("initialize operator-bound Telegram pipeline authority")?;
+        let ndu_h1_runtime = ndu_h1_config
+            .map(|config| {
+                NduH1Runtime::open_with_kill_switch(
+                    config.config,
+                    config.journal_path,
+                    Some(config.kill_switch_path),
+                )
+            })
+            .transpose()
+            .map_err(|error| anyhow::anyhow!("initialize NDU H1 shadow runtime: {error:?}"))?;
         let runtime = Self {
             kernel,
             preference_ingress,
             effect_reconciliation,
             monotonic_anchor,
             telegram_authority,
+            ndu_h1_runtime,
             outcome_mode: config.outcome_mode,
         };
         runtime
@@ -397,6 +484,106 @@ impl NativeGatewayRuntime {
             .context("attached trusted preference ingress readiness failed")?;
         self.synchronize_durable_anchor()
             .context("external monotonic anchor readiness failed")
+    }
+
+    pub(crate) fn ndu_h1_status(&self) -> Result<NduH1GatewayStatus> {
+        let Some(runtime) = &self.ndu_h1_runtime else {
+            return Ok(NduH1GatewayStatus {
+                schema: "hepta_ndu_h1_gateway_status_v1",
+                enabled: false,
+                ready: false,
+                accepting_observations: false,
+                kill_switch_active: false,
+                shadow_only: true,
+                production_authority_granted: false,
+                observed_event_count: 0,
+                recorded_count: 0,
+                replay_count: 0,
+                rejected_count: 0,
+                journal_head: None,
+                last_error: None,
+            });
+        };
+        let NduH1RuntimeStatus {
+            ready,
+            accepting_observations,
+            kill_switch_active,
+            shadow_only,
+            production_authority_granted,
+            observed_event_count,
+            recorded_count,
+            replay_count,
+            rejected_count,
+            journal_head,
+            last_error,
+            ..
+        } = runtime
+            .status()
+            .map_err(|error| anyhow::anyhow!("read NDU H1 shadow status: {error:?}"))?;
+        Ok(NduH1GatewayStatus {
+            schema: "hepta_ndu_h1_gateway_status_v1",
+            enabled: true,
+            ready,
+            accepting_observations,
+            kill_switch_active,
+            shadow_only,
+            production_authority_granted,
+            observed_event_count,
+            recorded_count,
+            replay_count,
+            rejected_count,
+            journal_head: Some(journal_head),
+            last_error,
+        })
+    }
+
+    fn observe_ndu_h1_runtime_receipt(
+        &self,
+        request_binding_hash: &str,
+        receipt: &RuntimeExecutionReceipt,
+    ) {
+        let Some(runtime) = &self.ndu_h1_runtime else {
+            return;
+        };
+        let satisfied = hepta_intelligence::HardFeasibilityVerdict::Satisfied;
+        let event = NduH1ShadowEvent {
+            event_hash: hepta_contracts::ContentHash::new(receipt.terminal_outcome_hash.clone()),
+            source_receipt_hash: hepta_contracts::ContentHash::new(
+                receipt.terminal_receipt_hash.clone(),
+            ),
+            subject_pseudonym_hash: hepta_contracts::ContentHash::new(
+                request_binding_hash.to_owned(),
+            ),
+            explicit_preference_evidence_hash: None,
+            task_signal_basis_points: if receipt.terminal_status == "succeeded" {
+                10_000
+            } else {
+                -10_000
+            },
+            learning_signal_basis_points: 0,
+            trust_signal_basis_points: if receipt.durable_intent_recorded {
+                10_000
+            } else {
+                -10_000
+            },
+            memory_pollution_risk_basis_points: 0,
+            resource_cost_basis_points: if receipt.effect_plan_recorded {
+                1_000
+            } else {
+                100
+            },
+            uncertainty_basis_points: 0,
+            propensity_basis_points: 10_000,
+            delayed_outcome_hash: Some(hepta_contracts::ContentHash::new(
+                receipt.terminal_evidence_hash.clone(),
+            )),
+            feasibility: hepta_intelligence::HardFeasibilityMask::new(
+                satisfied, satisfied, satisfied, satisfied,
+            ),
+        };
+        if let Err(error) = runtime.observe_event(event) {
+            eprintln!("NDU H1 shadow observation rejected: {error:?}");
+        }
     }
 
     pub(crate) fn preflight_request(
@@ -933,6 +1120,7 @@ impl NativeGatewayRuntime {
             {
                 anyhow::bail!("RuntimeKernel canary lifecycle evidence failed closed");
             }
+            self.observe_ndu_h1_runtime_receipt(request_binding_hash, &receipt);
             Ok(RuntimeKernelCanaryReceipt {
                 product: "Hepta",
                 runtime: "hepta",
@@ -1472,6 +1660,48 @@ impl NativeGatewayRuntime {
             None,
             Some(ExternalMonotonicAnchorConfig::for_runtime_test(root)?),
             None,
+            None,
+        )
+    }
+
+    #[cfg(all(test, unix))]
+    pub(crate) fn bootstrap_with_ndu_for_test(root: &Path) -> Result<Self> {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(root, fs::Permissions::from_mode(0o700))?;
+        let key = root.join("runtime.key");
+        fs::write(
+            &key,
+            b"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        )?;
+        fs::set_permissions(&key, fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
+        let hash = hepta_contracts::ContentHash::new;
+        Self::open_with_operational_controls(
+            RuntimeCompositionConfig {
+                outcome_database: root.join("outcomes.sqlite3"),
+                state_database: root.join("runtime-state.json"),
+                integrity_key_file: key,
+                outcome_mode: RuntimeOutcomeMode::BootstrapNew,
+            },
+            NativePreferenceIngressConfig::bootstrap_for_test(root)?,
+            None,
+            Some(ExternalMonotonicAnchorConfig::for_runtime_test(root)?),
+            None,
+            Some(NduH1RuntimeConfig {
+                config: hepta_intelligence::NduH1ShadowConfig::new(
+                    hash("tenant"),
+                    hash("consent"),
+                    hash("revocation"),
+                    hash("model"),
+                    hash("scorer"),
+                    hash("initial"),
+                    10,
+                    true,
+                ),
+                journal_path: root.join("ndu-h1.jsonl"),
+                kill_switch_path: root.join("ndu-h1.kill"),
+            }),
         )
     }
 
@@ -1493,6 +1723,43 @@ impl NativeGatewayRuntime {
             None,
             Some(ExternalMonotonicAnchorConfig::for_runtime_test(root)?),
             None,
+            None,
+        )
+    }
+
+    #[cfg(all(test, unix))]
+    pub(crate) fn open_existing_with_ndu_for_test(root: &Path) -> Result<Self> {
+        let hash = hepta_contracts::ContentHash::new;
+        Self::open_with_operational_controls(
+            RuntimeCompositionConfig {
+                outcome_database: root.join("outcomes.sqlite3"),
+                state_database: root.join("runtime-state.json"),
+                integrity_key_file: root.join("runtime.key"),
+                outcome_mode: RuntimeOutcomeMode::OpenExisting,
+            },
+            NativePreferenceIngressConfig {
+                database: root.join("preferences.sqlite3"),
+                integrity_key_file: root.join("preference-integrity.key"),
+                authentication_key_file: root.join("preference-authentication.key"),
+                mode: crate::preference_ingress::PreferenceStoreMode::OpenExisting,
+            },
+            None,
+            Some(ExternalMonotonicAnchorConfig::for_runtime_test(root)?),
+            None,
+            Some(NduH1RuntimeConfig {
+                config: hepta_intelligence::NduH1ShadowConfig::new(
+                    hash("tenant"),
+                    hash("consent"),
+                    hash("revocation"),
+                    hash("model"),
+                    hash("scorer"),
+                    hash("initial"),
+                    10,
+                    true,
+                ),
+                journal_path: root.join("ndu-h1.jsonl"),
+                kill_switch_path: root.join("ndu-h1.kill"),
+            }),
         )
     }
 }
@@ -1506,6 +1773,13 @@ fn required_absolute_path(env_name: &str) -> Result<PathBuf> {
         anyhow::bail!("{env_name} must be an absolute path");
     }
     Ok(path)
+}
+
+fn required_env(env_name: &str) -> Result<String> {
+    env::var(env_name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .with_context(|| format!("{env_name} is required when NDU H1 shadow is enabled"))
 }
 
 fn proof_excluded_authorization_body(path: &str, body: Option<&str>) -> Result<Option<String>> {

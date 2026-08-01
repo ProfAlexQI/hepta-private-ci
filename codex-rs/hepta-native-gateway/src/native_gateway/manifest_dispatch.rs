@@ -18,6 +18,7 @@ pub(super) fn dispatch_manifest_route(
             &anyhow::anyhow!("route manifest entry missing"),
         );
     };
+    legacy_route_usage::record_direct_call(manifest_entry);
     match manifest_entry.dispatch_handler {
         RouteDispatchHandler::PreferenceIngress => {
             let Some(response) = runtime.route_preference_ingress(
@@ -161,6 +162,23 @@ pub(super) fn dispatch_manifest_route(
                 response.body.as_bytes(),
             )
         }
+        RouteDispatchHandler::NduH1Status => match runtime.ndu_h1_status() {
+            Ok(status) => write_http_response(
+                stream,
+                "200 OK",
+                "application/json; charset=utf-8",
+                json_or_error(&status).as_bytes(),
+            ),
+            Err(error) => {
+                eprintln!("NDU H1 status failed: {error:#}");
+                write_http_response(
+                    stream,
+                    "503 Service Unavailable",
+                    "application/json; charset=utf-8",
+                    br#"{"error":"ndu_h1_shadow.status_unavailable"}"#,
+                )
+            }
+        },
         RouteDispatchHandler::EvidenceIndex => evidence_dispatch::dispatch_evidence_route(
             stream,
             path,

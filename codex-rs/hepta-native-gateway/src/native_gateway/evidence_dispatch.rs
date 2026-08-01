@@ -14,7 +14,11 @@ pub(super) fn dispatch_evidence_route(
             let Some(definition) =
                 evidence_api::evidence_definition(selector).filter(|definition| {
                     definition.legacy_compatibility_route
-                        && definition.dispatch_handler == RouteDispatchHandler::NativeGateway
+                        && matches!(
+                            definition.dispatch_handler,
+                            RouteDispatchHandler::NativeGateway
+                                | RouteDispatchHandler::RetiredCompatibility
+                        )
                 })
             else {
                 return write_http_response(

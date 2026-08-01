@@ -120,6 +120,7 @@ use crate::ui_domain::route_native_gateway_binary_asset;
 mod evidence_api;
 mod evidence_dispatch;
 mod http_rejections;
+mod legacy_route_usage;
 mod manifest_dispatch;
 pub(crate) mod native_report_registry;
 mod report_pagination;

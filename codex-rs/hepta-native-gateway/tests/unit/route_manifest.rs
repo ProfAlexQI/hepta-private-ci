@@ -29,6 +29,12 @@ fn manifest_generates_dispatch_and_gate_bindings() {
         ("GET", "/health", RouteDispatchHandler::NativeGateway, None),
         (
             "GET",
+            crate::runtime_composition::NDU_H1_STATUS_ENDPOINT,
+            RouteDispatchHandler::NduH1Status,
+            None,
+        ),
+        (
+            "GET",
             crate::route_registry::EVIDENCE_INDEX_ENDPOINT,
             RouteDispatchHandler::EvidenceIndex,
             None,
@@ -144,4 +150,33 @@ fn manifest_marks_quarantined_legacy_effects_as_retired_dispatch() {
         );
         assert!(!entry.watchdog_probe);
     }
+}
+
+#[test]
+fn manifest_retires_zero_caller_evidence_families_but_keeps_canonical_rendering() {
+    let retired = route_manifest_registry()
+        .into_iter()
+        .filter(|entry| {
+            entry.legacy_compatibility_route
+                && entry.dispatch_handler == RouteDispatchHandler::RetiredCompatibility
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(retired.len(), 166);
+    assert!(retired.iter().all(|entry| {
+        entry.native_report_id.is_some()
+            && entry.report_binding == RouteReportBinding::NativeExact
+            && !entry.watchdog_probe
+    }));
+    assert!(retired.iter().any(|entry| {
+        entry
+            .lifecycle
+            .path_pattern
+            .starts_with("/api/hepta-memory-intelligence-kg-full-live-activation-")
+    }));
+    assert!(retired.iter().any(|entry| {
+        entry
+            .lifecycle
+            .path_pattern
+            .starts_with("/api/hepta-memory-live-mutation-operator-write-execution-")
+    }));
 }

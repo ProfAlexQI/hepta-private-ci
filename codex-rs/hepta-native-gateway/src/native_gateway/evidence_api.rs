@@ -19,6 +19,8 @@ pub(super) struct EvidenceIndex {
     pagination: EvidencePagination,
     entry_count: usize,
     legacy_compatibility_route_count: usize,
+    retired_direct_route_count: usize,
+    legacy_direct_call_count_since_start: u64,
     entries: Vec<EvidenceEntry>,
 }
 
@@ -39,6 +41,9 @@ struct EvidenceEntry {
     effect_class: &'static str,
     side_effect_boundary: &'static str,
     legacy_compatibility_route: bool,
+    canonical_selector: String,
+    direct_call_count_since_start: u64,
+    migration_state: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -79,6 +84,15 @@ pub(super) fn evidence_index_report() -> EvidenceIndex {
             .iter()
             .filter(|entry| entry.legacy_compatibility_route)
             .count(),
+        retired_direct_route_count: route_definition_registry()
+            .into_iter()
+            .filter(|definition| {
+                definition.legacy_compatibility_route
+                    && definition.dispatch_handler
+                        == crate::route_definition::RouteDispatchHandler::RetiredCompatibility
+            })
+            .count(),
+        legacy_direct_call_count_since_start: super::legacy_route_usage::total_direct_call_count(),
         entries,
     }
 }
@@ -110,10 +124,10 @@ pub(super) fn requested_evidence_selector(
             }
             _ => None,
         };
-        if let Some(requested) = requested {
-            if selector.replace(requested).is_some() {
-                return Err("exactly one evidence id or route may be provided");
-            }
+        if let Some(requested) = requested
+            && selector.replace(requested).is_some()
+        {
+            return Err("exactly one evidence id or route may be provided");
         }
     }
     Ok(selector)
@@ -188,6 +202,18 @@ fn evidence_entry(definition: RouteDefinition) -> Option<EvidenceEntry> {
         effect_class: definition.evidence_effect_class?,
         side_effect_boundary: definition.side_effect_boundary?,
         legacy_compatibility_route: definition.legacy_compatibility_route,
+        canonical_selector: format!(
+            "{EVIDENCE_INDEX_ENDPOINT}?route={}",
+            definition.lifecycle.path_pattern
+        ),
+        direct_call_count_since_start: super::legacy_route_usage::direct_call_count(
+            definition.lifecycle.path_pattern,
+        ),
+        migration_state: if definition.legacy_compatibility_route {
+            "observing_direct_calls"
+        } else {
+            "canonical"
+        },
     })
 }
 
@@ -202,6 +228,14 @@ mod tests {
         assert_eq!(report.pagination.mode, "digest_bound_cursor");
         assert!(report.pagination.snapshot_bound);
         assert_eq!(report.entry_count, report.entries.len());
+        assert_eq!(
+            report.legacy_direct_call_count_since_start,
+            report
+                .entries
+                .iter()
+                .map(|entry| entry.direct_call_count_since_start)
+                .sum::<u64>()
+        );
         assert!(report.entry_count > 100);
         assert!(
             report
@@ -215,6 +249,10 @@ mod tests {
             report.legacy_compatibility_route_count,
             report.entries.len() - 1
         );
+        assert_eq!(report.retired_direct_route_count, 166);
+        assert!(report.entries.iter().all(|entry| {
+            entry.canonical_selector == format!("{EVIDENCE_INDEX_ENDPOINT}?route={}", entry.route)
+        }));
     }
 
     #[test]

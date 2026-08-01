@@ -9,8 +9,10 @@ hepta-contracts.workspace = true
 hepta-core.workspace = true
 hepta-kg.workspace = true
 hepta-memory.workspace = true
+fd-lock.workspace = true
 hmac.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 sha2.workspace = true
 zeroize.workspace = true
 

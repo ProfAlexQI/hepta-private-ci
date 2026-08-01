@@ -15,6 +15,7 @@ use crate::route_registry::GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT;
 use crate::route_registry::GATEWAY_REPLACEMENT_READINESS_ENDPOINT;
 use crate::route_registry::TELEGRAM_LIVE_SOAK_ROUTE;
 use crate::route_registry::WATCHDOG_STATE_ENDPOINT;
+use crate::runtime_composition::NDU_H1_STATUS_ENDPOINT;
 use crate::runtime_composition::NativeGatewayRuntime;
 use crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT;
 use crate::runtime_composition::RuntimeRequestDisposition;
@@ -293,6 +294,10 @@ const SPECIAL_INGRESS_LIFECYCLES: &[IngressLifecycleSpec] = &[
     metadata_read(GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT),
     metadata_read(TELEGRAM_LIVE_SOAK_ROUTE.canonical),
     metadata_read(TELEGRAM_LIVE_SOAK_ROUTE.aliases[0]),
+    IngressLifecycleSpec {
+        source: "ndu_h1_shadow",
+        ..metadata_read(NDU_H1_STATUS_ENDPOINT)
+    },
     IngressLifecycleSpec {
         method: "POST",
         path_pattern: OPERATOR_AUTHORITY_CHALLENGE_ENDPOINT,

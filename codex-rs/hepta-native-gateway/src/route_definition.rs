@@ -1,5 +1,10 @@
 use serde::Serialize;
 
+mod legacy_routes;
+mod watchdog;
+
+use self::legacy_routes::is_canonical_only_evidence_route;
+pub(crate) use self::watchdog::WATCHDOG_PROBE_PATHS;
 use crate::native_telegram::TELEGRAM_LIVE_READ_ENV;
 use crate::operator_mutation::OPERATOR_MUTATION_ENABLED_ENV;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
@@ -10,22 +15,6 @@ use crate::runtime_ingress::declared_runtime_ingress_lifecycle;
 use crate::runtime_ingress::runtime_ingress_lifecycle_registry;
 use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENV;
 use crate::telegram_authority::TELEGRAM_AUTHORITY_ENABLED_ENV;
-
-pub(crate) const WATCHDOG_PROBE_PATHS: &[&str] = &[
-    "/health",
-    "/api/watchdog-state",
-    "/api/control-ui-route-parity",
-    "/api/operator-security",
-    "/api/telegram-owner-handoff",
-    "/api/telegram-poll-loop",
-    "/api/native-post-activation-plan",
-    "/api/native-post-execution-stores",
-    "/api/hepta-engine-adapter-boundary",
-    "/api/hepta-codex-engine-adapter-boundary",
-    "/api/hepta-core-fusion-readiness",
-    "/api/hepta-name-repository-closure",
-    "/api/hepta-engine-dependency-closure",
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -39,6 +28,7 @@ pub(crate) enum RouteDispatchHandler {
     RuntimeMutationCanary,
     OperatorExecution,
     TelegramReceiveOnce,
+    NduH1Status,
     RetiredCompatibility,
 }
 
@@ -134,7 +124,7 @@ fn report_binding(
     }
     match dispatch_handler {
         RouteDispatchHandler::EvidenceIndex => (RouteReportBinding::CanonicalEvidence, None),
-        RouteDispatchHandler::NativeGateway => {
+        RouteDispatchHandler::NativeGateway | RouteDispatchHandler::RetiredCompatibility => {
             if let Some(report_id) = crate::native_gateway::native_report_registry::native_report_id(
                 lifecycle.path_pattern,
             ) {
@@ -157,6 +147,9 @@ fn dispatch_handler(lifecycle: IngressLifecycleSpec) -> RouteDispatchHandler {
     if lifecycle.path_pattern == EVIDENCE_INDEX_ENDPOINT {
         return RouteDispatchHandler::EvidenceIndex;
     }
+    if is_canonical_only_evidence_route(lifecycle) {
+        return RouteDispatchHandler::RetiredCompatibility;
+    }
     match lifecycle.source {
         "trusted_preference_ingress" => RouteDispatchHandler::PreferenceIngress,
         "effect_reconciliation" => RouteDispatchHandler::EffectReconciliation,
@@ -168,6 +161,7 @@ fn dispatch_handler(lifecycle: IngressLifecycleSpec) -> RouteDispatchHandler {
         | "operator_mutation_reconciliation"
         | "telegram_operator_authority" => RouteDispatchHandler::OperatorExecution,
         "telegram_receive_once" => RouteDispatchHandler::TelegramReceiveOnce,
+        "ndu_h1_shadow" => RouteDispatchHandler::NduH1Status,
         "control_ui_transitive_effect_quarantine" => RouteDispatchHandler::RetiredCompatibility,
         "control_ui_route_specs" | "special_native_gateway_route" => {
             RouteDispatchHandler::NativeGateway

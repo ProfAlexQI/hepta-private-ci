@@ -97,6 +97,28 @@ fn all_registered_get_routes_return_structured_http_over_real_sockets() {
 }
 
 #[test]
+fn ndu_h1_status_is_read_only_over_real_socket() {
+    let root = tempfile::tempdir().expect("runtime root");
+    let runtime = Arc::new(
+        NativeGatewayRuntime::bootstrap_with_ndu_for_test(root.path()).expect("NDU runtime"),
+    );
+    let response = route_over_real_socket(
+        runtime,
+        test_gateway_options(false),
+        "GET",
+        crate::runtime_composition::NDU_H1_STATUS_ENDPOINT,
+    );
+    assert!(response.starts_with("HTTP/1.1 200 OK"));
+    let body = response.split_once("\r\n\r\n").unwrap().1;
+    let status: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(status["enabled"], true);
+    assert_eq!(status["ready"], true);
+    assert_eq!(status["shadow_only"], true);
+    assert_eq!(status["production_authority_granted"], false);
+    assert_eq!(status["observed_event_count"], 0);
+}
+
+#[test]
 fn unknown_and_retired_routes_have_explicit_http_errors() {
     let root = tempfile::tempdir().expect("runtime root");
     let runtime = Arc::new(

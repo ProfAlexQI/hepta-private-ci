@@ -386,3 +386,51 @@ fn keyed_runtime_rejects_noncanonical_key_encoding() {
     let error = read_integrity_key(&key_path).expect_err("uppercase key must fail");
     assert!(error.to_string().contains("canonical lowercase hex"));
 }
+
+#[test]
+fn ndu_h1_shadow_observes_runtime_receipts_without_authority() {
+    let root = tempdir().unwrap();
+    let runtime = NativeGatewayRuntime::bootstrap_with_ndu_for_test(root.path()).unwrap();
+    let before = runtime.ndu_h1_status().unwrap();
+    assert!(before.enabled);
+    assert!(before.ready);
+    assert!(before.accepting_observations);
+    assert!(!before.production_authority_granted);
+    assert_eq!(before.observed_event_count, 0);
+
+    runtime
+        .execute_runtime_kernel_canary(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+    let after = runtime.ndu_h1_status().unwrap();
+    assert_eq!(after.observed_event_count, 1);
+    assert_eq!(after.recorded_count, 1);
+    assert_eq!(after.rejected_count, 0);
+    assert!(!after.production_authority_granted);
+
+    fs::write(root.path().join("ndu-h1.kill"), b"disabled\n").unwrap();
+    let killed = runtime.ndu_h1_status().unwrap();
+    assert!(killed.kill_switch_active);
+    assert!(!killed.accepting_observations);
+    assert!(!killed.production_authority_granted);
+}
+
+#[test]
+fn ndu_h1_shadow_recovers_across_gateway_restart() {
+    let root = tempdir().unwrap();
+    let runtime = NativeGatewayRuntime::bootstrap_with_ndu_for_test(root.path()).unwrap();
+    runtime
+        .execute_runtime_kernel_canary(
+            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        )
+        .unwrap();
+    assert_eq!(runtime.ndu_h1_status().unwrap().observed_event_count, 1);
+    drop(runtime);
+
+    let reopened = NativeGatewayRuntime::open_existing_with_ndu_for_test(root.path()).unwrap();
+    let status = reopened.ndu_h1_status().unwrap();
+    assert!(status.ready);
+    assert_eq!(status.observed_event_count, 1);
+    assert!(!status.production_authority_granted);
+}

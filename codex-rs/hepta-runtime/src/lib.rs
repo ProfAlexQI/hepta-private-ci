@@ -223,6 +223,7 @@ mod live_readiness;
 mod memory_context;
 mod model_provider_router;
 mod multi_agent;
+mod ndu_h1_runtime;
 mod operator_policy;
 mod output_directives;
 mod plugin_keyed_store;
@@ -320,6 +321,10 @@ pub use execution_admission::ExecutionAdmissionError;
 pub use execution_admission::ExecutionIngress;
 pub use execution_admission::ProviderEffectAck;
 pub use execution_admission::TerminalEffectReceipt;
+pub use ndu_h1_runtime::NduH1Runtime;
+pub use ndu_h1_runtime::NduH1RuntimeError;
+pub use ndu_h1_runtime::NduH1RuntimeStatus;
+pub use ndu_h1_runtime::NduH1ShadowEvent;
 
 include!("runtime_kernel/exports.rs");
 include!("runtime_kernel/exports_workgraph.rs");
