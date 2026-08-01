@@ -31,6 +31,7 @@ use codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;
 use codex_protocol::config_types::TrustLevel;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::ThreadHistoryMode;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
@@ -360,7 +361,7 @@ async fn thread_start_rejects_unknown_environment_as_invalid_request() -> Result
         .send_thread_start_request(ThreadStartParams {
             environments: Some(vec![TurnEnvironmentParams {
                 environment_id: "missing".to_string(),
-                cwd: codex_home.path().to_path_buf().try_into()?,
+                cwd: AbsolutePathBuf::try_from(codex_home.path().to_path_buf())?.into(),
             }]),
             ..Default::default()
         })
