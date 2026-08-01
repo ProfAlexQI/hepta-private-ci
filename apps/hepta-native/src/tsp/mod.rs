@@ -45,7 +45,7 @@ pub fn submit_tsp_request(req: TspRequest) {
     let Some(sender) = TSP_REQUEST_SENDER.get() else {
         enqueue_popup_notification(
             "Failed to submit TSP request: TSP request sender was not initialized.\n\n\
-                Please restart Robrix to continue using TSP features.",
+                Please restart Hepta to continue using TSP features.",
             PopupKind::Error,
             None,
         );
@@ -54,7 +54,7 @@ pub fn submit_tsp_request(req: TspRequest) {
     if sender.send(req).is_err() {
         enqueue_popup_notification(
             "Failed to submit TSP request: the background TSP worker task has died.\n\n\
-                Please restart Robrix to continue using TSP features.",
+                Please restart Hepta to continue using TSP features.",
             PopupKind::Error,
             None,
         );
@@ -606,7 +606,7 @@ pub enum TspRequest {
 
 fn create_reqwest_client() -> reqwest::Result<reqwest::Client> {
     reqwest::ClientBuilder::new()
-        .user_agent(format!("Robrix v{}", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!("Hepta v{}", env!("CARGO_PKG_VERSION")))
         .build()
 }
 

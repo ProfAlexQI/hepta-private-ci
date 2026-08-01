@@ -215,13 +215,18 @@ script_mod! {
         height: Fit{max: FitBound.Rel{base: Base.Full, factor: 0.75}}
         flow: Down,
 
-        margin: Inset{left: 0, right: 0, bottom: 0}
+        // Keep the composer visually detached from the room chrome while the
+        // governed input/attachment behavior remains in the split modules.
+        margin: Inset{left: 10, right: 10, bottom: 10}
         show_bg: true,
         draw_bg +: {
-            color: (COLOR_TELEGRAM_PANEL)
-            border_radius: 14.0
-            border_color: (COLOR_TELEGRAM_GLASS_HAIRLINE)
+            color: (COLOR_HEPTA_GLASS_STRONG)
+            border_radius: (HEPTA_RADIUS_FLOATING)
+            border_color: (COLOR_HEPTA_HAIRLINE)
             border_size: 1.0
+            shadow_color: (COLOR_HEPTA_SHADOW)
+            shadow_radius: 8.0
+            shadow_offset: vec2(0.0, 2.0)
         }
 
         // The top-most element is a preview of the message that the user is replying to, if any.
@@ -1428,7 +1433,7 @@ script_mod! {
                 // Bottom-align everything to ensure that buttons always stick to the bottom
                 // even when the mentionable_text_input box is very tall.
                 align: Align{y: 1.0},
-                padding: Inset{top: 8, bottom: 8, left: 12, right: 12},
+                padding: 7,
 
                 attachment_button := RobrixIconButton {
                     margin: 4
@@ -1438,9 +1443,9 @@ script_mod! {
                         color: (COLOR_TELEGRAM_MUTED)
                     },
                     draw_bg +: {
-                        color: (COLOR_TELEGRAM_INPUT)
-                        color_hover: #xFFFFFF14
-                        color_down: (COLOR_TELEGRAM_DIALOG_ACTIVE)
+                        color: (COLOR_BG_PREVIEW)
+                        color_hover: (COLOR_HEPTA_FOCUS_SURFACE_HOVER)
+                        color_down: (COLOR_HEPTA_HAIRLINE)
                     }
                     icon_walk: Walk{width: 21, height: 21}
                     text: "",

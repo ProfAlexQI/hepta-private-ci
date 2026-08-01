@@ -43,7 +43,7 @@ script_mod! {
             font_color: #3
             body: "<p>You can enter a room/space address using either:</p>
                 <ul>
-                  <li> An <i>alias</i>, starting with <code>#</code>, like <code>#robrix:matrix.org</code>.</li>
+                  <li> An <i>alias</i>, starting with <code>#</code>, like <code>#hepta:matrix.org</code>.</li>
                   <li> An <i>ID</i>, starting with <code>!</code>, like <code>!room_id:matrix.org</code>.</li>
                   <li> A Matrix link, like <code>matrix:...</code> or <code>https:matrix.to/...</code>.</li>
                 </ul>
@@ -63,7 +63,7 @@ script_mod! {
                 margin: Inset{top: 0, left: 5, right: 5, bottom: 0},
                 padding: Inset{left: 12, right: 12, top: 11, bottom: 0}
                 width: Fill { max: 400 } // same width as the above `help_info`
-                height: 40
+                height: 44
                 empty_text: "Enter alias, ID, or Matrix link..."
                 autocapitalize: None,
                 autocorrect: Disabled,
@@ -71,7 +71,7 @@ script_mod! {
 
             search_for_room_button := RobrixIconButton {
                 padding: Inset{top: 10, bottom: 10, left: 12, right: 14}
-                height: 40
+                height: 44
                 draw_icon.svg: (ICON_SEARCH)
                 icon_walk: Walk{width: 16, height: 16}
                 text: "Go"
@@ -129,9 +129,9 @@ script_mod! {
             show_bg: true
             draw_bg +: {
                 color: (COLOR_PRIMARY)
-                border_radius: 4.0
+                border_radius: (HEPTA_RADIUS_PANEL)
                 border_size: 1.0
-                border_color: (COLOR_BG_DISABLED)
+                border_color: (COLOR_HEPTA_HAIRLINE)
                 // shadow_color: #0005
                 // shadow_radius: 15.0
                 // shadow_offset: vec2(1.0, 0.0), //5.0,5.0)

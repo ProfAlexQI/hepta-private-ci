@@ -39,7 +39,7 @@ script_mod! {
         max_lines: 1
         text_overflow: Ellipsis
         draw_text +: {
-            color: #000,
+            color: (COLOR_HEPTA_TEXT),
             text_style: USERNAME_TEXT_STYLE { font_size: 10. }
         }
         text: "[Room name unknown]"
@@ -51,7 +51,7 @@ script_mod! {
         flow: Flow.Right{wrap: false},
         draw_text +: {
             color: (TIMESTAMP_TEXT_COLOR)
-            text_style: TIMESTAMP_TEXT_STYLE { font_size: 7.5 }
+            text_style: TIMESTAMP_TEXT_STYLE { font_size: 9.0 }
         }
     }
 
@@ -114,17 +114,17 @@ script_mod! {
 
         flow: Right,
         spacing: 10,
-        padding: 10,
+        padding: 9,
         width: Fill, height: Fit
 
         show_bg: true
         draw_bg +: {
             active: instance(0.0)
             color: instance(#0000)
-            color_selected: instance(COLOR_ACTIVE_PRIMARY)
-            border_color: instance(#0000)
+            color_selected: instance(COLOR_HEPTA_FOCUS_SURFACE)
+            border_color: instance(COLOR_HEPTA_HAIRLINE)
             border_size: uniform(0.0)
-            border_radius: uniform(4.0)
+            border_radius: uniform(HEPTA_RADIUS_CONTROL)
             border_inset: uniform(vec4(0.0))
 
             get_color: fn() -> vec4 {
@@ -441,8 +441,8 @@ impl RoomsListEntryContent {
         // Link colors must be re-applied on every draw because the HTML's link widgets
         // get created dynamically during the draw walk.
         //
-        // * If selected, set link color to None so links inherit the font_color (white)
-        //   for better contrast against the selected background（blue).
+        // * If selected, set link color to None so links inherit the selected
+        //   preview color and avoid a second competing accent.
         // * If not selected, restore the default blue link color.
         self.view.html_or_plaintext(cx, ids!(latest_message)).set_link_color(
             cx,
@@ -463,17 +463,18 @@ impl RoomsListEntryContent {
         let timestamp_color;
         let code_bg_color;
 
-        // TODO: use script-defined theme color instead of redefining constants below
+        // The selected surface is intentionally pale, so selected rows retain
+        // dark text instead of flipping to a high-contrast blue block.
         if is_selected {
-            message_text_color = vec4(1., 1., 1., 1.); // COLOR_PRIMARY
-            room_name_color = vec4(1., 1., 1., 1.); // COLOR_PRIMARY
-            timestamp_color = vec4(1., 1., 1., 1.); // COLOR_PRIMARY
-            code_bg_color = vec4(0.3, 0.3, 0.3, 1.0); // a darker gray used for the background of code blocks and quote blocks
+            message_text_color = vec4(0.243, 0.333, 0.376, 1.0);
+            room_name_color = vec4(0.078, 0.165, 0.196, 1.0);
+            timestamp_color = vec4(0.337, 0.416, 0.471, 1.0);
+            code_bg_color = vec4(0.906, 0.949, 0.961, 1.0);
         } else {
-            message_text_color = vec4(0.267, 0.267, 0.267, 1.0); // MESSAGE_TEXT_COLOR
-            room_name_color = vec4(0., 0., 0., 1.0);
-            timestamp_color = vec4(0.6, 0.6, 0.6, 1.0);
-            code_bg_color = vec4(0.929, 0.929, 0.929, 1.0); // #EDEDED
+            message_text_color = vec4(0.337, 0.416, 0.471, 1.0);
+            room_name_color = vec4(0.078, 0.165, 0.196, 1.0);
+            timestamp_color = vec4(0.361, 0.431, 0.475, 1.0);
+            code_bg_color = vec4(0.949, 0.969, 0.976, 1.0);
         }
 
         // Toggle the background color via the animator (handles selected/deselected bg).

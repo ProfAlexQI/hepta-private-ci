@@ -5,6 +5,8 @@ use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
+const ROBRIX_UPSTREAM_FULL_SHA: &str = "a5a664da569c577ab1a3e5a33f45dcc9364954a0";
+
 const CANONICAL_ASSET_MANIFEST: &str = "canonical-assets-v1.tsv";
 const CANONICAL_ASSET_CONTRACT: &[(&str, &str, &str, &str, usize)] = &[
     (
@@ -119,7 +121,6 @@ fn materialize_canonical_assets() {
         "canonical asset manifest is incomplete"
     );
 }
-
 fn main() {
     materialize_canonical_assets();
 
@@ -142,34 +143,45 @@ fn main() {
             // Explicit VERSIONINFO fields. Without these, Windows shows
             // "Unknown publisher" in the UAC/SmartScreen install prompt
             // (CompanyName/LegalCopyright are empty by default), and the
-            // ProductName/FileDescription fall back to the lowercase crate
-            // name "robrix" instead of the product name.
-            res.set("CompanyName", "GOSIM Foundation");
-            res.set("ProductName", "Robrix");
-            res.set("FileDescription", "Robrix - Matrix chat client");
-            res.set("LegalCopyright", "Copyright - 2023-2026 Project Robius");
+            // ProductName/FileDescription otherwise fall back to the crate name.
+            res.set("CompanyName", "Hepta");
+            res.set("ProductName", "Hepta");
+            res.set(
+                "FileDescription",
+                "Hepta - Matrix chat and agent collaboration",
+            );
+            res.set(
+                "LegalCopyright",
+                "Copyright 2026 Hepta contributors; Robrix portions copyright Project Robius",
+            );
             res.compile().expect("Failed to compile Windows resources");
         }
     }
 
-    // Get version info about Robrix, the matrix SDK, and testflight.
+    // Expose the downstream build revision separately from the frozen Robrix baseline.
     println!("cargo:rerun-if-changed=Cargo.lock");
     let (sdk_version, sdk_git_rev, sdk_url) = read_matrix_sdk_info();
     println!("cargo:rustc-env=MATRIX_SDK_VERSION={sdk_version}");
     println!("cargo:rustc-env=MATRIX_SDK_GIT_REV={sdk_git_rev}");
     println!("cargo:rustc-env=MATRIX_SDK_URL={sdk_url}");
 
-    let (robrix_git_rev, robrix_url) = read_robrix_git_info();
-    println!("cargo:rustc-env=ROBRIX_GIT_COMMIT_HASH={robrix_git_rev}");
-    println!("cargo:rustc-env=ROBRIX_GIT_COMMIT_URL={robrix_url}");
+    let (hepta_git_rev, hepta_url) = read_hepta_git_info();
+    println!("cargo:rustc-env=HEPTA_GIT_COMMIT_HASH={hepta_git_rev}");
+    println!("cargo:rustc-env=HEPTA_GIT_COMMIT_URL={hepta_url}");
+
+    let robrix_short_rev: String = ROBRIX_UPSTREAM_FULL_SHA.chars().take(8).collect();
+    println!("cargo:rustc-env=ROBRIX_GIT_COMMIT_HASH={robrix_short_rev}");
+    println!(
+        "cargo:rustc-env=ROBRIX_GIT_COMMIT_URL=https://github.com/project-robius/robrix/commit/{ROBRIX_UPSTREAM_FULL_SHA}"
+    );
 
     println!("cargo:rerun-if-env-changed=TESTFLIGHT_BUILD_NUMBER");
     let testflight_build = std::env::var("TESTFLIGHT_BUILD_NUMBER").unwrap_or_default();
     println!("cargo:rustc-env=TESTFLIGHT_BUILD_NUMBER={testflight_build}");
 }
 
-/// Returns Robrix's own current git commit info as a commit hash and a permalink.
-fn read_robrix_git_info() -> (String, String) {
+/// Returns the current Hepta revision as a commit hash and permalink.
+fn read_hepta_git_info() -> (String, String) {
     // Tell cargo to re-run when the git-tracked HEAD changes.
     println!("cargo:rerun-if-changed=.git/HEAD");
     if let Ok(head) = std::fs::read_to_string(".git/HEAD") {
@@ -192,7 +204,7 @@ fn read_robrix_git_info() -> (String, String) {
         return (String::new(), String::new());
     }
     let short_rev: String = full_sha.chars().take(8).collect();
-    let url = format!("https://github.com/project-robius/robrix/tree/{full_sha}");
+    let url = format!("https://github.com/ProfAlexQI/Hepta/commit/{full_sha}");
     (short_rev, url)
 }
 
@@ -211,9 +223,8 @@ fn read_matrix_sdk_info() -> (String, String, String) {
         .get("package")
         .and_then(|p| p.as_array())
         .and_then(|pkgs| {
-            pkgs.iter().find(|p| {
-                p.get("name").and_then(|n| n.as_str()) == Some("matrix-sdk")
-            })
+            pkgs.iter()
+                .find(|p| p.get("name").and_then(|n| n.as_str()) == Some("matrix-sdk"))
         })
     else {
         return (String::new(), String::new(), String::new());
@@ -240,7 +251,10 @@ fn read_matrix_sdk_info() -> (String, String, String) {
         (short_rev, url)
     } else if !version.is_empty() {
         // Registry/path/other sources: fall back to the crates.io URL.
-        (String::new(), format!("https://crates.io/crates/matrix-sdk/{version}"))
+        (
+            String::new(),
+            format!("https://crates.io/crates/matrix-sdk/{version}"),
+        )
     } else {
         (String::new(), String::new())
     };

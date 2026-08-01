@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "kind": "hepta-native-robrix-upstream-lock",
+  "verified": true,
+  "verification": {
+    "method": "exact_git_commit_tree_and_per_file_sha256_manifest_plus_github_commit_signature",
+    "verified_at_utc": "2026-08-01T12:00:00Z",
+    "commit_signature_verified": true,
+    "commit_signature_source": "GitHub REST API commit.verification",
+    "commit_signature_reason": "valid",
+    "commit_signature_verified_at_utc": "2026-08-01T04:24:38Z",
+    "note": "The exact commit, tree, file inventory, and content hashes were verified locally. GitHub's commit API independently reports verified=true and reason=valid for this signed merge commit; the local host does not claim an independent GPG trust-chain verification."
+  },
+  "source": {
+    "repository": "https://github.com/project-robius/robrix.git",
+    "remote_name": "robrix-upstream",
+    "commit": "a5a664da569c577ab1a3e5a33f45dcc9364954a0",
+    "tree": "e620da0561b6632e85eed31008f811bf94c4c24a",
+    "raw_import_commit": "7ac362f9690aa870591f4edcf533934af18921cb"
+  },
+  "license": {
+    "spdx": "MIT",
+    "file": "LICENSE-MIT"
+  },
+  "snapshot": {
+    "upstream_file_count": 242,
+    "imported_file_count": 232,
+    "excluded_file_count": 10,
+    "manifest": "UPSTREAM_ROBRIX_FILES.tsv",
+    "manifest_sha256": "957d6d4fa88d5e71409931fa2fb66b75fceeb8cbeb34d920ec58f99d2d83457b"
+  },
+  "import_policy": {
+    "destination_prefix": "apps/hepta-native/",
+    "include": [
+      "**"
+    ],
+    "exclude": [
+      ".github/**",
+      "AGENTS.md",
+      "packaging/upload-release-secrets.sh"
+    ],
+    "exclude_reasons": {
+      ".github/**": "the Hepta monorepo owns CI and repository automation",
+      "AGENTS.md": "the Hepta workspace owns agent instructions",
+      "packaging/upload-release-secrets.sh": "release-secret upload is outside the UI lane and requires explicit release authority"
+    }
+  },
+  "sync_policy": {
+    "mode": "read_only_dry_run",
+    "fetch_url": "https://github.com/project-robius/robrix.git",
+    "push_url": "DISABLED",
+    "whole_tree_overwrite_allowed": false,
+    "downstream_patch_ledger": "DOWNSTREAM_PATCHES.md"
+  }
+}

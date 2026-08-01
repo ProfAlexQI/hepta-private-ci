@@ -1,3 +1,42 @@
+# Hepta Native
+
+Hepta Native is the cross-platform Matrix product surface for Hepta. It is an
+upstream-first downstream of the complete Robrix application shell, rather
+than the former Hepta diagnostics cockpit.
+
+- Frozen upstream: `project-robius/robrix@a5a664da569c577ab1a3e5a33f45dcc9364954a0`
+- Provenance: `UPSTREAM_ROBRIX.lock.json` and `UPSTREAM_ROBRIX_FILES.tsv`
+- Downstream ledger: `DOWNSTREAM_PATCHES.md`
+- Desktop development: `cargo run --locked --bin hepta-native`
+- Product boundary: Matrix rooms, timelines, E2EE, media, composer, settings,
+  and mobile navigation come from Robrix/Matrix SDK. Hepta runtime, tools,
+  tasks, and approvals cross only the disabled-by-default `hepta_bridge`.
+
+Developer Diagnostics is hidden in normal builds and is available only with
+the explicit `developer-diagnostics` feature. Signing, notarization, public
+distribution, live Hepta adapters, and real-device validation are separate
+gates.
+
+## Downstream platform boundary
+
+The full imported Robrix shell retains its macOS, Linux, Windows, Android,
+iOS/iPadOS, and OpenHarmony target structure. The current Hepta downstream is
+compiled, tested, launched, and GPU-frame-captured on macOS. Other native
+targets still require their own host/device build and runtime evidence; this
+repository does not infer cross-platform readiness from the macOS result.
+
+Secure Matrix session persistence uses the platform keyring on Apple,
+Linux/BSD, and Windows targets. Android and OpenHarmony currently fail closed
+and require re-login instead of writing credentials to plaintext. Mobile
+keyring, safe-area, software-keyboard, screen-reader, RTL, Dynamic Type/font
+scale, and low-power performance remain real-device gates.
+
+## Frozen upstream documentation (reference only)
+
+The remainder is the imported Robrix documentation. Commands and release
+paths below describe upstream Robrix and are retained for attribution and
+comparison; use the Hepta commands and packaging gates above for this fork.
+
 # Robrix: a Rust Matrix client built atop [Robius](https://github.com/project-robius)
 
 [![Robrix Matrix Chat](https://img.shields.io/matrix/robius-robrix%3Amatrix.org?server_fqdn=matrix.org&style=flat&logo=matrix&label=Robrix%20Matrix%20Chat&color=B7410E)](https://matrix.to/#/#robius-robrix:matrix.org)

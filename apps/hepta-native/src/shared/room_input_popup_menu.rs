@@ -10,7 +10,7 @@ script_mod! {
     use mod.widgets.*
 
     mod.widgets.RoomInputPopupMenuButton = RobrixIconButton {
-        height: 38
+        height: 44
         width: Fill
         margin: 0
         padding: Inset{left: 10, right: 12, top: 9, bottom: 9}
@@ -18,10 +18,12 @@ script_mod! {
         align: Align{x: 0, y: 0.5}
 
         draw_bg +: {
-            color: (COLOR_PRIMARY)
-            color_hover: #xE0E8F0
-            color_down: #xD0D8E8
-            border_radius: 4.0
+            color: (COLOR_HEPTA_GLASS_STRONG)
+            color_hover: (COLOR_HEPTA_FOCUS_SURFACE)
+            color_down: (COLOR_HEPTA_FOCUS_SURFACE_HOVER)
+            border_radius: (HEPTA_RADIUS_CONTROL)
+            border_color: #0000
+            border_color_focus: (COLOR_HEPTA_FOCUS)
         }
         draw_text +: {
             color: (COLOR_TEXT)
@@ -60,12 +62,13 @@ script_mod! {
 
             show_bg: true
             draw_bg +: {
-                color: (COLOR_PRIMARY)
-                border_radius: 5.0
-                border_size: 0.0
-                shadow_color: #0005
-                shadow_radius: 14.0
-                shadow_offset: vec2(0.0, 4.0)
+                color: (COLOR_HEPTA_GLASS_STRONG)
+                border_radius: (HEPTA_RADIUS_PANEL)
+                border_size: 1.0
+                border_color: (COLOR_HEPTA_HAIRLINE)
+                shadow_color: (COLOR_HEPTA_SHADOW)
+                shadow_radius: 8.0
+                shadow_offset: vec2(0.0, 2.0)
             }
 
             upload_photo_video_button := mod.widgets.RoomInputPopupMenuButton {

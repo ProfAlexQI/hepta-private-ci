@@ -38,7 +38,7 @@ script_mod! {
         width: Fill, height: #(ROW_HEIGHT), flow: Right, spacing: 9, align: Align{y: 0.5}
         padding: Inset{left: 10, right: 10}
         show_bg: true, cursor: MouseCursor.Hand
-        draw_bg +: { color: #00000000, border_radius: 5.0 }
+        draw_bg +: { color: #00000000, border_radius: (HEPTA_RADIUS_CONTROL) }
         avatar := Avatar { width: 30, height: 30 }
         info := View {
             width: Fill, height: Fit, flow: Down, spacing: 1
@@ -48,7 +48,7 @@ script_mod! {
             }
             subtitle := Label {
                 width: Fill, height: Fit, max_lines: 1, text_overflow: Ellipsis, padding: 0
-                draw_text +: { color: #555, text_style: theme.font_regular {font_size: 9.5, line_spacing: 1.0} }
+                draw_text +: { color: (COLOR_HEPTA_MUTED), text_style: theme.font_regular {font_size: 10.0, line_spacing: 1.0} }
             }
         }
     }
@@ -62,7 +62,7 @@ script_mod! {
         }
         loading_label := Label {
             height: Fit
-            draw_text +: { color: #555, text_style: theme.font_regular {font_size: 10.5} }
+            draw_text +: { color: (COLOR_HEPTA_MUTED), text_style: theme.font_regular {font_size: 10.5} }
         }
     }
 
@@ -73,7 +73,7 @@ script_mod! {
         empty_label := Label {
             width: Fill, height: Fit, max_lines: 2, text_overflow: Ellipsis
             align: Align{x: 0.5}
-            draw_text +: { color: #555, text_style: theme.font_regular {font_size: 10.5} }
+            draw_text +: { color: (COLOR_HEPTA_MUTED), text_style: theme.font_regular {font_size: 10.5} }
         }
     }
 
@@ -83,8 +83,8 @@ script_mod! {
         flow: Overlay
         align: Align{x: 0.0, y: 0.0}
 
-        color_focus: #xB6D3F2
-        color_hover: #xEAEFF5
+        color_focus: (COLOR_HEPTA_FOCUS_SURFACE)
+        color_hover: (COLOR_HEPTA_GLASS)
 
         // So the way this works is that we move the popup_frame wrapper view,
         // which allows the `main_content` to just behave like a regular Fill/Fill view.
@@ -97,13 +97,13 @@ script_mod! {
                 flow: Down
                 show_bg: true
                 draw_bg +: {
-                    color: (COLOR_PRIMARY)
-                    border_radius: 5.0
+                    color: (COLOR_HEPTA_GLASS_STRONG)
+                    border_radius: (HEPTA_RADIUS_PANEL)
                     border_size: 1.0
-                    border_color: (COLOR_SECONDARY)
-                    shadow_color: #0006
-                    shadow_radius: 12.0
-                    shadow_offset: vec2(0.0, 3.0)
+                    border_color: (COLOR_HEPTA_HAIRLINE)
+                    shadow_color: (COLOR_HEPTA_SHADOW)
+                    shadow_radius: 8.0
+                    shadow_offset: vec2(0.0, 2.0)
                 }
 
                 header_view := RoundedView {
@@ -113,13 +113,13 @@ script_mod! {
                     padding: Inset{left: 16, right: 16}
                     show_bg: true
                     draw_bg +: {
-                        color: (COLOR_ROBRIX_PURPLE)
-                        border_radius: 5.0
+                        color: (COLOR_HEPTA_FOCUS_SURFACE)
+                        border_radius: (HEPTA_RADIUS_PANEL)
                     }
                     header_label := Label {
                         width: Fill, height: Fit, max_lines: 1, text_overflow: Ellipsis, padding: 0
                         draw_text +: {
-                            color: (COLOR_PRIMARY)
+                            color: (COLOR_HEPTA_TEXT)
                             text_style: theme.font_bold {font_size: 13.0, line_spacing: 1.0}
                         }
                     }

@@ -180,7 +180,7 @@ script_mod! {
         show_bg: true
         draw_bg +: {
             color: (mod.widgets.COLOR_THREAD_SUMMARY_BG)
-            border_radius: 4.0
+            border_radius: (HEPTA_RADIUS_CONTROL)
             border_size: 1.5
             border_color: (mod.widgets.COLOR_THREAD_SUMMARY_BORDER)
         }
@@ -225,21 +225,21 @@ script_mod! {
         draw_bg +: {
             highlight: instance(0.0)
             hover: instance(0.0)
-            color: instance((COLOR_PRIMARY)) // default color)
+            color: instance((COLOR_HEPTA_CONTENT))
 
-            mentions_bar_color: instance((COLOR_PRIMARY))
+            mentions_bar_color: instance((COLOR_HEPTA_CONTENT))
             mentions_bar_width: instance(4.0)
 
             pixel: fn() {
                 let base_color = mix(
                     self.color,
-                    #fafafa,
+                    COLOR_HEPTA_SURFACE,
                     self.hover
                 );
 
                 let with_highlight = mix(
                     base_color,
-                    #c5d6fa,
+                    COLOR_HEPTA_FOCUS_SURFACE,
                     self.highlight
                 );
 

@@ -18,6 +18,7 @@ pub mod progress_bar;
 pub mod room_filter_input_bar;
 pub mod room_input_popup_menu;
 pub mod slash_commands;
+pub mod hepta_theme;
 pub mod styles;
 pub mod text_or_image;
 pub mod timestamp;
@@ -27,9 +28,9 @@ pub mod verification_badge;
 pub mod restore_status_view;
 pub mod image_viewer;
 
-
 pub fn script_mod(vm: &mut ScriptVm) {
     // Order matters here, as some widget definitions depend on others.
+    hepta_theme::script_mod(vm);
     styles::script_mod(vm);
     helpers::script_mod(vm);
     icon_button::script_mod(vm);

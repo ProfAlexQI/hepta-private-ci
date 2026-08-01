@@ -20,11 +20,11 @@ script_mod! {
 
     mod.widgets.RoomsSideBar = #(RoomsSideBar::register_widget(vm)) {
         Desktop := SolidView {
-            padding: Inset{top: 20, left: 10, right: 10}
-            flow: Down, spacing: 5
+            padding: Inset{top: 18, bottom: 12, left: 12, right: 12}
+            flow: Down, spacing: 8
             width: Fill, height: Fill
 
-            draw_bg.color: (COLOR_PRIMARY_DARKER)
+            draw_bg.color: (COLOR_HEPTA_GLASS)
 
             CachedWidget {
                 rooms_list_header := RoomsListHeader {}
@@ -40,17 +40,19 @@ script_mod! {
             
             RoundedShadowView {
                 width: Fill, height: Fit
-                padding: Inset{top: 15, left: 15, right: 15, bottom: 10}
+                margin: Inset{top: 8, left: 8, right: 8, bottom: 4}
+                padding: Inset{top: 14, left: 14, right: 14, bottom: 10}
                 flow: Down,
 
                 show_bg: true
                 draw_bg +: {
-                    color: (COLOR_PRIMARY_DARKER)
-                    border_radius: 4.0
-                    border_size: 0.0
-                    shadow_color: #0005
-                    shadow_radius: 12.0
-                    shadow_offset: vec2(0.0, 0.0)
+                    color: (COLOR_HEPTA_GLASS_STRONG)
+                    border_radius: (HEPTA_RADIUS_PANEL)
+                    border_size: 1.0
+                    border_color: (COLOR_HEPTA_HAIRLINE)
+                    shadow_color: (COLOR_HEPTA_SHADOW)
+                    shadow_radius: 8.0
+                    shadow_offset: vec2(0.0, 2.0)
 
                     pixel: fn() {
                         let sdf = Sdf2d.viewport(self.pos * self.rect_size3)
@@ -118,7 +120,7 @@ script_mod! {
             }
 
             View {
-                padding: Inset{left: 15, right: 15}
+                padding: Inset{left: 10, right: 10}
 
                 CachedWidget {
                     rooms_list := RoomsList {}
