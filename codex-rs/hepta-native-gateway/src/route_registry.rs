@@ -23,6 +23,13 @@ impl NativeRouteAliasSpec {
         std::iter::once(self.canonical).chain(self.aliases.iter().copied())
     }
 }
+mod native_report_bindings;
+
+pub(crate) use native_report_bindings::NativeReportId;
+pub(crate) use native_report_bindings::native_report_id;
+#[cfg(test)]
+pub(crate) use native_report_bindings::registered_native_report_paths;
+
 pub(crate) const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
 pub(crate) const EVIDENCE_INDEX_ENDPOINT: &str = "/api/evidence";
 pub(crate) const WATCHDOG_STATE_ENDPOINT: &str = "/api/watchdog-state";

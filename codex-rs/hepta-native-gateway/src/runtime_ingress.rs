@@ -32,6 +32,10 @@ use serde::ser::SerializeStruct;
 use sha2::Digest;
 use sha2::Sha256;
 
+mod rejection_response;
+
+pub(crate) use rejection_response::runtime_ingress_rejection_response;
+
 pub(crate) const TELEGRAM_RECEIVE_ONCE_ENDPOINT: &str = "/api/telegram-receive-once";
 pub(crate) const OPERATOR_AUTHORITY_CHALLENGE_ENDPOINT: &str =
     "/api/v2/operator-authority/challenge";
@@ -773,32 +777,6 @@ pub(crate) fn is_detached_control_ui_report_for_test(method: &str, path: &str) -
         && (CONTROL_UI_ROUTE_SPECS.iter().any(|route| {
             route.is_quarantined_transitive_effect() && route_pattern_matches(route.pattern, path)
         }) || DETACHED_CONTROL_UI_REPORT_PATHS.contains(&path))
-}
-
-pub(crate) fn runtime_ingress_rejection_response(
-    method: &str,
-    path: &str,
-) -> RuntimeIngressResponse {
-    if CONTROL_UI_ROUTE_SPECS.iter().any(|route| {
-        route.method == method
-            && route.is_quarantined_transitive_effect()
-            && route_pattern_matches(route.pattern, path)
-    }) {
-        return RuntimeIngressResponse {
-            status: "410 Gone",
-            body: r#"{"error":"runtime_ingress.route_retired","reason":"legacy_get_route_has_transitive_effects","replacement":"use an explicitly admitted POST mutation route"}"#.to_string(),
-        };
-    }
-    if runtime_ingress_lifecycle(method, path).is_none() {
-        return RuntimeIngressResponse {
-            status: "404 Not Found",
-            body: r#"{"error":"runtime_ingress.route_not_found"}"#.to_string(),
-        };
-    }
-    RuntimeIngressResponse {
-        status: "503 Service Unavailable",
-        body: r#"{"error":"runtime_ingress.preflight_unavailable"}"#.to_string(),
-    }
 }
 
 pub(crate) fn runtime_ingress_lifecycle_registry() -> Vec<IngressLifecycleSpec> {

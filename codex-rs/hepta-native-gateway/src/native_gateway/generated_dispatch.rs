@@ -116,7 +116,7 @@ fn resolved_native_report_id(
     if report_id.is_none()
         && crate::runtime_ingress::is_detached_control_ui_report_for_test(method, path)
     {
-        return native_report_registry::native_report_id(path);
+        return crate::route_registry::native_report_id(path);
     }
     report_id
 }

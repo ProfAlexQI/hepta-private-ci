@@ -9,6 +9,7 @@ use crate::native_telegram::TELEGRAM_LIVE_READ_ENV;
 use crate::operator_mutation::OPERATOR_MUTATION_ENABLED_ENV;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
 use crate::route_registry::EVIDENCE_INDEX_ENDPOINT;
+pub(crate) use crate::route_registry::NativeReportId;
 use crate::route_registry::TELEGRAM_LIVE_SOAK_ROUTE;
 use crate::runtime_ingress::IngressLifecycleSpec;
 use crate::runtime_ingress::declared_runtime_ingress_lifecycle;
@@ -48,10 +49,6 @@ pub(crate) enum RouteReportBinding {
     NativeBinaryAsset,
     CanonicalEvidence,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
-pub(crate) struct NativeReportId(pub(crate) u16);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub(crate) struct RouteDefinition {
@@ -125,9 +122,8 @@ fn report_binding(
     match dispatch_handler {
         RouteDispatchHandler::EvidenceIndex => (RouteReportBinding::CanonicalEvidence, None),
         RouteDispatchHandler::NativeGateway | RouteDispatchHandler::RetiredCompatibility => {
-            if let Some(report_id) = crate::native_gateway::native_report_registry::native_report_id(
-                lifecycle.path_pattern,
-            ) {
+            if let Some(report_id) = crate::route_registry::native_report_id(lifecycle.path_pattern)
+            {
                 return (RouteReportBinding::NativeExact, Some(report_id));
             }
             if crate::ui_domain::NATIVE_GATEWAY_BINARY_ASSET_PATHS.contains(&lifecycle.path_pattern)

@@ -66,7 +66,9 @@ fn all_registered_get_routes_return_structured_http_over_real_sockets() {
         let path = control_ui_sample_path(route.pattern);
         let response =
             route_over_real_socket(Arc::clone(&runtime), options.clone(), route.method, &path);
-        let expected_status = if route.is_quarantined_transitive_effect() {
+        let expected_status = if route_manifest_entry(route.method, &path)
+            .is_some_and(|entry| entry.dispatch_handler == RouteDispatchHandler::RetiredCompatibility)
+        {
             "HTTP/1.1 410 Gone"
         } else {
             "HTTP/1.1 200 OK"
@@ -139,13 +141,32 @@ fn unknown_and_retired_routes_have_explicit_http_errors() {
         .find(|route| route.is_quarantined_transitive_effect())
         .expect("retired route");
     let retired = route_over_real_socket(
-        runtime,
-        options,
+        Arc::clone(&runtime),
+        options.clone(),
         retired.method,
         &control_ui_sample_path(retired.pattern),
     );
     assert!(retired.starts_with("HTTP/1.1 410 Gone"));
     assert!(retired.contains(r#""error":"runtime_ingress.route_retired""#));
+
+    let canonical_only = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .find(|route| {
+            !route.is_quarantined_transitive_effect()
+                && route_manifest_entry(route.method, route.pattern).is_some_and(|entry| {
+                    entry.dispatch_handler == RouteDispatchHandler::RetiredCompatibility
+                })
+        })
+        .expect("canonical-only retired route");
+    let canonical_only = route_over_real_socket(
+        runtime,
+        options,
+        canonical_only.method,
+        &control_ui_sample_path(canonical_only.pattern),
+    );
+    assert!(canonical_only.starts_with("HTTP/1.1 410 Gone"));
+    assert!(canonical_only.contains(r#""error":"runtime_ingress.route_retired""#));
+    assert!(canonical_only.contains(r#""reason":"legacy_evidence_route_is_canonical_only""#));
 }
 
 #[test]
