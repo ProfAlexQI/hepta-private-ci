@@ -11,7 +11,6 @@ use hepta_contracts::RevisionStamp;
 use hepta_memory::DurableIntegrityKey;
 use hepta_runtime::NduH1Runtime;
 use hepta_runtime::NduH1RuntimeStatus;
-use hepta_runtime::NduH1ShadowEvent;
 use hepta_runtime::RuntimeExecutionReceipt;
 use hepta_runtime::RuntimeKernel;
 use serde::Serialize;
@@ -457,6 +456,10 @@ impl NativeGatewayRuntime {
             })
             .transpose()
             .map_err(|error| anyhow::anyhow!("initialize NDU H1 shadow runtime: {error:?}"))?;
+        let kernel = match &ndu_h1_runtime {
+            Some(runtime) => kernel.with_ndu_h1_shadow_observer(runtime.clone()),
+            None => kernel,
+        };
         let runtime = Self {
             kernel,
             preference_ingress,
@@ -535,55 +538,6 @@ impl NativeGatewayRuntime {
             journal_head: Some(journal_head),
             last_error,
         })
-    }
-
-    fn observe_ndu_h1_runtime_receipt(
-        &self,
-        request_binding_hash: &str,
-        receipt: &RuntimeExecutionReceipt,
-    ) {
-        let Some(runtime) = &self.ndu_h1_runtime else {
-            return;
-        };
-        let satisfied = hepta_intelligence::HardFeasibilityVerdict::Satisfied;
-        let event = NduH1ShadowEvent {
-            event_hash: hepta_contracts::ContentHash::new(receipt.terminal_outcome_hash.clone()),
-            source_receipt_hash: hepta_contracts::ContentHash::new(
-                receipt.terminal_receipt_hash.clone(),
-            ),
-            subject_pseudonym_hash: hepta_contracts::ContentHash::new(
-                request_binding_hash.to_owned(),
-            ),
-            explicit_preference_evidence_hash: None,
-            task_signal_basis_points: if receipt.terminal_status == "succeeded" {
-                10_000
-            } else {
-                -10_000
-            },
-            learning_signal_basis_points: 0,
-            trust_signal_basis_points: if receipt.durable_intent_recorded {
-                10_000
-            } else {
-                -10_000
-            },
-            memory_pollution_risk_basis_points: 0,
-            resource_cost_basis_points: if receipt.effect_plan_recorded {
-                1_000
-            } else {
-                100
-            },
-            uncertainty_basis_points: 0,
-            propensity_basis_points: 10_000,
-            delayed_outcome_hash: Some(hepta_contracts::ContentHash::new(
-                receipt.terminal_evidence_hash.clone(),
-            )),
-            feasibility: hepta_intelligence::HardFeasibilityMask::new(
-                satisfied, satisfied, satisfied, satisfied,
-            ),
-        };
-        if let Err(error) = runtime.observe_event(event) {
-            eprintln!("NDU H1 shadow observation rejected: {error:?}");
-        }
     }
 
     pub(crate) fn preflight_request(
@@ -1120,7 +1074,6 @@ impl NativeGatewayRuntime {
             {
                 anyhow::bail!("RuntimeKernel canary lifecycle evidence failed closed");
             }
-            self.observe_ndu_h1_runtime_receipt(request_binding_hash, &receipt);
             Ok(RuntimeKernelCanaryReceipt {
                 product: "Hepta",
                 runtime: "hepta",

@@ -138,6 +138,14 @@ impl RuntimeKernel {
         Self::new_with_outcome_sink_and_memory(outcome_sink, InMemoryStore::default())
     }
 
+    pub fn with_ndu_h1_shadow_observer(mut self, runtime: crate::NduH1Runtime) -> Self {
+        self.outcome_sink = runtime_kernel::outcome_sink::observe_with_ndu_h1_shadow(
+            self.outcome_sink,
+            runtime,
+        );
+        self
+    }
+
     fn new_with_outcome_sink_and_memory(
         outcome_sink: runtime_kernel::outcome_sink::SharedOutcomeReceiptSink,
         memory: InMemoryStore,

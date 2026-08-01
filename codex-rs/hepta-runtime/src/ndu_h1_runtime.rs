@@ -270,4 +270,33 @@ mod tests {
         assert!(status.kill_switch_active);
         assert!(!status.production_authority_granted);
     }
+
+    #[tokio::test]
+    async fn runtime_kernel_general_terminal_stream_observes_shadow_outcomes() {
+        let directory = tempdir().unwrap();
+        let runtime = NduH1Runtime::open(config(), directory.path().join("ndu.jsonl")).unwrap();
+        let kernel = crate::RuntimeKernel::new().with_ndu_h1_shadow_observer(runtime.clone());
+
+        let result = kernel
+            .run_demo_turn_in_session(
+                "general-terminal-stream",
+                "Use the echo tool with arguments exactly {\"text\":\"shadow\"}. Do not answer directly.",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.invoked_tool.as_deref(), Some("echo"));
+        assert_eq!(
+            result
+                .execution_receipt
+                .as_ref()
+                .map(|receipt| receipt.terminal_status.as_str()),
+            Some("succeeded")
+        );
+        let status = runtime.status().unwrap();
+        assert_eq!(status.observed_event_count, 1);
+        assert_eq!(status.recorded_count, 1);
+        assert_eq!(status.replay_count, 0);
+        assert!(!status.production_authority_granted);
+    }
 }

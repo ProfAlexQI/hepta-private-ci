@@ -33,6 +33,8 @@ use hepta_memory::OutcomeStoreError;
 use hepta_memory::SyncDurableOutcomeWriter;
 
 use super::execution_attempt::AuthorizedToolExecution;
+use crate::NduH1Runtime;
+use crate::NduH1ShadowEvent;
 use crate::RuntimeKernel;
 pub(crate) use breaker::OutcomeBreakerState;
 
@@ -40,6 +42,13 @@ pub(crate) use breaker::OutcomeBreakerState;
 mod tests;
 
 pub(crate) type SharedOutcomeReceiptSink = Arc<dyn OutcomeReceiptSink>;
+
+pub(crate) fn observe_with_ndu_h1_shadow(
+    inner: SharedOutcomeReceiptSink,
+    runtime: NduH1Runtime,
+) -> SharedOutcomeReceiptSink {
+    Arc::new(NduH1ObservedOutcomeReceiptSink { inner, runtime })
+}
 
 /// Exact immutable material retained across a retryable durable failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,6 +162,119 @@ pub(crate) trait OutcomeReceiptSink: Send + Sync {
         Err(OutcomeReceiptSinkError::Coordination {
             detail: "outcome sink does not expose a durable monotonic state".into(),
         })
+    }
+}
+
+struct NduH1ObservedOutcomeReceiptSink {
+    inner: SharedOutcomeReceiptSink,
+    runtime: NduH1Runtime,
+}
+
+impl NduH1ObservedOutcomeReceiptSink {
+    fn observe(&self, exact: &ExactOutcomeRecord) {
+        let satisfied = hepta_intelligence::HardFeasibilityVerdict::Satisfied;
+        let succeeded = matches!(
+            exact.receipt.status(),
+            hepta_contracts::OutcomeStatus::Succeeded
+        );
+        let event = NduH1ShadowEvent {
+            event_hash: exact.receipt.outcome_hash().clone(),
+            source_receipt_hash: exact.receipt.receipt_hash().clone(),
+            subject_pseudonym_hash: exact.receipt.payload_set_hash().clone(),
+            explicit_preference_evidence_hash: None,
+            task_signal_basis_points: if succeeded { 10_000 } else { -10_000 },
+            learning_signal_basis_points: 0,
+            trust_signal_basis_points: 10_000,
+            memory_pollution_risk_basis_points: 0,
+            resource_cost_basis_points: 100,
+            uncertainty_basis_points: 0,
+            propensity_basis_points: 10_000,
+            delayed_outcome_hash: Some(exact.canonical_evidence_hash.clone()),
+            feasibility: hepta_intelligence::HardFeasibilityMask::new(
+                satisfied, satisfied, satisfied, satisfied,
+            ),
+        };
+        if let Err(error) = self.runtime.observe_event(event) {
+            eprintln!("NDU H1 terminal shadow observation rejected: {error:?}");
+        }
+    }
+}
+
+impl OutcomeReceiptSink for NduH1ObservedOutcomeReceiptSink {
+    fn record(
+        &self,
+        exact: &ExactOutcomeRecord,
+    ) -> Result<OutcomeRecordResult, OutcomeReceiptSinkError> {
+        let result = self.inner.record(exact)?;
+        self.observe(exact);
+        Ok(result)
+    }
+
+    fn read_by_attempt(
+        &self,
+        attempt_id: &str,
+    ) -> Result<Option<OutcomeRecord>, OutcomeReceiptSinkError> {
+        self.inner.read_by_attempt(attempt_id)
+    }
+
+    fn stage_execution_intent(
+        &self,
+        intent: &ExecutionIntent,
+    ) -> Result<ExecutionIntentStageResult, OutcomeReceiptSinkError> {
+        self.inner.stage_execution_intent(intent)
+    }
+
+    fn record_and_resolve_execution(
+        &self,
+        exact: &ExactOutcomeRecord,
+        intent: &ExecutionIntent,
+    ) -> Result<OutcomeRecordResult, OutcomeReceiptSinkError> {
+        let result = self.inner.record_and_resolve_execution(exact, intent)?;
+        self.observe(exact);
+        Ok(result)
+    }
+
+    fn pending_execution_intent(
+        &self,
+        attempt_id: &str,
+    ) -> Result<Option<ExecutionIntent>, OutcomeReceiptSinkError> {
+        self.inner.pending_execution_intent(attempt_id)
+    }
+
+    fn pending_execution_intents(&self) -> Result<Vec<ExecutionIntent>, OutcomeReceiptSinkError> {
+        self.inner.pending_execution_intents()
+    }
+
+    fn stage_provider_completion(
+        &self,
+        ack: &ExecutionEffectAck,
+        exact: &ExactOutcomeRecord,
+    ) -> Result<OutcomeIntentStageResult, OutcomeReceiptSinkError> {
+        self.inner.stage_provider_completion(ack, exact)
+    }
+
+    fn execution_effect_ack(
+        &self,
+        attempt_id: &str,
+    ) -> Result<Option<ExecutionEffectAck>, OutcomeReceiptSinkError> {
+        self.inner.execution_effect_ack(attempt_id)
+    }
+
+    fn pending_intent(
+        &self,
+        attempt_id: &str,
+    ) -> Result<Option<RecoveredPendingOutcome>, OutcomeReceiptSinkError> {
+        self.inner.pending_intent(attempt_id)
+    }
+
+    fn first_pending_intent(
+        &self,
+    ) -> Result<Option<RecoveredPendingOutcome>, OutcomeReceiptSinkError> {
+        self.inner.first_pending_intent()
+    }
+
+    fn monotonic_state(&self) -> Result<DurableMonotonicState, OutcomeReceiptSinkError> {
+        self.inner.monotonic_state()
     }
 }
 
