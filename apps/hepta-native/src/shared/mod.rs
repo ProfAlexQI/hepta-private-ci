@@ -21,9 +21,16 @@ pub mod unread_badge;
 pub mod verification_badge;
 pub mod restore_status_view;
 pub mod image_viewer;
+pub mod light_glass_tokens;
+pub mod attachment_download;
+pub mod file_upload_modal;
+pub mod mention_popup;
+pub mod room_input_popup_menu;
+pub mod slash_commands;
 
 pub fn script_mod(vm: &mut ScriptVm) {
     // Order matters here, as some widget definitions depend on others.
+    light_glass_tokens::script_mod(vm);
     styles::script_mod(vm);
     helpers::script_mod(vm);
     icon_button::script_mod(vm);
@@ -45,4 +52,5 @@ pub fn script_mod(vm: &mut ScriptVm) {
     restore_status_view::script_mod(vm);
     confirmation_modal::script_mod(vm);
     image_viewer::script_mod(vm);
+    room_input_popup_menu::script_mod(vm);
 }

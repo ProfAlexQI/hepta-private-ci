@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+source scripts/lib/hepta-ui-rust-toolchain.sh
+source scripts/lib/hepta-control-ui-runtime-fixture.sh
+
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-${1:-}}"
 REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V3_REPORT_PATH:-}"
 MATRIX_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V3_MATRIX_DIR:-}"
@@ -54,6 +57,7 @@ if [[ -z "$BIND_ADDR" ]]; then
   exit 1
 fi
 
+hepta_control_ui_runtime_fixture_init
 BASE_URL="http://${BIND_ADDR}"
 server_pid=""
 tmp_report="$(mktemp "${TMPDIR:-/tmp}/hepta-ui-v3-final.XXXXXX")"
@@ -71,16 +75,13 @@ cleanup() {
     kill -9 "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
+  hepta_control_ui_runtime_fixture_cleanup
   rm -f "$tmp_report"
 }
 trap cleanup EXIT
 
 start_server() {
-  : >"$SERVER_LOG"
-  HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 CARGO_INCREMENTAL=0 \
-    cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
-    >"$SERVER_LOG" 2>&1 &
-  server_pid="$!"
+  hepta_control_ui_runtime_fixture_start_server "$MANIFEST" "$BIND_ADDR" "$SERVER_LOG"
 }
 
 wait_for_server() {
@@ -180,7 +181,8 @@ async function main() {
           expectedVisibleCount: 1,
           expectedItemCount: 3,
           requiresSvg: true,
-          requiresRole: true,
+          requiresRole: false,
+          requiresNativeInteractive: true,
           targetSelectors: [`[data-chat-row-menu-panel="${key}"]`],
           surfaceSelectors: [`[data-chat-row-menu-panel="${key}"]`],
           itemSelector: "[data-chat-row-menu-item]",
@@ -195,7 +197,8 @@ async function main() {
         expectedVisibleCount: 1,
         expectedItemCount: 3,
         requiresSvg: true,
-        requiresRole: true,
+        requiresRole: false,
+        requiresNativeInteractive: true,
         targetSelectors: ['[data-control-ui-thread-tools-panel="light-glass"]'],
         surfaceSelectors: ['[data-control-ui-thread-tools-panel="light-glass"]'],
         itemSelector: "[data-control-ui-menu-item]",
@@ -207,7 +210,8 @@ async function main() {
         expectedVisibleCount: 1,
         expectedItemCount: 2,
         requiresSvg: true,
-        requiresRole: true,
+        requiresRole: false,
+        requiresNativeInteractive: true,
         targetSelectors: ['[data-control-ui-composer-tools-panel="light-glass"]'],
         surfaceSelectors: ['[data-control-ui-composer-tools-panel="light-glass"]'],
         itemSelector: "[data-control-ui-menu-item]",
@@ -219,7 +223,8 @@ async function main() {
         expectedVisibleCount: 1,
         expectedItemCount: 2,
         requiresSvg: true,
-        requiresRole: true,
+        requiresRole: false,
+        requiresNativeInteractive: true,
         targetSelectors: ['[data-chat-composer-popover="artifact"]'],
         surfaceSelectors: ['[data-chat-composer-popover="artifact"]'],
         itemSelector: ".tg-composer-popover__item",
@@ -231,7 +236,8 @@ async function main() {
         expectedVisibleCount: 1,
         expectedItemCount: 2,
         requiresSvg: true,
-        requiresRole: true,
+        requiresRole: false,
+        requiresNativeInteractive: true,
         targetSelectors: ['[data-chat-composer-popover="command"]'],
         surfaceSelectors: ['[data-chat-composer-popover="command"]'],
         itemSelector: ".tg-composer-popover__item",
@@ -244,6 +250,7 @@ async function main() {
         expectedItemCount: 18,
         requiresSvg: false,
         requiresRole: false,
+        requiresNativeInteractive: true,
         requiresUnobscuredItems: false,
         targetSelectors: ["#command-palette", ".command-palette"],
         surfaceSelectors: [".command-palette"],
@@ -294,6 +301,8 @@ async function main() {
       const closedBaseline = await capture(page, viewport, `${target.key}-closed-baseline`, matrixDir);
       screenshots.push(closedBaseline);
       if (target.open.type === "row-menu") {
+        await page.locator(`[data-chat-conversation="${target.open.key}"]`).hover();
+        await page.waitForTimeout(60);
         await page.locator(`[data-chat-row-menu-toggle="${target.open.key}"]`).click();
       } else if (target.open.type === "thread-tools") {
         await page.locator('[data-thread-command-menu="true"] > button[popovertarget]').click();
@@ -431,7 +440,10 @@ async function main() {
           const rect = node.getBoundingClientRect();
           return {
             label: textOf(node),
+            tag_name: node.tagName.toLowerCase(),
             role: node.getAttribute("role") || "",
+            native_interactive: node.matches("button,a[href],input,select,textarea,summary")
+              || Boolean(node.querySelector("button,a[href],input,select,textarea,summary")),
             aria_label: ariaLabel,
             title,
             title_matches_aria_label: title === ariaLabel,
@@ -444,6 +456,9 @@ async function main() {
         });
         const horizontalOverflowFree = document.documentElement.scrollWidth - window.innerWidth <= 1
           && document.body.scrollWidth - window.innerWidth <= 1;
+        const nativePopoverOpen = targetNodes.filter((node) => node.hasAttribute("popover"))
+          .every((node) => node.matches(":popover-open"));
+        const focusContained = targetNodes.some((node) => node === document.activeElement || node.contains(document.activeElement));
         const requiresUnobscuredItems = target.requiresUnobscuredItems !== false;
         const surfacesReady = surfaceDetails.length > 0 && surfaceDetails.every((item) => (
           item.in_viewport
@@ -459,6 +474,7 @@ async function main() {
           item.height >= 44
           && (!target.requiresSvg || item.svg_icon_present)
           && (!target.requiresRole || item.role === "menuitem")
+          && (!target.requiresNativeInteractive || item.native_interactive)
           && item.readable
           && item.contrast_ratio >= 4.5
           && (!requiresUnobscuredItems || item.visually_unobscured)
@@ -474,6 +490,8 @@ async function main() {
           horizontal_overflow_free: horizontalOverflowFree,
           expected_item_count: target.expectedItemCount,
           visible_item_count: itemDetails.length,
+          native_popover_open: nativePopoverOpen,
+          focus_contained: focusContained,
           requires_unobscured_items: requiresUnobscuredItems,
           surfaces_ready: surfacesReady,
           items_ready: itemsReady,
@@ -482,6 +500,8 @@ async function main() {
           ready: targetNodes.length === target.expectedVisibleCount
             && unexpectedVisible.length === 0
             && horizontalOverflowFree
+            && nativePopoverOpen
+            && focusContained
             && surfacesReady
             && itemsReady,
         };

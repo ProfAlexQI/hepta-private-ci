@@ -284,3 +284,24 @@ These files were added after the Robrix baseline transplant and are Hepta-owned 
 - `apps/hepta-native/src/home/main_desktop_ui.rs`: adds a persistent desktop Inspector / Control pane beside the Matrix-heart conversation surface.
 - `apps/hepta-native/src/home/welcome_screen.rs`: introduces the Hepta runtime cockpit overview, embedded fixture cockpit, and mobile drill-down detail surface.
 - `apps/hepta-native/src/home/navigation_tab_bar.rs`, `apps/hepta-native/src/home/rooms_list_header.rs`, and `apps/hepta-native/src/home/add_room.rs`: reframe Robrix room chrome as Hepta agent cockpit / workspace connection language while keeping Matrix transport semantics.
+
+## Selective upstream UI intake on 2026-08-01
+
+This bounded intake was reviewed against Robrix `main` at exact commit
+`a5a664da569c577ab1a3e5a33f45dcc9364954a0`. The initial Hepta source baseline remains
+`b2bb6cf33a51e5c8a0a91ebca2025f09212304bd`; GitHub's compare API reports the selected
+upstream commit as 267 commits ahead and 0 behind that baseline. No whole-tree merge was
+performed.
+
+| source_repo | source_commit | source_license | upstream_file | hepta_destination | modification_summary | status |
+| --- | --- | --- | --- | --- | --- | --- |
+| project-robius/robrix | a5a664da569c577ab1a3e5a33f45dcc9364954a0 | MIT | `src/shared/slash_commands.rs` | `apps/hepta-native/src/shared/slash_commands.rs` | retained the `/html` and `/plain` parser/message-construction behavior; added deterministic tests; intentionally not wired to send dispatch | adapted_parser_ready_not_wired |
+| project-robius/robrix | a5a664da569c577ab1a3e5a33f45dcc9364954a0 | MIT | `src/shared/file_upload_modal.rs` | `apps/hepta-native/src/shared/file_upload_modal.rs` | retained local metadata inspection, bounded text preview, image-kind metadata, attempt IDs, and large-file threshold; removed duplicate modal, `robius-file-picker`, GPU decode, Matrix request submission, and TSP behavior so Hepta's confirmation-first composer stays authoritative | quarantined_preflight_ready_no_picker_or_send |
+| project-robius/robrix | a5a664da569c577ab1a3e5a33f45dcc9364954a0 | MIT | `src/home/upload_progress.rs` | `apps/hepta-native/src/home/upload_progress.rs` | retained deterministic progress, failure, cancel-eligibility, and retry-eligibility presentation state; removed upstream abort handle and retry submission because accepted queue ownership remains on the Hepta timeline | quarantined_progress_model_no_queue_control |
+| project-robius/robrix | a5a664da569c577ab1a3e5a33f45dcc9364954a0 | MIT | `src/shared/attachment_download.rs` | `apps/hepta-native/src/shared/attachment_download.rs` | retained MXC extraction and download/share presentation states; removed file I/O, save dialog, share sheet, popup notification, timer, and Matrix worker submission pending explicit platform-adapter work | quarantined_download_model_no_io_or_share |
+| project-robius/robrix | a5a664da569c577ab1a3e5a33f45dcc9364954a0 | MIT | `src/shared/mention_popup.rs` | `apps/hepta-native/src/shared/mention_popup.rs` | retained item vocabulary, local insertion text, result replacement, and wrapping keyboard selection; removed remote ranking, avatar fetching, global overlay ownership, and message submission to preserve Hepta's existing cached local mention path | quarantined_selection_model_no_remote_lookup |
+| project-robius/robrix | a5a664da569c577ab1a3e5a33f45dcc9364954a0 | MIT | `src/shared/room_input_popup_menu.rs` | `apps/hepta-native/src/shared/room_input_popup_menu.rs` | retained the registered Makepad popup, actions, Escape/back close, outside-event helpers, and 44-point rows; restyled with generated Hepta light-glass tokens and existing icons; deliberately not wired over the custom confirmation-first RoomInputBar | registered_widget_not_wired_to_custom_composer |
+
+The upstream versions also assume newer Makepad, `robius-file-picker`, `robius-share`, newer
+Matrix worker variants, and the redesigned upstream MentionableTextInput. Those dependency and
+runtime changes are outside this UI-only intake and were not added transitively.

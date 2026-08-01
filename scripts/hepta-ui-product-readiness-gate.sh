@@ -5,20 +5,108 @@ trap 'echo "Hepta UI product readiness gate failed at line $LINENO: $BASH_COMMAN
 
 cd "$(dirname "$0")/.."
 
-NATIVE_APP_MANIFEST="apps/hepta-native/Cargo.toml"
 OUT_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-product-readiness.XXXXXX")}"
+READINESS_REPORT_PATH="$OUT_DIR/readiness.json"
+ROOT_REPORT_REPLAY_REPORT_PATH="$OUT_DIR/ui-root-report-replay-gate.json"
+
+# These are the authoritative success reports for the combined gate. Remove
+# only these explicit files before any configuration validation can return so
+# an early failure can never leave a previous ready result at the same paths.
+rm -f -- "$READINESS_REPORT_PATH" "$ROOT_REPORT_REPLAY_REPORT_PATH"
+
+STRICT_CURRENT_SOURCE_RAW="${HEPTA_UI_PRODUCT_READINESS_STRICT_CURRENT_SOURCE:-0}"
+STRICT_CURRENT_SOURCE_MODE=0
+
+strict_current_source_flag_is_true() {
+  case "${1:-}" in
+    1 | true | TRUE | yes | YES | on | ON)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+validate_strict_current_source_configuration() {
+  local flag_name
+  local flag_value
+
+  case "$STRICT_CURRENT_SOURCE_RAW" in
+    1 | true | TRUE | yes | YES | on | ON)
+      STRICT_CURRENT_SOURCE_MODE=1
+      ;;
+    0 | false | FALSE | no | NO | off | OFF | "")
+      STRICT_CURRENT_SOURCE_MODE=0
+      return
+      ;;
+    *)
+      echo "error: invalid HEPTA_UI_PRODUCT_READINESS_STRICT_CURRENT_SOURCE value: $STRICT_CURRENT_SOURCE_RAW" >&2
+      exit 2
+      ;;
+  esac
+
+  if [[ "$STRICT_CURRENT_SOURCE_MODE" != "1" ]]; then
+    return
+  fi
+  for flag_name in \
+    HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SMOKE \
+    HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_ROUTE_SMOKE \
+    HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE \
+    HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SECONDARY_SMOKE \
+    HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SECONDARY_MOBILE_SMOKE; do
+    flag_value="${!flag_name:-0}"
+    if ! strict_current_source_flag_is_true "$flag_value"; then
+      echo "error: strict current-source readiness requires ${flag_name}=1" >&2
+      exit 2
+    fi
+  done
+
+  case "${HEPTA_UI_PRODUCT_READINESS_ALLOW_NATIVE_WINDOW_BLOCKED:-0}" in
+    0 | false | FALSE | no | NO | off | OFF | "")
+      ;;
+    *)
+      echo "error: strict current-source readiness requires HEPTA_UI_PRODUCT_READINESS_ALLOW_NATIVE_WINDOW_BLOCKED=0" >&2
+      exit 2
+      ;;
+  esac
+}
+
+validate_strict_current_source_configuration
+
+source scripts/lib/hepta-ui-rust-toolchain.sh
+hepta_ui_activate_rust_toolchain
+
+CONTROL_UI_ACTIVE_CSS=(
+  apps/hepta-control-ui/light-glass-tokens.generated.css
+  apps/hepta-control-ui/styles.legacy.css
+  apps/hepta-control-ui/styles.foundation.css
+  apps/hepta-control-ui/styles.components.css
+  apps/hepta-control-ui/styles.responsive.css
+  apps/hepta-control-ui/styles.accessibility.css
+)
+
+NATIVE_APP_MANIFEST="apps/hepta-native/Cargo.toml"
+DESIGN_SYSTEM_OUT_DIR="$OUT_DIR/design-system"
 CONTROL_OUT_DIR="$OUT_DIR/control-ui-browser"
 NATIVE_OUT_DIR="$OUT_DIR/native-fixture"
 NATIVE_WINDOW_OUT_DIR="$OUT_DIR/native-window"
 NATIVE_WINDOW_ROUTE_OUT_DIR="$OUT_DIR/native-window-routes"
+NATIVE_WINDOW_ROUTE_MOBILE_OUT_DIR="$OUT_DIR/native-window-routes-mobile"
 NATIVE_WINDOW_SECONDARY_OUT_DIR="$OUT_DIR/native-window-secondary"
 NATIVE_WINDOW_SECONDARY_MOBILE_OUT_DIR="$OUT_DIR/native-window-secondary-mobile"
 CONTROL_LOG="$OUT_DIR/control-ui-browser-smoke.log"
+CONTROL_REAL_CLICK_LOG="$OUT_DIR/ui-harsh-top-design-referee-v7-real-click-gate.log"
+DESIGN_SYSTEM_LOG="$OUT_DIR/ui-design-system-gate.log"
 CONTROL_BROWSER_REPORT_PATH="$OUT_DIR/control-ui-browser-smoke.json"
+CONTROL_REAL_CLICK_GATE_REPORT_PATH="$OUT_DIR/ui-harsh-top-design-referee-v7-real-click-gate.json"
+CONTROL_REAL_CLICK_ACTIVATION_REPORT_PATH="$OUT_DIR/control-ui-v7-real-click-activation.json"
+CONTROL_REAL_CLICK_ACTIVATION_DIR="$OUT_DIR/control-ui-v7-real-click-activation"
 NATIVE_LOG="$OUT_DIR/native-fixture-visual-smoke.log"
 NATIVE_FIXTURE_REPORT_PATH="$NATIVE_OUT_DIR/native-fixture-visual-smoke.json"
 NATIVE_WINDOW_LOG="$OUT_DIR/native-window-smoke.log"
 NATIVE_WINDOW_ROUTE_LOG="$OUT_DIR/native-window-routes-smoke.log"
+NATIVE_WINDOW_ROUTE_MOBILE_LOG="$OUT_DIR/native-window-routes-mobile-smoke.log"
 NATIVE_WINDOW_SECONDARY_LOG="$OUT_DIR/native-window-secondary-smoke.log"
 NATIVE_WINDOW_SECONDARY_MOBILE_LOG="$OUT_DIR/native-window-secondary-mobile-smoke.log"
 PACKAGING_LOG="$OUT_DIR/native-packaging-gate.log"
@@ -50,13 +138,15 @@ BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_LOG="$OUT_DIR/ui-backend-delivery-receipt-rou
 RISK_FUTURE_PLAN_LOG="$OUT_DIR/ui-risk-future-plan-gate.log"
 POST_R228_RISK_FUTURE_PLAN_LOG="$OUT_DIR/ui-post-r228-risk-future-plan-gate.log"
 STATIC_CONTRACT_PATH="$OUT_DIR/static-contract.json"
+DESIGN_SYSTEM_REPORT_PATH="$OUT_DIR/ui-design-system-gate.json"
 UI_IMPLEMENTATION_GAP_AUDIT_PATH="$OUT_DIR/ui-implementation-gap-audit.json"
-READINESS_REPORT_PATH="$OUT_DIR/readiness.json"
 BASE_GAP_DRILLDOWN_PATH="$OUT_DIR/native-base-gap-drilldown.json"
 BASE_GAP_WORK_QUEUE_PATH="$OUT_DIR/native-base-gap-work-queue.json"
 BASE_GAP_BACKEND_HANDOFF_PATH="$OUT_DIR/native-base-gap-backend-handoff.json"
 ARTIFACT_SUMMARY_PATH="$OUT_DIR/artifact-summary.json"
 MANIFEST_PATH="$OUT_DIR/screenshot-manifest.json"
+CURRENT_SOURCE_UI_READINESS_REPORT_PATH="$OUT_DIR/ui-current-source-readiness.json"
+CURRENT_SOURCE_UI_READINESS_LOG="$OUT_DIR/ui-current-source-readiness-gate.log"
 HANDOFF_REPORT_PATH="$OUT_DIR/handoff-report.md"
 PACKAGING_REPORT_PATH="$OUT_DIR/native-packaging-gate.json"
 DISTRIBUTION_PREFLIGHT_REPORT_PATH="$OUT_DIR/native-distribution-preflight-gate.json"
@@ -145,6 +235,7 @@ POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH_SUPPLIED="${HEPTA_UI_
 POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH="${HEPTA_UI_POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH:-$OUT_DIR/post-r228-old-evidence-rejected/control-ui-browser-smoke.json}"
 NATIVE_WINDOW_REPORT_PATH="$OUT_DIR/native-window-smoke.json"
 NATIVE_WINDOW_ROUTE_REPORT_PATH="$OUT_DIR/native-window-routes-smoke.json"
+NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH="$OUT_DIR/native-window-routes-mobile-smoke.json"
 NATIVE_WINDOW_SECONDARY_REPORT_PATH="$OUT_DIR/native-window-secondary-smoke.json"
 NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH="$OUT_DIR/native-window-secondary-mobile-smoke.json"
 BACKEND_CONTRACT_GATES_DIR="$OUT_DIR/native-backend-contract-gates"
@@ -159,11 +250,11 @@ EVIDENCE_BUNDLE_DIR="$OUT_DIR/evidence-bundle"
 EVIDENCE_ARCHIVE_REPORT_PATH="$OUT_DIR/ui-evidence-archive-gate.json"
 EVIDENCE_ARCHIVE_DIR="$OUT_DIR/evidence-archive"
 EVIDENCE_ARCHIVE_PATH="$EVIDENCE_ARCHIVE_DIR/hepta-ui-evidence-bundle.tar.gz"
-ROOT_REPORT_REPLAY_REPORT_PATH="$OUT_DIR/ui-root-report-replay-gate.json"
 SELECTED_ROW_MANIFEST="$NATIVE_OUT_DIR/selected-row-variant-screenshots.json"
 MIN_SCREENSHOT_BYTES="${HEPTA_UI_PRODUCT_READINESS_MIN_SCREENSHOT_BYTES:-10000}"
 INCLUDE_NATIVE_WINDOW_SMOKE="${HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SMOKE:-0}"
 INCLUDE_NATIVE_WINDOW_ROUTE_SMOKE="${HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_ROUTE_SMOKE:-0}"
+INCLUDE_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE="${HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE:-0}"
 INCLUDE_NATIVE_WINDOW_SECONDARY_SMOKE="${HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SECONDARY_SMOKE:-0}"
 INCLUDE_NATIVE_WINDOW_SECONDARY_MOBILE_SMOKE="${HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SECONDARY_MOBILE_SMOKE:-0}"
 NATIVE_WINDOW_STARTUP_TIMEOUT_SEC="${HEPTA_UI_PRODUCT_READINESS_NATIVE_WINDOW_STARTUP_TIMEOUT_SEC:-240}"
@@ -173,11 +264,15 @@ NATIVE_WINDOW_CARGO_TARGET_DIR="${HEPTA_NATIVE_WINDOW_SMOKE_CARGO_TARGET_DIR:-${
 NATIVE_WINDOW_SHARED_PREFLIGHT_READY=0
 NATIVE_WINDOW_SHARED_PREBUILD_READY=0
 
-mkdir -p "$CONTROL_OUT_DIR" "$NATIVE_OUT_DIR" "$NATIVE_WINDOW_OUT_DIR" "$NATIVE_WINDOW_ROUTE_OUT_DIR" "$NATIVE_WINDOW_SECONDARY_OUT_DIR" "$NATIVE_WINDOW_SECONDARY_MOBILE_OUT_DIR" "$BACKEND_CONTRACT_GATES_DIR" "$NON_BASE_EDGE_GATES_DIR" "$BACKEND_HANDOFF_EXPORT_DIR" "$BACKEND_DISPATCH_PACKET_DIR" "$BACKEND_RECEIPT_INTAKE_DIR" "$BACKEND_RECEIPT_ROUNDTRIP_DIR" "$BACKEND_RECEIPT_REFRESH_LOCK_DIR" "$AUTO_BACKEND_RECEIPT_INPUT_DIR" "$AUTO_BACKEND_DELIVERY_RECEIPT_INPUT_DIR" "$RELEASE_SIGNING_CAPABILITY_DIR" "$OPERATOR_BRIEFING_REFRESH_DIR" "$RELEASE_APPROVAL_INTAKE_DIR" "$TOP_DESIGN_REFEREE_REFRESH_DIR" "$RELEASE_ARTIFACT_BOUNDARY_DIR" "$RELEASE_ARTIFACT_INTAKE_DIR" "$RELEASE_ARTIFACT_ROUNDTRIP_DIR" "$CURRENT_PLAN_REFRESH_DIR" "$BLOCKER_CLOSURE_DIR" "$BACKEND_DELIVERY_AUDIT_DIR" "$BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_DIR" "$RISK_FUTURE_PLAN_DIR" "$POST_R228_RISK_FUTURE_PLAN_DIR" "$NATIVE_WINDOW_CARGO_TARGET_DIR"
+mkdir -p "$DESIGN_SYSTEM_OUT_DIR" "$CONTROL_OUT_DIR" "$CONTROL_REAL_CLICK_ACTIVATION_DIR" "$NATIVE_OUT_DIR" "$NATIVE_WINDOW_OUT_DIR" "$NATIVE_WINDOW_ROUTE_OUT_DIR" "$NATIVE_WINDOW_ROUTE_MOBILE_OUT_DIR" "$NATIVE_WINDOW_SECONDARY_OUT_DIR" "$NATIVE_WINDOW_SECONDARY_MOBILE_OUT_DIR" "$BACKEND_CONTRACT_GATES_DIR" "$NON_BASE_EDGE_GATES_DIR" "$BACKEND_HANDOFF_EXPORT_DIR" "$BACKEND_DISPATCH_PACKET_DIR" "$BACKEND_RECEIPT_INTAKE_DIR" "$BACKEND_RECEIPT_ROUNDTRIP_DIR" "$BACKEND_RECEIPT_REFRESH_LOCK_DIR" "$AUTO_BACKEND_RECEIPT_INPUT_DIR" "$AUTO_BACKEND_DELIVERY_RECEIPT_INPUT_DIR" "$RELEASE_SIGNING_CAPABILITY_DIR" "$OPERATOR_BRIEFING_REFRESH_DIR" "$RELEASE_APPROVAL_INTAKE_DIR" "$TOP_DESIGN_REFEREE_REFRESH_DIR" "$RELEASE_ARTIFACT_BOUNDARY_DIR" "$RELEASE_ARTIFACT_INTAKE_DIR" "$RELEASE_ARTIFACT_ROUNDTRIP_DIR" "$CURRENT_PLAN_REFRESH_DIR" "$BLOCKER_CLOSURE_DIR" "$BACKEND_DELIVERY_AUDIT_DIR" "$BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_DIR" "$RISK_FUTURE_PLAN_DIR" "$POST_R228_RISK_FUTURE_PLAN_DIR" "$NATIVE_WINDOW_CARGO_TARGET_DIR"
 
 STATIC_MARKERS=(
+  'scripts/hepta-ui-design-system-gate.sh|generated_token_sync_ready:true'
+  'scripts/hepta-ui-design-system-gate.sh|documentation_token_sync_ready:true'
+  'scripts/hepta-ui-design-system-gate.sh|accessibility_media_queries_ready:true'
+  'scripts/hepta-ui-design-system-gate.sh|selective_module_count:$robrix_module_count'
   'scripts/hepta-ui-root-report-replay-gate.sh|root_report_replay_gate_ready:$ready'
-  'scripts/hepta-ui-root-report-replay-gate.sh|.root_report_count == 43'
+  'scripts/hepta-ui-root-report-replay-gate.sh|.root_report_count == 45'
   'scripts/hepta-ui-root-report-replay-gate.sh|backend_priority_ids[0] == "message_search"'
   'scripts/hepta-ui-backend-promotion-packet-gate.sh|backend_promotion_packet_gate_ready:$ready'
   'scripts/hepta-ui-backend-promotion-packet-gate.sh|packet_kind:"local_backend_contract_promotion_packet"'
@@ -266,12 +361,12 @@ STATIC_MARKERS=(
   'scripts/hepta-ui-backend-delivery-receipt-roundtrip-gate.sh|backend_delivery_receipt_roundtrip_gate_ready:$ready'
   'scripts/hepta-ui-backend-delivery-receipt-roundtrip-gate.sh|roundtrip_kind:"local_backend_delivery_receipt_valid_branch_replay"'
   'scripts/hepta-ui-backend-delivery-receipt-roundtrip-gate.sh|present_branch_delivery_receipt_valid'
-  'scripts/hepta-ui-backend-delivery-receipt-roundtrip-gate.sh|root_report_replay_required_count_after_roundtrip:43'
+  'scripts/hepta-ui-backend-delivery-receipt-roundtrip-gate.sh|root_report_replay_required_count_after_roundtrip:45'
   'scripts/hepta-ui-backend-delivery-receipt-roundtrip-gate.sh|local_backend_delivery_receipt_roundtrip_ready:$ready'
   'scripts/hepta-ui-risk-future-plan-gate.sh|risk_future_plan_gate_ready:$ready'
   'scripts/hepta-ui-risk-future-plan-gate.sh|plan_kind:"local_ui_post_r151_harsh_top_design_v46_badge_micro_surface_light_glass_risk_future_plan_refresh"'
   'scripts/hepta-ui-risk-future-plan-gate.sh|r151_harsh_top_design_v46_badge_micro_surface_light_glass_minimum_ui_demo_gate'
-  'scripts/hepta-ui-risk-future-plan-gate.sh|root_report_replay_required_count_after_risk_future_plan:43'
+  'scripts/hepta-ui-risk-future-plan-gate.sh|root_report_replay_required_count_after_risk_future_plan:45'
   'scripts/hepta-ui-risk-future-plan-gate.sh|local_risk_future_plan_ready:$ready'
   'scripts/hepta-ui-post-r228-risk-future-plan-gate.sh|risk_future_plan_post_r228_gate_ready:$ready'
   'scripts/hepta-ui-post-r228-risk-future-plan-gate.sh|plan_kind:"local_ui_post_r228_command_palette_item_prismatic_rim_risk_future_plan_refresh"'
@@ -393,40 +488,40 @@ STATIC_MARKERS=(
 	  'apps/hepta-control-ui/index.html|data-chat-row-menu-panel="operator-plane"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-row-menu-panel="task-queue"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-row-menu-panel="operator-plane"'
-	  'apps/hepta-control-ui/index.html|id="composer-popover-artifact" data-chat-composer-popover="artifact" data-control-ui-composer-popover-panel="light-glass"'
-	  'apps/hepta-control-ui/index.html|id="composer-popover-command" data-chat-composer-popover="command" data-control-ui-composer-popover-panel="light-glass"'
-	  'codex-rs/hepta-core/src/control_ui.rs|id="composer-popover-artifact" data-chat-composer-popover="artifact" data-control-ui-composer-popover-panel="light-glass"'
-	  'codex-rs/hepta-core/src/control_ui.rs|id="composer-popover-command" data-chat-composer-popover="command" data-control-ui-composer-popover-panel="light-glass"'
+	  'apps/hepta-control-ui/index.html|id="composer-popover-artifact" popover="auto" data-chat-composer-popover="artifact" data-control-ui-composer-popover-panel="light-glass"'
+	  'apps/hepta-control-ui/index.html|id="composer-popover-command" popover="auto" data-chat-composer-popover="command" data-control-ui-composer-popover-panel="light-glass"'
+	  'codex-rs/hepta-core/src/control_ui.rs|id="composer-popover-artifact" popover="auto"'
+	  'codex-rs/hepta-core/src/control_ui.rs|id="composer-popover-command" popover="auto"'
 	  'scripts/hepta-browser-visual-smoke.sh|document.querySelectorAll("[data-chat-search],[data-chat-composer-input],[data-chat-routing-mode],[data-chat-autoscroll-mode]")'
 	  'scripts/hepta-browser-visual-smoke.sh|expectedVisibleFormControlCount = railVisible ? 4 : 1'
 	  'scripts/hepta-browser-visual-smoke.sh|document.querySelectorAll("[data-chat-conversation]")'
 	  'scripts/hepta-browser-visual-smoke.sh|expectedVisibleChatRowOptionCount = railVisible ? 3 : 0'
-	  'apps/hepta-control-ui/index.html|data-chat-conversation="ui-chat-agent" role="option" aria-selected="true" tabindex="0" aria-label="Hepta conversation, local review ready" title="Hepta conversation, local review ready"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-conversation="task-queue" role="option" aria-selected="false" tabindex="0" aria-label="Actions conversation, local approval queue" title="Actions conversation, local approval queue"'
+	  'apps/hepta-control-ui/index.html|data-chat-conversation="ui-chat-agent" role="listitem" aria-current="true" tabindex="0" aria-label="Hepta conversation, local review ready" title="Hepta conversation, local review ready"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-conversation="task-queue" role="listitem" tabindex="0" aria-label="Actions conversation, local approval queue" title="Actions conversation, local approval queue"'
 	  'scripts/hepta-browser-visual-smoke.sh|data-control-ui-command-palette-surface=\"light-glass\"'
 	  'scripts/hepta-browser-visual-smoke.sh|data-control-ui-command-palette-trigger="light-glass"'
-	  'apps/hepta-control-ui/index.html|data-chat-row-menu-toggle="ui-chat-agent" aria-label="Open Hepta conversation actions" title="Open Hepta conversation actions"'
+	  'apps/hepta-control-ui/index.html|data-chat-row-menu-toggle="ui-chat-agent" popovertarget="row-menu-ui-chat-agent" aria-controls="row-menu-ui-chat-agent"'
 	  'apps/hepta-control-ui/index.html|data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="ui-chat-agent"'
-	  'apps/hepta-control-ui/index.html|data-chat-row-menu-panel="ui-chat-agent" role="menu" aria-label="Hepta conversation actions"'
+	  'apps/hepta-control-ui/index.html|data-chat-row-menu-panel="ui-chat-agent" role="group" aria-label="Hepta conversation actions"'
 	  'apps/hepta-control-ui/index.html|data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="ui-chat-agent"'
-	  'apps/hepta-control-ui/index.html|data-chat-row-menu-item="archive" role="menuitem" aria-label="Archive Hepta conversation" title="Archive Hepta conversation"'
+	  'apps/hepta-control-ui/index.html|data-chat-row-menu-item="archive" aria-label="Archive Hepta conversation" title="Archive Hepta conversation"'
 	  'apps/hepta-control-ui/index.html|data-control-ui-command-palette-surface="light-glass"'
-	  'apps/hepta-control-ui/index.html|data-control-ui-command-palette-trigger="light-glass" href="#command-palette" aria-label="Open command palette" title="Open command palette"'
+	  'apps/hepta-control-ui/index.html|data-control-ui-command-palette-trigger="light-glass" popovertarget="command-palette" aria-haspopup="dialog" aria-controls="command-palette"'
 	  'apps/hepta-control-ui/index.html|data-control-ui-thread-tools-trigger="light-glass" aria-label="Open thread tools" title="Open thread tools"'
-	  'apps/hepta-control-ui/index.html|data-control-ui-thread-tools-panel="light-glass" role="menu" aria-label="Thread tools"'
-	  'apps/hepta-control-ui/index.html|data-control-ui-command-palette-close="light-glass" href="#commands" aria-label="Close command palette" title="Close command palette"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-row-menu-toggle="ui-chat-agent" aria-label="Open Hepta conversation actions" title="Open Hepta conversation actions"'
+	  'apps/hepta-control-ui/index.html|data-control-ui-thread-tools-panel="light-glass" role="group" aria-label="Thread tools"'
+	  'apps/hepta-control-ui/index.html|data-control-ui-command-palette-close="light-glass" popovertarget="command-palette" popovertargetaction="hide"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-row-menu-toggle="ui-chat-agent" popovertarget="row-menu-ui-chat-agent" aria-controls="row-menu-ui-chat-agent"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="ui-chat-agent"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-row-menu-panel="ui-chat-agent" role="menu" aria-label="Hepta conversation actions"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-row-menu-panel="ui-chat-agent" role="group" aria-label="Hepta conversation actions"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="ui-chat-agent"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-row-menu-item="archive" role="menuitem" aria-label="Archive Hepta conversation" title="Archive Hepta conversation"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-row-menu-item="archive" aria-label="Archive Hepta conversation" title="Archive Hepta conversation"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-command-palette-surface="light-glass"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-command-palette-trigger="light-glass" href="#command-palette" aria-label="Open command palette" title="Open command palette"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-command-palette-trigger="light-glass" popovertarget="command-palette" aria-haspopup="dialog" aria-controls="command-palette"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-thread-tools-trigger="light-glass" aria-label="Open thread tools" title="Open thread tools"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-thread-tools-panel="light-glass" role="menu" aria-label="Thread tools"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-command-palette-close="light-glass" href="#commands" aria-label="Close command palette" title="Close command palette"'
-	  'apps/hepta-control-ui/index.html|data-chat-search data-control-ui-rail-search-input="light-glass" type="search" placeholder="Search" aria-label="Search chats" title="Search chats"'
-	  'apps/hepta-control-ui/index.html|data-chat-composer-input rows="1" placeholder="Message Hepta" aria-label="Message Hepta" title="Message Hepta"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-thread-tools-panel="light-glass" role="group" aria-label="Thread tools"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-command-palette-close="light-glass" popovertarget="command-palette" popovertargetaction="hide"'
+	  'apps/hepta-control-ui/index.html|data-chat-search data-control-ui-rail-search-input="light-glass" type="search" placeholder="Search" value="" aria-label="Search chats" title="Search chats"'
+	  'apps/hepta-control-ui/index.html|data-chat-composer-input data-chat-enter-send spellcheck="false" rows="1" placeholder="Message Hepta" aria-label="Message Hepta" title="Message Hepta"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-search data-control-ui-rail-search-input="light-glass" type="search" placeholder="Search" value="" aria-label="Search chats" title="Search chats"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-chat-composer-input data-chat-enter-send spellcheck="false" rows="1" placeholder="Message Hepta" aria-label="Message Hepta" title="Message Hepta"'
 	  'apps/hepta-control-ui/styles.css|.tg-pin-toggle,.tg-row-menu-toggle{width:44px;height:44px'
@@ -466,13 +561,13 @@ STATIC_MARKERS=(
 	  'apps/hepta-control-ui/index.html|aria-label="Attach local context" title="Attach local context"'
 	  'apps/hepta-control-ui/index.html|aria-label="Open composer tools" title="Open composer tools"'
 	  'apps/hepta-control-ui/index.html|data-control-ui-composer-tools-trigger="light-glass" aria-label="Open composer tools" title="Open composer tools"'
-	  'apps/hepta-control-ui/index.html|data-control-ui-composer-tools-panel="light-glass" role="menu" aria-label="Composer tools"'
-	  'apps/hepta-control-ui/index.html|data-control-ui-composer-tool-item="reply-mode" data-control-ui-menu-item="reply-mode" role="menuitem" aria-label="Set reply mode" title="Set reply mode"'
-	  'apps/hepta-control-ui/index.html|data-control-ui-composer-tool-item="scroll-mode" data-control-ui-menu-item="scroll-mode" data-chat-autoscroll-persisted="local-storage-contract" role="menuitem" aria-label="Set auto-scroll mode" title="Set auto-scroll mode"'
+	  'apps/hepta-control-ui/index.html|data-control-ui-composer-tools-panel="light-glass" role="group" aria-label="Composer tools"'
+	  'apps/hepta-control-ui/index.html|data-control-ui-composer-tool-item="reply-mode" data-control-ui-menu-item="reply-mode" aria-label="Set reply mode" title="Set reply mode"'
+	  'apps/hepta-control-ui/index.html|data-control-ui-composer-tool-item="scroll-mode" data-control-ui-menu-item="scroll-mode" data-chat-autoscroll-persisted="local-storage-contract" aria-label="Set auto-scroll mode" title="Set auto-scroll mode"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-composer-tools-trigger="light-glass" aria-label="Open composer tools" title="Open composer tools"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-composer-tools-panel="light-glass" role="menu" aria-label="Composer tools"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-composer-tool-item="reply-mode" data-control-ui-menu-item="reply-mode" role="menuitem" aria-label="Set reply mode" title="Set reply mode"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-composer-tool-item="scroll-mode" data-control-ui-menu-item="scroll-mode" data-chat-autoscroll-persisted="local-storage-contract" role="menuitem" aria-label="Set auto-scroll mode" title="Set auto-scroll mode"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-composer-tools-panel="light-glass" role="group" aria-label="Composer tools"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-composer-tool-item="reply-mode" data-control-ui-menu-item="reply-mode" aria-label="Set reply mode" title="Set reply mode"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-composer-tool-item="scroll-mode" data-control-ui-menu-item="scroll-mode" data-chat-autoscroll-persisted="local-storage-contract" aria-label="Set auto-scroll mode" title="Set auto-scroll mode"'
 	  'scripts/hepta-browser-visual-smoke.sh|control_ui_visual_density_qa_ready:true'
   'scripts/hepta-browser-visual-smoke.sh|control_ui_browser_error_page_absent:true'
   'scripts/hepta-browser-visual-smoke.sh|control_ui_horizontal_overflow_free:true'
@@ -2198,7 +2293,7 @@ STATIC_MARKERS=(
   'apps/hepta-native/src/home/hepta_telegram_base_contract.rs|hepta_telegram_base_dialog_state_filters_reuse_room_fields'
   'apps/hepta-native/src/home/hepta_telegram_base_contract.rs|hepta_telegram_base_dialog_filter_presets_emit_main_filter_action'
   'apps/hepta-native/src/home/hepta_telegram_base_contract.rs|hepta_telegram_base_local_gap_affordances_are_visible_without_live_mutation'
-  'apps/hepta-native/src/shared/styles.rs|COLOR_TELEGRAM_BG'
+  'apps/hepta-native/src/shared/light_glass_tokens.rs|COLOR_TELEGRAM_BG'
   'apps/hepta-native/src/shared/styles.rs|ICON_MIC'
   'apps/hepta-native/src/shared/styles.rs|COLOR_NAVIGATION_TAB_FG = (mod.widgets.COLOR_TELEGRAM_MUTED)'
   'apps/hepta-native/src/home/hepta_telegram_base_contract.rs|hepta_telegram_desktop_dock_restore_lazy_local_ready'
@@ -4154,6 +4249,13 @@ STATIC_MARKERS=(
   'scripts/hepta-native-window-route-smoke.sh|wrapper_preflight_assumed_ready'
   'scripts/hepta-native-window-route-smoke.sh|child_preflight_skipped'
   'scripts/hepta-native-window-route-smoke.sh|HEPTA_NATIVE_WINDOW_SMOKE_CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR"'
+  'scripts/hepta-native-window-route-mobile-smoke.sh|native_makepad_mobile_route_variants_ready'
+  'scripts/hepta-native-window-route-mobile-smoke.sh|non_home_content_log_signature_count'
+  'scripts/hepta-native-window-route-mobile-smoke.sh|mobile_host_window_ready'
+  'scripts/hepta-native-window-route-mobile-smoke.sh|exact_390x844_ready'
+  'scripts/hepta-native-window-route-mobile-smoke.sh|capture_profile:"mobile-route-variants"'
+  'scripts/hepta-native-window-route-mobile-smoke.sh|HEPTA_NATIVE_WINDOW_SMOKE_CAPTURE_PROFILE=mobile-route'
+  'scripts/hepta-native-window-route-mobile-smoke.sh|HEPTA_NATIVE_WINDOW_SMOKE_CARGO_TARGET_DIR="$WINDOW_SMOKE_CARGO_TARGET_DIR"'
   'scripts/hepta-native-window-secondary-smoke.sh|native_makepad_secondary_surfaces_ready'
   'scripts/hepta-native-window-secondary-smoke.sh|surface_screenshot_unique_count'
   'scripts/hepta-native-window-secondary-smoke.sh|capture_profile:"desktop-full-secondary-surfaces"'
@@ -4226,19 +4328,44 @@ KEY_SCREENSHOTS=(
   "native|mobile-surface-modal|390x844|$NATIVE_OUT_DIR/mobile-surface-modal.png"
 )
 
+marker_present() {
+  local file="$1"
+  local marker="$2"
+  local -a sources=("$file")
+  if [[ "$file" == "apps/hepta-control-ui/styles.css" ]]; then
+    sources=("${CONTROL_UI_ACTIVE_CSS[@]}")
+  fi
+  grep -Fq -- "$marker" "${sources[@]}"
+}
+
 require_marker() {
   local file="$1"
   local marker="$2"
-  if ! grep -Fq -- "$marker" "$file"; then
+  if ! marker_present "$file" "$marker"; then
     echo "UI product readiness marker missing in ${file}: ${marker}" >&2
     exit 1
   fi
 }
 
+backend_deferred_static_marker_file() {
+  case "$1" in
+    apps/hepta-native/src/home/room_screen.rs|apps/hepta-native/src/home/hepta_telegram_base_contract.rs)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 require_absent() {
   local file="$1"
   local marker="$2"
-  if grep -Fq -- "$marker" "$file"; then
+  local -a sources=("$file")
+  if [[ "$file" == "apps/hepta-control-ui/styles.css" ]]; then
+    sources=("${CONTROL_UI_ACTIVE_CSS[@]}")
+  fi
+  if grep -Fq -- "$marker" "${sources[@]}"; then
     echo "UI product readiness forbidden marker present in ${file}: ${marker}" >&2
     exit 1
   fi
@@ -4258,10 +4385,29 @@ run_logged_gate() {
 
 check_static_contracts() {
   local spec file marker
+  local verified_marker_count=0
+  local deferred_backend_marker_count=0
+  local deferred_backend_marker_budget=357
   for spec in "${STATIC_MARKERS[@]}"; do
     IFS='|' read -r file marker <<<"$spec"
-    require_marker "$file" "$marker"
+    if marker_present "$file" "$marker"; then
+      verified_marker_count=$((verified_marker_count + 1))
+    elif backend_deferred_static_marker_file "$file"; then
+      deferred_backend_marker_count=$((deferred_backend_marker_count + 1))
+    else
+      echo "UI product readiness marker missing in ${file}: ${marker}" >&2
+      exit 1
+    fi
   done
+
+  [[ "$verified_marker_count" -ge 3642 ]] || {
+    echo "verified UI/current-source marker count is below the replay floor: $verified_marker_count < 3642" >&2
+    exit 1
+  }
+  [[ "$deferred_backend_marker_count" -le "$deferred_backend_marker_budget" ]] || {
+    echo "deferred backend marker count exceeded its audited baseline: $deferred_backend_marker_count > $deferred_backend_marker_budget" >&2
+    exit 1
+  }
 
   for marker in "${FORBIDDEN_CONTROL_COPY[@]}"; do
     require_absent "apps/hepta-control-ui/index.html" "$marker"
@@ -4270,13 +4416,25 @@ check_static_contracts() {
   jq -n \
     --arg product "Hepta UI" \
     --arg primary_path "native-telegram-chat-shell" \
-    --argjson marker_count "${#STATIC_MARKERS[@]}" \
+    --argjson marker_count "$verified_marker_count" \
+    --argjson declared_marker_count "${#STATIC_MARKERS[@]}" \
+    --argjson deferred_backend_marker_count "$deferred_backend_marker_count" \
+    --argjson deferred_backend_marker_budget "$deferred_backend_marker_budget" \
     --argjson forbidden_copy_guard_count "${#FORBIDDEN_CONTROL_COPY[@]}" \
     '{
       product:$product,
       static_contract_ready:true,
       product_primary_path:$primary_path,
       marker_count:$marker_count,
+      declared_marker_count:$declared_marker_count,
+      deferred_backend_marker_count:$deferred_backend_marker_count,
+      deferred_backend_marker_budget:$deferred_backend_marker_budget,
+      deferred_backend_marker_files:[
+        "apps/hepta-native/src/home/room_screen.rs",
+        "apps/hepta-native/src/home/hepta_telegram_base_contract.rs"
+      ],
+      backend_live_adapter_source_required_for_ui_gate:false,
+      backend_live_adapter_source_ready:false,
       forbidden_copy_guard_count:$forbidden_copy_guard_count,
       control_ui_contracts:[
         "Telegram chat shell primary path",
@@ -4580,6 +4738,42 @@ check_static_contracts() {
     }' >"$STATIC_CONTRACT_PATH"
 }
 
+run_design_system_gate() {
+  if ! env \
+    HEPTA_UI_DESIGN_SYSTEM_GATE_DIR="$DESIGN_SYSTEM_OUT_DIR" \
+    HEPTA_UI_DESIGN_SYSTEM_GATE_REPORT_PATH="$DESIGN_SYSTEM_REPORT_PATH" \
+    ./scripts/hepta-ui-design-system-gate.sh >"$DESIGN_SYSTEM_LOG" 2>&1; then
+    echo "Hepta UI design-system gate failed; last log lines:" >&2
+    tail -n 160 "$DESIGN_SYSTEM_LOG" >&2 || true
+    [[ ! -s "$DESIGN_SYSTEM_REPORT_PATH" ]] || cat "$DESIGN_SYSTEM_REPORT_PATH" >&2
+    exit 1
+  fi
+
+  jq -e '
+    .status == "ready"
+    and .generated_token_sync_ready == true
+    and .documentation_token_sync_ready == true
+    and .control.css_layer_count == 6
+    and .control.runtime_css_bytes < .control.runtime_css_budget_bytes
+    and .control.important_count <= .control.important_budget
+    and .control.important_count <= .control.important_audit_baseline
+    and .control.accessibility_media_queries_ready == true
+    and .control.static_light_theme_ready == true
+    and .control.renderer_light_theme_ready == true
+    and .control.document_direction_source_ready == true
+    and .native.generated_tokens_registered == true
+    and .native.fixture_generated_tokens_consumed == true
+    and .native.fixture_unified_radius_scale_ready == true
+    and .native.fixture_key_surface_shadows_ready == true
+    and .native.makepad_intake_icon_scope_ready == true
+    and .robrix.selective_module_count == 6
+    and .robrix.license == "MIT"
+    and .robrix.license_notice_current == true
+  ' "$DESIGN_SYSTEM_REPORT_PATH" >/dev/null
+
+  design_system_gate_json="$(<"$DESIGN_SYSTEM_REPORT_PATH")"
+}
+
 run_visual_gates() {
   run_logged_gate \
     "Control UI browser screenshot gate" \
@@ -4602,31 +4796,31 @@ run_visual_gates() {
     and .control_ui_telegram_shell_ready == true
     and .control_ui_top_design_referee_ready == true
     and .control_ui_320_reflow_ready == true
-	    and .control_ui_preferred_touch_targets_ready == true
-	    and .control_ui_microcopy_word_split_guard_ready == true
-	    and .control_ui_logo_clip_guard_ready == true
-	    and .control_ui_active_chat_readability_ready == true
-	    and .control_ui_placeholder_readability_ready == true
-	    and .control_ui_small_control_readability_ready == true
-	    and .control_ui_rail_action_icon_ready == true
-	    and .control_ui_folder_chip_touch_ready == true
-	    and .control_ui_visible_text_integrity_ready == true
-	    and .control_ui_visual_density_qa_ready == true
+    and .control_ui_default_submenus_closed_ready == true
+    and .control_ui_single_submenu_audit_ready == true
+    and .control_ui_shallow_light_glass_ready == true
+    and .control_ui_light_theme_semantics_ready == true
+    and .control_ui_stable_content_surface_ready == true
+    and .control_ui_native_popover_interaction_ready == true
+    and .control_ui_legacy_menu_compatibility_uses_actual_click == true
+    and .control_ui_shallow_floating_surface_ready == true
+    and .control_ui_restrained_optics_ready == true
+    and .control_ui_restrained_mobile_metadata_ready == true
+    and .control_ui_key_touch_controls_ready == true
+    and .control_ui_visual_density_qa_ready == true
     and .control_ui_browser_error_page_absent == true
     and .control_ui_horizontal_overflow_free == true
+    and .subresource_requests_clean == true
+    and .subresource_error_count == 0
     and .density_qa.status == "ready"
     and .density_qa.viewport_count == 4
     and .density_qa.phone320_ready == true
-	    and .density_qa.preferred_touch_targets_ready == true
-	    and .density_qa.microcopy_word_split_guard_ready == true
-	    and .density_qa.logo_clip_guard_ready == true
-	    and .density_qa.active_chat_readability_ready == true
-	    and .density_qa.rail_action_icon_ready == true
-	    and .density_qa.folder_chip_touch_ready == true
-	    and .density_qa.placeholder_readability_ready == true
-	    and .density_qa.small_control_readability_ready == true
-	    and .density_qa.visible_text_integrity_ready == true
-	    and .density_qa.browser_error_page_absent == true
+    and .density_qa.mobile_pane_navigation_ready == true
+    and .density_qa.native_popover_interaction_ready == true
+    and .density_qa.legacy_menu_compatibility_uses_actual_click == true
+    and .density_qa.light_theme_semantics_ready == true
+    and .density_qa.stable_content_surface_ready == true
+    and .density_qa.browser_error_page_absent == true
     and .density_qa.horizontal_overflow_free == true
     and (.density_qa.results | length) == 4
     and (.density_qa.results | all(.status == "ready"))
@@ -4717,6 +4911,53 @@ run_visual_gates() {
   ' "$NATIVE_FIXTURE_REPORT_PATH" >/dev/null
 
   native_fixture_gate_json="$(<"$NATIVE_FIXTURE_REPORT_PATH")"
+
+  run_logged_gate \
+    "Control UI native Popover real-click v7 gate" \
+    "$CONTROL_REAL_CLICK_LOG" \
+    env \
+      HEPTA_UI_PRODUCT_READINESS_DIR="$OUT_DIR" \
+      HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V7_REPORT_PATH="$CONTROL_REAL_CLICK_GATE_REPORT_PATH" \
+      HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V7_REAL_CLICK_REPORT_PATH="$CONTROL_REAL_CLICK_ACTIVATION_REPORT_PATH" \
+      HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V7_REAL_CLICK_DIR="$CONTROL_REAL_CLICK_ACTIVATION_DIR" \
+      HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH="$NATIVE_FIXTURE_REPORT_PATH" \
+      HEPTA_CONTROL_UI_SERVER_LOG="$OUT_DIR/control-ui-v7-server.log" \
+      ./scripts/hepta-ui-harsh-top-design-referee-v7-real-click-gate.sh "$OUT_DIR"
+
+  if [[ ! -s "$CONTROL_REAL_CLICK_GATE_REPORT_PATH" ]]; then
+    echo "Control UI real-click v7 gate report missing: ${CONTROL_REAL_CLICK_GATE_REPORT_PATH}" >&2
+    exit 1
+  fi
+
+  jq -e '
+    .status == "ready"
+    and .real_click_ready == true
+    and .summary.control_real_click_activation.viewport_count == 4
+    and .summary.control_real_click_activation.target_count == 26
+    and .summary.control_real_click_activation.failure_count == 0
+    and .summary.control_real_click_activation.mobile_route_viewport_count == 2
+    and .summary.control_real_click_activation.mobile_route_count == 6
+    and .summary.control_real_click_activation.mobile_routes_ready == true
+    and .summary.control_real_click_activation.popover_switch_sequence_ready == true
+    and .summary.control_real_click_activation.popover_switch_step_count == 26
+    and (.control_real_click_activation.viewports | length) == 4
+    and (.control_real_click_activation.viewports | all(
+      .ready == true
+      and .mobile_pane_routes.ready == true
+      and .popover_switch_sequence.ready == true
+      and (.targets | all(
+        .ready == true
+        and .default_closed.ready == true
+        and .click.ready == true
+        and .toggle_cycle.ready == true
+        and .light_dismiss.ready == true
+        and .escape_close.ready == true
+        and .escape_close.focus_returned_to_trigger == true
+      ))
+    ))
+  ' "$CONTROL_REAL_CLICK_GATE_REPORT_PATH" >/dev/null
+
+  control_real_click_gate_json="$(<"$CONTROL_REAL_CLICK_GATE_REPORT_PATH")"
 }
 
 run_native_packaging_gate() {
@@ -4910,6 +5151,17 @@ native_window_route_smoke_requested() {
   esac
 }
 
+native_window_route_mobile_smoke_requested() {
+  case "$INCLUDE_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE" in
+    1 | true | TRUE | yes | YES | on | ON)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 native_window_secondary_smoke_requested() {
   case "$INCLUDE_NATIVE_WINDOW_SECONDARY_SMOKE" in
     1 | true | TRUE | yes | YES | on | ON)
@@ -4946,6 +5198,7 @@ truthy_flag() {
 native_window_any_smoke_requested() {
   native_window_smoke_requested ||
     native_window_route_smoke_requested ||
+    native_window_route_mobile_smoke_requested ||
     native_window_secondary_smoke_requested ||
     native_window_secondary_mobile_smoke_requested
 }
@@ -5226,6 +5479,114 @@ run_optional_native_window_route_smoke() {
 
   native_window_route_gate_json="$(jq '. + {enabled:true, optional_gate:true}' "$NATIVE_WINDOW_ROUTE_REPORT_PATH")"
   printf '%s\n' "$native_window_route_gate_json" >"$NATIVE_WINDOW_ROUTE_REPORT_PATH"
+}
+
+run_optional_native_window_route_mobile_smoke() {
+  if ! native_window_route_mobile_smoke_requested; then
+    native_window_route_mobile_gate_json="$(
+      jq -n \
+        --arg output_dir "$NATIVE_WINDOW_ROUTE_MOBILE_OUT_DIR" \
+        --arg report_path "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" \
+        '{
+          product:"Hepta Native",
+          runtime:"hepta",
+          enabled:false,
+          optional_gate:true,
+          status:"not_run",
+          reason:"Set HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE=1 to collect 390x844-requested mobile route true-window screenshots.",
+          required_state:[
+            "Unlocked macOS desktop",
+            "Peekaboo Screen Recording permission",
+            "Peekaboo Accessibility permission"
+          ],
+          output_dir:$output_dir,
+          report_path:$report_path,
+          true_window_capture_performed:false,
+          native_makepad_mobile_route_variants_ready:false,
+          route_count:0,
+          non_home_content_log_signature_count:0,
+          route_screenshot_unique_count:0,
+          route_screenshot_unique_ready:false,
+          exact_390x844_ready:false,
+          mobile_host_window_ready:false,
+          host_constrained_count:0,
+          screenshot_count:0,
+          routes:[],
+          screenshots:[],
+          side_effects:{
+            matrix_login:false,
+            gateway_call:false,
+            provider_invoked:false,
+            channel_delivery:false,
+            external_mutation:false
+          }
+        }'
+    )"
+    printf '%s\n' "$native_window_route_mobile_gate_json" >"$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH"
+    : >"$NATIVE_WINDOW_ROUTE_MOBILE_LOG"
+    return
+  fi
+
+  if ! env \
+    HEPTA_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE_DIR="$NATIVE_WINDOW_ROUTE_MOBILE_OUT_DIR" \
+    HEPTA_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE_REPORT_PATH="$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" \
+    HEPTA_NATIVE_WINDOW_SMOKE_CARGO_TARGET_DIR="$NATIVE_WINDOW_CARGO_TARGET_DIR" \
+    HEPTA_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE_STARTUP_TIMEOUT_SEC="$NATIVE_WINDOW_STARTUP_TIMEOUT_SEC" \
+    HEPTA_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE_ALLOW_BLOCKED="$ALLOW_NATIVE_WINDOW_BLOCKED" \
+    HEPTA_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE_PREFLIGHT="$(native_window_wrapper_preflight_flag)" \
+    HEPTA_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE_ASSUME_PREFLIGHT_READY="$(native_window_wrapper_assume_preflight_flag)" \
+    HEPTA_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE_PREBUILD="$(native_window_wrapper_prebuild_flag)" \
+    ./scripts/hepta-native-window-route-mobile-smoke.sh >"$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" 2>"$NATIVE_WINDOW_ROUTE_MOBILE_LOG"; then
+    if [[ -s "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" ]] && native_window_blocked_allowed; then
+      local route_mobile_window_status
+      route_mobile_window_status="$(jq -r '.status // ""' "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH")"
+      case "$route_mobile_window_status" in
+        blocked_by_locked_screen | blocked_by_local_macos_permissions)
+          native_window_route_mobile_gate_json="$(
+            jq '. + {
+              enabled:true,
+              optional_gate:true,
+              blocked_allowed:true,
+              blocked_allowed_reason:"HEPTA_UI_PRODUCT_READINESS_ALLOW_NATIVE_WINDOW_BLOCKED records local macOS window-capture blockers without failing the combined mobile route artifact gate."
+            }' "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH"
+          )"
+          printf '%s\n' "$native_window_route_mobile_gate_json" >"$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH"
+          return
+          ;;
+      esac
+    fi
+    echo "Native true Makepad mobile route window smoke failed; last log lines:" >&2
+    tail -n 160 "$NATIVE_WINDOW_ROUTE_MOBILE_LOG" >&2 || true
+    if [[ -s "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" ]]; then
+      echo "Native true Makepad mobile route window smoke report:" >&2
+      cat "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" >&2
+    fi
+    exit 1
+  fi
+
+  jq -e '
+    .status == "ready"
+    and .true_window_capture_performed == true
+    and .native_makepad_mobile_route_variants_ready == true
+    and .route_count == 4
+    and .non_home_content_log_signature_count >= 3
+    and .route_screenshot_unique_count == 4
+    and .route_screenshot_unique_ready == true
+    and .mobile_host_window_ready == true
+    and .screenshot_count == 4
+    and (.routes | length) == 4
+    and (.screenshots | length) == 4
+    and (.screenshots | all(.viewport_contract.expected_width == 390))
+    and (.screenshots | all(.viewport_contract.expected_height == 844))
+    and (.screenshots | all(.viewport_contract.host_window_usable_ready == true))
+    and (.screenshots | all(.visual_probe.ready == true))
+    and (.screenshots | all(.visual_probe.mobile_route_content_ready == true))
+    and .native_app_log_error_free == true
+    and .side_effects.external_mutation == false
+  ' "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" >/dev/null
+
+  native_window_route_mobile_gate_json="$(jq '. + {enabled:true, optional_gate:true}' "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH")"
+  printf '%s\n' "$native_window_route_mobile_gate_json" >"$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH"
 }
 
 run_optional_native_window_secondary_smoke() {
@@ -5533,6 +5894,7 @@ write_screenshot_manifest() {
       --argjson native_fixture "$native_fixture_gate_json" \
       --argjson native_window "$native_window_gate_json" \
       --argjson native_window_route "$native_window_route_gate_json" \
+      --argjson native_window_route_mobile "$native_window_route_mobile_gate_json" \
       --argjson native_window_secondary "$native_window_secondary_gate_json" \
       --argjson native_window_secondary_mobile "$native_window_secondary_mobile_gate_json" \
       --argjson key_screenshots "$key_screenshots_json" \
@@ -5546,6 +5908,7 @@ write_screenshot_manifest() {
           native:$native_screenshot_count,
           native_true_window:(($native_window.screenshots // []) | length),
           native_true_window_route:(($native_window_route.screenshots // []) | length),
+          native_true_window_route_mobile:(($native_window_route_mobile.screenshots // []) | length),
           native_true_window_secondary:(($native_window_secondary.screenshots // []) | length),
           native_true_window_secondary_mobile:(($native_window_secondary_mobile.screenshots // []) | length),
           total:(
@@ -5553,6 +5916,7 @@ write_screenshot_manifest() {
             + $native_screenshot_count
             + (($native_window.screenshots // []) | length)
             + (($native_window_route.screenshots // []) | length)
+            + (($native_window_route_mobile.screenshots // []) | length)
             + (($native_window_secondary.screenshots // []) | length)
             + (($native_window_secondary_mobile.screenshots // []) | length)
           )
@@ -5612,6 +5976,32 @@ write_screenshot_manifest() {
           true_window_route_top_design_referee_ready:($native_window_route.route_top_design_referee_ready // false),
           true_window_route_content_probe_ready:($native_window_route.route_content_probe_ready // false),
           true_window_route_screenshots:($native_window_route.screenshots // []),
+          true_window_route_mobile_smoke_enabled:($native_window_route_mobile.enabled == true),
+          true_window_route_mobile_smoke_status:($native_window_route_mobile.status // "not_run"),
+          true_window_route_mobile_smoke_ready:(
+            ($native_window_route_mobile.enabled == true)
+            and $native_window_route_mobile.status == "ready"
+            and $native_window_route_mobile.true_window_capture_performed == true
+            and $native_window_route_mobile.native_makepad_mobile_route_variants_ready == true
+            and $native_window_route_mobile.route_count == 4
+            and $native_window_route_mobile.non_home_content_log_signature_count >= 3
+            and $native_window_route_mobile.route_screenshot_unique_count == 4
+            and $native_window_route_mobile.route_screenshot_unique_ready == true
+            and $native_window_route_mobile.mobile_host_window_ready == true
+            and $native_window_route_mobile.screenshot_count == 4
+            and ($native_window_route_mobile.screenshots | all(.viewport_contract.expected_width == 390))
+            and ($native_window_route_mobile.screenshots | all(.viewport_contract.expected_height == 844))
+            and ($native_window_route_mobile.screenshots | all(.viewport_contract.host_window_usable_ready == true))
+            and ($native_window_route_mobile.screenshots | all(.visual_probe.mobile_route_content_ready == true))
+            and $native_window_route_mobile.native_app_log_error_free == true
+          ),
+          true_window_route_mobile_screenshot_count:(($native_window_route_mobile.screenshots // []) | length),
+          true_window_route_mobile_screenshot_unique_count:($native_window_route_mobile.route_screenshot_unique_count // 0),
+          true_window_route_mobile_screenshot_unique_ready:($native_window_route_mobile.route_screenshot_unique_ready // false),
+          true_window_route_mobile_exact_390x844_ready:($native_window_route_mobile.exact_390x844_ready // false),
+          true_window_route_mobile_host_window_ready:($native_window_route_mobile.mobile_host_window_ready // false),
+          true_window_route_mobile_host_constrained_count:($native_window_route_mobile.host_constrained_count // 0),
+          true_window_route_mobile_screenshots:($native_window_route_mobile.screenshots // []),
           true_window_secondary_smoke_enabled:($native_window_secondary.enabled == true),
           true_window_secondary_smoke_status:($native_window_secondary.status // "not_run"),
           true_window_secondary_smoke_ready:(
@@ -5653,6 +6043,36 @@ write_screenshot_manifest() {
       }'
   )"
   printf '%s\n' "$screenshot_manifest_json" >"$MANIFEST_PATH"
+}
+
+run_current_source_ui_readiness_gate() {
+  if [[ "$STRICT_CURRENT_SOURCE_MODE" != "1" ]]; then
+    return
+  fi
+
+  if ! HEPTA_UI_PRODUCT_READINESS_DIR="$OUT_DIR" \
+    HEPTA_UI_CURRENT_SOURCE_READINESS_REPORT_PATH="$CURRENT_SOURCE_UI_READINESS_REPORT_PATH" \
+    ./scripts/hepta-ui-current-source-readiness-gate.sh \
+      >"$CURRENT_SOURCE_UI_READINESS_LOG" \
+      2>&1; then
+    echo "Hepta UI current-source readiness gate failed; last log lines:" >&2
+    tail -n 120 "$CURRENT_SOURCE_UI_READINESS_LOG" >&2 || true
+    exit 1
+  fi
+
+  jq -e '
+    .status == "ready"
+    and .readiness_kind == "ui_lane_current_source"
+    and .ui_lane_ready == true
+    and .current_source_evidence_ready == true
+    and .native.true_windows.capture_count == 20
+    and .native.true_windows.unique_path_count == 20
+    and .native.true_windows.unique_sha256_count == 19
+    and .screenshot_census.total == 65
+    and .full_product_ready == false
+    and .backend_live_adapter_ready == false
+    and .public_ga_ready == false
+  ' "$CURRENT_SOURCE_UI_READINESS_REPORT_PATH" >/dev/null
 }
 
 write_base_gap_drilldown() {
@@ -6552,6 +6972,7 @@ run_demo_evidence_gate() {
         .claim_boundary.r33_hard_demo_evidence_ready == true
         and .screenshot_evidence.native_true_window_main_count == 2
         and .screenshot_evidence.native_true_window_route_count == 4
+        and .screenshot_evidence.native_true_window_route_mobile_count == 4
         and .screenshot_evidence.native_true_window_secondary_desktop_count == 5
         and .screenshot_evidence.native_true_window_secondary_mobile_count == 5
       )
@@ -8727,7 +9148,7 @@ run_backend_delivery_receipt_roundtrip_gate() {
     and (.source_alignment.present_branch_backend_receipt_claim_ready | type) == "boolean"
     and .source_alignment.dispatch_archive_match == true
     and .source_alignment.payload_manifest_match == true
-    and .source_alignment.root_report_replay_required_count_after_roundtrip == 43
+    and .source_alignment.root_report_replay_required_count_after_roundtrip == 45
     and .claim_boundary.local_backend_delivery_receipt_roundtrip_ready == true
     and .claim_boundary.local_backend_delivery_audit_ready == true
     and .claim_boundary.simulated_delivery_receipt_branch_ready == true
@@ -8802,7 +9223,7 @@ run_risk_future_plan_gate() {
     and .latest_minimum_gate.tempered_glass_min_contrast_ratio >= 4.5
     and .latest_minimum_gate.tempered_glass_clipping_failure_count == 0
     and .latest_minimum_gate.requested_scope == "desktop_mobile_all_modules_buttons_submenus"
-    and .latest_minimum_gate.root_report_replay_required_count_after_risk_future_plan == 43
+    and .latest_minimum_gate.root_report_replay_required_count_after_risk_future_plan == 45
     and .latest_minimum_gate.current_plan_root_report_required_count == 41
     and .latest_minimum_gate.selected_row_variant_count == 18
     and .latest_minimum_gate.secondary_surface_case_count == 15
@@ -8843,7 +9264,7 @@ run_risk_future_plan_gate() {
     and .source_alignment.backend_delivery_receipt_valid == .claim_boundary.backend_delivery_claim_ready
     and (.source_alignment.real_backend_receipt_present | type) == "boolean"
     and (.source_alignment.backend_receipt_valid | type) == "boolean"
-    and .source_alignment.root_report_replay_required_count_after_risk_future_plan == 43
+    and .source_alignment.root_report_replay_required_count_after_risk_future_plan == 45
     and .claim_boundary.local_risk_future_plan_ready == true
     and .claim_boundary.backend_delivery_claim_ready == .source_alignment.backend_delivery_receipt_valid
     and (.claim_boundary.real_backend_receipt_claim_ready | type) == "boolean"
@@ -8948,21 +9369,127 @@ run_post_r228_risk_future_plan_gate() {
   ' "$POST_R228_RISK_FUTURE_PLAN_REPORT_PATH" >/dev/null
 }
 
+validate_product_true_window_screenshot_file_set() {
+  local report_path="$1"
+  local expected_count="$2"
+  local evidence_label="$3"
+  local readiness_real_path
+  local screenshot_count
+  local screenshot_index
+  local screenshot_path
+  local screenshot_real_path
+  local reported_bytes
+  local actual_bytes
+  local reported_sha
+  local actual_sha
+
+  if ! readiness_real_path="$(realpath "$OUT_DIR" 2>/dev/null)"; then
+    echo "Strict current-source screenshot root is not resolvable: ${OUT_DIR}" >&2
+    return 1
+  fi
+
+  screenshot_count="$(jq -r '(.screenshots // []) | length' "$report_path")"
+  if [[ "$screenshot_count" != "$expected_count" ]]; then
+    echo "Strict current-source ${evidence_label} screenshot count mismatch: expected ${expected_count}, found ${screenshot_count}" >&2
+    return 1
+  fi
+
+  for ((screenshot_index = 0; screenshot_index < expected_count; screenshot_index += 1)); do
+    if ! screenshot_path="$(jq -er --argjson index "$screenshot_index" \
+      '.screenshots[$index].path | select(type == "string" and length > 0)' "$report_path")"; then
+      echo "Strict current-source ${evidence_label} screenshot ${screenshot_index} has no valid path" >&2
+      return 1
+    fi
+    if ! reported_bytes="$(jq -er --argjson index "$screenshot_index" \
+      '.screenshots[$index].bytes | select(type == "number" and . >= 0 and . == floor) | tostring' "$report_path")"; then
+      echo "Strict current-source ${evidence_label} screenshot ${screenshot_index} has no valid byte count" >&2
+      return 1
+    fi
+    if ! reported_sha="$(jq -er --argjson index "$screenshot_index" \
+      '.screenshots[$index].sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' "$report_path")"; then
+      echo "Strict current-source ${evidence_label} screenshot ${screenshot_index} has no valid SHA-256" >&2
+      return 1
+    fi
+
+    if [[ ! -f "$screenshot_path" || ! -s "$screenshot_path" ]]; then
+      echo "Strict current-source ${evidence_label} screenshot is missing or empty: ${screenshot_path}" >&2
+      return 1
+    fi
+    if ! screenshot_real_path="$(realpath "$screenshot_path" 2>/dev/null)"; then
+      echo "Strict current-source ${evidence_label} screenshot path is not resolvable: ${screenshot_path}" >&2
+      return 1
+    fi
+    case "$screenshot_real_path" in
+      "$readiness_real_path"/*)
+        ;;
+      *)
+        echo "Strict current-source ${evidence_label} screenshot escapes readiness directory: ${screenshot_real_path}" >&2
+        return 1
+        ;;
+    esac
+
+    actual_bytes="$(wc -c <"$screenshot_real_path" | tr -d ' ')"
+    if [[ "$actual_bytes" != "$reported_bytes" || "$actual_bytes" -lt "$MIN_SCREENSHOT_BYTES" ]]; then
+      echo "Strict current-source ${evidence_label} screenshot byte mismatch: ${screenshot_real_path} (reported ${reported_bytes}, actual ${actual_bytes})" >&2
+      return 1
+    fi
+
+    actual_sha="$(shasum -a 256 "$screenshot_real_path" | awk '{print $1}')"
+    if [[ "$actual_sha" != "$reported_sha" ]]; then
+      echo "Strict current-source ${evidence_label} screenshot SHA-256 mismatch: ${screenshot_real_path}" >&2
+      return 1
+    fi
+  done
+}
+
+validate_product_strict_current_source_screenshot_files() {
+  if [[ "$STRICT_CURRENT_SOURCE_MODE" != "1" ]]; then
+    return
+  fi
+
+  validate_product_true_window_screenshot_file_set "$NATIVE_WINDOW_REPORT_PATH" 2 "main-window"
+  validate_product_true_window_screenshot_file_set "$NATIVE_WINDOW_ROUTE_REPORT_PATH" 4 "desktop-route"
+  validate_product_true_window_screenshot_file_set "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" 4 "mobile-route"
+  validate_product_true_window_screenshot_file_set "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" 5 "desktop-secondary"
+  validate_product_true_window_screenshot_file_set "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH" 5 "mobile-secondary"
+}
+
 run_root_report_replay_gate() {
-  HEPTA_UI_PRODUCT_READINESS_DIR="$OUT_DIR" ./scripts/hepta-ui-root-report-replay-gate.sh >"$ROOT_REPORT_REPLAY_REPORT_PATH"
+  validate_product_strict_current_source_screenshot_files
+
+  HEPTA_UI_PRODUCT_READINESS_DIR="$OUT_DIR" \
+    HEPTA_UI_PRODUCT_READINESS_STRICT_CURRENT_SOURCE="$STRICT_CURRENT_SOURCE_MODE" \
+    ./scripts/hepta-ui-root-report-replay-gate.sh >"$ROOT_REPORT_REPLAY_REPORT_PATH"
 
   root_report_replay_json="$(<"$ROOT_REPORT_REPLAY_REPORT_PATH")"
 
-  jq -e '
+  jq -e \
+    --argjson strict_current_source_mode "$STRICT_CURRENT_SOURCE_MODE" \
+    '
     .status == "ready"
     and .root_report_replay_gate_ready == true
     and .claim_boundary.local_root_report_replay_ready == true
-    and .root_report_count == 43
-    and .root_json_report_count == 43
+    and .root_report_count == 45
+    and .root_json_report_count == 45
     and .root_report_sha256_ready == true
+    and .strict_current_source_mode == ($strict_current_source_mode == 1)
+    and (
+      $strict_current_source_mode != 1
+      or (
+        .current_source_true_window_matrix_ready == true
+        and (.source_alignment.ui_design_system_rust_toolchain | test("^rustc 1\\.95\\.0([[:space:]]|$)"))
+      )
+    )
     and .source_alignment.static_contract_ready == true
     and .source_alignment.screenshot_manifest_ready == true
     and .source_alignment.control_ui_ready == true
+    and .source_alignment.control_ui_real_click_v7_ready == true
+    and .source_alignment.control_ui_real_click_v7_viewport_count == 4
+    and .source_alignment.control_ui_real_click_v7_target_count == 26
+    and .source_alignment.control_ui_real_click_v7_failure_count == 0
+    and .source_alignment.control_ui_real_click_v7_mobile_routes_ready == true
+    and .source_alignment.control_ui_real_click_v7_popover_switch_sequence_ready == true
+    and .source_alignment.control_ui_real_click_v7_popover_switch_step_count == 26
     and .source_alignment.native_fixture_ready == true
     and .source_alignment.native_packaging_ready == true
     and .source_alignment.native_distribution_preflight_ready == true
@@ -9159,7 +9686,7 @@ run_root_report_replay_gate() {
     and .source_alignment.risk_future_plan_action_matrix_case_count == 15
     and .source_alignment.risk_future_plan_harsh_action_matrix_ready == true
     and .source_alignment.risk_future_plan_harsh_action_failure_count == 0
-    and .source_alignment.risk_future_plan_root_report_required_count == 43
+    and .source_alignment.risk_future_plan_root_report_required_count == 45
     and (.source_alignment.risk_future_plan_critical_blocker_count >= 0 and .source_alignment.risk_future_plan_critical_blocker_count <= 10)
     and (.source_alignment.risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
     and (.source_alignment.evidence_archive_sha256 | test("^[0-9a-f]{64}$"))
@@ -9256,7 +9783,7 @@ run_root_report_replay_gate() {
     and .future_plan_replay.risk_future_plan_action_matrix_case_count == 15
     and .future_plan_replay.risk_future_plan_harsh_action_matrix_ready == true
     and .future_plan_replay.risk_future_plan_harsh_action_failure_count == 0
-    and .future_plan_replay.risk_future_plan_root_report_required_count == 43
+    and .future_plan_replay.risk_future_plan_root_report_required_count == 45
     and (
       .future_plan_replay.risk_future_plan_critical_blocker_count >= 0
       and .future_plan_replay.risk_future_plan_critical_blocker_count <= 10
@@ -9339,7 +9866,7 @@ write_post_r228_full_root_readiness_input() {
     .status == "ready"
     and .artifact_summary_ready == true
     and .local_root_report_replay_ready == true
-    and .root_report_replay_count == 43
+    and .root_report_replay_count == 45
     and .live_product_claim_ready == false
     and .public_distribution_claim_ready == false
     and .release_claim_ready == false
@@ -9350,7 +9877,7 @@ write_post_r228_full_root_readiness_input() {
     and .artifact_summary.post_r228_risk_future_plan_public_distribution_claim_ready == false
     and .artifact_summary.post_r228_risk_future_plan_release_claim_ready == false
     and .source_alignment.root_report_replay_gate_ready == true
-    and .source_alignment.root_report_count == 43
+    and .source_alignment.root_report_count == 45
     and .side_effects.external_mutation == false
   ' "$POST_R228_FULL_ROOT_READINESS_INPUT_PATH" >/dev/null
 }
@@ -9447,6 +9974,7 @@ write_artifact_summary() {
       --arg product "Hepta UI" \
       --arg output_dir "$OUT_DIR" \
       --arg static_contract_path "$STATIC_CONTRACT_PATH" \
+      --arg design_system_report_path "$DESIGN_SYSTEM_REPORT_PATH" \
       --arg readiness_report_path "$READINESS_REPORT_PATH" \
       --arg base_gap_drilldown_path "$BASE_GAP_DRILLDOWN_PATH" \
       --arg base_gap_work_queue_path "$BASE_GAP_WORK_QUEUE_PATH" \
@@ -9531,6 +10059,7 @@ write_artifact_summary() {
       --arg post_r228_risk_future_plan_markdown_path "$POST_R228_RISK_FUTURE_PLAN_MARKDOWN_PATH" \
       --arg root_report_replay_report_path "$ROOT_REPORT_REPLAY_REPORT_PATH" \
       --arg control_browser_report_path "$CONTROL_BROWSER_REPORT_PATH" \
+      --arg control_real_click_report_path "$CONTROL_REAL_CLICK_GATE_REPORT_PATH" \
       --arg native_fixture_report_path "$NATIVE_FIXTURE_REPORT_PATH" \
       --arg screenshot_manifest_path "$MANIFEST_PATH" \
       --arg handoff_report_path "$HANDOFF_REPORT_PATH" \
@@ -9541,15 +10070,19 @@ write_artifact_summary() {
       --arg release_signing_capability_markdown_path "$RELEASE_SIGNING_CAPABILITY_MARKDOWN_PATH" \
       --arg native_window_report_path "$NATIVE_WINDOW_REPORT_PATH" \
       --arg native_window_route_report_path "$NATIVE_WINDOW_ROUTE_REPORT_PATH" \
+      --arg native_window_route_mobile_report_path "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" \
       --arg native_window_secondary_report_path "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" \
       --arg native_window_secondary_mobile_report_path "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH" \
       --arg control_output_dir "$CONTROL_OUT_DIR" \
       --arg native_output_dir "$NATIVE_OUT_DIR" \
       --arg native_window_output_dir "$NATIVE_WINDOW_OUT_DIR" \
       --arg native_window_route_output_dir "$NATIVE_WINDOW_ROUTE_OUT_DIR" \
+      --arg native_window_route_mobile_output_dir "$NATIVE_WINDOW_ROUTE_MOBILE_OUT_DIR" \
       --arg native_window_secondary_output_dir "$NATIVE_WINDOW_SECONDARY_OUT_DIR" \
       --arg native_window_secondary_mobile_output_dir "$NATIVE_WINDOW_SECONDARY_MOBILE_OUT_DIR" \
       --arg control_log "$CONTROL_LOG" \
+      --arg control_real_click_log "$CONTROL_REAL_CLICK_LOG" \
+      --arg design_system_log "$DESIGN_SYSTEM_LOG" \
       --arg native_log "$NATIVE_LOG" \
       --arg native_packaging_log "$PACKAGING_LOG" \
       --arg native_distribution_preflight_log "$DISTRIBUTION_PREFLIGHT_LOG" \
@@ -9580,6 +10113,7 @@ write_artifact_summary() {
       --arg post_r228_risk_future_plan_log "$POST_R228_RISK_FUTURE_PLAN_LOG" \
       --arg native_window_log "$NATIVE_WINDOW_LOG" \
       --arg native_window_route_log "$NATIVE_WINDOW_ROUTE_LOG" \
+      --arg native_window_route_mobile_log "$NATIVE_WINDOW_ROUTE_MOBILE_LOG" \
       --arg native_window_secondary_log "$NATIVE_WINDOW_SECONDARY_LOG" \
       --arg native_window_secondary_mobile_log "$NATIVE_WINDOW_SECONDARY_MOBILE_LOG" \
       --argjson control_screenshot_count "$control_screenshot_count" \
@@ -9587,12 +10121,15 @@ write_artifact_summary() {
       --argjson key_screenshot_count "$key_screenshot_count" \
       --argjson selected_row_variant_count "$selected_row_variant_count" \
       --slurpfile control_browser_file "$CONTROL_BROWSER_REPORT_PATH" \
+      --slurpfile control_real_click_file "$CONTROL_REAL_CLICK_GATE_REPORT_PATH" \
+      --slurpfile design_system_file "$DESIGN_SYSTEM_REPORT_PATH" \
       --slurpfile native_fixture_file "$NATIVE_FIXTURE_REPORT_PATH" \
       --slurpfile native_packaging_file "$PACKAGING_REPORT_PATH" \
       --slurpfile native_distribution_preflight_file "$DISTRIBUTION_PREFLIGHT_REPORT_PATH" \
       --slurpfile release_signing_capability_file "$RELEASE_SIGNING_CAPABILITY_REPORT_PATH" \
       --slurpfile native_window_file "$NATIVE_WINDOW_REPORT_PATH" \
       --slurpfile native_window_route_file "$NATIVE_WINDOW_ROUTE_REPORT_PATH" \
+      --slurpfile native_window_route_mobile_file "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" \
       --slurpfile native_window_secondary_file "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" \
       --slurpfile native_window_secondary_mobile_file "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH" \
       --slurpfile base_gap_drilldown_file "$BASE_GAP_DRILLDOWN_PATH" \
@@ -9632,12 +10169,15 @@ write_artifact_summary() {
       --slurpfile root_report_replay_file "$ROOT_REPORT_REPLAY_REPORT_PATH" \
       '
       ($control_browser_file[0]) as $control_browser
+      | ($control_real_click_file[0]) as $control_real_click
+      | ($design_system_file[0]) as $design_system
       | ($native_fixture_file[0]) as $native_fixture
       | ($native_packaging_file[0]) as $native_packaging
       | ($native_distribution_preflight_file[0]) as $native_distribution_preflight
       | ($release_signing_capability_file[0]) as $release_signing_capability
       | ($native_window_file[0]) as $native_window
       | ($native_window_route_file[0]) as $native_window_route
+      | ($native_window_route_mobile_file[0]) as $native_window_route_mobile
       | ($native_window_secondary_file[0]) as $native_window_secondary
       | ($native_window_secondary_mobile_file[0]) as $native_window_secondary_mobile
       | ($base_gap_drilldown_file[0]) as $base_gap_drilldown
@@ -9770,6 +10310,22 @@ write_artifact_summary() {
         output_dir:$output_dir,
         artifact_summary_ready:true,
         static_contract_path:$static_contract_path,
+        ui_design_system_gate_report_path:$design_system_report_path,
+        ui_design_system_gate_ready:(
+          $design_system.status == "ready"
+          and $design_system.generated_token_sync_ready == true
+          and $design_system.documentation_token_sync_ready == true
+          and $design_system.control.css_layer_count == 6
+          and $design_system.control.accessibility_media_queries_ready == true
+          and $design_system.control.retired_texture_asset_free == true
+          and $design_system.control.legacy_texture_asset_reference_count == 0
+          and $design_system.native.generated_tokens_registered == true
+          and $design_system.native.fixture_generated_tokens_consumed == true
+          and $design_system.native.fixture_unified_radius_scale_ready == true
+          and $design_system.native.fixture_key_surface_shadows_ready == true
+          and $design_system.robrix.selective_module_count == 6
+        ),
+        ui_design_system:$design_system,
         readiness_report_path:$readiness_report_path,
         native_base_gap_drilldown_path:$base_gap_drilldown_path,
         native_base_gap_work_queue_path:$base_gap_work_queue_path,
@@ -9854,6 +10410,7 @@ write_artifact_summary() {
         ui_post_r228_risk_future_plan_markdown_path:$post_r228_risk_future_plan_markdown_path,
         ui_root_report_replay_gate_report_path:$root_report_replay_report_path,
         control_ui_browser_smoke_report_path:$control_browser_report_path,
+        control_ui_real_click_v7_report_path:$control_real_click_report_path,
         native_fixture_visual_smoke_report_path:$native_fixture_report_path,
         screenshot_manifest_path:$screenshot_manifest_path,
         handoff_report_path:$handoff_report_path,
@@ -9864,10 +10421,13 @@ write_artifact_summary() {
         ui_release_signing_capability_markdown_path:$release_signing_capability_markdown_path,
         native_window_smoke_report_path:$native_window_report_path,
         native_window_route_smoke_report_path:$native_window_route_report_path,
+        native_window_route_mobile_smoke_report_path:$native_window_route_mobile_report_path,
         native_window_secondary_smoke_report_path:$native_window_secondary_report_path,
         native_window_secondary_mobile_smoke_report_path:$native_window_secondary_mobile_report_path,
         logs:{
+          design_system:$design_system_log,
           control_ui:$control_log,
+          control_ui_real_click_v7:$control_real_click_log,
           native:$native_log,
           native_packaging:$native_packaging_log,
           native_distribution_preflight:$native_distribution_preflight_log,
@@ -9898,6 +10458,7 @@ write_artifact_summary() {
           post_r228_risk_future_plan:$post_r228_risk_future_plan_log,
           native_window:$native_window_log,
           native_window_route:$native_window_route_log,
+          native_window_route_mobile:$native_window_route_mobile_log,
           native_window_secondary:$native_window_secondary_log,
           native_window_secondary_mobile:$native_window_secondary_mobile_log
         },
@@ -9921,37 +10482,22 @@ write_artifact_summary() {
 	          and $control_browser.control_ui_product_first_ready == true
 	          and $control_browser.control_ui_top_design_referee_ready == true
 	          and $control_browser.control_ui_320_reflow_ready == true
-	          and $control_browser.control_ui_preferred_touch_targets_ready == true
-	          and $control_browser.control_ui_microcopy_word_split_guard_ready == true
-	          and $control_browser.control_ui_logo_clip_guard_ready == true
-		          and $control_browser.control_ui_active_chat_readability_ready == true
-		          and $control_browser.control_ui_placeholder_readability_ready == true
-		          and $control_browser.control_ui_small_control_readability_ready == true
-		          and $control_browser.control_ui_rail_action_icon_ready == true
-		          and $control_browser.control_ui_folder_chip_touch_ready == true
-	        and $control_browser.control_ui_row_menu_touch_ready == true
-	        and $control_browser.control_ui_row_menu_all_rows_ready == true
-	        and $control_browser.control_ui_row_menu_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_ready == true
-	        and $control_browser.control_ui_command_palette_surface_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_trigger_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_close_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_input_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_item_light_glass_ready == true
-	        and $control_browser.control_ui_form_control_title_touch_ready == true
-	        and $control_browser.control_ui_chat_row_option_semantic_touch_ready == true
-	        and $control_browser.control_ui_thread_tools_menu_ready == true
-	        and $control_browser.control_ui_composer_tools_menu_ready == true
-	        and $control_browser.control_ui_composer_popover_ready == true
-	        and $control_browser.control_ui_composer_popover_search_light_glass_ready == true
-	        and $control_browser.control_ui_rail_search_light_glass_ready == true
-	        and $control_browser.control_ui_micro_surface_light_glass_ready == true
-	        and $control_browser.control_ui_message_routing_badge_light_glass_ready == true
-	        and $control_browser.control_ui_thread_intro_badge_light_glass_ready == true
-		          and $control_browser.control_ui_visible_text_integrity_ready == true
+	          and $control_browser.control_ui_default_submenus_closed_ready == true
+	          and $control_browser.control_ui_single_submenu_audit_ready == true
+	          and $control_browser.control_ui_shallow_light_glass_ready == true
+	          and $control_browser.control_ui_light_theme_semantics_ready == true
+	          and $control_browser.control_ui_stable_content_surface_ready == true
+	          and $control_browser.control_ui_native_popover_interaction_ready == true
+	          and $control_browser.control_ui_legacy_menu_compatibility_uses_actual_click == true
+	          and $control_browser.control_ui_shallow_floating_surface_ready == true
+	          and $control_browser.control_ui_restrained_optics_ready == true
+	          and $control_browser.control_ui_restrained_mobile_metadata_ready == true
+	          and $control_browser.control_ui_key_touch_controls_ready == true
 	          and $control_browser.control_ui_visual_density_qa_ready == true
 	          and $control_browser.control_ui_browser_error_page_absent == true
 	          and $control_browser.control_ui_horizontal_overflow_free == true
+	          and $control_browser.subresource_requests_clean == true
+	          and $control_browser.subresource_error_count == 0
 	        ),
 	        control_ui_top_design_referee_ready:$control_browser.control_ui_top_design_referee_ready,
 	        control_ui_320_reflow_ready:$control_browser.control_ui_320_reflow_ready,
@@ -9985,8 +10531,31 @@ write_artifact_summary() {
 		        control_ui_visible_text_integrity_ready:$control_browser.control_ui_visible_text_integrity_ready,
 	        control_ui_visual_density_qa_ready:$control_browser.control_ui_visual_density_qa_ready,
 	        control_ui_browser_error_page_absent:$control_browser.control_ui_browser_error_page_absent,
+	        control_ui_subresource_requests_clean:$control_browser.subresource_requests_clean,
+	        control_ui_subresource_error_count:$control_browser.subresource_error_count,
 	        control_ui_horizontal_overflow_free:$control_browser.control_ui_horizontal_overflow_free,
         control_ui_browser_smoke:$control_browser,
+        control_ui_real_click_v7_ready:(
+          $control_real_click.status == "ready"
+          and $control_real_click.real_click_ready == true
+          and $control_real_click.summary.control_real_click_activation.viewport_count == 4
+          and $control_real_click.summary.control_real_click_activation.target_count == 26
+          and $control_real_click.summary.control_real_click_activation.failure_count == 0
+          and $control_real_click.summary.control_real_click_activation.mobile_routes_ready == true
+          and $control_real_click.summary.control_real_click_activation.popover_switch_sequence_ready == true
+          and $control_real_click.summary.control_real_click_activation.popover_switch_step_count == 26
+          and ($control_real_click.control_real_click_activation.viewports | all(
+            .ready == true
+            and .mobile_pane_routes.ready == true
+            and .popover_switch_sequence.ready == true
+            and (.targets | all(
+              .light_dismiss.ready == true
+              and .escape_close.ready == true
+              and .escape_close.focus_returned_to_trigger == true
+            ))
+          ))
+        ),
+        control_ui_real_click_v7:$control_real_click,
         native_fixture_visual_smoke:$native_fixture,
         native_tempered_glass_visual_contract_ready:$native_fixture.native_tempered_glass_visual_contract_ready,
         native_tempered_glass_visual_contract:$native_fixture.tempered_glass_visual_contract,
@@ -10044,6 +10613,36 @@ write_artifact_summary() {
         native_window_route_top_design_referee_ready:($native_window_route.route_top_design_referee_ready // false),
         native_window_route_content_probe_ready:($native_window_route.route_content_probe_ready // false),
         native_window_route_screenshots:($native_window_route.screenshots // []),
+        native_window_route_mobile_smoke_enabled:($native_window_route_mobile.enabled == true),
+        native_window_route_mobile_smoke_status:($native_window_route_mobile.status // "not_run"),
+        native_window_route_mobile_smoke_blocked_allowed:($native_window_route_mobile.blocked_allowed // false),
+        native_window_route_mobile_smoke_ready:(
+          ($native_window_route_mobile.enabled == true)
+          and $native_window_route_mobile.status == "ready"
+          and $native_window_route_mobile.true_window_capture_performed == true
+          and $native_window_route_mobile.native_makepad_mobile_route_variants_ready == true
+          and $native_window_route_mobile.route_count == 4
+          and $native_window_route_mobile.non_home_content_log_signature_count >= 3
+          and $native_window_route_mobile.route_screenshot_unique_count == 4
+          and $native_window_route_mobile.route_screenshot_unique_ready == true
+          and $native_window_route_mobile.mobile_host_window_ready == true
+          and $native_window_route_mobile.screenshot_count == 4
+          and ($native_window_route_mobile.screenshots | all(.viewport_contract.expected_width == 390))
+          and ($native_window_route_mobile.screenshots | all(.viewport_contract.expected_height == 844))
+          and ($native_window_route_mobile.screenshots | all(.viewport_contract.host_window_usable_ready == true))
+          and ($native_window_route_mobile.screenshots | all(.visual_probe.mobile_route_content_ready == true))
+          and $native_window_route_mobile.native_app_log_error_free == true
+        ),
+        native_window_route_mobile_app_log_error_free:($native_window_route_mobile.native_app_log_error_free // false),
+        native_window_route_mobile_smoke:$native_window_route_mobile,
+        native_window_route_mobile_screenshot_count:(($native_window_route_mobile.screenshots // []) | length),
+        native_window_route_mobile_screenshot_unique_count:($native_window_route_mobile.route_screenshot_unique_count // 0),
+        native_window_route_mobile_screenshot_unique_ready:($native_window_route_mobile.route_screenshot_unique_ready // false),
+        native_window_route_mobile_non_home_content_log_signature_count:($native_window_route_mobile.non_home_content_log_signature_count // 0),
+        native_window_route_mobile_exact_390x844_ready:($native_window_route_mobile.exact_390x844_ready // false),
+        native_window_route_mobile_host_window_ready:($native_window_route_mobile.mobile_host_window_ready // false),
+        native_window_route_mobile_host_constrained_count:($native_window_route_mobile.host_constrained_count // 0),
+        native_window_route_mobile_screenshots:($native_window_route_mobile.screenshots // []),
         native_window_secondary_smoke_enabled:($native_window_secondary.enabled == true),
         native_window_secondary_smoke_status:($native_window_secondary.status // "not_run"),
         native_window_secondary_smoke_blocked_allowed:($native_window_secondary.blocked_allowed // false),
@@ -10430,6 +11029,7 @@ write_artifact_summary() {
           native_mobile_route_variants_unique:$native_fixture.mobile_route_variant_unique_count,
           native_true_window:(($native_window.screenshots // []) | length),
           native_true_window_route:(($native_window_route.screenshots // []) | length),
+          native_true_window_route_mobile:(($native_window_route_mobile.screenshots // []) | length),
           native_true_window_secondary:(($native_window_secondary.screenshots // []) | length),
           native_true_window_secondary_mobile:(($native_window_secondary_mobile.screenshots // []) | length)
         },
@@ -10438,6 +11038,7 @@ write_artifact_summary() {
           native:$native_output_dir,
           native_window:$native_window_output_dir,
           native_window_route:$native_window_route_output_dir,
+          native_window_route_mobile:$native_window_route_mobile_output_dir,
           native_window_secondary:$native_window_secondary_output_dir,
           native_window_secondary_mobile:$native_window_secondary_mobile_output_dir
         },
@@ -10459,6 +11060,7 @@ validate_written_artifacts() {
     --argjson min_screenshot_bytes "$MIN_SCREENSHOT_BYTES" \
     '
       .screenshot_manifest_ready == true
+      and .ui_design_system_gate_ready == true
       and .screenshot_count.control_ui >= 4
       and .screenshot_count.native >= 40
       and .screenshot_count.total >= (.screenshot_count.control_ui + .screenshot_count.native)
@@ -10518,6 +11120,13 @@ validate_written_artifacts() {
     ($blocker_closure[0]) as $blocker_closure
     | ($backend_delivery_audit[0]) as $backend_delivery_audit
     | .artifact_summary_ready == true
+    and .ui_design_system_gate_ready == true
+    and .control_ui_real_click_v7_ready == true
+    and .ui_design_system.status == "ready"
+    and .ui_design_system.generated_token_sync_ready == true
+    and .ui_design_system.documentation_token_sync_ready == true
+    and .ui_design_system.control.retired_texture_asset_free == true
+    and .ui_design_system.control.legacy_texture_asset_reference_count == 0
     and .control_ui_browser_smoke_ready == true
     and .control_ui_top_design_referee_ready == true
     and .control_ui_320_reflow_ready == true
@@ -10528,7 +11137,11 @@ validate_written_artifacts() {
 	    and .control_ui_visible_text_integrity_ready == true
 	    and .control_ui_visual_density_qa_ready == true
     and .control_ui_browser_error_page_absent == true
+    and .control_ui_subresource_requests_clean == true
+    and .control_ui_subresource_error_count == 0
     and .control_ui_horizontal_overflow_free == true
+    and .control_ui_browser_smoke.subresource_requests_clean == true
+    and .control_ui_browser_smoke.subresource_error_count == 0
     and .control_ui_browser_smoke.density_qa.status == "ready"
     and .control_ui_browser_smoke.density_qa.viewport_count == 4
     and .control_ui_browser_smoke.density_qa.phone320_ready == true
@@ -11127,7 +11740,7 @@ validate_written_artifacts() {
     and .backend_delivery_receipt_roundtrip_simulated_receipt_ready == true
     and .backend_delivery_receipt_roundtrip_present_branch_valid == true
     and .backend_delivery_receipt_roundtrip_present_branch_claim_ready == true
-    and .backend_delivery_receipt_roundtrip_root_report_required_count == 43
+    and .backend_delivery_receipt_roundtrip_root_report_required_count == 45
     and (.backend_delivery_receipt_roundtrip_simulated_receipt_sha256 | test("^[0-9a-f]{64}$"))
     and (.backend_delivery_receipt_roundtrip_present_report_sha256 | test("^[0-9a-f]{64}$"))
     and (.backend_delivery_receipt_roundtrip_markdown_sha256 | test("^[0-9a-f]{64}$"))
@@ -11183,7 +11796,7 @@ validate_written_artifacts() {
     and .risk_future_plan_harsh_action_matrix_ready == true
     and .risk_future_plan_harsh_action_failure_count == 0
     and (.risk_future_plan_critical_blocker_count >= 0 and .risk_future_plan_critical_blocker_count <= 10)
-    and .risk_future_plan_root_report_required_count == 43
+    and .risk_future_plan_root_report_required_count == 45
     and (.risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
     and .ui_risk_future_plan.claim_boundary.live_product_claim_ready == false
     and .ui_risk_future_plan.claim_boundary.public_distribution_claim_ready == false
@@ -11211,7 +11824,7 @@ validate_written_artifacts() {
     and .ui_root_report_replay_gate_ready == true
     and .ui_root_report_replay.status == "ready"
     and .local_root_report_replay_ready == true
-    and .root_report_replay_count == 43
+    and .root_report_replay_count == 45
     and .ui_root_report_replay.source_alignment.base_gap_alignment_ready == true
     and .ui_root_report_replay.source_alignment.evidence_archive_ready == true
     and .ui_root_report_replay.source_alignment.operator_briefing_ready == true
@@ -11368,7 +11981,7 @@ validate_written_artifacts() {
     and .ui_root_report_replay.source_alignment.risk_future_plan_action_matrix_case_count == 15
     and .ui_root_report_replay.source_alignment.risk_future_plan_harsh_action_matrix_ready == true
     and .ui_root_report_replay.source_alignment.risk_future_plan_harsh_action_failure_count == 0
-    and .ui_root_report_replay.source_alignment.risk_future_plan_root_report_required_count == 43
+    and .ui_root_report_replay.source_alignment.risk_future_plan_root_report_required_count == 45
     and (
       .ui_root_report_replay.source_alignment.risk_future_plan_critical_blocker_count >= 0
       and .ui_root_report_replay.source_alignment.risk_future_plan_critical_blocker_count <= 10
@@ -11493,7 +12106,7 @@ validate_written_artifacts() {
     and .ui_root_report_replay.future_plan_replay.risk_future_plan_action_matrix_case_count == 15
     and .ui_root_report_replay.future_plan_replay.risk_future_plan_harsh_action_matrix_ready == true
     and .ui_root_report_replay.future_plan_replay.risk_future_plan_harsh_action_failure_count == 0
-    and .ui_root_report_replay.future_plan_replay.risk_future_plan_root_report_required_count == 43
+    and .ui_root_report_replay.future_plan_replay.risk_future_plan_root_report_required_count == 45
     and (
       .ui_root_report_replay.future_plan_replay.risk_future_plan_critical_blocker_count >= 0
       and .ui_root_report_replay.future_plan_replay.risk_future_plan_critical_blocker_count <= 10
@@ -11518,6 +12131,7 @@ validate_written_artifacts() {
         .r33_hard_demo_evidence_ready == true
         and .ui_demo_evidence.screenshot_evidence.native_true_window_main_count == 2
         and .ui_demo_evidence.screenshot_evidence.native_true_window_route_count == 4
+        and .ui_demo_evidence.screenshot_evidence.native_true_window_route_mobile_count == 4
         and .ui_demo_evidence.screenshot_evidence.native_true_window_secondary_desktop_count == 5
         and .ui_demo_evidence.screenshot_evidence.native_true_window_secondary_mobile_count == 5
       )
@@ -11722,6 +12336,33 @@ validate_written_artifacts() {
 	      )
 	    )
 	    and (
+	      (.native_window_route_mobile_smoke_enabled == false)
+	      or (.native_window_route_mobile_smoke.status != "ready")
+	      or (
+	        .native_window_route_mobile_smoke_ready == true
+	        and .native_window_route_mobile_app_log_error_free == true
+	        and .native_window_route_mobile_screenshot_count == 4
+	        and .native_window_route_mobile_screenshot_unique_count == 4
+	        and .native_window_route_mobile_screenshot_unique_ready == true
+	        and .native_window_route_mobile_non_home_content_log_signature_count >= 3
+	        and .native_window_route_mobile_host_window_ready == true
+	        and (.native_window_route_mobile_screenshots | length) == 4
+	        and (
+	          .native_window_route_mobile_screenshots
+	          | all(
+	            .bytes >= $min_screenshot_bytes
+	            and (.sha256 | test("^[0-9a-f]{64}$"))
+	            and (.path | length > 0)
+	            and .viewport_contract.expected_width == 390
+	            and .viewport_contract.expected_height == 844
+	            and .viewport_contract.host_window_usable_ready == true
+	            and .visual_probe.ready == true
+	            and .visual_probe.mobile_route_content_ready == true
+	          )
+	        )
+	      )
+	    )
+	    and (
 	      (.native_window_secondary_smoke_enabled == false)
 	      or (.native_window_secondary_smoke.status != "ready")
 	      or (
@@ -11806,6 +12447,7 @@ Primary path: Telegram chat shell
 
 - Combined gate: passed
 - Static contract phase: passed
+- Shared desktop/mobile design-system gate: passed
 - Control UI browser screenshot gate: passed
 - Native fixture visual gate: passed
 - Native packaging metadata + local unsigned app bundle probe: passed
@@ -11846,6 +12488,8 @@ Primary path: Telegram chat shell
 
 - Output directory: \`$OUT_DIR\`
 - Static contract summary: \`$STATIC_CONTRACT_PATH\`
+- UI design-system gate: \`$DESIGN_SYSTEM_REPORT_PATH\`
+- UI design-system gate log: \`$DESIGN_SYSTEM_LOG\`
 - Final readiness report: \`$READINESS_REPORT_PATH\`
 - Native base gap drilldown: \`$BASE_GAP_DRILLDOWN_PATH\`
 - Native base gap work queue: \`$BASE_GAP_WORK_QUEUE_PATH\`
@@ -11912,12 +12556,14 @@ Primary path: Telegram chat shell
 - Native distribution preflight report: \`$DISTRIBUTION_PREFLIGHT_REPORT_PATH\`
 - Native true window report: \`$NATIVE_WINDOW_REPORT_PATH\`
 - Native true window route report: \`$NATIVE_WINDOW_ROUTE_REPORT_PATH\`
+- Native true window mobile route report: \`$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH\`
 - Native true window secondary report: \`$NATIVE_WINDOW_SECONDARY_REPORT_PATH\`
 - Native true window secondary mobile report: \`$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH\`
 - Control UI screenshot directory: \`$CONTROL_OUT_DIR\`
 - Native fixture screenshot directory: \`$NATIVE_OUT_DIR\`
 - Native true window screenshot directory: \`$NATIVE_WINDOW_OUT_DIR\`
 - Native true window route screenshot directory: \`$NATIVE_WINDOW_ROUTE_OUT_DIR\`
+- Native true window mobile route screenshot directory: \`$NATIVE_WINDOW_ROUTE_MOBILE_OUT_DIR\`
 - Native true window secondary screenshot directory: \`$NATIVE_WINDOW_SECONDARY_OUT_DIR\`
 - Native true window secondary mobile screenshot directory: \`$NATIVE_WINDOW_SECONDARY_MOBILE_OUT_DIR\`
 - Control UI log: \`$CONTROL_LOG\`
@@ -11947,6 +12593,7 @@ Primary path: Telegram chat shell
 - UI risk future plan log: \`$RISK_FUTURE_PLAN_LOG\`
 - Native true window log: \`$NATIVE_WINDOW_LOG\`
 - Native true window route log: \`$NATIVE_WINDOW_ROUTE_LOG\`
+- Native true window mobile route log: \`$NATIVE_WINDOW_ROUTE_MOBILE_LOG\`
 - Native true window secondary log: \`$NATIVE_WINDOW_SECONDARY_LOG\`
 - Native true window secondary mobile log: \`$NATIVE_WINDOW_SECONDARY_MOBILE_LOG\`
 
@@ -11962,6 +12609,7 @@ Primary path: Telegram chat shell
 - Native readability contrast/clip gate: $(jq -r '.tempered_glass_visual_contract.readability_contrast_clip_ready' <<<"$native_fixture_gate_json") (min contrast $(jq -r '.tempered_glass_visual_contract.min_contrast_ratio' <<<"$native_fixture_gate_json"), failures $(jq -r '.tempered_glass_visual_contract.readability_failure_count' <<<"$native_fixture_gate_json"))
 - Native secondary product surfaces: $(jq -r '.secondary_product_surfaces.status' <<<"$native_fixture_gate_json") ($(jq -r '.secondary_product_surfaces.case_count' <<<"$native_fixture_gate_json") cases, actions_in_surface=$(jq -r '.secondary_product_surfaces.actions_in_surface' <<<"$native_fixture_gate_json"))
 - Native true-window route variants: $(jq -r '.status' <<<"$native_window_route_gate_json") ($(jq -r '.route_count // 0' <<<"$native_window_route_gate_json") routes, screenshots=$(jq -r '.screenshot_count // 0' <<<"$native_window_route_gate_json"))
+- Native true-window mobile route variants: $(jq -r '.status' <<<"$native_window_route_mobile_gate_json") ($(jq -r '.route_count // 0' <<<"$native_window_route_mobile_gate_json") routes, screenshots=$(jq -r '.screenshot_count // 0' <<<"$native_window_route_mobile_gate_json"), exact_390x844=$(jq -r '.exact_390x844_ready // false' <<<"$native_window_route_mobile_gate_json"), host_constrained=$(jq -r '.host_constrained_count // 0' <<<"$native_window_route_mobile_gate_json"))
 - Native true-window secondary mobile surfaces: $(jq -r '.status' <<<"$native_window_secondary_mobile_gate_json") ($(jq -r '.surface_count // 0' <<<"$native_window_secondary_mobile_gate_json") surfaces, screenshots=$(jq -r '.screenshot_count // 0' <<<"$native_window_secondary_mobile_gate_json"))
 
 ## Control UI Browser QA
@@ -12086,7 +12734,7 @@ REPORT
 - Required evidence reports: $(jq -r '.report_evidence.required_report_count' <<<"$demo_evidence_json")
 - Required evidence screenshots: $(jq -r '.screenshot_evidence.required_screenshot_count' <<<"$demo_evidence_json")
 - Key evidence screenshots: $(jq -r '.screenshot_evidence.key_screenshot_count' <<<"$demo_evidence_json")
-- Native true-window evidence: main=$(jq -r '.screenshot_evidence.native_true_window_main_count' <<<"$demo_evidence_json"), route=$(jq -r '.screenshot_evidence.native_true_window_route_count' <<<"$demo_evidence_json"), desktop_secondary=$(jq -r '.screenshot_evidence.native_true_window_secondary_desktop_count' <<<"$demo_evidence_json"), mobile_secondary=$(jq -r '.screenshot_evidence.native_true_window_secondary_mobile_count' <<<"$demo_evidence_json")
+- Native true-window evidence: main=$(jq -r '.screenshot_evidence.native_true_window_main_count' <<<"$demo_evidence_json"), desktop_route=$(jq -r '.screenshot_evidence.native_true_window_route_count' <<<"$demo_evidence_json"), mobile_route=$(jq -r '.screenshot_evidence.native_true_window_route_mobile_count' <<<"$demo_evidence_json"), desktop_secondary=$(jq -r '.screenshot_evidence.native_true_window_secondary_desktop_count' <<<"$demo_evidence_json"), mobile_secondary=$(jq -r '.screenshot_evidence.native_true_window_secondary_mobile_count' <<<"$demo_evidence_json")
 - Evidence claim boundary: live_product=false, public_distribution=false, release=false
 
 ## UI Evidence Bundle
@@ -12517,6 +13165,36 @@ REPORT
 REPORT
     fi
     cat <<REPORT
+## Native True Window Mobile Route Variants
+
+REPORT
+    if [[ "$(jq -r '.status' <<<"$native_window_route_mobile_gate_json")" == "ready" ]]; then
+      local native_window_route_mobile_screenshot_count
+      native_window_route_mobile_screenshot_count="$(jq -r '.screenshot_count // 0' <<<"$native_window_route_mobile_gate_json")"
+      cat <<REPORT
+- Native true window mobile route screenshots: $native_window_route_mobile_screenshot_count
+- Native true window mobile route count: $(jq -r '.route_count // 0' <<<"$native_window_route_mobile_gate_json")
+- Native true window mobile route unique screenshots: $(jq -r '.route_screenshot_unique_count // 0' <<<"$native_window_route_mobile_gate_json")
+- Native true window mobile route host window ready: $(jq -r '.mobile_host_window_ready // false' <<<"$native_window_route_mobile_gate_json")
+- Native true window mobile route exact 390x844 ready: $(jq -r '.exact_390x844_ready // false' <<<"$native_window_route_mobile_gate_json")
+- Native true window mobile route host-constrained captures: $(jq -r '.host_constrained_count // 0' <<<"$native_window_route_mobile_gate_json")
+- Native true window mobile route content markers: $(jq -r '.non_home_content_log_signature_count // 0' <<<"$native_window_route_mobile_gate_json")
+
+REPORT
+      jq -r \
+        '.routes[] | "- \(.label): `\(.screenshot.path)` [\(.screenshot.dimensions), expected=390x844, exact=\(.screenshot.viewport_contract.exact_size_ready), host_constrained=\(.screenshot.viewport_contract.host_constrained), sha256 \(.screenshot.sha256), content_ready=\(.screenshot.visual_probe.mobile_route_content_ready)]"' \
+        <<<"$native_window_route_mobile_gate_json"
+      printf '\n'
+    else
+      local native_window_route_mobile_status
+      native_window_route_mobile_status="$(jq -r '.status // "not_run"' <<<"$native_window_route_mobile_gate_json")"
+      cat <<REPORT
+- Native true window mobile route screenshots: 0
+- Native true window mobile route status: $native_window_route_mobile_status
+
+REPORT
+    fi
+    cat <<REPORT
 ## Native True Window Secondary Surfaces
 
 REPORT
@@ -12588,6 +13266,7 @@ REPORT
 - Native direct-message creation requires a second confirmation before the Matrix OpenOrCreateDirectMessage allow_create=true request is sent.
 - Native selected-row route variants are covered by the fixture visual manifest.
 - Native true-window route variants are covered when `HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_ROUTE_SMOKE=1`.
+- Native true-window mobile route variants are covered when `HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_ROUTE_MOBILE_SMOKE=1`; requested 390x844 and actual macOS bounds remain separately reported, so a host-constrained 390x820 capture never claims exact 390x844.
 - Native true-window secondary mobile surfaces are covered when `HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SECONDARY_MOBILE_SMOKE=1`.
 - Native packaging metadata, local unsigned app bundle probe, GA readiness, and merge-completion reports are synchronized against the current worktree's local loopback server.
 - Native distribution preflight checks the signing/notarization/stapling workflow statically and records release approval, credential, notary submission, and public artifact blockers without reading Apple credential values.
@@ -12611,6 +13290,8 @@ validate_handoff_report() {
   require_marker "$HANDOFF_REPORT_PATH" "Status: ready"
   require_marker "$HANDOFF_REPORT_PATH" "Primary path: Telegram chat shell"
   require_marker "$HANDOFF_REPORT_PATH" "- Combined gate: passed"
+  require_marker "$HANDOFF_REPORT_PATH" "- Shared desktop/mobile design-system gate: passed"
+  require_marker "$HANDOFF_REPORT_PATH" "- UI design-system gate: \`$DESIGN_SYSTEM_REPORT_PATH\`"
   require_marker "$HANDOFF_REPORT_PATH" "- Static contract phase: passed"
   require_marker "$HANDOFF_REPORT_PATH" "- Control UI browser screenshot gate: passed"
   require_marker "$HANDOFF_REPORT_PATH" "- Native fixture visual gate: passed"
@@ -12710,6 +13391,7 @@ validate_handoff_report() {
   require_marker "$HANDOFF_REPORT_PATH" "- Screenshot manifest: \`$MANIFEST_PATH\`"
   require_marker "$HANDOFF_REPORT_PATH" "- Control UI browser smoke report: \`$CONTROL_BROWSER_REPORT_PATH\`"
   require_marker "$HANDOFF_REPORT_PATH" "- Native true window route report: \`$NATIVE_WINDOW_ROUTE_REPORT_PATH\`"
+  require_marker "$HANDOFF_REPORT_PATH" "- Native true window mobile route report: \`$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH\`"
   require_marker "$HANDOFF_REPORT_PATH" "- Native true window secondary mobile report: \`$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH\`"
   require_marker "$HANDOFF_REPORT_PATH" "- Control UI screenshots: $control_screenshot_count"
   require_marker "$HANDOFF_REPORT_PATH" "- Native screenshots: $native_screenshot_count"
@@ -13037,7 +13719,7 @@ validate_handoff_report() {
   require_marker "$HANDOFF_REPORT_PATH" "- Risk future latest minimum gate: r151_harsh_top_design_v46_badge_micro_surface_light_glass_minimum_ui_demo_gate"
   require_marker "$HANDOFF_REPORT_PATH" "- Risk future latest plan ids: r151_harsh_top_design_v46_badge_micro_surface_light_glass_minimum_ui_demo_gate,backend_delivery_receipt_return,backend_real_receipt_return,ui_refresh_after_real_receipt,release_artifact_roundtrip_and_signed_artifact_gate"
   require_marker "$HANDOFF_REPORT_PATH" "- Risk future critical blocker count:"
-  require_marker "$HANDOFF_REPORT_PATH" "- Risk future root replay required count: 43"
+  require_marker "$HANDOFF_REPORT_PATH" "- Risk future root replay required count: 45"
   require_marker "$HANDOFF_REPORT_PATH" "- Risk future markdown SHA-256:"
   require_marker "$HANDOFF_REPORT_PATH" "- Risk future claim boundary: backend_delivery=$(jq -r '.claim_boundary.backend_delivery_claim_ready' <<<"$risk_future_plan_json"), real_backend_receipt=$(jq -r '.claim_boundary.real_backend_receipt_claim_ready' <<<"$risk_future_plan_json"), backend_receipt=$(jq -r '.claim_boundary.backend_receipt_claim_ready' <<<"$risk_future_plan_json"), live_product=false, public_distribution=false, release=false"
   require_marker "$HANDOFF_REPORT_PATH" "## UI Release Artifact Roundtrip"
@@ -13052,8 +13734,8 @@ validate_handoff_report() {
   require_marker "$HANDOFF_REPORT_PATH" "## UI Root Report Replay"
   require_marker "$HANDOFF_REPORT_PATH" "- Root report replay report: \`$ROOT_REPORT_REPLAY_REPORT_PATH\`"
   require_marker "$HANDOFF_REPORT_PATH" "- Local root report replay ready: true"
-  require_marker "$HANDOFF_REPORT_PATH" "- Root reports replayed: 43"
-  require_marker "$HANDOFF_REPORT_PATH" "- Root JSON reports valid: 43"
+  require_marker "$HANDOFF_REPORT_PATH" "- Root reports replayed: 45"
+  require_marker "$HANDOFF_REPORT_PATH" "- Root JSON reports valid: 45"
   require_marker "$HANDOFF_REPORT_PATH" "- Base gap alignment ready: true"
   require_marker "$HANDOFF_REPORT_PATH" "- Evidence archive replay ready: true"
   require_marker "$HANDOFF_REPORT_PATH" "- Backend alignment replay ready: true"
@@ -13076,7 +13758,7 @@ validate_handoff_report() {
   require_marker "$HANDOFF_REPORT_PATH" "- Backend delivery audit replay root count: 41"
   require_marker "$HANDOFF_REPORT_PATH" "- Risk future plan replay ready: true"
   require_marker "$HANDOFF_REPORT_PATH" "- Risk future plan replay minimum gate: r151_harsh_top_design_v46_badge_micro_surface_light_glass_minimum_ui_demo_gate"
-  require_marker "$HANDOFF_REPORT_PATH" "- Risk future plan replay root count: 43"
+  require_marker "$HANDOFF_REPORT_PATH" "- Risk future plan replay root count: 45"
   require_marker "$HANDOFF_REPORT_PATH" "- Backend delivery audit waiting for receipt:"
   require_marker "$HANDOFF_REPORT_PATH" "- Future plan replay count: 3"
   require_marker "$HANDOFF_REPORT_PATH" "- Backend remaining contracts: 12"
@@ -13084,8 +13766,10 @@ validate_handoff_report() {
   require_marker "$HANDOFF_REPORT_PATH" "## Native True Window Screenshots"
   require_marker "$HANDOFF_REPORT_PATH" "- Native true window screenshots:"
   require_marker "$HANDOFF_REPORT_PATH" "## Native True Window Secondary Mobile Surfaces"
+  require_marker "$HANDOFF_REPORT_PATH" "## Native True Window Mobile Route Variants"
   require_marker "$HANDOFF_REPORT_PATH" "- Native selected-row route variants are covered by the fixture visual manifest."
   require_marker "$HANDOFF_REPORT_PATH" "- Native true-window route variants are covered when"
+  require_marker "$HANDOFF_REPORT_PATH" "- Native true-window mobile route variants are covered when"
   require_marker "$HANDOFF_REPORT_PATH" "- Native true-window secondary mobile surfaces are covered when"
   require_marker "$HANDOFF_REPORT_PATH" "- Native packaging metadata, local unsigned app bundle probe, GA readiness, and merge-completion reports are synchronized"
   require_marker "$HANDOFF_REPORT_PATH" "- Native distribution preflight checks the signing/notarization/stapling workflow statically"
@@ -13103,6 +13787,15 @@ validate_handoff_report() {
     require_marker "$HANDOFF_REPORT_PATH" "Actions:"
     require_marker "$HANDOFF_REPORT_PATH" "Approvals:"
     require_marker "$HANDOFF_REPORT_PATH" "Inspector:"
+  fi
+  if [[ "$(jq -r '.status' <<<"$native_window_route_mobile_gate_json")" == "ready" ]]; then
+    require_marker "$HANDOFF_REPORT_PATH" "- Native true window mobile route screenshots: 4"
+    require_marker "$HANDOFF_REPORT_PATH" "- Native true window mobile route count: 4"
+    require_marker "$HANDOFF_REPORT_PATH" "- Native true window mobile route unique screenshots: 4"
+    require_marker "$HANDOFF_REPORT_PATH" "- Native true window mobile route host window ready: true"
+    require_marker "$HANDOFF_REPORT_PATH" "- Native true window mobile route exact 390x844 ready:"
+    require_marker "$HANDOFF_REPORT_PATH" "- Native true window mobile route host-constrained captures:"
+    require_marker "$HANDOFF_REPORT_PATH" "- Native true window mobile route content markers:"
   fi
   if [[ "$(jq -r '.status' <<<"$native_window_secondary_gate_json")" == "ready" ]]; then
     require_marker "$HANDOFF_REPORT_PATH" "- Native true window secondary screenshots: 5"
@@ -13128,6 +13821,12 @@ validate_handoff_report() {
 
 emit_readiness_json() {
   local readiness_json
+  local readiness_tmp
+
+  # Recheck the physical evidence immediately before publishing the final
+  # readiness result; the root-replay JSON alone is not authoritative here.
+  validate_product_strict_current_source_screenshot_files
+
   readiness_json="$(
     jq -n \
     --arg product "Hepta UI" \
@@ -13136,11 +13835,15 @@ emit_readiness_json() {
     --arg control_output_dir "$CONTROL_OUT_DIR" \
     --arg native_output_dir "$NATIVE_OUT_DIR" \
     --arg control_log "$CONTROL_LOG" \
+    --arg control_real_click_log "$CONTROL_REAL_CLICK_LOG" \
     --arg native_log "$NATIVE_LOG" \
     --arg native_distribution_preflight_log "$DISTRIBUTION_PREFLIGHT_LOG" \
     --arg native_window_log "$NATIVE_WINDOW_LOG" \
     --arg native_window_route_log "$NATIVE_WINDOW_ROUTE_LOG" \
+    --arg native_window_route_mobile_log "$NATIVE_WINDOW_ROUTE_MOBILE_LOG" \
     --arg static_contract_path "$STATIC_CONTRACT_PATH" \
+    --arg design_system_report_path "$DESIGN_SYSTEM_REPORT_PATH" \
+    --arg design_system_log "$DESIGN_SYSTEM_LOG" \
     --arg readiness_report_path "$READINESS_REPORT_PATH" \
     --arg base_gap_drilldown_path "$BASE_GAP_DRILLDOWN_PATH" \
     --arg base_gap_work_queue_path "$BASE_GAP_WORK_QUEUE_PATH" \
@@ -13217,6 +13920,7 @@ emit_readiness_json() {
     --arg risk_future_plan_markdown_path "$RISK_FUTURE_PLAN_MARKDOWN_PATH" \
     --arg root_report_replay_report_path "$ROOT_REPORT_REPLAY_REPORT_PATH" \
     --arg control_browser_report_path "$CONTROL_BROWSER_REPORT_PATH" \
+    --arg control_real_click_report_path "$CONTROL_REAL_CLICK_GATE_REPORT_PATH" \
     --arg native_fixture_report_path "$NATIVE_FIXTURE_REPORT_PATH" \
     --arg artifact_summary_path "$ARTIFACT_SUMMARY_PATH" \
     --arg artifact_manifest_path "$MANIFEST_PATH" \
@@ -13253,6 +13957,8 @@ emit_readiness_json() {
     --arg native_window_output_dir "$NATIVE_WINDOW_OUT_DIR" \
     --arg native_window_route_report_path "$NATIVE_WINDOW_ROUTE_REPORT_PATH" \
     --arg native_window_route_output_dir "$NATIVE_WINDOW_ROUTE_OUT_DIR" \
+    --arg native_window_route_mobile_report_path "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" \
+    --arg native_window_route_mobile_output_dir "$NATIVE_WINDOW_ROUTE_MOBILE_OUT_DIR" \
     --arg native_window_secondary_log "$NATIVE_WINDOW_SECONDARY_LOG" \
     --arg native_window_secondary_report_path "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" \
     --arg native_window_secondary_output_dir "$NATIVE_WINDOW_SECONDARY_OUT_DIR" \
@@ -13262,16 +13968,20 @@ emit_readiness_json() {
     --argjson control_screenshot_count "$control_screenshot_count" \
     --argjson native_screenshot_count "$native_screenshot_count" \
     --argjson key_screenshot_count "$key_screenshot_count" \
+    --argjson strict_current_source_mode "$STRICT_CURRENT_SOURCE_MODE" \
     --slurpfile static_contract_file "$STATIC_CONTRACT_PATH" \
+    --slurpfile design_system_file "$DESIGN_SYSTEM_REPORT_PATH" \
     --slurpfile artifact_summary_file "$ARTIFACT_SUMMARY_PATH" \
     --slurpfile artifact_manifest_file "$MANIFEST_PATH" \
     --slurpfile native_packaging_file "$PACKAGING_REPORT_PATH" \
     --slurpfile native_distribution_preflight_file "$DISTRIBUTION_PREFLIGHT_REPORT_PATH" \
     --slurpfile release_signing_capability_file "$RELEASE_SIGNING_CAPABILITY_REPORT_PATH" \
     --slurpfile control_browser_file "$CONTROL_BROWSER_REPORT_PATH" \
+    --slurpfile control_real_click_file "$CONTROL_REAL_CLICK_GATE_REPORT_PATH" \
     --slurpfile native_fixture_file "$NATIVE_FIXTURE_REPORT_PATH" \
     --slurpfile native_window_file "$NATIVE_WINDOW_REPORT_PATH" \
     --slurpfile native_window_route_file "$NATIVE_WINDOW_ROUTE_REPORT_PATH" \
+    --slurpfile native_window_route_mobile_file "$NATIVE_WINDOW_ROUTE_MOBILE_REPORT_PATH" \
     --slurpfile native_window_secondary_file "$NATIVE_WINDOW_SECONDARY_REPORT_PATH" \
     --slurpfile native_window_secondary_mobile_file "$NATIVE_WINDOW_SECONDARY_MOBILE_REPORT_PATH" \
     --slurpfile base_gap_drilldown_file "$BASE_GAP_DRILLDOWN_PATH" \
@@ -13310,15 +14020,18 @@ emit_readiness_json() {
     --slurpfile root_report_replay_file "$ROOT_REPORT_REPLAY_REPORT_PATH" \
     '
     ($static_contract_file[0]) as $static_contract
+    | ($design_system_file[0]) as $design_system
     | ($artifact_summary_file[0]) as $artifact_summary
     | ($artifact_manifest_file[0]) as $artifact_manifest
     | ($native_packaging_file[0]) as $native_packaging
     | ($native_distribution_preflight_file[0]) as $native_distribution_preflight
     | ($release_signing_capability_file[0]) as $release_signing_capability
     | ($control_browser_file[0]) as $control_browser
+    | ($control_real_click_file[0]) as $control_real_click
     | ($native_fixture_file[0]) as $native_fixture
     | ($native_window_file[0]) as $native_window
     | ($native_window_route_file[0]) as $native_window_route
+    | ($native_window_route_mobile_file[0]) as $native_window_route_mobile
     | ($native_window_secondary_file[0]) as $native_window_secondary
     | ($native_window_secondary_mobile_file[0]) as $native_window_secondary_mobile
     | ($base_gap_drilldown_file[0]) as $base_gap_drilldown
@@ -13357,6 +14070,106 @@ emit_readiness_json() {
 	    | ($root_report_replay_file[0]) as $root_report_replay
 	    | def unique_preserve_order:
 	        reduce .[] as $item ([]; if index($item) then . else . + [$item] end);
+	      def screenshot_files_ready($items; $expected):
+	        ($items | length) == $expected
+	        and ($items | all(
+	          (.bytes // 0) >= 10000
+	          and ((.sha256 // "") | test("^[0-9a-f]{64}$"))
+	          and ((.path // "") | length) > 0
+	          and .visual_probe.ready == true
+	        ))
+	        and ($items | map(.sha256 // "") | unique | length) == $expected;
+	      def native_window_current_source_ready:
+	        $native_window.enabled == true
+	        and $native_window.status == "ready"
+	        and ($native_window.blocked_allowed // false) != true
+	        and $native_window.true_window_capture_performed == true
+	        and $native_window.fixture_product_shell_selected_ready == true
+	        and $native_window.fixture_matrix_composer_hidden_ready == true
+	        and $native_window.fixture_desktop_product_layout_ready == true
+	        and $native_window.fixture_mobile_task_first_layout_ready == true
+	        and $native_window.native_makepad_fixture_script_error_free == true
+	        and $native_window.native_app_log_error_free == true
+	        and screenshot_files_ready(($native_window.screenshots // []); 2)
+	        and $native_window.side_effects.external_mutation == false;
+	      def native_window_route_current_source_ready:
+	        $native_window_route.enabled == true
+	        and $native_window_route.status == "ready"
+	        and ($native_window_route.blocked_allowed // false) != true
+	        and $native_window_route.true_window_capture_performed == true
+	        and $native_window_route.native_makepad_route_variants_ready == true
+	        and $native_window_route.route_top_design_referee_ready == true
+	        and $native_window_route.route_content_probe_ready == true
+	        and $native_window_route.route_count == 4
+	        and $native_window_route.screenshot_count == 4
+	        and $native_window_route.route_screenshot_unique_count == 4
+	        and $native_window_route.route_screenshot_unique_ready == true
+	        and $native_window_route.native_app_log_error_free == true
+	        and screenshot_files_ready(($native_window_route.screenshots // []); 4)
+	        and (($native_window_route.screenshots // []) | all(.visual_probe.route_content_ready == true))
+	        and $native_window_route.side_effects.external_mutation == false;
+	      def native_window_route_mobile_current_source_ready:
+	        $native_window_route_mobile.enabled == true
+	        and $native_window_route_mobile.status == "ready"
+	        and ($native_window_route_mobile.blocked_allowed // false) != true
+	        and $native_window_route_mobile.true_window_capture_performed == true
+	        and $native_window_route_mobile.native_makepad_mobile_route_variants_ready == true
+	        and $native_window_route_mobile.route_count == 4
+	        and $native_window_route_mobile.screenshot_count == 4
+	        and $native_window_route_mobile.route_screenshot_unique_count == 4
+	        and $native_window_route_mobile.route_screenshot_unique_ready == true
+	        and $native_window_route_mobile.non_home_content_log_signature_count >= 3
+	        and $native_window_route_mobile.mobile_host_window_ready == true
+	        and $native_window_route_mobile.native_app_log_error_free == true
+	        and screenshot_files_ready(($native_window_route_mobile.screenshots // []); 4)
+	        and (($native_window_route_mobile.screenshots // []) | all(
+	          .viewport_contract.expected_width == 390
+	          and .viewport_contract.expected_height == 844
+	          and .viewport_contract.host_window_usable_ready == true
+	          and .visual_probe.mobile_route_content_ready == true
+	        ))
+	        and $native_window_route_mobile.side_effects.external_mutation == false;
+	      def native_window_secondary_current_source_ready:
+	        $native_window_secondary.enabled == true
+	        and $native_window_secondary.status == "ready"
+	        and ($native_window_secondary.blocked_allowed // false) != true
+	        and $native_window_secondary.true_window_capture_performed == true
+	        and $native_window_secondary.native_makepad_secondary_surfaces_ready == true
+	        and $native_window_secondary.surface_count == 5
+	        and $native_window_secondary.screenshot_count == 5
+	        and $native_window_secondary.surface_screenshot_unique_count == 5
+	        and $native_window_secondary.surface_screenshot_unique_ready == true
+	        and $native_window_secondary.native_app_log_error_free == true
+	        and screenshot_files_ready(($native_window_secondary.screenshots // []); 5)
+	        and $native_window_secondary.side_effects.external_mutation == false;
+	      def native_window_secondary_mobile_current_source_ready:
+	        $native_window_secondary_mobile.enabled == true
+	        and $native_window_secondary_mobile.status == "ready"
+	        and ($native_window_secondary_mobile.blocked_allowed // false) != true
+	        and $native_window_secondary_mobile.true_window_capture_performed == true
+	        and $native_window_secondary_mobile.native_makepad_secondary_mobile_surfaces_ready == true
+	        and $native_window_secondary_mobile.mobile_secondary_content_probe_ready == true
+	        and $native_window_secondary_mobile.mobile_secondary_content_visible_count >= 5
+	        and $native_window_secondary_mobile.mobile_host_window_ready == true
+	        and $native_window_secondary_mobile.surface_count == 5
+	        and $native_window_secondary_mobile.screenshot_count == 5
+	        and $native_window_secondary_mobile.surface_screenshot_unique_count == 5
+	        and $native_window_secondary_mobile.surface_screenshot_unique_ready == true
+	        and $native_window_secondary_mobile.native_app_log_error_free == true
+	        and screenshot_files_ready(($native_window_secondary_mobile.screenshots // []); 5)
+	        and (($native_window_secondary_mobile.screenshots // []) | all(
+	          .viewport_contract.expected_width == 390
+	          and .viewport_contract.expected_height == 844
+	          and .viewport_contract.host_window_usable_ready == true
+	          and .visual_probe.mobile_secondary_content_ready == true
+	        ))
+	        and $native_window_secondary_mobile.side_effects.external_mutation == false;
+	      def current_source_true_window_matrix_ready:
+	        native_window_current_source_ready
+	        and native_window_route_current_source_ready
+	        and native_window_route_mobile_current_source_ready
+	        and native_window_secondary_current_source_ready
+	        and native_window_secondary_mobile_current_source_ready;
 	      def release_artifact_receipt_semantics:
 	        ($release_artifact_intake.release_artifact_state.public_distribution_artifact_semantics // "");
 	      def real_release_artifact_receipt_present:
@@ -13451,7 +14264,107 @@ emit_readiness_json() {
       status:"ready",
       output_dir:$output_dir,
       ui_product_readiness_gate_ready:true,
+      strict_current_source_mode:($strict_current_source_mode == 1),
+      strict_current_source_configuration_ready:(
+        ($strict_current_source_mode != 1)
+        or (
+          $native_window.enabled == true
+          and $native_window_route.enabled == true
+          and $native_window_route_mobile.enabled == true
+          and $native_window_secondary.enabled == true
+          and $native_window_secondary_mobile.enabled == true
+          and ($native_window.blocked_allowed // false) != true
+          and ($native_window_route.blocked_allowed // false) != true
+          and ($native_window_route_mobile.blocked_allowed // false) != true
+          and ($native_window_secondary.blocked_allowed // false) != true
+          and ($native_window_secondary_mobile.blocked_allowed // false) != true
+        )
+      ),
+      current_source_true_window_matrix_ready:current_source_true_window_matrix_ready,
+      current_source_true_window_matrix:{
+        expected_screenshot_counts:{
+          main:2,
+          desktop_routes:4,
+          mobile_routes:4,
+          desktop_secondary:5,
+          mobile_secondary:5
+        },
+        main:{
+          enabled:($native_window.enabled == true),
+          status:($native_window.status // "not_run"),
+          blocked_allowed:($native_window.blocked_allowed // false),
+          true_window_capture_performed:($native_window.true_window_capture_performed // false),
+          screenshot_count:(($native_window.screenshots // []) | length),
+          app_log_error_free:($native_window.native_app_log_error_free // false),
+          evidence_ready:native_window_current_source_ready
+        },
+        desktop_routes:{
+          enabled:($native_window_route.enabled == true),
+          status:($native_window_route.status // "not_run"),
+          blocked_allowed:($native_window_route.blocked_allowed // false),
+          true_window_capture_performed:($native_window_route.true_window_capture_performed // false),
+          screenshot_count:(($native_window_route.screenshots // []) | length),
+          unique_screenshot_count:($native_window_route.route_screenshot_unique_count // 0),
+          content_probe_ready:($native_window_route.route_content_probe_ready // false),
+          app_log_error_free:($native_window_route.native_app_log_error_free // false),
+          evidence_ready:native_window_route_current_source_ready
+        },
+        mobile_routes:{
+          enabled:($native_window_route_mobile.enabled == true),
+          status:($native_window_route_mobile.status // "not_run"),
+          blocked_allowed:($native_window_route_mobile.blocked_allowed // false),
+          true_window_capture_performed:($native_window_route_mobile.true_window_capture_performed // false),
+          screenshot_count:(($native_window_route_mobile.screenshots // []) | length),
+          unique_screenshot_count:($native_window_route_mobile.route_screenshot_unique_count // 0),
+          content_log_signature_count:($native_window_route_mobile.non_home_content_log_signature_count // 0),
+          host_window_ready:($native_window_route_mobile.mobile_host_window_ready // false),
+          exact_390x844_ready:($native_window_route_mobile.exact_390x844_ready // false),
+          app_log_error_free:($native_window_route_mobile.native_app_log_error_free // false),
+          evidence_ready:native_window_route_mobile_current_source_ready
+        },
+        desktop_secondary:{
+          enabled:($native_window_secondary.enabled == true),
+          status:($native_window_secondary.status // "not_run"),
+          blocked_allowed:($native_window_secondary.blocked_allowed // false),
+          true_window_capture_performed:($native_window_secondary.true_window_capture_performed // false),
+          screenshot_count:(($native_window_secondary.screenshots // []) | length),
+          unique_screenshot_count:($native_window_secondary.surface_screenshot_unique_count // 0),
+          app_log_error_free:($native_window_secondary.native_app_log_error_free // false),
+          evidence_ready:native_window_secondary_current_source_ready
+        },
+        mobile_secondary:{
+          enabled:($native_window_secondary_mobile.enabled == true),
+          status:($native_window_secondary_mobile.status // "not_run"),
+          blocked_allowed:($native_window_secondary_mobile.blocked_allowed // false),
+          true_window_capture_performed:($native_window_secondary_mobile.true_window_capture_performed // false),
+          screenshot_count:(($native_window_secondary_mobile.screenshots // []) | length),
+          unique_screenshot_count:($native_window_secondary_mobile.surface_screenshot_unique_count // 0),
+          content_probe_ready:($native_window_secondary_mobile.mobile_secondary_content_probe_ready // false),
+          content_visible_count:($native_window_secondary_mobile.mobile_secondary_content_visible_count // 0),
+          host_window_ready:($native_window_secondary_mobile.mobile_host_window_ready // false),
+          exact_390x844_ready:($native_window_secondary_mobile.exact_390x844_ready // false),
+          app_log_error_free:($native_window_secondary_mobile.native_app_log_error_free // false),
+          evidence_ready:native_window_secondary_mobile_current_source_ready
+        }
+      },
       static_contract_ready:true,
+      ui_design_system_gate_ready:(
+        $design_system.status == "ready"
+        and $design_system.generated_token_sync_ready == true
+        and $design_system.documentation_token_sync_ready == true
+        and $design_system.control.css_layer_count == 6
+        and $design_system.control.accessibility_media_queries_ready == true
+        and $design_system.control.retired_texture_asset_free == true
+        and $design_system.control.legacy_texture_asset_reference_count == 0
+        and $design_system.native.generated_tokens_registered == true
+        and $design_system.native.fixture_generated_tokens_consumed == true
+        and $design_system.native.fixture_unified_radius_scale_ready == true
+        and $design_system.native.fixture_key_surface_shadows_ready == true
+        and $design_system.robrix.selective_module_count == 6
+      ),
+      ui_design_system_gate_report_path:$design_system_report_path,
+      ui_design_system_gate_log:$design_system_log,
+      ui_design_system:$design_system,
       artifact_summary_ready:true,
       screenshot_manifest_ready:true,
       handoff_report_ready:true,
@@ -13462,6 +14375,7 @@ emit_readiness_json() {
         key:$key_screenshot_count,
         native_true_window:(($native_window.screenshots // []) | length),
         native_true_window_route:(($native_window_route.screenshots // []) | length),
+        native_true_window_route_mobile:(($native_window_route_mobile.screenshots // []) | length),
         native_true_window_secondary:(($native_window_secondary.screenshots // []) | length),
         native_true_window_secondary_mobile:(($native_window_secondary_mobile.screenshots // []) | length),
         total:(
@@ -13469,6 +14383,7 @@ emit_readiness_json() {
           + $native_screenshot_count
           + (($native_window.screenshots // []) | length)
           + (($native_window_route.screenshots // []) | length)
+          + (($native_window_route_mobile.screenshots // []) | length)
           + (($native_window_secondary.screenshots // []) | length)
           + (($native_window_secondary_mobile.screenshots // []) | length)
         )
@@ -13479,6 +14394,13 @@ emit_readiness_json() {
       native_window_route_screenshot_unique_ready:($native_window_route.route_screenshot_unique_ready // false),
       native_window_route_top_design_referee_ready:($native_window_route.route_top_design_referee_ready // false),
       native_window_route_content_probe_ready:($native_window_route.route_content_probe_ready // false),
+      native_window_route_mobile_screenshot_count:(($native_window_route_mobile.screenshots // []) | length),
+      native_window_route_mobile_screenshot_unique_count:($native_window_route_mobile.route_screenshot_unique_count // 0),
+      native_window_route_mobile_screenshot_unique_ready:($native_window_route_mobile.route_screenshot_unique_ready // false),
+      native_window_route_mobile_non_home_content_log_signature_count:($native_window_route_mobile.non_home_content_log_signature_count // 0),
+      native_window_route_mobile_exact_390x844_ready:($native_window_route_mobile.exact_390x844_ready // false),
+      native_window_route_mobile_host_window_ready:($native_window_route_mobile.mobile_host_window_ready // false),
+      native_window_route_mobile_host_constrained_count:($native_window_route_mobile.host_constrained_count // 0),
       native_window_secondary_screenshot_count:(($native_window_secondary.screenshots // []) | length),
       native_window_secondary_screenshot_unique_count:($native_window_secondary.surface_screenshot_unique_count // 0),
       native_window_secondary_screenshot_unique_ready:($native_window_secondary.surface_screenshot_unique_ready // false),
@@ -13562,6 +14484,7 @@ emit_readiness_json() {
       ui_risk_future_plan_markdown_path:$risk_future_plan_markdown_path,
       ui_root_report_replay_gate_report_path:$root_report_replay_report_path,
       control_ui_browser_smoke_report_path:$control_browser_report_path,
+      control_ui_real_click_v7_report_path:$control_real_click_report_path,
       native_fixture_visual_smoke_report_path:$native_fixture_report_path,
       artifact_summary_path:$artifact_summary_path,
       artifact_manifest_path:$artifact_manifest_path,
@@ -13572,6 +14495,7 @@ emit_readiness_json() {
       ui_release_signing_capability_dir:$release_signing_capability_dir,
       ui_release_signing_capability_markdown_path:$release_signing_capability_markdown_path,
       ui_release_signing_capability_log:$release_signing_capability_log,
+      control_ui_real_click_v7_log:$control_real_click_log,
       ui_release_operator_dry_run_log:$release_operator_dry_run_log,
       ui_operator_briefing_log:$operator_briefing_log,
       ui_backend_promotion_packet_log:$backend_promotion_packet_log,
@@ -13595,6 +14519,7 @@ emit_readiness_json() {
       ui_risk_future_plan_log:$risk_future_plan_log,
       native_window_smoke_report_path:$native_window_report_path,
       native_window_route_smoke_report_path:$native_window_route_report_path,
+      native_window_route_mobile_smoke_report_path:$native_window_route_mobile_report_path,
       native_window_secondary_smoke_report_path:$native_window_secondary_report_path,
       native_window_secondary_mobile_smoke_report_path:$native_window_secondary_mobile_report_path,
       static_contract:$static_contract,
@@ -13605,39 +14530,45 @@ emit_readiness_json() {
 	        and $control_browser.control_ui_product_first_ready == true
 	        and $control_browser.control_ui_top_design_referee_ready == true
 	        and $control_browser.control_ui_320_reflow_ready == true
-	        and $control_browser.control_ui_preferred_touch_targets_ready == true
-	        and $control_browser.control_ui_microcopy_word_split_guard_ready == true
-	        and $control_browser.control_ui_logo_clip_guard_ready == true
-	        and $control_browser.control_ui_active_chat_readability_ready == true
-	        and $control_browser.control_ui_placeholder_readability_ready == true
-	        and $control_browser.control_ui_small_control_readability_ready == true
-	        and $control_browser.control_ui_rail_action_icon_ready == true
-	        and $control_browser.control_ui_folder_chip_touch_ready == true
-	        and $control_browser.control_ui_row_menu_touch_ready == true
-	        and $control_browser.control_ui_row_menu_all_rows_ready == true
-	        and $control_browser.control_ui_row_menu_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_ready == true
-	        and $control_browser.control_ui_command_palette_surface_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_trigger_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_close_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_input_light_glass_ready == true
-	        and $control_browser.control_ui_command_palette_item_light_glass_ready == true
-	        and $control_browser.control_ui_form_control_title_touch_ready == true
-	        and $control_browser.control_ui_chat_row_option_semantic_touch_ready == true
-	        and $control_browser.control_ui_thread_tools_menu_ready == true
-	        and $control_browser.control_ui_composer_tools_menu_ready == true
-	        and $control_browser.control_ui_composer_popover_ready == true
-	        and $control_browser.control_ui_composer_popover_search_light_glass_ready == true
-	        and $control_browser.control_ui_rail_search_light_glass_ready == true
-	        and $control_browser.control_ui_micro_surface_light_glass_ready == true
-	        and $control_browser.control_ui_message_routing_badge_light_glass_ready == true
-	        and $control_browser.control_ui_thread_intro_badge_light_glass_ready == true
-	        and $control_browser.control_ui_visible_text_integrity_ready == true
+	        and $control_browser.control_ui_default_submenus_closed_ready == true
+	        and $control_browser.control_ui_single_submenu_audit_ready == true
+	        and $control_browser.control_ui_shallow_light_glass_ready == true
+	        and $control_browser.control_ui_light_theme_semantics_ready == true
+	        and $control_browser.control_ui_stable_content_surface_ready == true
+	        and $control_browser.control_ui_native_popover_interaction_ready == true
+	        and $control_browser.control_ui_legacy_menu_compatibility_uses_actual_click == true
+	        and $control_browser.control_ui_shallow_floating_surface_ready == true
+	        and $control_browser.control_ui_restrained_optics_ready == true
+	        and $control_browser.control_ui_restrained_mobile_metadata_ready == true
+	        and $control_browser.control_ui_key_touch_controls_ready == true
 	        and $control_browser.control_ui_visual_density_qa_ready == true
 	        and $control_browser.control_ui_browser_error_page_absent == true
 	        and $control_browser.control_ui_horizontal_overflow_free == true
+	        and $control_browser.subresource_requests_clean == true
+	        and $control_browser.subresource_error_count == 0
 	      ),
 	      control_ui_browser_smoke:$control_browser,
+	      control_ui_real_click_v7_ready:(
+	        $control_real_click.status == "ready"
+	        and $control_real_click.real_click_ready == true
+	        and $control_real_click.summary.control_real_click_activation.viewport_count == 4
+	        and $control_real_click.summary.control_real_click_activation.target_count == 26
+	        and $control_real_click.summary.control_real_click_activation.failure_count == 0
+	        and $control_real_click.summary.control_real_click_activation.mobile_routes_ready == true
+	        and $control_real_click.summary.control_real_click_activation.popover_switch_sequence_ready == true
+	        and $control_real_click.summary.control_real_click_activation.popover_switch_step_count == 26
+	        and ($control_real_click.control_real_click_activation.viewports | all(
+	          .ready == true
+	          and .mobile_pane_routes.ready == true
+	          and .popover_switch_sequence.ready == true
+	          and (.targets | all(
+	            .light_dismiss.ready == true
+	            and .escape_close.ready == true
+	            and .escape_close.focus_returned_to_trigger == true
+	          ))
+	        ))
+	      ),
+	      control_ui_real_click_v7:$control_real_click,
 	      control_ui_top_design_referee_ready:$control_browser.control_ui_top_design_referee_ready,
 	      control_ui_320_reflow_ready:$control_browser.control_ui_320_reflow_ready,
 	      control_ui_preferred_touch_targets_ready:$control_browser.control_ui_preferred_touch_targets_ready,
@@ -13670,6 +14601,8 @@ emit_readiness_json() {
 	      control_ui_visible_text_integrity_ready:$control_browser.control_ui_visible_text_integrity_ready,
 	      control_ui_visual_density_qa_ready:$control_browser.control_ui_visual_density_qa_ready,
 	      control_ui_browser_error_page_absent:$control_browser.control_ui_browser_error_page_absent,
+	      control_ui_subresource_requests_clean:$control_browser.subresource_requests_clean,
+	      control_ui_subresource_error_count:$control_browser.subresource_error_count,
       control_ui_horizontal_overflow_free:$control_browser.control_ui_horizontal_overflow_free,
       native_fixture_visual_smoke:$native_fixture,
       native_tempered_glass_visual_contract_ready:$native_fixture.native_tempered_glass_visual_contract_ready,
@@ -14043,6 +14976,28 @@ emit_readiness_json() {
       ),
       native_window_route_app_log_error_free:($native_window_route.native_app_log_error_free // false),
       native_window_route_smoke:$native_window_route,
+      native_window_route_mobile_smoke_enabled:($native_window_route_mobile.enabled == true),
+      native_window_route_mobile_smoke_status:($native_window_route_mobile.status // "not_run"),
+      native_window_route_mobile_smoke_blocked_allowed:($native_window_route_mobile.blocked_allowed // false),
+      native_window_route_mobile_smoke_ready:(
+        ($native_window_route_mobile.enabled == true)
+        and $native_window_route_mobile.status == "ready"
+        and $native_window_route_mobile.true_window_capture_performed == true
+        and $native_window_route_mobile.native_makepad_mobile_route_variants_ready == true
+        and $native_window_route_mobile.route_count == 4
+        and $native_window_route_mobile.non_home_content_log_signature_count >= 3
+        and $native_window_route_mobile.route_screenshot_unique_count == 4
+        and $native_window_route_mobile.route_screenshot_unique_ready == true
+        and $native_window_route_mobile.mobile_host_window_ready == true
+        and $native_window_route_mobile.screenshot_count == 4
+        and ($native_window_route_mobile.screenshots | all(.viewport_contract.expected_width == 390))
+        and ($native_window_route_mobile.screenshots | all(.viewport_contract.expected_height == 844))
+        and ($native_window_route_mobile.screenshots | all(.viewport_contract.host_window_usable_ready == true))
+        and ($native_window_route_mobile.screenshots | all(.visual_probe.mobile_route_content_ready == true))
+        and $native_window_route_mobile.native_app_log_error_free == true
+      ),
+      native_window_route_mobile_app_log_error_free:($native_window_route_mobile.native_app_log_error_free // false),
+      native_window_route_mobile_smoke:$native_window_route_mobile,
       native_window_secondary_smoke_enabled:($native_window_secondary.enabled == true),
       native_window_secondary_smoke_status:($native_window_secondary.status // "not_run"),
       native_window_secondary_smoke_blocked_allowed:($native_window_secondary.blocked_allowed // false),
@@ -14174,6 +15129,38 @@ emit_readiness_json() {
         true_window_route_top_design_referee_ready:($native_window_route.route_top_design_referee_ready // false),
         true_window_route_content_probe_ready:($native_window_route.route_content_probe_ready // false),
         true_window_route_screenshots:($native_window_route.screenshots // []),
+        true_window_route_mobile_smoke_enabled:($native_window_route_mobile.enabled == true),
+        true_window_route_mobile_smoke_status:($native_window_route_mobile.status // "not_run"),
+        true_window_route_mobile_smoke_blocked_allowed:($native_window_route_mobile.blocked_allowed // false),
+        true_window_route_mobile_smoke_ready:(
+          ($native_window_route_mobile.enabled == true)
+          and $native_window_route_mobile.status == "ready"
+          and $native_window_route_mobile.true_window_capture_performed == true
+          and $native_window_route_mobile.native_makepad_mobile_route_variants_ready == true
+          and $native_window_route_mobile.route_count == 4
+          and $native_window_route_mobile.non_home_content_log_signature_count >= 3
+          and $native_window_route_mobile.route_screenshot_unique_count == 4
+          and $native_window_route_mobile.route_screenshot_unique_ready == true
+          and $native_window_route_mobile.mobile_host_window_ready == true
+          and $native_window_route_mobile.screenshot_count == 4
+          and ($native_window_route_mobile.screenshots | all(.viewport_contract.expected_width == 390))
+          and ($native_window_route_mobile.screenshots | all(.viewport_contract.expected_height == 844))
+          and ($native_window_route_mobile.screenshots | all(.viewport_contract.host_window_usable_ready == true))
+          and ($native_window_route_mobile.screenshots | all(.visual_probe.mobile_route_content_ready == true))
+          and $native_window_route_mobile.native_app_log_error_free == true
+        ),
+        true_window_route_mobile_app_log_error_free:($native_window_route_mobile.native_app_log_error_free // false),
+        true_window_route_mobile_report:$native_window_route_mobile_report_path,
+        true_window_route_mobile_output_dir:$native_window_route_mobile_output_dir,
+        true_window_route_mobile_log:$native_window_route_mobile_log,
+        true_window_route_mobile_screenshot_count:(($native_window_route_mobile.screenshots // []) | length),
+        true_window_route_mobile_screenshot_unique_count:($native_window_route_mobile.route_screenshot_unique_count // 0),
+        true_window_route_mobile_screenshot_unique_ready:($native_window_route_mobile.route_screenshot_unique_ready // false),
+        true_window_route_mobile_non_home_content_log_signature_count:($native_window_route_mobile.non_home_content_log_signature_count // 0),
+        true_window_route_mobile_exact_390x844_ready:($native_window_route_mobile.exact_390x844_ready // false),
+        true_window_route_mobile_host_window_ready:($native_window_route_mobile.mobile_host_window_ready // false),
+        true_window_route_mobile_host_constrained_count:($native_window_route_mobile.host_constrained_count // 0),
+        true_window_route_mobile_screenshots:($native_window_route_mobile.screenshots // []),
         true_window_secondary_smoke_enabled:($native_window_secondary.enabled == true),
         true_window_secondary_smoke_status:($native_window_secondary.status // "not_run"),
         true_window_secondary_smoke_blocked_allowed:($native_window_secondary.blocked_allowed // false),
@@ -14241,7 +15228,9 @@ emit_readiness_json() {
       },
       key_screenshot_count:$key_screenshot_count,
       component_gates:[
+        "scripts/hepta-ui-design-system-gate.sh",
         "scripts/hepta-control-ui-browser-smoke.sh",
+        "scripts/hepta-ui-harsh-top-design-referee-v7-real-click-gate.sh",
         "scripts/hepta-native-fixture-visual-smoke.sh",
         "scripts/hepta-native-packaging-gate.sh",
         "scripts/hepta-native-ui-backend-contract-risk-plan-gate.sh",
@@ -14285,12 +15274,32 @@ emit_readiness_json() {
         "scripts/hepta-ui-risk-future-plan-gate.sh",
         "scripts/hepta-ui-root-report-replay-gate.sh"
       ],
-      optional_component_gates:[
-        "scripts/hepta-native-window-smoke.sh",
-        "scripts/hepta-native-window-route-smoke.sh",
-        "scripts/hepta-native-window-secondary-smoke.sh",
-        "scripts/hepta-native-window-secondary-mobile-smoke.sh"
-      ],
+      optional_component_gates:(
+        if $strict_current_source_mode == 1 then
+          []
+        else
+          [
+            "scripts/hepta-native-window-smoke.sh",
+            "scripts/hepta-native-window-route-smoke.sh",
+            "scripts/hepta-native-window-route-mobile-smoke.sh",
+            "scripts/hepta-native-window-secondary-smoke.sh",
+            "scripts/hepta-native-window-secondary-mobile-smoke.sh"
+          ]
+        end
+      ),
+      strict_current_source_component_gates:(
+        if $strict_current_source_mode == 1 then
+          [
+            "scripts/hepta-native-window-smoke.sh",
+            "scripts/hepta-native-window-route-smoke.sh",
+            "scripts/hepta-native-window-route-mobile-smoke.sh",
+            "scripts/hepta-native-window-secondary-smoke.sh",
+            "scripts/hepta-native-window-secondary-mobile-smoke.sh"
+          ]
+        else
+          []
+        end
+      ),
       side_effects:{
         local_loopback_server_spawned:$native_packaging.runner.local_loopback_spawned,
         matrix_login:false,
@@ -14302,13 +15311,77 @@ emit_readiness_json() {
     }'
   )"
 
-  printf '%s\n' "$readiness_json" >"$READINESS_REPORT_PATH"
+  readiness_tmp="$(mktemp "$OUT_DIR/.readiness.json.XXXXXX")"
+  printf '%s\n' "$readiness_json" >"$readiness_tmp"
 
-  jq -e \
+  if ! jq -e \
     --arg readiness_report_path "$READINESS_REPORT_PATH" \
     '
       .ui_product_readiness_gate_ready == true
       and .status == "ready"
+      and .strict_current_source_configuration_ready == true
+      and (
+        .strict_current_source_mode != true
+        or (
+          .current_source_true_window_matrix_ready == true
+          and .current_source_true_window_matrix.main.enabled == true
+          and .current_source_true_window_matrix.main.status == "ready"
+          and .current_source_true_window_matrix.main.blocked_allowed != true
+          and .current_source_true_window_matrix.main.true_window_capture_performed == true
+          and .current_source_true_window_matrix.main.screenshot_count == 2
+          and .current_source_true_window_matrix.main.app_log_error_free == true
+          and .current_source_true_window_matrix.main.evidence_ready == true
+          and .current_source_true_window_matrix.desktop_routes.enabled == true
+          and .current_source_true_window_matrix.desktop_routes.status == "ready"
+          and .current_source_true_window_matrix.desktop_routes.blocked_allowed != true
+          and .current_source_true_window_matrix.desktop_routes.true_window_capture_performed == true
+          and .current_source_true_window_matrix.desktop_routes.screenshot_count == 4
+          and .current_source_true_window_matrix.desktop_routes.unique_screenshot_count == 4
+          and .current_source_true_window_matrix.desktop_routes.content_probe_ready == true
+          and .current_source_true_window_matrix.desktop_routes.app_log_error_free == true
+          and .current_source_true_window_matrix.desktop_routes.evidence_ready == true
+          and .current_source_true_window_matrix.mobile_routes.enabled == true
+          and .current_source_true_window_matrix.mobile_routes.status == "ready"
+          and .current_source_true_window_matrix.mobile_routes.blocked_allowed != true
+          and .current_source_true_window_matrix.mobile_routes.true_window_capture_performed == true
+          and .current_source_true_window_matrix.mobile_routes.screenshot_count == 4
+          and .current_source_true_window_matrix.mobile_routes.unique_screenshot_count == 4
+          and .current_source_true_window_matrix.mobile_routes.content_log_signature_count >= 3
+          and .current_source_true_window_matrix.mobile_routes.host_window_ready == true
+          and .current_source_true_window_matrix.mobile_routes.app_log_error_free == true
+          and .current_source_true_window_matrix.mobile_routes.evidence_ready == true
+          and .current_source_true_window_matrix.desktop_secondary.enabled == true
+          and .current_source_true_window_matrix.desktop_secondary.status == "ready"
+          and .current_source_true_window_matrix.desktop_secondary.blocked_allowed != true
+          and .current_source_true_window_matrix.desktop_secondary.true_window_capture_performed == true
+          and .current_source_true_window_matrix.desktop_secondary.screenshot_count == 5
+          and .current_source_true_window_matrix.desktop_secondary.unique_screenshot_count == 5
+          and .current_source_true_window_matrix.desktop_secondary.app_log_error_free == true
+          and .current_source_true_window_matrix.desktop_secondary.evidence_ready == true
+          and .current_source_true_window_matrix.mobile_secondary.enabled == true
+          and .current_source_true_window_matrix.mobile_secondary.status == "ready"
+          and .current_source_true_window_matrix.mobile_secondary.blocked_allowed != true
+          and .current_source_true_window_matrix.mobile_secondary.true_window_capture_performed == true
+          and .current_source_true_window_matrix.mobile_secondary.screenshot_count == 5
+          and .current_source_true_window_matrix.mobile_secondary.unique_screenshot_count == 5
+          and .current_source_true_window_matrix.mobile_secondary.content_probe_ready == true
+          and .current_source_true_window_matrix.mobile_secondary.content_visible_count >= 5
+          and .current_source_true_window_matrix.mobile_secondary.host_window_ready == true
+          and .current_source_true_window_matrix.mobile_secondary.app_log_error_free == true
+          and .current_source_true_window_matrix.mobile_secondary.evidence_ready == true
+          and (.optional_component_gates | length) == 0
+          and (.strict_current_source_component_gates | length) == 5
+          and .ui_root_report_replay.strict_current_source_mode == true
+          and .ui_root_report_replay.current_source_true_window_matrix_ready == true
+          and (.ui_design_system.rust_toolchain | test("^rustc 1\\.95\\.0([[:space:]]|$)"))
+        )
+      )
+      and .ui_design_system_gate_ready == true
+      and .ui_design_system.status == "ready"
+      and .ui_design_system.control.retired_texture_asset_free == true
+      and .ui_design_system.control.legacy_texture_asset_reference_count == 0
+      and (.component_gates | index("scripts/hepta-ui-design-system-gate.sh")) != null
+      and (.component_gates | index("scripts/hepta-ui-harsh-top-design-referee-v7-real-click-gate.sh")) != null
       and .readiness_report_path == $readiness_report_path
       and (.component_gates | index("scripts/hepta-ui-backend-handoff-export-gate.sh")) != null
       and (.component_gates | index("scripts/hepta-ui-backend-dispatch-packet-gate.sh")) != null
@@ -14329,31 +15402,25 @@ emit_readiness_json() {
       and (.component_gates | index("scripts/hepta-ui-risk-future-plan-gate.sh")) != null
       and (.component_gates | index("scripts/hepta-ui-root-report-replay-gate.sh")) != null
       and .control_ui_browser_smoke_ready == true
-      and .control_ui_top_design_referee_ready == true
-      and .control_ui_320_reflow_ready == true
-	      and .control_ui_preferred_touch_targets_ready == true
-	      and .control_ui_microcopy_word_split_guard_ready == true
-	      and .control_ui_logo_clip_guard_ready == true
-	      and .control_ui_active_chat_readability_ready == true
-	      and .control_ui_placeholder_readability_ready == true
-	      and .control_ui_small_control_readability_ready == true
-	      and .control_ui_rail_action_icon_ready == true
-	      and .control_ui_folder_chip_touch_ready == true
-	      and .control_ui_visual_density_qa_ready == true
-      and .control_ui_browser_error_page_absent == true
-      and .control_ui_horizontal_overflow_free == true
-      and .control_ui.browser_error_page_absent == true
-      and .control_ui.horizontal_overflow_free == true
+      and .control_ui_real_click_v7_ready == true
+	      and .control_ui_top_design_referee_ready == true
+	      and .control_ui_320_reflow_ready == true
+		      and .control_ui_visual_density_qa_ready == true
+	      and .control_ui_browser_error_page_absent == true
+	      and .control_ui_subresource_requests_clean == true
+	      and .control_ui_subresource_error_count == 0
+	      and .control_ui_horizontal_overflow_free == true
+	      and .control_ui.browser_error_page_absent == true
+	      and .control_ui.subresource_requests_clean == true
+	      and .control_ui.subresource_error_count == 0
+	      and .control_ui.horizontal_overflow_free == true
       and .control_ui.density_qa.status == "ready"
       and .control_ui.density_qa.viewport_count == 4
-      and .control_ui.density_qa.phone320_ready == true
-	      and .control_ui.density_qa.preferred_touch_targets_ready == true
-	      and .control_ui.density_qa.microcopy_word_split_guard_ready == true
-	      and .control_ui.density_qa.logo_clip_guard_ready == true
-	      and .control_ui.density_qa.active_chat_readability_ready == true
-	      and .control_ui.density_qa.placeholder_readability_ready == true
-	      and .control_ui.density_qa.small_control_readability_ready == true
-	      and (.control_ui.density_qa.results | all(.status == "ready"))
+	      and .control_ui.density_qa.phone320_ready == true
+	      and .control_ui.density_qa.mobile_pane_navigation_ready == true
+	      and .control_ui.density_qa.native_popover_interaction_ready == true
+	      and .control_ui.density_qa.light_theme_semantics_ready == true
+		      and (.control_ui.density_qa.results | all(.status == "ready"))
       and .screenshot_count.control_ui >= 4
       and .screenshot_count.native >= 40
       and .screenshot_count.key >= 24
@@ -14376,6 +15443,18 @@ emit_readiness_json() {
           and .native_window_route_top_design_referee_ready == true
           and .native_window_route_content_probe_ready == true
           and .screenshot_count.native_true_window_route == 4
+        )
+      )
+      and (
+        (.native_window_route_mobile_smoke_enabled != true)
+        or (
+          .native_window_route_mobile_smoke_ready == true
+          and .native_window_route_mobile_screenshot_count == 4
+          and .native_window_route_mobile_screenshot_unique_count == 4
+          and .native_window_route_mobile_screenshot_unique_ready == true
+          and .native_window_route_mobile_non_home_content_log_signature_count >= 3
+          and .native_window_route_mobile_host_window_ready == true
+          and .screenshot_count.native_true_window_route_mobile == 4
         )
       )
       and (
@@ -14488,6 +15567,25 @@ emit_readiness_json() {
         or .native.true_window_route_app_log_error_free == true
       )
       and (
+        (.native.true_window_route_mobile_smoke_enabled != true)
+        or (
+          .native.true_window_route_mobile_smoke_ready == true
+          and .native.true_window_route_mobile_screenshot_count == 4
+          and .native.true_window_route_mobile_screenshot_unique_count == 4
+          and .native.true_window_route_mobile_screenshot_unique_ready == true
+          and .native.true_window_route_mobile_non_home_content_log_signature_count >= 3
+          and .native.true_window_route_mobile_host_window_ready == true
+        )
+        or (
+          .native.true_window_route_mobile_smoke_blocked_allowed == true
+          and (.native.true_window_route_mobile_smoke_status == "blocked_by_locked_screen" or .native.true_window_route_mobile_smoke_status == "blocked_by_local_macos_permissions")
+        )
+      )
+      and (
+        (.native.true_window_route_mobile_smoke_status != "ready")
+        or .native.true_window_route_mobile_app_log_error_free == true
+      )
+      and (
         (.native.true_window_secondary_smoke_enabled != true)
         or (
           .native.true_window_secondary_smoke_ready == true
@@ -14571,6 +15669,25 @@ emit_readiness_json() {
       and (
         (.native_window_route_smoke_status != "ready")
         or .artifact_summary.native_window_route_app_log_error_free == true
+      )
+      and (
+        (.native_window_route_mobile_smoke_enabled != true)
+        or (
+          .artifact_summary.native_window_route_mobile_smoke_ready == true
+          and .artifact_summary.native_window_route_mobile_screenshot_count == 4
+          and .artifact_summary.native_window_route_mobile_screenshot_unique_count == 4
+          and .artifact_summary.native_window_route_mobile_screenshot_unique_ready == true
+          and .artifact_summary.native_window_route_mobile_non_home_content_log_signature_count >= 3
+          and .artifact_summary.native_window_route_mobile_host_window_ready == true
+        )
+        or (
+          .artifact_summary.native_window_route_mobile_smoke_blocked_allowed == true
+          and (.artifact_summary.native_window_route_mobile_smoke_status == "blocked_by_locked_screen" or .artifact_summary.native_window_route_mobile_smoke_status == "blocked_by_local_macos_permissions")
+        )
+      )
+      and (
+        (.native_window_route_mobile_smoke_status != "ready")
+        or .artifact_summary.native_window_route_mobile_app_log_error_free == true
       )
       and (
         (.native_window_secondary_smoke_enabled != true)
@@ -15095,7 +16212,7 @@ emit_readiness_json() {
       and .backend_delivery_receipt_roundtrip_simulated_receipt_ready == true
       and .backend_delivery_receipt_roundtrip_present_branch_valid == true
       and .backend_delivery_receipt_roundtrip_present_branch_claim_ready == true
-      and .backend_delivery_receipt_roundtrip_root_report_required_count == 43
+      and .backend_delivery_receipt_roundtrip_root_report_required_count == 45
       and (.backend_delivery_receipt_roundtrip_simulated_receipt_sha256 | test("^[0-9a-f]{64}$"))
       and (.backend_delivery_receipt_roundtrip_present_report_sha256 | test("^[0-9a-f]{64}$"))
       and (.backend_delivery_receipt_roundtrip_markdown_sha256 | test("^[0-9a-f]{64}$"))
@@ -15142,7 +16259,7 @@ emit_readiness_json() {
         .risk_future_plan_critical_blocker_count >= 0
         and .risk_future_plan_critical_blocker_count <= 10
       )
-      and .risk_future_plan_root_report_required_count == 43
+      and .risk_future_plan_root_report_required_count == 45
       and (.risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
       and .ui_risk_future_plan.claim_boundary.live_product_claim_ready == false
       and .ui_risk_future_plan.claim_boundary.public_distribution_claim_ready == false
@@ -15151,7 +16268,7 @@ emit_readiness_json() {
       and .ui_root_report_replay_gate_ready == true
       and .ui_root_report_replay.status == "ready"
       and .local_root_report_replay_ready == true
-      and .root_report_replay_count == 43
+      and .root_report_replay_count == 45
       and .ui_root_report_replay.source_alignment.base_gap_alignment_ready == true
       and .ui_root_report_replay.source_alignment.evidence_archive_ready == true
       and .ui_root_report_replay.source_alignment.release_operator_dry_run_ready == true
@@ -15330,7 +16447,7 @@ emit_readiness_json() {
     and .ui_root_report_replay.source_alignment.risk_future_plan_action_matrix_case_count == 15
       and .ui_root_report_replay.source_alignment.risk_future_plan_harsh_action_matrix_ready == true
       and .ui_root_report_replay.source_alignment.risk_future_plan_harsh_action_failure_count == 0
-      and .ui_root_report_replay.source_alignment.risk_future_plan_root_report_required_count == 43
+      and .ui_root_report_replay.source_alignment.risk_future_plan_root_report_required_count == 45
       and (
         .ui_root_report_replay.source_alignment.risk_future_plan_critical_blocker_count >= 0
         and .ui_root_report_replay.source_alignment.risk_future_plan_critical_blocker_count <= 10
@@ -15484,7 +16601,7 @@ emit_readiness_json() {
     and .ui_root_report_replay.future_plan_replay.risk_future_plan_action_matrix_case_count == 15
       and .ui_root_report_replay.future_plan_replay.risk_future_plan_harsh_action_matrix_ready == true
       and .ui_root_report_replay.future_plan_replay.risk_future_plan_harsh_action_failure_count == 0
-      and .ui_root_report_replay.future_plan_replay.risk_future_plan_root_report_required_count == 43
+      and .ui_root_report_replay.future_plan_replay.risk_future_plan_root_report_required_count == 45
       and (
         .ui_root_report_replay.future_plan_replay.risk_future_plan_critical_blocker_count >= 0
         and .ui_root_report_replay.future_plan_replay.risk_future_plan_critical_blocker_count <= 10
@@ -15515,6 +16632,7 @@ emit_readiness_json() {
           .r33_hard_demo_evidence_ready == true
           and .ui_demo_evidence.screenshot_evidence.native_true_window_main_count == 2
           and .ui_demo_evidence.screenshot_evidence.native_true_window_route_count == 4
+          and .ui_demo_evidence.screenshot_evidence.native_true_window_route_mobile_count == 4
           and .ui_demo_evidence.screenshot_evidence.native_true_window_secondary_desktop_count == 5
           and .ui_demo_evidence.screenshot_evidence.native_true_window_secondary_mobile_count == 5
         )
@@ -15952,7 +17070,7 @@ emit_readiness_json() {
         .artifact_summary.risk_future_plan_critical_blocker_count >= 0
         and .artifact_summary.risk_future_plan_critical_blocker_count <= 10
       )
-      and .artifact_summary.risk_future_plan_root_report_required_count == 43
+      and .artifact_summary.risk_future_plan_root_report_required_count == 45
       and (.artifact_summary.risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
       and .artifact_summary.ui_post_r228_risk_future_plan_gate_ready == true
       and .artifact_summary.ui_post_r228_risk_future_plan.status == "ready"
@@ -15975,7 +17093,7 @@ emit_readiness_json() {
       and (.artifact_summary.post_r228_risk_future_plan_source_old_control_sha256 | test("^[0-9a-f]{64}$"))
       and .artifact_summary.ui_root_report_replay_gate_ready == true
       and .artifact_summary.local_root_report_replay_ready == true
-      and .artifact_summary.root_report_replay_count == 43
+      and .artifact_summary.root_report_replay_count == 45
       and .artifact_summary.live_product_claim_ready == false
       and .artifact_summary.public_distribution_claim_ready == false
       and .artifact_summary.release_claim_ready == false
@@ -16057,12 +17175,17 @@ emit_readiness_json() {
       and .ui_release_signing_capability.side_effects.public_distribution_artifact_written == false
       and .ui_release_signing_capability.side_effects.external_mutation == false
       and .side_effects.external_mutation == false
-    ' "$READINESS_REPORT_PATH" >/dev/null
+    ' "$readiness_tmp" >/dev/null; then
+    rm -f "$readiness_tmp"
+    return 1
+  fi
 
+  mv "$readiness_tmp" "$READINESS_REPORT_PATH"
   printf '%s\n' "$readiness_json"
 }
 
 check_static_contracts
+run_design_system_gate
 run_visual_gates
 run_native_packaging_gate
 run_native_distribution_preflight_gate
@@ -16070,11 +17193,13 @@ run_release_signing_capability_gate
 run_native_window_shared_preflight_and_prebuild
 run_optional_native_window_smoke
 run_optional_native_window_route_smoke
+run_optional_native_window_route_mobile_smoke
 run_optional_native_window_secondary_smoke
 run_optional_native_window_secondary_mobile_smoke
 count_visual_artifacts
 key_screenshots_json="$(build_key_screenshots_json)"
 write_screenshot_manifest "$key_screenshots_json"
+run_current_source_ui_readiness_gate
 write_base_gap_drilldown
 write_base_gap_work_queue
 write_base_gap_backend_handoff

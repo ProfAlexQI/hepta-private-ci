@@ -307,7 +307,7 @@ jq -n \
           and $present.delivery_state.dispatch_archive_sha256 == $dispatch.archive_sha256
         ),
         payload_manifest_match:($receipt.payload_manifest_sha256 == $dispatch.manifest_sha256),
-        root_report_replay_required_count_after_roundtrip:43
+        root_report_replay_required_count_after_roundtrip:45
       },
       claim_boundary:{
         local_backend_delivery_receipt_roundtrip_ready:$ready,
@@ -399,7 +399,7 @@ jq -e '
   and (.source_alignment.present_branch_backend_receipt_claim_ready | type) == "boolean"
   and .source_alignment.dispatch_archive_match == true
   and .source_alignment.payload_manifest_match == true
-  and .source_alignment.root_report_replay_required_count_after_roundtrip == 43
+  and .source_alignment.root_report_replay_required_count_after_roundtrip == 45
   and .claim_boundary.local_backend_delivery_receipt_roundtrip_ready == true
   and .claim_boundary.local_backend_delivery_audit_ready == true
   and .claim_boundary.simulated_delivery_receipt_branch_ready == true

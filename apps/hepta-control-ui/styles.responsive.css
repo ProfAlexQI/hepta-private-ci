@@ -1,0 +1,157 @@
+/* Current responsive rules load after all component and legacy layers. */
+@media(max-width:980px) and (min-width:701px){
+body[data-view="chat"] .tg-row-action-popover[popover]{inset:108px 220px auto auto!important}
+#row-menu-ui-chat-agent:popover-open{top:240px!important;right:47px!important;bottom:auto!important;left:auto!important}
+#row-menu-task-queue:popover-open{top:293px!important;right:47px!important;bottom:auto!important;left:auto!important}
+#row-menu-operator-plane:popover-open{top:346px!important;right:47px!important;bottom:auto!important;left:auto!important}
+#composer-popover-artifact:popover-open,
+#composer-popover-command:popover-open{top:auto!important;bottom:140px!important}
+body[data-view="chat"] .tg-context-chip-row{display:none!important}
+body[data-view="chat"]:not(:has(.tg-chat-item--menu-open)):not(:has([data-thread-command-menu="true"][open])):not(:has([data-control-ui-composer-more][open])):not(:has(.tg-composer-picker[open])) .tg-compose-wrap{
+min-height:122px!important;
+max-height:122px!important;
+padding:8px 10px!important;
+overflow:visible!important;
+}
+body[data-view="chat"]:not(:has(.tg-chat-item--menu-open)):not(:has([data-thread-command-menu="true"][open])):not(:has([data-control-ui-composer-more][open])):not(:has(.tg-composer-picker[open])) .tg-compose-bar{
+position:relative!important;
+inset:auto!important;
+width:100%!important;
+min-height:56px!important;
+height:56px!important;
+transform:none!important;
+}
+body[data-view="chat"]:not(:has(.tg-chat-item--menu-open)):not(:has([data-thread-command-menu="true"][open])):not(:has([data-control-ui-composer-more][open])):not(:has(.tg-composer-picker[open])) .tg-compose-footer{
+display:flex!important;
+align-items:center!important;
+justify-content:flex-end!important;
+height:44px!important;
+min-height:44px!important;
+margin:4px 0 0!important;
+overflow:visible!important;
+transform:none!important;
+}
+body[data-view="chat"]:not(:has(.tg-chat-item--menu-open)):not(:has([data-thread-command-menu="true"][open])):not(:has([data-control-ui-composer-more][open])):not(:has(.tg-composer-picker[open])) [data-control-ui-composer-more],
+body[data-view="chat"]:not(:has(.tg-chat-item--menu-open)):not(:has([data-thread-command-menu="true"][open])):not(:has([data-control-ui-composer-more][open])):not(:has(.tg-composer-picker[open])) [data-control-ui-composer-tools-trigger="light-glass"]{
+position:relative!important;
+inset:auto!important;
+z-index:auto!important;
+margin:0!important;
+transform:none!important;
+}
+}
+@media(max-width:700px){
+body[data-view="chat"] .telegram-chat-shell .focus-main{
+display:grid!important;
+grid-template-columns:minmax(0,1fr)!important;
+grid-template-rows:auto minmax(0,1fr)!important;
+gap:6px!important;
+height:100dvh!important;
+max-height:100dvh!important;
+overflow:hidden!important;
+}
+body[data-view="chat"] .tg-mobile-layer-tabs{
+display:grid!important;
+grid-column:1/-1;
+grid-template-columns:repeat(3,minmax(0,1fr));
+gap:4px;
+padding:4px;
+border:1px solid var(--hepta-glass-hairline);
+border-radius:var(--hepta-glass-control-radius);
+background:rgba(244,249,250,.97);
+box-shadow:inset 0 1px rgba(255,255,255,.86),0 4px 10px var(--hepta-glass-shadow);
+}
+body[data-view="chat"] .tg-mobile-layer-tabs a{
+display:grid;
+place-items:center;
+min-width:0;
+min-height:44px;
+border-radius:8px;
+color:var(--hepta-glass-muted);
+font-size:12px;
+font-weight:760;
+text-decoration:none;
+}
+body[data-view="chat"] .tg-mobile-layer-tabs a[href="#chat-thread"],
+body[data-view="chat"]:has(#chat-list:target) .tg-mobile-layer-tabs a[href="#chat-list"],
+body[data-view="chat"]:has(#chat-room:target) .tg-mobile-layer-tabs a[href="#chat-room"]{
+background:var(--hepta-glass-active-surface);
+color:var(--hepta-glass-text);
+box-shadow:inset 0 1px rgba(255,255,255,.82),0 3px 8px var(--hepta-glass-shadow);
+}
+body[data-view="chat"]:has(#chat-list:target) .tg-mobile-layer-tabs a[href="#chat-thread"],
+body[data-view="chat"]:has(#chat-room:target) .tg-mobile-layer-tabs a[href="#chat-thread"]{
+background:transparent;
+color:var(--hepta-glass-muted);
+box-shadow:none;
+}
+body[data-view="chat"] .focus-main>#chat-thread{display:flex!important}
+body[data-view="chat"] .focus-main>:is(#chat-list,#chat-room){display:none!important}
+body[data-view="chat"] .focus-main>:is(#chat-list,#chat-thread,#chat-room){
+align-self:stretch;
+height:100%!important;
+max-height:none!important;
+min-height:0!important;
+}
+body[data-view="chat"] .focus-main:has(>#chat-list:target)>#chat-list,
+body[data-view="chat"] .focus-main:has(>#chat-room:target)>#chat-room{display:grid!important;max-height:none!important;min-height:0!important}
+body[data-view="chat"] .focus-main:has(>#chat-list:target)>:is(#chat-thread,#chat-room),
+body[data-view="chat"] .focus-main:has(>#chat-room:target)>:is(#chat-list,#chat-thread){display:none!important}
+body[data-view="chat"] #chat-room:target>.hepta-right-sidebar{
+display:grid!important;
+grid-template-rows:auto minmax(0,1fr) auto;
+align-content:start;
+width:100%;
+height:100%;
+min-width:0;
+min-height:0;
+overflow-y:auto;
+}
+#row-menu-ui-chat-agent:popover-open,
+#row-menu-task-queue:popover-open,
+#row-menu-operator-plane:popover-open{left:auto!important;right:8px!important;width:min(180px,calc(100vw - 16px))!important;min-width:0!important;max-width:calc(100vw - 16px)!important}
+#thread-tools-popover:popover-open{inset:140px 8px auto auto!important;width:min(384px,calc(100vw - 16px))!important;max-width:calc(100vw - 16px)!important;grid-template-columns:repeat(3,minmax(0,1fr))!important}
+#composer-tools-popover:popover-open{inset:auto 8px 84px auto!important;width:min(380px,calc(100vw - 16px))!important;max-width:calc(100vw - 16px)!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}
+#composer-popover-artifact:popover-open,
+#composer-popover-command:popover-open{left:8px!important;right:8px!important;bottom:140px!important;width:auto!important;max-width:calc(100vw - 16px)!important}
+}
+@media(max-width:360px){
+body[data-view="chat"] [data-control-ui-status-trust-badge="safe-review"],
+body[data-view="chat"] [data-control-ui-micro-surface="routing-local-only"],
+body[data-view="chat"] .tg-compose-status[data-control-ui-micro-surface]{display:none!important}
+body[data-view="chat"] :is(.tg-message small,.tg-bubble>span,.tg-routing-badges .badge[data-control-ui-micro-surface]){
+display:inline!important;
+min-height:0!important;
+padding:0!important;
+border:0!important;
+border-radius:0!important;
+background:transparent!important;
+background-image:none!important;
+box-shadow:none!important;
+backdrop-filter:none!important;
+-webkit-backdrop-filter:none!important;
+filter:none!important;
+text-shadow:none!important;
+color:var(--hepta-glass-muted)!important;
+}
+body[data-view="chat"] .tg-routing-badges{gap:8px!important;margin-top:4px!important}
+}
+@supports(anchor-name:--hepta-row-menu-anchor){
+[data-chat-row-menu-toggle="ui-chat-agent"]{anchor-name:--hepta-row-ui-chat-agent}
+[data-chat-row-menu-toggle="task-queue"]{anchor-name:--hepta-row-task-queue}
+[data-chat-row-menu-toggle="operator-plane"]{anchor-name:--hepta-row-operator-plane}
+#row-menu-ui-chat-agent{position-anchor:--hepta-row-ui-chat-agent}
+#row-menu-task-queue{position-anchor:--hepta-row-task-queue}
+#row-menu-operator-plane{position-anchor:--hepta-row-operator-plane}
+#row-menu-ui-chat-agent:popover-open,
+#row-menu-task-queue:popover-open,
+#row-menu-operator-plane:popover-open{
+inset:auto!important;
+top:calc(anchor(bottom) + 6px)!important;
+left:min(anchor(right),calc(100vw - 8px))!important;
+right:auto!important;
+bottom:auto!important;
+transform:translateX(-100%)!important;
+position-try-fallbacks:flip-block,flip-inline!important;
+}
+}

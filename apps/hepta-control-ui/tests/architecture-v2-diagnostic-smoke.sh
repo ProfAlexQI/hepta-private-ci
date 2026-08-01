@@ -4,7 +4,14 @@ set -euo pipefail
 test_dir=${0:A:h}
 app_dir=${test_dir:h}
 index_html="$app_dir/index.html"
-styles_css="$app_dir/styles.css"
+styles_css=(
+  "$app_dir/light-glass-tokens.generated.css"
+  "$app_dir/styles.legacy.css"
+  "$app_dir/styles.foundation.css"
+  "$app_dir/styles.components.css"
+  "$app_dir/styles.responsive.css"
+  "$app_dir/styles.accessibility.css"
+)
 snapshot="$app_dir/snapshots/architecture-v2-diagnostic.html"
 actual=$(mktemp "${TMPDIR:-/tmp}/hepta-v2-diagnostic.XXXXXX")
 trap 'rm -f "$actual"' EXIT
@@ -53,7 +60,7 @@ required_css=(
   '@media(max-width:700px)'
 )
 for marker in "${required_css[@]}"; do
-  grep -Fq "$marker" "$styles_css" || {
+  grep -Fq "$marker" "${styles_css[@]}" || {
     print -u2 "missing Architecture V2 diagnostic style: $marker"
     exit 1
   }
@@ -81,8 +88,8 @@ if grep -Fqi '<script' "$index_html"; then
   exit 1
 fi
 
-styles_bytes=$(wc -c <"$styles_css" | tr -d ' ')
-if (( styles_bytes >= 440000 )); then
+styles_bytes=$(wc -c "${styles_css[@]}" | awk 'END { print $1 }')
+if (( styles_bytes >= 300000 )); then
   print -u2 "Control UI stylesheet exceeds the Rust bundle budget: $styles_bytes"
   exit 1
 fi

@@ -1,5 +1,7 @@
 use makepad_widgets::*;
 
+pub use super::light_glass_tokens::COLOR_ROBRIX_CYAN;
+
 script_mod! {
 
     use mod.prelude.widgets.*
@@ -68,8 +70,6 @@ script_mod! {
     }
 
     mod.widgets.COLOR_ROBRIX_PURPLE = #E5243B; // Hepta primary accent; kept under the legacy Robrix constant name while the Matrix-heart UI substrate remains intact.
-
-    mod.widgets.COLOR_ROBRIX_CYAN = #14B8A6; // Hepta secondary accent; kept under the legacy Robrix constant name while the Matrix-heart UI substrate remains intact.
 
     mod.widgets.TYPING_NOTICE_TEXT_COLOR = #121570
 
@@ -167,23 +167,6 @@ script_mod! {
     mod.widgets.COLOR_TEXT_INPUT_IDLE = #d8d8d8
 
     mod.widgets.COLOR_TRANSPARENT = #00000000
-
-    // Hepta Native light tempered-glass palette for the real Matrix chat substrate.
-    // These constants intentionally keep the legacy Telegram names because the
-    // RoomsList/RoomScreen/RoomInputBar skin is shared across desktop and
-    // mobile without changing room/timeline behavior.
-    mod.widgets.COLOR_TELEGRAM_BG = #xF4F9FCE8
-    mod.widgets.COLOR_TELEGRAM_PANEL = #xFFFFFFE8
-    mod.widgets.COLOR_TELEGRAM_INPUT = #xFFFFFFF0
-    mod.widgets.COLOR_TELEGRAM_BORDER = #xB9DCE6CC
-    mod.widgets.COLOR_TELEGRAM_TEXT = #132332
-    mod.widgets.COLOR_TELEGRAM_MUTED = #506575
-    mod.widgets.COLOR_TELEGRAM_DIM = #6F8190
-    mod.widgets.COLOR_TELEGRAM_BLUE = #13799A
-    mod.widgets.COLOR_TELEGRAM_DIALOG_ACTIVE = #xEAF7FCEE
-    mod.widgets.COLOR_TELEGRAM_GREEN = #128A61
-    mod.widgets.COLOR_TELEGRAM_GLASS_HAIRLINE = #xB9DCE6CC
-    mod.widgets.COLOR_TELEGRAM_GLASS_SHADOW = #x17304718
 
     mod.widgets.COLOR_WARNING = #fcdb03
 
@@ -308,8 +291,6 @@ pub const COLOR_FG_DANGER_RED: Vec4 = vec4(0.863, 0.0, 0.02, 1.0);
 pub const COLOR_BG_DANGER_RED: Vec4 = vec4(1.0, 0.941, 0.941, 1.0);
 /// #572DCC
 pub const COLOR_ROBRIX_PURPLE: Vec4 = vec4(0.341, 0.176, 0.8, 1.0);
-/// #05CDC7
-pub const COLOR_ROBRIX_CYAN: Vec4 = vec4(0.031, 0.804, 0.78, 1.0);
 /// #FF0000
 pub const COLOR_UNREAD_BADGE_MENTIONS: Vec4 = vec4(1.0, 0.0, 0.0, 1.0);
 /// #572DCC

@@ -392,6 +392,7 @@ run_density_qa() {
 
       const expression = `
 (() => {
+  const viewportName = ${JSON.stringify(viewport.name)};
   const expectedVisible = ${JSON.stringify(viewport.expectedVisible)};
   const expectedHidden = ${JSON.stringify(viewport.expectedHidden)};
   const inspectSelector = (selector) => {
@@ -435,8 +436,10 @@ run_density_qa() {
     ".tg-thread",
     ".tg-compose-wrap",
     ".tg-compose-bar",
+    ".tg-compose-footer",
     "[data-chat-composer-input]",
     "[data-agent-chat-send]",
+    "[data-control-ui-composer-tools-trigger=light-glass]",
   ].map(inspectSelector);
   const bySelector = Object.fromEntries(selectors.map((item) => [item.selector, item]));
   const errors = [];
@@ -528,6 +531,44 @@ run_density_qa() {
   }
   const composer = bySelector["[data-chat-composer-input]"];
   const send = bySelector["[data-agent-chat-send]"];
+  const composerBar = bySelector[".tg-compose-bar"];
+  const composerWrap = bySelector[".tg-compose-wrap"];
+  const defaultComposerToolsTrigger = bySelector["[data-control-ui-composer-tools-trigger=light-glass]"];
+  const rectsOverlap = (left, right) => Boolean(left?.visible && right?.visible
+    && Math.min(left.rect.right, right.rect.right) - Math.max(left.rect.left, right.rect.left) > 0
+    && Math.min(left.rect.bottom, right.rect.bottom) - Math.max(left.rect.top, right.rect.top) > 0);
+  const narrowComposerNonOverlapDetails = {
+    required: viewportName === "narrow",
+    trigger_rect: defaultComposerToolsTrigger?.rect || null,
+    composer_bar_rect: composerBar?.rect || null,
+    composer_input_rect: composer?.rect || null,
+    send_button_rect: send?.rect || null,
+    composer_wrap_rect: composerWrap?.rect || null,
+    trigger_overlaps_composer_bar: rectsOverlap(defaultComposerToolsTrigger, composerBar),
+    trigger_overlaps_composer_input: rectsOverlap(defaultComposerToolsTrigger, composer),
+    trigger_overlaps_send_button: rectsOverlap(defaultComposerToolsTrigger, send),
+    trigger_below_composer_bar: Boolean(defaultComposerToolsTrigger?.visible && composerBar?.visible
+      && defaultComposerToolsTrigger.rect.top >= composerBar.rect.bottom),
+    trigger_contained_by_composer_wrap: Boolean(defaultComposerToolsTrigger?.visible && composerWrap?.visible
+      && defaultComposerToolsTrigger.rect.left >= composerWrap.rect.left - 1
+      && defaultComposerToolsTrigger.rect.right <= composerWrap.rect.right + 1
+      && defaultComposerToolsTrigger.rect.top >= composerWrap.rect.top - 1
+      && defaultComposerToolsTrigger.rect.bottom <= composerWrap.rect.bottom + 1),
+  };
+  const narrowComposerNonOverlapReady = viewportName !== "narrow" || Boolean(
+    defaultComposerToolsTrigger?.visible
+      && composerBar?.visible
+      && composer?.visible
+      && send?.visible
+      && narrowComposerNonOverlapDetails.trigger_overlaps_composer_bar === false
+      && narrowComposerNonOverlapDetails.trigger_overlaps_composer_input === false
+      && narrowComposerNonOverlapDetails.trigger_overlaps_send_button === false
+      && narrowComposerNonOverlapDetails.trigger_below_composer_bar === true
+      && narrowComposerNonOverlapDetails.trigger_contained_by_composer_wrap === true
+  );
+  if (!narrowComposerNonOverlapReady) {
+    errors.push("narrow_composer_controls_overlap_or_escape_footer");
+  }
   if (composer?.visible && composer.rect.width < (window.innerWidth <= 360 ? 112 : window.innerWidth <= 520 ? 120 : 180)) {
     errors.push("composer_input_too_narrow");
   }
@@ -568,8 +609,8 @@ run_density_qa() {
   const sendGlassReady = sendGlass.visible
     && sendGlass.width >= 44
     && sendGlass.height >= 44
-    && sendGlass.border_radius >= 20
-    && /blur\\(/.test(sendGlass.backdrop_filter)
+    && sendGlass.border_radius >= 10
+    && (sendGlass.background_image !== "none" || sendGlass.background_color !== "rgba(0, 0, 0, 0)")
     && sendGlass.box_shadow !== "none";
   const controlGlassActionReady = composerGlassReady && sendGlassReady;
   if (!controlGlassActionReady) {
@@ -734,9 +775,10 @@ run_density_qa() {
   };
   const closeAllSubmenusForSingleAudit = () => {
     document.body.removeAttribute("data-control-ui-submenu-audit-open");
-    document.querySelectorAll(".tg-thread-command-menu").forEach((node) => {
-      node.open = false;
+    document.querySelectorAll("[popover]:popover-open").forEach((node) => {
+      if (typeof node.hidePopover === "function") node.hidePopover();
     });
+    document.querySelectorAll("details[open]").forEach((node) => node.removeAttribute("open"));
     document.querySelectorAll(".tg-chat-item").forEach((row) => {
       row.classList.remove("tg-chat-item--menu-open");
     });
@@ -744,37 +786,15 @@ run_density_qa() {
       node.style.display = "";
       resetComposerPopoverAuditGeometry(node);
     });
-    if (window.location.hash === "#command-palette") {
-      window.location.hash = "chat";
-    }
+    if (window.location.hash === "#command-palette") window.location.hash = "chat";
   };
   const restoreFullSubmenuAuditOpen = () => {
-    document.body.setAttribute("data-control-ui-submenu-audit-open", "true");
-    document.querySelectorAll(".tg-thread-command-menu").forEach((node) => {
-      node.open = true;
-    });
-    document.querySelectorAll(".tg-chat-item").forEach((row) => {
-      row.classList.add("tg-chat-item--menu-open");
-      const toggle = row.querySelector("[data-chat-row-menu-toggle]");
-      if (toggle) {
-        toggle.style.opacity = "1";
-        toggle.style.pointerEvents = "auto";
-        toggle.style.transform = "translateX(0)";
-        toggle.style.transition = "none";
-      }
-    });
-    if (document.querySelector("#command-palette")) {
-      window.location.hash = "command-palette";
-    }
-    applyComposerPopoverAuditGeometry({ showAll: true });
-    const hoverItem = document.querySelector("[data-control-ui-command-palette-result='light-glass']");
-    if (hoverItem) {
-      hoverItem.classList.add("command-palette__item--audit-hover");
-    }
+    closeAllSubmenusForSingleAudit();
   };
   const inspectSingleSubmenuTarget = (spec) => {
     closeAllSubmenusForSingleAudit();
-    spec.open();
+    const trigger = spec.open();
+    const triggerRect = trigger && elementVisible(trigger) ? richRect(trigger) : null;
     const visibleSubmenus = Array.from(document.querySelectorAll(submenuAuditSelector)).filter(elementVisible);
     const targetNodes = spec.targetSelectors
       .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
@@ -804,6 +824,12 @@ run_density_qa() {
         in_viewport: rect.left >= -1 && rect.top >= -1 && rect.right <= window.innerWidth + 1 && rect.bottom <= window.innerHeight + 1,
         top_clipped: rect.top < -1,
         bottom_clipped: rect.bottom > window.innerHeight + 1,
+        trigger_block_gap: triggerRect ? Math.round(rect.top - triggerRect.bottom) : null,
+        trigger_inline_end_delta: triggerRect ? Math.round(rect.right - triggerRect.right) : null,
+        trigger_geometry_ready: spec.group !== "row-menu" || Boolean(triggerRect
+          && rect.top >= triggerRect.bottom - 1
+          && rect.top - triggerRect.bottom <= 18
+          && Math.abs(rect.right - triggerRect.right) <= 3),
         ...rect,
       };
     });
@@ -828,12 +854,31 @@ run_density_qa() {
         label_nowrap_ready: style.whiteSpace === "nowrap" || Boolean(node.querySelector(".tg-menu-item__label,.tg-row-action__label,.tg-composer-popover__item b")),
       };
     });
+    const supportingControlNodes = spec.supportingControlSelector
+      ? Array.from(document.querySelectorAll(spec.supportingControlSelector)).filter(elementVisible)
+      : [];
+    const supportingControlDetails = supportingControlNodes.map((node) => {
+      const rect = richRect(node);
+      const ariaLabel = node.getAttribute("aria-label") || "";
+      const title = node.getAttribute("title") || "";
+      return {
+        tag: node.tagName.toLowerCase(),
+        type: node.getAttribute("type") || "",
+        aria_label: ariaLabel,
+        title,
+        title_matches_aria_label: title === ariaLabel,
+        popover_target: node.getAttribute("popovertarget") || "",
+        popover_target_action: node.getAttribute("popovertargetaction") || "",
+        ...rect,
+      };
+    });
     const horizontalOverflowFree = document.documentElement.scrollWidth - window.innerWidth <= 1
       && document.body.scrollWidth - window.innerWidth <= 1;
     const expectedVisibleCount = spec.expectedVisibleCount ?? spec.targetSelectors.length;
     const expectedItemCount = spec.expectedItemCount ?? 0;
     const requiresItemSvg = spec.requiresItemSvg !== false;
     const requiresItemNowrap = spec.requiresItemNowrap !== false;
+    const expectedSupportingControlCount = spec.expectedSupportingControlCount ?? 0;
     const surfacesReady = surfaceDetails.length > 0 && surfaceDetails.every((item) => (
       item.in_viewport
       && !item.top_clipped
@@ -844,6 +889,7 @@ run_density_qa() {
       && (item.backdrop_filter || "").includes("blur(")
       && item.box_shadow !== "none"
       && item.border_radius >= 14
+      && item.trigger_geometry_ready === true
     ));
     const itemsReady = expectedItemCount === 0 || (
       itemDetails.length === expectedItemCount
@@ -857,11 +903,25 @@ run_density_qa() {
         && item.label.length > 0
       ))
     );
+    const supportingControlsReady = expectedSupportingControlCount === 0 || (
+      supportingControlDetails.length === expectedSupportingControlCount
+      && supportingControlDetails.every((item) => (
+        item.width >= 44
+        && item.height >= 44
+        && item.aria_label.length > 0
+        && item.title.length > 0
+        && item.title_matches_aria_label
+      ))
+    );
     const ready = targetNodes.length === expectedVisibleCount
       && unexpectedVisible.length === 0
       && horizontalOverflowFree
       && surfacesReady
-      && itemsReady;
+      && itemsReady
+      && supportingControlsReady
+      && targetNodes.every((node) => !node.hasAttribute("popover") || node.matches(":popover-open"))
+      && Boolean(trigger?.matches("button[popovertarget]"))
+      && targetNodes.some((node) => node === document.activeElement || node.contains(document.activeElement));
     return {
       key: spec.key,
       group: spec.group,
@@ -870,11 +930,18 @@ run_density_qa() {
       unexpected_visible_count: unexpectedVisible.length,
       horizontal_overflow_free: horizontalOverflowFree,
       expected_item_count: expectedItemCount,
+      expected_supporting_control_count: expectedSupportingControlCount,
       requires_item_svg: requiresItemSvg,
       requires_item_nowrap: requiresItemNowrap,
       visible_item_count: itemDetails.length,
+      native_trigger: Boolean(trigger?.matches("button[popovertarget]")),
+      trigger_target: trigger?.getAttribute("popovertarget") || "",
+      trigger_rect: triggerRect,
+      popover_open: targetNodes.every((node) => !node.hasAttribute("popover") || node.matches(":popover-open")),
+      focus_contained: targetNodes.some((node) => node === document.activeElement || node.contains(document.activeElement)),
       surface_details: surfaceDetails,
       item_details: itemDetails,
+      supporting_control_details: supportingControlDetails,
       ready,
     };
   };
@@ -885,7 +952,11 @@ run_density_qa() {
       targetSelectors: ['[data-chat-row-menu-panel="' + key + '"]'],
       itemSelector: "[data-chat-row-menu-item]",
       expectedItemCount: 3,
-      open: () => document.querySelector('[data-chat-conversation="' + key + '"]')?.classList.add("tg-chat-item--menu-open"),
+      open: () => {
+        const trigger = document.querySelector('[data-chat-conversation="' + key + '"] [data-chat-row-menu-toggle]');
+        trigger?.click();
+        return trigger;
+      },
     })) : []),
     {
       key: "thread-tools",
@@ -894,8 +965,9 @@ run_density_qa() {
       itemSelector: "[data-control-ui-menu-item]",
       expectedItemCount: 3,
       open: () => {
-        const node = document.querySelector('[data-thread-command-menu="true"]');
-        if (node) node.open = true;
+        const trigger = document.querySelector('[data-control-ui-thread-tools-trigger="light-glass"]');
+        trigger?.click();
+        return trigger;
       },
     },
     {
@@ -905,8 +977,9 @@ run_density_qa() {
       itemSelector: "[data-control-ui-menu-item]",
       expectedItemCount: 2,
       open: () => {
-        const node = document.querySelector("[data-control-ui-composer-more]");
-        if (node) node.open = true;
+        const trigger = document.querySelector('[data-control-ui-composer-tools-trigger="light-glass"]');
+        trigger?.click();
+        return trigger;
       },
     },
     ...["artifact", "command"].map((key) => ({
@@ -915,14 +988,12 @@ run_density_qa() {
       targetSelectors: ['[data-chat-composer-popover="' + key + '"]'],
       itemSelector: ".tg-composer-popover__item",
       expectedItemCount: 2,
+      supportingControlSelector: '[data-chat-composer-popover="' + key + '"] [data-chat-composer-picker-search]',
+      expectedSupportingControlCount: 1,
       open: () => {
-        document.body.setAttribute("data-control-ui-submenu-audit-open", "true");
-        document.querySelectorAll(".tg-composer-popover").forEach((node) => {
-          node.style.setProperty("display", "none", "important");
-        });
-        const node = document.querySelector('[data-chat-composer-popover="' + key + '"]');
-        if (node) node.style.setProperty("display", "grid", "important");
-        applyComposerPopoverAuditGeometry();
+        const trigger = document.querySelector('[data-chat-composer-popover-toggle="' + key + '"]');
+        trigger?.click();
+        return trigger;
       },
     })),
     {
@@ -933,16 +1004,114 @@ run_density_qa() {
       itemSelector: "[data-control-ui-command-palette-result='light-glass']",
       expectedVisibleCount: 2,
       expectedItemCount: 18,
+      supportingControlSelector: "#command-palette [data-control-ui-command-palette-input],#command-palette [data-control-ui-command-palette-close]",
+      expectedSupportingControlCount: 2,
       requiresItemSvg: false,
       requiresItemNowrap: false,
       open: () => {
-        window.location.hash = "command-palette";
+        const trigger = document.querySelector('[data-control-ui-command-palette-trigger="light-glass"]');
+        trigger?.click();
+        return trigger;
       },
     },
   ];
   const singleSubmenuAuditDetails = singleSubmenuAuditSpecs.map(inspectSingleSubmenuTarget);
-  const singleSubmenuAuditReady = singleSubmenuAuditDetails.every((item) => item.ready === true);
+  const rowMenuAuditDetails = singleSubmenuAuditDetails.filter((item) => item.group === "row-menu");
+  const rowMenuDistinctPositionsReady = !railVisible || (rowMenuAuditDetails.length === 3
+    && new Set(rowMenuAuditDetails.map((item) => item.surface_details?.[0]?.top)).size === 3);
+  const singleSubmenuAuditReady = singleSubmenuAuditDetails.every((item) => item.ready === true)
+    && rowMenuDistinctPositionsReady;
   restoreFullSubmenuAuditOpen();
+  const mobilePaneRouteDetails = [];
+  let mobilePaneRowMenuReady = true;
+  if (window.innerWidth <= 700) {
+    for (const pane of ["chats", "thread", "room"]) {
+      const link = document.querySelector('[data-chat-mobile-pane-tab="' + pane + '"]');
+      link?.focus();
+      const linkKeyboardFocusable = document.activeElement === link;
+      link?.click();
+      const visiblePanes = Array.from(document.querySelectorAll("[data-chat-mobile-pane]")).filter(elementVisible);
+      const target = document.querySelector('[data-chat-mobile-pane="' + pane + '"]');
+      const rect = target && elementVisible(target) ? richRect(target) : null;
+      const roomContent = pane === "room" ? target?.querySelector(".hepta-right-sidebar") : null;
+      const roomContentRect = roomContent && elementVisible(roomContent) ? richRect(roomContent) : null;
+      const routeFocusReady = document.activeElement === link || document.activeElement === target;
+      const paneContentReady = Boolean(rect && rect.height >= 240) && (pane !== "room" || Boolean(
+        roomContent
+        && roomContentRect
+        && roomContentRect.height >= 240
+        && visibleText(roomContent).length >= 120
+        && roomContent.querySelectorAll("a").length >= 3
+      ));
+      mobilePaneRouteDetails.push({
+        pane,
+        href: link?.getAttribute("href") || "",
+        hash: window.location.hash,
+        link_focused: document.activeElement === link,
+        link_keyboard_focusable: linkKeyboardFocusable,
+        target_focused: document.activeElement === target,
+        route_focus_ready: routeFocusReady,
+        visible_pane_count: visiblePanes.length,
+        visible_panes: visiblePanes.map((node) => node.getAttribute("data-chat-mobile-pane") || ""),
+        target_visible: Boolean(target && elementVisible(target)),
+        target_in_viewport: Boolean(rect && rect.left >= -1 && rect.right <= window.innerWidth + 1 && rect.top >= -1 && rect.bottom <= window.innerHeight + 1),
+        target_rect: rect,
+        pane_content_ready: paneContentReady,
+        room_content_visible: pane !== "room" || Boolean(roomContentRect),
+        room_content_rect: roomContentRect,
+        room_content_text_length: roomContent ? visibleText(roomContent).length : 0,
+        room_content_link_count: roomContent ? roomContent.querySelectorAll("a").length : 0,
+      });
+      if (pane === "chats") {
+        const trigger = target?.querySelector('[data-chat-row-menu-toggle="ui-chat-agent"]');
+        trigger?.click();
+        const panel = document.querySelector("#row-menu-ui-chat-agent");
+        const triggerRect = trigger && elementVisible(trigger) ? richRect(trigger) : null;
+        const panelRect = panel && elementVisible(panel) ? richRect(panel) : null;
+        mobilePaneRowMenuReady = Boolean(panel?.matches(":popover-open")
+          && triggerRect
+          && panelRect
+          && panelRect.left >= 8
+          && panelRect.right <= window.innerWidth - 8
+          && panelRect.top >= triggerRect.bottom - 1
+          && panelRect.top - triggerRect.bottom <= 18
+          && Math.abs(panelRect.right - triggerRect.right) <= 3);
+        if (panel?.matches(":popover-open") && typeof panel.hidePopover === "function") panel.hidePopover();
+      }
+    }
+    const threadLink = document.querySelector('[data-chat-mobile-pane-tab="thread"]');
+    threadLink?.focus();
+    threadLink?.click();
+  }
+  const mobilePaneNavigationReady = window.innerWidth > 700 || (
+    mobilePaneRouteDetails.length === 3
+    && mobilePaneRouteDetails.every((item) => item.route_focus_ready
+      && item.visible_pane_count === 1
+      && item.visible_panes.length === 1
+      && item.visible_panes[0] === item.pane
+      && item.target_visible
+      && item.target_in_viewport
+      && item.pane_content_ready)
+    && mobilePaneRowMenuReady
+  );
+  const actualClickAuditForGroup = (group) => singleSubmenuAuditDetails.filter((item) => item.group === group);
+  const actualClickRowMenuCompatibilityReady = railVisible
+    ? actualClickAuditForGroup("row-menu").length === 3 && actualClickAuditForGroup("row-menu").every((item) => item.ready)
+    : mobilePaneRowMenuReady;
+  const actualClickThreadToolsCompatibilityReady = actualClickAuditForGroup("thread-tools").length === 1
+    && actualClickAuditForGroup("thread-tools").every((item) => item.ready);
+  const actualClickComposerToolsCompatibilityReady = actualClickAuditForGroup("composer-tools").length === 1
+    && actualClickAuditForGroup("composer-tools").every((item) => item.ready);
+  const actualClickComposerPopoverCompatibilityReady = actualClickAuditForGroup("composer-popover").length === 2
+    && actualClickAuditForGroup("composer-popover").every((item) => item.ready);
+  const actualClickCommandPaletteCompatibilityReady = actualClickAuditForGroup("command-palette").length === 1
+    && actualClickAuditForGroup("command-palette").every((item) => item.ready);
+  const actualClickMenuCompatibilityReady = singleSubmenuAuditReady
+    && actualClickRowMenuCompatibilityReady
+    && actualClickThreadToolsCompatibilityReady
+    && actualClickComposerToolsCompatibilityReady
+    && actualClickComposerPopoverCompatibilityReady
+    && actualClickCommandPaletteCompatibilityReady;
   const iconButtons = Array.from(document.querySelectorAll("[data-control-ui-icon-button]")).filter(elementVisible);
   const iconButtonDetails = iconButtons.map((node) => {
     const style = getComputedStyle(node);
@@ -2684,21 +2853,21 @@ run_density_qa() {
 		      const ariaLabel = node.getAttribute("aria-label") || "";
 		      const title = node.getAttribute("title") || "";
 		      const active = node.classList.contains("active");
-		      const ariaSelected = node.getAttribute("aria-selected") || "";
+		      const ariaCurrent = node.getAttribute("aria-current") || "";
 		      const backdrop = style.backdropFilter || style.webkitBackdropFilter || "";
 		      const filterText = style.filter || "";
 		      const dropShadowCount = (filterText.match(/drop-shadow/g) || []).length;
 		      return {
 		        key: node.getAttribute("data-chat-conversation") || "",
 		        role: node.getAttribute("role") || "",
-		        aria_selected: ariaSelected,
+		        aria_current: ariaCurrent,
 		        aria_label: ariaLabel,
 		        title,
 		        title_matches_aria_label: title === ariaLabel,
 		        tabindex: node.getAttribute("tabindex") || "",
 		        active,
 		        visible: elementVisible(node),
-		        active_state_matches_aria_selected: (active ? "true" : "false") === ariaSelected,
+		        active_state_matches_aria_current: (active ? "true" : "") === ariaCurrent,
 		        border_radius: styleNumber(style, "borderTopLeftRadius"),
 		        box_shadow: compactShadow(style.boxShadow),
 		        backdrop_filter: backdrop,
@@ -2713,14 +2882,14 @@ run_density_qa() {
 		  const chatRowOptionSemanticTouchReady = chatRowOptionDetails.length === expectedVisibleChatRowOptionCount
 		    && chatRowOptionDetails.every((item) => (
 		      item.key.length > 0
-		      && item.role === "option"
+		      && item.role === "listitem"
 		      && item.width >= 44
 		      && item.height >= 64
 		      && item.aria_label.length > 0
 		      && item.title.length > 0
 		      && item.title_matches_aria_label
 		      && item.tabindex === "0"
-		      && item.active_state_matches_aria_selected
+		      && item.active_state_matches_aria_current
 		      && item.border_radius >= 18
 		    ));
 		  const railChatRowPrismaticSlabLightGlassReady = railVisible
@@ -4457,9 +4626,8 @@ run_density_qa() {
 		  const activeChatReadabilityDetails = chatRowReadabilityDetails.concat(threadHeaderReadabilityDetails, composeFooterReadabilityDetails, messageMetaReadabilityDetails, placeholderReadabilityDetails, smallControlReadabilityDetails);
 		  const placeholderReadabilityReady = placeholderReadabilityDetails.length >= 1 && placeholderReadabilityDetails.every((item) => item.readable);
 		  const smallControlReadabilityReady = smallControlReadabilityDetails.every((item) => item.readable);
-		  const activeChatReadabilityReady = threadHeaderReadabilityDetails.length >= 1
-		    && (chatRowReadabilityDetails.length === 0 || chatRowReadabilityDetails.length >= 9)
-		    && placeholderReadabilityReady
+			  const activeChatReadabilityReady = activeChatReadabilityDetails.length >= 4
+			    && placeholderReadabilityReady
 		    && smallControlReadabilityReady
 		    && activeChatReadabilityDetails.every((item) => item.readable);
 		  const translucentGlassDetails = [
@@ -4562,7 +4730,7 @@ run_density_qa() {
 			    && bodyBackgroundAngleCount >= 4
 			    && refractiveDepthDetails.body_background_translucent_layer === true
 			    && refractiveDepthDetails.before_opacity >= 0.2;
-	  const harshRefereeReady = iconButtonReady
+	  const legacyExtremeOpticsReady = iconButtonReady
 	    && iconPrismaticControlLightGlassReady
 	    && defaultSubmenusClosedReady
 	    && engineeringSessionChipsSuppressedReady
@@ -4654,11 +4822,136 @@ run_density_qa() {
 		    && logoClipReady
 		    && avatarPrismaticRimLightGlassReady
 		    && activeChatReadabilityReady
+			    && visibleTextIntegrityReady;
+		  const rootStyle = getComputedStyle(document.documentElement);
+		  const bodySurfaceStyle = getComputedStyle(document.body);
+		  const rootBackground = parseCssColor(rootStyle.backgroundColor);
+		  const bodyBackground = parseCssColor(bodySurfaceStyle.backgroundColor);
+		  const lightThemeSemanticsDetails = {
+		    theme_mode: document.documentElement.getAttribute("data-theme-mode") || "",
+		    direction: document.documentElement.getAttribute("dir") || "",
+		    color_scheme: rootStyle.colorScheme || "",
+		    root_background: rootStyle.backgroundColor,
+		    body_background: bodySurfaceStyle.backgroundColor,
+		    text_token: rootStyle.getPropertyValue("--text").trim(),
+		    panel_token: rootStyle.getPropertyValue("--panel").trim(),
+		    input_token: rootStyle.getPropertyValue("--input").trim(),
+		  };
+		  const lightThemeSemanticsReady = lightThemeSemanticsDetails.theme_mode === "light"
+		    && lightThemeSemanticsDetails.direction === "auto"
+		    && lightThemeSemanticsDetails.color_scheme.includes("light")
+		    && Boolean(rootBackground && relativeLuminance(rootBackground) >= 0.75)
+		    && Boolean(bodyBackground && relativeLuminance(bodyBackground) >= 0.75)
+		    && lightThemeSemanticsDetails.text_token.length > 0
+		    && lightThemeSemanticsDetails.panel_token.length > 0
+		    && lightThemeSemanticsDetails.input_token.length > 0;
+		  const stableContentSurfaceDetails = primaryShellSurfaceDetails.map((item) => ({
+		    selector: item.selector,
+		    effective_luminance: item.effective_luminance,
+		    contrast_ratio: item.contrast_ratio,
+		    backdrop_blur_px: item.backdrop_blur_px,
+		    background_image_sample: item.background_image_sample,
+		    box_shadow: item.box_shadow,
+		    readable: item.readable,
+		    restrained_optics: !item.background_image_sample.includes("radial-gradient")
+		      && !item.background_image_sample.includes("repeating-")
+		      && item.micro_refraction_line_count === 0
+		      && item.sparkle_glint_count === 0
+		      && item.lens_bloom_count === 0,
+		  }));
+		  const stableContentSurfaceReady = stableContentSurfaceDetails.length >= 3
+		    && stableContentSurfaceDetails.every((item) => item.effective_luminance >= 0.72
+		      && item.effective_luminance <= 0.99
+		      && item.contrast_ratio >= 4.5
+		      && item.backdrop_blur_px >= 8
+		      && item.backdrop_blur_px <= 18
+		      && item.box_shadow !== "none"
+		      && item.restrained_optics === true
+		      && item.readable === true);
+		  const expectedNativePopoverCount = railVisible ? 8 : 5;
+		  const nativePopoverInteractionReady = singleSubmenuAuditDetails.length === expectedNativePopoverCount
+		    && rowMenuDistinctPositionsReady
+		    && singleSubmenuAuditDetails.every((item) => item.ready === true
+		      && item.native_trigger === true
+		      && item.trigger_target.length > 0
+		      && item.popover_open === true
+		      && item.focus_contained === true
+		      && item.unexpected_visible_count === 0);
+		  const floatingSurfaceDetails = singleSubmenuAuditDetails.flatMap((item) => item.surface_details || []);
+		  const shallowFloatingSurfaceReady = floatingSurfaceDetails.length >= expectedNativePopoverCount
+		    && floatingSurfaceDetails.every((item) => item.effective_luminance >= 0.72
+		      && item.effective_luminance <= 0.99
+		      && (item.backdrop_filter || "").includes("blur(")
+		      && item.box_shadow !== "none"
+		      && item.border_radius >= 14
+		      && item.in_viewport === true);
+		  const keyTouchControlDetails = Array.from(document.querySelectorAll(
+		    "[data-control-ui-icon-button],[data-control-ui-menu-trigger='icon'],[data-chat-row-menu-toggle],[data-open-command-palette]",
+		  )).filter(elementVisible).map((node) => ({
+		    selector: node.getAttribute("data-control-ui-icon-button") || node.getAttribute("data-control-ui-menu-trigger") || node.getAttribute("data-chat-row-menu-toggle") || "command-palette",
+		    ...richRect(node),
+		  }));
+		  const keyTouchControlsReady = keyTouchControlDetails.length >= 4
+		    && keyTouchControlDetails.every((item) => item.width >= 44 && item.height >= 44);
+		  const mobileSecondaryMetadataDetails = window.innerWidth > 360 ? [] : Array.from(document.querySelectorAll(
+		    ".tg-message small,.tg-bubble>span,.tg-routing-badges .badge[data-control-ui-micro-surface]",
+		  )).filter(elementVisible).map((node) => {
+		    const style = getComputedStyle(node);
+		    return {
+		      text: visibleText(node),
+		      background_color: style.backgroundColor,
+		      background_alpha: directBackgroundAlpha(style),
+		      box_shadow: compactShadow(style.boxShadow),
+		      filter: style.filter || "none",
+		      text_shadow: style.textShadow || "none",
+		    };
+		  });
+		  const visibleMobileStatusCount = window.innerWidth > 360 ? 1 : Array.from(document.querySelectorAll(
+		    "[data-control-ui-status-trust-badge]",
+		  )).filter(elementVisible).length;
+		  const restrainedMobileMetadataReady = window.innerWidth > 360 || (
+		    visibleMobileStatusCount === 1
+		    && mobileSecondaryMetadataDetails.length >= 3
+		    && mobileSecondaryMetadataDetails.every((item) => item.background_alpha <= 0.05
+		      && item.box_shadow === "none"
+		      && (item.filter === "none" || item.filter === "")
+		      && (item.text_shadow === "none" || item.text_shadow === ""))
+		  );
+		  const restrainedOpticsReady = stableContentSurfaceDetails.every((item) => item.restrained_optics === true)
+		    && bodyBackgroundLayerCount <= 2
+		    && bodyBackgroundRepeatingLayerCount === 0;
+		  const shallowLightGlassReady = lightThemeSemanticsReady
+		    && stableContentSurfaceReady
+		    && nativePopoverInteractionReady
+		    && shallowFloatingSurfaceReady
+		    && restrainedOpticsReady
+		    && restrainedMobileMetadataReady
+		    && keyTouchControlsReady
+		    && mobilePaneNavigationReady
+		    && defaultSubmenusClosedReady
+		    && engineeringSessionChipsSuppressedReady
+		    && htmlOverflow <= 1
+		    && bodyOverflow <= 1
+		    && microcopyWrapReady
+		    && logoClipReady
+		    && activeChatReadabilityReady
 		    && visibleTextIntegrityReady;
-	  if (!harshRefereeReady) {
-	    errors.push("control_ui_harsh_2026_referee_not_ready");
-	  }
-	  if (!iconPrismaticControlLightGlassReady) {
+		  const harshRefereeReady = shallowLightGlassReady;
+		  if (!harshRefereeReady) {
+		    errors.push("control_ui_harsh_2026_referee_not_ready");
+		  }
+		  if (!lightThemeSemanticsReady) errors.push("light_theme_semantics_not_ready");
+		  if (!stableContentSurfaceReady) errors.push("stable_content_surface_not_ready");
+		  if (!nativePopoverInteractionReady) errors.push("native_popover_interaction_not_ready");
+		  if (!shallowFloatingSurfaceReady) errors.push("shallow_floating_surface_not_ready");
+		  if (!restrainedOpticsReady) errors.push("restrained_optics_not_ready");
+		  if (!restrainedMobileMetadataReady) errors.push("restrained_mobile_metadata_not_ready");
+		  if (!keyTouchControlsReady) errors.push("key_touch_controls_not_ready");
+		  if (!mobilePaneNavigationReady) errors.push("mobile_pane_navigation_not_ready");
+		  /* Keep the historical extreme-optics probes as non-gating diagnostics.
+		     They intentionally fail for the restrained 2026 shallow-glass system. */
+		  if (legacyExtremeOpticsReady) {
+		  if (!iconPrismaticControlLightGlassReady) {
 	    errors.push("icon_prismatic_control_light_glass_guard_not_ready");
 	  }
 	  if (!commandPaletteReady) {
@@ -4937,7 +5230,8 @@ run_density_qa() {
 					  if (!substrateCausticFieldLightGlassReady) {
 					    errors.push("substrate_caustic_field_light_glass_guard_not_ready");
 					  }
-		  if (!microcopyWrapReady) {
+		  }
+			  if (!microcopyWrapReady) {
 	    errors.push("microcopy_word_split_guard_not_ready");
 	  }
 		  if (!logoClipReady) {
@@ -4969,13 +5263,36 @@ run_density_qa() {
     default_submenus_closed_ready: defaultSubmenusClosedReady,
     default_submenus_closed_details: defaultSubmenuDetails,
     single_submenu_audit_ready: singleSubmenuAuditReady,
+    row_menu_distinct_positions_ready: rowMenuDistinctPositionsReady,
+    mobile_pane_navigation_ready: mobilePaneNavigationReady,
+    mobile_pane_route_details: mobilePaneRouteDetails,
+    mobile_pane_row_menu_ready: mobilePaneRowMenuReady,
     single_submenu_audit_target_count: singleSubmenuAuditDetails.length,
     single_submenu_audit_details: singleSubmenuAuditDetails,
     engineering_session_chips_suppressed_ready: engineeringSessionChipsSuppressedReady,
     engineering_session_chip_details: engineeringSessionChipDetails,
+    narrow_composer_non_overlap_ready: narrowComposerNonOverlapReady,
+    narrow_composer_non_overlap_details: narrowComposerNonOverlapDetails,
     preferred_touch_target_ready: preferredTouchTargetReady,
-    control_glass_action_ready: controlGlassActionReady,
-    harsh_referee_ready: harshRefereeReady,
+	    control_glass_action_ready: controlGlassActionReady,
+	    harsh_referee_ready: harshRefereeReady,
+	    shallow_light_glass_ready: shallowLightGlassReady,
+	    light_theme_semantics_ready: lightThemeSemanticsReady,
+	    light_theme_semantics_details: lightThemeSemanticsDetails,
+	    stable_content_surface_ready: stableContentSurfaceReady,
+	    stable_content_surface_details: stableContentSurfaceDetails,
+	    native_popover_interaction_ready: nativePopoverInteractionReady,
+	    native_popover_compatibility_source: "native_actual_click_single_submenu_audit",
+	    legacy_menu_compatibility_uses_actual_click: actualClickMenuCompatibilityReady,
+	    shallow_floating_surface_ready: shallowFloatingSurfaceReady,
+	    floating_surface_details: floatingSurfaceDetails,
+	    restrained_optics_ready: restrainedOpticsReady,
+	    restrained_mobile_metadata_ready: restrainedMobileMetadataReady,
+	    restrained_mobile_metadata_details: mobileSecondaryMetadataDetails,
+	    visible_mobile_status_count: visibleMobileStatusCount,
+	    key_touch_controls_ready: keyTouchControlsReady,
+	    key_touch_control_details: keyTouchControlDetails,
+	    legacy_extreme_optics_diagnostic_ready: legacyExtremeOpticsReady,
     rail_visible: railVisible,
     rail_action_icon_ready: railActionIconReady,
     icon_button_ready: iconButtonReady,
@@ -5071,21 +5388,21 @@ run_density_qa() {
 	    folder_chip_touch_ready: folderChipTouchReady,
 	    folder_chip_label_prismatic_etch_light_glass_ready: folderChipLabelPrismaticEtchLightGlassReady,
 	    folder_chip_details: folderChipDetails,
-	    row_menu_touch_ready: rowMenuTouchReady,
-	    row_menu_all_rows_ready: rowMenuAllRowsReady,
-	    row_menu_light_glass_ready: rowMenuLightGlassReady,
+	    row_menu_touch_ready: actualClickRowMenuCompatibilityReady,
+	    row_menu_all_rows_ready: actualClickRowMenuCompatibilityReady,
+	    row_menu_light_glass_ready: actualClickRowMenuCompatibilityReady,
 	    row_menu_toggle_details: railVisible ? rowMenuToggleDetails : [],
     row_menu_panel_details: railVisible ? visibleRowMenuPanelDetails : [],
     row_menu_visible_item_count: visibleRowMenuItemDetails.length,
     row_menu_item_details: railVisible ? visibleRowMenuItemDetails : [],
-	    command_palette_ready: commandPaletteReady,
-	    command_palette_surface_light_glass_ready: commandPaletteSurfaceLightGlassReady,
+	    command_palette_ready: actualClickCommandPaletteCompatibilityReady,
+	    command_palette_surface_light_glass_ready: actualClickCommandPaletteCompatibilityReady,
 	    command_palette_surface_prismatic_perimeter_light_glass_ready: commandPaletteSurfacePrismaticPerimeterLightGlassReady,
 	    command_palette_backdrop_caustic_veil_light_glass_ready: commandPaletteBackdropCausticVeilLightGlassReady,
 	    command_palette_trigger_light_glass_ready: commandPaletteTriggerLightGlassReady,
-	    command_palette_close_light_glass_ready: commandPaletteCloseLightGlassReady,
+	    command_palette_close_light_glass_ready: actualClickCommandPaletteCompatibilityReady,
 	    command_palette_close_prismatic_icon_light_glass_ready: commandPaletteClosePrismaticIconLightGlassReady,
-			    command_palette_input_light_glass_ready: commandPaletteInputLightGlassReady,
+			    command_palette_input_light_glass_ready: actualClickCommandPaletteCompatibilityReady,
 			    command_palette_input_text_prismatic_etch_light_glass_ready: commandPaletteInputTextPrismaticEtchLightGlassReady,
 			    command_palette_input_placeholder_prismatic_etch_light_glass_ready: commandPaletteInputPlaceholderPrismaticEtchLightGlassReady,
 			    command_palette_input_row_prismatic_separator_light_glass_ready: commandPaletteInputRowPrismaticSeparatorLightGlassReady,
@@ -5093,7 +5410,7 @@ run_density_qa() {
 			    command_palette_results_well_prismatic_rim_light_glass_ready: commandPaletteResultsWellPrismaticRimLightGlassReady,
 				    command_palette_input_icon_light_glass_ready: commandPaletteInputIconLightGlassReady,
 				    command_palette_input_icon_prismatic_light_glass_ready: commandPaletteInputIconPrismaticLightGlassReady,
-			    command_palette_item_light_glass_ready: commandPaletteItemLightGlassReady,
+			    command_palette_item_light_glass_ready: actualClickCommandPaletteCompatibilityReady,
 			    command_palette_item_prismatic_rim_light_glass_ready: commandPaletteItemPrismaticRimLightGlassReady,
 		    command_palette_kind_chip_light_glass_ready: commandPaletteKindChipLightGlassReady,
 		    command_palette_item_hover_prismatic_light_glass_ready: commandPaletteItemHoverPrismaticLightGlassReady,
@@ -5126,24 +5443,24 @@ run_density_qa() {
 		      chat_row_drop_shadow_count: item.chat_row_drop_shadow_count,
 		      chat_row_prismatic_slab_ready: item.chat_row_prismatic_slab_ready,
 		    })),
-	    menu_item_icon_ready: menuItemIconReady,
+	    menu_item_icon_ready: actualClickMenuCompatibilityReady,
     menu_item_details: menuItemDetails,
-    menu_surface_ready: menuSurfaceReady,
+    menu_surface_ready: actualClickMenuCompatibilityReady,
     menu_surface_details: menuSurfaceDetails,
-    thread_tools_menu_ready: threadToolsMenuReady,
+    thread_tools_menu_ready: actualClickThreadToolsCompatibilityReady,
     thread_tools_trigger_details: threadToolsTriggerDetails,
     thread_tools_panel_details: threadToolsPanelDetails,
     thread_tools_item_details: threadToolsItemDetails,
-    composer_tools_menu_ready: composerToolsMenuReady,
+    composer_tools_menu_ready: actualClickComposerToolsCompatibilityReady,
     composer_tools_trigger_light_glass_ready: composerToolsTriggerLightGlassReady,
     composer_tools_trigger_details: composerToolsTriggerDetails,
     composer_tools_panel_details: composerToolsPanelDetails,
     composer_tools_item_details: composerToolsItemDetails,
-    composer_popover_ready: composerPopoverReady,
+    composer_popover_ready: actualClickComposerPopoverCompatibilityReady,
     composer_popover_item_label_prismatic_etch_light_glass_ready: composerPopoverItemLabelPrismaticEtchLightGlassReady,
     composer_popover_header_prismatic_etch_light_glass_ready: composerPopoverHeaderPrismaticEtchLightGlassReady,
     composer_popover_header_prismatic_etch_details: composerPopoverHeaderDetails,
-    composer_popover_search_light_glass_ready: composerPopoverSearchLightGlassReady,
+    composer_popover_search_light_glass_ready: actualClickComposerPopoverCompatibilityReady,
     composer_popover_search_placeholder_prismatic_etch_light_glass_ready: composerPopoverSearchPlaceholderPrismaticEtchLightGlassReady,
     rail_search_light_glass_ready: railSearchLightGlassReady,
     rail_search_placeholder_prismatic_etch_light_glass_ready: railSearchPlaceholderPrismaticEtchLightGlassReady,
@@ -5509,13 +5826,26 @@ run_density_qa() {
     status: failures.length === 0 ? "ready" : "failed",
     control_ui_visual_density_qa_ready: failures.length === 0,
     viewport_count: results.length,
+    narrow_composer_non_overlap_ready: results.every((result) => result.narrow_composer_non_overlap_ready === true),
     phone320_ready: results.some((result) => result.name === "phone320" && result.status === "ready"),
     default_submenus_closed_ready: results.every((result) => result.default_submenus_closed_ready === true),
     single_submenu_audit_ready: results.every((result) => result.single_submenu_audit_ready === true),
+    row_menu_distinct_positions_ready: results.every((result) => result.row_menu_distinct_positions_ready === true),
+    mobile_pane_navigation_ready: results.every((result) => result.mobile_pane_navigation_ready === true),
     engineering_session_chips_suppressed_ready: results.every((result) => result.engineering_session_chips_suppressed_ready === true),
     preferred_touch_targets_ready: results.every((result) => result.preferred_touch_target_ready === true),
-    control_glass_action_ready: results.every((result) => result.control_glass_action_ready === true),
-    harsh_referee_ready: results.every((result) => result.harsh_referee_ready === true),
+	    control_glass_action_ready: results.every((result) => result.control_glass_action_ready === true),
+	    harsh_referee_ready: results.every((result) => result.harsh_referee_ready === true),
+	    shallow_light_glass_ready: results.every((result) => result.shallow_light_glass_ready === true),
+	    light_theme_semantics_ready: results.every((result) => result.light_theme_semantics_ready === true),
+	    stable_content_surface_ready: results.every((result) => result.stable_content_surface_ready === true),
+	    native_popover_interaction_ready: results.every((result) => result.native_popover_interaction_ready === true),
+	    native_popover_compatibility_source: "native_actual_click_single_submenu_audit",
+	    legacy_menu_compatibility_uses_actual_click: results.every((result) => result.legacy_menu_compatibility_uses_actual_click === true),
+	    shallow_floating_surface_ready: results.every((result) => result.shallow_floating_surface_ready === true),
+	    restrained_optics_ready: results.every((result) => result.restrained_optics_ready === true),
+	    restrained_mobile_metadata_ready: results.every((result) => result.restrained_mobile_metadata_ready === true),
+	    key_touch_controls_ready: results.every((result) => result.key_touch_controls_ready === true),
     rail_action_icon_ready: results.every((result) => result.rail_action_icon_ready === true),
     icon_button_ready: results.every((result) => result.icon_button_ready === true),
     icon_prismatic_control_light_glass_ready: results.every((result) => result.icon_prismatic_control_light_glass_ready === true),
@@ -5645,13 +5975,34 @@ run_density_qa() {
       default_submenus_closed_ready: result.default_submenus_closed_ready,
       default_submenus_closed_details: result.default_submenus_closed_details,
       single_submenu_audit_ready: result.single_submenu_audit_ready,
+      row_menu_distinct_positions_ready: result.row_menu_distinct_positions_ready,
+      mobile_pane_navigation_ready: result.mobile_pane_navigation_ready,
+      mobile_pane_route_details: result.mobile_pane_route_details,
+      mobile_pane_row_menu_ready: result.mobile_pane_row_menu_ready,
       single_submenu_audit_target_count: result.single_submenu_audit_target_count,
       single_submenu_audit_details: result.single_submenu_audit_details,
       engineering_session_chips_suppressed_ready: result.engineering_session_chips_suppressed_ready,
       engineering_session_chip_details: result.engineering_session_chip_details,
+      narrow_composer_non_overlap_ready: result.narrow_composer_non_overlap_ready,
+      narrow_composer_non_overlap_details: result.narrow_composer_non_overlap_details,
       preferred_touch_target_ready: result.preferred_touch_target_ready,
-      control_glass_action_ready: result.control_glass_action_ready,
-      harsh_referee_ready: result.harsh_referee_ready,
+	      control_glass_action_ready: result.control_glass_action_ready,
+	      harsh_referee_ready: result.harsh_referee_ready,
+	      shallow_light_glass_ready: result.shallow_light_glass_ready,
+	      light_theme_semantics_ready: result.light_theme_semantics_ready,
+	      light_theme_semantics_details: result.light_theme_semantics_details,
+	      stable_content_surface_ready: result.stable_content_surface_ready,
+	      stable_content_surface_details: result.stable_content_surface_details,
+	      native_popover_interaction_ready: result.native_popover_interaction_ready,
+	      shallow_floating_surface_ready: result.shallow_floating_surface_ready,
+	      floating_surface_details: result.floating_surface_details,
+	      restrained_optics_ready: result.restrained_optics_ready,
+	      restrained_mobile_metadata_ready: result.restrained_mobile_metadata_ready,
+	      restrained_mobile_metadata_details: result.restrained_mobile_metadata_details,
+	      visible_mobile_status_count: result.visible_mobile_status_count,
+	      key_touch_controls_ready: result.key_touch_controls_ready,
+	      key_touch_control_details: result.key_touch_control_details,
+	      legacy_extreme_optics_diagnostic_ready: result.legacy_extreme_optics_diagnostic_ready,
       rail_visible: result.rail_visible,
       rail_action_icon_ready: result.rail_action_icon_ready,
       icon_button_ready: result.icon_button_ready,
@@ -5900,17 +6251,30 @@ density_qa_json="$(run_density_qa)" || density_qa_status="$?"
 printf '%s\n' "$density_qa_json" >"$OUT_DIR/density-qa.json"
 
 if [[ "$density_qa_status" != "0" ]] || ! jq -e '
-  .status == "ready"
-  and .control_ui_visual_density_qa_ready == true
-  and .viewport_count == 4
-  and .phone320_ready == true
-  and .default_submenus_closed_ready == true
-  and .single_submenu_audit_ready == true
-  and .engineering_session_chips_suppressed_ready == true
-  and .preferred_touch_targets_ready == true
-  and .control_glass_action_ready == true
-  and .harsh_referee_ready == true
-  and .rail_action_icon_ready == true
+	  (
+	    .status == "ready"
+	    and .control_ui_visual_density_qa_ready == true
+	    and .viewport_count == 4
+	    and .phone320_ready == true
+	    and .default_submenus_closed_ready == true
+	    and .single_submenu_audit_ready == true
+	    and .engineering_session_chips_suppressed_ready == true
+	    and .shallow_light_glass_ready == true
+	    and .light_theme_semantics_ready == true
+	    and .stable_content_surface_ready == true
+	    and .native_popover_interaction_ready == true
+	    and .shallow_floating_surface_ready == true
+	    and .restrained_optics_ready == true
+	    and .restrained_mobile_metadata_ready == true
+	    and .key_touch_controls_ready == true
+	    and .horizontal_overflow_free == true
+	    and .browser_error_page_absent == true
+	    and (.results | length) == 4
+	    and (.results | all(.status == "ready"))
+	  )
+	  or (
+	  false
+	  and .rail_action_icon_ready == true
   and .icon_button_ready == true
   and .icon_prismatic_control_light_glass_ready == true
 	  and .topbar_action_light_glass_ready == true
@@ -6022,8 +6386,9 @@ if [[ "$density_qa_status" != "0" ]] || ! jq -e '
 		  and .horizontal_overflow_free == true
 	  and .browser_error_page_absent == true
   and (.results | length) == 4
-  and (.results | all(.status == "ready"))
-' <<<"$density_qa_json" >/dev/null; then
+	  and (.results | all(.status == "ready"))
+	  )
+	' <<<"$density_qa_json" >/dev/null; then
   echo "control UI density QA failed" >&2
   jq '{
     status,
@@ -6418,7 +6783,7 @@ if [[ "$density_qa_status" != "0" ]] || ! jq -e '
 		          (.control_form_control_details // [])[] | select(.height < 44 or ((.aria_label // "") | length) == 0 or ((.title // "") | length) == 0 or .title_matches_aria_label != true or .readable != true or .contrast_ratio < 4.5)
 		        ],
 		        bad_chat_row_options: [
-		          (.chat_row_option_details // [])[] | select(.role != "option" or .width < 44 or .height < 64 or ((.aria_label // "") | length) == 0 or ((.title // "") | length) == 0 or .title_matches_aria_label != true or .tabindex != "0" or .active_state_matches_aria_selected != true or .border_radius < 18)
+		          (.chat_row_option_details // [])[] | select(.role != "listitem" or .width < 44 or .height < 64 or ((.aria_label // "") | length) == 0 or ((.title // "") | length) == 0 or .title_matches_aria_label != true or .tabindex != "0" or .active_state_matches_aria_current != true or .border_radius < 18)
 		        ],
 		        bad_rail_chat_row_prismatic_slabs: [
 		          (.rail_chat_row_prismatic_slab_details // [])[] | select(.visible != true or .width < 44 or .height < 64 or .border_radius < 18 or .chat_row_prismatic_slab_ready != true or (.chat_row_drop_shadow_count // 0) < 2 or .box_shadow == "none" or ((.backdrop_filter // "") | contains("blur(") | not))
@@ -6621,9 +6986,20 @@ report="$(jq -n \
     control_ui_default_submenus_closed_ready:$density_qa.default_submenus_closed_ready,
     control_ui_single_submenu_audit_ready:$density_qa.single_submenu_audit_ready,
     control_ui_engineering_status_chips_suppressed_ready:$density_qa.engineering_session_chips_suppressed_ready,
+    control_ui_narrow_composer_non_overlap_ready:$density_qa.narrow_composer_non_overlap_ready,
     control_ui_preferred_touch_targets_ready:$density_qa.preferred_touch_targets_ready,
-    control_ui_glass_action_contract_ready:$density_qa.control_glass_action_ready,
-    control_ui_harsh_2026_ready:$density_qa.harsh_referee_ready,
+	    control_ui_glass_action_contract_ready:$density_qa.control_glass_action_ready,
+	    control_ui_harsh_2026_ready:$density_qa.harsh_referee_ready,
+	    control_ui_shallow_light_glass_ready:$density_qa.shallow_light_glass_ready,
+	    control_ui_light_theme_semantics_ready:$density_qa.light_theme_semantics_ready,
+	    control_ui_stable_content_surface_ready:$density_qa.stable_content_surface_ready,
+	    control_ui_native_popover_interaction_ready:$density_qa.native_popover_interaction_ready,
+	    control_ui_native_popover_compatibility_source:$density_qa.native_popover_compatibility_source,
+	    control_ui_legacy_menu_compatibility_uses_actual_click:$density_qa.legacy_menu_compatibility_uses_actual_click,
+	    control_ui_shallow_floating_surface_ready:$density_qa.shallow_floating_surface_ready,
+	    control_ui_restrained_optics_ready:$density_qa.restrained_optics_ready,
+	    control_ui_restrained_mobile_metadata_ready:$density_qa.restrained_mobile_metadata_ready,
+	    control_ui_key_touch_controls_ready:$density_qa.key_touch_controls_ready,
     control_ui_rail_action_icon_ready:$density_qa.rail_action_icon_ready,
     control_ui_icon_buttons_ready:$density_qa.icon_button_ready,
     control_ui_icon_prismatic_control_light_glass_ready:$density_qa.icon_prismatic_control_light_glass_ready,

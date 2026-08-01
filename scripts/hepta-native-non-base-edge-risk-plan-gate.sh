@@ -190,7 +190,7 @@ require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "m
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "message_edit_mention_payload_typed_contract_packet_preview"
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "message_edit_retry_error_drilldown_packet_preview"
 require_contains "apps/hepta-native/src/home/room_screen.rs" "Poll answer preview/result packet"
-require_contains "apps/hepta-native/src/home/room_screen.rs" "answer_edit_slot not_built"
+require_contains "apps/hepta-native/src/home/room_screen.rs" "edited state, answer edit slot"
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "poll_answer_preview_result_packet_preview"
 require_contains "scripts/hepta-native-fixture-visual-smoke.sh" 'data-native-telegram-message-edit-detail-packet="attachment-mention-poll-spinner-local"'
 require_contains "scripts/hepta-native-fixture-visual-smoke.sh" 'data-native-telegram-message-edit-attachment-preflight-packet="replace-remove-upload-slots-local"'

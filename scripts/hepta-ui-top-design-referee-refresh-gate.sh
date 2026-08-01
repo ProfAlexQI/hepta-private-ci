@@ -57,6 +57,7 @@ require_report "$FUTURE_PLAN_REFRESH_REPORT_PATH"
 require_report "$OPERATOR_BRIEFING_REFRESH_REPORT_PATH"
 require_report "$EVIDENCE_ARCHIVE_REPORT_PATH"
 
+rm -f "$REPORT_PATH"
 rm -rf "$REFRESH_DIR"
 mkdir -p "$REFRESH_DIR"
 
@@ -1484,6 +1485,11 @@ if [[ "${HEPTA_UI_TOP_DESIGN_REFEREE_REFRESH_DEBUG_COPY:-0}" == "1" ]]; then
   cp "$REPORT_TMP" "$REPORT_PATH.debug"
 fi
 
+# Persist the current failed/ready draft before the hard assertion so a
+# retired-contract mismatch cannot leave an empty log and no auditable JSON.
+cp "$MARKDOWN_TMP" "$REFRESH_MARKDOWN_PATH"
+cp "$REPORT_TMP" "$REPORT_PATH"
+
 jq -e '
 	  .status == "ready"
 	  and .top_design_referee_refresh_gate_ready == true
@@ -1773,9 +1779,6 @@ jq -e '
   and .claim_boundary.external_actions_allowed == false
   and .side_effects.local_markdown_written == true
   and .side_effects.external_mutation == false
-' "$REPORT_TMP" >/dev/null
-
-cp "$MARKDOWN_TMP" "$REFRESH_MARKDOWN_PATH"
-cp "$REPORT_TMP" "$REPORT_PATH"
+' "$REPORT_PATH" >/dev/null
 
 printf 'Hepta UI top-design referee refresh gate wrote %s\n' "$REPORT_PATH" >&2
