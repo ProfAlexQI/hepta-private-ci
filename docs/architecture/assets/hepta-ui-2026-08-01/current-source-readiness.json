@@ -1,0 +1,1104 @@
+{
+  "schema_version": "hepta-ui-current-source-readiness/v1",
+  "generated_at": "2026-08-01T11:53:22Z",
+  "product": "Hepta UI",
+  "status": "ready",
+  "readiness_kind": "ui_lane_current_source",
+  "readiness_dir": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904",
+  "report_path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/ui-current-source-readiness.json",
+  "source": {
+    "branch": "ui/native-productization",
+    "commit": "39a5f6abee0c78e77155d1a6e292a27e7cbebe11",
+    "worktree_clean": true,
+    "fingerprint": [
+      {
+        "name": "design-tokens/hepta-light-glass.tokens.json",
+        "path": "design-tokens/hepta-light-glass.tokens.json",
+        "bytes": 693,
+        "sha256": "a65043bfb032b116b9815c3e5c1c0ba61666267788bd4047b94b7fcd38be587b"
+      },
+      {
+        "name": "apps/hepta-control-ui/light-glass-tokens.generated.css",
+        "path": "apps/hepta-control-ui/light-glass-tokens.generated.css",
+        "bytes": 2863,
+        "sha256": "e8d9a75ce3012297061765c8f851d79f1ef47762b7f5cae8e6581b8c3bbcc10a"
+      },
+      {
+        "name": "apps/hepta-control-ui/index.html",
+        "path": "apps/hepta-control-ui/index.html",
+        "bytes": 149067,
+        "sha256": "757119cf08605f45beb54f8019d679bcc838a01d0a5eae21a27b91124436a6f8"
+      },
+      {
+        "name": "apps/hepta-control-ui/styles.css",
+        "path": "apps/hepta-control-ui/styles.css",
+        "bytes": 333,
+        "sha256": "c8a59a7d1e63875e4b3706ddd56573f9341f2f0219b0423ee4f28fe3b2cef148"
+      },
+      {
+        "name": "apps/hepta-control-ui/styles.foundation.css",
+        "path": "apps/hepta-control-ui/styles.foundation.css",
+        "bytes": 5226,
+        "sha256": "a15d1eab2b3d9a75a4f5a084187734291e1122967f29eb8da5fe1b772feaed20"
+      },
+      {
+        "name": "apps/hepta-control-ui/styles.components.css",
+        "path": "apps/hepta-control-ui/styles.components.css",
+        "bytes": 9525,
+        "sha256": "bcbd4c1ee0f22e3939563cfc05f4fc2db5b88c9dab0c387b6e825523f5cf5f22"
+      },
+      {
+        "name": "apps/hepta-control-ui/styles.responsive.css",
+        "path": "apps/hepta-control-ui/styles.responsive.css",
+        "bytes": 7652,
+        "sha256": "1528a09fdf6577c74c802c134e350008654f49cd921622cb03e382d5c47f49eb"
+      },
+      {
+        "name": "apps/hepta-control-ui/styles.accessibility.css",
+        "path": "apps/hepta-control-ui/styles.accessibility.css",
+        "bytes": 1283,
+        "sha256": "40413c57d1baba7dc616fad9161c281021e3dd941700fcf0a8417fcd73c0a9cb"
+      },
+      {
+        "name": "apps/hepta-native/src/shared/light_glass_tokens.rs",
+        "path": "apps/hepta-native/src/shared/light_glass_tokens.rs",
+        "bytes": 2434,
+        "sha256": "7dabb7300473c8013a0b202b6e23d46ebb3714d419c7d5e027346e0e3f3a36ea"
+      },
+      {
+        "name": "apps/hepta-native/src/home/hepta_fixture_cockpit.rs",
+        "path": "apps/hepta-native/src/home/hepta_fixture_cockpit.rs",
+        "bytes": 214122,
+        "sha256": "4a665ccad48415d9c2cf5cc8a1f0d6cc999316861cf54f1a48b8d917869d7ba2"
+      },
+      {
+        "name": "codex-rs/hepta-core/src/control_ui.rs",
+        "path": "codex-rs/hepta-core/src/control_ui.rs",
+        "bytes": 233983,
+        "sha256": "8a783af14db80acc98f717a83844922288e25192415df526ed8ed778d2db5426"
+      },
+      {
+        "name": "scripts/hepta-ui-design-system-gate.sh",
+        "path": "scripts/hepta-ui-design-system-gate.sh",
+        "bytes": 10105,
+        "sha256": "3f94ff1a5975a9ee97ae9f9b19199a88d2137686f30b931a2c71ddf79ba4cde6"
+      },
+      {
+        "name": "scripts/hepta-ui-harsh-top-design-referee-v7-real-click-gate.sh",
+        "path": "scripts/hepta-ui-harsh-top-design-referee-v7-real-click-gate.sh",
+        "bytes": 39113,
+        "sha256": "b291a8a34de1542cb7f6c02e554815306febe00455f27b4f989286a9d3ca3e00"
+      },
+      {
+        "name": "scripts/hepta-native-window-smoke.sh",
+        "path": "scripts/hepta-native-window-smoke.sh",
+        "bytes": 67777,
+        "sha256": "ec3d2dcf1a44d4504a4f423cac5e3258e1d43150ce358d9c179023331adcae68"
+      },
+      {
+        "name": "scripts/hepta-native-window-route-smoke.sh",
+        "path": "scripts/hepta-native-window-route-smoke.sh",
+        "bytes": 11257,
+        "sha256": "20cd539003c9a0746c6b24091e1d840a414daf3db72ce4f00a87e93bee157a75"
+      },
+      {
+        "name": "scripts/hepta-native-window-route-mobile-smoke.sh",
+        "path": "scripts/hepta-native-window-route-mobile-smoke.sh",
+        "bytes": 11836,
+        "sha256": "940d741aafc17245debb9b7e37a040ba55e729a837c29e69cd775aed1eac178d"
+      },
+      {
+        "name": "scripts/hepta-native-window-secondary-smoke.sh",
+        "path": "scripts/hepta-native-window-secondary-smoke.sh",
+        "bytes": 10679,
+        "sha256": "5edd36ccd549f87ba7e8411785ae27c43c162a9edfd118247ddf9836fe9eee70"
+      },
+      {
+        "name": "scripts/hepta-native-window-secondary-mobile-smoke.sh",
+        "path": "scripts/hepta-native-window-secondary-mobile-smoke.sh",
+        "bytes": 12863,
+        "sha256": "11ca3adc750d6fde8eaa769926b77646ce5dfa57c04a37b6ae610d0832dfdac7"
+      },
+      {
+        "name": "scripts/hepta-ui-current-source-readiness-gate.sh",
+        "path": "scripts/hepta-ui-current-source-readiness-gate.sh",
+        "bytes": 33748,
+        "sha256": "bb473c6ed25a2433e603fcf763ffbba17890bc7b0b81749221a269bf7af30299"
+      }
+    ]
+  },
+  "ui_lane_ready": true,
+  "control_ui_ready": true,
+  "native_ui_ready": true,
+  "current_source_evidence_ready": true,
+  "full_product_ready": false,
+  "backend_live_adapter_ready": false,
+  "public_ga_ready": false,
+  "design_system": {
+    "status": "ready",
+    "token_source": "design-tokens/hepta-light-glass.tokens.json",
+    "generated_token_sync_ready": true,
+    "minimum_dim_text_contrast": 4.841,
+    "css_layer_count": 6,
+    "runtime_css_bytes": 287610,
+    "important_count": 2055,
+    "accessibility_media_queries_ready": true,
+    "robrix_upstream_commit": "a5a664da569c577ab1a3e5a33f45dcc9364954a0",
+    "robrix_selective_module_count": 6,
+    "robrix_license": "MIT"
+  },
+  "control": {
+    "status": "ready",
+    "viewport_count": 4,
+    "viewports": [
+      "1365x900",
+      "768x900",
+      "500x844",
+      "320x844"
+    ],
+    "shallow_contract": {
+      "shallow_light_glass_ready": true,
+      "light_theme_semantics_ready": true,
+      "stable_content_surface_ready": true,
+      "native_popover_interaction_ready": true,
+      "shallow_floating_surface_ready": true,
+      "restrained_optics_ready": true,
+      "restrained_mobile_metadata_ready": true,
+      "key_touch_controls_ready": true
+    },
+    "real_click": {
+      "status": "ready",
+      "target_count": 26,
+      "screenshot_count": 32,
+      "failure_count": 0,
+      "mobile_route_count": 6,
+      "popover_switch_step_count": 26
+    },
+    "screenshots": [
+      {
+        "name": "desktop",
+        "viewport": "1365x900",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-browser/desktop.png",
+        "bytes": 446391,
+        "sha256": "324ffe9c27ab46557db2cfccb5b8f9026a70c3af219e901bebb3fc21b5194869"
+      },
+      {
+        "name": "narrow",
+        "viewport": "768x900",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-browser/narrow.png",
+        "bytes": 251288,
+        "sha256": "277c52007f5aa6642a99796261bf562c0f52b15c2bd065a75530a6e2ed683903"
+      },
+      {
+        "name": "mobile",
+        "viewport": "500x844",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-browser/mobile.png",
+        "bytes": 191378,
+        "sha256": "6416bdf5910ef0121ace73a7e858d5dc397365801ab08b38022fd55bde086403"
+      },
+      {
+        "name": "phone320",
+        "viewport": "320x844",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-browser/phone320.png",
+        "bytes": 154596,
+        "sha256": "5e6861f979754f3f66820c09779c1b182d3230df7831cf789f73c5b9f006c61f"
+      }
+    ],
+    "real_click_screenshots": [
+      {
+        "name": "row-menu-ui-chat-agent",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/desktop-row-menu-ui-chat-agent.png",
+        "bytes": 440449,
+        "sha256": "5b1f5f6961a6749f87356b292d2a22674a711c205c105a792f9c90409908c63f"
+      },
+      {
+        "name": "row-menu-task-queue",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/desktop-row-menu-task-queue.png",
+        "bytes": 436803,
+        "sha256": "8ab917213c2e4589238e4e4f79b34ec98f4a7f2fee86e3ad785ad90c95190b26"
+      },
+      {
+        "name": "row-menu-operator-plane",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/desktop-row-menu-operator-plane.png",
+        "bytes": 461404,
+        "sha256": "b86f5d30054602bd368b427634f010fa18b959b1ed93071e351bf9f1c1768be2"
+      },
+      {
+        "name": "thread-tools",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/desktop-thread-tools.png",
+        "bytes": 467004,
+        "sha256": "29c5c5cdce51e5b59f4f4db917a8037cfd1a6a610815e520ae372185a081ef3f"
+      },
+      {
+        "name": "composer-tools",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/desktop-composer-tools.png",
+        "bytes": 469857,
+        "sha256": "f431ae1500e28649ecdb4e3de05006c4c4354937f056206e6a2744ce89fa9ad6"
+      },
+      {
+        "name": "composer-popover-artifact",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/desktop-composer-popover-artifact.png",
+        "bytes": 491724,
+        "sha256": "a73356324283a6751f9a7460f891661f05ee812fc64180eb638d1b58b31ce349"
+      },
+      {
+        "name": "composer-popover-command",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/desktop-composer-popover-command.png",
+        "bytes": 491724,
+        "sha256": "ec2992ea98b20f6c16de3a603a046c218582c1e1973e709399f230f5f6fd5574"
+      },
+      {
+        "name": "command-palette",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/desktop-command-palette.png",
+        "bytes": 373648,
+        "sha256": "cb1c3f69c092dc44dab7eaa7e095e9b95a4750a55beb878ad3080f48dc0c5f5d"
+      },
+      {
+        "name": "row-menu-ui-chat-agent",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/narrow-row-menu-ui-chat-agent.png",
+        "bytes": 254851,
+        "sha256": "7497478bbc7783da347a9d09acc987efe59f9129cb23abbb78ba1ef5c968e0a3"
+      },
+      {
+        "name": "row-menu-task-queue",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/narrow-row-menu-task-queue.png",
+        "bytes": 260462,
+        "sha256": "f28c8a6313fc6d915f7a1c9ee525824807d16bc0725bfbc556a0de2ec658ef4e"
+      },
+      {
+        "name": "row-menu-operator-plane",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/narrow-row-menu-operator-plane.png",
+        "bytes": 278025,
+        "sha256": "39c341757a171fdf370a4bdf141cd7dd3e62fa5c454fdf40737cf79c886da7a1"
+      },
+      {
+        "name": "thread-tools",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/narrow-thread-tools.png",
+        "bytes": 269448,
+        "sha256": "2620e9084561cc2974533741f55734480c5ccfe0bfa13f48bfee101925211e70"
+      },
+      {
+        "name": "composer-tools",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/narrow-composer-tools.png",
+        "bytes": 275551,
+        "sha256": "60aee1e60d51d4da977ada0976946da34380e51907b90ed0e7a9726df6a9a4bd"
+      },
+      {
+        "name": "composer-popover-artifact",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/narrow-composer-popover-artifact.png",
+        "bytes": 280511,
+        "sha256": "c6623da88fbfd9a9a58e9ffabdab1d20a9821069ec99bd31ea024a11e37f4c7d"
+      },
+      {
+        "name": "composer-popover-command",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/narrow-composer-popover-command.png",
+        "bytes": 291121,
+        "sha256": "b84076a8354603d4018efa68e9eef99ffcad660bdaba3c7de00cf4102d748ac9"
+      },
+      {
+        "name": "command-palette",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/narrow-command-palette.png",
+        "bytes": 280200,
+        "sha256": "7f58b7846976b686449a8a82ec41741834e920f4b3ef30a07850dbe241774798"
+      },
+      {
+        "name": "thread-tools",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/mobile-thread-tools.png",
+        "bytes": 208700,
+        "sha256": "01cfb31167d51674874fc6e003dc0f504c5883dbb332835a621c7061f7bd47ae"
+      },
+      {
+        "name": "composer-tools",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/mobile-composer-tools.png",
+        "bytes": 207453,
+        "sha256": "f2b962959397ebdf113b21f48ee45f905457810b121e7233e34f0049dc90f9e2"
+      },
+      {
+        "name": "composer-popover-artifact",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/mobile-composer-popover-artifact.png",
+        "bytes": 210004,
+        "sha256": "095a67da942d78e5cc9478490117730a8c89064916722e1e0895328b45319dd0"
+      },
+      {
+        "name": "composer-popover-command",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/mobile-composer-popover-command.png",
+        "bytes": 209018,
+        "sha256": "b447f83775bf8520b19e42d76236d05ef7db41294380af19ca88362620628b0e"
+      },
+      {
+        "name": "command-palette",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/mobile-command-palette.png",
+        "bytes": 209463,
+        "sha256": "aa0d567f065e658feae5b4a13842273bb4d0344558214308cc337afd64f8bf8e"
+      },
+      {
+        "name": "thread-tools",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/phone320-thread-tools.png",
+        "bytes": 166407,
+        "sha256": "9904440dd68a9af1906c3a58e39133a82f2144c754ab5af924e1854ae6cf513c"
+      },
+      {
+        "name": "composer-tools",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/phone320-composer-tools.png",
+        "bytes": 162318,
+        "sha256": "8900520a4882c7dac74c5a709ff95d6dffba87d113e7ace43db57b456a3eecca"
+      },
+      {
+        "name": "composer-popover-artifact",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/phone320-composer-popover-artifact.png",
+        "bytes": 168205,
+        "sha256": "d11f02452a1b46e9bc553b73219ea12b9051fe6254eb9e3e14f8f98761570cb9"
+      },
+      {
+        "name": "composer-popover-command",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/phone320-composer-popover-command.png",
+        "bytes": 166414,
+        "sha256": "84e3f0a98bbbbbebd1086456f2cbfd9eb05049fb004868d0598ed97750353a05"
+      },
+      {
+        "name": "command-palette",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/phone320-command-palette.png",
+        "bytes": 182683,
+        "sha256": "e6536011dcd3dafccb4e1eb99a2b433ee95fee7a2026e262dd6a585a44f015a9"
+      },
+      {
+        "name": "mobile-pane-chats",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/mobile-mobile-pane-chats.png",
+        "bytes": 170306,
+        "sha256": "2f12e940b3d2dc361101d7647c42a0ce3193a717633a9f9321dac53268fdb9c9"
+      },
+      {
+        "name": "mobile-pane-thread",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/mobile-mobile-pane-thread.png",
+        "bytes": 191378,
+        "sha256": "6416bdf5910ef0121ace73a7e858d5dc397365801ab08b38022fd55bde086403"
+      },
+      {
+        "name": "mobile-pane-room",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/mobile-mobile-pane-room.png",
+        "bytes": 201962,
+        "sha256": "05c9586e343700ff338d24769a0d392409fba00e0140307e30b1dcd736dc1596"
+      },
+      {
+        "name": "mobile-pane-chats",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/phone320-mobile-pane-chats.png",
+        "bytes": 134055,
+        "sha256": "2efa257cb10f34cf3e785e41b12e7217a37d63fbb8bf40e6c5b003f2985312f0"
+      },
+      {
+        "name": "mobile-pane-thread",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/phone320-mobile-pane-thread.png",
+        "bytes": 154592,
+        "sha256": "ff747d442e8a02118bb07b241b486e78ca07b37b3c5fd5d7953128d9080f6ad3"
+      },
+      {
+        "name": "mobile-pane-room",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-v7-real-click-activation/phone320-mobile-pane-room.png",
+        "bytes": 143908,
+        "sha256": "80a344b9d69d6f46cf7d8fd42f739033077564c8a21a2ae8b9d3b3db03100e77"
+      }
+    ]
+  },
+  "native": {
+    "fixture": {
+      "status": "ready",
+      "screenshot_count": 41,
+      "selected_row_variant_count": 18,
+      "selected_row_unique_count": 18,
+      "route_variant_unique_count": 4,
+      "mobile_route_variant_unique_count": 4,
+      "secondary_surface_case_count": 15,
+      "secondary_action_instance_count": 57,
+      "minimum_contrast": 4.84,
+      "mobile_safe_area_keyboard_scope": "html_fixture_simulation",
+      "screenshots": [
+        {
+          "name": "desktop",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/desktop.png",
+          "bytes": 413745,
+          "sha256": "ea4699d64ce1929f03c50c87be6a2db75ddfc368318ed71b6b3c6d59d0cd60c9"
+        },
+        {
+          "name": "hepta-glass-k",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/hepta-glass-k.png",
+          "bytes": 2499731,
+          "sha256": "a54bc0d6352c3130d2d22b7df80f1fabaa94f5098fec12046e4f262e6d0d7c28"
+        },
+        {
+          "name": "mobile-keyboard-open",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-keyboard-open.png",
+          "bytes": 137646,
+          "sha256": "c104f8f4fa482720218faa7d1195d3816dbf67235f44abb1862742b7d62708ac"
+        },
+        {
+          "name": "mobile-route-actions",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-route-actions.png",
+          "bytes": 179631,
+          "sha256": "fec7e94c2ad682bbfc0c6bf21cd614fc42e9ce561bf1ac07d66b7257ed6e93e7"
+        },
+        {
+          "name": "mobile-route-approvals",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-route-approvals.png",
+          "bytes": 179934,
+          "sha256": "5a34bf84aa9307ecc48ffdc0dbe97cca313818de1e82d968e8ca70407a44ec34"
+        },
+        {
+          "name": "mobile-route-home",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-route-home.png",
+          "bytes": 178735,
+          "sha256": "281528a79c22c948ff3031e038065fd63a0d2cba859a330973fb6d254a67cc93"
+        },
+        {
+          "name": "mobile-route-inspector",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-route-inspector.png",
+          "bytes": 179812,
+          "sha256": "852128ef25b8762595f7fe08bb3d2a8217b9069c78379e521caad37977523ec0"
+        },
+        {
+          "name": "mobile-row-actions-0",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-row-actions-0.png",
+          "bytes": 206709,
+          "sha256": "b79edda037b6726530e2443044e96892055ccea4b04591d51be0f4f685f214a3"
+        },
+        {
+          "name": "mobile-row-actions-1",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-row-actions-1.png",
+          "bytes": 206940,
+          "sha256": "68c125cb96cca05f5f107c73bd403e17adef6d1abd89a9e9fc949f1cc4951331"
+        },
+        {
+          "name": "mobile-row-actions-2",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-row-actions-2.png",
+          "bytes": 207064,
+          "sha256": "7bcf283ca5b6c65a6276a56b7e16ee501cab43399d3a63a2e0d849e3f0918897"
+        },
+        {
+          "name": "mobile-row-approvals-0",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-row-approvals-0.png",
+          "bytes": 207149,
+          "sha256": "085d83ac2b7491288bd2ec0892d80b12c06d0c9bf6be4e5b4f6c294f24a8417b"
+        },
+        {
+          "name": "mobile-row-approvals-1",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-row-approvals-1.png",
+          "bytes": 207376,
+          "sha256": "774e23f8f2e64a6aa120e55a3685e2113b4bd8f77ee8511ede4afc9c36e39150"
+        },
+        {
+          "name": "mobile-row-approvals-2",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-row-approvals-2.png",
+          "bytes": 207493,
+          "sha256": "8be021365220aa9330b2820957174967ce892bddfec55db286bfba3f56c9d01a"
+        },
+        {
+          "name": "mobile-row-inspector-0",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-row-inspector-0.png",
+          "bytes": 207095,
+          "sha256": "680adecfcf09fabe8027d42a408bfda2f7d26b45143d08d47e426d83cdbe6e0d"
+        },
+        {
+          "name": "mobile-row-inspector-1",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-row-inspector-1.png",
+          "bytes": 207331,
+          "sha256": "f31b268af0d684e7c44385d8f4b9f7577837d806a5e5621e377b66f34054ad3a"
+        },
+        {
+          "name": "mobile-row-inspector-2",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-row-inspector-2.png",
+          "bytes": 207445,
+          "sha256": "162b94df7640d4e6812ed8baf9363e9c384c8c685bc36adc70a23d797337f791"
+        },
+        {
+          "name": "mobile-safe-area",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-safe-area.png",
+          "bytes": 182650,
+          "sha256": "cc6a68dfcdd0a308673028faf4baa5db49234a224a4cb4f2aa050f660f272998"
+        },
+        {
+          "name": "mobile-surface-attachment",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-attachment.png",
+          "bytes": 165465,
+          "sha256": "b8d03435db029433d3d235a6b8dab131cdc905b1070daa776288ccabe186786d"
+        },
+        {
+          "name": "mobile-surface-modal",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-modal.png",
+          "bytes": 159405,
+          "sha256": "8f8d798125c5a88ea2b905413ad78b77652d0504a22c9880f0826056b4fd4258"
+        },
+        {
+          "name": "mobile-surface-search",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-search.png",
+          "bytes": 164245,
+          "sha256": "f5485452b310b23f336dbb2ed3a6f140ffff56e33a69289731250633a9570838"
+        },
+        {
+          "name": "mobile-surface-settings",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-settings.png",
+          "bytes": 169049,
+          "sha256": "d3201381b4082c87396e834d8c76db7db8e49876b0ac0eacaacdac8c64a0e9c4"
+        },
+        {
+          "name": "mobile-surface-voice",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-voice.png",
+          "bytes": 165818,
+          "sha256": "e8d4982a7fcfed30c3829b80833a0fba747c353515d178b4ed87d0467e5f088b"
+        },
+        {
+          "name": "mobile",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile.png",
+          "bytes": 205846,
+          "sha256": "91a6de3abb2965f27ebf29f14bfa1417a9ec13359f087ef863905799d91643f6"
+        },
+        {
+          "name": "route-actions",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/route-actions.png",
+          "bytes": 415764,
+          "sha256": "4de516d4ef8b16966378f9e2b09be79da0b46c3ef05c0261424e818393aa05cc"
+        },
+        {
+          "name": "route-approvals",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/route-approvals.png",
+          "bytes": 415947,
+          "sha256": "7da6344524ae1a12a1db7214a8a218d437fe23927c758627bd3df3f99d24a389"
+        },
+        {
+          "name": "route-home",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/route-home.png",
+          "bytes": 413745,
+          "sha256": "ea4699d64ce1929f03c50c87be6a2db75ddfc368318ed71b6b3c6d59d0cd60c9"
+        },
+        {
+          "name": "route-inspector",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/route-inspector.png",
+          "bytes": 416111,
+          "sha256": "de71c07f084e19ac235817e21937ea2f74b528dc310616e2618a367b513aef6b"
+        },
+        {
+          "name": "row-actions-0",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/row-actions-0.png",
+          "bytes": 415764,
+          "sha256": "4de516d4ef8b16966378f9e2b09be79da0b46c3ef05c0261424e818393aa05cc"
+        },
+        {
+          "name": "row-actions-1",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/row-actions-1.png",
+          "bytes": 417827,
+          "sha256": "4cb5ff6fad5f614fbfc3973d617c181c6d2e6e01b4774f6b001b1025c6a89b10"
+        },
+        {
+          "name": "row-actions-2",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/row-actions-2.png",
+          "bytes": 417786,
+          "sha256": "e723de880a99371f0c81a6ce403e9047ae1d730fdffd63b32793a2d8155cea6c"
+        },
+        {
+          "name": "row-approvals-0",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/row-approvals-0.png",
+          "bytes": 415947,
+          "sha256": "7da6344524ae1a12a1db7214a8a218d437fe23927c758627bd3df3f99d24a389"
+        },
+        {
+          "name": "row-approvals-1",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/row-approvals-1.png",
+          "bytes": 418003,
+          "sha256": "a2322e8834674dc7785b0e251b1f81f861b60a6dcb2143073c9cb644a3811114"
+        },
+        {
+          "name": "row-approvals-2",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/row-approvals-2.png",
+          "bytes": 417962,
+          "sha256": "94e170a2c861ae54e9d11f63a2eda6d620bcb4a02c1b94a09b1112e4114b73ca"
+        },
+        {
+          "name": "row-inspector-0",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/row-inspector-0.png",
+          "bytes": 416111,
+          "sha256": "de71c07f084e19ac235817e21937ea2f74b528dc310616e2618a367b513aef6b"
+        },
+        {
+          "name": "row-inspector-1",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/row-inspector-1.png",
+          "bytes": 418159,
+          "sha256": "c303c3cab666eb996c9f4d2dcf86e7ecd5c6dbb0db2fe9fa5ac47a9e955ff1dd"
+        },
+        {
+          "name": "row-inspector-2",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/row-inspector-2.png",
+          "bytes": 418115,
+          "sha256": "05968edf257198dde864f44f1485ef899247f5e14cb47d031f1bbad8fa192e82"
+        },
+        {
+          "name": "surface-attachment",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-attachment.png",
+          "bytes": 472472,
+          "sha256": "6a2759bdfef085d19f88dfa8a063a6d721f4aab900af6d908df27dfa72abb1ef"
+        },
+        {
+          "name": "surface-modal",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-modal.png",
+          "bytes": 467007,
+          "sha256": "e037f6a74fa719174ead856d7dda038bfe110f7ef212a505815621f41e6b5afb"
+        },
+        {
+          "name": "surface-search",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-search.png",
+          "bytes": 475270,
+          "sha256": "b30f5f6f77f3daaa3cb361a7fdf3e42c25666b5322fc062c50eeaf8172ec66da"
+        },
+        {
+          "name": "surface-settings",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-settings.png",
+          "bytes": 473457,
+          "sha256": "9d36ded6578a3e30eeb82d37ecce41c3e9f57d20d31837d71c2b393a3e9ebd31"
+        },
+        {
+          "name": "surface-voice",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-voice.png",
+          "bytes": 470753,
+          "sha256": "ed3cc7e0faa5ab13e74f7405dbf00cbf76478debae208465dc9c3c10ece9ecfd"
+        }
+      ]
+    },
+    "true_windows": {
+      "status": "ready",
+      "capture_count": 20,
+      "unique_path_count": 20,
+      "unique_sha256_count": 19,
+      "expected_duplicate": {
+        "names": [
+          "mobile-route-home",
+          "mobile-window"
+        ],
+        "reason": "The base mobile capture and the Home mobile-route capture intentionally select the same 390x844-requested state."
+      },
+      "groups": {
+        "base": 2,
+        "desktop_routes": 4,
+        "mobile_routes": 4,
+        "desktop_secondary": 5,
+        "mobile_secondary": 5
+      },
+      "requested_mobile_bounds": "80,40,390,844",
+      "mobile_actual_contract": "390x820 visible Makepad window inside a 390x844 macOS host request",
+      "mobile_host_constrained": true,
+      "mobile_route_host_constrained_count": 4,
+      "mobile_secondary_host_constrained_count": 5,
+      "real_device_claim_ready": false,
+      "screenshots": [
+        {
+          "name": "desktop-window",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window/desktop-window.png",
+          "bytes": 228627,
+          "sha256": "0e1956d1420df1dcaf4585f96e5f5072dbcf465d5abd3b2475be923d3663455b"
+        },
+        {
+          "name": "mobile-window",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window/mobile-window.png",
+          "bytes": 108421,
+          "sha256": "86604c244e5149428c25da9d8c7682b007768d6fee39466fa97e4b75e345efdf"
+        },
+        {
+          "name": "desktop-full-route-home",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes/route-home/desktop-full-route-home.png",
+          "bytes": 243598,
+          "sha256": "23a178caac2ffca5b1beb161e88f091768c74e3d85aa2db17e6fa01dc199f235"
+        },
+        {
+          "name": "desktop-full-route-actions",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes/route-actions/desktop-full-route-actions.png",
+          "bytes": 255861,
+          "sha256": "f9cbab4cf291738b7d29bec92523a58d22c13b056783ec9ddc8ad464766b6260"
+        },
+        {
+          "name": "desktop-full-route-approvals",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes/route-approvals/desktop-full-route-approvals.png",
+          "bytes": 252664,
+          "sha256": "df4cd3a45c3c23def5103c79fdf16c4237fcbe906f02e425e6a40d191cc76a12"
+        },
+        {
+          "name": "desktop-full-route-inspector",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes/route-inspector/desktop-full-route-inspector.png",
+          "bytes": 252048,
+          "sha256": "2cb2b6fe2bff4d18d255a88c680dedbf6c005b46c801bc55a4f4296dc6f381a5"
+        },
+        {
+          "name": "mobile-route-home",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes-mobile/route-home/mobile-route-home.png",
+          "bytes": 108421,
+          "sha256": "86604c244e5149428c25da9d8c7682b007768d6fee39466fa97e4b75e345efdf"
+        },
+        {
+          "name": "mobile-route-actions",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes-mobile/route-actions/mobile-route-actions.png",
+          "bytes": 166877,
+          "sha256": "e618ddc3b48e87fa7e8eeae4382b274fb73c166964a5a149747ebf0ed38b2319"
+        },
+        {
+          "name": "mobile-route-approvals",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes-mobile/route-approvals/mobile-route-approvals.png",
+          "bytes": 170726,
+          "sha256": "46256bb679b9a92b2ea1a8d3862df335541972ac9e6c6ae42f9ddc3b71dfcc15"
+        },
+        {
+          "name": "mobile-route-inspector",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes-mobile/route-inspector/mobile-route-inspector.png",
+          "bytes": 154352,
+          "sha256": "dc2f090b4917b51301d5038f16a4da894a4ea869c27e6d1b33f2ae1369a831dc"
+        },
+        {
+          "name": "desktop-full-secondary-search",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary/surface-search/desktop-full-secondary-search.png",
+          "bytes": 235871,
+          "sha256": "3aab2bcbb5106bb1aa787aa8ebcaa28786a5498fa8fd259b6843fcd8010aad24"
+        },
+        {
+          "name": "desktop-full-secondary-settings",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary/surface-settings/desktop-full-secondary-settings.png",
+          "bytes": 244511,
+          "sha256": "0709890805985333a790a5653bf7e2270aa9752fc331322a4246940ef48483b1"
+        },
+        {
+          "name": "desktop-full-secondary-attachment",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary/surface-attachment/desktop-full-secondary-attachment.png",
+          "bytes": 245345,
+          "sha256": "3b32c4243d8c6f0b34b1dc87dca4a461b78cbbdeac30cfaf61e9218bcd335f7d"
+        },
+        {
+          "name": "desktop-full-secondary-voice",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary/surface-voice/desktop-full-secondary-voice.png",
+          "bytes": 237803,
+          "sha256": "f84a87af0bff989a79b638aceaf81d0c8817fe39359ff4fe8068035a79c32c94"
+        },
+        {
+          "name": "desktop-full-secondary-modal",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary/surface-modal/desktop-full-secondary-modal.png",
+          "bytes": 241821,
+          "sha256": "54362e3d52b6175249279ef0f605a15a20b8873eb70769768f2d9c04ec237f7b"
+        },
+        {
+          "name": "mobile-secondary-search",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary-mobile/surface-search/mobile-secondary-search.png",
+          "bytes": 157264,
+          "sha256": "0ee3f21e58c5b0f5545f40be68564902bd646f44f9e6006659d8f16f0893ef8c"
+        },
+        {
+          "name": "mobile-secondary-settings",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary-mobile/surface-settings/mobile-secondary-settings.png",
+          "bytes": 158397,
+          "sha256": "5638fd6022c28749a7445e6aed5967c86c04871d18b2610ca73f89e68ea1e31f"
+        },
+        {
+          "name": "mobile-secondary-attachment",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary-mobile/surface-attachment/mobile-secondary-attachment.png",
+          "bytes": 164125,
+          "sha256": "d5a4c4dabe41cd2b0d45a82ec60c4fb265194c89ad42e2f058bb41b2eb295acc"
+        },
+        {
+          "name": "mobile-secondary-voice",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary-mobile/surface-voice/mobile-secondary-voice.png",
+          "bytes": 153896,
+          "sha256": "fa814536aff4689b57d36aa8c0e19c0b89a9d963f8197eadca09451c931da980"
+        },
+        {
+          "name": "mobile-secondary-modal",
+          "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary-mobile/surface-modal/mobile-secondary-modal.png",
+          "bytes": 157955,
+          "sha256": "da2702d2f6780907f625f72bf477274ddc8a8d423f0724597f9cadc1edd81f2d"
+        }
+      ]
+    }
+  },
+  "screenshot_census": {
+    "manifest": {
+      "control_ui": 4,
+      "native": 41,
+      "native_true_window": 2,
+      "native_true_window_route": 4,
+      "native_true_window_route_mobile": 4,
+      "native_true_window_secondary": 5,
+      "native_true_window_secondary_mobile": 5,
+      "total": 65
+    },
+    "total": 65,
+    "key_screenshot_count": 24,
+    "key_screenshots": [
+      {
+        "name": "desktop",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-browser/desktop.png",
+        "bytes": 446391,
+        "sha256": "324ffe9c27ab46557db2cfccb5b8f9026a70c3af219e901bebb3fc21b5194869"
+      },
+      {
+        "name": "narrow",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-browser/narrow.png",
+        "bytes": 251288,
+        "sha256": "277c52007f5aa6642a99796261bf562c0f52b15c2bd065a75530a6e2ed683903"
+      },
+      {
+        "name": "mobile",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-browser/mobile.png",
+        "bytes": 191378,
+        "sha256": "6416bdf5910ef0121ace73a7e858d5dc397365801ab08b38022fd55bde086403"
+      },
+      {
+        "name": "phone320",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-browser/phone320.png",
+        "bytes": 154596,
+        "sha256": "5e6861f979754f3f66820c09779c1b182d3230df7831cf789f73c5b9f006c61f"
+      },
+      {
+        "name": "desktop",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/desktop.png",
+        "bytes": 413745,
+        "sha256": "ea4699d64ce1929f03c50c87be6a2db75ddfc368318ed71b6b3c6d59d0cd60c9"
+      },
+      {
+        "name": "mobile",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile.png",
+        "bytes": 205846,
+        "sha256": "91a6de3abb2965f27ebf29f14bfa1417a9ec13359f087ef863905799d91643f6"
+      },
+      {
+        "name": "route-home",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/route-home.png",
+        "bytes": 413745,
+        "sha256": "ea4699d64ce1929f03c50c87be6a2db75ddfc368318ed71b6b3c6d59d0cd60c9"
+      },
+      {
+        "name": "route-actions",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/route-actions.png",
+        "bytes": 415764,
+        "sha256": "4de516d4ef8b16966378f9e2b09be79da0b46c3ef05c0261424e818393aa05cc"
+      },
+      {
+        "name": "route-approvals",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/route-approvals.png",
+        "bytes": 415947,
+        "sha256": "7da6344524ae1a12a1db7214a8a218d437fe23927c758627bd3df3f99d24a389"
+      },
+      {
+        "name": "route-inspector",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/route-inspector.png",
+        "bytes": 416111,
+        "sha256": "de71c07f084e19ac235817e21937ea2f74b528dc310616e2618a367b513aef6b"
+      },
+      {
+        "name": "mobile-route-home",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-route-home.png",
+        "bytes": 178735,
+        "sha256": "281528a79c22c948ff3031e038065fd63a0d2cba859a330973fb6d254a67cc93"
+      },
+      {
+        "name": "mobile-route-actions",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-route-actions.png",
+        "bytes": 179631,
+        "sha256": "fec7e94c2ad682bbfc0c6bf21cd614fc42e9ce561bf1ac07d66b7257ed6e93e7"
+      },
+      {
+        "name": "mobile-route-approvals",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-route-approvals.png",
+        "bytes": 179934,
+        "sha256": "5a34bf84aa9307ecc48ffdc0dbe97cca313818de1e82d968e8ca70407a44ec34"
+      },
+      {
+        "name": "mobile-route-inspector",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-route-inspector.png",
+        "bytes": 179812,
+        "sha256": "852128ef25b8762595f7fe08bb3d2a8217b9069c78379e521caad37977523ec0"
+      },
+      {
+        "name": "surface-search",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-search.png",
+        "bytes": 475270,
+        "sha256": "b30f5f6f77f3daaa3cb361a7fdf3e42c25666b5322fc062c50eeaf8172ec66da"
+      },
+      {
+        "name": "surface-settings",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-settings.png",
+        "bytes": 473457,
+        "sha256": "9d36ded6578a3e30eeb82d37ecce41c3e9f57d20d31837d71c2b393a3e9ebd31"
+      },
+      {
+        "name": "surface-attachment",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-attachment.png",
+        "bytes": 472472,
+        "sha256": "6a2759bdfef085d19f88dfa8a063a6d721f4aab900af6d908df27dfa72abb1ef"
+      },
+      {
+        "name": "surface-voice",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-voice.png",
+        "bytes": 470753,
+        "sha256": "ed3cc7e0faa5ab13e74f7405dbf00cbf76478debae208465dc9c3c10ece9ecfd"
+      },
+      {
+        "name": "surface-modal",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/surface-modal.png",
+        "bytes": 467007,
+        "sha256": "e037f6a74fa719174ead856d7dda038bfe110f7ef212a505815621f41e6b5afb"
+      },
+      {
+        "name": "mobile-surface-search",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-search.png",
+        "bytes": 164245,
+        "sha256": "f5485452b310b23f336dbb2ed3a6f140ffff56e33a69289731250633a9570838"
+      },
+      {
+        "name": "mobile-surface-settings",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-settings.png",
+        "bytes": 169049,
+        "sha256": "d3201381b4082c87396e834d8c76db7db8e49876b0ac0eacaacdac8c64a0e9c4"
+      },
+      {
+        "name": "mobile-surface-attachment",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-attachment.png",
+        "bytes": 165465,
+        "sha256": "b8d03435db029433d3d235a6b8dab131cdc905b1070daa776288ccabe186786d"
+      },
+      {
+        "name": "mobile-surface-voice",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-voice.png",
+        "bytes": 165818,
+        "sha256": "e8d4982a7fcfed30c3829b80833a0fba747c353515d178b4ed87d0467e5f088b"
+      },
+      {
+        "name": "mobile-surface-modal",
+        "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/mobile-surface-modal.png",
+        "bytes": 159405,
+        "sha256": "8f8d798125c5a88ea2b905413ad78b77652d0504a22c9880f0826056b4fd4258"
+      }
+    ]
+  },
+  "packaging": {
+    "local_unsigned_app_ready": true,
+    "bundle_identifier": "ai.hepta.nativeapp",
+    "bundle_bytes": 245592023,
+    "distribution_signed": false,
+    "distribution_notarized": false,
+    "distribution_stapled": false,
+    "public_distribution_ready": false,
+    "public_distribution_artifact_written": false,
+    "release_execution_ready": false
+  },
+  "source_contract": {
+    "declared_marker_count": 4021,
+    "verified_ui_marker_count": 3664,
+    "deferred_backend_marker_count": 357,
+    "deferred_backend_marker_files": [
+      "apps/hepta-native/src/home/room_screen.rs",
+      "apps/hepta-native/src/home/hepta_telegram_base_contract.rs"
+    ],
+    "backend_live_adapter_source_ready": false
+  },
+  "legacy_full_root_chain": {
+    "status": "not_ready",
+    "last_blocking_gate": "hepta_ui_top_design_referee_refresh_gate",
+    "reason": "The legacy refresh still requires retired extreme prismatic, caustic, pill, and micro-glass diagnostics. Current-source readiness uses the frozen shallow/restrained 2026 contract and does not relabel those retired fields as true."
+  },
+  "open_boundaries": [
+    "search_upload_media_voice_account_live_backend_adapters",
+    "voiceover_talkback_platform_nodes",
+    "system_dynamic_type",
+    "rtl_makepad_mirroring",
+    "real_mobile_safe_area_and_keyboard",
+    "low_power_device_gpu_memory_frame_time_and_battery",
+    "apple_signing_notarization_stapling_and_public_distribution",
+    "independent_third_party_aesthetic_certification"
+  ],
+  "claim_boundary": {
+    "ui_lane_current_source_ready": true,
+    "local_unsigned_app_ready": true,
+    "live_backend_functionality_ready": false,
+    "real_device_lab_ready": false,
+    "signed_notarized_stapled_ready": false,
+    "public_distribution_ready": false,
+    "public_ga_ready": false,
+    "external_mutation_performed": false
+  },
+  "input_reports": [
+    {
+      "name": "static-contract",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/static-contract.json",
+      "bytes": 105273,
+      "sha256": "ed64ac35f051b8f4fa9401e90bf52bbddc37e9d6da791121492e9934973e8c52"
+    },
+    {
+      "name": "design-system",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/ui-design-system-gate.json",
+      "bytes": 1528,
+      "sha256": "f3381d9a83ebaef32881941742c5ce46d015935dcc797371e2f50a4d2e0c9083"
+    },
+    {
+      "name": "control-browser",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/control-ui-browser-smoke.json",
+      "bytes": 1102040,
+      "sha256": "e1f3a631e486596d70a0f84513b80852f7012b00f31383143b75cc235925a126"
+    },
+    {
+      "name": "control-v7-real-click",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/ui-harsh-top-design-referee-v7-real-click-gate.json",
+      "bytes": 231951,
+      "sha256": "2e856f2183a37f78ee1d601e71c6ad0c2e3610d00dbe132840ca009d9a532bfd"
+    },
+    {
+      "name": "native-fixture",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-fixture/native-fixture-visual-smoke.json",
+      "bytes": 123483,
+      "sha256": "efff4ec976311634abd9c22c7a345e4da855c359703c212f497321fc914bd7c8"
+    },
+    {
+      "name": "native-packaging",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-packaging-gate.json",
+      "bytes": 4472,
+      "sha256": "43d32c0f321a1c07227d5d057b0f913ff9e1d918d250b500cd6f52dc8a2d1a1f"
+    },
+    {
+      "name": "native-distribution-preflight",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-distribution-preflight-gate.json",
+      "bytes": 4529,
+      "sha256": "b1d7827ff12a25e2375c7a0967f2905d3bd3e7e5780cea4c54612e46cae4e4ec"
+    },
+    {
+      "name": "release-signing-capability",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/ui-release-signing-capability-gate.json",
+      "bytes": 8994,
+      "sha256": "4925df6932415c3658c4cc03858fc4235f64a4423efbc663d79302a5196c2489"
+    },
+    {
+      "name": "screenshot-manifest",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/screenshot-manifest.json",
+      "bytes": 200882,
+      "sha256": "c48c7b9b9650bca804bac9231c265f037e4acd0dee93fae8d876c7fd0a06ce8c"
+    },
+    {
+      "name": "native-window-base",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-smoke.json",
+      "bytes": 11870,
+      "sha256": "80be5194082b525818efef75a4c2d98232abbc72b8b2d36cfe4f271b61cb1659"
+    },
+    {
+      "name": "native-window-routes",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes-smoke.json",
+      "bytes": 64116,
+      "sha256": "7c61ab793504f2825df0a40ad451962450c01642e2023b21db1580958c52a480"
+    },
+    {
+      "name": "native-window-routes-mobile",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-routes-mobile-smoke.json",
+      "bytes": 36684,
+      "sha256": "bb46025c9e03a8b990d12acf11a0966edadf8bc96083703229a5be01960357b9"
+    },
+    {
+      "name": "native-window-secondary",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary-smoke.json",
+      "bytes": 44817,
+      "sha256": "eb10d246e0711cea0c9cfb29fd8b1225cc7cbdf154e7fff8c59fe695cbe2067b"
+    },
+    {
+      "name": "native-window-secondary-mobile",
+      "path": "/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904/native-window-secondary-mobile-smoke.json",
+      "bytes": 70024,
+      "sha256": "b62ab18ca95a45de91c8ef3b35f923e6403f3ee0e2eb0f93d6139967578b74e8"
+    }
+  ]
+}

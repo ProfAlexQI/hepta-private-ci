@@ -9,6 +9,8 @@ backend functionality or public-GA readiness.
 
 - Branch: `ui/native-productization`.
 - Audit base: `a0edebd37af6b9e8d4621c7f970a06af91bd2b23`.
+- Implementation commit:
+  `39a5f6abee0c78e77155d1a6e292a27e7cbebe11`.
 - Design contract:
   `docs/architecture/HEPTA_UI_LIGHT_TEMPERED_GLASS_STANDARD_2026.md`.
 - Canonical token source:
@@ -114,7 +116,11 @@ behavior.
 finalizer for this pass. It verifies current source fingerprints, report hashes,
 physical screenshot bytes and SHA-256 values, while keeping backend and release
 boundaries hard-false. The final r3 evidence root is
-`/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904`.
+`/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904`. A durable
+review subset, report, manifest and checksum receipt are stored in
+`docs/architecture/assets/hepta-ui-2026-08-01/`. The frozen readiness-report
+SHA-256 is
+`7d978b420c13a4cf1340d53f7beaa58719433ce636654ebce165921844698506`.
 
 - Control browser coverage is ready at 1365×900, 768×900, 500×844 and 320×844.
   All four viewports satisfy the frozen eight-part shallow-light-glass contract.
