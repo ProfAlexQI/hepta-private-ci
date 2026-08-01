@@ -120,8 +120,18 @@ gate_implementation="$(jq -r '.gate_implementation // empty' <<<"$spec")"
 gate_implementation_sha256="$(jq -r '.gate_implementation_sha256 // empty' <<<"$spec")"
 report_implementation="$(jq -r '.report_implementation // empty' <<<"$spec")"
 report_implementation_sha256="$(jq -r '.report_implementation_sha256 // empty' <<<"$spec")"
+typed_report_runner="$(jq -r '.typed_report_runner // empty' <<<"$spec")"
+typed_report_runner_sha256="$(jq -r '.typed_report_runner_sha256 // empty' <<<"$spec")"
+typed_report_registry="$(jq -r '.typed_report_registry // empty' <<<"$spec")"
+typed_report_registry_sha256="$(jq -r '.typed_report_registry_sha256 // empty' <<<"$spec")"
+typed_report_source_sha256="$(jq -r '.typed_report_source_sha256 // empty' <<<"$spec")"
+typed_report_cli_source="$(jq -r '.typed_report_cli_source // empty' <<<"$spec")"
+typed_report_cli_source_sha256="$(jq -r '.typed_report_cli_source_sha256 // empty' <<<"$spec")"
 
-[[ "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" || "$source_report_rel" == scripts/*-report.sh ]] || {
+[[ "$template" == "captured_shell_compat_v1" \
+  || "$template" == "legacy_workgraph_projection_v1" \
+  || "$template" == "typed_rust_report_v1" \
+  || "$source_report_rel" == scripts/*-report.sh ]] || {
   echo "invalid Hepta migrated source report path for: $id" >&2
   exit 1
 }
@@ -133,7 +143,7 @@ report_implementation_sha256="$(jq -r '.report_implementation_sha256 // empty' <
   echo "unexpected Hepta migrated receipt state for: $id" >&2
   exit 1
 }
-[[ "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" || "$template" == "compat_family_state_machine_v1" || "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_public_status_final_index" || "$template" == "signing_summary_attachment" || "$template" == "signing_summary_readback" ]] || {
+[[ "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" || "$template" == "compat_family_state_machine_v1" || "$template" == "typed_rust_report_v1" || "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_public_status_final_index" || "$template" == "signing_summary_attachment" || "$template" == "signing_summary_readback" ]] || {
   echo "unexpected Hepta migrated pair template for: $id" >&2
   exit 1
 }
@@ -376,6 +386,116 @@ execute_compat_family_state_machine() {
     exit 1
   }
   "$FAMILY_STATE_MACHINE" exec "$kind" "$id"
+}
+
+typed_report_contract() {
+  local suffix source_stem
+  case "$id" in
+    hepta-systems-work-graph-*)
+      suffix="${id#hepta-systems-work-graph-}"
+      source_stem="work_graph_${suffix//-/_}"
+      printf '%s\t%s\n' "hepta_${source_stem}_gate" "${source_stem}_v1"
+      ;;
+    hepta-systems-workflow-temporal-lite-*)
+      suffix="${id#hepta-systems-workflow-temporal-lite-}"
+      source_stem="workflow_temporal_lite_${suffix//-/_}"
+      printf '%s\t%s\n' "${source_stem}_gate" "${source_stem}_v1"
+      ;;
+    *)
+      echo "unsupported typed Hepta report id: $id" >&2
+      return 1
+      ;;
+  esac
+}
+
+execute_typed_rust_report() {
+  local runner registry source cli_source expected_gate expected_schema json
+  local actual_runner_sha actual_registry_sha actual_source_sha actual_cli_source_sha
+
+  [[ "$source_report_rel" == "codex-rs/hepta-runtime/src/typed_compat_report.rs" \
+    && "$typed_report_runner" == scripts/* \
+    && "$typed_report_registry" == scripts/*.json \
+    && "$typed_report_cli_source" == "codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs" ]] || {
+    echo "invalid typed Hepta report binding for: $id" >&2
+    exit 1
+  }
+  runner="$ROOT/$typed_report_runner"
+  registry="$ROOT/$typed_report_registry"
+  source="$ROOT/$source_report_rel"
+  cli_source="$ROOT/$typed_report_cli_source"
+  [[ -x "$runner" && -f "$registry" && -f "$source" && -f "$cli_source" ]] || {
+    echo "missing typed Hepta report binding for: $id" >&2
+    exit 1
+  }
+  actual_runner_sha="$(shasum -a 256 "$runner" | awk '{print $1}')"
+  actual_registry_sha="$(shasum -a 256 "$registry" | awk '{print $1}')"
+  actual_source_sha="$(shasum -a 256 "$source" | awk '{print $1}')"
+  actual_cli_source_sha="$(shasum -a 256 "$cli_source" | awk '{print $1}')"
+  [[ "$actual_runner_sha" == "$typed_report_runner_sha256" \
+    && "$actual_registry_sha" == "$typed_report_registry_sha256" \
+    && "$actual_source_sha" == "$typed_report_source_sha256" \
+    && "$actual_cli_source_sha" == "$typed_report_cli_source_sha256" ]] || {
+    echo "typed Hepta report binding SHA-256 drifted for: $id" >&2
+    exit 1
+  }
+  jq -e --arg id "$id" '
+    .schema == "hepta_gate_typed_report_bindings_v1"
+    and .status == "ready"
+    and (.report_ids | index($id) != null)
+    and (.report_ids | length == (unique | length))
+  ' "$registry" >/dev/null || {
+    echo "unregistered typed Hepta report binding: $id" >&2
+    exit 1
+  }
+  IFS=$'\t' read -r expected_gate expected_schema < <(typed_report_contract)
+  json="$("$runner" "$id")"
+  jq -e \
+    --arg expected_gate "$expected_gate" \
+    --arg expected_schema "$expected_schema" \
+    '
+      type == "object"
+      and .runtime == "hepta"
+      and (.product == null or .product == "Hepta" or .product == "hepta")
+      and (.status | type == "string" and length > 0)
+      and .gate == $expected_gate
+      and .schema_version == $expected_schema
+      and (.side_effects | type == "object" and length > 0)
+      and (.side_effects | to_entries | all(.value == false))
+      and ([
+        .. | objects | to_entries[]
+        | select(.key as $key | [
+            "production_authority_granted",
+            "ready_for_live_execution",
+            "live_execution_enabled",
+            "live_execution_allowed",
+            "mutation_enabled",
+            "provider_invoked",
+            "model_invoked",
+            "credential_read",
+            "external_send_performed",
+            "channel_send_performed",
+            "filesystem_written",
+            "runtime_mutation_performed",
+            "graph_state_persisted",
+            "workflow_execution_allowed",
+            "runtime_store_persistence_allowed",
+            "runtime_sqlite_write_allowed",
+            "runtime_event_log_write_allowed",
+            "rollback_execution_allowed",
+            "replay_execution_allowed"
+          ] | index($key))
+        | .value
+      ] | all(. == false))
+    ' <<<"$json" >/dev/null || {
+    echo "typed Hepta report contract failed closed for: $id" >&2
+    exit 1
+  }
+
+  if [[ "$kind" == "report" ]]; then
+    printf '%s\n' "$json"
+  else
+    printf '%s\n' "$pass_message"
+  fi
 }
 
 verify_legacy_workgraph_projection() {
@@ -1038,7 +1158,8 @@ if [[ "$template" != "compat_family_state_machine_v1" ]]; then
 fi
 if [[ "$template" != "captured_shell_compat_v1" \
   && "$template" != "legacy_workgraph_projection_v1" \
-  && "$template" != "compat_family_state_machine_v1" ]]; then
+  && "$template" != "compat_family_state_machine_v1" \
+  && "$template" != "typed_rust_report_v1" ]]; then
   use_compatibility_overlay_root
 fi
 
@@ -1047,6 +1168,7 @@ case "$kind:$template" in
   report:legacy_workgraph_projection_v1) execute_captured_shell_compat ;;
   gate:legacy_workgraph_projection_v1) verify_legacy_workgraph_projection ;;
   gate:compat_family_state_machine_v1|report:compat_family_state_machine_v1) execute_compat_family_state_machine ;;
+  gate:typed_rust_report_v1|report:typed_rust_report_v1) execute_typed_rust_report ;;
   report:signing_final_ack_readback) render_report ;;
   gate:signing_final_ack_readback) verify_gate ;;
   report:signing_final_ack_final_index) render_final_index_report ;;

@@ -10,7 +10,7 @@
     "work_graph_logical_modules": 49,
     "work_graph_effective_lines": 70626,
     "gate_compat_pairs": 299,
-    "gate_compat_effective_lines": 97191,
+    "gate_compat_effective_lines": 87973,
     "single_exec_wrappers": 0,
     "first_party_modules_over_5000": 2
   },
@@ -18,7 +18,7 @@
     "work_graph_logical_modules": 49,
     "work_graph_effective_lines": 70626,
     "gate_compat_pairs": 299,
-    "gate_compat_effective_lines": 97191,
+    "gate_compat_effective_lines": 87973,
     "single_exec_wrappers": 0,
     "first_party_modules_over_5000": 2
   },

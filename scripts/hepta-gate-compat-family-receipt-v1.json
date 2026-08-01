@@ -243,28 +243,29 @@
     "state_registry_contains_full_shell_bodies": false
   },
   "honest_shortfall": {
-    "status": "exact_parameterized_floor",
+    "status": "resolved_by_typed_semantic_conversion",
     "requested_migrated_state_count": 185,
     "requested_family_pair_count": 93,
     "requested_captured_pair_count": 199,
     "requested_declarative_pair_count": 100,
-    "additional_true_declarative_conversions_required": 37,
+    "additional_true_declarative_conversions_required": 0,
     "exact_duplicate_state_count": 148,
     "route_safe_exact_family_pair_count": 56,
     "exact_pair_reduction": 92,
     "rejected_declarative_snapshot_count": 37,
     "rejected_reason": "captured report snapshots preserve full semantic payloads, are not compact state parameters, and exceed measured debt ceilings",
-    "retired_full_shell_bodies_preserved_as_supplemental_aliases": false
+    "retired_full_shell_bodies_preserved_as_supplemental_aliases": false,
+    "historical_additional_true_declarative_conversions_required": 37
   },
   "result": {
     "pair_count": 299,
-    "captured_pair_count": 236,
-    "declarative_pair_count": 63,
-    "spec_sha256": "9ffe4b70c87d5f86b632a959e8197933147364fa29e1dd31e798d1dde3560ab3",
-    "family_registry_sha256": "5a5cde0e064e5cbef1bea5fb3a9549be7779fd65db491fab792dcba65b055465",
-    "logical_compatibility_payload_count": 794,
-    "normalized_payload_count": 357,
-    "normalized_effective_lines": 97191,
+    "captured_pair_count": 199,
+    "declarative_pair_count": 100,
+    "spec_sha256": "9761eca6d406cb2455652d36cc9374bdf24dbbb7c5e7d0be4168126f30a4b73a",
+    "family_registry_sha256": "c8999350e5362c79bd43a74bc3819d879662002c174ae17962c1ce9da67b47dc",
+    "logical_compatibility_payload_count": 720,
+    "normalized_payload_count": 324,
+    "normalized_effective_lines": 87973,
     "physical_entrypoint_count": 69,
     "logical_virtual_entrypoint_count": 529
   },
@@ -275,5 +276,17 @@
     "channel_send_performed": false,
     "production_state_mutated": false,
     "service_restarted": false
+  },
+  "typed_conversion": {
+    "status": "ready",
+    "converted_state_count": 37,
+    "template": "typed_rust_report_v1",
+    "binding_registry": "scripts/hepta-gate-typed-report-bindings-v1.json",
+    "binding_registry_sha256": "a2b5cc3d92300ed7bf85f55fa81b5839f1f0fb3d2d7fa66e30aabe66adc826b0",
+    "report_source_sha256": "0f3a401cbdb6b5e3a3357964eac57303ea2848fcb430dce32a62e97ab385dbe5",
+    "report_cli_source_sha256": "af0d43434f7c782fe9aeeca2c30decc14e49405fc4cb4091e91b86e9689a67df",
+    "callers_rewritten_to_public_typed_surfaces": true,
+    "captured_snapshots_used": false,
+    "retired_shell_payloads_preserved": false
   }
 }

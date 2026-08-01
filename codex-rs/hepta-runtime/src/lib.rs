@@ -252,6 +252,7 @@ mod task_board;
 mod telegram_model_runner;
 mod tool_invocation;
 mod topic_neuron;
+mod typed_compat_report;
 include!(concat!(
     env!("OUT_DIR"),
     "/hepta_workgraph_bundle/modules.rs"
@@ -325,6 +326,9 @@ pub use ndu_h1_runtime::NduH1Runtime;
 pub use ndu_h1_runtime::NduH1RuntimeError;
 pub use ndu_h1_runtime::NduH1RuntimeStatus;
 pub use ndu_h1_runtime::NduH1ShadowEvent;
+pub use typed_compat_report::TYPED_COMPAT_REPORT_IDS;
+pub use typed_compat_report::TypedCompatReportError;
+pub use typed_compat_report::typed_compat_report;
 
 include!("runtime_kernel/exports.rs");
 include!("runtime_kernel/exports_workgraph.rs");

@@ -61,7 +61,10 @@ verify() {
       legacy_logical_surfaces_remain_reversible:true,
       unregistered_payloads_must_not_grow:true,
       removal_requires_reference_graph_proof:true
-      ,explicit_supplemental_payloads_are_sha256_bound:true
+      ,explicit_supplemental_payloads_are_sha256_bound:true,
+      typed_report_bindings_are_sha256_bound:true,
+      typed_reports_reuse_existing_rust_semantics:true,
+      converted_shell_payloads_are_not_preserved:true
     }
     and .ratchet == {
       discrete_debt_growth_percent:0,

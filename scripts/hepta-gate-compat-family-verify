@@ -17,8 +17,9 @@ RECEIPT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-family-receipt-v1.json
 STATE_MACHINE = File.join(ROOT, "scripts/hepta-gate-compat-family-state-machine")
 PAYLOAD_REGISTRY_PATH = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2/registry.json")
 TARGET_PAIR_COUNT = 299
-TARGET_CAPTURED_COUNT = 236
-TARGET_DECLARATIVE_COUNT = 63
+TARGET_CAPTURED_COUNT = 199
+TARGET_DECLARATIVE_COUNT = 100
+TARGET_TYPED_COUNT = 37
 TARGET_FAMILY_COUNT = 56
 TARGET_MIGRATED_STATE_COUNT = 148
 TARGET_RETIRED_MEMBER_COUNT = 92
@@ -57,10 +58,10 @@ def verify
     Digest::SHA256.file(REGISTRY_PATH).hexdigest
   shortfall = receipt.fetch("honest_shortfall")
   raise "family shortfall status drifted" unless shortfall.fetch("status") ==
-    "exact_parameterized_floor"
+    "resolved_by_typed_semantic_conversion"
   raise "family shortfall conversion count drifted" unless shortfall.fetch(
     "additional_true_declarative_conversions_required"
-  ) == 37
+  ).zero?
   raise "family shortfall exact reduction drifted" unless shortfall.fetch(
     "exact_pair_reduction"
   ) == TARGET_RETIRED_MEMBER_COUNT
@@ -71,10 +72,20 @@ def verify
   captured = pairs.count { |pair| pair.fetch("template") == "captured_shell_compat_v1" }
   legacy = pairs.count { |pair| pair.fetch("template") == "legacy_workgraph_projection_v1" }
   declarative = pairs.length - captured - legacy
+  typed = pairs.select { |pair| pair.fetch("template") == "typed_rust_report_v1" }
   raise "family pair count drifted" unless pairs.length == TARGET_PAIR_COUNT
   raise "family captured count drifted" unless captured == TARGET_CAPTURED_COUNT
   raise "family legacy count drifted" unless legacy.zero?
   raise "family declarative count drifted" unless declarative == TARGET_DECLARATIVE_COUNT
+  raise "typed report count drifted" unless typed.length == TARGET_TYPED_COUNT
+  raise "typed report retained shell payload binding" unless typed.all? do |pair|
+    pair.fetch("typed_report_registry") == "scripts/hepta-gate-typed-report-bindings-v1.json" &&
+      !pair.key?("gate_implementation") && !pair.key?("report_implementation")
+  end
+  conversion = receipt.fetch("typed_conversion")
+  raise "typed conversion receipt drifted" unless conversion.fetch("converted_state_count") ==
+    TARGET_TYPED_COUNT && !conversion.fetch("captured_snapshots_used") &&
+    !conversion.fetch("retired_shell_payloads_preserved")
   family_pairs = pairs.select { |pair| pair.fetch("template") == "compat_family_state_machine_v1" }
   raise "family pair registry count drifted" unless family_pairs.length == TARGET_FAMILY_COUNT
   raise "family caller routing contract drifted" unless family_pairs.all? do |pair|
@@ -155,6 +166,7 @@ def verify
     pair_count: pairs.length,
     captured_pair_count: captured,
     declarative_pair_count: declarative,
+    typed_report_pair_count: typed.length,
     family_pair_count: family_pairs.length,
     migrated_state_count: migrated.length,
     retired_member_count: retired.length,

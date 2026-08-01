@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+binary="${HEPTA_TYPED_COMPAT_REPORT_BIN:-}"
+
+if [[ -z "$binary" && -n "${CARGO_TARGET_DIR:-}" ]]; then
+  candidate="$CARGO_TARGET_DIR/debug/hepta-compat-report"
+  [[ -x "$candidate" ]] && binary="$candidate"
+fi
+if [[ -z "$binary" ]]; then
+  for candidate in \
+    "$ROOT/codex-rs/target/debug/hepta-compat-report" \
+    "$ROOT/target/debug/hepta-compat-report"; do
+    if [[ -x "$candidate" ]]; then
+      binary="$candidate"
+      break
+    fi
+  done
+fi
+
+if [[ -n "$binary" ]]; then
+  exec "$binary" "$@"
+fi
+
+exec cargo run --quiet --locked \
+  --manifest-path "$ROOT/codex-rs/Cargo.toml" \
+  -p hepta-runtime \
+  --bin hepta-compat-report \
+  -- "$@"
