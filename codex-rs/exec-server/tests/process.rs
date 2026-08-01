@@ -78,6 +78,100 @@ async fn exec_server_starts_process_over_websocket() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Ordinary requests run one at a time, including while `process/read` waits.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn exec_server_runs_ordinary_requests_serially_by_default() -> anyhow::Result<()> {
+    let mut server = exec_server().await?;
+    let initialize_id = server
+        .send_request(
+            "initialize",
+            serde_json::to_value(InitializeParams {
+                client_name: "exec-server-test".to_string(),
+                resume_session_id: None,
+            })?,
+        )
+        .await?;
+    let _ = server
+        .wait_for_event(|event| {
+            matches!(
+                event,
+                JSONRPCMessage::Response(JSONRPCResponse { id, .. }) if id == &initialize_id
+            )
+        })
+        .await?;
+    server
+        .send_notification("initialized", serde_json::json!({}))
+        .await?;
+
+    let process_start_id = server
+        .send_request(
+            "process/start",
+            serde_json::json!({
+                "processId": "proc-serial-read",
+                "argv": ["/bin/sh", "-c", "parent=$PPID; while kill -0 \"$parent\" 2>/dev/null; do sleep 1; done"],
+                "cwd": std::env::current_dir()?,
+                "env": {},
+                "tty": false,
+                "pipeStdin": false,
+                "arg0": null
+            }),
+        )
+        .await?;
+    let _ = server
+        .wait_for_event(|event| {
+            matches!(
+                event,
+                JSONRPCMessage::Response(JSONRPCResponse { id, .. }) if id == &process_start_id
+            )
+        })
+        .await?;
+
+    let read_id = server
+        .send_request(
+            "process/read",
+            serde_json::json!({
+                "processId": "proc-serial-read",
+                "afterSeq": null,
+                "maxBytes": null,
+                "waitMs": 250
+            }),
+        )
+        .await?;
+    let queued_start_id = server
+        .send_request(
+            "process/start",
+            serde_json::json!({
+                "processId": "proc-serial-queued",
+                "argv": ["/bin/sh", "-c", "parent=$PPID; while kill -0 \"$parent\" 2>/dev/null; do sleep 1; done"],
+                "cwd": std::env::current_dir()?,
+                "env": {},
+                "tty": false,
+                "pipeStdin": false,
+                "arg0": null
+            }),
+        )
+        .await?;
+
+    let JSONRPCMessage::Response(JSONRPCResponse { id, .. }) = server.next_event().await? else {
+        panic!("expected the blocked process/read to finish before the queued process/start");
+    };
+    assert_eq!(id, read_id);
+    let JSONRPCMessage::Response(JSONRPCResponse { id, result }) = server.next_event().await?
+    else {
+        panic!("expected the queued process/start response after process/read");
+    };
+    assert_eq!(id, queued_start_id);
+    assert_eq!(
+        serde_json::from_value::<ExecResponse>(result)?,
+        ExecResponse {
+            process_id: ProcessId::from("proc-serial-queued"),
+        }
+    );
+
+    server.shutdown().await?;
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn exec_server_defaults_omitted_pipe_stdin_to_closed_stdin() -> anyhow::Result<()> {
     let mut server = exec_server().await?;

@@ -11,10 +11,10 @@ use crate::connection::JsonRpcConnectionEvent;
 use crate::rpc::RpcNotificationSender;
 use crate::rpc::RpcServerOutboundMessage;
 use crate::rpc::encode_server_message;
-use crate::rpc::invalid_request;
-use crate::rpc::method_not_found;
 use crate::server::ExecServerHandler;
 use crate::server::registry::build_router;
+use crate::server::request_dispatcher::DispatchResult;
+use crate::server::request_dispatcher::RequestDispatcher;
 use crate::server::session_registry::SessionRegistry;
 
 #[derive(Clone)]
@@ -50,7 +50,7 @@ async fn run_connection(
     let JsonRpcConnection {
         outgoing_tx: json_outgoing_tx,
         mut incoming_rx,
-        mut disconnected_rx,
+        disconnected_rx,
         task_handles: connection_tasks,
         transport: _transport,
     } = connection;
@@ -78,91 +78,35 @@ async fn run_connection(
         }
     });
 
+    let mut dispatcher = RequestDispatcher::new(
+        router,
+        Arc::clone(&handler),
+        outgoing_tx.clone(),
+        disconnected_rx,
+    );
+
     // Process inbound events sequentially to preserve initialize/initialized ordering.
     while let Some(event) = incoming_rx.recv().await {
         if !handler.is_session_attached() {
             debug!("exec-server connection evicted after session resume");
             break;
         }
-        match event {
+        let result = match event {
             JsonRpcConnectionEvent::MalformedMessage { reason } => {
-                warn!("ignoring malformed exec-server message: {reason}");
-                if outgoing_tx
-                    .send(RpcServerOutboundMessage::Error {
-                        request_id: codex_app_server_protocol::RequestId::Integer(-1),
-                        error: invalid_request(reason),
-                    })
-                    .await
-                    .is_err()
-                {
-                    break;
-                }
+                dispatcher.handle_malformed_message(reason).await
             }
             JsonRpcConnectionEvent::Message(message) => match message {
                 codex_app_server_protocol::JSONRPCMessage::Request(request) => {
-                    if let Some(route) = router.request_route(request.method.as_str()) {
-                        let message = tokio::select! {
-                            message = route(Arc::clone(&handler), request) => message,
-                            _ = disconnected_rx.changed() => {
-                                debug!("exec-server transport disconnected while handling request");
-                                break;
-                            }
-                        };
-                        if let Some(message) = message
-                            && outgoing_tx.send(message).await.is_err()
-                        {
-                            break;
-                        }
-                    } else if outgoing_tx
-                        .send(RpcServerOutboundMessage::Error {
-                            request_id: request.id,
-                            error: method_not_found(format!(
-                                "exec-server stub does not implement `{}` yet",
-                                request.method
-                            )),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    }
+                    dispatcher.dispatch_request(request).await
                 }
                 codex_app_server_protocol::JSONRPCMessage::Notification(notification) => {
-                    let Some(route) = router.notification_route(notification.method.as_str())
-                    else {
-                        warn!(
-                            "closing exec-server connection after unexpected notification: {}",
-                            notification.method
-                        );
-                        break;
-                    };
-                    let result = tokio::select! {
-                        result = route(Arc::clone(&handler), notification) => result,
-                        _ = disconnected_rx.changed() => {
-                            debug!(
-                                "exec-server transport disconnected while handling notification"
-                            );
-                            break;
-                        }
-                    };
-                    if let Err(err) = result {
-                        warn!("closing exec-server connection after protocol error: {err}");
-                        break;
-                    }
+                    dispatcher.handle_notification(notification).await
                 }
                 codex_app_server_protocol::JSONRPCMessage::Response(response) => {
-                    warn!(
-                        "closing exec-server connection after unexpected client response: {:?}",
-                        response.id
-                    );
-                    break;
+                    dispatcher.handle_response(response)
                 }
                 codex_app_server_protocol::JSONRPCMessage::Error(error) => {
-                    warn!(
-                        "closing exec-server connection after unexpected client error: {:?}",
-                        error.id
-                    );
-                    break;
+                    dispatcher.handle_error(error)
                 }
             },
             JsonRpcConnectionEvent::Disconnected { reason } => {
@@ -171,9 +115,13 @@ async fn run_connection(
                 }
                 break;
             }
+        };
+        if result == DispatchResult::ConnectionClosed {
+            break;
         }
     }
 
+    drop(dispatcher);
     handler.shutdown().await;
     drop(handler);
     drop(outgoing_tx);
