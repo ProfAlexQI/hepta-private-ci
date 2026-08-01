@@ -469,6 +469,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn linked_v8_has_sandbox_enabled() {
+        unsafe extern "C" {
+            fn v8__V8__IsSandboxEnabled() -> bool;
+        }
+
+        assert!(
+            unsafe { v8__V8__IsSandboxEnabled() },
+            "code mode must link against sandbox-enabled V8"
+        );
+    }
+
     #[tokio::test]
     async fn terminate_execution_stops_cpu_bound_module() {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();

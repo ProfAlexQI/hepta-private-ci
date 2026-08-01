@@ -1,0 +1,126 @@
+name: Bazel Windows MSVC
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/windows-msvc-bazel.yml
+      - .github/workflows/scripts/export-msvc-env.ps1
+      - .github/workflows/scripts/setup-rusty-v8.sh
+      - MODULE.bazel
+      - MODULE.bazel.lock
+      - patches/**
+      - third_party/**
+      - codex-rs/**
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/windows-msvc-bazel.yml
+      - .github/workflows/scripts/export-msvc-env.ps1
+      - .github/workflows/scripts/setup-rusty-v8.sh
+      - MODULE.bazel
+      - MODULE.bazel.lock
+      - patches/**
+      - third_party/**
+      - codex-rs/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bazel-windows-msvc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-windows-msvc:
+    name: Bazel test x86_64-pc-windows-msvc
+    runs-on: windows-2025
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install Bazelisk
+        shell: pwsh
+        run: choco install bazelisk --yes --no-progress
+
+      - name: Set up sandboxed rusty_v8
+        shell: bash
+        run: bash .github/workflows/scripts/setup-rusty-v8.sh x86_64-pc-windows-msvc "$RUNNER_TEMP/rusty-v8/x86_64-pc-windows-msvc" "$GITHUB_ENV"
+
+      - name: Export the x64 MSVC developer environment
+        shell: pwsh
+        run: .github/workflows/scripts/export-msvc-env.ps1
+
+      - name: Run the native Windows Bazel suite
+        shell: pwsh
+        run: |
+          $executionLogDirectory = Join-Path $env:RUNNER_TEMP "bazel-execution-logs"
+          New-Item -ItemType Directory -Force -Path $executionLogDirectory | Out-Null
+
+          $environmentVariables = @(
+              "BAZEL_SH",
+              "BAZEL_VC",
+              "INCLUDE",
+              "LIB",
+              "LIBPATH",
+              "Path",
+              "UCRTVersion",
+              "UniversalCRTSdkDir",
+              "VCINSTALLDIR",
+              "VCToolsInstallDir",
+              "WindowsLibPath",
+              "WindowsSdkBinPath",
+              "WindowsSdkDir",
+              "WindowsSDKLibVersion",
+              "WindowsSDKVersion"
+          )
+          $environmentArguments = foreach ($name in $environmentVariables) {
+              $value = [Environment]::GetEnvironmentVariable($name)
+              if ($value) {
+                  "--action_env=$name=$value"
+                  "--host_action_env=$name=$value"
+              }
+          }
+
+          $bazelArguments = @(
+              "test",
+              "--config=ci-windows",
+              "--platforms=//:windows_x86_64_msvc",
+              "--host_platform=//:windows_x86_64_msvc",
+              "--extra_execution_platforms=//:windows_x86_64_msvc",
+              "--extra_toolchains=//:windows_msvc_tests_on_msvc_host_toolchain",
+              "--jobs=8",
+              "--test_tag_filters=-argument-comment-lint",
+              "--test_verbose_timeout_warnings",
+              "--execution_log_compact_file=$executionLogDirectory/execution-log.zst",
+              "--repo_contents_cache=$env:RUNNER_TEMP/bazel-repo-contents-cache"
+          )
+          $targets = @(
+              "//...",
+              "-//third_party/v8:all",
+              "-//codex-rs/v8-poc:v8-poc-unit-tests"
+          )
+
+          & bazelisk @bazelArguments @environmentArguments @targets
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+      - name: Upload Bazel execution logs
+        if: always() && !cancelled()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bazel-execution-logs-windows-x86_64-pc-windows-msvc
+          path: ${{ runner.temp }}/bazel-execution-logs
+          if-no-files-found: ignore
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        shell: pwsh
+        run: git diff --exit-code
