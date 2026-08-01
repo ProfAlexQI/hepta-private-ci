@@ -46,12 +46,12 @@ check *args:
 # Format the repository-native Just and Rust sources.
 fmt:
     just --unstable --fmt
-    cargo fmt -- --config imports_granularity=Item
+    {{ rusty_v8_cargo }} fmt -- --config imports_granularity=Item
 
 # Check repository-native Just and Rust formatting without modifying files.
 fmt-check:
     just --unstable --fmt --check
-    cargo fmt -- --config imports_granularity=Item --check
+    {{ rusty_v8_cargo }} fmt -- --config imports_granularity=Item --check
 
 fix *args:
     {{ rusty_v8_cargo }} clippy --fix --tests --allow-dirty "$@"
@@ -60,8 +60,8 @@ clippy *args:
     {{ rusty_v8_cargo }} clippy --tests "$@"
 
 install:
-    rustup show active-toolchain
-    cargo fetch
+    {{ rusty_v8_cargo }} --version
+    {{ rusty_v8_cargo }} fetch
 
 # Run `cargo nextest` since it's faster than `cargo test`, though including
 # --no-fail-fast is important to ensure all tests are run.

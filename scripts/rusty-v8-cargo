@@ -2,6 +2,27 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+toolchain_manifest="${repo_root}/codex-rs/rust-toolchain.toml"
+manifest_toolchain="$(
+  awk -F '"' '/^[[:space:]]*channel[[:space:]]*=/ { print $2; exit }' \
+    "$toolchain_manifest"
+)"
+if [[ -z "$manifest_toolchain" ]]; then
+  echo "Unable to read the pinned Rust channel from ${toolchain_manifest}" >&2
+  exit 2
+fi
+hepta_rust_toolchain="${HEPTA_RUST_TOOLCHAIN:-$manifest_toolchain}"
+if ! command -v rustup >/dev/null 2>&1; then
+  echo "rustup is required for pinned Rust ${hepta_rust_toolchain}" >&2
+  exit 2
+fi
+hepta_rustc="$(rustup which --toolchain "$hepta_rust_toolchain" rustc)"
+hepta_rustdoc="$(rustup which --toolchain "$hepta_rust_toolchain" rustdoc)"
+hepta_toolchain_bin="$(dirname "$hepta_rustc")"
+export RUSTUP_TOOLCHAIN="$hepta_rust_toolchain"
+export RUSTC="$hepta_rustc"
+export RUSTDOC="$hepta_rustdoc"
+export PATH="$hepta_toolchain_bin:$PATH"
 print_env=0
 if [[ "${1:-}" == "--hepta-print-v8-env" ]]; then
   print_env=1
@@ -9,7 +30,7 @@ if [[ "${1:-}" == "--hepta-print-v8-env" ]]; then
 fi
 
 if [[ -n "${V8_FROM_SOURCE:-}" ]]; then
-  exec cargo "$@"
+  exec rustup run "$hepta_rust_toolchain" cargo "$@"
 fi
 
 if [[ -n "${RUSTY_V8_ARCHIVE:-}" || -n "${RUSTY_V8_SRC_BINDING_PATH:-}" ]]; then
@@ -22,7 +43,7 @@ if [[ -n "${RUSTY_V8_ARCHIVE:-}" || -n "${RUSTY_V8_SRC_BINDING_PATH:-}" ]]; then
     printf 'RUSTY_V8_SRC_BINDING_PATH=%s\n' "$RUSTY_V8_SRC_BINDING_PATH"
     exit 0
   fi
-  exec cargo "$@"
+  exec rustup run "$hepta_rust_toolchain" cargo "$@"
 fi
 
 target=""
@@ -41,7 +62,7 @@ for argument in "$@"; do
   previous="$argument"
 done
 if [[ -z "$target" ]]; then
-  target="$(rustc -vV | sed -n 's/^host: //p')"
+  target="$("$hepta_rustc" -vV | sed -n 's/^host: //p')"
 fi
 if [[ -z "$target" ]]; then
   echo "Unable to determine Cargo target triple" >&2
@@ -74,4 +95,4 @@ if [[ "$print_env" == 1 ]]; then
   exit 0
 fi
 
-exec cargo "$@"
+exec rustup run "$hepta_rust_toolchain" cargo "$@"
