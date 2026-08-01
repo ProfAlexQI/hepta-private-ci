@@ -2,6 +2,8 @@ use super::*;
 use codex_features::Feature;
 use codex_features::Features;
 use codex_protocol::config_types::ModeKind;
+use codex_protocol::request_user_input::RequestUserInputQuestion;
+use codex_protocol::request_user_input::RequestUserInputQuestionOption;
 use codex_tools::JsonSchema;
 use codex_tools::request_user_input_available_modes;
 use pretty_assertions::assert_eq;
@@ -99,6 +101,52 @@ fn request_user_input_tool_includes_questions_schema() {
                 )]), Some(vec!["questions".to_string()]), Some(false.into())),
             output_schema: None,
         })
+    );
+}
+
+#[test]
+fn normalize_request_user_input_tool_args_sets_other_on_every_question() {
+    let args = RequestUserInputToolArgs {
+        questions: vec![RequestUserInputQuestion {
+            id: "confirm".to_string(),
+            header: "Confirm".to_string(),
+            question: "Proceed?".to_string(),
+            is_other: false,
+            is_secret: false,
+            options: Some(vec![RequestUserInputQuestionOption {
+                label: "Yes (Recommended)".to_string(),
+                description: "Continue.".to_string(),
+            }]),
+        }],
+    };
+
+    assert_eq!(
+        normalize_request_user_input_tool_args(args.clone()),
+        Ok(RequestUserInputToolArgs {
+            questions: vec![RequestUserInputQuestion {
+                is_other: true,
+                ..args.questions[0].clone()
+            }],
+        })
+    );
+}
+
+#[test]
+fn normalize_request_user_input_tool_args_rejects_missing_options() {
+    let args = RequestUserInputToolArgs {
+        questions: vec![RequestUserInputQuestion {
+            id: "confirm".to_string(),
+            header: "Confirm".to_string(),
+            question: "Proceed?".to_string(),
+            is_other: false,
+            is_secret: false,
+            options: None,
+        }],
+    };
+
+    assert_eq!(
+        normalize_request_user_input_tool_args(args),
+        Err("request_user_input requires non-empty options for every question".to_string())
     );
 }
 

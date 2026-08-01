@@ -24,6 +24,29 @@ const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn request_user_input_round_trip() -> Result<()> {
+    request_user_input_round_trip_for_mode(
+        ModeKind::Plan,
+        /*enable_default_mode_feature*/ false,
+        /*expected_is_blocking*/ true,
+    )
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn request_user_input_default_mode_forwards_non_blocking() -> Result<()> {
+    request_user_input_round_trip_for_mode(
+        ModeKind::Default,
+        /*enable_default_mode_feature*/ true,
+        /*expected_is_blocking*/ false,
+    )
+    .await
+}
+
+async fn request_user_input_round_trip_for_mode(
+    mode: ModeKind,
+    enable_default_mode_feature: bool,
+    expected_is_blocking: bool,
+) -> Result<()> {
     let codex_home = tempfile::TempDir::new()?;
     let responses = vec![
         create_request_user_input_sse_response("call1")?,
@@ -38,6 +61,12 @@ async fn request_user_input_round_trip() -> Result<()> {
     let thread_start_id = mcp
         .send_thread_start_request(ThreadStartParams {
             model: Some("mock-model".to_string()),
+            config: enable_default_mode_feature.then(|| {
+                std::collections::HashMap::from([(
+                    "features.default_mode_request_user_input".to_string(),
+                    serde_json::json!(true),
+                )])
+            }),
             ..Default::default()
         })
         .await?;
@@ -58,7 +87,7 @@ async fn request_user_input_round_trip() -> Result<()> {
             model: Some("mock-model".to_string()),
             effort: Some(ReasoningEffort::Medium),
             collaboration_mode: Some(CollaborationMode {
-                mode: ModeKind::Plan,
+                mode,
                 settings: Settings {
                     model: "mock-model".to_string(),
                     reasoning_effort: Some(ReasoningEffort::Medium),
@@ -88,6 +117,8 @@ async fn request_user_input_round_trip() -> Result<()> {
     assert_eq!(params.turn_id, turn.id);
     assert_eq!(params.item_id, "call1");
     assert_eq!(params.questions.len(), 1);
+    assert_eq!(params.is_blocking, expected_is_blocking);
+    assert_eq!(params.auto_resolution_ms, None);
     let resolved_request_id = request_id.clone();
 
     mcp.send_response(

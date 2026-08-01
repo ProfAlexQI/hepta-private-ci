@@ -597,6 +597,8 @@ async fn request_user_input_notification_overrides_pending_agent_turn_complete_n
                 description: "Update only Plan mode.".to_string(),
             }]),
         }],
+        is_blocking: true,
+        auto_resolution_ms: None,
     });
 
     assert_matches!(
@@ -626,6 +628,8 @@ async fn handle_request_user_input_sets_pending_notification() {
                 description: "Update only Plan mode.".to_string(),
             }]),
         }],
+        is_blocking: true,
+        auto_resolution_ms: None,
     });
 
     assert_matches!(
