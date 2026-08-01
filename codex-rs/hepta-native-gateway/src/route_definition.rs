@@ -1,19 +1,18 @@
 use serde::Serialize;
 
-mod legacy_routes;
+mod generated_control_ui_routes;
 mod watchdog;
 
-use self::legacy_routes::is_canonical_only_evidence_route;
+use self::generated_control_ui_routes::CONTROL_UI_ROUTE_POLICIES;
 pub(crate) use self::watchdog::WATCHDOG_PROBE_PATHS;
 use crate::native_telegram::TELEGRAM_LIVE_READ_ENV;
 use crate::operator_mutation::OPERATOR_MUTATION_ENABLED_ENV;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
 use crate::route_registry::EVIDENCE_INDEX_ENDPOINT;
 pub(crate) use crate::route_registry::NativeReportId;
-use crate::route_registry::TELEGRAM_LIVE_SOAK_ROUTE;
 use crate::runtime_ingress::IngressLifecycleSpec;
 use crate::runtime_ingress::declared_runtime_ingress_lifecycle;
-use crate::runtime_ingress::runtime_ingress_lifecycle_registry;
+use crate::runtime_ingress::runtime_ingress_lifecycle_registry as lifecycle_registry;
 use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENV;
 use crate::telegram_authority::TELEGRAM_AUTHORITY_ENABLED_ENV;
 
@@ -69,24 +68,59 @@ pub(crate) struct RouteDefinition {
     pub(crate) legacy_compatibility_route: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ControlUiRoutePolicy {
+    method: &'static str,
+    path_pattern: &'static str,
+    dispatch_handler: RouteDispatchHandler,
+    required_gate: Option<&'static str>,
+    watchdog_probe: bool,
+    response_policy: RouteResponsePolicy,
+    report_binding: RouteReportBinding,
+    native_report_id: Option<NativeReportId>,
+    receipt_state: Option<crate::gate_spec::ReceiptState>,
+    evidence_effect_class: &'static str,
+    aliases: &'static [&'static str],
+    legacy_compatibility_route: bool,
+}
+
 pub(crate) fn route_definition(method: &str, path: &str) -> Option<RouteDefinition> {
     declared_runtime_ingress_lifecycle(method, path).map(route_definition_from_lifecycle)
 }
 
 pub(crate) fn route_definition_registry() -> Vec<RouteDefinition> {
-    runtime_ingress_lifecycle_registry()
+    lifecycle_registry()
         .into_iter()
         .map(route_definition_from_lifecycle)
         .collect()
 }
 
 fn route_definition_from_lifecycle(lifecycle: IngressLifecycleSpec) -> RouteDefinition {
+    if let Some(policy) = CONTROL_UI_ROUTE_POLICIES.iter().find(|policy| {
+        policy.method == lifecycle.method && policy.path_pattern == lifecycle.path_pattern
+    }) {
+        let gate = CONTROL_UI_ROUTE_SPECS
+            .iter()
+            .find(|gate| gate.method == lifecycle.method && gate.pattern == lifecycle.path_pattern);
+        return RouteDefinition {
+            lifecycle,
+            dispatch_handler: policy.dispatch_handler,
+            required_gate: policy.required_gate,
+            watchdog_probe: policy.watchdog_probe,
+            response_policy: policy.response_policy,
+            report_binding: policy.report_binding,
+            native_report_id: policy.native_report_id,
+            source_command: gate.map(|gate| gate.source_command),
+            capability: gate.map(|gate| gate.capability),
+            side_effect_boundary: gate.map(|gate| gate.side_effect_boundary),
+            receipt_state: policy.receipt_state,
+            evidence_effect_class: Some(policy.evidence_effect_class),
+            aliases: policy.aliases,
+            legacy_compatibility_route: policy.legacy_compatibility_route,
+        };
+    }
     let dispatch_handler = dispatch_handler(lifecycle);
     let required_gate = required_gate(lifecycle);
-    let gate = CONTROL_UI_ROUTE_SPECS
-        .iter()
-        .find(|gate| gate.method == lifecycle.method && gate.pattern == lifecycle.path_pattern);
-    let receipt_state = gate.and_then(crate::gate_spec::GateSpec::receipt_state);
     let (report_binding, native_report_id) = report_binding(lifecycle, dispatch_handler);
     RouteDefinition {
         lifecycle,
@@ -97,18 +131,13 @@ fn route_definition_from_lifecycle(lifecycle: IngressLifecycleSpec) -> RouteDefi
         response_policy: response_policy(lifecycle),
         report_binding,
         native_report_id,
-        source_command: gate.map(|gate| gate.source_command),
-        capability: gate.map(|gate| gate.capability),
-        side_effect_boundary: gate.map(|gate| gate.side_effect_boundary),
-        receipt_state,
-        evidence_effect_class: gate.map(evidence_effect_class),
-        aliases: if lifecycle.path_pattern == TELEGRAM_LIVE_SOAK_ROUTE.canonical {
-            TELEGRAM_LIVE_SOAK_ROUTE.aliases
-        } else {
-            &[]
-        },
-        legacy_compatibility_route: receipt_state.is_some()
-            && lifecycle.path_pattern != EVIDENCE_INDEX_ENDPOINT,
+        source_command: None,
+        capability: None,
+        side_effect_boundary: None,
+        receipt_state: None,
+        evidence_effect_class: None,
+        aliases: crate::route_registry::native_route_aliases(lifecycle.path_pattern),
+        legacy_compatibility_route: false,
     }
 }
 
@@ -143,9 +172,6 @@ fn dispatch_handler(lifecycle: IngressLifecycleSpec) -> RouteDispatchHandler {
     if lifecycle.path_pattern == EVIDENCE_INDEX_ENDPOINT {
         return RouteDispatchHandler::EvidenceIndex;
     }
-    if is_canonical_only_evidence_route(lifecycle) {
-        return RouteDispatchHandler::RetiredCompatibility;
-    }
     match lifecycle.source {
         "trusted_preference_ingress" => RouteDispatchHandler::PreferenceIngress,
         "effect_reconciliation" => RouteDispatchHandler::EffectReconciliation,
@@ -177,18 +203,6 @@ fn required_gate(lifecycle: IngressLifecycleSpec) -> Option<&'static str> {
             Some(OPERATOR_MUTATION_ENABLED_ENV)
         }
         _ => None,
-    }
-}
-
-fn evidence_effect_class(spec: &crate::gate_spec::GateSpec) -> &'static str {
-    if spec.is_read_only() {
-        "read_only"
-    } else if spec.is_dry_run() {
-        "dry_run"
-    } else if spec.requires_confirmation() {
-        "confirmation_required"
-    } else {
-        "declared_no_effect"
     }
 }
 

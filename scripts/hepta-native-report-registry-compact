@@ -1,0 +1,148 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+REGISTRY = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs"
+)
+TABLE_START = "const NATIVE_REPORT_DEFINITIONS: &[NativeReportDefinition] = &["
+JSON_CONTENT_TYPE = '"application/json; charset=utf-8"'
+EXPECTED_RENDERER_COUNT = 278
+
+def fail!(message)
+  warn "hepta-native-report-registry-compact: #{message}"
+  exit 1
+end
+
+def atomic_write(path, content)
+  temporary = path.sub_ext("#{path.extname}.tmp")
+  temporary.binwrite(content)
+  temporary.rename(path)
+end
+
+def parenthesized_items(source)
+  items = []
+  cursor = 0
+  pattern = /report\(/
+  while (match = pattern.match(source, cursor))
+    open_index = match.end(0) - 1
+    depth = 0
+    in_string = false
+    escaped = false
+    index = open_index
+    while index < source.length
+      character = source[index]
+      if in_string
+        if escaped
+          escaped = false
+        elsif character == "\\"
+          escaped = true
+        elsif character == '"'
+          in_string = false
+        end
+      elsif character == '"'
+        in_string = true
+      elsif character == "("
+        depth += 1
+      elsif character == ")"
+        depth -= 1
+        if depth.zero?
+          items << source[match.begin(0)..index]
+          cursor = index + 1
+          break
+        end
+      end
+      index += 1
+    end
+    fail!("unterminated report renderer") unless depth.zero?
+  end
+  items
+end
+
+def compact_json_renderer(item)
+  match = /\Areport\(\|([A-Za-z_][A-Za-z0-9_]*)\|\s*\{\s*\(\s*"200 OK",\s*"application\/json; charset=utf-8",\s*(.*),\s*\)\s*\}\)\z/m.match(item)
+  return item unless match
+
+  context = match[1]
+  body = match[2].strip
+  "json_report!(#{context} => #{body})"
+end
+
+def indent_item(item)
+  lines = item.lines.map(&:rstrip)
+  minimum = lines.drop(1).reject(&:empty?).map { |line| line[/\A\s*/].length }.min || 0
+  normalized = [lines.first.strip] + lines.drop(1).map { |line| line[minimum..] || "" }
+  normalized.map { |line| "    #{line}" }.join("\n")
+end
+
+def apply!
+  source = REGISTRY.binread
+  return verify! if source.include?("macro_rules! json_report")
+
+  table_index = source.index(TABLE_START)
+  fail!("native report table is missing") unless table_index
+  table_body_start = table_index + TABLE_START.length
+  table_end = source.index("\n];", table_body_start)
+  fail!("native report table terminator is missing") unless table_end
+  table_body = source[table_body_start...table_end]
+  items = parenthesized_items(table_body)
+  fail!("renderer count drifted: #{items.length}") unless items.length == EXPECTED_RENDERER_COUNT
+  compacted = items.map { |item| compact_json_renderer(item) }
+  compacted_count = compacted.count { |item| item.start_with?("json_report!") }
+  fail!("expected 275 JSON renderers, found #{compacted_count}") unless compacted_count == 275
+  macro_source = <<~RUST
+    const NATIVE_REPORT_JSON_CONTENT_TYPE: &str = "application/json; charset=utf-8";
+
+    macro_rules! json_report {
+        ($context:ident => $body:expr) => {
+            report(|$context| ("200 OK", NATIVE_REPORT_JSON_CONTENT_TYPE, $body))
+        };
+    }
+
+  RUST
+  prefix = source[0...table_index]
+  suffix = source[(table_end + 3)..]
+  table = TABLE_START + "\n" + compacted.map { |item| indent_item(item) + "," }.join("\n") + "\n];\n"
+  atomic_write(REGISTRY, prefix + macro_source + table + suffix)
+  verify!
+end
+
+def verify!
+  source = REGISTRY.binread
+  table_index = source.index(TABLE_START)
+  fail!("native report table is missing") unless table_index
+  table_end = source.index("\n];", table_index)
+  fail!("native report table terminator is missing") unless table_end
+  table = source[table_index...table_end]
+  direct_count = table.scan(/^\s*report\(/).length
+  compact_count = table.scan(/^\s*json_report!\(/).length
+  renderer_count = direct_count + compact_count
+  fail!("renderer count drifted: #{renderer_count}") unless renderer_count == EXPECTED_RENDERER_COUNT
+  renderer_keys = table.scan(/^\s*(?:report|json_report!)\("(native_report_[0-9]{3})",/).flatten
+  expected_keys = (0...EXPECTED_RENDERER_COUNT).map { |id| format("native_report_%03d", id) }
+  fail!("renderer identity drifted") unless renderer_keys == expected_keys
+  fail!("JSON renderer boilerplate remains") if table.include?(JSON_CONTENT_TYPE)
+  line_count = source.lines.length
+  fail!("registry line budget exceeded: #{line_count}") if line_count > 2_000
+  puts JSON.generate(
+    schema: "hepta_native_report_registry_compact_verify_v1",
+    status: "ready",
+    renderer_count: renderer_count,
+    stable_renderer_key_count: renderer_keys.length,
+    compact_json_renderer_count: compact_count,
+    line_count: line_count,
+  )
+end
+
+command = ARGV.fetch(0, "verify")
+case command
+when "apply"
+  apply!
+when "verify"
+  verify!
+else
+  fail!("usage: scripts/hepta-native-report-registry-compact [apply|verify]")
+end

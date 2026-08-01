@@ -1,0 +1,1038 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+ROUTE_REGISTRY = ROOT.join("codex-rs/hepta-native-gateway/src/route_registry.rs")
+LEGACY_BINDINGS = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/route_registry/native_report_bindings.rs"
+)
+CATALOG = ROOT.join("codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl")
+GENERATED_ROUTES = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/route_registry/generated_control_ui_routes.rs"
+)
+GENERATED_BINDINGS = LEGACY_BINDINGS
+GENERATED_LIFECYCLES = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/runtime_ingress/generated_control_ui_routes.rs"
+)
+GENERATED_POLICIES = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/route_definition/generated_control_ui_routes.rs"
+)
+GENERATED_CORE_STATIC_ASSETS = ROOT.join(
+  "codex-rs/hepta-core/src/control_ui_static_assets.rs"
+)
+GENERATED_GATEWAY_STATIC_ASSETS = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs"
+)
+GENERATED_WATCHDOG = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/route_definition/watchdog.rs"
+)
+REPORT_REGISTRY = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs"
+)
+ROUTE_MARKER = "pub(crate) const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &["
+GENERATED_INCLUDE = "include!(\"route_registry/generated_control_ui_routes.rs\");"
+CATALOG_SCHEMA = "hepta_native_route_catalog_v2"
+RENDERER_COUNT = 278
+PERMISSION_PROFILES = {
+  "control_ui_metadata_read" => {
+    "effect_class" => "MetadataRead",
+    "authority_owner" => "RuntimeKernelRequestBinding",
+    "secret_access" => "Forbidden",
+    "config_access" => "MetadataOnly",
+    "network_access" => "Forbidden",
+    "durable_intent" => "NotRequired",
+    "effect_ack" => "NotRequired",
+    "terminal_receipt" => "NotRequired",
+    "default_enablement" => "ReadOnlyEnabled",
+    "source" => "control_ui_route_specs",
+  },
+  "control_ui_mutation_plan" => {
+    "effect_class" => "MutationPlan",
+    "authority_owner" => "RuntimeKernelRequestBinding",
+    "secret_access" => "Forbidden",
+    "config_access" => "MetadataOnly",
+    "network_access" => "Forbidden",
+    "durable_intent" => "NotRequired",
+    "effect_ack" => "NotRequired",
+    "terminal_receipt" => "NotRequired",
+    "default_enablement" => "PlanOnlyEnabled",
+    "source" => "control_ui_route_specs",
+  },
+  "control_ui_quarantined_legacy_mutation" => {
+    "effect_class" => "QuarantinedLegacyMutation",
+    "authority_owner" => "UnassignedLegacyMutation",
+    "secret_access" => "Forbidden",
+    "config_access" => "MetadataOnly",
+    "network_access" => "Forbidden",
+    "durable_intent" => "NotRequired",
+    "effect_ack" => "NotRequired",
+    "terminal_receipt" => "NotRequired",
+    "default_enablement" => "DisabledUnlessExplicitGate",
+    "source" => "control_ui_transitive_effect_quarantine",
+  },
+}.freeze
+WATCHDOG_PATHS = [
+  "/health",
+  "/api/watchdog-state",
+  "/api/control-ui-route-parity",
+  "/api/operator-security",
+  "/api/telegram-owner-handoff",
+  "/api/telegram-poll-loop",
+  "/api/native-post-activation-plan",
+  "/api/native-post-execution-stores",
+  "/api/hepta-engine-adapter-boundary",
+  "/api/hepta-codex-engine-adapter-boundary",
+  "/api/hepta-core-fusion-readiness",
+  "/api/hepta-name-repository-closure",
+  "/api/hepta-engine-dependency-closure",
+].freeze
+CANONICAL_ONLY_EVIDENCE_FAMILY_PREFIXES = [
+  "/api/hepta-memory-intelligence-kg-full-live-activation-",
+  "/api/hepta-memory-live-mutation-operator-write-execution-",
+  "/api/hepta-memory-intelligence-kg-full-enablement-",
+].freeze
+RETAINED_DIRECT_EVIDENCE_ROUTES = [
+  "/api/hepta-memory-intelligence-kg-full-enablement-runtime-readiness",
+  "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-readiness",
+  "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-no-persistence",
+  "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-authority-denial",
+  "/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-separation",
+  "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-acceptance-receipt-lane",
+  "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane",
+  "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-receipt-audit-lane",
+  "/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-precondition-lane",
+].freeze
+
+def fail!(message)
+  warn "hepta-native-route-catalog: #{message}"
+  exit 1
+end
+
+def atomic_write(path, content)
+  path.dirname.mkpath
+  temporary = path.sub_ext("#{path.extname}.tmp")
+  temporary.binwrite(content)
+  temporary.rename(path)
+end
+
+def normalized_expression(expression)
+  expression.lines.map(&:strip).reject(&:empty?).join(" ")
+end
+
+def braced_blocks(source, type_name)
+  blocks = []
+  cursor = 0
+  pattern = /#{Regexp.escape(type_name)}\s*\{/
+  while (match = pattern.match(source, cursor))
+    open_index = source.index("{", match.begin(0))
+    depth = 0
+    in_string = false
+    escaped = false
+    index = open_index
+    while index < source.length
+      character = source[index]
+      if in_string
+        if escaped
+          escaped = false
+        elsif character == "\\"
+          escaped = true
+        elsif character == '"'
+          in_string = false
+        end
+      elsif character == '"'
+        in_string = true
+      elsif character == "{"
+        depth += 1
+      elsif character == "}"
+        depth -= 1
+        if depth.zero?
+          blocks << source[(open_index + 1)...index]
+          cursor = index + 1
+          break
+        end
+      end
+      index += 1
+    end
+    fail!("unterminated #{type_name} block") unless depth.zero?
+  end
+  blocks
+end
+
+def split_top_level(source)
+  values = []
+  start = 0
+  depths = Hash.new(0)
+  in_string = false
+  escaped = false
+  source.each_char.with_index do |character, index|
+    if in_string
+      if escaped
+        escaped = false
+      elsif character == "\\"
+        escaped = true
+      elsif character == '"'
+        in_string = false
+      end
+      next
+    end
+    if character == '"'
+      in_string = true
+      next
+    end
+    case character
+    when "{", "[", "("
+      depths[character] += 1
+    when "}"
+      depths["{"] -= 1
+    when "]"
+      depths["["] -= 1
+    when ")"
+      depths["("] -= 1
+    when ","
+      next unless depths.values.all?(&:zero?)
+
+      values << source[start...index]
+      start = index + 1
+    end
+  end
+  values << source[start..]
+  values.map(&:strip).reject(&:empty?)
+end
+
+def parse_fields(block)
+  split_top_level(block).to_h do |field|
+    name, expression = field.split(":", 2)
+    fail!("invalid field: #{field}") if expression.nil?
+    [name.strip, normalized_expression(expression)]
+  end
+end
+
+def parse_legacy_routes(source)
+  marker_index = source.index(ROUTE_MARKER)
+  fail!("legacy route array is missing") unless marker_index
+  blocks = braced_blocks(source[marker_index..], "ControlUiRouteSpec")
+  expected_fields = %w[method pattern source_command capability side_effect_boundary]
+  blocks.map do |block|
+    fields = parse_fields(block)
+    fail!("unexpected route fields: #{fields.keys.sort.join(',')}") unless fields.keys == expected_fields
+    fields
+  end
+end
+
+def parse_legacy_bindings(source)
+  source.scan(/native_report_binding\((\d+),\s*(\d+)\)/).to_h do |route_index, report_id|
+    [Integer(route_index, 10), Integer(report_id, 10)]
+  end
+end
+
+def parse_legacy_special_routes(source)
+  marker = "const SPECIAL_NATIVE_REPORT_ROUTES: &[NativeReportRouteSpec] = &["
+  marker_index = source.index(marker)
+  fail!("legacy special native report array is missing") unless marker_index
+  braced_blocks(source[marker_index..], "NativeReportRouteSpec").map do |block|
+    fields = parse_fields(block)
+    report_match = /\ANativeReportId\((\d+)\)\z/.match(fields.fetch("report_id"))
+    fail!("invalid special report id: #{fields.fetch('report_id')}") unless report_match
+    {
+      "kind" => "special_native_report",
+      "path_expr" => fields.fetch("path"),
+      "report_id" => Integer(report_match[1], 10),
+    }
+  end
+end
+
+def raw_catalog_records
+  fail!("catalog is missing: #{CATALOG.relative_path_from(ROOT)}") unless CATALOG.file?
+  CATALOG.each_line.each_with_object([]) do |line, parsed|
+    stripped = line.strip
+    next if stripped.empty?
+    parsed << JSON.parse(stripped)
+  rescue JSON::ParserError => error
+    fail!("invalid catalog JSONL: #{error.message}")
+  end
+end
+
+def catalog_records
+  records = raw_catalog_records
+  validate_catalog!(records)
+  records
+end
+
+def route_records(records)
+  records.select { |record| record["kind"] == "control_ui_route" }
+end
+
+def special_records(records)
+  records.select { |record| record["kind"] == "special_native_report" }
+end
+
+def route_alias_records(records)
+  records.select { |record| record["kind"] == "route_alias" }
+end
+
+def static_asset_records(records)
+  records.select { |record| record["kind"] == "static_asset" }
+end
+
+def renderer_records(records)
+  records.select { |record| record["kind"] == "renderer" }
+end
+
+def permission_records(records)
+  records.select { |record| record["kind"] == "permission_profile" }
+end
+
+def renderer_key(report_id)
+  format("native_report_%03d", report_id)
+end
+
+def rust_constant_values
+  return @rust_constant_values if defined?(@rust_constant_values)
+
+  values = {}
+  ambiguous = {}
+  Dir.glob(ROOT.join("codex-rs/{hepta-native-gateway,hepta-gateway,hepta-runtime}/src/**/*.rs")).sort.each do |path|
+    File.binread(path).scan(/\bconst\s+([A-Z][A-Z0-9_]*)\s*:\s*&str\s*=\s*("(?:\\.|[^"\\])*")\s*;/m) do |name, literal|
+      value = JSON.parse(literal)
+      if values.key?(name) && values[name] != value
+        values.delete(name)
+        ambiguous[name] = true
+      elsif !ambiguous[name]
+        values[name] = value
+      end
+    end
+  end
+  aliases = route_alias_records(raw_catalog_records)
+  aliases.each do |route_alias|
+    values[route_alias.fetch("canonical_const")] = route_alias.fetch("canonical")
+    route_alias.fetch("alias_consts").zip(route_alias.fetch("aliases")).each do |name, path|
+      values[name] = path
+    end
+  end
+  if aliases.empty?
+    # Migration-only fallback for the v1 bootstrap source. Typed catalogs own
+    # alias literals and generated Rust must not become a second declaration.
+    alias_match = ROUTE_REGISTRY.read.match(
+      /pub\(crate\) const TELEGRAM_LIVE_SOAK_ROUTE: NativeRouteAliasSpec = NativeRouteAliasSpec \{\s*canonical: ("(?:\\.|[^"\\])*"),\s*aliases: &\[("(?:\\.|[^"\\])*")\],\s*\};/m,
+    )
+    fail!("Telegram live-soak alias declaration is missing") unless alias_match
+    values["TELEGRAM_LIVE_SOAK_ENDPOINT"] = JSON.parse(alias_match[1])
+    values["TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT"] = JSON.parse(alias_match[2])
+  end
+  @rust_constant_values = values
+end
+
+def expression_value(expression)
+  return JSON.parse(expression) if expression.start_with?('"')
+  fail!("unsafe Rust expression in typed route catalog: #{expression}") unless expression.match?(/\A[A-Z][A-Z0-9_]*\z/)
+  rust_constant_values.fetch(expression) { fail!("unresolved Rust route constant: #{expression}") }
+end
+
+def receipt_state(route)
+  fields = %w[capability_expr source_command_expr side_effect_boundary_expr]
+    .map { |field| expression_value(route.fetch(field)) }
+  contains = ->(needle) { fields.any? { |field| field.include?(needle) } }
+  if contains.call("terminal")
+    "Terminal"
+  elsif %w[retention expiry garbage-collection].any? { |needle| contains.call(needle) }
+    "Retention"
+  elsif %w[persistence persist].any? { |needle| contains.call(needle) }
+    "Persistence"
+  elsif contains.call("receipt")
+    "Receipt"
+  elsif %w[denial denied blocked].any? { |needle| contains.call(needle) }
+    "Denial"
+  elsif %w[precondition readiness approval-packet].any? { |needle| contains.call(needle) }
+    "Precondition"
+  end
+end
+
+def quarantined_route?(method, path)
+  return false unless method == "GET"
+  production_prefix = "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-"
+  return true if path.start_with?(production_prefix)
+  minimal_prefix = "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-"
+  return false unless path.start_with?(minimal_prefix)
+
+  suffix = path.delete_prefix(minimal_prefix)
+  ![
+    "operator-approval-nonce-command-accepted-gate-boundary",
+    "wal-receipt-binding-boundary",
+    "post-write-readback-binding-boundary",
+    "rollback-tombstone-proof-boundary",
+  ].include?(suffix)
+end
+
+def canonical_only_evidence_route?(method, path, state)
+  method == "GET" && !state.nil? && !RETAINED_DIRECT_EVIDENCE_ROUTES.include?(path) &&
+    CANONICAL_ONLY_EVIDENCE_FAMILY_PREFIXES.any? { |prefix| path.start_with?(prefix) }
+end
+
+def route_policy(route, index)
+  method = expression_value(route.fetch("method_expr"))
+  path = expression_value(route.fetch("pattern_expr"))
+  boundary = expression_value(route.fetch("side_effect_boundary_expr"))
+  state = receipt_state(route)
+  quarantined = quarantined_route?(method, path)
+  profile = if quarantined
+    "control_ui_quarantined_legacy_mutation"
+  elsif method == "GET"
+    "control_ui_metadata_read"
+  else
+    "control_ui_mutation_plan"
+  end
+  dispatch = if path == "/api/evidence"
+    "EvidenceIndex"
+  elsif quarantined || canonical_only_evidence_route?(method, path, state)
+    "RetiredCompatibility"
+  else
+    "NativeGateway"
+  end
+  report_id = route["native_report_id"]
+  report_binding = if method != "GET"
+    "None"
+  elsif path == "/api/evidence"
+    "CanonicalEvidence"
+  elsif !report_id.nil?
+    "NativeExact"
+  elsif path == "/assets/hepta-agent-logo.png"
+    "NativeBinaryAsset"
+  elsif path.include?("<")
+    "NativeParameterized"
+  else
+    "None"
+  end
+  read_only = boundary.include?("read-only")
+  dry_run = boundary.include?("dry-run") || boundary.include?("plan only")
+  evidence_effect_class = if read_only
+    "read_only"
+  elsif dry_run
+    "dry_run"
+  elsif method == "POST"
+    "confirmation_required"
+  else
+    "declared_no_effect"
+  end
+  {
+    "key" => format("control_ui_%03d", index),
+    "ordinal" => index,
+    "method" => method,
+    "path" => path,
+    "path_kind" => path.include?("<") ? "parameterized" : "exact",
+    "permission_profile" => profile,
+    "dispatch_handler" => dispatch,
+    "required_gate" => nil,
+    "watchdog_probe" => WATCHDOG_PATHS.include?(path),
+    "response_policy" => method == "GET" && !quarantined ? "DigestBoundPagination" : "Passthrough",
+    "report_binding" => report_binding,
+    "renderer_key" => report_id.nil? ? nil : renderer_key(report_id),
+    "receipt_state" => state,
+    "evidence_effect_class" => evidence_effect_class,
+    "aliases" => [],
+    "legacy_compatibility_route" => !state.nil? && path != "/api/evidence",
+  }
+end
+
+def native_report_table_items(source)
+  marker = "const NATIVE_REPORT_DEFINITIONS: &[NativeReportDefinition] = &["
+  table_index = source.index(marker)
+  fail!("native report renderer table is missing") unless table_index
+  body_start = table_index + marker.length
+  table_end = source.index("\n];", body_start)
+  fail!("native report renderer table terminator is missing") unless table_end
+  [marker, table_index, body_start, table_end, split_top_level(source[body_start...table_end])]
+end
+
+def renderer_keys_from_table(source)
+  items = native_report_table_items(source).last
+  items.map.with_index do |item, index|
+    match = item.match(/\A(?:report|json_report!)\("([a-z0-9_]+)",/)
+    fail!("native report renderer #{index} has no stable key") unless match
+    match[1]
+  end
+end
+
+def validate_catalog!(records)
+  metadata = records.first
+  fail!("catalog metadata is missing") unless metadata&.fetch("kind", nil) == "metadata"
+  fail!("catalog schema mismatch") unless metadata.fetch("schema", nil) == CATALOG_SCHEMA
+  routes = route_records(records)
+  special = special_records(records)
+  route_aliases = route_alias_records(records)
+  static_assets = static_asset_records(records)
+  renderers = renderer_records(records)
+  permissions = permission_records(records)
+  fail!("catalog contains unknown record kinds") unless records.length == routes.length + special.length + route_aliases.length + static_assets.length + renderers.length + permissions.length + 1
+  fail!("route count drifted") unless metadata.fetch("route_count") == routes.length
+  fail!("special route count drifted") unless metadata.fetch("special_native_report_count") == special.length
+  fail!("route alias count drifted") unless metadata.fetch("route_alias_count") == route_aliases.length
+  fail!("static asset count drifted") unless metadata.fetch("static_asset_count") == static_assets.length
+  fail!("renderer count drifted") unless metadata.fetch("renderer_count") == renderers.length
+  fail!("permission profile count drifted") unless metadata.fetch("permission_profile_count") == permissions.length
+  permission_map = permissions.to_h { |record| [record.fetch("id"), record.reject { |key, _| %w[kind id].include?(key) }] }
+  fail!("permission profiles drifted") unless permission_map == PERMISSION_PROFILES
+  renderer_ids = renderers.map { |renderer| renderer.fetch("id") }
+  fail!("renderer ids are not dense") unless renderer_ids == (0...RENDERER_COUNT).to_a
+  renderer_keys = renderers.map { |renderer| renderer.fetch("key") }
+  fail!("renderer keys are not stable") unless renderer_keys == renderer_ids.map { |id| renderer_key(id) }
+  fail!("renderer status drifted") unless renderers.all? { |renderer| renderer["status"] == "active" }
+  known_paths = routes.map { |route| route.fetch("path") } + special.map { |route| route.fetch("path") }
+  seen_alias_keys = {}
+  seen_alias_constants = {}
+  seen_alias_paths = {}
+  route_aliases.each_with_index do |route_alias, index|
+    required_alias_fields = %w[kind key const_name canonical_const canonical alias_consts aliases]
+    fail!("route alias #{index} fields drifted") unless route_alias.keys.sort == required_alias_fields.sort
+    key = route_alias.fetch("key")
+    fail!("route alias #{index} key is invalid") unless key.match?(/\A[a-z][a-z0-9_]*\z/) && !seen_alias_keys[key]
+    seen_alias_keys[key] = true
+    const_name = route_alias.fetch("const_name")
+    canonical_const = route_alias.fetch("canonical_const")
+    alias_consts = route_alias.fetch("alias_consts")
+    constant_names = [const_name, canonical_const] + alias_consts
+    fail!("route alias #{index} constants are invalid") unless constant_names.all? { |name| name.is_a?(String) && name.match?(/\A[A-Z][A-Z0-9_]*\z/) }
+    fail!("route alias #{index} constants are duplicated") unless constant_names.uniq.length == constant_names.length && constant_names.none? { |name| seen_alias_constants[name] }
+    constant_names.each { |name| seen_alias_constants[name] = true }
+    canonical = route_alias.fetch("canonical")
+    aliases = route_alias.fetch("aliases")
+    fail!("route alias #{index} canonical path is invalid") unless canonical.is_a?(String) && canonical.start_with?("/")
+    fail!("route alias #{index} aliases are invalid") unless aliases.is_a?(Array) && !aliases.empty? && aliases.all? { |path| path.is_a?(String) && path.start_with?("/") }
+    fail!("route alias #{index} alias constants drifted") unless alias_consts.is_a?(Array) && alias_consts.length == aliases.length
+    paths = [canonical] + aliases
+    fail!("route alias #{index} paths are duplicated") unless paths.uniq.length == paths.length && paths.none? { |path| seen_alias_paths[path] }
+    paths.each { |path| seen_alias_paths[path] = true }
+    fail!("route alias #{index} references an unknown route") unless paths.all? { |path| known_paths.count(path) == 1 }
+    expression_pairs = [[canonical, canonical_const]] + aliases.zip(alias_consts)
+    expression_pairs.each do |path, expression|
+      record = (routes + special).find { |candidate| candidate.fetch("path") == path }
+      route_expression = record.fetch(record["kind"] == "control_ui_route" ? "pattern_expr" : "path_expr")
+      fail!("route alias #{index} Rust path reference drifted") unless route_expression == expression
+    end
+  end
+  seen_asset_keys = {}
+  seen_asset_paths = {}
+  seen_asset_constants = {}
+  static_assets.each_with_index do |asset, index|
+    required_asset_fields = %w[kind key path source_path core_const sha256_const content_type cache_control sha256]
+    fail!("static asset #{index} fields drifted") unless asset.keys.sort == required_asset_fields.sort
+    key = asset.fetch("key")
+    fail!("static asset #{index} key is invalid") unless key.match?(/\A[a-z][a-z0-9_]*\z/) && !seen_asset_keys[key]
+    seen_asset_keys[key] = true
+    path = asset.fetch("path")
+    fail!("static asset #{index} path is invalid") unless path.match?(%r{\A/assets/[a-zA-Z0-9._-]+\z}) && !seen_asset_paths[path]
+    fail!("static asset #{index} path collides with a route") if known_paths.include?(path)
+    seen_asset_paths[path] = true
+    source_path = asset.fetch("source_path")
+    fail!("static asset #{index} source is not a canonical Control UI asset") unless source_path.match?(%r{\Aapps/hepta-control-ui/assets/[a-zA-Z0-9._-]+\z})
+    source = ROOT.join(source_path)
+    fail!("static asset #{index} source is missing: #{source_path}") unless source.file?
+    core_const = asset.fetch("core_const")
+    sha256_const = asset.fetch("sha256_const")
+    constants = [core_const, sha256_const]
+    fail!("static asset #{index} constants are invalid") unless constants.all? { |name| name.match?(/\A[A-Z][A-Z0-9_]*\z/) }
+    fail!("static asset #{index} constants are duplicated") unless constants.uniq.length == constants.length && constants.none? { |name| seen_asset_constants[name] }
+    constants.each { |name| seen_asset_constants[name] = true }
+    fail!("static asset #{index} content type drifted") unless asset.fetch("content_type") == "image/png"
+    cache_control = asset.fetch("cache_control")
+    fail!("static asset #{index} cache policy is unsafe") unless cache_control == "public, max-age=3600, must-revalidate"
+    expected_sha256 = asset.fetch("sha256")
+    fail!("static asset #{index} SHA-256 is invalid") unless expected_sha256.match?(/\A[0-9a-f]{64}\z/)
+    actual_sha256 = Digest::SHA256.file(source).hexdigest
+    fail!("static asset #{index} SHA-256 drifted: #{source_path}") unless actual_sha256 == expected_sha256
+  end
+  required = %w[key ordinal method method_expr path pattern_expr source_command_expr capability_expr side_effect_boundary_expr path_kind permission_profile dispatch_handler required_gate watchdog_probe response_policy report_binding renderer_key receipt_state evidence_effect_class aliases legacy_compatibility_route native_report_id]
+  seen_route_keys = {}
+  routes.each_with_index do |route, index|
+    fail!("route #{index} fields drifted") unless (required - route.keys).empty?
+    fail!("route #{index} ordinal drifted") unless route.fetch("ordinal") == index
+    key = route.fetch("key")
+    fail!("route #{index} key is invalid") unless key == format("control_ui_%03d", index) && !seen_route_keys[key]
+    seen_route_keys[key] = true
+    method = route.fetch("method")
+    fail!("route #{index} method is invalid") unless %w[GET POST].include?(method) && route.fetch("method_expr") == JSON.generate(method)
+    path = route.fetch("path")
+    fail!("route #{index} path is invalid") unless path.start_with?("/")
+    fail!("route #{index} Rust path reference drifted") unless expression_value(route.fetch("pattern_expr")) == path
+    fail!("route #{index} path kind drifted") unless route.fetch("path_kind") == (path.include?("<") ? "parameterized" : "exact")
+    fail!("route #{index} permission profile is unknown") unless permission_map.key?(route.fetch("permission_profile"))
+    fail!("route #{index} dispatch is invalid") unless %w[NativeGateway EvidenceIndex RetiredCompatibility].include?(route.fetch("dispatch_handler"))
+    fail!("route #{index} required gate must be explicit null") unless route["required_gate"].nil?
+    fail!("route #{index} watchdog flag drifted") unless route.fetch("watchdog_probe") == WATCHDOG_PATHS.include?(path)
+    fail!("route #{index} response policy is invalid") unless %w[Passthrough DigestBoundPagination].include?(route.fetch("response_policy"))
+    fail!("route #{index} report binding is invalid") unless %w[None NativeExact NativeParameterized NativeBinaryAsset CanonicalEvidence].include?(route.fetch("report_binding"))
+    state = route["receipt_state"]
+    fail!("route #{index} receipt state is invalid") unless state.nil? || %w[Precondition Denial Receipt Persistence Retention Terminal].include?(state)
+    fail!("route #{index} evidence class is invalid") unless %w[read_only dry_run confirmation_required declared_no_effect].include?(route.fetch("evidence_effect_class"))
+    aliases = route.fetch("aliases")
+    fail!("route #{index} aliases are invalid") unless aliases.is_a?(Array) && aliases.all? { |path_alias| path_alias.start_with?("/") }
+    report_id = route["native_report_id"]
+    fail!("route #{index} report id is invalid") unless report_id.nil? || report_id.is_a?(Integer)
+    if !report_id.nil? && method != "GET"
+      fail!("route #{index} binds a native report to a non-GET method")
+    end
+    expected_renderer_key = report_id.nil? ? nil : renderer_key(report_id)
+    fail!("route #{index} renderer key drifted") unless route["renderer_key"] == expected_renderer_key
+  end
+  report_ids = routes.map { |route| route["native_report_id"] }.compact
+  special.each_with_index do |route, index|
+    fail!("special route #{index} key drifted") unless route.fetch("key") == format("special_native_report_%03d", index)
+    fail!("special route #{index} renderer key drifted") unless route.fetch("renderer_key") == renderer_key(route.fetch("report_id"))
+    path = route.fetch("path")
+    fail!("special route #{index} path is invalid") unless path.start_with?("/")
+    fail!("special route #{index} Rust path reference drifted") unless expression_value(route.fetch("path_expr")) == path
+    fail!("special route #{index} watchdog flag drifted") unless route.fetch("watchdog_probe") == WATCHDOG_PATHS.include?(path)
+  end
+  report_ids.concat(special.map { |route| route.fetch("report_id") })
+  dense_ids = (0..report_ids.max).to_a
+  fail!("native report ids are not dense") unless report_ids.uniq.sort == dense_ids
+  fail!("renderer implementation count drifted") unless dense_ids.length == RENDERER_COUNT
+  fail!("renderer table identity drifted") unless renderer_keys_from_table(REPORT_REGISTRY.read) == renderer_keys
+end
+
+def generated_core_static_assets(records)
+  static_asset_records(records).map do |asset|
+    source = "../../../#{asset.fetch('source_path')}"
+    <<~RUST.chomp
+      pub const #{asset.fetch('sha256_const')}: &str = #{JSON.generate(asset.fetch('sha256'))};
+      pub const #{asset.fetch('core_const')}: &[u8] = include_bytes!(#{JSON.generate(source)});
+    RUST
+  end.join("\n") + "\n"
+end
+
+def generated_gateway_static_assets(records)
+  assets = static_asset_records(records)
+  paths = assets.map { |asset| JSON.generate(asset.fetch("path")) }.join(", ")
+  arms = assets.map do |asset|
+    etag = %Q{"sha256-#{asset.fetch('sha256')}"}
+    <<~RUST.chomp
+      #{JSON.generate(asset.fetch('path'))} => Some(NativeGatewayBinaryAsset {
+          content_type: #{JSON.generate(asset.fetch('content_type'))},
+          cache_control: #{JSON.generate(asset.fetch('cache_control'))},
+          etag: #{JSON.generate(etag)},
+          body: hepta_core::control_ui::#{asset.fetch('core_const')},
+      })
+    RUST
+  end.join(",\n        ")
+  <<~RUST
+    pub(crate) const NATIVE_GATEWAY_BINARY_ASSET_PATHS: &[&str] = &[#{paths}];
+
+    #[rustfmt::skip]
+    pub(super) fn native_gateway_binary_asset(path: &str) -> Option<NativeGatewayBinaryAsset> {
+        match path {
+            #{arms},
+            _ => None,
+        }
+    }
+  RUST
+end
+
+def generated_route_aliases(records)
+  declarations = route_alias_records(records).flat_map do |route_alias|
+    aliases = route_alias.fetch("aliases").map { |path| JSON.generate(path) }.join(", ")
+    lines = [
+      "pub(crate) const #{route_alias.fetch('const_name')}: NativeRouteAliasSpec = NativeRouteAliasSpec {\n    canonical: #{JSON.generate(route_alias.fetch('canonical'))},\n    aliases: &[#{aliases}],\n};",
+      "pub(crate) const #{route_alias.fetch('canonical_const')}: &str = #{route_alias.fetch('const_name')}.canonical;",
+    ]
+    route_alias.fetch("alias_consts").each_with_index do |name, index|
+      lines << "pub(crate) const #{name}: &str = #{route_alias.fetch('const_name')}.aliases[#{index}];"
+    end
+    lines
+  end
+  table = route_alias_records(records).map { |route_alias| route_alias.fetch("const_name") }.join(", ")
+  <<~RUST
+    #{declarations.join("\n")}
+
+    const NATIVE_ROUTE_ALIAS_SPECS: &[NativeRouteAliasSpec] = &[#{table}];
+
+    pub(crate) fn native_route_aliases(path: &str) -> &'static [&'static str] {
+        NATIVE_ROUTE_ALIAS_SPECS
+            .iter()
+            .find_map(|route| (route.canonical == path).then_some(route.aliases))
+            .unwrap_or(&[])
+    }
+  RUST
+end
+
+def generated_routes(records)
+  body = route_records(records).map do |route|
+    "    ControlUiRouteSpec { method: #{route.fetch('method_expr')}, pattern: #{route.fetch('pattern_expr')}, source_command: #{route.fetch('source_command_expr')}, capability: #{route.fetch('capability_expr')}, side_effect_boundary: #{route.fetch('side_effect_boundary_expr')} },"
+  end.join("\n")
+  "#{generated_route_aliases(records)}\n#[rustfmt::skip]\npub(crate) const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[\n#{body}\n];\n"
+end
+
+def option_expression(report_id, type = "NativeReportId")
+  report_id.nil? ? "None" : "Some(NativeReportId(#{report_id}))"
+end
+
+def generated_bindings(records)
+  bound_routes = route_records(records).select { |route| !route["native_report_id"].nil? }
+  bound_routes.concat(special_records(records))
+  route_lines = bound_routes.map do |route|
+    report_id = route.key?("native_report_id") ? route.fetch("native_report_id") : route.fetch("report_id")
+    "    NativeReportRouteSpec { path: #{JSON.generate(route.fetch('path'))}, report_id: NativeReportId(#{report_id}) },"
+  end.join("\n")
+  renderer_key_lines = renderer_records(records).each_slice(8).map do |slice|
+    "    #{slice.map { |renderer| JSON.generate(renderer.fetch('key')) }.join(', ')},"
+  end.join("\n")
+  <<~RUST
+    use super::*;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+    #[serde(transparent)]
+    pub(crate) struct NativeReportId(pub(crate) u16);
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct NativeReportRouteSpec {
+        path: &'static str,
+        report_id: NativeReportId,
+    }
+
+    #[rustfmt::skip]
+    const NATIVE_REPORT_ROUTES: &[NativeReportRouteSpec] = &[
+    #{route_lines}
+    ];
+
+    #[rustfmt::skip]
+    const NATIVE_REPORT_KEYS: &[&str] = &[
+    #{renderer_key_lines}
+    ];
+
+    pub(crate) fn native_report_id(path: &str) -> Option<NativeReportId> {
+        NATIVE_REPORT_ROUTES
+            .iter()
+            .find_map(|route| (route.path == path).then_some(route.report_id))
+    }
+
+    pub(crate) fn native_report_key(report_id: NativeReportId) -> Option<&'static str> {
+        NATIVE_REPORT_KEYS.get(usize::from(report_id.0)).copied()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn registered_native_report_paths() -> impl Iterator<Item = &'static str> {
+        NATIVE_REPORT_ROUTES.iter().map(|route| route.path)
+    }
+  RUST
+end
+
+def generated_lifecycles(records)
+  body = route_records(records).map do |route|
+    profile = PERMISSION_PROFILES.fetch(route.fetch("permission_profile"))
+    path = JSON.generate(route.fetch("path"))
+    "    IngressLifecycleSpec { method: #{route.fetch('method_expr')}, path_pattern: #{path}, effect_class: IngressEffectClass::#{profile.fetch('effect_class')}, authority_owner: IngressAuthorityOwner::#{profile.fetch('authority_owner')}, secret_access: IngressAccessPolicy::#{profile.fetch('secret_access')}, config_access: IngressAccessPolicy::#{profile.fetch('config_access')}, network_access: IngressAccessPolicy::#{profile.fetch('network_access')}, durable_intent: IngressLifecycleRequirement::#{profile.fetch('durable_intent')}, effect_ack: IngressLifecycleRequirement::#{profile.fetch('effect_ack')}, terminal_receipt: IngressLifecycleRequirement::#{profile.fetch('terminal_receipt')}, default_enablement: IngressDefaultEnablement::#{profile.fetch('default_enablement')}, source: #{JSON.generate(profile.fetch('source'))} },"
+  end.join("\n")
+  static_assets = static_asset_records(records).map do |asset|
+    "    static_read(#{JSON.generate(asset.fetch('path'))}),"
+  end.join("\n")
+  "use super::*;\n\n#[rustfmt::skip]\npub(super) const CONTROL_UI_ROUTE_LIFECYCLES: &[IngressLifecycleSpec] = &[\n#{body}\n];\n\n#[rustfmt::skip]\npub(super) const CONTROL_UI_STATIC_ASSET_LIFECYCLES: &[IngressLifecycleSpec] = &[\n#{static_assets}\n];\n"
+end
+
+def receipt_state_expression(state)
+  state.nil? ? "None" : "Some(crate::gate_spec::ReceiptState::#{state})"
+end
+
+def aliases_expression(aliases)
+  return "&[]" if aliases.empty?
+  "&[#{aliases.map { |path| JSON.generate(path) }.join(', ')}]"
+end
+
+def generated_policies(records)
+  body = route_records(records).map do |route|
+    path = JSON.generate(route.fetch("path"))
+    "    ControlUiRoutePolicy { method: #{route.fetch('method_expr')}, path_pattern: #{path}, dispatch_handler: RouteDispatchHandler::#{route.fetch('dispatch_handler')}, required_gate: None, watchdog_probe: #{route.fetch('watchdog_probe')}, response_policy: RouteResponsePolicy::#{route.fetch('response_policy')}, report_binding: RouteReportBinding::#{route.fetch('report_binding')}, native_report_id: #{option_expression(route['native_report_id'])}, receipt_state: #{receipt_state_expression(route['receipt_state'])}, evidence_effect_class: #{JSON.generate(route.fetch('evidence_effect_class'))}, aliases: #{aliases_expression(route.fetch('aliases'))}, legacy_compatibility_route: #{route.fetch('legacy_compatibility_route')} },"
+  end.join("\n")
+  "use super::*;\n\n#[rustfmt::skip]\npub(super) const CONTROL_UI_ROUTE_POLICIES: &[ControlUiRoutePolicy] = &[\n#{body}\n];\n"
+end
+
+def generated_watchdog(records)
+  expressions = {}
+  route_records(records).each do |route|
+    expressions[route.fetch("path")] = route.fetch("pattern_expr") if route.fetch("watchdog_probe")
+  end
+  special_records(records).each do |route|
+    expressions[route.fetch("path")] = route.fetch("path_expr") if route.fetch("watchdog_probe")
+  end
+  missing = WATCHDOG_PATHS - expressions.keys
+  fail!("watchdog paths are absent from route catalog: #{missing.join(',')}") unless missing.empty?
+  lines = WATCHDOG_PATHS.map { |path| "    #{JSON.generate(path)}," }.join("\n")
+  "pub(crate) const WATCHDOG_PROBE_PATHS: &[&str] = &[\n#{lines}\n];\n"
+end
+
+def indent_item(item)
+  lines = item.lines.map(&:rstrip)
+  minimum = lines.drop(1).reject(&:empty?).map { |line| line[/\A\s*/].length }.min || 0
+  normalized = [lines.first.strip] + lines.drop(1).map { |line| line[minimum..] || "" }
+  normalized.map { |line| "    #{line}" }.join("\n")
+end
+
+def bind_report_registry!
+  source = REPORT_REGISTRY.binread
+  _, _, _, _, items = native_report_table_items(source)
+  fail!("renderer count drifted during binding") unless items.length == RENDERER_COUNT
+  expected_keys = (0...RENDERER_COUNT).map { |id| renderer_key(id) }
+  if items.all? { |item| item.match?(/\A(?:report|json_report!)\("[a-z0-9_]+",/) }
+    fail!("renderer keys drifted") unless renderer_keys_from_table(source) == expected_keys
+    return
+  end
+  fail!("renderer table is partially keyed") if items.any? { |item| item.match?(/\A(?:report|json_report!)\("[a-z0-9_]+",/) }
+
+  source.sub!(
+    "struct NativeReportDefinition {\n    renderer: NativeReportRenderer,\n}",
+    "struct NativeReportDefinition {\n    key: &'static str,\n    renderer: NativeReportRenderer,\n}",
+  ) || fail!("native report definition shape drifted")
+  source.sub!(
+    "const fn report(renderer: NativeReportRenderer) -> NativeReportDefinition {\n    NativeReportDefinition { renderer }\n}",
+    "const fn report(key: &'static str, renderer: NativeReportRenderer) -> NativeReportDefinition {\n    NativeReportDefinition { key, renderer }\n}",
+  ) || fail!("native report constructor shape drifted")
+  old_macro = <<~RUST.chomp
+    macro_rules! json_report {
+        ($context:ident => $body:expr) => {
+            report(|$context| ("200 OK", NATIVE_REPORT_JSON_CONTENT_TYPE, $body))
+        };
+    }
+  RUST
+  new_macro = <<~RUST.chomp
+    macro_rules! json_report {
+        ($key:literal, $context:ident => $body:expr) => {
+            report($key, |$context| ("200 OK", NATIVE_REPORT_JSON_CONTENT_TYPE, $body))
+        };
+    }
+  RUST
+  source.sub!(old_macro, new_macro) || fail!("native report JSON macro shape drifted")
+  keyed_items = items.each_with_index.map do |item, index|
+    key = renderer_key(index)
+    if item.start_with?("report(")
+      item.sub(/\Areport\(/, "report(#{JSON.generate(key)}, ")
+    elsif item.start_with?("json_report!(")
+      item.sub(/\Ajson_report!\(/, "json_report!(#{JSON.generate(key)}, ")
+    else
+      fail!("unknown native report renderer form at #{index}")
+    end
+  end
+  marker, table_index, _, table_end, = native_report_table_items(source)
+  table = marker + "\n" + keyed_items.map { |item| indent_item(item) + "," }.join("\n") + "\n];"
+  atomic_write(REPORT_REGISTRY, source[0...table_index] + table + source[(table_end + 3)..])
+end
+
+def upgraded_route_aliases(special)
+  canonical_const = "TELEGRAM_LIVE_SOAK_ENDPOINT"
+  alias_const = "TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT"
+  canonical = special.find { |route| route.fetch("path_expr") == canonical_const }
+  path_alias = special.find { |route| route.fetch("path_expr") == alias_const }
+  fail!("legacy Telegram live-soak canonical route is missing") unless canonical
+  fail!("legacy Telegram live-soak status alias is missing") unless path_alias
+  [
+    {
+      "kind" => "route_alias",
+      "key" => "telegram_live_soak",
+      "const_name" => "TELEGRAM_LIVE_SOAK_ROUTE",
+      "canonical_const" => canonical_const,
+      "canonical" => expression_value(canonical_const),
+      "alias_consts" => [alias_const],
+      "aliases" => [expression_value(alias_const)],
+    },
+  ]
+end
+
+def bootstrap_static_assets
+  # Migration-only seed for a legacy v1 catalog. Once upgraded, the JSONL
+  # catalog owns these records and their exact digests.
+  [
+    ["hepta_agent_logo", "/assets/hepta-agent-logo.png", "apps/hepta-control-ui/assets/hepta-agent-logo.png", "CONTROL_UI_HEPTA_AGENT_LOGO_PNG"],
+    ["control_ui_glass_k", "/assets/k.png", "apps/hepta-control-ui/assets/k.png", "CONTROL_UI_GLASS_K_PNG"],
+  ].map do |key, path, source_path, core_const|
+    {
+      "kind" => "static_asset",
+      "key" => key,
+      "path" => path,
+      "source_path" => source_path,
+      "core_const" => core_const,
+      "sha256_const" => "#{core_const}_SHA256",
+      "content_type" => "image/png",
+      "cache_control" => "public, max-age=3600, must-revalidate",
+      "sha256" => Digest::SHA256.file(ROOT.join(source_path)).hexdigest,
+    }
+  end
+end
+
+def remove_legacy_route_alias_declaration!
+  source = ROUTE_REGISTRY.binread
+  legacy_declaration = /pub\(crate\) const TELEGRAM_LIVE_SOAK_ROUTE: NativeRouteAliasSpec = NativeRouteAliasSpec \{\s*canonical: "(?:\\.|[^"\\])*",\s*aliases: &\["(?:\\.|[^"\\])*"\],\s*\};\s*pub\(crate\) const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = TELEGRAM_LIVE_SOAK_ROUTE\.canonical;\s*pub\(crate\) const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = TELEGRAM_LIVE_SOAK_ROUTE\.aliases\[0\];\s*/m
+  return unless source.match?(legacy_declaration)
+
+  atomic_write(ROUTE_REGISTRY, source.sub(legacy_declaration, ""))
+end
+
+def upgrade!
+  records = raw_catalog_records
+  metadata = records.first
+  fail!("catalog is already typed") if metadata&.fetch("schema", nil) == CATALOG_SCHEMA
+  fail!("unsupported catalog upgrade source") unless metadata&.fetch("schema", nil) == "hepta_native_route_catalog_v1"
+  routes = route_records(records)
+  special = special_records(records)
+  route_aliases = upgraded_route_aliases(special)
+  static_assets = bootstrap_static_assets
+  typed_records = [
+    metadata.merge(
+      "schema" => CATALOG_SCHEMA,
+      "renderer_count" => RENDERER_COUNT,
+      "permission_profile_count" => PERMISSION_PROFILES.length,
+      "route_alias_count" => route_aliases.length,
+      "static_asset_count" => static_assets.length,
+    ),
+  ]
+  typed_records.concat(route_aliases)
+  typed_records.concat(static_assets)
+  PERMISSION_PROFILES.each do |id, profile|
+    typed_records << { "kind" => "permission_profile", "id" => id }.merge(profile)
+  end
+  RENDERER_COUNT.times do |report_id|
+    typed_records << {
+      "kind" => "renderer",
+      "id" => report_id,
+      "key" => renderer_key(report_id),
+      "status" => "active",
+    }
+  end
+  routes.each_with_index do |route, index|
+    typed_records << route.merge(route_policy(route, index))
+  end
+  special.each_with_index do |route, index|
+    path = expression_value(route.fetch("path_expr"))
+    typed_records << route.merge(
+      "key" => format("special_native_report_%03d", index),
+      "path" => path,
+      "renderer_key" => renderer_key(route.fetch("report_id")),
+      "watchdog_probe" => WATCHDOG_PATHS.include?(path),
+    )
+  end
+  bind_report_registry!
+  remove_legacy_route_alias_declaration!
+  atomic_write(CATALOG, typed_records.map { |record| JSON.generate(record) }.join("\n") + "\n")
+  apply!
+end
+
+def materialize_paths!
+  records = raw_catalog_records
+  fail!("catalog schema mismatch") unless records.first&.fetch("schema", nil) == CATALOG_SCHEMA
+  records.each do |record|
+    case record["kind"]
+    when "control_ui_route"
+      record["path"] = expression_value(record.fetch("pattern_expr"))
+    when "special_native_report"
+      record["path"] = expression_value(record.fetch("path_expr"))
+    end
+  end
+  atomic_write(CATALOG, records.map { |record| JSON.generate(record) }.join("\n") + "\n")
+  apply!
+end
+
+def write_catalog(routes, bindings, special, route_sha, binding_sha)
+  fail!("binding index exceeds route count") if bindings.keys.any? { |index| index >= routes.length }
+  records = [
+    {
+      "kind" => "metadata",
+      "schema" => "hepta_native_route_catalog_v1",
+      "route_count" => routes.length,
+      "special_native_report_count" => special.length,
+      "legacy_route_registry_sha256" => route_sha,
+      "legacy_native_report_bindings_sha256" => binding_sha,
+    },
+  ]
+  routes.each_with_index do |route, index|
+    records << {
+      "kind" => "control_ui_route",
+      "method_expr" => route.fetch("method"),
+      "pattern_expr" => route.fetch("pattern"),
+      "source_command_expr" => route.fetch("source_command"),
+      "capability_expr" => route.fetch("capability"),
+      "side_effect_boundary_expr" => route.fetch("side_effect_boundary"),
+      "native_report_id" => bindings[index],
+    }
+  end
+  records.concat(special)
+  atomic_write(CATALOG, records.map { |record| JSON.generate(record) }.join("\n") + "\n")
+end
+
+def bootstrap!
+  fail!("catalog already exists") if CATALOG.exist?
+  route_source = ROUTE_REGISTRY.binread
+  binding_source = LEGACY_BINDINGS.binread
+  routes = parse_legacy_routes(route_source)
+  bindings = parse_legacy_bindings(binding_source)
+  special = parse_legacy_special_routes(binding_source)
+  write_catalog(
+    routes,
+    bindings,
+    special,
+    Digest::SHA256.hexdigest(route_source),
+    Digest::SHA256.hexdigest(binding_source),
+  )
+  marker_index = route_source.index(ROUTE_MARKER)
+  fail!("legacy route marker disappeared") unless marker_index
+  rewritten = route_source[0...marker_index] + GENERATED_INCLUDE + "\n"
+  atomic_write(ROUTE_REGISTRY, rewritten)
+  upgrade!
+end
+
+def apply!
+  records = catalog_records
+  atomic_write(GENERATED_ROUTES, generated_routes(records))
+  atomic_write(GENERATED_BINDINGS, generated_bindings(records))
+  atomic_write(GENERATED_LIFECYCLES, generated_lifecycles(records))
+  atomic_write(GENERATED_POLICIES, generated_policies(records))
+  atomic_write(GENERATED_WATCHDOG, generated_watchdog(records))
+  atomic_write(GENERATED_CORE_STATIC_ASSETS, generated_core_static_assets(records))
+  atomic_write(GENERATED_GATEWAY_STATIC_ASSETS, generated_gateway_static_assets(records))
+end
+
+def verify!
+  records = catalog_records
+  fail!("route registry does not include generated routes") unless ROUTE_REGISTRY.read.include?(GENERATED_INCLUDE)
+  expected_routes = generated_routes(records)
+  expected_bindings = generated_bindings(records)
+  expected_lifecycles = generated_lifecycles(records)
+  expected_policies = generated_policies(records)
+  expected_watchdog = generated_watchdog(records)
+  expected_core_static_assets = generated_core_static_assets(records)
+  expected_gateway_static_assets = generated_gateway_static_assets(records)
+  fail!("generated route specs drifted; run apply") unless GENERATED_ROUTES.binread == expected_routes
+  fail!("generated report bindings drifted; run apply") unless GENERATED_BINDINGS.binread == expected_bindings
+  fail!("generated route lifecycles drifted; run apply") unless GENERATED_LIFECYCLES.binread == expected_lifecycles
+  fail!("generated route policies drifted; run apply") unless GENERATED_POLICIES.binread == expected_policies
+  fail!("generated watchdog routes drifted; run apply") unless GENERATED_WATCHDOG.binread == expected_watchdog
+  fail!("generated core static assets drifted; run apply") unless GENERATED_CORE_STATIC_ASSETS.binread == expected_core_static_assets
+  fail!("generated gateway static assets drifted; run apply") unless GENERATED_GATEWAY_STATIC_ASSETS.binread == expected_gateway_static_assets
+  digest = Digest::SHA256.hexdigest(CATALOG.binread)
+  puts JSON.generate(
+    schema: "hepta_native_route_catalog_verify_v2",
+    status: "ready",
+    route_count: route_records(records).length,
+    native_report_path_count: route_records(records).count { |route| !route["native_report_id"].nil? } + special_records(records).length,
+    special_native_report_count: special_records(records).length,
+    route_alias_count: route_alias_records(records).length,
+    static_asset_count: static_asset_records(records).length,
+    renderer_count: renderer_records(records).length,
+    permission_profile_count: permission_records(records).length,
+    catalog_sha256: digest,
+  )
+end
+
+command = ARGV.fetch(0, "verify")
+case command
+when "bootstrap"
+  bootstrap!
+when "upgrade"
+  upgrade!
+when "materialize-paths"
+  materialize_paths!
+when "apply"
+  apply!
+when "verify"
+  verify!
+else
+  fail!("usage: scripts/hepta-native-route-catalog [bootstrap|upgrade|materialize-paths|apply|verify]")
+end

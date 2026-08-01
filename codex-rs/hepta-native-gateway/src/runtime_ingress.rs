@@ -32,8 +32,11 @@ use serde::ser::SerializeStruct;
 use sha2::Digest;
 use sha2::Sha256;
 
+mod generated_control_ui_routes;
 mod rejection_response;
 
+use generated_control_ui_routes::CONTROL_UI_ROUTE_LIFECYCLES;
+use generated_control_ui_routes::CONTROL_UI_STATIC_ASSET_LIFECYCLES;
 pub(crate) use rejection_response::runtime_ingress_rejection_response;
 
 pub(crate) const TELEGRAM_RECEIVE_ONCE_ENDPOINT: &str = "/api/telegram-receive-once";
@@ -281,7 +284,6 @@ const SPECIAL_INGRESS_LIFECYCLES: &[IngressLifecycleSpec] = &[
     static_read("/gateway-status"),
     static_read("/gateway-status.html"),
     static_read("/native-gateway.html"),
-    static_read("/assets/hepta-agent-logo.png"),
     metadata_read("/health"),
     metadata_read("/api/health"),
     metadata_read("/api/native-gateway"),
@@ -711,41 +713,10 @@ pub(crate) fn telegram_receive_once_response(
 }
 
 fn control_ui_lifecycle(spec: &'static crate::gate_spec::GateSpec) -> Option<IngressLifecycleSpec> {
-    let (effect_class, authority_owner, default_enablement, source) = match spec.method {
-        "GET" if spec.is_quarantined_transitive_effect() => (
-            IngressEffectClass::QuarantinedLegacyMutation,
-            IngressAuthorityOwner::UnassignedLegacyMutation,
-            IngressDefaultEnablement::DisabledUnlessExplicitGate,
-            "control_ui_transitive_effect_quarantine",
-        ),
-        "GET" => (
-            IngressEffectClass::MetadataRead,
-            IngressAuthorityOwner::RuntimeKernelRequestBinding,
-            IngressDefaultEnablement::ReadOnlyEnabled,
-            "control_ui_route_specs",
-        ),
-        "POST" if spec.is_guarded() => (
-            IngressEffectClass::MutationPlan,
-            IngressAuthorityOwner::RuntimeKernelRequestBinding,
-            IngressDefaultEnablement::PlanOnlyEnabled,
-            "control_ui_route_specs",
-        ),
-        _ => return None,
-    };
-    Some(IngressLifecycleSpec {
-        method: spec.method,
-        path_pattern: spec.pattern,
-        effect_class,
-        authority_owner,
-        secret_access: IngressAccessPolicy::Forbidden,
-        config_access: IngressAccessPolicy::MetadataOnly,
-        network_access: IngressAccessPolicy::Forbidden,
-        durable_intent: IngressLifecycleRequirement::NotRequired,
-        effect_ack: IngressLifecycleRequirement::NotRequired,
-        terminal_receipt: IngressLifecycleRequirement::NotRequired,
-        default_enablement,
-        source,
-    })
+    CONTROL_UI_ROUTE_LIFECYCLES
+        .iter()
+        .copied()
+        .find(|lifecycle| lifecycle.method == spec.method && lifecycle.path_pattern == spec.pattern)
 }
 
 pub(crate) fn declared_runtime_ingress_lifecycle(
@@ -755,6 +726,7 @@ pub(crate) fn declared_runtime_ingress_lifecycle(
     SPECIAL_INGRESS_LIFECYCLES
         .iter()
         .copied()
+        .chain(CONTROL_UI_STATIC_ASSET_LIFECYCLES.iter().copied())
         .find(|spec| spec.method == method && route_pattern_matches(spec.path_pattern, path))
         .or_else(|| {
             CONTROL_UI_ROUTE_SPECS.iter().find_map(|route| {
@@ -774,8 +746,9 @@ pub(crate) fn runtime_ingress_lifecycle(method: &str, path: &str) -> Option<Ingr
 #[cfg(test)]
 pub(crate) fn is_detached_control_ui_report_for_test(method: &str, path: &str) -> bool {
     method == "GET"
-        && (CONTROL_UI_ROUTE_SPECS.iter().any(|route| {
-            route.is_quarantined_transitive_effect() && route_pattern_matches(route.pattern, path)
+        && (CONTROL_UI_ROUTE_LIFECYCLES.iter().any(|route| {
+            route.effect_class == IngressEffectClass::QuarantinedLegacyMutation
+                && route_pattern_matches(route.path_pattern, path)
         }) || DETACHED_CONTROL_UI_REPORT_PATHS.contains(&path))
 }
 
@@ -783,11 +756,8 @@ pub(crate) fn runtime_ingress_lifecycle_registry() -> Vec<IngressLifecycleSpec> 
     SPECIAL_INGRESS_LIFECYCLES
         .iter()
         .copied()
-        .chain(
-            CONTROL_UI_ROUTE_SPECS
-                .iter()
-                .filter_map(control_ui_lifecycle),
-        )
+        .chain(CONTROL_UI_STATIC_ASSET_LIFECYCLES.iter().copied())
+        .chain(CONTROL_UI_ROUTE_LIFECYCLES.iter().copied())
         .collect()
 }
 

@@ -29,12 +29,7 @@ pub(super) fn dispatch_manifest_route(
             ) else {
                 return manifest_dispatch_mismatch(stream);
             };
-            write_http_response(
-                stream,
-                response.status,
-                "application/json; charset=utf-8",
-                response.body.as_bytes(),
-            )
+            write_json_response(stream, response.status, &response.body)
         }
         RouteDispatchHandler::EffectReconciliation => {
             let Some(response) = runtime.route_effect_reconciliation(
@@ -45,12 +40,7 @@ pub(super) fn dispatch_manifest_route(
             ) else {
                 return manifest_dispatch_mismatch(stream);
             };
-            write_http_response(
-                stream,
-                response.status,
-                "application/json; charset=utf-8",
-                response.body.as_bytes(),
-            )
+            write_json_response(stream, response.status, &response.body)
         }
         RouteDispatchHandler::TelegramReconciliation => {
             let Some(response) = runtime.route_telegram_reconciliation(
@@ -61,12 +51,7 @@ pub(super) fn dispatch_manifest_route(
             ) else {
                 return manifest_dispatch_mismatch(stream);
             };
-            write_http_response(
-                stream,
-                response.status,
-                "application/json; charset=utf-8",
-                response.body.as_bytes(),
-            )
+            write_json_response(stream, response.status, &response.body)
         }
         RouteDispatchHandler::RuntimeKernelCanary => {
             if !runtime_kernel_canary_body_admitted(request_body) {
@@ -145,12 +130,7 @@ pub(super) fn dispatch_manifest_route(
             ) else {
                 return manifest_dispatch_mismatch(stream);
             };
-            write_http_response(
-                stream,
-                response.status,
-                "application/json; charset=utf-8",
-                response.body.as_bytes(),
-            )
+            write_json_response(stream, response.status, &response.body)
         }
         RouteDispatchHandler::TelegramReceiveOnce => {
             let response =
@@ -188,10 +168,15 @@ pub(super) fn dispatch_manifest_route(
             manifest_entry,
         ),
         RouteDispatchHandler::NativeGateway => {
-            if let Some((status, content_type, body)) =
-                route_native_gateway_binary_asset(method, path)
-            {
-                return write_http_response(stream, status, content_type, body);
+            if let Some(asset) = route_native_gateway_binary_asset(method, path) {
+                return write_http_asset_response(
+                    stream,
+                    "200 OK",
+                    asset.content_type,
+                    asset.cache_control,
+                    asset.etag,
+                    asset.body,
+                );
             }
             let (status, content_type, body) = route_native_gateway_request_with_preflight(
                 method,
@@ -225,5 +210,14 @@ fn manifest_dispatch_mismatch(stream: &mut TcpStream) -> Result<()> {
         "503 Service Unavailable",
         "application/json; charset=utf-8",
         br#"{"error":"route_manifest.dispatch_mismatch"}"#,
+    )
+}
+
+fn write_json_response(stream: &mut TcpStream, status: &str, body: &str) -> Result<()> {
+    write_http_response(
+        stream,
+        status,
+        "application/json; charset=utf-8",
+        body.as_bytes(),
     )
 }

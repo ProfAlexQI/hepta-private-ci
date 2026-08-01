@@ -4,20 +4,28 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+NATIVE_GATEWAY_RUNTIME_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_CATALOG="codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl"
 ROUTE_COUNT_HELPER="scripts/lib/hepta-native-route-count.sh"
 
 grep -Fq \
   'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();' \
-  "$NATIVE_GATEWAY_SOURCE" \
+  "$NATIVE_GATEWAY_RUNTIME_SOURCE" \
   || {
     echo "native gateway source command count must be derived from CONTROL_UI_ROUTE_SPECS" >&2
     exit 1
   }
 
-grep -Fq 'const CONTROL_UI_ROUTE_SPECS:' "$ROUTE_COUNT_HELPER" \
+grep -Fq 'control_ui_route_catalog_v1.jsonl' "$ROUTE_COUNT_HELPER" \
   || {
-    echo "route count helper must derive its value from CONTROL_UI_ROUTE_SPECS" >&2
+    echo "route count helper must derive its value from the canonical route catalog" >&2
+    exit 1
+  }
+
+scripts/hepta-native-route-catalog verify >/dev/null
+[[ -s "$ROUTE_CATALOG" ]] \
+  || {
+    echo "canonical route catalog is missing or empty" >&2
     exit 1
   }
 
@@ -106,7 +114,7 @@ jq -n \
     static_capability_count_regression:false,
     static_context_count_regression:false,
     static_terminal_marker_count_regression:false,
-    route_count_source:"CONTROL_UI_ROUTE_SPECS",
+    route_count_source:"typed_control_ui_route_catalog_v2",
     capability_count_source:"current_reality_capability_matrix_report_capabilities_registry",
     context_count_source:"ContextRecallSource::ALL",
     derived_route_count:$derived_route_count,

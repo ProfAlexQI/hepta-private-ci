@@ -396,8 +396,7 @@ data-readiness-kind="live-adapter"
 terminalQrRendering
 data-terminal-qr-rendering
 fixed-cell-terminal-qr"###;
-pub const CONTROL_UI_HEPTA_AGENT_LOGO_PNG: &[u8] =
-    include_bytes!("../../../apps/hepta-control-ui/assets/hepta-agent-logo.png");
+include!("control_ui_static_assets.rs");
 pub const CONTROL_UI_README: &str = include_str!("../../../apps/hepta-control-ui/README.md");
 pub const CONTROL_UI_SMOKE_SH: &str = include_str!("../../../scripts/hepta-control-ui-smoke.sh");
 pub const CONTROL_UI_BROWSER_SMOKE_SH: &str =
@@ -2910,6 +2909,11 @@ pub fn control_ui_assets() -> Vec<ControlUiAsset> {
             "image/png",
             CONTROL_UI_HEPTA_AGENT_LOGO_PNG,
         ),
+        asset_bytes(
+            "apps/hepta-control-ui/assets/k.png",
+            "image/png",
+            CONTROL_UI_GLASS_K_PNG,
+        ),
         asset("apps/hepta-control-ui/README.md", "docs", CONTROL_UI_README),
     ]
 }
@@ -4223,7 +4227,7 @@ mod tests {
         assert_eq!(report.screen_count, 26);
         assert_eq!(report.implemented_screen_count, 26);
         assert_eq!(report.screen_coverage_percent, 100);
-        assert_eq!(report.asset_count, 4);
+        assert_eq!(report.asset_count, 5);
         assert_eq!(report.asset_coverage_percent, 100);
         assert_eq!(report.command_binding_count, 51);
         assert_eq!(report.interaction_capability_count, 30);

@@ -287,6 +287,34 @@ pub(crate) fn write_http_response(
     write_http_response_with_timeout(stream, status, content_type, body, HTTP_RESPONSE_DEADLINE)
 }
 
+pub(crate) fn write_http_asset_response(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    cache_control: &str,
+    etag: &str,
+    body: &[u8],
+) -> Result<()> {
+    if cache_control.contains('\r')
+        || cache_control.contains('\n')
+        || etag.contains('\r')
+        || etag.contains('\n')
+    {
+        anyhow::bail!("native gateway asset response contains an invalid cache header");
+    }
+    let deadline = Instant::now()
+        .checked_add(HTTP_RESPONSE_DEADLINE)
+        .context("native gateway HTTP response deadline overflow")?;
+    write_http_response_before_deadline_with_asset_cache(
+        stream,
+        status,
+        content_type,
+        body,
+        deadline,
+        Some((cache_control, etag)),
+    )
+}
+
 pub(crate) fn write_http_response_with_timeout(
     stream: &mut TcpStream,
     status: &str,
@@ -307,8 +335,29 @@ fn write_http_response_before_deadline(
     body: &[u8],
     deadline: Instant,
 ) -> Result<()> {
+    write_http_response_before_deadline_with_asset_cache(
+        stream,
+        status,
+        content_type,
+        body,
+        deadline,
+        None,
+    )
+}
+
+fn write_http_response_before_deadline_with_asset_cache(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    body: &[u8],
+    deadline: Instant,
+    asset_cache: Option<(&str, &str)>,
+) -> Result<()> {
+    let cache_headers = asset_cache.map_or_else(String::new, |(cache_control, etag)| {
+        format!("cache-control: {cache_control}\r\netag: {etag}\r\n")
+    });
     let header = format!(
-        "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\nContent-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\r\n",
+        "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\n{cache_headers}connection: close\r\nContent-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\r\n",
         body.len()
     );
     write_http_bytes_before_deadline(stream, header.as_bytes(), deadline)
