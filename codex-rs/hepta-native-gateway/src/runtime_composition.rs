@@ -8,6 +8,7 @@ use anyhow::Context;
 use anyhow::Result;
 #[cfg(test)]
 use hepta_contracts::RevisionStamp;
+use hepta_intelligence::NduH1EvaluationSummary;
 use hepta_memory::DurableIntegrityKey;
 use hepta_runtime::NduH1Runtime;
 use hepta_runtime::NduH1RuntimeStatus;
@@ -86,6 +87,7 @@ pub(crate) struct NduH1GatewayStatus {
     replay_count: u64,
     rejected_count: u64,
     journal_head: Option<String>,
+    evaluation: Option<NduH1EvaluationSummary>,
     last_error: Option<String>,
 }
 
@@ -504,6 +506,7 @@ impl NativeGatewayRuntime {
                 replay_count: 0,
                 rejected_count: 0,
                 journal_head: None,
+                evaluation: None,
                 last_error: None,
             });
         };
@@ -518,6 +521,7 @@ impl NativeGatewayRuntime {
             replay_count,
             rejected_count,
             journal_head,
+            evaluation,
             last_error,
             ..
         } = runtime
@@ -536,6 +540,7 @@ impl NativeGatewayRuntime {
             replay_count,
             rejected_count,
             journal_head: Some(journal_head),
+            evaluation: Some(evaluation),
             last_error,
         })
     }

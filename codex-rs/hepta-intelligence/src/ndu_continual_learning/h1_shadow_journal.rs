@@ -58,6 +58,115 @@ struct NduH1JournalArm {
     replay_receipt_hash: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NduH1EvaluationSummary {
+    pub schema: &'static str,
+    pub observed_event_count: u64,
+    pub delayed_outcome_count: u64,
+    pub arms: Vec<NduH1ArmEvaluation>,
+    pub promotion_eligible: bool,
+    pub production_authority_granted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NduH1ArmEvaluation {
+    pub baseline: String,
+    pub sample_count: u64,
+    pub mean_task_value_basis_points: i32,
+    pub mean_learning_value_basis_points: i32,
+    pub mean_trust_basis_points: i32,
+    pub mean_memory_pollution_risk_basis_points: i32,
+    pub mean_resource_cost_basis_points: i32,
+    pub mean_uncertainty_basis_points: i32,
+    pub feasibility_violation_count: u64,
+}
+
+#[derive(Debug, Default)]
+struct NduH1EvaluationAccumulator {
+    observed_event_count: u64,
+    delayed_outcome_count: u64,
+    arms: BTreeMap<String, NduH1ArmAccumulator>,
+}
+
+#[derive(Debug, Default)]
+struct NduH1ArmAccumulator {
+    sample_count: u64,
+    task_value_basis_points: i64,
+    learning_value_basis_points: i64,
+    trust_basis_points: i64,
+    memory_pollution_risk_basis_points: i64,
+    resource_cost_basis_points: i64,
+    uncertainty_basis_points: i64,
+    feasibility_violation_count: u64,
+}
+
+impl NduH1EvaluationAccumulator {
+    fn observe(&mut self, record: &NduH1JournalRecord) {
+        self.observed_event_count += 1;
+        self.delayed_outcome_count += u64::from(record.delayed_outcome_hash.is_some());
+        for arm in &record.arms {
+            let aggregate = self.arms.entry(arm.baseline.clone()).or_default();
+            aggregate.sample_count += 1;
+            aggregate.task_value_basis_points += i64::from(arm.task_value_basis_points);
+            aggregate.learning_value_basis_points += i64::from(arm.learning_value_basis_points);
+            aggregate.trust_basis_points += i64::from(arm.trust_basis_points);
+            aggregate.memory_pollution_risk_basis_points +=
+                i64::from(arm.memory_pollution_risk_basis_points);
+            aggregate.resource_cost_basis_points += i64::from(arm.resource_cost_basis_points);
+            aggregate.uncertainty_basis_points += i64::from(arm.uncertainty_basis_points);
+            if [
+                arm.safety.as_str(),
+                arm.permission.as_str(),
+                arm.budget.as_str(),
+                arm.correctability.as_str(),
+            ]
+            .into_iter()
+            .any(|verdict| verdict != "satisfied")
+            {
+                aggregate.feasibility_violation_count += 1;
+            }
+        }
+    }
+
+    fn summary(&self) -> NduH1EvaluationSummary {
+        NduH1EvaluationSummary {
+            schema: "hepta_ndu_h1_evaluation_summary_v1",
+            observed_event_count: self.observed_event_count,
+            delayed_outcome_count: self.delayed_outcome_count,
+            arms: self
+                .arms
+                .iter()
+                .map(|(baseline, aggregate)| aggregate.summary(baseline))
+                .collect(),
+            promotion_eligible: false,
+            production_authority_granted: false,
+        }
+    }
+}
+
+impl NduH1ArmAccumulator {
+    fn summary(&self, baseline: &str) -> NduH1ArmEvaluation {
+        let mean = |total: i64| -> i32 {
+            if self.sample_count == 0 {
+                0
+            } else {
+                (total / self.sample_count as i64) as i32
+            }
+        };
+        NduH1ArmEvaluation {
+            baseline: baseline.to_owned(),
+            sample_count: self.sample_count,
+            mean_task_value_basis_points: mean(self.task_value_basis_points),
+            mean_learning_value_basis_points: mean(self.learning_value_basis_points),
+            mean_trust_basis_points: mean(self.trust_basis_points),
+            mean_memory_pollution_risk_basis_points: mean(self.memory_pollution_risk_basis_points),
+            mean_resource_cost_basis_points: mean(self.resource_cost_basis_points),
+            mean_uncertainty_basis_points: mean(self.uncertainty_basis_points),
+            feasibility_violation_count: self.feasibility_violation_count,
+        }
+    }
+}
+
 impl NduH1JournalRecord {
     fn from_receipt(receipt: &NduH1ShadowReceipt) -> Self {
         Self {
@@ -201,6 +310,7 @@ pub struct NduH1Journal {
     head: ContentHash,
     event_journal_hashes: BTreeMap<String, ContentHash>,
     record_count: u64,
+    evaluation: NduH1EvaluationAccumulator,
 }
 
 impl NduH1Journal {
@@ -246,6 +356,7 @@ impl NduH1Journal {
             initial_state_hash,
             event_journal_hashes: BTreeMap::new(),
             record_count: 0,
+            evaluation: NduH1EvaluationAccumulator::default(),
         };
         journal.recover()?;
         Ok(journal)
@@ -273,6 +384,7 @@ impl NduH1Journal {
         file.sync_data().map_err(|_| NduH1JournalError::Io)?;
         self.journal_bytes += encoded.len() as u64;
         self.head = ContentHash::new(record.journal_hash.clone());
+        self.evaluation.observe(&record);
         self.event_journal_hashes
             .insert(record.event_hash, ContentHash::new(record.journal_hash));
         self.record_count += 1;
@@ -295,6 +407,10 @@ impl NduH1Journal {
         &self.path
     }
 
+    pub fn evaluation_summary(&self) -> NduH1EvaluationSummary {
+        self.evaluation.summary()
+    }
+
     fn recover(&mut self) -> Result<(), NduH1JournalError> {
         let reader_file = File::open(&self.path).map_err(|_| NduH1JournalError::Io)?;
         let mut expected_previous = self.initial_state_hash.clone();
@@ -312,6 +428,7 @@ impl NduH1Journal {
                 return Err(NduH1JournalError::DuplicateEvent);
             }
             expected_previous = ContentHash::new(record.journal_hash.clone());
+            self.evaluation.observe(&record);
             self.event_journal_hashes
                 .insert(record.event_hash, ContentHash::new(record.journal_hash));
             self.record_count += 1;
@@ -471,6 +588,17 @@ mod tests {
 
         let mut reopened = NduH1ShadowService::open(config(), &journal_path).unwrap();
         assert_eq!(reopened.journal().record_count(), 1);
+        let recovered_evaluation = reopened.journal().evaluation_summary();
+        assert_eq!(recovered_evaluation.observed_event_count, 1);
+        assert_eq!(recovered_evaluation.arms.len(), 4);
+        assert!(
+            recovered_evaluation
+                .arms
+                .iter()
+                .all(|arm| arm.sample_count == 1 && arm.feasibility_violation_count == 0)
+        );
+        assert!(!recovered_evaluation.promotion_eligible);
+        assert!(!recovered_evaluation.production_authority_granted);
         assert!(matches!(
             reopened.observe(request("event-1")).unwrap(),
             NduH1ShadowServiceResult::AlreadyObserved { .. }
@@ -478,6 +606,9 @@ mod tests {
         let second = reopened.observe(request("event-2")).unwrap();
         assert!(matches!(second, NduH1ShadowServiceResult::Recorded(_)));
         assert_eq!(reopened.journal().record_count(), 2);
+        let evaluation = reopened.journal().evaluation_summary();
+        assert_eq!(evaluation.observed_event_count, 2);
+        assert!(evaluation.arms.iter().all(|arm| arm.sample_count == 2));
     }
 
     #[test]

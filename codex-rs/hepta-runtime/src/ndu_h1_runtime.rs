@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use hepta_contracts::ContentHash;
 use hepta_intelligence::HardFeasibilityMask;
+use hepta_intelligence::NduH1EvaluationSummary;
 use hepta_intelligence::NduH1ShadowConfig;
 use hepta_intelligence::NduH1ShadowRequest;
 use hepta_intelligence::NduH1ShadowService;
@@ -147,6 +148,7 @@ impl NduH1Runtime {
             replay_count: state.replay_count,
             rejected_count: state.rejected_count,
             journal_head: state.service.journal().head().as_str().to_owned(),
+            evaluation: state.service.journal().evaluation_summary(),
             last_error: state.last_error.clone(),
         })
     }
@@ -173,6 +175,7 @@ pub struct NduH1RuntimeStatus {
     pub replay_count: u64,
     pub rejected_count: u64,
     pub journal_head: String,
+    pub evaluation: NduH1EvaluationSummary,
     pub last_error: Option<String>,
 }
 

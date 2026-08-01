@@ -26,6 +26,8 @@ pub use h1_shadow::NduH1ShadowController;
 pub use h1_shadow::NduH1ShadowError;
 pub use h1_shadow::NduH1ShadowReceipt;
 pub use h1_shadow::NduH1ShadowRequest;
+pub use h1_shadow_journal::NduH1ArmEvaluation;
+pub use h1_shadow_journal::NduH1EvaluationSummary;
 pub use h1_shadow_journal::NduH1Journal;
 pub use h1_shadow_journal::NduH1JournalError;
 pub use h1_shadow_journal::NduH1ShadowService;
