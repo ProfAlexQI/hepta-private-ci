@@ -2065,7 +2065,7 @@ impl RoomInputBar {
             }
             self.view
                 .location_preview(cx, ids!(location_preview))
-                .show();
+                .show(cx);
             self.redraw(cx);
         }
 
@@ -2171,13 +2171,7 @@ impl RoomInputBar {
                     return;
                 }
 
-                let message = mentionable_text_input.create_message_with_mentions(
-                    &entered_text,
-                    room_screen_props
-                        .room_members
-                        .as_ref()
-                        .map(|members| members.as_slice()),
-                );
+                let message = mentionable_text_input.create_message_with_mentions(&entered_text);
                 let mention_payload_metadata = mentionable_text_input.send_payload_metadata_label(
                     &entered_text,
                     room_screen_props
@@ -3926,6 +3920,81 @@ impl RoomInputBarRef {
             return;
         };
         inner.show_replying_to(cx, replying_to, timeline_kind, true);
+    }
+
+    /// Hides the upload progress view for the given upload attempt.
+    pub fn hide_upload_progress(&self, cx: &mut Cx, upload_id: FileUploadAttemptId) {
+        let Some(inner) = self.borrow() else {
+            return;
+        };
+        inner
+            .child_by_path(ids!(upload_progress_view))
+            .as_upload_progress_view()
+            .hide(cx, upload_id);
+    }
+
+    /// Updates progress for the matching upload attempt.
+    pub fn set_upload_progress(
+        &self,
+        cx: &mut Cx,
+        upload_id: FileUploadAttemptId,
+        current: u64,
+        total: u64,
+    ) {
+        let Some(inner) = self.borrow() else {
+            return;
+        };
+        inner
+            .child_by_path(ids!(upload_progress_view))
+            .as_upload_progress_view()
+            .set_progress(cx, upload_id, current, total);
+    }
+
+    /// Shows an upload error while preserving the retry payload.
+    pub fn show_upload_error(
+        &self,
+        cx: &mut Cx,
+        upload_id: FileUploadAttemptId,
+        error: &str,
+        upload: AttachmentUpload,
+        retryable: bool,
+    ) {
+        let Some(inner) = self.borrow() else {
+            return;
+        };
+        inner
+            .child_by_path(ids!(upload_progress_view))
+            .as_upload_progress_view()
+            .show_error(cx, upload_id, error, upload, retryable);
+    }
+
+    /// Starts the matching upload row and clears only the captured reply target.
+    pub fn handle_file_upload_started(
+        &self,
+        cx: &mut Cx,
+        upload_id: FileUploadAttemptId,
+        file_name: &str,
+        in_reply_to: Option<&OwnedEventId>,
+        abort_handle: futures_util::future::AbortHandle,
+    ) {
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
+        inner
+            .child_by_path(ids!(upload_progress_view))
+            .as_upload_progress_view()
+            .show(cx, upload_id, file_name, abort_handle);
+
+        if let Some(in_reply_to) = in_reply_to {
+            let should_clear_reply = inner
+                .replying_to
+                .as_ref()
+                .and_then(|(event_tl_item, _)| event_tl_item.event_id())
+                .is_some_and(|current| current == in_reply_to);
+            if should_clear_reply {
+                inner.clear_replying_to(cx);
+            }
+        }
     }
 
     /// Shows the editing pane to allow the user to edit the given event.

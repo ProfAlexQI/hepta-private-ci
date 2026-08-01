@@ -14,6 +14,8 @@ pub(super) async fn matrix_worker_task(
         HashMap::new();
     // The async tasks that are spawned to subscribe to changes in the pinned events for each room.
     let mut subscribers_pinned_events: HashMap<OwnedRoomId, JoinHandle<()>> = HashMap::new();
+    let download_tasks: Arc<Mutex<HashMap<OwnedMxcUri, ActiveDownload>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     while let Some(request) = request_receiver.recv().await {
         match request {
@@ -358,6 +360,20 @@ pub(super) async fn matrix_worker_task(
                         }
                     }
                 });
+            }
+
+            MatrixRequest::CloseThreadTimeline {
+                room_id,
+                thread_root_event_id,
+            } => {
+                let mut all_joined_rooms = ALL_JOINED_ROOMS.lock().unwrap();
+                let Some(room_info) = all_joined_rooms.get_mut(&room_id) else {
+                    continue;
+                };
+                room_info.pending_thread_timelines.remove(&thread_root_event_id);
+                if room_info.thread_timelines.remove(&thread_root_event_id).is_some() {
+                    log!("Closed thread timeline for room {room_id}, thread {thread_root_event_id}.");
+                }
             }
 
             MatrixRequest::Knock {
@@ -906,6 +922,18 @@ pub(super) async fn matrix_worker_task(
                     };
                     Cx::post_action(UserDirectorySearchAction::Searched(result));
                     SignalToUI::set_ui_signal();
+                });
+            }
+
+            MatrixRequest::GetMatchingRooms {
+                query,
+                request_id,
+                owner,
+            } => {
+                let Some(client) = get_client() else { continue };
+                Handle::current().spawn(async move {
+                    let items = rank_matching_rooms(&client, &query).await;
+                    Cx::post_action(MentionMatches::new(request_id, owner, items));
                 });
             }
 
@@ -1781,6 +1809,15 @@ pub(super) async fn matrix_worker_task(
                 });
             }
 
+            MatrixRequest::FetchRoomAvatar { room_name_id } => {
+                let Some(client) = get_client() else { continue };
+                let Some(room) = client.get_room(room_name_id.room_id()) else {
+                    log!("Skipping avatar fetch for unknown room {}", room_name_id.room_id());
+                    continue;
+                };
+                spawn_fetch_room_avatar_inner(room, room_name_id);
+            }
+
             MatrixRequest::FetchMedia {
                 media_request,
                 on_fetched,
@@ -1962,6 +1999,169 @@ pub(super) async fn matrix_worker_task(
                         }
                     }
                     SignalToUI::set_ui_signal();
+                });
+            }
+
+            MatrixRequest::UploadAttachment { upload_id, upload } => {
+                let timeline_kind = upload.timeline_kind.clone();
+                let Some((timeline, sender)) = get_timeline_and_sender(&timeline_kind) else {
+                    enqueue_popup_notification(
+                        "Cannot upload file: timeline not available.",
+                        PopupKind::Error,
+                        None,
+                    );
+                    SignalToUI::set_ui_signal();
+                    continue;
+                };
+
+                #[cfg(feature = "tsp")]
+                if upload.sign_with_tsp {
+                    let _ = sender.send(TimelineUpdate::FileUploadError {
+                        upload_id,
+                        error: "TSP-signed attachment uploads are not supported yet.".to_string(),
+                        upload,
+                        retryable: false,
+                    });
+                    SignalToUI::set_ui_signal();
+                    continue;
+                }
+
+                let sender_clone = sender.clone();
+                let progress_sender = sender.clone();
+                let monitor_timeline_kind = timeline_kind.clone();
+                let (abort_handle, abort_registration) =
+                    futures_util::future::AbortHandle::new_pair();
+                Handle::current().spawn(async move {
+                    use matrix_sdk::attachment::{
+                        AttachmentInfo, BaseAudioInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo,
+                    };
+                    use matrix_sdk_ui::timeline::AttachmentConfig as TimelineAttachmentConfig;
+
+                    let upload_future = async move {
+                        let _ = sender_clone.send(TimelineUpdate::FileUploadStarted {
+                            upload_id,
+                            file_name: upload.file_data.file_name(),
+                            in_reply_to: upload.in_reply_to.clone(),
+                            abort_handle,
+                        });
+                        SignalToUI::set_ui_signal();
+
+                        if let Some(max_upload_size) = match get_client() {
+                            Some(client) => client.load_or_fetch_max_upload_size().await.ok(),
+                            None => None,
+                        } {
+                            let exceeds_limit = matrix_sdk::ruma::UInt::try_from(upload.file_data.size)
+                                .map(|size| size > max_upload_size)
+                                .unwrap_or(true);
+                            if exceeds_limit {
+                                let max_size: u64 = max_upload_size.into();
+                                let error = format!(
+                                    "file size of ({}) exceeds the homeserver's {} limit.",
+                                    utils::format_decimal_file_size(upload.file_data.size),
+                                    utils::format_decimal_file_size(max_size),
+                                );
+                                let _ = sender_clone.send(TimelineUpdate::FileUploadError {
+                                    upload_id,
+                                    error,
+                                    upload,
+                                    retryable: false,
+                                });
+                                SignalToUI::set_ui_signal();
+                                return;
+                            }
+                        }
+
+                        let upload_for_error = upload.clone();
+                        let AttachmentUpload { file_data, in_reply_to, .. } = upload;
+                        let content_type: mime::Mime = file_data
+                            .mime_type
+                            .parse()
+                            .unwrap_or(mime::APPLICATION_OCTET_STREAM);
+                        let image_dimensions = (content_type.type_() == mime::IMAGE)
+                            .then(|| crate::image_utils::read_image_dimensions(file_data.path()))
+                            .flatten()
+                            .map(|(width, height)| (width as u32, height as u32));
+                        let matrix_file_size = || matrix_sdk::ruma::UInt::try_from(file_data.size).ok();
+                        let info = match content_type.type_() {
+                            mime::IMAGE => AttachmentInfo::Image(BaseImageInfo {
+                                width: image_dimensions.map(|(width, _)| width.into()),
+                                height: image_dimensions.map(|(_, height)| height.into()),
+                                size: matrix_file_size(),
+                                blurhash: None,
+                                is_animated: None,
+                            }),
+                            mime::VIDEO => AttachmentInfo::Video(BaseVideoInfo {
+                                width: None,
+                                height: None,
+                                duration: None,
+                                size: matrix_file_size(),
+                                blurhash: None,
+                            }),
+                            mime::AUDIO => AttachmentInfo::Audio(BaseAudioInfo {
+                                duration: None,
+                                size: matrix_file_size(),
+                                waveform: None,
+                            }),
+                            _ => AttachmentInfo::File(BaseFileInfo {
+                                size: matrix_file_size(),
+                            }),
+                        };
+                        let send_request = timeline.send_attachment(
+                            file_data.path().to_path_buf(),
+                            content_type,
+                            TimelineAttachmentConfig {
+                                info: Some(info),
+                                caption: file_data
+                                    .caption
+                                    .as_ref()
+                                    .map(TextMessageEventContent::plain),
+                                in_reply_to,
+                                ..Default::default()
+                            },
+                        );
+                        let mut progress = send_request.subscribe_to_send_progress();
+                        Handle::current().spawn(async move {
+                            loop {
+                                let snapshot = progress.get();
+                                if progress_sender
+                                    .send(TimelineUpdate::FileUploadUpdate {
+                                        upload_id,
+                                        current: snapshot.current as u64,
+                                        total: snapshot.total as u64,
+                                    })
+                                    .is_err()
+                                {
+                                    break;
+                                }
+                                SignalToUI::set_ui_signal();
+                                if progress.next().await.is_none() {
+                                    break;
+                                }
+                            }
+                        });
+                        match send_request.await {
+                            Ok(()) => {
+                                let _ = sender_clone
+                                    .send(TimelineUpdate::FileUploadComplete { upload_id });
+                            }
+                            Err(error) => {
+                                let _ = sender_clone.send(TimelineUpdate::FileUploadError {
+                                    upload_id,
+                                    error: error.to_string(),
+                                    upload: upload_for_error,
+                                    retryable: true,
+                                });
+                            }
+                        }
+                        SignalToUI::set_ui_signal();
+                    };
+
+                    if Abortable::new(upload_future, abort_registration)
+                        .await
+                        .is_err()
+                    {
+                        log!("Attachment upload task {upload_id:?} for {monitor_timeline_kind} was aborted.");
+                    }
                 });
             }
 
@@ -2573,6 +2773,83 @@ pub(super) async fn matrix_worker_task(
                     on_fetched(url, destination, result, update_sender);
                     SignalToUI::set_ui_signal();
                 });
+            }
+
+            MatrixRequest::DownloadMedia {
+                media_source,
+                filename,
+                on_download_result,
+            } => {
+                use crate::shared::attachment_download::enqueue_already_downloading_notification;
+                let Some(client) = get_client() else {
+                    on_download_result(MediaDownloadResult::Failed(
+                        "Matrix client is not available".to_string(),
+                    ));
+                    continue;
+                };
+                let mxc_uri = media_source_mxc(&media_source).clone();
+                if download_tasks.lock().unwrap().contains_key(&mxc_uri) {
+                    enqueue_already_downloading_notification();
+                    on_download_result(MediaDownloadResult::Cancelled);
+                    continue;
+                }
+                let (abort_handle, abort_registration) =
+                    futures_util::future::AbortHandle::new_pair();
+                let completion_tasks = download_tasks.clone();
+                let completion_mxc = mxc_uri.clone();
+                let download_future = async move {
+                    let request = MediaRequestParameters {
+                        source: media_source,
+                        format: matrix_sdk::media::MediaFormat::File,
+                    };
+                    let result = client
+                        .media()
+                        .get_media_content(&request, true)
+                        .await
+                        .map_err(|error| {
+                            error!("Failed to fetch media content for {filename:?}: {error}");
+                            error.to_string()
+                        });
+                    if let Some(active) = completion_tasks
+                        .lock()
+                        .unwrap()
+                        .remove(&completion_mxc)
+                    {
+                        (active.on_download_result)(match result {
+                            Ok(bytes) => MediaDownloadResult::Downloaded(bytes),
+                            Err(error) => MediaDownloadResult::Failed(error),
+                        });
+                    }
+                };
+                let cancellation_tasks = download_tasks.clone();
+                let cancellation_mxc = mxc_uri.clone();
+                download_tasks.lock().unwrap().insert(
+                    mxc_uri,
+                    ActiveDownload {
+                        abort_handle,
+                        on_download_result,
+                    },
+                );
+                Handle::current().spawn(async move {
+                    if Abortable::new(download_future, abort_registration)
+                        .await
+                        .is_err()
+                    {
+                        if let Some(active) = cancellation_tasks
+                            .lock()
+                            .unwrap()
+                            .remove(&cancellation_mxc)
+                        {
+                            (active.on_download_result)(MediaDownloadResult::Cancelled);
+                        }
+                    }
+                });
+            }
+
+            MatrixRequest::CancelDownload(mxc_uri) => {
+                if let Some(active) = download_tasks.lock().unwrap().get(&mxc_uri) {
+                    active.abort_handle.abort();
+                }
             }
         }
     }

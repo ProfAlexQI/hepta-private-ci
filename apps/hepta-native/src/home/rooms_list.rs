@@ -294,6 +294,8 @@ pub struct JoinedRoomInfo {
     /// Whether this room has been shown in the rooms list yet.
     /// Determines whether we do first-time actions like pagination and fetching its avatar.
     pub has_been_shown: bool,
+    /// Whether this room has already received its initial backwards pagination request.
+    pub has_been_paginated: bool,
     /// Whether this room is currently selected in the UI.
     pub is_selected: bool,
     /// Whether this a direct room.
@@ -333,6 +335,22 @@ pub struct InvitedRoomInfo {
     pub is_selected: bool,
     /// Whether this is an invite to a direct room.
     pub is_direct: bool,
+}
+
+fn room_context_menu_details_from_joined_room(jr: &JoinedRoomInfo) -> RoomContextMenuDetails {
+    RoomContextMenuDetails {
+        room_name_id: jr.room_name_id.clone(),
+        is_favorite: jr.tags.contains_key(&TagName::Favorite),
+        is_low_priority: jr.tags.contains_key(&TagName::LowPriority),
+        is_marked_unread: jr.is_marked_unread,
+        num_unread_messages: jr.num_unread_messages,
+        num_unread_mentions: jr.num_unread_mentions,
+        canonical_alias: jr.canonical_alias.clone(),
+        alt_aliases: jr.alt_aliases.clone(),
+        alt_alias_count: jr.alt_aliases.len(),
+        room_avatar_loaded: matches!(&jr.room_avatar, FetchedRoomAvatar::Image(_)),
+        is_tombstoned: jr.is_tombstoned,
+    }
 }
 
 /// Info about the user who invited us to a room.
@@ -1219,12 +1237,7 @@ impl Widget for RoomsList {
                     error!("BUG: couldn't find right-clicked room details for room {room_id}");
                     continue;
                 };
-                let details = RoomContextMenuDetails {
-                    room_name_id: jr.room_name_id.clone(),
-                    is_favorite: jr.tags.contains_key(&TagName::Favorite),
-                    is_low_priority: jr.tags.contains_key(&TagName::LowPriority),
-                    is_marked_unread: jr.is_marked_unread,
-                };
+                let details = room_context_menu_details_from_joined_room(jr);
                 cx.widget_action(
                     self.widget_uid(), 
                     RoomsListAction::OpenRoomContextMenu { details, pos },
@@ -1608,6 +1621,34 @@ impl RoomsListRef {
                     .get(room_id)
                     .map(|ir| ir.room_name_id.clone())
             )
+    }
+
+    /// Returns room-management details for the given joined room, if loaded.
+    pub fn get_room_context_menu_details(
+        &self,
+        room_id: &OwnedRoomId,
+    ) -> Option<RoomContextMenuDetails> {
+        let inner = self.borrow()?;
+        let jr = inner.all_joined_rooms.get(room_id)?;
+        Some(room_context_menu_details_from_joined_room(jr))
+    }
+
+    /// Returns the joined room matching the given loaded alias, if any.
+    pub fn get_joined_room_name_by_alias(&self, room_alias: &str) -> Option<RoomNameId> {
+        let inner = self.borrow()?;
+        inner
+            .all_joined_rooms
+            .values()
+            .find(|jr| {
+                jr.canonical_alias
+                    .as_ref()
+                    .is_some_and(|alias| alias.as_str() == room_alias)
+                    || jr
+                        .alt_aliases
+                        .iter()
+                        .any(|alias| alias.as_str() == room_alias)
+            })
+            .map(|jr| jr.room_name_id.clone())
     }
 
     /// Returns the currently-selected space (the one selected in the SpacesBar).

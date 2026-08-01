@@ -24,6 +24,10 @@ const UI_ZOOM_DESCRIPTION: &str = "Scales the entire UI uniformly.\n'Cmd⌘ + +/
 const UI_ZOOM_DESCRIPTION: &str = "Scales the entire UI uniformly.\n'Ctrl + +/-' zooms in or out, 'Ctrl + 0' resets zoom.";
 
 
+pub const SEND_SHORTCUT_LOCAL_PREFERENCE_EVIDENCE: &str = "Send shortcut changes are local AppPreferences only: the Settings toggle broadcasts AppPreferencesAction::SendOnEnterChanged, RoomInputBar and EditingPane update submit_on_enter, and no message send, typing notice, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request is emitted.";
+pub const SEND_SHORTCUT_LOCAL_PREFERENCE_LABEL: &str =
+    "Local shortcut preference only; no message, typing, room-state, or membership request.";
+
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*

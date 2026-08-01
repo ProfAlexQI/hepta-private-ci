@@ -38,6 +38,8 @@ robius-use-makepad = "0.1.1" ## auto-configures all `robius-*` crates to work wi
 
 anyhow = "1.0"
 codex-keyring-store = { path = "../../codex-rs/keyring-store" }
+hepta-core = { path = "../../codex-rs/hepta-core" }
+hepta-runtime = { path = "../../codex-rs/hepta-runtime" }
 bitflags = "2.6.0"
 blake3 = "1.8"
 blurhash = { version = "0.2.3", default-features = false }
@@ -56,6 +58,8 @@ hashbrown = { version = "0.16", features = ["raw-entry"] }
 htmlize = { version = "1.0.5", features = ["unescape"] }
 indexmap = "2.6.0"
 libc = "0.2"
+image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
+imghdr = "0.7.0"
 mime = "0.3"
 mime_guess = "2.0"
 linkify = "0.10.0"
@@ -97,10 +101,10 @@ zeroize = "1.8.2"
 
 
 ## Dependencies for TSP support.
-## Commit "f0bc4625dcd729e07e4a36257df2f1d94c81cef4" is the most recent one without the invalid change to pin serde to 1.0.219.
-## See my issue here: <https://github.com/openwallet-foundation-labs/tsp/issues/237>.
-## However, that commit doesn't build.... yikes. So we have to use a slightly older commit in the "rev" field below.
-tsp_sdk = { git = "https://github.com/openwallet-foundation-labs/tsp.git", rev = "1cd0cc9442e144ad7c01ccd30daffbb3a52c0f20", optional = true, features = [
+## This upstream commit removes the unmaintained rustls-pemfile dependency in
+## favor of rustls-pki-types' maintained PEM parser and no longer resolves a
+## transitive dependency from a floating branch.
+tsp_sdk = { git = "https://github.com/openwallet-foundation-labs/tsp.git", rev = "e9d5445489b74f3e052360ee4da1e7c27b9c80b3", optional = true, features = [
     "async",
     "resolve",
 ] }
@@ -135,6 +139,9 @@ webpki-root-certs = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+rfd = "0.17.2"
 
 
 [features]
@@ -177,13 +184,19 @@ tempfile = "3.20"
 ## dependency to version 0.35.0, which is compatible with the version required by
 ## the matrix-sdk crate.
 ## See <https://github.com/launchbadge/sqlx/pull/3928/files#diff-4f4849707ed063bc5de6d9f6d105f0e7baf62d1085b3c8aee4a547468b89248fR57>
-sqlx = { git = "https://github.com/project-robius/sqlx.git", rev = "345c0446a0eee02acec01ec4635e3945fdf4693b" }
+sqlx = { path = "third_party/sqlx-sqlite-only-0.8.6" }
+
+## Exact-source, provenance-bound compatibility patches. Aquamarine is a
+## deterministic pass-through rustdoc attribute with no generated JavaScript;
+## wasm_evt_listener replaces derivative-generated implementations with
+## equivalent manual implementations.
+aquamarine = { path = "third_party/aquamarine-0.6.0" }
+wasm_evt_listener = { path = "third_party/wasm_evt_listener-0.1.0" }
 
 ## The main branch of the `tsp_sdk` repo already includes this patch, so we copy it here.
 ## This is required for the askar repos to work with the above-patched `sqlx` crate.
 ## See <https://github.com/openwallet-foundation/askar/pull/386>
 askar-storage = { git = "https://github.com/openwallet-foundation/askar.git", rev = "49086e28d1995966bb2b2054d2450a76f19bda30" }
-
 
 ## This is a temporary patch to add the TSP signature field to the `RoomMessageEventContent` type.
 ##

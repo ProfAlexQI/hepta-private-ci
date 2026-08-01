@@ -45,12 +45,14 @@ use crate::{
         location_preview::{LocationPreviewWidgetExt, LocationPreviewWidgetRefExt},
         room_screen::{MessageAction, RoomScreenProps, populate_preview_of_timeline_item},
         tombstone_footer::{SuccessorRoomDetails, TombstoneFooterWidgetExt},
+        upload_progress::UploadProgressViewWidgetRefExt,
     },
     location::init_location_subscriber,
     settings::app_preferences::{AppPreferencesGlobal, AppPreferencesAction},
     shared::{
         avatar::AvatarWidgetRefExt,
         confirmation_modal::ConfirmationModalContent,
+        file_upload_modal::{AttachmentUpload, FileUploadAttemptId},
         html_or_plaintext::HtmlOrPlaintextWidgetRefExt,
         mentionable_text_input::MentionableTextInputWidgetExt,
         popup_list::{PopupKind, enqueue_popup_notification},
@@ -234,6 +236,9 @@ script_mod! {
 
         // Below that, display a preview of the current location that a user is about to send.
         location_preview := LocationPreview { }
+
+        // SDK-backed upload progress for the file-upload modal flow.
+        upload_progress_view := UploadProgressView { }
 
         hepta_command_preview := RoundedView {
             visible: false,

@@ -7,6 +7,13 @@ use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
 use crate::shared::popup_list::{PopupKind, enqueue_popup_notification};
 
 
+pub const EVENT_SOURCE_CLIPBOARD_EVIDENCE: &str = "Event source copy actions use already loaded room id, event id, and JSON source data to write clipboard text locally; Copy Room ID, Copy Event ID, Copy Source, open, and close send no Matrix event source request, event fetch, message send, room-state, membership, or live mutation request.";
+pub const EVENT_SOURCE_CLIPBOARD_COMPACT_LABEL: &str =
+    "Event source uses loaded data and local clipboard only.";
+pub const EVENT_SOURCE_LOADED_METADATA_EVIDENCE: &str = "EventSourceModal summarizes already loaded room id, event id, and latest JSON source availability plus local source byte/line counts. The summary is derived only from data passed into the local View Source modal and sends no Matrix event source request, event fetch, event context fetch, timeline pagination/reload, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
+pub const EVENT_SOURCE_LOADED_METADATA_LABEL: &str =
+    "Loaded event source metadata; no event fetch.";
+
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*

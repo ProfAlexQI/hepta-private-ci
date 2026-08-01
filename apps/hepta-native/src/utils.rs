@@ -90,6 +90,36 @@ pub fn is_interactive_hit_event(event: &Event) -> bool {
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ImageFormat {
+    Png,
+    Jpeg,
+    XIcon,
+}
+
+impl ImageFormat {
+    pub fn from_mimetype(mimetype: &str) -> Option<Self> {
+        match mimetype {
+            "image/png" => Some(Self::Png),
+            "image/jpeg" | "image/jpg" => Some(Self::Jpeg),
+            "image/x-icon" | "image/vnd.microsoft.icon" => Some(Self::XIcon),
+            _ => None,
+        }
+    }
+}
+
+/// Loads image bytes as PNG or JPEG while retaining the compatibility API used
+/// by the governed room and account surfaces.
+pub fn load_png_or_jpg(img: &ImageRef, cx: &mut Cx, data: &[u8]) -> Result<(), ImageError> {
+    match imghdr::from_bytes(data) {
+        Some(imghdr::Type::Png) => img.load_png_from_data(cx, data),
+        Some(imghdr::Type::Jpeg) => img.load_jpg_from_data(cx, data),
+        _ => img
+            .load_png_from_data(cx, data)
+            .or_else(|_| img.load_jpg_from_data(cx, data)),
+    }
+}
+
 /// Returns true if the given MIME type is an image format that makepad can display.
 pub fn is_supported_image_mimetype(mimetype: &str) -> bool {
     matches!(
