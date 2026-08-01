@@ -8,7 +8,7 @@
   },
   "ceilings": {
     "work_graph_logical_modules": 4,
-    "work_graph_effective_lines": 39850,
+    "work_graph_effective_lines": 32739,
     "gate_compat_pairs": 299,
     "gate_compat_effective_lines": 73687,
     "single_exec_wrappers": 0,
@@ -16,7 +16,7 @@
   },
   "baselines": {
     "work_graph_logical_modules": 4,
-    "work_graph_effective_lines": 39850,
+    "work_graph_effective_lines": 32739,
     "gate_compat_pairs": 299,
     "gate_compat_effective_lines": 73687,
     "single_exec_wrappers": 0,

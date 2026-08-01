@@ -11,7 +11,7 @@ require "zlib"
 require_relative "lib/hepta-normalized-token-bundle-v1"
 require_relative "hepta-workgraph-readable-token-source-v1"
 require_relative "lib/hepta-workgraph-heterogeneous-family-v1"
-
+require_relative "lib/hepta-workgraph-retirement-v1"
 ROOT = File.expand_path("..", __dir__)
 RUNTIME_ROOT = File.join(ROOT, "codex-rs/hepta-runtime")
 SOURCE_ROOT = File.join(RUNTIME_ROOT, "src")
@@ -35,7 +35,7 @@ ANTI_GAMING_BASELINE_BUNDLE_BYTES = 735_630
 RESULT_EFFECTIVE_LINE_LIMIT = ANTI_GAMING_BASELINE_EFFECTIVE_LINES
 CANONICAL_RECORD_BYTE_LIMIT = 89_270
 NORMALIZED_TEMPLATE_LIMIT = 4
-HETEROGENEOUS_ENTRY_COUNT = 283
+HETEROGENEOUS_ENTRY_COUNT = 188
 HETEROGENEOUS_FAMILY_COUNT = 1
 ANTI_GAMING_BASELINE = {
   "normalized_effective_lines" => ANTI_GAMING_BASELINE_EFFECTIVE_LINES,
@@ -522,12 +522,12 @@ def build_result
   baseline_commit = migration_baseline_commit
   entries = migration_baseline_entries(baseline_commit)
   raise "WorkGraph family build requires 284 modules" unless entries.length == BASELINE_MODULE_COUNT
-  rows = parameter_rows(baseline_commit)
-  plan = plan_for(entries, rows)
-  baseline_sources = entries.to_h { |entry| [entry.name, entry.source] }
-  sources = entries.to_h { |entry| [entry.name, entry.source.dup] }
+  active_entries, rows, retirement = HeptaWorkgraphRetirement.prepare(entries, parameter_rows(baseline_commit), File.join(BUNDLE_ROOT, "caller-scc-retirement-v1.json"), ROOT)
+  plan = plan_for(active_entries, rows)
+  baseline_sources = active_entries.to_h { |entry| [entry.name, entry.source] }
+  sources = active_entries.to_h { |entry| [entry.name, entry.source.dup] }
 
-  result_entries = entries.each_with_object([]) do |entry, result|
+  result_entries = active_entries.each_with_object([]) do |entry, result|
     next if plan.fetch(:module_map).key?(entry.name)
     result << HeptaNormalizedTokenBundle::Entry.new(entry.name, sources.fetch(entry.name))
   end
@@ -597,11 +597,11 @@ def build_result
   baseline_runtime_paths = git_value(
     "ls-tree", "-r", "--name-only", baseline_commit, "--", source_prefix
   ).lines(chomp: true).select { |path| path.end_with?(".rs") }
-  baseline_runtime_paths.each do |relative_path|
+  runtime_sources = baseline_runtime_paths.to_h { |path| [path, git_blob(path, baseline_commit)] }
+  HeptaWorkgraphRetirement.prune_runtime_sources(runtime_sources, retirement).each do |relative_path, source|
     path = File.join(ROOT, relative_path)
-    source = git_blob(relative_path, baseline_commit)
-    rewritten = rewrite_module_paths(source, module_map)
-    runtime_changes[path] = rewritten if rewritten != source
+    rewritten = rewrite_module_paths(HeptaWorkgraphRetirement::EXPORT_FILES.include?(relative_path) ? source : File.binread(path), module_map)
+    runtime_changes[path] = rewritten if HeptaWorkgraphRetirement::EXPORT_FILES.include?(relative_path) || rewritten != File.binread(path)
   end
   bundle = HeptaNormalizedTokenBundle.build(result_entries, tokenizer: HeptaNormalizedTokenBundle.method(:rust_tokens))
   artifacts, canonical = render_canonical_artifacts(bundle)
@@ -990,10 +990,10 @@ def verify_result
   raise "WorkGraph recovery aggregate drifted" unless HeptaNormalizedTokenBundle.aggregate_sha(
     baseline_entries
   ) == baseline.fetch("aggregate_source_sha256")
-
   current_by_name = entries.to_h { |entry| [entry.name, entry.source] }
   baseline_by_name = baseline_entries.to_h { |entry| [entry.name, entry.source] }
   legacy_map = manifest.fetch("legacy_module_map")
+  retirement = HeptaWorkgraphRetirement.verify_current!(baseline_entries, File.join(BUNDLE_ROOT, "caller-scc-retirement-v1.json"), ROOT, legacy_map)
   legacy_map.each do |legacy_module, mapping|
     baseline_source = baseline_by_name.fetch(legacy_module)
     expected_sha = Digest::SHA256.hexdigest(baseline_source)
@@ -1006,7 +1006,8 @@ def verify_result
   end
 
   current_source = entries.map(&:source).join("\n")
-  baseline_public_symbols = baseline_entries.each_with_object(Set.new) do |entry, symbols|
+  active_baseline_entries = HeptaWorkgraphRetirement.active_entries(baseline_entries, retirement)
+  baseline_public_symbols = active_baseline_entries.each_with_object(Set.new) do |entry, symbols|
     symbols.merge(public_symbols(entry.source))
   end
   missing_symbols = baseline_public_symbols.reject do |symbol|

@@ -1,0 +1,702 @@
+{
+  "schema": "hepta_workgraph_ast_caller_scc_retirement_v1",
+  "status": "ready",
+  "baseline": {
+    "commit": "a0edebd37af6b9e8d4621c7f970a06af91bd2b23",
+    "tree": "f8278c11fab25aefebb0516bf81df92bbfc89e32",
+    "module_count": 284,
+    "bundle_sha256": "43151f09cfe65bf944d19677df66bc329d304c327f344b830e4d3d331c67a216",
+    "aggregate_source_sha256": "d61e8c442587972fd2e4b1637ff66ac58861ab849c0efafa049fdcb96441a0c1"
+  },
+  "selection_proof": {
+    "engine": "normalized-rust-token-identifier-owner-graph-v1",
+    "module_count": 284,
+    "caller_edge_count": 399,
+    "tracked_rust_source_count": 3010,
+    "live_root_module_count": 100,
+    "reachable_module_count": 189,
+    "reverse_closure_count": 95,
+    "rooted_closure_count": 0,
+    "scc_count": 95,
+    "largest_scc_size": 1,
+    "sink_scc_count": 3,
+    "pruned_export_file_count": 3,
+    "macro_invocation_tokens_traversed": true,
+    "ambiguous_identifier_owners_are_all_retained": true,
+    "exports_are_not_live_roots": true,
+    "compiler_validation_required_after_apply": true
+  },
+  "closure_revalidation": {
+    "engine": "normalized-rust-token-identifier-owner-graph-v1",
+    "caller_closure_exact": true,
+    "first_party_rust_reference_scan": true
+  },
+  "seed_modules": [
+    "work_graph_activation_enforcement_blocker_preview",
+    "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_preview",
+    "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_rerun_preview"
+  ],
+  "first_party_rooted_closure": [
+
+  ],
+  "retired_modules": [
+    {
+      "name": "wg_events_tnc_r12_application_preview",
+      "source_sha256": "238d443bd4f0f8540dc39fdda9600951e5c498193189df1244314d23f163eac7",
+      "source_bytes": 60671,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "wg_events_tnc_r12_preview",
+      "source_sha256": "d12ba0e4f386da8bd4bcc37c6186c8753b2b4242f31274d6567be0c5a7a47b32",
+      "source_bytes": 55334,
+      "public_symbol_count": 0
+    },
+    {
+      "name": "wg_events_tnc_r12_readback_preview",
+      "source_sha256": "6caaa314d14139bef4abde42d04ae0ea85cb95c7af0a0627c18b3acb124689b6",
+      "source_bytes": 87585,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "wg_events_tnc_r13_application_preview",
+      "source_sha256": "ea4da746965b381cbe739ea14da5052a0506a26cba6a78b14df30f205391c22d",
+      "source_bytes": 61822,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "wg_events_tnc_r13_preview",
+      "source_sha256": "dded207b57a3c002a5d7fc5ea3f24793d8591372155481af7befaf079e07c386",
+      "source_bytes": 15116,
+      "public_symbol_count": 0
+    },
+    {
+      "name": "wg_events_tnc_r13_readback_preview",
+      "source_sha256": "acd7dd3c05c1d65ffef501092428b554439dc0e61fa475fddbd7e95398fb3ba6",
+      "source_bytes": 11632,
+      "public_symbol_count": 0
+    },
+    {
+      "name": "wg_events_tnc_r14_application_preview",
+      "source_sha256": "6ed4f6bd16bc03ad5464e36da90c77145ec5487fcd221a3a874e8e2bc51acb68",
+      "source_bytes": 62973,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "wg_events_tnc_r14_preview",
+      "source_sha256": "6cbcdf48c7cc8f3dc0137e2bfaad40c243faf6630dd8134566980cf6563cc2ad",
+      "source_bytes": 15526,
+      "public_symbol_count": 0
+    },
+    {
+      "name": "wg_events_tnc_r14_readback_preview",
+      "source_sha256": "f0d19d3282726b6d0b22d6de3948e970714ff067e405dec8b4f0bf5746893566",
+      "source_bytes": 11935,
+      "public_symbol_count": 0
+    },
+    {
+      "name": "wg_events_tnc_r15_application_preview",
+      "source_sha256": "aed44467d8eb7a2e056aa8bcbed4b00e09cd70c563193c25c9510331190dec7e",
+      "source_bytes": 64124,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "wg_events_tnc_r15_preview",
+      "source_sha256": "44d2a737c75c462afb83c971ddbe6d2acad73cce542eb2cc2b39728c1c45b7ce",
+      "source_bytes": 15936,
+      "public_symbol_count": 0
+    },
+    {
+      "name": "wg_events_tnc_r15_readback_preview",
+      "source_sha256": "bf8da0adcf99254084baa7fd3a72275f040a6e7c0c69f30a664dc571d5b21444",
+      "source_bytes": 12238,
+      "public_symbol_count": 0
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_ack_preview",
+      "source_sha256": "91be68322559dc838598f170681d0460b81030970235aefd4cd55da9acad0aea",
+      "source_bytes": 42540,
+      "public_symbol_count": 23
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_ack_replay_preview",
+      "source_sha256": "4c641eacab1c284df991ab16597bb114ce89ae4ebea1c9dc0bba2e1ea87f3a0f",
+      "source_bytes": 42601,
+      "public_symbol_count": 24
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_expiry_preview",
+      "source_sha256": "0e6bd147895756f5256c40fd38927eaf404e0163640a54159140494f0d6ddcf7",
+      "source_bytes": 32490,
+      "public_symbol_count": 20
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_preview",
+      "source_sha256": "9e3fe5d283de01b47645803c2b5e5e9b8d2926dde8a60dfe315d3bd87ac66821",
+      "source_bytes": 45072,
+      "public_symbol_count": 23
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_replay_preview",
+      "source_sha256": "ba1a2a8a802c77c633312d31cf2914bc950026110929d8b32b0568492a354eb7",
+      "source_bytes": 34469,
+      "public_symbol_count": 21
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_preview",
+      "source_sha256": "5005c8533821ebe0eff974f67805fe5e259d80b65e2a4e7d3bcf531fdca7ac70",
+      "source_bytes": 35546,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_ack_preview",
+      "source_sha256": "7b85a7698c97d9a560d7ceeb3120e58911f46c65ecf481d05b8feda11e227ccb",
+      "source_bytes": 39379,
+      "public_symbol_count": 20
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_ack_replay_preview",
+      "source_sha256": "9e9c679017f388dff6167e9e90fae113905fe645ca178865398f5374667ffabf",
+      "source_bytes": 38724,
+      "public_symbol_count": 21
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_preview",
+      "source_sha256": "451862355b1447e29208626dc5e9a186392c0b60b1e801226352e589301a5235",
+      "source_bytes": 34759,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_expiry_preview",
+      "source_sha256": "5d3417cd593fd142f38c3444165a573d6269747aa3a6604e4680709b0e85fb65",
+      "source_bytes": 44762,
+      "public_symbol_count": 23
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview",
+      "source_sha256": "907e4cd47d82ab914ed699e9955ac53df74d0ca4fc31930cd433a8a3a173db42",
+      "source_bytes": 47287,
+      "public_symbol_count": 23
+    },
+    {
+      "name": "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview",
+      "source_sha256": "46710a72328adbca7bbaa6663449045ab3a646cf4a81430a3629119a04d30ff9",
+      "source_bytes": 33476,
+      "public_symbol_count": 20
+    },
+    {
+      "name": "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_ack_replay_idempotency_preview",
+      "source_sha256": "bbdebed4898169f44d8ffa6126d1a6e0aea150ce4cb66b2a91ee676a4ec4a009",
+      "source_bytes": 38993,
+      "public_symbol_count": 24
+    },
+    {
+      "name": "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_acknowledgement_preview",
+      "source_sha256": "e4801bfe183b2b3c7823a50d0f53fdf1623b0cfdefd543d095ea756a4e9f8203",
+      "source_bytes": 40193,
+      "public_symbol_count": 23
+    },
+    {
+      "name": "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_expiry_preview",
+      "source_sha256": "a12c1d1cf50969dbeda3dc31ec6418dc051dc65c8fd8b4ea947c03f4f32f1fb4",
+      "source_bytes": 37680,
+      "public_symbol_count": 23
+    },
+    {
+      "name": "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_preview",
+      "source_sha256": "77077d6b4077d3c93cab81b2578f25a1fd512c88af10b880fc9989b1e68c5fa9",
+      "source_bytes": 40299,
+      "public_symbol_count": 23
+    },
+    {
+      "name": "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_replay_preview",
+      "source_sha256": "8cc2bfe9847515e86eba062f9ef8321d3e77fec276947c2cc3aa1648caf054d5",
+      "source_bytes": 40151,
+      "public_symbol_count": 24
+    },
+    {
+      "name": "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_preview",
+      "source_sha256": "7b80614ff19d9331bb87670b557c592467af95c5c1051e6edfea7d74fff19016",
+      "source_bytes": 39787,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_preview",
+      "source_sha256": "2dbbd508a649ecbc634ad8efbba173d76aff3e22896e460864517a7b00e46897",
+      "source_bytes": 38755,
+      "public_symbol_count": 17
+    },
+    {
+      "name": "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview",
+      "source_sha256": "2971913a81940ee8ef32883a29bd392ebfa03fa02b219a91f28b7867ef1e8361",
+      "source_bytes": 39187,
+      "public_symbol_count": 23
+    },
+    {
+      "name": "wg_upe_tnc_r12_rerun_preview",
+      "source_sha256": "4967a670af986462c15f0e67395b7686b944916ebddda16f533944b343e1a9ac",
+      "source_bytes": 65550,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "wg_upe_tnc_r13_rerun_preview",
+      "source_sha256": "1f328d83dde41132436b94c095ddda0bfee9b4f8f0d34dbf58ac71d7148ff9bc",
+      "source_bytes": 66274,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "wg_upe_tnc_r14_rerun_preview",
+      "source_sha256": "029b8746534ce7d4923d1b806f78941d77c7874cacb9a58dbc4ffe538a1a7170",
+      "source_bytes": 67402,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "wg_upe_tnc_r15_rerun_preview",
+      "source_sha256": "42481847f92e82606925b697a1f8c86f0949b351c028e11d0f25f8fca546bcc2",
+      "source_bytes": 68538,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_activation_enforcement_blocker_preview",
+      "source_sha256": "f91e1ceea288089bdfbb9aa38f50824b113817115d2e5ed31843e256c113c941",
+      "source_bytes": 25166,
+      "public_symbol_count": 20
+    },
+    {
+      "name": "work_graph_adapter_task_result_index",
+      "source_sha256": "7910357518b0eb74460c52000aa37a3615112a5b55954d54e477c91e56ab795d",
+      "source_bytes": 26120,
+      "public_symbol_count": 8
+    },
+    {
+      "name": "work_graph_append_only_event_store_shadow_path",
+      "source_sha256": "ca600955a19359fcbd960a6a7ed5e29b880b08d211eac51b40e34370fa5aec94",
+      "source_bytes": 24393,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_application_preview",
+      "source_sha256": "fafae6762ea691db3b5d0d2d8cd7e592d7e6d986355d293682a398ea1cd5fd04",
+      "source_bytes": 49522,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_preview",
+      "source_sha256": "0b8eeec60433660b23dbab63024776f3becc30996a6dfabcf339f42bba1c93cb",
+      "source_bytes": 50871,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_readback_preview",
+      "source_sha256": "5d69c2aed21d3681dc81b4c503844fb9c6f4cac17286f3ae908bdaf735da8776",
+      "source_bytes": 45948,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_application_preview",
+      "source_sha256": "0f0fc1f037b81ef6c8ce3ff01b7b5d5b334074e06c6a7053c56693ac7cb80cb4",
+      "source_bytes": 50745,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_preview",
+      "source_sha256": "76f93551a1ace2cf677808ea4c285399583d6224e715ba6a55287aca52aa4c61",
+      "source_bytes": 52113,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_readback_preview",
+      "source_sha256": "15f7a342358d8f49c0a71818538a94b266ca13c5a709fa34c0610cdfb1ae3cc5",
+      "source_bytes": 47101,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_application_preview",
+      "source_sha256": "50f90d6935d987f5e425880a966b1fc7aaadd533bf34d0e40f22deec77d85a5c",
+      "source_bytes": 51968,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_preview",
+      "source_sha256": "af99afdfa448d183d2e8f1ae488601e9a8f1b50a83eda9231d55f08a2d991de0",
+      "source_bytes": 53331,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_readback_preview",
+      "source_sha256": "c63331bc587706371f9f04582ace6067dadb292d650caf6c278271494c116147",
+      "source_bytes": 48253,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_application_preview",
+      "source_sha256": "ed5d3e33f2110b605ad07f56f09da967c629eccbc833604d7d8b6ab0e93c1bde",
+      "source_bytes": 53191,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_preview",
+      "source_sha256": "83db55712002cda05ad5bbb882cde193817f841685bae3b1798b9861915709d5",
+      "source_bytes": 54549,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_readback_preview",
+      "source_sha256": "e7ee47b36ac9a316584fa616e447720ac8528304835e6a0528e5d9b58430fa6f",
+      "source_bytes": 49405,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_application_preview",
+      "source_sha256": "5095fd67ebebcfb679a3b3182709a1b78e5d0be8c2033ce098da99f9a2710ed9",
+      "source_bytes": 54414,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_preview",
+      "source_sha256": "5de18fe2330c1bb0bf6b025e247b44e49ffc65ab7bd54a6fcee52f5f84c0c6c9",
+      "source_bytes": 55767,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_readback_preview",
+      "source_sha256": "60f94ad4483d16835c02637e698435863e4a3154a7737cb37f392f09974e28b7",
+      "source_bytes": 50557,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_application_preview",
+      "source_sha256": "980f4b3fcc5d6225b47d537755e21ea409d552462445dba012fddf7d471fee65",
+      "source_bytes": 55637,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_preview",
+      "source_sha256": "9e0adde0b5fe95622cd5af6b5b3732c73666173d58b2ed1941a4bec90a1c3486",
+      "source_bytes": 56661,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_readback_preview",
+      "source_sha256": "aa385941ec9d0de37df2c80d85e5d6566377dd64b67a9819ccf7ccc216b1fb54",
+      "source_bytes": 51709,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+      "source_sha256": "f60146e0abdd243a8b7c4bac2b0ca4bf5a50e6d8294a5a7283f0bbb731951f71",
+      "source_bytes": 56860,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+      "source_sha256": "9972e435a33c598089154c09d6f33667dcd476e93de70d7be1b5442afb395343",
+      "source_bytes": 57879,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+      "source_sha256": "beeef26e1c578eff79e1c905a0fe7324bf55ec8b1fa484ad90329327eb5fcc72",
+      "source_bytes": 52861,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_canonical_projection_readiness",
+      "source_sha256": "0a14607ee8b6fd390e8cc2d446bd47e1078e92b904057a2be77442074bb4b033",
+      "source_bytes": 12417,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_preview",
+      "source_sha256": "81fd9fa77eeb631561063452ddbdec59d3035825cc4d8611fe880a4bc1ca34f6",
+      "source_bytes": 36689,
+      "public_symbol_count": 23
+    },
+    {
+      "name": "work_graph_scheduler_admission_dry_run_enforcement",
+      "source_sha256": "0ae460a6fa8559d63252c176e58acb1e7f620656793a9516be2fc61d35bcfcb2",
+      "source_bytes": 17496,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_source_id_alignment_readback",
+      "source_sha256": "841511e3f12c364eacf5f7c93ff8b5c75e649c2b70a4e9d2cc30272f89ea59f1",
+      "source_bytes": 20183,
+      "public_symbol_count": 8
+    },
+    {
+      "name": "work_graph_task_result_contract_field_gap_readback",
+      "source_sha256": "0075d238fb486808a7d3836cc8ae5fa2997ee406770001b83068c2929ebb3841",
+      "source_bytes": 15295,
+      "public_symbol_count": 8
+    },
+    {
+      "name": "work_graph_task_result_envelope_report_only_validator",
+      "source_sha256": "5b04f8b2c143ca683f5741083521f4991ec422ffc212b3e121754c2162aab81f",
+      "source_bytes": 20788,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_terminal_envelope_readback",
+      "source_sha256": "01594c19b2c6b866a8ee23b1278e26492dddbbb4525fcbf6bc9bf10bbd4f7d53",
+      "source_bytes": 14337,
+      "public_symbol_count": 8
+    },
+    {
+      "name": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_rerun_preview",
+      "source_sha256": "d14ab630ea03b3abbb688427d2da175080bc71e53b8c58958e9b67edbecf4da6",
+      "source_bytes": 56924,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_rerun_preview",
+      "source_sha256": "6a15a901d292372ba094687f32dd518304116560d8aa3ed1516db5844e309186",
+      "source_bytes": 55724,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_rerun_preview",
+      "source_sha256": "d62b98a21227886dcd4f5d65baca977b86b381d69e3ec94273e363689acd6084",
+      "source_bytes": 54532,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_rerun_preview",
+      "source_sha256": "ff7dd9bc8eb5153daedbd77036131c146ee270f4182f5b7a0f24b2ad220158f9",
+      "source_bytes": 53074,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_rerun_preview",
+      "source_sha256": "574f607ce243c9cd188d49b23f59e0db5fd8f6fe3d79c6dba914e9c955bbbb1c",
+      "source_bytes": 51466,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_rerun_preview",
+      "source_sha256": "cfdb64c9fd0b11285c622f4be961190a21ffcdedc590c05959a5a86aadc00d33",
+      "source_bytes": 65592,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_rerun_preview",
+      "source_sha256": "ea852df34dd9b5a59cebc0b5ee27acecb9b09eb06ecbe84547f7fd66ec8ca60b",
+      "source_bytes": 64480,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_rerun_preview",
+      "source_sha256": "a4bf39c8afd4c42f45cb6b46a060718c692e70e86c143b1d51b910a4d9ff9ee0",
+      "source_bytes": 63368,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_rerun_preview",
+      "source_sha256": "097abb898011e7ea8e7715d69c3e79984b62616de726e12d8ad78e0df0bc22e0",
+      "source_bytes": 62256,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_rerun_preview",
+      "source_sha256": "3e8a42c42b3a18a64ead3eed10947ff3c4f3fd034a6b6a1dc01bddafc472dc66",
+      "source_bytes": 61040,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_rerun_preview",
+      "source_sha256": "06f3640cacc8c797359495c6bc2e242081b0968f24f1b68249ea3adfa7dabfbe",
+      "source_bytes": 60346,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_rerun_preview",
+      "source_sha256": "9dc875157f74457fe61330371f37c93d547087d75fa6621dfca51d6d99dcc46d",
+      "source_bytes": 59154,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_rerun_preview",
+      "source_sha256": "9f5d9641b0b7fa7c115a93fa27a7e658537d1d6df26060cdafc49d9ddf1db49e",
+      "source_bytes": 58124,
+      "public_symbol_count": 14
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+      "source_sha256": "c21c7602cf8d95e98b1d086d9eef737c7178dcb886c8e5bf639f62a08d7e2698",
+      "source_bytes": 57347,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+      "source_sha256": "009601d9a07bfe26a429950ceeea8787a5662473ecc898ebe9e1889124eec784",
+      "source_bytes": 58569,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+      "source_sha256": "c98f7f450b493ab76b1ad983d8440cffa30fc219c91cd1560a7423b8b2cf57e1",
+      "source_bytes": 53213,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+      "source_sha256": "366add17ae846900724386a76b61505613c2e2860153b78058ae7008dfe8e898",
+      "source_bytes": 58338,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+      "source_sha256": "dd451bc71f2813e535ba155c7e9d4e42decde0d280f48eede54888333c0ca43c",
+      "source_bytes": 59259,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+      "source_sha256": "198577c47fea39878717488eeba7dfc6cbb9f3fd0ba6c888e1b29ea415f1b088",
+      "source_bytes": 54013,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+      "source_sha256": "249b319c63a478ed1c236c603dd139f806d08fc98e76315e23d334f924761693",
+      "source_bytes": 59329,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+      "source_sha256": "ae2f39d08c386aa6d06fb526703168416b60d2db2a41471de51cd34a6d516c51",
+      "source_bytes": 59949,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+      "source_sha256": "84faab8e045fe009c0e02db467ca372fb217a8a1e55dbf721b7571b5871f267f",
+      "source_bytes": 54813,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+      "source_sha256": "d2f78050f8122c990d738192ce543d160e5bce5d321b39dc4f7182a2e70b9322",
+      "source_bytes": 60320,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+      "source_sha256": "d93c49dd449e66756be0b6ac03f6f81b22374e83c48fe8df0596ffe4524e262e",
+      "source_bytes": 60639,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+      "source_sha256": "9e95491d0b940f11a8cd2719f105b65becf9a20f19187625e08f229b5613ca81",
+      "source_bytes": 55613,
+      "public_symbol_count": 16
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+      "source_sha256": "4bc4408634cbe3c11dadb0e2fd0bbca0c80cf66b0c2b4af17df075c6781711b2",
+      "source_bytes": 61311,
+      "public_symbol_count": 18
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+      "source_sha256": "c7733741a640b0a8037a4e19537eed73723671df11d2009a7123bebaadcedcdb",
+      "source_bytes": 61329,
+      "public_symbol_count": 15
+    },
+    {
+      "name": "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+      "source_sha256": "e0e5ad85eaa33f9f4ed7ff869313f2fe76651fa49ecc4f48bf79d97055f45ff2",
+      "source_bytes": 56413,
+      "public_symbol_count": 16
+    }
+  ],
+  "public_exports_removed": [
+    "wg_events_tnc_r12_application_preview",
+    "wg_events_tnc_r12_preview",
+    "wg_events_tnc_r12_readback_preview",
+    "wg_events_tnc_r13_application_preview",
+    "wg_events_tnc_r13_preview",
+    "wg_events_tnc_r13_readback_preview",
+    "wg_events_tnc_r14_application_preview",
+    "wg_events_tnc_r14_preview",
+    "wg_events_tnc_r14_readback_preview",
+    "wg_events_tnc_r15_application_preview",
+    "wg_events_tnc_r15_preview",
+    "wg_events_tnc_r15_readback_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_ack_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_ack_replay_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_expiry_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_replay_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_ack_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_ack_replay_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_expiry_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview",
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview",
+    "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_ack_replay_idempotency_preview",
+    "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_acknowledgement_preview",
+    "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_expiry_preview",
+    "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_preview",
+    "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_replay_preview",
+    "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_preview",
+    "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_ack_terminal_decision_receipt_preview",
+    "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview",
+    "work_graph_activation_enforcement_blocker_preview",
+    "work_graph_adapter_task_result_index",
+    "work_graph_append_only_event_store_shadow_path",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_application_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_readback_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_application_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_readback_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_application_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_readback_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_application_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_readback_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_application_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_readback_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_application_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_readback_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+    "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+    "work_graph_canonical_projection_readiness",
+    "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_preview",
+    "work_graph_scheduler_admission_dry_run_enforcement",
+    "work_graph_source_id_alignment_readback",
+    "work_graph_task_result_contract_field_gap_readback",
+    "work_graph_task_result_envelope_report_only_validator",
+    "work_graph_terminal_envelope_readback",
+    "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_receipt_rerun_preview",
+    "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_receipt_rerun_preview",
+    "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_receipt_rerun_preview",
+    "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_rerun_preview",
+    "work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_rerun_preview",
+    "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_rerun_preview",
+    "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_rerun_preview",
+    "work_graph_upe_readiness_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_rerun_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_application_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_preview",
+    "work_graph_wg_events_cutover_terminal_no_cutover_receipt_ack_replay_idempotency_closeout_receipt_ack_replay_idempotency_closeout_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_receipt_readback_preview"
+  ]
+}

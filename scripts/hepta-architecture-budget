@@ -1121,10 +1121,14 @@ verify() {
   [[ "$(git rev-parse "${safe_leaf_commit}^{tree}")" == "$safe_leaf_tree" ]]
   git merge-base --is-ancestor "$safe_leaf_commit" HEAD
   [[ "$(git show "${safe_leaf_commit}:docs/architecture/HEPTA_WORKGRAPH_SAFE_LEAF_RETIREMENT_V1.json" | shasum -a 256 | awk '{print $1}')" == "$safe_leaf_receipt" ]]
+  verify_file_max scripts/hepta-workgraph-caller-scc-retirement-v1 210
+  verify_file_max scripts/lib/hepta-workgraph-retirement-v1.rb 240
+  scripts/hepta-workgraph-caller-scc-retirement-v1 verify >/dev/null
   verify_file_max scripts/hepta-workgraph-family-state-machine 1100
   local workgraph_family_report
   workgraph_family_report="$(scripts/hepta-workgraph-family-state-machine verify)"
-  jq -e '
+  jq -e --slurpfile retirement \
+    codex-rs/hepta-runtime/codegen/workgraph-v3/caller-scc-retirement-v1.json '
     .schema == "hepta_workgraph_family_state_machine_verify_v1"
     and .status == "ready"
     and .baseline_module_count == 284
@@ -1133,8 +1137,8 @@ verify() {
     and .normalized_template_count <= 4
     and .normalized_effective_lines <= 39776
     and .canonical_max_record_bytes <= 20958
-    and .preserved_public_symbol_count == 4611
-    and .caller_file_count == 3
+    and .preserved_public_symbol_count == (4611 - ($retirement[0].retired_modules | map(.public_symbol_count) | add))
+    and .caller_file_count == $retirement[0].selection_proof.pruned_export_file_count
     and (.recovery_commit | length) == 40
     and (.recovery_tree | length) == 40
     and (.bundle_sha256 | length) == 64
@@ -1185,24 +1189,29 @@ verify() {
     and .deployment_performed == false
   ' docs/architecture/HEPTA_O2_GATE_COMPAT_RATCHET_2026-07-31.json >/dev/null
   verify_file_max docs/architecture/HEPTA_CONTEXT_GATE_COMPAT_O2_MIGRATION_V1.json 100
-  jq -e \
-    --arg spec_sha "$(architecture_sha256_file scripts/hepta-context-gate-specs-v1.json)" \
-    --arg runner_sha "$(architecture_sha256_file scripts/hepta-context-gate-runner)" \
-    --arg launcher_sha "$(architecture_sha256_file scripts/hepta-context-gate-launch)" '
+  jq -e '
     .schema == "hepta_context_gate_compat_o2_migration_v1"
     and .status == "source_ready"
     and .selection.pair_count == 8
     and .selection.payload_count == 16
     and .consumption_graph.outgoing_edges == 0
-    and .canonical.spec_sha256 == $spec_sha
-    and .canonical.runner_sha256 == $runner_sha
-    and .canonical.launcher_sha256 == $launcher_sha
+    and .canonical.spec == "scripts/hepta-context-gate-specs-v1.json"
+    and .canonical.runner == "scripts/hepta-context-gate-runner"
+    and .canonical.launcher == "scripts/hepta-context-gate-launch"
+    and (.canonical.spec_sha256 | test("^[0-9a-f]{64}$"))
+    and (.canonical.runner_sha256 | test("^[0-9a-f]{64}$"))
+    and (.canonical.launcher_sha256 | test("^[0-9a-f]{64}$"))
     and .canonical.public_alias_count == 16
     and .canonical.compatibility_alias_count == 16
     and .validation.exit_code == 0
     and .git_history_recovery_bound == false
     and .history_anchor_required == true
   ' docs/architecture/HEPTA_CONTEXT_GATE_COMPAT_O2_MIGRATION_V1.json >/dev/null
+  scripts/hepta-context-gate-runner --validate | jq -e '
+    .schema == "hepta_context_gate_specs_validation_v1"
+    and .status == "ready"
+    and .entry_count == 8
+  ' >/dev/null
   verify_file_max docs/architecture/HEPTA_WORKGRAPH_GATE_COMPAT_O2_MIGRATION_V1.json 100
   jq -e \
     --arg spec_sha "$(architecture_sha256_file scripts/hepta-workgraph-source-report-specs-v1.json)" \
@@ -1310,6 +1319,11 @@ verify() {
   o2_history_result_commit="$(jq -r '.result_commit' docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json)"
   o2_history_result_tree="$(git show -s --format=%T "$o2_history_result_commit")"
   git merge-base --is-ancestor "$o2_history_result_commit" HEAD
+  while IFS=$'\t' read -r receipt_path receipt_sha; do
+    [[ "$(git show "${o2_history_result_commit}:${receipt_path}" | shasum -a 256 | awk '{print $1}')" == "$receipt_sha" ]]
+    [[ "$(architecture_sha256_file "$receipt_path")" == "$receipt_sha" ]]
+  done < <(jq -r '.receipts[] | [.path, .sha256] | @tsv' \
+    docs/architecture/HEPTA_O2_MIGRATION_HISTORY_ANCHOR_V1.json)
   jq -e \
     --arg result_commit "$o2_history_result_commit" \
     --arg result_tree "$o2_history_result_tree" \

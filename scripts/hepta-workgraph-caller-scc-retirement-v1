@@ -1,0 +1,202 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "open3"
+require "set"
+require "stringio"
+require "zlib"
+require_relative "lib/hepta-normalized-token-bundle-v1"
+require_relative "lib/hepta-workgraph-retirement-v1"
+
+ROOT = File.expand_path("..", __dir__)
+BUNDLE_ROOT = File.join(ROOT, "codex-rs/hepta-runtime/codegen/workgraph-v3")
+MANIFEST_PATH = File.join(BUNDLE_ROOT, "family-state-machine-v1.json")
+RECEIPT_PATH = File.join(BUNDLE_ROOT, "caller-scc-retirement-v1.json")
+SCHEMA = "hepta_workgraph_normalized_bundle_v3"
+EXPORT_FILES = HeptaWorkgraphRetirement::EXPORT_FILES
+PUBLIC_SYMBOL_PATTERN = HeptaWorkgraphRetirement::PUBLIC_SYMBOL_PATTERN
+
+def usage
+  warn "usage: scripts/hepta-workgraph-caller-scc-retirement-v1 <measure|apply|verify>"
+  exit 64
+end
+
+def git_blob(commit, relative_path)
+  output, status = Open3.capture2("git", "-C", ROOT, "show", "#{commit}:#{relative_path}")
+  raise "cannot read #{relative_path} from #{commit}" unless status.success?
+  output.b
+end
+
+def baseline
+  manifest = JSON.parse(File.binread(MANIFEST_PATH))
+  record = manifest.fetch("baseline")
+  commit = record.fetch("commit")
+  compressed = git_blob(commit, "codex-rs/hepta-runtime/codegen/workgraph-v3/modules.bundle.gz")
+  payload = Zlib::GzipReader.new(StringIO.new(compressed)).read
+  entries = HeptaNormalizedTokenBundle.decode(
+    payload,
+    schema: SCHEMA,
+    name_validator: ->(name) { name.match?(/\A(?:wg_|work_graph_)[a-z0-9_]+\z/) }
+  )
+  [record, compressed, entries]
+end
+
+def symbol_owners(entries)
+  entries.each_with_object(Hash.new { |hash, key| hash[key] = Set.new }) do |entry, owners|
+    owners[entry.name] << entry.name
+    entry.source.scan(PUBLIC_SYMBOL_PATTERN).flatten.each { |symbol| owners[symbol] << entry.name }
+  end
+end
+
+def source_files
+  output, status = Open3.capture2(
+    "git", "-C", ROOT, "ls-files", "-co", "--exclude-standard", "-z", "--", "codex-rs"
+  )
+  raise "cannot enumerate first-party Rust sources" unless status.success?
+  output.split("\0").select { |relative_path| relative_path.end_with?(".rs") }.sort
+end
+
+def live_roots(owners)
+  roots = Set.new
+  source_files.each do |relative_path|
+    next if EXPORT_FILES.include?(relative_path)
+    source = File.binread(File.join(ROOT, relative_path))
+    HeptaNormalizedTokenBundle.rust_tokens(source).each do |token|
+      owners[token.text].each { |owner| roots << owner } if token.kind == :identifier
+    end
+  end
+  roots
+end
+
+def reachable_modules(graph, roots)
+  reachable = roots.dup
+  pending = roots.to_a
+  until pending.empty?
+    graph.fetch(pending.pop).each { |target| pending << target if reachable.add?(target) }
+  end
+  reachable
+end
+
+def sink_seeds(graph, retired, components)
+  component_by_module = {}
+  components.each_with_index do |component, index|
+    component.each { |module_name| component_by_module[module_name] = index }
+  end
+  components.each_with_index.each_with_object([]) do |(component, index), seeds|
+    has_retired_successor = component.any? do |module_name|
+      graph.fetch(module_name).any? do |target|
+        retired.include?(target) && component_by_module.fetch(target) != index
+      end
+    end
+    seeds << component.min unless has_retired_successor
+  end.sort
+end
+
+def export_inventory(commit, retired)
+  exported = Set.new
+  affected_files = 0
+  EXPORT_FILES.each do |relative_path|
+    source = git_blob(commit, relative_path)
+    matches = source.scan(/^pub use ([a-z0-9_]+)::(?:\{\n.*?^\};|\*;)\n/m).flatten
+    retired_matches = matches.select { |module_name| retired.include?(module_name) }
+    affected_files += 1 unless retired_matches.empty?
+    retired_matches.each do |module_name|
+      exported << module_name if retired.include?(module_name)
+    end
+  end
+  [exported.to_a.sort, affected_files]
+end
+
+def build_receipt
+  baseline_record, compressed, entries = baseline
+  raise "WorkGraph retirement requires the 284-module recovery baseline" unless entries.length == 284
+  owners = symbol_owners(entries)
+  graph = HeptaWorkgraphRetirement.dependency_graph(entries)
+  roots = live_roots(owners)
+  reachable = reachable_modules(graph, roots)
+  retired = entries.map(&:name).to_set - reachable
+  components = HeptaWorkgraphRetirement.strongly_connected_components(graph, retired)
+  seeds = sink_seeds(graph, retired, components)
+  closure = HeptaWorkgraphRetirement.reverse_closure(graph, seeds)
+  raise "WorkGraph sink closure is not exact" unless closure == retired
+  public_exports, affected_export_files = export_inventory(baseline_record.fetch("commit"), retired)
+  records = entries.select { |entry| retired.include?(entry.name) }.sort_by(&:name).map do |entry|
+    {
+      "name" => entry.name,
+      "source_sha256" => Digest::SHA256.hexdigest(entry.source),
+      "source_bytes" => entry.source.bytesize,
+      "public_symbol_count" => HeptaWorkgraphRetirement.public_symbols(entry.source).length
+    }
+  end
+  {
+    "schema" => HeptaWorkgraphRetirement::SCHEMA,
+    "status" => "ready",
+    "baseline" => {
+      "commit" => baseline_record.fetch("commit"),
+      "tree" => baseline_record.fetch("tree"),
+      "module_count" => entries.length,
+      "bundle_sha256" => Digest::SHA256.hexdigest(compressed),
+      "aggregate_source_sha256" => HeptaNormalizedTokenBundle.aggregate_sha(entries)
+    },
+    "selection_proof" => {
+      "engine" => "normalized-rust-token-identifier-owner-graph-v1",
+      "module_count" => entries.length,
+      "caller_edge_count" => graph.values.sum(&:length),
+      "tracked_rust_source_count" => source_files.length,
+      "live_root_module_count" => roots.length,
+      "reachable_module_count" => reachable.length,
+      "reverse_closure_count" => retired.length,
+      "rooted_closure_count" => 0,
+      "scc_count" => components.length,
+      "largest_scc_size" => components.map(&:length).max,
+      "sink_scc_count" => seeds.length,
+      "pruned_export_file_count" => affected_export_files,
+      "macro_invocation_tokens_traversed" => true,
+      "ambiguous_identifier_owners_are_all_retained" => true,
+      "exports_are_not_live_roots" => true,
+      "compiler_validation_required_after_apply" => true
+    },
+    "closure_revalidation" => {
+      "engine" => "normalized-rust-token-identifier-owner-graph-v1",
+      "caller_closure_exact" => true,
+      "first_party_rust_reference_scan" => true
+    },
+    "seed_modules" => seeds,
+    "first_party_rooted_closure" => [],
+    "retired_modules" => records,
+    "public_exports_removed" => public_exports
+  }
+end
+
+def encoded_receipt
+  JSON.pretty_generate(build_receipt) + "\n"
+end
+
+case ARGV
+when ["measure"]
+  receipt = build_receipt
+  proof = receipt.fetch("selection_proof")
+  puts JSON.pretty_generate(
+    schema: "hepta_workgraph_caller_scc_retirement_measure_v1",
+    status: "ready",
+    retired_module_count: receipt.fetch("retired_modules").length,
+    public_export_count: receipt.fetch("public_exports_removed").length,
+    seed_count: receipt.fetch("seed_modules").length,
+    caller_edge_count: proof.fetch("caller_edge_count"),
+    live_root_module_count: proof.fetch("live_root_module_count"),
+    reachable_module_count: proof.fetch("reachable_module_count")
+  )
+when ["apply"]
+  staging = "#{RECEIPT_PATH}.#{$$}.tmp"
+  File.binwrite(staging, encoded_receipt)
+  File.rename(staging, RECEIPT_PATH)
+  puts JSON.generate(schema: "hepta_workgraph_caller_scc_retirement_apply_v1", status: "ready")
+when ["verify"]
+  raise "WorkGraph caller/SCC retirement receipt drifted" unless File.binread(RECEIPT_PATH) == encoded_receipt
+  HeptaWorkgraphRetirement.load_receipt(RECEIPT_PATH)
+  puts JSON.generate(schema: "hepta_workgraph_caller_scc_retirement_verify_v1", status: "ready")
+else
+  usage
+end
