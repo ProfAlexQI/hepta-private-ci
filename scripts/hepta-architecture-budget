@@ -1114,10 +1114,10 @@ verify() {
     .schema == "hepta_workgraph_family_state_machine_verify_v1"
     and .status == "ready"
     and .baseline_module_count == 284
-    and .active_module_count == 99
-    and .module_reduction == 185
-    and .normalized_template_count <= 98
-    and .normalized_effective_lines <= 71160
+    and .active_module_count == 49
+    and .module_reduction == 235
+    and .normalized_template_count <= 48
+    and .normalized_effective_lines <= 70552
     and .canonical_max_record_bytes <= 17363
     and .preserved_public_symbol_count == 4611
     and .caller_file_count == 3
@@ -1130,7 +1130,7 @@ verify() {
     and .normalized_template_count == $report.normalized_template_count
     and .normalized_effective_lines == $report.normalized_effective_lines
     and .bundle_sha256 == $report.bundle_sha256
-    and .monotonic_ratchet.logical_module_ceiling == 99
+    and .monotonic_ratchet.logical_module_ceiling == 49
     and .monotonic_ratchet.normalized_effective_line_ceiling == 75000
   ' codex-rs/hepta-runtime/codegen/workgraph-v3/registry.json >/dev/null
   verify_file_max \

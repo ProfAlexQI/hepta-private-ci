@@ -25,11 +25,11 @@ MODULE_BUNDLE_PATH = File.join(ROOT, "scripts/hepta-workgraph-module-bundle")
 SCHEMA = "hepta_workgraph_normalized_bundle_v3"
 MANIFEST_SCHEMA = "hepta_workgraph_family_state_machine_v1"
 BASELINE_MODULE_COUNT = 284
-TARGET_MODULE_COUNT = 99
+TARGET_MODULE_COUNT = 49
 BASELINE_EFFECTIVE_LINE_LIMIT = 75_000
 CANONICAL_RECORD_BYTE_LIMIT = 89_270
-NORMALIZED_TEMPLATE_LIMIT = 99
-HETEROGENEOUS_ENTRY_COUNT = 105
+NORMALIZED_TEMPLATE_LIMIT = 49
+HETEROGENEOUS_ENTRY_COUNT = 155
 HETEROGENEOUS_FAMILY_COUNT = 5
 EXPECTED_REPEATED_TEMPLATE_IDS = [
   0, 3, 4, 25, 47, 55, 57, 64, 65, 66, 82, 84, 85, 90, 91, 173, 176, 185, 186
@@ -730,10 +730,10 @@ end
 def patch_count_sources
   build = File.binread(BUILD_PATH)
   updated_build = build.sub(
-    "const EXPECTED_MODULE_COUNT: usize = 149;",
-    "const EXPECTED_MODULE_COUNT: usize = 99;"
+    /const EXPECTED_MODULE_COUNT: usize = \d+;/,
+    "const EXPECTED_MODULE_COUNT: usize = #{TARGET_MODULE_COUNT};"
   )
-  unless updated_build.include?("const EXPECTED_MODULE_COUNT: usize = 99;")
+  unless updated_build.include?("const EXPECTED_MODULE_COUNT: usize = #{TARGET_MODULE_COUNT};")
     raise "hepta-runtime build count drifted"
   end
   unless updated_build.include?("FAMILY_ALIAS_PREFIX")
@@ -796,20 +796,16 @@ def patch_count_sources
 
   module_bundle = File.binread(MODULE_BUNDLE_PATH)
   updated_module_bundle = module_bundle
-    .sub("EXPECTED_MODULE_COUNT = 149", "EXPECTED_MODULE_COUNT = 99")
-    .sub("MAX_NORMALIZED_TEMPLATE_COUNT = 149", "MAX_NORMALIZED_TEMPLATE_COUNT = 99")
-  unless updated_module_bundle.include?("EXPECTED_MODULE_COUNT = 99") &&
-      updated_module_bundle.include?("MAX_NORMALIZED_TEMPLATE_COUNT = 99") &&
+    .sub(/^EXPECTED_MODULE_COUNT = \d+$/, "EXPECTED_MODULE_COUNT = #{TARGET_MODULE_COUNT}")
+    .sub(
+      /^MAX_NORMALIZED_TEMPLATE_COUNT = \d+$/,
+      "MAX_NORMALIZED_TEMPLATE_COUNT = #{NORMALIZED_TEMPLATE_LIMIT}"
+    )
+  unless updated_module_bundle.include?("EXPECTED_MODULE_COUNT = #{TARGET_MODULE_COUNT}") &&
+      updated_module_bundle.include?("MAX_NORMALIZED_TEMPLATE_COUNT = #{NORMALIZED_TEMPLATE_LIMIT}") &&
       updated_module_bundle.include?("MAX_NORMALIZED_EFFECTIVE_LINES = 75_000")
     raise "WorkGraph module-bundle count or line limit drifted"
   end
-  updated_module_bundle = updated_module_bundle.sub(
-    "        logical_module_count: 99,\n        normalized_template_count: 99,",
-    "        logical_module_count: 49,\n        normalized_template_count: 49,"
-  ).sub(
-    "        logical_module_count: 49,\n        normalized_template_count: 49,\n        normalized_effective_lines: 25_000",
-    "        logical_module_count: 4,\n        normalized_template_count: 4,\n        normalized_effective_lines: 25_000"
-  )
   family_manifest_constant = <<~RUBY
     FAMILY_MANIFEST_PATH = File.join(BUNDLE_ROOT, "family-state-machine-v1.json")
   RUBY

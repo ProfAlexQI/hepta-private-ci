@@ -13,16 +13,16 @@
     "normalized_effective_lines": 75000
   },
   "result": {
-    "module_count": 99,
-    "module_reduction": 185,
-    "singleton_module_count": 71,
+    "module_count": 49,
+    "module_reduction": 235,
+    "singleton_module_count": 21,
     "family_module_count": 24,
     "support_module_count": 4,
-    "consolidated_legacy_module_count": 213,
-    "bundle_sha256": "644386ab25ce0c7317a62d38237da42e61e8cb7052f44fa54615b81b89136959",
-    "aggregate_source_sha256": "65a7742fc4efac1718981d37066fbe93e97ed74226b26f9c0847ad360fd901a6",
-    "normalized_template_count": 98,
-    "normalized_effective_lines": 71160,
+    "consolidated_legacy_module_count": 263,
+    "bundle_sha256": "16670013b77d8c9185d862399a26920647230ac453c5076145fdc425049495a1",
+    "aggregate_source_sha256": "7d915e7b4d0d287b65932b899100e52302e3b4aff12b1d509ed858a6aa352e87",
+    "normalized_template_count": 48,
+    "normalized_effective_lines": 70552,
     "canonical_max_record_bytes": 16649
   },
   "token_canonicalization": {
@@ -1145,7 +1145,7 @@
       "template_id": -1,
       "partition": 1,
       "family_module": "work_graph_family_heterogeneous_p01_state_machine",
-      "variant_count": 21,
+      "variant_count": 31,
       "variants": [
         {
           "name": "wg_events_tnc_r12_preview",
@@ -1314,19 +1314,7 @@
           "source_lines": 736,
           "public_symbol_count": 17,
           "consolidated_semantic_token_sha256": "40978d497f276121e7a17868e684098e698bebf6ee2b3ad1891a275ed2d37737"
-        }
-      ],
-      "family_source_sha256": "61d9e42d1a8801d5ef11cf46e45c9d485fdd72316c31e0abac2334dd70a4d540",
-      "family_source_bytes": 902437,
-      "family_source_lines": 16515
-    },
-    {
-      "mode": "heterogeneous_exact",
-      "template_id": -1,
-      "partition": 2,
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
-      "variant_count": 21,
-      "variants": [
+        },
         {
           "name": "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview",
           "source_sha256": "2971913a81940ee8ef32883a29bd392ebfa03fa02b219a91f28b7867ef1e8361",
@@ -1406,7 +1394,19 @@
           "source_lines": 771,
           "public_symbol_count": 19,
           "consolidated_semantic_token_sha256": "caad7631d30bb7923b2dbf79524d8f482afc28efe7dd43f923d7f30dd514bc79"
-        },
+        }
+      ],
+      "family_source_sha256": "25131c184941c61f6d7ba5528b9865966a8201c5262f69bfda3b33e6428c7402",
+      "family_source_bytes": 1206194,
+      "family_source_lines": 24006
+    },
+    {
+      "mode": "heterogeneous_exact",
+      "template_id": -1,
+      "partition": 2,
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "variant_count": 31,
+      "variants": [
         {
           "name": "work_graph_append_only_store_operator_review_side_effect_lock_application_preview",
           "source_sha256": "067cd935b040b9d8733e10b14e32166c3e2df5133afc7dbcaf84a04c32ff6a6a",
@@ -1494,19 +1494,7 @@
           "source_lines": 805,
           "public_symbol_count": 15,
           "consolidated_semantic_token_sha256": "845f2a91419735bc30a6ebd7349d3f1fb94d276e2e66c7e96b26d13786c4cb6c"
-        }
-      ],
-      "family_source_sha256": "6101fdd45b64148b6404680993d8d7b3b347c000867b19798318f887a828e7c1",
-      "family_source_bytes": 693430,
-      "family_source_lines": 16424
-    },
-    {
-      "mode": "heterogeneous_exact",
-      "template_id": -1,
-      "partition": 3,
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
-      "variant_count": 21,
-      "variants": [
+        },
         {
           "name": "work_graph_append_only_store_runtime_idempotency_mutation_readback_preview",
           "source_sha256": "fc663be98b85d2c06ea356c2c600dcf9e1915fd7d3faa08072d945c14c35c9c7",
@@ -1666,7 +1654,19 @@
           "source_lines": 766,
           "public_symbol_count": 15,
           "consolidated_semantic_token_sha256": "c1bbe0f7024d08e178f7fbeb124020492378162f727066e42e29bf43001ea19a"
-        },
+        }
+      ],
+      "family_source_sha256": "3356f06f315504eed4ceaa6583fac4ec59985390b90672e1adeeaa42447240d7",
+      "family_source_bytes": 1100964,
+      "family_source_lines": 24037
+    },
+    {
+      "mode": "heterogeneous_exact",
+      "template_id": -1,
+      "partition": 3,
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "variant_count": 31,
+      "variants": [
         {
           "name": "work_graph_append_only_work_graph_events_event_store_cutover_operator_review_packet_readback_preview",
           "source_sha256": "bc240e4983619cb61585d4e262bd46132c377286e1fb0a7284bef81497a5e81c",
@@ -1674,19 +1674,7 @@
           "source_lines": 640,
           "public_symbol_count": 16,
           "consolidated_semantic_token_sha256": "4f8c6853dc33b449ff8c7f8582eeb18c93e852c181166ba7c632d09b7aa91645"
-        }
-      ],
-      "family_source_sha256": "597a6e34471629e5cbe016010d6ad33dde9cdf40c3061075a2aac51dcd7865bc",
-      "family_source_bytes": 742412,
-      "family_source_lines": 15746
-    },
-    {
-      "mode": "heterogeneous_exact",
-      "template_id": -1,
-      "partition": 4,
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
-      "variant_count": 21,
-      "variants": [
+        },
         {
           "name": "work_graph_append_only_work_graph_events_event_store_cutover_readiness_application_preview",
           "source_sha256": "b208caef7ea8a46e26f2807849f02db36354cfee46bb816f9c7f338992698766",
@@ -1854,19 +1842,7 @@
           "source_lines": 629,
           "public_symbol_count": 16,
           "consolidated_semantic_token_sha256": "3be2c79b414d7c2cc8fe8d463faa73389bc43ed47eee6a2faeeb716d1ea92900"
-        }
-      ],
-      "family_source_sha256": "0fa6245418e9bc8d76e87dbbdb6efc653ff042072b905829d22544c141dd8a2b",
-      "family_source_bytes": 702058,
-      "family_source_lines": 14335
-    },
-    {
-      "mode": "heterogeneous_exact",
-      "template_id": -1,
-      "partition": 5,
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
-      "variant_count": 21,
-      "variants": [
+        },
         {
           "name": "work_graph_append_only_work_graph_events_persistence_guard_application_preview",
           "source_sha256": "14a58a1679d366dea8a3f1903a97314db60ebcdcc7898d75eb7f39b9dd5d71ec",
@@ -1938,7 +1914,19 @@
           "source_lines": 626,
           "public_symbol_count": 19,
           "consolidated_semantic_token_sha256": "0c40e708980e12877cd0463f89a2d97f1a40132ebb3344224a3bc2d204f1affb"
-        },
+        }
+      ],
+      "family_source_sha256": "730122262e100f11f753993b29de21af62ff076001fc48e40d2bdb601e40c66f",
+      "family_source_bytes": 1023994,
+      "family_source_lines": 21696
+    },
+    {
+      "mode": "heterogeneous_exact",
+      "template_id": -1,
+      "partition": 4,
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_count": 31,
+      "variants": [
         {
           "name": "work_graph_canonical_adapter_inventory_application_preview",
           "source_sha256": "063e0f6a14288252b16f1ffe85a1c68ba1e2bd9c4b4844c42f83b09dac56332e",
@@ -2034,11 +2022,423 @@
           "source_lines": 790,
           "public_symbol_count": 23,
           "consolidated_semantic_token_sha256": "f6722e1adbbceb3bad26a8d0b8483e77461253087a5da0018bccc9c1e7f6831d"
+        },
+        {
+          "name": "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_preview",
+          "source_sha256": "4bcfa0a60d78a3697dbf13b2d27f4cde4b7cbe6311423374e73b8b3e0a49f4dc",
+          "source_bytes": 34089,
+          "source_lines": 738,
+          "public_symbol_count": 23,
+          "consolidated_semantic_token_sha256": "73c67967e6394f3248a23376a13ef5837b924ebaf7c54cd16fd45e92edbcbb38"
+        },
+        {
+          "name": "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_replay_idempotency_preview",
+          "source_sha256": "70251a11ef1c5313ebad3ca4400dacf4bf1b2de643a8ccd1e640a23102d3e6c2",
+          "source_bytes": 35369,
+          "source_lines": 797,
+          "public_symbol_count": 24,
+          "consolidated_semantic_token_sha256": "fbc1d897cb015de248759b48fb2afff209826330e2e80ea52acf02c42e0e5390"
+        },
+        {
+          "name": "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_preview",
+          "source_sha256": "b6290e74c6e2ff5430e42e580ff87675d67a754dfea1db9af3cd36a40e3a81b3",
+          "source_bytes": 38373,
+          "source_lines": 819,
+          "public_symbol_count": 23,
+          "consolidated_semantic_token_sha256": "f0e1a6dd88254fb52b240f14334b851683092487632058171c5fca03366a14b7"
+        },
+        {
+          "name": "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_preview",
+          "source_sha256": "81fd9fa77eeb631561063452ddbdec59d3035825cc4d8611fe880a4bc1ca34f6",
+          "source_bytes": 36689,
+          "source_lines": 750,
+          "public_symbol_count": 23,
+          "consolidated_semantic_token_sha256": "6991c689cd23229c91f9604ac4c7066a74c1d620c00781668ea241fac7e2a347"
+        },
+        {
+          "name": "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_receipt_preview",
+          "source_sha256": "45f2857a27986f04b8f6784508f495d6ff193de1194bb0e160a4395c4f7bb9c8",
+          "source_bytes": 37857,
+          "source_lines": 790,
+          "public_symbol_count": 23,
+          "consolidated_semantic_token_sha256": "8b0f3d7821bb36c150fd472ff80578f8355bae627ac92597e9f8c1b6b6164219"
+        },
+        {
+          "name": "work_graph_projection_adapter_gap_closure_application_preview",
+          "source_sha256": "3f6b7f4a0766f1545df8856ed9cda40a55eea7c0cd27d34c6c40c65ed2487945",
+          "source_bytes": 27575,
+          "source_lines": 661,
+          "public_symbol_count": 17,
+          "consolidated_semantic_token_sha256": "7792555d25917110ec01fd4ae760e571f4181dcdf161640ac044785747e2734b"
+        },
+        {
+          "name": "work_graph_projection_adapter_gap_closure_preview",
+          "source_sha256": "1af1f288519b5f6ee53b7bf3d53a02e489676242b074d9073ee80ca604206ad7",
+          "source_bytes": 28302,
+          "source_lines": 706,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "fe9271b8cf67f382d6ef5cff7bd994188dfa0cf752d48439e82f2529e418fbee"
+        },
+        {
+          "name": "work_graph_projection_adapter_gap_closure_readback_preview",
+          "source_sha256": "b39b2bf2d7d474a7d56f714dd18f548faf5586d21c92dde68618a92328885385",
+          "source_bytes": 24687,
+          "source_lines": 595,
+          "public_symbol_count": 19,
+          "consolidated_semantic_token_sha256": "cb570697033bfe24f7b8be1921437283699c98bef80b4bec49d697567560bc97"
+        },
+        {
+          "name": "work_graph_role_manifest_contract",
+          "source_sha256": "06ea1d2fe2b3efe1abff42f41fd2690838a599048cd83d02e41cee79e561f4c4",
+          "source_bytes": 16500,
+          "source_lines": 525,
+          "public_symbol_count": 16,
+          "consolidated_semantic_token_sha256": "6a4dbd9c84c63c1b30f3dcd150ce31ebc48ea83cf89a093bf7ffd32eaec229a1"
+        },
+        {
+          "name": "work_graph_role_manifest_enforcement_gap_closure_application_preview",
+          "source_sha256": "cf21d7a5ecfc885b768af8af393b005a1ce3c5b749a160acd6c0e53b2a0c44dd",
+          "source_bytes": 30484,
+          "source_lines": 751,
+          "public_symbol_count": 19,
+          "consolidated_semantic_token_sha256": "252aa3fab4e49c55bd4ff7a8c9fbf84eb3dfc109fe3630e2c4c1252facdcafaa"
+        },
+        {
+          "name": "work_graph_role_manifest_enforcement_gap_closure_preview",
+          "source_sha256": "d7ff1dbaa82936ab13f1d570c0c7eefb4659dacd6e558f3759bbff8d26251561",
+          "source_bytes": 27741,
+          "source_lines": 706,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "c09845faa9cf156324732d2b7d1f2f03a5d71e182fb66f02d0f1acac08946492"
+        },
+        {
+          "name": "work_graph_role_manifest_enforcement_gap_closure_readback_preview",
+          "source_sha256": "2806bf8fffac389db5890ff10eeca7051349650798be88a29c59fee772720901",
+          "source_bytes": 30629,
+          "source_lines": 758,
+          "public_symbol_count": 25,
+          "consolidated_semantic_token_sha256": "33d1a4854147103b645db3799281d53d12807c1a7e10a25ef93209ff797cc973"
+        },
+        {
+          "name": "work_graph_runtime_application_promotion_gap_closure_application_preview",
+          "source_sha256": "7595082fe4c3c3639ca369cd70703dccd8dab06ceba2cea0dfba5d7059f62c99",
+          "source_bytes": 33195,
+          "source_lines": 739,
+          "public_symbol_count": 21,
+          "consolidated_semantic_token_sha256": "862073e426cc33efc625eba9d0daa083ebbb2fb83735a9e6a216f666eb2bae7a"
+        },
+        {
+          "name": "work_graph_runtime_application_promotion_gap_closure_preview",
+          "source_sha256": "440ff8050f61c35ad9ac68789c2b25a7bb77360061203baf909a2424b20d3835",
+          "source_bytes": 28428,
+          "source_lines": 669,
+          "public_symbol_count": 17,
+          "consolidated_semantic_token_sha256": "57bee03d00e2670aa6e11f16078eece0e6ff463cd13a46ad773cfbf7c2556281"
+        },
+        {
+          "name": "work_graph_runtime_application_promotion_gap_closure_readback_preview",
+          "source_sha256": "c29457751ec18bedfeb10a1f2434a5216e098867d14d6806167b71bbad04624f",
+          "source_bytes": 33582,
+          "source_lines": 739,
+          "public_symbol_count": 25,
+          "consolidated_semantic_token_sha256": "c506bd522b6fc0ecd234cdf128df9b8200a42edac4b6b04d2803573451c06de5"
+        },
+        {
+          "name": "work_graph_scheduler_admission_controller",
+          "source_sha256": "45e90a5eae9afd1bb116fbd14306771dfbcc1c729125daaacac6a647152fd48d",
+          "source_bytes": 14373,
+          "source_lines": 428,
+          "public_symbol_count": 12,
+          "consolidated_semantic_token_sha256": "dc1d9c913a918e72a34f3ea4f13bc6f7f7bf7b7e3c95413a8d9ae869f8eecc79"
+        },
+        {
+          "name": "work_graph_scheduler_admission_dry_run_enforcement",
+          "source_sha256": "0ae460a6fa8559d63252c176e58acb1e7f620656793a9516be2fc61d35bcfcb2",
+          "source_bytes": 17496,
+          "source_lines": 509,
+          "public_symbol_count": 14,
+          "consolidated_semantic_token_sha256": "dc483aee82defc577931679277fcbdc1f7d44ac1731caa1da8a13c8bd52eec1e"
+        },
+        {
+          "name": "work_graph_scheduler_admission_enforcement_gap_closure_application_preview",
+          "source_sha256": "058e417cb35b9b182a08b81b3e866b396e870dc360a0c0d0dde3fef565cf0d91",
+          "source_bytes": 32304,
+          "source_lines": 775,
+          "public_symbol_count": 19,
+          "consolidated_semantic_token_sha256": "4f68e9cfc1a11c42386c875f5871bc9b1a70e3159205622e68a556c65ef27615"
+        },
+        {
+          "name": "work_graph_scheduler_admission_enforcement_gap_closure_preview",
+          "source_sha256": "e23371feeb160fa3d5ec9a092d5f9208cc1236c573ad41571901debe4c771669",
+          "source_bytes": 28900,
+          "source_lines": 730,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "6ce7bb075181f450a02d58d845507f56cab2b971f7b1e817f9bb52720f9521fc"
         }
       ],
-      "family_source_sha256": "e5b6b3184a0f12fc3037d822ce901c73a2a35c90f88b5b1bc8790869fc345846",
-      "family_source_bytes": 617585,
-      "family_source_lines": 14294
+      "family_source_sha256": "c1dcde16cdb0bd3dc332106d98604fa6db53a4ecf762606691cbe8bbe9241a07",
+      "family_source_bytes": 896319,
+      "family_source_lines": 20816
+    },
+    {
+      "mode": "heterogeneous_exact",
+      "template_id": -1,
+      "partition": 5,
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_count": 31,
+      "variants": [
+        {
+          "name": "work_graph_scheduler_admission_enforcement_gap_closure_readback_preview",
+          "source_sha256": "f39d646fc4d615dbc61145c6fd1f5a744ac11399bb9ecf3fe39f1f25cfea9d4f",
+          "source_bytes": 32948,
+          "source_lines": 787,
+          "public_symbol_count": 23,
+          "consolidated_semantic_token_sha256": "f83d8f68dfc31c7073e084273de7b8d87d2aaade26382c45c428e4e99e36ca97"
+        },
+        {
+          "name": "work_graph_schema_registry",
+          "source_sha256": "17cff0c6730c4f09524e3fa6ecbbc1dc1ed2169872d305fa5b5b752e85450edb",
+          "source_bytes": 16342,
+          "source_lines": 424,
+          "public_symbol_count": 13,
+          "consolidated_semantic_token_sha256": "5244dcf7ab2e63ad3bad3ec1319e2cf4dc2e77dac09116e10fc8a47fb50f1ee5"
+        },
+        {
+          "name": "work_graph_source_id_alignment_readback",
+          "source_sha256": "841511e3f12c364eacf5f7c93ff8b5c75e649c2b70a4e9d2cc30272f89ea59f1",
+          "source_bytes": 20183,
+          "source_lines": 499,
+          "public_symbol_count": 8,
+          "consolidated_semantic_token_sha256": "f8130b106be07c04c19bc9f06422a5d0ee4f6a30f46d6a1435e2ce410e087e7f"
+        },
+        {
+          "name": "work_graph_state_store_persistence_preview",
+          "source_sha256": "4a62c8fcf65dc65527ca03da6a5315f1c282ffba4c3d8d319fc6392d9f67e177",
+          "source_bytes": 22608,
+          "source_lines": 635,
+          "public_symbol_count": 17,
+          "consolidated_semantic_token_sha256": "81b23fa961e99c25e264ab9d0d01aff302107eda12ac425b4bc4ce24af7807e2"
+        },
+        {
+          "name": "work_graph_store_idempotency_guard_gap_closure_application_preview",
+          "source_sha256": "20727ba2235c29be63804305678dcb6dce14b5fddd3d1c451602383572f13314",
+          "source_bytes": 29223,
+          "source_lines": 699,
+          "public_symbol_count": 17,
+          "consolidated_semantic_token_sha256": "5f3ba4eade6762154a7b4aeb01f351ca589de484c820a48a67c0f4fa77b2a84f"
+        },
+        {
+          "name": "work_graph_store_idempotency_guard_gap_closure_preview",
+          "source_sha256": "5e02540daadf98b7753e8ea40171017eba4aed82c1947c90db69579986d5af33",
+          "source_bytes": 29248,
+          "source_lines": 702,
+          "public_symbol_count": 17,
+          "consolidated_semantic_token_sha256": "6217f913ea4380e2d7f130a20592356943e1a612dbe0614ff0001d4601316d7b"
+        },
+        {
+          "name": "work_graph_store_idempotency_guard_gap_closure_readback_preview",
+          "source_sha256": "a09baa823d8af6f5d5f9c16cdfa91f5b9f564b50dd4765bd52849b3e83e8a1dc",
+          "source_bytes": 33193,
+          "source_lines": 772,
+          "public_symbol_count": 21,
+          "consolidated_semantic_token_sha256": "ded6d09e3822b5a1b31f47baa63030c4ae06c41e92846a84410bd2fb9f2de906"
+        },
+        {
+          "name": "work_graph_task_result_contract",
+          "source_sha256": "72a5c82cea35ffd823075fd1de3e428a9595de92a5466a71325fcdb9fb402cc3",
+          "source_bytes": 15939,
+          "source_lines": 498,
+          "public_symbol_count": 14,
+          "consolidated_semantic_token_sha256": "ecb4a5263e9e540691044d7036bf3fcc737f334655c0aae7d50cbe833046e27c"
+        },
+        {
+          "name": "work_graph_task_result_contract_field_gap_readback",
+          "source_sha256": "0075d238fb486808a7d3836cc8ae5fa2997ee406770001b83068c2929ebb3841",
+          "source_bytes": 15295,
+          "source_lines": 366,
+          "public_symbol_count": 8,
+          "consolidated_semantic_token_sha256": "fff216d170bc6c6a458dc16c8cc986a23cd2722633e182f05c96fe5c16037501"
+        },
+        {
+          "name": "work_graph_task_result_envelope_report_only_validator",
+          "source_sha256": "5b04f8b2c143ca683f5741083521f4991ec422ffc212b3e121754c2162aab81f",
+          "source_bytes": 20788,
+          "source_lines": 576,
+          "public_symbol_count": 16,
+          "consolidated_semantic_token_sha256": "57fa72730bddc3cf3bc7c0ce281feb5d9b637a97d71d326c614f83922b8e1e61"
+        },
+        {
+          "name": "work_graph_terminal_envelope_readback",
+          "source_sha256": "01594c19b2c6b866a8ee23b1278e26492dddbbb4525fcbf6bc9bf10bbd4f7d53",
+          "source_bytes": 14337,
+          "source_lines": 348,
+          "public_symbol_count": 8,
+          "consolidated_semantic_token_sha256": "0306a89031bc434d655730affde77aea6a2f6378dacc22437dec814eea397d98"
+        },
+        {
+          "name": "work_graph_terminal_task_result_enforcement_gap_closure_application_preview",
+          "source_sha256": "1a67607ac0f48d35c2d001724ab68fd1b15b5c47cf5c781a2ca30a0f14d4425e",
+          "source_bytes": 31813,
+          "source_lines": 754,
+          "public_symbol_count": 17,
+          "consolidated_semantic_token_sha256": "935a1633571620b4d25493f931162cfec7a9ef0f7d0bca41a06d27bf435c31ae"
+        },
+        {
+          "name": "work_graph_terminal_task_result_enforcement_gap_closure_preview",
+          "source_sha256": "9acb6afd8017c7f2b8d0eb8abe4685c0420f078ca3de5b5940fbf00563657e29",
+          "source_bytes": 33803,
+          "source_lines": 802,
+          "public_symbol_count": 19,
+          "consolidated_semantic_token_sha256": "b89be4d70be6e25c604322e1231e0c5c89c1a26fd47ccdb186eca30ad4000523"
+        },
+        {
+          "name": "work_graph_terminal_task_result_enforcement_gap_closure_readback_preview",
+          "source_sha256": "7d58c0f24cfedfb85ca682441a4a9e89406ead50ce757da7b57fdfa617969d20",
+          "source_bytes": 33651,
+          "source_lines": 780,
+          "public_symbol_count": 21,
+          "consolidated_semantic_token_sha256": "af02383dbfcaddaf2f7c655e606699fe48ba54ba1eb9947d003d716e6277ce9c"
+        },
+        {
+          "name": "work_graph_terminal_task_result_wrapper_preview",
+          "source_sha256": "6facf4ec1ee07294294180ae969dd46f15cfc0fe81f66b2ca769cbe9a24faccd",
+          "source_bytes": 24675,
+          "source_lines": 638,
+          "public_symbol_count": 17,
+          "consolidated_semantic_token_sha256": "1d75adabab6c75c9f5e0f751439804cb605736b198e971829e3db8164ea81620"
+        },
+        {
+          "name": "work_graph_terminal_task_result_wrapper_readback_preview",
+          "source_sha256": "889bf700c68ab08fd89659397f5876e1cfc5eeca706ccc875590403cc687790a",
+          "source_bytes": 19771,
+          "source_lines": 522,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "e7242d71171a88e9eb85eae6e529a76054d57f7c2d5dbbde564aa6f28eb7cb9e"
+        },
+        {
+          "name": "work_graph_unified_projection_audit_preview",
+          "source_sha256": "2335cde22c2ab02632e4cc7904b2eb0ac4f27c84726a639ab3c93b51d986b68f",
+          "source_bytes": 27100,
+          "source_lines": 708,
+          "public_symbol_count": 13,
+          "consolidated_semantic_token_sha256": "62583ea72639cc646a03ead3f6c3b6de04c47cd0fc872c5652a50b1187c4fba1"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_append_only_store_rerun_preview",
+          "source_sha256": "9f0dac6e8dfa764800dbae85c3129328d659699e313dda83eb9ae0fc0d6552cc",
+          "source_bytes": 45023,
+          "source_lines": 1028,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "41627ac47454797bedf47339b533949bf1e271b5bc0a5766d535d5dcb7830c39"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_append_only_store_runtime_rerun_preview",
+          "source_sha256": "15326316ee2534e17ede0d7bad7eb844e275c8cef97769e8b151dcdbbebc493f",
+          "source_bytes": 35797,
+          "source_lines": 798,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "bba675f7828710fbb991e0794b6e928438607b9a408923e361ad05d70d4764bd"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_canonical_adapter_inventory_rerun_preview",
+          "source_sha256": "2c44b13e6548346c96935545a40ce77f2c0d48b99f5520b5c26f48c5faa731d2",
+          "source_bytes": 34050,
+          "source_lines": 759,
+          "public_symbol_count": 14,
+          "consolidated_semantic_token_sha256": "c2f9c399e4eecf1857089bd076e76a6a8168e18722bca45ed638576f8844c7ed"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_operator_review_side_effect_lock_rerun_preview",
+          "source_sha256": "3debfbcd134d68db377091460e2be6c39e57abe7625dbfa1e29c3f4f7f2e8ba8",
+          "source_bytes": 40610,
+          "source_lines": 878,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "6943c414212cb8125af68db7c1967da57177761e68d4c543c526a1eb493397f2"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_preview",
+          "source_sha256": "ee2aa00fabe5d0a9552ae4e6031d5aeb26361c30dee8819e424089ddf75b5df9",
+          "source_bytes": 28997,
+          "source_lines": 707,
+          "public_symbol_count": 13,
+          "consolidated_semantic_token_sha256": "ac5b308725b52036a0ef561f4c04c925466ce21c11cb9d7f3edf0400a3ff5a43"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_rerun_preview",
+          "source_sha256": "8b9960328fde0b93645569e8817846981ecc80d1880d76cb211abb564a5ec751",
+          "source_bytes": 32916,
+          "source_lines": 783,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "42f9154811a3f37f802c0eccfb4eac20876107f800d356fc0849eed98e4e1570"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_role_manifest_rerun_preview",
+          "source_sha256": "7a053a42924b2776120b3804995d27ceba2fa2a2170b573783c4c9ebf1a82866",
+          "source_bytes": 46913,
+          "source_lines": 1059,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "66d5f4c682059ed6b1bc05d1d692738fe4f905b26a973f79f2761ad2b4e46177"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_runtime_application_promotion_rerun_preview",
+          "source_sha256": "265d08d1c36d37a1cdebc32eac8301a0aeb71e82e6dcafb08c01e210c7e322b4",
+          "source_bytes": 40474,
+          "source_lines": 893,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "0719e5f34117376366e58550b79b4793e7e43c5ec2b9dc3150a2ebe5147d6719"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_runtime_durable_store_switch_rerun_preview",
+          "source_sha256": "18236b727717592d860dc9caa05186fc84e8ce6a3b7e5231cadeda77b8faf18f",
+          "source_bytes": 38256,
+          "source_lines": 843,
+          "public_symbol_count": 14,
+          "consolidated_semantic_token_sha256": "69f89072172d83dbfe7eff00c8ad397e2d092b094c154c434c7902804a380da0"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_runtime_idempotency_mutation_rerun_preview",
+          "source_sha256": "39dcac1fc4d5e048ec2bea27542f808e0d788b8b157cb4ea9b67b00108a9f096",
+          "source_bytes": 38502,
+          "source_lines": 848,
+          "public_symbol_count": 14,
+          "consolidated_semantic_token_sha256": "d91ef9a5b4d01e793022f709922111252859bcd02ef1ad5c1e15ab04c41bde76"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_runtime_rollback_readback_execution_rerun_preview",
+          "source_sha256": "2bffa95a2cbd3af8d4004b4926c817a9b87ba84b1041fc03be2923de34a2fdd2",
+          "source_bytes": 39976,
+          "source_lines": 858,
+          "public_symbol_count": 14,
+          "consolidated_semantic_token_sha256": "a3feb013d5cf4d1770538c353c3d338940d4b6f1321b7e7dc3fb05c10ceef9b7"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_runtime_wal_write_boundary_execution_rerun_preview",
+          "source_sha256": "f554a80041082ff5c649d5840a99b27cca76a5013b8a71a211c9c876c31e812e",
+          "source_bytes": 40240,
+          "source_lines": 859,
+          "public_symbol_count": 14,
+          "consolidated_semantic_token_sha256": "d2c9b95ae316ae274f5999fdb9da9d4f10f0afc58e53c9e1600e9c9b4d8c081a"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_runtime_write_boundary_rerun_preview",
+          "source_sha256": "fc6095990b7edb0fe7c90161af26527d271f702733b31ef1efab0cb542ec64bc",
+          "source_bytes": 38181,
+          "source_lines": 843,
+          "public_symbol_count": 14,
+          "consolidated_semantic_token_sha256": "89512f5d0af782c471774444c2dc207dcd6b8cbc13033a5e92c609f16394bfa5"
+        },
+        {
+          "name": "work_graph_unified_projection_enforcement_readiness_scheduler_admission_rerun_preview",
+          "source_sha256": "dfa76fbed9b2c4612cffa53288a48761642455d3eb730a98487e48b4afe30969",
+          "source_bytes": 44890,
+          "source_lines": 1021,
+          "public_symbol_count": 15,
+          "consolidated_semantic_token_sha256": "74755b91ac25c76c09b6dae50d0680d40f78bd1ab424d15bd59fb90f63dc5a8b"
+        }
+      ],
+      "family_source_sha256": "c2659180de0281716f732d467e0921c3fda94fb774fd87b47a7c9aca5c36f5b0",
+      "family_source_bytes": 983312,
+      "family_source_lines": 22779
     }
   ],
   "legacy_module_map": {
@@ -2817,61 +3217,61 @@
       "consolidated_semantic_token_sha256": "40978d497f276121e7a17868e684098e698bebf6ee2b3ad1891a275ed2d37737"
     },
     "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_retention_readback_receipt_preview": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_6fbe06be4546",
       "source_sha256": "2971913a81940ee8ef32883a29bd392ebfa03fa02b219a91f28b7867ef1e8361",
       "consolidated_semantic_token_sha256": "13fe5bca3605551d8bee852f2e810946fa756582b2963c71b752cda3deefdaa0"
     },
     "work_graph_activation_enforcement_blocker_preview": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_8c3dd1299702",
       "source_sha256": "f91e1ceea288089bdfbb9aa38f50824b113817115d2e5ed31843e256c113c941",
       "consolidated_semantic_token_sha256": "d5c3f7fc75a227a3dba008eb12d8ccf3c6e9b3cf4bbfe78f2a217b87f38ad07b"
     },
     "work_graph_adapter_projection_fixture": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_56ad8b86c7ab",
       "source_sha256": "9216253f7adb6c80174abcc87da956fed295e10b698a0158afdea439f4822ccc",
       "consolidated_semantic_token_sha256": "8864902f0ac94320b399edb6d0499b7eb6171aa9abf54367669eba8318d60f7e"
     },
     "work_graph_adapter_task_result_index": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_452af79ee6e6",
       "source_sha256": "7910357518b0eb74460c52000aa37a3615112a5b55954d54e477c91e56ab795d",
       "consolidated_semantic_token_sha256": "f6ca4e720a934a5e7176bfbd1175e17add0e81c3fe1b9bc7f412257d228e9c48"
     },
     "work_graph_append_only_event_intake_preview": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_d159c2914b69",
       "source_sha256": "10500c0c98532a5ef7ec7298a6f824ad01efdd3521ca9f80df554f0df9f0f49a",
       "consolidated_semantic_token_sha256": "b95d150e358c77b461174a9642589b5c23ef9f12789cb6f1d595237284adc24e"
     },
     "work_graph_append_only_event_store_feature_gated_wal_precondition": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_874f3e5f31b6",
       "source_sha256": "aea901b4cf5915e4d061430003dcf839f2aeac8ce18810f9c85151755e45d21a",
       "consolidated_semantic_token_sha256": "b34998762dc6c204455d9e2c9b2ae5b0ab5149544c99eeaafaef6efac5e02fdd"
     },
     "work_graph_append_only_event_store_shadow_path": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_c968c3e00453",
       "source_sha256": "ca600955a19359fcbd960a6a7ed5e29b880b08d211eac51b40e34370fa5aec94",
       "consolidated_semantic_token_sha256": "d48536643f4d34ae8c4f7fe655dc9a1834501a88e12ab8bdf7f64bfb03374691"
     },
     "work_graph_append_only_store_enablement_precondition_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_21dd6573524e",
       "source_sha256": "59d7b9d7dc756de9a261d175a01d6c54f7396b3402f134ebad1c116247276efa",
       "consolidated_semantic_token_sha256": "51a74d519ea86bbb5fc775c8a8982682a2b96bdeae9c0a531e233ec5ab09fd1c"
     },
     "work_graph_append_only_store_enablement_precondition_preview": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_8d74643de9de",
       "source_sha256": "a0aabba2ec3752618e4efacf17db4bbaab39daf5516abe6c50755b326ed41ef3",
       "consolidated_semantic_token_sha256": "c8c3a29804bb44e99b5f39665da250b447e4982a8e057b80f7ca832074f06b90"
     },
     "work_graph_append_only_store_enablement_precondition_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p01_state_machine",
       "variant_module": "work_graph_family_variant_ff921f823175",
       "source_sha256": "3d2fcbda749bb301736bade57ab9abad776930ea144154a95401d0519555be7a",
       "consolidated_semantic_token_sha256": "caad7631d30bb7923b2dbf79524d8f482afc28efe7dd43f923d7f30dd514bc79"
@@ -2943,121 +3343,121 @@
       "consolidated_semantic_token_sha256": "845f2a91419735bc30a6ebd7349d3f1fb94d276e2e66c7e96b26d13786c4cb6c"
     },
     "work_graph_append_only_store_runtime_idempotency_mutation_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_846f62b06003",
       "source_sha256": "fc663be98b85d2c06ea356c2c600dcf9e1915fd7d3faa08072d945c14c35c9c7",
       "consolidated_semantic_token_sha256": "fd67c7bac63ee012b1125a7e62909c05be9cc30d1a24479b1d9c97eda55d58e5"
     },
     "work_graph_append_only_store_runtime_rollback_readback_execution_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_c5aefcf558dd",
       "source_sha256": "6a83eabc3a739387a0d3a2f1be84af2a025cd222c8e4152934608000d495a633",
       "consolidated_semantic_token_sha256": "694773fe06765321e5f429874c4a4fbde2314cbe1f9d9fd9f6379b23ee0c9d5c"
     },
     "work_graph_append_only_store_runtime_rollback_readback_execution_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_8188e3c9224b",
       "source_sha256": "3e864a9f10af109461844633f6aa1c9081c7af668e38aee4784faea22c3bb195",
       "consolidated_semantic_token_sha256": "d8ee26b4f9b91a742c65b568990a8e2374ba7bbfb66f5d3a909dee949c928a04"
     },
     "work_graph_append_only_store_runtime_wal_write_boundary_execution_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_86f0e0654f8e",
       "source_sha256": "9060f82f627acbba528809eef629ab77b3f2eb31c309c027605d509cf2e7d0aa",
       "consolidated_semantic_token_sha256": "720f83159ce107f040760d0f3383da1ea56bb2cfdff3b0afb0fe12fe1e78aae2"
     },
     "work_graph_append_only_store_runtime_wal_write_boundary_execution_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_1b1ab009064c",
       "source_sha256": "364315b12232fc4b05a6d1cd579f451015f43153cb3d54b03ae3b67e976b8c72",
       "consolidated_semantic_token_sha256": "5d04e6493bbb31c02bccdd68e280717d40e2670953d395dfc3167087270d93a0"
     },
     "work_graph_append_only_store_runtime_write_boundary_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_58d49c3f4a2f",
       "source_sha256": "7b7648d3d7b74a0637db7e8eeb9a0c357344096fa76faed2417a179c1eacbb55",
       "consolidated_semantic_token_sha256": "942ef91e6921dbadbaed4cf03814f09a40f40ead91d192f9dd0bb2eeb83497ef"
     },
     "work_graph_append_only_store_runtime_write_boundary_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_e12f74502044",
       "source_sha256": "1a7566c38f8f3fde3e1199f9d428181ce03095c8b8ac7b7251b1adb0579c087e",
       "consolidated_semantic_token_sha256": "cf029f8f864081f8109770b693dda146cdc1885cf7f1973c933175054ae699d0"
     },
     "work_graph_append_only_store_runtime_write_boundary_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_1a474014b9f4",
       "source_sha256": "6b405f3bcb38d4456eed4a175317b68619a956f5b6cf0cd8e117e32588dd4ba3",
       "consolidated_semantic_token_sha256": "14a77c5c5415cb67ab1b7102c3df932b1cac4d0d99ed5e97b59c6306197f80e5"
     },
     "work_graph_append_only_work_graph_events_event_store_activation_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_a4a2fe5d0758",
       "source_sha256": "79a7947d7fa8012e3c2ed6e3f65b0ccdca6ee874ba99d738a0eec6a76524f165",
       "consolidated_semantic_token_sha256": "50f263d4d5a2ac79b615711555d91b99a7b7838cded0ec5cd580ef9a4dfd2902"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_adapter_projection_gap_closure_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_72e12b52bdd7",
       "source_sha256": "88e1880efd2b777a59b921b3049006208c207573e518bb4140ad8e96d5f32a12",
       "consolidated_semantic_token_sha256": "b8226fdae552dfffaf74d0b943196c4f052d8d1ca28eafb119c1f96dacc1f1da"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_adapter_projection_gap_closure_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_8c8aa60f80b7",
       "source_sha256": "bb60dec4292e2a5ecd2405db88f6c22443385db08fb1dc6ee085bd91c6b19f17",
       "consolidated_semantic_token_sha256": "cfc9179148c4e8051ba0118ef76be94c14a03be1923b0859ac8861d5a2383a23"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_adapter_projection_gap_closure_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_bcdbb88f1d75",
       "source_sha256": "2a0a41fa1f09c6b03a5baac3553bea569ea82e88fbfd15aac485f43f7479daf6",
       "consolidated_semantic_token_sha256": "4f8a0273f958cdc1056a42441791b49e412900f52c7b5885e1162ab9207be6a1"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_append_only_events_enablement_closure_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_f5ca784c1da0",
       "source_sha256": "c3fac699d611624ba38a97ef69cd97025fd111ea92ec57f787d1c71f07ed218e",
       "consolidated_semantic_token_sha256": "2981f6d5d1605a3c123fb52c1a4fb60cda47762c901fcc96e807ab323b5ceb9d"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_append_only_events_enablement_closure_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_1beb871634f5",
       "source_sha256": "f02d078a1dfafd3e1bccefe27106fe0e73602bfa9bc9bedabbe1e9331abffcd9",
       "consolidated_semantic_token_sha256": "d777fd5143b239b4ab695200585370aa75ca5dd23bab7ac0e3aee8f74c0181f5"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_append_only_events_enablement_closure_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_9eca155e4b12",
       "source_sha256": "1388643c5a0de9f11c9eef702f0d9aaa7418b48983551c109014f3752f689371",
       "consolidated_semantic_token_sha256": "ca8aaabeb4074e9b1f4d585545fa5a0687e997dcd6864c78846a55cdfc295996"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_final_no_enablement_readiness_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_2fd49bde51a4",
       "source_sha256": "6a3bf5a87ff2d10a13019b253cccb4b9303f55753863b2f2114afa66b64a2afc",
       "consolidated_semantic_token_sha256": "b2f51c57f0fb6a5d1ec3bbebb458afc19b3a20fb51022b854fba2b2484e40725"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_final_no_enablement_readiness_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_86c9f43af43c",
       "source_sha256": "da66699370ce93558e6b60b2a881325cfd25292c9214a3f2785683f484ecd646",
       "consolidated_semantic_token_sha256": "677fe83a2d3d45600da2067d466f161dc4792c695f7d20bbfd8540b8a613a0ab"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_final_no_enablement_readiness_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_e52f2a17df38",
       "source_sha256": "df175ca71c7df75c68b09c6f62f4c0930e848e13ed149e9c7bb2ab4baa12d942",
       "consolidated_semantic_token_sha256": "e8e3f6f87ababf4e678f85533cff7c874d60e361267791218bf7924c17b32626"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_operator_review_packet_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_903a2f8751d1",
       "source_sha256": "5e54e2436c4829ad5db49f7de3b55026987bf82a65068d73980688b3b3c88a63",
       "consolidated_semantic_token_sha256": "15bae8f6ac08c1cc0dc34cbfa07ef6973422f94f5395d7270b4b5d44373965e2"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_operator_review_packet_preview": {
-      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p02_state_machine",
       "variant_module": "work_graph_family_variant_f0618a4189d8",
       "source_sha256": "fb986a823551fd978f2c299f8253bdd7c956883fc150c07f2ab684fd5feae7ca",
       "consolidated_semantic_token_sha256": "c1bbe0f7024d08e178f7fbeb124020492378162f727066e42e29bf43001ea19a"
@@ -3069,256 +3469,556 @@
       "consolidated_semantic_token_sha256": "4f8c6853dc33b449ff8c7f8582eeb18c93e852c181166ba7c632d09b7aa91645"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_readiness_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_dff64bd075b4",
       "source_sha256": "b208caef7ea8a46e26f2807849f02db36354cfee46bb816f9c7f338992698766",
       "consolidated_semantic_token_sha256": "e1def79ee14f53ef032968cc0870cbea8b50aa694eb00cc8bf88bd1e04eef102"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_readiness_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_d37e506953ed",
       "source_sha256": "1136e0e8707b2a99cfd36e7fe59e5741bfe8838f7fb9d6e3d961366ab9d9dc63",
       "consolidated_semantic_token_sha256": "f5003c9eb152b61ed8285cb4f3b199c19a2a2193042acd8273160fd540c2f61c"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_replay_readback_execution_closure_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_f9cd9b48d28b",
       "source_sha256": "a8a95321e1f7c3dfd648875b4136b1f42cd362aac8c709bd8fb0d93a62905c7e",
       "consolidated_semantic_token_sha256": "faf330e46d0ab6d8f109247e9441dc4cb9d4719ecdc437ed376388cd1442c3b5"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_replay_readback_execution_closure_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_95a7088426a9",
       "source_sha256": "664e4e53b582383c2d994b29c1fefbb2dc069744440ea6a5b7277167c46a6d0e",
       "consolidated_semantic_token_sha256": "a7f697a4eaa64f82c7cbb068102e738402a21514e3028ed525244b4f269c63ce"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_replay_readback_execution_closure_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_ed9079100596",
       "source_sha256": "30f72d9383364d94dd618235fc9fd35e1cf5eacab518b836e8e32ee34483f735",
       "consolidated_semantic_token_sha256": "4ef025d790e5dfe5e7fb281a653fc74b856a82cd735b5e169af806607010e6cb"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_runtime_adapter_enforcement_closure_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_a0e7268dfe79",
       "source_sha256": "ffdcb62ecd23fd57652b172d0980f145a53b415c258bbd117f15ae33d3cdaed7",
       "consolidated_semantic_token_sha256": "45544324131032c17edbaf06867103aa1a21a2fafe5d40ac86aa89aaf75e1f8a"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_runtime_adapter_enforcement_closure_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_1666ef9ce00a",
       "source_sha256": "b1e9992f8bc86ba04a04017af8a8730052a2a2f92345e61c369c19aacd6af2d0",
       "consolidated_semantic_token_sha256": "b9e77acf14cb2dd8f3db09917aa1a736af8e9098bb7c4a7b0e3cf3aff069c947"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_runtime_adapter_enforcement_closure_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_a08cf5879e4b",
       "source_sha256": "71b7119a1990bb53c47cf2e1794e79aa872517082b113df090064b3ac52ac067",
       "consolidated_semantic_token_sha256": "efa02bf85c3343c23280980f92c9977b549c6d52654872a352815bef680cf285"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_closeout_packet_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_45af1befed0a",
       "source_sha256": "2ec2a9be1985b1bd5a9f46608cde2da099a2587d0279a1f7cfdc7b2297ccde42",
       "consolidated_semantic_token_sha256": "82788a52b038a579d3ea22d1d88b3d6bcaa500f7254085b62fb0b510181b5b33"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_closeout_packet_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_69558a05c104",
       "source_sha256": "f608b41b02e791f5edb1e9b5d4330ce9f928cb6c71f69f88268da99ebe735152",
       "consolidated_semantic_token_sha256": "0eb9592f7c7cc0a189ca18a104398e22d81cbdaa6d192c5e6feb07ea8cd576be"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_decision_readback_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_d1b976949932",
       "source_sha256": "65d358f8d709ce20ccb225163261dc22fa4838e5b030e7fd34a23bfe7860d31d",
       "consolidated_semantic_token_sha256": "545c6f7f34124dd726b59baa1eb70a07c35f7fed39843ed8c940ff8f67c53b2f"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_05778174b26c",
       "source_sha256": "a33cad0045cb79c65e5a1404f813b5eb5a94c1463ee399310f11b5d88dcfb048",
       "consolidated_semantic_token_sha256": "3a76b68dc4754fd3911d12d9803a16010624961395f14113c2cb35ef8906163f"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_22a0845e3290",
       "source_sha256": "d005aa283a19c650ab73d826a3e336618cfaf0a1656169ef14786cdc6b9a8568",
       "consolidated_semantic_token_sha256": "86b28e1f72b0318b7fec3bc5d186d83271627410891a16f4f3be35522176bff9"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_230e645f6697",
       "source_sha256": "aab04a76386d0ff57368f93ba6b8d90fa67f1aed331304e6ac8ba4cd93bd5593",
       "consolidated_semantic_token_sha256": "b3c9d6a8fd83b609e96522f03126f5ec4cadc637ad6f0606185510ce978174f2"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_ad1283b546d2",
       "source_sha256": "412036723028493d25b499a211fb4218ba670acc8019f913b8fea63c627aebbd",
       "consolidated_semantic_token_sha256": "6f37b02a0d8ab30ce40eddd807827237634ac70f6d3fe44c4fa9dda95cce4492"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_1212bccc48c7",
       "source_sha256": "8321e5f1b23397333f85b1bfae4dfb3070ccb5a0863897d604e988876aa4b8cc",
       "consolidated_semantic_token_sha256": "82b623a6ddee878fa1be14a8f8b51c2d2988a1b257ca4e859f685f4d58e32e96"
     },
     "work_graph_append_only_work_graph_events_event_store_cutover_terminal_operator_review_packet_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_1696dcfc4975",
       "source_sha256": "31224df245d6ea8673111c43401b74ddaa96dfb825241ec52cfe541a185310ff",
       "consolidated_semantic_token_sha256": "8019612071417bc203738b31f3173728f3769d42b9ce6b136192d4bbc138d333"
     },
     "work_graph_append_only_work_graph_events_event_store_enablement_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_5d38ffa69406",
       "source_sha256": "36ad158c22391bdf82533d1c3252a6602cebb4d050ad2f6e8a176ea2ab20d9f5",
       "consolidated_semantic_token_sha256": "9d2c8c5f9321daf96edf38275e0bb7d17ae799af0c2b028390fd72d6ccf5fe93"
     },
     "work_graph_append_only_work_graph_events_event_store_promotion_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_4681ba707622",
       "source_sha256": "c674f982489f7f9b7a94e3e84127021c8026fe7a33bc672d44c534d170edf658",
       "consolidated_semantic_token_sha256": "b4a69eee43117684cff8edf4710d14bb55cc12b9574ff6c2c318ca5b27357450"
     },
     "work_graph_append_only_work_graph_events_event_store_promotion_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_49b0eb4f7dec",
       "source_sha256": "b938210ecdd272cbd3622e5fa40c6fee80b464a4fd819794cf5431102d3b10c7",
       "consolidated_semantic_token_sha256": "e482ff1c01db2a1f68402acf5b09022c76b06f2aadced945fb6af22f6be56d09"
     },
     "work_graph_append_only_work_graph_events_event_store_promotion_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_ef66f3202583",
       "source_sha256": "54490a1f6bb256f3a1e3c4141ebae2a7dfb2f768a169c43df8af426db9e8b17a",
       "consolidated_semantic_token_sha256": "3be2c79b414d7c2cc8fe8d463faa73389bc43ed47eee6a2faeeb716d1ea92900"
     },
     "work_graph_append_only_work_graph_events_persistence_guard_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_b8862a44bf80",
       "source_sha256": "14a58a1679d366dea8a3f1903a97314db60ebcdcc7898d75eb7f39b9dd5d71ec",
       "consolidated_semantic_token_sha256": "467f712e8fe57bf104927e93ba87814a89c0a9d61d8f9a462ae51f66b869aef1"
     },
     "work_graph_append_only_work_graph_events_persistence_guard_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_77de4901e4f9",
       "source_sha256": "8262f682b2decfda910fe594ba975df2319416f58928841d0840fa0ec9e21e8f",
       "consolidated_semantic_token_sha256": "9b9588c82cf75fdaea38727e21b5f216f63a459b5b63e9fbcb774bc6c964cef7"
     },
     "work_graph_append_only_work_graph_events_persistence_guard_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_c9f9e81182c5",
       "source_sha256": "f3447788861b9a334a364ad1bcc9043150f5f7ae7351d62c41be88cc8333e9e3",
       "consolidated_semantic_token_sha256": "817cbe19e5f319d6b366053e721f1f09005eca4567db2e214ed5ee3167f06085"
     },
     "work_graph_append_only_work_graph_events_replay_readback_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_4bc287823ebd",
       "source_sha256": "36c008adc106bf9b76fe849758c2ddb9e0d37dd0b6033b478c16bd175e98e74e",
       "consolidated_semantic_token_sha256": "f2bf6fcf8c8dc7543292f63fa7cfe99e3120355b811133c5c4ac4f854d5166ed"
     },
     "work_graph_append_only_work_graph_events_replay_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_b5512815b944",
       "source_sha256": "16b6a33f48ed27c6c1e4580fde106d4e14bce9cc8011117fe1a65c25c74a76a7",
       "consolidated_semantic_token_sha256": "7357c8188d958b05089d19e8c8d42e395608f413a9e3a2c4d3d75a3dba1d6418"
     },
     "work_graph_append_only_work_graph_events_replay_readback_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_a4f46aef2986",
       "source_sha256": "304a0a9cb0c6609f3697d605c3e9fa5b00014799ace50e009edd63fadc3ddda4",
       "consolidated_semantic_token_sha256": "2e1ae108638b54cef189f434538718a2ec0682234e95a1ebe7458164d58f5702"
     },
     "work_graph_append_only_work_graph_events_shadow_write_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_aa8db8b241f0",
       "source_sha256": "bf4653333ad17515ecdcadba717145210f546d8a09246c0cbf793ff30b135042",
       "consolidated_semantic_token_sha256": "f26ff96d079b5d03520b1626e6496dc0de5cb6043f33e3abce922540088340b1"
     },
     "work_graph_append_only_work_graph_events_shadow_write_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_44cca9773cff",
       "source_sha256": "304d7c0b63f20201cdaf05b24790f1673c0287c8dbcb35d9a1c5ffedbe20007f",
       "consolidated_semantic_token_sha256": "91bd6c8ec8c9b05044a2193acbaa1f8dc590fd960acc51341f4bf1aa4290f864"
     },
     "work_graph_append_only_work_graph_events_shadow_write_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p03_state_machine",
       "variant_module": "work_graph_family_variant_f3b8736f7378",
       "source_sha256": "7940a26fc8006597a33206d23264a864b1060a756b2f2cdb16f526cfe2fa5ff9",
       "consolidated_semantic_token_sha256": "0c40e708980e12877cd0463f89a2d97f1a40132ebb3344224a3bc2d204f1affb"
     },
     "work_graph_canonical_adapter_inventory_application_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_71fe66826760",
       "source_sha256": "063e0f6a14288252b16f1ffe85a1c68ba1e2bd9c4b4844c42f83b09dac56332e",
       "consolidated_semantic_token_sha256": "5031ecd99a2c7f35bb77b16102ab50cd369461eee0d4ad154a8a7a4a6d8f957c"
     },
     "work_graph_canonical_adapter_inventory_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_249b1fbc9b7c",
       "source_sha256": "7dc915763676306c83b5889ee3f2e479d565fdf7848c6ae2843288ba58e13e35",
       "consolidated_semantic_token_sha256": "b890013bc16fe4c77a0bedfb95e7ec9902e24cced2658848dfe3f70c52d52d79"
     },
     "work_graph_canonical_adapter_inventory_readback_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_8f13fd6942ee",
       "source_sha256": "36d6156b0e8505329c3a01f4d6b6e2d4af430b208065b0765b1e54702a98a70d",
       "consolidated_semantic_token_sha256": "9d2c102f4d1b9b4b853cb20fafa4aa1b3f871ce63661f6402aff248b19e55933"
     },
     "work_graph_canonical_projection_readiness": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_f22fc66260b7",
       "source_sha256": "0a14607ee8b6fd390e8cc2d446bd47e1078e92b904057a2be77442074bb4b033",
       "consolidated_semantic_token_sha256": "95e5b76e54c605fc1a15d487652e9db67efb49dcdd94c6e4461640763afbdef5"
     },
     "work_graph_canonical_schema_types": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_aeefc5ca6bbf",
       "source_sha256": "97d7a02279aee2900fc5851e52842dbc80f1b11d4be82a0590ba86b5016c82f5",
       "consolidated_semantic_token_sha256": "9257c35afbe83cb863b798dcc90dc0be92f692ce04f08d7df98baf39ef6d3c12"
     },
     "work_graph_current_state_inventory": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_892bedfbaddc",
       "source_sha256": "08e8ca4783fe19d4cf1137daa94d048a6be98fe6134a1e9b29f6053a5be2f251",
       "consolidated_semantic_token_sha256": "9c596ef6d3a6fcb61a50b92aea927653c94243db7df07632018c15c278af41c7"
     },
     "work_graph_idempotency_readback_adapter_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_35842dc92104",
       "source_sha256": "5a35cefe9a13ce5c4263cac17e0d63627c6654d76dfd659e5b3148eba7cb26fe",
       "consolidated_semantic_token_sha256": "a6715447d050c8693be6ed00f7eb04de2448fcf0e601690c772ba1884e1be01d"
     },
     "work_graph_observability_timeline": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_3f278e251848",
       "source_sha256": "77336c1ae2020a04bcb2589f8a44b2ad053684dcd1ce1070335e230abcdd73c8",
       "consolidated_semantic_token_sha256": "08071d1a66a3ba3d6832a8bff73bec713118eedc223f05846403e3ffe395bbda"
     },
     "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_acknowledgement_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_d417eab8f2f0",
       "source_sha256": "7d9c732011120bd338ea18e7c0cd23536a758ea70c4a53f4db989a274fe40c91",
       "consolidated_semantic_token_sha256": "8241a305964ed1f2e03393a0f5c7fc77946b771ebee98ebcb34e20a46d59af74"
     },
     "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_acknowledgement_replay_idempotency_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_3816076e0af4",
       "source_sha256": "daca78f1339ffdc88a899ea519b014c4ffe94de97905a8015111bdf69a94ab78",
       "consolidated_semantic_token_sha256": "278a7747dfafb23269020b87cab062b0ff0f16575cdb5509e2b30896663cefa8"
     },
     "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_c108f1bd062d",
       "source_sha256": "a5ac46dd14a0cebaa28bf40aef0f24cb4de6760cee9a3e11e555049308f002bd",
       "consolidated_semantic_token_sha256": "97e39aeb32f00fb7a1fa671d1e0d010bff90193a869b39fb2583bd8de1d99df5"
     },
     "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_preview": {
-      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
       "variant_module": "work_graph_family_variant_6dc9d3660936",
       "source_sha256": "09c1f5c52d68bf4d66affa3f406b861ca411b512d70522302a412a45d24aa3ba",
       "consolidated_semantic_token_sha256": "f6722e1adbbceb3bad26a8d0b8483e77461253087a5da0018bccc9c1e7f6831d"
+    },
+    "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_530d62bee620",
+      "source_sha256": "4bcfa0a60d78a3697dbf13b2d27f4cde4b7cbe6311423374e73b8b3e0a49f4dc",
+      "consolidated_semantic_token_sha256": "73c67967e6394f3248a23376a13ef5837b924ebaf7c54cd16fd45e92edbcbb38"
+    },
+    "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_replay_idempotency_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_abc6a913fed9",
+      "source_sha256": "70251a11ef1c5313ebad3ca4400dacf4bf1b2de643a8ccd1e640a23102d3e6c2",
+      "consolidated_semantic_token_sha256": "fbc1d897cb015de248759b48fb2afff209826330e2e80ea52acf02c42e0e5390"
+    },
+    "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_a19a90892416",
+      "source_sha256": "b6290e74c6e2ff5430e42e580ff87675d67a754dfea1db9af3cd36a40e3a81b3",
+      "consolidated_semantic_token_sha256": "f0e1a6dd88254fb52b240f14334b851683092487632058171c5fca03366a14b7"
+    },
+    "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_e57c53bae654",
+      "source_sha256": "81fd9fa77eeb631561063452ddbdec59d3035825cc4d8611fe880a4bc1ca34f6",
+      "consolidated_semantic_token_sha256": "6991c689cd23229c91f9604ac4c7066a74c1d620c00781668ea241fac7e2a347"
+    },
+    "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_receipt_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_2eba3453c9c3",
+      "source_sha256": "45f2857a27986f04b8f6784508f495d6ff193de1194bb0e160a4395c4f7bb9c8",
+      "consolidated_semantic_token_sha256": "8b0f3d7821bb36c150fd472ff80578f8355bae627ac92597e9f8c1b6b6164219"
+    },
+    "work_graph_projection_adapter_gap_closure_application_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_eba84dd340a7",
+      "source_sha256": "3f6b7f4a0766f1545df8856ed9cda40a55eea7c0cd27d34c6c40c65ed2487945",
+      "consolidated_semantic_token_sha256": "7792555d25917110ec01fd4ae760e571f4181dcdf161640ac044785747e2734b"
+    },
+    "work_graph_projection_adapter_gap_closure_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_071ffe035584",
+      "source_sha256": "1af1f288519b5f6ee53b7bf3d53a02e489676242b074d9073ee80ca604206ad7",
+      "consolidated_semantic_token_sha256": "fe9271b8cf67f382d6ef5cff7bd994188dfa0cf752d48439e82f2529e418fbee"
+    },
+    "work_graph_projection_adapter_gap_closure_readback_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_ecadc2dba472",
+      "source_sha256": "b39b2bf2d7d474a7d56f714dd18f548faf5586d21c92dde68618a92328885385",
+      "consolidated_semantic_token_sha256": "cb570697033bfe24f7b8be1921437283699c98bef80b4bec49d697567560bc97"
+    },
+    "work_graph_role_manifest_contract": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_42919f2906f9",
+      "source_sha256": "06ea1d2fe2b3efe1abff42f41fd2690838a599048cd83d02e41cee79e561f4c4",
+      "consolidated_semantic_token_sha256": "6a4dbd9c84c63c1b30f3dcd150ce31ebc48ea83cf89a093bf7ffd32eaec229a1"
+    },
+    "work_graph_role_manifest_enforcement_gap_closure_application_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_e9af0b271144",
+      "source_sha256": "cf21d7a5ecfc885b768af8af393b005a1ce3c5b749a160acd6c0e53b2a0c44dd",
+      "consolidated_semantic_token_sha256": "252aa3fab4e49c55bd4ff7a8c9fbf84eb3dfc109fe3630e2c4c1252facdcafaa"
+    },
+    "work_graph_role_manifest_enforcement_gap_closure_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_b949e64a684c",
+      "source_sha256": "d7ff1dbaa82936ab13f1d570c0c7eefb4659dacd6e558f3759bbff8d26251561",
+      "consolidated_semantic_token_sha256": "c09845faa9cf156324732d2b7d1f2f03a5d71e182fb66f02d0f1acac08946492"
+    },
+    "work_graph_role_manifest_enforcement_gap_closure_readback_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_ea8deb277a7d",
+      "source_sha256": "2806bf8fffac389db5890ff10eeca7051349650798be88a29c59fee772720901",
+      "consolidated_semantic_token_sha256": "33d1a4854147103b645db3799281d53d12807c1a7e10a25ef93209ff797cc973"
+    },
+    "work_graph_runtime_application_promotion_gap_closure_application_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_188449298beb",
+      "source_sha256": "7595082fe4c3c3639ca369cd70703dccd8dab06ceba2cea0dfba5d7059f62c99",
+      "consolidated_semantic_token_sha256": "862073e426cc33efc625eba9d0daa083ebbb2fb83735a9e6a216f666eb2bae7a"
+    },
+    "work_graph_runtime_application_promotion_gap_closure_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_dc122e0e3d6e",
+      "source_sha256": "440ff8050f61c35ad9ac68789c2b25a7bb77360061203baf909a2424b20d3835",
+      "consolidated_semantic_token_sha256": "57bee03d00e2670aa6e11f16078eece0e6ff463cd13a46ad773cfbf7c2556281"
+    },
+    "work_graph_runtime_application_promotion_gap_closure_readback_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_fa4108b961a3",
+      "source_sha256": "c29457751ec18bedfeb10a1f2434a5216e098867d14d6806167b71bbad04624f",
+      "consolidated_semantic_token_sha256": "c506bd522b6fc0ecd234cdf128df9b8200a42edac4b6b04d2803573451c06de5"
+    },
+    "work_graph_scheduler_admission_controller": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_4d8211e0f683",
+      "source_sha256": "45e90a5eae9afd1bb116fbd14306771dfbcc1c729125daaacac6a647152fd48d",
+      "consolidated_semantic_token_sha256": "dc1d9c913a918e72a34f3ea4f13bc6f7f7bf7b7e3c95413a8d9ae869f8eecc79"
+    },
+    "work_graph_scheduler_admission_dry_run_enforcement": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_ce09ecbb43f3",
+      "source_sha256": "0ae460a6fa8559d63252c176e58acb1e7f620656793a9516be2fc61d35bcfcb2",
+      "consolidated_semantic_token_sha256": "dc483aee82defc577931679277fcbdc1f7d44ac1731caa1da8a13c8bd52eec1e"
+    },
+    "work_graph_scheduler_admission_enforcement_gap_closure_application_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_34c36344f6cc",
+      "source_sha256": "058e417cb35b9b182a08b81b3e866b396e870dc360a0c0d0dde3fef565cf0d91",
+      "consolidated_semantic_token_sha256": "4f68e9cfc1a11c42386c875f5871bc9b1a70e3159205622e68a556c65ef27615"
+    },
+    "work_graph_scheduler_admission_enforcement_gap_closure_preview": {
+      "family_module": "work_graph_family_heterogeneous_p04_state_machine",
+      "variant_module": "work_graph_family_variant_7c97300e9e9e",
+      "source_sha256": "e23371feeb160fa3d5ec9a092d5f9208cc1236c573ad41571901debe4c771669",
+      "consolidated_semantic_token_sha256": "6ce7bb075181f450a02d58d845507f56cab2b971f7b1e817f9bb52720f9521fc"
+    },
+    "work_graph_scheduler_admission_enforcement_gap_closure_readback_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_fc9b98dbe6a2",
+      "source_sha256": "f39d646fc4d615dbc61145c6fd1f5a744ac11399bb9ecf3fe39f1f25cfea9d4f",
+      "consolidated_semantic_token_sha256": "f83d8f68dfc31c7073e084273de7b8d87d2aaade26382c45c428e4e99e36ca97"
+    },
+    "work_graph_schema_registry": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_b240d9eebe62",
+      "source_sha256": "17cff0c6730c4f09524e3fa6ecbbc1dc1ed2169872d305fa5b5b752e85450edb",
+      "consolidated_semantic_token_sha256": "5244dcf7ab2e63ad3bad3ec1319e2cf4dc2e77dac09116e10fc8a47fb50f1ee5"
+    },
+    "work_graph_source_id_alignment_readback": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_80648f127d7f",
+      "source_sha256": "841511e3f12c364eacf5f7c93ff8b5c75e649c2b70a4e9d2cc30272f89ea59f1",
+      "consolidated_semantic_token_sha256": "f8130b106be07c04c19bc9f06422a5d0ee4f6a30f46d6a1435e2ce410e087e7f"
+    },
+    "work_graph_state_store_persistence_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_482857e11218",
+      "source_sha256": "4a62c8fcf65dc65527ca03da6a5315f1c282ffba4c3d8d319fc6392d9f67e177",
+      "consolidated_semantic_token_sha256": "81b23fa961e99c25e264ab9d0d01aff302107eda12ac425b4bc4ce24af7807e2"
+    },
+    "work_graph_store_idempotency_guard_gap_closure_application_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_82dc5565315f",
+      "source_sha256": "20727ba2235c29be63804305678dcb6dce14b5fddd3d1c451602383572f13314",
+      "consolidated_semantic_token_sha256": "5f3ba4eade6762154a7b4aeb01f351ca589de484c820a48a67c0f4fa77b2a84f"
+    },
+    "work_graph_store_idempotency_guard_gap_closure_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_8905e9060b53",
+      "source_sha256": "5e02540daadf98b7753e8ea40171017eba4aed82c1947c90db69579986d5af33",
+      "consolidated_semantic_token_sha256": "6217f913ea4380e2d7f130a20592356943e1a612dbe0614ff0001d4601316d7b"
+    },
+    "work_graph_store_idempotency_guard_gap_closure_readback_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_ab38a68e0ad9",
+      "source_sha256": "a09baa823d8af6f5d5f9c16cdfa91f5b9f564b50dd4765bd52849b3e83e8a1dc",
+      "consolidated_semantic_token_sha256": "ded6d09e3822b5a1b31f47baa63030c4ae06c41e92846a84410bd2fb9f2de906"
+    },
+    "work_graph_task_result_contract": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_2842a672fe64",
+      "source_sha256": "72a5c82cea35ffd823075fd1de3e428a9595de92a5466a71325fcdb9fb402cc3",
+      "consolidated_semantic_token_sha256": "ecb4a5263e9e540691044d7036bf3fcc737f334655c0aae7d50cbe833046e27c"
+    },
+    "work_graph_task_result_contract_field_gap_readback": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_ef1b62670722",
+      "source_sha256": "0075d238fb486808a7d3836cc8ae5fa2997ee406770001b83068c2929ebb3841",
+      "consolidated_semantic_token_sha256": "fff216d170bc6c6a458dc16c8cc986a23cd2722633e182f05c96fe5c16037501"
+    },
+    "work_graph_task_result_envelope_report_only_validator": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_ccb5d18ae0d4",
+      "source_sha256": "5b04f8b2c143ca683f5741083521f4991ec422ffc212b3e121754c2162aab81f",
+      "consolidated_semantic_token_sha256": "57fa72730bddc3cf3bc7c0ce281feb5d9b637a97d71d326c614f83922b8e1e61"
+    },
+    "work_graph_terminal_envelope_readback": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_22fa0b778231",
+      "source_sha256": "01594c19b2c6b866a8ee23b1278e26492dddbbb4525fcbf6bc9bf10bbd4f7d53",
+      "consolidated_semantic_token_sha256": "0306a89031bc434d655730affde77aea6a2f6378dacc22437dec814eea397d98"
+    },
+    "work_graph_terminal_task_result_enforcement_gap_closure_application_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_fdeef374f71d",
+      "source_sha256": "1a67607ac0f48d35c2d001724ab68fd1b15b5c47cf5c781a2ca30a0f14d4425e",
+      "consolidated_semantic_token_sha256": "935a1633571620b4d25493f931162cfec7a9ef0f7d0bca41a06d27bf435c31ae"
+    },
+    "work_graph_terminal_task_result_enforcement_gap_closure_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_31985d8b3127",
+      "source_sha256": "9acb6afd8017c7f2b8d0eb8abe4685c0420f078ca3de5b5940fbf00563657e29",
+      "consolidated_semantic_token_sha256": "b89be4d70be6e25c604322e1231e0c5c89c1a26fd47ccdb186eca30ad4000523"
+    },
+    "work_graph_terminal_task_result_enforcement_gap_closure_readback_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_2b35704bbcc2",
+      "source_sha256": "7d58c0f24cfedfb85ca682441a4a9e89406ead50ce757da7b57fdfa617969d20",
+      "consolidated_semantic_token_sha256": "af02383dbfcaddaf2f7c655e606699fe48ba54ba1eb9947d003d716e6277ce9c"
+    },
+    "work_graph_terminal_task_result_wrapper_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_a60eec3cf34c",
+      "source_sha256": "6facf4ec1ee07294294180ae969dd46f15cfc0fe81f66b2ca769cbe9a24faccd",
+      "consolidated_semantic_token_sha256": "1d75adabab6c75c9f5e0f751439804cb605736b198e971829e3db8164ea81620"
+    },
+    "work_graph_terminal_task_result_wrapper_readback_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_2fbbc7577e22",
+      "source_sha256": "889bf700c68ab08fd89659397f5876e1cfc5eeca706ccc875590403cc687790a",
+      "consolidated_semantic_token_sha256": "e7242d71171a88e9eb85eae6e529a76054d57f7c2d5dbbde564aa6f28eb7cb9e"
+    },
+    "work_graph_unified_projection_audit_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_8d031f1087df",
+      "source_sha256": "2335cde22c2ab02632e4cc7904b2eb0ac4f27c84726a639ab3c93b51d986b68f",
+      "consolidated_semantic_token_sha256": "62583ea72639cc646a03ead3f6c3b6de04c47cd0fc872c5652a50b1187c4fba1"
+    },
+    "work_graph_unified_projection_enforcement_readiness_append_only_store_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_d73a285373b4",
+      "source_sha256": "9f0dac6e8dfa764800dbae85c3129328d659699e313dda83eb9ae0fc0d6552cc",
+      "consolidated_semantic_token_sha256": "41627ac47454797bedf47339b533949bf1e271b5bc0a5766d535d5dcb7830c39"
+    },
+    "work_graph_unified_projection_enforcement_readiness_append_only_store_runtime_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_5fc77bad1460",
+      "source_sha256": "15326316ee2534e17ede0d7bad7eb844e275c8cef97769e8b151dcdbbebc493f",
+      "consolidated_semantic_token_sha256": "bba675f7828710fbb991e0794b6e928438607b9a408923e361ad05d70d4764bd"
+    },
+    "work_graph_unified_projection_enforcement_readiness_canonical_adapter_inventory_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_13c51e20a203",
+      "source_sha256": "2c44b13e6548346c96935545a40ce77f2c0d48b99f5520b5c26f48c5faa731d2",
+      "consolidated_semantic_token_sha256": "c2f9c399e4eecf1857089bd076e76a6a8168e18722bca45ed638576f8844c7ed"
+    },
+    "work_graph_unified_projection_enforcement_readiness_operator_review_side_effect_lock_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_d2db7f20586d",
+      "source_sha256": "3debfbcd134d68db377091460e2be6c39e57abe7625dbfa1e29c3f4f7f2e8ba8",
+      "consolidated_semantic_token_sha256": "6943c414212cb8125af68db7c1967da57177761e68d4c543c526a1eb493397f2"
+    },
+    "work_graph_unified_projection_enforcement_readiness_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_3d1b4deceb77",
+      "source_sha256": "ee2aa00fabe5d0a9552ae4e6031d5aeb26361c30dee8819e424089ddf75b5df9",
+      "consolidated_semantic_token_sha256": "ac5b308725b52036a0ef561f4c04c925466ce21c11cb9d7f3edf0400a3ff5a43"
+    },
+    "work_graph_unified_projection_enforcement_readiness_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_b7a625fc0ffa",
+      "source_sha256": "8b9960328fde0b93645569e8817846981ecc80d1880d76cb211abb564a5ec751",
+      "consolidated_semantic_token_sha256": "42f9154811a3f37f802c0eccfb4eac20876107f800d356fc0849eed98e4e1570"
+    },
+    "work_graph_unified_projection_enforcement_readiness_role_manifest_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_97d044bd33dc",
+      "source_sha256": "7a053a42924b2776120b3804995d27ceba2fa2a2170b573783c4c9ebf1a82866",
+      "consolidated_semantic_token_sha256": "66d5f4c682059ed6b1bc05d1d692738fe4f905b26a973f79f2761ad2b4e46177"
+    },
+    "work_graph_unified_projection_enforcement_readiness_runtime_application_promotion_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_8caa8c1bc44a",
+      "source_sha256": "265d08d1c36d37a1cdebc32eac8301a0aeb71e82e6dcafb08c01e210c7e322b4",
+      "consolidated_semantic_token_sha256": "0719e5f34117376366e58550b79b4793e7e43c5ec2b9dc3150a2ebe5147d6719"
+    },
+    "work_graph_unified_projection_enforcement_readiness_runtime_durable_store_switch_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_5edb9e323514",
+      "source_sha256": "18236b727717592d860dc9caa05186fc84e8ce6a3b7e5231cadeda77b8faf18f",
+      "consolidated_semantic_token_sha256": "69f89072172d83dbfe7eff00c8ad397e2d092b094c154c434c7902804a380da0"
+    },
+    "work_graph_unified_projection_enforcement_readiness_runtime_idempotency_mutation_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_b5ccb5793633",
+      "source_sha256": "39dcac1fc4d5e048ec2bea27542f808e0d788b8b157cb4ea9b67b00108a9f096",
+      "consolidated_semantic_token_sha256": "d91ef9a5b4d01e793022f709922111252859bcd02ef1ad5c1e15ab04c41bde76"
+    },
+    "work_graph_unified_projection_enforcement_readiness_runtime_rollback_readback_execution_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_63e560f98bf0",
+      "source_sha256": "2bffa95a2cbd3af8d4004b4926c817a9b87ba84b1041fc03be2923de34a2fdd2",
+      "consolidated_semantic_token_sha256": "a3feb013d5cf4d1770538c353c3d338940d4b6f1321b7e7dc3fb05c10ceef9b7"
+    },
+    "work_graph_unified_projection_enforcement_readiness_runtime_wal_write_boundary_execution_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_74181ce2496c",
+      "source_sha256": "f554a80041082ff5c649d5840a99b27cca76a5013b8a71a211c9c876c31e812e",
+      "consolidated_semantic_token_sha256": "d2c9b95ae316ae274f5999fdb9da9d4f10f0afc58e53c9e1600e9c9b4d8c081a"
+    },
+    "work_graph_unified_projection_enforcement_readiness_runtime_write_boundary_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_caa1673781c3",
+      "source_sha256": "fc6095990b7edb0fe7c90161af26527d271f702733b31ef1efab0cb542ec64bc",
+      "consolidated_semantic_token_sha256": "89512f5d0af782c471774444c2dc207dcd6b8cbc13033a5e92c609f16394bfa5"
+    },
+    "work_graph_unified_projection_enforcement_readiness_scheduler_admission_rerun_preview": {
+      "family_module": "work_graph_family_heterogeneous_p05_state_machine",
+      "variant_module": "work_graph_family_variant_7127f2a7a435",
+      "source_sha256": "dfa76fbed9b2c4612cffa53288a48761642455d3eb730a98487e48b4afe30969",
+      "consolidated_semantic_token_sha256": "74755b91ac25c76c09b6dae50d0680d40f78bd1ab424d15bd59fb90f63dc5a8b"
     }
   }
 }
