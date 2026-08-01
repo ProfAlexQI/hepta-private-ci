@@ -723,6 +723,8 @@ verify() {
   verify_file_max scripts/hepta-long-path-relocate 240
   verify_file_max scripts/hepta-long-path-resolve 50
   verify_file_max scripts/hepta-workgraph-module-bundle 360
+  verify_file_max scripts/hepta-native-canonical-assets 180
+  scripts/hepta-native-canonical-assets verify >/dev/null
   verify_file_max scripts/hepta-workgraph-readable-token-source-v1.rb 280
   verify_file_max scripts/lib/hepta-readable-token-template-v1.rb 140
   verify_file_max scripts/hepta-gate-pair-payload-bundle 570

@@ -1,0 +1,144 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "pathname"
+require "tmpdir"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+MANIFEST = ROOT.join("apps/hepta-native/canonical-assets-v1.tsv")
+EXPECTED = {
+  "control_ui_glass_k" => [
+    "apps/hepta-control-ui/assets/k.png",
+    "apps/hepta-native/resources/img/hepta-glass-k.png",
+    "a54bc0d6352c3130d2d22b7df80f1fabaa94f5098fec12046e4f262e6d0d7c28",
+    2_499_731,
+  ],
+  "google_play_icon_512" => [
+    "apps/hepta-native/resources/icon_512.png",
+    "apps/hepta-native/packaging/icon_google_play_512.png",
+    "ddaea2f8da2463a99b7c51ff0959ce746daebdee53190e80a78b361c27fc4d9a",
+    222_778,
+  ],
+}.freeze
+
+def fail!(message)
+  warn "hepta-native-canonical-assets: #{message}"
+  exit 1
+end
+
+def records
+  rows = MANIFEST.readlines(chomp: true).reject { |line| line.empty? || line.start_with?("#") }
+  parsed = rows.map do |line|
+    fields = line.split("\t", -1)
+    fail!("invalid manifest row") unless fields.length == 5
+    key, canonical, materialized, sha256, bytes = fields
+    fail!("unsafe manifest path for #{key}") unless [canonical, materialized].all? do |path|
+      !path.empty? && !path.start_with?("/") && path.split("/").none? { |part| part.empty? || part == "." || part == ".." }
+    end
+    fail!("invalid digest for #{key}") unless sha256.match?(/\A[0-9a-f]{64}\z/)
+    fail!("invalid byte count for #{key}") unless bytes.match?(/\A[1-9][0-9]*\z/)
+    [key, canonical, materialized, sha256, Integer(bytes, 10)]
+  end
+  fail!("canonical asset contract drifted") unless parsed.to_h { |key, canonical, materialized, sha256, bytes|
+    [key, [canonical, materialized, sha256, bytes]]
+  } == EXPECTED
+  parsed
+end
+
+def digest(path)
+  Digest::SHA256.file(path).hexdigest
+end
+
+def exact_asset!(key, path, sha256, bytes)
+  fail!("#{key} is missing: #{path}") unless path.file?
+  fail!("#{key} must not be a symlink: #{path}") if path.symlink?
+  fail!("#{key} byte count drifted: #{path}") unless path.size == bytes
+  fail!("#{key} digest drifted: #{path}") unless digest(path) == sha256
+end
+
+def git_success?(*arguments)
+  system("git", *arguments, chdir: ROOT.to_s, out: File::NULL, err: File::NULL)
+end
+
+def verify
+  materialized_count = 0
+  records.each do |key, canonical, materialized, sha256, bytes|
+    canonical_path = ROOT.join(canonical)
+    materialized_path = ROOT.join(materialized)
+    exact_asset!(key, canonical_path, sha256, bytes)
+    if git_success?("ls-files", "--error-unmatch", "--", materialized)
+      pending_deletion = !(materialized_path.exist? || materialized_path.symlink?) && !git_success?("diff", "--quiet", "--", materialized)
+      fail!("materialized copy is still tracked: #{materialized}") unless pending_deletion
+    end
+    fail!("materialized copy is not ignored: #{materialized}") unless git_success?("check-ignore", "--no-index", "-q", "--", materialized)
+    next unless materialized_path.exist? || materialized_path.symlink?
+
+    exact_asset!(key, materialized_path, sha256, bytes)
+    fail!("materialized bytes differ from canonical: #{materialized}") unless materialized_path.binread == canonical_path.binread
+    materialized_count += 1
+  end
+  puts JSON.generate(
+    schema: "hepta_native_canonical_assets_v1",
+    status: "ready",
+    canonical_count: records.length,
+    materialized_count: materialized_count,
+    omitted_generated_count: records.length - materialized_count,
+    tracked_duplicate_bytes_retired: records.sum { |record| record.fetch(4) },
+    symlinks_allowed: false,
+  )
+end
+
+def atomic_materialize!(canonical_path, materialized_path)
+  fail!("refusing to replace symlink: #{materialized_path}") if materialized_path.symlink?
+  content = canonical_path.binread
+  return if materialized_path.file? && materialized_path.binread == content
+
+  materialized_path.dirname.mkpath
+  temporary = materialized_path.dirname.join(".#{materialized_path.basename}.tmp-#{Process.pid}")
+  temporary.binwrite(content)
+  begin
+    File.rename(temporary, materialized_path)
+  rescue Errno::EACCES, Errno::EEXIST
+    fail!("refusing to replace symlink: #{materialized_path}") if materialized_path.symlink?
+    FileUtils.rm_f(materialized_path)
+    File.rename(temporary, materialized_path)
+  end
+ensure
+  FileUtils.rm_f(temporary) if defined?(temporary) && temporary
+end
+
+def materialize
+  records.each do |key, canonical, materialized, sha256, bytes|
+    canonical_path = ROOT.join(canonical)
+    materialized_path = ROOT.join(materialized)
+    exact_asset!(key, canonical_path, sha256, bytes)
+    atomic_materialize!(canonical_path, materialized_path)
+  end
+  verify
+end
+
+def self_test
+  verify
+  Dir.mktmpdir("hepta-native-canonical-assets.") do |directory|
+    root = Pathname.new(directory)
+    canonical = root.join("canonical.bin")
+    materialized = root.join("generated/asset.bin")
+    canonical.binwrite("canonical-asset\n")
+    atomic_materialize!(canonical, materialized)
+    fail!("self-test materialization failed") unless materialized.binread == canonical.binread
+    materialized.binwrite("tampered\n")
+    atomic_materialize!(canonical, materialized)
+    fail!("self-test repair failed") unless materialized.binread == canonical.binread
+  end
+  puts JSON.generate(schema: "hepta_native_canonical_assets_self_test_v1", status: "ready")
+end
+
+case ARGV.fetch(0, "verify")
+when "verify" then verify
+when "materialize" then materialize
+when "self-test" then self_test
+else fail!("usage: scripts/hepta-native-canonical-assets [verify|materialize|self-test]")
+end

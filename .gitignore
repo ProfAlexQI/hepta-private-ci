@@ -18,6 +18,11 @@ target/
 apps/hepta-native/target/
 android_33_sdk/
 
+# Deterministic build-time copies; canonical sources are recorded in
+# apps/hepta-native/canonical-assets-v1.tsv.
+/apps/hepta-native/resources/img/hepta-glass-k.png
+/apps/hepta-native/packaging/icon_google_play_512.png
+
 # ignore README for publishing
 codex-cli/README.md
 

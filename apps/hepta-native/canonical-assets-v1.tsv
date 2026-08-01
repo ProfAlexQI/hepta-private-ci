@@ -1,0 +1,4 @@
+# hepta_native_canonical_assets_v1
+# key	canonical_path	materialized_path	sha256	bytes
+control_ui_glass_k	apps/hepta-control-ui/assets/k.png	apps/hepta-native/resources/img/hepta-glass-k.png	a54bc0d6352c3130d2d22b7df80f1fabaa94f5098fec12046e4f262e6d0d7c28	2499731
+google_play_icon_512	apps/hepta-native/resources/icon_512.png	apps/hepta-native/packaging/icon_google_play_512.png	ddaea2f8da2463a99b7c51ff0959ce746daebdee53190e80a78b361c27fc4d9a	222778

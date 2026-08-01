@@ -941,7 +941,7 @@ if [[ ! -x "$CHROME_BIN" ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
-cp apps/hepta-native/resources/img/hepta-glass-k.png "$OUT_DIR/hepta-glass-k.png"
+cp apps/hepta-control-ui/assets/k.png "$OUT_DIR/hepta-glass-k.png"
 
 HTML_PATH="$OUT_DIR/hepta-native-fixture.html"
 cat >"$HTML_PATH" <<'HTML'
