@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "kind": "hepta-native-macos-local-package-evidence",
+  "generated_at_utc": "2026-08-01T15:49:36Z",
+  "implementation_commit": "3e0031afc4ab7ddb44e29ab6545a7b1b05f681e0",
+  "package": {
+    "generated": true,
+    "path": "apps/hepta-native/dist/Hepta.app",
+    "repository_tracked": false,
+    "bundle_identifier": "ai.hepta.nativeapp",
+    "bundle_name": "Hepta",
+    "bundle_display_name": "Hepta",
+    "short_version": "1.0.0",
+    "bundle_version": "1",
+    "executable": "hepta-native",
+    "bundle_icon_file": "Hepta.icns",
+    "bundle_icon_exists": true,
+    "minimum_macos_version": "11.0",
+    "architecture": "arm64",
+    "app_size_kib": 138480,
+    "executable_bytes": 88542048,
+    "executable_sha256": "2c8e16b1e5920bcf1f53986bf4044cda896907d5c58ec38cce9d3fb4b89c3445",
+    "info_plist_sha256": "11dcc470b84c0d0cf27874cc57275af22f5c5c532b10058d238be90f897d6e35",
+    "bundle_icon_sha256": "9ef9ef612310cc62892e6fceb6592d6d8c26a13a935170a416bb4fbd94518c66",
+    "embedded_implementation_commit_verified": true
+  },
+  "verification": {
+    "cargo_packager_exit_success": true,
+    "developer_id_signed": false,
+    "team_identifier_present": false,
+    "linker_ad_hoc_signature_present": true,
+    "codesign_deep_strict_pass": false,
+    "codesign_failure": "code has no resources but signature indicates they must be present",
+    "spctl_accepted": false,
+    "notarized": false,
+    "stapled": false,
+    "stapler_result": "Hepta.app does not have a ticket stapled to it",
+    "bundle_launch_smoke_run": false,
+    "local_app_bundle_generated": true,
+    "local_app_bundle_integrity_ready": false,
+    "public_distribution_ready": false
+  },
+  "notes": [
+    "The package was produced locally with signing and Apple credential environment variables removed.",
+    "The Mach-O carries only the linker-generated ad-hoc signature; the bundle was not re-signed.",
+    "No DMG, Developer ID signature, notarization submission, staple, upload, or public release was performed."
+  ]
+}

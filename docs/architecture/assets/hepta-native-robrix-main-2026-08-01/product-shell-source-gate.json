@@ -1,0 +1,421 @@
+{
+  "schema_version": 2,
+  "kind": "hepta-native-upstream-first-product-shell-gate",
+  "generated_at_utc": "2026-08-01T15:49:36Z",
+  "status": "ready",
+  "scope": "source_only_native_ui",
+  "source_gate_only": true,
+  "test_root_override": false,
+  "upstream": {
+    "repository": "https://github.com/project-robius/robrix.git",
+    "commit": "a5a664da569c577ab1a3e5a33f45dcc9364954a0",
+    "tree": "e620da0561b6632e85eed31008f811bf94c4c24a",
+    "provenance_ready": true,
+    "downstream_overlay_accounted": true,
+    "sync_check_status": "ready",
+    "sync_check_exit_success": true
+  },
+  "product_shell": {
+    "real_robrix_modules_ready": true,
+    "real_shell_relationships_ready": true,
+    "no_cockpit_default": true,
+    "downstream_source_contracts_ready": true,
+    "module_checks": {
+      "desktop.main": {
+        "path": "src/home/main_desktop_ui.rs",
+        "exists": true,
+        "bytes": 48183,
+        "sha256": "09b0ba6f90939658f3bf5561b9c675e58cf9ff232efe2416944d8499849ce478",
+        "markers": {
+          "MainDesktopUI": true,
+          "RoomScreen": true
+        },
+        "ready": true
+      },
+      "desktop.sidebar": {
+        "path": "src/home/rooms_sidebar.rs",
+        "exists": true,
+        "bytes": 7963,
+        "sha256": "6de56eddaf2c563b13814ea68fb61d107691055d39d23ee4dc2c93b67b5f1012",
+        "markers": {
+          "RoomsSideBar": true,
+          "RoomsList": true
+        },
+        "ready": true
+      },
+      "desktop.dock": {
+        "path": "src/home/light_themed_dock.rs",
+        "exists": true,
+        "bytes": 7473,
+        "sha256": "8c089e018d0e01ce011fcbd1705cd24d1a8c51fb2c84c0533e1b5e5869681116",
+        "markers": {
+          "Dock": true
+        },
+        "ready": true
+      },
+      "rooms.list": {
+        "path": "src/home/rooms_list.rs",
+        "exists": true,
+        "bytes": 79334,
+        "sha256": "bbcb02709741c71bfc3140f67442d981bba0d92a3a492c40d23d05974a5aab88",
+        "markers": {
+          "RoomsList": true
+        },
+        "ready": true
+      },
+      "rooms.entry": {
+        "path": "src/home/rooms_list_entry.rs",
+        "exists": true,
+        "bytes": 19638,
+        "sha256": "6824169b4f3c77855c34fc4442400370580a84a445674b6b50192f320e4d4792",
+        "markers": {
+          "RoomsListEntry": true
+        },
+        "ready": true
+      },
+      "room.screen": {
+        "path": "src/home/room_screen.rs",
+        "exists": true,
+        "bytes": 273544,
+        "sha256": "b69847367d5c6dc7e247e3f4e493e96c9d80250352a3dc73d32404f5d862f48b",
+        "markers": {
+          "RoomScreen": true,
+          "RoomInputBar": true
+        },
+        "ready": true
+      },
+      "room.module": {
+        "path": "src/room/mod.rs",
+        "exists": true,
+        "bytes": 6877,
+        "sha256": "f6ebb98aabab0efd93c636854da6f1d3d60e356b9e4c4b02d16d48949379fb85",
+        "markers": {
+          "room_input_bar": true,
+          "reply_preview": true
+        },
+        "ready": true
+      },
+      "room.reply": {
+        "path": "src/room/reply_preview.rs",
+        "exists": true,
+        "bytes": 16407,
+        "sha256": "a6c0c450fdbb8f2140455c950523ce5a719e81d56659d86cf1df5cf27c2fca31",
+        "markers": {
+          "CollapsiblePreview": true
+        },
+        "ready": true
+      },
+      "room.typing": {
+        "path": "src/room/typing_notice.rs",
+        "exists": true,
+        "bytes": 4263,
+        "sha256": "38d73ba6faf60f3ec9037f2f2959ea38d68fba968d28b1b9eee4fbe6274ecff8",
+        "markers": {
+          "TypingNotice": true
+        },
+        "ready": true
+      },
+      "composer.input": {
+        "path": "src/room/room_input_bar.rs",
+        "exists": true,
+        "bytes": 45865,
+        "sha256": "6a4461953a6a79f5f27c5e2cc39d1b170e8245938c5801df78d0746f65a0e020",
+        "markers": {
+          "RoomInputBar": true
+        },
+        "ready": true
+      },
+      "composer.mentions": {
+        "path": "src/shared/mention_popup.rs",
+        "exists": true,
+        "bytes": 27786,
+        "sha256": "aa26971c21fb71c87843ccf9c83a295d405223b1f494de7cdf413bdcfb3b3e08",
+        "markers": {
+          "MentionablePopup": true
+        },
+        "ready": true
+      },
+      "composer.commands": {
+        "path": "src/shared/slash_commands.rs",
+        "exists": true,
+        "bytes": 2701,
+        "sha256": "b3db57c7e4c990a2081a5ff8e7d984ba3c9f5e905db886f088a28c88da673254",
+        "markers": {
+          "SlashCommand": true
+        },
+        "ready": true
+      },
+      "composer.menu": {
+        "path": "src/shared/room_input_popup_menu.rs",
+        "exists": true,
+        "bytes": 8003,
+        "sha256": "318e8a11e1e464f2d97f198759ec96ef0f2f37784159460a4853a83816e74be9",
+        "markers": {
+          "RoomInputPopupMenu": true
+        },
+        "ready": true
+      },
+      "composer.upload": {
+        "path": "src/shared/file_upload_modal.rs",
+        "exists": true,
+        "bytes": 26971,
+        "sha256": "75d8ed9a56fafad3f550a0aa0fcbd0c8f7b1bb3cfc21c8d68c3cc03226febe3d",
+        "markers": {
+          "FileUploadModal": true
+        },
+        "ready": true
+      },
+      "mobile.main": {
+        "path": "src/home/main_mobile_ui.rs",
+        "exists": true,
+        "bytes": 4906,
+        "sha256": "6bb4b9fd5e13705ebc3ab0ff52a72192a176b5f4c512c3a5addb68b29f538359",
+        "markers": {
+          "MainMobileUI": true,
+          "RoomScreen": true
+        },
+        "ready": true
+      },
+      "navigation.home": {
+        "path": "src/home/home_screen.rs",
+        "exists": true,
+        "bytes": 37714,
+        "sha256": "555ccd7b26d86075d5289ac11f2592fd4406018dd38f2d8fccc85c204c3c8973",
+        "markers": {
+          "HomeScreen": true,
+          "NavigationTabBar": true,
+          "MainDesktopUI": true
+        },
+        "ready": true
+      },
+      "navigation.tabs": {
+        "path": "src/home/navigation_tab_bar.rs",
+        "exists": true,
+        "bytes": 28201,
+        "sha256": "8e681902faea40f3a25f79a303b41ad6969633826d9fcf600e7d27a11e544796",
+        "markers": {
+          "NavigationTabBar": true
+        },
+        "ready": true
+      },
+      "navigation.spaces": {
+        "path": "src/home/spaces_bar.rs",
+        "exists": true,
+        "bytes": 30195,
+        "sha256": "a991cf9489192bc4bb5d9ec5e13cda8cf994d7baa782804ecacf09ada9ae3e3c",
+        "markers": {
+          "SpacesBar": true
+        },
+        "ready": true
+      },
+      "navigation.space_lobby": {
+        "path": "src/home/space_lobby.rs",
+        "exists": true,
+        "bytes": 76489,
+        "sha256": "51963e8cfcfbeaeb79f3ef215b89d33824275d00822b4fc473591e8d0941e8bc",
+        "markers": {
+          "SpaceLobby": true
+        },
+        "ready": true
+      },
+      "upload.progress": {
+        "path": "src/home/upload_progress.rs",
+        "exists": true,
+        "bytes": 10538,
+        "sha256": "bd2f6704a462780abc621587585db9aaf60065e3761e5d7f1cdb06cdb44eeea7",
+        "markers": {
+          "UploadProgress": true
+        },
+        "ready": true
+      }
+    },
+    "shell_relationships": {
+      "desktop_owns_room_screen": true,
+      "mobile_owns_room_screen": true,
+      "home_owns_navigation": true,
+      "room_owns_composer": true
+    },
+    "source_contract_checks": {
+      "hepta_identity": {
+        "paths": {
+          "src/lib.rs": {
+            "exists": true,
+            "bytes": 3753,
+            "sha256": "3da5c2d2da0ff00486fef89b23dcfa655f1efad9166e3a52dbb5225e2b160cef",
+            "markers": {
+              "APP_QUALIFIER": true,
+              "APP_ORGANIZATION": true,
+              "APP_NAME": true
+            },
+            "ready": true
+          },
+          "src/app.rs": {
+            "exists": true,
+            "bytes": 56601,
+            "sha256": "b22d30e413d1228659f546a70fa3a1f955d12e42b7a0afc33146b113e1aca983",
+            "markers": {
+              "Hepta": true
+            },
+            "ready": true
+          }
+        },
+        "ready": true
+      },
+      "hepta_theme": {
+        "paths": {
+          "src/shared/hepta_theme.rs": {
+            "exists": true,
+            "bytes": 2168,
+            "sha256": "3c95c4c109e654b89d1bb53248a7ede62350fdacaee82849f21740ed3cab6955",
+            "markers": {
+              "HEPTA_GLASS": true,
+              "HEPTA_CONTENT": true,
+              "HEPTA_FOCUS": true
+            },
+            "ready": true
+          },
+          "src/shared/styles.rs": {
+            "exists": true,
+            "bytes": 20590,
+            "sha256": "a2da1d942e6c39a97943518d2693d81a9cf910190d130fe200ff924b95ecd83c",
+            "markers": {
+              "HEPTA_GLASS": true,
+              "HEPTA_CONTENT": true
+            },
+            "ready": true
+          }
+        },
+        "ready": true
+      },
+      "secure_matrix_session": {
+        "paths": {
+          "src/persistence/matrix_session_store/mod.rs": {
+            "exists": true,
+            "bytes": 32619,
+            "sha256": "89fba852b1b32d640976d8513f6a0fd222aba57f3e1e75082a6e47454b8c5e8d",
+            "markers": {
+              "persist_secure_session_with_store": true,
+              "load_session_material_with_store": true
+            },
+            "ready": true
+          },
+          "src/persistence/matrix_session_store/credential.rs": {
+            "exists": true,
+            "bytes": 2566,
+            "sha256": "1f9b46c9d2ac7672d7f99f8c2ca9c36301006972771b5df89864a7128acc062c",
+            "markers": {
+              "MATRIX_CREDENTIAL_SERVICE": true,
+              "SYSTEM_CREDENTIAL_STORE_SUPPORTED": true
+            },
+            "ready": true
+          },
+          "src/persistence/matrix_state.rs": {
+            "exists": true,
+            "bytes": 20366,
+            "sha256": "92a468bc4365e0db34fd3738a7dbc513a97ac1146793273df025db389d4906da",
+            "markers": {
+              "save_session_material": true,
+              "load_session_material": true,
+              "clear_session_material": true
+            },
+            "ready": true
+          }
+        },
+        "ready": true
+      },
+      "side_effect_free_bridge_contract": {
+        "paths": {
+          "src/hepta_bridge/contract.rs": {
+            "exists": true,
+            "bytes": 23040,
+            "sha256": "17a3c34b3e13b4401385332d8d59509dffcffb05a23a05faccd1a97ea429b2bc",
+            "markers": {
+              "HEPTA_BRIDGE_SCHEMA_VERSION": true,
+              "ConversationBinding": true
+            },
+            "ready": true
+          },
+          "src/hepta_bridge/adapter.rs": {
+            "exists": true,
+            "bytes": 8902,
+            "sha256": "5e136dd3baa58f6b491d8eb69cce333c3183cae0c9ff595bc54f3d02d932777e",
+            "markers": {
+              "DisabledBridgeAdapter": true,
+              "BridgeCapabilities": true
+            },
+            "ready": true
+          },
+          "src/hepta_bridge/presenter.rs": {
+            "exists": true,
+            "bytes": 10362,
+            "sha256": "1e30d507a33ff7a41eb8ac6e0abc0fb793eb9a67bdbbe8d31ed9002b3d88ee4c",
+            "markers": {
+              "DEFAULT_PRESENTATION_PAYLOAD_CAP_BYTES": true,
+              "MAX_PRESENTATION_PAYLOAD_CAP_BYTES": true
+            },
+            "ready": true
+          }
+        },
+        "ready": true
+      },
+      "developer_diagnostics_boundary": {
+        "paths": {
+          "src/settings/developer_diagnostics.rs": {
+            "exists": true,
+            "bytes": 3042,
+            "sha256": "94062060ad98f6e68b847e9759c078d86cf82da037877a5e9699b0991906e7c4",
+            "markers": {
+              "cfg!(feature = \"developer-diagnostics\")": true,
+              "disabled adapter": true
+            },
+            "ready": true
+          },
+          "src/settings/settings_screen.rs": {
+            "exists": true,
+            "bytes": 8893,
+            "sha256": "5105d63f33f71be8fce1016d93925a17c4b9cf3346129a3e0dc3cd3661311f0a",
+            "markers": {
+              "DeveloperDiagnostics": true
+            },
+            "ready": true
+          }
+        },
+        "ready": true
+      }
+    },
+    "forbidden_default_marker_hits": [
+
+    ]
+  },
+  "native_ui_ready": true,
+  "offline_fixture_ready": false,
+  "macos_local_package_ready": false,
+  "matrix_live_ready": false,
+  "hepta_live_bridge_ready": false,
+  "backend_live_adapter_ready": false,
+  "real_device_lab_ready": false,
+  "signing_ready": false,
+  "notarization_ready": false,
+  "stapling_ready": false,
+  "public_distribution_ready": false,
+  "public_ga_ready": false,
+  "full_product_ready": false,
+  "boundary_reasons": {
+    "offline_fixture_ready": "not_run_by_source_only_gate",
+    "macos_local_package_ready": "no_current_source_package_evidence_consumed",
+    "matrix_live_ready": "no_live_homeserver_session_exercised",
+    "hepta_live_bridge_ready": "no_authoritative_runtime_bridge_receipt_exercised",
+    "backend_live_adapter_ready": "the_source_contains_only_a_disabled_adapter_and_contract_types_not_a_live_backend_connection",
+    "real_device_lab_ready": "no_current_real_ios_android_device_lab_evidence",
+    "signing_ready": "no_signing_identity_or_signed_current_source_artifact_consumed",
+    "notarization_ready": "no_Apple_notarization_submission_or_acceptance_consumed",
+    "stapling_ready": "no_notarization_ticket_stapled_to_a_current_source_artifact",
+    "public_distribution_ready": "no_store_upload_or_public_distribution_authority",
+    "public_ga_ready": "signing_notarization_stapling_distribution_and_full_product_gates_are_not_complete",
+    "full_product_ready": "UI source readiness cannot imply backend runtime device lab or release readiness"
+  },
+  "legacy_v1_gate_reused": false,
+  "sync_check_errors": [
+
+  ]
+}
