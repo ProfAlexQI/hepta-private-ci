@@ -3,12 +3,36 @@
 
 use bitflags::bitflags;
 use makepad_widgets::*;
-use matrix_sdk::ruma::OwnedEventId;
+use matrix_sdk::{ruma::OwnedEventId, send_queue::SendHandle};
 use matrix_sdk_ui::timeline::{EventTimelineItem, MsgLikeContent, TimelineEventItemId};
 
 use crate::sliding_sync::UserPowerLevels;
 
 use super::room_screen::MessageAction;
+
+pub const MESSAGE_REPORT_SEND_LOCAL_BOUNDARY_EVIDENCE: &str = "NewMessageContextMenu keeps Report opening and Cancel as local-only moderation preview evidence while Spam, Abuse, and Custom reason require confirmation before MatrixRequest::ReportContent. Custom reason trims local input and empty custom reason stays unsent with a local warning. The confirmed report path sends only Room::report_content for the selected event and reason; it sends no moderation policy lookup, redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile, gateway/runtime/auth, or live mutation request.";
+pub const MESSAGE_REPORT_SEND_LOCAL_BOUNDARY_LABEL: &str =
+    "Report preview opens locally; Spam/Abuse/Custom confirm before Matrix report_content.";
+pub const MESSAGE_REPORT_LOADED_TARGET_METADATA_EVIDENCE: &str = "NewMessageContextMenu report preview shows loaded target metadata derived only from the selected loaded timeline row: row index, loaded event-id availability, loaded body preview, character count, byte count, related-event availability, thread-root availability, local echo send-handle availability, and highlight state. Opening the preview, updating custom reason, canceling, and viewing metadata send no Matrix report_content, moderation policy lookup, relations fetch, event-context fetch, redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile, gateway/runtime/auth, or live mutation request.";
+pub const MESSAGE_REPORT_LOADED_TARGET_METADATA_LABEL: &str =
+    "Loaded report target metadata only; no moderation lookup or report before confirmation.";
+pub const MESSAGE_REPORT_CUSTOM_REASON_DRAFT_METADATA_EVIDENCE: &str = "NewMessageContextMenu report preview shows custom reason draft metadata derived only from the local text input and the selected loaded target row: raw character count, raw byte count, whitespace-compacted character count, whitespace-compacted byte count, 240-character cap state, empty-versus-ready state, target row index, and target event-id availability. Updating the draft, pressing empty Send Custom, canceling, and viewing this draft metadata send no Matrix report_content before confirmation, moderation policy lookup, relations fetch, event-context fetch, redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile, gateway/runtime/auth, or live mutation request.";
+pub const MESSAGE_REPORT_CUSTOM_REASON_DRAFT_METADATA_LABEL: &str =
+    "Custom reason draft metadata only; no ReportContent before confirmation.";
+pub const MESSAGE_REPORT_CANCEL_LOCAL_EVIDENCE: &str = "NewMessageContextMenu Report Cancel and Escape only hide the local report preview, restore the Report button, reset focus/menu state, and show local popup evidence. Cancel does not submit MatrixRequest::ReportContent, does not reuse a draft reason, does not retry or cancel a moderation queue, does not fetch moderation policy, relations, or event context, and emits no redact/delete, ban, kick, ignore/block, room-state mutation, membership mutation, message send/edit, account/profile, gateway/runtime/auth, or live mutation request.";
+pub const MESSAGE_REPORT_CANCEL_LOCAL_LABEL: &str = "Report Cancel is local preview cleanup only; no ReportContent, retry, queue cancel, or moderation lookup.";
+pub const MESSAGE_REPORT_MODERATION_WORKFLOW_BOUNDARY_EVIDENCE: &str = "NewMessageContextMenu report preview exposes moderation workflow boundary metadata from only the loaded target row and local custom-reason readiness. Moderation queue controls, server policy lookup, redact/delete, ban, kick, ignore/block, evidence queue, reviewer assignment, appeal flow, room-state mutation, membership mutation, account/profile mutation, gateway/runtime/auth, and live mutation remain local blocked controls; the only real send path remains confirmed MatrixRequest::ReportContent for the selected event and reason.";
+pub const MESSAGE_REPORT_MODERATION_WORKFLOW_BOUNDARY_LABEL: &str = "Moderation workflow controls stay local blocked evidence; only confirmed ReportContent is wired.";
+pub const MESSAGE_REPORT_SEND_COMPACT_LABEL: &str =
+    "Report preview opened; no Matrix report before confirmation.";
+pub const MESSAGE_REPORT_STAGING_COMPACT_LABEL: &str =
+    "Report sends only after confirmation; empty custom reason stays local.";
+pub const MESSAGE_LOCAL_SEND_CANCEL_COMPACT_LABEL: &str =
+    "Cancel uses this local echo SendHandle only.";
+const MESSAGE_CONTEXT_CONFIRMATION_COMPACT_LABEL: &str =
+    "Confirmation required before the Matrix message action.";
+const MESSAGE_REPORT_CONFIRMATION_COMPACT_LABEL: &str =
+    "Confirmation required before Matrix report_content.";
 
 const BUTTON_HEIGHT: f64 = 35.0; // KEEP IN SYNC WITH BUTTON_HEIGHT BELOW
 const MENU_WIDTH: f64 = 215.0;   // KEEP IN SYNC WITH MENU_WIDTH BELOW
@@ -270,6 +294,49 @@ impl MessageAbilities {
 
 }
 
+#[derive(Clone, Debug)]
+pub struct MessageReportTargetMetadata {
+    pub item_id: usize,
+    pub body_preview: String,
+    pub body_char_count: usize,
+    pub body_byte_count: usize,
+    pub event_id_loaded: bool,
+    pub related_event_loaded: bool,
+    pub thread_root_loaded: bool,
+    pub local_echo_send_handle_loaded: bool,
+    pub highlighted: bool,
+}
+
+impl MessageReportTargetMetadata {
+    pub fn from_loaded_body(
+        item_id: usize,
+        body: &str,
+        event_id_loaded: bool,
+        related_event_loaded: bool,
+        thread_root_loaded: bool,
+        local_echo_send_handle_loaded: bool,
+        highlighted: bool,
+    ) -> Self {
+        let compact = body.split_whitespace().collect::<Vec<_>>().join(" ");
+        let body_preview = if compact.chars().count() > 72 {
+            format!("{}...", compact.chars().take(72).collect::<String>())
+        } else {
+            compact
+        };
+        Self {
+            item_id,
+            body_preview,
+            body_char_count: body.chars().count(),
+            body_byte_count: body.len(),
+            event_id_loaded,
+            related_event_loaded,
+            thread_root_loaded,
+            local_echo_send_handle_loaded,
+            highlighted,
+        }
+    }
+}
+
 /// Details about the message that define its context menu content.
 #[derive(Clone, Debug)]
 pub struct MessageDetails {
@@ -290,6 +357,10 @@ pub struct MessageDetails {
     pub should_be_highlighted: bool,
     /// The abilities that the user has on this message.
     pub abilities: MessageAbilities,
+    /// SDK send-queue handle for a pending local echo, if this row can still be cancelled.
+    pub local_send_handle: Option<SendHandle>,
+    /// Loaded target metadata shown in the local Report preview before any report is sent.
+    pub loaded_report_target_metadata: MessageReportTargetMetadata,
 }
 
 impl MessageDetails {

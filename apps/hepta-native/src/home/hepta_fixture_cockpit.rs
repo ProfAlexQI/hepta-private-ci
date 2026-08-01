@@ -1,10 +1,6 @@
 use makepad_widgets::*;
 
 use crate::{
-    hepta_action_queue::{
-        inspect_action_outbox, sample_action_queue_items, selected_action_detail,
-        summarize_action_queue, HeptaActionQueueStage,
-    },
     hepta_event::{
         card_text_for_event, HeptaEventEnvelope, HeptaEventStatus, EVENT_AGENT_RUN,
         EVENT_MEMORY_CITATION, EVENT_RUNTIME_EVENT, EVENT_TOOL_RESULT,
@@ -12,6 +8,9 @@ use crate::{
     hepta_fixture::{sample_matrix_timeline_events, HeptaFixtureMatrixEvent},
     shared::avatar::{AvatarWidgetExt, AvatarWidgetRefExt},
 };
+
+mod workbench;
+use workbench::{HeptaFixtureOperationWorkbench, summarize_operation_workbench};
 
 #[cfg(test)]
 const HEPTA_FIXTURE_COCKPIT_VISIBLE_CARD_CAPACITY: usize = 9;
@@ -4882,122 +4881,6 @@ fn classify_fixture_event(event: &HeptaFixtureMatrixEvent) -> HeptaFixtureEventG
         return HeptaFixtureEventGroup::Evidence;
     }
     HeptaFixtureEventGroup::Action
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct HeptaFixtureOperationWorkbench {
-    item_count: usize,
-    local_preview_count: usize,
-    awaiting_confirmation_count: usize,
-    policy_blocked_count: usize,
-    all_external_mutation_disabled: bool,
-    composer_title: String,
-    composer_body: String,
-    approval_title: String,
-    approval_body: String,
-    outbox_title: String,
-    outbox_body: String,
-}
-
-impl HeptaFixtureOperationWorkbench {
-    fn composer_display_body(&self) -> String {
-        self.composer_body
-            .replace(" · mutation=false", " · review preview")
-    }
-
-    fn approval_display_body(&self) -> String {
-        self.approval_body
-            .replace(" · mutation=false", " · approval required")
-            .replace("mutation=false", "approval required")
-    }
-
-    fn outbox_display_body(&self) -> String {
-        format!(
-            "{} local preview · {} need confirmation · {} blocked",
-            self.local_preview_count, self.awaiting_confirmation_count, self.policy_blocked_count
-        )
-    }
-}
-
-fn summarize_operation_workbench() -> HeptaFixtureOperationWorkbench {
-    let items = sample_action_queue_items();
-    let action_summary = summarize_action_queue(&items);
-    let selected = selected_action_detail(&items);
-    let inspections = inspect_action_outbox(&items);
-    let approval = items
-        .iter()
-        .find(|item| item.stage == HeptaActionQueueStage::PolicyBlocked);
-    let approval_inspection = approval.and_then(|approval| {
-        inspections
-            .iter()
-            .find(|inspection| inspection.item_id == approval.id)
-    });
-    let all_external_mutation_disabled = items.iter().all(|item| !item.external_mutation_enabled);
-
-    let (composer_title, composer_body) = selected
-        .map(|detail| {
-            (
-                format!(
-                    "{} · {}",
-                    readable_token(detail.stage),
-                    readable_token(&detail.mutation_class)
-                ),
-                format!(
-                    "{} · {} · mutation=false",
-                    detail.title, detail.target_display
-                ),
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                "No selected dry-run".to_string(),
-                "The local action queue has no composer preview item.".to_string(),
-            )
-        });
-
-    let (approval_title, approval_body) = match (approval, approval_inspection) {
-        (Some(approval), Some(inspection)) => (
-            approval.title.clone(),
-            format!(
-                "{} · request={} · preview required · mutation={}",
-                readable_token(inspection.policy_decision_label),
-                short_hash(&inspection.exact_payload_hash),
-                inspection.external_mutation_enabled,
-            ),
-        ),
-        _ => (
-            "No approval request".to_string(),
-            "No approval review item is queued in the local fixture.".to_string(),
-        ),
-    };
-
-    HeptaFixtureOperationWorkbench {
-        item_count: items.len(),
-        local_preview_count: action_summary.local_preview,
-        awaiting_confirmation_count: action_summary.awaiting_confirmation,
-        policy_blocked_count: action_summary.policy_blocked,
-        all_external_mutation_disabled,
-        composer_title,
-        composer_body,
-        approval_title,
-        approval_body,
-        outbox_title: format!("{} staged local actions", items.len()),
-        outbox_body: format!(
-            "local={} · confirm={} · blocked={} · mutation={}",
-            action_summary.local_preview,
-            action_summary.awaiting_confirmation,
-            action_summary.policy_blocked,
-            !all_external_mutation_disabled
-        ),
-    }
-}
-
-fn short_hash(hash: &str) -> String {
-    hash.chars().take(8).collect()
-}
-
-fn readable_token(value: &str) -> String {
-    value.replace('_', " ")
 }
 
 fn populate_fixture_card(cx: &mut Cx, card: WidgetRef, event: Option<&HeptaFixtureMatrixEvent>) {

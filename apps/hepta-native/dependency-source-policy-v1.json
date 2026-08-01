@@ -1,0 +1,154 @@
+{
+  "schema_version": "hepta_native_dependency_source_policy_v1",
+  "cargo_lock": {
+    "path": "Cargo.lock",
+    "sha256": "c95d6ae6818809b0e40531c06f9529c0ba8ae08220fcfe5d03f07b36139528d1"
+  },
+  "root_manifest": {
+    "path": "Cargo.toml",
+    "sha256": "fecb33661f5bb98456b507fbcfea0774e3f9bca2b87ca692b72523eed5c8b07a"
+  },
+  "cargo_deny": {
+    "version": "0.20.2",
+    "config_path": "deny.toml",
+    "config_sha256": "b301b7d20df086ec504cf6e6890f92bfbe02b94f8086a499b135f819cdb40259",
+    "checks": [
+      "bans",
+      "licenses",
+      "sources"
+    ]
+  },
+  "declared_git_dependencies": [
+    {
+      "name": "makepad-code-editor",
+      "source": "git+https://github.com/kevinaboos/makepad?rev=c4335cee10b22aca768510c9d072b0ca1bba15c8"
+    },
+    {
+      "name": "makepad-widgets",
+      "source": "git+https://github.com/kevinaboos/makepad?rev=c4335cee10b22aca768510c9d072b0ca1bba15c8"
+    },
+    {
+      "name": "matrix-sdk",
+      "source": "git+https://github.com/matrix-org/matrix-rust-sdk?rev=5a0b002aeaf687edf9fb5a2bdd465886c325f48d"
+    },
+    {
+      "name": "matrix-sdk-base",
+      "source": "git+https://github.com/matrix-org/matrix-rust-sdk?rev=5a0b002aeaf687edf9fb5a2bdd465886c325f48d"
+    },
+    {
+      "name": "matrix-sdk-ui",
+      "source": "git+https://github.com/matrix-org/matrix-rust-sdk?rev=5a0b002aeaf687edf9fb5a2bdd465886c325f48d"
+    },
+    {
+      "name": "robius-directories",
+      "source": "git+https://github.com/project-robius/robius?rev=b766e62b0600f5d2ee21cc6995648346fc277bd8"
+    },
+    {
+      "name": "robius-file-picker",
+      "source": "git+https://github.com/project-robius/robius?rev=b766e62b0600f5d2ee21cc6995648346fc277bd8"
+    },
+    {
+      "name": "robius-location",
+      "source": "git+https://github.com/project-robius/robius?rev=b766e62b0600f5d2ee21cc6995648346fc277bd8"
+    },
+    {
+      "name": "robius-open",
+      "source": "git+https://github.com/project-robius/robius?rev=b766e62b0600f5d2ee21cc6995648346fc277bd8"
+    },
+    {
+      "name": "robius-share",
+      "source": "git+https://github.com/project-robius/robius?rev=b766e62b0600f5d2ee21cc6995648346fc277bd8"
+    },
+    {
+      "name": "robius-web-auth-session",
+      "source": "git+https://github.com/project-robius/robius?rev=b766e62b0600f5d2ee21cc6995648346fc277bd8"
+    },
+    {
+      "name": "ruma",
+      "source": "git+https://github.com/ruma/ruma?rev=8beb557b466a43b057c9c155277c77fe8766fadf"
+    },
+    {
+      "name": "tsp_sdk",
+      "source": "git+https://github.com/openwallet-foundation-labs/tsp.git?rev=e9d5445489b74f3e052360ee4da1e7c27b9c80b3"
+    }
+  ],
+  "resolved_git_sources": [
+    {
+      "url": "https://github.com/kevinaboos/makepad",
+      "commit": "c4335cee10b22aca768510c9d072b0ca1bba15c8",
+      "cargo_lock_source": "git+https://github.com/kevinaboos/makepad?rev=c4335cee10b22aca768510c9d072b0ca1bba15c8#c4335cee10b22aca768510c9d072b0ca1bba15c8",
+      "package_count": 99
+    },
+    {
+      "url": "https://github.com/openwallet-foundation-labs/tsp.git",
+      "commit": "e9d5445489b74f3e052360ee4da1e7c27b9c80b3",
+      "cargo_lock_source": "git+https://github.com/openwallet-foundation-labs/tsp.git?rev=e9d5445489b74f3e052360ee4da1e7c27b9c80b3#e9d5445489b74f3e052360ee4da1e7c27b9c80b3",
+      "package_count": 1
+    },
+    {
+      "url": "https://github.com/openwallet-foundation/askar.git",
+      "commit": "49086e28d1995966bb2b2054d2450a76f19bda30",
+      "cargo_lock_source": "git+https://github.com/openwallet-foundation/askar.git?rev=49086e28d1995966bb2b2054d2450a76f19bda30#49086e28d1995966bb2b2054d2450a76f19bda30",
+      "package_count": 2
+    },
+    {
+      "url": "https://github.com/matrix-org/matrix-rust-sdk",
+      "commit": "5a0b002aeaf687edf9fb5a2bdd465886c325f48d",
+      "cargo_lock_source": "git+https://github.com/matrix-org/matrix-rust-sdk?rev=5a0b002aeaf687edf9fb5a2bdd465886c325f48d#5a0b002aeaf687edf9fb5a2bdd465886c325f48d",
+      "package_count": 8
+    },
+    {
+      "url": "https://github.com/project-robius/robius",
+      "commit": "b766e62b0600f5d2ee21cc6995648346fc277bd8",
+      "cargo_lock_source": "git+https://github.com/project-robius/robius?rev=b766e62b0600f5d2ee21cc6995648346fc277bd8#b766e62b0600f5d2ee21cc6995648346fc277bd8",
+      "package_count": 7
+    },
+    {
+      "url": "https://github.com/project-robius/ruma.git",
+      "commit": "921e2886367b371068aa3c079ce434db608600cf",
+      "cargo_lock_source": "git+https://github.com/project-robius/ruma.git?rev=921e2886367b371068aa3c079ce434db608600cf#921e2886367b371068aa3c079ce434db608600cf",
+      "package_count": 7
+    },
+    {
+      "url": "https://github.com/project-robius/sqlx.git",
+      "commit": "345c0446a0eee02acec01ec4635e3945fdf4693b",
+      "cargo_lock_source": "git+https://github.com/project-robius/sqlx.git?rev=345c0446a0eee02acec01ec4635e3945fdf4693b#345c0446a0eee02acec01ec4635e3945fdf4693b",
+      "package_count": 2
+    }
+  ],
+  "resolved_git_source_count": 7,
+  "resolved_git_package_count": 126,
+  "license_clarifications": [
+    {
+      "package": "makepad-latex-math",
+      "version": "0.1.0",
+      "source": "git+https://github.com/kevinaboos/makepad?rev=c4335cee10b22aca768510c9d072b0ca1bba15c8#c4335cee10b22aca768510c9d072b0ca1bba15c8",
+      "package_manifest_path": "libs/latex_math/Cargo.toml",
+      "package_manifest_sha256": "2ceb9eea280f958ccee0338f4ea7ebbfe9a800c3f45ca7b39979954848b7096a",
+      "expression": "MIT",
+      "license_path_from_package": "../../LICENSE",
+      "license_repository_path": "LICENSE",
+      "license_sha256": "3855d73a873244ec424ac5781d5d8fc8e2a789ff9d2f1cb804bec585a64ea88f",
+      "cargo_deny_xxhash32": "0x26738672"
+    },
+    {
+      "package": "makepad-regex",
+      "version": "0.1.0",
+      "source": "git+https://github.com/kevinaboos/makepad?rev=c4335cee10b22aca768510c9d072b0ca1bba15c8#c4335cee10b22aca768510c9d072b0ca1bba15c8",
+      "package_manifest_path": "libs/regex/Cargo.toml",
+      "package_manifest_sha256": "656eafdb94de3204ba5a602b840f212cd57c53088df1cb229d8ec1ed3b11379b",
+      "expression": "MIT",
+      "license_path_from_package": "../../LICENSE",
+      "license_repository_path": "LICENSE",
+      "license_sha256": "3855d73a873244ec424ac5781d5d8fc8e2a789ff9d2f1cb804bec585a64ea88f",
+      "cargo_deny_xxhash32": "0x26738672"
+    }
+  ],
+  "claims": {
+    "all_resolved_git_sources_are_exact_revision_pinned": true,
+    "new_or_unlisted_git_sources_are_denied": true,
+    "git_commit_drift_is_denied": true,
+    "license_clarifications_are_package_source_and_file_hash_bound": true,
+    "broad_license_exceptions_are_forbidden": true
+  }
+}

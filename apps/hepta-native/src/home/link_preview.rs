@@ -19,6 +19,14 @@ use crate::{
     sliding_sync::{submit_async_request, MatrixRequest, UrlPreviewError},
 };
 
+pub const LINK_PREVIEW_LOCAL_CONTROLS_EVIDENCE: &str = "LinkPreview Show more, Show fewer, hover, title tap dispatch, dedup, matrix.to filtering, cache-hit reuse, pending, failed, and loaded display controls stay in local widget/cache state around the existing Matrix GetUrlPreview read/cache path; they send no extra GetUrlPreview beyond the first missing cache entry, no Matrix alias resolution, room preview fetch, event context fetch, external browser handoff, media download, message, room-state, membership, or live mutation request.";
+pub const URL_PREVIEW_READ_CACHE_EVIDENCE: &str = "LinkPreviewCache may submit the existing Matrix GetUrlPreview read request only for a missing accepted URL cache entry; LoadedLinkPreview, Requested, Failed, cleanup, rate-limit retry scheduling, insert_into_cache, TimelineUpdate::LinkPreviewFetched, and SignalToUI only update local URL preview cache/redraw state and send no Matrix alias resolution, room preview fetch, event context fetch, media download, browser handoff, message, room-state, membership, account/profile, or live mutation request.";
+pub const LINK_PREVIEW_COMPACT_LABEL: &str =
+    "URL preview uses cached GetUrlPreview data; controls stay local.";
+pub const LINK_PREVIEW_LOADED_METADATA_EVIDENCE: &str = "LinkPreview rows summarize already loaded GetUrlPreview metadata for title, site name, description, image presence, image MIME type, image dimensions, and image size inside the local read-path label. populate_view also passes loaded og:image width/height into ImageInfo before the existing image cache renderer runs. This sends no extra GetUrlPreview beyond the first missing accepted URL, no Matrix alias resolution, room preview fetch, event context fetch, external browser handoff, media download, message, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
+pub const LINK_PREVIEW_LOADED_METADATA_LABEL: &str =
+    "Loaded URL metadata summary; no extra preview fetch.";
+
 /// Maximum number of cache entries before cleanup is triggered
 const MAX_CACHE_ENTRIES_BEFORE_CLEANUP: usize = 100;
 /// Maximum age for cache entries in seconds (1 hour)
@@ -470,9 +478,17 @@ pub struct LinkPreviewData {
     /// The URL of the image
     #[serde(rename = "og:image")]
     pub image: Option<String>,
+    /// The image height, if supplied by the homeserver.
+    #[serde(rename = "og:image:height", default, deserialize_with = "deserialize_lenient_uint")]
+    pub image_height: Option<UInt>,
+    /// The image width, if supplied by the homeserver.
+    #[serde(rename = "og:image:width", default, deserialize_with = "deserialize_lenient_uint")]
+    pub image_width: Option<UInt>,
     /// The type of the image
     #[serde(rename = "og:image:type")]
     pub image_type: Option<String>,
+    #[serde(rename = "og:locale")]
+    pub locale: Option<String>,
     /// The name of the site
     #[serde(rename = "og:site_name")]
     pub site_name: Option<String>,
@@ -482,6 +498,60 @@ pub struct LinkPreviewData {
     /// The title of the site
     #[serde(rename = "og:title")]
     pub title: Option<String>,
+}
+
+/// Compatibility form used by homeservers that encode numeric preview fields
+/// as JSON strings.
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct LinkPreviewDataNonNumeric {
+    #[serde(rename = "og:description")]
+    pub description: Option<String>,
+    #[serde(rename = "matrix:image:size")]
+    pub image_size: Option<String>,
+    #[serde(rename = "og:image")]
+    pub image: Option<String>,
+    #[serde(rename = "og:image:height")]
+    pub image_height: Option<String>,
+    #[serde(rename = "og:image:width")]
+    pub image_width: Option<String>,
+    #[serde(rename = "og:image:type")]
+    pub image_type: Option<String>,
+    #[serde(rename = "og:locale")]
+    pub locale: Option<String>,
+    #[serde(rename = "og:site_name")]
+    pub site_name: Option<String>,
+    #[serde(rename = "og:url")]
+    pub url: Option<String>,
+    #[serde(rename = "og:title")]
+    pub title: Option<String>,
+}
+
+impl From<LinkPreviewDataNonNumeric> for LinkPreviewData {
+    fn from(value: LinkPreviewDataNonNumeric) -> Self {
+        let parse_uint = |raw: Option<String>| {
+            raw.and_then(|value| value.parse::<u64>().ok())
+                .and_then(|value| UInt::try_from(value).ok())
+        };
+        Self {
+            description: value.description,
+            image_size: parse_uint(value.image_size),
+            image: value.image,
+            image_height: parse_uint(value.image_height),
+            image_width: parse_uint(value.image_width),
+            image_type: value.image_type,
+            locale: value.locale,
+            site_name: value.site_name,
+            url: value.url,
+            title: value.title,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct LinkPreviewRateLimitResponse {
+    pub errcode: String,
+    pub error: Option<String>,
+    pub retry_after_ms: Option<UInt>,
 }
 
 /// Deserializes an optional [`UInt`] that is either a JSON number or a JSON string.
@@ -579,6 +649,7 @@ impl LinkPreviewCache {
 
 /// Insert data into a previously-requested media cache entry.
 fn insert_into_cache(
+    _url: String,
     value_ref: Arc<Mutex<TimestampedCacheEntry>>,
     data: Result<LinkPreviewData, UrlPreviewError>,
     update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,

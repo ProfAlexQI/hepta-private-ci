@@ -7,6 +7,7 @@
 
 mod adapter;
 mod contract;
+mod event_projection;
 mod presenter;
 
 pub use adapter::{BridgeAdapterError, BridgeCapabilities};
@@ -17,6 +18,7 @@ pub use contract::{
     IdempotencyKey, MirrorPolicy, OpaquePayloadHash, Origin, PreparedActionId, Provenance,
     Redaction, RedactionStatus, Revision, SessionId, TimestampMillis,
 };
+pub use event_projection::{HeptaBridgeEventInput, HeptaBridgeMatrixEvent};
 pub use presenter::{
     BridgePresenter, DEFAULT_PRESENTATION_PAYLOAD_CAP_BYTES, MAX_PRESENTATION_PAYLOAD_CAP_BYTES,
     PresentationDisposition, PresentationFallback, PresentedBridgeUpdate,

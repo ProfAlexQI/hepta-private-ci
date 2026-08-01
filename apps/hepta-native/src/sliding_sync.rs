@@ -3,9 +3,9 @@ use bitflags::bitflags;
 use clap::Parser;
 use eyeball::Subscriber;
 use eyeball_im::VectorDiff;
-use futures_util::{future::join_all, pin_mut, StreamExt};
+use futures_util::{future::{Abortable, join_all}, pin_mut, StreamExt};
 use imbl::Vector;
-use makepad_widgets::{error, log, warning, Cx, SignalToUI};
+use makepad_widgets::{error, log, warning, Cx, SignalToUI, WidgetUid};
 use matrix_sdk_base::crypto::{DecryptionSettings, TrustRequirement};
 use matrix_sdk::{
     config::RequestConfig,
@@ -65,7 +65,7 @@ use tokio::{
     sync::{
         broadcast,
         mpsc::{Sender, UnboundedReceiver, UnboundedSender},
-        watch, Notify,
+        watch, Notify, Semaphore,
     },
     task::JoinHandle,
     time::error::Elapsed,
@@ -89,7 +89,7 @@ use std::io;
 use hashbrown::{HashMap, HashSet};
 use crate::{
     app::AppStateAction,
-    app_data_dir,
+    app_data_dir, cache_dir,
     avatar_cache::AvatarUpdate,
     event_preview::{
         BeforeText, TextPreview, text_preview_of_raw_timeline_event, text_preview_of_timeline_item,
@@ -125,12 +125,16 @@ use crate::{
     },
     room::{FetchedRoomAvatar, FetchedRoomPreview, RoomPreviewAction},
     shared::{
+        attachment_download::{MediaDownloadResult, media_source_mxc},
         avatar::AvatarState,
+        file_upload_modal::{AttachmentUpload, FileUploadAttemptId},
         jump_to_bottom_button::UnreadMessageCount,
+        mention_popup::{MentionItem, RoomMentionCandidate},
+        mentionable_text_input::MentionMatches,
         popup_list::{PopupKind, enqueue_popup_notification},
     },
     space_service_sync::space_service_loop,
-    utils::{self, AVATAR_THUMBNAIL_FORMAT, RoomNameId, VecDiff, avatar_from_room_name},
+    utils::{self, AVATAR_THUMBNAIL_FORMAT, MatchQuality, RoomNameId, VecDiff, alias_localpart, avatar_from_room_name},
     verification::add_verification_event_handlers_and_sync_client,
 };
 
@@ -196,6 +200,47 @@ pub fn build_sqlite_store_config(
     matrix_sdk::SqliteStoreConfig::with_low_memory_config(db_path).passphrase(Some(passphrase))
 }
 
+fn use_android_tls_roots(builder: matrix_sdk::ClientBuilder) -> matrix_sdk::ClientBuilder {
+    #[cfg(target_os = "android")]
+    let builder = {
+        let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+            .iter()
+            .filter_map(|der| matrix_sdk::reqwest::Certificate::from_der(der.as_ref()).ok())
+            .collect();
+        builder
+            .disable_built_in_root_certificates()
+            .add_root_certificates(roots)
+    };
+    builder
+}
+
+/// Creates the single governed Matrix client configuration shared by fresh
+/// login and persisted-session restore paths.
+pub(crate) fn base_client_builder(
+    db_path: &Path,
+    passphrase: &str,
+) -> matrix_sdk::ClientBuilder {
+    let store_config = build_sqlite_store_config(db_path, passphrase);
+    let cache_path = db_path.file_name().map(|name| cache_dir().join(name));
+    let builder = Client::builder()
+        .sqlite_store_with_config_and_cache_path(store_config, cache_path)
+        .with_threading_support(matrix_sdk::ThreadingSupport::Enabled {
+            with_subscriptions: true,
+        })
+        .with_decryption_settings(DecryptionSettings {
+            sender_device_trust_requirement: TrustRequirement::Untrusted,
+        })
+        .with_encryption_settings(EncryptionSettings {
+            auto_enable_cross_signing: true,
+            backup_download_strategy: matrix_sdk::encryption::BackupDownloadStrategy::OneShot,
+            auto_enable_backups: true,
+        })
+        .with_enable_share_history_on_invite(true)
+        .handle_refresh_tokens()
+        .request_config(RequestConfig::new().timeout(std::time::Duration::from_secs(60)));
+    use_android_tls_roots(builder)
+}
+
 /// Build a new client.
 async fn build_client(
     cli: &Cli,
@@ -233,36 +278,15 @@ async fn build_client(
         .unwrap_or("https://matrix-client.matrix.org/");
     // .unwrap_or("https://matrix.org/");
 
-    let store_config = build_sqlite_store_config(&db_path, &passphrase);
-
-    let mut builder = Client::builder()
+    let mut builder = base_client_builder(&db_path, &passphrase)
         .server_name_or_homeserver_url(homeserver_url)
-        // Use a sqlite database to persist the client's encryption setup.
-        .sqlite_store_with_config_and_cache_path(store_config, None::<&std::path::Path>)
-        .with_threading_support(matrix_sdk::ThreadingSupport::Enabled {
-            with_subscriptions: true,
-        })
         // The sliding sync proxy has now been deprecated in favor of native sliding sync.
-        .sliding_sync_version_builder(VersionBuilder::DiscoverNative)
-        .with_decryption_settings(DecryptionSettings {
-            sender_device_trust_requirement: TrustRequirement::Untrusted,
-        })
-        .with_encryption_settings(EncryptionSettings {
-            auto_enable_cross_signing: true,
-            backup_download_strategy: matrix_sdk::encryption::BackupDownloadStrategy::OneShot,
-            auto_enable_backups: true,
-        })
-        .with_enable_share_history_on_invite(true)
-        .handle_refresh_tokens();
+        .sliding_sync_version_builder(VersionBuilder::DiscoverNative);
 
     if let Some(proxy) = cli.proxy.as_ref() {
         builder = builder.proxy(proxy.clone());
     }
 
-    // Use a 60 second timeout for all requests to the homeserver.
-    // Yes, this is a long timeout, but the standard matrix homeserver is often very slow.
-    builder =
-        builder.request_config(RequestConfig::new().timeout(std::time::Duration::from_secs(60)));
     let client = builder.build().await?;
     let homeserver_url = client.homeserver().to_string();
     Ok((
@@ -712,6 +736,11 @@ pub enum MatrixRequest {
         room_id: OwnedRoomId,
         thread_root_event_id: OwnedEventId,
     },
+    /// Stops and removes a thread timeline backend task after its UI tab closes.
+    CloseThreadTimeline {
+        room_id: OwnedRoomId,
+        thread_root_event_id: OwnedEventId,
+    },
     /// Request to knock on (request an invite to) the given room.
     Knock {
         room_or_alias_id: OwnedRoomOrAliasId,
@@ -917,6 +946,8 @@ pub enum MatrixRequest {
         mxc_uri: OwnedMxcUri,
         on_fetched: fn(AvatarUpdate),
     },
+    /// Fetches or computes a room avatar and updates the rooms list.
+    FetchRoomAvatar { room_name_id: RoomNameId },
     /// Request to fetch media from the server.
     /// Upon completion of the async media request, the `on_fetched` function
     /// will be invoked with four arguments: the `destination`, the `media_request`,
@@ -950,6 +981,11 @@ pub enum MatrixRequest {
         caption: Option<TextMessageEventContent>,
         mentions: Option<Mentions>,
         in_reply_to: Option<OwnedEventId>,
+    },
+    /// UI upload flow with preview, progress, retry, and cancellation state.
+    UploadAttachment {
+        upload_id: FileUploadAttemptId,
+        upload: AttachmentUpload,
     },
     /// Request to abort a pending local echo send queue item through its SDK handle.
     AbortLocalSend {
@@ -1081,6 +1117,19 @@ pub enum MatrixRequest {
         destination: Arc<Mutex<crate::home::link_preview::TimestampedCacheEntry>>,
         update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
     },
+    /// Downloads a media attachment into memory for the platform save/share flow.
+    DownloadMedia {
+        media_source: MediaSource,
+        filename: String,
+        on_download_result: Box<dyn FnOnce(MediaDownloadResult) + Send + 'static>,
+    },
+    CancelDownload(OwnedMxcUri),
+    /// Finds known rooms and spaces matching the current mention query.
+    GetMatchingRooms {
+        query: String,
+        request_id: u64,
+        owner: WidgetUid,
+    },
 }
 
 /// Submits a request to the worker thread to be executed asynchronously.
@@ -1090,6 +1139,28 @@ pub fn submit_async_request(req: MatrixRequest) {
             .send(req)
             .expect("BUG: matrix worker task receiver has died!");
     }
+}
+
+/// Spawns one-off work on the backend Tokio runtime without exposing the
+/// runtime handle to UI helpers.
+pub fn spawn_async_task<F>(future: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let handle = TOKIO_RUNTIME
+        .lock()
+        .unwrap()
+        .get_or_insert_with(|| {
+            tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime")
+        })
+        .handle()
+        .clone();
+    handle.spawn(future);
+}
+
+struct ActiveDownload {
+    abort_handle: futures_util::future::AbortHandle,
+    on_download_result: Box<dyn FnOnce(MediaDownloadResult) + Send + 'static>,
 }
 
 pub(crate) fn sanitize_user_directory_search_query(query: &str) -> String {
@@ -2569,15 +2640,19 @@ async fn add_new_room(
             // Start with a basic text avatar; the avatar image will be fetched asynchronously below.
             let room_avatar = avatar_from_room_name(room_name_id.name_for_avatar());
             let inviter_info = if let Some(inviter) = invite_details.and_then(|d| d.inviter) {
-                Some(InviterInfo {
-                    user_id: inviter.user_id().to_owned(),
-                    display_name: inviter.display_name().map(|n| n.to_string()),
-                    avatar: inviter
+                let avatar = match inviter.avatar_url() {
+                    Some(uri) => inviter
                         .avatar(AVATAR_THUMBNAIL_FORMAT.into())
                         .await
                         .ok()
                         .flatten()
-                        .map(Into::into),
+                        .map(|data| (uri, data).into()),
+                    None => None,
+                };
+                Some(InviterInfo {
+                    user_id: inviter.user_id().to_owned(),
+                    display_name: inviter.display_name().map(|n| n.to_string()),
+                    avatar,
                 })
             } else {
                 None
@@ -2686,6 +2761,7 @@ async fn add_new_room(
         room_name_id: room_name_id.clone(),
         canonical_alias: new_room.room.canonical_alias(),
         alt_aliases: new_room.room.alt_aliases(),
+        has_been_shown: false,
         has_been_paginated: false,
         is_selected: false,
         is_direct: new_room.is_direct,
@@ -2788,7 +2864,7 @@ fn handle_load_app_state(user_id: OwnedUserId) {
 
 /// Returns `true` if the given sync service error is due to an invalid/expired access token.
 fn is_invalid_token_error(e: &sync_service::Error) -> bool {
-    use matrix_sdk::ruma::api::client::error::ErrorKind;
+    use matrix_sdk::ruma::api::error::ErrorKind;
     let sdk_error = match e {
         sync_service::Error::RoomList(matrix_sdk_ui::room_list_service::Error::SlidingSync(
             err,
@@ -2990,7 +3066,7 @@ async fn fetch_room_preview_with_avatar(
     // If this room has an avatar URL, fetch it.
     let room_avatar = if let Some(avatar_url) = room_preview.avatar_url.clone() {
         let media_request = MediaRequestParameters {
-            source: MediaSource::Plain(avatar_url),
+            source: MediaSource::Plain(avatar_url.clone()),
             format: AVATAR_THUMBNAIL_FORMAT.into(),
         };
         match client.media().get_media_content(&media_request, true).await {
@@ -3000,7 +3076,7 @@ async fn fetch_room_preview_with_avatar(
                     room_preview.name,
                     room_preview.room_id
                 );
-                FetchedRoomAvatar::Image(avatar_content.into())
+                FetchedRoomAvatar::Image((avatar_url, avatar_content).into())
             }
             Err(e) => {
                 log!(
@@ -3460,6 +3536,68 @@ async fn update_latest_event(room: &Room) {
     }
 }
 
+/// Returns known non-direct rooms/spaces ranked for a room-mention query.
+async fn rank_matching_rooms(client: &Client, query: &str) -> Vec<MentionItem> {
+    let query = query.to_lowercase();
+    let mut matches: Vec<((u8, u8, MatchQuality), String, RoomMentionCandidate)> = Vec::new();
+    for room in client.rooms() {
+        if room.is_direct().await.unwrap_or(false) {
+            continue;
+        }
+        let state_rank = match room.state() {
+            RoomState::Joined => 0,
+            RoomState::Invited => 1,
+            RoomState::Knocked => 2,
+            RoomState::Left => 3,
+            RoomState::Banned => 4,
+        };
+        let room_name_id = RoomNameId::new(
+            room.cached_display_name()
+                .or_else(|| room.name().map(RoomDisplayName::Named))
+                .unwrap_or(RoomDisplayName::Empty),
+            room.room_id().to_owned(),
+        );
+        let canonical = room.canonical_alias();
+        let alt_aliases = room.alt_aliases();
+        let Some((field_rank, quality)) = room_name_id
+            .name_for_avatar()
+            .map(|name| (0, MatchQuality::of(&name.to_lowercase(), &query)))
+            .filter(|(_, quality)| quality.is_match())
+            .or_else(|| {
+                canonical
+                    .as_ref()
+                    .map(|alias| (1, MatchQuality::of(&alias_localpart(alias).to_lowercase(), &query)))
+                    .filter(|(_, quality)| quality.is_match())
+            })
+            .or_else(|| {
+                alt_aliases
+                    .iter()
+                    .map(|alias| MatchQuality::of(&alias_localpart(alias).to_lowercase(), &query))
+                    .filter(|quality| quality.is_match())
+                    .min()
+                    .map(|quality| (2, quality))
+            })
+        else {
+            continue;
+        };
+        matches.push((
+            ((state_rank), field_rank, quality),
+            room_name_id.to_string().to_lowercase(),
+            RoomMentionCandidate {
+                room_name_id,
+                alias: canonical,
+                avatar_url: room.avatar_url(),
+                is_space: room.is_space(),
+            },
+        ));
+    }
+    matches.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    matches
+        .into_iter()
+        .map(|(_, _, candidate)| MentionItem::Room(candidate))
+        .collect()
+}
+
 /// A request to search backwards for a specific event in a room's timeline.
 pub struct BackwardsPaginateUntilEventRequest {
     pub room_id: OwnedRoomId,
@@ -3794,11 +3932,18 @@ async fn timeline_subscriber_handler(
 
 /// Spawn a new async task to fetch the room's new avatar.
 fn spawn_fetch_room_avatar(room: &RoomListServiceRoomInfo) {
-    let room_id = room.room_id.clone();
     let room_name_id = RoomNameId::from((room.display_name.clone(), room.room_id.clone()));
-    let inner_room = room.room.clone();
+    spawn_fetch_room_avatar_inner(room.room.clone(), room_name_id);
+}
+
+fn spawn_fetch_room_avatar_inner(room: Room, room_name_id: RoomNameId) {
+    static ROOM_AVATAR_FETCH_LIMIT: Semaphore = Semaphore::const_new(8);
     Handle::current().spawn(async move {
-        let room_avatar = room_avatar(&inner_room, &room_name_id).await;
+        let Ok(_permit) = ROOM_AVATAR_FETCH_LIMIT.acquire().await else {
+            return;
+        };
+        let room_id = room_name_id.room_id().clone();
+        let room_avatar = room_avatar(&room, &room_name_id).await;
         rooms_list::enqueue_rooms_list_update(RoomsListUpdate::UpdateRoomAvatar {
             room_id,
             room_avatar,
@@ -3809,26 +3954,23 @@ fn spawn_fetch_room_avatar(room: &RoomListServiceRoomInfo) {
 /// Fetches and returns the avatar image for the given room (if one exists),
 /// otherwise returns a text avatar string of the first character of the room name.
 async fn room_avatar(room: &Room, room_name_id: &RoomNameId) -> FetchedRoomAvatar {
-    match room.avatar(AVATAR_THUMBNAIL_FORMAT.into()).await {
-        Ok(Some(avatar)) => FetchedRoomAvatar::Image(avatar.into()),
-        _ => {
-            if let Ok(room_members) = room.members(RoomMemberships::ACTIVE).await {
-                if room_members.len() == 2 {
-                    if let Some(non_account_member) =
-                        room_members.iter().find(|m| !m.is_account_user())
-                    {
-                        if let Ok(Some(avatar)) = non_account_member
-                            .avatar(AVATAR_THUMBNAIL_FORMAT.into())
-                            .await
-                        {
-                            return FetchedRoomAvatar::Image(avatar.into());
-                        }
-                    }
-                }
-            }
-            utils::avatar_from_room_name(room_name_id.name_for_avatar())
+    if let Some(avatar_url) = room.avatar_url() {
+        if let Ok(Some(avatar)) = room.avatar(AVATAR_THUMBNAIL_FORMAT.into()).await {
+            return FetchedRoomAvatar::Image((avatar_url, avatar).into());
         }
     }
+    if let Ok([one_hero]) = <[_; 1]>::try_from(room.heroes()) {
+        if let Some(avatar_url) = one_hero.avatar_url {
+            let request = MediaRequestParameters {
+                source: MediaSource::Plain(avatar_url.clone()),
+                format: AVATAR_THUMBNAIL_FORMAT.into(),
+            };
+            if let Ok(avatar) = room.client().media().get_media_content(&request, true).await {
+                return FetchedRoomAvatar::Image((avatar_url, avatar).into());
+            }
+        }
+    }
+    utils::avatar_from_room_name(room_name_id.name_for_avatar())
 }
 
 /// Spawn an async task to login to the given Matrix homeserver using the given SSO identity provider ID.

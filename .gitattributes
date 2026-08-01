@@ -1,2 +1,3 @@
 codex-rs/app-server-protocol/schema/** linguist-generated
 codex-rs/hooks/schema/generated/** linguist-generated
+apps/hepta-native/third_party/** whitespace=-trailing-space
