@@ -29,9 +29,12 @@ INCLUDE_LINE = <<~RUST
 RUST
 INCLUDE_PATTERN = /include!\(\s*concat!\(\s*env!\("OUT_DIR"\),\s*"\/hepta_workgraph_bundle\/modules\.rs"\s*\)\s*\);\n/m
 EXPECTED_MODULE_COUNT = 4
-MAX_NORMALIZED_EFFECTIVE_LINES = 40_000
+MAX_NORMALIZED_EFFECTIVE_LINES = 39_776
 MAX_NORMALIZED_TEMPLATE_COUNT = 4
 MAX_CANONICAL_RECORD_BYTES = 89_270
+MAX_SIGNIFICANT_RUST_TOKENS = 961_903
+MAX_SOURCE_BYTES = 8_757_229
+MAX_BUNDLE_BYTES = 735_630
 
 def usage
   warn "usage: scripts/hepta-workgraph-module-bundle [pack|verify|unpack|contains MODULE]"
@@ -67,6 +70,14 @@ end
 
 def source_path(module_name)
   File.join(SOURCE_ROOT, "#{module_name}.rs")
+end
+
+def significant_rust_token_count(entries)
+  entries.sum do |entry|
+    HeptaNormalizedTokenBundle.rust_tokens(entry.source).count do |token|
+      ![:space, :comment].include?(token.kind)
+    end
+  end
 end
 
 def normalized_entries
@@ -128,6 +139,12 @@ end
 
 def build_bundle(entries)
   raise "unexpected WorkGraph module count" unless entries.length == EXPECTED_MODULE_COUNT
+  source_bytes = entries.sum { |entry| entry.source.bytesize }
+  significant_tokens = significant_rust_token_count(entries)
+  raise "WorkGraph source-byte anti-gaming budget exceeded" if source_bytes > MAX_SOURCE_BYTES
+  if significant_tokens > MAX_SIGNIFICANT_RUST_TOKENS
+    raise "WorkGraph significant-token anti-gaming budget exceeded"
+  end
   bundle = HeptaNormalizedTokenBundle.build(
     entries,
     tokenizer: HeptaNormalizedTokenBundle.method(:rust_tokens)
@@ -145,9 +162,11 @@ def build_bundle(entries)
   )
   raise "WorkGraph normalized effective-line budget exceeded" if canonical.fetch(:normalized_effective_lines) > MAX_NORMALIZED_EFFECTIVE_LINES
   payload = HeptaNormalizedTokenBundle.encode(bundle, schema: SCHEMA)
+  compressed = HeptaReadableTokenSource.deterministic_gzip(payload)
+  raise "WorkGraph bundle-byte anti-gaming budget exceeded" if compressed.bytesize > MAX_BUNDLE_BYTES
   atomic_write(
     BUNDLE_PATH,
-    HeptaReadableTokenSource.deterministic_gzip(payload),
+    compressed,
     0o644
   )
   write_registry(entries, bundle.metrics, canonical)
@@ -160,8 +179,12 @@ def write_registry(entries, metrics, canonical)
     module_count: entries.length,
     source_bytes: entries.sum { |entry| entry.source.bytesize },
     source_lines: entries.sum { |entry| entry.source.lines.count },
+    significant_rust_token_count: significant_rust_token_count(entries),
+    significant_rust_token_limit: MAX_SIGNIFICANT_RUST_TOKENS,
+    source_byte_limit: MAX_SOURCE_BYTES,
     aggregate_source_sha256: HeptaNormalizedTokenBundle.aggregate_sha(entries),
     bundle_bytes: File.size(BUNDLE_PATH),
+    bundle_byte_limit: MAX_BUNDLE_BYTES,
     bundle_sha256: Digest::SHA256.file(BUNDLE_PATH).hexdigest,
     normalized_template_count: metrics.fetch(:normalized_template_count),
     normalized_template_limit: MAX_NORMALIZED_TEMPLATE_COUNT,
@@ -183,7 +206,16 @@ def write_registry(entries, metrics, canonical)
     monotonic_ratchet: {
       logical_module_ceiling: EXPECTED_MODULE_COUNT,
       normalized_template_ceiling: MAX_NORMALIZED_TEMPLATE_COUNT,
-      normalized_effective_line_ceiling: MAX_NORMALIZED_EFFECTIVE_LINES
+      normalized_effective_line_ceiling: MAX_NORMALIZED_EFFECTIVE_LINES,
+      significant_rust_token_ceiling: MAX_SIGNIFICANT_RUST_TOKENS,
+      source_byte_ceiling: MAX_SOURCE_BYTES,
+      bundle_byte_ceiling: MAX_BUNDLE_BYTES
+    },
+    anti_gaming_baseline: {
+      normalized_effective_lines: MAX_NORMALIZED_EFFECTIVE_LINES,
+      significant_rust_token_count: MAX_SIGNIFICANT_RUST_TOKENS,
+      source_bytes: MAX_SOURCE_BYTES,
+      bundle_bytes: MAX_BUNDLE_BYTES
     },
     decline_targets: {
       next: {
@@ -286,8 +318,29 @@ def verify
   raise "WorkGraph aggregate SHA drifted" unless registry["aggregate_source_sha256"] == HeptaNormalizedTokenBundle.aggregate_sha(entries)
   raise "WorkGraph source byte count drifted" unless registry["source_bytes"] == entries.sum { |entry| entry.source.bytesize }
   raise "WorkGraph source line count drifted" unless registry["source_lines"] == entries.sum { |entry| entry.source.lines.count }
+  significant_tokens = significant_rust_token_count(entries)
+  raise "WorkGraph significant token count drifted" unless registry[
+    "significant_rust_token_count"
+  ] == significant_tokens
+  raise "WorkGraph significant-token anti-gaming budget exceeded" unless significant_tokens <=
+    MAX_SIGNIFICANT_RUST_TOKENS
+  raise "WorkGraph significant-token limit drifted" unless registry[
+    "significant_rust_token_limit"
+  ] == MAX_SIGNIFICANT_RUST_TOKENS
+  raise "WorkGraph source-byte anti-gaming budget exceeded" unless registry[
+    "source_bytes"
+  ] <= MAX_SOURCE_BYTES
+  raise "WorkGraph source-byte limit drifted" unless registry[
+    "source_byte_limit"
+  ] == MAX_SOURCE_BYTES
   raise "WorkGraph bundle SHA drifted" unless registry["bundle_sha256"] == Digest::SHA256.file(BUNDLE_PATH).hexdigest
   raise "WorkGraph bundle byte count drifted" unless registry["bundle_bytes"] == File.size(BUNDLE_PATH)
+  raise "WorkGraph bundle-byte anti-gaming budget exceeded" unless registry[
+    "bundle_bytes"
+  ] <= MAX_BUNDLE_BYTES
+  raise "WorkGraph bundle-byte limit drifted" unless registry[
+    "bundle_byte_limit"
+  ] == MAX_BUNDLE_BYTES
   raise "WorkGraph normalized template budget exceeded" unless registry[
     "normalized_template_count"
   ].between?(1, MAX_NORMALIZED_TEMPLATE_COUNT)
@@ -299,6 +352,26 @@ def verify
   raise "WorkGraph normalized effective-line limit drifted" unless registry[
     "normalized_effective_line_limit"
   ] == MAX_NORMALIZED_EFFECTIVE_LINES
+  expected_ratchet = {
+    "logical_module_ceiling" => EXPECTED_MODULE_COUNT,
+    "normalized_template_ceiling" => MAX_NORMALIZED_TEMPLATE_COUNT,
+    "normalized_effective_line_ceiling" => MAX_NORMALIZED_EFFECTIVE_LINES,
+    "significant_rust_token_ceiling" => MAX_SIGNIFICANT_RUST_TOKENS,
+    "source_byte_ceiling" => MAX_SOURCE_BYTES,
+    "bundle_byte_ceiling" => MAX_BUNDLE_BYTES
+  }
+  raise "WorkGraph monotonic anti-gaming ratchet drifted" unless registry[
+    "monotonic_ratchet"
+  ] == expected_ratchet
+  expected_anti_gaming_baseline = {
+    "normalized_effective_lines" => MAX_NORMALIZED_EFFECTIVE_LINES,
+    "significant_rust_token_count" => MAX_SIGNIFICANT_RUST_TOKENS,
+    "source_bytes" => MAX_SOURCE_BYTES,
+    "bundle_bytes" => MAX_BUNDLE_BYTES
+  }
+  raise "WorkGraph anti-gaming baseline drifted" unless registry[
+    "anti_gaming_baseline"
+  ] == expected_anti_gaming_baseline
   raise "WorkGraph readable canonical schema drifted" unless registry[
     "canonical_source_schema"
   ] == HeptaReadableTokenSource::SCHEMA

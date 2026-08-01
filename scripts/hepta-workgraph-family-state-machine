@@ -28,7 +28,11 @@ BASELINE_MODULE_COUNT = 284
 TARGET_MODULE_COUNT = 4
 RECOVERY_BASELINE_EFFECTIVE_LINES = 141_612
 PREVIOUS_CANDIDATE_EFFECTIVE_LINES = 48_698
-RESULT_EFFECTIVE_LINE_LIMIT = 40_000
+ANTI_GAMING_BASELINE_EFFECTIVE_LINES = 39_776
+ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS = 961_903
+ANTI_GAMING_BASELINE_SOURCE_BYTES = 8_757_229
+ANTI_GAMING_BASELINE_BUNDLE_BYTES = 735_630
+RESULT_EFFECTIVE_LINE_LIMIT = ANTI_GAMING_BASELINE_EFFECTIVE_LINES
 CANONICAL_RECORD_BYTE_LIMIT = 89_270
 NORMALIZED_TEMPLATE_LIMIT = 4
 HETEROGENEOUS_ENTRY_COUNT = 283
@@ -122,6 +126,14 @@ def semantic_token_digest(source)
     digest << token.kind.to_s << "\0" << token.text << "\0"
   end
   digest.hexdigest
+end
+
+def significant_rust_token_count(entries)
+  entries.sum do |entry|
+    HeptaNormalizedTokenBundle.rust_tokens(entry.source).count do |token|
+      ![:space, :comment].include?(token.kind)
+    end
+  end
 end
 
 def family_variant_module_name(module_name)
@@ -572,14 +584,19 @@ def build_result
   )
   artifacts, canonical = render_canonical_artifacts(bundle)
   source_entries = HeptaReadableTokenSource.entries_for(bundle)
+  significant_tokens = significant_rust_token_count(source_entries)
   registry = {
     schema: SCHEMA,
     status: "normalized",
     module_count: source_entries.length,
     source_bytes: source_entries.sum { |entry| entry.source.bytesize },
     source_lines: source_entries.sum { |entry| entry.source.lines.count },
+    significant_rust_token_count: significant_tokens,
+    significant_rust_token_limit: ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+    source_byte_limit: ANTI_GAMING_BASELINE_SOURCE_BYTES,
     aggregate_source_sha256: HeptaNormalizedTokenBundle.aggregate_sha(source_entries),
     bundle_bytes: artifacts.fetch("modules.bundle.gz").bytesize,
+    bundle_byte_limit: ANTI_GAMING_BASELINE_BUNDLE_BYTES,
     bundle_sha256: Digest::SHA256.hexdigest(artifacts.fetch("modules.bundle.gz")),
     normalized_template_count: bundle.metrics.fetch(:normalized_template_count),
     normalized_template_limit: NORMALIZED_TEMPLATE_LIMIT,
@@ -599,7 +616,16 @@ def build_result
     monotonic_ratchet: {
       logical_module_ceiling: TARGET_MODULE_COUNT,
       normalized_template_ceiling: NORMALIZED_TEMPLATE_LIMIT,
-      normalized_effective_line_ceiling: RESULT_EFFECTIVE_LINE_LIMIT
+      normalized_effective_line_ceiling: RESULT_EFFECTIVE_LINE_LIMIT,
+      significant_rust_token_ceiling: ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+      source_byte_ceiling: ANTI_GAMING_BASELINE_SOURCE_BYTES,
+      bundle_byte_ceiling: ANTI_GAMING_BASELINE_BUNDLE_BYTES
+    },
+    anti_gaming_baseline: {
+      normalized_effective_lines: ANTI_GAMING_BASELINE_EFFECTIVE_LINES,
+      significant_rust_token_count: ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+      source_bytes: ANTI_GAMING_BASELINE_SOURCE_BYTES,
+      bundle_bytes: ANTI_GAMING_BASELINE_BUNDLE_BYTES
     },
     decline_targets: {
       next: {
@@ -667,6 +693,11 @@ def measurement(result)
     support_module_count: SUPPORT_MODULE_NAMES.length,
     normalized_template_count: result.fetch(:registry).fetch(:normalized_template_count),
     normalized_effective_lines: result.fetch(:registry).fetch(:normalized_effective_lines),
+    anti_gaming_baseline_normalized_effective_lines:
+      ANTI_GAMING_BASELINE_EFFECTIVE_LINES,
+    anti_gaming_normalized_effective_line_delta:
+      result.fetch(:registry).fetch(:normalized_effective_lines) -
+        ANTI_GAMING_BASELINE_EFFECTIVE_LINES,
     recovery_baseline_normalized_effective_lines: RECOVERY_BASELINE_EFFECTIVE_LINES,
     baseline_normalized_effective_lines: PREVIOUS_CANDIDATE_EFFECTIVE_LINES,
     normalized_effective_line_delta:
@@ -677,6 +708,27 @@ def measurement(result)
     result_effective_line_limit: RESULT_EFFECTIVE_LINE_LIMIT,
     result_effective_line_limit_met:
       result.fetch(:registry).fetch(:normalized_effective_lines) <= RESULT_EFFECTIVE_LINE_LIMIT,
+    significant_rust_token_count:
+      result.fetch(:registry).fetch(:significant_rust_token_count),
+    significant_rust_token_limit: ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+    significant_rust_token_delta:
+      result.fetch(:registry).fetch(:significant_rust_token_count) -
+        ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+    significant_rust_token_limit_met:
+      result.fetch(:registry).fetch(:significant_rust_token_count) <=
+        ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+    source_bytes: result.fetch(:registry).fetch(:source_bytes),
+    source_byte_limit: ANTI_GAMING_BASELINE_SOURCE_BYTES,
+    source_byte_delta:
+      result.fetch(:registry).fetch(:source_bytes) - ANTI_GAMING_BASELINE_SOURCE_BYTES,
+    source_byte_limit_met:
+      result.fetch(:registry).fetch(:source_bytes) <= ANTI_GAMING_BASELINE_SOURCE_BYTES,
+    bundle_bytes: result.fetch(:registry).fetch(:bundle_bytes),
+    bundle_byte_limit: ANTI_GAMING_BASELINE_BUNDLE_BYTES,
+    bundle_byte_delta:
+      result.fetch(:registry).fetch(:bundle_bytes) - ANTI_GAMING_BASELINE_BUNDLE_BYTES,
+    bundle_byte_limit_met:
+      result.fetch(:registry).fetch(:bundle_bytes) <= ANTI_GAMING_BASELINE_BUNDLE_BYTES,
     canonical_max_record_bytes: result.fetch(:canonical).fetch(:canonical_max_record_bytes),
     canonical_record_byte_limit: CANONICAL_RECORD_BYTE_LIMIT,
     canonical_record_byte_limit_met:
@@ -698,6 +750,15 @@ def assert_measurement!(result)
   ) == TARGET_MODULE_COUNT
   unless measured.fetch(:result_effective_line_limit_met)
     raise "WorkGraph normalized_effective_lines=#{measured.fetch(:normalized_effective_lines)} exceeds ratchet=#{RESULT_EFFECTIVE_LINE_LIMIT}"
+  end
+  unless measured.fetch(:significant_rust_token_limit_met)
+    raise "WorkGraph significant_rust_token_count=#{measured.fetch(:significant_rust_token_count)} exceeds anti-gaming ratchet=#{ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS}"
+  end
+  unless measured.fetch(:source_byte_limit_met)
+    raise "WorkGraph source_bytes=#{measured.fetch(:source_bytes)} exceeds anti-gaming ratchet=#{ANTI_GAMING_BASELINE_SOURCE_BYTES}"
+  end
+  unless measured.fetch(:bundle_byte_limit_met)
+    raise "WorkGraph bundle_bytes=#{measured.fetch(:bundle_bytes)} exceeds anti-gaming ratchet=#{ANTI_GAMING_BASELINE_BUNDLE_BYTES}"
   end
   unless measured.fetch(:canonical_record_byte_limit_met)
     raise "WorkGraph canonical_max_record_bytes=#{measured.fetch(:canonical_max_record_bytes)} exceeds limit=#{CANONICAL_RECORD_BYTE_LIMIT}"
@@ -785,10 +846,25 @@ def patch_count_sources
       /^MAX_NORMALIZED_TEMPLATE_COUNT = \d+$/,
       "MAX_NORMALIZED_TEMPLATE_COUNT = #{NORMALIZED_TEMPLATE_LIMIT}"
     )
+    .sub(
+      /^MAX_SIGNIFICANT_RUST_TOKENS = [\d_]+$/,
+      "MAX_SIGNIFICANT_RUST_TOKENS = #{ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS.to_s.reverse.scan(/.{1,3}/).join("_").reverse}"
+    )
+    .sub(
+      /^MAX_SOURCE_BYTES = [\d_]+$/,
+      "MAX_SOURCE_BYTES = #{ANTI_GAMING_BASELINE_SOURCE_BYTES.to_s.reverse.scan(/.{1,3}/).join("_").reverse}"
+    )
+    .sub(
+      /^MAX_BUNDLE_BYTES = [\d_]+$/,
+      "MAX_BUNDLE_BYTES = #{ANTI_GAMING_BASELINE_BUNDLE_BYTES.to_s.reverse.scan(/.{1,3}/).join("_").reverse}"
+    )
   unless updated_module_bundle.include?("EXPECTED_MODULE_COUNT = #{TARGET_MODULE_COUNT}") &&
       updated_module_bundle.include?("MAX_NORMALIZED_TEMPLATE_COUNT = #{NORMALIZED_TEMPLATE_LIMIT}") &&
-      updated_module_bundle.include?("MAX_NORMALIZED_EFFECTIVE_LINES = #{RESULT_EFFECTIVE_LINE_LIMIT.to_s.reverse.scan(/.{1,3}/).join("_").reverse}")
-    raise "WorkGraph module-bundle count or line limit drifted"
+      updated_module_bundle.include?("MAX_NORMALIZED_EFFECTIVE_LINES = #{RESULT_EFFECTIVE_LINE_LIMIT.to_s.reverse.scan(/.{1,3}/).join("_").reverse}") &&
+      updated_module_bundle.include?("MAX_SIGNIFICANT_RUST_TOKENS = #{ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS.to_s.reverse.scan(/.{1,3}/).join("_").reverse}") &&
+      updated_module_bundle.include?("MAX_SOURCE_BYTES = #{ANTI_GAMING_BASELINE_SOURCE_BYTES.to_s.reverse.scan(/.{1,3}/).join("_").reverse}") &&
+      updated_module_bundle.include?("MAX_BUNDLE_BYTES = #{ANTI_GAMING_BASELINE_BUNDLE_BYTES.to_s.reverse.scan(/.{1,3}/).join("_").reverse}")
+    raise "WorkGraph module-bundle count or anti-gaming limit drifted"
   end
   family_manifest_constant = <<~RUBY
     FAMILY_MANIFEST_PATH = File.join(BUNDLE_ROOT, "family-state-machine-v1.json")
@@ -865,7 +941,37 @@ def manifest_for(result)
       aggregate_source_sha256: result.fetch(:registry).fetch(:aggregate_source_sha256),
       normalized_template_count: result.fetch(:registry).fetch(:normalized_template_count),
       normalized_effective_lines: result.fetch(:registry).fetch(:normalized_effective_lines),
+      significant_rust_token_count:
+        result.fetch(:registry).fetch(:significant_rust_token_count),
+      source_bytes: result.fetch(:registry).fetch(:source_bytes),
+      bundle_bytes: result.fetch(:registry).fetch(:bundle_bytes),
       canonical_max_record_bytes: result.fetch(:canonical).fetch(:canonical_max_record_bytes)
+    },
+    anti_gaming_ratchet: {
+      baseline: {
+        normalized_effective_lines: ANTI_GAMING_BASELINE_EFFECTIVE_LINES,
+        significant_rust_token_count: ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+        source_bytes: ANTI_GAMING_BASELINE_SOURCE_BYTES,
+        bundle_bytes: ANTI_GAMING_BASELINE_BUNDLE_BYTES
+      },
+      result: {
+        normalized_effective_lines:
+          result.fetch(:registry).fetch(:normalized_effective_lines),
+        significant_rust_token_count:
+          result.fetch(:registry).fetch(:significant_rust_token_count),
+        source_bytes: result.fetch(:registry).fetch(:source_bytes),
+        bundle_bytes: result.fetch(:registry).fetch(:bundle_bytes)
+      },
+      normalized_effective_lines_non_increasing:
+        result.fetch(:registry).fetch(:normalized_effective_lines) <=
+          ANTI_GAMING_BASELINE_EFFECTIVE_LINES,
+      significant_rust_tokens_non_increasing:
+        result.fetch(:registry).fetch(:significant_rust_token_count) <=
+          ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+      source_bytes_non_increasing:
+        result.fetch(:registry).fetch(:source_bytes) <= ANTI_GAMING_BASELINE_SOURCE_BYTES,
+      bundle_bytes_non_increasing:
+        result.fetch(:registry).fetch(:bundle_bytes) <= ANTI_GAMING_BASELINE_BUNDLE_BYTES
     },
     token_canonicalization: result.fetch(:token_stats).merge(
       variable_whitespace: "one_ascii_space",
@@ -953,11 +1059,73 @@ def verify_result
   effective_lines = registry.fetch("normalized_effective_lines")
   raise "WorkGraph effective-line ratchet regressed: #{effective_lines}" if effective_lines >
     RESULT_EFFECTIVE_LINE_LIMIT
+  significant_tokens = significant_rust_token_count(entries)
+  source_bytes = entries.sum { |entry| entry.source.bytesize }
+  bundle_bytes = File.size(BUNDLE_PATH)
+  raise "WorkGraph significant token registry drifted" unless registry.fetch(
+    "significant_rust_token_count"
+  ) == significant_tokens
+  raise "WorkGraph source byte registry drifted" unless registry.fetch("source_bytes") ==
+    source_bytes
+  raise "WorkGraph bundle byte registry drifted" unless registry.fetch("bundle_bytes") ==
+    bundle_bytes
+  if significant_tokens > ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS
+    raise "WorkGraph significant-token anti-gaming ratchet regressed: #{significant_tokens}"
+  end
+  if source_bytes > ANTI_GAMING_BASELINE_SOURCE_BYTES
+    raise "WorkGraph source-byte anti-gaming ratchet regressed: #{source_bytes}"
+  end
+  if bundle_bytes > ANTI_GAMING_BASELINE_BUNDLE_BYTES
+    raise "WorkGraph bundle-byte anti-gaming ratchet regressed: #{bundle_bytes}"
+  end
+  expected_anti_gaming_baseline = {
+    "normalized_effective_lines" => ANTI_GAMING_BASELINE_EFFECTIVE_LINES,
+    "significant_rust_token_count" => ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+    "source_bytes" => ANTI_GAMING_BASELINE_SOURCE_BYTES,
+    "bundle_bytes" => ANTI_GAMING_BASELINE_BUNDLE_BYTES
+  }
+  raise "WorkGraph registry anti-gaming baseline drifted" unless registry.fetch(
+    "anti_gaming_baseline"
+  ) == expected_anti_gaming_baseline
+  expected_monotonic_ratchet = {
+    "logical_module_ceiling" => TARGET_MODULE_COUNT,
+    "normalized_template_ceiling" => NORMALIZED_TEMPLATE_LIMIT,
+    "normalized_effective_line_ceiling" => RESULT_EFFECTIVE_LINE_LIMIT,
+    "significant_rust_token_ceiling" => ANTI_GAMING_BASELINE_SIGNIFICANT_RUST_TOKENS,
+    "source_byte_ceiling" => ANTI_GAMING_BASELINE_SOURCE_BYTES,
+    "bundle_byte_ceiling" => ANTI_GAMING_BASELINE_BUNDLE_BYTES
+  }
+  raise "WorkGraph registry monotonic ratchet drifted" unless registry.fetch(
+    "monotonic_ratchet"
+  ) == expected_monotonic_ratchet
   raise "WorkGraph canonical record limit regressed" if registry.fetch(
     "canonical_max_record_bytes"
   ) > CANONICAL_RECORD_BYTE_LIMIT
 
   baseline = manifest.fetch("baseline")
+  anti_gaming_ratchet = manifest.fetch("anti_gaming_ratchet")
+  raise "WorkGraph manifest anti-gaming baseline drifted" unless anti_gaming_ratchet.fetch(
+    "baseline"
+  ) == expected_anti_gaming_baseline
+  expected_anti_gaming_result = {
+    "normalized_effective_lines" => effective_lines,
+    "significant_rust_token_count" => significant_tokens,
+    "source_bytes" => source_bytes,
+    "bundle_bytes" => bundle_bytes
+  }
+  raise "WorkGraph manifest anti-gaming result drifted" unless anti_gaming_ratchet.fetch(
+    "result"
+  ) == expected_anti_gaming_result
+  %w[
+    normalized_effective_lines_non_increasing
+    significant_rust_tokens_non_increasing
+    source_bytes_non_increasing
+    bundle_bytes_non_increasing
+  ].each do |field|
+    raise "WorkGraph manifest anti-gaming closure failed: #{field}" unless anti_gaming_ratchet[
+      field
+    ] == true
+  end
   baseline_commit = baseline.fetch("commit")
   baseline_tree = git_value("show", "-s", "--format=%T", baseline_commit)
   raise "WorkGraph recovery tree drifted" unless baseline_tree == baseline.fetch("tree")
@@ -1044,6 +1212,9 @@ def verify_result
     module_reduction: baseline_entries.length - entries.length,
     normalized_template_count: registry.fetch("normalized_template_count"),
     normalized_effective_lines: effective_lines,
+    significant_rust_token_count: significant_tokens,
+    source_bytes: source_bytes,
+    bundle_bytes: bundle_bytes,
     canonical_max_record_bytes: registry.fetch("canonical_max_record_bytes"),
     preserved_public_symbol_count: baseline_public_symbols.length,
     caller_file_count: manifest.fetch("closure").fetch("rewritten_runtime_files").length,

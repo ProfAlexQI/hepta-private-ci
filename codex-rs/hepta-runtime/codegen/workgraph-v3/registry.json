@@ -4,14 +4,18 @@
   "module_count": 4,
   "source_bytes": 8757229,
   "source_lines": 45469,
+  "significant_rust_token_count": 961903,
+  "significant_rust_token_limit": 961903,
+  "source_byte_limit": 8757229,
   "aggregate_source_sha256": "e37dd5dc178eca26e5be52806e526de127d255716378056e4f7d7b20356597dd",
   "bundle_bytes": 735630,
+  "bundle_byte_limit": 735630,
   "bundle_sha256": "cabacaa4af16a06511f2500699ed2bd2916b8e707c9f1af73755ddc40ecdc88e",
   "normalized_template_count": 4,
   "normalized_template_limit": 4,
   "normalized_parameter_row_count": 4,
   "normalized_effective_lines": 39776,
-  "normalized_effective_line_limit": 40000,
+  "normalized_effective_line_limit": 39776,
   "canonical_source_schema": "hepta_readable_normalized_token_source_v1",
   "canonical_source_files": [
     "templates.jsonl",
@@ -28,7 +32,16 @@
   "monotonic_ratchet": {
     "logical_module_ceiling": 4,
     "normalized_template_ceiling": 4,
-    "normalized_effective_line_ceiling": 40000
+    "normalized_effective_line_ceiling": 39776,
+    "significant_rust_token_ceiling": 961903,
+    "source_byte_ceiling": 8757229,
+    "bundle_byte_ceiling": 735630
+  },
+  "anti_gaming_baseline": {
+    "normalized_effective_lines": 39776,
+    "significant_rust_token_count": 961903,
+    "source_bytes": 8757229,
+    "bundle_bytes": 735630
   },
   "decline_targets": {
     "next": {

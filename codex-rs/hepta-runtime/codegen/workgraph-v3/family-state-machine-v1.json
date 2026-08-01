@@ -23,7 +23,28 @@
     "aggregate_source_sha256": "e37dd5dc178eca26e5be52806e526de127d255716378056e4f7d7b20356597dd",
     "normalized_template_count": 4,
     "normalized_effective_lines": 39776,
+    "significant_rust_token_count": 961903,
+    "source_bytes": 8757229,
+    "bundle_bytes": 735630,
     "canonical_max_record_bytes": 20958
+  },
+  "anti_gaming_ratchet": {
+    "baseline": {
+      "normalized_effective_lines": 39776,
+      "significant_rust_token_count": 961903,
+      "source_bytes": 8757229,
+      "bundle_bytes": 735630
+    },
+    "result": {
+      "normalized_effective_lines": 39776,
+      "significant_rust_token_count": 961903,
+      "source_bytes": 8757229,
+      "bundle_bytes": 735630
+    },
+    "normalized_effective_lines_non_increasing": true,
+    "significant_rust_tokens_non_increasing": true,
+    "source_bytes_non_increasing": true,
+    "bundle_bytes_non_increasing": true
   },
   "token_canonicalization": {
     "canonicalized_space_token_count": 0,
