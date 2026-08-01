@@ -140,7 +140,7 @@ This manifest records the initial direct transplant of Robrix into Hepta for the
 | project-robius/robrix | b2bb6cf | MIT | `resources/img/google.png` | `apps/hepta-native/resources/img/google.png` | initial direct copy from Robrix baseline | copied |
 | project-robius/robrix | b2bb6cf | MIT | `resources/img/qr_icon.png` | `apps/hepta-native/resources/img/qr_icon.png` | initial direct copy from Robrix baseline | copied |
 | project-robius/robrix | b2bb6cf | MIT | `resources/img/x.png` | `apps/hepta-native/resources/img/x.png` | initial direct copy from Robrix baseline | copied |
-| project-robius/robrix | b2bb6cf | MIT | `resources/menu.svg` | `apps/hepta-native/resources/menu.svg` | initial direct copy from Robrix baseline | copied |
+| project-robius/robrix | b2bb6cf | MIT | `resources/menu.svg` | `apps/hepta-native/resources/icons/menu.svg` | exact duplicate canonicalized to the already tracked icon asset; the unused root-level copy was retired | deduplicated |
 | project-robius/robrix | b2bb6cf | MIT | `resources/search.svg` | `apps/hepta-native/resources/search.svg` | initial direct copy from Robrix baseline | copied |
 | project-robius/robrix | b2bb6cf | MIT | `rust-toolchain.toml` | `apps/hepta-native/rust-toolchain.toml` | initial direct copy from Robrix baseline | copied |
 | project-robius/robrix | b2bb6cf | MIT | `rustfmt.toml` | `apps/hepta-native/rustfmt.toml` | initial direct copy from Robrix baseline | copied |
