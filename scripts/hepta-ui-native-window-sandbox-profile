@@ -1,0 +1,44 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+options = {}
+args = ARGV.dup
+until args.empty?
+  key = args.shift
+  if ["--help", "-h"].include?(key)
+    warn "usage: scripts/hepta-ui-native-window-sandbox-profile --data-dir DIR --cache-dir DIR --scratch-dir DIR --output FILE"
+    exit 0
+  end
+  abort "unknown argument: #{key}" unless ["--data-dir", "--cache-dir", "--scratch-dir", "--output"].include?(key)
+  value = args.shift
+  abort "missing value for #{key}" if value.nil? || value.empty?
+  options[key.delete_prefix("--")] = value
+end
+
+%w[data-dir cache-dir scratch-dir output].each do |key|
+  abort "--#{key} is required" unless options.key?(key)
+end
+
+data_dir = File.expand_path(options.fetch("data-dir"))
+cache_dir = File.expand_path(options.fetch("cache-dir"))
+scratch_dir = File.realpath(options.fetch("scratch-dir"))
+output = File.expand_path(options.fetch("output"))
+abort "data/cache paths must be absolute" unless [data_dir, cache_dir].all? { |path| path.start_with?("/") }
+
+quote = ->(value) { %Q{"#{value.gsub("\\", "\\\\").gsub("\"", "\\\"")}"} }
+File.write(output, <<~PROFILE)
+  (version 1)
+  (allow default)
+  (deny network*)
+  (deny file-read* (subpath #{quote.call(data_dir)}))
+  (deny file-write* (subpath #{quote.call(data_dir)}))
+  (deny file-read* (subpath #{quote.call(cache_dir)}))
+  (deny file-write* (subpath #{quote.call(cache_dir)}))
+  (deny mach-lookup
+    (global-name "com.apple.securityd")
+    (global-name "com.apple.securityd.system")
+    (global-name "com.apple.securityd.xpc")
+    (global-name "com.apple.securityd.agent"))
+  (allow file-read* file-write* (subpath #{quote.call(scratch_dir)}))
+PROFILE
+File.chmod(0o600, output)

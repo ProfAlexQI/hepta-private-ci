@@ -17,9 +17,10 @@ The readiness levels are deliberately separate:
   no-default/default/all-feature checks, and package metadata.
 - `local`: source plus a current-source unsigned package, Control browser smoke,
   and an independently captured current-HEAD macOS Native window. This is an
-  unauthenticated local demo surface only: the exact formal unsigned package is
-  bound to the receipt, while the isolated visual run uses the explicit
-  `developer-diagnostics` build so saved Matrix credentials are never read.
+  unauthenticated local demo surface only. The verifier launches the exact
+  executable inside the formal unsigned package with `--force-login`, denies
+  the real product data/cache paths and all network access through a macOS
+  sandbox, and forces every Peekaboo operation onto local services.
 - `full`: local plus live Matrix, authoritative Hepta adapter, real-device, and
   accessibility receipts.
 - `ga`: full plus signed, notarized, stapled, explicitly authorized public
@@ -41,6 +42,7 @@ scripts/hepta-native-feature-matrix-gate.sh --output /tmp/native-features.json
 scripts/hepta-native-current-package-gate.sh --build --output /tmp/native-package.json
 scripts/hepta-ui-native-window-verifier-v1 \
   --package-report /tmp/native-package.json \
+  --run-nonce 11111111-1111-1111-1111-111111111111 \
   --evidence-dir /tmp/native-window \
   --output /tmp/native-window-current.json
 ```

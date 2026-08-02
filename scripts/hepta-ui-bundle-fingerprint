@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+
+root = nil
+args = ARGV.dup
+until args.empty?
+  case args.shift
+  when "--root"
+    root = args.shift
+  when "--help", "-h"
+    warn "usage: scripts/hepta-ui-bundle-fingerprint --root DIR"
+    exit 0
+  else
+    abort "unknown argument"
+  end
+end
+
+abort "--root is required" if root.nil? || root.empty?
+root = File.realpath(root)
+abort "bundle root is not a directory: #{root}" unless File.directory?(root)
+
+digest = Digest::SHA256.new
+entries = Dir.glob(File.join(root, "**", "*"), File::FNM_DOTMATCH)
+  .reject { |path| [".", ".."].include?(File.basename(path)) }
+  .sort
+
+entries.each do |path|
+  relative = path.delete_prefix("#{root}/")
+  stat = File.lstat(path)
+  kind = if stat.symlink?
+    "symlink"
+  elsif stat.file?
+    "file"
+  elsif stat.directory?
+    "directory"
+  else
+    "other"
+  end
+  digest << kind << "\0" << relative << "\0" << format("%o", stat.mode & 0o777) << "\0"
+  if stat.symlink?
+    digest << File.readlink(path)
+  elsif stat.file?
+    digest << Digest::SHA256.file(path).hexdigest
+  end
+  digest << "\0"
+end
+
+puts digest.hexdigest

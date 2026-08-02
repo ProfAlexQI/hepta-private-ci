@@ -51,13 +51,22 @@ EOF
 done
 
 case "$REQUIRE" in none|source|local|full|ga) ;; *) echo "invalid --require level: $REQUIRE" >&2; exit 64 ;; esac
+case "$REQUIRE" in
+  local|full|ga)
+    VERIFY_FEATURES=1
+    VERIFY_PACKAGE=1
+    VERIFY_BROWSER=1
+    VERIFY_WINDOW=1
+    ;;
+esac
 if [[ -z "$EVIDENCE_DIR" ]]; then EVIDENCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-current-readiness.XXXXXX")"; fi
 mkdir -p "$EVIDENCE_DIR" "$TARGET_DIR"
 EVIDENCE_DIR="$(cd "$EVIDENCE_DIR" && pwd -P)"
 if [[ -z "$REPORT_PATH" ]]; then REPORT_PATH="$EVIDENCE_DIR/current-readiness.json"; fi
 mkdir -p "$(dirname "$REPORT_PATH")"
 
-for command in git jq shasum; do command -v "$command" >/dev/null 2>&1 || { echo "$command is required" >&2; exit 2; }; done
+for command in git jq shasum uuidgen; do command -v "$command" >/dev/null 2>&1 || { echo "$command is required" >&2; exit 2; }; done
+RUN_NONCE="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 
 BINDING_BEFORE="$EVIDENCE_DIR/source-binding-before.json"
 BINDING_AFTER="$EVIDENCE_DIR/source-binding-after.json"
@@ -101,13 +110,16 @@ package_args=(--output "$PACKAGE_REPORT" --target-dir "$TARGET_DIR")
 if [[ "$VERIFY_PACKAGE" == "1" ]]; then package_args+=(--build --stage-dir "$EVIDENCE_DIR/native-current-package"); fi
 scripts/hepta-native-current-package-gate.sh "${package_args[@]}" || package_rc=$?
 
-window_rc=0
+window_rc=125
+window_verifier_executed=false
 if [[ "$VERIFY_WINDOW" == "1" ]]; then
+  window_rc=0
+  window_verifier_executed=true
   scripts/hepta-ui-native-window-verifier-v1 \
     --package-report "$PACKAGE_REPORT" \
+    --run-nonce "$RUN_NONCE" \
     --evidence-dir "$EVIDENCE_DIR/native-window" \
-    --output "$WINDOW_REPORT" \
-    --target-dir "$TARGET_DIR" || window_rc=$?
+    --output "$WINDOW_REPORT" || window_rc=$?
 fi
 
 browser_rc=0
@@ -224,12 +236,13 @@ receipt_json() {
        capability:$capability,ready:($identity and $bound and $artifact_hash_valid and ($r.status == "ready") and (($r[$capability] // false) == true)),
        reported_status:($r.status // "unknown"),source_stable_during_run:($r.source_stable_during_run // false),
        independent_verifier_ready:($r.independent_promotion_verifier_ready // false),package:($r.package // null),
+       run_nonce:($r.run_nonce // null),host_window:($r.host_window // null),automation:($r.automation // null),isolation:($r.isolation // null),
        scope:($r.scope // null),signed:false,notarized:false,stapled:false}'
 }
 
 MATRIX_LIVE_RECEIPT="${HEPTA_UI_MATRIX_LIVE_RECEIPT:-$EVIDENCE_DIR/matrix-live.json}"
 BRIDGE_LIVE_RECEIPT="${HEPTA_UI_BRIDGE_LIVE_RECEIPT:-$EVIDENCE_DIR/hepta-bridge-live.json}"
-NATIVE_WINDOW_RECEIPT="${HEPTA_UI_NATIVE_WINDOW_RECEIPT:-$EVIDENCE_DIR/native-window-current.json}"
+NATIVE_WINDOW_RECEIPT="$WINDOW_REPORT"
 DEVICE_RECEIPT="${HEPTA_UI_DEVICE_LAB_RECEIPT:-$EVIDENCE_DIR/device-lab.json}"
 ACCESSIBILITY_RECEIPT="${HEPTA_UI_ACCESSIBILITY_RECEIPT:-$EVIDENCE_DIR/accessibility.json}"
 RELEASE_RECEIPT="${HEPTA_UI_RELEASE_RECEIPT:-$EVIDENCE_DIR/release.json}"
@@ -241,6 +254,19 @@ device_receipt="$(receipt_json device_lab "$DEVICE_RECEIPT" real_device_lab_read
 accessibility_receipt="$(receipt_json accessibility "$ACCESSIBILITY_RECEIPT" accessibility_ready hepta-ui-accessibility-receipt-v1 scripts/hepta-ui-accessibility-verifier-v1)"
 release_receipt="$(receipt_json release "$RELEASE_RECEIPT" public_distribution_ready hepta-ui-release-receipt-v1 scripts/hepta-ui-release-verifier-v1)"
 package_report_sha256="$(shasum -a 256 "$PACKAGE_REPORT" | awk '{print $1}')"
+package_app_path="$(jq -r '.artifact.path // ""' "$PACKAGE_REPORT")"
+expected_package_app_path="$EVIDENCE_DIR/native-current-package/Hepta.app"
+package_binary_path="$package_app_path/Contents/MacOS/hepta-native"
+package_binary_actual_sha256=""
+package_bundle_actual_sha256=""
+package_artifact_hash_valid=false
+if [[ -d "$package_app_path" && -x "$package_binary_path" ]]; then
+  package_binary_actual_sha256="$(shasum -a 256 "$package_binary_path" | awk '{print $1}')"
+  package_bundle_actual_sha256="$(scripts/hepta-ui-bundle-fingerprint --root "$package_app_path")"
+  if [[ "$package_binary_actual_sha256" == "$(jq -r '.artifact.binary_sha256 // ""' "$PACKAGE_REPORT")" ]]; then
+    package_artifact_hash_valid=true
+  fi
+fi
 
 report="$(jq -n \
   --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg require "$REQUIRE" --arg evidence_dir "$EVIDENCE_DIR" \
@@ -254,22 +280,43 @@ report="$(jq -n \
   --argjson feature_bound "$feature_bound" --argjson package_bound "$package_bound" --argjson mobile_bound "$mobile_bound" \
   --argjson sync_exit_code "$sync_rc" --argjson product_exit_code "$product_rc" --argjson token_exit_code "$token_rc" \
   --argjson feature_exit_code "$feature_rc" --argjson package_exit_code "$package_rc" --argjson browser_exit_code "$browser_rc" --argjson mobile_exit_code "$mobile_rc" \
-  --argjson window_exit_code "$window_rc" --arg package_report_path "$PACKAGE_REPORT" --arg package_report_sha256 "$package_report_sha256" '
+  --argjson window_exit_code "$window_rc" --argjson window_verifier_executed "$window_verifier_executed" \
+  --arg run_nonce "$RUN_NONCE" --arg package_report_path "$PACKAGE_REPORT" --arg package_report_sha256 "$package_report_sha256" \
+  --arg expected_package_app_path "$expected_package_app_path" \
+  --arg package_binary_path "$package_binary_path" --arg package_binary_actual_sha256 "$package_binary_actual_sha256" \
+  --arg package_bundle_actual_sha256 "$package_bundle_actual_sha256" --argjson package_artifact_hash_valid "$package_artifact_hash_valid" '
     ($browser_file[0]) as $browser |
     ($binding_stable and $binding_after.repository_worktree_clean and $sync_exit_code == 0 and $product_exit_code == 0 and $token_exit_code == 0 and $feature_exit_code == 0 and $mobile_exit_code == 0 and $sync_bound and $product_bound and $token_bound and $feature_bound and $package_bound and $mobile_bound and $sync.status == "ready" and $sync.path_ledger_ready == true and $product.status == "ready" and $tokens.status == "ready" and $feature.feature_matrix_ready == true and $package.static_package_contract_ready == true and $mobile.status == "source_contract_ready" and $mobile.mobile_source_contract_ready == true and ($mobile.hard_boundaries.android_emulator_visual_verified // true) == false and ($mobile.hard_boundaries.android_emulator_rotation_verified // true) == false and ($mobile.hard_boundaries.android_emulator_ime_verified // true) == false) as $source_ready |
     (($browser.schema_version // null) == 1 and ($browser.kind // "") == "hepta-control-ui-browser-smoke-current-wrapper" and ($browser.producer // "") == "scripts/hepta-ui-current-readiness.sh" and ($browser.original_receipt_valid // false) == true and ($browser.browser_child_exit_code // -1) == 0 and ($browser.source_binding.head // "") == $binding_after.head and ($browser.source_binding.head_tree // "") == $binding_after.head_tree and ($browser.source_binding.source_fingerprint // "") == $binding_after.source_fingerprint and ($browser.browser_smoke_ready // false) == true) as $browser_ready |
     (
-      $window_exit_code == 0
+      $window_verifier_executed == true
+      and $window_exit_code == 0
       and $window_receipt.ready == true
       and $window_receipt.source_stable_during_run == true
       and $window_receipt.independent_verifier_ready == true
       and $window_receipt.scope == "unauthenticated_local_macos_product_shell"
+      and ($window_receipt.run_nonce // "") == $run_nonce
       and ($window_receipt.package.current_source_local_package_ready // false) == true
-      and ($window_receipt.package.visual_capture_binary_is_separate_developer_diagnostics_build // false) == true
+      and ($window_receipt.package.visual_capture_binary_is_exact_packaged_executable // false) == true
+      and ($window_receipt.package.visual_capture_binary_is_separate_developer_diagnostics_build // true) == false
       and ($window_receipt.package.report_path // "") == $package_report_path
       and ($window_receipt.package.report_sha256 // "") == $package_report_sha256
       and ($window_receipt.package.app_path // "") == ($package.artifact.path // "")
-      and ($window_receipt.package.binary_sha256 // "") == ($package.artifact.binary_sha256 // "")
+      and ($package.artifact.path // "") == $expected_package_app_path
+      and ($window_receipt.package.binary_path // "") == $package_binary_path
+      and ($window_receipt.package.binary_sha256 // "") == $package_binary_actual_sha256
+      and ($window_receipt.package.bundle_fingerprint_sha256 // "") == $package_bundle_actual_sha256
+      and $package_artifact_hash_valid == true
+      and ($window_receipt.automation.no_remote // false) == true
+      and ($window_receipt.automation.host_kind // "") == "local"
+      and ($window_receipt.automation.host_source // "") == "forced_local_services"
+      and ($window_receipt.host_window.title // "") == "Hepta"
+      and ($window_receipt.host_window.exact_title_match_count // 0) == 1
+      and ($window_receipt.isolation.real_product_data_path_denied // false) == true
+      and ($window_receipt.isolation.real_product_cache_path_denied // false) == true
+      and ($window_receipt.isolation.keychain_services_denied // false) == true
+      and ($window_receipt.isolation.network_denied_by_sandbox // false) == true
+      and ($window_receipt.isolation.force_login_argument // false) == true
     ) as $promotion_independent_verifiers_ready |
     ($source_ready and $package.local_package_ready == true and $browser_ready and $window_receipt.ready and $promotion_independent_verifiers_ready) as $local_ready |
     false as $full_ready |
@@ -295,7 +342,7 @@ report="$(jq -n \
         token_sync:{status:($tokens.status // "not_ready"),exit_code:$token_exit_code,bound_to_current_source:$token_bound,schema_version:($tokens.schema_version // null),report:"token-sync.json"},
         native_feature_matrix:{status:$feature.status,exit_code:$feature_exit_code,bound_to_current_source:$feature_bound,ready:($feature.feature_matrix_ready // false),report:"native-feature-matrix.json"},
         native_package:{status:$package.status,exit_code:$package_exit_code,bound_to_current_source:$package_bound,static_ready:($package.static_package_contract_ready // false),local_package_ready:($package.local_package_ready // false),report:"native-current-package.json"},
-        native_window:{status:$window_receipt.reported_status,exit_code:$window_exit_code,bound_to_current_source:$window_receipt.bound_to_current_source,receipt_ready:$window_receipt.ready,independent_promotion_ready:$promotion_independent_verifiers_ready,scope:$window_receipt.scope,report:"native-window-current.json"},
+        native_window:{status:$window_receipt.reported_status,verifier_executed:$window_verifier_executed,exit_code:$window_exit_code,bound_to_current_source:$window_receipt.bound_to_current_source,receipt_ready:$window_receipt.ready,independent_promotion_ready:$promotion_independent_verifiers_ready,scope:$window_receipt.scope,exact_packaged_executable_verified:(($window_receipt.package.visual_capture_binary_is_exact_packaged_executable // false) == true),local_host_forced:(($window_receipt.automation.no_remote // false) == true and ($window_receipt.automation.host_kind // "") == "local"),package_artifact_hash_valid:$package_artifact_hash_valid,report:"native-window-current.json"},
         native_mobile:{status:$mobile.status,exit_code:$mobile_exit_code,bound_to_current_source:$mobile_bound,source_contract_ready:($mobile.mobile_source_contract_ready // false),android_unauthenticated_login_surface:{visual_verified:($mobile.hard_boundaries.android_emulator_unauthenticated_login_surface_visual_verified // false),rotation_verified:($mobile.hard_boundaries.android_emulator_unauthenticated_login_surface_rotation_verified // false),ime_verified:($mobile.hard_boundaries.android_emulator_unauthenticated_login_surface_ime_verified // false)},generic_android_visual_rotation_ime_claims_hard_false:(($mobile.hard_boundaries.android_emulator_visual_verified // false) == false and ($mobile.hard_boundaries.android_emulator_rotation_verified // false) == false and ($mobile.hard_boundaries.android_emulator_ime_verified // false) == false),full_product_ready:($mobile.hard_boundaries.mobile_full_product_ready // false),report:"native-mobile-readiness.json"},
         control_browser:{status:($browser.status // "not_run"),exit_code:$browser_exit_code,ready:$browser_ready,report:"control-browser-smoke.json"}
       },

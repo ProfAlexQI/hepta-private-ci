@@ -7,20 +7,18 @@ cd "$ROOT_DIR"
 EVIDENCE_DIR=""
 REPORT_PATH=""
 PACKAGE_REPORT=""
-TARGET_DIR="${HEPTA_NATIVE_CARGO_TARGET_DIR:-${TMPDIR:-/tmp}/hepta-ui-native-window-target}"
+RUN_NONCE=""
 WINDOW_BOUNDS="80,70,1200,720"
 STARTUP_TIMEOUT_SEC=180
-CAPTURE_DELAY_MS=8000
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --evidence-dir) EVIDENCE_DIR="${2:-}"; shift 2 ;;
     --output) REPORT_PATH="${2:-}"; shift 2 ;;
     --package-report) PACKAGE_REPORT="${2:-}"; shift 2 ;;
-    --target-dir) TARGET_DIR="${2:-}"; shift 2 ;;
+    --run-nonce) RUN_NONCE="${2:-}"; shift 2 ;;
     --bounds) WINDOW_BOUNDS="${2:-}"; shift 2 ;;
     --startup-timeout) STARTUP_TIMEOUT_SEC="${2:-}"; shift 2 ;;
-    --capture-delay-ms) CAPTURE_DELAY_MS="${2:-}"; shift 2 ;;
     --help|-h)
       cat <<'EOF'
 usage: scripts/hepta-ui-native-window-verifier-v1 [options]
@@ -28,15 +26,14 @@ usage: scripts/hepta-ui-native-window-verifier-v1 [options]
   --evidence-dir DIR       write capture evidence under DIR
   --output FILE            write the promotion receipt
   --package-report FILE    current-run native package receipt (required)
-  --target-dir DIR         Cargo target directory
+  --run-nonce VALUE        current orchestrator run nonce (required)
   --bounds X,Y,W,H         requested macOS window bounds (default 80,70,1200,720)
   --startup-timeout SEC    window/capture timeout (default 180)
-  --capture-delay-ms MS    delayed Makepad GPU-frame capture (default 8000)
 
-Builds the current source with the explicit developer-diagnostics feature,
-starts it with isolated app data and fail-closed network proxies, proves a real
-macOS window through Peekaboo, and captures both the host window and Makepad GPU
-frame. It never logs in, sends, signs, notarizes, staples, uploads, or publishes.
+Starts the exact executable from the current package receipt under a macOS
+sandbox that denies the product's real state/cache paths and all network access,
+forces the unauthenticated login surface, and captures its real local window.
+It never logs in, sends, signs, notarizes, staples, uploads, or publishes.
 EOF
       exit 0
       ;;
@@ -45,9 +42,10 @@ EOF
 done
 
 [[ "$STARTUP_TIMEOUT_SEC" =~ ^[1-9][0-9]*$ ]] || { echo "invalid --startup-timeout" >&2; exit 64; }
-[[ "$CAPTURE_DELAY_MS" =~ ^[1-9][0-9]*$ ]] || { echo "invalid --capture-delay-ms" >&2; exit 64; }
 [[ -n "$PACKAGE_REPORT" ]] || { echo "--package-report is required" >&2; exit 64; }
+[[ "$RUN_NONCE" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo "--run-nonce is required and malformed" >&2; exit 64; }
 [[ -f "$PACKAGE_REPORT" ]] || { echo "package report is not a regular file: $PACKAGE_REPORT" >&2; exit 1; }
+[[ ! -L "$PACKAGE_REPORT" ]] || { echo "package report must not be a symlink" >&2; exit 1; }
 PACKAGE_REPORT="$(cd "$(dirname "$PACKAGE_REPORT")" && pwd -P)/$(basename "$PACKAGE_REPORT")"
 IFS=',' read -r WINDOW_X WINDOW_Y WINDOW_WIDTH WINDOW_HEIGHT <<<"$WINDOW_BOUNDS"
 for value in "$WINDOW_X" "$WINDOW_Y" "$WINDOW_WIDTH" "$WINDOW_HEIGHT"; do
@@ -61,34 +59,28 @@ done
 if [[ -z "$EVIDENCE_DIR" ]]; then
   EVIDENCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-native-window.XXXXXX")"
 fi
-mkdir -p "$EVIDENCE_DIR" "$TARGET_DIR"
+mkdir -p "$EVIDENCE_DIR"
 EVIDENCE_DIR="$(cd "$EVIDENCE_DIR" && pwd -P)"
-TARGET_DIR="$(cd "$TARGET_DIR" && pwd -P)"
 if [[ -z "$REPORT_PATH" ]]; then REPORT_PATH="$EVIDENCE_DIR/native-window-current.json"; fi
 mkdir -p "$(dirname "$REPORT_PATH")"
 
-for command in git jq shasum strings sips tar ruby peekaboo; do
+for command in git jq shasum strings sips tar ruby peekaboo sandbox-exec; do
   command -v "$command" >/dev/null 2>&1 || { echo "$command is required" >&2; exit 2; }
 done
 
-# shellcheck source=scripts/lib/hepta-ui-rust-toolchain.sh
-source scripts/lib/hepta-ui-rust-toolchain.sh
-hepta_ui_activate_rust_toolchain
-
-MANIFEST="apps/hepta-native/Cargo.toml"
-BUILD_LOG="$EVIDENCE_DIR/native-window-build.log"
 APP_LOG="$EVIDENCE_DIR/native-window-app.log"
 HOST_SCREENSHOT="$EVIDENCE_DIR/native-window.png"
-GPU_FRAME="$EVIDENCE_DIR/native-gpu-frame.png"
 HOST_PROBE="$EVIDENCE_DIR/native-window-content-probe.json"
-GPU_PROBE="$EVIDENCE_DIR/native-gpu-frame-content-probe.json"
 EVIDENCE_MANIFEST="$EVIDENCE_DIR/native-window-evidence-manifest.json"
 EVIDENCE_ARCHIVE="$EVIDENCE_DIR/native-window-evidence.tar.gz"
-APP_DATA_DIR="$(mktemp -d "$EVIDENCE_DIR/app-data.XXXXXX")"
+SANDBOX_ROOT="$(mktemp -d "$EVIDENCE_DIR/sandbox.XXXXXX")"
+SANDBOX_PROFILE="$EVIDENCE_DIR/native-window.sb"
 BRIDGE_SOCKET="${PEEKABOO_BRIDGE_SOCKET:-${HOME}/Library/Application Support/OpenClaw/bridge.sock}"
+PRODUCT_DATA_DIR="${HOME}/Library/Application Support/ai.hepta.hepta-native"
+PRODUCT_CACHE_DIR="${HOME}/Library/Caches/ai.hepta.hepta-native"
 
-for stale_output in "$BUILD_LOG" "$APP_LOG" "$HOST_SCREENSHOT" "$GPU_FRAME" \
-  "$HOST_PROBE" "$GPU_PROBE" "$EVIDENCE_MANIFEST" "$EVIDENCE_ARCHIVE" "$REPORT_PATH"; do
+for stale_output in "$APP_LOG" "$HOST_SCREENSHOT" "$HOST_PROBE" "$SANDBOX_PROFILE" \
+  "$EVIDENCE_MANIFEST" "$EVIDENCE_ARCHIVE" "$REPORT_PATH"; do
   rm -f "$stale_output"
 done
 
@@ -126,7 +118,7 @@ fi
 PACKAGE_APP="$(jq -r '.artifact.path' "$PACKAGE_REPORT")"
 PACKAGE_BINARY="$PACKAGE_APP/Contents/MacOS/hepta-native"
 PACKAGE_BINARY_SHA="$(jq -r '.artifact.binary_sha256' "$PACKAGE_REPORT")"
-[[ -d "$PACKAGE_APP" && -x "$PACKAGE_BINARY" ]] || { echo "packaged Hepta executable is missing" >&2; exit 1; }
+[[ -d "$PACKAGE_APP" && ! -L "$PACKAGE_APP" && -x "$PACKAGE_BINARY" && ! -L "$PACKAGE_BINARY" ]] || { echo "packaged Hepta executable is missing or symlinked" >&2; exit 1; }
 [[ "$(shasum -a 256 "$PACKAGE_BINARY" | awk '{print $1}')" == "$PACKAGE_BINARY_SHA" ]] || {
   echo "packaged Hepta executable hash drifted" >&2
   exit 1
@@ -136,44 +128,36 @@ LC_ALL=C grep -aFq -- "$SOURCE_HEAD" "$PACKAGE_BINARY" || {
   exit 1
 }
 PACKAGE_REPORT_SHA="$(shasum -a 256 "$PACKAGE_REPORT" | awk '{print $1}')"
+PACKAGE_BUNDLE_SHA_BEFORE="$(scripts/hepta-ui-bundle-fingerprint --root "$PACKAGE_APP")"
 
-CARGO_TARGET_DIR="$TARGET_DIR" hepta_ui_cargo build \
-  --locked --manifest-path "$MANIFEST" --features developer-diagnostics --bin hepta-native \
-  >"$BUILD_LOG" 2>&1
-
-BINARY="$TARGET_DIR/debug/hepta-native"
-[[ -x "$BINARY" ]] || { echo "developer-diagnostics binary missing: $BINARY" >&2; exit 1; }
-if ! LC_ALL=C grep -aFq -- "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD" "$BINARY"; then
-  echo "developer-diagnostics binary is not bound to current HEAD $SOURCE_HEAD" >&2
-  exit 1
-fi
-
-SOURCE_AFTER_BUILD="$(scripts/hepta-ui-source-fingerprint)"
+SOURCE_AFTER_PACKAGE_CHECK="$(scripts/hepta-ui-source-fingerprint)"
 if ! jq -e --argjson before "$SOURCE_BEFORE" '
     .head == $before.head
     and .head_tree == $before.head_tree
     and .source_fingerprint == $before.source_fingerprint
     and .repository_worktree_clean == true
-  ' >/dev/null <<<"$SOURCE_AFTER_BUILD"; then
-  echo "source changed during native-window build" >&2
+  ' >/dev/null <<<"$SOURCE_AFTER_PACKAGE_CHECK"; then
+  echo "source changed during native-window package verification" >&2
   exit 1
 fi
 
+scripts/hepta-ui-native-window-sandbox-profile \
+  --data-dir "$PRODUCT_DATA_DIR" \
+  --cache-dir "$PRODUCT_CACHE_DIR" \
+  --scratch-dir "$SANDBOX_ROOT" \
+  --output "$SANDBOX_PROFILE"
+
 export PEEKABOO_BRIDGE_SOCKET="$BRIDGE_SOCKET"
-BRIDGE_STATUS="$(peekaboo bridge status --json 2>/dev/null || printf '{}')"
-PERMISSIONS="$(peekaboo permissions status --json 2>/dev/null || printf '{}')"
+PERMISSIONS="$(peekaboo permissions status --no-remote --json 2>/dev/null || printf '{}')"
 SCREEN_RECORDING_GRANTED="$(jq -r '.data.permissions[]? | select(.name == "Screen Recording") | .isGranted // false' <<<"$PERMISSIONS" | head -1)"
 ACCESSIBILITY_GRANTED="$(jq -r '.data.permissions[]? | select(.name == "Accessibility") | .isGranted // false' <<<"$PERMISSIONS" | head -1)"
 [[ "$SCREEN_RECORDING_GRANTED" == true && "$ACCESSIBILITY_GRANTED" == true ]] || {
   echo "Peekaboo Screen Recording and Accessibility permissions are required" >&2
   exit 1
 }
-PEEKABOO_HOST_KIND="$(jq -r '.data.selected.hostKind // .data.selected.host_kind // "local"' <<<"$BRIDGE_STATUS")"
-PEEKABOO_HOST_SOURCE="$(jq -r '.data.selected.source // .data.source // "local"' <<<"$BRIDGE_STATUS")"
-OPENCLAW_BRIDGE_READY=false
-if [[ "$PEEKABOO_HOST_KIND" == gui && "$BRIDGE_SOCKET" == *"/OpenClaw/bridge.sock" ]]; then
-  OPENCLAW_BRIDGE_READY=true
-fi
+PEEKABOO_HOST_KIND="local"
+PEEKABOO_HOST_SOURCE="forced_local_services"
+PEEKABOO_NO_REMOTE=true
 
 APP_PID=""
 cleanup() {
@@ -188,20 +172,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-env \
-  HEPTA_NATIVE_APP_DATA_DIR="$APP_DATA_DIR" \
-  HEPTA_NATIVE_CAPTURE_FRAME_PATH="$GPU_FRAME" \
-  HEPTA_NATIVE_CAPTURE_DELAY_MS="$CAPTURE_DELAY_MS" \
-  HEPTA_AUTOLOAD=0 \
-  HEPTA_AUTOSAVE=0 \
+/usr/bin/sandbox-exec -f "$SANDBOX_PROFILE" /usr/bin/env \
+  TMPDIR="$SANDBOX_ROOT" \
   HTTPS_PROXY=http://127.0.0.1:9 \
   HTTP_PROXY=http://127.0.0.1:9 \
   ALL_PROXY=http://127.0.0.1:9 \
   NO_PROXY=localhost,127.0.0.1 \
-  "$BINARY" >"$APP_LOG" 2>&1 &
+  "$PACKAGE_BINARY" --force-login >"$APP_LOG" 2>&1 &
 APP_PID=$!
 
 WINDOW_ID=""
+WINDOW_MATCH_COUNT=0
 WINDOW_LIST='{}'
 deadline=$((SECONDS + STARTUP_TIMEOUT_SEC))
 while (( SECONDS < deadline )); do
@@ -210,8 +191,11 @@ while (( SECONDS < deadline )); do
     tail -n 100 "$APP_LOG" >&2 || true
     exit 1
   }
-  WINDOW_LIST="$(peekaboo window list --pid "$APP_PID" --json 2>/dev/null || printf '{}')"
-  WINDOW_ID="$(jq -r '.data.windows[]? | select(.window_title == "Hepta") | .window_id' <<<"$WINDOW_LIST" | head -1)"
+  WINDOW_LIST="$(peekaboo list windows --no-remote --app "PID:$APP_PID" --include-details bounds,ids --json 2>/dev/null || printf '{}')"
+  WINDOW_MATCH_COUNT="$(jq '[.data.windows[]? | select(.title == "Hepta")] | length' <<<"$WINDOW_LIST")"
+  if [[ "$WINDOW_MATCH_COUNT" == "1" ]]; then
+    WINDOW_ID="$(jq -r '.data.windows[] | select(.title == "Hepta") | .windowID' <<<"$WINDOW_LIST")"
+  fi
   [[ -z "$WINDOW_ID" || "$WINDOW_ID" == null ]] || break
   sleep 0.5
 done
@@ -221,48 +205,56 @@ done
   exit 1
 }
 
-peekaboo window set-bounds \
-  --app "PID:$APP_PID" --window-title "Hepta" \
-  --x "$WINDOW_X" --y "$WINDOW_Y" --width "$WINDOW_WIDTH" --height "$WINDOW_HEIGHT" \
-  --json >/dev/null
-peekaboo window focus --window-id "$WINDOW_ID" --json >/dev/null
-sleep 2
-
-WINDOW_LIST="$(peekaboo window list --pid "$APP_PID" --json)"
-ACTUAL_X="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.window_id == $id) | .bounds.x' <<<"$WINDOW_LIST")"
-ACTUAL_Y="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.window_id == $id) | .bounds.y' <<<"$WINDOW_LIST")"
-ACTUAL_WIDTH="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.window_id == $id) | .bounds.width' <<<"$WINDOW_LIST")"
-ACTUAL_HEIGHT="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.window_id == $id) | .bounds.height' <<<"$WINDOW_LIST")"
+ACTUAL_X=""
+ACTUAL_Y=""
+ACTUAL_WIDTH=""
+ACTUAL_HEIGHT=""
+for _ in {1..4}; do
+  peekaboo window set-bounds \
+    --no-remote \
+    --app "PID:$APP_PID" --window-id "$WINDOW_ID" \
+    --x "$WINDOW_X" --y "$WINDOW_Y" --width "$WINDOW_WIDTH" --height "$WINDOW_HEIGHT" \
+    --json >/dev/null
+  peekaboo window focus --no-remote --window-id "$WINDOW_ID" --json >/dev/null
+  sleep 1
+  WINDOW_LIST="$(peekaboo list windows --no-remote --app "PID:$APP_PID" --include-details bounds,ids --json)"
+  ACTUAL_X="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[0][0]' <<<"$WINDOW_LIST")"
+  ACTUAL_Y="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[0][1]' <<<"$WINDOW_LIST")"
+  ACTUAL_WIDTH="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[1][0]' <<<"$WINDOW_LIST")"
+  ACTUAL_HEIGHT="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[1][1]' <<<"$WINDOW_LIST")"
+  [[ "$ACTUAL_WIDTH" == "$WINDOW_WIDTH" && "$ACTUAL_HEIGHT" == "$WINDOW_HEIGHT" ]] && break
+done
+WINDOW_MATCH_COUNT="$(jq '[.data.windows[]? | select(.title == "Hepta")] | length' <<<"$WINDOW_LIST")"
+[[ "$WINDOW_MATCH_COUNT" == "1" ]] || {
+  echo "native window title match was no longer unique before capture" >&2
+  exit 1
+}
 [[ "$ACTUAL_WIDTH" == "$WINDOW_WIDTH" && "$ACTUAL_HEIGHT" == "$WINDOW_HEIGHT" ]] || {
   echo "native window bounds did not settle: requested $WINDOW_BOUNDS, got ${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}" >&2
   exit 1
 }
 
-peekaboo image --mode window --window-id "$WINDOW_ID" --path "$HOST_SCREENSHOT" --format png --json >/dev/null
+peekaboo image --no-remote --mode window --window-id "$WINDOW_ID" --path "$HOST_SCREENSHOT" --format png --json >/dev/null
 [[ -s "$HOST_SCREENSHOT" ]] || { echo "host native-window screenshot missing" >&2; exit 1; }
-
-while (( SECONDS < deadline )); do
-  [[ -s "$GPU_FRAME" ]] && break
-  kill -0 "$APP_PID" >/dev/null 2>&1 || {
-    echo "Hepta exited before the Makepad GPU frame was captured" >&2
-    tail -n 100 "$APP_LOG" >&2 || true
-    exit 1
-  }
-  sleep 0.25
-done
-[[ -s "$GPU_FRAME" ]] || { echo "timed out waiting for Makepad GPU frame" >&2; exit 1; }
 kill -0 "$APP_PID" >/dev/null 2>&1 || { echo "Hepta was not alive after capture" >&2; exit 1; }
 
 scripts/hepta-image-content-probe --image "$HOST_SCREENSHOT" --output "$HOST_PROBE" >/dev/null
-scripts/hepta-image-content-probe --image "$GPU_FRAME" --output "$GPU_PROBE" >/dev/null
-
-for image in "$HOST_SCREENSHOT" "$GPU_FRAME"; do
-  ruby -e 'abort unless File.binread(ARGV.fetch(0), 8) == "\x89PNG\r\n\x1a\n".b' "$image"
-done
+ruby -e 'abort unless File.binread(ARGV.fetch(0), 8) == "\x89PNG\r\n\x1a\n".b' "$HOST_SCREENSHOT"
 if rg -n 'thread .* panicked|fatal runtime error|segmentation fault|Bus error' "$APP_LOG" >/dev/null 2>&1; then
   echo "fatal marker found in native-window app log" >&2
   exit 1
 fi
+
+PACKAGE_BINARY_SHA_FINAL="$(shasum -a 256 "$PACKAGE_BINARY" | awk '{print $1}')"
+PACKAGE_BUNDLE_SHA_FINAL="$(scripts/hepta-ui-bundle-fingerprint --root "$PACKAGE_APP")"
+[[ "$PACKAGE_BINARY_SHA_FINAL" == "$PACKAGE_BINARY_SHA" ]] || {
+  echo "packaged Hepta executable changed during native-window verification" >&2
+  exit 1
+}
+[[ "$PACKAGE_BUNDLE_SHA_FINAL" == "$PACKAGE_BUNDLE_SHA_BEFORE" ]] || {
+  echo "packaged Hepta bundle changed during native-window verification" >&2
+  exit 1
+}
 
 SOURCE_FINAL="$(scripts/hepta-ui-source-fingerprint)"
 SOURCE_STABLE=false
@@ -281,56 +273,54 @@ APP_PID=""
 trap - EXIT
 
 HOST_DIMENSIONS="$(sips -g pixelWidth -g pixelHeight "$HOST_SCREENSHOT" 2>/dev/null | awk '/pixelWidth/ {w=$2} /pixelHeight/ {h=$2} END {print w "x" h}')"
-GPU_DIMENSIONS="$(sips -g pixelWidth -g pixelHeight "$GPU_FRAME" 2>/dev/null | awk '/pixelWidth/ {w=$2} /pixelHeight/ {h=$2} END {print w "x" h}')"
-BINARY_SHA="$(shasum -a 256 "$BINARY" | awk '{print $1}')"
 HOST_SHA="$(shasum -a 256 "$HOST_SCREENSHOT" | awk '{print $1}')"
-GPU_SHA="$(shasum -a 256 "$GPU_FRAME" | awk '{print $1}')"
 
 jq -n \
-  --arg head "$SOURCE_HEAD" --arg binary "$BINARY" --arg binary_sha "$BINARY_SHA" \
+  --arg head "$SOURCE_HEAD" --arg run_nonce "$RUN_NONCE" \
   --arg package_report "$PACKAGE_REPORT" --arg package_report_sha "$PACKAGE_REPORT_SHA" \
-  --arg package_app "$PACKAGE_APP" --arg package_binary "$PACKAGE_BINARY" --arg package_binary_sha "$PACKAGE_BINARY_SHA" \
+  --arg package_app "$PACKAGE_APP" --arg package_binary "$PACKAGE_BINARY" --arg package_binary_sha "$PACKAGE_BINARY_SHA_FINAL" \
+  --arg package_bundle_sha "$PACKAGE_BUNDLE_SHA_FINAL" \
   --arg host_path "$HOST_SCREENSHOT" --arg host_sha "$HOST_SHA" --arg host_dimensions "$HOST_DIMENSIONS" \
-  --arg gpu_path "$GPU_FRAME" --arg gpu_sha "$GPU_SHA" --arg gpu_dimensions "$GPU_DIMENSIONS" \
-  --arg bounds "$WINDOW_BOUNDS" --arg actual_bounds "${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}" \
-  --arg app_log "$APP_LOG" --arg build_log "$BUILD_LOG" --arg host_probe "$HOST_PROBE" --arg gpu_probe "$GPU_PROBE" '
+  --arg bounds "$WINDOW_BOUNDS" --arg actual_bounds "${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}" --argjson window_match_count "$WINDOW_MATCH_COUNT" \
+  --arg app_log "$APP_LOG" --arg host_probe "$HOST_PROBE" --arg sandbox_profile "$SANDBOX_PROFILE" '
   {
     schema_version:1,
     kind:"hepta-ui-native-window-evidence-manifest-v1",
     source_head:$head,
+    run_nonce:$run_nonce,
     scope:"unauthenticated_local_macos_product_shell",
-    package:{report_path:$package_report,report_sha256:$package_report_sha,app_path:$package_app,binary_path:$package_binary,binary_sha256:$package_binary_sha,current_source_local_package_ready:true},
-    binary:{path:$binary,sha256:$binary_sha,current_head_embedded:true,developer_diagnostics_feature:true},
-    window:{requested_bounds:$bounds,actual_bounds:$actual_bounds,title:"Hepta",host_capture:{path:$host_path,sha256:$host_sha,dimensions:$host_dimensions,content_probe:$host_probe}},
-    makepad_gpu_frame:{path:$gpu_path,sha256:$gpu_sha,dimensions:$gpu_dimensions,content_probe:$gpu_probe},
-    logs:{application:$app_log,build:$build_log},
-    isolation:{fresh_app_data:true,network_proxies_fail_closed:true,user_input_performed:false,matrix_login_performed:false}
+    package:{report_path:$package_report,report_sha256:$package_report_sha,app_path:$package_app,binary_path:$package_binary,binary_sha256:$package_binary_sha,bundle_fingerprint_sha256:$package_bundle_sha,current_source_local_package_ready:true,visual_capture_binary_is_exact_packaged_executable:true},
+    window:{requested_bounds:$bounds,actual_bounds:$actual_bounds,title:"Hepta",exact_title_match_count:$window_match_count,host_capture:{path:$host_path,sha256:$host_sha,dimensions:$host_dimensions,content_probe:$host_probe}},
+    logs:{application:$app_log},
+    isolation:{macos_sandbox_profile:$sandbox_profile,real_product_data_path_denied:true,real_product_cache_path_denied:true,keychain_services_denied:true,network_denied_by_sandbox:true,force_login_argument:true,user_input_performed:false,matrix_login_performed:false}
   }' >"$EVIDENCE_MANIFEST"
 
 tar -czf "$EVIDENCE_ARCHIVE" -C "$EVIDENCE_DIR" \
-  "$(basename "$EVIDENCE_MANIFEST")" "$(basename "$HOST_SCREENSHOT")" "$(basename "$GPU_FRAME")" \
-  "$(basename "$HOST_PROBE")" "$(basename "$GPU_PROBE")" "$(basename "$APP_LOG")" "$(basename "$BUILD_LOG")"
+  "$(basename "$EVIDENCE_MANIFEST")" "$(basename "$HOST_SCREENSHOT")" \
+  "$(basename "$HOST_PROBE")" "$(basename "$APP_LOG")" "$(basename "$SANDBOX_PROFILE")"
 ARCHIVE_SHA="$(shasum -a 256 "$EVIDENCE_ARCHIVE" | awk '{print $1}')"
 ARCHIVE_BYTES="$(stat -f %z "$EVIDENCE_ARCHIVE")"
 
 jq -n \
   --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --argjson source_binding "$SOURCE_FINAL" --argjson source_stable "$SOURCE_STABLE" \
+  --arg run_nonce "$RUN_NONCE" \
   --arg archive "$EVIDENCE_ARCHIVE" --arg archive_sha "$ARCHIVE_SHA" --argjson archive_bytes "$ARCHIVE_BYTES" \
   --arg manifest "$EVIDENCE_MANIFEST" --arg manifest_sha "$(shasum -a 256 "$EVIDENCE_MANIFEST" | awk '{print $1}')" \
   --arg host_screenshot "$HOST_SCREENSHOT" --arg host_sha "$HOST_SHA" --arg host_dimensions "$HOST_DIMENSIONS" \
-  --arg gpu_frame "$GPU_FRAME" --arg gpu_sha "$GPU_SHA" --arg gpu_dimensions "$GPU_DIMENSIONS" \
-  --arg requested_bounds "$WINDOW_BOUNDS" --arg actual_bounds "${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}" \
+  --arg requested_bounds "$WINDOW_BOUNDS" --arg actual_bounds "${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}" --argjson window_match_count "$WINDOW_MATCH_COUNT" \
   --arg package_report "$PACKAGE_REPORT" --arg package_report_sha "$PACKAGE_REPORT_SHA" \
-  --arg package_app "$PACKAGE_APP" --arg package_binary "$PACKAGE_BINARY" --arg package_binary_sha "$PACKAGE_BINARY_SHA" \
-  --arg binary "$BINARY" --arg binary_sha "$BINARY_SHA" --arg rust_toolchain "$(hepta_ui_rustc --version)" \
-  --arg target_dir "$TARGET_DIR" --arg bridge_socket "$BRIDGE_SOCKET" --arg peekaboo_host_kind "$PEEKABOO_HOST_KIND" \
-  --arg peekaboo_host_source "$PEEKABOO_HOST_SOURCE" --argjson bridge_ready "$OPENCLAW_BRIDGE_READY" '
+  --arg package_app "$PACKAGE_APP" --arg package_binary "$PACKAGE_BINARY" --arg package_binary_sha "$PACKAGE_BINARY_SHA_FINAL" \
+  --arg package_bundle_sha "$PACKAGE_BUNDLE_SHA_FINAL" \
+  --arg bridge_socket "$BRIDGE_SOCKET" --arg peekaboo_host_kind "$PEEKABOO_HOST_KIND" \
+  --arg peekaboo_host_source "$PEEKABOO_HOST_SOURCE" --argjson no_remote "$PEEKABOO_NO_REMOTE" \
+  --arg sandbox_profile "$SANDBOX_PROFILE" '
   {
     schema_version:1,
     kind:"hepta-ui-native-window-receipt-v1",
     producer:"scripts/hepta-ui-native-window-verifier-v1",
     generated_at_utc:$generated_at_utc,
+    run_nonce:$run_nonce,
     status:"ready",
     source_binding:$source_binding,
     source_stable_during_run:$source_stable,
@@ -338,22 +328,20 @@ jq -n \
     independent_promotion_verifier_ready:true,
     native_window_ready:true,
     true_native_window_capture_performed:true,
-    makepad_gpu_frame_capture_performed:true,
+    exact_packaged_executable_capture_performed:true,
     current_head_embedded_in_binary:true,
-    package:{report_path:$package_report,report_sha256:$package_report_sha,app_path:$package_app,binary_path:$package_binary,binary_sha256:$package_binary_sha,current_source_local_package_ready:true,visual_capture_binary_is_separate_developer_diagnostics_build:true},
-    host_window:{title:"Hepta",requested_bounds:$requested_bounds,actual_bounds:$actual_bounds,screenshot:{path:$host_screenshot,sha256:$host_sha,dimensions:$host_dimensions}},
-    makepad_gpu_frame:{path:$gpu_frame,sha256:$gpu_sha,dimensions:$gpu_dimensions},
-    binary:{path:$binary,sha256:$binary_sha,rust_toolchain:$rust_toolchain,cargo_target_dir:$target_dir,developer_diagnostics_feature:true},
+    package:{report_path:$package_report,report_sha256:$package_report_sha,app_path:$package_app,binary_path:$package_binary,binary_sha256:$package_binary_sha,bundle_fingerprint_sha256:$package_bundle_sha,current_source_local_package_ready:true,visual_capture_binary_is_exact_packaged_executable:true,visual_capture_binary_is_separate_developer_diagnostics_build:false},
+    host_window:{title:"Hepta",exact_title_match_count:$window_match_count,requested_bounds:$requested_bounds,actual_bounds:$actual_bounds,screenshot:{path:$host_screenshot,sha256:$host_sha,dimensions:$host_dimensions}},
     evidence_manifest:{path:$manifest,sha256:$manifest_sha},
     artifact:{path:$archive,sha256:$archive_sha,bytes:$archive_bytes,format:"tar.gz"},
-    automation:{backend:"peekaboo",requested_bridge_socket:$bridge_socket,host_kind:$peekaboo_host_kind,host_source:$peekaboo_host_source,openclaw_gui_bridge_ready:$bridge_ready,local_permission_fallback_used:($bridge_ready | not),screen_recording_granted:true,accessibility_granted:true},
-    isolation:{fresh_app_data:true,network_proxies_fail_closed:true,user_input_performed:false,matrix_login_performed:false},
+    automation:{backend:"peekaboo",requested_bridge_socket:$bridge_socket,host_kind:$peekaboo_host_kind,host_source:$peekaboo_host_source,no_remote:$no_remote,screen_recording_granted:true,accessibility_granted:true},
+    isolation:{macos_sandbox_profile:$sandbox_profile,real_product_data_path_denied:true,real_product_cache_path_denied:true,keychain_services_denied:true,network_denied_by_sandbox:true,network_proxies_fail_closed:true,force_login_argument:true,user_input_performed:false,matrix_login_performed:false,product_state_mutation_performed:false},
     signed:false,
     notarized:false,
     stapled:false,
     public_distribution_ready:false,
-    external_side_effects_performed:false,
-    non_claims:["This verifies an unauthenticated local macOS product window, not post-login Matrix workflows.","The visual runtime uses a current-HEAD developer-diagnostics binary with isolated app data; the exact same-HEAD formal unsigned bundle is independently bound through the package receipt.","This is not real-device, accessibility, release-signing, notarization, stapling, distribution, or GA evidence."]
+    remote_side_effects_performed:false,
+    non_claims:["This verifies the exact current formal unsigned package executable on an unauthenticated local macOS product window, not post-login Matrix workflows.","The runtime is sandboxed from the real product state/cache paths, keychain services, and all network access; --force-login prevents session restore.","This is not real-device, accessibility, release-signing, notarization, stapling, distribution, or GA evidence."]
   }' >"$REPORT_PATH"
 
 cat "$REPORT_PATH"
