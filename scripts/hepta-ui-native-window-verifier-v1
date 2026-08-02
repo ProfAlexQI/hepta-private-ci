@@ -355,6 +355,13 @@ run_logged_command() {
   fi
 }
 
+peekaboo_response_succeeded() {
+  jq -e '
+    type == "object"
+    and ((.success == true) or (.summary.status == "success"))
+  ' >/dev/null 2>&1
+}
+
 CURRENT_STAGE="source_preflight"
 SOURCE_BEFORE="$(scripts/hepta-ui-source-fingerprint)"
 if [[ "$(jq -r '.worktree_clean' <<<"$SOURCE_BEFORE")" != true \
@@ -425,7 +432,7 @@ if ! run_logged_command peekaboo-permissions peekaboo permissions status --no-re
   fail "Peekaboo permission query failed with exit code $CAPTURE_RC"
 fi
 PERMISSIONS="$(cat "$CAPTURE_STDOUT")"
-if ! jq -e 'type == "object" and .success == true' >/dev/null 2>&1 <<<"$PERMISSIONS"; then
+if ! peekaboo_response_succeeded <<<"$PERMISSIONS"; then
   fail "Peekaboo permission query returned invalid JSON or success=false"
 fi
 SCREEN_RECORDING_GRANTED="$(jq -r '.data.permissions[]? | select(.name == "Screen Recording") | .isGranted // false' <<<"$PERMISSIONS" | head -1)"
@@ -489,7 +496,7 @@ while (( SECONDS < deadline )); do
     continue
   fi
   WINDOW_LIST="$(cat "$CAPTURE_STDOUT")"
-  if ! jq -e 'type == "object" and .success == true' >/dev/null 2>&1 <<<"$WINDOW_LIST"; then
+  if ! peekaboo_response_succeeded <<<"$WINDOW_LIST"; then
     sleep 0.5
     continue
   fi
@@ -527,7 +534,7 @@ for attempt in {1..4}; do
     fail "Peekaboo bounds verification failed with exit code $CAPTURE_RC"
   fi
   WINDOW_LIST="$(cat "$CAPTURE_STDOUT")"
-  if ! jq -e 'type == "object" and .success == true' >/dev/null 2>&1 <<<"$WINDOW_LIST"; then
+  if ! peekaboo_response_succeeded <<<"$WINDOW_LIST"; then
     fail "Peekaboo bounds verification returned invalid JSON or success=false"
   fi
   ACTUAL_X="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[0][0]' <<<"$WINDOW_LIST")"

@@ -9,6 +9,14 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 
 scripts/hepta-ui-native-window-verifier-v1 --help >/dev/null
 
+peekaboo_success_filter='type == "object" and ((.success == true) or (.summary.status == "success"))'
+jq -e "$peekaboo_success_filter" <<<'{"success":true,"data":{}}' >/dev/null
+jq -e "$peekaboo_success_filter" <<<'{"summary":{"status":"success"},"data":{"windows":[]}}' >/dev/null
+if jq -e "$peekaboo_success_filter" <<<'{"success":false,"summary":{"status":"error"}}' >/dev/null; then
+  echo "native-window verifier accepted a failed Peekaboo response" >&2
+  exit 1
+fi
+
 expect_path_rejection() {
   local label="$1"
   shift
@@ -198,6 +206,11 @@ grep -Fq -- '"$PACKAGE_BINARY" --force-login' scripts/hepta-ui-native-window-ver
 grep -Fq -- '/usr/bin/sandbox-exec -f "$SANDBOX_PROFILE"' scripts/hepta-ui-native-window-verifier-v1
 grep -Fq -- '--mode window --window-id "$WINDOW_ID" --path "$HOST_SCREENSHOT"' scripts/hepta-ui-native-window-verifier-v1
 grep -Fq -- 'peekaboo list windows --no-remote --app "PID:$APP_PID"' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'and ((.success == true) or (.summary.status == "success"))' scripts/hepta-ui-native-window-verifier-v1
+[[ "$(grep -Fc -- 'peekaboo_response_succeeded <<<"$WINDOW_LIST"' scripts/hepta-ui-native-window-verifier-v1)" == "2" ]] || {
+  echo "native-window verifier does not validate both window-list response stages" >&2
+  exit 1
+}
 grep -Fq -- 'peekaboo window focus \' scripts/hepta-ui-native-window-verifier-v1
 grep -Fq -- '--no-remote --app "PID:$APP_PID" --window-id "$WINDOW_ID" --json' scripts/hepta-ui-native-window-verifier-v1
 grep -Fq -- 'HOME="$ISOLATED_HOME"' scripts/hepta-ui-native-window-verifier-v1
