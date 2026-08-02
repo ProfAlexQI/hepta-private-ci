@@ -40,16 +40,22 @@ pub fn agent_plugin_schema_status(contents: &str) -> AgentPluginSchemaStatus {
 
 pub fn find_plugin_manifest_path(plugin_root: &Path) -> Option<PathBuf> {
     let agent_manifest_path = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
-    if agent_manifest_path.is_file() {
-        match fs::read_to_string(&agent_manifest_path)
-            .ok()
-            .map(|contents| agent_plugin_schema_status(&contents))
-        {
-            Some(AgentPluginSchemaStatus::Supported | AgentPluginSchemaStatus::Unsupported) => {
+    match fs::symlink_metadata(&agent_manifest_path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.file_type().is_file() => {
+            return None;
+        }
+        Ok(_) => {
+            if fs::read_to_string(&agent_manifest_path)
+                .ok()
+                .is_some_and(|contents| {
+                    agent_plugin_schema_status(&contents) != AgentPluginSchemaStatus::Unrelated
+                })
+            {
                 return Some(agent_manifest_path);
             }
-            Some(AgentPluginSchemaStatus::Unrelated) | None => {}
         }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return None,
     }
 
     DISCOVERABLE_PLUGIN_MANIFEST_PATHS
@@ -265,6 +271,43 @@ mod tests {
             find_plugin_manifest_path(&plugin_root),
             Some(codex_manifest)
         );
+    }
+
+    #[test]
+    fn nonregular_agent_manifest_fails_closed_before_legacy_fallback() {
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("plugins/sample");
+        let legacy_manifest = plugin_root.join(".codex-plugin/plugin.json");
+        fs::create_dir_all(plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH))
+            .expect("root manifest directory");
+        fs::create_dir_all(legacy_manifest.parent().expect("legacy parent")).expect("mkdir");
+        fs::write(legacy_manifest, r#"{"name":"legacy"}"#).expect("write legacy manifest");
+
+        assert_eq!(find_plugin_manifest_path(&plugin_root), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_agent_manifest_fails_closed_before_legacy_fallback() {
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("plugins/sample");
+        let manifest_target = tmp.path().join("portable-plugin.json");
+        let legacy_manifest = plugin_root.join(".codex-plugin/plugin.json");
+        fs::create_dir_all(&plugin_root).expect("plugin root");
+        fs::write(
+            &manifest_target,
+            format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"sample"}}"#),
+        )
+        .expect("write manifest target");
+        std::os::unix::fs::symlink(
+            &manifest_target,
+            plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH),
+        )
+        .expect("symlink manifest");
+        fs::create_dir_all(legacy_manifest.parent().expect("legacy parent")).expect("mkdir");
+        fs::write(legacy_manifest, r#"{"name":"legacy"}"#).expect("write legacy manifest");
+
+        assert_eq!(find_plugin_manifest_path(&plugin_root), None);
     }
 
     #[tokio::test]

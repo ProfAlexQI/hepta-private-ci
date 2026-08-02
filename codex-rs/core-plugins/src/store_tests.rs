@@ -354,3 +354,26 @@ fn install_rejects_manifest_names_that_do_not_match_marketplace_plugin_name() {
         "plugin.json name `manifest-name` does not match marketplace plugin name `different-name`"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn install_rejects_symbolic_links_in_plugin_sources() {
+    let tmp = tempdir().unwrap();
+    write_plugin(tmp.path(), "sample-plugin", "sample-plugin");
+    let plugin_root = tmp.path().join("sample-plugin");
+    std::os::unix::fs::symlink(
+        plugin_root.join("skills/SKILL.md"),
+        plugin_root.join("linked-skill.md"),
+    )
+    .unwrap();
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+
+    let err = PluginStore::new(tmp.path().to_path_buf())
+        .install(AbsolutePathBuf::try_from(plugin_root).unwrap(), plugin_id)
+        .expect_err("symlinked plugin source must fail closed");
+
+    assert!(
+        err.to_string()
+            .contains("plugin source contains unsupported symbolic link")
+    );
+}
