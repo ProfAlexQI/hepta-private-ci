@@ -726,7 +726,7 @@ verify_sealed_execution_boundaries() {
 
 verify_quarantined_native_process_surface() {
   local source="codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
-  local tests="codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
+  local tests_dir="codex-rs/hepta-runtime/src/runtime_kernel/tests"
   local registry_block production_tools premodel_block offering_block
   registry_block="$(sed -n '/^    fn new() -> Self {/,/^    #\[cfg(test)\]/p' "$ROOT/$source")"
   production_tools="$(sed -n '/^fn native_openclaw_compatible_tools()/,/^#\[cfg(test)\]/p' "$ROOT/$source")"
@@ -753,7 +753,7 @@ verify_quarantined_native_process_surface() {
     'explicit_exec_intent_is_quarantined_before_model_routing' \
     'explicit_process_intent_is_quarantined_before_model_routing'
   do
-    grep -Fq "$requirement" "$ROOT/$source" "$ROOT/$tests" || {
+    grep -Fq "$requirement" "$ROOT/$source" "$ROOT/$tests_dir"/part_*.rs || {
       echo "Architecture V2 exec/process quarantine regression is incomplete: $requirement" >&2
       return 1
     }
@@ -1163,6 +1163,7 @@ verify_provider_effect_boundary() {
 
 verify_release_mutation_quarantines() {
   local source="codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
+  local adapters="codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
   local regression="codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_provider_idempotency.rs"
   local function block live_case_count
 
@@ -1187,7 +1188,7 @@ verify_release_mutation_quarantines() {
     native_compat_subagents \
     native_compat_feishu
   do
-    block="$(sed -n "/^fn $function(/,/^}/p" "$ROOT/$source")"
+    block="$(sed -n "/^fn $function(/,/^}/p" "$ROOT/$adapters")"
     [[ -n "$block" ]] &&
       grep -Fq 'reject_native_live_without_idempotency_receipt(tool, provider_identity)' \
         <<<"$block" || {
@@ -1195,7 +1196,7 @@ verify_release_mutation_quarantines() {
           return 1
         }
   done
-  block="$(sed -n '/^fn native_compat_live_surface(/,/^}/p' "$ROOT/$source")"
+  block="$(sed -n '/^fn native_compat_live_surface(/,/^}/p' "$ROOT/$adapters")"
   grep -Fq \
     '"canvas" => reject_native_live_without_idempotency_receipt(tool, provider_identity)' \
     <<<"$block" &&
@@ -1915,6 +1916,9 @@ self_test() (
   mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
+  mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests"/part_*.rs \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests/"
   for source in \
     context_freezer.rs approval_state.rs cross_process_write_lock.rs execution_attempt.rs execution_bus.rs execution_lease.rs \
     outcome_recorder.rs outcome_sink.rs provider_effect.rs provider_support.rs safety_gate_client.rs session_ops.rs \
@@ -1923,6 +1927,9 @@ self_test() (
     cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/$source" \
       "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/$source"
   done
+  mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
   mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/safety_gate_client"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/safety_gate_client/admission.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/safety_gate_client/admission.rs"
@@ -2453,11 +2460,11 @@ PY
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
 
   perl -0pi -e 's/(fn native_compat_sessions_send\(.*?)(reject_native_live_without_idempotency_receipt)/${1}allow_native_live_without_receipt/s' \
-    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
   expect_fixture_denied "$fixture" \
     "Architecture V2 live native mutation bypasses quarantine"
-  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs" \
-    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
 
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
