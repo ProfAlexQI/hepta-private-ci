@@ -62,6 +62,56 @@ and require re-login instead of writing credentials to plaintext. Mobile
 keyring, safe-area, software-keyboard, screen-reader, RTL, Dynamic Type/font
 scale, and low-power performance remain real-device gates.
 
+### Reproducible mobile build boundary
+
+Use the repository wrapper for every Makepad mobile command:
+
+```sh
+TOOLS=/absolute/path/hepta-native-mobile-tools-c4335cee-v1
+scripts/hepta-native-mobile-cargo \
+  --tools-dir "$TOOLS" --bootstrap-tools --print-toolchain-contract
+export HEPTA_NATIVE_MOBILE_TOOLS_DIR="$TOOLS"
+scripts/hepta-native-mobile-cargo apple ios --stable install-toolchain
+scripts/hepta-native-mobile-cargo android --sdk-path=/absolute/sdk install-toolchain
+```
+
+The pinned `cargo-makepad` revision invokes `rustup run stable` internally and
+therefore otherwise bypasses this crate's `rust-toolchain.toml`. The wrapper
+maps only that child-process channel name to Rust 1.95.0; it does not change the
+user's global `stable` default. The current iOS simulator dependency graph may
+still compile on Rust 1.93, but relying on that incidental state would make the
+build evidence non-reproducible and vulnerable to the next dependency MSRV
+increase. The wrapper also refuses the user's globally installed
+`cargo-makepad`: it executes only a disposable tool whose receipt binds the
+Kevin Boos Makepad fork at `c4335cee…`, the binary SHA-256, and Rust 1.95.0.
+
+The iOS asset catalog is generated from the opaque RGB
+`resources/icon_1024.png`, including the App Store marketing icon. Regenerate
+and verify it with:
+
+```sh
+scripts/hepta-native-ios-icons materialize
+scripts/hepta-native-ios-icons verify
+```
+
+The TestFlight script now separates the Makepad product name (`nativeapp`) from
+the Cargo package and executable (`hepta-native`), deletes reusable bundle
+output before building, requires `run-device` to succeed, and verifies that the
+binary embeds the current committed HEAD before signing. Missing distribution
+identity, profile, device, SDK metadata, or source binding is a hard failure.
+
+Run the report-only mobile source gate with:
+
+```sh
+scripts/hepta-native-mobile-readiness-gate.sh --output /tmp/hepta-mobile.json
+```
+
+That report deliberately keeps full mobile readiness false. At the pinned
+Makepad revision, iOS and Android discard `AccessibilityUpdate`; Android also
+has no approved secure credential backend in this downstream. Simulator,
+real-device, VoiceOver/TalkBack, safe-area, keyboard, RTL, font scaling, and
+power receipts remain required rather than being inferred from source builds.
+
 ## Frozen upstream documentation (reference only)
 
 The remainder is the imported Robrix documentation. Commands and release

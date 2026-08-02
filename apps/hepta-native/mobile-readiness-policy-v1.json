@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "kind": "hepta-native-mobile-readiness-policy",
+  "makepad_revision": "c4335cee10b22aca768510c9d072b0ca1bba15c8",
+  "known_upstream_boundaries": {
+    "ios_accessibility_update_consumed": false,
+    "android_accessibility_update_consumed": false,
+    "ios_source_path": "platform/src/os/apple/ios/ios.rs",
+    "android_source_path": "platform/src/os/linux/android/android.rs",
+    "observed_behavior": "CxOsOp::AccessibilityUpdate(_) => {}"
+  },
+  "downstream_boundaries": {
+    "android_secure_credential_backend_supported": false,
+    "android_session_behavior": "fail_closed_relogin_required",
+    "plaintext_credential_fallback_allowed": false
+  },
+  "promotion_requirements": {
+    "ios_simulator_receipt_required": true,
+    "ios_real_device_receipt_required": true,
+    "android_real_device_receipt_required": true,
+    "voiceover_receipt_required": true,
+    "talkback_receipt_required": true,
+    "software_keyboard_receipt_required": true,
+    "safe_area_receipt_required": true,
+    "rtl_receipt_required": true,
+    "dynamic_type_or_font_scale_receipt_required": true
+  }
+}

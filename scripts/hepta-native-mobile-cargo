@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# shellcheck source=scripts/lib/hepta-ui-rust-toolchain.sh
+source "$ROOT_DIR/scripts/lib/hepta-ui-rust-toolchain.sh"
+
+MAKEPAD_REVISION="c4335cee10b22aca768510c9d072b0ca1bba15c8"
+MAKEPAD_REPOSITORY="https://github.com/kevinaboos/makepad.git"
+TOOLS_DIR="${HEPTA_NATIVE_MOBILE_TOOLS_DIR:-${TMPDIR:-/tmp}/hepta-native-mobile-tools-c4335cee-v1}"
+BOOTSTRAP_TOOLS=0
+PRINT_CONTRACT=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tools-dir) TOOLS_DIR="${2:-}"; shift 2 ;;
+    --bootstrap-tools) BOOTSTRAP_TOOLS=1; shift ;;
+    --print-toolchain-contract) PRINT_CONTRACT=1; shift ;;
+    --help-wrapper)
+      cat <<'EOF'
+usage: scripts/hepta-native-mobile-cargo [wrapper options] [cargo-makepad arguments]
+
+  --tools-dir DIR              exact cargo-makepad tool root
+  --bootstrap-tools            install pinned cargo-makepad into DIR
+  --print-toolchain-contract   print the verified toolchain/tool receipt
+
+All remaining arguments are passed directly to the pinned cargo-makepad
+binary. The wrapper never uses or replaces a globally installed cargo-makepad.
+EOF
+      exit 0
+      ;;
+    *) break ;;
+  esac
+done
+
+[[ -n "$TOOLS_DIR" ]] || { echo "error: mobile tools directory is empty" >&2; exit 64; }
+hepta_ui_require_rust_toolchain
+real_rustup="$(command -v rustup)"
+rustc_path="$(rustup which --toolchain "$HEPTA_UI_RUST_TOOLCHAIN_VERSION" rustc)"
+rustdoc_path="$(rustup which --toolchain "$HEPTA_UI_RUST_TOOLCHAIN_VERSION" rustdoc)"
+toolchain_bin="$(dirname "$rustc_path")"
+shim_bin="$ROOT_DIR/scripts/lib/hepta-mobile-rustup-bin"
+makepad_bin="$TOOLS_DIR/bin/cargo-makepad"
+tool_receipt="$TOOLS_DIR/cargo-makepad-receipt.json"
+
+export HEPTA_MOBILE_REAL_RUSTUP="$real_rustup"
+export HEPTA_MOBILE_RUST_TOOLCHAIN_VERSION="$HEPTA_UI_RUST_TOOLCHAIN_VERSION"
+export RUSTC="$rustc_path"
+export RUSTDOC="$rustdoc_path"
+export RUSTUP_TOOLCHAIN="$HEPTA_UI_RUST_TOOLCHAIN_VERSION"
+export PATH="$shim_bin:$toolchain_bin:$PATH"
+
+assert_exact_toolchain() {
+  local version
+  version="$("$shim_bin/rustup" run stable rustc --version)"
+  if [[ ! "$version" =~ ^rustc[[:space:]]+${HEPTA_UI_RUST_TOOLCHAIN_VERSION//./\.}([[:space:]]|$) ]]; then
+    echo "error: cargo-makepad stable-channel shim resolved to '$version', expected Rust $HEPTA_UI_RUST_TOOLCHAIN_VERSION" >&2
+    return 1
+  fi
+  printf '%s\n' "$version"
+}
+
+inspect_makepad_help() {
+  "$makepad_bin" android help 2>&1
+}
+
+write_tool_receipt() {
+  local binary_sha help_text source_marker_ready=false manifest_help_ready=false rustc_version
+  binary_sha="$(shasum -a 256 "$makepad_bin" | awk '{print $1}')"
+  rustc_version="$(assert_exact_toolchain)"
+  help_text="$(inspect_makepad_help)"
+  if strings "$makepad_bin" | grep -F "/${MAKEPAD_REVISION:0:7}/tools/cargo_makepad" >/dev/null; then
+    source_marker_ready=true
+  fi
+  if grep -Fq 'Custom AndroidManifest' <<<"$help_text" \
+    && grep -Fq 'resources/android/AndroidManifest.xml.template' <<<"$help_text" \
+    && grep -Fq '{package_id}' <<<"$help_text"; then
+    manifest_help_ready=true
+  fi
+  jq -n \
+    --arg repository "$MAKEPAD_REPOSITORY" \
+    --arg revision "$MAKEPAD_REVISION" \
+    --arg binary "$makepad_bin" \
+    --arg binary_sha256 "$binary_sha" \
+    --arg rustc "$rustc_version" \
+    --argjson source_marker_ready "$source_marker_ready" \
+    --argjson manifest_help_ready "$manifest_help_ready" \
+    '{schema_version:1,kind:"hepta-native-cargo-makepad-tool-receipt",repository:$repository,revision:$revision,binary:$binary,binary_sha256:$binary_sha256,built_with_rustc:$rustc,exact_revision_source_marker_ready:$source_marker_ready,custom_android_manifest_help_contract_ready:$manifest_help_ready,global_cargo_makepad_used:false}' \
+    >"$tool_receipt"
+}
+
+bootstrap_tools() {
+  mkdir -p "$TOOLS_DIR"
+  rustup run "$HEPTA_UI_RUST_TOOLCHAIN_VERSION" cargo install \
+    --force \
+    --root "$TOOLS_DIR" \
+    --git "$MAKEPAD_REPOSITORY" \
+    --rev "$MAKEPAD_REVISION" \
+    cargo-makepad
+  [[ -x "$makepad_bin" ]] || { echo "error: pinned cargo-makepad install produced no binary" >&2; return 1; }
+  write_tool_receipt
+}
+
+verify_tool_receipt() {
+  [[ -x "$makepad_bin" && -s "$tool_receipt" ]] || {
+    echo "error: pinned cargo-makepad is absent; run scripts/hepta-native-mobile-cargo --tools-dir '$TOOLS_DIR' --bootstrap-tools --print-toolchain-contract" >&2
+    return 1
+  }
+  local actual_sha help_text
+  actual_sha="$(shasum -a 256 "$makepad_bin" | awk '{print $1}')"
+  help_text="$(inspect_makepad_help)"
+  jq -e \
+    --arg repository "$MAKEPAD_REPOSITORY" \
+    --arg revision "$MAKEPAD_REVISION" \
+    --arg binary "$makepad_bin" \
+    --arg sha "$actual_sha" \
+    --arg rustc "$(assert_exact_toolchain)" '
+      .schema_version == 1
+      and .kind == "hepta-native-cargo-makepad-tool-receipt"
+      and .repository == $repository
+      and .revision == $revision
+      and .binary == $binary
+      and .binary_sha256 == $sha
+      and .built_with_rustc == $rustc
+      and .exact_revision_source_marker_ready == true
+      and .custom_android_manifest_help_contract_ready == true
+      and .global_cargo_makepad_used == false
+    ' "$tool_receipt" >/dev/null
+  strings "$makepad_bin" | grep -F "/${MAKEPAD_REVISION:0:7}/tools/cargo_makepad" >/dev/null
+  grep -Fq 'Custom AndroidManifest' <<<"$help_text"
+  grep -Fq 'resources/android/AndroidManifest.xml.template' <<<"$help_text"
+  grep -Fq '{package_id}' <<<"$help_text"
+}
+
+require_installed_target() {
+  local target="$1"
+  if ! rustup target list --toolchain "$HEPTA_UI_RUST_TOOLCHAIN_VERSION" --installed | grep -Fx "$target" >/dev/null; then
+    echo "error: Rust target $target is not installed for $HEPTA_UI_RUST_TOOLCHAIN_VERSION; install it through this wrapper's platform install-toolchain command or run: rustup target add '$target' --toolchain '$HEPTA_UI_RUST_TOOLCHAIN_VERSION'" >&2
+    return 1
+  fi
+}
+
+preflight_platform_targets() {
+  local joined=" $* " host_arch abi_value="aarch64"
+  host_arch="$(uname -m)"
+  if [[ "$joined" == *" apple ios "* && "$joined" != *" install-toolchain "* && "$joined" != *" toolchain-install "* ]]; then
+    if [[ "$joined" == *" run-device "* ]]; then
+      require_installed_target aarch64-apple-ios
+    elif [[ "$host_arch" == "arm64" || "$host_arch" == "aarch64" ]]; then
+      require_installed_target aarch64-apple-ios-sim
+    else
+      require_installed_target x86_64-apple-ios
+    fi
+  fi
+  if [[ "$joined" == *" android "* && "$joined" != *" install-toolchain "* \
+    && "$joined" != *" rustup-install-toolchain "* && "$joined" != *" download-sdk "* \
+    && "$joined" != *" expand-sdk "* && "$joined" != *" remove-sdk-sources "* \
+    && "$joined" != *" help "* ]]; then
+    for argument in "$@"; do
+      [[ "$argument" == --abi=* ]] && abi_value="${argument#--abi=}"
+    done
+    IFS=',' read -r -a requested_abis <<<"$abi_value"
+    for abi in "${requested_abis[@]}"; do
+      case "$abi" in
+        aarch64) require_installed_target aarch64-linux-android ;;
+        x86_64) require_installed_target x86_64-linux-android ;;
+        armv7) require_installed_target armv7-linux-androideabi ;;
+        i686) require_installed_target i686-linux-android ;;
+        all)
+          require_installed_target aarch64-linux-android
+          require_installed_target x86_64-linux-android
+          require_installed_target armv7-linux-androideabi
+          require_installed_target i686-linux-android
+          ;;
+        *) echo "error: unsupported Android ABI '$abi' in mobile wrapper preflight" >&2; return 1 ;;
+      esac
+    done
+  fi
+}
+
+if [[ "$BOOTSTRAP_TOOLS" == "1" ]]; then bootstrap_tools; fi
+verify_tool_receipt
+
+if [[ "$PRINT_CONTRACT" == "1" ]]; then
+  version="$(assert_exact_toolchain)"
+  jq -n \
+    --arg requested_channel stable \
+    --arg resolved_toolchain "$HEPTA_UI_RUST_TOOLCHAIN_VERSION" \
+    --arg rustc "$version" \
+    --slurpfile makepad "$tool_receipt" \
+    '{schema_version:1,kind:"hepta-native-mobile-cargo-toolchain-contract",status:"ready",cargo_makepad_requested_channel:$requested_channel,resolved_toolchain:$resolved_toolchain,rustc:$rustc,cargo_makepad:$makepad[0],user_global_stable_mutated:false}'
+  [[ $# == 0 ]] && exit 0
+fi
+
+[[ $# -gt 0 ]] || { echo "usage: scripts/hepta-native-mobile-cargo [wrapper options] <cargo-makepad arguments>" >&2; exit 64; }
+assert_exact_toolchain >/dev/null
+preflight_platform_targets "$@"
+cd "$ROOT_DIR/apps/hepta-native"
+exec "$makepad_bin" "$@"

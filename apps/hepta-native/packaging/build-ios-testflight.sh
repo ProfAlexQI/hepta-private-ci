@@ -1,140 +1,238 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build, sign, and package the Hepta iOS .ipa, then optionally upload it to
-# TestFlight. This is the CI-runnable version of the local testflight.sh flow:
-# it builds with distribution flags, compiles the asset catalog, patches
-# Info.plist (compliance flag, numeric version, unique build number), re-signs,
-# packages the .ipa, and uploads via altool.
+# Build, sign, and package the current Hepta Native source as an iOS .ipa,
+# then optionally upload it to TestFlight. This lane is intentionally strict:
+# a missing device/build/signing input is a hard failure and a pre-existing
+# bundle is deleted before the build, so stale output can never be re-signed.
 #
-# Config (env vars; the release.yml `for_ios` job supplies these from secrets):
-#   IOS_SIGNING_IDENTITY           cert common-name to sign with (default "Apple Distribution")
-#   IOS_PROVISIONING_PROFILE_UUID  installed .mobileprovision UUID (required)
-#   ASC_KEY_ID / ASC_ISSUER_ID     App Store Connect API key ids (required to upload)
-#   IOS_UPLOAD_TESTFLIGHT          "true" to upload after packaging (default false)
-#   TESTFLIGHT_BUILD_NUMBER        CFBundleVersion (default: Pacific-time timestamp)
-#   ORG / APP                      makepad org + app (default ai.hepta / nativeapp)
+# Required environment:
+#   IOS_PROVISIONING_PROFILE_UUID  installed .mobileprovision UUID
 #
-# altool auto-discovers the API key from ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8.
+# Optional environment:
+#   IOS_SIGNING_IDENTITY     certificate common name (default Apple Distribution)
+#   IOS_PROVISIONING_PROFILE_PATH explicit profile path (otherwise UUID lookup)
+#   IOS_DEVICE               cargo-makepad device selector (default IPhone)
+#   IOS_UPLOAD_TESTFLIGHT    true to upload after packaging (default false)
+#   ASC_KEY_ID / ASC_ISSUER_ID App Store Connect API identifiers for upload
+#   TESTFLIGHT_BUILD_NUMBER  CFBundleVersion (default Pacific-time timestamp)
+#   ORG / APP                bundle id components (default ai.hepta / nativeapp)
+#   CARGO_PACKAGE            Cargo package/bin (fixed default hepta-native)
+#
+# cargo-makepad calls `rustup run stable` internally. The repository wrapper
+# maps that symbolic channel to the pinned Rust 1.95.0 toolchain without
+# changing the user's global stable toolchain.
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+REPO_ROOT="$(git -C "$APP_DIR" rev-parse --show-toplevel)"
+cd "$APP_DIR"
 
 ORG="${ORG:-ai.hepta}"
 APP="${APP:-nativeapp}"
+CARGO_PACKAGE="${CARGO_PACKAGE:-hepta-native}"
 SIGNING_IDENTITY="${IOS_SIGNING_IDENTITY:-Apple Distribution}"
 PROFILE_UUID="${IOS_PROVISIONING_PROFILE_UUID:?set IOS_PROVISIONING_PROFILE_UUID}"
+DEVICE="${IOS_DEVICE:-IPhone}"
 BUILD_NUMBER="${TESTFLIGHT_BUILD_NUMBER:-$(TZ=America/Los_Angeles date +%Y%m%d.%H%M)}"
-APP_BUNDLE="$REPO_ROOT/target/apple/makepad-apple-app/aarch64-apple-ios/release/${APP}.app"
 
-# Resolve the signing cert's SHA-1 from its common name, so nothing is hard-coded.
-CERT_SHA1="$(security find-identity -v -p codesigning \
-  | awk -v id="$SIGNING_IDENTITY" 'index($0, id) {print $2; exit}')"
-if [[ -z "$CERT_SHA1" ]]; then
-    echo "Error: no code-signing identity matching '$SIGNING_IDENTITY' in the keychain." >&2
-    exit 1
+if [[ "$CARGO_PACKAGE" != "hepta-native" ]]; then
+  echo "Error: CARGO_PACKAGE must remain hepta-native; --app controls the bundle id separately." >&2
+  exit 64
 fi
 
+for command in git jq rustup security xcrun codesign ditto shasum strings; do
+  command -v "$command" >/dev/null 2>&1 || { echo "Error: $command is required." >&2; exit 2; }
+done
+
+if [[ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" ]]; then
+  echo "Error: TestFlight packaging requires a clean, committed worktree." >&2
+  exit 1
+fi
+SOURCE_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+SOURCE_TREE="$(git -C "$REPO_ROOT" rev-parse HEAD^{tree})"
+
+ICON_REPORT="$($REPO_ROOT/scripts/hepta-native-ios-icons verify)"
+TOOLCHAIN_REPORT="$($REPO_ROOT/scripts/hepta-native-mobile-cargo --print-toolchain-contract)"
+jq -e '.status == "ready" and .app_store_marketing_icon_opaque == true and .canonical.alpha == false and (.generated | all(.alpha == false))' >/dev/null <<<"$ICON_REPORT"
+jq -e '.status == "ready" and .resolved_toolchain == "1.95.0" and .cargo_makepad.revision == "c4335cee10b22aca768510c9d072b0ca1bba15c8" and .cargo_makepad.exact_revision_source_marker_ready == true and .cargo_makepad.global_cargo_makepad_used == false and .user_global_stable_mutated == false' >/dev/null <<<"$TOOLCHAIN_REPORT"
+
+CERT_SHA1="$(security find-identity -v -p codesigning \
+  | awk -v id="$SIGNING_IDENTITY" 'index($0, id) {print $2; exit}')"
+if [[ ! "$CERT_SHA1" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+  echo "Error: no code-signing identity matching '$SIGNING_IDENTITY' in the keychain." >&2
+  exit 1
+fi
+
+PROFILE_PATH="${IOS_PROVISIONING_PROFILE_PATH:-}"
+if [[ -z "$PROFILE_PATH" ]]; then
+  for candidate in \
+    "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/${PROFILE_UUID}.mobileprovision" \
+    "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"; do
+    if [[ -f "$candidate" ]]; then PROFILE_PATH="$candidate"; break; fi
+  done
+fi
+if [[ ! -f "$PROFILE_PATH" ]]; then
+  echo "Error: provisioning profile $PROFILE_UUID was not found in an Xcode profile directory." >&2
+  exit 1
+fi
+
+if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+  if [[ "$CARGO_TARGET_DIR" = /* ]]; then
+    APPLE_TARGET_ROOT="$CARGO_TARGET_DIR"
+  else
+    APPLE_TARGET_ROOT="$APP_DIR/$CARGO_TARGET_DIR"
+  fi
+else
+  APPLE_TARGET_ROOT="$APP_DIR/target/apple"
+fi
+BUILD_DIR="$APPLE_TARGET_ROOT/makepad-apple-app/aarch64-apple-ios/release"
+APP_BUNDLE="$BUILD_DIR/${CARGO_PACKAGE}.app"
+BINARY="$APP_BUNDLE/$CARGO_PACKAGE"
+SCENT="$BUILD_DIR/${CARGO_PACKAGE}.scent"
+
+echo "==> Source:   $SOURCE_HEAD"
 echo "==> Identity: $SIGNING_IDENTITY ($CERT_SHA1)"
 echo "==> Profile:  $PROFILE_UUID"
 echo "==> Build:    $BUILD_NUMBER"
 
-# ---- 1. Build (run-device errors with "device not found"; the .app is still built) ----
+# run-device is the only cargo-makepad command that builds the arm64 device
+# target. It must complete successfully; a missing device is not treated as a
+# successful package build. Delete both possible reusable outputs first.
+rm -rf "$APP_BUNDLE" "$SCENT"
 CARGO_PROFILE_RELEASE_DEBUG=false \
 CARGO_PROFILE_RELEASE_STRIP=symbols \
 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
 CARGO_PROFILE_RELEASE_LTO=fat \
 TESTFLIGHT_BUILD_NUMBER="$BUILD_NUMBER" \
-cargo makepad apple ios --org="$ORG" --app="$APP" \
-  --profile="$PROFILE_UUID" \
-  --cert="$CERT_SHA1" \
-  --device=IPhone \
-  run-device -p "$APP" --release || true
+  "$REPO_ROOT/scripts/hepta-native-mobile-cargo" apple ios --stable \
+    --org="$ORG" \
+    --app="$APP" \
+    --profile="$PROFILE_UUID" \
+    --cert="$CERT_SHA1" \
+    --device="$DEVICE" \
+    run-device -p "$CARGO_PACKAGE" --locked --release
 
-if [[ ! -d "$APP_BUNDLE" ]]; then
-    echo "Error: app bundle not built at $APP_BUNDLE" >&2
-    exit 1
+[[ -d "$APP_BUNDLE" ]] || { echo "Error: current build did not create $APP_BUNDLE" >&2; exit 1; }
+[[ -x "$BINARY" ]] || { echo "Error: current build did not create executable $BINARY" >&2; exit 1; }
+if [[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" != "$SOURCE_HEAD" \
+  || "$(git -C "$REPO_ROOT" rev-parse HEAD^{tree})" != "$SOURCE_TREE" \
+  || -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" ]]; then
+  echo "Error: source changed during the iOS build." >&2
+  exit 1
 fi
 
-# Fail fast if the binary wasn't linked against the iOS 26+ SDK, so a wrong
-# Xcode is caught here instead of after the ~20-min package + upload.
-SDK_VER=$(xcrun vtool -show-build "$APP_BUNDLE/$APP" 2>/dev/null | awk '$1=="sdk"{print $2; exit}')
-if [[ -n "$SDK_VER" ]]; then
-    echo "==> Linked iOS SDK: $SDK_VER"
-    if [[ "${SDK_VER%%.*}" -lt 26 ]]; then
-        echo "Error: built against iOS SDK $SDK_VER; Apple requires 26+. Active Xcode: $(xcode-select -p)" >&2
-        exit 1
-    fi
-else
-    echo "==> Warning: could not read the linked iOS SDK version; skipping the SDK check." >&2
+PLIST="$APP_BUNDLE/Info.plist"
+[[ -s "$PLIST" ]] || { echo "Error: built bundle has no Info.plist." >&2; exit 1; }
+BUILT_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")"
+BUILT_EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST")"
+[[ "$BUILT_IDENTIFIER" == "$ORG.$APP" ]] || { echo "Error: bundle id drifted to $BUILT_IDENTIFIER" >&2; exit 1; }
+[[ "$BUILT_EXECUTABLE" == "$CARGO_PACKAGE" ]] || { echo "Error: bundle executable drifted to $BUILT_EXECUTABLE" >&2; exit 1; }
+if ! strings "$BINARY" | grep -F "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD" >/dev/null; then
+  echo "Error: built binary is not bound to current source HEAD $SOURCE_HEAD." >&2
+  exit 1
 fi
 
-# ---- 2. Compile asset catalog ----
+SDK_VER="$(xcrun vtool -show-build "$BINARY" 2>/dev/null | awk '$1=="sdk"{print $2; exit}')"
+if [[ ! "$SDK_VER" =~ ^[0-9]+([.][0-9]+)*$ ]]; then
+  echo "Error: could not read the linked iOS SDK version from $BINARY." >&2
+  exit 1
+fi
+if [[ "${SDK_VER%%.*}" -lt 26 ]]; then
+  echo "Error: built against iOS SDK $SDK_VER; this release lane requires 26+. Active Xcode: $(xcode-select -p)" >&2
+  exit 1
+fi
+echo "==> Linked iOS SDK: $SDK_VER"
+
+TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ios-testflight.XXXXXX")"
+trap 'rm -rf "$TEMP_DIR"' EXIT
+ASSET_INFO="$TEMP_DIR/AssetInfo.plist"
+PROFILE_PLIST="$TEMP_DIR/profile.plist"
+ENTITLEMENTS="$TEMP_DIR/entitlements.plist"
+
 xcrun actool ./packaging/ios/icons/Assets.xcassets \
   --compile "$APP_BUNDLE" \
   --platform iphoneos \
-  --minimum-deployment-target 14.0 \
+  --minimum-deployment-target 15.0 \
   --app-icon AppIcon \
-  --output-partial-info-plist /tmp/AssetInfo.plist
+  --output-partial-info-plist "$ASSET_INFO"
+/usr/libexec/PlistBuddy -c "Merge $ASSET_INFO" "$PLIST"
 
-# ---- 3. Patch Info.plist ----
-PLIST="$APP_BUNDLE/Info.plist"
-/usr/libexec/PlistBuddy -c "Merge /tmp/AssetInfo.plist" "$PLIST"
-
-set_or_add () {  # key, type, value
-  /usr/libexec/PlistBuddy -c "Add :$1 $2 $3" "$PLIST" 2>/dev/null \
-    || /usr/libexec/PlistBuddy -c "Set :$1 $3" "$PLIST"
+set_or_add() {
+  local key="$1" type="$2" value="$3"
+  if ! /usr/libexec/PlistBuddy -c "Add :$key $type $value" "$PLIST" 2>/dev/null; then
+    /usr/libexec/PlistBuddy -c "Set :$key $value" "$PLIST"
+  fi
 }
 set_or_add CFBundlePackageType string APPL
 set_or_add CFBundleIconName string AppIcon
-/usr/libexec/PlistBuddy -c "Add :UILaunchScreen dict" "$PLIST" 2>/dev/null || true
+if ! /usr/libexec/PlistBuddy -c "Add :UILaunchScreen dict" "$PLIST" 2>/dev/null; then
+  /usr/libexec/PlistBuddy -c "Print :UILaunchScreen" "$PLIST" >/dev/null
+fi
 set_or_add UILaunchScreen:UIImageName string AppIcon60x60
 set_or_add UILaunchScreen:UIColorName string LaunchScreenBackground
 set_or_add ITSAppUsesNonExemptEncryption bool false
 
-VERSION=$(cargo metadata --no-deps --format-version 1 \
-  | jq -r '.packages[] | select(.name=="hepta-native") | .version' \
-  | sed 's/-.*$//')
-echo "Version $VERSION (build $BUILD_NUMBER)"
+VERSION="$(cargo metadata --locked --offline --no-deps --format-version 1 \
+  | jq -r --arg package "$CARGO_PACKAGE" '.packages[] | select(.name == $package) | .version' \
+  | sed 's/-.*$//')"
+[[ "$VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]] || { echo "Error: invalid release version '$VERSION'." >&2; exit 1; }
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$PLIST"
 
-# ---- 4. Extract entitlements from the App Store profile ----
-security cms -D -i "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision" \
-  > /tmp/profile.plist
-/usr/libexec/PlistBuddy -x -c "Print :Entitlements" /tmp/profile.plist > /tmp/entitlements.plist
-
-# ---- 5. Re-sign (steps 2-3 invalidated the signature) ----
+security cms -D -i "$PROFILE_PATH" >"$PROFILE_PLIST"
+/usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$PROFILE_PLIST" >"$ENTITLEMENTS"
 codesign --force --sign "$CERT_SHA1" \
-  --entitlements /tmp/entitlements.plist \
+  --entitlements "$ENTITLEMENTS" \
   --timestamp=none \
   "$APP_BUNDLE"
+codesign --verify --deep --strict --verbose=3 "$APP_BUNDLE"
+codesign -d --entitlements :- "$APP_BUNDLE" >/dev/null
 
-# ---- 6. Verify ----
-codesign -vvv "$APP_BUNDLE"
-codesign -d --entitlements - "$APP_BUNDLE"
-
-# ---- 7. Package .ipa ----
-BUILD_DIR="$REPO_ROOT/target/apple/makepad-apple-app/aarch64-apple-ios/release"
-cd "$BUILD_DIR"
 IPA_NAME="Hepta-${VERSION}-ios.ipa"
-rm -rf Payload "$IPA_NAME"
-ditto "${APP}.app" "Payload/${APP}.app"
-ditto -c -k --sequesterRsrc --keepParent Payload "$IPA_NAME"
-ls -lh "$IPA_NAME"
-echo "==> Packaged $BUILD_DIR/$IPA_NAME"
+IPA_PATH="$BUILD_DIR/$IPA_NAME"
+PAYLOAD_ROOT="$TEMP_DIR/Payload"
+mkdir -p "$PAYLOAD_ROOT"
+ditto "$APP_BUNDLE" "$PAYLOAD_ROOT/Hepta.app"
+rm -f "$IPA_PATH"
+(cd "$TEMP_DIR" && ditto -c -k --sequesterRsrc --keepParent Payload "$IPA_PATH")
+[[ -s "$IPA_PATH" ]] || { echo "Error: IPA packaging did not produce $IPA_PATH" >&2; exit 1; }
 
-# ---- 8. Upload to TestFlight (optional) ----
+UPLOADED=false
 if [[ "${IOS_UPLOAD_TESTFLIGHT:-false}" == "true" ]]; then
-    : "${ASC_KEY_ID:?set ASC_KEY_ID to upload}"
-    : "${ASC_ISSUER_ID:?set ASC_ISSUER_ID to upload}"
-    echo "==> Uploading $IPA_NAME to TestFlight..."
-    xcrun altool --upload-app --type ios \
-      --file "$IPA_NAME" \
-      --apiKey "$ASC_KEY_ID" \
-      --apiIssuer "$ASC_ISSUER_ID"
-    echo "==> Uploaded to TestFlight."
+  : "${ASC_KEY_ID:?set ASC_KEY_ID to upload}"
+  : "${ASC_ISSUER_ID:?set ASC_ISSUER_ID to upload}"
+  xcrun altool --upload-app --type ios \
+    --file "$IPA_PATH" \
+    --apiKey "$ASC_KEY_ID" \
+    --apiIssuer "$ASC_ISSUER_ID"
+  UPLOADED=true
+fi
+
+IPA_SHA256="$(shasum -a 256 "$IPA_PATH" | awk '{print $1}')"
+RECEIPT_PATH="$IPA_PATH.receipt.json"
+jq -n \
+  --arg source_head "$SOURCE_HEAD" \
+  --arg source_tree "$SOURCE_TREE" \
+  --arg artifact_path "$IPA_PATH" \
+  --arg artifact_sha256 "$IPA_SHA256" \
+  --arg bundle_identifier "$BUILT_IDENTIFIER" \
+  --arg executable "$BUILT_EXECUTABLE" \
+  --arg sdk_version "$SDK_VER" \
+  --arg signing_identity "$SIGNING_IDENTITY" \
+  --arg signing_identity_sha1 "$CERT_SHA1" \
+  --arg provisioning_profile_uuid "$PROFILE_UUID" \
+  --argjson toolchain "$TOOLCHAIN_REPORT" \
+  --argjson icons "$ICON_REPORT" \
+  --argjson uploaded "$UPLOADED" \
+  '{schema_version:1,kind:"hepta-native-ios-testflight-package",status:"ready",source_binding:{head:$source_head,head_tree:$source_tree,worktree_clean:true},artifact:{path:$artifact_path,sha256:$artifact_sha256},bundle:{identifier:$bundle_identifier,executable:$executable,linked_sdk:$sdk_version},toolchain:$toolchain,icons:$icons,signing:{performed:true,identity:$signing_identity,identity_sha1:$signing_identity_sha1,provisioning_profile_uuid:$provisioning_profile_uuid},testflight_uploaded:$uploaded,public_distribution_authorized:false,stale_artifact_accepted:false}' \
+  >"$RECEIPT_PATH"
+
+ls -lh "$IPA_PATH"
+echo "==> Packaged current source: $IPA_PATH"
+echo "==> Receipt: $RECEIPT_PATH"
+if [[ "$UPLOADED" == "true" ]]; then
+  echo "==> Uploaded to TestFlight."
 else
-    echo "==> Skipping TestFlight upload (IOS_UPLOAD_TESTFLIGHT != true)."
+  echo "==> Skipping TestFlight upload (IOS_UPLOAD_TESTFLIGHT != true)."
 fi

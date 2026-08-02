@@ -1,0 +1,115 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+require "pathname"
+require "tmpdir"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+CANONICAL = ROOT.join("apps/hepta-native/resources/icon_1024.png")
+ICONSET = ROOT.join("apps/hepta-native/packaging/ios/icons/Assets.xcassets/AppIcon.appiconset")
+DERIVATIONS = {
+  "AppIcon1024x1024.png" => 1024,
+  "AppIcon120x120.png" => 120,
+  "AppIcon152x152.png" => 152,
+  "AppIcon167x167.png" => 167,
+  "AppIcon180x180.png" => 180,
+}.freeze
+
+def fail!(message)
+  warn "hepta-native-ios-icons: #{message}"
+  exit 1
+end
+
+def png_metadata(path)
+  fail!("missing PNG: #{path}") unless path.file?
+  data = path.binread(33)
+  fail!("invalid PNG signature: #{path}") unless data.start_with?("\x89PNG\r\n\x1a\n".b)
+  fail!("missing PNG IHDR: #{path}") unless data.byteslice(12, 4) == "IHDR"
+  width, height, bit_depth, color_type = data.byteslice(16, 10).unpack("NNCC")
+  { width: width, height: height, bit_depth: bit_depth, color_type: color_type }
+end
+
+def opaque_rgb!(path, expected_size)
+  metadata = png_metadata(path)
+  fail!("wrong dimensions for #{path}: #{metadata[:width]}x#{metadata[:height]}") unless metadata[:width] == expected_size && metadata[:height] == expected_size
+  fail!("#{path} must be 8-bit RGB without alpha (PNG color type 2)") unless metadata[:bit_depth] == 8 && metadata[:color_type] == 2
+  metadata
+end
+
+def generate(source, destination, size)
+  if size == 1024
+    FileUtils.cp(source, destination)
+    return
+  end
+  stdout, stderr, status = Open3.capture3("sips", "-z", size.to_s, size.to_s, source.to_s, "--out", destination.to_s)
+  fail!("sips failed for #{size}px: #{stderr.empty? ? stdout : stderr}") unless status.success?
+end
+
+def ensure_sips!
+  fail!("sips is required to materialize and verify iOS icons on macOS") unless system("command", "-v", "sips", out: File::NULL, err: File::NULL)
+end
+
+def materialize
+  ensure_sips!
+  opaque_rgb!(CANONICAL, 1024)
+  ICONSET.mkpath
+  Dir.mktmpdir("hepta-native-ios-icons.") do |directory|
+    DERIVATIONS.each do |filename, size|
+      temporary = Pathname.new(directory).join(filename)
+      generate(CANONICAL, temporary, size)
+      opaque_rgb!(temporary, size)
+      FileUtils.mv(temporary, ICONSET.join(filename))
+    end
+  end
+end
+
+def verify
+  ensure_sips!
+  canonical = opaque_rgb!(CANONICAL, 1024)
+  records = []
+  Dir.mktmpdir("hepta-native-ios-icons-verify.") do |directory|
+    DERIVATIONS.each do |filename, size|
+      actual = ICONSET.join(filename)
+      metadata = opaque_rgb!(actual, size)
+      expected = Pathname.new(directory).join(filename)
+      generate(CANONICAL, expected, size)
+      fail!("#{actual} is not the deterministic materialization of #{CANONICAL}") unless actual.binread == expected.binread
+      records << {
+        path: actual.relative_path_from(ROOT).to_s,
+        pixels: size,
+        sha256: Digest::SHA256.file(actual).hexdigest,
+        png_color_type: metadata.fetch(:color_type),
+        alpha: false,
+        canonical_source: CANONICAL.relative_path_from(ROOT).to_s,
+      }
+    end
+  end
+  puts JSON.generate(
+    schema_version: 1,
+    kind: "hepta-native-ios-icon-contract",
+    status: "ready",
+    canonical: {
+      path: CANONICAL.relative_path_from(ROOT).to_s,
+      pixels: canonical.fetch(:width),
+      sha256: Digest::SHA256.file(CANONICAL).hexdigest,
+      png_color_type: canonical.fetch(:color_type),
+      alpha: false,
+    },
+    generated: records,
+    app_store_marketing_icon_opaque: true,
+  )
+end
+
+case ARGV.fetch(0, "verify")
+when "materialize"
+  materialize
+  verify
+when "verify"
+  verify
+else
+  fail!("usage: scripts/hepta-native-ios-icons [verify|materialize]")
+end

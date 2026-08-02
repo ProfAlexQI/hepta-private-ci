@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# cargo-makepad currently invokes `rustup run stable ...` internally.  Route
+# that symbolic channel to Hepta Native's exact toolchain without changing the
+# user's global `stable` default.  This shim is only placed on PATH by
+# scripts/hepta-native-mobile-cargo.
+
+: "${HEPTA_MOBILE_REAL_RUSTUP:?missing HEPTA_MOBILE_REAL_RUSTUP}"
+: "${HEPTA_MOBILE_RUST_TOOLCHAIN_VERSION:?missing HEPTA_MOBILE_RUST_TOOLCHAIN_VERSION}"
+
+translated=()
+for argument in "$@"; do
+  if [[ "$argument" == "stable" ]]; then
+    translated+=("$HEPTA_MOBILE_RUST_TOOLCHAIN_VERSION")
+  else
+    translated+=("$argument")
+  fi
+done
+
+exec "$HEPTA_MOBILE_REAL_RUSTUP" "${translated[@]}"
