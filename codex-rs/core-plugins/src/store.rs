@@ -6,10 +6,12 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_plugins::AgentPluginSchemaStatus;
 use codex_utils_plugins::agent_plugin_schema_status;
 use codex_utils_plugins::find_plugin_manifest_path;
+use semver::Version;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use sha2::Digest;
 use sha2::Sha256;
+use std::cmp::Ordering;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -82,26 +84,7 @@ impl PluginStore {
     }
 
     pub fn active_plugin_version(&self, plugin_id: &PluginId) -> Option<String> {
-        let mut discovered_versions = fs::read_dir(self.plugin_base_root(plugin_id).as_path())
-            .ok()?
-            .filter_map(Result::ok)
-            .filter_map(|entry| {
-                entry.file_type().ok().filter(std::fs::FileType::is_dir)?;
-                entry.file_name().into_string().ok()
-            })
-            .filter(|version| validate_plugin_version_segment(version).is_ok())
-            .collect::<Vec<_>>();
-        discovered_versions.sort_unstable();
-        if discovered_versions.is_empty() {
-            None
-        } else if discovered_versions
-            .iter()
-            .any(|version| version == DEFAULT_PLUGIN_VERSION)
-        {
-            Some(DEFAULT_PLUGIN_VERSION.to_string())
-        } else {
-            discovered_versions.pop()
-        }
+        active_plugin_version_in_root(self.plugin_base_root(plugin_id).as_path())
     }
 
     pub fn active_plugin_root(&self, plugin_id: &PluginId) -> Option<AbsolutePathBuf> {
@@ -222,7 +205,32 @@ pub fn validate_plugin_version_segment(plugin_version: &str) -> Result<(), Strin
                 .to_string(),
         );
     }
+    if plugin_version.len() > 255 {
+        return Err("invalid plugin version: path segment exceeds 255 bytes".to_string());
+    }
+    if plugin_version.ends_with(['.', ' ']) {
+        return Err(
+            "invalid plugin version: path segment must not end with a dot or space".to_string(),
+        );
+    }
+    let device_stem = plugin_version.split('.').next().unwrap_or(plugin_version);
+    if is_windows_reserved_device_name(device_stem) {
+        return Err(format!(
+            "invalid plugin version: `{plugin_version}` is reserved on Windows"
+        ));
+    }
     Ok(())
+}
+
+fn is_windows_reserved_device_name(segment_stem: &str) -> bool {
+    let segment_stem = segment_stem.to_ascii_uppercase();
+    matches!(segment_stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || segment_stem.strip_prefix("COM").is_some_and(|suffix| {
+            matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+        })
+        || segment_stem.strip_prefix("LPT").is_some_and(|suffix| {
+            matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+        })
 }
 
 fn plugin_manifest_for_source(source_path: &Path) -> Result<PluginManifest, PluginStoreError> {
@@ -257,10 +265,13 @@ fn plugin_manifest_version_for_source(
             "invalid plugin version in plugin.json: expected string".to_string(),
         ));
     };
-    let version = version.trim();
     if is_agent_plugin {
-        return Ok(((!version.is_empty()).then(|| version.to_string()), true));
+        return Ok((
+            (!version.trim().is_empty()).then(|| version.to_string()),
+            true,
+        ));
     }
+    let version = version.trim();
     if version.is_empty() {
         return Err(PluginStoreError::Invalid(
             "invalid plugin version in plugin.json: must not be blank".to_string(),
@@ -295,8 +306,26 @@ fn remove_existing_target(path: &Path) -> Result<(), PluginStoreError> {
 }
 
 fn validate_plugin_source_root(source: &Path) -> Result<(), PluginStoreError> {
-    let metadata = fs::symlink_metadata(source)
-        .map_err(|err| PluginStoreError::io("failed to inspect plugin source path", err))?;
+    let metadata = match fs::symlink_metadata(source) {
+        Ok(metadata) => metadata,
+        Err(err)
+            if matches!(
+                err.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Err(PluginStoreError::Invalid(format!(
+                "plugin source path is not a directory: {}",
+                source.display()
+            )));
+        }
+        Err(err) => {
+            return Err(PluginStoreError::io(
+                "failed to inspect plugin source path",
+                err,
+            ));
+        }
+    };
     reject_unsupported_source_link(source, &metadata)?;
     if !metadata.file_type().is_dir() {
         return Err(PluginStoreError::Invalid(format!(
@@ -370,6 +399,15 @@ fn replace_plugin_root_atomically(
     let staged_version_root = staged_root.join(plugin_version);
     copy_dir_recursive(source, &staged_version_root)?;
 
+    let target_version_root = target_root.join(plugin_version);
+    if target_root.exists() && !target_version_root.exists() {
+        fs::rename(&staged_version_root, &target_version_root).map_err(|err| {
+            PluginStoreError::io("failed to activate updated plugin cache version", err)
+        })?;
+        remove_old_plugin_versions(target_root, plugin_version)?;
+        return Ok(());
+    }
+
     if target_root.exists() {
         let backup_dir = tempfile::Builder::new()
             .prefix("plugin-backup-")
@@ -404,6 +442,80 @@ fn replace_plugin_root_atomically(
     }
 
     Ok(())
+}
+
+fn active_plugin_version_in_root(target_root: &Path) -> Option<String> {
+    let discovered_versions = fs::read_dir(target_root)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            entry.file_type().ok().filter(std::fs::FileType::is_dir)?;
+            entry.file_name().into_string().ok()
+        })
+        .filter(|version| validate_plugin_version_segment(version).is_ok())
+        .collect::<Vec<_>>();
+    if discovered_versions
+        .iter()
+        .any(|version| version == DEFAULT_PLUGIN_VERSION)
+    {
+        return Some(DEFAULT_PLUGIN_VERSION.to_string());
+    }
+    discovered_versions
+        .into_iter()
+        .max_by(|left, right| compare_plugin_versions(left, right))
+}
+
+fn remove_old_plugin_versions(
+    target_root: &Path,
+    plugin_version: &str,
+) -> Result<(), PluginStoreError> {
+    remove_old_plugin_versions_with(target_root, plugin_version, |path| fs::remove_dir_all(path))
+}
+
+fn remove_old_plugin_versions_with(
+    target_root: &Path,
+    plugin_version: &str,
+    mut remove_dir_all: impl FnMut(&Path) -> io::Result<()>,
+) -> Result<(), PluginStoreError> {
+    if let Ok(entries) = fs::read_dir(target_root) {
+        for entry in entries.filter_map(Result::ok) {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_dir() {
+                continue;
+            }
+            let Ok(version) = entry.file_name().into_string() else {
+                continue;
+            };
+            if version == plugin_version || validate_plugin_version_segment(&version).is_err() {
+                continue;
+            }
+            let _ = remove_dir_all(&entry.path());
+        }
+    }
+
+    let active_version = active_plugin_version_in_root(target_root);
+    if active_version.as_deref() == Some(plugin_version) {
+        return Ok(());
+    }
+    Err(PluginStoreError::Invalid(match active_version {
+        Some(active_version) => format!(
+            "failed to activate updated plugin cache version `{plugin_version}` while `{active_version}` remains active"
+        ),
+        None => format!(
+            "failed to activate updated plugin cache version `{plugin_version}` because no active version could be selected"
+        ),
+    }))
+}
+
+fn compare_plugin_versions(left: &str, right: &str) -> Ordering {
+    match (Version::parse(left), Version::parse(right)) {
+        (Ok(left_version), Ok(right_version)) => left_version
+            .cmp(&right_version)
+            .then_with(|| left.cmp(right)),
+        _ => left.cmp(right),
+    }
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), PluginStoreError> {

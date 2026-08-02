@@ -268,6 +268,62 @@ fn agent_plugin_unsafe_version_uses_stable_directory_safe_digest() {
 }
 
 #[test]
+fn agent_plugin_cross_platform_unsafe_versions_use_stable_directory_safe_digests() {
+    let tmp = tempdir().unwrap();
+    let mut unsafe_versions = vec![
+        "CON".to_string(),
+        "con.txt".to_string(),
+        "PrN".to_string(),
+        "AUX.plugin".to_string(),
+        "nul".to_string(),
+        "COM1".to_string(),
+        "com9.log".to_string(),
+        "LPT1".to_string(),
+        "lPt9.ext".to_string(),
+        "1.0.0.".to_string(),
+        "1.0.0 ".to_string(),
+    ];
+    unsafe_versions.push("a".repeat(256));
+
+    for (index, unsafe_version) in unsafe_versions.iter().enumerate() {
+        let dir_name = format!("portable-{index}");
+        write_agent_plugin_with_version(tmp.path(), &dir_name, &dir_name, Some(unsafe_version));
+
+        let resolved = plugin_version_for_source(&tmp.path().join(dir_name)).unwrap();
+        assert_ne!(&resolved, unsafe_version);
+        assert!(resolved.starts_with("agent-plugins-"));
+        assert_eq!(resolved.len(), "agent-plugins-".len() + 24);
+        assert!(validate_plugin_version_segment(&resolved).is_ok());
+    }
+
+    assert_eq!(
+        plugin_version_for_source(&tmp.path().join("portable-0")).unwrap(),
+        "agent-plugins-a3dbc4b644a9a2c51e74509d"
+    );
+}
+
+#[test]
+fn cross_platform_version_validation_allows_non_device_names() {
+    for version in ["COM0", "COM10", "LPT0", "LPT10", "CONSOLE", "NULLED"] {
+        assert_eq!(validate_plugin_version_segment(version), Ok(()));
+    }
+}
+
+#[test]
+fn legacy_plugin_cross_platform_unsafe_version_is_rejected() {
+    let tmp = tempdir().unwrap();
+    write_plugin_with_version(tmp.path(), "portable", "portable", Some("CON"));
+
+    let err = plugin_version_for_source(&tmp.path().join("portable"))
+        .expect_err("legacy Windows device name must fail closed");
+
+    assert_eq!(
+        err.to_string(),
+        "invalid plugin version: `CON` is reserved on Windows"
+    );
+}
+
+#[test]
 fn install_rejects_blank_manifest_version() {
     let tmp = tempdir().unwrap();
     write_plugin_with_version(tmp.path(), "sample-plugin", "sample-plugin", Some("   "));
@@ -331,7 +387,7 @@ fn active_plugin_version_prefers_default_local_version_when_multiple_versions_ex
 }
 
 #[test]
-fn active_plugin_version_returns_last_sorted_version_when_default_is_missing() {
+fn active_plugin_version_returns_latest_fallback_version_when_default_is_missing() {
     let tmp = tempdir().unwrap();
     write_plugin(
         &tmp.path().join("plugins/cache/debug"),
@@ -349,6 +405,161 @@ fn active_plugin_version_returns_last_sorted_version_when_default_is_missing() {
     assert_eq!(
         store.active_plugin_version(&plugin_id),
         Some("fedcba9876543210".to_string())
+    );
+}
+
+#[test]
+fn active_plugin_version_compares_semver_versions_semantically() {
+    let tmp = tempdir().unwrap();
+    write_plugin(
+        &tmp.path().join("plugins/cache/debug"),
+        "sample-plugin/9.0.0",
+        "sample-plugin",
+    );
+    write_plugin(
+        &tmp.path().join("plugins/cache/debug"),
+        "sample-plugin/10.0.0",
+        "sample-plugin",
+    );
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("10.0.0".to_string())
+    );
+}
+
+#[test]
+fn version_comparator_breaks_equal_semver_and_invalid_versions_deterministically() {
+    assert_eq!(
+        compare_plugin_versions("1.0.0+alpha", "1.0.0+beta"),
+        Ordering::Less
+    );
+    assert_eq!(
+        compare_plugin_versions("1.0.0+beta", "1.0.0+alpha"),
+        Ordering::Greater
+    );
+    assert_eq!(
+        compare_plugin_versions("release-9", "release-10"),
+        Ordering::Greater
+    );
+    assert_eq!(
+        compare_plugin_versions("release-10", "release-9"),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn install_with_new_version_keeps_existing_plugin_root_and_prunes_old_versions() {
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+
+    write_plugin_with_version(tmp.path(), "v1", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("v1")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    let plugin_base_root = store.plugin_base_root(&plugin_id);
+    fs::write(plugin_base_root.join("root-sentinel"), "keep plugin root").unwrap();
+
+    write_plugin_with_version(tmp.path(), "v2", "sample-plugin", Some("2.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("v2")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("2.0.0".to_string())
+    );
+    assert!(plugin_base_root.join("root-sentinel").is_file());
+    assert!(plugin_base_root.join("2.0.0").is_dir());
+    assert!(!plugin_base_root.join("1.0.0").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn install_with_new_version_activation_failure_preserves_existing_version() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "v1", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("v1")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    let plugin_base_root = store.plugin_base_root(&plugin_id);
+    let original_permissions = fs::metadata(&plugin_base_root).unwrap().permissions();
+    let mut blocked_permissions = original_permissions.clone();
+    blocked_permissions.set_mode(original_permissions.mode() & !0o222);
+    fs::set_permissions(&plugin_base_root, blocked_permissions).unwrap();
+
+    write_plugin_with_version(tmp.path(), "v2", "sample-plugin", Some("2.0.0"));
+    let result = store.install(
+        AbsolutePathBuf::try_from(tmp.path().join("v2")).unwrap(),
+        plugin_id.clone(),
+    );
+    fs::set_permissions(&plugin_base_root, original_permissions).unwrap();
+    let err = result.expect_err("additive activation into a read-only root must fail");
+
+    assert!(
+        err.to_string()
+            .contains("failed to activate updated plugin cache version")
+    );
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+    assert!(plugin_base_root.join("1.0.0/skills/SKILL.md").is_file());
+    assert!(!plugin_base_root.join("2.0.0").exists());
+}
+
+#[test]
+fn cleanup_failure_is_best_effort_when_new_version_is_active() {
+    let tmp = tempdir().unwrap();
+    let target_root = tmp.path().join("plugin");
+    fs::create_dir_all(target_root.join("1.0.0")).unwrap();
+    fs::create_dir_all(target_root.join("2.0.0")).unwrap();
+    let mut attempted_removals = Vec::new();
+
+    remove_old_plugin_versions_with(&target_root, "2.0.0", |path| {
+        attempted_removals.push(path.to_path_buf());
+        Err(io::Error::other("simulated locked version"))
+    })
+    .expect("lower locked version may remain when the new version is active");
+
+    assert_eq!(attempted_removals, vec![target_root.join("1.0.0")]);
+    assert_eq!(
+        active_plugin_version_in_root(&target_root),
+        Some("2.0.0".to_string())
+    );
+}
+
+#[test]
+fn cleanup_failure_errors_when_old_version_would_remain_active() {
+    let tmp = tempdir().unwrap();
+    let target_root = tmp.path().join("plugin");
+    fs::create_dir_all(target_root.join("1.0.0")).unwrap();
+    fs::create_dir_all(target_root.join("2.0.0")).unwrap();
+
+    let err = remove_old_plugin_versions_with(&target_root, "1.0.0", |_| {
+        Err(io::Error::other("simulated locked version"))
+    })
+    .expect_err("a higher locked version prevents the new version from becoming active");
+
+    assert_eq!(
+        err.to_string(),
+        "failed to activate updated plugin cache version `1.0.0` while `2.0.0` remains active"
     );
 }
 
@@ -469,6 +680,34 @@ fn install_rejects_non_directory_source_without_replacing_existing_plugin() {
             "2.0.0".to_string(),
         )
         .expect_err("non-directory plugin root must fail closed");
+
+    assert!(err.to_string().contains("is not a directory"));
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+}
+
+#[test]
+fn install_rejects_missing_source_without_replacing_existing_plugin() {
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "old-source", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("old-source")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+
+    let err = store
+        .install_with_version(
+            AbsolutePathBuf::try_from(tmp.path().join("missing-source")).unwrap(),
+            plugin_id.clone(),
+            "2.0.0".to_string(),
+        )
+        .expect_err("missing plugin root must fail closed");
 
     assert!(err.to_string().contains("is not a directory"));
     assert_eq!(
