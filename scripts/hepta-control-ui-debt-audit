@@ -1,0 +1,167 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+CONTROL_UI = ROOT.join("apps/hepta-control-ui")
+LEGACY_CSS = CONTROL_UI.join("styles.legacy.css")
+INDEX_HTML = CONTROL_UI.join("index.html")
+CONTROL_UI_JS = CONTROL_UI.join("control-ui.js")
+CONTROL_UI_RS = ROOT.join("codex-rs/hepta-core/src/control_ui.rs")
+ROUTE_CATALOG = ROOT.join(
+  "codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl"
+)
+RUNTIME_CSS_FILES = %w[
+  light-glass-tokens.generated.css
+  styles.legacy.css
+  styles.foundation.css
+  styles.components.css
+  styles.responsive.css
+  styles.accessibility.css
+].freeze
+RETIRED_POPOVER_STATE = "data-chat-composer-popover-open"
+LIMITS = {
+  "runtime_css_bytes_max" => 227_851,
+  "legacy_css_bytes_max" => 201_297,
+  "legacy_css_lines_max" => 3_856,
+  "runtime_important_count_max" => 1_384,
+  "legacy_important_count_max" => 1_103,
+  "route_count_max" => 284,
+  "legacy_compatibility_route_count_max" => 206,
+  "canonical_route_count_min" => 78,
+  "quarantined_legacy_mutation_route_count_max" => 28,
+}.freeze
+
+def fail!(message)
+  warn "hepta-control-ui-debt-audit: #{message}"
+  exit 1
+end
+
+output_path = nil
+until ARGV.empty?
+  argument = ARGV.shift
+  case argument
+  when "--output"
+    output_path = ARGV.shift
+    fail!("--output requires a path") if output_path.nil? || output_path.empty?
+  when "--help"
+    puts "Usage: scripts/hepta-control-ui-debt-audit [--output PATH]"
+    exit 0
+  else
+    fail!("unknown argument: #{argument}")
+  end
+end
+
+required_paths = [
+  LEGACY_CSS,
+  INDEX_HTML,
+  CONTROL_UI_JS,
+  CONTROL_UI_RS,
+  ROUTE_CATALOG,
+] + RUNTIME_CSS_FILES.map { |name| CONTROL_UI.join(name) }
+missing_paths = required_paths.reject(&:file?)
+fail!("missing source paths: #{missing_paths.join(', ')}") unless missing_paths.empty?
+
+runtime_css = RUNTIME_CSS_FILES.map { |name| CONTROL_UI.join(name).binread }.join("\n")
+legacy_css = LEGACY_CSS.binread
+index_html = INDEX_HTML.binread
+control_ui_js = CONTROL_UI_JS.binread
+control_ui_rs = CONTROL_UI_RS.binread
+
+catalog_records = ROUTE_CATALOG.each_line.each_with_object([]) do |line, records|
+  stripped = line.strip
+  next if stripped.empty?
+
+  records << JSON.parse(stripped)
+rescue JSON::ParserError => error
+  fail!("invalid route catalog JSON: #{error.message}")
+end
+routes = catalog_records.select { |record| record["kind"] == "control_ui_route" }
+legacy_routes = routes.count { |record| record["legacy_compatibility_route"] == true }
+canonical_routes = routes.count { |record| record["legacy_compatibility_route"] == false }
+quarantined_routes = routes.count do |record|
+  record["permission_profile"] == "control_ui_quarantined_legacy_mutation"
+end
+
+route_identities = routes.map { |route| [route["method"], route["path"]] }
+route_identity_counts = route_identities.each_with_object(Hash.new(0)) do |identity, counts|
+  counts[identity] += 1
+end
+duplicate_route_identities = route_identity_counts.select { |_identity, count| count > 1 }
+legacy_popover_state_marker_count = [runtime_css, index_html, control_ui_js]
+  .sum { |source| source.scan(RETIRED_POPOVER_STATE).length }
+canonical_index_renderer_count = control_ui_rs.scan(
+  /pub const CONTROL_UI_INDEX_HTML: &str = include_str!\("\.\.\/\.\.\/\.\.\/apps\/hepta-control-ui\/index\.html"\);/
+).length
+
+metrics = {
+  "runtime_css_bytes" => runtime_css.bytesize,
+  "legacy_css_bytes" => legacy_css.bytesize,
+  "legacy_css_lines" => legacy_css.lines.count,
+  "runtime_important_count" => runtime_css.scan(/!important/).length,
+  "legacy_important_count" => legacy_css.scan(/!important/).length,
+  "retired_popover_state_marker_count" => legacy_popover_state_marker_count,
+  "route_count" => routes.length,
+  "legacy_compatibility_route_count" => legacy_routes,
+  "canonical_route_count" => canonical_routes,
+  "quarantined_legacy_mutation_route_count" => quarantined_routes,
+  "duplicate_route_identity_count" => duplicate_route_identities.length,
+  "canonical_index_renderer_count" => canonical_index_renderer_count,
+}
+
+checks = {
+  "runtime_css_bytes_within_ratchet" =>
+    metrics["runtime_css_bytes"] <= LIMITS["runtime_css_bytes_max"],
+  "legacy_css_bytes_within_ratchet" =>
+    metrics["legacy_css_bytes"] <= LIMITS["legacy_css_bytes_max"],
+  "legacy_css_lines_within_ratchet" =>
+    metrics["legacy_css_lines"] <= LIMITS["legacy_css_lines_max"],
+  "runtime_important_count_within_ratchet" =>
+    metrics["runtime_important_count"] <= LIMITS["runtime_important_count_max"],
+  "legacy_important_count_within_ratchet" =>
+    metrics["legacy_important_count"] <= LIMITS["legacy_important_count_max"],
+  "retired_popover_state_absent" =>
+    metrics["retired_popover_state_marker_count"].zero?,
+  "route_count_does_not_expand" =>
+    metrics["route_count"] <= LIMITS["route_count_max"],
+  "legacy_compatibility_routes_do_not_expand" =>
+    metrics["legacy_compatibility_route_count"] <=
+      LIMITS["legacy_compatibility_route_count_max"],
+  "canonical_route_floor_preserved" =>
+    metrics["canonical_route_count"] >= LIMITS["canonical_route_count_min"],
+  "quarantined_legacy_mutation_routes_do_not_expand" =>
+    metrics["quarantined_legacy_mutation_route_count"] <=
+      LIMITS["quarantined_legacy_mutation_route_count_max"],
+  "route_identities_are_unique" =>
+    metrics["duplicate_route_identity_count"].zero?,
+  "canonical_index_has_one_rust_embed" =>
+    metrics["canonical_index_renderer_count"] == 1,
+}
+
+report = {
+  "schema" => "hepta_control_ui_debt_audit_v1",
+  "status" => checks.values.all? ? "ready" : "not_ready",
+  "scope" => "Control UI CSS and compatibility-route debt ratchet",
+  "metrics" => metrics,
+  "limits" => LIMITS,
+  "checks" => checks,
+  "duplicate_route_identities" => duplicate_route_identities.map do |identity, count|
+    { "method" => identity[0], "path" => identity[1], "count" => count }
+  end,
+  "non_claims" => [
+    "Route-count checks prevent compatibility expansion; they do not prove that a route can be removed safely.",
+    "Static and browser UI evidence does not prove live backend operator workflows.",
+    "This audit performs no mutation, provider call, external send, install, or release action.",
+  ],
+}
+
+encoded = JSON.pretty_generate(report) + "\n"
+if output_path
+  destination = Pathname.new(output_path).expand_path
+  destination.dirname.mkpath
+  destination.binwrite(encoded)
+end
+puts encoded
+exit(checks.values.all? ? 0 : 1)
