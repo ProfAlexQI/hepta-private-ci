@@ -482,8 +482,9 @@ self_test() (
     return 1
   fi
   cp "$ROOT/$full_rel" "$tmp/$full_rel"
-  local ref_fixture predecessor_ref predecessor_sha r2_ref r2_sha r3_ref r3_sha r4_ref r4_sha r5_ref r5_sha r6_ref r6_sha r7_ref r7_sha r8_ref r8_sha r9_ref r9_sha predecessor_before r2_before r3_before r4_before r5_before r6_before r7_before r8_before wrong_r4_after wrong_r5_after wrong_r6_after wrong_r7_after wrong_r8_after wrong_r9_after
+  local ref_fixture upstream_url predecessor_ref predecessor_sha r2_ref r2_sha r3_ref r3_sha r4_ref r4_sha r5_ref r5_sha r6_ref r6_sha r7_ref r7_sha r8_ref r8_sha r9_ref r9_sha predecessor_before r2_before r3_before r4_before r5_before r6_before r7_before r8_before wrong_r4_after wrong_r5_after wrong_r6_after wrong_r7_after wrong_r8_after wrong_r9_after
   ref_fixture="$tmp/ref-fixture"
+  upstream_url="$(jq -er '.upstream_intake.url' "$CONTRACT")"
   predecessor_ref="refs/remotes/upstream/hepta-intake-20260721"
   predecessor_sha="45ac251e178416ff5c3022457ad8d2778c0d4549"
   r2_ref="refs/remotes/upstream/hepta-intake-20260721-r2"
@@ -502,16 +503,10 @@ self_test() (
   r8_sha="c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2"
   r9_ref="refs/remotes/upstream/hepta-intake-20260724-r9"
   r9_sha="000d2540ad73996f3589ae178bfe447bfd67cef2"
-  git clone -q --shared --no-checkout "$ROOT" "$ref_fixture"
-  for frozen_sha in "$predecessor_sha" "$r2_sha" "$r3_sha" "$r4_sha" "$r5_sha" \
-    "$r6_sha" "$r7_sha" "$r8_sha" "$r9_sha"; do
-    copied_sha="$(git -C "$ROOT" cat-file commit "$frozen_sha" | \
-      git -C "$ref_fixture" hash-object -t commit -w --stdin)"
-    [[ "$copied_sha" == "$frozen_sha" ]] || {
-      echo "Hepta CI contract self-test copied unexpected frozen commit: $copied_sha" >&2
-      return 1
-    }
-  done
+  git init -q "$ref_fixture"
+  git -C "$ref_fixture" fetch -q --no-tags --filter=blob:none "$upstream_url" \
+    "$predecessor_sha" "$r2_sha" "$r3_sha" "$r4_sha" "$r5_sha" \
+    "$r6_sha" "$r7_sha" "$r8_sha" "$r9_sha"
   git -C "$ref_fixture" update-ref "$predecessor_ref" "$predecessor_sha"
   git -C "$ref_fixture" update-ref "$r2_ref" "$r2_sha"
   git -C "$ref_fixture" update-ref "$r3_ref" "$r3_sha"
