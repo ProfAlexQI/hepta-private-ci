@@ -43,10 +43,28 @@ RETIRED_FIRST_BATCH_LEGACY_CLASSES = %w[
   check-row
   muted-copy
 ].freeze
+RETIRED_SECOND_BATCH_LEGACY_CLASSES = %w[
+  tg-message-context-audit
+  tg-message-context-audit__chip
+  tg-message-context-audit__more
+  tg-message-context-audit__details
+  tg-message-context-audit__row
+  tg-message-context-audit__actions
+  tg-message-context-audit__copy
+  tg-message-context-audit__restore
+  tg-context-reuse-diff
+  tg-context-reuse-diff__list
+  tg-context-shortcut-hint
+  tg-context-reuse-diff__item
+  tg-context-reuse-diff__batch
+  tg-context-reuse-diff__cols
+  tg-context-reuse-diff__actions
+  tg-context-reuse-undo
+].freeze
 LIMITS = {
-  "runtime_css_bytes_max" => 225_010,
-  "legacy_css_bytes_max" => 198_456,
-  "legacy_css_lines_max" => 3_747,
+  "runtime_css_bytes_max" => 220_222,
+  "legacy_css_bytes_max" => 193_668,
+  "legacy_css_lines_max" => 3_504,
   "runtime_important_count_max" => 1_383,
   "legacy_important_count_max" => 1_102,
   "route_count_max" => 284,
@@ -122,6 +140,9 @@ legacy_popover_state_marker_count = [runtime_css, index_html, control_ui_js]
 retired_first_batch_legacy_class_markers = RETIRED_FIRST_BATCH_LEGACY_CLASSES.select do |class_name|
   runtime_css.match?(/\.#{Regexp.escape(class_name)}(?![A-Za-z0-9_-])/)
 end
+retired_second_batch_legacy_class_markers = RETIRED_SECOND_BATCH_LEGACY_CLASSES.select do |class_name|
+  runtime_css.match?(/\.#{Regexp.escape(class_name)}(?![A-Za-z0-9_-])/)
+end
 canonical_index_renderer_count = control_ui_rs.scan(
   /pub const CONTROL_UI_INDEX_HTML: &str = include_str!\("\.\.\/\.\.\/\.\.\/apps\/hepta-control-ui\/index\.html"\);/
 ).length
@@ -136,6 +157,8 @@ metrics = {
   "retired_popover_state_marker_count" => legacy_popover_state_marker_count,
   "retired_first_batch_legacy_class_marker_count" =>
     retired_first_batch_legacy_class_markers.length,
+  "retired_second_batch_legacy_class_marker_count" =>
+    retired_second_batch_legacy_class_markers.length,
   "route_count" => routes.length,
   "legacy_compatibility_route_count" => legacy_routes,
   "canonical_route_count" => canonical_routes,
@@ -175,6 +198,8 @@ checks = {
     metrics["retired_popover_state_marker_count"].zero?,
   "retired_first_batch_legacy_classes_absent" =>
     metrics["retired_first_batch_legacy_class_marker_count"].zero?,
+  "retired_second_batch_legacy_classes_absent" =>
+    metrics["retired_second_batch_legacy_class_marker_count"].zero?,
   "route_count_does_not_expand" =>
     metrics["route_count"] <= LIMITS["route_count_max"],
   "legacy_compatibility_routes_do_not_expand" =>
@@ -207,6 +232,8 @@ report = {
   end,
   "retired_first_batch_legacy_class_markers" =>
     retired_first_batch_legacy_class_markers,
+  "retired_second_batch_legacy_class_markers" =>
+    retired_second_batch_legacy_class_markers,
   "non_claims" => [
     "Route-count checks prevent compatibility expansion; they do not prove that a route can be removed safely.",
     "Static and browser UI evidence does not prove live backend operator workflows.",
