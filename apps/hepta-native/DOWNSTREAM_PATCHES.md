@@ -69,6 +69,7 @@ not itself prove correctness or readiness.
 | `src/main.rs` | product identity | Launch the renamed `hepta_native` library entry point. | `cargo check --locked`; launch smoke |
 | `src/lib.rs` | product integration | Register the side-effect-free bridge contract and Hepta application identity/data namespace. | `cargo check --locked`; product-shell v2 gate |
 | `src/sliding_sync.rs` | Matrix compatibility and identity | Preserve the upstream Sliding Sync path while changing only the product-owned SSO callback scheme. | Native focused tests; live Matrix remains a separate gate |
+| `src/sliding_sync/**` | maintainability | Extract the public room-power capability model without changing its `sliding_sync::UserPowerLevels` API or Matrix behavior. | Native feature matrix; architecture budget gate |
 | `hepta-live-bridge-backend-contract-v1.json` | live bridge backend handoff | Record the canonical snapshot-only endpoint, strict BridgeUpdate metadata/session/correlation/provenance requirements, audited non-authoritative legacy GET shapes, and current blocked implementation truth. | live-bridge contract gate/self-test; strict envelope validator; no-live-receipt boundary check |
 | `src/hepta_bridge/**` | typed bridge | Add a narrow, fail-closed, session-bound runtime/task/tool/approval presentation boundary; the product facade stays disabled until an authoritative adapter exists. | bridge unit tests; origin/session/correlation checks; no-live-receipt boundary check |
 | `src/persistence/app_state.rs` | product identity | Restore persisted window state under the Hepta product title without changing upstream window-state behavior. | `cargo check --locked`; launch and restore smoke |
@@ -83,6 +84,7 @@ not itself prove correctness or readiness.
 | `src/home/location_preview.rs` | product identity | Replace residual upstream product-facing copy while preserving the Robrix location-preview behavior. | copy review; `cargo check --locked` |
 | `src/home/navigation_tab_bar.rs` | Hepta visual system | Apply shared light-glass chrome to upstream mobile navigation. | mobile screenshot gate; touch-target review |
 | `src/home/room_screen.rs` | Hepta visual system | Restyle the real upstream timeline surface; no live Hepta bridge hook is added here. | room/timeline focused tests; desktop/mobile screenshots |
+| `src/home/room_screen/**` | maintainability | Split message rendering and timeline previews into private modules while preserving the public room-screen and preview paths. | Native feature matrix; architecture budget gate; desktop/mobile screenshots |
 | `src/home/rooms_list_entry.rs` | Hepta visual system | Restyle upstream room rows without changing room-list behavior. | room-list screenshot and selection-state checks |
 | `src/home/rooms_sidebar.rs` | Hepta visual system | Restyle the real upstream sidebar and its navigation chrome. | desktop screenshot and resize checks |
 | `src/home/welcome_screen.rs` | product identity and theme | Restyle the upstream empty state and explain the Matrix/Hepta boundary without presenting diagnostics as the product home. | empty-state screenshot and copy review |
