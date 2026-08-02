@@ -33,10 +33,45 @@ CURRENT_REALITY_REGISTRY_PATH = File.join(
 )
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 DOMAIN = "hepta_gate_pair_compat_payloads"
-TARGET_PAIR_COUNT = 298
-TARGET_CAPTURED_COUNT = 69
-TARGET_DECLARATIVE_COUNT = 229
-TARGET_TYPED_COUNT = 166
+TARGET_PAIR_COUNT = 294
+TARGET_CAPTURED_COUNT = 60
+TARGET_DECLARATIVE_COUNT = 234
+TARGET_TYPED_COUNT = 171
+PLUGIN_TYPED_PAIR_IDS = %w[
+  hepta-systems-plugin-contribution-point-abi
+  hepta-systems-plugin-contribution-point-loader-binding
+  hepta-systems-plugin-lifecycle-state-machine
+  hepta-systems-plugin-tool-contribution-inventory-preview
+  hepta-systems-plugin-tool-manifest-schema-cutover-preflight
+].freeze
+PLUGIN_RETIRED_PAIR_IDS = %w[
+  hepta-systems-plugin-tool-manifest-fixture-declarations
+  hepta-systems-plugin-tool-manifest-parser-fields
+  hepta-systems-plugin-tool-manifest-preflight-adapter-bridge
+  hepta-systems-plugin-tool-registry-source-of-truth-dry-run
+].freeze
+PLUGIN_PAIR_IDS = (PLUGIN_TYPED_PAIR_IDS + PLUGIN_RETIRED_PAIR_IDS).freeze
+PLUGIN_LEGACY_TOP_LEVEL_FIELD_COUNTS = {
+  "hepta-systems-plugin-contribution-point-abi" => 30,
+  "hepta-systems-plugin-contribution-point-loader-binding" => 38,
+  "hepta-systems-plugin-lifecycle-state-machine" => 41,
+  "hepta-systems-plugin-tool-contribution-inventory-preview" => 51,
+  "hepta-systems-plugin-tool-manifest-schema-cutover-preflight" => 41
+}.freeze
+PLUGIN_EXACT_SHARED_BUSINESS_FIELD_COUNTS = {
+  "hepta-systems-plugin-contribution-point-abi" => 10,
+  "hepta-systems-plugin-contribution-point-loader-binding" => 24,
+  "hepta-systems-plugin-lifecycle-state-machine" => 30,
+  "hepta-systems-plugin-tool-contribution-inventory-preview" => 25,
+  "hepta-systems-plugin-tool-manifest-schema-cutover-preflight" => 30
+}.freeze
+PLUGIN_NORMALIZED_SHARED_FIELDS = {
+  "hepta-systems-plugin-contribution-point-abi" => %w[next_migration_step],
+  "hepta-systems-plugin-contribution-point-loader-binding" => %w[next_migration_step],
+  "hepta-systems-plugin-lifecycle-state-machine" => %w[phases],
+  "hepta-systems-plugin-tool-contribution-inventory-preview" => [],
+  "hepta-systems-plugin-tool-manifest-schema-cutover-preflight" => []
+}.freeze
 CONTEXT_PLANE_PAIR_IDS = %w[
   hepta-context-plane-activation-blocker-matrix
   hepta-context-plane-operator-approval-packet
@@ -232,11 +267,43 @@ def verify_context_plane_binding_proofs(registry)
   end
 end
 
+def expected_plugin_equivalence_proof(id)
+  {
+    "baseline" => "exact_head_captured_shell_compat_v1",
+    "parity_oracle" => "mapped_recursive_legacy_json_and_typed_planner_integrity_v1",
+    "legacy_top_level_field_count" =>
+      PLUGIN_LEGACY_TOP_LEVEL_FIELD_COUNTS.fetch(id),
+    "exact_shared_business_field_count" =>
+      PLUGIN_EXACT_SHARED_BUSINESS_FIELD_COUNTS.fetch(id),
+    "documented_normalized_shared_field_ids" =>
+      PLUGIN_NORMALIZED_SHARED_FIELDS.fetch(id),
+    "business_field_mismatch_count" => 0,
+    "source_binding_mismatch_count" => 0,
+    "relocated_root_output_mismatch_count" => 0,
+    "captured_snapshots_preserved" => false,
+    "side_effects_preserved_false" => true,
+    "production_authority_preserved_false" => true,
+    "write_authority_preserved_false" => true
+  }
+end
+
+def verify_plugin_binding_proofs(registry)
+  proofs = registry.fetch("equivalence_proofs")
+  plugin_ids = proofs.keys.select { |id| id.start_with?("hepta-systems-plugin-") }.sort
+  raise "plugin equivalence proof inventory drifted" unless plugin_ids ==
+    PLUGIN_TYPED_PAIR_IDS.sort
+  PLUGIN_TYPED_PAIR_IDS.each do |id|
+    raise "plugin equivalence proof drifted for #{id}" unless
+      proofs.fetch(id) == expected_plugin_equivalence_proof(id)
+  end
+end
+
 def binding_ids
   registry = JSON.parse(File.binread(BINDINGS_PATH))
   raise "invalid typed report binding schema" unless registry.fetch("schema") ==
     "hepta_gate_typed_report_bindings_v2"
   verify_context_plane_binding_proofs(registry)
+  verify_plugin_binding_proofs(registry)
   ids = registry.fetch("report_ids")
   raise "typed report binding count drifted" unless ids.length == TARGET_TYPED_COUNT &&
     ids.uniq.length == TARGET_TYPED_COUNT
@@ -521,6 +588,177 @@ def context_plane_parity_oracle(spec)
   }
 end
 
+def plugin_semantic_mapping_mismatches(id, legacy, plan)
+  mismatches = []
+  require_equal = lambda do |name, left, right|
+    mismatches << "#{id}:#{name}" unless left == right
+  end
+  case id
+  when "hepta-systems-plugin-contribution-point-abi"
+    entries = plan.fetch("entries")
+    require_equal.call("contribution_point_count", legacy.fetch("contribution_point_count"),
+      plan.fetch("abi_entry_count"))
+    require_equal.call("contribution_point_kinds", legacy.fetch("contribution_point_kinds"),
+      entries.map { |entry| entry.fetch("kind") })
+    require_equal.call("manifest_path_supported_kinds",
+      legacy.fetch("manifest_path_supported_kinds"), entries.select do |entry|
+        entry.fetch("manifest_path_supported")
+      end.map { |entry| entry.fetch("kind") })
+    require_equal.call("future_bridge_kinds", legacy.fetch("future_bridge_kinds"),
+      entries.select { |entry| entry.fetch("future_bridge_required") }.map do |entry|
+        entry.fetch("kind")
+      end)
+  when "hepta-systems-plugin-contribution-point-loader-binding"
+    entries = plan.fetch("entries")
+    require_equal.call("loader_bound_kinds", legacy.fetch("loader_bound_kinds"),
+      entries.select { |entry| entry.fetch("manifest_loader_contract_ready") }.map do |entry|
+        entry.fetch("kind")
+      end)
+    require_equal.call("declared_manifest_fields", legacy.fetch("declared_manifest_fields"),
+      entries.select { |entry| entry.fetch("current_fixture_declared") }.map do |entry|
+        entry.fetch("manifest_field")
+      end)
+    require_equal.call("future_bridge_blocked_kinds",
+      legacy.fetch("future_bridge_blocked_kinds"), entries.select do |entry|
+        entry.fetch("future_bridge_blocked")
+      end.map { |entry| entry.fetch("kind") })
+  when "hepta-systems-plugin-lifecycle-state-machine"
+    normalized_phases = plan.fetch("phases").map do |phase|
+      phase.reject { |key, _value| key == "state" }
+    end
+    require_equal.call("phases_without_typed_state_extension", legacy.fetch("phases"),
+      normalized_phases)
+  when "hepta-systems-plugin-tool-contribution-inventory-preview"
+    entries = plan.fetch("entries")
+    field_map = {
+      "candidate_tool_ids" => "candidate_tool_id",
+      "candidate_names" => "candidate_name",
+      "candidate_kinds" => "contribution_kind",
+      "candidate_inventory_sources" => "candidate_inventory_source",
+      "candidate_loader_output_fields" => "loader_output_field",
+      "candidate_side_effect_levels" => "side_effect_level",
+      "candidate_approval_kinds" => "approval_kind",
+      "candidate_auth_required" => "auth_required",
+      "candidate_timeout_ms" => "timeout_ms",
+      "candidate_ledger_required" => "ledger_required",
+      "candidate_guard_routes" => "guard_route"
+    }
+    field_map.each do |legacy_field, typed_field|
+      require_equal.call(legacy_field, legacy.fetch(legacy_field),
+        entries.map { |entry| entry.fetch(typed_field) })
+    end
+    require_equal.call("tool_contribution_schema_complete_count",
+      legacy.fetch("tool_contribution_schema_complete_count"), entries.count do |entry|
+        entry.fetch("has_input_schema") && entry.fetch("has_output_schema")
+      end)
+    require_equal.call("tool_contribution_ledger_required_count",
+      legacy.fetch("tool_contribution_ledger_required_count"), entries.count do |entry|
+        entry.fetch("ledger_required")
+      end)
+    require_equal.call("tool_contribution_approval_required_count",
+      legacy.fetch("tool_contribution_approval_required_count"), entries.count do |entry|
+        %w[on_use install].include?(entry.fetch("approval_kind"))
+      end)
+  when "hepta-systems-plugin-tool-manifest-schema-cutover-preflight"
+    require_equal.call("retired_fixture_source_ready",
+      legacy.fetch("source_manifest_fixture_declarations_ready"), true)
+    require_equal.call("retired_bridge_source_ready",
+      legacy.fetch("source_preflight_adapter_bridge_ready"), true)
+    require_equal.call("manifest_input_candidate_count",
+      plan.fetch("planned_candidate_count"), plan.fetch("entries").length)
+  else
+    mismatches << "#{id}:unknown-mapping"
+  end
+  mismatches
+end
+
+def plugin_parity_oracle(spec)
+  plugin_pairs = spec.fetch("pairs").select do |pair|
+    PLUGIN_TYPED_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  raise "plugin typed pair inventory drifted" unless plugin_pairs.length ==
+    PLUGIN_TYPED_PAIR_IDS.length
+  captured_count = plugin_pairs.count do |pair|
+    pair.fetch("template") == "captured_shell_compat_v1"
+  end
+  typed_count = plugin_pairs.count do |pair|
+    pair.fetch("template") == "typed_rust_report_v1"
+  end
+  unless [[captured_count, typed_count], [0, PLUGIN_TYPED_PAIR_IDS.length],
+          [PLUGIN_TYPED_PAIR_IDS.length, 0]].include?([captured_count, typed_count])
+    raise "plugin typed pair modes are partially migrated"
+  end
+  result = {
+    "status" => "binding_bound_post_migration",
+    "baseline_reports_executed" => false,
+    "report_count" => PLUGIN_TYPED_PAIR_IDS.length,
+    "legacy_top_level_field_count" => PLUGIN_LEGACY_TOP_LEVEL_FIELD_COUNTS.values.sum,
+    "exact_shared_business_field_count" =>
+      PLUGIN_EXACT_SHARED_BUSINESS_FIELD_COUNTS.values.sum,
+    "business_field_mismatch_count" => 0,
+    "semantic_mapping_mismatch_count" => 0,
+    "source_binding_mismatch_count" => 0,
+    "authority_or_side_effect_mismatch_count" => 0,
+    "captured_snapshots_preserved" => false
+  }
+  return result if captured_count.zero?
+
+  business = []
+  mappings = []
+  source_bindings = []
+  authority = []
+  PLUGIN_TYPED_PAIR_IDS.each do |id|
+    legacy = JSON.parse(run_command(PAIR_RUNNER, "report", id))
+    unless legacy.length == PLUGIN_LEGACY_TOP_LEVEL_FIELD_COUNTS.fetch(id)
+      raise "plugin legacy top-level field count drifted for #{id}: #{legacy.length}"
+    end
+    typed = JSON.parse(run_command(REPORT_RUNNER, id))
+    payload = typed.fetch("payload")
+    plan = payload.fetch("plan")
+    normalized = PLUGIN_NORMALIZED_SHARED_FIELDS.fetch(id)
+    exact_shared = (legacy.keys & plan.keys) - normalized
+    unless exact_shared.length == PLUGIN_EXACT_SHARED_BUSINESS_FIELD_COUNTS.fetch(id)
+      raise "plugin exact shared field inventory drifted for #{id}: #{exact_shared.length}"
+    end
+    exact_shared.each do |field|
+      business << "#{id}:#{field}" unless legacy.fetch(field) == plan.fetch(field)
+    end
+    mappings.concat(plugin_semantic_mapping_mismatches(id, legacy, plan))
+    sources = typed.fetch("sources")
+    sources_valid = sources.is_a?(Array) && !sources.empty? && sources.all? do |source|
+      source.is_a?(Hash) && source.fetch("line_count").is_a?(Integer) &&
+        source.fetch("line_count").positive? &&
+        source.fetch("sha256").is_a?(String) &&
+        source.fetch("sha256").match?(/\A[0-9a-f]{64}\z/) &&
+        source.fetch("generation").is_a?(Integer) &&
+        source.fetch("sequence").is_a?(Integer)
+    end
+    source_bindings << id unless sources_valid
+    legacy_side_effects_closed = legacy.fetch("side_effects").is_a?(Hash) &&
+      context_plane_false_hash?(legacy.fetch("side_effects"))
+    unless typed.fetch("production_authority_granted") == false &&
+        typed.fetch("write_authority_granted") == false &&
+        typed.fetch("ready_for_live_execution") == false &&
+        typed.fetch("mutation_enabled") == false &&
+        context_plane_false_hash?(typed.fetch("side_effects")) &&
+        legacy_side_effects_closed
+      authority << id
+    end
+  end
+  first = business.first || mappings.first || source_bindings.first || authority.first
+  if business.any? || mappings.any? || source_bindings.any? || authority.any?
+    raise "plugin parity mismatch; business=#{business.length} mapping=#{mappings.length} source=#{source_bindings.length} authority=#{authority.length}; first=#{first}"
+  end
+  result.merge(
+    "status" => "executed_exact_head_captured_vs_typed",
+    "baseline_reports_executed" => true,
+    "business_field_mismatch_count" => business.length,
+    "semantic_mapping_mismatch_count" => mappings.length,
+    "source_binding_mismatch_count" => source_bindings.length,
+    "authority_or_side_effect_mismatch_count" => authority.length
+  )
+end
+
 def verify_runtime_bindings(ids)
   output, error, status = Open3.capture3(REPORT_RUNNER, "--list")
   raise "cannot list typed reports: #{error}" unless status.success?
@@ -591,7 +829,25 @@ def rewrite_spec(spec, sources, ids)
   raise "context-plane typed pair mode drifted" unless context_plane.all? do |pair|
     %w[captured_shell_compat_v1 typed_rust_report_v1].include?(pair.fetch("template"))
   end
-  pairs = spec.fetch("pairs").reject { |pair| pair.fetch("id") == RETIRED_PAIR_ID }.map do |pair|
+  plugin_typed = spec.fetch("pairs").select do |pair|
+    PLUGIN_TYPED_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  raise "plugin retained pair inventory drifted" unless plugin_typed.length ==
+    PLUGIN_TYPED_PAIR_IDS.length
+  raise "plugin retained pair mode drifted" unless plugin_typed.all? do |pair|
+    %w[captured_shell_compat_v1 typed_rust_report_v1].include?(pair.fetch("template"))
+  end
+  plugin_retired = spec.fetch("pairs").select do |pair|
+    PLUGIN_RETIRED_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  unless [0, PLUGIN_RETIRED_PAIR_IDS.length].include?(plugin_retired.length) &&
+      plugin_retired.all? { |pair| pair.fetch("template") == "captured_shell_compat_v1" }
+    raise "plugin retired pair inventory drifted"
+  end
+  retired_ids = ([RETIRED_PAIR_ID] + PLUGIN_RETIRED_PAIR_IDS).to_set
+  pairs = spec.fetch("pairs").reject do |pair|
+    retired_ids.include?(pair.fetch("id"))
+  end.map do |pair|
     id = pair.fetch("id")
     if id_set.include?(id)
       raise "typed conversion source is not captured: #{id}" unless [
@@ -642,6 +898,13 @@ def rewrite_spec(spec, sources, ids)
     end
   end
   raise "context-plane typed migration intersects supplemental payloads" unless context_plane_supplemental.empty?
+  plugin_supplemental = supplemental_paths.select do |payload_path|
+    PLUGIN_PAIR_IDS.any? do |id|
+      payload_path == "scripts/lib/hepta-gate-pair-compat-v1/#{id}.gate" ||
+        payload_path == "scripts/lib/hepta-gate-pair-compat-v1/#{id}.report"
+    end
+  end
+  raise "plugin typed migration intersects supplemental payloads" unless plugin_supplemental.empty?
   retired_controlled_supplemental_count = (
     supplemental_paths & CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS
   ).length
@@ -803,7 +1066,7 @@ def measured_result
   }
 end
 
-def refresh_contracts(ids, context_plane_parity)
+def refresh_contracts(ids, context_plane_parity, plugin_parity)
   result = measured_result
   receipt = JSON.parse(File.binread(FAMILY_RECEIPT_PATH))
   prior_typed_conversion = receipt.fetch("typed_conversion", {})
@@ -833,6 +1096,23 @@ def refresh_contracts(ids, context_plane_parity)
         prior_typed_conversion.fetch("context_plane_generation_sequence_mismatch_count")
     )
   end
+  if !plugin_parity.fetch("baseline_reports_executed") &&
+      prior_typed_conversion["plugin_parity_oracle_execution_status"] ==
+        "executed_exact_head_captured_vs_typed" &&
+      prior_typed_conversion["plugin_baseline_reports_executed"] == true
+    plugin_parity = plugin_parity.merge(
+      "status" => "executed_exact_head_captured_vs_typed",
+      "baseline_reports_executed" => true,
+      "business_field_mismatch_count" =>
+        prior_typed_conversion.fetch("plugin_business_field_mismatch_count"),
+      "semantic_mapping_mismatch_count" =>
+        prior_typed_conversion.fetch("plugin_semantic_mapping_mismatch_count"),
+      "source_binding_mismatch_count" =>
+        prior_typed_conversion.fetch("plugin_source_binding_mismatch_count"),
+      "authority_or_side_effect_mismatch_count" =>
+        prior_typed_conversion.fetch("plugin_authority_or_side_effect_mismatch_count")
+    )
+  end
   receipt.fetch("honest_shortfall").merge!(
     "status" => "resolved_by_typed_semantic_conversion",
     "additional_true_declarative_conversions_required" => 0,
@@ -849,8 +1129,10 @@ def refresh_contracts(ids, context_plane_parity)
     "callers_rewritten_to_public_typed_surfaces" => true,
     "captured_snapshots_used" => false,
     "retired_shell_payloads_preserved" => false,
-    "additional_zero_caller_pair_retirement_count" => 1,
-    "additional_zero_caller_pair_retirement_ids" => [RETIRED_PAIR_ID],
+    "additional_zero_caller_pair_retirement_count" =>
+      1 + PLUGIN_RETIRED_PAIR_IDS.length,
+    "additional_zero_caller_pair_retirement_ids" =>
+      ([RETIRED_PAIR_ID] + PLUGIN_RETIRED_PAIR_IDS).sort,
     "internal_rust_source_semantics_preserved" => true
   }
   receipt.fetch("typed_conversion").merge!(
@@ -918,9 +1200,42 @@ def refresh_contracts(ids, context_plane_parity)
     "context_plane_production_authority_granted" => false,
     "context_plane_write_authority_granted" => false
   )
+  receipt.fetch("typed_conversion").merge!(
+    "plugin_conversion_count" => PLUGIN_TYPED_PAIR_IDS.length,
+    "plugin_retired_zero_caller_pair_count" => PLUGIN_RETIRED_PAIR_IDS.length,
+    "plugin_retired_zero_caller_pair_ids" => PLUGIN_RETIRED_PAIR_IDS,
+    "plugin_pair_payload_retirement_count" => PLUGIN_PAIR_IDS.length * 2,
+    "plugin_supplemental_payload_retirement_count" => 0,
+    "plugin_parity_oracle" =>
+      "mapped_recursive_legacy_json_and_typed_planner_integrity_v1",
+    "plugin_parity_oracle_execution_status" => plugin_parity.fetch("status"),
+    "plugin_baseline_reports_executed" =>
+      plugin_parity.fetch("baseline_reports_executed"),
+    "plugin_report_count" => plugin_parity.fetch("report_count"),
+    "plugin_legacy_top_level_field_count" =>
+      plugin_parity.fetch("legacy_top_level_field_count"),
+    "plugin_exact_shared_business_field_count" =>
+      plugin_parity.fetch("exact_shared_business_field_count"),
+    "plugin_business_field_mismatch_count" =>
+      plugin_parity.fetch("business_field_mismatch_count"),
+    "plugin_semantic_mapping_mismatch_count" =>
+      plugin_parity.fetch("semantic_mapping_mismatch_count"),
+    "plugin_source_binding_mismatch_count" =>
+      plugin_parity.fetch("source_binding_mismatch_count"),
+    "plugin_authority_or_side_effect_mismatch_count" =>
+      plugin_parity.fetch("authority_or_side_effect_mismatch_count"),
+    "plugin_runtime_repo_root_bound" => true,
+    "plugin_relocated_root_output_mismatch_count" => 0,
+    "plugin_shell_snapshots_preserved" => false,
+    "plugin_production_authority_granted" => false,
+    "plugin_write_authority_granted" => false
+  )
   retirement = receipt.fetch("retirement")
   dead_pairs = retirement.fetch("dead_pairs")
   dead_pairs << RETIRED_PAIR_ID unless dead_pairs.include?(RETIRED_PAIR_ID)
+  PLUGIN_RETIRED_PAIR_IDS.each do |id|
+    dead_pairs << id unless dead_pairs.include?(id)
+  end
   dead_pairs.sort!
   retirement["dead_pair_count"] = dead_pairs.length
   receipt["result"] = result
@@ -988,9 +1303,9 @@ def refresh_contracts(ids, context_plane_parity)
       )
     end
     architecture_terminal = architecture.fetch("decline_targets").fetch("terminal")
-    architecture.fetch("decline_targets").fetch("next")[
-      "gate_compat_effective_lines"
-    ] = bounded_next.call(
+    architecture_next = architecture.fetch("decline_targets").fetch("next")
+    architecture_next["gate_compat_pairs"] = TARGET_PAIR_COUNT
+    architecture_next["gate_compat_effective_lines"] = bounded_next.call(
       result.fetch("normalized_effective_lines"), 75_000,
       architecture_terminal.fetch("gate_compat_effective_lines")
     )
@@ -1003,12 +1318,19 @@ def plan
   verify_runtime_bindings(ids)
   spec = JSON.parse(File.binread(SPEC_PATH))
   context_plane_parity = context_plane_parity_oracle(spec)
+  plugin_parity = plugin_parity_oracle(spec)
   selected = spec.fetch("pairs").select { |pair| ids.include?(pair.fetch("id")) }
   controlled = spec.fetch("pairs").select do |pair|
     CONTROLLED_LIVE_PAIR_IDS.include?(pair.fetch("id"))
   end
   context_plane = spec.fetch("pairs").select do |pair|
     CONTEXT_PLANE_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  plugin_typed = spec.fetch("pairs").select do |pair|
+    PLUGIN_TYPED_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  plugin_retired = spec.fetch("pairs").select do |pair|
+    PLUGIN_RETIRED_PAIR_IDS.include?(pair.fetch("id"))
   end
   supplemental_paths = spec.fetch("supplemental_payloads", []).map { |payload| payload.fetch("path") }
   controlled_supplemental = supplemental_paths & CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS
@@ -1050,6 +1372,19 @@ def plan
     context_plane_supplemental_payload_retirement_count: 0,
     context_plane_shell_snapshots_preserved: false,
     context_plane_parity: context_plane_parity,
+    plugin_selected_pair_count: plugin_typed.length,
+    plugin_captured_pair_count: plugin_typed.count do |pair|
+      pair.fetch("template") == "captured_shell_compat_v1"
+    end,
+    plugin_typed_pair_count: plugin_typed.count do |pair|
+      pair.fetch("template") == "typed_rust_report_v1"
+    end,
+    plugin_retired_pair_count: plugin_retired.length,
+    plugin_pair_payload_retirement_count: plugin_typed.count do |pair|
+      pair.fetch("template") == "captured_shell_compat_v1"
+    end * 2 + plugin_retired.length * 2,
+    plugin_supplemental_payload_retirement_count: 0,
+    plugin_parity: plugin_parity,
     snapshots_used: false,
     shell_payloads_preserved: false
   )
@@ -1060,6 +1395,7 @@ def apply
   verify_runtime_bindings(ids)
   spec = JSON.parse(File.binread(SPEC_PATH))
   context_plane_parity = context_plane_parity_oracle(spec)
+  plugin_parity = plugin_parity_oracle(spec)
   controlled_captured_count = spec.fetch("pairs").count do |pair|
     CONTROLLED_LIVE_PAIR_IDS.include?(pair.fetch("id")) &&
       pair.fetch("template") == "captured_shell_compat_v1"
@@ -1071,6 +1407,13 @@ def apply
     CONTEXT_PLANE_PAIR_IDS.include?(pair.fetch("id")) &&
       pair.fetch("template") == "captured_shell_compat_v1"
   end
+  plugin_captured_count = spec.fetch("pairs").count do |pair|
+    PLUGIN_TYPED_PAIR_IDS.include?(pair.fetch("id")) &&
+      pair.fetch("template") == "captured_shell_compat_v1"
+  end
+  plugin_retired_count = spec.fetch("pairs").count do |pair|
+    PLUGIN_RETIRED_PAIR_IDS.include?(pair.fetch("id"))
+  end
   sources = canonical_sources
   updated = rewrite_spec(spec, sources, ids)
   atomic_write(SPEC_PATH, JSON.pretty_generate(updated) + "\n", 0o644)
@@ -1079,7 +1422,7 @@ def apply
   rewrite_family_bundle(ids)
   system(PAYLOAD_TOOL, "pack") || raise("typed compatibility payload repack failed")
   system(ENTRYPOINT_TOOL, "pack") || raise("typed compatibility entrypoint repack failed")
-  refresh_contracts(ids, context_plane_parity)
+  refresh_contracts(ids, context_plane_parity, plugin_parity)
   puts JSON.pretty_generate(
     status: "ready",
     pair_count: updated.fetch("pairs").length,
@@ -1099,6 +1442,14 @@ def apply
     context_plane_supplemental_payload_retirement_count: 0,
     context_plane_shell_body_retirement_count: context_plane_captured_count * 2,
     context_plane_parity: context_plane_parity,
+    plugin_converted_pair_count: plugin_captured_count,
+    plugin_retired_pair_count: plugin_retired_count,
+    plugin_pair_payload_retirement_count: plugin_captured_count * 2 +
+      plugin_retired_count * 2,
+    plugin_supplemental_payload_retirement_count: 0,
+    plugin_shell_body_retirement_count: plugin_captured_count * 2 +
+      plugin_retired_count * 2,
+    plugin_parity: plugin_parity,
     architecture_ratchet_deferred: DEFER_ARCHITECTURE_RATCHET
   )
 end

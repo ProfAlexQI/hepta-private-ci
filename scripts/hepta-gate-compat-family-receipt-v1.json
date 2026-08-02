@@ -120,9 +120,13 @@
     "reachable_declarative_pair_count": 7
   },
   "retirement": {
-    "dead_pair_count": 108,
+    "dead_pair_count": 112,
     "dead_pairs": [
       "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording",
+      "hepta-systems-plugin-tool-manifest-fixture-declarations",
+      "hepta-systems-plugin-tool-manifest-parser-fields",
+      "hepta-systems-plugin-tool-manifest-preflight-adapter-bridge",
+      "hepta-systems-plugin-tool-registry-source-of-truth-dry-run",
       "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-final-ack-final-index",
       "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-public-status-final-index",
       "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-public-status-readback",
@@ -256,19 +260,19 @@
     "rejected_declarative_snapshot_count": 37,
     "rejected_reason": "captured report snapshots preserve full semantic payloads, are not compact state parameters, and exceed measured debt ceilings",
     "retired_full_shell_bodies_preserved_as_supplemental_aliases": false,
-    "historical_additional_true_declarative_conversions_required": 166
+    "historical_additional_true_declarative_conversions_required": 171
   },
   "result": {
-    "pair_count": 298,
-    "captured_pair_count": 69,
-    "declarative_pair_count": 229,
-    "spec_sha256": "b38742487254c6dccf6773dd38542321ed73a8b965a66de58e8ce81ce17f3561",
-    "family_registry_sha256": "095ea41992a94cd4c9663dcfcd42976570861ad268354841e92c7c0ec314628d",
-    "logical_compatibility_payload_count": 448,
-    "normalized_payload_count": 177,
-    "normalized_effective_lines": 59113,
+    "pair_count": 294,
+    "captured_pair_count": 60,
+    "declarative_pair_count": 234,
+    "spec_sha256": "75429f22cfca971375a541a2969be8573c4c8e9fb16e3c6f476e0bee23034704",
+    "family_registry_sha256": "7ee68cd0e62dde9fa8c060cb0fb9a668f2cee55266efaa449dd54f7692ab1c9a",
+    "logical_compatibility_payload_count": 430,
+    "normalized_payload_count": 161,
+    "normalized_effective_lines": 57196,
     "physical_entrypoint_count": 57,
-    "logical_virtual_entrypoint_count": 539
+    "logical_virtual_entrypoint_count": 531
   },
   "side_effects": {
     "provider_invoked": false,
@@ -280,18 +284,22 @@
   },
   "typed_conversion": {
     "status": "ready",
-    "converted_state_count": 166,
+    "converted_state_count": 171,
     "template": "typed_rust_report_v1",
     "binding_registry": "scripts/hepta-gate-typed-report-bindings-v2.json",
-    "binding_registry_sha256": "53b965982facead1910559825aefeecb156fe8b6061f740f97d7cc3286de5e57",
-    "report_source_sha256": "ba6195a25c22bf85ae1a71069e2ee4a44de290cec577391af136d4a37e8a7964",
-    "report_cli_source_sha256": "e772ce19039d19e4314b0fad40a792b1f98afd0bbbcd3677f268c921401980ab",
+    "binding_registry_sha256": "a1b51bc98ee19246c91670d8b29780673295161dd86534192b9450a905aacd13",
+    "report_source_sha256": "fb5d772633ebdc2168d140e164b94f25893cc9e5c9ac50c755c30d70f286d313",
+    "report_cli_source_sha256": "5ba72048011e3b5177d0cc52270c892c295d20a30a75d6e189af88b8db38a92b",
     "callers_rewritten_to_public_typed_surfaces": true,
     "captured_snapshots_used": false,
     "retired_shell_payloads_preserved": false,
-    "additional_zero_caller_pair_retirement_count": 1,
+    "additional_zero_caller_pair_retirement_count": 5,
     "additional_zero_caller_pair_retirement_ids": [
-      "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording"
+      "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording",
+      "hepta-systems-plugin-tool-manifest-fixture-declarations",
+      "hepta-systems-plugin-tool-manifest-parser-fields",
+      "hepta-systems-plugin-tool-manifest-preflight-adapter-bridge",
+      "hepta-systems-plugin-tool-registry-source-of-truth-dry-run"
     ],
     "internal_rust_source_semantics_preserved": true,
     "controlled_live_conversion_count": 17,
@@ -358,6 +366,31 @@
     "context_plane_forward_provider_v2_candidate_count": 4,
     "context_plane_shell_snapshots_preserved": false,
     "context_plane_production_authority_granted": false,
-    "context_plane_write_authority_granted": false
+    "context_plane_write_authority_granted": false,
+    "plugin_conversion_count": 5,
+    "plugin_retired_zero_caller_pair_count": 4,
+    "plugin_retired_zero_caller_pair_ids": [
+      "hepta-systems-plugin-tool-manifest-fixture-declarations",
+      "hepta-systems-plugin-tool-manifest-parser-fields",
+      "hepta-systems-plugin-tool-manifest-preflight-adapter-bridge",
+      "hepta-systems-plugin-tool-registry-source-of-truth-dry-run"
+    ],
+    "plugin_pair_payload_retirement_count": 18,
+    "plugin_supplemental_payload_retirement_count": 0,
+    "plugin_parity_oracle": "mapped_recursive_legacy_json_and_typed_planner_integrity_v1",
+    "plugin_parity_oracle_execution_status": "executed_exact_head_captured_vs_typed",
+    "plugin_baseline_reports_executed": true,
+    "plugin_report_count": 5,
+    "plugin_legacy_top_level_field_count": 201,
+    "plugin_exact_shared_business_field_count": 119,
+    "plugin_business_field_mismatch_count": 0,
+    "plugin_semantic_mapping_mismatch_count": 0,
+    "plugin_source_binding_mismatch_count": 0,
+    "plugin_authority_or_side_effect_mismatch_count": 0,
+    "plugin_runtime_repo_root_bound": true,
+    "plugin_relocated_root_output_mismatch_count": 0,
+    "plugin_shell_snapshots_preserved": false,
+    "plugin_production_authority_granted": false,
+    "plugin_write_authority_granted": false
   }
 }

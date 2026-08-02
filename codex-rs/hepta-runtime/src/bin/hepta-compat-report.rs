@@ -7,10 +7,12 @@ use hepta_runtime::RETIRED_DIRTY_WORKTREE_COMPAT_REPORT_ID;
 use hepta_runtime::TYPED_COMPAT_REPORT_IDS;
 use hepta_runtime::is_controlled_live_typed_compat_report;
 use hepta_runtime::is_dirty_worktree_typed_compat_report;
+use hepta_runtime::is_plugin_typed_compat_report;
 use hepta_runtime::retired_dirty_worktree_owner_decision_source_report;
 use hepta_runtime::typed_compat_report;
 use hepta_runtime::typed_compat_report_with_controlled_live_worktree_observation;
 use hepta_runtime::typed_compat_report_with_dirty_worktree_observation;
+use hepta_runtime::typed_compat_report_with_plugin_repo_root;
 
 const INTERNAL_DIRTY_WORKTREE_OWNER_DECISION_SOURCE: &str =
     "--internal-dirty-worktree-owner-decision-source";
@@ -39,6 +41,8 @@ fn main() -> ExitCode {
         controlled_live_report(&id)
     } else if is_dirty_worktree_typed_compat_report(&id) {
         dirty_worktree_report(&id)
+    } else if is_plugin_typed_compat_report(&id) {
+        plugin_report(&id)
     } else {
         typed_compat_report(&id)
     };
@@ -53,6 +57,15 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn plugin_report(id: &str) -> Result<serde_json::Value, hepta_runtime::TypedCompatReportError> {
+    let root = std::env::var_os("HEPTA_REPO_ROOT").ok_or_else(|| {
+        hepta_runtime::TypedCompatReportError::ContractViolation(
+            "plugin compatibility report requires explicit HEPTA_REPO_ROOT".to_string(),
+        )
+    })?;
+    typed_compat_report_with_plugin_repo_root(id, std::path::Path::new(&root))
 }
 
 fn dirty_worktree_report(

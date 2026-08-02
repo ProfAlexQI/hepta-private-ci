@@ -430,6 +430,11 @@ typed_report_contract() {
         printf '%s\t%s\n' "${source_stem}_gate" "${source_stem}_v1"
       fi
       ;;
+    hepta-systems-plugin-*)
+      suffix="${id#hepta-systems-plugin-}"
+      source_stem="plugin_${suffix//-/_}"
+      printf '%s\t%s\n' "$id" "${source_stem}_typed_v1"
+      ;;
     hepta-systems-work-graph-*)
       suffix="${id#hepta-systems-work-graph-}"
       source_stem="work_graph_${suffix//-/_}"

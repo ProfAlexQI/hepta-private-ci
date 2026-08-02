@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde_json::Value;
 use thiserror::Error;
 
@@ -38,7 +40,6 @@ pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
     "hepta-systems-controlled-live-required-evidence-gap-operator-readback",
     "hepta-systems-controlled-live-required-evidence-gap-summary",
     "hepta-systems-controlled-live-required-evidence-readback-index",
-    "hepta-systems-current-reality-matrix-compact-cache-boundary-readback",
     "hepta-systems-dirty-worktree-release-boundary-actionable-clean-worktree-strategy",
     "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-approval-acceptance-boundary-readback",
     "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-decision-checklist",
@@ -56,6 +57,11 @@ pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
     "hepta-systems-dirty-worktree-release-boundary-release-risk-snapshot",
     "hepta-systems-dirty-worktree-release-boundary-test-only-clean-worktree-strategy-rehearsal",
     "hepta-systems-dirty-worktree-release-boundary-test-only-rehearsal-outcome-readback",
+    "hepta-systems-plugin-contribution-point-abi",
+    "hepta-systems-plugin-contribution-point-loader-binding",
+    "hepta-systems-plugin-lifecycle-state-machine",
+    "hepta-systems-plugin-tool-contribution-inventory-preview",
+    "hepta-systems-plugin-tool-manifest-schema-cutover-preflight",
     "hepta-systems-work-graph-adapter-projection-fixture",
     "hepta-systems-work-graph-append-only-event-intake-preview",
     "hepta-systems-work-graph-append-only-store-enablement-precondition-preview",
@@ -831,6 +837,34 @@ pub fn typed_compat_report_with_controlled_live_worktree_observation(
         .map_err(TypedCompatReportError::ContractViolation)
 }
 
+pub fn is_plugin_typed_compat_report(id: &str) -> bool {
+    crate::plugin_compat_report::PLUGIN_COMPAT_REPORT_IDS.contains(&id)
+}
+
+pub fn typed_compat_report_with_plugin_repo_root(
+    id: &str,
+    repo_root: &Path,
+) -> Result<Value, TypedCompatReportError> {
+    if !is_plugin_typed_compat_report(id) {
+        return Err(TypedCompatReportError::UnknownReport(id.to_string()));
+    }
+    let manifest_path = repo_root.join("plugins/hepta-system/.codex-plugin/plugin.json");
+    let manifest_bytes = std::fs::read(&manifest_path).map_err(|error| {
+        TypedCompatReportError::ContractViolation(format!(
+            "cannot read validated plugin compatibility manifest: {error}"
+        ))
+    })?;
+    let reports =
+        crate::plugin_compat_report::build_plugin_compat_reports(repo_root, &manifest_bytes)
+            .map_err(TypedCompatReportError::ContractViolation)?;
+    let report = reports.report(id).ok_or_else(|| {
+        TypedCompatReportError::ContractViolation(format!(
+            "plugin compatibility report set omitted {id}"
+        ))
+    })?;
+    serialize_report!(report)
+}
+
 pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
     if crate::context_plane_compat_report::is_context_plane_typed_compat_report(id) {
         return crate::context_plane_compat_report::context_plane_typed_compat_report(id)
@@ -844,6 +878,11 @@ pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
     if crate::is_dirty_worktree_typed_compat_report(id) {
         return Err(TypedCompatReportError::ContractViolation(format!(
             "dirty-worktree typed compatibility report requires an explicit repository observation: {id}"
+        )));
+    }
+    if is_plugin_typed_compat_report(id) {
+        return Err(TypedCompatReportError::ContractViolation(format!(
+            "plugin typed compatibility report requires an explicit repository root: {id}"
         )));
     }
     match id {

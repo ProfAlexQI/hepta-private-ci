@@ -2,7 +2,7 @@
   "schema": "hepta_gate_typed_report_bindings_v2",
   "status": "ready",
   "source_of_truth": "codex-rs/hepta-runtime/src/typed_compat_report.rs",
-  "selection": "runtime_backed_workgraph_workflow_context_memory_context_plane_dirty_worktree_and_controlled_live_reports",
+  "selection": "runtime_backed_workgraph_workflow_context_memory_context_plane_dirty_worktree_controlled_live_and_plugin_reports",
   "report_ids": [
     "hepta-context-memory-ranked-recall-shadow-eval",
     "hepta-context-memory-shadow-quality-summary",
@@ -57,6 +57,11 @@
     "hepta-systems-dirty-worktree-release-boundary-release-risk-snapshot",
     "hepta-systems-dirty-worktree-release-boundary-test-only-clean-worktree-strategy-rehearsal",
     "hepta-systems-dirty-worktree-release-boundary-test-only-rehearsal-outcome-readback",
+    "hepta-systems-plugin-contribution-point-abi",
+    "hepta-systems-plugin-contribution-point-loader-binding",
+    "hepta-systems-plugin-lifecycle-state-machine",
+    "hepta-systems-plugin-tool-contribution-inventory-preview",
+    "hepta-systems-plugin-tool-manifest-schema-cutover-preflight",
     "hepta-systems-work-graph-adapter-projection-fixture",
     "hepta-systems-work-graph-append-only-event-intake-preview",
     "hepta-systems-work-graph-append-only-store-enablement-precondition-preview",
@@ -471,6 +476,82 @@
         "summary"
       ],
       "typed_payload_retains_forward_schema": true,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-systems-plugin-contribution-point-abi": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "mapped_recursive_legacy_json_and_typed_planner_integrity_v1",
+      "legacy_top_level_field_count": 30,
+      "exact_shared_business_field_count": 10,
+      "documented_normalized_shared_field_ids": [
+        "next_migration_step"
+      ],
+      "business_field_mismatch_count": 0,
+      "source_binding_mismatch_count": 0,
+      "relocated_root_output_mismatch_count": 0,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-systems-plugin-contribution-point-loader-binding": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "mapped_recursive_legacy_json_and_typed_planner_integrity_v1",
+      "legacy_top_level_field_count": 38,
+      "exact_shared_business_field_count": 24,
+      "documented_normalized_shared_field_ids": [
+        "next_migration_step"
+      ],
+      "business_field_mismatch_count": 0,
+      "source_binding_mismatch_count": 0,
+      "relocated_root_output_mismatch_count": 0,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-systems-plugin-lifecycle-state-machine": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "mapped_recursive_legacy_json_and_typed_planner_integrity_v1",
+      "legacy_top_level_field_count": 41,
+      "exact_shared_business_field_count": 30,
+      "documented_normalized_shared_field_ids": [
+        "phases"
+      ],
+      "business_field_mismatch_count": 0,
+      "source_binding_mismatch_count": 0,
+      "relocated_root_output_mismatch_count": 0,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-systems-plugin-tool-contribution-inventory-preview": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "mapped_recursive_legacy_json_and_typed_planner_integrity_v1",
+      "legacy_top_level_field_count": 51,
+      "exact_shared_business_field_count": 25,
+      "documented_normalized_shared_field_ids": [],
+      "business_field_mismatch_count": 0,
+      "source_binding_mismatch_count": 0,
+      "relocated_root_output_mismatch_count": 0,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-systems-plugin-tool-manifest-schema-cutover-preflight": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "mapped_recursive_legacy_json_and_typed_planner_integrity_v1",
+      "legacy_top_level_field_count": 41,
+      "exact_shared_business_field_count": 30,
+      "documented_normalized_shared_field_ids": [],
+      "business_field_mismatch_count": 0,
+      "source_binding_mismatch_count": 0,
+      "relocated_root_output_mismatch_count": 0,
       "captured_snapshots_preserved": false,
       "side_effects_preserved_false": true,
       "production_authority_preserved_false": true,

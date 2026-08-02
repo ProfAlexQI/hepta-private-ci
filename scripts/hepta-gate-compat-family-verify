@@ -16,15 +16,21 @@ REGISTRY_PATH = ENV.fetch(
 RECEIPT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-family-receipt-v1.json")
 STATE_MACHINE = File.join(ROOT, "scripts/hepta-gate-compat-family-state-machine")
 PAYLOAD_REGISTRY_PATH = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2/registry.json")
-TARGET_PAIR_COUNT = 298
-TARGET_CAPTURED_COUNT = 69
-TARGET_DECLARATIVE_COUNT = 229
-TARGET_TYPED_COUNT = 166
+TARGET_PAIR_COUNT = 294
+TARGET_CAPTURED_COUNT = 60
+TARGET_DECLARATIVE_COUNT = 234
+TARGET_TYPED_COUNT = 171
 TARGET_FAMILY_COUNT = 56
 TARGET_MIGRATED_STATE_COUNT = 148
 TARGET_RETIRED_MEMBER_COUNT = 92
 BASELINE_NORMALIZED_EFFECTIVE_LINES = 141_142
 ADDITIONAL_RETIRED_PAIR_ID = "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording"
+PLUGIN_RETIRED_PAIR_IDS = %w[
+  hepta-systems-plugin-tool-manifest-fixture-declarations
+  hepta-systems-plugin-tool-manifest-parser-fields
+  hepta-systems-plugin-tool-manifest-preflight-adapter-bridge
+  hepta-systems-plugin-tool-registry-source-of-truth-dry-run
+].freeze
 
 def usage
   warn "usage: scripts/hepta-gate-compat-family-verify <verify|self-test>"
@@ -102,6 +108,7 @@ def verify
   raise "additional zero-caller dirty-worktree pair retirement is unbound" unless dead.include?(
     ADDITIONAL_RETIRED_PAIR_ID
   )
+  raise "zero-caller plugin pair retirement is unbound" unless PLUGIN_RETIRED_PAIR_IDS.all? { |id| dead.include?(id) }
   raise "dead pair remains registered" unless (dead & result_ids).empty?
   migrated = registry.fetch("families").flat_map do |family|
     family.fetch("states").map { |state| state.fetch("id") }
