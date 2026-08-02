@@ -111,7 +111,7 @@ jobs:
               "-//codex-rs/v8-poc:v8-poc-unit-tests"
           )
 
-          & bazelisk @bazelArguments @environmentArguments @targets
+          & bazelisk @bazelArguments @environmentArguments "--" @targets
           if ($LASTEXITCODE -ne 0) {
               exit $LASTEXITCODE
           }
