@@ -26,11 +26,22 @@ require "open3"
 require "pathname"
 require "time"
 
+def capture_source_binding(repo)
+  stdout, stderr, status = Open3.capture3(repo.join("scripts/hepta-ui-source-fingerprint").to_s, chdir: repo.to_s)
+  raise "source fingerprint failed: #{stderr.strip}" unless status.success?
+  JSON.parse(stdout)
+end
+
+def binding_equal?(left, right)
+  %w[head head_tree source_fingerprint].all? { |key| left[key] == right[key] }
+end
+
 repo = Pathname(ENV.fetch("HEPTA_NATIVE_V2_REPO_ROOT")).realpath
 app_dir = Pathname(ENV.fetch("HEPTA_NATIVE_V2_APP_DIR")).realpath
 sync_check = Pathname(ENV.fetch("HEPTA_NATIVE_V2_SYNC_CHECK")).realpath
 canonical_app_dir = repo.join("apps/hepta-native").realpath
 test_root_override = app_dir != canonical_app_dir
+binding_before = capture_source_binding(repo)
 
 output_path = nil
 ARGV.each_with_index do |arg, index|
@@ -195,7 +206,12 @@ real_shell_relationships_ready = shell_relationships.values.all?
 no_cockpit_default = default_marker_hits.empty?
 downstream_source_contracts_ready = source_contract_checks.values.all? { |check| check["ready"] }
 
-native_ui_ready = provenance_ready && downstream_overlay_accounted && real_robrix_modules_ready && real_shell_relationships_ready && no_cockpit_default && downstream_source_contracts_ready
+binding_after = capture_source_binding(repo)
+source_stable = binding_equal?(binding_before, binding_after)
+sync_bound_to_source = sync_report["source_stable_during_run"] == true &&
+  binding_equal?(sync_report.fetch("source_binding", {}), binding_after)
+
+native_ui_ready = source_stable && sync_bound_to_source && provenance_ready && downstream_overlay_accounted && real_robrix_modules_ready && real_shell_relationships_ready && no_cockpit_default && downstream_source_contracts_ready
 
 # These are intentionally not inferred from source presence or a successful build.
 # Each requires a separate, current-source evidence-producing gate or real device run.
@@ -213,17 +229,23 @@ public_ga_ready = false
 full_product_ready = false
 
 report = {
-  "schema_version" => 2,
+  "schema_version" => 3,
   "kind" => "hepta-native-upstream-first-product-shell-gate",
   "generated_at_utc" => Time.now.utc.iso8601,
   "status" => native_ui_ready ? "ready" : "not_ready",
   "scope" => "source_only_native_ui",
   "source_gate_only" => true,
+  "source_binding_before" => binding_before,
+  "source_binding" => binding_after,
+  "source_stable_during_run" => source_stable,
+  "sync_receipt_bound_to_source" => sync_bound_to_source,
   "test_root_override" => test_root_override,
   "upstream" => {
-    "repository" => "https://github.com/project-robius/robrix.git",
-    "commit" => "a5a664da569c577ab1a3e5a33f45dcc9364954a0",
-    "tree" => "e620da0561b6632e85eed31008f811bf94c4c24a",
+    "repository" => sync_report.dig("source", "repository"),
+    "commit" => sync_report.dig("source", "commit"),
+    "tree" => sync_report.dig("source", "tree"),
+    "raw_import_commit" => sync_report.dig("source", "raw_import_commit"),
+    "current_lineage_import_commit" => sync_report.dig("source", "current_lineage_import_commit"),
     "provenance_ready" => provenance_ready,
     "downstream_overlay_accounted" => downstream_overlay_accounted,
     "sync_check_status" => sync_report["status"],

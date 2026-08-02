@@ -6931,6 +6931,9 @@ report="$(jq -n \
   --argjson phone320_bytes "$(wc -c <"$OUT_DIR/phone320.png" | tr -d ' ')" \
   --argjson density_qa "$density_qa_json" \
   '{
+    schema_version:1,
+    kind:"hepta-browser-visual-smoke",
+    producer:"scripts/hepta-browser-visual-smoke.sh",
     product:$product,
     runtime:$runtime,
     status:"ready",

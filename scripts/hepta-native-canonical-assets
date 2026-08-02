@@ -10,12 +10,6 @@ require "tmpdir"
 ROOT = Pathname.new(__dir__).join("..").expand_path
 MANIFEST = ROOT.join("apps/hepta-native/canonical-assets-v1.tsv")
 EXPECTED = {
-  "control_ui_glass_k" => [
-    "apps/hepta-control-ui/assets/k.png",
-    "apps/hepta-native/resources/img/hepta-glass-k.png",
-    "a54bc0d6352c3130d2d22b7df80f1fabaa94f5098fec12046e4f262e6d0d7c28",
-    2_499_731,
-  ],
   "google_play_icon_512" => [
     "apps/hepta-native/resources/icon_512.png",
     "apps/hepta-native/packaging/icon_google_play_512.png",

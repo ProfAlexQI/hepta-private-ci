@@ -842,7 +842,6 @@ def bootstrap_static_assets
   # catalog owns these records and their exact digests.
   [
     ["hepta_agent_logo", "/assets/hepta-agent-logo.png", "apps/hepta-control-ui/assets/hepta-agent-logo.png", "CONTROL_UI_HEPTA_AGENT_LOGO_PNG"],
-    ["control_ui_glass_k", "/assets/k.png", "apps/hepta-control-ui/assets/k.png", "CONTROL_UI_GLASS_K_PNG"],
   ].map do |key, path, source_path, core_const|
     {
       "kind" => "static_asset",

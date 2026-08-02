@@ -941,7 +941,6 @@ if [[ ! -x "$CHROME_BIN" ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
-cp apps/hepta-control-ui/assets/k.png "$OUT_DIR/hepta-glass-k.png"
 
 HTML_PATH="$OUT_DIR/hepta-native-fixture.html"
 cat >"$HTML_PATH" <<'HTML'
@@ -982,15 +981,6 @@ cat >"$HTML_PATH" <<'HTML'
         var(--wash);
       color: var(--ink);
       overflow: hidden;
-    }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background: url("./hepta-glass-k.png") center / cover no-repeat;
-      opacity: .06;
-      z-index: 0;
     }
     body.safe-area-check {
       --sim-safe-top: 28px;

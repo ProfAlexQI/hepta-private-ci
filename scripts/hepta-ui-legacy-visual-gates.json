@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "kind": "hepta-ui-legacy-visual-gate-manifest",
+  "status": "historical_compatibility_only",
+  "active_readiness_entrypoint": "scripts/hepta-ui-current-readiness.sh",
+  "invoked_by_active_readiness_entrypoint": false,
+  "legacy_script_glob": "scripts/hepta-ui-harsh-top-design-referee-v*-gate.sh",
+  "legacy_recursive_stages_retained": [
+    8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+    24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+    40, 41
+  ],
+  "policy": {
+    "may_validate_historical_evidence": true,
+    "may_promote_current_source": false,
+    "may_be_called_by_current_orchestrator": false,
+    "replacement": "One current orchestrator consumes source-bound receipts; legacy crop thresholds remain available only to reproduce their original evidence bundles."
+  }
+}

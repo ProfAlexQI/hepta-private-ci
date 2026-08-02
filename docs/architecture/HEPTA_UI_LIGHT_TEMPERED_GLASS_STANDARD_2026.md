@@ -26,32 +26,40 @@ content-bearing chat surfaces than on navigation, controls, and popovers.
 
 ## Shared semantic tokens
 
-`design-tokens/hepta-light-glass.tokens.json` is the single source. Run
-`scripts/hepta-ui-light-glass-token-sync.rb` after changing it, and use
-`--check` in CI or local gates. Generated CSS and Rust files must not be edited
-by hand.
+`design-tokens/hepta-light-glass.tokens.json` schema v2 is the single source.
+The default command, `scripts/hepta-ui-light-glass-token-sync.rb`, is read-only
+and equivalent to `--check`. Regeneration is an explicit
+`scripts/hepta-ui-light-glass-token-sync.rb --write`; generated CSS and Rust
+files must not be edited by hand.
+
+Schema v2 separates genuinely shared roles from renderer-specific roles. Text,
+focus, and the secondary accent are shared. Native and Control retain separate
+surface roles because their Makepad and browser compositors have different
+opacity and layering requirements. A renderer-specific value is therefore not
+silent drift: it is named and reviewed in the canonical source.
 
 | Semantic role | Control UI | Hepta Native |
 | --- | --- | --- |
-| Environment | `--hepta-glass-environment: #eef5f7ff` | `COLOR_HEPTA_GLASS_ENVIRONMENT: #EEF5F7FF` |
-| Content panel | `--hepta-glass-panel: #e8eff1f0` | `COLOR_HEPTA_GLASS_PANEL: #E8EFF1F0` |
-| Input/menu | `--hepta-glass-input: #f1f5f5f2` | `COLOR_HEPTA_GLASS_INPUT: #F1F5F5F2` |
-| Primary text | `--hepta-glass-text: #142a32ff` | `COLOR_HEPTA_GLASS_TEXT: #142A32FF` |
-| Muted text | `--hepta-glass-muted: #506575ff` | `COLOR_HEPTA_GLASS_MUTED: #506575FF` |
-| Dim text | `--hepta-glass-dim: #566a78ff` | `COLOR_HEPTA_GLASS_DIM: #566A78FF` |
-| Hairline | `--hepta-glass-hairline: #a5ccd7b8` | `COLOR_HEPTA_GLASS_HAIRLINE: #A5CCD7B8` |
-| Focus/accent | `--hepta-glass-focus: #0f7290ff` | `COLOR_HEPTA_GLASS_FOCUS: #0F7290FF` |
-| Secondary accent | `--hepta-glass-secondary-accent: #14b8a6ff` | `COLOR_HEPTA_GLASS_SECONDARY_ACCENT: #14B8A6FF` |
-| Content shadow | `--hepta-glass-shadow: #1730471f` | `COLOR_HEPTA_GLASS_SHADOW: #1730471F` |
+| Environment | `--hepta-glass-environment: #eef5f7ff` | `COLOR_HEPTA_ENVIRONMENT: #EEF3F5FF` |
+| Content surface | `--hepta-glass-panel: #e8eff1f0` | `COLOR_HEPTA_CONTENT: #FCFDFEFF` |
+| Glass chrome | `--hepta-glass-panel: #e8eff1f0` | `COLOR_HEPTA_GLASS: #EAF1F3EC` |
+| Input/menu | `--hepta-glass-input: #f1f5f5f2` | `COLOR_HEPTA_INPUT: #F8FAFBF8` |
+| Primary text (shared) | `--hepta-glass-text: #142a32ff` | `COLOR_HEPTA_TEXT: #142A32FF` |
+| Muted text | `--hepta-glass-muted: #506575ff` | `COLOR_HEPTA_MUTED: #566A78FF` |
+| Dim text | `--hepta-glass-dim: #566a78ff` | `COLOR_HEPTA_DIM: #5C6E79FF` |
+| Hairline | `--hepta-glass-hairline: #a5ccd7b8` | `COLOR_HEPTA_HAIRLINE: #A7C5CF99` |
+| Focus/accent (shared) | `--hepta-glass-focus: #0f7290ff` | `COLOR_HEPTA_FOCUS: #0F7290FF` |
+| Success | `--hepta-glass-success: #128a61ff` | `COLOR_HEPTA_SUCCESS: #137A5AFF` |
+| Shadow | `--hepta-glass-shadow: #1730471f` | `COLOR_HEPTA_SHADOW: #1730471A` |
 
 ## Accessibility floor
 
 - Body/message text: 13–14 px/pt minimum in primary reading paths.
 - Timestamp and compact state text: 11 px/pt minimum.
 - Interactive target: 44×44 px/pt minimum.
-- Text contrast: WCAG AA, at least 4.5:1 for normal text; the shared visual
-  acceptance chain keeps a 4.8:1 safety margin for its weakest sampled text,
-  including the dim token against environment, panel, and input surfaces.
+- Text contrast: WCAG AA, at least 4.5:1 for normal text. Control keeps a
+  4.8:1 safety margin for its dim token against environment, panel, and input;
+  Native's renderer-specific dim/surface combinations remain at or above 4.5:1.
 - Keyboard focus must remain visible.
 - Control UI supports reduced motion, reduced transparency, increased contrast,
   and forced-colors modes.
@@ -63,8 +71,9 @@ by hand.
 ## Required evidence
 
 - Control UI: 1365×900, 768×900, 500×844, and 320×844.
-- Native fixture: desktop, mobile, phone, phone320, secondary surfaces, safe
-  area, and keyboard-open states.
+- Native: current-HEAD Makepad GPU frames for desktop and mobile, plus explicit
+  safe-area and keyboard-open evidence on the relevant platform. HTML fixtures
+  may diagnose layout, but cannot promote Native product readiness.
 - Open menus must be produced by native user activation, not by injecting
   classes or `open` attributes in the visual referee.
 - Opening a second auto popover closes the first; Escape closes the current

@@ -32,7 +32,7 @@ ruby -rjson -e '
   abort "downstream drift was not accounted" unless report["downstream_overlay_accounted"] == true
   abort "checker is not read-only" unless report["read_only"] == true
   abort "checker claims it would mutate" unless report["would_modify_worktree"] == false
-  abort "push URL is not disabled" unless report.dig("checks", "remote_push_disabled") == true
+  abort "remote hygiene is not ready" unless report.dig("checks", "remote_hygiene_ready") == true
   abort "wrong upstream count" unless report.dig("source", "upstream_file_count") == 242
 ' "$TEST_ROOT/sync.json"
 

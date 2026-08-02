@@ -1,10 +1,23 @@
 # Hepta Native Robrix-main product shell closeout — 2026-08-01
 
+> **Historical, pre-rebase evidence.** This document and its linked assets are
+> retained to reproduce the 2026-08-01 run only. Its implementation/evidence
+> commits are not ancestors of the current branch HEAD, so its `ready` result
+> must not be used for current-source promotion. Run
+> `scripts/hepta-ui-current-readiness.sh` for the only active readiness truth.
+
 ## Outcome
 
-Hepta Native now uses the complete Robrix `a5a664da569c…` product shell as its default desktop/mobile application surface. The previous Hepta cockpit is no longer a product home; developer-only diagnostics are hidden behind the `developer-diagnostics` feature. Control UI was not changed.
+At the historical implementation identified below, Hepta Native used the
+complete Robrix `a5a664da569c…` product shell as its default desktop/mobile
+application surface. The following statements are past-tense evidence claims,
+not assertions about the current worktree.
 
-The Native UI source lane is `ready`. This does not make the full product or public release ready: no live Matrix account was used, the Hepta runtime bridge remains disabled by default, no real iOS/Android device lab was run, and no Developer ID signing, notarization, staple, upload, PR, or public release was performed.
+The historical Native UI source lane reported `ready`. It did not make the full
+product or public release ready: no live Matrix account was used, the Hepta
+runtime bridge remained disabled by default, no real iOS/Android device lab was
+run, and no Developer ID signing, notarization, staple, upload, PR, or public
+release was performed.
 
 ## Source and provenance
 

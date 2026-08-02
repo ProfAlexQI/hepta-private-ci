@@ -2,71 +2,142 @@
 # frozen_string_literal: true
 
 require "json"
+require "open3"
 require "pathname"
 
 ROOT = Pathname.new(__dir__).join("..").expand_path
 SOURCE = ROOT.join("design-tokens/hepta-light-glass.tokens.json")
-CSS_OUTPUT = ROOT.join("apps/hepta-control-ui/light-glass-tokens.generated.css")
-RUST_OUTPUT = ROOT.join("apps/hepta-native/src/shared/light_glass_tokens.rs")
+CONTROL_OUTPUT = ROOT.join("apps/hepta-control-ui/light-glass-tokens.generated.css")
+NATIVE_OUTPUT = ROOT.join("apps/hepta-native/src/shared/hepta_theme.rs")
+
+def source_binding
+  stdout, stderr, status = Open3.capture3(ROOT.join("scripts/hepta-ui-source-fingerprint").to_s, chdir: ROOT.to_s)
+  abort("source fingerprint failed: #{stderr.strip}") unless status.success?
+  JSON.parse(stdout)
+end
+
+def binding_equal?(left, right)
+  %w[head head_tree source_fingerprint].all? { |key| left[key] == right[key] }
+end
+
+def abort_usage
+  abort("usage: #{File.basename($PROGRAM_NAME)} [--check|--write]\n" \
+        "       default mode is --check; --write is the only mutating mode")
+end
+
+mode = ARGV.empty? ? :check : case ARGV
+                             when ["--check"] then :check
+                             when ["--write"] then :write
+                             else abort_usage
+                             end
+binding_before = source_binding
 
 tokens = JSON.parse(SOURCE.read)
+abort("unsupported token schema: expected schemaVersion=2") unless tokens["schemaVersion"] == 2
+
 colors = tokens.fetch("color")
+shared = colors.fetch("shared")
+native = colors.fetch("native")
+control = colors.fetch("control")
 radii = tokens.fetch("radius")
-motion = tokens.fetch("motion")
+shared_radii = radii.fetch("shared")
+native_radii = radii.fetch("native")
+control_radii = radii.fetch("control")
+control_motion = tokens.fetch("motion").fetch("control")
+policy = tokens.fetch("rendererPolicy")
 
-required_colors = %w[
-  environment panel input text muted dim hairline focus secondaryAccent
-  activeSurface success glassShadow glassGlow
-]
-missing_colors = required_colors.reject { |key| colors.key?(key) }
-abort("missing color tokens: #{missing_colors.join(', ')}") unless missing_colors.empty?
+expected_policy = {
+  "nativeOutput" => NATIVE_OUTPUT.relative_path_from(ROOT).to_s,
+  "controlOutput" => CONTROL_OUTPUT.relative_path_from(ROOT).to_s,
+  "defaultMode" => "check",
+  "writeRequiresFlag" => "--write",
+}
+policy_errors = expected_policy.each_with_object([]) do |(key, expected), errors|
+  errors << "#{key}=#{policy[key].inspect} (expected #{expected.inspect})" unless policy[key] == expected
+end
+abort("invalid rendererPolicy: #{policy_errors.join(', ')}") unless policy_errors.empty?
 
-def css_color(value)
-  value.downcase
+required = {
+  "color.shared" => [shared, %w[text focus secondaryAccent]],
+  "color.native" => [native, %w[
+    environment content surface glass glassStrong input muted dim hairline
+    hairlineStrong focusHover focusSurface focusSurfaceHover selection success
+    successSurface danger dangerSurface warning disabled disabledSurface shadow
+  ]],
+  "color.control" => [control, %w[
+    environment panel input muted dim hairline activeSurface success glassShadow
+    glassGlow elevated textStrong mutedStrong accentHover
+  ]],
+  "radius.shared" => [shared_radii, %w[control floating]],
+  "radius.native" => [native_radii, %w[panel]],
+  "radius.control" => [control_radii, %w[panel]],
+  "motion.control" => [control_motion, %w[fastMs normalMs]],
+}
+required.each do |group, (values, keys)|
+  missing = keys.reject { |key| values.key?(key) }
+  abort("missing #{group} tokens: #{missing.join(', ')}") unless missing.empty?
+end
+
+def rgba!(value, name)
+  normalized = String(value).downcase
+  raise "invalid RGBA token #{name}=#{value.inspect}" unless normalized.match?(/\A#[0-9a-f]{8}\z/)
+  normalized
+end
+
+all_color_groups = { "shared" => shared, "native" => native, "control" => control }
+all_color_groups.each do |group, values|
+  values.each { |name, value| rgba!(value, "color.#{group}.#{name}") }
 end
 
 def makepad_color(value)
-  normalized = value.delete_prefix("#").upcase
-  raise "invalid RGBA token #{value.inspect}" unless normalized.match?(/\A[0-9A-F]{8}\z/)
-
-  "#x#{normalized}"
+  "#x#{value.delete_prefix('#').upcase}"
 end
 
 def vec4_color(value)
-  bytes = value.delete_prefix("#").scan(/../).map { |part| part.to_i(16) }
-  raise "invalid RGBA token #{value.inspect}" unless bytes.length == 4
-
-  channels = bytes.map { |byte| format("%.6f", byte / 255.0).sub(/0+\z/, "").sub(/\.\z/, ".0") }
-  "vec4(#{channels.join(', ')})"
+  channels = value.delete_prefix("#").scan(/../).map { |part| part.to_i(16) }
+  formatted = channels.map do |byte|
+    number = (byte / 255.0).round(3)
+    text = format("%.3f", number).sub(/0+\z/, "").sub(/\.\z/, ".0")
+    text == "0" ? "0.0" : text
+  end
+  "vec4(#{formatted.join(', ')})"
 end
+
+def css_hex(value)
+  value.downcase
+end
+
+control_text = shared.fetch("text")
+control_focus = shared.fetch("focus")
+control_secondary = shared.fetch("secondaryAccent")
 
 css = <<~CSS
   /* @generated by scripts/hepta-ui-light-glass-token-sync.rb; do not edit. */
   :root {
-    --hepta-glass-environment: #{css_color(colors.fetch('environment'))};
-    --hepta-glass-panel: #{css_color(colors.fetch('panel'))};
-    --hepta-glass-input: #{css_color(colors.fetch('input'))};
-    --hepta-glass-text: #{css_color(colors.fetch('text'))};
-    --hepta-glass-muted: #{css_color(colors.fetch('muted'))};
-    --hepta-glass-dim: #{css_color(colors.fetch('dim'))};
-    --hepta-glass-hairline: #{css_color(colors.fetch('hairline'))};
-    --hepta-glass-focus: #{css_color(colors.fetch('focus'))};
-    --hepta-glass-secondary-accent: #{css_color(colors.fetch('secondaryAccent'))};
-    --hepta-glass-active-surface: #{css_color(colors.fetch('activeSurface'))};
-    --hepta-glass-success: #{css_color(colors.fetch('success'))};
-    --hepta-glass-shadow: #{css_color(colors.fetch('glassShadow'))};
-    --hepta-glass-glow: #{css_color(colors.fetch('glassGlow'))};
-    --hepta-glass-control-radius: #{Integer(radii.fetch('control'))}px;
-    --hepta-glass-panel-radius: #{Integer(radii.fetch('panel'))}px;
-    --hepta-glass-floating-radius: #{Integer(radii.fetch('floating'))}px;
-    --hepta-glass-motion-fast: #{Integer(motion.fetch('fastMs'))}ms;
-    --hepta-glass-motion-normal: #{Integer(motion.fetch('normalMs'))}ms;
+    --hepta-glass-environment: #{css_hex(control.fetch('environment'))};
+    --hepta-glass-panel: #{css_hex(control.fetch('panel'))};
+    --hepta-glass-input: #{css_hex(control.fetch('input'))};
+    --hepta-glass-text: #{css_hex(control_text)};
+    --hepta-glass-muted: #{css_hex(control.fetch('muted'))};
+    --hepta-glass-dim: #{css_hex(control.fetch('dim'))};
+    --hepta-glass-hairline: #{css_hex(control.fetch('hairline'))};
+    --hepta-glass-focus: #{css_hex(control_focus)};
+    --hepta-glass-secondary-accent: #{css_hex(control_secondary)};
+    --hepta-glass-active-surface: #{css_hex(control.fetch('activeSurface'))};
+    --hepta-glass-success: #{css_hex(control.fetch('success'))};
+    --hepta-glass-shadow: #{css_hex(control.fetch('glassShadow'))};
+    --hepta-glass-glow: #{css_hex(control.fetch('glassGlow'))};
+    --hepta-glass-control-radius: #{Integer(shared_radii.fetch('control'))}px;
+    --hepta-glass-panel-radius: #{Integer(control_radii.fetch('panel'))}px;
+    --hepta-glass-floating-radius: #{Integer(shared_radii.fetch('floating'))}px;
+    --hepta-glass-motion-fast: #{Integer(control_motion.fetch('fastMs'))}ms;
+    --hepta-glass-motion-normal: #{Integer(control_motion.fetch('normalMs'))}ms;
   }
 
   html[data-theme-mode="light"] {
     color-scheme: light;
     --bg: var(--hepta-glass-environment);
-    --bg-elevated: #f7fafb;
+    --bg-elevated: #{css_hex(control.fetch('elevated')[0, 7])};
     --bg-hover: var(--hepta-glass-active-surface);
     --card: var(--hepta-glass-panel);
     --card-foreground: var(--hepta-glass-text);
@@ -77,10 +148,10 @@ css = <<~CSS
     --chrome: var(--hepta-glass-panel);
     --chrome-strong: var(--hepta-glass-input);
     --text: var(--hepta-glass-text);
-    --text-strong: #0b222b;
+    --text-strong: #{css_hex(control.fetch('textStrong')[0, 7])};
     --chat-text: var(--hepta-glass-text);
     --muted: var(--hepta-glass-muted);
-    --muted-strong: #344e59;
+    --muted-strong: #{css_hex(control.fetch('mutedStrong')[0, 7])};
     --muted-foreground: var(--hepta-glass-muted);
     --border: var(--hepta-glass-hairline);
     --border-strong: color-mix(in srgb, var(--hepta-glass-focus) 38%, var(--hepta-glass-hairline));
@@ -88,7 +159,7 @@ css = <<~CSS
     --input: var(--hepta-glass-input);
     --ring: var(--hepta-glass-focus);
     --accent: var(--hepta-glass-focus);
-    --accent-hover: #0a667b;
+    --accent-hover: #{css_hex(control.fetch('accentHover')[0, 7])};
     --accent-muted: color-mix(in srgb, var(--hepta-glass-focus) 72%, transparent);
     --accent-subtle: color-mix(in srgb, var(--hepta-glass-focus) 10%, transparent);
     --accent-glow: var(--hepta-glass-glow);
@@ -112,64 +183,90 @@ css = <<~CSS
   }
 CSS
 
-rust = <<~RUST
-  // @generated by scripts/hepta-ui-light-glass-token-sync.rb; do not edit.
+native_text = shared.fetch("text")
+native_focus = shared.fetch("focus")
+native_rust = <<~RUST
+  //! Hepta's semantic light-glass palette.
+  //!
+  //! Message and content surfaces stay nearly opaque. Translucent color,
+  //! hairlines, and soft highlights are reserved for navigation, the composer,
+  //! and floating controls so the interface still reads as a chat product.
+
   use makepad_widgets::*;
 
   script_mod! {
       use mod.prelude.widgets.*
       use mod.widgets.*
 
-      // Canonical Hepta light tempered-glass semantic palette.
-      mod.widgets.COLOR_HEPTA_GLASS_ENVIRONMENT = #{makepad_color(colors.fetch('environment'))}
-      mod.widgets.COLOR_HEPTA_GLASS_PANEL = #{makepad_color(colors.fetch('panel'))}
-      mod.widgets.COLOR_HEPTA_GLASS_INPUT = #{makepad_color(colors.fetch('input'))}
-      mod.widgets.COLOR_HEPTA_GLASS_TEXT = #{makepad_color(colors.fetch('text'))}
-      mod.widgets.COLOR_HEPTA_GLASS_MUTED = #{makepad_color(colors.fetch('muted'))}
-      mod.widgets.COLOR_HEPTA_GLASS_DIM = #{makepad_color(colors.fetch('dim'))}
-      mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE = #{makepad_color(colors.fetch('hairline'))}
-      mod.widgets.COLOR_HEPTA_GLASS_FOCUS = #{makepad_color(colors.fetch('focus'))}
-      mod.widgets.COLOR_HEPTA_GLASS_SECONDARY_ACCENT = #{makepad_color(colors.fetch('secondaryAccent'))}
-      mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE = #{makepad_color(colors.fetch('activeSurface'))}
-      mod.widgets.COLOR_HEPTA_GLASS_SUCCESS = #{makepad_color(colors.fetch('success'))}
-      mod.widgets.COLOR_HEPTA_GLASS_SHADOW = #{makepad_color(colors.fetch('glassShadow'))}
-      mod.widgets.COLOR_HEPTA_GLASS_GLOW = #{makepad_color(colors.fetch('glassGlow'))}
+      mod.widgets.COLOR_HEPTA_ENVIRONMENT = #{makepad_color(native.fetch('environment'))}
+      mod.widgets.COLOR_HEPTA_CONTENT = #{makepad_color(native.fetch('content'))}
+      mod.widgets.COLOR_HEPTA_SURFACE = #{makepad_color(native.fetch('surface'))}
+      mod.widgets.COLOR_HEPTA_GLASS = #{makepad_color(native.fetch('glass'))}
+      mod.widgets.COLOR_HEPTA_GLASS_STRONG = #{makepad_color(native.fetch('glassStrong'))}
+      mod.widgets.COLOR_HEPTA_INPUT = #{makepad_color(native.fetch('input'))}
 
-      // Compatibility aliases keep the Robrix substrate stable while both
-      // product surfaces consume the same generated semantic values.
-      mod.widgets.COLOR_ROBRIX_CYAN = (mod.widgets.COLOR_HEPTA_GLASS_SECONDARY_ACCENT)
-      mod.widgets.COLOR_TELEGRAM_BG = (mod.widgets.COLOR_HEPTA_GLASS_ENVIRONMENT)
-      mod.widgets.COLOR_TELEGRAM_PANEL = (mod.widgets.COLOR_HEPTA_GLASS_PANEL)
-      mod.widgets.COLOR_TELEGRAM_INPUT = (mod.widgets.COLOR_HEPTA_GLASS_INPUT)
-      mod.widgets.COLOR_TELEGRAM_BORDER = (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
-      mod.widgets.COLOR_TELEGRAM_TEXT = (mod.widgets.COLOR_HEPTA_GLASS_TEXT)
-      mod.widgets.COLOR_TELEGRAM_MUTED = (mod.widgets.COLOR_HEPTA_GLASS_MUTED)
-      mod.widgets.COLOR_TELEGRAM_DIM = (mod.widgets.COLOR_HEPTA_GLASS_DIM)
-      mod.widgets.COLOR_TELEGRAM_BLUE = (mod.widgets.COLOR_HEPTA_GLASS_FOCUS)
-      mod.widgets.COLOR_TELEGRAM_DIALOG_ACTIVE = (mod.widgets.COLOR_HEPTA_GLASS_ACTIVE_SURFACE)
-      mod.widgets.COLOR_TELEGRAM_GREEN = (mod.widgets.COLOR_HEPTA_GLASS_SUCCESS)
-      mod.widgets.COLOR_TELEGRAM_GLASS_HAIRLINE = (mod.widgets.COLOR_HEPTA_GLASS_HAIRLINE)
-      mod.widgets.COLOR_TELEGRAM_GLASS_SHADOW = (mod.widgets.COLOR_HEPTA_GLASS_SHADOW)
+      mod.widgets.COLOR_HEPTA_TEXT = #{makepad_color(native_text)}
+      mod.widgets.COLOR_HEPTA_MUTED = #{makepad_color(native.fetch('muted'))}
+      // This is also used for placeholders and timestamps. Keep it at >= 4.5:1
+      // against the lightest Hepta surfaces instead of treating it as decoration.
+      mod.widgets.COLOR_HEPTA_DIM = #{makepad_color(native.fetch('dim'))}
 
-      mod.widgets.HEPTA_GLASS_CONTROL_RADIUS = #{Integer(radii.fetch('control'))}.0
-      mod.widgets.HEPTA_GLASS_PANEL_RADIUS = #{Integer(radii.fetch('panel'))}.0
-      mod.widgets.HEPTA_GLASS_FLOATING_RADIUS = #{Integer(radii.fetch('floating'))}.0
+      mod.widgets.COLOR_HEPTA_HAIRLINE = #{makepad_color(native.fetch('hairline'))}
+      mod.widgets.COLOR_HEPTA_HAIRLINE_STRONG = #{makepad_color(native.fetch('hairlineStrong'))}
+      mod.widgets.COLOR_HEPTA_FOCUS = #{makepad_color(native_focus)}
+      mod.widgets.COLOR_HEPTA_FOCUS_HOVER = #{makepad_color(native.fetch('focusHover'))}
+      mod.widgets.COLOR_HEPTA_FOCUS_SURFACE = #{makepad_color(native.fetch('focusSurface'))}
+      mod.widgets.COLOR_HEPTA_FOCUS_SURFACE_HOVER = #{makepad_color(native.fetch('focusSurfaceHover'))}
+      mod.widgets.COLOR_HEPTA_SELECTION = #{makepad_color(native.fetch('selection'))}
+
+      mod.widgets.COLOR_HEPTA_SUCCESS = #{makepad_color(native.fetch('success'))}
+      mod.widgets.COLOR_HEPTA_SUCCESS_SURFACE = #{makepad_color(native.fetch('successSurface'))}
+      mod.widgets.COLOR_HEPTA_DANGER = #{makepad_color(native.fetch('danger'))}
+      mod.widgets.COLOR_HEPTA_DANGER_SURFACE = #{makepad_color(native.fetch('dangerSurface'))}
+      mod.widgets.COLOR_HEPTA_WARNING = #{makepad_color(native.fetch('warning'))}
+      mod.widgets.COLOR_HEPTA_DISABLED = #{makepad_color(native.fetch('disabled'))}
+      mod.widgets.COLOR_HEPTA_DISABLED_SURFACE = #{makepad_color(native.fetch('disabledSurface'))}
+      mod.widgets.COLOR_HEPTA_SHADOW = #{makepad_color(native.fetch('shadow'))}
+
+      mod.widgets.HEPTA_RADIUS_CONTROL = #{Integer(shared_radii.fetch('control'))}.0
+      mod.widgets.HEPTA_RADIUS_PANEL = #{Integer(native_radii.fetch('panel'))}.0
+      mod.widgets.HEPTA_RADIUS_FLOATING = #{Integer(shared_radii.fetch('floating'))}.0
   }
 
-  /// Generated Rust-side compatibility value for non-Live widget code.
-  pub const COLOR_ROBRIX_CYAN: Vec4 = #{vec4_color(colors.fetch('secondaryAccent'))};
+  pub const COLOR_HEPTA_CONTENT: Vec4 = #{vec4_color(native.fetch('content'))};
+  pub const COLOR_HEPTA_FOCUS: Vec4 = #{vec4_color(native_focus)};
+  pub const COLOR_HEPTA_FOCUS_HOVER: Vec4 = #{vec4_color(native.fetch('focusHover'))};
+  pub const COLOR_HEPTA_SUCCESS: Vec4 = #{vec4_color(native.fetch('success'))};
 RUST
 
-outputs = { CSS_OUTPUT => css, RUST_OUTPUT => rust }
-if ARGV == ["--check"]
-  stale = outputs.each_with_object([]) do |(path, expected), paths|
-    paths << path.to_s unless path.file? && path.read == expected
+outputs = { CONTROL_OUTPUT => css, NATIVE_OUTPUT => native_rust }
+if mode == :check
+  stale = outputs.each_with_object([]) do |(path, expected), entries|
+    next if path.file? && path.binread == expected
+    entries << {
+      "path" => path.relative_path_from(ROOT).to_s,
+      "exists" => path.file?,
+      "actual_bytes" => path.file? ? path.size : 0,
+      "expected_bytes" => expected.bytesize,
+    }
   end
-  abort("generated light-glass tokens are stale: #{stale.join(', ')}") unless stale.empty?
-  puts "hepta light-glass tokens: ready"
-elsif ARGV.empty?
-  outputs.each { |path, content| path.write(content) }
-  puts "updated #{outputs.length} generated light-glass token files"
+  unless stale.empty?
+    warn JSON.pretty_generate({ status: "not_ready", reason: "generated_tokens_stale", stale: stale })
+    exit 1
+  end
+  binding_after = source_binding
+  puts JSON.generate({ kind: "hepta-ui-light-glass-token-sync", status: "ready", mode: "check", schema_version: 2,
+                       source_binding_before: binding_before, source_binding: binding_after,
+                       source_stable_during_run: binding_equal?(binding_before, binding_after),
+                       outputs: outputs.keys.map { |path| path.relative_path_from(ROOT).to_s } })
 else
-  abort("usage: #{File.basename($PROGRAM_NAME)} [--check]")
+  outputs.each do |path, content|
+    path.dirname.mkpath
+    path.binwrite(content)
+  end
+  binding_after = source_binding
+  puts JSON.generate({ kind: "hepta-ui-light-glass-token-sync", status: "ready", mode: "write", schema_version: 2,
+                       source_binding_before: binding_before, source_binding: binding_after,
+                       source_stable_during_run: binding_equal?(binding_before, binding_after),
+                       outputs: outputs.keys.map { |path| path.relative_path_from(ROOT).to_s } })
 end

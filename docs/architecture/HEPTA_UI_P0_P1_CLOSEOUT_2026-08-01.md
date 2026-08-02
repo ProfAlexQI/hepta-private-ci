@@ -1,5 +1,11 @@
 # Hepta UI P0/P1 closeout — 2026-08-01
 
+> **Historical, superseded architecture.** This closeout describes the earlier
+> selective-six-module Native approach on `ui/native-productization`. The
+> current Native direction is upstream-first Robrix and this report cannot
+> promote current source. The canonical entry point is
+> `scripts/hepta-ui-current-readiness.sh`.
+
 This note freezes the current-source acceptance facts for the 2026 desktop and
 mobile UI productization pass. It distinguishes real browser and Makepad-window
 evidence from HTML fixtures, and it does not promote UI contracts to live

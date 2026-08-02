@@ -1,0 +1,93 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "open3"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").realpath
+
+def git!(root, *arguments)
+  stdout, stderr, status = Open3.capture3("git", *arguments, chdir: root.to_s)
+  abort("git #{arguments.join(' ')} failed: #{stderr.strip}") unless status.success?
+  stdout
+end
+
+scope_prefixes = %w[
+  apps/hepta-native/
+  apps/hepta-control-ui/
+  codex-rs/hepta-
+  design-tokens/
+  docs/architecture/
+].freeze
+scope_exact = %w[
+  codex-rs/hepta-core/src/control_ui.rs
+  codex-rs/hepta-core/src/control_ui_static_assets.rs
+  codex-rs/hepta-core/src/operator_security.rs
+  codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl
+  codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_01.rs
+  codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_12.rs
+  codex-rs/hepta-native-gateway/src/runtime_ingress/generated_control_ui_routes.rs
+  codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs
+  codex-rs/Cargo.toml
+  codex-rs/Cargo.lock
+].freeze
+
+in_scope = lambda do |path|
+  !path.start_with?("docs/architecture/assets/") && (
+    scope_prefixes.any? { |prefix| path.start_with?(prefix) } ||
+    scope_exact.include?(path) ||
+    path.match?(%r{\Ascripts/(?:hepta-(?:native|control-ui|ui)[^/]*|lib/hepta-(?:ui|control-ui)[^/]*)\z})
+  )
+end
+
+all = git!(root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+paths = all.split("\0", -1).reject(&:empty?).select(&in_scope).uniq.sort
+
+records = paths.map do |relative|
+  path = root.join(relative)
+  if path.symlink?
+    content = File.readlink(path)
+    kind = "symlink"
+  elsif path.file?
+    content = path.binread
+    kind = "file"
+  else
+    content = ""
+    kind = "missing"
+  end
+  [relative, kind, content.bytesize, Digest::SHA256.hexdigest(content)]
+end
+
+digest = Digest::SHA256.new
+records.each do |relative, kind, bytes, sha256|
+  digest << relative << "\0" << kind << "\0" << bytes.to_s << "\0" << sha256 << "\n"
+end
+
+status_lines = git!(root, "status", "--porcelain=v1", "-z", "--untracked-files=normal").split("\0", -1).reject(&:empty?)
+scoped_status = status_lines.select do |line|
+  path = line.sub(/\A.. /, "").split(" -> ").last
+  in_scope.call(path)
+end
+
+head = git!(root, "rev-parse", "HEAD").strip
+tree = git!(root, "rev-parse", "HEAD^{tree}").strip
+branch = git!(root, "branch", "--show-current").strip
+global_dirty_paths = status_lines.map { |line| line.sub(/\A.. /, "") }.sort
+
+puts JSON.pretty_generate(
+  "schema_version" => 1,
+  "kind" => "hepta-ui-source-binding",
+  "branch" => branch,
+  "head" => head,
+  "head_tree" => tree,
+  "source_fingerprint" => digest.hexdigest,
+  "source_file_count" => records.length,
+  "worktree_clean" => scoped_status.empty?,
+  "repository_worktree_clean" => status_lines.empty?,
+  "dirty_path_count" => scoped_status.length,
+  "dirty_paths" => scoped_status.map { |line| line.sub(/\A.. /, "") }.sort,
+  "repository_dirty_path_count" => status_lines.length,
+  "repository_dirty_paths" => global_dirty_paths,
+)

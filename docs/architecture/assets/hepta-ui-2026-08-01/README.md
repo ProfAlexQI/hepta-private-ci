@@ -1,5 +1,9 @@
 # Hepta UI 2026-08-01 evidence receipt
 
+> Historical evidence only. The `current-source-readiness.json` filename below
+> was accurate for its frozen 2026-08-01 source run; it is not current for the
+> repository today and is never consumed by the active readiness orchestrator.
+
 This directory freezes the representative evidence for the desktop/mobile
 light-glass productization pass. The source run was
 `/Users/qianqi/.openclaw/tmp/hepta-ui-product-final-r3.20260801T1904`.
