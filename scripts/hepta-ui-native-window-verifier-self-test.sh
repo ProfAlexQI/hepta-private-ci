@@ -210,6 +210,9 @@ grep -Fq -- 'and ((.success == true) or (.summary.status == "success"))' scripts
 grep -Fq -- 'WINDOW_BOUNDS_TOLERANCE=32' scripts/hepta-ui-native-window-verifier-v1
 grep -Fq -- 'bounds_within_tolerance:$bounds_within_tolerance' scripts/hepta-ui-native-window-verifier-v1
 grep -Fq -- 'minimum_capture_size_ready:true' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'for attempt in {1..4}; do' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'peekaboo-image-$attempt' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'capture_attempt:$window_capture_attempt' scripts/hepta-ui-native-window-verifier-v1
 [[ "$(grep -Fc -- 'peekaboo_response_succeeded <<<"$WINDOW_LIST"' scripts/hepta-ui-native-window-verifier-v1)" == "2" ]] || {
   echo "native-window verifier does not validate both window-list response stages" >&2
   exit 1
