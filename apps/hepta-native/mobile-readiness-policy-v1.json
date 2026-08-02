@@ -20,6 +20,7 @@
   },
   "promotion_requirements": {
     "ios_simulator_receipt_required": true,
+    "android_emulator_receipt_required": true,
     "ios_real_device_receipt_required": true,
     "android_real_device_receipt_required": true,
     "voiceover_receipt_required": true,

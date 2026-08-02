@@ -22,7 +22,7 @@ EOF
   esac
 done
 
-for command in git jq ruby rustup shasum ditto strings plutil sips find unzip; do
+for command in git jq ruby rustup shasum ditto strings plutil sips find unzip file; do
   command -v "$command" >/dev/null 2>&1 || { echo "$command is required" >&2; exit 2; }
 done
 
@@ -33,6 +33,7 @@ CREDENTIAL_PATH="apps/hepta-native/src/persistence/matrix_session_store/credenti
 TESTFLIGHT_PATH="apps/hepta-native/packaging/build-ios-testflight.sh"
 IOS_SIMULATOR_SMOKE_PATH="scripts/hepta-native-ios-simulator-smoke.sh"
 IOS_SIMULATOR_RECEIPT="${HEPTA_NATIVE_IOS_SIMULATOR_RECEIPT:-}"
+ANDROID_EMULATOR_RECEIPT="${HEPTA_NATIVE_ANDROID_EMULATOR_RECEIPT:-}"
 
 policy_ready=false
 if jq -e '
@@ -49,6 +50,7 @@ if jq -e '
     and .downstream_boundaries.ios_product_name == "Hepta"
     and .downstream_boundaries.ios_executable == "hepta-native"
     and .downstream_boundaries.ios_simulator_smoke_signing_performed == false
+    and .promotion_requirements.android_emulator_receipt_required == true
     and (.promotion_requirements | to_entries | all(.value == true))
   ' "$POLICY_PATH" >/dev/null 2>&1; then
   policy_ready=true
@@ -227,6 +229,12 @@ ios_simulator_receipt_status="missing"
 ios_simulator_receipt_summary="$(jq -n \
   --arg path "$IOS_SIMULATOR_RECEIPT" \
   '{supplied:false,path:$path,status:"missing",ready:false}')"
+android_emulator_receipt_supplied=false
+android_emulator_receipt_ready=false
+android_emulator_receipt_status="missing"
+android_emulator_receipt_summary="$(jq -n \
+  --arg path "$ANDROID_EMULATOR_RECEIPT" \
+  '{supplied:false,path:$path,status:"missing",ready:false,claims:{runtime:false,visual:false,rotation:false,ime:false}}')"
 
 verify_ios_simulator_artifact() {
   local receipt="$1" archive="$2" extract_root app_bundle_count app_bundle plist binary mode evidence_path evidence_sha
@@ -301,6 +309,127 @@ verify_ios_simulator_artifact() {
     done < <(jq -r '.asset_catalog.icon_outputs[] | [.path,.sha256,(.width|tostring),(.height|tostring)] | @tsv' "$receipt")
   fi
   rm -rf "$extract_root"
+}
+
+safe_absolute_regular_file() {
+  ruby -rpathname -e '
+    path = ARGV.fetch(0)
+    abort unless path.start_with?("/")
+    abort unless path.bytes.none? { |byte| byte < 0x20 || byte == 0x7f }
+    abort if path.include?("\\")
+    abort unless Pathname.new(path).cleanpath.to_s == path
+    stat = File.lstat(path)
+    abort unless stat.file? && !stat.symlink?
+    abort unless File.realpath(path) == path
+  ' "$1" >/dev/null 2>&1
+}
+
+android_build_tool() {
+  local tool="$1" sdk_root candidate
+  sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+  [[ -d "$sdk_root/build-tools" ]] || return 1
+  candidate="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name "$tool" -perm -111 -print 2>/dev/null | sort | tail -1)"
+  [[ -n "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+verify_android_emulator_artifact() {
+  local receipt="$1" apk="$2" extract_root lib_path head aapt apksigner badging signing cert_sha version_code version_name min_sdk target_sdk
+  safe_absolute_regular_file "$apk" || return 1
+  ruby -e 'abort unless File.binread(ARGV.fetch(0), 4).start_with?("PK")' "$apk" >/dev/null 2>&1 || return 1
+  unzip -t "$apk" >/dev/null 2>&1 || return 1
+  if ! unzip -Z -1 "$apk" 2>/dev/null | ruby -e '
+      entries = STDIN.each_line.map(&:chomp)
+      abort if entries.empty?
+      entries.each do |entry|
+        abort if entry.empty? || entry.start_with?("/") || entry.include?("\\")
+        abort if entry.bytes.any? { |byte| byte < 0x20 || byte == 0x7f }
+        abort if entry.split("/").include?("..")
+      end
+      abort unless entries.count("lib/arm64-v8a/libmakepad.so") == 1
+      abort unless entries.grep(%r{\Alib/[^/]+/libmakepad\.so\z}) == ["lib/arm64-v8a/libmakepad.so"]
+    '; then
+    return 1
+  fi
+
+  extract_root="$(mktemp -d "${TMPDIR:-/tmp}/hepta-android-emulator-receipt.XXXXXX")"
+  if ! unzip -qq "$apk" -d "$extract_root" >/dev/null 2>&1 \
+    || [[ -n "$(find "$extract_root" -type l -print -quit)" ]]; then
+    rm -rf "$extract_root"
+    return 1
+  fi
+  lib_path="$extract_root/lib/arm64-v8a/libmakepad.so"
+  head="$(jq -r '.source_binding.head' "$receipt")"
+  if [[ ! -s "$lib_path" ]] \
+    || ! strings "$lib_path" | grep -F "https://github.com/ProfAlexQI/Hepta/commit/$head" >/dev/null; then
+    rm -rf "$extract_root"
+    return 1
+  fi
+  rm -rf "$extract_root"
+
+  aapt="$(android_build_tool aapt)" || return 1
+  apksigner="$(android_build_tool apksigner)" || return 1
+  badging="$($aapt dump badging "$apk" 2>/dev/null)" || return 1
+  version_code="$(jq -r '.artifact.version_code' "$receipt")"
+  version_name="$(jq -r '.artifact.version_name' "$receipt")"
+  min_sdk="$(jq -r '.artifact.min_sdk' "$receipt")"
+  target_sdk="$(jq -r '.artifact.target_sdk' "$receipt")"
+  grep -Fq "package: name='ai.hepta.nativeapp' versionCode='$version_code' versionName='$version_name' " <<<"$badging" || return 1
+  grep -Fxq "sdkVersion:'$min_sdk'" <<<"$badging" || return 1
+  grep -Fxq "targetSdkVersion:'$target_sdk'" <<<"$badging" || return 1
+  grep -Fxq "application-label:'Hepta'" <<<"$badging" || return 1
+  grep -Eq "^launchable-activity: name='ai\.hepta\.nativeapp\.MakepadApp' " <<<"$badging" || return 1
+  grep -Fxq "native-code: 'arm64-v8a'" <<<"$badging" || return 1
+
+  signing="$($apksigner verify --verbose --print-certs "$apk" 2>/dev/null)" || return 1
+  cert_sha="$(jq -r '.signing.certificate_sha256' "$receipt")"
+  grep -Fxq "Verifies" <<<"$signing" || return 1
+  grep -Fxq "Verified using v2 scheme (APK Signature Scheme v2): true" <<<"$signing" || return 1
+  grep -Fxq "Verified using v3 scheme (APK Signature Scheme v3): true" <<<"$signing" || return 1
+  grep -Fxq "Number of signers: 1" <<<"$signing" || return 1
+  grep -Eq '^Signer #1 certificate DN: .*CN=Android Debug(,|$)' <<<"$signing" || return 1
+  grep -Fxq "Signer #1 certificate SHA-256 digest: $cert_sha" <<<"$signing" || return 1
+}
+
+verify_android_emulator_host_tools() {
+  local receipt="$1" sdk_root emulator qemu emulator_sha qemu_sha
+  sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+  emulator="$sdk_root/emulator/emulator"
+  qemu="$sdk_root/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless"
+  safe_absolute_regular_file "$emulator" || return 1
+  safe_absolute_regular_file "$qemu" || return 1
+  file "$emulator" | grep -Eq ': Mach-O 64-bit executable arm64$' || return 1
+  file "$qemu" | grep -Eq ': Mach-O 64-bit executable arm64$' || return 1
+  emulator_sha="$(jq -r '.host_toolchain.emulator_binary_sha256' "$receipt")"
+  qemu_sha="$(jq -r '.host_toolchain.qemu_binary_sha256' "$receipt")"
+  [[ "$(shasum -a 256 "$emulator" | awk '{print $1}')" == "$emulator_sha" ]] || return 1
+  [[ "$(shasum -a 256 "$qemu" | awk '{print $1}')" == "$qemu_sha" ]] || return 1
+}
+
+verify_android_emulator_screenshot() {
+  local receipt="$1" key="$2" path sha width height probe
+  path="$(jq -r --arg key "$key" '.visual_inspection[$key].path' "$receipt")"
+  sha="$(jq -r --arg key "$key" '.visual_inspection[$key].sha256' "$receipt")"
+  width="$(jq -r --arg key "$key" '.visual_inspection[$key].width' "$receipt")"
+  height="$(jq -r --arg key "$key" '.visual_inspection[$key].height' "$receipt")"
+  safe_absolute_regular_file "$path" || return 1
+  [[ "$(shasum -a 256 "$path" | awk '{print $1}')" == "$sha" ]] || return 1
+  ruby -e 'abort unless File.binread(ARGV.fetch(0), 8) == "\x89PNG\r\n\x1a\n".b' "$path" >/dev/null 2>&1 || return 1
+  [[ "$(sips -g pixelWidth "$path" 2>/dev/null | awk '/pixelWidth:/ {print $2}')" == "$width" ]] || return 1
+  [[ "$(sips -g pixelHeight "$path" 2>/dev/null | awk '/pixelHeight:/ {print $2}')" == "$height" ]] || return 1
+  probe="$(scripts/hepta-image-content-probe --image "$path" 2>/dev/null)" || return 1
+  jq -e --arg sha "$sha" --argjson width "$width" --argjson height "$height" '
+    .schema_version == 1
+    and .kind == "hepta-image-content-probe"
+    and .status == "ready"
+    and .ready == true
+    and .image.sha256 == $sha
+    and .image.width == $width
+    and .image.height == $height
+    and .sample.non_black_ratio >= .thresholds.min_non_black_ratio
+    and .sample.luma_span >= .thresholds.min_luma_span
+    and .sample.luma_bucket_count >= .thresholds.min_luma_buckets
+  ' >/dev/null <<<"$probe"
 }
 
 if [[ -n "$IOS_SIMULATOR_RECEIPT" ]]; then
@@ -408,6 +537,179 @@ if [[ -n "$IOS_SIMULATOR_RECEIPT" ]]; then
     '{supplied:true,path:$path,status:$status,ready:$ready}')"
 fi
 
+if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
+  android_emulator_receipt_supplied=true
+  android_emulator_receipt_status="invalid"
+  if [[ -s "$ANDROID_EMULATOR_RECEIPT" ]] \
+    && [[ "$(jq -r '.worktree_clean' <<<"$SOURCE_AFTER")" == true ]] \
+    && [[ "$(jq -r '.repository_worktree_clean' <<<"$SOURCE_AFTER")" == true ]] \
+    && jq -e \
+      --arg head "$(jq -r '.head' <<<"$SOURCE_AFTER")" \
+      --arg tree "$(jq -r '.head_tree' <<<"$SOURCE_AFTER")" \
+      --arg fingerprint "$(jq -r '.source_fingerprint' <<<"$SOURCE_AFTER")" '
+        .schema_version == 2
+        and .kind == "hepta-native-android-arm64-emulator-runtime-receipt"
+        and .status == "ready"
+        and .ready == true
+        and .source_binding.head == $head
+        and .source_binding.head_tree == $tree
+        and .source_binding.source_fingerprint == $fingerprint
+        and .source_binding.worktree_clean == true
+        and .source_binding.repository_worktree_clean == true
+        and .artifact.format == "apk"
+        and .artifact.stale_artifact_accepted == false
+        and (.artifact.path | type == "string" and startswith("/") and (contains("/../") | not))
+        and (.artifact.size_bytes | type == "number" and . > 0)
+        and (.artifact.sha256 | test("^[0-9a-f]{64}$"))
+        and .artifact.package == "ai.hepta.nativeapp"
+        and .artifact.activity == "ai.hepta.nativeapp/.MakepadApp"
+        and .artifact.label == "Hepta"
+        and (.artifact.version_code | type == "number" and . == floor and . > 0)
+        and (.artifact.version_name | test("^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$"))
+        and .artifact.min_sdk == 26
+        and .artifact.target_sdk == 35
+        and .artifact.primary_cpu_abi == "arm64-v8a"
+        and .artifact.install_result == "Success"
+        and .artifact.install_success == true
+        and .artifact.full_head_embedded == true
+        and .artifact.artifact_source_bound == true
+        and .artifact.application_debuggable == false
+        and .artifact.manifest_contract.status == "ready"
+        and .artifact.manifest_contract.ready == true
+        and .signing.kind == "android_debug"
+        and .signing.verified == true
+        and (.signing.certificate_dn | type == "string" and contains("CN=Android Debug"))
+        and (.signing.certificate_sha256 | test("^[0-9a-f]{64}$"))
+        and .signing.v2 == true
+        and .signing.v3 == true
+        and .signing.release_signed == false
+        and .host_toolchain.host_architecture == "arm64"
+        and .host_toolchain.emulator_binary_architecture == "arm64"
+        and (.host_toolchain.emulator_binary_sha256 | test("^[0-9a-f]{64}$"))
+        and .host_toolchain.qemu_binary_architecture == "arm64"
+        and (.host_toolchain.qemu_binary_sha256 | test("^[0-9a-f]{64}$"))
+        and .host_toolchain.accelerator == "Hypervisor.Framework"
+        and .avd.guest_abi == "arm64-v8a"
+        and .avd.guest_uname_machine == "aarch64"
+        and (.avd.system_image | contains("arm64-v8a"))
+        and .avd.headless == true
+        and .avd.hardware_accelerated == true
+        and .avd.renderer.mode == "host"
+        and (.avd.renderer.vendor | contains("Apple"))
+        and (.avd.renderer.adapter | contains("Apple"))
+        and (.avd.renderer.host_backend | contains("Metal"))
+        and .runtime.install_success == true
+        and .runtime.cold_launch_success == true
+        and .runtime.process_alive == true
+        and .runtime.pid > 0
+        and .runtime.foreground == true
+        and .runtime.top_resumed == true
+        and .runtime.current_focus == true
+        and .runtime.focused_app == true
+        and .runtime.fatal_marker_count == 0
+        and .runtime.anr_marker_count == 0
+        and .runtime.login_bgra_gl_error_count == 0
+        and .runtime.crash_buffer_empty == true
+        and .runtime.matrix_state == "unauthenticated_waiting_for_login"
+        and .visual_inspection.inspected_with_original_resolution_viewer == true
+        and (. as $receipt | ["portrait","landscape_top","landscape_scrolled","ime"] | all(. as $key |
+          ($receipt.visual_inspection[$key].format == "png")
+          and ($receipt.visual_inspection[$key].path | type == "string" and startswith("/") and (contains("/../") | not))
+          and ($receipt.visual_inspection[$key].sha256 | test("^[0-9a-f]{64}$"))
+          and ($receipt.visual_inspection[$key].width | type == "number" and . >= 320)
+          and ($receipt.visual_inspection[$key].height | type == "number" and . >= 320)
+          and ($receipt.visual_inspection[$key].content_probe.status == "ready")
+          and ($receipt.visual_inspection[$key].content_probe.ready == true)
+        ))
+        and ([.visual_inspection.portrait.path,.visual_inspection.landscape_top.path,.visual_inspection.landscape_scrolled.path,.visual_inspection.ime.path] | unique | length == 4)
+        and ([.visual_inspection.portrait.sha256,.visual_inspection.landscape_top.sha256,.visual_inspection.landscape_scrolled.sha256,.visual_inspection.ime.sha256] | unique | length == 4)
+        and .visual_inspection.portrait.width < .visual_inspection.portrait.height
+        and .visual_inspection.portrait.form_fits_viewport == true
+        and .visual_inspection.landscape_top.width > .visual_inspection.landscape_top.height
+        and .visual_inspection.landscape_top.app_remains_foreground == true
+        and .visual_inspection.landscape_top.top_content_visible == true
+        and .visual_inspection.landscape_scrolled.width > .visual_inspection.landscape_scrolled.height
+        and .visual_inspection.landscape_scrolled.app_remains_foreground == true
+        and .visual_inspection.landscape_scrolled.lower_content_visible == true
+        and .visual_inspection.landscape_scrolled.sign_in_action_visible == true
+        and .visual_inspection.ime.width < .visual_inspection.ime.height
+        and .visual_inspection.ime.input_shown == true
+        and .visual_inspection.ime.focused_field_visible == true
+        and .visual_inspection.ime.soft_input_mode == "ADJUST_NOTHING_WITH_MAKEPAD_KEYBOARD_VIEW"
+        and .visual_inspection.ime.manifest_soft_input_mode == "STATE_UNCHANGED|ADJUST_NOTHING"
+        and .visual_inspection.ime.manifest_soft_input_contract_ready == true
+        and .visual_inspection.ime.lower_form_covered == false
+        and .asset_rendering.brand_mark_correct == true
+        and .asset_rendering.sso_provider_marks_correct == true
+        and .asset_rendering.provider_marks_texture_free == true
+        and .asset_rendering.black_rectangle_regression_absent == true
+        and .claims.android_arm64_debug_apk_installable == true
+        and .claims.android_emulator_environment_ready == true
+        and .claims.android_emulator_runtime_ready == true
+        and .claims.android_emulator_login_surface_visual_ready == true
+        and .claims.android_login_rotation_ready == true
+        and .claims.android_login_ime_ready == true
+        and .claims.android_login_asset_rendering_ready == true
+        and .claims.android_rotation_ready == false
+        and .claims.android_ime_ready == false
+        and .claims.android_accessibility_ready == false
+        and .claims.talkback_ready == false
+        and .claims.android_safe_area_ready == false
+        and .claims.android_rtl_ready == false
+        and .claims.android_dynamic_type_ready == false
+        and .claims.android_low_power_performance_ready == false
+        and .claims.android_real_device_ready == false
+        and .claims.android_secure_credential_backend_ready == false
+        and .claims.authenticated_matrix_workflow_ready == false
+        and .claims.post_login_raster_media_ready == false
+        and .claims.release_signed == false
+        and .claims.public_distribution_ready == false
+        and .claims.full_product_ready == false
+        and .claims.public_ga_ready == false
+      ' "$ANDROID_EMULATOR_RECEIPT" >/dev/null 2>&1; then
+    android_receipt_apk_path="$(jq -r '.artifact.path' "$ANDROID_EMULATOR_RECEIPT")"
+    android_receipt_apk_sha256="$(jq -r '.artifact.sha256' "$ANDROID_EMULATOR_RECEIPT")"
+    android_receipt_apk_size="$(jq -r '.artifact.size_bytes' "$ANDROID_EMULATOR_RECEIPT")"
+    if [[ "$(shasum -a 256 "$android_receipt_apk_path" 2>/dev/null | awk '{print $1}')" == "$android_receipt_apk_sha256" \
+      && "$(stat -f %z "$android_receipt_apk_path" 2>/dev/null)" == "$android_receipt_apk_size" ]] \
+      && verify_android_emulator_artifact "$ANDROID_EMULATOR_RECEIPT" "$android_receipt_apk_path" \
+      && verify_android_emulator_host_tools "$ANDROID_EMULATOR_RECEIPT" \
+      && verify_android_emulator_screenshot "$ANDROID_EMULATOR_RECEIPT" portrait \
+      && verify_android_emulator_screenshot "$ANDROID_EMULATOR_RECEIPT" landscape_top \
+      && verify_android_emulator_screenshot "$ANDROID_EMULATOR_RECEIPT" landscape_scrolled \
+      && verify_android_emulator_screenshot "$ANDROID_EMULATOR_RECEIPT" ime; then
+      android_emulator_receipt_ready=true
+      android_emulator_receipt_status="ready"
+    fi
+  fi
+  android_emulator_receipt_summary="$(jq -n \
+    --arg path "$ANDROID_EMULATOR_RECEIPT" \
+    --arg status "$android_emulator_receipt_status" \
+    --argjson ready "$android_emulator_receipt_ready" \
+    '{supplied:true,path:$path,status:$status,ready:$ready,claims:{runtime:$ready,visual:$ready,rotation:$ready,ime:$ready}}')"
+fi
+
+SOURCE_FINAL="$(scripts/hepta-ui-source-fingerprint)"
+if [[ "$(jq -r '.head' <<<"$SOURCE_AFTER")" != "$(jq -r '.head' <<<"$SOURCE_FINAL")" \
+  || "$(jq -r '.head_tree' <<<"$SOURCE_AFTER")" != "$(jq -r '.head_tree' <<<"$SOURCE_FINAL")" \
+  || "$(jq -r '.source_fingerprint' <<<"$SOURCE_AFTER")" != "$(jq -r '.source_fingerprint' <<<"$SOURCE_FINAL")" ]]; then
+  source_stable=false
+  if [[ "$ios_simulator_receipt_supplied" == true ]]; then
+    ios_simulator_receipt_ready=false
+    ios_simulator_receipt_status="invalid"
+    ios_simulator_receipt_summary="$(jq -n \
+      --arg path "$IOS_SIMULATOR_RECEIPT" \
+      '{supplied:true,path:$path,status:"invalid",ready:false}')"
+  fi
+  if [[ "$android_emulator_receipt_supplied" == true ]]; then
+    android_emulator_receipt_ready=false
+    android_emulator_receipt_status="invalid"
+    android_emulator_receipt_summary="$(jq -n \
+      --arg path "$ANDROID_EMULATOR_RECEIPT" \
+      '{supplied:true,path:$path,status:"invalid",ready:false,claims:{runtime:false,visual:false,rotation:false,ime:false}}')"
+  fi
+fi
+
 source_contract_ready=false
 if [[ "$source_stable" == true \
   && "$policy_ready" == true \
@@ -424,7 +726,7 @@ fi
 
 report="$(jq -n \
   --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --argjson source_binding "$SOURCE_AFTER" \
+  --argjson source_binding "$SOURCE_FINAL" \
   --argjson source_stable "$source_stable" \
   --argjson policy_ready "$policy_ready" \
   --argjson makepad_pin_ready "$makepad_pin_ready" \
@@ -435,6 +737,9 @@ report="$(jq -n \
   --argjson ios_simulator_receipt_supplied "$ios_simulator_receipt_supplied" \
   --argjson ios_simulator_receipt_ready "$ios_simulator_receipt_ready" \
   --argjson ios_simulator_receipt_summary "$ios_simulator_receipt_summary" \
+  --argjson android_emulator_receipt_supplied "$android_emulator_receipt_supplied" \
+  --argjson android_emulator_receipt_ready "$android_emulator_receipt_ready" \
+  --argjson android_emulator_receipt_summary "$android_emulator_receipt_summary" \
   --argjson toolchain_ready "$toolchain_wrapper_ready" \
   --argjson toolchain "$toolchain_report" \
   --argjson icons_ready "$ios_icon_contract_ready" \
@@ -468,6 +773,7 @@ report="$(jq -n \
       ios_icons:$icons,
       ios_simulator_smoke_source_contract:$ios_simulator_smoke_source_contract,
       ios_simulator_runtime_evidence:$ios_simulator_receipt_summary,
+      android_emulator_runtime_evidence:$android_emulator_receipt_summary,
       signing_preflight:{apple_distribution_identity_available:$identity_available,apple_distribution_identity_count:$identity_count,signing_performed:false},
       hard_boundaries:{
         ios_accessibility_update_consumed:false,
@@ -475,6 +781,10 @@ report="$(jq -n \
         android_secure_session_persistence_ready:false,
         plaintext_credential_fallback_allowed:false,
         ios_simulator_runtime_verified:$ios_simulator_receipt_ready,
+        android_emulator_runtime_verified:$android_emulator_receipt_ready,
+        android_emulator_visual_verified:$android_emulator_receipt_ready,
+        android_emulator_rotation_verified:$android_emulator_receipt_ready,
+        android_emulator_ime_verified:$android_emulator_receipt_ready,
         ios_real_device_verified:false,
         android_real_device_verified:false,
         voiceover_verified:false,
@@ -487,7 +797,7 @@ report="$(jq -n \
         mobile_public_ga_ready:false
       },
       external_side_effects_performed:false,
-      blockers:([if $source_stable then empty else "source_changed_during_mobile_gate" end,if $policy_ready then empty else "mobile_policy_contract_not_ready" end,if $makepad_pin_ready then empty else "makepad_revision_not_pinned" end,if $toolchain_ready then empty else "cargo_makepad_exact_toolchain_wrapper_not_ready" end,if $testflight_ready then empty else "testflight_current_source_fail_closed_contract_not_ready" end,if $ios_simulator_smoke_source_ready then empty else "ios_simulator_smoke_source_contract_not_ready" end,if $icons_ready then empty else "ios_opaque_icon_contract_not_ready" end,if $credential_ready then empty else "android_credential_fail_closed_contract_not_ready" end,if $ios_targets then empty else "ios_1_95_targets_not_installed" end,if $android_target then empty else "android_1_95_target_not_installed" end,if $identity_available then empty else "apple_distribution_identity_not_available" end,"pinned_makepad_ios_accessibility_update_discarded","pinned_makepad_android_accessibility_update_discarded","android_secure_credential_backend_not_supported",if $ios_simulator_receipt_ready then empty elif $ios_simulator_receipt_supplied then "ios_simulator_receipt_invalid" else "ios_simulator_receipt_missing" end,"ios_real_device_receipt_missing","android_real_device_receipt_missing","voiceover_receipt_missing","talkback_receipt_missing","software_keyboard_receipt_missing","safe_area_receipt_missing","rtl_receipt_missing","dynamic_type_or_font_scale_receipt_missing"])
+      blockers:([if $source_stable then empty else "source_changed_during_mobile_gate" end,if $policy_ready then empty else "mobile_policy_contract_not_ready" end,if $makepad_pin_ready then empty else "makepad_revision_not_pinned" end,if $toolchain_ready then empty else "cargo_makepad_exact_toolchain_wrapper_not_ready" end,if $testflight_ready then empty else "testflight_current_source_fail_closed_contract_not_ready" end,if $ios_simulator_smoke_source_ready then empty else "ios_simulator_smoke_source_contract_not_ready" end,if $icons_ready then empty else "ios_opaque_icon_contract_not_ready" end,if $credential_ready then empty else "android_credential_fail_closed_contract_not_ready" end,if $ios_targets then empty else "ios_1_95_targets_not_installed" end,if $android_target then empty else "android_1_95_target_not_installed" end,if $identity_available then empty else "apple_distribution_identity_not_available" end,"pinned_makepad_ios_accessibility_update_discarded","pinned_makepad_android_accessibility_update_discarded","android_secure_credential_backend_not_supported",if $ios_simulator_receipt_ready then empty elif $ios_simulator_receipt_supplied then "ios_simulator_receipt_invalid" else "ios_simulator_receipt_missing" end,if $android_emulator_receipt_ready then empty elif $android_emulator_receipt_supplied then "android_emulator_receipt_invalid" else "android_emulator_receipt_missing" end,"ios_real_device_receipt_missing","android_real_device_receipt_missing","voiceover_receipt_missing","talkback_receipt_missing","software_keyboard_receipt_missing","safe_area_receipt_missing","rtl_receipt_missing","dynamic_type_or_font_scale_receipt_missing"])
     }
   ')"
 
@@ -497,6 +807,9 @@ if [[ -n "$REPORT_PATH" ]]; then
 fi
 printf '%s\n' "$report"
 if [[ "$ios_simulator_receipt_supplied" == true && "$ios_simulator_receipt_ready" != true ]]; then
+  exit 1
+fi
+if [[ "$android_emulator_receipt_supplied" == true && "$android_emulator_receipt_ready" != true ]]; then
   exit 1
 fi
 jq -e '.mobile_source_contract_ready == true' <<<"$report" >/dev/null

@@ -123,10 +123,29 @@ requires an installable `ai.hepta.nativeapp` / `Hepta` / `hepta-native` bundle,
 requires compiled `Assets.car` or the strict actool legacy icon-output set,
 merges and re-verifies the validated legacy partial plist when the active
 Xcode SDK is newer than the selected runtime, installs and launches with
-`simctl`, and hashes both its app archive and GPU screenshot. Supplying the
+`simctl`, retries cold-launch and post-rotation first-frame capture, rejects
+black or uniform frames with `hepta-image-content-probe`, and hashes both its
+app archive and GPU screenshot. Supplying the
 receipt environment variable makes receipt parsing strict: stale source
 bindings or changed artifacts fail the gate. Omitting it keeps simulator
 runtime verification hard-false without making the static source contract fail.
+
+The same gate can optionally consume a current-source Android ARM64 emulator
+receipt:
+
+```sh
+HEPTA_NATIVE_ANDROID_EMULATOR_RECEIPT=/absolute/path/android-report.json \
+  scripts/hepta-native-mobile-readiness-gate.sh --output /tmp/hepta-mobile.json
+```
+
+This path independently reopens the APK, rejects unsafe ZIP members, verifies
+the sole `arm64-v8a` Makepad library embeds the full current HEAD, re-reads the
+package/activity/Hepta label with Android build tools, and verifies the debug
+signer. It also rehashes and content-probes distinct portrait, landscape-top,
+landscape-scrolled, and IME PNGs. A valid receipt may promote only local
+emulator runtime, visual, rotation, and IME evidence. Missing or invalid
+evidence never promotes a real device, TalkBack, secure credentials, release
+signing, full-product readiness, or GA readiness.
 
 Run the report-only mobile source gate with:
 
@@ -137,9 +156,9 @@ scripts/hepta-native-mobile-readiness-gate.sh --output /tmp/hepta-mobile.json
 That report deliberately keeps full mobile readiness false. At the pinned
 Makepad revision, iOS and Android discard `AccessibilityUpdate`; Android also
 has no approved secure credential backend in this downstream. A valid optional
-receipt can verify only this local iOS simulator build/install/launch/screenshot
-lane. Real-device, VoiceOver/TalkBack, safe-area, keyboard, RTL, font scaling,
-and power receipts remain required rather than being inferred from it.
+receipt can verify only its local simulator/emulator lane. Real-device,
+VoiceOver/TalkBack, safe-area, cross-device keyboard, RTL, font scaling, and
+power receipts remain required rather than being inferred from it.
 
 ## Frozen upstream documentation (reference only)
 
