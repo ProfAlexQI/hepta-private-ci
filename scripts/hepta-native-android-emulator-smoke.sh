@@ -12,6 +12,9 @@ LOGIN_TEMPLATE_DIR="$APP_DIR/packaging/android-emulator-login-template-v1"
 LOGIN_TEMPLATE_MANIFEST="$LOGIN_TEMPLATE_DIR/manifest.json"
 ORIENTATION_PROBE="$ROOT_DIR/scripts/hepta-android-window-orientation-probe"
 HEADLESS_AVD_PROCESS_PROBE="$ROOT_DIR/scripts/hepta-android-headless-avd-process-probe"
+NDK_DIRECTORY_VERSION="28.2.13676358"
+NDK_RELEASE_NAME="r28b"
+NDK_HOST_PREBUILT="darwin-x86_64"
 
 AVD_NAME=""
 ADB_SERIAL=""
@@ -79,6 +82,7 @@ if [[ "$CONTRACT_ONLY" == true ]]; then
           arm64_host_and_guest:true,
           stale_package_removed:true,
           pinned_fresh_apk_build:true,
+          pinned_ndk_r28b_bound:true,
           full_head_embedded:true,
           portrait_landscape_ime_png_sha256:true,
           dumpsys_window_rotation_and_logical_geometry_ready:true,
@@ -163,9 +167,16 @@ SDK_ROOT="$(cd "$SDK_ROOT" && pwd -P)"
 ADB="$SDK_ROOT/platform-tools/adb"
 EMULATOR="$SDK_ROOT/emulator/emulator"
 QEMU="$SDK_ROOT/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless"
+NDK_ROOT="$SDK_ROOT/ndk/$NDK_DIRECTORY_VERSION"
+NDK_SOURCE_PROPERTIES="$NDK_ROOT/source.properties"
+NDK_CLANG="$NDK_ROOT/toolchains/llvm/prebuilt/$NDK_HOST_PREBUILT/bin/clang"
 [[ -x "$ADB" ]] || { echo "error: Android adb is missing: $ADB" >&2; exit 2; }
 [[ -x "$EMULATOR" ]] || { echo "error: Android emulator is missing: $EMULATOR" >&2; exit 2; }
 [[ -x "$QEMU" ]] || { echo "error: ARM64 headless qemu is missing: $QEMU" >&2; exit 2; }
+[[ -s "$NDK_SOURCE_PROPERTIES" ]] || { echo "error: pinned Android NDK source properties are missing: $NDK_SOURCE_PROPERTIES" >&2; exit 2; }
+[[ -x "$NDK_CLANG" ]] || { echo "error: pinned Android NDK clang is missing: $NDK_CLANG" >&2; exit 2; }
+grep -Fxq "Pkg.ReleaseName = $NDK_RELEASE_NAME" "$NDK_SOURCE_PROPERTIES" \
+  || { echo "error: pinned Android NDK release is not $NDK_RELEASE_NAME" >&2; exit 2; }
 [[ -x "$ORIENTATION_PROBE" ]] || { echo "error: Android window orientation probe is missing: $ORIENTATION_PROBE" >&2; exit 2; }
 [[ -f "$HEADLESS_AVD_PROCESS_PROBE" ]] || { echo "error: Android headless AVD process probe is missing: $HEADLESS_AVD_PROCESS_PROBE" >&2; exit 2; }
 
@@ -346,6 +357,8 @@ APK_SIZE="$(stat -f %z "$APK_PATH")"
 ADB_SHA256="$(shasum -a 256 "$ADB" | awk '{print $1}')"
 EMULATOR_SHA256="$(shasum -a 256 "$EMULATOR" | awk '{print $1}')"
 QEMU_SHA256="$(shasum -a 256 "$QEMU" | awk '{print $1}')"
+NDK_SOURCE_PROPERTIES_SHA256="$(shasum -a 256 "$NDK_SOURCE_PROPERTIES" | awk '{print $1}')"
+NDK_CLANG_SHA256="$(shasum -a 256 "$NDK_CLANG" | awk '{print $1}')"
 
 set +e
 "$ADB" -s "$ADB_SERIAL" uninstall "$PACKAGE_NAME" >"$EVIDENCE_DIR/adb-uninstall.txt" 2>&1
@@ -657,6 +670,14 @@ jq -n \
   --arg host_os "$HOST_OS" \
   --arg emulator_sha256 "$EMULATOR_SHA256" \
   --arg qemu_sha256 "$QEMU_SHA256" \
+  --arg ndk_directory_version "$NDK_DIRECTORY_VERSION" \
+  --arg ndk_release_name "$NDK_RELEASE_NAME" \
+  --arg ndk_root "$NDK_ROOT" \
+  --arg ndk_source_properties "$NDK_SOURCE_PROPERTIES" \
+  --arg ndk_source_properties_sha256 "$NDK_SOURCE_PROPERTIES_SHA256" \
+  --arg ndk_host_prebuilt "$NDK_HOST_PREBUILT" \
+  --arg ndk_clang "$NDK_CLANG" \
+  --arg ndk_clang_sha256 "$NDK_CLANG_SHA256" \
   --argjson pid "$APP_PID" \
   --argjson process_start_time_ticks "$PROCESS_START_TIME_TICKS" \
   --arg installed_package_path "$INSTALLED_PACKAGE_PATH" \
@@ -725,7 +746,12 @@ jq -n \
         host_os:$host_os,host_architecture:"arm64",
         adb_binary_path:$adb_path,adb_binary_sha256:$adb_sha256,
         emulator_version:$emulator_version,emulator_binary_architecture:"arm64",emulator_binary_sha256:$emulator_sha256,
-        qemu_binary_architecture:"arm64",qemu_binary_sha256:$qemu_sha256,accelerator:"Hypervisor.Framework"
+        qemu_binary_architecture:"arm64",qemu_binary_sha256:$qemu_sha256,accelerator:"Hypervisor.Framework",
+        ndk:{
+          directory_version:$ndk_directory_version,release_name:$ndk_release_name,root_path:$ndk_root,
+          source_properties_path:$ndk_source_properties,source_properties_sha256:$ndk_source_properties_sha256,
+          host_prebuilt:$ndk_host_prebuilt,clang_binary_path:$ndk_clang,clang_binary_sha256:$ndk_clang_sha256
+        }
       },
       device:{adb_serial:$serial,state:"device",boot_completed:true,avd_name:$avd_name,qemu_avd_name:$qemu_avd_name,avd_name_match:true,boot_id:$boot_id,model:$device_model},
       avd:{

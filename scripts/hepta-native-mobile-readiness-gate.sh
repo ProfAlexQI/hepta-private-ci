@@ -543,18 +543,32 @@ verify_android_emulator_artifact() {
 }
 
 verify_android_emulator_host_tools() {
-  local receipt="$1" sdk_root emulator qemu emulator_sha qemu_sha
+  local receipt="$1" sdk_root emulator qemu emulator_sha qemu_sha ndk_root ndk_source_properties ndk_clang ndk_source_properties_sha ndk_clang_sha
   sdk_root="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin "$ANDROID_TRUSTED_ADB_PATH" | jq -er 'select(.ready == true) | .sdk_root')" || return 1
   emulator="$sdk_root/emulator/emulator"
   qemu="$sdk_root/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless"
+  ndk_root="$sdk_root/ndk/28.2.13676358"
+  ndk_source_properties="$ndk_root/source.properties"
+  ndk_clang="$ndk_root/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang"
   safe_absolute_regular_file "$emulator" || return 1
   safe_absolute_regular_file "$qemu" || return 1
+  safe_absolute_regular_file "$ndk_source_properties" || return 1
+  safe_absolute_regular_file "$ndk_clang" || return 1
+  [[ -x "$ndk_clang" ]] || return 1
+  grep -Fxq 'Pkg.ReleaseName = r28b' "$ndk_source_properties" || return 1
   file "$emulator" | grep -Eq ': Mach-O 64-bit executable arm64$' || return 1
   file "$qemu" | grep -Eq ': Mach-O 64-bit executable arm64$' || return 1
   emulator_sha="$(jq -r '.host_toolchain.emulator_binary_sha256' "$receipt")"
   qemu_sha="$(jq -r '.host_toolchain.qemu_binary_sha256' "$receipt")"
+  ndk_source_properties_sha="$(jq -r '.host_toolchain.ndk.source_properties_sha256' "$receipt")"
+  ndk_clang_sha="$(jq -r '.host_toolchain.ndk.clang_binary_sha256' "$receipt")"
+  [[ "$(jq -r '.host_toolchain.ndk.root_path' "$receipt")" == "$ndk_root" ]] || return 1
+  [[ "$(jq -r '.host_toolchain.ndk.source_properties_path' "$receipt")" == "$ndk_source_properties" ]] || return 1
+  [[ "$(jq -r '.host_toolchain.ndk.clang_binary_path' "$receipt")" == "$ndk_clang" ]] || return 1
   [[ "$(shasum -a 256 "$emulator" | awk '{print $1}')" == "$emulator_sha" ]] || return 1
   [[ "$(shasum -a 256 "$qemu" | awk '{print $1}')" == "$qemu_sha" ]] || return 1
+  [[ "$(shasum -a 256 "$ndk_source_properties" | awk '{print $1}')" == "$ndk_source_properties_sha" ]] || return 1
+  [[ "$(shasum -a 256 "$ndk_clang" | awk '{print $1}')" == "$ndk_clang_sha" ]] || return 1
 }
 
 verify_android_emulator_screenshot() {
@@ -818,6 +832,14 @@ if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
         and .host_toolchain.qemu_binary_architecture == "arm64"
         and (.host_toolchain.qemu_binary_sha256 | test("^[0-9a-f]{64}$"))
         and .host_toolchain.accelerator == "Hypervisor.Framework"
+        and .host_toolchain.ndk.directory_version == "28.2.13676358"
+        and .host_toolchain.ndk.release_name == "r28b"
+        and .host_toolchain.ndk.host_prebuilt == "darwin-x86_64"
+        and (.host_toolchain.ndk.root_path | type == "string" and startswith("/") and endswith("/ndk/28.2.13676358"))
+        and (.host_toolchain.ndk.source_properties_path | type == "string" and startswith("/") and endswith("/ndk/28.2.13676358/source.properties"))
+        and (.host_toolchain.ndk.source_properties_sha256 | test("^[0-9a-f]{64}$"))
+        and (.host_toolchain.ndk.clang_binary_path | type == "string" and startswith("/") and endswith("/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang"))
+        and (.host_toolchain.ndk.clang_binary_sha256 | test("^[0-9a-f]{64}$"))
         and .device.state == "device"
         and .device.boot_completed == true
         and (.device.adb_serial | test("^emulator-[0-9]+$"))

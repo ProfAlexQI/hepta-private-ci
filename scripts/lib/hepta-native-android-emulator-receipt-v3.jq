@@ -26,6 +26,14 @@ def hepta_android_emulator_receipt_v3_ready($head; $tree; $fingerprint; $manifes
   and (.host_toolchain.qemu_binary_sha256 | sha)
   and (.host_toolchain.adb_binary_path | absolute_evidence_path)
   and (.host_toolchain.adb_binary_sha256 | sha)
+  and .host_toolchain.ndk.directory_version == "28.2.13676358"
+  and .host_toolchain.ndk.release_name == "r28b"
+  and .host_toolchain.ndk.host_prebuilt == "darwin-x86_64"
+  and (.host_toolchain.ndk.root_path | absolute_evidence_path and endswith("/ndk/28.2.13676358"))
+  and (.host_toolchain.ndk.source_properties_path | absolute_evidence_path and endswith("/ndk/28.2.13676358/source.properties"))
+  and (.host_toolchain.ndk.source_properties_sha256 | sha)
+  and (.host_toolchain.ndk.clang_binary_path | absolute_evidence_path and endswith("/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang"))
+  and (.host_toolchain.ndk.clang_binary_sha256 | sha)
   and (.device.adb_serial | type == "string" and test("^emulator-[0-9]+$"))
   and .device.avd_name == .device.qemu_avd_name
   and .device.avd_name == .avd.name

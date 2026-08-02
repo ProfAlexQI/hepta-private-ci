@@ -194,14 +194,18 @@ expect_probe_failure blank "$TEST_DIR/blank.png" "$TEMPLATE_DIR/portrait.png" po
 # The forced-dirty hook is negative-only. Fake every SDK executable and prove
 # the producer rejects source before calling adb, emulator, aapt, or apksigner.
 FAKE_SDK="$TEST_DIR/fake-sdk"
-mkdir -p "$FAKE_SDK/platform-tools" "$FAKE_SDK/emulator/qemu/darwin-aarch64" "$FAKE_SDK/build-tools/35.0.0"
+FAKE_NDK="$FAKE_SDK/ndk/28.2.13676358"
+mkdir -p "$FAKE_SDK/platform-tools" "$FAKE_SDK/emulator/qemu/darwin-aarch64" "$FAKE_SDK/build-tools/35.0.0" \
+  "$FAKE_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+printf '%s\n' 'Pkg.Desc = Android NDK' 'Pkg.ReleaseName = r28b' >"$FAKE_NDK/source.properties"
 SENTINEL="$TEST_DIR/external-tool-called"
 for tool in \
   "$FAKE_SDK/platform-tools/adb" \
   "$FAKE_SDK/emulator/emulator" \
   "$FAKE_SDK/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless" \
   "$FAKE_SDK/build-tools/35.0.0/aapt" \
-  "$FAKE_SDK/build-tools/35.0.0/apksigner"; do
+  "$FAKE_SDK/build-tools/35.0.0/apksigner" \
+  "$FAKE_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang"; do
   printf '#!/usr/bin/env bash\nprintf called >>%q\nexit 99\n' "$SENTINEL" >"$tool"
   chmod 0755 "$tool"
 done
@@ -240,7 +244,10 @@ jq -n \
     scope:"unauthenticated_android_login_surface_on_arm64_emulator",
     source_binding:{head:$head,head_tree:$tree,source_fingerprint:$fingerprint,worktree_clean:true,repository_worktree_clean:true},
     artifact:{path:"/tmp/Hepta.apk",sha256:$sha,stale_artifact_accepted:false,full_head_embedded:true,artifact_source_bound:true},
-    host_toolchain:{adb_binary_path:"/tmp/Android/sdk/platform-tools/adb",adb_binary_sha256:$sha,emulator_binary_sha256:$sha,qemu_binary_sha256:$sha},
+    host_toolchain:{
+      adb_binary_path:"/tmp/Android/sdk/platform-tools/adb",adb_binary_sha256:$sha,emulator_binary_sha256:$sha,qemu_binary_sha256:$sha,
+      ndk:{directory_version:"28.2.13676358",release_name:"r28b",root_path:"/tmp/Android/sdk/ndk/28.2.13676358",source_properties_path:"/tmp/Android/sdk/ndk/28.2.13676358/source.properties",source_properties_sha256:$sha,host_prebuilt:"darwin-x86_64",clang_binary_path:"/tmp/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",clang_binary_sha256:$sha}
+    },
     device:{adb_serial:"emulator-5554",avd_name:"Hepta_Pixel_API_34_arm64",qemu_avd_name:"Hepta_Pixel_API_34_arm64",boot_id:$boot_id},
     avd:{name:"Hepta_Pixel_API_34_arm64"},
     runtime:{pid:2468,process_start_time_ticks:123456,installed_package_path:"/data/app/~~hepta==/ai.hepta.nativeapp-current==/base.apk"},
@@ -288,6 +295,9 @@ expect_receipt_failure template_claim '.visual_inspection.ime.login_template_pro
 expect_receipt_failure uiautomator_hash '.uiautomator.sha256 = "bad"'
 expect_receipt_failure host_tool_hash '.host_toolchain.emulator_binary_sha256 = "bad"'
 expect_receipt_failure adb_path '.host_toolchain.adb_binary_path = "platform-tools/adb"'
+expect_receipt_failure ndk_release '.host_toolchain.ndk.release_name = "r28c"'
+expect_receipt_failure ndk_source_hash '.host_toolchain.ndk.source_properties_sha256 = "bad"'
+expect_receipt_failure ndk_clang_path '.host_toolchain.ndk.clang_binary_path = "/tmp/clang"'
 expect_receipt_failure real_device_serial '.device.adb_serial = "R58M123456A"'
 expect_receipt_failure avd_identity '.device.qemu_avd_name = "forged-avd"'
 expect_receipt_failure boot_session '.session_probe.boot_id = "99999999-2222-3333-4444-555555555555"'
