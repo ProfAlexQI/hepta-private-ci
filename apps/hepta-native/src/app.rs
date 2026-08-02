@@ -54,7 +54,10 @@ script_mod! {
                         left: 0,
                         right: 0,
                     }
-                    keyboard_min_shift: 12.0
+                    // Makepad intentionally owns IME avoidance through this
+                    // KeyboardView. Android stays in adjustNothing mode so
+                    // the SurfaceView is not resized and shifted twice.
+                    keyboard_min_shift: 18.0
 
                     overlay_container := View {
                         width: Fill, height: Fill,

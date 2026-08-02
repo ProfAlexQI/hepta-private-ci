@@ -6,3 +6,13 @@ Nearly all icons used in Robrix are obtained from [SVG Repo](https://www.svgrepo
 Other icons are individually attributed below, as required.
 
 * Add Wallet by Creative Stall from <a href="https://thenounproject.com/browse/icons/term/add-wallet/" target="_blank" title="Add Wallet Icons">Noun Project</a> (CC BY 3.0)
+
+## Login provider marks
+
+The inline Apple, Facebook, GitHub, GitLab, Google, and X path geometry in
+`src/login/login_screen.rs` is derived from Simple Icons 14.15.0, released
+under [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/). The marks
+remain trademarks of their respective owners and are shown only to identify
+the corresponding single-sign-on providers. The upstream Robrix PNG copies
+remain in the source snapshot for provenance and future synchronization, but
+the Hepta login runtime does not load them.

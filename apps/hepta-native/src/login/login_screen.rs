@@ -11,17 +11,47 @@ script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
 
-    mod.widgets.IMG_APP_LOGO = crate_resource("self://resources/icon_512.png")
     mod.widgets.ICON_EYE_OPEN   = crate_resource("self://resources/icons/eye_open.svg")
     mod.widgets.ICON_EYE_CLOSED = crate_resource("self://resources/icons/eye_closed.svg")
+
+    // Android's GLES path in our pinned Makepad revision cannot upload decoded
+    // BGRA PNG textures on every device. Keep the login identity and provider
+    // marks texture-free so a failed image upload can never turn them into
+    // opaque black rectangles. Provider path geometry is from Simple Icons
+    // 14.15.0 (CC0-1.0); the marks remain trademarks of their owners.
+    mod.widgets.HeptaBrandMark = RoundedView {
+        width: 48,
+        height: 48,
+        align: Align{x: 0.5, y: 0.5},
+        show_bg: true,
+        draw_bg +: {
+            color: (COLOR_HEPTA_FOCUS)
+            border_radius: 13.0
+            border_size: 1.0
+            border_color: (COLOR_HEPTA_HAIRLINE_STRONG)
+        }
+
+        Label {
+            width: Fill,
+            height: Fill,
+            padding: 0,
+            align: Align{x: 0.5, y: 0.5},
+            draw_text +: {
+                color: #FFFFFF
+                text_style: theme.font_bold {font_size: 22.0}
+            }
+            text: "H"
+        }
+    }
 
     mod.widgets.SsoButton = RoundedView {
         width: 44,
         height: 44,
         cursor: MouseCursor.Hand,
         visible: true,
-        padding: 7,
-        margin: Inset{ left: 20, right: 20, top: 5, bottom: 5}
+        padding: 0,
+        margin: 0,
+        align: Align{x: 0.5, y: 0.5},
         draw_bg +: {
             border_size: 1.0
             border_radius: (HEPTA_RADIUS_CONTROL)
@@ -29,20 +59,6 @@ script_mod! {
             color: (COLOR_HEPTA_GLASS_STRONG)
         }
     }
-
-    mod.widgets.SsoImage = Image {
-        width: 30, height: 30,
-        draw_bg +: {
-            mask: instance(0.0)
-            pixel: fn() {
-                let color = mix(self.get_color(), #3, self.async_load)
-                let gray = dot(color.rgb, vec3(0.299, 0.587, 0.114))
-                let grayed = mix(color, vec4(gray, gray, gray, color.a), self.mask)
-                return Pal.premul(vec4(grayed.xyz, grayed.w * self.opacity))
-            }
-        }
-    }
-
 
     mod.widgets.LoginScreen = set_type_default() do #(LoginScreen::register_widget(vm)) {
         ..mod.widgets.SolidView
@@ -57,7 +73,9 @@ script_mod! {
         ScrollYView {
             width: Fill, height: Fill,
             flow: Down, // Required for vertical scrolling to work.
-            align: Align{x: 0.5, y: 0.5}
+            // Top anchoring guarantees that an overflowing card has a stable
+            // scroll origin in landscape and while the IME is visible.
+            align: Align{x: 0.5, y: 0.0}
             show_bg: true,
             draw_bg.color: (COLOR_HEPTA_ENVIRONMENT)
 
@@ -72,11 +90,11 @@ script_mod! {
             }
 
             RoundedShadowView {
-                margin: Inset{top: 18, bottom: 18, left: 4, right: 4}
-                padding: 16
-                width: Fit
+                margin: Inset{top: 8, bottom: 8, left: 8, right: 8}
+                padding: 12
+                width: Fill{max: 594.}
                 height: Fit
-                align: Align{x: 0.5, y: 0.5}
+                align: Align{x: 0.5, y: 0.0}
                 flow: Overlay,
 
                 show_bg: true,
@@ -91,111 +109,238 @@ script_mod! {
                 }
 
                 View {
-                    width: 275
+                    width: Fill
                     height: Fit
-                    flow: Down
-                    align: Align{x: 0.5, y: 0.5}
-                    spacing: 10.0
+                    flow: Flow.Right{wrap: true}
+                    align: Align{x: 0.5, y: 0.0}
+                    spacing: 12.0
 
-                    logo_image := Image {
-                        fit: ImageFit.Smallest,
-                        width: 56
-                        src: (mod.widgets.IMG_APP_LOGO),
-                    }
+                    credentials_column := View {
+                        width: 275
+                        height: Fit
+                        flow: Down
+                        align: Align{x: 0.5, y: 0.0}
+                        spacing: 8.0
 
-                    title := Label {
-                        width: Fit, height: Fit
-                        margin: Inset{ bottom: 2 }
-                        padding: 0,
-                        draw_text +: {
-                            color: (COLOR_TEXT)
-                            text_style: theme.font_bold {font_size: 18.0}
+                        mod.widgets.HeptaBrandMark {}
+
+                        title := Label {
+                            width: Fit, height: Fit
+                            margin: Inset{ bottom: 2 }
+                            padding: 0,
+                            draw_text +: {
+                                color: (COLOR_TEXT)
+                                text_style: theme.font_bold {font_size: 18.0}
+                            }
+                            text: "Sign in to Hepta"
                         }
-                        text: "Sign in to Hepta"
-                    }
 
-                    user_id_input := RobrixTextInput {
-                        width: 275, height: Fit{min: FitBound.Abs(44)}
-                        flow: Right, // do not wrap
-                        padding: 10,
-                        empty_text: "User ID"
-                        autocapitalize: None,
-                        autocorrect: Disabled,
-                        content_type: Username,
-                    }
-
-                    View {
-                        width: 275, height: Fit{min: FitBound.Abs(44)}
-                        flow: Overlay
-                        align: Align{x: 1.0, y: 0.5}
-
-                        password_input := RobrixTextInput {
-                            width: Fill, height: Fit{min: FitBound.Abs(44)}
+                        user_id_input := RobrixTextInput {
+                            width: 275, height: Fit{min: FitBound.Abs(44)}
                             flow: Right, // do not wrap
-                            padding: Inset{top: 10, bottom: 10, left: 10, right: 38}
-                            empty_text: "Password"
-                            is_password: true,
+                            padding: 10,
+                            empty_text: "User ID"
                             autocapitalize: None,
                             autocorrect: Disabled,
-                            content_type: Password,
+                            content_type: Username,
                         }
 
                         View {
-                            width: 44, height: Fill
+                            width: 275, height: Fit{min: FitBound.Abs(44)}
+                            flow: Overlay
+                            align: Align{x: 1.0, y: 0.5}
+
+                            password_input := RobrixTextInput {
+                                width: Fill, height: Fit{min: FitBound.Abs(44)}
+                                flow: Right, // do not wrap
+                                padding: Inset{top: 10, bottom: 10, left: 10, right: 38}
+                                empty_text: "Password"
+                                is_password: true,
+                                autocapitalize: None,
+                                autocorrect: Disabled,
+                                content_type: Password,
+                            }
+
+                            View {
+                                width: 44, height: Fill
+                                align: Align{x: 0.5, y: 0.5}
+
+                                show_password_button := RobrixNeutralIconButton {
+                                    width: 44, height: 44,
+                                    align: Align{x: 0.5, y: 0.5}
+                                    padding: 5
+                                    spacing: 0
+                                    margin: 0
+                                    draw_bg +: {
+                                        color: (COLOR_HEPTA_GLASS_STRONG)
+                                    }
+                                    draw_icon +: {
+                                        svg: (mod.widgets.ICON_EYE_CLOSED),
+                                        color: (COLOR_HEPTA_MUTED),
+                                    }
+                                    icon_walk: Walk{width: 18, height: 18, margin: 0}
+                                    text: ""
+                                }
+
+                                hide_password_button := RobrixNeutralIconButton {
+                                    visible: false,
+                                    align: Align{x: 0.5, y: 0.5}
+                                    width: 44, height: 44,
+                                    padding: 5
+                                    spacing: 0
+                                    margin: 0
+                                    draw_bg +: {
+                                        color: (COLOR_HEPTA_GLASS_STRONG)
+                                    }
+                                    draw_icon +: {
+                                        svg: (mod.widgets.ICON_EYE_OPEN),
+                                        color: (COLOR_HEPTA_MUTED),
+                                    }
+                                    icon_walk: Walk{width: 18, height: 18, margin: 0}
+                                    text: ""
+                                }
+                            }
+                        }
+
+                        View {
+                            width: 275, height: Fit,
+                            flow: Down,
+
+                            homeserver_input := RobrixTextInput {
+                                width: 275, height: Fit{min: FitBound.Abs(44)},
+                                flow: Right, // do not wrap
+                                padding: Inset{top: 5, bottom: 5, left: 10, right: 10}
+                                empty_text: "matrix.org"
+                                autocapitalize: None,
+                                autocorrect: Disabled,
+                                content_type: Url,
+                                input_mode: Url,
+                                draw_text +: {
+                                    text_style: TITLE_TEXT {font_size: 10.0}
+                                }
+                            }
+
+                            View {
+                                width: 275,
+                                height: Fit,
+                                flow: Right,
+                                padding: Inset{top: 3, left: 2, right: 2}
+                                spacing: 0.0,
+                                align: Align{x: 0.5, y: 0.5}
+
+                                LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
+
+                                Label {
+                                    width: Fit, height: Fit
+                                    padding: 0
+                                    draw_text +: {
+                                        color: (COLOR_HEPTA_MUTED)
+                                        text_style: REGULAR_TEXT {font_size: 10}
+                                    }
+                                    text: "Homeserver URL (optional)"
+                                }
+
+                                LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
+                            }
+                        }
+
+                        login_button := RobrixIconButton {
+                            width: 275,
+                            height: 44
+                            padding: 10
+                            margin: Inset{top: 2, bottom: 2}
                             align: Align{x: 0.5, y: 0.5}
-
-                            show_password_button := RobrixNeutralIconButton {
-                                width: 44, height: 44,
-                                align: Align{x: 0.5, y: 0.5}
-                                padding: 5
-                                spacing: 0
-                                margin: 0
-                                draw_bg +: {
-                                    color: (COLOR_HEPTA_GLASS_STRONG)
-                                }
-                                draw_icon +: {
-                                    svg: (mod.widgets.ICON_EYE_CLOSED),
-                                    color: (COLOR_HEPTA_MUTED),
-                                }
-                                icon_walk: Walk{width: 18, height: 18, margin: 0}
-                                text: ""
-                            }
-
-                            hide_password_button := RobrixNeutralIconButton {
-                                visible: false,
-                                align: Align{x: 0.5, y: 0.5}
-                                width: 44, height: 44,
-                                padding: 5
-                                spacing: 0
-                                margin: 0
-                                draw_bg +: {
-                                    color: (COLOR_HEPTA_GLASS_STRONG)
-                                }
-                                draw_icon +: {
-                                    svg: (mod.widgets.ICON_EYE_OPEN),
-                                    color: (COLOR_HEPTA_MUTED),
-                                }
-                                icon_walk: Walk{width: 18, height: 18, margin: 0}
-                                text: ""
-                            }
+                            text: "Login"
                         }
                     }
 
-                    View {
-                        width: 275, height: Fit,
-                        flow: Down,
+                    alternatives_column := View {
+                        width: 275
+                        height: Fit
+                        flow: Down
+                        align: Align{x: 0.5, y: 0.0}
+                        spacing: 10.0
 
-                        homeserver_input := RobrixTextInput {
-                            width: 275, height: Fit{min: FitBound.Abs(44)},
-                            flow: Right, // do not wrap
-                            padding: Inset{top: 5, bottom: 5, left: 10, right: 10}
-                            empty_text: "matrix.org"
-                            autocapitalize: None,
-                            autocorrect: Disabled,
-                            content_type: Url,
-                            input_mode: Url,
+                        LineH {
+                            width: 275
+                            draw_bg.color: (COLOR_HEPTA_HAIRLINE)
+                        }
+
+                        Label {
+                            width: Fit, height: Fit
+                            padding: 0,
                             draw_text +: {
-                                text_style: TITLE_TEXT {font_size: 10.0}
+                                color: (COLOR_TEXT)
+                                text_style: TITLE_TEXT {font_size: 11.0}
+                            }
+                            text: "Or, login with an SSO provider:"
+                        }
+
+                        sso_view := View {
+                            width: 275, height: 44,
+                            flow: Right,
+                            spacing: 2.0,
+                            align: Align{x: 0.5, y: 0.5}
+
+                            apple_button := mod.widgets.SsoButton {
+                                mark := Vector {
+                                    width: 22, height: 22
+                                    viewbox: vec4(0, 0, 24, 24)
+                                    Path {
+                                        fill: (COLOR_HEPTA_TEXT)
+                                        d: "M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"
+                                    }
+                                }
+                            }
+                            facebook_button := mod.widgets.SsoButton {
+                                mark := Vector {
+                                    width: 22, height: 22
+                                    viewbox: vec4(0, 0, 24, 24)
+                                    Path {
+                                        fill: (COLOR_HEPTA_TEXT)
+                                        d: "M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103.395.047.776.112 1.141.195v3.325c-.219-.03-.437-.042-.653-.036-.25-.006-.494-.009-.733-.009-.707 0-1.259.096-1.675.309-.29.147-.516.354-.679.622-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"
+                                    }
+                                }
+                            }
+                            github_button := mod.widgets.SsoButton {
+                                mark := Vector {
+                                    width: 22, height: 22
+                                    viewbox: vec4(0, 0, 24, 24)
+                                    Path {
+                                        fill: (COLOR_HEPTA_TEXT)
+                                        d: "M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
+                                    }
+                                }
+                            }
+                            gitlab_button := mod.widgets.SsoButton {
+                                mark := Vector {
+                                    width: 22, height: 22
+                                    viewbox: vec4(0, 0, 24, 24)
+                                    Path {
+                                        fill: (COLOR_HEPTA_TEXT)
+                                        d: "m23.6004 9.5927-.0337-.0862L20.3.9814a.851.851 0 0 0-.3362-.405.8748.8748 0 0 0-.9997.0539.8748.8748 0 0 0-.29.4399l-2.2055 6.748H7.5375l-2.2057-6.748a.8573.8573 0 0 0-.29-.4412.8748.8748 0 0 0-.9997-.0537.8585.8585 0 0 0-.3362.4049L.4332 9.5015l-.0325.0862a6.0657 6.0657 0 0 0 2.0119 7.0105l.0113.0087.03.0213 4.976 3.7264 2.462 1.8633 1.4995 1.1321a1.0085 1.0085 0 0 0 1.2197 0l1.4995-1.1321 2.4619-1.8633 5.006-3.7489.0125-.01a6.0682 6.0682 0 0 0 2.0094-7.003z"
+                                    }
+                                }
+                            }
+                            google_button := mod.widgets.SsoButton {
+                                mark := Vector {
+                                    width: 22, height: 22
+                                    viewbox: vec4(0, 0, 24, 24)
+                                    Path {
+                                        fill: (COLOR_HEPTA_TEXT)
+                                        d: "M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
+                                    }
+                                }
+                            }
+                            twitter_button := mod.widgets.SsoButton {
+                                mark := Vector {
+                                    width: 22, height: 22
+                                    viewbox: vec4(0, 0, 24, 24)
+                                    Path {
+                                        fill: (COLOR_HEPTA_TEXT)
+                                        d: "M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"
+                                    }
+                                }
                             }
                         }
 
@@ -203,117 +348,31 @@ script_mod! {
                             width: 275,
                             height: Fit,
                             flow: Right,
-                            padding: Inset{top: 3, left: 2, right: 2}
                             spacing: 0.0,
-                            align: Align{x: 0.5, y: 0.5} // center horizontally and vertically
+                            align: Align{x: 0.5, y: 0.5}
 
                             LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
 
                             Label {
                                 width: Fit, height: Fit
-                                padding: 0
+                                padding: Inset{left: 1, right: 1, top: 0, bottom: 0}
                                 draw_text +: {
                                     color: (COLOR_HEPTA_MUTED)
-                                    text_style: REGULAR_TEXT {font_size: 10}
+                                    text_style: REGULAR_TEXT {}
                                 }
-                                text: "Homeserver URL (optional)"
+                                text: "Don't have an account?"
                             }
 
                             LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
                         }
-                    }
-                    
 
-                    login_button := RobrixIconButton {
-                        width: 275,
-                        height: 44
-                        padding: 10
-                        margin: Inset{top: 4, bottom: 6}
-                        align: Align{x: 0.5, y: 0.5}
-                        text: "Login"
-                    }
-
-                    LineH {
-                        width: 275
-                        margin: Inset{bottom: -5}
-                        draw_bg.color: (COLOR_HEPTA_HAIRLINE)
-                    }
-
-                    Label {
-                        width: Fit, height: Fit
-                        padding: 0,
-                        draw_text +: {
-                            color: (COLOR_TEXT)
-                            text_style: TITLE_TEXT {font_size: 11.0}
+                        signup_button := RobrixIconButton {
+                            width: Fit, height: 44
+                            padding: Inset{left: 15, right: 15, top: 10, bottom: 10}
+                            margin: 0
+                            align: Align{x: 0.5, y: 0.5}
+                            text: "Sign up here"
                         }
-                        text: "Or, login with an SSO provider:"
-                    }
-
-                    sso_view := View {
-                        width: 275, height: Fit,
-                        margin: Inset{left: 10, right: 10}
-                        flow: Flow.Right{wrap: true},
-                        apple_button := mod.widgets.SsoButton {
-                            image := mod.widgets.SsoImage {
-                                src: crate_resource("self://resources/img/apple.png")
-                            }
-                        }
-                        facebook_button := mod.widgets.SsoButton {
-                            image := mod.widgets.SsoImage {
-                                src: crate_resource("self://resources/img/facebook.png")
-                            }
-                        }
-                        github_button := mod.widgets.SsoButton {
-                            image := mod.widgets.SsoImage {
-                                src: crate_resource("self://resources/img/github.png")
-                            }
-                        }
-                        gitlab_button := mod.widgets.SsoButton {
-                            image := mod.widgets.SsoImage {
-                                src: crate_resource("self://resources/img/gitlab.png")
-                            }
-                        }
-                        google_button := mod.widgets.SsoButton {
-                            image := mod.widgets.SsoImage {
-                                src: crate_resource("self://resources/img/google.png")
-                            }
-                        }
-                        twitter_button := mod.widgets.SsoButton {
-                            image := mod.widgets.SsoImage {
-                                src: crate_resource("self://resources/img/x.png")
-                            }
-                        }
-                    }
-
-                    View {
-                        width: 275,
-                        height: Fit,
-                        flow: Right,
-                        // padding: 3,
-                        spacing: 0.0,
-                        align: Align{x: 0.5, y: 0.5} // center horizontally and vertically
-
-                        LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
-
-                        Label {
-                            width: Fit, height: Fit
-                            padding: Inset{left: 1, right: 1, top: 0, bottom: 0}
-                            draw_text +: {
-                                color: (COLOR_HEPTA_MUTED)
-                                text_style: REGULAR_TEXT {}
-                            }
-                            text: "Don't have an account?"
-                        }
-
-                        LineH { draw_bg.color: (COLOR_HEPTA_HAIRLINE) }
-                    }
-                    
-                    signup_button := RobrixIconButton {
-                        width: Fit, height: Fit
-                        padding: Inset{left: 15, right: 15, top: 10, bottom: 10}
-                        margin: Inset{bottom: 5}
-                        align: Align{x: 0.5, y: 0.5}
-                        text: "Sign up here"
                     }
                 }
 
@@ -470,14 +529,9 @@ impl MatchEvent for LoginScreen {
                     self.redraw(cx);
                 }
                 Some(LoginAction::SsoPending(pending)) => {
-                    let mask = if *pending { 1.0 } else { 0.0 };
                     let cursor = if *pending { MouseCursor::NotAllowed } else { MouseCursor::Hand };
                     for view_ref in self.view_set(cx, button_set).iter() {
                         let Some(mut view_mut) = view_ref.borrow_mut() else { continue };
-                        let mut image = view_mut.image(cx, ids!(image));
-                        script_apply_eval!(cx, image, {
-                            draw_bg.mask: #(mask)
-                        });
                         view_mut.cursor = Some(cursor);
                     }
                     self.sso_pending = *pending;

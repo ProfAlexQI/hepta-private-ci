@@ -21,6 +21,7 @@ REQUIRED_CONFIG_CHANGES = %w[
   locale
   layoutDirection
 ].freeze
+REQUIRED_SOFT_INPUT_MODE = "adjustNothing|stateUnchanged"
 COMPILED_CONFIG_CHANGES = 0x400024a4
 PINNED_MAKEPAD_REVISION = "c4335cee10b22aca768510c9d072b0ca1bba15c8"
 
@@ -127,6 +128,11 @@ def validate_manifest(xml, expected_package:, errors:)
   missing_config_changes = REQUIRED_CONFIG_CHANGES - config_changes
   unless missing_config_changes.empty?
     errors << "activity configChanges is missing: #{missing_config_changes.join(', ')}"
+  end
+
+  soft_input_mode = android_attr(activity, "windowSoftInputMode")
+  unless soft_input_mode == REQUIRED_SOFT_INPUT_MODE
+    errors << "activity windowSoftInputMode must be #{REQUIRED_SOFT_INPUT_MODE.inspect} for Makepad KeyboardView IME avoidance, got #{soft_input_mode.inspect}"
   end
 
   filters = activity.get_elements("intent-filter")

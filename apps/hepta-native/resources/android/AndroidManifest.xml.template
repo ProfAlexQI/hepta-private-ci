@@ -50,6 +50,10 @@
         android:largeHeap="true"
         tools:targetApi="{target_sdk_version}">
 
+        <!-- The pinned Makepad Activity reports IME insets to its root
+             KeyboardView, which shifts the focused field once. Using
+             adjustResize here would resize the SurfaceView as well and
+             double-count the same obstruction. -->
         <activity
             android:name=".{class_name}"
             android:configChanges="orientation|screenSize|keyboardHidden|fontScale|locale|layoutDirection"
