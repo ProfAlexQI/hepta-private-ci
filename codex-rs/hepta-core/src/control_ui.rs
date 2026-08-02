@@ -1,8 +1,8 @@
 use serde::Serialize;
 
-pub const CONTROL_UI_INDEX_HTML_FALLBACK: &str =
-    include_str!("../../../apps/hepta-control-ui/index.html");
-pub const CONTROL_UI_INDEX_HTML: &str = CONTROL_UI_INDEX_HTML_FALLBACK;
+/// Canonical Control UI document. Rust embeds and serves this exact snapshot;
+/// there is no second renderer-owned HTML body.
+pub const CONTROL_UI_INDEX_HTML: &str = include_str!("../../../apps/hepta-control-ui/index.html");
 pub const CONTROL_UI_STYLES_CSS: &str = concat!(
     include_str!("../../../apps/hepta-control-ui/light-glass-tokens.generated.css"),
     "\n",
@@ -961,11 +961,24 @@ pub fn control_ui_report() -> ControlUiReport {
         implemented_screen_count + implemented_interaction_capability_count,
         screen_count + interaction_capability_count,
     );
+    let declared_screen_ids = screens
+        .iter()
+        .map(|screen| screen.id.to_string())
+        .collect::<Vec<_>>();
+    let declared_command_ids = command_bindings
+        .iter()
+        .map(|binding| binding.id.to_string())
+        .collect::<Vec<_>>();
+    let app_screen_ids = parse_app_screen_ids();
+    let app_command_ids = parse_app_command_ids();
+    let renderer_contract_aligned = same_unique_ids(&declared_screen_ids, &app_screen_ids)
+        && same_unique_ids(&declared_command_ids, &app_command_ids);
     let rust_frontend_html = control_ui_index_html();
     let local_preview_ready = screen_coverage_percent == 100
         && asset_coverage_percent == 100
         && developer_interaction_percent == 100
         && !command_bindings.is_empty()
+        && renderer_contract_aligned
         && rust_frontend_html.contains("Hepta Control UI")
         && rust_frontend_html.contains("data-rust-frontend-renderer")
         && rust_frontend_html.contains("data-no-js-frontend=\"true\"")
@@ -2342,602 +2355,22 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
     }
 }
 
+/// Return the canonical zero-JavaScript Control UI snapshot embedded from
+/// `apps/hepta-control-ui/index.html`.
+///
+/// The gateway and direct-file preview intentionally consume the same bytes;
+/// view-model reports remain separate read-only evidence and do not synthesize
+/// a second HTML implementation.
 pub fn control_ui_index_html() -> String {
-    let screens = control_ui_screens();
-    let commands = control_ui_command_bindings();
-    let logo = r#"<img src="./assets/hepta-agent-logo.png" alt="" />"#;
-
-    let screen_cards = screens
-        .iter()
-        .map(|screen| {
-            let sources = screen
-                .data_sources
-                .iter()
-                .map(|source| format!("<li><code>{}</code></li>", escape_html(source)))
-                .collect::<String>();
-            let widgets = screen
-                .widgets
-                .iter()
-                .map(|widget| format!("<li>{}</li>", escape_html(widget)))
-                .collect::<String>();
-            let interactions = screen
-                .interactions
-                .iter()
-                .map(|interaction| format!("<li>{}</li>", escape_html(interaction)))
-                .collect::<String>();
-            format!(
-                "<article class=\"card route-card\" id=\"screen-card-{}\" data-screen=\"{}\" data-ref-ui-page-section=\"{}\" data-hepta-source-ui-aligned=\"true\" data-hepta-backend-aligned=\"true\"><header><p class=\"eyebrow\">{}</p><h3>{}</h3><p>{}</p></header><div class=\"route-card__grid\"><section><h4>Data sources</h4><ul>{}</ul></section><section><h4>Widgets</h4><ul>{}</ul></section><section><h4>Interactions</h4><ul>{}</ul></section></div></article>",
-                escape_html(screen.id),
-                escape_html(screen.id),
-                escape_html(screen.id),
-                escape_html(screen.route),
-                escape_html(screen.title),
-                escape_html(screen.summary),
-                sources,
-                widgets,
-                interactions
-            )
-        })
-        .collect::<String>();
-
-    let command_cards = commands
-        .iter()
-        .map(|command| {
-            let runner = if command.command.starts_with('/') && !command.command.contains('<') {
-                "<button class=\"button small\" data-control-ui-action-control=\"read-only-command\" data-run-command=\"read-only\" aria-label=\"Run read-only command\" title=\"Run read-only command\">Run read-only</button>"
-            } else {
-                "<span class=\"chip chip--muted\">copy-only / guarded</span>"
-            };
-            format!(
-                "<article class=\"command-item\" data-command-id=\"{}\"><strong>{}</strong><code>{}</code><div class=\"action-rail\"><button class=\"button small\" data-copy=\"{}\">Copy</button>{}</div></article>",
-                escape_html(command.id),
-                escape_html(&control_ui_title_from_id(command.id)),
-                escape_html(command.command),
-                escape_html(command.command),
-                runner
-            )
-        })
-        .collect::<String>();
-
-    let right_sidebar = render_static_hepta_right_sidebar(logo);
-    let entry_surface = render_static_hepta_entry_surface(&screens, &screen_cards);
-    let product_path = render_static_hepta_product_path();
-    let secondary_workspace_map = format!(
-        "<details class=\"hepta-secondary-map\" data-control-ui-secondary-map=\"collapsed\"><summary><span>Workspace map</span><strong>All flows and diagnostics</strong></summary><div class=\"hepta-secondary-map__body\">{}</div></details>",
-        entry_surface
-    );
-    let command_palette_items = commands
-        .iter()
-        .take(18)
-        .enumerate()
-        .map(|(index, command)| {
-            let audit_hover_class = if index == 0 {
-                " command-palette__item--audit-hover"
-            } else {
-                ""
-            };
-            format!(
-                r##"<a class="command-palette__item{}" data-control-ui-command-palette-item="{}" data-control-ui-command-palette-result="light-glass" href="#commands" data-palette-kind="command" data-palette-id="{}" aria-label="Open command result: {}" title="Open command result: {}"><span class="command-palette__kind"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg><span>command</span></span><span class="command-palette__copy"><strong>{}</strong><small>{}</small></span></a>"##,
-                audit_hover_class,
-                escape_html(command.id),
-                escape_html(command.id),
-                escape_html(command.command),
-                escape_html(command.command),
-                escape_html(&control_ui_title_from_id(command.id)),
-                escape_html(command.command)
-            )
-        })
-        .collect::<String>();
-
-    format!(
-        r###"<!doctype html>
-<html lang="en" dir="auto" data-theme="premium" data-theme-mode="light" data-rust-frontend-renderer="hepta-core::control_ui" data-no-js-frontend="true">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hepta Control UI</title>
-    <meta name="description" content="Rust-rendered local console for chat, tasks, sessions, and evidence." />
-    <meta name="hepta-ui-renderer" content="rust-no-js" />
-    <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body data-view="chat" data-rust-rendered-control-ui="true" data-hepta-route-surface-first="false" data-control-ui-product-first="true" data-control-ui-primary-path="telegram-chat-shell" data-control-ui-telegram-shell="true" data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow" data-control-ui-harsh-referee="2026-06-08-liquid-glass-menus-sidebars-scroll-search">
-    <svg class="hepta-icon-sprite" aria-hidden="true" focusable="false"><symbol id="hepta-icon-chat" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></symbol><symbol id="hepta-icon-list" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol><symbol id="hepta-icon-panels" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol><symbol id="hepta-icon-spark" viewBox="0 0 24 24"><path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"/></symbol><symbol id="hepta-icon-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol><symbol id="hepta-icon-command" viewBox="0 0 24 24"><path d="M9 9h6v6H9z"/><path d="M9 9H6.5A2.5 2.5 0 1 1 9 6.5z"/><path d="M15 9V6.5A2.5 2.5 0 1 1 17.5 9z"/><path d="M15 15h2.5A2.5 2.5 0 1 1 15 17.5z"/><path d="M9 15v2.5A2.5 2.5 0 1 1 6.5 15z"/></symbol><symbol id="hepta-icon-paperclip" viewBox="0 0 24 24"><path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol><symbol id="hepta-icon-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol><symbol id="hepta-icon-plan" viewBox="0 0 24 24"><path d="M9 11l2 2 4-5"/><path d="M20 6 9 17l-5-5"/></symbol><symbol id="hepta-icon-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></symbol><symbol id="hepta-icon-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></symbol><symbol id="hepta-icon-reply" viewBox="0 0 24 24"><path d="m9 17-6-6 6-6"/><path d="M3 11h12a6 6 0 0 1 6 6v1"/></symbol><symbol id="hepta-icon-scroll" viewBox="0 0 24 24"><path d="M12 4v16"/><path d="m8 8 4-4 4 4"/><path d="m16 16-4 4-4-4"/></symbol><symbol id="hepta-icon-shield" viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6Z"/></symbol><symbol id="hepta-icon-file-check" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-5"/></symbol><symbol id="hepta-icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9a3 3 0 1 1 5.1 2.2c-.9.7-1.5 1.2-1.7 2.3"/><path d="M12 17h.01"/></symbol><symbol id="hepta-icon-close" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol></svg>
-    <div class="shell shell--hepta-premium" data-hepta_runtime-ui-parity="true" data-premium-consumer-ui="linear-raycast-vercel-arc" data-rust-frontend-renderer="true" data-js-artifacts="removed">
-      <aside class="shell-nav sidebar" aria-label="Hepta navigation">
-        <div class="brand app-brand"><div class="brand-mark app-brand__mark" data-hepta-agent-logo="true">{logo}</div><div class="app-brand__text"><p class="eyebrow">Control UI</p><h1>Hepta</h1></div></div>
-        <nav class="nav nav-group nav-group--primary shell-nav__list" id="hepta-nav" aria-label="Control UI sections">
-          <a class="active" data-screen="chat" href="#chat"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-chat"/></svg></span><span>Chat</span></a>
-          <a data-screen="tasks" href="#tasks"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span>Tasks</span></a>
-          <a data-screen="ops" href="#ops"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span>Ops</span></a>
-          <a data-screen="external-agent-benchmark" href="#external-agent-benchmark"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-spark"/></svg></span><span>Benchmark</span></a>
-        </nav>
-      </aside>
-      <header class="topbar"><div class="topnav-shell"><div class="topnav-shell__content"><div class="dashboard-header"><div class="dashboard-header__breadcrumb"><span class="dashboard-header__breadcrumb-link">Hepta</span><span class="dashboard-header__breadcrumb-sep">/</span><span class="dashboard-header__breadcrumb-current">Workspace</span></div><div class="topbar-status topbar-status--quiet" data-control-ui-readiness-split="sample-vs-live-adapter"><span class="pill"><span class="statusDot"></span><span>Local preview</span></span><span class="pill" data-readiness-kind="sample">safe</span><span class="pill pill--muted" data-readiness-kind="live-adapter">live actions gated</span></div></div></div><div class="topnav-shell__actions"><a class="btn btn--primary" data-control-ui-action-control="new-task" data-control-ui-topbar-action="light-glass" href="#task-publisher" aria-label="Create new task" title="Create new task"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-plus"/></svg></span><span>New Task</span></a></div></div></header>
-      <main class="content main">
-        <section class="hero dashboard-hero" data-chat-first-architecture="true" data-minimal-consumer-workspace="true" data-telegram-multi-agent-chat="true"><div><p class="eyebrow">AI workspace</p><h2>Ask, plan, inspect evidence, and approve.</h2><p class="hero-copy">Hepta keeps agent work in a local, inspectable workspace before any live action is allowed.</p></div><div class="hero-actions"><a class="button primary btn btn--primary" href="/api/control-ui">Status</a><a class="button btn" href="/api/ui-contract-audit">Safety audit</a></div></section>
-        <section class="metric-grid stats-grid" id="hepta-metrics" aria-label="UI health metrics"><article class="metric-card"><span>workflows</span><strong>{screen_count}/{screen_count}</strong><p>ready locally</p></article><article class="metric-card"><span>commands</span><strong>{command_count}</strong><p>review or copy only</p></article><article class="metric-card"><span>safety</span><strong>Local</strong><p>live actions gated</p></article><article class="metric-card"><span>workspace</span><strong>Chat-first</strong><p>clear thread and task flow</p></article></section>
-        <section class="hepta-dashboard-recovery" data-dashboard-recovery-panel="blank-app-module" data-dashboard-recovery-source="rust-static-fallback" data-nodes-poll-scope="active-tab-only" data-nodes-poll-autostart="false" aria-label="Local safeguard"><strong>Local safeguard</strong><span>ready</span><a href="/api/ui-contract-audit">Inspect</a></section>
-        <section class="workspace dashboard-grid"><section class="panel card wide" id="hepta-screen-panel" aria-live="polite">
-          <section class="focus-workspace telegram-chat-shell" data-chat-first-architecture="true" data-minimal-consumer-workspace="true" data-telegram-multi-agent-chat="true" data-control-ui-telegram-shell="true" data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow" data-control-ui-harsh-referee="2026-06-08-liquid-glass-menus-sidebars-scroll-search" data-mobile-layered-chat="true" data-professional-first-screen="true" data-product-ia="telegram-chat-shell" data-control-ui-product-first="true" data-control-ui-primary-path="telegram-chat-shell" data-workspace-primary="thread" data-chat-mobile-active-pane="thread" data-chat-workspace-scope="local" data-chat-brain-scope="global" data-chat-shared-brain-mode="global-brain-isolated-context">
-            <header class="focus-header"><div class="focus-brand"><div class="focus-orb" data-hepta-agent-logo="true">{logo}</div><span>Hepta</span></div></header>
-            <main class="focus-main focus-main--chat"><nav class="tg-mobile-layer-tabs" data-chat-mobile-pane-tabs="native-anchor" aria-label="Mobile chat panes"><a href="#chat-list" data-chat-mobile-pane-tab="chats" aria-label="Show chats">Chats</a><a href="#chat-thread" data-chat-mobile-pane-tab="thread" aria-label="Show current thread">Thread</a><a href="#chat-room" data-chat-mobile-pane-tab="room" aria-label="Show room information">Room</a></nav>
-              <aside class="tg-conversation-rail" id="chat-list" tabindex="-1" data-chat-mobile-pane="chats" data-control-ui-work-rail="product-first">
-                <div class="tg-rail-header"><div><h2>Chats</h2></div><div class="tg-rail-status tg-rail-status--minimal"><button class="tg-icon-action" data-control-ui-icon-button="new-conversation" data-chat-add aria-label="New conversation" title="New conversation"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-plus"/></svg></button><span class="tg-rail-status__item tg-rail-status__item--quiet" data-rail-agent-count="3">3</span></div></div>
-                <div class="tg-rail-toolbar"><label class="tg-search-shell" aria-label="Search chats"><input id="chat-search" data-chat-search data-control-ui-rail-search-input="light-glass" type="search" placeholder="Search" value="" aria-label="Search chats" title="Search chats" /></label></div>
-                <div class="tg-folder-row" aria-label="Chat folders"><button class="tg-folder-chip active" data-chat-folder="all" aria-pressed="true" aria-label="All chats" title="All chats"><span>All</span></button><button class="tg-folder-chip" data-chat-folder="pinned" aria-pressed="false" aria-label="Pinned chats" title="Pinned chats"><span>Pinned</span></button><button class="tg-folder-chip" data-chat-folder="archived" aria-pressed="false" aria-label="Archived chats" title="Archived chats"><span>Archived</span></button></div>
-                <section class="tg-conversation-list" aria-label="Agent conversations" role="list">
-                  <article class="tg-chat-item active" data-chat-conversation="ui-chat-agent" role="listitem" aria-current="true" tabindex="0" aria-label="Hepta conversation, local review ready" title="Hepta conversation, local review ready"><div class="tg-chat-item__avatar tg-chat-item__avatar--hepta-logo" data-hepta-agent-logo="true">{logo}</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Hepta</strong><div class="tg-chat-item__actions"><span>now</span><button class="tg-row-menu-toggle active" data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="ui-chat-agent" popovertarget="row-menu-ui-chat-agent" aria-controls="row-menu-ui-chat-agent" aria-label="Open Hepta conversation actions" title="Open Hepta conversation actions"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-more"/></svg></button></div></div><p class="is-unread">Plan is ready in the thread. Review the evidence before approval.</p><span class="tg-chat-item__unread" data-chat-unread="1" data-control-ui-micro-surface="unread-count">1</span></div><div class="tg-row-action-popover" id="row-menu-ui-chat-agent" popover="auto" data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="ui-chat-agent" role="group" aria-label="Hepta conversation actions"><button class="tg-row-action" data-chat-row-menu-item="pin" autofocus aria-label="Pin Hepta conversation" title="Pin Hepta conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-row-action__label">Pin</span></button><button class="tg-row-action" data-chat-row-menu-item="open-evidence" aria-label="Open Hepta evidence" title="Open Hepta evidence"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span class="tg-row-action__label">Evidence</span></button><button class="tg-row-action tg-row-action--danger" data-chat-row-menu-item="archive" aria-label="Archive Hepta conversation" title="Archive Hepta conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-close"/></svg></span><span class="tg-row-action__label">Archive</span></button></div></article>
-                  <article class="tg-chat-item" data-chat-conversation="task-queue" role="listitem" tabindex="0" aria-label="Actions conversation, local approval queue" title="Actions conversation, local approval queue"><div class="tg-chat-item__avatar" aria-hidden="true">A</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Actions</strong><div class="tg-chat-item__actions"><span>local</span><button class="tg-row-menu-toggle" data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="task-queue" popovertarget="row-menu-task-queue" aria-controls="row-menu-task-queue" aria-label="Open Actions conversation actions" title="Open Actions conversation actions"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-more"/></svg></button></div></div><p>Pending steps are waiting for an exact approval.</p></div><div class="tg-row-action-popover" id="row-menu-task-queue" popover="auto" data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="task-queue" role="group" aria-label="Actions conversation actions"><button class="tg-row-action" data-chat-row-menu-item="pin" autofocus aria-label="Pin Actions conversation" title="Pin Actions conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-row-action__label">Pin</span></button><button class="tg-row-action" data-chat-row-menu-item="open-approvals" aria-label="Open Actions approvals" title="Open Actions approvals"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-plan"/></svg></span><span class="tg-row-action__label">Approvals</span></button><button class="tg-row-action tg-row-action--danger" data-chat-row-menu-item="archive" aria-label="Archive Actions conversation" title="Archive Actions conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-close"/></svg></span><span class="tg-row-action__label">Archive</span></button></div></article>
-                  <article class="tg-chat-item" data-chat-conversation="operator-plane" role="listitem" tabindex="0" aria-label="Evidence conversation, sources ready" title="Evidence conversation, sources ready"><div class="tg-chat-item__avatar" aria-hidden="true">E</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Evidence</strong><div class="tg-chat-item__actions"><span>ready</span><button class="tg-row-menu-toggle" data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="operator-plane" popovertarget="row-menu-operator-plane" aria-controls="row-menu-operator-plane" aria-label="Open Evidence conversation actions" title="Open Evidence conversation actions"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-more"/></svg></button></div></div><p>Sources, decisions, and safety notes stay attached to the chat.</p></div><div class="tg-row-action-popover" id="row-menu-operator-plane" popover="auto" data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="operator-plane" role="group" aria-label="Evidence conversation actions"><button class="tg-row-action" data-chat-row-menu-item="pin" autofocus aria-label="Pin Evidence conversation" title="Pin Evidence conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-row-action__label">Pin</span></button><button class="tg-row-action" data-chat-row-menu-item="open-sources" aria-label="Open Evidence sources" title="Open Evidence sources"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span class="tg-row-action__label">Sources</span></button><button class="tg-row-action tg-row-action--danger" data-chat-row-menu-item="archive" aria-label="Archive Evidence conversation" title="Archive Evidence conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-close"/></svg></span><span class="tg-row-action__label">Archive</span></button></div></article>
-                </section>
-              </aside>
-              <section class="tg-thread-panel" id="chat-thread" tabindex="-1" data-chat-mobile-pane="thread" data-hepta-main-panel-active="false">
-                <header class="tg-thread-header"><div class="tg-thread-header__main"><div class="tg-thread-avatar tg-thread-avatar--hepta-logo" data-hepta-agent-logo="true" aria-label="Hepta agent logo">{logo}</div><div><h2>Hepta</h2><p>local review ready</p></div></div><div class="tg-thread-status"><div class="tg-thread-status-summary" data-session-status-badges="compact" data-control-ui-status-trust-strip="local-safe-review" role="group" aria-label="Thread status trust"><span class="badge ok" data-control-ui-status-trust-badge="local" data-control-ui-micro-surface="thread-status-local" aria-label="Local trust status" title="Local trust status">Local</span><span class="badge" data-control-ui-status-trust-badge="safe-review" data-control-ui-micro-surface="thread-status-safe-review" aria-label="Safe review status" title="Safe review status">safe review</span><span data-control-ui-micro-surface="thread-status-session" class="badge tg-session-state tg-session-state--live" data-session-status="live">live</span><span data-control-ui-micro-surface="thread-status-session" class="badge tg-session-state tg-session-state--idle" data-session-status="idle">idle</span><span data-control-ui-micro-surface="thread-status-session" class="badge tg-session-state tg-session-state--terminal" data-session-status="terminal">terminal</span></div><button type="button" class="tg-icon-action tg-command-palette-trigger" data-open-command-palette data-control-ui-command-palette-trigger="light-glass" popovertarget="command-palette" aria-haspopup="dialog" aria-controls="command-palette" aria-label="Open command palette" title="Open command palette"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg></button><div class="tg-thread-command-menu" data-thread-command-menu="true"><button type="button" popovertarget="thread-tools-popover" aria-controls="thread-tools-popover" data-control-ui-menu-trigger="icon" data-control-ui-thread-tools-trigger="light-glass" aria-label="Open thread tools" title="Open thread tools"><span class="tg-menu-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-more"/></svg></span><span class="sr-only">More</span></button><div class="tg-thread-command-menu__panel tg-thread-search-bar__controls" id="thread-tools-popover" popover="auto" data-control-ui-thread-tools-panel="light-glass" role="group" aria-label="Thread tools"><a class="tg-header-action tg-menu-item" data-control-ui-menu-item="history" autofocus href="#transcript" aria-label="Open thread history" title="Open thread history"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-history"/></svg></span><span class="tg-menu-item__label">History</span></a><a class="tg-header-action tg-menu-item" data-control-ui-menu-item="tasks" href="#tasks" aria-label="Open thread tasks" title="Open thread tasks"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-menu-item__label">Tasks</span></a><a class="tg-header-action tg-menu-item" data-control-ui-menu-item="sessions" href="#sessions" aria-label="Open thread sessions" title="Open thread sessions"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span class="tg-menu-item__label">Sessions</span></a></div></div></div></header>
-                {product_path}
-                <section class="focus-thread tg-thread" aria-label="Selected conversation thread" data-thread-signature="rust-no-js-static:4">
-                  <div class="tg-date-divider" data-chat-date-divider="local-day"><span data-control-ui-micro-surface="date-divider">Today</span></div>
-                  <article class="tg-message tg-message--self"><div class="tg-bubble"><span>you</span><p>全量复刻 Telegram 的 UI，不要 dashboard。</p></div><small>16:47</small></article>
-                  <article class="tg-message tg-message--agent"><div class="tg-bubble"><span>hepta</span><p>收到。默认界面改成 Telegram 式聊天：左侧会话，中间消息流，底部只保留附件、文本和发送。</p></div><small>local · now</small></article>
-                  <article class="tg-message tg-message--agent"><div class="tg-bubble"><span>evidence</span><p>Approval, plan, and source notes stay inline in chat.</p><div class="badge-row tg-routing-badges"><span class="badge" data-control-ui-micro-surface="routing-safe-preview">safe preview</span><span class="badge" data-control-ui-micro-surface="routing-local-only">local only</span></div></div><small>local · now</small></article>
-<!-- architecture-v2-diagnostic:start -->
-                    <article class="tg-message tg-message--agent tg-message--v2-diagnostic" data-architecture-v2-diagnostic="read-only" data-architecture-v2-evidence-state="absent" data-architecture-v2-authority-state="unverified" data-architecture-v2-live-state="unverified" data-architecture-v2-production-state="not-claimed">
-                      <div class="tg-bubble v2-diagnostic">
-                        <span>architecture v2</span>
-                        <details>
-                          <summary aria-label="Toggle Architecture V2 ownership trace" title="Toggle Architecture V2 ownership trace"><strong>Ownership trace</strong><em>readback not attached</em></summary>
-                          <p class="v2-diagnostic__intro">This shell has no attached V2 evidence. Compatibility reports may describe guarded routes, loopback policy, or redacted events; their status does not prove admission or authority.</p>
-                          <ol class="v2-control-flow" aria-label="Architecture V2 ownership and control flow">
-                            <li><strong>Runtime</strong><small>freeze revisions</small></li>
-                            <li><strong>Kernel</strong><small>admit exact request</small></li>
-                            <li><strong>Intelligence</strong><small>select admitted option</small></li>
-                            <li><strong>Kernel</strong><small>reauthorize at commit</small></li>
-                            <li><strong>Runtime</strong><small>execute and receipt</small></li>
-                            <li><strong>Memory</strong><small>preference CAS</small></li>
-                          </ol>
-                          <nav class="v2-readbacks" aria-label="Read-only Architecture V2 supporting diagnostics">
-                            <a href="/api/approvals" data-v2-readback="approval-route-inventory"><strong>Approvals</strong><small>guarded routes only</small></a>
-                            <a href="/api/policy" data-v2-readback="policy-snapshot"><strong>Policy</strong><small>loopback gates only</small></a>
-                            <a href="/api/events-report" data-v2-readback="redacted-event-summary"><strong>Events</strong><small>redacted counts only</small></a>
-                          </nav>
-                          <p class="v2-diagnostic__boundary">Exact request binding, commit authorization, outcome receipt, and preference transition stay unknown. No live or production-readiness state is inferred.</p>
-                        </details>
-                        <p class="v2-diagnostic__status-note">V2 authority, live state, and production readiness remain unverified.</p>
-                      </div>
-                      <small>local · read-only</small>
-                    </article>
-<!-- architecture-v2-diagnostic:end -->
-                </section>
-                {secondary_workspace_map}
-                <section class="focus-compose chat-compose tg-compose-wrap" data-chat-composer-shell="telegram" data-mobile-compact-composer="true" data-control-ui-composer-product-first="true">
-                  <div class="tg-context-chip-row" data-chat-context-chip-list="true" aria-label="Attached context"><span class="tg-context-chip tg-context-chip--evidence" data-chat-context-chip="ui-parity"><span>evidence</span><strong>safe preview</strong></span><span class="tg-context-chip" data-chat-context-chip="rust-no-js"><span>mode</span><strong>local</strong></span></div>
-                  <div class="tg-compose-bar"><div class="tg-composer-picker" data-chat-composer-picker="artifact"><button type="button" class="tg-compose-icon" popovertarget="composer-popover-artifact" data-control-ui-icon-button="attach" data-chat-composer-popover-toggle="artifact" data-chat-attachment-placeholder aria-controls="composer-popover-artifact" aria-label="Attach local context" title="Attach local context"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-paperclip"/></svg></button><div class="tg-composer-popover" id="composer-popover-artifact" popover="auto" data-chat-composer-popover="artifact" data-control-ui-composer-popover-panel="light-glass" role="group" aria-label="Attach local context options"><div class="tg-composer-popover__header"><strong>Attach context</strong><span>local only</span></div><input class="tg-composer-popover__search" data-chat-composer-picker-search="artifact" autofocus data-control-ui-composer-popover-search="light-glass" type="search" placeholder="Find local context" aria-label="Search local context" title="Search local context" /><button class="tg-composer-popover__item" data-chat-artifact-insert="evidence-note" data-chat-composer-picker-item="evidence-note" aria-label="Attach evidence note" title="Attach evidence note"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-paperclip"/></svg></span><span><b>Evidence note</b><small>Local source summary</small></span></button><button class="tg-composer-popover__item" data-chat-artifact-insert="decision-log" data-chat-composer-picker-item="decision-log" aria-label="Attach decision log" title="Attach decision log"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span><b>Decision log</b><small>Approval boundary</small></span></button></div></div><div class="tg-composer-picker" data-chat-composer-picker="command"><button type="button" class="tg-compose-icon" popovertarget="composer-popover-command" data-control-ui-icon-button="command" data-chat-composer-popover-toggle="command" data-chat-command-shortcut aria-controls="composer-popover-command" aria-label="Insert command" title="Insert command"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg></button><div class="tg-composer-popover" id="composer-popover-command" popover="auto" data-chat-composer-popover="command" data-control-ui-composer-popover-panel="light-glass" role="group" aria-label="Insert command options"><div class="tg-composer-popover__header"><strong>Insert command</strong><span>read-only</span></div><input class="tg-composer-popover__search" data-chat-composer-picker-search="command" autofocus data-control-ui-composer-popover-search="light-glass" type="search" placeholder="Find command" aria-label="Search commands" title="Search commands" /><button class="tg-composer-popover__item" data-chat-command-insert="/control-ui --json" data-chat-composer-picker-item="control-ui-command" aria-label="Insert /control-ui --json" title="Insert /control-ui --json"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-command"/></svg></span><span><b>Control UI</b><small>/control-ui --json</small></span></button><button class="tg-composer-popover__item" data-chat-command-insert="/hepta-merge-completion --json" data-chat-composer-picker-item="merge-completion-command" aria-label="Insert /hepta-merge-completion --json" title="Insert /hepta-merge-completion --json"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span><b>Merge completion</b><small>/hepta-merge-completion --json</small></span></button></div></div><textarea id="chat-message" data-chat-composer-input data-chat-enter-send spellcheck="false" rows="1" placeholder="Message Hepta" aria-label="Message Hepta" title="Message Hepta"></textarea><button class="tg-send-button" data-control-ui-icon-button="send" data-agent-chat-send aria-label="Send message" title="Send message"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-send"/></svg></button></div>
-                  <div class="tg-compose-footer"><span data-chat-shortcut-hint>Plan first · send after review</span><button class="tg-compose-plan" data-control-ui-icon-button="plan" data-agent-chat-plan aria-label="Plan next step" title="Plan next step"><span class="tg-menu-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-plan"/></svg></span><span class="sr-only">Plan</span></button><span class="tg-compose-status" data-chat-send-state="ready" data-control-ui-micro-surface="composer-status-ready">safe preview</span><div class="tg-thread-command-menu" data-control-ui-composer-more="collapsed"><button type="button" popovertarget="composer-tools-popover" aria-controls="composer-tools-popover" data-control-ui-menu-trigger="icon" data-control-ui-composer-tools-trigger="light-glass" aria-label="Open composer tools" title="Open composer tools"><span class="tg-menu-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-more"/></svg></span><span class="sr-only">More</span></button><div class="tg-thread-command-menu__panel tg-thread-search-bar__controls" id="composer-tools-popover" popover="auto" data-control-ui-composer-tools-panel="light-glass" role="group" aria-label="Composer tools"><label class="tg-autoscroll-select tg-menu-item" data-control-ui-composer-tool-item="reply-mode" data-control-ui-menu-item="reply-mode" aria-label="Set reply mode" title="Set reply mode"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-reply"/></svg></span><span class="tg-menu-item__label">Reply</span><select id="chat-routing-mode" autofocus class="tg-compose-mode" data-chat-routing-mode aria-label="Reply mode" title="Reply mode"><option selected>auto</option><option>direct</option><option>broadcast</option></select></label><label class="tg-autoscroll-select tg-menu-item" data-control-ui-composer-tool-item="scroll-mode" data-control-ui-menu-item="scroll-mode" data-chat-autoscroll-persisted="local-storage-contract" aria-label="Set auto-scroll mode" title="Set auto-scroll mode"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-scroll"/></svg></span><span class="tg-menu-item__label">Scroll</span><select data-chat-autoscroll-mode aria-label="Auto-scroll mode" title="Auto-scroll mode"><option value="smart" selected>smart</option><option value="locked">locked</option><option value="off">off</option></select></label></div></div></div>
-                  <input id="chat-agent-id" type="hidden" value="ui-chat-agent" /><input id="chat-from-agent-id" type="hidden" value="ui-user" />
-                  <details class="focus-result tg-focus-result" data-developer-output="collapsed"><summary>Developer output</summary><pre id="agent-chat-output" class="json-box">Choose a workspace, then plan or send a message.</pre></details>
-                </section>
-              </section>
-              <aside class="tg-room-panel" id="chat-room" tabindex="-1" data-chat-mobile-pane="room" data-workspace-room-panel="local" data-workspace-group-chat="false" data-room-empty-consolidated="false">{right_sidebar}</aside>
-            </main>
-          </section>
-        </section><section class="panel card command-rail" id="hepta-command-panel"><div class="panel-heading"><div><p class="eyebrow">Operator commands</p><h3>Copy-ready surfaces</h3></div></div><div class="command-list" id="commands">{command_cards}</div><pre id="command-runner-output" class="json-box">Pick an allowlisted command and run it locally. Template commands with &lt;task_id&gt; stay copy-only.</pre></section></section>
-        <section class="panel card wide evidence-panel" data-live-event-stream="true" data-diff-review="true" data-approval-cards="true" data-task-drilldown="true" data-transcript-preview="true" data-command-runner="true" data-task-publisher="true" data-agent-chat="true" data-external-agent-benchmark="true" data-route-view-controller="rust-anchor-routes" data-command-palette="rust-anchor-command-list"><div class="panel-heading card-header"><div><p class="eyebrow">Runtime evidence</p><h3>Rust-rendered evidence surface</h3></div></div><textarea id="json-input" spellcheck="false" placeholder="Paste runtime JSON here for manual inspection; server APIs remain available under /api/*." aria-label="Paste runtime JSON for manual inspection" title="Paste runtime JSON for manual inspection"></textarea><pre id="json-preview">No browser JavaScript is required for this Rust-rendered shell.</pre><aside class="terminal-qr-preview" data-terminal-qr-rendering="fixed-cell-terminal-qr" aria-label="Terminal QR rendering contract"><code>QR fixed-cell / ANSI-safe</code></aside></section>
-      </main>
-    </div>
-    <div class="command-palette-backdrop" id="command-palette" popover="auto"><section class="command-palette" data-control-ui-command-palette-surface="light-glass" role="dialog" aria-modal="false" aria-label="Command palette"><div class="command-palette__input-row"><span aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-command"/></svg></span><input id="command-palette-input" autofocus data-control-ui-command-palette-input="light-glass" type="search" placeholder="Search" autocomplete="off" aria-label="Search command palette" title="Search command palette" /><button type="button" class="button small btn btn--ghost" data-control-ui-command-palette-close="light-glass" popovertarget="command-palette" popovertargetaction="hide" aria-label="Close command palette" title="Close command palette"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-close"/></svg></button></div><div id="command-palette-results" class="command-palette__results">{command_palette_items}</div></section></div>
-    <div class="toast" id="toast" role="status" aria-live="polite">Rust frontend ready</div>
-  </body>
-</html>"###,
-        logo = logo,
-        screen_count = screens.len(),
-        command_count = commands.len(),
-        command_cards = command_cards,
-        command_palette_items = command_palette_items,
-        right_sidebar = right_sidebar,
-        product_path = product_path,
-        secondary_workspace_map = secondary_workspace_map,
-    )
-}
-
-fn render_static_hepta_product_path() -> String {
-    [
-        "<section class=\"tg-thread-meta-strip tg-thread-intro\" data-control-ui-product-first=\"true\" data-control-ui-primary-path=\"telegram-chat-shell\" data-control-ui-telegram-shell=\"true\" data-control-ui-compact-product-path=\"narrow-mobile\">",
-        "<span class=\"badge ok\" data-control-ui-thread-intro-badge=\"telegram-shell\" data-control-ui-micro-surface=\"thread-intro-telegram-shell\" aria-label=\"Telegram shell\" title=\"Telegram shell\">Telegram shell</span>",
-        "<span class=\"badge\" data-control-ui-thread-intro-badge=\"message-workflow\" data-control-ui-micro-surface=\"thread-intro-message-workflow\" aria-label=\"Message-first workflow\" title=\"Message-first workflow\">message-first workflow</span>",
-        "<span class=\"badge\" data-control-ui-thread-intro-badge=\"evidence-inline\" data-control-ui-micro-surface=\"thread-intro-evidence-inline\" aria-label=\"Evidence inline\" title=\"Evidence inline\">evidence inline</span>",
-        "<span class=\"badge\" data-control-ui-thread-intro-badge=\"approval-chat\" data-control-ui-micro-surface=\"thread-intro-approval-chat\" aria-label=\"Approval in chat\" title=\"Approval in chat\">approval in chat</span>",
-        "</section>",
-    ]
-    .join("")
-}
-
-fn static_hepta_left_sidebar_sections() -> Vec<(
-    &'static str,
-    &'static str,
-    Vec<(&'static str, &'static str, &'static str, &'static str)>,
-)> {
-    vec![
-        ("chat", "Chat", vec![("Chat", "/chat", "chat", "chat")]),
-        (
-            "control",
-            "Control",
-            vec![
-                ("Overview", "/overview", "dashboard", "panels"),
-                ("Channels", "/channels", "gateway", "chat"),
-                ("Instances", "/instances", "ops", "panels"),
-                ("Sessions", "/sessions", "sessions", "panels"),
-                ("Tasks", "/tasks", "tasks", "list"),
-                ("Usage", "/usage", "ops", "list"),
-                ("Cron", "/cron", "tasks", "history"),
-            ],
-        ),
-        (
-            "agent",
-            "Agents",
-            vec![
-                ("Agents", "/agents", "workers", "spark"),
-                ("Skills", "/skills", "commands", "spark"),
-                ("Nodes", "/nodes", "gateway", "panels"),
-                ("Dreaming", "/dreaming", "transcript", "spark"),
-            ],
-        ),
-        (
-            "settings",
-            "Settings",
-            vec![
-                ("Config", "/config", "config", "panels"),
-                ("Comms", "/communications", "gateway", "chat"),
-                ("Appearance", "/appearance", "config", "spark"),
-                ("Automation", "/automation", "tasks", "history"),
-                ("Infra", "/infrastructure", "ops", "shield"),
-                ("AI Agents", "/ai-agents", "multi-agent", "spark"),
-                ("Debug", "/debug", "developer", "command"),
-                ("Logs", "/logs", "live", "list"),
-            ],
-        ),
-    ]
-}
-
-fn render_static_hepta_right_sidebar(logo: &str) -> String {
-    let sections = static_hepta_left_sidebar_sections();
-    let source_block_count = sections.len() + 2;
-    let item_count = sections
-        .iter()
-        .map(|(_, _, items)| items.len())
-        .sum::<usize>()
-        + 1;
-    let mut rendered_sections = String::new();
-    for (id, label, items) in &sections {
-        let rendered_items = items
-            .iter()
-            .map(|(item_label, route, screen, icon_id)| {
-                let active = if *route == "/chat" { " active" } else { "" };
-                let current = if *route == "/chat" { "page" } else { "false" };
-                let anchor = route_anchor_id(route);
-                format!(
-                    "<a class=\"nav-item hepta-nav-item{}\" href=\"#{}\" data-hepta-nav-route=\"{}\" data-hepta-nav-key=\"{}\" data-screen=\"{}\" aria-current=\"{}\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-{}\"/></svg></span><span class=\"nav-item__text\">{}</span></a>",
-                    active,
-                    escape_html(&anchor),
-                    escape_html(route),
-                    escape_html(route),
-                    escape_html(screen),
-                    current,
-                    escape_html(icon_id),
-                    escape_html(item_label)
-                )
-            })
-            .collect::<String>();
-        rendered_sections.push_str(&format!(
-            "<section class=\"hepta-nav-section hepta-sidebar-block\" data-hepta-sidebar-block=\"section\" data-hepta-sidebar-section=\"{}\" data-hepta-source-node=\"nav-section\"><div class=\"hepta-nav-section__label\"><span>{}</span></div><div class=\"hepta-nav-section__items\">{}</div></section>",
-            escape_html(id),
-            escape_html(label),
-            rendered_items
-        ));
-    }
-
-    format!(
-        "<aside class=\"hepta-right-sidebar shell-nav sidebar sidebar-shell\" aria-label=\"Hepta chat info\" data-hepta-left-sidebar-migrated=\"full\" data-hepta-sidebar-collapsed=\"false\" data-hepta-sidebar-block-alignment=\"source-blocks\" data-hepta-sidebar-source-block-count=\"{}\" data-hepta-sidebar-section-count=\"{}\" data-hepta-sidebar-item-count=\"{}\" data-hepta-source-shell=\"shell-nav sidebar sidebar-shell main content\"><header class=\"brand app-brand hepta-sidebar-block\" data-hepta-sidebar-block=\"brand\" data-hepta-source-node=\"sidebar-header\"><div class=\"brand-mark app-brand__mark\" data-hepta-agent-logo=\"true\">{}</div><div class=\"app-brand__text\"><p class=\"eyebrow\">Info</p><h1>Hepta</h1></div></header><nav class=\"sidebar-nav hepta-right-sidebar__body\" data-hepta-source-node=\"sidebar-nav\"><section class=\"hepta-nav-section hepta-sidebar-block\" data-hepta-multi-agent-inline=\"right-rail\" data-control-ui-runtime-rail=\"local-review-safety-evidence\"><div class=\"hepta-nav-section__label\"><span>Safety</span></div><div class=\"hepta-nav-section__items\"><a class=\"nav-item hepta-nav-item\" href=\"#multi-agent\" data-screen=\"multi-agent\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-shield\"/></svg></span><span class=\"nav-item__text\">Local review</span></a><a class=\"nav-item hepta-nav-item\" href=\"#security\" data-screen=\"security\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-shield\"/></svg></span><span class=\"nav-item__text\">Safety locked</span></a><a class=\"nav-item hepta-nav-item\" href=\"#evidence\" data-screen=\"evidence\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-file-check\"/></svg></span><span class=\"nav-item__text\">Evidence ready</span></a></div></section><section class=\"hepta-nav-section hepta-sidebar-block\"><div class=\"hepta-nav-section__label\"><span>Context</span></div><p class=\"tg-room-section__copy\">Plan summary, source notes, and approval boundary stay attached to this conversation.</p></section><details class=\"tg-room-accordion hepta-nav-section hepta-sidebar-block\" data-control-ui-secondary-nav=\"collapsed\"><summary class=\"tg-room-section__title\"><span>Diagnostics</span><strong>Routes and tools</strong></summary><div class=\"tg-room-accordion__body\">{}</div></details></nav><footer class=\"hepta-right-sidebar__footer hepta-sidebar-block\" data-hepta-sidebar-block=\"footer\" data-hepta-source-node=\"sidebar-footer\"><a class=\"nav-item hepta-nav-item hepta-nav-item--docs\" href=\"https://docs.hepta.ai/\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-help\"/></svg></span><span class=\"nav-item__text\">Docs</span></a><small class=\"hepta-sidebar-version\">v2026.5.7</small></footer></aside>",
-        source_block_count,
-        sections.len(),
-        item_count,
-        logo,
-        rendered_sections
-    )
-}
-
-fn render_static_hepta_entry_surface(screens: &[ControlUiScreen], screen_cards: &str) -> String {
-    let route_rows = [
-        (
-            "/chat",
-            "Chat",
-            "conversation/task/model",
-            "thread;composer;safe tools",
-            "plan review focus",
-            "send only after approval",
-        ),
-        (
-            "/overview",
-            "Overview",
-            "status/health/auth/events/logs",
-            "access;snapshot;stats;attention;quick actions",
-            "connect reload new automation terminal docs",
-            "tokens redacted; pairing warned",
-        ),
-        (
-            "/channels",
-            "Channels",
-            "channels/status/config/setup",
-            "health;accounts;provider setup;enabled counts",
-            "refresh load-config setup",
-            "intent before send; secrets hidden",
-        ),
-        (
-            "/instances",
-            "Instances",
-            "instances/presence/nodes",
-            "presence;host toggle;last input;reason",
-            "refresh toggle-hosts",
-            "hosts hidden by default",
-        ),
-        (
-            "/sessions",
-            "Sessions",
-            "sessions/activity/context",
-            "filters;table;activity;checkpoints;bulk select",
-            "inspect restore archive",
-            "session lifecycle guarded",
-        ),
-        (
-            "/transcript",
-            "History",
-            "transcript/session/query",
-            "threaded turns;query;session context",
-            "search inspect copy",
-            "read-only transcript",
-        ),
-        (
-            "/tasks",
-            "Tasks",
-            "tasks/subagents/acp/scheduler",
-            "queue;task detail;subagent topology;status lanes;cancel controls",
-            "refresh inspect run cancel focus spawn",
-            "explicit spawn/cancel/steer",
-        ),
-        (
-            "/usage",
-            "Usage",
-            "usage/cost/timeseries/logs",
-            "metrics;filters;charts;breakdowns;session detail",
-            "refresh filter export drilldown",
-            "partial-cost marked",
-        ),
-        (
-            "/cron",
-            "Cron",
-            "cron/status/list/runs/write",
-            "summary;quick create;jobs;runs;form",
-            "add update run clone enable remove",
-            "timezone/exact timing warned",
-        ),
-        (
-            "/agents",
-            "Agents",
-            "agents/files/identity/tools/skills",
-            "cards;context;file editor;tools;channels;cron",
-            "default edit save load-tools",
-            "agent-scoped writes",
-        ),
-        (
-            "/skills",
-            "Skills",
-            "skills/search/detail/install/update",
-            "list;detail;install;API key;messages",
-            "enable disable install save-key search",
-            "unsafe install gated; secrets hidden",
-        ),
-        (
-            "/nodes",
-            "Nodes",
-            "node/device/nodes commands",
-            "pending;paired;bindings;permissions;commands",
-            "approve reject rotate revoke invoke",
-            "device/token actions gated",
-        ),
-        (
-            "/dreaming",
-            "Dreaming",
-            "doctor.memory/wiki",
-            "scene;diary;review;phase stats;trace",
-            "toggle backfill dedupe reset repair copy",
-            "restart/repair confirmed",
-        ),
-        (
-            "/config",
-            "Config",
-            "config/schema/local-import/providers",
-            "schema tree;forms;readiness;diff",
-            "load save patch reload",
-            "schema-first; secrets redacted",
-        ),
-        (
-            "/communications",
-            "Comms",
-            "channels/message/tts/media",
-            "channel cards;routing;audio;delivery policy",
-            "refresh test-route provider",
-            "external send intent",
-        ),
-        (
-            "/appearance",
-            "Appearance",
-            "settings/localStorage/manifest",
-            "theme;language;density;setup;PWA",
-            "save-theme save-language reset",
-            "local preference",
-        ),
-        (
-            "/automation",
-            "Automation",
-            "commands/cron/hooks/plugins/gateway",
-            "catalog;hooks;cron;heartbeat;routines",
-            "run-readonly schedule hook",
-            "writes gated; no silent restart",
-        ),
-        (
-            "/infrastructure",
-            "Infrastructure",
-            "status/health/ops/logs/nodes/update",
-            "health;web/media;node/browser/canvas;install",
-            "refresh logs runbook",
-            "restart/update confirmed",
-        ),
-        (
-            "/ai-agents",
-            "AI Agents",
-            "agents/models/tools/skills/memory",
-            "auth;defaults;tools;memory;sessions",
-            "default auth-refresh load-tools",
-            "tokens hidden; scoped tools",
-        ),
-        (
-            "/debug",
-            "Debug",
-            "status/health/heartbeat/audit/models/events",
-            "snapshot;audit;manual RPC;models;events",
-            "probe call refresh copy",
-            "read-only default; RPC explicit",
-        ),
-        (
-            "/logs",
-            "Logs",
-            "logs.tail/events-report",
-            "tail;severity;cursor;reset;events",
-            "tail reset filter copy",
-            "bounded bytes; no secret export",
-        ),
-        (
-            "docs",
-            "Docs",
-            "docs.hepta.ai",
-            "docs launcher;runbook;version",
-            "open-docs copy-link",
-            "external docs intentional",
-        ),
-    ];
-    let rows = route_rows
-        .iter()
-        .map(|(route, title, sources, widgets, actions, boundary)| {
-            let anchor = route_anchor_id(route);
-            format!(
-                "<tr><td><a class=\"session-link\" href=\"#{}\" data-ref-runtime-route=\"{}\">{}</a></td><td class=\"muted\">{}</td><td class=\"muted\">{}</td><td><span class=\"data-table-badge\">{}</span></td><td class=\"muted\">{}</td></tr>",
-                escape_html(&anchor),
-                escape_html(route),
-                escape_html(title),
-                escape_html(sources),
-                escape_html(widgets),
-                escape_html(actions),
-                escape_html(boundary)
-            )
-        })
-        .collect::<String>();
-    let route_pages = route_rows
-        .iter()
-        .enumerate()
-        .map(|(index, (route, title, sources, widgets, actions, boundary))| {
-            let anchor = route_anchor_id(route);
-            let source_badges = sources
-                .split('/')
-                .filter(|item| !item.trim().is_empty())
-                .map(|source| format!("<span class=\"badge\">{}</span>", escape_html(source)))
-                .collect::<String>();
-            let widget_cards = widgets
-                .split(';')
-                .filter(|item| !item.trim().is_empty())
-                .map(|widget| {
-                    format!(
-                        "<article class=\"mini-card\"><strong>{}</strong><p>Ready in this workspace flow.</p></article>",
-                        escape_html(widget)
-                    )
-                })
-                .collect::<String>();
-            let action_buttons = actions
-                .split_whitespace()
-                .filter(|item| !item.trim().is_empty())
-                .map(|action| {
-                    format!(
-                        "<button class=\"button small\" data-plan-action=\"{}\">{}</button>",
-                        escape_html(action),
-                        escape_html(action)
-                    )
-                })
-                .collect::<String>();
-            format!(
-                "<section class=\"hepta-route-page{}\" id=\"{}\" data-ref-runtime-route=\"{}\" data-hepta-route-template=\"{}\" data-hepta-source-ui-aligned=\"true\" data-hepta-backend-aligned=\"true\" tabindex=\"-1\"><header class=\"hepta-route-surface__header\"><div><p class=\"eyebrow\">Flow {}</p><h3 class=\"page-title\">{}</h3><p class=\"page-sub\">{} keeps status, filters, and guarded actions together for review.</p></div><span class=\"badge ok\">ready</span></header><div class=\"badge-row\">{}{}</div><div class=\"card-grid\"><article class=\"mini-card\"><strong>Inputs</strong><p>{}</p></article><article class=\"mini-card\"><strong>Safety</strong><p>{}</p></article><article class=\"mini-card\"><strong>Actions</strong><div class=\"action-rail\">{}</div></article></div><div class=\"screen-grid screen-grid--compact\">{}</div></section>",
-                if index == 0 { " hepta-route-page--default" } else { "" },
-                escape_html(&anchor),
-                escape_html(route),
-                escape_html(route),
-                index + 1,
-                escape_html(title),
-                escape_html(title),
-                source_badges,
-                format!("<span class=\"badge\">{}</span>", escape_html(boundary)),
-                escape_html(sources),
-                escape_html(boundary),
-                action_buttons,
-                widget_cards
-            )
-        })
-        .collect::<String>();
-    let primary_count = screens.len().min(6);
-    format!(
-        "<section class=\"hepta-entry-surface hepta-route-surface content\" data-hepta-entry-content=\"full\" data-hepta-page-surface=\"true\" data-hepta-primary-page-surface=\"true\" data-hepta-route=\"/overview\" data-hepta-route-screen=\"dashboard\" data-hepta-source-main=\"main.content\" data-hepta-source-version=\"v2026.5.7\" data-contract-marker=\"HEPTA_ENTRY_CONTENT_ROWS\"><header class=\"hepta-route-surface__header\"><div><p class=\"eyebrow\">Workspace map</p><h2 class=\"page-title\">Ask, plan, evidence, approve</h2><p class=\"page-sub\">Hepta organizes agent work into calm flows: chat, task queues, approvals, evidence, and guarded actions.</p></div><span class=\"badge ok\">{} primary flows</span></header><div class=\"hepta-route-surface__outlet\" data-hepta-route-outlet=\"rust-static\"><div class=\"data-table-wrapper hepta-route-index\"><div class=\"data-table-toolbar\"><strong>Workspace flows</strong><span class=\"badge\">local preview</span><span class=\"badge\">{} routes</span></div><div class=\"data-table-container\"><table class=\"data-table\"><thead><tr><th>Flow</th><th>Inputs</th><th>Widgets</th><th>Actions</th><th>Safety</th></tr></thead><tbody>{}</tbody></table></div></div><div class=\"hepta-route-page-stack\" data-hepta-route-page-stack=\"true\">{}</div><details class=\"hepta-all-screen-contracts\"><summary>Developer details</summary><div class=\"screen-grid\">{}</div></details></div></section>",
-        primary_count,
-        route_rows.len(),
-        rows,
-        route_pages,
-        screen_cards
-    )
-}
-
-fn route_anchor_id(route: &str) -> String {
-    let trimmed = route.trim().trim_start_matches('/');
-    if trimmed.is_empty() {
-        "chat".to_string()
-    } else {
-        trimmed.replace('/', "-")
-    }
-}
-
-fn control_ui_title_from_id(id: &str) -> String {
-    id.split('-')
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn escape_html(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
+    CONTROL_UI_INDEX_HTML.to_owned()
 }
 
 pub fn control_ui_assets() -> Vec<ControlUiAsset> {
-    let rendered_html = control_ui_index_html();
     vec![
-        asset_owned(
-            "rust://hepta-core/control-ui/index.html",
+        asset(
+            "apps/hepta-control-ui/index.html",
             "html",
-            &rendered_html,
+            CONTROL_UI_INDEX_HTML,
         ),
         asset(
             "apps/hepta-control-ui/styles.css",
@@ -2949,23 +2382,8 @@ pub fn control_ui_assets() -> Vec<ControlUiAsset> {
             "image/png",
             CONTROL_UI_HEPTA_AGENT_LOGO_PNG,
         ),
-        asset_bytes(
-            "apps/hepta-control-ui/assets/k.png",
-            "image/png",
-            CONTROL_UI_GLASS_K_PNG,
-        ),
         asset("apps/hepta-control-ui/README.md", "docs", CONTROL_UI_README),
     ]
-}
-
-fn asset_owned(path: &'static str, kind: &'static str, content: &str) -> ControlUiAsset {
-    ControlUiAsset {
-        path,
-        kind,
-        byte_count: content.len(),
-        present: !content.trim().is_empty(),
-        required: true,
-    }
 }
 
 fn asset(path: &'static str, kind: &'static str, content: &'static str) -> ControlUiAsset {
@@ -3392,7 +2810,7 @@ fn screen(
 pub fn control_ui_frontend_manifest() -> ControlUiFrontendManifest {
     ControlUiFrontendManifest {
         schema_version: 1,
-        source: "hepta-core::control_ui",
+        source: "apps/hepta-control-ui/index.html",
         rust_view_model_ready: true,
         primary_nav: &["chat", "tasks", "ops", "external-agent-benchmark"],
         live_data_endpoint_keys: &[
@@ -3602,7 +3020,7 @@ pub fn control_ui_rust_frontend_ownership(
         status: if rust_embedded_static_asset_coverage_percent == 100
             && frontend_manifest.rust_view_model_ready
         {
-            "rust-rendered-no-js-frontend"
+            "rust-embedded-no-js-frontend"
         } else {
             "incomplete"
         },
@@ -3611,9 +3029,9 @@ pub fn control_ui_rust_frontend_ownership(
         rust_embedded_static_asset_coverage_percent,
         rust_view_model_ready: frontend_manifest.rust_view_model_ready,
         rust_view_model_source: frontend_manifest.source,
-        browser_renderer_language: "rust-generated-html-css",
+        browser_renderer_language: "html-css-rust-embedded",
         pure_browser_rust_runtime: true,
-        boundary: "Rust generates and serves the Control UI HTML/CSS shell and authoritative view-model JSON; browser-side JavaScript artifacts are not served.",
+        boundary: "apps/hepta-control-ui/index.html is the single authoritative HTML snapshot; Rust embeds and serves it with the read-only view-model report, and no browser-side JavaScript artifacts are served.",
     }
 }
 
@@ -4212,11 +3630,43 @@ fn convergence_lane(
     }
 }
 
+fn parse_app_attribute_values(attribute: &str) -> Vec<String> {
+    let marker = format!("{attribute}=\"");
+    let mut remainder = CONTROL_UI_INDEX_HTML;
+    let mut values = Vec::new();
+    while let Some(marker_offset) = remainder.find(&marker) {
+        let value_start = marker_offset + marker.len();
+        let after_marker = &remainder[value_start..];
+        let Some(value_end) = after_marker.find('"') else {
+            break;
+        };
+        let value = &after_marker[..value_end];
+        if !value.is_empty() {
+            values.push(value.to_string());
+        }
+        remainder = &after_marker[value_end + 1..];
+    }
+    values.sort();
+    values.dedup();
+    values
+}
+
 fn parse_app_screen_ids() -> Vec<String> {
-    control_ui_screens()
-        .into_iter()
-        .map(|screen| screen.id.to_string())
-        .collect()
+    parse_app_attribute_values("data-screen")
+}
+
+fn parse_app_command_ids() -> Vec<String> {
+    parse_app_attribute_values("data-command-id")
+}
+
+fn same_unique_ids(left: &[String], right: &[String]) -> bool {
+    let mut left = left.to_vec();
+    left.sort();
+    left.dedup();
+    let mut right = right.to_vec();
+    right.sort();
+    right.dedup();
+    left == right
 }
 
 fn parse_readme_screen_ids() -> Vec<String> {
@@ -4267,9 +3717,23 @@ mod tests {
         assert_eq!(report.screen_count, 26);
         assert_eq!(report.implemented_screen_count, 26);
         assert_eq!(report.screen_coverage_percent, 100);
-        assert_eq!(report.asset_count, 5);
+        assert_eq!(report.asset_count, 4);
         assert_eq!(report.asset_coverage_percent, 100);
         assert_eq!(report.command_binding_count, 51);
+        assert!(same_unique_ids(
+            &control_ui_screens()
+                .iter()
+                .map(|screen| screen.id.to_string())
+                .collect::<Vec<_>>(),
+            &parse_app_screen_ids(),
+        ));
+        assert!(same_unique_ids(
+            &control_ui_command_bindings()
+                .iter()
+                .map(|binding| binding.id.to_string())
+                .collect::<Vec<_>>(),
+            &parse_app_command_ids(),
+        ));
         assert_eq!(report.interaction_capability_count, 30);
         assert_eq!(report.implemented_interaction_capability_count, 30);
         assert_eq!(report.static_interaction_contract_percent, 100);
@@ -4336,7 +3800,10 @@ mod tests {
                 })
         );
         assert!(report.frontend_manifest.rust_view_model_ready);
-        assert_eq!(report.frontend_manifest.source, "hepta-core::control_ui");
+        assert_eq!(
+            report.frontend_manifest.source,
+            "apps/hepta-control-ui/index.html"
+        );
         assert_eq!(
             report
                 .rust_frontend_ownership
@@ -4345,10 +3812,11 @@ mod tests {
         );
         assert_eq!(
             report.rust_frontend_ownership.status,
-            "rust-rendered-no-js-frontend"
+            "rust-embedded-no-js-frontend"
         );
         assert!(report.rust_frontend_ownership.rust_view_model_ready);
         assert!(report.rust_frontend_ownership.pure_browser_rust_runtime);
+        assert_eq!(rust_frontend_html, CONTROL_UI_INDEX_HTML);
         assert_eq!(report.frontend_manifest.primary_nav[0], "chat");
         assert!(
             report

@@ -291,5 +291,4 @@ pub(super) const CONTROL_UI_ROUTE_LIFECYCLES: &[IngressLifecycleSpec] = &[
 #[rustfmt::skip]
 pub(super) const CONTROL_UI_STATIC_ASSET_LIFECYCLES: &[IngressLifecycleSpec] = &[
     static_read("/assets/hepta-agent-logo.png"),
-    static_read("/assets/k.png"),
 ];

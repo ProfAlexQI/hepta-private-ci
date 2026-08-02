@@ -803,6 +803,7 @@ fn control_ui_root_serves_rust_rendered_shell_and_assets() {
     let (status, content_type, body) = route_native_gateway_request("GET", "/", &options);
     assert_eq!(status, "200 OK");
     assert_eq!(content_type, "text/html; charset=utf-8");
+    assert_eq!(body, hepta_core::control_ui::CONTROL_UI_INDEX_HTML);
     assert!(body.contains("data-rust-frontend-renderer=\"hepta-core::control_ui\""));
     assert!(body.contains("data-control-ui-product-first=\"true\""));
     assert!(!body.contains("<script src="));
@@ -837,32 +838,8 @@ fn control_ui_root_serves_rust_rendered_shell_and_assets() {
     assert!(logo.body.starts_with(b"\x89PNG\r\n\x1a\n"));
     assert!(logo.body.len() > 1024);
 
-    let glass = route_native_gateway_binary_asset("GET", "/assets/k.png")
-        .expect("Control UI glass asset route");
-    assert_eq!(glass.content_type, "image/png");
-    assert_eq!(glass.cache_control, "public, max-age=3600, must-revalidate");
-    assert_eq!(
-        glass.etag,
-        format!(
-            "\"sha256-{}\"",
-            hepta_core::control_ui::CONTROL_UI_GLASS_K_PNG_SHA256
-        )
-    );
-    assert_eq!(
-        format!("{:x}", Sha256::digest(glass.body)),
-        hepta_core::control_ui::CONTROL_UI_GLASS_K_PNG_SHA256
-    );
-    assert!(glass.body.starts_with(b"\x89PNG\r\n\x1a\n"));
-    assert_eq!(glass.body.len(), 2_499_731);
-    let route = route_manifest_entry("GET", "/assets/k.png").expect("typed glass route");
-    assert_eq!(
-        route.report_binding,
-        crate::route_manifest::RouteReportBinding::NativeBinaryAsset
-    );
-    assert_eq!(
-        route.lifecycle.effect_class,
-        crate::runtime_ingress::IngressEffectClass::StaticAssetRead
-    );
+    assert!(route_native_gateway_binary_asset("GET", "/assets/k.png").is_none());
+    assert!(route_manifest_entry("GET", "/assets/k.png").is_none());
     assert!(route_native_gateway_binary_asset("POST", "/assets/hepta-agent-logo.png").is_none());
     assert!(route_native_gateway_binary_asset("POST", "/assets/k.png").is_none());
 }
@@ -1599,10 +1576,7 @@ fn native_post_execution_stores_endpoint_is_read_only() {
     assert_eq!(value["store_jsonl_valid"], true);
     assert_eq!(value["store_capacity_ok"], true);
     assert_eq!(value["total_line_count"], before.total_line_count);
-    assert_eq!(
-        value["valid_json_line_count"],
-        before.valid_json_line_count
-    );
+    assert_eq!(value["valid_json_line_count"], before.valid_json_line_count);
     assert_eq!(
         value["invalid_json_line_count"],
         before.invalid_json_line_count

@@ -19,7 +19,7 @@ Hepta Control UI is a dependency-free, static-first local frontend for Hepta's R
 - Read-only V2 trace fails closed; authority, live, and production state stay unverified.
 - Shared Global Brain / isolated Workspace Context boundary.
 - Workspace Room for members, tasks, artifact previews, room activity, orchestration, and dry-run task actions.
-- Hepta runtime control-plane bridge inside the Workspace Room: status, sessions, tasks, approvals, events/logs, and runtime modules are represented by the Rust renderer without browser JavaScript.
+- Hepta runtime control-plane bridge inside the Workspace Room: status, sessions, tasks, approvals, events/logs, and runtime modules are represented by the Rust-served static snapshot without browser JavaScript.
 - Runtime alignment maps sessions, agents, tasks/subagents/ACP, approvals, nodes, channels, cron, logs, skills, config, provider auth/media, and mobile WebChat into Hepta routes and safety boundaries.
 - OpenClaw 2026.5.12 polish is represented as no-JS Rust markers for auto-scroll, recovery, session badges, active-tab Nodes polling, live-adapter wording, and terminal QR guards.
 - Exec approvals mirror gateway/node target, per-agent scope, ask/security mode, allowlist diff, redacted snapshot hash, role guard, and human-gated apply bridge as dry-run evidence.
@@ -32,7 +32,7 @@ Hepta Control UI is a dependency-free, static-first local frontend for Hepta's R
 
 ## Safety model
 
-- Local-first Rust-rendered HTML/CSS served by the Hepta binary.
+- Local-first HTML/CSS snapshot embedded and served by the Hepta Rust binary.
 - No hosted SaaS identity, public ingress, or external provider execution claim.
 - Mutation surfaces require explicit confirmation or dry-run review.
 - Apply/rollback stays plan-first and copy-only unless the operator executes reviewed commands outside the UI.
@@ -71,7 +71,7 @@ passed.
 
 ## Architecture notes
 
-The shipped UI is generated from `hepta-core::control_ui` and served as HTML/CSS by `codex-cli --bin hepta`. `/` and `/index.html` serve the Rust-rendered shell, `/styles.css` the bundled stylesheet, `/assets/hepta-agent-logo.png` the logo, and `/gateway-status` the lower-level gateway page. Former browser modules under `apps/hepta-control-ui/modules/` are retired JS artifacts; their README remains a boundary ledger for absorbed Rust-renderer responsibilities:
+`index.html` is the sole zero-JavaScript HTML snapshot. `hepta-core::control_ui` embeds its exact bytes and serves them at `/` and `/index.html`; no second HTML body exists. `/styles.css` serves styles, `/assets/hepta-agent-logo.png` the only binary image, and `/gateway-status` the gateway page. Retired browser modules keep only a boundary ledger under `apps/hepta-control-ui/modules/`:
 
 - chat-state
 - chat-render

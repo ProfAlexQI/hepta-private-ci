@@ -125,52 +125,6 @@ fn full_connection_queue_returns_503_under_the_short_overload_write_budget() {
 }
 
 #[test]
-fn control_ui_glass_asset_is_sha_bound_over_a_real_socket() {
-    use std::io::Read;
-    use std::io::Write;
-
-    let options = test_gateway_options(false);
-    let runtime_root = tempfile::tempdir().expect("runtime root");
-    let runtime = Arc::new(
-        NativeGatewayRuntime::bootstrap_with_anchor_for_test(runtime_root.path())
-            .expect("keyed runtime"),
-    );
-    let pool = NativeGatewayConnectionPool::new(options, runtime, 1, 1).expect("worker pool");
-    let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
-    let mut client =
-        TcpStream::connect(listener.local_addr().expect("address")).expect("client");
-    let (server, _) = listener.accept().expect("server");
-    pool.dispatch(server).expect("dispatch asset request");
-    write!(
-        client,
-        "GET /assets/k.png HTTP/1.1\r\nhost: {DEFAULT_BIND_ADDR}\r\n\r\n"
-    )
-    .expect("request");
-
-    let mut response = Vec::new();
-    client.read_to_end(&mut response).expect("asset response");
-    let header_end = response
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
-        .map(|index| index + 4)
-        .expect("HTTP header terminator");
-    let headers = std::str::from_utf8(&response[..header_end]).expect("ASCII headers");
-    let body = &response[header_end..];
-    assert!(headers.starts_with("HTTP/1.1 200 OK\r\n"));
-    assert!(headers.contains("content-type: image/png\r\n"));
-    assert!(headers.contains("content-length: 2499731\r\n"));
-    assert!(headers.contains("cache-control: public, max-age=3600, must-revalidate\r\n"));
-    assert!(headers.contains(
-        "etag: \"sha256-a54bc0d6352c3130d2d22b7df80f1fabaa94f5098fec12046e4f262e6d0d7c28\"\r\n"
-    ));
-    assert_eq!(body.len(), 2_499_731);
-    assert_eq!(
-        format!("{:x}", Sha256::digest(body)),
-        hepta_core::control_ui::CONTROL_UI_GLASS_K_PNG_SHA256
-    );
-}
-
-#[test]
 fn overload_response_write_failure_is_connection_local() {
     use std::net::Shutdown;
 

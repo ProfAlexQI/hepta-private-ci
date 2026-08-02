@@ -7,8 +7,8 @@ pub const HEPTA_NATIVE_GATEWAY_RS: &str =
     include_str!("../../hepta-native-gateway/src/native_gateway.rs");
 pub const HEPTA_NATIVE_HTTP_TRANSPORT_RS: &str =
     include_str!("../../hepta-native-gateway/src/http_transport.rs");
-pub const HEPTA_NATIVE_POST_RS: &str = include_str!("../../hepta-gateway/src/native_post.rs");
-pub const HEPTA_KERNEL_RS: &str = include_str!("../../hepta-kernel/src/lib.rs");
+pub const HEPTA_KERNEL_NATIVE_POST_RS: &str =
+    include_str!("../../hepta-kernel/src/kernel_parts/native_post.rs");
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OperatorCommandSafetyDecision {
@@ -174,8 +174,61 @@ fn has_explicit_operator_confirmation(command: &str, slash_command: &str) -> boo
         || (slash_command == "/config" && command.contains("--dry-run"))
 }
 
-fn native_post_contract_source_contains(needle: &str) -> bool {
-    HEPTA_NATIVE_POST_RS.contains(needle) || HEPTA_KERNEL_RS.contains(needle)
+fn native_post_route_spec_source(pattern: &str) -> Option<&'static str> {
+    let marker = format!("pattern: \"{pattern}\",");
+    let marker_offset = HEPTA_KERNEL_NATIVE_POST_RS.find(&marker)?;
+    let block_start = HEPTA_KERNEL_NATIVE_POST_RS[..marker_offset]
+        .rfind("HeptaKernelNativePostPlanRouteSpec {")?;
+    let after_marker = &HEPTA_KERNEL_NATIVE_POST_RS[marker_offset..];
+    let block_end = marker_offset + after_marker.find("\n    },")? + "\n    },".len();
+    HEPTA_KERNEL_NATIVE_POST_RS.get(block_start..block_end)
+}
+
+fn native_post_route_spec_matches(
+    pattern: &str,
+    source_command: &str,
+    plan_kind: &str,
+    dry_run_only: bool,
+    confirmation_required: bool,
+) -> bool {
+    native_post_route_spec_source(pattern).is_some_and(|block| {
+        block.contains(&format!("source_command: \"{source_command}\","))
+            && block.contains(&format!("plan_kind: \"{plan_kind}\","))
+            && block.contains(&format!("dry_run_only: {dry_run_only},"))
+            && block.contains(&format!(
+                "confirmation_required_for_real_mutation: {confirmation_required},"
+            ))
+    })
+}
+
+fn native_post_plan_response_is_side_effect_free() -> bool {
+    let Some(start) =
+        HEPTA_KERNEL_NATIVE_POST_RS.find("pub fn hepta_kernel_native_post_plan_response(")
+    else {
+        return false;
+    };
+    let Some(relative_end) = HEPTA_KERNEL_NATIVE_POST_RS[start..]
+        .find("pub fn hepta_kernel_native_post_execution_stores_report(")
+    else {
+        return false;
+    };
+    let function_source = &HEPTA_KERNEL_NATIVE_POST_RS[start..start + relative_end];
+    [
+        "action_dispatched: false",
+        "command_executed: false",
+        "approval_applied: false",
+        "task_published: false",
+        "chat_mutated: false",
+        "external_side_effects: false",
+        "gateway_mutation_performed: false",
+        "message_sent: false",
+    ]
+    .iter()
+    .all(|marker| function_source.contains(marker))
+}
+
+fn native_post_real_handler_inventory_is_empty(source: &str) -> bool {
+    source.contains("pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] = &[];")
 }
 
 pub fn operator_security_report() -> OperatorSecurityReport {
@@ -186,34 +239,58 @@ pub fn operator_security_report() -> OperatorSecurityReport {
         .contains("Content-Security-Policy")
         && HEPTA_NATIVE_HTTP_TRANSPORT_RS.contains("X-Content-Type-Options: nosniff")
         && HEPTA_NATIVE_HTTP_TRANSPORT_RS.contains("Referrer-Policy: no-referrer");
-    let post_actions_dry_run_only = native_post_contract_source_contains("/api/actions/<action>")
-        && native_post_contract_source_contains("/ui-action-plan <action> --dry-run --json")
-        && native_post_contract_source_contains("native_action_post_dry_run");
-    let confirmed_local_mutation_guard_present =
-        native_post_contract_source_contains("/api/tasks/publish")
-            && native_post_contract_source_contains("/api/chat")
-            && native_post_contract_source_contains("/api/approvals/exec/apply")
-            && native_post_contract_source_contains(
-                "confirmation_required_for_real_mutation: true",
-            )
-            && native_post_contract_source_contains("external_side_effects: false");
-    let read_only_command_allowlist_present =
-        native_post_contract_source_contains("/api/commands/<id>")
-            && native_post_contract_source_contains("readonly_command")
-            && native_post_contract_source_contains("native_readonly_command_plan");
+    let post_actions_dry_run_only = native_post_route_spec_matches(
+        "/api/actions/<action>",
+        "/ui-action-plan <action> --dry-run --json",
+        "ui_action",
+        true,
+        false,
+    );
+    let real_handler_inventory_empty =
+        native_post_real_handler_inventory_is_empty(HEPTA_KERNEL_NATIVE_POST_RS);
+    let confirmed_local_mutation_guard_present = native_post_route_spec_matches(
+        "/api/tasks/publish",
+        "/tasks publish --confirm --json",
+        "task_publish",
+        false,
+        true,
+    ) && native_post_route_spec_matches(
+        "/api/chat",
+        "/chat send --json",
+        "chat_send",
+        false,
+        true,
+    ) && native_post_route_spec_matches(
+        "/api/approvals/exec/apply",
+        "/approvals exec apply --dry-run --json",
+        "approval_apply",
+        true,
+        true,
+    ) && native_post_plan_response_is_side_effect_free(
+    ) && real_handler_inventory_empty;
+    let read_only_command_allowlist_present = native_post_route_spec_matches(
+        "/api/commands/<id>",
+        "/<allowlisted read-only command> --json",
+        "readonly_command",
+        true,
+        false,
+    );
     let unsupported_post_fail_closed = HEPTA_NATIVE_GATEWAY_RS.contains("405 Method Not Allowed")
         && HEPTA_NATIVE_GATEWAY_RS.contains("supported POST endpoints are /api/actions/<action>");
     let policy_approval_bridge_present = CONTROL_UI_RUST_RENDERER_MARKERS
         .contains("renderApprovalCards")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/approvals")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/policy");
-    let runtime_operator_guard_present =
-        native_post_contract_source_contains("/api/runtime/operator")
-            && native_post_contract_source_contains("/runtime/operator --dry-run --json")
-            && native_post_contract_source_contains("runtime_operator")
-            && CONTROL_UI_RUST_RENDERER_MARKERS.contains("POST /api/runtime/operator")
-            && CONTROL_UI_RUST_RENDERER_MARKERS
-                .contains("Confirm-gated runtime kill/steer dry-run evidence");
+    let runtime_operator_guard_present = native_post_route_spec_matches(
+        "/api/runtime/operator",
+        "/runtime/operator --dry-run --json",
+        "runtime_operator",
+        true,
+        false,
+    ) && CONTROL_UI_RUST_RENDERER_MARKERS
+        .contains("POST /api/runtime/operator")
+        && CONTROL_UI_RUST_RENDERER_MARKERS
+            .contains("Confirm-gated runtime kill/steer dry-run evidence");
     let audit_event_visibility_present = CONTROL_UI_RUST_RENDERER_MARKERS
         .contains("renderEventTimeline")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/events-report")
@@ -328,7 +405,7 @@ pub fn operator_security_report() -> OperatorSecurityReport {
         runtime_operator_guard_present,
         audit_event_visibility_present,
         boundary_doc_present,
-        external_side_effects_permitted: false,
+        external_side_effects_permitted: !real_handler_inventory_empty,
         local_boundary: "loopback-only local operator surface; no public ingress, no hosted SaaS auth/RBAC claim",
         roles,
         endpoint_guards,
@@ -591,6 +668,31 @@ fn percent(numerator: usize, denominator: usize) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_post_security_checks_are_scoped_to_each_route_spec() {
+        assert!(native_post_route_spec_matches(
+            "/api/tasks/publish",
+            "/tasks publish --confirm --json",
+            "task_publish",
+            false,
+            true,
+        ));
+        assert!(!native_post_route_spec_matches(
+            "/api/tasks/plan",
+            "/tasks plan --dry-run --json",
+            "task_plan",
+            true,
+            true,
+        ));
+        assert!(native_post_plan_response_is_side_effect_free());
+        assert!(native_post_real_handler_inventory_is_empty(
+            HEPTA_KERNEL_NATIVE_POST_RS
+        ));
+        assert!(!native_post_real_handler_inventory_is_empty(
+            "pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] = &[\"chat_send\"];"
+        ));
+    }
 
     #[test]
     fn operator_command_guard_denies_sudo_stdin_and_redacts_secrets() {
