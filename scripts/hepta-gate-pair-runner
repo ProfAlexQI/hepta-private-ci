@@ -295,10 +295,16 @@ execute_captured_shell_compat() {
     local package=""
     local filter=""
     local integration_suite=""
+    local pinned_cargo="$HEPTA_COMPAT_SOURCE_REPO_ROOT/scripts/hepta-rust-cargo"
     local lib_index="-1"
     local index
     local -a arguments=("$@")
     local -a rewritten=()
+
+    [[ -x "$pinned_cargo" ]] || {
+      echo "missing pinned Hepta Cargo entrypoint: $pinned_cargo" >&2
+      return 1
+    }
 
     for ((index = 0; index < ${#arguments[@]}; index++)); do
       if [[ "${arguments[$index]}" == "-p" && $((index + 1)) -lt ${#arguments[@]} ]]; then
@@ -339,7 +345,7 @@ execute_captured_shell_compat() {
       fi
     fi
     if [[ -z "$integration_suite" ]]; then
-      command cargo "$@"
+      "$pinned_cargo" "$@"
       return
     fi
     for ((index = 0; index < ${#arguments[@]}; index++)); do
@@ -349,7 +355,7 @@ execute_captured_shell_compat() {
         rewritten+=("${arguments[$index]}")
       fi
     done
-    command cargo "${rewritten[@]}"
+    "$pinned_cargo" "${rewritten[@]}"
   }
   git() {
     local working_directory=""

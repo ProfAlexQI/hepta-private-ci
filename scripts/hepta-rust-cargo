@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "$ROOT/scripts/lib/hepta-rust-toolchain.sh"
+hepta_rust_toolchain_init "$ROOT"
+hepta_rust_toolchain_cargo "$@"

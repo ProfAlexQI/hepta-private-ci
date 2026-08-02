@@ -337,6 +337,43 @@ verify_k2_split_budgets() {
     ' >/dev/null
 }
 
+verify_pinned_rust_entrypoints() {
+  local actual_cargo
+  local expected_cargo
+  local pinned_channel
+
+  verify_file_max scripts/hepta-rust-cargo 20
+  verify_file_max scripts/lib/hepta-rust-toolchain.sh 60
+  [[ -x scripts/hepta-rust-cargo ]] || {
+    echo "pinned Hepta Cargo entrypoint is not executable" >&2
+    return 1
+  }
+  pinned_channel="$(
+    sed -n 's/^channel = "\([^"]*\)"$/\1/p' codex-rs/rust-toolchain.toml | head -n 1
+  )"
+  [[ -n "$pinned_channel" ]] || {
+    echo "missing pinned Hepta Rust channel" >&2
+    return 1
+  }
+  expected_cargo="$(rustup run "$pinned_channel" cargo --version)"
+  actual_cargo="$(
+    env -u HEPTA_RUST_TOOLCHAIN RUSTUP_TOOLCHAIN=stable \
+      scripts/hepta-rust-cargo --version
+  )"
+  [[ "$actual_cargo" == "$expected_cargo" ]] || {
+    echo "pinned Hepta Cargo entrypoint followed the ambient toolchain" >&2
+    return 1
+  }
+  rg -Fq 'source "$ROOT/scripts/lib/hepta-rust-toolchain.sh"' \
+    scripts/hepta-rust-cargo
+  rg -Fq 'source "$repo_root/scripts/lib/hepta-rust-toolchain.sh"' \
+    scripts/rusty-v8-cargo
+  rg -Fq \
+    'local pinned_cargo="$HEPTA_COMPAT_SOURCE_REPO_ROOT/scripts/hepta-rust-cargo"' \
+    scripts/hepta-gate-pair-runner
+  rg -Fq '"$pinned_cargo" "${rewritten[@]}"' scripts/hepta-gate-pair-runner
+}
+
 maintainable_tree_with_generated_line_total() {
   local pattern="$1"
   local generated_root="$2"
@@ -405,6 +442,7 @@ verify() {
   source scripts/lib/hepta-source-set.sh
   verify_tree_classification
   verify_k2_split_budgets
+  verify_pinned_rust_entrypoints
 
   verify_file_max codex-rs/hepta-native-gateway/src/native_gateway.rs 5800
   verify_file_max codex-rs/hepta-native-gateway/src/route_manifest.rs 230
