@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
+# shellcheck source=scripts/lib/hepta-process-identity-v1.sh
+source scripts/lib/hepta-process-identity-v1.sh
 
 EVIDENCE_DIR=""
 REPORT_PATH=""
@@ -41,57 +43,327 @@ EOF
   esac
 done
 
-[[ "$STARTUP_TIMEOUT_SEC" =~ ^[1-9][0-9]*$ ]] || { echo "invalid --startup-timeout" >&2; exit 64; }
-[[ -n "$PACKAGE_REPORT" ]] || { echo "--package-report is required" >&2; exit 64; }
-[[ "$RUN_NONCE" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo "--run-nonce is required and malformed" >&2; exit 64; }
-[[ -f "$PACKAGE_REPORT" ]] || { echo "package report is not a regular file: $PACKAGE_REPORT" >&2; exit 1; }
-[[ ! -L "$PACKAGE_REPORT" ]] || { echo "package report must not be a symlink" >&2; exit 1; }
-PACKAGE_REPORT="$(cd "$(dirname "$PACKAGE_REPORT")" && pwd -P)/$(basename "$PACKAGE_REPORT")"
-IFS=',' read -r WINDOW_X WINDOW_Y WINDOW_WIDTH WINDOW_HEIGHT <<<"$WINDOW_BOUNDS"
-for value in "$WINDOW_X" "$WINDOW_Y" "$WINDOW_WIDTH" "$WINDOW_HEIGHT"; do
-  [[ "$value" =~ ^[0-9]+$ ]] || { echo "invalid --bounds: $WINDOW_BOUNDS" >&2; exit 64; }
-done
-(( WINDOW_WIDTH >= 900 && WINDOW_HEIGHT >= 600 )) || {
-  echo "native-window promotion requires at least a 900x600 host window" >&2
+path_validation_error() {
+  printf 'native-window path validation failed: %s\n' "$1" >&2
   exit 64
 }
 
-if [[ -z "$EVIDENCE_DIR" ]]; then
-  EVIDENCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-native-window.XXXXXX")"
-fi
-mkdir -p "$EVIDENCE_DIR"
-EVIDENCE_DIR="$(cd "$EVIDENCE_DIR" && pwd -P)"
-if [[ -z "$REPORT_PATH" ]]; then REPORT_PATH="$EVIDENCE_DIR/native-window-current.json"; fi
-mkdir -p "$(dirname "$REPORT_PATH")"
+# Normalize dot segments without touching the filesystem. Bash 3.2 does not
+# provide realpath(1), so resolve the deepest existing directory separately
+# below and append only normalized, non-existent path components to it.
+normalize_lexical_absolute_path() {
+  local input_path="$1"
+  local part
+  local normalized=""
+  local index
+  local -a input_parts=()
+  local -a output_parts=()
 
-for command in git jq shasum strings sips tar ruby peekaboo sandbox-exec; do
-  command -v "$command" >/dev/null 2>&1 || { echo "$command is required" >&2; exit 2; }
-done
+  [[ -n "$input_path" ]] || return 1
+  if [[ "$input_path" != /* ]]; then
+    input_path="$ROOT_DIR/$input_path"
+  fi
+  IFS='/' read -r -a input_parts <<<"$input_path"
+  for part in "${input_parts[@]}"; do
+    case "$part" in
+      ''|.) ;;
+      ..)
+        if (( ${#output_parts[@]} > 0 )); then
+          index=$((${#output_parts[@]} - 1))
+          unset 'output_parts[index]'
+        fi
+        ;;
+      *) output_parts+=("$part") ;;
+    esac
+  done
+  for part in "${output_parts[@]}"; do
+    normalized="$normalized/$part"
+  done
+  [[ -n "$normalized" ]] || normalized="/"
+  printf '%s\n' "$normalized"
+}
+
+canonicalize_leaf_path_without_writes() {
+  local lexical_path="$1"
+  local parent_path
+  local leaf_name
+  local probe
+  local suffix=""
+  local component
+  local physical_probe
+
+  [[ "$lexical_path" != "/" ]] || { printf '/\n'; return 0; }
+  parent_path="${lexical_path%/*}"
+  leaf_name="${lexical_path##*/}"
+  [[ -n "$parent_path" ]] || parent_path="/"
+  probe="$parent_path"
+  while [[ ! -e "$probe" && ! -L "$probe" ]]; do
+    [[ "$probe" != "/" ]] || break
+    component="${probe##*/}"
+    suffix="/$component$suffix"
+    probe="${probe%/*}"
+    [[ -n "$probe" ]] || probe="/"
+  done
+  [[ -d "$probe" ]] || {
+    printf 'path ancestor is not a directory: %s\n' "$probe" >&2
+    return 1
+  }
+  physical_probe="$(cd "$probe" 2>/dev/null && pwd -P)" || return 1
+  normalize_lexical_absolute_path "$physical_probe$suffix/$leaf_name"
+}
+
+ensure_regular_leaf_or_absent() {
+  local label="$1"
+  local path="$2"
+  [[ ! -L "$path" ]] || path_validation_error "$label must not be a symlink: $path"
+  if [[ -e "$path" && ! -f "$path" ]]; then
+    path_validation_error "$label must be a regular file or absent: $path"
+  fi
+}
+
+if [[ -z "$EVIDENCE_DIR" ]]; then
+  DEFAULT_EVIDENCE_PARENT="$(normalize_lexical_absolute_path "${TMPDIR:-/tmp}")" || path_validation_error "invalid temporary directory"
+  [[ -d "$DEFAULT_EVIDENCE_PARENT" ]] || path_validation_error "temporary directory is not a directory: $DEFAULT_EVIDENCE_PARENT"
+  DEFAULT_EVIDENCE_PARENT="$(cd "$DEFAULT_EVIDENCE_PARENT" && pwd -P)" || path_validation_error "could not canonicalize temporary directory"
+  EVIDENCE_DIR="$(mktemp -d "$DEFAULT_EVIDENCE_PARENT/hepta-ui-native-window.XXXXXX")"
+fi
+EVIDENCE_LEXICAL="$(normalize_lexical_absolute_path "$EVIDENCE_DIR")" || path_validation_error "invalid --evidence-dir"
+[[ "$EVIDENCE_LEXICAL" != "/" ]] || path_validation_error "--evidence-dir must not be the filesystem root"
+[[ ! -L "$EVIDENCE_LEXICAL" ]] || path_validation_error "--evidence-dir leaf must not be a symlink: $EVIDENCE_LEXICAL"
+if [[ -e "$EVIDENCE_LEXICAL" && ! -d "$EVIDENCE_LEXICAL" ]]; then
+  path_validation_error "--evidence-dir must be a directory or absent: $EVIDENCE_LEXICAL"
+fi
+EVIDENCE_DIR="$(canonicalize_leaf_path_without_writes "$EVIDENCE_LEXICAL")" || path_validation_error "could not canonicalize --evidence-dir"
+
+if [[ -z "$REPORT_PATH" ]]; then REPORT_PATH="$EVIDENCE_DIR/native-window-current.json"; fi
+REPORT_LEXICAL="$(normalize_lexical_absolute_path "$REPORT_PATH")" || path_validation_error "invalid --output"
+ensure_regular_leaf_or_absent "--output" "$REPORT_LEXICAL"
+REPORT_PATH="$(canonicalize_leaf_path_without_writes "$REPORT_LEXICAL")" || path_validation_error "could not canonicalize --output"
+
+if [[ -n "$PACKAGE_REPORT" ]]; then
+  PACKAGE_REPORT_LEXICAL="$(normalize_lexical_absolute_path "$PACKAGE_REPORT")" || path_validation_error "invalid --package-report"
+  ensure_regular_leaf_or_absent "--package-report" "$PACKAGE_REPORT_LEXICAL"
+  PACKAGE_REPORT="$(canonicalize_leaf_path_without_writes "$PACKAGE_REPORT_LEXICAL")" || path_validation_error "could not canonicalize --package-report"
+fi
+
+[[ "$REPORT_PATH" != "$EVIDENCE_DIR" ]] || path_validation_error "--output must not equal --evidence-dir"
+if [[ -n "$PACKAGE_REPORT" ]]; then
+  [[ "$REPORT_PATH" != "$PACKAGE_REPORT" ]] || path_validation_error "--output must not equal --package-report"
+  case "$PACKAGE_REPORT" in
+    "$EVIDENCE_DIR"|"$EVIDENCE_DIR"/*)
+      path_validation_error "--package-report must not equal or be located under --evidence-dir"
+      ;;
+  esac
+fi
 
 APP_LOG="$EVIDENCE_DIR/native-window-app.log"
 HOST_SCREENSHOT="$EVIDENCE_DIR/native-window.png"
 HOST_PROBE="$EVIDENCE_DIR/native-window-content-probe.json"
 EVIDENCE_MANIFEST="$EVIDENCE_DIR/native-window-evidence-manifest.json"
 EVIDENCE_ARCHIVE="$EVIDENCE_DIR/native-window-evidence.tar.gz"
-SANDBOX_ROOT="$(mktemp -d "$EVIDENCE_DIR/sandbox.XXXXXX")"
 SANDBOX_PROFILE="$EVIDENCE_DIR/native-window.sb"
-BRIDGE_SOCKET="${PEEKABOO_BRIDGE_SOCKET:-${HOME}/Library/Application Support/OpenClaw/bridge.sock}"
-PRODUCT_DATA_DIR="${HOME}/Library/Application Support/ai.hepta.hepta-native"
-PRODUCT_CACHE_DIR="${HOME}/Library/Caches/ai.hepta.hepta-native"
+VERIFIER_STDOUT_LOG="$EVIDENCE_DIR/native-window-verifier.stdout.log"
+VERIFIER_STDERR_LOG="$EVIDENCE_DIR/native-window-verifier.stderr.log"
+
+for reserved_output in "$APP_LOG" "$HOST_SCREENSHOT" "$HOST_PROBE" "$EVIDENCE_MANIFEST" \
+  "$EVIDENCE_ARCHIVE" "$SANDBOX_PROFILE" "$VERIFIER_STDOUT_LOG" "$VERIFIER_STDERR_LOG"; do
+  [[ "$REPORT_PATH" != "$reserved_output" ]] || {
+    path_validation_error "--output collides with reserved evidence path: $reserved_output"
+  }
+  ensure_regular_leaf_or_absent "reserved evidence output" "$reserved_output"
+done
+ensure_regular_leaf_or_absent "--output" "$REPORT_PATH"
+if [[ -n "$PACKAGE_REPORT" ]]; then
+  ensure_regular_leaf_or_absent "--package-report" "$PACKAGE_REPORT"
+fi
+
+mkdir -p "$EVIDENCE_DIR"
+[[ -d "$EVIDENCE_DIR" && ! -L "$EVIDENCE_DIR" ]] || path_validation_error "--evidence-dir changed during validation"
+mkdir -p "$(dirname "$REPORT_PATH")"
+[[ -d "$(dirname "$REPORT_PATH")" ]] || path_validation_error "--output parent is not a directory"
+
+COMMAND_LOG_DIR="$(mktemp -d "$EVIDENCE_DIR/native-window-command-logs.XXXXXX")"
 
 for stale_output in "$APP_LOG" "$HOST_SCREENSHOT" "$HOST_PROBE" "$SANDBOX_PROFILE" \
-  "$EVIDENCE_MANIFEST" "$EVIDENCE_ARCHIVE" "$REPORT_PATH"; do
+  "$EVIDENCE_MANIFEST" "$EVIDENCE_ARCHIVE" "$VERIFIER_STDOUT_LOG" \
+  "$VERIFIER_STDERR_LOG"; do
   rm -f "$stale_output"
 done
 
+# From this point forward every verifier diagnostic is retained even when the
+# caller redirects the command.  Command-specific JSON/stdout and stderr are
+# also kept under COMMAND_LOG_DIR so failed JSON producers are never replaced
+# by a synthetic `{}` value.
+exec > >(tee -a "$VERIFIER_STDOUT_LOG") 2> >(tee -a "$VERIFIER_STDERR_LOG" >&2)
+
+CURRENT_STAGE="argument_validation"
+FAILURE_DETAIL="native-window verifier did not complete"
+VERIFIER_SUCCEEDED=false
+APP_PID=""
+APP_SPAWN_START_TOKEN=""
+APP_START_TOKEN=""
+APP_COMMAND=""
+APP_TERMINATION_CONFIRMED=false
+SOURCE_BEFORE="null"
+SOURCE_FINAL="null"
+SOURCE_STABLE=false
+ORIGINAL_HOME="${HOME:-}"
+SANDBOX_ROOT=""
+ISOLATED_HOME=""
+
+cleanup() {
+  local cleanup_rc=0
+  APP_TERMINATION_CONFIRMED=false
+  if [[ -z "$APP_PID" ]]; then
+    APP_TERMINATION_CONFIRMED=true
+    return 0
+  fi
+  if ! hepta_process_is_alive "$APP_PID"; then
+    wait "$APP_PID" 2>/dev/null || true
+    APP_TERMINATION_CONFIRMED=true
+    return 0
+  fi
+  if [[ -n "$APP_START_TOKEN" && -n "$APP_COMMAND" ]]; then
+    hepta_process_terminate_identity_safe \
+      "$APP_PID" "$APP_START_TOKEN" "$APP_COMMAND" 30 0.1 20 || cleanup_rc=$?
+  elif [[ -n "$APP_SPAWN_START_TOKEN" ]]; then
+    hepta_process_terminate_start_safe \
+      "$APP_PID" "$APP_SPAWN_START_TOKEN" 30 0.1 20 || cleanup_rc=$?
+  else
+    cleanup_rc=74
+  fi
+  if [[ "$cleanup_rc" == "0" && "$HEPTA_PROCESS_STOP_CONFIRMED" == true ]]; then
+    wait "$APP_PID" 2>/dev/null || true
+    APP_TERMINATION_CONFIRMED=true
+    return 0
+  fi
+  printf 'native-window refused unsafe process cleanup for PID %s (rc=%s)\n' "$APP_PID" "$cleanup_rc" >&2
+  return "${cleanup_rc:-1}"
+}
+
+write_failure_receipt() {
+  local exit_code="$1"
+  local report_dir="${REPORT_PATH%/*}"
+  local tmp_report
+  local source_binding="null"
+  [[ -n "$report_dir" ]] || report_dir="/"
+  tmp_report="$(mktemp "$report_dir/.native-window-failure-receipt.XXXXXX")" || return 1
+  if jq -e 'type == "object"' >/dev/null 2>&1 <<<"$SOURCE_FINAL"; then
+    source_binding="$SOURCE_FINAL"
+  elif jq -e 'type == "object"' >/dev/null 2>&1 <<<"$SOURCE_BEFORE"; then
+    source_binding="$SOURCE_BEFORE"
+  fi
+  jq -n \
+    --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson source_binding "$source_binding" --argjson source_stable "$SOURCE_STABLE" \
+    --arg run_nonce "$RUN_NONCE" --arg stage "$CURRENT_STAGE" --arg detail "$FAILURE_DETAIL" \
+    --argjson exit_code "$exit_code" --arg package_report "$PACKAGE_REPORT" \
+    --arg evidence_dir "$EVIDENCE_DIR" --arg stdout_log "$VERIFIER_STDOUT_LOG" \
+    --arg stderr_log "$VERIFIER_STDERR_LOG" --arg app_log "$APP_LOG" \
+    --arg command_log_dir "$COMMAND_LOG_DIR" --arg original_home "$ORIGINAL_HOME" \
+    --arg isolated_home "$ISOLATED_HOME" '
+      {
+        schema_version:1,
+        kind:"hepta-ui-native-window-receipt-v1",
+        producer:"scripts/hepta-ui-native-window-verifier-v1",
+        generated_at_utc:$generated_at_utc,
+        run_nonce:$run_nonce,
+        status:"not_ready",
+        source_binding:$source_binding,
+        source_stable_during_run:$source_stable,
+        scope:"unauthenticated_local_macos_product_shell",
+        independent_promotion_verifier_ready:false,
+        native_window_ready:false,
+        package:{report_path:$package_report},
+        isolation:{original_home:$original_home,isolated_home:$isolated_home,home_isolated:(($isolated_home | length) > 0 and $isolated_home != $original_home)},
+        logs:{verifier_stdout:$stdout_log,verifier_stderr:$stderr_log,application:$app_log,command_directory:$command_log_dir},
+        failure:{stage:$stage,exit_code:$exit_code,detail:$detail},
+        artifact:null,
+        blockers:[("native_window_verifier_failed_at_" + $stage)],
+        evidence_dir:$evidence_dir,
+        remote_side_effects_performed:false
+      }
+    ' >"$tmp_report" || { rm -f "$tmp_report"; return 1; }
+  ensure_regular_leaf_or_absent "--output" "$REPORT_PATH"
+  /bin/mv -f "$tmp_report" "$REPORT_PATH" || {
+    rm -f "$tmp_report"
+    return 1
+  }
+}
+
+on_exit() {
+  local exit_code="$?"
+  trap - EXIT
+  cleanup || true
+  if [[ "$exit_code" != "0" && "$VERIFIER_SUCCEEDED" != true ]]; then
+    write_failure_receipt "$exit_code" || true
+  fi
+  exit "$exit_code"
+}
+trap on_exit EXIT
+
+fail() {
+  FAILURE_DETAIL="$1"
+  local exit_code="${2:-1}"
+  printf '%s\n' "$FAILURE_DETAIL" >&2
+  exit "$exit_code"
+}
+
+[[ "$STARTUP_TIMEOUT_SEC" =~ ^[1-9][0-9]*$ ]] || fail "invalid --startup-timeout" 64
+[[ -n "$PACKAGE_REPORT" ]] || fail "--package-report is required" 64
+[[ "$RUN_NONCE" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fail "--run-nonce is required and malformed" 64
+[[ -f "$PACKAGE_REPORT" ]] || fail "package report is not a regular file: $PACKAGE_REPORT"
+[[ ! -L "$PACKAGE_REPORT" ]] || fail "package report must not be a symlink"
+PACKAGE_REPORT="$(cd "$(dirname "$PACKAGE_REPORT")" && pwd -P)/$(basename "$PACKAGE_REPORT")"
+IFS=',' read -r WINDOW_X WINDOW_Y WINDOW_WIDTH WINDOW_HEIGHT <<<"$WINDOW_BOUNDS"
+for value in "$WINDOW_X" "$WINDOW_Y" "$WINDOW_WIDTH" "$WINDOW_HEIGHT"; do
+  [[ "$value" =~ ^[0-9]+$ ]] || fail "invalid --bounds: $WINDOW_BOUNDS" 64
+done
+(( WINDOW_WIDTH >= 900 && WINDOW_HEIGHT >= 600 )) || fail "native-window promotion requires at least a 900x600 host window" 64
+
+CURRENT_STAGE="dependency_check"
+for command in git jq shasum strings sips tar ruby peekaboo sandbox-exec tee; do
+  command -v "$command" >/dev/null 2>&1 || fail "$command is required" 2
+done
+
+[[ -n "$ORIGINAL_HOME" && "$ORIGINAL_HOME" == /* ]] || fail "HOME must be an absolute path"
+SANDBOX_ROOT="$(mktemp -d "$EVIDENCE_DIR/sandbox.XXXXXX")"
+ISOLATED_HOME="$SANDBOX_ROOT/home"
+mkdir -p "$ISOLATED_HOME/Library/Application Support" "$ISOLATED_HOME/Library/Caches" \
+  "$ISOLATED_HOME/Library/Preferences" "$ISOLATED_HOME/.config" "$ISOLATED_HOME/.cache" \
+  "$ISOLATED_HOME/.local/share"
+BRIDGE_SOCKET="${PEEKABOO_BRIDGE_SOCKET:-${ORIGINAL_HOME}/Library/Application Support/OpenClaw/bridge.sock}"
+PRODUCT_DATA_DIR="${ORIGINAL_HOME}/Library/Application Support/ai.hepta.hepta-native"
+PRODUCT_CACHE_DIR="${ORIGINAL_HOME}/Library/Caches/ai.hepta.hepta-native"
+
+CAPTURE_STDOUT=""
+CAPTURE_STDERR=""
+CAPTURE_RC=0
+run_logged_command() {
+  local label="$1"
+  shift
+  CAPTURE_STDOUT="$COMMAND_LOG_DIR/$label.stdout"
+  CAPTURE_STDERR="$COMMAND_LOG_DIR/$label.stderr"
+  : >"$CAPTURE_STDOUT"
+  : >"$CAPTURE_STDERR"
+  if "$@" >"$CAPTURE_STDOUT" 2>"$CAPTURE_STDERR"; then
+    CAPTURE_RC=0
+  else
+    CAPTURE_RC=$?
+    cat "$CAPTURE_STDERR" >&2 || true
+    return "$CAPTURE_RC"
+  fi
+}
+
+CURRENT_STAGE="source_preflight"
 SOURCE_BEFORE="$(scripts/hepta-ui-source-fingerprint)"
 if [[ "$(jq -r '.worktree_clean' <<<"$SOURCE_BEFORE")" != true \
   || "$(jq -r '.repository_worktree_clean' <<<"$SOURCE_BEFORE")" != true ]]; then
-  echo "native-window verifier requires a clean repository" >&2
-  exit 1
+  fail "native-window verifier requires a clean repository"
 fi
 SOURCE_HEAD="$(jq -r '.head' <<<"$SOURCE_BEFORE")"
 
+CURRENT_STAGE="package_receipt_validation"
 if ! jq -e --arg head "$SOURCE_HEAD" \
     --arg tree "$(jq -r '.head_tree' <<<"$SOURCE_BEFORE")" \
     --arg fingerprint "$(jq -r '.source_fingerprint' <<<"$SOURCE_BEFORE")" '
@@ -105,28 +377,28 @@ if ! jq -e --arg head "$SOURCE_HEAD" \
     and .source_binding.repository_worktree_clean == true
     and .formal_unsigned_packaging_pipeline_ready == true
     and .current_source_build_ready == true
-    and .staged_app_launch_verified == true
+    and .package_source_readiness_requires_launch == false
+    and .independent_window_verifier_required == true
+    and .local_window_promotion_ready == false
+    and .launch_probe_requested == false
+    and .launch_probe_executed == false
+    and .process_started == false
+    and .staged_app_launch_verified == false
+    and .external_side_effects_performed == false
     and .local_package_ready == true
     and .artifact.full_head_embedded == true
     and .artifact.developer_id_signed == false
     and (.artifact.path | type == "string" and startswith("/"))
     and (.artifact.binary_sha256 | test("^[0-9a-f]{64}$"))
   ' "$PACKAGE_REPORT" >/dev/null; then
-  echo "package report is not a current-source local package receipt" >&2
-  exit 1
+  fail "package report is not a current-source local package receipt"
 fi
 PACKAGE_APP="$(jq -r '.artifact.path' "$PACKAGE_REPORT")"
 PACKAGE_BINARY="$PACKAGE_APP/Contents/MacOS/hepta-native"
 PACKAGE_BINARY_SHA="$(jq -r '.artifact.binary_sha256' "$PACKAGE_REPORT")"
-[[ -d "$PACKAGE_APP" && ! -L "$PACKAGE_APP" && -x "$PACKAGE_BINARY" && ! -L "$PACKAGE_BINARY" ]] || { echo "packaged Hepta executable is missing or symlinked" >&2; exit 1; }
-[[ "$(shasum -a 256 "$PACKAGE_BINARY" | awk '{print $1}')" == "$PACKAGE_BINARY_SHA" ]] || {
-  echo "packaged Hepta executable hash drifted" >&2
-  exit 1
-}
-LC_ALL=C grep -aFq -- "$SOURCE_HEAD" "$PACKAGE_BINARY" || {
-  echo "packaged Hepta executable is not bound to current HEAD" >&2
-  exit 1
-}
+[[ -d "$PACKAGE_APP" && ! -L "$PACKAGE_APP" && -x "$PACKAGE_BINARY" && ! -L "$PACKAGE_BINARY" ]] || fail "packaged Hepta executable is missing or symlinked"
+[[ "$(shasum -a 256 "$PACKAGE_BINARY" | awk '{print $1}')" == "$PACKAGE_BINARY_SHA" ]] || fail "packaged Hepta executable hash drifted"
+LC_ALL=C grep -aFq -- "$SOURCE_HEAD" "$PACKAGE_BINARY" || fail "packaged Hepta executable is not bound to current HEAD"
 PACKAGE_REPORT_SHA="$(shasum -a 256 "$PACKAGE_REPORT" | awk '{print $1}')"
 PACKAGE_BUNDLE_SHA_BEFORE="$(scripts/hepta-ui-bundle-fingerprint --root "$PACKAGE_APP")"
 
@@ -137,10 +409,10 @@ if ! jq -e --argjson before "$SOURCE_BEFORE" '
     and .source_fingerprint == $before.source_fingerprint
     and .repository_worktree_clean == true
   ' >/dev/null <<<"$SOURCE_AFTER_PACKAGE_CHECK"; then
-  echo "source changed during native-window package verification" >&2
-  exit 1
+  fail "source changed during native-window package verification"
 fi
 
+CURRENT_STAGE="sandbox_profile"
 scripts/hepta-ui-native-window-sandbox-profile \
   --data-dir "$PRODUCT_DATA_DIR" \
   --cache-dir "$PRODUCT_CACHE_DIR" \
@@ -148,31 +420,28 @@ scripts/hepta-ui-native-window-sandbox-profile \
   --output "$SANDBOX_PROFILE"
 
 export PEEKABOO_BRIDGE_SOCKET="$BRIDGE_SOCKET"
-PERMISSIONS="$(peekaboo permissions status --no-remote --json 2>/dev/null || printf '{}')"
+CURRENT_STAGE="peekaboo_permissions"
+if ! run_logged_command peekaboo-permissions peekaboo permissions status --no-remote --json; then
+  fail "Peekaboo permission query failed with exit code $CAPTURE_RC"
+fi
+PERMISSIONS="$(cat "$CAPTURE_STDOUT")"
+if ! jq -e 'type == "object" and .success == true' >/dev/null 2>&1 <<<"$PERMISSIONS"; then
+  fail "Peekaboo permission query returned invalid JSON or success=false"
+fi
 SCREEN_RECORDING_GRANTED="$(jq -r '.data.permissions[]? | select(.name == "Screen Recording") | .isGranted // false' <<<"$PERMISSIONS" | head -1)"
 ACCESSIBILITY_GRANTED="$(jq -r '.data.permissions[]? | select(.name == "Accessibility") | .isGranted // false' <<<"$PERMISSIONS" | head -1)"
-[[ "$SCREEN_RECORDING_GRANTED" == true && "$ACCESSIBILITY_GRANTED" == true ]] || {
-  echo "Peekaboo Screen Recording and Accessibility permissions are required" >&2
-  exit 1
-}
+[[ "$SCREEN_RECORDING_GRANTED" == true && "$ACCESSIBILITY_GRANTED" == true ]] || fail "Peekaboo Screen Recording and Accessibility permissions are required"
 PEEKABOO_HOST_KIND="local"
 PEEKABOO_HOST_SOURCE="forced_local_services"
 PEEKABOO_NO_REMOTE=true
 
-APP_PID=""
-cleanup() {
-  if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" >/dev/null 2>&1; then
-    kill -TERM "$APP_PID" >/dev/null 2>&1 || true
-    for _ in {1..30}; do
-      kill -0 "$APP_PID" >/dev/null 2>&1 || break
-      sleep 0.1
-    done
-    kill -KILL "$APP_PID" >/dev/null 2>&1 || true
-  fi
-}
-trap cleanup EXIT
-
+CURRENT_STAGE="app_launch"
 /usr/bin/sandbox-exec -f "$SANDBOX_PROFILE" /usr/bin/env \
+  HOME="$ISOLATED_HOME" \
+  CFFIXED_USER_HOME="$ISOLATED_HOME" \
+  XDG_CONFIG_HOME="$ISOLATED_HOME/.config" \
+  XDG_CACHE_HOME="$ISOLATED_HOME/.cache" \
+  XDG_DATA_HOME="$ISOLATED_HOME/.local/share" \
   TMPDIR="$SANDBOX_ROOT" \
   HTTPS_PROXY=http://127.0.0.1:9 \
   HTTP_PROXY=http://127.0.0.1:9 \
@@ -180,18 +449,50 @@ trap cleanup EXIT
   NO_PROXY=localhost,127.0.0.1 \
   "$PACKAGE_BINARY" --force-login >"$APP_LOG" 2>&1 &
 APP_PID=$!
+APP_COMMAND="$PACKAGE_BINARY --force-login"
+
+CURRENT_STAGE="app_process_identity"
+for _ in {1..40}; do
+  if ! hepta_process_is_alive "$APP_PID"; then
+    tail -n 100 "$APP_LOG" >&2 || true
+    fail "Hepta exited before its process identity was captured"
+  fi
+  if hepta_process_read_identity "$APP_PID"; then
+    if [[ -z "$APP_SPAWN_START_TOKEN" ]]; then
+      APP_SPAWN_START_TOKEN="$HEPTA_PROCESS_ACTUAL_START_TOKEN"
+    fi
+    if [[ "$HEPTA_PROCESS_ACTUAL_START_TOKEN" == "$APP_SPAWN_START_TOKEN" \
+      && "$HEPTA_PROCESS_ACTUAL_COMMAND" == "$APP_COMMAND" ]]; then
+      APP_START_TOKEN="$HEPTA_PROCESS_ACTUAL_START_TOKEN"
+      break
+    fi
+  fi
+  sleep 0.05
+done
+[[ -n "$APP_START_TOKEN" ]] || fail "could not bind the Hepta process to PID, lstart, and command"
 
 WINDOW_ID=""
 WINDOW_MATCH_COUNT=0
 WINDOW_LIST='{}'
+WINDOW_LIST_ATTEMPT=0
+CURRENT_STAGE="window_discovery"
 deadline=$((SECONDS + STARTUP_TIMEOUT_SEC))
 while (( SECONDS < deadline )); do
   kill -0 "$APP_PID" >/dev/null 2>&1 || {
-    echo "Hepta exited before its native window was available" >&2
     tail -n 100 "$APP_LOG" >&2 || true
-    exit 1
+    fail "Hepta exited before its native window was available"
   }
-  WINDOW_LIST="$(peekaboo list windows --no-remote --app "PID:$APP_PID" --include-details bounds,ids --json 2>/dev/null || printf '{}')"
+  WINDOW_LIST_ATTEMPT=$((WINDOW_LIST_ATTEMPT + 1))
+  if ! run_logged_command "peekaboo-window-list-$WINDOW_LIST_ATTEMPT" \
+      peekaboo list windows --no-remote --app "PID:$APP_PID" --include-details bounds,ids --json; then
+    sleep 0.5
+    continue
+  fi
+  WINDOW_LIST="$(cat "$CAPTURE_STDOUT")"
+  if ! jq -e 'type == "object" and .success == true' >/dev/null 2>&1 <<<"$WINDOW_LIST"; then
+    sleep 0.5
+    continue
+  fi
   WINDOW_MATCH_COUNT="$(jq '[.data.windows[]? | select(.title == "Hepta")] | length' <<<"$WINDOW_LIST")"
   if [[ "$WINDOW_MATCH_COUNT" == "1" ]]; then
     WINDOW_ID="$(jq -r '.data.windows[] | select(.title == "Hepta") | .windowID' <<<"$WINDOW_LIST")"
@@ -200,24 +501,35 @@ while (( SECONDS < deadline )); do
   sleep 0.5
 done
 [[ -n "$WINDOW_ID" && "$WINDOW_ID" != null ]] || {
-  echo "timed out waiting for the current-source Hepta native window" >&2
   tail -n 100 "$APP_LOG" >&2 || true
-  exit 1
+  fail "timed out waiting for the current-source Hepta native window"
 }
 
 ACTUAL_X=""
 ACTUAL_Y=""
 ACTUAL_WIDTH=""
 ACTUAL_HEIGHT=""
-for _ in {1..4}; do
-  peekaboo window set-bounds \
-    --no-remote \
-    --app "PID:$APP_PID" --window-id "$WINDOW_ID" \
-    --x "$WINDOW_X" --y "$WINDOW_Y" --width "$WINDOW_WIDTH" --height "$WINDOW_HEIGHT" \
-    --json >/dev/null
-  peekaboo window focus --no-remote --window-id "$WINDOW_ID" --json >/dev/null
+CURRENT_STAGE="window_position_and_focus"
+for attempt in {1..4}; do
+  if ! run_logged_command "peekaboo-set-bounds-$attempt" peekaboo window set-bounds \
+      --no-remote --app "PID:$APP_PID" --window-id "$WINDOW_ID" \
+      --x "$WINDOW_X" --y "$WINDOW_Y" --width "$WINDOW_WIDTH" --height "$WINDOW_HEIGHT" \
+      --json; then
+    fail "Peekaboo set-bounds failed with exit code $CAPTURE_RC"
+  fi
+  if ! run_logged_command "peekaboo-focus-$attempt" peekaboo window focus \
+      --no-remote --app "PID:$APP_PID" --window-id "$WINDOW_ID" --json; then
+    fail "Peekaboo focus failed with exit code $CAPTURE_RC"
+  fi
   sleep 1
-  WINDOW_LIST="$(peekaboo list windows --no-remote --app "PID:$APP_PID" --include-details bounds,ids --json)"
+  if ! run_logged_command "peekaboo-bounds-list-$attempt" \
+      peekaboo list windows --no-remote --app "PID:$APP_PID" --include-details bounds,ids --json; then
+    fail "Peekaboo bounds verification failed with exit code $CAPTURE_RC"
+  fi
+  WINDOW_LIST="$(cat "$CAPTURE_STDOUT")"
+  if ! jq -e 'type == "object" and .success == true' >/dev/null 2>&1 <<<"$WINDOW_LIST"; then
+    fail "Peekaboo bounds verification returned invalid JSON or success=false"
+  fi
   ACTUAL_X="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[0][0]' <<<"$WINDOW_LIST")"
   ACTUAL_Y="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[0][1]' <<<"$WINDOW_LIST")"
   ACTUAL_WIDTH="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[1][0]' <<<"$WINDOW_LIST")"
@@ -226,36 +538,34 @@ for _ in {1..4}; do
 done
 WINDOW_MATCH_COUNT="$(jq '[.data.windows[]? | select(.title == "Hepta")] | length' <<<"$WINDOW_LIST")"
 [[ "$WINDOW_MATCH_COUNT" == "1" ]] || {
-  echo "native window title match was no longer unique before capture" >&2
-  exit 1
+  fail "native window title match was no longer unique before capture"
 }
 [[ "$ACTUAL_WIDTH" == "$WINDOW_WIDTH" && "$ACTUAL_HEIGHT" == "$WINDOW_HEIGHT" ]] || {
-  echo "native window bounds did not settle: requested $WINDOW_BOUNDS, got ${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}" >&2
-  exit 1
+  fail "native window bounds did not settle: requested $WINDOW_BOUNDS, got ${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}"
 }
 
-peekaboo image --no-remote --mode window --window-id "$WINDOW_ID" --path "$HOST_SCREENSHOT" --format png --json >/dev/null
-[[ -s "$HOST_SCREENSHOT" ]] || { echo "host native-window screenshot missing" >&2; exit 1; }
-kill -0 "$APP_PID" >/dev/null 2>&1 || { echo "Hepta was not alive after capture" >&2; exit 1; }
+CURRENT_STAGE="window_capture"
+if ! run_logged_command peekaboo-image peekaboo image --no-remote --app "PID:$APP_PID" \
+    --mode window --window-id "$WINDOW_ID" --path "$HOST_SCREENSHOT" --format png --json; then
+  fail "Peekaboo native-window capture failed with exit code $CAPTURE_RC"
+fi
+[[ -s "$HOST_SCREENSHOT" ]] || fail "host native-window screenshot missing"
+kill -0 "$APP_PID" >/dev/null 2>&1 || fail "Hepta was not alive after capture"
 
+CURRENT_STAGE="capture_validation"
 scripts/hepta-image-content-probe --image "$HOST_SCREENSHOT" --output "$HOST_PROBE" >/dev/null
 ruby -e 'abort unless File.binread(ARGV.fetch(0), 8) == "\x89PNG\r\n\x1a\n".b' "$HOST_SCREENSHOT"
 if rg -n 'thread .* panicked|fatal runtime error|segmentation fault|Bus error' "$APP_LOG" >/dev/null 2>&1; then
-  echo "fatal marker found in native-window app log" >&2
-  exit 1
+  fail "fatal marker found in native-window app log"
 fi
 
+CURRENT_STAGE="artifact_stability"
 PACKAGE_BINARY_SHA_FINAL="$(shasum -a 256 "$PACKAGE_BINARY" | awk '{print $1}')"
 PACKAGE_BUNDLE_SHA_FINAL="$(scripts/hepta-ui-bundle-fingerprint --root "$PACKAGE_APP")"
-[[ "$PACKAGE_BINARY_SHA_FINAL" == "$PACKAGE_BINARY_SHA" ]] || {
-  echo "packaged Hepta executable changed during native-window verification" >&2
-  exit 1
-}
-[[ "$PACKAGE_BUNDLE_SHA_FINAL" == "$PACKAGE_BUNDLE_SHA_BEFORE" ]] || {
-  echo "packaged Hepta bundle changed during native-window verification" >&2
-  exit 1
-}
+[[ "$PACKAGE_BINARY_SHA_FINAL" == "$PACKAGE_BINARY_SHA" ]] || fail "packaged Hepta executable changed during native-window verification"
+[[ "$PACKAGE_BUNDLE_SHA_FINAL" == "$PACKAGE_BUNDLE_SHA_BEFORE" ]] || fail "packaged Hepta bundle changed during native-window verification"
 
+CURRENT_STAGE="source_stability"
 SOURCE_FINAL="$(scripts/hepta-ui-source-fingerprint)"
 SOURCE_STABLE=false
 if jq -e --argjson before "$SOURCE_BEFORE" '
@@ -266,15 +576,17 @@ if jq -e --argjson before "$SOURCE_BEFORE" '
   ' >/dev/null <<<"$SOURCE_FINAL"; then
   SOURCE_STABLE=true
 fi
-[[ "$SOURCE_STABLE" == true ]] || { echo "source changed during native-window verification" >&2; exit 1; }
+[[ "$SOURCE_STABLE" == true ]] || fail "source changed during native-window verification"
 
-cleanup
+if ! cleanup; then
+  fail "could not confirm identity-safe Hepta process termination"
+fi
 APP_PID=""
-trap - EXIT
 
 HOST_DIMENSIONS="$(sips -g pixelWidth -g pixelHeight "$HOST_SCREENSHOT" 2>/dev/null | awk '/pixelWidth/ {w=$2} /pixelHeight/ {h=$2} END {print w "x" h}')"
 HOST_SHA="$(shasum -a 256 "$HOST_SCREENSHOT" | awk '{print $1}')"
 
+CURRENT_STAGE="evidence_manifest"
 jq -n \
   --arg head "$SOURCE_HEAD" --arg run_nonce "$RUN_NONCE" \
   --arg package_report "$PACKAGE_REPORT" --arg package_report_sha "$PACKAGE_REPORT_SHA" \
@@ -282,7 +594,11 @@ jq -n \
   --arg package_bundle_sha "$PACKAGE_BUNDLE_SHA_FINAL" \
   --arg host_path "$HOST_SCREENSHOT" --arg host_sha "$HOST_SHA" --arg host_dimensions "$HOST_DIMENSIONS" \
   --arg bounds "$WINDOW_BOUNDS" --arg actual_bounds "${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}" --argjson window_match_count "$WINDOW_MATCH_COUNT" \
-  --arg app_log "$APP_LOG" --arg host_probe "$HOST_PROBE" --arg sandbox_profile "$SANDBOX_PROFILE" '
+  --arg app_log "$APP_LOG" --arg host_probe "$HOST_PROBE" --arg sandbox_profile "$SANDBOX_PROFILE" \
+  --arg verifier_stdout "$VERIFIER_STDOUT_LOG" --arg verifier_stderr "$VERIFIER_STDERR_LOG" \
+  --arg command_log_dir "$COMMAND_LOG_DIR" --arg original_home "$ORIGINAL_HOME" --arg isolated_home "$ISOLATED_HOME" \
+  --arg app_start_token "$APP_START_TOKEN" --arg app_command "$APP_COMMAND" \
+  --argjson app_termination_confirmed "$APP_TERMINATION_CONFIRMED" '
   {
     schema_version:1,
     kind:"hepta-ui-native-window-evidence-manifest-v1",
@@ -291,17 +607,23 @@ jq -n \
     scope:"unauthenticated_local_macos_product_shell",
     package:{report_path:$package_report,report_sha256:$package_report_sha,app_path:$package_app,binary_path:$package_binary,binary_sha256:$package_binary_sha,bundle_fingerprint_sha256:$package_bundle_sha,current_source_local_package_ready:true,visual_capture_binary_is_exact_packaged_executable:true},
     window:{requested_bounds:$bounds,actual_bounds:$actual_bounds,title:"Hepta",exact_title_match_count:$window_match_count,host_capture:{path:$host_path,sha256:$host_sha,dimensions:$host_dimensions,content_probe:$host_probe}},
-    logs:{application:$app_log},
-    isolation:{macos_sandbox_profile:$sandbox_profile,real_product_data_path_denied:true,real_product_cache_path_denied:true,keychain_services_denied:true,network_denied_by_sandbox:true,force_login_argument:true,user_input_performed:false,matrix_login_performed:false}
+    logs:{application:$app_log,verifier_stdout:$verifier_stdout,verifier_stderr:$verifier_stderr,command_directory:$command_log_dir},
+    process:{start_token:$app_start_token,command:$app_command,identity_safe_termination_confirmed:$app_termination_confirmed},
+    isolation:{macos_sandbox_profile:$sandbox_profile,original_home:$original_home,isolated_home:$isolated_home,home_isolated:($isolated_home != $original_home),real_product_data_path_denied:true,real_product_cache_path_denied:true,keychain_services_denied:true,network_denied_by_sandbox:true,force_login_argument:true,user_input_performed:false,matrix_login_performed:false}
   }' >"$EVIDENCE_MANIFEST"
 
+CURRENT_STAGE="evidence_archive"
 tar -czf "$EVIDENCE_ARCHIVE" -C "$EVIDENCE_DIR" \
   "$(basename "$EVIDENCE_MANIFEST")" "$(basename "$HOST_SCREENSHOT")" \
-  "$(basename "$HOST_PROBE")" "$(basename "$APP_LOG")" "$(basename "$SANDBOX_PROFILE")"
+  "$(basename "$HOST_PROBE")" "$(basename "$APP_LOG")" "$(basename "$SANDBOX_PROFILE")" \
+  "$(basename "$VERIFIER_STDOUT_LOG")" "$(basename "$VERIFIER_STDERR_LOG")" \
+  "$(basename "$COMMAND_LOG_DIR")"
 ARCHIVE_SHA="$(shasum -a 256 "$EVIDENCE_ARCHIVE" | awk '{print $1}')"
 ARCHIVE_BYTES="$(stat -f %z "$EVIDENCE_ARCHIVE")"
 
-jq -n \
+CURRENT_STAGE="ready_receipt"
+READY_RECEIPT_TMP="$(mktemp "${REPORT_PATH%/*}/.native-window-ready-receipt.XXXXXX")" || fail "could not create atomic ready receipt"
+if ! jq -n \
   --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --argjson source_binding "$SOURCE_FINAL" --argjson source_stable "$SOURCE_STABLE" \
   --arg run_nonce "$RUN_NONCE" \
@@ -314,7 +636,11 @@ jq -n \
   --arg package_bundle_sha "$PACKAGE_BUNDLE_SHA_FINAL" \
   --arg bridge_socket "$BRIDGE_SOCKET" --arg peekaboo_host_kind "$PEEKABOO_HOST_KIND" \
   --arg peekaboo_host_source "$PEEKABOO_HOST_SOURCE" --argjson no_remote "$PEEKABOO_NO_REMOTE" \
-  --arg sandbox_profile "$SANDBOX_PROFILE" '
+  --arg sandbox_profile "$SANDBOX_PROFILE" --arg original_home "$ORIGINAL_HOME" --arg isolated_home "$ISOLATED_HOME" \
+  --arg verifier_stdout "$VERIFIER_STDOUT_LOG" --arg verifier_stderr "$VERIFIER_STDERR_LOG" \
+  --arg app_log "$APP_LOG" --arg command_log_dir "$COMMAND_LOG_DIR" \
+  --arg app_start_token "$APP_START_TOKEN" --arg app_command "$APP_COMMAND" \
+  --argjson app_termination_confirmed "$APP_TERMINATION_CONFIRMED" '
   {
     schema_version:1,
     kind:"hepta-ui-native-window-receipt-v1",
@@ -334,14 +660,24 @@ jq -n \
     host_window:{title:"Hepta",exact_title_match_count:$window_match_count,requested_bounds:$requested_bounds,actual_bounds:$actual_bounds,screenshot:{path:$host_screenshot,sha256:$host_sha,dimensions:$host_dimensions}},
     evidence_manifest:{path:$manifest,sha256:$manifest_sha},
     artifact:{path:$archive,sha256:$archive_sha,bytes:$archive_bytes,format:"tar.gz"},
-    automation:{backend:"peekaboo",requested_bridge_socket:$bridge_socket,host_kind:$peekaboo_host_kind,host_source:$peekaboo_host_source,no_remote:$no_remote,screen_recording_granted:true,accessibility_granted:true},
-    isolation:{macos_sandbox_profile:$sandbox_profile,real_product_data_path_denied:true,real_product_cache_path_denied:true,keychain_services_denied:true,network_denied_by_sandbox:true,network_proxies_fail_closed:true,force_login_argument:true,user_input_performed:false,matrix_login_performed:false,product_state_mutation_performed:false},
+    logs:{verifier_stdout:$verifier_stdout,verifier_stderr:$verifier_stderr,application:$app_log,command_directory:$command_log_dir},
+    automation:{backend:"peekaboo",requested_bridge_socket:$bridge_socket,host_kind:$peekaboo_host_kind,host_source:$peekaboo_host_source,no_remote:$no_remote,screen_recording_granted:true,accessibility_granted:true,application_process:{start_token:$app_start_token,command:$app_command,identity_safe_termination_confirmed:$app_termination_confirmed}},
+    isolation:{macos_sandbox_profile:$sandbox_profile,original_home:$original_home,isolated_home:$isolated_home,home_isolated:($isolated_home != $original_home),real_product_data_path_denied:true,real_product_cache_path_denied:true,keychain_services_denied:true,network_denied_by_sandbox:true,network_proxies_fail_closed:true,force_login_argument:true,user_input_performed:false,matrix_login_performed:false,product_state_mutation_performed:false},
     signed:false,
     notarized:false,
     stapled:false,
     public_distribution_ready:false,
     remote_side_effects_performed:false,
     non_claims:["This verifies the exact current formal unsigned package executable on an unauthenticated local macOS product window, not post-login Matrix workflows.","The runtime is sandboxed from the real product state/cache paths, keychain services, and all network access; --force-login prevents session restore.","This is not real-device, accessibility, release-signing, notarization, stapling, distribution, or GA evidence."]
-  }' >"$REPORT_PATH"
+  }' >"$READY_RECEIPT_TMP"; then
+  rm -f "$READY_RECEIPT_TMP"
+  fail "could not render atomic ready receipt"
+fi
+ensure_regular_leaf_or_absent "--output" "$REPORT_PATH"
+if ! /bin/mv -f "$READY_RECEIPT_TMP" "$REPORT_PATH"; then
+  rm -f "$READY_RECEIPT_TMP"
+  fail "could not atomically install ready receipt"
+fi
 
 cat "$REPORT_PATH"
+VERIFIER_SUCCEEDED=true

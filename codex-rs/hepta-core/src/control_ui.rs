@@ -19,401 +19,40 @@ pub const CONTROL_UI_STYLES_CSS: &str = concat!(
     include_str!("../../../apps/hepta-control-ui/styles.accessibility.css"),
 );
 const CONTROL_UI_UNIFIED_LANE_STYLES_CSS_BUDGET_BYTES: usize = 300_000;
-pub const CONTROL_UI_RUST_RENDERER_MARKERS: &str = r###"liveEventStream
-diffReview
-keydown
-json-input
-renderOperatorConsole
-operatorSnapshot
-renderEndpointHealth
-localActionPlan
-data-plan-action
-renderApprovalCards
-renderExecApprovalsLiveEditorParity
-previewExecApprovalPatch
-data-exec-approvals-live-editor-parity
-data-exec-approval-apply-bridge
-redacted_snapshot_hash
-before_after_diff
-role_guard
-gateway/node target
-per-agent scope
-/api/approvals/exec/apply
-/api/approvals
-/api/policy
-fetchActionPlan
-method: "POST"
-/api/actions/
-renderSessionInspector
-/api/session-activity
-renderTaskDrilldown
-postJson("/api/task"
-postJson("/api/task-patches"
-postJson("/api/task-evidence"
-renderTranscriptPreview
-/api/transcript
-fetchTranscriptQuery
-data-query-transcript
-/api/query-transcript/
-postJson("/api/promotion-ledger"
-/api/live-events/0
-next_cursor_unix_ms
-duplicate_free
-fetchCommandResult
-data-run-command
-/api/commands/
-Run read-only
-renderOperatorSecurity
-/api/operator-security
-operatorSecurity
-all_operator_security_lanes_100
-renderMergeCompletion
-/api/hepta-merge-completion
-mergeCompletion
-source_package_merge_percent
-production_replacement_percent
-POST /api/runtime/operator
-Confirm-gated runtime kill/steer dry-run evidence
-renderTaskPublisher
-submitTaskPublisher
-data-task-publish
-/api/tasks/plan
-/api/tasks/publish
-renderAgentChat
-submitAgentChat
-data-agent-chat-send
-/api/chat/plan
-/api/chat
-externalAgentBenchmark
-/api/external-agent-benchmark
-No synthetic wins boundary
-HEPTA_VIEW_GROUPS
-nav-group
-chat
-control
-settings
-renderChatWorkspace
-data-chat-first-architecture
-screenFromRoute
-setActiveScreen
-hashchange
-window.history.pushState
-commandPaletteItems
-openCommandPalette
-activateCommandPaletteItem
-HEPTA_PRIMARY_NAV
-prompt-chip-row
-data-open-command-palette
-nav-group--primary
-New Task
-More
-composerHasFocus
-.chat-compose
-inputHeavyScreen
-!inputHeavyScreen || !hadLiveData
-["INPUT", "TEXTAREA", "SELECT"]
-focus-workspace
-data-control-ui-product-first
-data-control-ui-primary-path="telegram-chat-shell"
-data-control-ui-status-trust-strip="local-safe-review"
-data-control-ui-telegram-shell="true"
-data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow"
-data-control-ui-harsh-referee="2026-06-08-liquid-glass-menus-sidebars-scroll-search"
-data-control-ui-secondary-map="collapsed"
-data-control-ui-runtime-rail="local-review-safety-evidence"
-data-control-ui-secondary-nav="collapsed"
-data-control-ui-composer-product-first="true"
-data-control-ui-composer-more="collapsed"
-data-thread-signature
-Telegram-style multi-agent chat
-data-chat-search
-data-chat-folder
-data-chat-inline-create
-data-chat-pin
-data-chat-archive
-data-chat-unarchive
-data-chat-delete-confirm
-data-chat-row-menu-toggle
-data-chat-row-menu-panel
-data-chat-row-menu-item
-data-chat-mobile-pane-tabs="native-anchor"
-conversationMenuItems
-data-chat-composer-shell
-data-chat-command-shortcut
-data-chat-attachment-placeholder
-data-chat-composer-popover
-data-chat-artifact-insert
-data-chat-command-insert
-data-chat-composer-picker-search
-data-chat-composer-picker-item
-filterComposerOptions
-setComposerPickerActiveIndex
-activateComposerPickerSelection
-addComposerEvidenceOption
-composerCitationCard
-composerContextChips
-groupedComposerContextChips
-data-chat-context-chip-group
-data-chat-context-chip-overflow
-COMPOSER_CONTEXT_CHIP_COLLAPSED_LIMIT
-data-chat-context-chip-token
-toggleComposerContextChipPreview
-expandedContextChipKey
-composerContextSummary
-data-chat-context-summary
-composerContextReferenceHealth
-data-chat-context-health
-composerRepairTarget
-replaceComposerContextBlock
-data-chat-context-chip-repair
-renderComposerStaleSendGuard
-data-chat-stale-guard
-data-chat-stale-send-continue
-allowStaleContexts
-composerContextAuditTrail
-renderMessageContextAudit
-data-chat-context-audit
-data-chat-workspace-scope
-data-chat-brain-scope
-sharedBrainContract
-sharedBrainModeLabel
-GLOBAL_BRAIN_SHARED_DOMAINS
-WORKSPACE_CONTEXT_ISOLATED_DOMAINS
-workspaceTaskBindings
-workspaceTaskImports
-workspaceSelectedTaskIds
-timelineLimits
-chatTimelineWindow
-data-chat-timeline-show-more
-chatThreadSearchMatches
-data-chat-thread-search
-data-chat-thread-search-active
-CHAT_STATE_SCHEMA_VERSION
-pruneChatStateForStorage
-CHAT_STATE_MAX_LOCAL_THREAD_RECORDS
-liveDataFetchPlanForScreen
-lazyLiveDataFetch
-inlineCreateWorkspaceId
-renderWorkspaceRoomPanel
-renderWorkspaceRoomTaskActions
-renderWorkspaceRoomTaskArtifactPreview
-roomTaskArtifactCitation
-renderWorkspaceRoomActivityLog
-appendWorkspaceRoomActivity
-data-room-task-artifact-insert
-data-room-task-action-plan
-copyReviewedRoomTaskCommand
-data-workspace-room-panel
-data-room-orchestration
-renderWorkspaceMemberRoster
-/api/workspace-members
-data-workspace-group-chat
-composerMentionAgentIds
-CHAT_ROUTING_MODE_OPTIONS
-effectiveChatRoutingMode
-reducerModeForRoutingMode
-data-chat-routing-mode
-renderChatOrchestration
-data-chat-orchestration
-groupedAgentRepliesFromTurnResults
-renderGroupedAgentReplies
-data-chat-grouped-replies
-target_agent_ids
-routing_mode
-imported_task_ids
-data-task-import
-data-task-select
-importTaskIntoWorkspace
-selectWorkspaceTask
-workspace_id
-workspaceId
-chatWorkspaceIdForConversation
-contextAuditCitationBlock
-data-chat-context-audit-copy
-data-chat-context-audit-restore
-restoreContextAuditToComposer
-dedupeComposerCitationText
-composerCitationBlocks
-normalizeComposerCitationBlock
-Same key changed
-changedKeys
-changedBlocks
-renderContextReuseDiff
-data-chat-context-reuse-diff
-data-chat-context-reuse-keep
-data-chat-context-reuse-replace
-data-chat-context-reuse-keep-all
-data-chat-context-reuse-replace-all
-updateContextReuseDiffBlock
-updateContextReuseDiffBatch
-setContextReuseUndo
-renderContextReuseUndo
-data-chat-context-reuse-undo
-undoContextReuseReplace
-handleContextWorkflowShortcut
-data-chat-context-shortcut-hint
-Keyboard: R replace all
-clearComposerContextTransientState
-clearContextWorkflowAfterDraftEdit
-contextWorkflowHasTransientState
-commitChatTransientState
-clearChatTransientUiState
-chatUiHasTransientState
-HEPTA_CHAT_BOUNDARY: chat-state-constants
-HEPTA_CHAT_BOUNDARY: chat-transient-state-helpers
-HEPTA_CHAT_BOUNDARY: composer-citation-helpers
-HEPTA_CHAT_BOUNDARY: composer-context-render
-HEPTA_CHAT_BOUNDARY: composer-popover-render
-HEPTA_CHAT_BOUNDARY: conversation-lifecycle-actions
-HEPTA_CHAT_BOUNDARY: chat-state-normalization
-HEPTA_CHAT_BOUNDARY: conversation-derived-metadata
-HEPTA_CHAT_BOUNDARY: conversation-derivation
-HEPTA_CHAT_BOUNDARY: event-binding
-HEPTA_CHAT_BOUNDARY: composer-context-dedupe
-HEPTA_CHAT_BOUNDARY: context-reuse-render
-dismissContextReuseDiff
-dismissContextReuseUndo
-composerContextBlockRangeByKey
-Skipped ${deduped.skippedCount} duplicate
-data-chat-context-audit-expanded
-data-chat-context-chip
-data-chat-context-chip-preview
-data-chat-context-chip-remove
-task-patches
-task-evidence
-promotion-ledger
-insertChatComposerText
-data-chat-enter-send
-data-chat-send-state
-setChatComposerStatus
-data-chat-unread
-data-chat-date-divider
-data-chat-conversation
-deriveChatConversations
-setChatConversation
-togglePinnedConversation
-localStorage
-seenConversationTimestamps
-long-running-ws-resilience-modeled
-polling-no-store-fallback
-gatewayWebSocketOpenedByAudit: false
-dynamic-viewport-bounds
-safe-area-inset-bottom
-high-contrast-selection
-slash-command-feedback-toast
-command-result-status-preserved
-showToast
-long-call-status-surface
-rawDiagnosticPayloadLogged: false
-pruneWorkspaceTaskMap
-CHAT_STATE_MAX_WORKSPACE_TASK_MAPS
-roomTaskArtifactPreview: previousRoomTaskArtifactPreview
-activeScreen === "chat"
-mapped_command
-focusChatThreadSearchInput
-focusChatSearchInput
-renderConvergenceLedger
-data-ui-convergence-ledger
-role="list"
-aria-current
-renderEndpointRecoveryBanner
-data-endpoint-retry-all
-applyControlUiContentRichFixture
-data-content-rich-fixture
-seededControlUiMessages
-data-mobile-layered-chat
-data-chat-mobile-active-pane
-renderMobileLayerTabs
-setChatMobilePane
-renderThreadStatusSummary
-data-thread-compact-status
-data-thread-status-popover
-Details
-renderWorkspaceRoomOnboardingCard
-workspaceRoomHasRichContent
-data-room-empty-consolidated
-data-room-onboarding-card
-applyControlUiEmptyFixture
-Workspace is ready
-roomTaskActionPlan
-roomTaskArtifactPreview
-HEPTA_UI_MODULE_BOUNDARIES
-role="tablist"
-role="tab"
-renderWorkspaceRoomAccordion
-data-room-accordion
-key: "evidence"
-key: "orchestration"
-data-mobile-compact-composer
-applyControlUiEndpointChaosFixture
-endpointChaos
-partial failure
-stale-cache
-latency_ms
-renderTaskArtifactResultDrawer
-data-task-result-drawer
-data-task-result-workspace
-Current result
-roomTaskArtifactSummary
-read-only
-<h2>${escapeHtml(selected?.title || "Hepta agent")}</h2>
-productization
-data-mobile-density-tier
-tg-mobile-density-more
-renderThreadStarterActions
-dry-run review
-applyControlUiGoldenLiveDataFixture
-applyControlUiHostileFixture
-data-task-result-drawer-action
-data-task-result-drawer-actions="product"
-HEPTA_UI
-rust-static-progressive-frontend
-hepta-core::control_ui
-data-rust-frontend-renderer
-data-js-artifacts="external-read-only"
-data-no-js-fallback="navigation"
-data-progressive-enhancement="same-origin-read-only"
-/control-ui.js
-/api/operator-snapshot
-control-ui-readonly-registry-count
-data-control-ui-runtime-rail="local-review-safety-evidence"
-data-control-ui-secondary-nav="collapsed"
-data-control-ui-composer-product-first="true"
-data-control-ui-composer-more="collapsed"
-data-control-ui-work-rail="product-first"
-data-control-ui-compact-product-path="narrow-mobile"
-data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow"
-postJson("/api/task-replay"
-activeScreen = screenFromRoute()
-data-minimal-consumer-workspace
-data-telegram-multi-agent-chat
-HEPTA_RUNTIME_2026_5_2_UI_RESILIENCE_CONTRACT
-bounded-grouped-reply-width
-realtime-talk-diagnostic-redaction
-renderEventTimeline
-/api/events-report
-persistedAutoScrollMode
-HEPTA_CHAT_AUTO_SCROLL_STORAGE_KEY
-data-chat-autoscroll-mode
-data-chat-autoscroll-persisted
-renderBlankDashboardRecoveryPanel
-data-dashboard-recovery-panel
-blank-dashboard-html-recovery
-renderCompactSessionStatusBadges
-data-session-status-badges
-data-session-status="live"
-data-session-status="idle"
-data-session-status="terminal"
-nodesPollScopeActiveTab
-data-nodes-poll-scope="active-tab-only"
-nodesPollingAutoStart: false
-sampleReadinessStatus
-liveAdapterReadinessStatus
-data-readiness-kind="sample"
-data-readiness-kind="live-adapter"
-terminalQrRendering
-data-terminal-qr-rendering
-fixed-cell-terminal-qr"###;
+/// Compatibility-only serialized security contract. The typed
+/// `control_ui_interaction_capabilities` manifest is authoritative for visible
+/// browser behavior; callers must not infer UI capability from substring checks.
+pub const CONTROL_UI_RUST_RENDERER_MARKERS: &str = r###"{
+  "schema_version": 2,
+  "kind": "control-ui-local-security-contract",
+  "live_adapter_bound": false,
+  "contracts": [
+    {
+      "id": "policy-approval-readonly-inventory",
+      "availability": "same-origin-read-only",
+      "evidence": ["renderApprovalCards", "/api/approvals", "/api/policy"]
+    },
+    {
+      "id": "runtime-operator-plan-catalog",
+      "availability": "catalog-only",
+      "enabled": false,
+      "evidence": [
+        "POST /api/runtime/operator",
+        "Confirm-gated runtime kill/steer dry-run evidence"
+      ]
+    },
+    {
+      "id": "event-visibility-readonly-inventory",
+      "availability": "same-origin-read-only",
+      "evidence": [
+        "renderEventTimeline",
+        "/api/events-report",
+        "/api/live-events/0",
+        "duplicate_free"
+      ]
+    }
+  ]
+}"###;
 include!("control_ui_static_assets.rs");
 pub const CONTROL_UI_README: &str = include_str!("../../../apps/hepta-control-ui/README.md");
 pub const CONTROL_UI_SMOKE_SH: &str = include_str!("../../../scripts/hepta-control-ui-smoke.sh");
@@ -642,6 +281,8 @@ pub struct ControlUiScreen {
     pub summary: &'static str,
     pub route: &'static str,
     pub implemented: bool,
+    pub implementation_scope: &'static str,
+    pub live_adapter_ready: bool,
     pub data_sources: &'static [&'static str],
     pub widgets: &'static [&'static str],
     pub interactions: &'static [&'static str],
@@ -684,6 +325,8 @@ pub struct ControlUiInteractionCapability {
     pub id: &'static str,
     pub title: &'static str,
     pub implemented: bool,
+    pub availability: &'static str,
+    pub requires_live_adapter: bool,
     pub evidence_kind: &'static str,
     pub evidence: &'static str,
 }
@@ -773,6 +416,8 @@ pub struct ControlUiReport {
     pub screen_count: usize,
     pub implemented_screen_count: usize,
     pub screen_coverage_percent: u8,
+    pub screen_coverage_percent_basis: &'static str,
+    pub live_implemented_screen_count: usize,
     pub asset_count: usize,
     pub present_asset_count: usize,
     pub required_asset_count: usize,
@@ -780,6 +425,9 @@ pub struct ControlUiReport {
     pub command_binding_count: usize,
     pub interaction_capability_count: usize,
     pub implemented_interaction_capability_count: usize,
+    pub capability_manifest_schema_version: u8,
+    pub capability_mode: &'static str,
+    pub live_adapter_bound: bool,
     pub static_interaction_contract_percent: u8,
     pub live_operator_surface_percent: u8,
     pub developer_interaction_percent: u8,
@@ -798,7 +446,7 @@ pub struct ControlUiReport {
     pub interaction_capabilities: Vec<ControlUiInteractionCapability>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ControlUiContractAuditReport {
     pub product: &'static str,
     pub status: &'static str,
@@ -809,6 +457,9 @@ pub struct ControlUiContractAuditReport {
     pub readme_screen_count: usize,
     pub command_binding_count: usize,
     pub interaction_capability_count: usize,
+    pub capability_manifest_schema_version: u8,
+    pub capability_mode: &'static str,
+    pub live_adapter_bound: bool,
     pub all_screen_ids_aligned: bool,
     pub app_has_live_event_stream: bool,
     pub app_has_diff_review: bool,
@@ -996,8 +647,15 @@ pub fn control_ui_report() -> ControlUiReport {
         && !rust_frontend_html.contains("<script>")
         && progressive_javascript.contains("/api/operator-snapshot")
         && progressive_javascript.contains("READ_ONLY_ROUTES")
+        && progressive_javascript.contains("UNAVAILABLE_PREVIEW_CONTROLS")
+        && progressive_javascript.contains("configureLocalJsonPreview")
+        && progressive_javascript.contains("insertLocalDraftText")
         && !progressive_javascript.contains("innerHTML")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("rust-static-progressive-frontend");
+        && rust_frontend_html.contains("data-control-ui-capability-mode=\"local-read-only\"")
+        && rust_frontend_html.contains("data-control-ui-live-adapter-bound=\"false\"")
+        && interaction_capabilities
+            .iter()
+            .all(|capability| capability.implemented && !capability.requires_live_adapter);
     let frontend_manifest = control_ui_frontend_manifest();
     let rust_frontend_ownership = control_ui_rust_frontend_ownership(&assets, &frontend_manifest);
     let static_contract_percent = [
@@ -1029,6 +687,8 @@ pub fn control_ui_report() -> ControlUiReport {
         screen_count,
         implemented_screen_count,
         screen_coverage_percent,
+        screen_coverage_percent_basis: "static local read-only screen shells; not live adapter or mutation coverage",
+        live_implemented_screen_count: 0,
         asset_count,
         present_asset_count,
         required_asset_count,
@@ -1036,6 +696,9 @@ pub fn control_ui_report() -> ControlUiReport {
         command_binding_count: command_bindings.len(),
         interaction_capability_count,
         implemented_interaction_capability_count,
+        capability_manifest_schema_version: 2,
+        capability_mode: "local-read-only",
+        live_adapter_bound: false,
         static_interaction_contract_percent,
         live_operator_surface_percent,
         developer_interaction_percent,
@@ -1057,6 +720,7 @@ pub fn control_ui_report() -> ControlUiReport {
 
 pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
     let rust_frontend_html = control_ui_index_html();
+    let progressive_javascript = std::str::from_utf8(CONTROL_UI_JS).unwrap_or_default();
     let core_ids = control_ui_screens()
         .into_iter()
         .map(|screen| screen.id.to_string())
@@ -1077,1179 +741,111 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         && missing_in_readme.is_empty()
         && core_ids.len() == app_ids.len()
         && core_ids.len() == readme_ids.len();
-    let app_has_live_event_stream = CONTROL_UI_RUST_RENDERER_MARKERS.contains("liveEventStream");
-    let app_has_diff_review = CONTROL_UI_RUST_RENDERER_MARKERS.contains("diffReview");
-    let app_has_keyboard_shortcuts = CONTROL_UI_RUST_RENDERER_MARKERS.contains("keydown");
-    let app_has_json_inspector = CONTROL_UI_RUST_RENDERER_MARKERS.contains("json-input")
-        || CONTROL_UI_INDEX_HTML.contains("json-input");
-    let app_has_operator_drilldown = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("renderOperatorConsole")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("operatorSnapshot");
-    let app_has_endpoint_health_grid = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("renderEndpointHealth")
-        && CONTROL_UI_STYLES_CSS.contains(".endpoint-grid");
-    let app_has_dry_run_action_cards = CONTROL_UI_RUST_RENDERER_MARKERS.contains("localActionPlan")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-plan-action");
-    let app_has_approval_cards = CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderApprovalCards")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderExecApprovalsLiveEditorParity")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("previewExecApprovalPatch")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-exec-approvals-live-editor-parity")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-exec-approval-apply-bridge")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("redacted_snapshot_hash")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("before_after_diff")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("role_guard")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("gateway/node target")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("per-agent scope")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/approvals/exec/apply")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/approvals")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/policy");
-    let app_has_post_action_guard = CONTROL_UI_RUST_RENDERER_MARKERS.contains("fetchActionPlan")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("method: \"POST\"")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/actions/");
-    let app_has_session_inspector = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("renderSessionInspector")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/session-activity");
-    let app_has_task_drilldown = CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderTaskDrilldown")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("postJson(\"/api/task\"")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("postJson(\"/api/task-patches\"")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("postJson(\"/api/task-evidence\"");
-    let app_has_transcript_preview = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("renderTranscriptPreview")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/transcript");
-    let app_has_transcript_search = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("fetchTranscriptQuery")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-query-transcript")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/query-transcript/");
-    let app_has_replay_promotion_drilldown = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("postJson(\"/api/task-replay\"")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("postJson(\"/api/promotion-ledger\"");
-    let app_has_event_cursor = CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/live-events/0")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("next_cursor_unix_ms")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("duplicate_free");
-    let app_has_readonly_command_runner = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("fetchCommandResult")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-run-command")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/commands/")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("Run read-only");
-    let app_has_operator_security = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("renderOperatorSecurity")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/operator-security")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("operatorSecurity")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("all_operator_security_lanes_100");
-    let app_has_task_publisher = CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderTaskPublisher")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("submitTaskPublisher")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-task-publish")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/tasks/plan")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/tasks/publish");
-    let app_has_agent_chat = CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderAgentChat")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("submitAgentChat")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-agent-chat-send")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/chat/plan")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/chat");
-    let app_has_external_agent_benchmark = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("externalAgentBenchmark")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/external-agent-benchmark")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("No synthetic wins boundary");
-    let app_has_hepta_runtime_ui_parity = CONTROL_UI_INDEX_HTML
-        .contains("data-hepta_runtime-ui-parity")
-        && CONTROL_UI_INDEX_HTML.contains("topnav-shell")
-        && CONTROL_UI_INDEX_HTML.contains("shell-nav")
-        && CONTROL_UI_STYLES_CSS.contains(".shell--hepta-premium")
-        && CONTROL_UI_STYLES_CSS.contains("--accent: #e5243b")
-        && CONTROL_UI_STYLES_CSS.contains(".topbar")
-        && CONTROL_UI_STYLES_CSS.contains(".shell-nav")
-        && CONTROL_UI_STYLES_CSS.contains(".topbar-search")
-        && CONTROL_UI_STYLES_CSS.contains(".pill");
-    let app_has_hepta_runtime_navigation_groups = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("HEPTA_VIEW_GROUPS")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("nav-group")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("chat")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("control")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("settings");
-    let app_has_chat_first_architecture = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("activeScreen = screenFromRoute()")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderChatWorkspace")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-first-architecture")
-        && CONTROL_UI_STYLES_CSS.contains("body[data-view=\"chat\"]")
-        && CONTROL_UI_STYLES_CSS.contains(".chat-thread")
-        && CONTROL_UI_STYLES_CSS.contains(".chat-compose");
-    let app_has_route_view_controller = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("screenFromRoute")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("setActiveScreen")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("hashchange")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.history.pushState");
-    let app_has_command_palette = CONTROL_UI_INDEX_HTML.contains("command-palette")
-        && CONTROL_UI_INDEX_HTML.contains("data-open-command-palette")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("commandPaletteItems")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("openCommandPalette")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("activateCommandPaletteItem")
-        && CONTROL_UI_STYLES_CSS.contains(".command-palette");
-    let app_has_premium_consumer_ui = CONTROL_UI_INDEX_HTML.contains("data-premium-consumer-ui")
-        && CONTROL_UI_INDEX_HTML.contains("linear-raycast-vercel-arc")
-        && CONTROL_UI_STYLES_CSS.contains(".shell--hepta-premium")
-        && CONTROL_UI_STYLES_CSS.contains("--premium-bg")
-        && CONTROL_UI_STYLES_CSS.contains("--premium-tint")
-        && CONTROL_UI_STYLES_CSS.contains("--premium-card");
-    let app_has_progressive_disclosure = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("commandPaletteItems")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("HEPTA_PRIMARY_NAV")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("prompt-chip-row")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-open-command-palette")
-        && CONTROL_UI_STYLES_CSS
-            .contains("body[data-view=\"chat\"] .shell--hepta-premium .content")
-        && CONTROL_UI_STYLES_CSS.contains(".prompt-chip-row")
-        && CONTROL_UI_STYLES_CSS.contains("body[data-view=\"chat\"] .shell--hepta-premium .topbar");
-    let app_has_simplified_primary_nav = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("HEPTA_PRIMARY_NAV")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("nav-group--primary")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("New Task")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("More")
-        && CONTROL_UI_STYLES_CSS.contains(".nav-group--primary");
-    let app_preserves_typing_during_live_poll = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("composerHasFocus")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains(".chat-compose")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("inputHeavyScreen")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("!inputHeavyScreen || !hadLiveData")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("[\"INPUT\", \"TEXTAREA\", \"SELECT\"]");
-    let app_has_minimal_consumer_workspace = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("data-minimal-consumer-workspace")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("focus-workspace")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-thread-signature")
-        && CONTROL_UI_STYLES_CSS.contains(".focus-workspace")
-        && CONTROL_UI_STYLES_CSS.contains(".focus-workspace")
-        && CONTROL_UI_STYLES_CSS.contains("body[data-view=\"chat\"] .shell--hepta-premium .topbar")
-        && CONTROL_UI_STYLES_CSS
-            .contains("body[data-view=\"chat\"] .shell--hepta-premium .sidebar")
-        && CONTROL_UI_STYLES_CSS.contains(".focus-compose");
-    let app_has_telegram_multi_agent_workspace = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("data-telegram-multi-agent-chat")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("Telegram-style multi-agent chat")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-search")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-folder")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-inline-create")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-pin")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-archive")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-unarchive")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-delete-confirm")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-row-menu-toggle")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-row-menu-panel")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-row-menu-item")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-mobile-pane-tabs")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("conversationMenuItems")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-composer-shell")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-command-shortcut")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-attachment-placeholder")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-composer-popover")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-artifact-insert")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-command-insert")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-composer-picker-search")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-composer-picker-item")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("filterComposerOptions")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("setComposerPickerActiveIndex")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("activateComposerPickerSelection")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("addComposerEvidenceOption")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("composerCitationCard")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("composerContextChips")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("groupedComposerContextChips")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-chip-group")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-chip-overflow")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("COMPOSER_CONTEXT_CHIP_COLLAPSED_LIMIT")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-chip-token")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("toggleComposerContextChipPreview")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("expandedContextChipKey")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("composerContextSummary")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-summary")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("composerContextReferenceHealth")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-health")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("composerRepairTarget")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("replaceComposerContextBlock")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-chip-repair")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderComposerStaleSendGuard")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-stale-guard")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-stale-send-continue")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("allowStaleContexts")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("composerContextAuditTrail")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderMessageContextAudit")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-audit")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-workspace-scope")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-brain-scope")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("sharedBrainContract")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("sharedBrainModeLabel")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("GLOBAL_BRAIN_SHARED_DOMAINS")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("WORKSPACE_CONTEXT_ISOLATED_DOMAINS")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("workspaceTaskBindings")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("workspaceTaskImports")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("workspaceSelectedTaskIds")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("timelineLimits")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("chatTimelineWindow")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-timeline-show-more")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("chatThreadSearchMatches")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-thread-search")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-thread-search-active")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("CHAT_STATE_SCHEMA_VERSION")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("pruneChatStateForStorage")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("CHAT_STATE_MAX_LOCAL_THREAD_RECORDS")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("liveDataFetchPlanForScreen")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("lazyLiveDataFetch")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("inlineCreateWorkspaceId")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomPanel")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomTaskActions")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomTaskArtifactPreview")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("roomTaskArtifactCitation")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomActivityLog")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("appendWorkspaceRoomActivity")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-room-task-artifact-insert")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-room-task-action-plan")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("copyReviewedRoomTaskCommand")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-workspace-room-panel")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-room-orchestration")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceMemberRoster")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/workspace-members")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-workspace-group-chat")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("composerMentionAgentIds")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("CHAT_ROUTING_MODE_OPTIONS")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("effectiveChatRoutingMode")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("reducerModeForRoutingMode")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-routing-mode")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderChatOrchestration")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-orchestration")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("groupedAgentRepliesFromTurnResults")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderGroupedAgentReplies")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-grouped-replies")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-compose-mode")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-orchestration-sequence")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-agent-reply-group")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-timeline-window")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-thread-search-bar")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-room-panel")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-room-plan-card")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-room-artifact-preview")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-room-activity-item")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("target_agent_ids")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("routing_mode")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("imported_task_ids")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-task-import")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-task-select")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("importTaskIntoWorkspace")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("selectWorkspaceTask")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("postJson(\"/api/task\"")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("postJson(\"/api/task-evidence\"")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("workspace_id")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("workspaceId")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("chatWorkspaceIdForConversation")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("contextAuditCitationBlock")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-audit-copy")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-audit-restore")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("restoreContextAuditToComposer")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("dedupeComposerCitationText")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("composerCitationBlocks")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("normalizeComposerCitationBlock")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("Same key changed")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("changedKeys")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("changedBlocks")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderContextReuseDiff")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-reuse-diff")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-reuse-keep")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-reuse-replace")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-reuse-keep-all")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-reuse-replace-all")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("updateContextReuseDiffBlock")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("updateContextReuseDiffBatch")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("setContextReuseUndo")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderContextReuseUndo")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-reuse-undo")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("undoContextReuseReplace")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("handleContextWorkflowShortcut")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-shortcut-hint")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("Keyboard: R replace all")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("clearComposerContextTransientState")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("clearContextWorkflowAfterDraftEdit")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("contextWorkflowHasTransientState")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("commitChatTransientState")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("clearChatTransientUiState")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("chatUiHasTransientState")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("HEPTA_CHAT_BOUNDARY: chat-state-constants")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("HEPTA_CHAT_BOUNDARY: chat-transient-state-helpers")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("HEPTA_CHAT_BOUNDARY: composer-citation-helpers")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("HEPTA_CHAT_BOUNDARY: composer-context-render")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("HEPTA_CHAT_BOUNDARY: composer-popover-render")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("HEPTA_CHAT_BOUNDARY: conversation-lifecycle-actions")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("HEPTA_CHAT_BOUNDARY: chat-state-normalization")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("HEPTA_CHAT_BOUNDARY: conversation-derived-metadata")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("HEPTA_CHAT_BOUNDARY: conversation-derivation")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("HEPTA_CHAT_BOUNDARY: event-binding")
-        && CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("HEPTA_CHAT_BOUNDARY: composer-context-dedupe")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("HEPTA_CHAT_BOUNDARY: context-reuse-render")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("dismissContextReuseDiff")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("dismissContextReuseUndo")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("composerContextBlockRangeByKey")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("Skipped ${deduped.skippedCount} duplicate")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-audit-expanded")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-chip")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-chip-preview")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-context-chip-remove")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("task-patches")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("task-evidence")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("promotion-ledger")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("insertChatComposerText")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-enter-send")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-send-state")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("setChatComposerStatus")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-unread")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-date-divider")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-conversation")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("deriveChatConversations")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("setChatConversation")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("togglePinnedConversation")
-        && !CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.prompt(")
-        && !CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.confirm(")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("localStorage")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("seenConversationTimestamps")
-        && CONTROL_UI_STYLES_CSS.contains(".telegram-chat-shell")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-search-shell")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-inline-create")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-row-action-tray")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-row-action-popover")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-row-action__icon")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-row-menu-separator")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-compose-bar")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip-group")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip-summary")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip-overflow")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip--stale")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip-health")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip-repair")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-stale-send-guard")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-message-context-audit")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-message-context-audit__copy")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-message-context-audit__restore")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-message-context-audit__actions")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-message-context-audit__details")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-reuse-diff")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-reuse-diff__actions")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-reuse-diff__batch")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-reuse-undo")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-shortcut-hint")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip--open")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip--evidence")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-context-chip-preview")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-composer-popover")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-composer-popover__item")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-composer-popover__item.active")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-composer-popover__search")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-send-button")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-compose-status")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-folder-row")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-conversation-rail")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-thread-panel")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-thread-details")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-inline-delete-confirm")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-chat-item")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-chat-item__unread")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-date-divider")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-message--self");
-    let app_models_long_gateway_websocket_resilience = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("HEPTA_RUNTIME_2026_5_2_UI_RESILIENCE_CONTRACT")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("long-running-ws-resilience-modeled")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("polling-no-store-fallback")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("gatewayWebSocketOpenedByAudit: false");
-    let app_has_grouped_message_width_guard = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("bounded-grouped-reply-width")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-grouped-replies")
-        && CONTROL_UI_STYLES_CSS.contains("--hepta_runtime-2026-5-2-grouped-message-max-width")
-        && CONTROL_UI_STYLES_CSS
-            .contains("width:min(100%,var(--hepta_runtime-2026-5-2-grouped-message-max-width))")
-        && !CONTROL_UI_STYLES_CSS.contains("overflow-wrap: anywhere")
-        && !CONTROL_UI_STYLES_CSS.contains("overflow-wrap:anywhere")
-        && !CONTROL_UI_STYLES_CSS.contains("word-break:break-word")
-        && !CONTROL_UI_STYLES_CSS.contains("word-break:break-all");
-    let app_has_ios_pwa_bounds_guard = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("dynamic-viewport-bounds")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("safe-area-inset-bottom")
-        && CONTROL_UI_STYLES_CSS.contains("--hepta_runtime-2026-5-2-ios-pwa-bottom")
-        && CONTROL_UI_STYLES_CSS.contains("safe-area-inset-bottom")
+
+    let capabilities = control_ui_interaction_capabilities();
+    let typed_capability_manifest_ready = !capabilities.is_empty()
+        && capabilities.iter().all(|capability| {
+            capability.implemented
+                && !capability.requires_live_adapter
+                && matches!(
+                    capability.availability,
+                    "browser-native" | "local-only" | "same-origin-read-only"
+                )
+        });
+    let capability_ids = capabilities
+        .iter()
+        .map(|capability| capability.id.to_string())
+        .collect::<Vec<_>>();
+    let mut unique_capability_ids = capability_ids.clone();
+    unique_capability_ids.sort();
+    unique_capability_ids.dedup();
+    let unique_capability_ids = unique_capability_ids.len() == capability_ids.len();
+    let serialized_security_contract_ready =
+        serde_json::from_str::<serde_json::Value>(CONTROL_UI_RUST_RENDERER_MARKERS).is_ok();
+
+    let app_has_json_inspector = rust_frontend_html.contains("id=\"json-input\"")
+        && rust_frontend_html.contains("id=\"json-preview\"")
+        && progressive_javascript.contains("configureLocalJsonPreview")
+        && progressive_javascript.contains("JSON.parse(source)");
+    let app_has_readonly_command_runner = progressive_javascript.contains("READ_ONLY_ROUTES")
+        && progressive_javascript.contains("getSameOriginJson")
+        && progressive_javascript.contains("method: \"GET\"")
+        && !progressive_javascript.contains("method: \"POST\"");
+    let app_has_operator_security = progressive_javascript.contains("\"operator-security\"")
+        && progressive_javascript.contains("/api/operator-security");
+    let app_has_hepta_runtime_navigation_groups = rust_frontend_html.contains("nav-group--primary")
+        && rust_frontend_html.contains("href=\"#chat\"")
+        && rust_frontend_html.contains("href=\"#tasks\"")
+        && rust_frontend_html.contains("href=\"#ops\"");
+    let app_has_chat_first_architecture = rust_frontend_html
+        .contains("data-chat-first-architecture=\"true\"")
+        && rust_frontend_html.contains("data-control-ui-primary-path=\"telegram-chat-shell\"");
+    let app_has_route_view_controller =
+        rust_frontend_html.contains("data-route-view-controller=\"native-anchor-routes\"");
+    let app_has_command_palette = rust_frontend_html.contains("id=\"command-palette\"")
+        && rust_frontend_html.contains("popover=\"auto\"")
+        && progressive_javascript.contains("command-palette-input");
+    let app_has_premium_consumer_ui = rust_frontend_html
+        .contains("data-control-ui-top-design-referee")
+        && rust_frontend_html.contains("data-control-ui-telegram-shell=\"true\"");
+    let app_has_progressive_disclosure = rust_frontend_html.contains("popover=\"auto\"")
+        && rust_frontend_html.contains("popovertarget=");
+    let app_has_simplified_primary_nav = rust_frontend_html.contains("nav-group--primary")
+        && rust_frontend_html.contains("data-control-ui-secondary-nav=\"collapsed\"");
+    let app_has_minimal_consumer_workspace =
+        rust_frontend_html.contains("data-minimal-consumer-workspace=\"true\"");
+    let app_has_grouped_message_width_guard =
+        CONTROL_UI_STYLES_CSS.contains("--hepta_runtime-2026-5-2-grouped-message-max-width");
+    let app_has_ios_pwa_bounds_guard = CONTROL_UI_STYLES_CSS.contains("safe-area-inset-bottom")
         && CONTROL_UI_STYLES_CSS.contains("100dvh");
-    let app_has_selection_contrast_guard = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("high-contrast-selection")
-        && CONTROL_UI_STYLES_CSS.contains("::selection")
+    let app_has_selection_contrast_guard = CONTROL_UI_STYLES_CSS.contains("::selection")
         && CONTROL_UI_STYLES_CSS.contains("--hepta_runtime-2026-5-2-selection-bg")
         && CONTROL_UI_STYLES_CSS.contains("--hepta_runtime-2026-5-2-selection-fg");
-    let app_has_slash_feedback_surface = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("slash-command-feedback-toast")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("command-result-status-preserved")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("showToast")
-        && CONTROL_UI_STYLES_CSS.contains(".toast.show");
-    let app_has_talk_diagnostics_resilience = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("realtime-talk-diagnostic-redaction")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("long-call-status-surface")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("rawDiagnosticPayloadLogged: false");
-    let app_has_persisted_auto_scroll_mode = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("persistedAutoScrollMode")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("HEPTA_CHAT_AUTO_SCROLL_STORAGE_KEY")
-        && rust_frontend_html.contains("data-chat-autoscroll-mode")
-        && rust_frontend_html.contains("data-chat-autoscroll-persisted")
-        && CONTROL_UI_STYLES_CSS.contains(".tg-autoscroll-select");
-    let app_has_blank_dashboard_recovery_panel = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("renderBlankDashboardRecoveryPanel")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("blank-dashboard-html-recovery")
-        && rust_frontend_html.contains("data-dashboard-recovery-panel")
-        && CONTROL_UI_STYLES_CSS.contains(".hepta-dashboard-recovery");
-    let app_has_compact_session_status_badges = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("renderCompactSessionStatusBadges")
-        && rust_frontend_html.contains("data-session-status-badges")
-        && rust_frontend_html.contains(r#"data-session-status="live""#)
-        && rust_frontend_html.contains(r#"data-session-status="idle""#)
-        && rust_frontend_html.contains(r#"data-session-status="terminal""#)
-        && CONTROL_UI_STYLES_CSS.contains(".tg-session-state");
-    let app_scopes_nodes_polling_to_active_tab = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("nodesPollScopeActiveTab")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("nodesPollingAutoStart: false")
-        && rust_frontend_html.contains(r#"data-nodes-poll-scope="active-tab-only""#)
-        && rust_frontend_html.contains(r#"data-nodes-poll-autostart="false""#);
-    let app_distinguishes_sample_vs_live_adapter_readiness = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("sampleReadinessStatus")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("liveAdapterReadinessStatus")
-        && rust_frontend_html.contains(r#"data-readiness-kind="sample""#)
-        && rust_frontend_html.contains(r#"data-readiness-kind="live-adapter""#);
-    let app_has_terminal_qr_rendering_guard = CONTROL_UI_RUST_RENDERER_MARKERS
-        .contains("terminalQrRendering")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("fixed-cell-terminal-qr")
-        && rust_frontend_html.contains("data-terminal-qr-rendering")
-        && CONTROL_UI_STYLES_CSS.contains(".terminal-qr-preview");
-    let control_ui_gateway_websocket_opened_by_audit = false;
-    let control_ui_live_gateway_rpc_performed = false;
-    let app_has_hepta_runtime_2026_5_2_ui_resilience = app_models_long_gateway_websocket_resilience
-        && app_has_grouped_message_width_guard
-        && app_has_ios_pwa_bounds_guard
-        && app_has_selection_contrast_guard
-        && app_has_slash_feedback_surface
-        && app_has_talk_diagnostics_resilience
-        && !control_ui_gateway_websocket_opened_by_audit
-        && !control_ui_live_gateway_rpc_performed;
-    let readme_mentions_boundary =
-        CONTROL_UI_README.contains("Boundary") && CONTROL_UI_README.contains("not a hosted SaaS");
-    let p0_checks = [
+    let app_distinguishes_sample_vs_live_adapter_readiness = rust_frontend_html
+        .contains("data-readiness-kind=\"sample\"")
+        && rust_frontend_html.contains("data-readiness-kind=\"live-adapter\"")
+        && rust_frontend_html.contains("data-control-ui-live-adapter-bound=\"false\"");
+
+    let truth_checks = [
         all_screen_ids_aligned,
-        app_has_endpoint_health_grid,
-        app_has_post_action_guard,
-        app_has_operator_security,
-        app_preserves_typing_during_live_poll,
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("liveDataFetchPlanForScreen"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("lazyLiveDataFetch"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("chatTimelineWindow"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("pruneChatStateForStorage"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("CHAT_STATE_SCHEMA_VERSION"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("pruneWorkspaceTaskMap"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("CHAT_STATE_MAX_WORKSPACE_TASK_MAPS"),
-        CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("roomTaskArtifactPreview: previousRoomTaskArtifactPreview"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("activeScreen === \"chat\""),
-        !CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.prompt("),
-        !CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.confirm("),
-    ];
-    let p1_checks = [
-        app_has_chat_first_architecture,
-        app_has_telegram_multi_agent_workspace,
-        app_has_task_publisher,
-        app_has_agent_chat,
-        app_has_task_drilldown,
-        app_has_transcript_search,
-        app_has_replay_promotion_drilldown,
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomPanel"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomTaskActions"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomTaskArtifactPreview"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomActivityLog"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-thread-search"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("roomTaskArtifactCitation"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("mapped_command"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("focusChatThreadSearchInput"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("focusChatSearchInput"),
-    ];
-    let p2_checks = [
-        app_has_hepta_runtime_ui_parity,
-        app_has_command_palette,
-        app_has_premium_consumer_ui,
-        app_has_progressive_disclosure,
-        app_has_simplified_primary_nav,
-        app_has_keyboard_shortcuts,
+        typed_capability_manifest_ready,
+        unique_capability_ids,
+        serialized_security_contract_ready,
+        rust_frontend_html.contains("data-control-ui-capability-mode=\"local-read-only\""),
+        rust_frontend_html.contains("<span>live adapter</span><strong>0</strong>"),
+        rust_frontend_html.contains("documented, not live workflows"),
+        rust_frontend_html.contains("data-live-event-stream=\"false\""),
+        rust_frontend_html.contains("data-task-publisher=\"false\""),
+        rust_frontend_html.contains("data-agent-chat=\"false\""),
+        progressive_javascript.contains("UNAVAILABLE_PREVIEW_CONTROLS"),
+        progressive_javascript.contains("insertLocalDraftText"),
+        progressive_javascript.contains("configureComposerPickerSearch"),
+        app_has_json_inspector,
         app_has_readonly_command_runner,
-        app_has_approval_cards,
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderConvergenceLedger"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-ui-convergence-ledger"),
-        CONTROL_UI_STYLES_CSS.contains(".convergence-ledger"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("role=\"list\""),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("aria-current"),
-        CONTROL_UI_STYLES_CSS.contains("prefers-reduced-motion"),
-        app_has_hepta_runtime_2026_5_2_ui_resilience,
-        !control_ui_gateway_websocket_opened_by_audit,
-        !control_ui_live_gateway_rpc_performed,
-        readme_mentions_boundary,
+        CONTROL_UI_STYLES_CSS.len() <= CONTROL_UI_UNIFIED_LANE_STYLES_CSS_BUDGET_BYTES,
+        !progressive_javascript.contains("fetchActionPlan"),
+        !progressive_javascript.contains("submitAgentChat"),
     ];
-    let p3_checks = [
-        CONTROL_UI_FUNCTIONAL_SMOKE_MJS.contains("Hepta Control UI functional smoke passed"),
-        CONTROL_UI_FUNCTIONAL_SMOKE_MJS.contains("10k message search exceeded budget"),
-        CONTROL_UI_FUNCTIONAL_SMOKE_MJS.contains("state pruning exceeded budget"),
-        CONTROL_UI_FUNCTIONAL_SMOKE_MJS.contains("chat search should keep focus after rerender"),
-        CONTROL_UI_FUNCTIONAL_SMOKE_MJS.contains("thread search should keep focus after rerender"),
-        CONTROL_UI_FUNCTIONAL_SMOKE_MJS.contains("mapped command should replace task placeholder"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderEndpointRecoveryBanner"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-endpoint-retry-all"),
-        CONTROL_UI_STYLES_CSS.contains(".endpoint-recovery-banner"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-    ];
-    let p4_checks = [
-        CONTROL_UI_QUALITY_SMOKE_MJS.contains("Hepta Control UI quality smoke passed"),
-        CONTROL_UI_SMOKE_SH.contains("Rust-embedded progressive-enhancement contract smoke"),
-        CONTROL_UI_QUALITY_SMOKE_MJS.contains("styles.css budget exceeded"),
-        CONTROL_UI_QUALITY_SMOKE_MJS.contains("README budget exceeded"),
-        CONTROL_UI_QUALITY_SMOKE_MJS.contains("HEPTA_CHAT_BOUNDARY"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_README.contains("Rust-embedded progressive-enhancement contract smoke"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.len() < 327_000,
-        CONTROL_UI_STYLES_CSS.len() < CONTROL_UI_UNIFIED_LANE_STYLES_CSS_BUDGET_BYTES,
-        !CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.alert("),
-    ];
-    let p5_checks = [
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("Hepta browser visual smoke passed"),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("chrome-headless"),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("capture_viewport \"desktop\""),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("capture_viewport \"narrow\""),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("capture_viewport \"mobile\""),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("--screenshot"),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("data-telegram-multi-agent-chat"),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("id=\"command-palette\""),
-        CONTROL_UI_BROWSER_RUNNER_SMOKE_SH.contains("--serve-ui"),
-        CONTROL_UI_SMOKE_SH.contains("hepta-control-ui-browser-smoke.sh"),
-    ];
-    let p6_checks = [
-        CONTROL_UI_BROWSER_RUNNER_SMOKE_SH
-            .contains("Hepta Control UI browser screenshot gate passed"),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("screenshots"),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("viewport:\"1365x900\""),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("viewport:\"768x900\""),
-        CONTROL_UI_BROWSER_SMOKE_SH.contains("viewport:\"500x844\""),
-        CONTROL_UI_P0_P6_RELEASE_DOC.contains("Hepta Control UI P0-P6 Convergence"),
-        CONTROL_UI_P0_P6_RELEASE_DOC.contains("Operator walkthrough"),
-        CONTROL_UI_P0_P6_RELEASE_DOC.contains("Screenshot manifest"),
-        CONTROL_UI_P0_P6_RELEASE_DOC.contains("Gate commands"),
-        CONTROL_UI_P0_P6_RELEASE_DOC.contains("not a hosted SaaS"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-    ];
-    let p7_checks = [
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("Hepta Control UI maturity smoke passed"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("applyContentRichFixture"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("content-rich visual regression"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("rich-desktop"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("applyControlUiContentRichFixture"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-content-rich-fixture"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("seededControlUiMessages"),
-        CONTROL_UI_P0_P13_MATURITY_DOC.contains("P7: content-rich seeded visual regression"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains(".tg-message"),
-    ];
-    let p8_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-mobile-layered-chat"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-mobile-active-pane"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderMobileLayerTabs"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("setChatMobilePane"),
-        CONTROL_UI_STYLES_CSS.contains(".tg-mobile-layer-tabs"),
-        CONTROL_UI_STYLES_CSS.contains("data-chat-mobile-active-pane=\"chats\""),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("data-chat-mobile-pane"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("mobile pane should be visible"),
-        CONTROL_UI_P0_P13_MATURITY_DOC.contains("P8: mobile layered UX"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("rich-mobile-room"),
-    ];
-    let p9_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderThreadStatusSummary"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-thread-compact-status"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-thread-status-popover"),
-        CONTROL_UI_STYLES_CSS.contains(".tg-thread-status-summary"),
-        CONTROL_UI_STYLES_CSS.contains(".tg-thread-extra-status"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("header should keep primary status compact"),
-        CONTROL_UI_P0_P13_MATURITY_DOC.contains("P9: compact header/status chrome"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("Details"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains(".tg-thread-status-primary"),
-        CONTROL_UI_README.contains("P0-P21 convergence ledger"),
-    ];
-    let p10_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomOnboardingCard"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("workspaceRoomHasRichContent"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-room-empty-consolidated"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-room-onboarding-card"),
-        CONTROL_UI_STYLES_CSS.contains(".tg-room-onboarding-card"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("empty room should collapse"),
-        CONTROL_UI_P0_P13_MATURITY_DOC.contains("P10: consolidated empty Workspace Room"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("applyControlUiEmptyFixture"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("applyEmptyFixture"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("Workspace is ready"),
-    ];
-    let p11_checks = [
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("data-room-task-artifact-insert"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("data-room-task-action-plan"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("data-room-task-action-confirm"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("data-endpoint-retry-all"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("dry-run review checkbox should be interactive"),
-        CONTROL_UI_P0_P13_MATURITY_DOC.contains("P11: real user journey E2E"),
-        CONTROL_UI_P0_P13_MATURITY_DOC.contains("Insert a task evidence citation"),
-        CONTROL_UI_P0_P13_MATURITY_DOC.contains("degraded endpoint retry"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("roomTaskActionPlan"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("roomTaskArtifactPreview"),
-    ];
-    let p12_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("HEPTA_UI_MODULE_BOUNDARIES"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("chat-state"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("chat-render"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("workspace-room"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("live-data"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("task-actions"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("browser-fixtures"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("accessibility"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("exec-approvals"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("module boundary missing"),
-        CONTROL_UI_P0_P13_MATURITY_DOC.contains("P12: module-boundary governance"),
-    ];
-    let p13_checks = [
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("assertA11y"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("visible buttons should have text or aria labels"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("command palette should expose dialog semantics"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("mobile layer switcher should be a tablist"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("exactly one mobile layer tab should be selected"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("reduced motion rule should be present"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("role=\"tablist\""),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("role=\"tab\""),
-        CONTROL_UI_P0_P13_MATURITY_DOC.contains("P13: browser-level accessibility"),
-        CONTROL_UI_STYLES_CSS.contains("prefers-reduced-motion"),
-    ];
-    let p14_checks = [
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("Hepta Control UI hardening smoke passed"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("visual diff exceeded baseline"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("visual diff baseline"),
-        CONTROL_UI_VISUAL_BASELINE_JSON.contains("Hepta Control UI visual diff baseline"),
-        CONTROL_UI_VISUAL_BASELINE_JSON.contains("chatRail"),
-        CONTROL_UI_VISUAL_BASELINE_JSON.contains("threadPanel"),
-        CONTROL_UI_VISUAL_BASELINE_JSON.contains("roomPanel"),
-        CONTROL_UI_P0_P21_HARDENING_DOC.contains("P14: visual diff baseline"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("compareRect"),
-    ];
-    let p15_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderWorkspaceRoomAccordion"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-room-accordion"),
-        CONTROL_UI_STYLES_CSS.contains(".tg-room-accordion"),
-        CONTROL_UI_STYLES_CSS.contains("tg-room-accordion:not([open])"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("room accordion compression"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("closedRoomAccordions"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("roomScrollRatio"),
-        CONTROL_UI_P0_P21_HARDENING_DOC.contains("P15: Workspace Room accordion"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("key: \"evidence\""),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("key: \"orchestration\""),
-    ];
-    let p16_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-mobile-compact-composer"),
-        CONTROL_UI_STYLES_CSS.contains("[data-mobile-compact-composer=\"true\"]"),
-        CONTROL_UI_STYLES_CSS.contains("max-height: 76px"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("mobile compact composer too tall"),
-        CONTROL_UI_P0_P21_HARDENING_DOC.contains("P16: mobile compact composer"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("composerHeight <= 150"),
-        CONTROL_UI_STYLES_CSS.contains(".tg-focus-result"),
-        CONTROL_UI_STYLES_CSS.contains("text-overflow: ellipsis"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-composer-shell"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("mobileThread"),
-    ];
-    let p17_checks = [
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("first render budget exceeded"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("command palette latency budget exceeded"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("renderMs < 1_800"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("paletteLatencyMs < 250"),
-        CONTROL_UI_P0_P21_HARDENING_DOC.contains("P17: browser performance budget"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("performance.now"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("manifest.results"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("hepta-control-ui-hardening-smoke"),
-        CONTROL_UI_SMOKE_SH.contains("Hepta Control UI hardening smoke passed"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("waitUntil: \"domcontentloaded\""),
-    ];
-    let p18_checks = [
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("assertKeyboardAndA11y"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("focus trap should move keyboard focus"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("keyboard-only tab journey"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("contrast ratio too low"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("contrastRatio"),
-        CONTROL_UI_P0_P21_HARDENING_DOC.contains("P18: accessibility audit upgrade"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("Control+K"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("aria-modal"),
-        CONTROL_UI_STYLES_CSS.contains("prefers-reduced-motion"),
-        CONTROL_UI_INDEX_HTML.contains("role=\"dialog\""),
-    ];
-    let p19_checks = [
-        CONTROL_UI_MODULE_INDEX_JS.contains("controlUiModules"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("chat-state"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("workspace-room"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("browser-fixtures"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("accessibility"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("execApprovalsModule"),
-        CONTROL_UI_MODULE_EXEC_APPROVALS_JS.contains("/api/approvals/exec/apply"),
-        CONTROL_UI_MODULE_EXEC_APPROVALS_JS.contains("previewExecApprovalPatch"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("real module split should export module registry"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("modules.controlUiModules"),
-        CONTROL_UI_P0_P21_HARDENING_DOC.contains("P19: real module split"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("static-first delivery rule"),
-        CONTROL_UI_README.contains("apps/hepta-control-ui/modules"),
-    ];
-    let p20_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("applyControlUiEndpointChaosFixture"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("endpointChaos"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("partial failure"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("stale-cache"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("applyEndpointChaosFixture"),
-        CONTROL_UI_HARDENING_SMOKE_MJS
-            .contains("endpoint chaos should expose per-endpoint retries"),
-        CONTROL_UI_HARDENING_SMOKE_MJS.contains("partial failure detail"),
-        CONTROL_UI_P0_P21_HARDENING_DOC.contains("P20: endpoint chaos regression"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("latency_ms"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("/api/operator-security"),
-    ];
-    let p21_checks = [
-        CONTROL_UI_README.contains("## Overview"),
-        CONTROL_UI_README.contains("## Interaction model"),
-        CONTROL_UI_README.contains("## Safety model"),
-        CONTROL_UI_README.contains("## Gates"),
-        CONTROL_UI_README.contains("## Architecture notes"),
-        CONTROL_UI_README.len() < 8_000,
-        CONTROL_UI_P0_P21_HARDENING_DOC.contains("P21: README/documentation density cleanup"),
-        CONTROL_UI_README.contains("P0-P21 convergence ledger"),
-        CONTROL_UI_README.contains("visual diff baseline"),
-        CONTROL_UI_README.contains("not a hosted SaaS"),
-    ];
-    let p22_checks = [
-        CONTROL_UI_INDEX_HTML.contains("data-no-js-fallback=\"navigation\"")
-            && CONTROL_UI_INDEX_HTML.contains("<script defer src=\"./control-ui.js\"></script>")
-            && !CONTROL_UI_INDEX_HTML.contains("<script>"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("window.__HEPTA_UI_MODULE_REGISTRY"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("controlUiModules"),
-        CONTROL_UI_BUILD_SMOKE_MJS.contains("Hepta Control UI build split smoke passed"),
-        CONTROL_UI_BUILD_SMOKE_MJS.contains("bundle_mode"),
-        CONTROL_UI_BUILD_SMOKE_MJS.contains("static-app-plus-esm-build-registry"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P29_ENGINEERING_DOC.contains("P22: real ESM/build split"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("task-actions"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("live-data"),
-    ];
-    let p23_checks = [
-        CONTROL_UI_SMOKE_CONTRACT_MJS.contains("Hepta Control UI contract-suite smoke passed"),
-        CONTROL_UI_SMOKE_MARKER_MJS.contains("Hepta Control UI marker-suite smoke passed"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P29_ENGINEERING_DOC.contains("P23: smoke suite decomposition"),
-        CONTROL_UI_SMOKE_CONTRACT_MJS.contains("/ui-contract-audit"),
-    ];
-    let p24_checks = [
-        CONTROL_UI_CROSS_BROWSER_SMOKE_MJS.contains("Hepta Control UI cross-browser smoke passed"),
-        CONTROL_UI_CROSS_BROWSER_SMOKE_MJS.contains("chromium-system"),
-        CONTROL_UI_CROSS_BROWSER_SMOKE_MJS.contains("firefox-managed"),
-        CONTROL_UI_CROSS_BROWSER_SMOKE_MJS.contains("webkit-managed"),
-        CONTROL_UI_CROSS_BROWSER_SMOKE_MJS.contains("cross-browser matrix should enumerate"),
-        CONTROL_UI_CROSS_BROWSER_SMOKE_MJS.contains("status: \"skipped\""),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P29_ENGINEERING_DOC.contains("P24: cross-browser readiness matrix"),
-        CONTROL_UI_CROSS_BROWSER_SMOKE_MJS.contains("data-room-accordion"),
-        CONTROL_UI_CROSS_BROWSER_SMOKE_MJS.contains("data-chat-mobile-active-pane"),
-    ];
-    let p25_checks = [
-        CONTROL_UI_PERCEPTUAL_SMOKE_MJS.contains("Hepta Control UI perceptual smoke passed"),
-        CONTROL_UI_PERCEPTUAL_SMOKE_MJS.contains("bmpAverageHash"),
-        CONTROL_UI_PERCEPTUAL_SMOKE_MJS.contains("hamming"),
-        CONTROL_UI_PERCEPTUAL_SMOKE_MJS.contains("sips"),
-        CONTROL_UI_PERCEPTUAL_BASELINE_JSON
-            .contains("Hepta Control UI perceptual visual diff baseline"),
-        CONTROL_UI_PERCEPTUAL_BASELINE_JSON.contains("rich-desktop"),
-        CONTROL_UI_PERCEPTUAL_BASELINE_JSON.contains("rich-mobile-room"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P29_ENGINEERING_DOC.contains("P25: perceptual visual diff"),
-        CONTROL_UI_PERCEPTUAL_SMOKE_MJS.contains("perceptual diff exceeded threshold"),
-    ];
-    let p26_checks = [
-        CONTROL_UI_SCHEMA_SMOKE_MJS.contains("Hepta Control UI schema smoke passed"),
-        CONTROL_UI_SCHEMA_SMOKE_MJS.contains("control-ui.schema.json"),
-        CONTROL_UI_SCHEMA_SMOKE_MJS.contains("ui-contract-audit.schema.json"),
-        CONTROL_UI_SCHEMA_CONTROL_JSON.contains("screen_count"),
-        CONTROL_UI_SCHEMA_AUDIT_JSON.contains("p0_p21_converged"),
-        CONTROL_UI_SCHEMA_CHAT_JSON.contains("agent_id"),
-        CONTROL_UI_SCHEMA_TASK_JSON.contains("task_id"),
-        CONTROL_UI_SCHEMA_EVENTS_JSON.contains("events"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P29_ENGINEERING_DOC.contains("P26: JSON schema contract gates"),
-    ];
-    let p27_checks = [
-        CONTROL_UI_SOAK_SMOKE_MJS.contains("Hepta Control UI soak smoke passed"),
-        CONTROL_UI_SOAK_SMOKE_MJS.contains("localStorageBytes"),
-        CONTROL_UI_SOAK_SMOKE_MJS.contains("nodeCount"),
-        CONTROL_UI_SOAK_SMOKE_MJS.contains("typing preservation should survive soak loops"),
-        CONTROL_UI_SOAK_SMOKE_MJS.contains("applyEndpointChaosFixture"),
-        CONTROL_UI_SOAK_SMOKE_MJS.contains("DOM node soak budget exceeded"),
-        CONTROL_UI_SOAK_SMOKE_MJS.contains("localStorage soak budget exceeded"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P29_ENGINEERING_DOC.contains("P27: UI soak/leak regression"),
-        CONTROL_UI_SOAK_SMOKE_MJS.contains("manifest.json"),
-    ];
-    let p28_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderTaskArtifactResultDrawer"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-task-result-drawer"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-task-result-workspace"),
-        CONTROL_UI_STYLES_CSS.contains(".tg-room-result-drawer"),
-        CONTROL_UI_STYLES_CSS.contains("backdrop-filter"),
-        CONTROL_UI_MATURITY_SMOKE_MJS.contains("data-room-task-artifact-insert"),
-        CONTROL_UI_P0_P29_ENGINEERING_DOC.contains("P28: task/artifact result drawer"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("Current result"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("roomTaskArtifactSummary"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("read-only"),
-    ];
-    let p29_checks = [
-        CONTROL_UI_A11Y_SNAPSHOT_MJS.contains("Hepta Control UI accessibility snapshot passed"),
-        CONTROL_UI_A11Y_SNAPSHOT_MJS.contains("heading hierarchy snapshot"),
-        CONTROL_UI_A11Y_SNAPSHOT_MJS.contains("all visible controls should have accessible names"),
-        CONTROL_UI_A11Y_SNAPSHOT_MJS
-            .contains("mobile layer tablist should expose one selected tab"),
-        CONTROL_UI_A11Y_SNAPSHOT_MJS.contains("Control+K"),
-        CONTROL_UI_A11Y_SNAPSHOT_MJS.contains("data-room-task-artifact-insert"),
-        CONTROL_UI_RUST_RENDERER_MARKERS
-            .contains("<h2>${escapeHtml(selected?.title || \"Hepta agent\")}</h2>"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P29_ENGINEERING_DOC.contains("P29: full accessibility rule snapshot"),
-        CONTROL_UI_A11Y_SNAPSHOT_MJS.contains("snapshot.json"),
-    ];
-    let p30_checks = [
-        CONTROL_UI_CROSS_BROWSER_STRICT_SMOKE_MJS
-            .contains("Hepta Control UI strict cross-browser smoke passed"),
-        CONTROL_UI_CROSS_BROWSER_STRICT_SMOKE_MJS.contains("chromium-system"),
-        CONTROL_UI_CROSS_BROWSER_STRICT_SMOKE_MJS.contains("firefox-managed"),
-        CONTROL_UI_CROSS_BROWSER_STRICT_SMOKE_MJS.contains("webkit-managed"),
-        CONTROL_UI_CROSS_BROWSER_STRICT_SMOKE_MJS
-            .contains("classified-with-install-hints-never-silent"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P30: strict cross-browser readiness"),
-        CONTROL_UI_CROSS_BROWSER_STRICT_SMOKE_MJS.contains("required_runtime_passes"),
-        CONTROL_UI_CROSS_BROWSER_STRICT_SMOKE_MJS.contains("skip_policy"),
-        CONTROL_UI_CROSS_BROWSER_STRICT_SMOKE_MJS.contains("failed"),
-    ];
-    let p31_checks = [
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("productizationModule"),
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("productizationPolicies"),
-        CONTROL_UI_MODULE_INDEX_JS.contains("productizationModule"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("productization"),
-        CONTROL_UI_PRODUCTIZATION_SMOKE_MJS.contains("true module extraction"),
-        CONTROL_UI_PRODUCTIZATION_SMOKE_MJS.contains("productizationPolicies.gates.length === 10"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P31: true productization module extraction"),
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("P30-P39 product gates"),
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("result drawer action model"),
-    ];
-    let p32_checks = [
-        CONTROL_UI_SMOKE_SUMMARY_MJS.contains("Hepta Control UI smoke summary passed"),
-        CONTROL_UI_SMOKE_SUMMARY_MJS.contains("suite_count"),
-        CONTROL_UI_SMOKE_SUMMARY_MJS.contains("p0_p39_converged"),
-        CONTROL_UI_SMOKE_SUMMARY_MJS.contains("cross-browser-strict"),
-        CONTROL_UI_SMOKE_SUMMARY_MJS.contains("product-drawer"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P32: smoke orchestrator JSON summary"),
-        CONTROL_UI_SMOKE_SUMMARY_MJS.contains("target/hepta-control-ui-smoke-summary"),
-        CONTROL_UI_SMOKE_SUMMARY_MJS.contains("suite output"),
-        CONTROL_UI_SMOKE_SUMMARY_MJS.contains("audit_percent"),
-    ];
-    let p33_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-mobile-density-tier"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("tg-mobile-density-more"),
-        CONTROL_UI_STYLES_CSS.contains("--product-density-chip-max"),
-        CONTROL_UI_STYLES_CSS.contains("summary-first"),
-        CONTROL_UI_STYLES_CSS.contains(".badge:nth-of-type(n+4)"),
-        CONTROL_UI_PRODUCTIZATION_SMOKE_MJS
-            .contains("mobile density should cap visible status chips"),
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("visibleChipBudget"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P33: mobile density polish"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_STYLES_CSS.contains("--product-mobile-composer-max"),
-    ];
-    let p34_checks = [
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("renderThreadStarterActions"),
-        !CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-thread-starter-actions"),
-        !CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-thread-starter-action"),
-        !CONTROL_UI_RUST_RENDERER_MARKERS.contains("Start here"),
-        CONTROL_UI_STYLES_CSS.contains(".tg-thread-empty-inline"),
-        CONTROL_UI_PRODUCTIZATION_SMOKE_MJS
-            .contains("old centered starter float should stay removed"),
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("desktopEmptyThread"),
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("noCenteredStarterFloat"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P34: desktop empty-thread starter UX"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("dry-run review"),
-    ];
-    let p35_checks = [
-        CONTROL_UI_STYLES_CSS.contains("--product-starter-bg"),
-        CONTROL_UI_STYLES_CSS.contains("--product-result-action-bg"),
-        CONTROL_UI_PRODUCTIZATION_SMOKE_MJS.contains("selector budget exceeded"),
-        CONTROL_UI_PRODUCTIZATION_SMOKE_MJS.contains("important budget exceeded"),
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("selectorBudget"),
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("importantBudget"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P35: design-token and selector budget"),
-        CONTROL_UI_PRODUCTIZATION_SMOKE_MJS.contains("selectorCount"),
-        CONTROL_UI_PRODUCTIZATION_SMOKE_MJS.contains("importantCount"),
-        CONTROL_UI_STYLES_CSS.contains("color-mix"),
-    ];
-    let p36_checks = [
-        CONTROL_UI_GOLDEN_FIXTURE_SMOKE_MJS
-            .contains("Hepta Control UI golden fixture smoke passed"),
-        CONTROL_UI_GOLDEN_FIXTURE_JSON.contains("task-golden-001"),
-        CONTROL_UI_GOLDEN_FIXTURE_JSON.contains("endpointHealth"),
-        CONTROL_UI_GOLDEN_FIXTURE_JSON.contains("roomTaskArtifactPreview"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("applyControlUiGoldenLiveDataFixture"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P36: golden live-data fixtures"),
-        CONTROL_UI_GOLDEN_FIXTURE_SMOKE_MJS.contains("Golden evidence preview"),
-        CONTROL_UI_GOLDEN_FIXTURE_SMOKE_MJS.contains("data-task-result-drawer"),
-        CONTROL_UI_GOLDEN_FIXTURE_JSON.contains("messages"),
-    ];
-    let p37_checks = [
-        CONTROL_UI_A11Y_DEEP_SMOKE_MJS.contains("Hepta Control UI deep accessibility smoke passed"),
-        CONTROL_UI_A11Y_DEEP_SMOKE_MJS.contains("semanticTree"),
-        CONTROL_UI_A11Y_DEEP_SMOKE_MJS.contains("focusRoute"),
-        CONTROL_UI_A11Y_DEEP_SMOKE_MJS.contains("heading hierarchy should not skip levels"),
-        CONTROL_UI_A11Y_DEEP_SMOKE_MJS.contains("keyboard route map"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P37: deep a11y route map"),
-        CONTROL_UI_A11Y_DEEP_SMOKE_MJS.contains("reducedMotion"),
-        CONTROL_UI_A11Y_DEEP_SMOKE_MJS.contains("landmarks"),
-        CONTROL_UI_A11Y_DEEP_SMOKE_MJS.contains("focusables"),
-    ];
-    let p38_checks = [
-        CONTROL_UI_HOSTILE_FIXTURE_SMOKE_MJS
-            .contains("Hepta Control UI hostile fixture smoke passed"),
-        CONTROL_UI_HOSTILE_FIXTURE_JSON.contains("<script>window.__HEPTA_XSS=1</script>"),
-        CONTROL_UI_HOSTILE_FIXTURE_JSON.contains("<img src=x onerror=window.__HEPTA_XSS=2>"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("applyControlUiHostileFixture"),
-        CONTROL_UI_HOSTILE_FIXTURE_SMOKE_MJS
-            .contains("hostile fixture should not execute script payloads"),
-        CONTROL_UI_HOSTILE_FIXTURE_SMOKE_MJS.contains("escaped text"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P38: hostile/XSS fixture"),
-        CONTROL_UI_MODULE_PRODUCTIZATION_JS.contains("hostileFixtures"),
-        CONTROL_UI_HOSTILE_FIXTURE_SMOKE_MJS.contains("javascript: links"),
-    ];
-    let p39_checks = [
-        CONTROL_UI_PRODUCT_DRAWER_SMOKE_MJS
-            .contains("Hepta Control UI product drawer smoke passed"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-task-result-drawer-action"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-task-result-drawer-actions=\"product\""),
-        CONTROL_UI_STYLES_CSS.contains(".tg-room-result-drawer__actions"),
-        CONTROL_UI_PRODUCT_DRAWER_SMOKE_MJS.contains("copy"),
-        CONTROL_UI_PRODUCT_DRAWER_SMOKE_MJS.contains("pin"),
-        CONTROL_UI_PRODUCT_DRAWER_SMOKE_MJS.contains("trace"),
-        CONTROL_UI_PRODUCT_DRAWER_SMOKE_MJS.contains("next-step"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_P0_P39_PRODUCTIZATION_DOC.contains("P39: productized result drawer actions"),
-    ];
-    let convergence_lanes = vec![
-        convergence_lane("p0", "P0 safety/performance guardrails", &p0_checks),
-        convergence_lane("p1", "P1 operator workflows", &p1_checks),
-        convergence_lane("p2", "P2 polish/parity/readability", &p2_checks),
-        convergence_lane("p3", "P3 regression and quality gates", &p3_checks),
-        convergence_lane("p4", "P4 maintainability and release hygiene", &p4_checks),
-        convergence_lane(
-            "p5",
-            "P5 browser visual and interaction regression",
-            &p5_checks,
-        ),
-        convergence_lane("p6", "P6 release walkthrough and demo evidence", &p6_checks),
-        convergence_lane("p7", "P7 content-rich seeded visual regression", &p7_checks),
-        convergence_lane("p8", "P8 mobile layered navigation", &p8_checks),
-        convergence_lane("p9", "P9 compact header and status chrome", &p9_checks),
-        convergence_lane("p10", "P10 consolidated empty room onboarding", &p10_checks),
-        convergence_lane("p11", "P11 real user journey E2E", &p11_checks),
-        convergence_lane("p12", "P12 module boundary governance", &p12_checks),
-        convergence_lane("p13", "P13 browser-level accessibility", &p13_checks),
-        convergence_lane("p14", "P14 visual diff baseline", &p14_checks),
-        convergence_lane("p15", "P15 room accordion compression", &p15_checks),
-        convergence_lane("p16", "P16 mobile compact composer", &p16_checks),
-        convergence_lane("p17", "P17 browser performance budget", &p17_checks),
-        convergence_lane("p18", "P18 keyboard and accessibility audit", &p18_checks),
-        convergence_lane("p19", "P19 real module split", &p19_checks),
-        convergence_lane("p20", "P20 endpoint chaos regression", &p20_checks),
-        convergence_lane("p21", "P21 README information density", &p21_checks),
-        convergence_lane("p22", "P22 real ESM/build split", &p22_checks),
-        convergence_lane("p23", "P23 smoke suite decomposition", &p23_checks),
-        convergence_lane("p24", "P24 cross-browser readiness matrix", &p24_checks),
-        convergence_lane("p25", "P25 perceptual visual diff", &p25_checks),
-        convergence_lane("p26", "P26 JSON schema contract gates", &p26_checks),
-        convergence_lane("p27", "P27 UI soak and leak guard", &p27_checks),
-        convergence_lane("p28", "P28 task/artifact result drawer", &p28_checks),
-        convergence_lane("p29", "P29 accessibility snapshot", &p29_checks),
-        convergence_lane("p30", "P30 strict cross-browser readiness", &p30_checks),
-        convergence_lane("p31", "P31 productization module extraction", &p31_checks),
-        convergence_lane("p32", "P32 smoke orchestrator summary", &p32_checks),
-        convergence_lane("p33", "P33 mobile density polish", &p33_checks),
-        convergence_lane("p34", "P34 empty-thread starter UX", &p34_checks),
-        convergence_lane("p35", "P35 design-token and selector budget", &p35_checks),
-        convergence_lane("p36", "P36 golden live-data fixtures", &p36_checks),
-        convergence_lane("p37", "P37 deep a11y route map", &p37_checks),
-        convergence_lane("p38", "P38 hostile/XSS fixture", &p38_checks),
-        convergence_lane("p39", "P39 product result drawer actions", &p39_checks),
-    ];
-    let p0_ready = convergence_lanes[0].ready;
-    let p1_ready = convergence_lanes[1].ready;
-    let p2_ready = convergence_lanes[2].ready;
-    let p3_ready = convergence_lanes[3].ready;
-    let p4_ready = convergence_lanes[4].ready;
-    let p5_ready = convergence_lanes[5].ready;
-    let p6_ready = convergence_lanes[6].ready;
-    let p7_ready = convergence_lanes[7].ready;
-    let p8_ready = convergence_lanes[8].ready;
-    let p9_ready = convergence_lanes[9].ready;
-    let p10_ready = convergence_lanes[10].ready;
-    let p11_ready = convergence_lanes[11].ready;
-    let p12_ready = convergence_lanes[12].ready;
-    let p13_ready = convergence_lanes[13].ready;
-    let p14_ready = convergence_lanes[14].ready;
-    let p15_ready = convergence_lanes[15].ready;
-    let p16_ready = convergence_lanes[16].ready;
-    let p17_ready = convergence_lanes[17].ready;
-    let p18_ready = convergence_lanes[18].ready;
-    let p19_ready = convergence_lanes[19].ready;
-    let p20_ready = convergence_lanes[20].ready;
-    let p21_ready = convergence_lanes[21].ready;
-    let p22_ready = convergence_lanes[22].ready;
-    let p23_ready = convergence_lanes[23].ready;
-    let p24_ready = convergence_lanes[24].ready;
-    let p25_ready = convergence_lanes[25].ready;
-    let p26_ready = convergence_lanes[26].ready;
-    let p27_ready = convergence_lanes[27].ready;
-    let p28_ready = convergence_lanes[28].ready;
-    let p29_ready = convergence_lanes[29].ready;
-    let p30_ready = convergence_lanes[30].ready;
-    let p31_ready = convergence_lanes[31].ready;
-    let p32_ready = convergence_lanes[32].ready;
-    let p33_ready = convergence_lanes[33].ready;
-    let p34_ready = convergence_lanes[34].ready;
-    let p35_ready = convergence_lanes[35].ready;
-    let p36_ready = convergence_lanes[36].ready;
-    let p37_ready = convergence_lanes[37].ready;
-    let p38_ready = convergence_lanes[38].ready;
-    let p39_ready = convergence_lanes[39].ready;
-    let p0_p1_p2_converged = p0_ready && p1_ready && p2_ready;
-    let p0_p4_converged = p0_p1_p2_converged && p3_ready && p4_ready;
-    let p0_p6_converged = p0_p4_converged && p5_ready && p6_ready;
-    let p0_p13_converged = p0_p6_converged
-        && p7_ready
-        && p8_ready
-        && p9_ready
-        && p10_ready
-        && p11_ready
-        && p12_ready
-        && p13_ready;
-    let p0_p21_converged = p0_p13_converged
-        && p14_ready
-        && p15_ready
-        && p16_ready
-        && p17_ready
-        && p18_ready
-        && p19_ready
-        && p20_ready
-        && p21_ready;
-    let p0_p29_converged = p0_p21_converged
-        && p22_ready
-        && p23_ready
-        && p24_ready
-        && p25_ready
-        && p26_ready
-        && p27_ready
-        && p28_ready
-        && p29_ready;
-    let p0_p39_converged = p0_p29_converged
-        && p30_ready
-        && p31_ready
-        && p32_ready
-        && p33_ready
-        && p34_ready
-        && p35_ready
-        && p36_ready
-        && p37_ready
-        && p38_ready
-        && p39_ready;
+    let audit_percent = percent(
+        truth_checks.into_iter().filter(|ready| *ready).count(),
+        truth_checks.len(),
+    );
+    let convergence_lanes = capabilities
+        .iter()
+        .map(|capability| {
+            convergence_lane(
+                capability.id,
+                capability.title,
+                &[capability.implemented && !capability.requires_live_adapter],
+            )
+        })
+        .collect::<Vec<_>>();
     let convergence_percent = percent(
         convergence_lanes.iter().filter(|lane| lane.ready).count(),
         convergence_lanes.len(),
     );
-    let checks = [
-        all_screen_ids_aligned,
-        app_has_live_event_stream,
-        app_has_diff_review,
-        app_has_keyboard_shortcuts,
-        app_has_json_inspector,
-        app_has_operator_drilldown,
-        app_has_endpoint_health_grid,
-        app_has_dry_run_action_cards,
-        app_has_approval_cards,
-        app_has_post_action_guard,
-        app_has_session_inspector,
-        app_has_task_drilldown,
-        app_has_transcript_preview,
-        app_has_transcript_search,
-        app_has_replay_promotion_drilldown,
-        app_has_event_cursor,
-        app_has_readonly_command_runner,
-        app_has_operator_security,
-        app_has_task_publisher,
-        app_has_agent_chat,
-        app_has_external_agent_benchmark,
-        app_has_hepta_runtime_ui_parity,
-        app_has_hepta_runtime_navigation_groups,
-        app_has_chat_first_architecture,
-        app_has_route_view_controller,
-        app_has_command_palette,
-        app_has_premium_consumer_ui,
-        app_has_progressive_disclosure,
-        app_has_simplified_primary_nav,
-        app_preserves_typing_during_live_poll,
-        app_has_minimal_consumer_workspace,
-        app_has_telegram_multi_agent_workspace,
-        app_has_hepta_runtime_2026_5_2_ui_resilience,
-        app_models_long_gateway_websocket_resilience,
-        app_has_grouped_message_width_guard,
-        app_has_ios_pwa_bounds_guard,
-        app_has_selection_contrast_guard,
-        app_has_slash_feedback_surface,
-        app_has_talk_diagnostics_resilience,
-        app_has_persisted_auto_scroll_mode,
-        app_has_blank_dashboard_recovery_panel,
-        app_has_compact_session_status_badges,
-        app_scopes_nodes_polling_to_active_tab,
-        app_distinguishes_sample_vs_live_adapter_readiness,
-        app_has_terminal_qr_rendering_guard,
-        !control_ui_gateway_websocket_opened_by_audit,
-        !control_ui_live_gateway_rpc_performed,
-        p0_p1_p2_converged,
-        p0_p4_converged,
-        p0_p6_converged,
-        p0_p13_converged,
-        p0_p21_converged,
-        p0_p29_converged,
-        p0_p39_converged,
-        readme_mentions_boundary,
-    ];
-    let audit_percent = percent(
-        checks.into_iter().filter(|ready| *ready).count(),
-        checks.len(),
-    );
+    let readme_mentions_boundary =
+        CONTROL_UI_README.contains("Boundary") && CONTROL_UI_README.contains("not a hosted SaaS");
 
     ControlUiContractAuditReport {
         product: "Hepta",
@@ -2258,35 +854,20 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         } else {
             "static_contract_incomplete"
         },
-        evidence_scope: "static marker, asset, schema, and declared smoke-contract coverage only",
+        evidence_scope: "typed local read-only capability manifest plus DOM and bounded JavaScript evidence; no live workflow claim",
         live_product_complete: false,
         core_screen_count: core_ids.len(),
         app_screen_count: app_ids.len(),
         readme_screen_count: readme_ids.len(),
         command_binding_count: control_ui_command_bindings().len(),
-        interaction_capability_count: control_ui_interaction_capabilities().len(),
+        interaction_capability_count: capabilities.len(),
+        capability_manifest_schema_version: 2,
+        capability_mode: "local-read-only",
+        live_adapter_bound: false,
         all_screen_ids_aligned,
-        app_has_live_event_stream,
-        app_has_diff_review,
-        app_has_keyboard_shortcuts,
         app_has_json_inspector,
-        app_has_operator_drilldown,
-        app_has_endpoint_health_grid,
-        app_has_dry_run_action_cards,
-        app_has_approval_cards,
-        app_has_post_action_guard,
-        app_has_session_inspector,
-        app_has_task_drilldown,
-        app_has_transcript_preview,
-        app_has_transcript_search,
-        app_has_replay_promotion_drilldown,
-        app_has_event_cursor,
         app_has_readonly_command_runner,
         app_has_operator_security,
-        app_has_task_publisher,
-        app_has_agent_chat,
-        app_has_external_agent_benchmark,
-        app_has_hepta_runtime_ui_parity,
         app_has_hepta_runtime_navigation_groups,
         app_has_chat_first_architecture,
         app_has_route_view_controller,
@@ -2294,77 +875,20 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         app_has_premium_consumer_ui,
         app_has_progressive_disclosure,
         app_has_simplified_primary_nav,
-        app_preserves_typing_during_live_poll,
         app_has_minimal_consumer_workspace,
-        app_has_telegram_multi_agent_workspace,
-        app_has_hepta_runtime_2026_5_2_ui_resilience,
-        app_models_long_gateway_websocket_resilience,
         app_has_grouped_message_width_guard,
         app_has_ios_pwa_bounds_guard,
         app_has_selection_contrast_guard,
-        app_has_slash_feedback_surface,
-        app_has_talk_diagnostics_resilience,
-        app_has_persisted_auto_scroll_mode,
-        app_has_blank_dashboard_recovery_panel,
-        app_has_compact_session_status_badges,
-        app_scopes_nodes_polling_to_active_tab,
         app_distinguishes_sample_vs_live_adapter_readiness,
-        app_has_terminal_qr_rendering_guard,
-        control_ui_gateway_websocket_opened_by_audit,
-        control_ui_live_gateway_rpc_performed,
-        p0_ready,
-        p1_ready,
-        p2_ready,
-        p3_ready,
-        p4_ready,
-        p5_ready,
-        p6_ready,
-        p7_ready,
-        p8_ready,
-        p9_ready,
-        p10_ready,
-        p11_ready,
-        p12_ready,
-        p13_ready,
-        p14_ready,
-        p15_ready,
-        p16_ready,
-        p17_ready,
-        p18_ready,
-        p19_ready,
-        p20_ready,
-        p21_ready,
-        p22_ready,
-        p23_ready,
-        p24_ready,
-        p25_ready,
-        p26_ready,
-        p27_ready,
-        p28_ready,
-        p29_ready,
-        p30_ready,
-        p31_ready,
-        p32_ready,
-        p33_ready,
-        p34_ready,
-        p35_ready,
-        p36_ready,
-        p37_ready,
-        p38_ready,
-        p39_ready,
-        p0_p1_p2_converged,
-        p0_p4_converged,
-        p0_p6_converged,
-        p0_p13_converged,
-        p0_p21_converged,
-        p0_p29_converged,
-        p0_p39_converged,
+        control_ui_gateway_websocket_opened_by_audit: false,
+        control_ui_live_gateway_rpc_performed: false,
         convergence_percent,
         convergence_lanes,
         readme_mentions_boundary,
         audit_percent,
         missing_in_app,
         missing_in_readme,
+        ..ControlUiContractAuditReport::default()
     }
 }
 
@@ -2819,6 +1343,8 @@ fn screen(
         summary: control_ui_screen_summary(id),
         route,
         implemented: true,
+        implementation_scope: "static-local-read-only-screen-shell",
+        live_adapter_ready: false,
         data_sources,
         widgets,
         interactions: control_ui_screen_interactions(id),
@@ -3074,20 +1600,20 @@ fn control_ui_screen_summary(id: &str) -> &'static str {
             "Worker task queue, dependency gates, scheduled runs, and safe cancellation state."
         }
         "task-publisher" => {
-            "Plan, confirm, and publish new worker tasks into the local Hepta queue from the UI."
+            "Read-only task-publisher preview; publish remains unavailable until a verified live adapter and mutation receipt exist."
         }
         "workers" => {
             "Worker inventory, owner lanes, active/completed counts, and supervisor next action."
         }
         "operator" => {
-            "Task queue, subagent tree, command stream, patch/evidence review, approvals, and live control readiness."
+            "Read-only task, agent, command, patch, evidence, and approval inspection surface; no live control mutation."
         }
         "live" => {
-            "Auto-refresh operator event timeline, log-tail style status, and live activity slices."
+            "Documented event-timeline and activity preview backed by local read-only reports, not a live event stream."
         }
         "transcript" => "Session transcript and query affordances for debugging model/tool loops.",
         "chat" => {
-            "Telegram-style multi-agent chat with inline lifecycle controls, a Telegram-like composer, immediate local send, and optional dry-run planning."
+            "Telegram-style read-only multi-agent transcript with local draft composition; send and planning actions remain unavailable without a verified live adapter."
         }
         "diff" => {
             "Patch hunk review, risk trail, and apply/rollback command rail for coding workflows."
@@ -3386,169 +1912,87 @@ pub fn control_ui_command_bindings() -> Vec<ControlUiCommandBinding> {
 
 pub fn control_ui_interaction_capabilities() -> Vec<ControlUiInteractionCapability> {
     vec![
-        interaction(
-            "live-event-stream",
-            "Live event stream",
-            "hepta-core::control_ui rust renderer liveEventStream + /api/events-report",
+        local_interaction(
+            "native-anchor-navigation",
+            "Native anchor navigation",
+            "browser-native",
+            "hash anchors keep the 26-screen route catalog reachable without JavaScript",
         ),
-        interaction(
-            "cursor-live-events",
-            "Cursor-based live events",
-            "/api/live-events/<cursor> monotonic cursor and duplicate-free marker",
+        local_interaction(
+            "native-popovers",
+            "Native popovers",
+            "browser-native",
+            "eight popover=auto surfaces with popovertarget controls",
         ),
-        interaction(
-            "live-log-tail",
-            "Live log tail",
-            "auto-refresh event timeline with no-store fetch",
+        local_interaction(
+            "chat-list-search",
+            "Seeded chat-list search",
+            "local-only",
+            "control-ui.js filters seeded .tg-chat-item nodes without network access",
         ),
-        interaction(
-            "interactive-diff-review",
-            "Interactive diff review",
-            "diffReview commands for apply/rollback patch flow",
+        local_interaction(
+            "command-palette-search",
+            "Command palette search",
+            "local-only",
+            "control-ui.js filters native-popover command links without network access",
         ),
-        interaction(
-            "command-palette",
-            "Command palette",
-            "copy-ready HEPTA_UI.commands and keyboard shortcuts",
+        local_interaction(
+            "composer-picker-search",
+            "Composer picker search",
+            "local-only",
+            "control-ui.js filters local context and command draft options",
         ),
-        interaction(
-            "keyboard-shortcuts",
-            "Keyboard shortcuts",
-            "numeric nav plus slash focus shortcuts in Rust renderer markers",
+        local_interaction(
+            "local-draft-insertion",
+            "Local draft insertion",
+            "local-only",
+            "artifact and command picker items update only the local textarea; send and plan stay disabled",
         ),
-        interaction(
-            "session-tabs",
-            "Session tabs",
-            "transcript/session data sources and screen routing",
+        local_interaction(
+            "local-json-inspector",
+            "Local JSON inspector",
+            "local-only",
+            "JSON.parse plus textContent formatting; pasted data is not uploaded",
         ),
-        interaction(
-            "session-inspector",
-            "Session inspector",
-            "renderSessionInspector with /api/sessions and /api/session-activity",
+        local_interaction(
+            "clipboard-copy",
+            "Clipboard copy",
+            "local-only",
+            "bounded data-copy handler with clipboard API and local textarea fallback",
         ),
-        interaction(
-            "transcript-preview",
-            "Transcript preview",
-            "renderTranscriptPreview with /api/transcript and query route",
+        local_interaction(
+            "same-origin-readonly-command-runner",
+            "Same-origin read-only command runner",
+            "same-origin-read-only",
+            "fixed 21-route GET allowlist, canonical path validation, bounded JSON responses, and no POST",
         ),
-        interaction(
-            "transcript-search",
-            "Transcript search",
-            "fetchTranscriptQuery and /api/query-transcript route",
-        ),
-        interaction(
-            "task-drilldown",
-            "Task drilldown",
-            "renderTaskDrilldown with task detail/patch/evidence endpoints",
-        ),
-        interaction(
-            "task-publisher",
-            "Task publisher",
-            "renderTaskPublisher + submitTaskPublisher with POST /api/tasks/plan and /api/tasks/publish confirm gate",
-        ),
-        interaction(
-            "agent-chat-composer",
-            "Agent chat composer",
-            "renderAgentChat + submitAgentChat with POST /api/chat/register, /api/chat/delete, /api/chat/plan, and immediate /api/chat send",
-        ),
-        interaction(
-            "replay-promotion-drilldown",
-            "Replay and promotion drilldown",
-            "/api/task-replay and /api/promotion-ledger wiring",
-        ),
-        interaction(
-            "artifact-preview",
-            "Artifact preview",
-            "artifacts screen and JSON paste preview",
-        ),
-        interaction(
-            "approval-review",
-            "Approval review",
-            "approvals screen linked to policy/operator console",
-        ),
-        interaction(
-            "exec-approvals-live-editor-parity",
-            "Exec approvals live editor parity",
-            "Hepta-native dry-run editor mirrors Hepta exec approvals target/scope/security/ask/allowlist semantics without mutating policy",
-        ),
-        interaction(
-            "exec-approvals-apply-bridge",
-            "Exec approvals apply bridge preview",
-            "redacted snapshot hash, before/after diff, role guard, and confirmation checkbox for a human-gated apply plan",
-        ),
-        interaction(
-            "exec-approvals-confirmed-apply-endpoint",
-            "Exec approvals confirmed apply endpoint",
-            "POST /api/approvals/exec/apply rechecks the redacted snapshot hash, requires operator confirmation, and returns post-apply evidence while keeping gateway mutation disabled",
-        ),
-        interaction(
-            "multi-agent-tree",
-            "Multi-agent tree",
-            "operator + multi-agent runtime screens",
-        ),
-        interaction(
-            "gateway-monitor",
-            "Gateway monitor",
-            "gateway runtime/dispatch/ledger/dead-letter surfaces",
-        ),
-        interaction(
-            "developer-json-inspector",
-            "Developer JSON inspector",
-            "paste preview and live API summary",
-        ),
-        interaction(
-            "dry-run-command-runner",
-            "Dry-run command runner",
-            "/gateway-dispatch --dry-run local-safe gate",
-        ),
-        interaction(
-            "readonly-command-runner",
-            "Read-only command runner",
-            "POST /api/commands/<id> allowlisted local command execution",
-        ),
-        interaction(
-            "operator-security-rbac",
-            "Operator security/RBAC guard matrix",
-            "renderOperatorSecurity with /api/operator-security loopback, header, allowlist, and dry-run guard report",
-        ),
-        interaction(
-            "handoff-evidence-review",
-            "Handoff evidence review",
-            "handoff/promotion/replay commands",
-        ),
-        interaction(
-            "boundary-aware-readiness",
-            "Boundary-aware readiness",
-            "readiness/parity/evidence screens keep public GA boundary explicit",
-        ),
-        interaction(
-            "external-agent-benchmark",
-            "External agent benchmark harness",
-            "external-agent-benchmark screen + /api/external-agent-benchmark task corpus, adapter contracts, and no-synthetic-win boundary",
-        ),
-        interaction(
-            "runtime-control-plane-bridge",
-            "Hepta runtime control-plane bridge",
-            "chat Workspace Room sidecar maps status/sessions/tasks/approvals/events/runtime to Hepta control surfaces while preserving the multi-agent dialogue",
-        ),
-        interaction(
-            "hepta-runtime-control-plane-alignment",
-            "Hepta runtime control-plane alignment matrix",
-            "dedicated Hepta Operator Plane route maps sessions/agents/tasks/approvals/nodes/channels/cron/logs/skills/tools/config/debug/instances/model controls/diagnostics/mobile polish into Hepta screens",
+        local_interaction(
+            "operator-snapshot-read",
+            "Operator snapshot read",
+            "same-origin-read-only",
+            "GET /api/operator-snapshot hydrates a status-only local summary",
         ),
     ]
 }
 
-fn interaction(
+fn local_interaction(
     id: &'static str,
     title: &'static str,
+    availability: &'static str,
     evidence: &'static str,
 ) -> ControlUiInteractionCapability {
+    let evidence_kind = match availability {
+        "browser-native" => "browser_native_dom",
+        "same-origin-read-only" => "bounded_same_origin_get",
+        _ => "local_dom_handler",
+    };
     ControlUiInteractionCapability {
         id,
         title,
         implemented: true,
-        evidence_kind: "static_contract_marker",
+        availability,
+        requires_live_adapter: false,
+        evidence_kind,
         evidence,
     }
 }
@@ -3585,7 +2029,7 @@ fn control_ui_evidence_coverage(
         coverage_percent: static_contract_percent,
         verified: static_contract_verified,
         evidence_ref: Some(
-            "hepta-core::control_ui static marker, asset, schema, no-JavaScript navigation fallback, and bounded same-origin read-only enhancement contract",
+            "hepta-core::control_ui typed local-read-only capability manifest, asset/schema checks, no-JavaScript anchor navigation, local DOM handlers, and bounded same-origin GET contract",
         ),
     };
     let unit_state = unevidenced_control_ui_layer();
@@ -3617,7 +2061,7 @@ fn control_ui_evidence_coverage(
         live_adapter,
         overall_evidence_percent,
         all_required_layers_verified,
-        boundary: "Source markers and declared smoke commands prove only the static contract. Unit/state runs, real browser behavior, backend mutation/readback, and live-adapter evidence must be bound explicitly before product completion or a 100% live operator surface may be claimed.",
+        boundary: "The typed source manifest proves only the local read-only contract. Unit/state runs and real browser behavior must be bound explicitly; backend mutation/readback and live-adapter coverage remain zero until those capabilities exist and are verified.",
     }
 }
 
@@ -3728,13 +2172,20 @@ mod tests {
         let report = control_ui_report();
         let rust_frontend_html = control_ui_index_html();
 
-        // Keep this historical test selector for smoke-script compatibility. The
-        // product report now distinguishes a complete static contract from
-        // unbound behavioral and live evidence.
         assert_eq!(report.status, "static_contract_complete");
         assert_eq!(report.screen_count, 26);
         assert_eq!(report.implemented_screen_count, 26);
         assert_eq!(report.screen_coverage_percent, 100);
+        assert_eq!(
+            report.screen_coverage_percent_basis,
+            "static local read-only screen shells; not live adapter or mutation coverage"
+        );
+        assert_eq!(report.live_implemented_screen_count, 0);
+        assert!(report.screens.iter().all(|screen| {
+            screen.implemented
+                && screen.implementation_scope == "static-local-read-only-screen-shell"
+                && !screen.live_adapter_ready
+        }));
         assert_eq!(report.asset_count, 5);
         assert_eq!(report.asset_coverage_percent, 100);
         assert_eq!(report.command_binding_count, 51);
@@ -3752,8 +2203,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             &parse_app_command_ids(),
         ));
-        assert_eq!(report.interaction_capability_count, 30);
-        assert_eq!(report.implemented_interaction_capability_count, 30);
+
+        assert_eq!(report.interaction_capability_count, 10);
+        assert_eq!(report.implemented_interaction_capability_count, 10);
+        assert_eq!(report.capability_manifest_schema_version, 2);
+        assert_eq!(report.capability_mode, "local-read-only");
+        assert!(!report.live_adapter_bound);
         assert_eq!(report.static_interaction_contract_percent, 100);
         assert_eq!(report.live_operator_surface_percent, 0);
         assert_eq!(report.developer_interaction_percent, 100);
@@ -3765,6 +2220,16 @@ mod tests {
         assert!(report.local_preview_ready);
         assert!(report.static_contract_complete());
         assert!(!report.complete());
+        assert!(report.interaction_capabilities.iter().all(|capability| {
+            capability.implemented
+                && !capability.requires_live_adapter
+                && matches!(
+                    capability.availability,
+                    "browser-native" | "local-only" | "same-origin-read-only"
+                )
+                && capability.evidence_kind != "static_contract_marker"
+        }));
+
         assert_eq!(report.evidence_coverage.schema_version, 1);
         assert!(report.evidence_coverage.static_contract.verified);
         assert_eq!(
@@ -3784,39 +2249,94 @@ mod tests {
             assert!(!layer.verified);
             assert_eq!(layer.evidence_ref, None);
         }
-        assert!(
-            report
-                .interaction_capabilities
-                .iter()
-                .all(|capability| capability.evidence_kind == "static_contract_marker")
-        );
-        let control_schema: serde_json::Value =
-            serde_json::from_str(CONTROL_UI_SCHEMA_CONTROL_JSON)
-                .expect("parse Control UI report schema");
-        assert_eq!(
-            control_schema
-                .pointer("/properties/live_operator_surface_percent/maximum")
-                .and_then(serde_json::Value::as_u64),
-            Some(100)
-        );
-        assert_eq!(
-            control_schema
-                .pointer(
-                    "/properties/evidence_coverage/properties/overall_evidence_percent/maximum"
-                )
-                .and_then(serde_json::Value::as_u64),
-            Some(100)
-        );
-        assert!(
-            control_schema
-                .pointer("/properties/status/enum")
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|statuses| {
-                    statuses
-                        .iter()
-                        .any(|status| status.as_str() == Some("complete"))
-                })
-        );
+
+        for (schema_json, route, source_command, compatibility_mode, control_surface) in [
+            (
+                CONTROL_UI_SCHEMA_CONTROL_JSON,
+                "/api/control-ui",
+                "/control-ui --json",
+                "native_control_ui_shell_snapshot",
+                "control_ui",
+            ),
+            (
+                CONTROL_UI_SCHEMA_AUDIT_JSON,
+                "/api/ui-contract-audit",
+                "/ui-contract-audit --json",
+                "native_ui_contract_audit",
+                "ui_contract_audit",
+            ),
+        ] {
+            let schema: serde_json::Value =
+                serde_json::from_str(schema_json).expect("parse Control UI HTTP report schema");
+            assert_eq!(
+                schema
+                    .pointer("/oneOf/0/$ref")
+                    .and_then(serde_json::Value::as_str),
+                Some("#/$defs/summaryEnvelope")
+            );
+            assert_eq!(
+                schema
+                    .pointer("/oneOf/1/$ref")
+                    .and_then(serde_json::Value::as_str),
+                Some("#/$defs/pageEnvelope")
+            );
+            assert_eq!(
+                schema
+                    .pointer("/$defs/summaryEnvelope/properties/route/const")
+                    .and_then(serde_json::Value::as_str),
+                Some(route)
+            );
+            assert_eq!(
+                schema
+                    .pointer("/$defs/pageEnvelope/properties/route/const")
+                    .and_then(serde_json::Value::as_str),
+                Some(route)
+            );
+            assert_eq!(
+                schema
+                    .pointer("/$defs/sourcePayload/properties/source_command/const")
+                    .and_then(serde_json::Value::as_str),
+                Some(source_command)
+            );
+            assert_eq!(
+                schema
+                    .pointer("/$defs/sourcePayload/properties/compatibility_mode/const")
+                    .and_then(serde_json::Value::as_str),
+                Some(compatibility_mode)
+            );
+            assert_eq!(
+                schema
+                    .pointer("/$defs/sourcePayload/properties/control_surface/const")
+                    .and_then(serde_json::Value::as_str),
+                Some(control_surface)
+            );
+            assert_eq!(
+                schema
+                    .pointer("/$defs/sourcePayload/properties/control_ui_product_complete/const")
+                    .and_then(serde_json::Value::as_bool),
+                Some(false)
+            );
+            assert_eq!(
+                schema
+                    .pointer("/$defs/sourcePayload/properties/control_ui_live_operator_surface_percent/const")
+                    .and_then(serde_json::Value::as_u64),
+                Some(0)
+            );
+            assert_eq!(
+                schema
+                    .pointer("/$defs/evidenceCoverage/properties/overall_evidence_percent/const")
+                    .and_then(serde_json::Value::as_u64),
+                Some(20)
+            );
+            assert_eq!(
+                schema
+                    .pointer(
+                        "/$defs/evidenceCoverage/properties/all_required_layers_verified/const",
+                    )
+                    .and_then(serde_json::Value::as_bool),
+                Some(false)
+            );
+        }
         assert!(report.frontend_manifest.rust_view_model_ready);
         assert_eq!(
             report.frontend_manifest.source,
@@ -3832,82 +2352,47 @@ mod tests {
             report.rust_frontend_ownership.status,
             "rust-embedded-progressive-frontend"
         );
-        assert!(report.rust_frontend_ownership.rust_view_model_ready);
         assert!(!report.rust_frontend_ownership.pure_browser_rust_runtime);
         assert_eq!(rust_frontend_html, CONTROL_UI_INDEX_HTML);
-        assert_eq!(report.frontend_manifest.primary_nav[0], "chat");
-        assert!(
-            report
-                .screens
-                .iter()
-                .all(|screen| !screen.summary.is_empty())
-        );
-        assert!(CONTROL_UI_INDEX_HTML.contains("Hepta Control UI"));
-        assert!(CONTROL_UI_RUST_RENDERER_MARKERS.contains("HEPTA_UI"));
 
         for marker in [
             "data-view=\"chat\"",
             "telegram-chat-shell",
-            "focus-workspace",
-            "tg-conversation-rail",
-            "tg-thread-panel",
-            "data-control-ui-product-first=\"true\"",
-            "data-control-ui-primary-path=\"telegram-chat-shell\"",
-            "data-control-ui-telegram-shell=\"true\"",
-            "data-control-ui-top-design-referee=\"liquid-glass-2026-wcag22-320-reflow\"",
-            "data-control-ui-harsh-referee=\"2026-06-08-liquid-glass-menus-sidebars-scroll-search\"",
-            "tg-thread-intro",
-            "data-control-ui-secondary-map=\"collapsed\"",
-            "data-control-ui-runtime-rail=\"local-review-safety-evidence\"",
-            "data-control-ui-secondary-nav=\"collapsed\"",
-            "data-control-ui-composer-product-first=\"true\"",
-            "data-control-ui-composer-more=\"collapsed\"",
-            "data-control-ui-work-rail=\"product-first\"",
-            "data-control-ui-compact-product-path=\"narrow-mobile\"",
-            "data-control-ui-status-trust-strip=\"local-safe-review\"",
-            "data-control-ui-status-trust-badge=\"local\"",
-            "data-control-ui-status-trust-badge=\"safe-review\"",
-            "hepta-right-sidebar",
-            "route-card",
-            "screen-grid",
-            "command-palette",
-            "data-agent-chat-send",
-            "data-chat-composer-shell=\"telegram\"",
-            "HEPTA_ENTRY_CONTENT_ROWS",
+            "data-control-ui-capability-mode=\"local-read-only\"",
+            "data-control-ui-live-adapter-bound=\"false\"",
+            "<span>route catalog</span><strong>26/26</strong>",
+            "<span>live adapter</span><strong>0</strong>",
+            "documented, not live workflows",
+            "data-live-event-stream=\"false\"",
+            "data-task-publisher=\"false\"",
+            "data-agent-chat=\"false\"",
+            "data-command-runner=\"same-origin-read-only\"",
+            "data-route-view-controller=\"native-anchor-routes\"",
+            "data-command-palette=\"native-popover-filter\"",
+            "<script defer src=\"./control-ui.js\"></script>",
         ] {
             assert!(
                 rust_frontend_html.contains(marker),
-                "Rust-rendered Control UI missing structural parity marker: {marker}"
+                "Control UI missing local read-only truth marker: {marker}"
             );
         }
-        assert!(!rust_frontend_html.contains("class=\"hepta-product-path\""));
-        assert!(!rust_frontend_html.contains("Ask / Plan / Evidence / Approve"));
-        assert!(rust_frontend_html.contains("<script defer src=\"./control-ui.js\"></script>"));
         assert!(!rust_frontend_html.contains("<script>"));
-        assert!(
-            rust_frontend_html.find("telegram-chat-shell").unwrap()
-                < rust_frontend_html.find("evidence-panel").unwrap()
-        );
+        assert!(!rust_frontend_html.contains("<span>workflows</span>"));
+        assert!(!rust_frontend_html.contains("<p>ready locally</p>"));
         assert!(CONTROL_UI_STYLES_CSS.contains("#command-palette:popover-open"));
         assert!(CONTROL_UI_STYLES_CSS.contains("#command-palette:not(:popover-open)"));
-        assert!(CONTROL_UI_STYLES_CSS.contains("display: none;"));
-        for nav_marker in [
-            "href=\"#chat\"",
-            "href=\"#tasks\"",
-            "href=\"#ops\"",
-            "href=\"#external-agent-benchmark\"",
-            "href=\"#sessions\"",
-            "href=\"#config\"",
-        ] {
-            assert!(
-                rust_frontend_html.contains(nav_marker),
-                "missing no-JavaScript fallback nav href: {nav_marker}"
-            );
-        }
-        assert!(
-            !rust_frontend_html.contains("<button type=\"button\" class=\"nav-item hepta-nav-item")
+
+        let capability_contract: serde_json::Value =
+            serde_json::from_str(CONTROL_UI_RUST_RENDERER_MARKERS)
+                .expect("parse serialized Control UI security compatibility contract");
+        assert_eq!(
+            capability_contract
+                .pointer("/live_adapter_bound")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
         );
-        assert!(!rust_frontend_html.contains("<button class=\"active\" data-screen="));
+        assert!(!CONTROL_UI_RUST_RENDERER_MARKERS.contains("submitAgentChat"));
+        assert!(!CONTROL_UI_RUST_RENDERER_MARKERS.contains("togglePinnedConversation"));
 
         let audit = control_ui_contract_audit_report();
         assert_eq!(
@@ -3918,31 +2403,21 @@ mod tests {
         );
         assert_eq!(
             audit.evidence_scope,
-            "static marker, asset, schema, and declared smoke-contract coverage only"
+            "typed local read-only capability manifest plus DOM and bounded JavaScript evidence; no live workflow claim"
         );
         assert!(!audit.live_product_complete);
         assert_eq!(audit.audit_percent, 100);
         assert_eq!(audit.core_screen_count, 26);
         assert_eq!(audit.app_screen_count, 26);
         assert_eq!(audit.readme_screen_count, 26);
+        assert_eq!(audit.interaction_capability_count, 10);
+        assert_eq!(audit.capability_manifest_schema_version, 2);
+        assert_eq!(audit.capability_mode, "local-read-only");
+        assert!(!audit.live_adapter_bound);
         assert!(audit.all_screen_ids_aligned);
-        assert!(audit.app_has_operator_drilldown);
-        assert!(audit.app_has_endpoint_health_grid);
-        assert!(audit.app_has_dry_run_action_cards);
-        assert!(audit.app_has_approval_cards);
-        assert!(audit.app_has_post_action_guard);
-        assert!(audit.app_has_session_inspector);
-        assert!(audit.app_has_task_drilldown);
-        assert!(audit.app_has_transcript_preview);
-        assert!(audit.app_has_transcript_search);
-        assert!(audit.app_has_replay_promotion_drilldown);
-        assert!(audit.app_has_event_cursor);
+        assert!(audit.app_has_json_inspector);
         assert!(audit.app_has_readonly_command_runner);
         assert!(audit.app_has_operator_security);
-        assert!(audit.app_has_task_publisher);
-        assert!(audit.app_has_agent_chat);
-        assert!(audit.app_has_external_agent_benchmark);
-        assert!(audit.app_has_hepta_runtime_ui_parity);
         assert!(audit.app_has_hepta_runtime_navigation_groups);
         assert!(audit.app_has_chat_first_architecture);
         assert!(audit.app_has_route_view_controller);
@@ -3950,73 +2425,19 @@ mod tests {
         assert!(audit.app_has_premium_consumer_ui);
         assert!(audit.app_has_progressive_disclosure);
         assert!(audit.app_has_simplified_primary_nav);
-        assert!(audit.app_preserves_typing_during_live_poll);
         assert!(audit.app_has_minimal_consumer_workspace);
-        assert!(audit.app_has_telegram_multi_agent_workspace);
-        assert!(audit.app_has_hepta_runtime_2026_5_2_ui_resilience);
-        assert!(audit.app_models_long_gateway_websocket_resilience);
         assert!(audit.app_has_grouped_message_width_guard);
         assert!(audit.app_has_ios_pwa_bounds_guard);
         assert!(audit.app_has_selection_contrast_guard);
-        assert!(audit.app_has_slash_feedback_surface);
-        assert!(audit.app_has_talk_diagnostics_resilience);
-        assert!(audit.app_has_persisted_auto_scroll_mode);
-        assert!(audit.app_has_blank_dashboard_recovery_panel);
-        assert!(audit.app_has_compact_session_status_badges);
-        assert!(audit.app_scopes_nodes_polling_to_active_tab);
         assert!(audit.app_distinguishes_sample_vs_live_adapter_readiness);
-        assert!(audit.app_has_terminal_qr_rendering_guard);
+        assert!(!audit.app_has_live_event_stream);
+        assert!(!audit.app_has_task_publisher);
+        assert!(!audit.app_has_agent_chat);
         assert!(!audit.control_ui_gateway_websocket_opened_by_audit);
         assert!(!audit.control_ui_live_gateway_rpc_performed);
-        assert!(audit.p0_ready);
-        assert!(audit.p1_ready);
-        assert!(audit.p2_ready);
-        assert!(audit.p3_ready);
-        assert!(audit.p4_ready);
-        assert!(audit.p5_ready);
-        assert!(audit.p6_ready);
-        assert!(audit.p7_ready);
-        assert!(audit.p8_ready);
-        assert!(audit.p9_ready);
-        assert!(audit.p10_ready);
-        assert!(audit.p11_ready);
-        assert!(audit.p12_ready);
-        assert!(audit.p13_ready);
-        assert!(audit.p14_ready);
-        assert!(audit.p15_ready);
-        assert!(audit.p16_ready);
-        assert!(audit.p17_ready);
-        assert!(audit.p18_ready);
-        assert!(audit.p19_ready);
-        assert!(audit.p20_ready);
-        assert!(audit.p21_ready);
-        assert!(audit.p22_ready);
-        assert!(audit.p23_ready);
-        assert!(audit.p24_ready);
-        assert!(audit.p25_ready);
-        assert!(audit.p26_ready);
-        assert!(audit.p27_ready);
-        assert!(audit.p28_ready);
-        assert!(audit.p29_ready);
-        assert!(audit.p30_ready);
-        assert!(audit.p31_ready);
-        assert!(audit.p32_ready);
-        assert!(audit.p33_ready);
-        assert!(audit.p34_ready);
-        assert!(audit.p35_ready);
-        assert!(audit.p36_ready);
-        assert!(audit.p37_ready);
-        assert!(audit.p38_ready);
-        assert!(audit.p39_ready);
-        assert!(audit.p0_p1_p2_converged);
-        assert!(audit.p0_p4_converged);
-        assert!(audit.p0_p6_converged);
-        assert!(audit.p0_p13_converged);
-        assert!(audit.p0_p21_converged);
-        assert!(audit.p0_p29_converged);
-        assert!(audit.p0_p39_converged);
+        assert!(!audit.p0_p39_converged);
         assert_eq!(audit.convergence_percent, 100);
-        assert_eq!(audit.convergence_lanes.len(), 40);
+        assert_eq!(audit.convergence_lanes.len(), 10);
         assert!(
             audit
                 .convergence_lanes

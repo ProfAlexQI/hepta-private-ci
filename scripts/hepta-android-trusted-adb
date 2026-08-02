@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
+
+for command in awk basename codesign dirname file grep jq ruby shasum; do
+  command -v "$command" >/dev/null 2>&1 || { echo "error: $command is required" >&2; exit 2; }
+done
+
+# Do not trust HOME, ANDROID_HOME, ANDROID_SDK_ROOT, PATH-selected adb, or any
+# receipt field as the executable trust anchor. Resolve the login account home
+# from the OS account database and accept only the canonical Google-signed adb.
+ACCOUNT_HOME="$(ruby -retc -e 'puts File.realpath(Etc.getpwuid(Process.uid).dir)')"
+[[ "$ACCOUNT_HOME" = /* && -d "$ACCOUNT_HOME" ]] || { echo "error: canonical account home is unavailable" >&2; exit 2; }
+SDK_ROOT="$ACCOUNT_HOME/Library/Android/sdk"
+ADB="$SDK_ROOT/platform-tools/adb"
+[[ -f "$ADB" && -x "$ADB" && ! -L "$ADB" ]] || { echo "error: canonical adb is not an executable regular file" >&2; exit 2; }
+[[ "$(cd "$(dirname "$ADB")" && pwd -P)/$(basename "$ADB")" == "$ADB" ]] \
+  || { echo "error: canonical adb path is not fully resolved" >&2; exit 2; }
+file "$ADB" | grep -Eq 'Mach-O .*\[arm64|Mach-O 64-bit executable arm64' \
+  || { echo "error: canonical adb does not contain an arm64 Mach-O executable" >&2; exit 2; }
+codesign --verify --strict --verbose=2 \
+  -R='anchor apple generic and certificate leaf[subject.OU] = "EQHXZ8M8AV" and identifier "adb"' \
+  "$ADB" >/dev/null 2>&1 \
+  || { echo "error: canonical adb does not satisfy the Google Developer ID requirement" >&2; exit 2; }
+CODESIGN_DETAIL="$(codesign -dv --verbose=4 "$ADB" 2>&1)"
+grep -Fxq 'Identifier=adb' <<<"$CODESIGN_DETAIL" \
+  && grep -Fxq 'Authority=Developer ID Application: Google LLC (EQHXZ8M8AV)' <<<"$CODESIGN_DETAIL" \
+  && grep -Fxq 'TeamIdentifier=EQHXZ8M8AV' <<<"$CODESIGN_DETAIL" \
+  || { echo "error: canonical adb signer identity is not Google LLC / EQHXZ8M8AV" >&2; exit 2; }
+
+ADB_SHA256="$(shasum -a 256 "$ADB" | awk '{print $1}')"
+jq -n \
+  --arg account_home "$ACCOUNT_HOME" --arg sdk_root "$SDK_ROOT" \
+  --arg adb "$ADB" --arg adb_sha "$ADB_SHA256" '
+  {
+    schema_version:1,
+    kind:"hepta-android-trusted-adb",
+    status:"ready",
+    ready:true,
+    account_home:$account_home,
+    sdk_root:$sdk_root,
+    adb:{
+      path:$adb,
+      sha256:$adb_sha,
+      architecture:"arm64",
+      identifier:"adb",
+      authority:"Developer ID Application: Google LLC (EQHXZ8M8AV)",
+      team_identifier:"EQHXZ8M8AV",
+      strict_codesign_verified:true
+    },
+    caller_environment_trusted:false
+  }
+'

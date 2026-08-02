@@ -91,6 +91,83 @@ jobs:
       - name: Run bounded static gates
         run: scripts/hepta-ci-baseline static
 
+  ui-contract:
+    name: Canonical UI product contract
+    if: github.event_name != 'schedule'
+    needs: contract
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      HEPTA_NATIVE_MOBILE_TOOLS_DIR: ${{ runner.temp }}/hepta-native-mobile-tools-c4335cee-v1
+      HEPTA_NATIVE_CARGO_TARGET_DIR: ${{ runner.temp }}/hepta-ui-native-target
+      HEPTA_UI_CI_EVIDENCE_DIR: ${{ runner.temp }}/hepta-ui-contract-evidence
+      HEPTA_UI_NODE_PREFIX: ${{ runner.temp }}/hepta-ui-node-playwright-1.59.1
+      HEPTA_CHECK_JSONSCHEMA_VENV: ${{ runner.temp }}/hepta-check-jsonschema-0.37.4
+      HEPTA_CHECK_JSONSCHEMA_BIN: ${{ runner.temp }}/hepta-check-jsonschema-0.37.4/bin/check-jsonschema
+      NODE_PATH: ${{ runner.temp }}/hepta-ui-node-playwright-1.59.1/node_modules
+    steps:
+      - name: Check out complete UI source history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install UI contract tools
+        run: |
+          brew install jq ripgrep
+          python3 -m venv "$HEPTA_CHECK_JSONSCHEMA_VENV"
+          "$HEPTA_CHECK_JSONSCHEMA_VENV/bin/python" -m pip install --disable-pip-version-check --no-input "check-jsonschema==0.37.4"
+          test "$("$HEPTA_CHECK_JSONSCHEMA_VENV/bin/check-jsonschema" --version)" = "check-jsonschema, version 0.37.4"
+          printf '%s\n' "$HEPTA_CHECK_JSONSCHEMA_VENV/bin" >> "$GITHUB_PATH"
+      - name: Install Rust 1.95.0 with pinned mobile targets
+        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
+        with:
+          toolchain: 1.95.0
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-linux-android
+      - name: Cache Native UI inputs and pinned Makepad tool
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ${{ env.HEPTA_NATIVE_MOBILE_TOOLS_DIR }}
+            ${{ env.HEPTA_NATIVE_CARGO_TARGET_DIR }}
+            ${{ env.HEPTA_UI_NODE_PREFIX }}
+            ~/Library/Caches/ms-playwright
+          key: ${{ runner.os }}-hepta-ci-v2-${{ github.job }}-playwright-1.59.1-${{ hashFiles('apps/hepta-native/rust-toolchain.toml', 'apps/hepta-native/Cargo.lock', 'apps/hepta-native/Cargo.toml', 'scripts/hepta-native-mobile-cargo') }}
+      - name: Fetch locked Native dependencies
+        run: cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml
+      - name: Fetch locked Control UI server dependencies
+        run: cargo fetch --locked --manifest-path codex-rs/Cargo.toml
+      - name: Install pinned Control UI browser harness
+        run: |
+          npm install --prefix "$HEPTA_UI_NODE_PREFIX" --ignore-scripts --no-audit --no-fund --save-exact playwright@1.59.1
+          node -e 'const version = require("playwright/package.json").version; if (version !== "1.59.1") process.exit(1)'
+          "$HEPTA_UI_NODE_PREFIX/node_modules/.bin/playwright" install chromium
+          HEPTA_PINNED_CHROME_BIN="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')"
+          test -x "$HEPTA_PINNED_CHROME_BIN"
+          printf 'HEPTA_CHROME_BIN=%s\n' "$HEPTA_PINNED_CHROME_BIN" >> "$GITHUB_ENV"
+          "$HEPTA_PINNED_CHROME_BIN" --version
+      - name: Materialize pinned cargo-makepad contract
+        shell: bash
+        run: |
+          if scripts/hepta-native-mobile-cargo --print-toolchain-contract >/dev/null 2>&1; then
+            scripts/hepta-native-mobile-cargo --print-toolchain-contract >/dev/null
+          else
+            scripts/hepta-native-mobile-cargo --bootstrap-tools --print-toolchain-contract >/dev/null
+          fi
+      - name: Run canonical readiness and UI debt contracts
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: scripts/hepta-ci-baseline ui-contract
+      - name: Upload current-source UI contract evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-ui-contract-${{ github.run_id }}
+          path: ${{ env.HEPTA_UI_CI_EVIDENCE_DIR }}/
+          if-no-files-found: error
+
   rust-backend:
     name: Bounded Rust backend
     if: github.event_name != 'schedule'

@@ -1,0 +1,174 @@
+{
+  "schema": "hepta-native-live-bridge-backend-contract-v1",
+  "contract_version": 1,
+  "owner_handoff": {
+    "ui_lane": "hepta-ui",
+    "backend_lane_required": true,
+    "runtime_gateway_auth_files_modified_by_ui_lane": false
+  },
+  "canonical_endpoint": {
+    "method": "GET",
+    "path": "/api/hepta-native-bridge/v1/snapshot",
+    "loopback_only": true,
+    "explicit_opt_in_required": true,
+    "matrix_login_required": true,
+    "authenticated_session_binding_required": true,
+    "cache_control": "no-store",
+    "mutation_allowed": false
+  },
+  "response_contract": {
+    "content_type": "application/json",
+    "rust_type": "hepta_native::hepta_bridge::BridgeUpdate",
+    "update_type": "snapshot",
+    "schema_version": 1,
+    "required_outer_metadata": [
+      "stable_id",
+      "revision",
+      "cursor",
+      "timestamp",
+      "session_id",
+      "correlation_id",
+      "origin",
+      "redaction",
+      "provenance"
+    ],
+    "request_echo_bindings": [
+      "session_id",
+      "correlation_id"
+    ],
+    "required_snapshot_collections": [
+      "runtime",
+      "tasks",
+      "tool_invocations",
+      "approvals",
+      "activities"
+    ],
+    "authoritative_origins": [
+      "hepta_runtime",
+      "bridge_adapter"
+    ],
+    "presenter_safe_redaction_states": [
+      "redacted",
+      "not_required"
+    ],
+    "raw_source_payload_allowed": false
+  },
+  "native_capabilities": {
+    "snapshot": "only_after_all_preflight_checks",
+    "subscribe": false,
+    "prepare": false,
+    "confirm": false,
+    "reject": false,
+    "cancel": false
+  },
+  "post_login_lifecycle": {
+    "login_success": "evaluate_in_process_preflight_then_construct_snapshot_only_adapter_if_all_checks_pass",
+    "login_failure": "drop_transport_and_session_binding",
+    "logout": "drop_transport_and_session_binding",
+    "environment_variable_is_login_proof": false,
+    "matrix_event_is_hepta_receipt": false
+  },
+  "candidate_endpoint_audit": [
+    {
+      "path": "/api/operator-snapshot",
+      "classification": "aggregate_readiness_only",
+      "authoritative_bridge_snapshot": false,
+      "missing": [
+        "stable_entity_ids",
+        "revision",
+        "cursor",
+        "session_binding",
+        "correlation_binding",
+        "record_provenance"
+      ]
+    },
+    {
+      "path": "/api/session-activity",
+      "classification": "redacted_session_file_inventory",
+      "authoritative_bridge_snapshot": false,
+      "missing": [
+        "authoritative_task_records",
+        "outer_session_binding",
+        "correlation_binding",
+        "revision",
+        "cursor",
+        "record_provenance"
+      ]
+    },
+    {
+      "path": "/api/task/<task_id>",
+      "classification": "redacted_transcript_search_not_task_registry",
+      "authoritative_bridge_snapshot": false,
+      "missing": [
+        "task_identity",
+        "task_state",
+        "task_title",
+        "task_summary",
+        "session_binding",
+        "correlation_binding",
+        "revision",
+        "record_provenance"
+      ]
+    },
+    {
+      "path": "/api/approvals",
+      "classification": "guarded_route_catalog_not_pending_approval_store",
+      "authoritative_bridge_snapshot": false,
+      "missing": [
+        "approval_identity",
+        "approval_state",
+        "session_binding",
+        "correlation_binding",
+        "revision",
+        "record_provenance"
+      ]
+    },
+    {
+      "path": "/api/activity",
+      "classification": "redacted_event_type_preview",
+      "authoritative_bridge_snapshot": false,
+      "missing": [
+        "stable_entity_ids",
+        "correlation_binding",
+        "revision",
+        "cursor",
+        "record_provenance"
+      ]
+    },
+    {
+      "path": "/api/gateway-runtime",
+      "classification": "gateway_readiness_and_route_status",
+      "authoritative_bridge_snapshot": false,
+      "missing": [
+        "task_records",
+        "tool_invocation_records",
+        "approval_records",
+        "activity_records",
+        "session_binding",
+        "correlation_binding",
+        "revision",
+        "cursor",
+        "record_provenance"
+      ]
+    }
+  ],
+  "current_implementation": {
+    "canonical_endpoint_registered": false,
+    "authoritative_envelope_available": false,
+    "authenticated_session_binding_available": false,
+    "live_adapter_available": false,
+    "live_receipt_available": false,
+    "production_default_adapter": "disabled",
+    "hepta_live_bridge_ready": false
+  },
+  "promotion_requirements": [
+    "backend registers the canonical GET endpoint",
+    "backend authenticates and binds the Matrix-authenticated Native session without accepting environment flags as proof",
+    "response deserializes as the exact BridgeUpdate snapshot contract",
+    "outer and record session/correlation/origin/redaction/provenance checks pass",
+    "Native performs an actual loopback GET only after login and explicit opt-in",
+    "live receipt records endpoint, HTTP status, request descriptor hash, response hash, session/correlation match, and no mutation",
+    "logout and login failure tear down transport and binding",
+    "prepare, confirm, reject, cancel, and subscribe remain disabled"
+  ]
+}

@@ -179,6 +179,97 @@ verify_contract() {
       verify_entrypoint:"scripts/hepta-gate-compat-debt verify",
       self_test_entrypoint:"scripts/hepta-gate-compat-debt self-test"
     }
+    and .ui_product_contract == {
+      capability_version:6,
+      ci_job:"ui-contract",
+      baseline_entrypoint:"scripts/hepta-ci-baseline ui-contract",
+      canonical_readiness_entrypoint:"scripts/hepta-ui-current-readiness.sh --verify-features --verify-browser --require source",
+      canonical_readiness_self_test:"scripts/hepta-ui-current-readiness-self-test.sh",
+      native_current_package_self_test:"scripts/hepta-native-current-package-gate-self-test.sh",
+      native_product_shell_self_test:"scripts/hepta-native-product-shell-gate-v2-self-test.sh",
+      native_mobile_readiness_self_test:"scripts/hepta-native-mobile-readiness-self-test.sh",
+      native_android_emulator_smoke_self_test:"scripts/hepta-native-android-emulator-smoke-self-test.sh",
+      native_android_emulator_live_readback_self_test:"scripts/hepta-native-android-emulator-live-readback-self-test.sh",
+      native_window_verifier_self_test:"scripts/hepta-ui-native-window-verifier-self-test.sh",
+      native_macos_release_chain_self_test:"scripts/hepta-native-macos-release-chain-self-test.sh",
+      release_artifact_intake_v3_self_test:"scripts/hepta-ui-release-artifact-intake-v3-self-test.sh",
+      release_consumer_forged_tuple_self_test:"scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh",
+      native_live_bridge_contract_gate:"scripts/hepta-native-live-bridge-contract-gate.sh",
+      native_live_bridge_contract_self_test:"scripts/hepta-native-live-bridge-contract-gate-self-test.sh",
+      native_live_bridge_rust_test_filter:"hepta_bridge",
+      native_live_bridge_rust_ci_job:"ui-contract",
+      legacy_visual_archive_self_test:"scripts/hepta-ui-legacy-visual-archive-self-test.sh",
+      browser_entrypoint_migration_gate:"scripts/hepta-live-gates-entrypoint-migration.sh",
+      control_ui_browser_smoke_entrypoint:"scripts/hepta-control-ui-browser-smoke.sh",
+      control_ui_browser_harness:"playwright@1.59.1-bundled-chromium",
+      control_ui_schema_validator:"check-jsonschema==0.37.4",
+      control_ui_debt_audit:"scripts/hepta-control-ui-debt-audit",
+      control_ui_css_metrics_self_test:"scripts/hepta-control-ui-css-metrics-self-test.sh",
+      control_ui_route_retirement_gate:"scripts/hepta-control-ui-route-retirement-candidates-gate",
+      control_ui_route_retirement_self_test:"scripts/hepta-control-ui-route-retirement-candidates-gate-self-test.sh",
+      rust_contract_ci_job:"rust-backend",
+      rust_contract_test_filter:"control_ui_"
+    }
+    and .ui_commit_closure == {
+      capability_version:1,
+      gate_entrypoint:"scripts/hepta-ui-contract-commit-closure-gate verify",
+      self_test_entrypoint:"scripts/hepta-ui-contract-commit-closure-gate-self-test.sh",
+      index_semantics:"HEAD plus staged overlay; required paths must match the worktree",
+      required_files:[
+        ".github/hepta-ci-contract-v1.json",
+        ".github/workflows/hepta-ci.yml",
+        "apps/hepta-control-ui/schemas/control-ui.schema.json",
+        "apps/hepta-control-ui/schemas/ui-contract-audit.schema.json",
+        "apps/hepta-native/hepta-live-bridge-backend-contract-v1.json",
+        "apps/hepta-native/packaging/app-bundle-fingerprint-v1.rb",
+        "apps/hepta-native/packaging/build-macos-dmg.sh",
+        "apps/hepta-native/packaging/create-macos-dmg-from-app.sh",
+        "apps/hepta-native/packaging/fix-dmg-applications-icon.sh",
+        "apps/hepta-native/packaging/resolve-finder-bookmark-v1.swift",
+        "apps/hepta-native/src/hepta_bridge/live_policy.rs",
+        "codex-rs/hepta-core/src/control_ui.rs",
+        "codex-rs/hepta-native-gateway/routes/control_ui_route_retirement_candidates_v1.json",
+        "docs/architecture/HEPTA_NATIVE_LIVE_BRIDGE_BACKEND_HANDOFF_2026-08-02.md",
+        "scripts/fixtures/hepta-ui-release-consumer-ready-v1.tar.gz",
+        "scripts/hepta-android-login-template-probe",
+        "scripts/hepta-android-trusted-adb",
+        "scripts/hepta-android-window-orientation-probe",
+        "scripts/hepta-browser-visual-smoke.sh",
+        "scripts/hepta-ci-baseline-contract",
+        "scripts/hepta-native-android-emulator-live-readback",
+        "scripts/hepta-native-android-emulator-smoke.sh",
+        "scripts/hepta-native-macos-release-chain-self-test.sh",
+        "scripts/hepta-native-current-package-gate.sh",
+        "scripts/hepta-native-mobile-readiness-gate.sh",
+        "scripts/hepta-ui-backend-delivery-audit-gate.sh",
+        "scripts/hepta-ui-backend-delivery-receipt-roundtrip-gate.sh",
+        "scripts/hepta-ui-blocker-closure-gate.sh",
+        "scripts/hepta-ui-current-plan-refresh-gate.sh",
+        "scripts/hepta-ui-harsh-top-design-referee-check.sh",
+        "scripts/hepta-ui-legacy-visual-gates.json",
+        "scripts/hepta-ui-release-approval-intake-gate.sh",
+        "scripts/hepta-ui-release-artifact-boundary-gate.sh",
+        "scripts/hepta-ui-release-artifact-intake-gate.sh",
+        "scripts/hepta-ui-release-artifact-intake-v3-self-test.sh",
+        "scripts/hepta-ui-release-artifact-roundtrip-gate.sh",
+        "scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh",
+        "scripts/hepta-ui-release-signing-capability-gate.sh",
+        "scripts/hepta-ui-risk-future-plan-gate.sh",
+        "scripts/hepta-ui-root-report-replay-gate.sh",
+        "scripts/lib/hepta-native-android-emulator-receipt-v3.jq",
+        "scripts/lib/hepta-native-android-login-template-v1.jq",
+        "scripts/lib/hepta-native-live-bridge-envelope-v1.jq",
+        "scripts/lib/hepta-process-identity-v1.sh",
+        "scripts/lib/hepta-safe-managed-output-v1.sh",
+        "scripts/lib/hepta-safe-output-v1.sh",
+        "scripts/lib/hepta-ui-current-readiness-v1.jq"
+      ],
+      required_directories:[
+        "apps/hepta-native/packaging/android-emulator-login-template-v1",
+        "scripts/archive/hepta-ui-top-design-v1",
+        "scripts/lib/hepta-browser-visual-smoke-v1"
+      ]
+    }
     and .upstream_intake == {
       url:"https://github.com/openai/codex.git",
       materialize_command:"scripts/hepta-ci-materialize-upstream-intake materialize",
@@ -260,7 +351,7 @@ verify_contract() {
       semantic_absorption_required:true
     }
   ' "$CONTRACT" >/dev/null
-  local baseline_rel full_rel baseline full rust_backend_block
+  local baseline_rel full_rel baseline full rust_backend_block ui_contract_block
   baseline_rel="$(jq -er '.baseline_workflow.path' "$CONTRACT")"
   full_rel="$(jq -er '.full_workflow.path' "$CONTRACT")"
   baseline="$ROOT/$baseline_rel"
@@ -302,6 +393,102 @@ verify_contract() {
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-upstream-truth-gate" verify-counted-evidence' "exact counted upstream evidence execution"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-gate-compat-debt verify' "gate compatibility debt verification"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-gate-compat-debt self-test' "gate compatibility debt self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-ui-current-readiness.sh' "canonical UI readiness execution"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-ui-current-readiness-self-test.sh' "canonical UI readiness self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-ui-contract-commit-closure-gate verify' "UI staged-tree commit closure gate"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-ui-contract-commit-closure-gate-self-test.sh' "UI staged-tree commit closure self-test"
+  require_exact_literal "$ROOT/scripts/hepta-ui-contract-commit-closure-gate" \
+    '#!/bin/bash -p' \
+    "UI commit-closure privileged-shell shebang"
+  require_exact_literal "$ROOT/scripts/hepta-ui-contract-commit-closure-gate-self-test.sh" \
+    '#!/bin/bash -p' \
+    "UI commit-closure self-test privileged-shell shebang"
+  require_literal "$ROOT/scripts/hepta-ui-contract-commit-closure-gate-self-test.sh" \
+    'closure gate executed a caller-supplied BASH_ENV hook' \
+    "UI commit-closure startup-hook negative"
+  require_literal "$ROOT/scripts/hepta-ui-contract-commit-closure-gate-self-test.sh" \
+    'closure gate executed a caller-supplied PATH shim' \
+    "UI commit-closure PATH-shim negative"
+  local release_closure_path
+  while IFS= read -r release_closure_path; do
+    require_literal "$ROOT/scripts/hepta-ui-contract-commit-closure-gate" \
+      "$release_closure_path" \
+      "UI release commit-closure binding $release_closure_path"
+  done <<'RELEASE_CLOSURE_PATHS'
+apps/hepta-native/packaging/app-bundle-fingerprint-v1.rb
+apps/hepta-native/packaging/build-macos-dmg.sh
+apps/hepta-native/packaging/create-macos-dmg-from-app.sh
+apps/hepta-native/packaging/fix-dmg-applications-icon.sh
+apps/hepta-native/packaging/resolve-finder-bookmark-v1.swift
+scripts/fixtures/hepta-ui-release-consumer-ready-v1.tar.gz
+scripts/hepta-native-macos-release-chain-self-test.sh
+scripts/hepta-ui-backend-delivery-audit-gate.sh
+scripts/hepta-ui-backend-delivery-receipt-roundtrip-gate.sh
+scripts/hepta-ui-blocker-closure-gate.sh
+scripts/hepta-ui-current-plan-refresh-gate.sh
+scripts/hepta-ui-release-approval-intake-gate.sh
+scripts/hepta-ui-release-artifact-boundary-gate.sh
+scripts/hepta-ui-release-artifact-intake-gate.sh
+scripts/hepta-ui-release-artifact-intake-v3-self-test.sh
+scripts/hepta-ui-release-artifact-roundtrip-gate.sh
+scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh
+scripts/hepta-ui-release-signing-capability-gate.sh
+scripts/hepta-ui-risk-future-plan-gate.sh
+scripts/hepta-ui-root-report-replay-gate.sh
+scripts/lib/hepta-safe-managed-output-v1.sh
+RELEASE_CLOSURE_PATHS
+  require_literal "$ROOT/scripts/hepta-ui-contract-commit-closure-gate-self-test.sh" \
+    'partial-stage release producer drift' \
+    "UI release producer partial-stage negative"
+  require_literal "$ROOT/scripts/hepta-ui-contract-commit-closure-gate-self-test.sh" \
+    'partial-stage managed-output helper drift' \
+    "UI managed-output helper partial-stage negative"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'HEPTA_CHECK_JSONSCHEMA_BIN' "Control UI JSON Schema validator path requirement"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'check-jsonschema, version 0.37.4' "pinned Control UI JSON Schema validator version"
+  require_literal "$ROOT/scripts/lib/hepta-browser-visual-smoke-v1/static-contract.sh" \
+    '"$HEPTA_BROWSER_SCHEMA_VALIDATOR" --schemafile "$source_schema_path" "$source_payload_path"' \
+    "Control UI reassembled source payload schema validation"
+  require_literal "$ROOT/scripts/lib/hepta-browser-visual-smoke-v1/static-contract.sh" \
+    'schema accepted contradictory product and evidence readiness' \
+    "Control UI contradictory readiness negative schema validation"
+  require_literal "$ROOT/codex-rs/hepta-core/src/control_ui.rs" \
+    'CONTROL_UI_SCHEMA_AUDIT_JSON' \
+    "Control UI audit schema Rust consumption"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-native-current-package-gate-self-test.sh' "Native current-package no-launch truth self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-native-product-shell-gate-v2-self-test.sh' "Native product-shell self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-native-mobile-readiness-self-test.sh' "Native mobile readiness self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-native-android-emulator-smoke-self-test.sh' "Native Android emulator producer self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-native-android-emulator-live-readback-self-test.sh' "Native Android emulator live readback self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-ui-native-window-verifier-self-test.sh' "Native window verifier self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-native-macos-release-chain-self-test.sh' "Native macOS release chain self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-ui-release-artifact-intake-v3-self-test.sh' "Release artifact intake v3 self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh' "Release consumer forged tuple self-test"
+  require_exact_literal "$ROOT/scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh" \
+    '#!/bin/bash -p' \
+    "Release consumer forged tuple privileged-shell shebang"
+  require_literal "$ROOT/scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh" \
+    '9634d0b0a297e3d9f67122b1702d43a8e3a19f78a9484d78ebae470f9e198f5c' \
+    "Release consumer versioned fixture SHA-256"
+  require_literal "$ROOT/scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh" \
+    'run_control_consumer current-plan' \
+    "Release consumer actual control-chain execution"
+  require_literal "$ROOT/scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh" \
+    'run_forged_consumer root' \
+    "Release consumer actual forged-chain execution"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-native-live-bridge-contract-gate.sh' "Native live-bridge blocker contract gate"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-native-live-bridge-contract-gate-self-test.sh' "Native live-bridge blocker contract self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'native-live-bridge-rust-contract' "Native live-bridge Rust contract tests"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-ui-legacy-visual-archive-self-test.sh' "historical visual archive self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-live-gates-entrypoint-migration.sh' "browser entrypoint migration gate"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" '--verify-browser' "canonical Control UI browser verification"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" '.gates.native_product_shell.status == "ready"' "canonical Native product-shell receipt assertion"
+  reject_literal "$ROOT/scripts/hepta-ci-baseline" '.gates.native_product.status'
+  require_literal "$ROOT/scripts/hepta-ci-baseline" '.gates.control_browser.ready == true' "Control UI browser receipt promotion assertion"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-control-ui-debt-audit' "Control UI debt audit"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-control-ui-css-metrics-self-test.sh' "Control UI CSS metrics self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-control-ui-route-retirement-candidates-gate' "Control UI route retirement candidate gate"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-control-ui-route-retirement-candidates-gate-self-test.sh' "Control UI route retirement candidate self-test"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'ci-hepta-core-control-ui-contract-tests' "Control UI Rust contract tests"
   require_literal "$baseline" "cargo install cargo-audit --version 0.22.2 --locked" "pinned cargo-audit installation"
   require_literal "$baseline" "cargo install cargo-deny --version 0.20.2 --locked" "pinned cargo-deny installation"
   require_literal "$baseline" "run: scripts/hepta-dependency-security materialize-db" "pinned advisory database materialization"
@@ -315,8 +502,55 @@ verify_contract() {
     "        run: scripts/hepta-ci-materialize-upstream-intake materialize" \
     "        run: scripts/hepta-ci-baseline rust-backend" \
     "rust-backend frozen intake materialization before counted evidence"
+  ui_contract_block="$(workflow_job_block "$baseline" "ui-contract")"
+  require_literal <(printf '%s\n' "$ui_contract_block") "    runs-on: macos-15" "UI contract macOS runner"
+  require_literal <(printf '%s\n' "$ui_contract_block") "          fetch-depth: 0" "UI contract full-history checkout"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    "          targets: aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-linux-android" \
+    "UI contract pinned mobile Rust targets"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    "        run: cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml" \
+    "UI contract locked Native dependency fetch"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    '      HEPTA_CHECK_JSONSCHEMA_VENV: ${{ runner.temp }}/hepta-check-jsonschema-0.37.4' \
+    "UI contract isolated JSON Schema validator path"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    '      HEPTA_CHECK_JSONSCHEMA_BIN: ${{ runner.temp }}/hepta-check-jsonschema-0.37.4/bin/check-jsonschema' \
+    "UI contract exact JSON Schema validator executable"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    '"$HEPTA_CHECK_JSONSCHEMA_VENV/bin/python" -m pip install --disable-pip-version-check --no-input "check-jsonschema==0.37.4"' \
+    "UI contract pinned JSON Schema validator installation"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    'test "$("$HEPTA_CHECK_JSONSCHEMA_VENV/bin/check-jsonschema" --version)" = "check-jsonschema, version 0.37.4"' \
+    "UI contract exact JSON Schema validator version assertion"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    'printf '\''%s\n'\'' "$HEPTA_CHECK_JSONSCHEMA_VENV/bin" >> "$GITHUB_PATH"' \
+    "UI contract pinned JSON Schema validator PATH export"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    "            scripts/hepta-native-mobile-cargo --bootstrap-tools --print-toolchain-contract >/dev/null" \
+    "UI contract pinned cargo-makepad materialization"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    "npm install --prefix \"\$HEPTA_UI_NODE_PREFIX\" --ignore-scripts --no-audit --no-fund --save-exact playwright@1.59.1" \
+    "UI contract pinned Playwright browser harness"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    "        run: cargo fetch --locked --manifest-path codex-rs/Cargo.toml" \
+    "UI contract locked Control UI server dependencies"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    '"$HEPTA_UI_NODE_PREFIX/node_modules/.bin/playwright" install chromium' \
+    "UI contract pinned Chromium materialization"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    'HEPTA_PINNED_CHROME_BIN="$(node -e' \
+    "UI contract pinned Chromium path resolution"
+  require_literal <(printf '%s\n' "$ui_contract_block") \
+    "        run: scripts/hepta-ci-baseline ui-contract" \
+    "UI contract baseline execution"
+  require_literal_order \
+    <(printf '%s\n' "$ui_contract_block") \
+    "        run: cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml" \
+    "        run: scripts/hepta-ci-baseline ui-contract" \
+    "UI contract dependency fetch before readiness execution"
   require_literal "$baseline" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned Cargo cache action"
-  require_literal_count "$baseline" "          persist-credentials: false" 6 "checkout credential isolation"
+  require_literal_count "$baseline" "          persist-credentials: false" 7 "checkout credential isolation"
   require_literal "$baseline" '${{ github.job }}' "job-bound Cargo cache key"
   while IFS= read -r binding; do
     require_literal "$baseline" "'$binding'" "Cargo cache binding $binding"
@@ -393,7 +627,12 @@ self_test() (
   trap 'rm -rf "$tmp"' EXIT
   baseline_rel="$(jq -er '.baseline_workflow.path' "$CONTRACT")"
   full_rel="$(jq -er '.full_workflow.path' "$CONTRACT")"
-  mkdir -p "$tmp/$(dirname "$baseline_rel")" "$tmp/$(dirname "$full_rel")" "$tmp/scripts"
+  mkdir -p \
+    "$tmp/$(dirname "$baseline_rel")" \
+    "$tmp/$(dirname "$full_rel")" \
+    "$tmp/scripts/fixtures" \
+    "$tmp/scripts/lib/hepta-browser-visual-smoke-v1" \
+    "$tmp/codex-rs/hepta-core/src"
   cp "$CONTRACT" "$tmp/contract.json"
   cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
   cp "$ROOT/$full_rel" "$tmp/$full_rel"
@@ -401,7 +640,29 @@ self_test() (
   cp "$ROOT/scripts/hepta-ci-baseline-contract" "$tmp/scripts/hepta-ci-baseline-contract"
   cp "$ROOT/scripts/hepta-ci-materialize-upstream-intake" "$tmp/scripts/hepta-ci-materialize-upstream-intake"
   cp "$ROOT/scripts/hepta-preflight.sh" "$tmp/scripts/hepta-preflight.sh"
+  cp \
+    "$ROOT/scripts/hepta-ui-contract-commit-closure-gate" \
+    "$tmp/scripts/hepta-ui-contract-commit-closure-gate"
+  cp \
+    "$ROOT/scripts/hepta-ui-contract-commit-closure-gate-self-test.sh" \
+    "$tmp/scripts/hepta-ui-contract-commit-closure-gate-self-test.sh"
+  cp \
+    "$ROOT/scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh" \
+    "$tmp/scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh"
+  cp \
+    "$ROOT/scripts/fixtures/hepta-ui-release-consumer-ready-v1.tar.gz" \
+    "$tmp/scripts/fixtures/hepta-ui-release-consumer-ready-v1.tar.gz"
+  cp \
+    "$ROOT/scripts/lib/hepta-browser-visual-smoke-v1/static-contract.sh" \
+    "$tmp/scripts/lib/hepta-browser-visual-smoke-v1/static-contract.sh"
+  cp "$ROOT/codex-rs/hepta-core/src/control_ui.rs" "$tmp/codex-rs/hepta-core/src/control_ui.rs"
   HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null
+  jq '.ui_commit_closure.required_files |= map(select(. != "apps/hepta-native/packaging/build-macos-dmg.sh"))' \
+    "$tmp/contract.json" >"$tmp/contract-mutated.json"
+  if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted missing release producer commit closure" >&2
+    return 1
+  fi
   printf '\npermissions: write-all\n' >>"$tmp/$baseline_rel"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted write-all permissions" >&2
@@ -438,6 +699,19 @@ self_test() (
     echo "Hepta CI contract self-test accepted false safe lint CI evidence promotion" >&2
     return 1
   fi
+  jq '.ui_product_contract.control_ui_schema_validator = "check-jsonschema"' \
+    "$tmp/contract.json" >"$tmp/contract-mutated.json"
+  if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted an unpinned Control UI schema validator" >&2
+    return 1
+  fi
+  sed -i.bak '/check-jsonschema==0\.37\.4/d' "$tmp/$baseline_rel"
+  rm -f "$tmp/$baseline_rel.bak"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted UI CI without the pinned schema validator install" >&2
+    return 1
+  fi
+  cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
   perl -0pi -e \
     's/(  rust-backend:\n.*?)(          fetch-depth: 0\n)/$1/s' \
     "$tmp/$baseline_rel"
@@ -729,7 +1003,7 @@ self_test() (
   jq -n \
     --arg schema hepta_ci_baseline_contract_self_test_v1 \
     --arg status ready \
-    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,rust_backend_shallow_checkout_denied:true,rust_backend_missing_intake_refs_denied:true,full_preflight_unpinned_audit_denied:true,full_preflight_missing_pinned_rustsec_db_denied:true,missing_r4_r5_r6_r7_r8_r9_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,misdirected_r7_ref_denied:true,misdirected_r7_ref_not_overwritten:true,misdirected_r8_ref_denied:true,misdirected_r8_ref_not_overwritten:true,misdirected_r9_ref_denied:true,misdirected_r9_ref_not_overwritten:true,clean_checkout_r4_r5_r6_r7_r8_r9_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r8:true,historical_r5_ref_preserved_while_materializing_r8:true,historical_r6_ref_preserved_while_materializing_r8:true,historical_r7_ref_preserved_while_materializing_r8:true,historical_r4_ref_preserved_while_materializing_r9:true,historical_r5_ref_preserved_while_materializing_r9:true,historical_r6_ref_preserved_while_materializing_r9:true,historical_r7_ref_preserved_while_materializing_r9:true,historical_r8_ref_preserved_while_materializing_r9:true,unexpected_predecessor_ref_overwrite_denied:true}'
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,unpinned_control_ui_schema_validator_denied:true,missing_pinned_control_ui_schema_validator_install_denied:true,missing_release_producer_commit_closure_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,rust_backend_shallow_checkout_denied:true,rust_backend_missing_intake_refs_denied:true,full_preflight_unpinned_audit_denied:true,full_preflight_missing_pinned_rustsec_db_denied:true,missing_r4_r5_r6_r7_r8_r9_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,misdirected_r7_ref_denied:true,misdirected_r7_ref_not_overwritten:true,misdirected_r8_ref_denied:true,misdirected_r8_ref_not_overwritten:true,misdirected_r9_ref_denied:true,misdirected_r9_ref_not_overwritten:true,clean_checkout_r4_r5_r6_r7_r8_r9_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r8:true,historical_r5_ref_preserved_while_materializing_r8:true,historical_r6_ref_preserved_while_materializing_r8:true,historical_r7_ref_preserved_while_materializing_r8:true,historical_r4_ref_preserved_while_materializing_r9:true,historical_r5_ref_preserved_while_materializing_r9:true,historical_r6_ref_preserved_while_materializing_r9:true,historical_r7_ref_preserved_while_materializing_r9:true,historical_r8_ref_preserved_while_materializing_r9:true,unexpected_predecessor_ref_overwrite_denied:true}'
 )
 [[ $# -eq 1 ]] || usage
 case "$1" in

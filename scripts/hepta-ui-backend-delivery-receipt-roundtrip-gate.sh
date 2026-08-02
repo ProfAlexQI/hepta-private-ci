@@ -1,21 +1,68 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
+set +x
+PS4='+ '
 set -euo pipefail
+unset BASH_ENV ENV CDPATH GLOBIGNORE RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_GEMFILE BUNDLE_PATH
+SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PATH="$SYSTEM_PATH"
+export PATH
 
-cd "$(dirname "$0")/.."
+cd "$(/usr/bin/dirname "$0")/.."
+REPO_ROOT="$(pwd -P)"
+. "$REPO_ROOT/scripts/lib/hepta-safe-managed-output-v1.sh"
 
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-/Users/qianqi/.openclaw/tmp/hepta-ui-product-readiness.mention-taxonomy-20260615}"
 REPORT_PATH="${HEPTA_UI_BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_REPORT_PATH:-$READINESS_DIR/ui-backend-delivery-receipt-roundtrip-gate.json}"
 ROUNDTRIP_DIR="${HEPTA_UI_BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_DIR:-$READINESS_DIR/backend-delivery-receipt-roundtrip}"
+READINESS_DIR="$(hepta_safe_normalize_path readiness "$READINESS_DIR")"
+REPORT_PATH="$(hepta_safe_normalize_path report "$REPORT_PATH")"
+ROUNDTRIP_DIR="$(hepta_safe_normalize_path roundtrip "$ROUNDTRIP_DIR")"
 SIMULATED_RECEIPT_PATH="$ROUNDTRIP_DIR/simulated-delivery-receipt.json"
 WAITING_AUDIT_DIR="$ROUNDTRIP_DIR/waiting-delivery-audit"
 WAITING_AUDIT_REPORT_PATH="$ROUNDTRIP_DIR/ui-backend-delivery-audit-waiting-gate.json"
 SIMULATED_AUDIT_DIR="$ROUNDTRIP_DIR/simulated-delivery-audit"
 SIMULATED_AUDIT_REPORT_PATH="$ROUNDTRIP_DIR/ui-backend-delivery-audit-present-gate.json"
 ROUNDTRIP_MARKDOWN_PATH="$ROUNDTRIP_DIR/backend-delivery-receipt-roundtrip.md"
+REPORT_PARENT="$(hepta_safe_normalize_path report_parent "$(/usr/bin/dirname "$REPORT_PATH")")"
+hepta_safe_require_directory_target readiness "$READINESS_DIR"
+hepta_safe_require_directory_target roundtrip "$ROUNDTRIP_DIR"
+hepta_safe_require_directory_target waiting_audit "$WAITING_AUDIT_DIR"
+hepta_safe_require_directory_target simulated_audit "$SIMULATED_AUDIT_DIR"
+hepta_safe_require_directory_target report_parent "$REPORT_PARENT"
+hepta_safe_require_regular_target report "$REPORT_PATH"
+hepta_safe_require_regular_target simulated_receipt "$SIMULATED_RECEIPT_PATH"
+hepta_safe_require_regular_target waiting_audit_report "$WAITING_AUDIT_REPORT_PATH"
+hepta_safe_require_regular_target simulated_audit_report "$SIMULATED_AUDIT_REPORT_PATH"
+hepta_safe_require_regular_target roundtrip_markdown "$ROUNDTRIP_MARKDOWN_PATH"
+if hepta_safe_paths_overlap "$READINESS_DIR" "$REPO_ROOT"; then
+  printf 'backend-delivery roundtrip readiness must not overlap the repository\n' >&2
+  exit 64
+fi
+if ! hepta_safe_is_strict_descendant "$ROUNDTRIP_DIR" "$READINESS_DIR"; then
+  printf 'backend-delivery roundtrip directory must be a strict readiness child\n' >&2
+  exit 64
+fi
+if [[ "$REPORT_PARENT" != "$READINESS_DIR" ]] \
+  && ! hepta_safe_is_strict_descendant "$REPORT_PARENT" "$READINESS_DIR"; then
+  printf 'backend-delivery roundtrip report parent must remain inside readiness\n' >&2
+  exit 64
+fi
+if hepta_safe_paths_overlap "$REPORT_PATH" "$ROUNDTRIP_DIR"; then
+  printf 'backend-delivery roundtrip report and managed directory must be disjoint\n' >&2
+  exit 64
+fi
 
 BACKEND_DELIVERY_AUDIT_REPORT_PATH="$READINESS_DIR/ui-backend-delivery-audit-gate.json"
 BACKEND_DELIVERY_RECEIPT_TEMPLATE_PATH="$READINESS_DIR/backend-delivery-audit/backend-delivery-receipt-template.json"
 BACKEND_DISPATCH_PACKET_REPORT_PATH="$READINESS_DIR/ui-backend-dispatch-packet-gate.json"
+for protected_input in "$BACKEND_DELIVERY_AUDIT_REPORT_PATH" \
+  "$BACKEND_DELIVERY_RECEIPT_TEMPLATE_PATH" "$BACKEND_DISPATCH_PACKET_REPORT_PATH"; do
+  if hepta_safe_paths_overlap "$protected_input" "$ROUNDTRIP_DIR" \
+    || hepta_safe_paths_overlap "$protected_input" "$REPORT_PATH"; then
+    printf 'backend-delivery roundtrip output overlaps protected input: %s\n' "$protected_input" >&2
+    exit 64
+  fi
+done
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -48,13 +95,18 @@ require_report "$BACKEND_DELIVERY_AUDIT_REPORT_PATH"
 require_report "$BACKEND_DELIVERY_RECEIPT_TEMPLATE_PATH"
 require_report "$BACKEND_DISPATCH_PACKET_REPORT_PATH"
 
-rm -rf "$ROUNDTRIP_DIR"
 mkdir -p "$ROUNDTRIP_DIR" "$WAITING_AUDIT_DIR" "$SIMULATED_AUDIT_DIR"
+mkdir -p "$REPORT_PARENT"
+hepta_safe_revalidate_directory roundtrip "$ROUNDTRIP_DIR"
+hepta_safe_revalidate_directory waiting_audit "$WAITING_AUDIT_DIR"
+hepta_safe_revalidate_directory simulated_audit "$SIMULATED_AUDIT_DIR"
+hepta_safe_revalidate_directory report_parent "$REPORT_PARENT"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-backend-delivery-receipt-roundtrip.XXXXXX")"
 REPORT_DRAFT="$TMP_DIR/backend-delivery-receipt-roundtrip-draft.json"
 REPORT_TMP="$TMP_DIR/backend-delivery-receipt-roundtrip-report.json"
 MARKDOWN_TMP="$TMP_DIR/backend-delivery-receipt-roundtrip.md"
+SIMULATED_RECEIPT_TMP="$TMP_DIR/simulated-delivery-receipt.json"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 template_sha="$(file_sha256 "$BACKEND_DELIVERY_RECEIPT_TEMPLATE_PATH")"
@@ -103,7 +155,8 @@ jq -n \
         public_distribution_claim_ready:false,
         release_claim_ready:false
       }
-    }' >"$SIMULATED_RECEIPT_PATH"
+    }' >"$SIMULATED_RECEIPT_TMP"
+hepta_safe_atomic_replace "$SIMULATED_RECEIPT_TMP" "$SIMULATED_RECEIPT_PATH" simulated_delivery_receipt
 
 env -u HEPTA_UI_BACKEND_DELIVERY_RECEIPT_INPUT_PATH \
   HEPTA_UI_PRODUCT_READINESS_DIR="$READINESS_DIR" \
@@ -359,7 +412,7 @@ jq -r '
   + "- It proves the valid delivery receipt branch without claiming backend execution, backend receipt, live product readiness, public distribution, or release readiness.\n"
 ' "$REPORT_DRAFT" >"$MARKDOWN_TMP"
 
-mv "$MARKDOWN_TMP" "$ROUNDTRIP_MARKDOWN_PATH"
+hepta_safe_atomic_replace "$MARKDOWN_TMP" "$ROUNDTRIP_MARKDOWN_PATH" backend_delivery_roundtrip_markdown
 
 markdown_sha="$(file_sha256 "$ROUNDTRIP_MARKDOWN_PATH")"
 markdown_bytes="$(file_bytes "$ROUNDTRIP_MARKDOWN_PATH")"
@@ -371,10 +424,6 @@ jq \
     roundtrip_markdown_sha256:$markdown_sha,
     roundtrip_markdown_bytes:$markdown_bytes
   }' "$REPORT_DRAFT" >"$REPORT_TMP"
-
-if [[ "${HEPTA_UI_BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_DEBUG_COPY:-0}" == "1" ]]; then
-  cp "$REPORT_TMP" "$REPORT_PATH.debug"
-fi
 
 jq -e '
   .status == "ready"
@@ -392,7 +441,7 @@ jq -e '
   and .source_alignment.present_branch_delivery_receipt_present == true
   and .source_alignment.present_branch_delivery_receipt_valid == true
   and .source_alignment.present_branch_backend_delivery_claim_ready == true
-  and (.source_alignment.present_branch_critical_blocker_count >= 0 and .source_alignment.present_branch_critical_blocker_count <= 9)
+  and (.source_alignment.present_branch_critical_blocker_count >= 0 and .source_alignment.present_branch_critical_blocker_count <= 10)
   and (.source_alignment.present_branch_real_backend_receipt_present | type) == "boolean"
   and (.source_alignment.present_branch_backend_receipt_valid | type) == "boolean"
   and (.source_alignment.present_branch_real_backend_receipt_claim_ready | type) == "boolean"
@@ -437,5 +486,5 @@ jq -e '
   and .side_effects.external_mutation == false
 ' "$REPORT_TMP" >/dev/null
 
-mv "$REPORT_TMP" "$REPORT_PATH"
+hepta_safe_atomic_replace "$REPORT_TMP" "$REPORT_PATH" backend_delivery_roundtrip_report
 cat "$REPORT_PATH"

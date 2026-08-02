@@ -1,0 +1,78 @@
+{
+  "schema": "hepta_control_ui_route_retirement_candidates_v1",
+  "selection_policy": "legacy GET only; no canonical, watchdog, alias, quarantined mutation, active product-surface consumer, or unresolved native-report lifecycle",
+  "expected_catalog_metrics": {
+    "route_count": 284,
+    "legacy_compatibility_route_count": 206,
+    "canonical_route_count": 78,
+    "quarantined_legacy_mutation_route_count": 28
+  },
+  "candidates": [
+    {
+      "key": "control_ui_122",
+      "native_report_id": 131,
+      "eligible_for_retirement": false,
+      "blockers": [
+        {
+          "id": "active_native_report_renderer",
+          "file": "codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs",
+          "marker": "json_report!(\"native_report_131\""
+        },
+        {
+          "id": "positive_http_contract_test",
+          "file": "codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_06.rs",
+          "marker": "reinstatement_audit_evidence_endpoint_blocks_audit_evidence_and_authority"
+        },
+        {
+          "id": "downstream_native_report_chain",
+          "file": "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/identity_and_signing_denials/part_01.rs",
+          "marker": "reinstatement_audit_evidence_denial_report();"
+        }
+      ]
+    },
+    {
+      "key": "control_ui_123",
+      "native_report_id": 132,
+      "eligible_for_retirement": false,
+      "blockers": [
+        {
+          "id": "active_native_report_renderer",
+          "file": "codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs",
+          "marker": "json_report!(\"native_report_132\""
+        },
+        {
+          "id": "positive_http_contract_test",
+          "file": "codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_06.rs",
+          "marker": "reinstatement_retention_expiry_garbage_collection_endpoint_blocks_retention_gc_and_authority"
+        },
+        {
+          "id": "downstream_native_report_chain",
+          "file": "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/identity_and_signing_denials/part_01.rs",
+          "marker": "reinstatement_retention_expiry_garbage_collection_denial_report();"
+        }
+      ]
+    },
+    {
+      "key": "control_ui_124",
+      "native_report_id": 133,
+      "eligible_for_retirement": false,
+      "blockers": [
+        {
+          "id": "active_native_report_renderer",
+          "file": "codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs",
+          "marker": "json_report!(\"native_report_133\""
+        },
+        {
+          "id": "positive_http_contract_test",
+          "file": "codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_06.rs",
+          "marker": "reinstatement_export_query_observability_endpoint_blocks_views_and_authority"
+        },
+        {
+          "id": "downstream_native_report_chain",
+          "file": "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/identity_and_signing_denials/part_01.rs",
+          "marker": "reinstatement_export_query_observability_denial_report();"
+        }
+      ]
+    }
+  ]
+}

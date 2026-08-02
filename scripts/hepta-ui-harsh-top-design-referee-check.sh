@@ -121,6 +121,12 @@ CONTROL_STYLE_SOURCES=(
   "$REPO_ROOT/apps/hepta-control-ui/styles.accessibility.css"
 )
 CONTROL_BROWSER_SMOKE_SOURCE="$REPO_ROOT/scripts/hepta-browser-visual-smoke.sh"
+CONTROL_BROWSER_SMOKE_SOURCES=(
+  "$CONTROL_BROWSER_SMOKE_SOURCE"
+  "$REPO_ROOT/scripts/lib/hepta-browser-visual-smoke-v1/"*.sh
+  "$REPO_ROOT/scripts/lib/hepta-browser-visual-smoke-v1/"*.cjs
+  "$REPO_ROOT/scripts/lib/hepta-browser-visual-smoke-v1/density-probe/"*.cjs
+)
 
 for source in "$CONTROL_HTML_SOURCE" "$CONTROL_RUST_SOURCE"; do
   if [[ ! -s "$source" ]]; then
@@ -181,352 +187,352 @@ if ! grep -Fq '/*cptrmlg*/[data-view=chat] :is(.tg-icon-action[data-control-ui-c
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll(".tg-chat-item :is(.tg-chat-item__topline strong,.tg-chat-item__topline span,.tg-chat-item__body p)")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll(".tg-chat-item :is(.tg-chat-item__topline strong,.tg-chat-item__topline span,.tg-chat-item__body p)")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke still checks thread-header/chat-row readability too narrowly" >&2
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll(".tg-thread-header__main p")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll(".tg-thread-header__main p")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing thread-header status readability sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll(".tg-compose-footer [data-chat-shortcut-hint]")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll(".tg-compose-footer [data-chat-shortcut-hint]")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer footer status readability sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll(".tg-message small")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll(".tg-message small")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing message metadata readability sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll(".tg-search-shell input[placeholder],.tg-compose-bar textarea[placeholder]")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll(".tg-search-shell input[placeholder],.tg-compose-bar textarea[placeholder]")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing placeholder readability sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll(".tg-folder-chip,.tg-folder-chip small,.tg-thread-hepta-controls span,.tg-thread-hepta-controls select,.tg-autoscroll-select,.tg-autoscroll-select select,.tg-menu-item__label")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll(".tg-folder-chip,.tg-folder-chip small,.tg-thread-hepta-controls span,.tg-thread-hepta-controls select,.tg-autoscroll-select,.tg-autoscroll-select select,.tg-menu-item__label")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing small control readability sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'vertical_in_viewport: verticalInViewport' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'vertical_in_viewport: verticalInViewport' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing vertical menu viewport sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'bottom_clipped: rect.bottom > window.innerHeight + 1' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'bottom_clipped: rect.bottom > window.innerHeight + 1' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing bottom-clipped submenu detection" >&2
   exit 1
 fi
 
-if ! grep -Fq 'title_matches_aria_label: title === ariaLabel' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'title_matches_aria_label: title === ariaLabel' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing icon/menu title parity sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_icon_button_title_match_ready:$density_qa.icon_button_title_match_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_icon_button_title_match_ready:$density_qa.icon_button_title_match_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing icon button title parity aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_rail_action_icon_ready:$density_qa.rail_action_icon_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_rail_action_icon_ready:$density_qa.rail_action_icon_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing rail action icon aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'rail_action_icon_ready: results.every((result) => result.rail_action_icon_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'rail_action_icon_ready: results.every((result) => result.rail_action_icon_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing rail action icon density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'iconButtonDetails.length >= (railVisible ? 5 : 4)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'iconButtonDetails.length >= (railVisible ? 5 : 4)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke still allows the rail action icon to be omitted from icon-button coverage" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_menu_trigger_title_match_ready:$density_qa.menu_trigger_title_match_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_menu_trigger_title_match_ready:$density_qa.menu_trigger_title_match_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing menu trigger title parity aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_folder_chip_touch_ready:$density_qa.folder_chip_touch_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_folder_chip_touch_ready:$density_qa.folder_chip_touch_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing folder chip touch aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'folder_chip_touch_ready: results.every((result) => result.folder_chip_touch_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'folder_chip_touch_ready: results.every((result) => result.folder_chip_touch_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing folder chip touch density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_row_menu_touch_ready:$density_qa.row_menu_touch_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_row_menu_touch_ready:$density_qa.row_menu_touch_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing row menu touch aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_row_menu_light_glass_ready:$density_qa.row_menu_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_row_menu_light_glass_ready:$density_qa.row_menu_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing row menu light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'row_menu_touch_ready: results.every((result) => result.row_menu_touch_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'row_menu_touch_ready: results.every((result) => result.row_menu_touch_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing row menu touch density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'row_menu_light_glass_ready: results.every((result) => result.row_menu_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'row_menu_light_glass_ready: results.every((result) => result.row_menu_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing row menu light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_command_palette_ready:$density_qa.command_palette_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_command_palette_ready:$density_qa.command_palette_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_command_palette_surface_light_glass_ready:$density_qa.command_palette_surface_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_command_palette_surface_light_glass_ready:$density_qa.command_palette_surface_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette surface light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_command_palette_trigger_light_glass_ready:$density_qa.command_palette_trigger_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_command_palette_trigger_light_glass_ready:$density_qa.command_palette_trigger_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette trigger light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_command_palette_input_light_glass_ready:$density_qa.command_palette_input_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_command_palette_input_light_glass_ready:$density_qa.command_palette_input_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette input light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_command_palette_close_light_glass_ready:$density_qa.command_palette_close_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_command_palette_close_light_glass_ready:$density_qa.command_palette_close_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette trigger light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_command_palette_item_light_glass_ready:$density_qa.command_palette_item_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_command_palette_item_light_glass_ready:$density_qa.command_palette_item_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette result light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'command_palette_ready: results.every((result) => result.command_palette_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'command_palette_ready: results.every((result) => result.command_palette_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'command_palette_surface_light_glass_ready: results.every((result) => result.command_palette_surface_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'command_palette_surface_light_glass_ready: results.every((result) => result.command_palette_surface_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette surface light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'command_palette_trigger_light_glass_ready: results.every((result) => result.command_palette_trigger_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'command_palette_trigger_light_glass_ready: results.every((result) => result.command_palette_trigger_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette trigger light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'command_palette_input_light_glass_ready: results.every((result) => result.command_palette_input_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'command_palette_input_light_glass_ready: results.every((result) => result.command_palette_input_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette input light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'command_palette_close_light_glass_ready: results.every((result) => result.command_palette_close_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'command_palette_close_light_glass_ready: results.every((result) => result.command_palette_close_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette trigger light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'command_palette_item_light_glass_ready: results.every((result) => result.command_palette_item_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'command_palette_item_light_glass_ready: results.every((result) => result.command_palette_item_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette result light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_form_control_title_touch_ready:$density_qa.control_form_control_title_touch_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_form_control_title_touch_ready:$density_qa.control_form_control_title_touch_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing form control title/touch aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_form_control_title_touch_ready: results.every((result) => result.control_form_control_title_touch_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_form_control_title_touch_ready: results.every((result) => result.control_form_control_title_touch_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing form control title/touch density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll("[data-chat-search],[data-chat-composer-input],[data-chat-routing-mode],[data-chat-autoscroll-mode]")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll("[data-chat-search],[data-chat-composer-input],[data-chat-routing-mode],[data-chat-autoscroll-mode]")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing visible form control sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'expectedVisibleFormControlCount = railVisible ? 4 : 1' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'expectedVisibleFormControlCount = railVisible ? 4 : 1' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke does not require the desktop and mobile form control coverage counts" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_chat_row_option_semantic_touch_ready:$density_qa.chat_row_option_semantic_touch_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_chat_row_option_semantic_touch_ready:$density_qa.chat_row_option_semantic_touch_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing chat row option semantic/touch aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_thread_tools_menu_ready:$density_qa.thread_tools_menu_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_thread_tools_menu_ready:$density_qa.thread_tools_menu_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing thread tools menu aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_composer_tools_menu_ready:$density_qa.composer_tools_menu_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_composer_tools_menu_ready:$density_qa.composer_tools_menu_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer tools menu aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_composer_popover_ready:$density_qa.composer_popover_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_composer_popover_ready:$density_qa.composer_popover_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer popover aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_composer_popover_search_light_glass_ready:$density_qa.composer_popover_search_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_composer_popover_search_light_glass_ready:$density_qa.composer_popover_search_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer popover search light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_rail_search_light_glass_ready:$density_qa.rail_search_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_rail_search_light_glass_ready:$density_qa.rail_search_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing rail search light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_micro_surface_light_glass_ready:$density_qa.micro_surface_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_micro_surface_light_glass_ready:$density_qa.micro_surface_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing micro-surface light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_message_routing_badge_light_glass_ready:$density_qa.message_routing_badge_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_message_routing_badge_light_glass_ready:$density_qa.message_routing_badge_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing message routing badge light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_thread_intro_badge_light_glass_ready:$density_qa.thread_intro_badge_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_thread_intro_badge_light_glass_ready:$density_qa.thread_intro_badge_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing thread intro badge light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_status_trust_strip_light_glass_ready:$density_qa.status_trust_strip_light_glass_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_status_trust_strip_light_glass_ready:$density_qa.status_trust_strip_light_glass_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing status trust strip light glass aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'chat_row_option_semantic_touch_ready: results.every((result) => result.chat_row_option_semantic_touch_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'chat_row_option_semantic_touch_ready: results.every((result) => result.chat_row_option_semantic_touch_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing chat row option semantic/touch density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'thread_tools_menu_ready: results.every((result) => result.thread_tools_menu_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'thread_tools_menu_ready: results.every((result) => result.thread_tools_menu_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing thread tools menu density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'composer_tools_menu_ready: results.every((result) => result.composer_tools_menu_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'composer_tools_menu_ready: results.every((result) => result.composer_tools_menu_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer tools menu density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'composer_popover_ready: results.every((result) => result.composer_popover_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'composer_popover_ready: results.every((result) => result.composer_popover_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer popover density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'composer_popover_search_light_glass_ready: results.every((result) => result.composer_popover_search_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'composer_popover_search_light_glass_ready: results.every((result) => result.composer_popover_search_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer popover search light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'rail_search_light_glass_ready: results.every((result) => result.rail_search_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'rail_search_light_glass_ready: results.every((result) => result.rail_search_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing rail search light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'micro_surface_light_glass_ready: results.every((result) => result.micro_surface_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'micro_surface_light_glass_ready: results.every((result) => result.micro_surface_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing micro-surface light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'message_routing_badge_light_glass_ready: results.every((result) => result.message_routing_badge_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'message_routing_badge_light_glass_ready: results.every((result) => result.message_routing_badge_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing message routing badge light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'thread_intro_badge_light_glass_ready: results.every((result) => result.thread_intro_badge_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'thread_intro_badge_light_glass_ready: results.every((result) => result.thread_intro_badge_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing thread intro badge light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'status_trust_strip_light_glass_ready: results.every((result) => result.status_trust_strip_light_glass_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'status_trust_strip_light_glass_ready: results.every((result) => result.status_trust_strip_light_glass_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing status trust strip light glass density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'control_ui_row_menu_all_rows_ready:$density_qa.row_menu_all_rows_ready' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'control_ui_row_menu_all_rows_ready:$density_qa.row_menu_all_rows_ready' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing all-row row menu aggregate" >&2
   exit 1
 fi
 
-if ! grep -Fq 'row_menu_all_rows_ready: results.every((result) => result.row_menu_all_rows_ready === true)' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'row_menu_all_rows_ready: results.every((result) => result.row_menu_all_rows_ready === true)' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing all-row row menu density rollup" >&2
   exit 1
 fi
 
-if ! grep -Fq 'expectedVisibleRowMenuPanelCount = railVisible ? 3 : 0' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'expectedVisibleRowMenuPanelCount = railVisible ? 3 : 0' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke does not require every visible conversation row to own a menu panel" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-thread-tools-trigger="light-glass"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-thread-tools-trigger="light-glass"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing thread tools light-glass trigger source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-thread-tools-panel="light-glass"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-thread-tools-panel="light-glass"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing thread tools light-glass panel source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-composer-tools-trigger="light-glass"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-composer-tools-trigger="light-glass"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer tools light-glass trigger source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-composer-tools-panel="light-glass"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-composer-tools-panel="light-glass"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer tools light-glass panel source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-composer-popover-panel="light-glass"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-composer-popover-panel="light-glass"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer popover light-glass source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-composer-popover-search' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-composer-popover-search' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer popover search light-glass source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-rail-search-input' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-rail-search-input' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing badge micro-surface light-glass source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-micro-surface' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-micro-surface' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing micro-surface source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'routingBadgeDetails = microSurfaceDetails.filter((item) => item.key === "routing-safe-preview" || item.key === "routing-local-only")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'routingBadgeDetails = microSurfaceDetails.filter((item) => item.key === "routing-safe-preview" || item.key === "routing-local-only")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing message routing badge marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'threadIntroBadgeDetails = microSurfaceDetails.filter((item) => item.key.startsWith("thread-intro-"))' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'threadIntroBadgeDetails = microSurfaceDetails.filter((item) => item.key.startsWith("thread-intro-"))' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing thread intro badge marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'statusTrustBadgeNodes = Array.from(document.querySelectorAll("[data-control-ui-status-trust-badge]"))' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'statusTrustBadgeNodes = Array.from(document.querySelectorAll("[data-control-ui-status-trust-badge]"))' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing status trust badge marker sampling" >&2
   exit 1
 fi
@@ -597,17 +603,17 @@ for key in telegram-shell message-workflow evidence-inline approval-chat; do
   fi
 done
 
-if ! grep -Fq "document.querySelectorAll('[data-thread-command-menu=\"true\"] [data-control-ui-menu-item]')" "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq "document.querySelectorAll('[data-thread-command-menu=\"true\"] [data-control-ui-menu-item]')" "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing thread tools menu item sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq "document.querySelectorAll('[data-control-ui-composer-more] [data-control-ui-composer-tool-item]')" "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq "document.querySelectorAll('[data-control-ui-composer-more] [data-control-ui-composer-tool-item]')" "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer tools menu item sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll("[data-chat-composer-picker-item]")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll("[data-chat-composer-picker-item]")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing composer popover menu item sampling" >&2
   exit 1
 fi
@@ -647,32 +653,32 @@ if ! grep -Fq 'data-chat-row-menu-panel="operator-plane"' "$CONTROL_RUST_SOURCE"
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll("[data-chat-conversation]")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll("[data-chat-conversation]")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing chat row option sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'expectedVisibleChatRowOptionCount = railVisible ? 3 : 0' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'expectedVisibleChatRowOptionCount = railVisible ? 3 : 0' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke does not require desktop row options and hidden mobile row options" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-command-palette-surface=\"light-glass\"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-command-palette-surface=\"light-glass\"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette light-glass source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-command-palette-trigger="light-glass"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-command-palette-trigger="light-glass"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette trigger light-glass source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-command-palette-input=\"light-glass\"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-command-palette-input=\"light-glass\"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette input light-glass source marker sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'data-control-ui-command-palette-result=\"light-glass\"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'data-control-ui-command-palette-result=\"light-glass\"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing command palette result light-glass source marker sampling" >&2
   exit 1
 fi
@@ -698,22 +704,22 @@ for source in "$CONTROL_HTML_SOURCE" "$CONTROL_RUST_SOURCE"; do
   fi
 done
 
-if ! grep -Fq 'document.querySelectorAll("[data-chat-row-menu-toggle]")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll("[data-chat-row-menu-toggle]")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing row menu toggle sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll("[data-chat-row-menu-panel]")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll("[data-chat-row-menu-panel]")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing row menu panel sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'document.querySelectorAll("[data-chat-row-menu-item]")' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'document.querySelectorAll("[data-chat-row-menu-item]")' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing row menu item sampling" >&2
   exit 1
 fi
 
-if ! grep -Fq 'active_state_matches_aria_pressed: active ? ariaPressed === "true" : ariaPressed === "false"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'active_state_matches_aria_pressed: active ? ariaPressed === "true" : ariaPressed === "false"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing folder chip aria-pressed state parity sampling" >&2
   exit 1
 fi
@@ -813,12 +819,12 @@ if ! grep -Fq 'title="Add attachment"' "$FIXTURE_HTML"; then
   exit 1
 fi
 
-if ! grep -Fq 'visibleTextIntegrityExpected = "safe status source is"' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'visibleTextIntegrityExpected = "safe status source is"' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke is missing visible-text integrity self-test" >&2
   exit 1
 fi
 
-if ! grep -Fq 'replace(/\\s+/g, " ").trim()' "$CONTROL_BROWSER_SMOKE_SOURCE"; then
+if ! grep -Fq 'replace(/\\s+/g, " ").trim()' "${CONTROL_BROWSER_SMOKE_SOURCES[@]}"; then
   echo "Control UI browser smoke visibleText normalization is not safely escaped" >&2
   exit 1
 fi

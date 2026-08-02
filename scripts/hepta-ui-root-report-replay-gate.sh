@@ -1,15 +1,44 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
+set +x
+PS4='+ '
 set -euo pipefail
+unset BASH_ENV ENV CDPATH GLOBIGNORE RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_GEMFILE BUNDLE_PATH
+SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PATH="$SYSTEM_PATH"
+export PATH
 
-cd "$(dirname "$0")/.."
+cd "$(/usr/bin/dirname "$0")/.."
+REPO_ROOT="$(pwd -P)"
+. "$REPO_ROOT/scripts/lib/hepta-safe-managed-output-v1.sh"
 
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-/Users/qianqi/.openclaw/tmp/hepta-ui-product-readiness.mention-taxonomy-20260615}"
 REPORT_PATH="${HEPTA_UI_ROOT_REPORT_REPLAY_REPORT_PATH:-$READINESS_DIR/ui-root-report-replay-gate.json}"
+READINESS_DIR="$(hepta_safe_normalize_path readiness "$READINESS_DIR")"
+REPORT_PATH="$(hepta_safe_normalize_path report "$REPORT_PATH")"
+REPORT_PARENT="$(hepta_safe_normalize_path report_parent "$(/usr/bin/dirname "$REPORT_PATH")")"
+hepta_safe_require_directory_target readiness "$READINESS_DIR"
+hepta_safe_require_directory_target report_parent "$REPORT_PARENT"
+hepta_safe_require_regular_target report "$REPORT_PATH"
+if hepta_safe_paths_overlap "$READINESS_DIR" "$REPO_ROOT"; then
+  printf 'root-report readiness must not overlap the repository\n' >&2
+  exit 64
+fi
+if [[ "$REPORT_PATH" != "$READINESS_DIR/ui-root-report-replay-gate.json" \
+  || "$REPORT_PARENT" != "$READINESS_DIR" ]]; then
+  printf 'root-report output must be the canonical fixed readiness leaf\n' >&2
+  exit 64
+fi
+mkdir -p "$REPORT_PARENT"
+hepta_safe_revalidate_directory report_parent "$REPORT_PARENT"
 
-# The replay report is authoritative. Clear only this explicit output before
-# any configuration validation can fail, so a previous ready report cannot be
-# mistaken for the result of the current invocation.
-rm -f -- "$REPORT_PATH"
+# Clear stale evidence only when the canonical leaf proves that this gate owns
+# it. Unknown, malformed, hard-linked, or differently-owned files are retained
+# and fail closed instead of being treated as disposable gate output.
+hepta_safe_unlink_owned_json_target_if_present "$REPORT_PATH" root_report \
+  gate hepta_ui_root_report_replay_gate \
+  report_path "$REPORT_PATH" \
+  product "Hepta UI" \
+  runtime hepta
 
 STATIC_CONTRACT_PATH="$READINESS_DIR/static-contract.json"
 DESIGN_SYSTEM_REPORT_PATH="$READINESS_DIR/ui-design-system-gate.json"
@@ -1089,21 +1118,13 @@ jq -n \
     and $release_approval_intake.template_bytes > 0
     and ($release_approval_intake.markdown_sha256 | test("^[0-9a-f]{64}$"))
     and $release_approval_intake.markdown_bytes > 0
-    and (
-      (
-        $release_approval_intake.release_approval_state.waiting_for_release_approval == true
-        and $release_approval_intake.release_approval_state.release_approval_present == false
-        and $release_approval_intake.release_approval_state.release_approval_valid == false
-        and $release_approval_intake.claim_boundary.release_approval_claim_ready == false
-      )
-      or
-      (
-        $release_approval_intake.release_approval_state.waiting_for_release_approval == false
-        and $release_approval_intake.release_approval_state.release_approval_present == true
-        and $release_approval_intake.release_approval_state.release_approval_valid == true
-        and $release_approval_intake.claim_boundary.release_approval_claim_ready == true
-      )
-    )
+    and $release_approval_intake.release_approval_state.waiting_for_release_approval == true
+    and $release_approval_intake.release_approval_state.release_approval_present == false
+    and $release_approval_intake.release_approval_state.release_approval_valid == false
+    and $release_approval_intake.release_approval_state.independent_approval_verifier_ready == false
+    and $release_approval_intake.release_approval_state.self_reported_approval_can_authorize_release == false
+    and ($release_approval_intake.approval_blockers | index("independent_release_approval_verifier_unavailable")) != null
+    and $release_approval_intake.claim_boundary.release_approval_claim_ready == false
     and $release_approval_intake.release_approval_state.approval_only_can_make_release_claim == false
     and $release_approval_intake.release_approval_state.signed_notarized_stapled_artifact_present == false
     and $release_approval_intake.release_approval_state.public_distribution_artifact_written == false
@@ -1113,7 +1134,7 @@ jq -n \
     and $release_approval_intake.source_alignment.operator_briefing_refresh_ready == true
     and $release_approval_intake.source_alignment.evidence_archive_ready == true
     and $release_approval_intake.source_alignment.release_public_distribution_not_approved_risk_present == true
-    and $release_approval_intake.source_alignment.approval_valid_branch_supported == true
+    and $release_approval_intake.source_alignment.approval_valid_branch_supported == false
     and $release_approval_intake.claim_boundary.local_release_approval_intake_ready == true
     and $release_approval_intake.claim_boundary.release_execution_ready == false
     and $release_approval_intake.claim_boundary.live_product_claim_ready == false
@@ -1288,21 +1309,13 @@ jq -n \
     and $release_artifact_boundary.boundary_markdown_bytes > 0
     and $release_artifact_boundary.release_artifact_boundary.unsigned_app_bundle_probe_ready == true
     and $release_artifact_boundary.release_artifact_boundary.unsigned_app_bundle_codesign_status == "unsigned_expected"
-    and (
-      (
-        $release_artifact_boundary.release_artifact_boundary.release_approval_waiting_for_approval == true
-        and $release_artifact_boundary.release_artifact_boundary.release_approval_present == false
-        and $release_artifact_boundary.release_artifact_boundary.release_approval_valid == false
-        and $release_artifact_boundary.claim_boundary.release_approval_claim_ready == false
-      )
-      or
-      (
-        $release_artifact_boundary.release_artifact_boundary.release_approval_waiting_for_approval == false
-        and $release_artifact_boundary.release_artifact_boundary.release_approval_present == true
-        and $release_artifact_boundary.release_artifact_boundary.release_approval_valid == true
-        and $release_artifact_boundary.claim_boundary.release_approval_claim_ready == true
-      )
-    )
+    and $release_artifact_boundary.release_artifact_boundary.release_approval_waiting_for_approval == true
+    and $release_artifact_boundary.release_artifact_boundary.release_approval_present == false
+    and $release_artifact_boundary.release_artifact_boundary.release_approval_valid == false
+    and $release_artifact_boundary.release_artifact_boundary.independent_approval_verifier_ready == false
+    and $release_artifact_boundary.release_artifact_boundary.self_reported_approval_can_authorize_release == false
+    and ($release_artifact_boundary.release_blockers | index("independent_release_approval_verifier_unavailable")) != null
+    and $release_artifact_boundary.claim_boundary.release_approval_claim_ready == false
     and $release_artifact_boundary.release_artifact_boundary.approval_only_can_make_release_claim == false
     and $release_artifact_boundary.release_artifact_boundary.signed_app_artifact_present == false
     and $release_artifact_boundary.release_artifact_boundary.notarized_app_artifact_present == false
@@ -1349,77 +1362,52 @@ jq -n \
     $release_artifact_intake.release_artifact_intake_gate_ready == true
     and $release_artifact_intake.status == "ready"
     and $release_artifact_intake.intake_kind == "local_signed_notarized_stapled_artifact_intake_contract"
-    and $release_artifact_intake.intake_version == 1
+    and $release_artifact_intake.intake_version == 3
     and ($release_artifact_intake.template_sha256 | test("^[0-9a-f]{64}$"))
     and $release_artifact_intake.template_bytes > 0
     and ($release_artifact_intake.markdown_sha256 | test("^[0-9a-f]{64}$"))
     and $release_artifact_intake.markdown_bytes > 0
+    and ($release_artifact_intake.readback_sha256 | test("^[0-9a-f]{64}$"))
+    and $release_artifact_intake.readback_bytes > 0
     and $release_artifact_intake.root_report_replay_required_count_after_intake == 37
-    and (
-      (
-        $release_artifact_intake.release_artifact_state.waiting_for_release_artifact == true
-        and $release_artifact_intake.release_artifact_state.release_artifact_present == false
-        and $release_artifact_intake.release_artifact_state.release_artifact_valid == false
-        and $release_artifact_intake.release_artifact_state.signed_app_artifact_present == false
-        and $release_artifact_intake.release_artifact_state.notarized_app_artifact_present == false
-        and $release_artifact_intake.release_artifact_state.stapled_app_artifact_present == false
-        and $release_artifact_intake.release_artifact_state.signed_notarized_stapled_artifact_present == false
-        and $release_artifact_intake.release_artifact_state.public_distribution_artifact_written == false
-        and ($release_artifact_intake.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") != null)
-        and ($release_artifact_intake.release_artifact_blockers | index("public_distribution_artifact_not_written") != null)
-      )
-      or
-      (
-        $release_artifact_intake.release_artifact_state.waiting_for_release_artifact == false
-        and $release_artifact_intake.release_artifact_state.release_artifact_present == true
-        and $release_artifact_intake.release_artifact_state.release_artifact_valid == true
-        and $release_artifact_intake.release_artifact_state.signed_app_artifact_present == true
-        and $release_artifact_intake.release_artifact_state.notarized_app_artifact_present == true
-        and $release_artifact_intake.release_artifact_state.stapled_app_artifact_present == true
-        and $release_artifact_intake.release_artifact_state.signed_notarized_stapled_artifact_present == true
-        and $release_artifact_intake.release_artifact_state.local_distribution_artifact_written == true
-        and $release_artifact_intake.release_artifact_state.public_distribution_artifact_written == true
-        and $release_artifact_intake.release_artifact_state.public_upload_performed == false
-        and ($release_artifact_intake.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") == null)
-        and ($release_artifact_intake.release_artifact_blockers | index("public_distribution_artifact_not_written") == null)
-      )
-    )
+    and $release_artifact_intake.release_artifact_state.waiting_for_release_artifact == true
+    and $release_artifact_intake.release_artifact_state.release_artifact_present == false
+    and $release_artifact_intake.release_artifact_state.release_artifact_valid == false
+    and $release_artifact_intake.release_artifact_state.receipt_contract_version == 0
+    and $release_artifact_intake.release_artifact_state.evidence_readback_valid == false
+    and $release_artifact_intake.release_artifact_state.referenced_paths_absolute_and_unique == false
+    and $release_artifact_intake.release_artifact_state.signed_app_artifact_present == false
+    and $release_artifact_intake.release_artifact_state.notarized_app_artifact_present == false
+    and $release_artifact_intake.release_artifact_state.stapled_app_artifact_present == false
+    and $release_artifact_intake.release_artifact_state.signed_notarized_stapled_artifact_present == false
+    and $release_artifact_intake.release_artifact_state.local_distribution_artifact_written == false
+    and $release_artifact_intake.release_artifact_state.public_distribution_artifact_written == false
+    and $release_artifact_intake.release_artifact_state.public_upload_performed == false
+    and $release_artifact_intake.source_alignment.present_artifact_branch_supported == false
+    and $release_artifact_intake.source_alignment.independent_approval_verifier_contract_ready == false
+    and ($release_artifact_intake.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") != null)
+    and ($release_artifact_intake.release_artifact_blockers | index("release_artifact_v3_readback_not_verified") != null)
+    and ($release_artifact_intake.release_artifact_blockers | index("public_distribution_artifact_not_written") != null)
+    and ($release_artifact_intake.release_artifact_blockers | index("release_artifact_present_branch_unsupported_without_independent_approval_verifier") != null)
     and $release_artifact_intake.release_artifact_state.next_required_step == "post_artifact_ui_readiness_refresh"
     and $release_artifact_intake.source_alignment.release_approval_intake_ready == true
-    and (
-      (
-        $release_artifact_intake.source_alignment.release_approval_present == false
-        and $release_artifact_intake.source_alignment.release_approval_valid == false
-        and ($release_artifact_intake.release_artifact_blockers | index("operator_release_approval_required") != null)
-        and $release_artifact_intake.claim_boundary.release_approval_claim_ready == false
-      )
-      or
-      (
-        $release_artifact_intake.source_alignment.release_approval_present == true
-        and $release_artifact_intake.source_alignment.release_approval_valid == true
-        and ($release_artifact_intake.release_artifact_blockers | index("operator_release_approval_required") == null)
-        and $release_artifact_intake.claim_boundary.release_approval_claim_ready == true
-      )
-    )
+    and $release_artifact_intake.source_alignment.release_approval_waiting_for_approval == true
+    and $release_artifact_intake.source_alignment.release_approval_present == false
+    and $release_artifact_intake.source_alignment.release_approval_valid == false
+    and $release_artifact_intake.source_alignment.independent_approval_verifier_ready == false
+    and $release_artifact_intake.source_alignment.self_reported_approval_can_authorize_release == false
+    and ($release_artifact_intake.release_artifact_blockers | index("operator_release_approval_required")) != null
+    and ($release_artifact_intake.release_artifact_blockers | index("independent_release_approval_verifier_unavailable")) != null
+    and $release_artifact_intake.claim_boundary.release_approval_claim_ready == false
     and $release_artifact_intake.source_alignment.release_artifact_boundary_ready == true
     and $release_artifact_intake.source_alignment.release_artifact_boundary_root_report_required_count == 36
     and $release_artifact_intake.source_alignment.release_artifact_boundary_next_required_artifact_gate == "signed_notarized_stapled_artifact_gate"
     and $release_artifact_intake.source_alignment.approval_only_can_make_release_claim == false
     and $release_artifact_intake.source_alignment.boundary_signed_notarized_stapled_artifact_present == false
     and $release_artifact_intake.source_alignment.boundary_public_distribution_artifact_written == false
-    and (
-      (
-        $release_artifact_intake.release_artifact_state.signed_notarized_stapled_artifact_present == false
-        and ($release_artifact_intake.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") != null)
-        and ($release_artifact_intake.release_artifact_blockers | index("public_distribution_artifact_not_written") != null)
-      )
-      or
-      (
-        $release_artifact_intake.release_artifact_state.signed_notarized_stapled_artifact_present == true
-        and ($release_artifact_intake.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") == null)
-        and ($release_artifact_intake.release_artifact_blockers | index("public_distribution_artifact_not_written") == null)
-      )
-    )
+    and $release_artifact_intake.release_artifact_state.signed_notarized_stapled_artifact_present == false
+    and ($release_artifact_intake.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") != null)
+    and ($release_artifact_intake.release_artifact_blockers | index("public_distribution_artifact_not_written") != null)
     and $release_artifact_intake.claim_boundary.local_release_artifact_intake_ready == true
     and $release_artifact_intake.claim_boundary.release_artifact_claim_ready == false
     and $release_artifact_intake.claim_boundary.release_execution_ready == false
@@ -1434,18 +1422,22 @@ jq -n \
   def release_artifact_roundtrip_ready:
     $release_artifact_roundtrip.release_artifact_roundtrip_gate_ready == true
     and $release_artifact_roundtrip.status == "ready"
-    and $release_artifact_roundtrip.roundtrip_kind == "local_release_artifact_valid_branch_replay"
-    and $release_artifact_roundtrip.roundtrip_version == 1
+    and $release_artifact_roundtrip.roundtrip_kind == "release_artifact_v3_fail_closed_contract_replay"
+    and $release_artifact_roundtrip.roundtrip_version == 3
     and $release_artifact_roundtrip.roundtrip_ready_count == 2
     and $release_artifact_roundtrip.source_alignment.waiting_branch_ready == true
-    and $release_artifact_roundtrip.source_alignment.present_branch_ready == true
-    and $release_artifact_roundtrip.source_alignment.simulated_artifact_ready == true
+    and $release_artifact_roundtrip.source_alignment.present_branch_ready == false
+    and $release_artifact_roundtrip.source_alignment.present_artifact_branch_supported == false
+    and $release_artifact_roundtrip.source_alignment.independent_approval_verifier_contract_ready == false
+    and $release_artifact_roundtrip.source_alignment.simulated_artifact_ready == false
+    and $release_artifact_roundtrip.source_alignment.legacy_simulated_artifact_rejected == true
+    and $release_artifact_roundtrip.source_alignment.v3_valid_branch_selftest_ready == true
     and $release_artifact_roundtrip.source_alignment.waiting_branch_release_artifact_present == false
     and $release_artifact_roundtrip.source_alignment.waiting_branch_release_artifact_valid == false
-    and $release_artifact_roundtrip.source_alignment.present_branch_release_artifact_present == true
-    and $release_artifact_roundtrip.source_alignment.present_branch_release_artifact_valid == true
-    and $release_artifact_roundtrip.source_alignment.present_branch_signed_notarized_stapled_artifact_present == true
-    and $release_artifact_roundtrip.source_alignment.present_branch_public_distribution_artifact_written == true
+    and $release_artifact_roundtrip.source_alignment.present_branch_release_artifact_present == false
+    and $release_artifact_roundtrip.source_alignment.present_branch_release_artifact_valid == false
+    and $release_artifact_roundtrip.source_alignment.present_branch_signed_notarized_stapled_artifact_present == false
+    and $release_artifact_roundtrip.source_alignment.present_branch_public_distribution_artifact_written == false
     and $release_artifact_roundtrip.source_alignment.present_branch_post_artifact_refresh_required == true
     and ($release_artifact_roundtrip.source_alignment.present_branch_real_backend_receipt_missing | type) == "boolean"
     and $release_artifact_roundtrip.source_alignment.present_branch_release_artifact_claim_ready == false
@@ -1459,10 +1451,12 @@ jq -n \
     and $release_artifact_roundtrip.claim_boundary.release_claim_ready == false
     and $release_artifact_roundtrip.claim_boundary.external_actions_allowed == false
     and $release_artifact_roundtrip.claim_boundary.signing_notarization_performed == false
-    and ($release_artifact_roundtrip.source_report_sha256.simulated_artifact | test("^[0-9a-f]{64}$"))
-    and ($release_artifact_roundtrip.source_report_sha256.simulated_artifact_intake | test("^[0-9a-f]{64}$"))
-    and $release_artifact_roundtrip.side_effects.local_simulated_artifact_written == true
-    and $release_artifact_roundtrip.side_effects.local_present_branch_report_written == true
+    and ($release_artifact_roundtrip.source_report_sha256.legacy_v1_simulated_artifact | test("^[0-9a-f]{64}$"))
+    and ($release_artifact_roundtrip.source_report_sha256.legacy_v1_rejection_intake | test("^[0-9a-f]{64}$"))
+    and ($release_artifact_roundtrip.source_report_sha256.v3_intake_selftest_log | test("^[0-9a-f]{64}$"))
+    and $release_artifact_roundtrip.side_effects.local_legacy_fixture_written == true
+    and $release_artifact_roundtrip.side_effects.local_rejection_report_written == true
+    and $release_artifact_roundtrip.side_effects.local_v3_selftest_executed == true
     and $release_artifact_roundtrip.side_effects.external_mutation == false;
   def current_plan_refresh_ready:
     $current_plan_refresh.current_plan_refresh_gate_ready == true
@@ -1491,47 +1485,28 @@ jq -n \
     and ($current_plan_refresh.current_plan[3].release_artifact_present | type) == "boolean"
     and ($current_plan_refresh.current_plan[3].release_artifact_valid | type) == "boolean"
     and $current_plan_refresh.current_plan[3].local_roundtrip_ready == true
-    and $current_plan_refresh.current_plan[3].roundtrip_present_branch_ready == true
-    and $current_plan_refresh.current_plan[3].roundtrip_present_branch_valid == true
-    and (
-      (
-        $current_plan_refresh.source_alignment.release_approval_waiting_for_approval == true
-        and $current_plan_refresh.source_alignment.release_approval_present == false
-        and $current_plan_refresh.source_alignment.release_approval_valid == false
-        and ($current_plan_refresh.current_plan[3].blockers | index("operator_release_approval_required") != null)
-        and $current_plan_refresh.claim_boundary.release_approval_claim_ready == false
-      )
-      or
-      (
-        $current_plan_refresh.source_alignment.release_approval_waiting_for_approval == false
-        and $current_plan_refresh.source_alignment.release_approval_present == true
-        and $current_plan_refresh.source_alignment.release_approval_valid == true
-        and ($current_plan_refresh.current_plan[3].blockers | index("operator_release_approval_required") == null)
-        and $current_plan_refresh.claim_boundary.release_approval_claim_ready == true
-      )
-    )
-    and (
-      (
-        $current_plan_refresh.current_plan[3].waiting_for_release_artifact == true
-        and $current_plan_refresh.current_plan[3].release_artifact_present == false
-        and $current_plan_refresh.current_plan[3].release_artifact_valid == false
-        and $current_plan_refresh.current_plan[3].signed_notarized_stapled_artifact_present == false
-        and $current_plan_refresh.current_plan[3].public_distribution_artifact_written == false
-        and ($current_plan_refresh.current_plan[3].blockers | index("signed_notarized_stapled_artifact_missing") != null)
-        and ($current_plan_refresh.current_plan[3].blockers | index("public_distribution_artifact_not_written") != null)
-      )
-      or
-      (
-        $current_plan_refresh.current_plan[3].waiting_for_release_artifact == false
-        and $current_plan_refresh.current_plan[3].release_artifact_present == true
-        and $current_plan_refresh.current_plan[3].release_artifact_valid == true
-        and $current_plan_refresh.current_plan[3].signed_notarized_stapled_artifact_present == true
-        and $current_plan_refresh.current_plan[3].public_distribution_artifact_written == true
-        and $current_plan_refresh.current_plan[3].public_upload_performed == false
-        and ($current_plan_refresh.current_plan[3].blockers | index("signed_notarized_stapled_artifact_missing") == null)
-        and ($current_plan_refresh.current_plan[3].blockers | index("public_distribution_artifact_not_written") == null)
-      )
-    )
+    and $current_plan_refresh.current_plan[3].roundtrip_present_branch_ready == false
+    and $current_plan_refresh.current_plan[3].roundtrip_present_branch_valid == false
+    and $current_plan_refresh.current_plan[3].roundtrip_legacy_simulated_rejected == true
+    and $current_plan_refresh.current_plan[3].roundtrip_v3_valid_branch_selftest_ready == true
+    and $current_plan_refresh.source_alignment.release_approval_waiting_for_approval == true
+    and $current_plan_refresh.source_alignment.release_approval_present == false
+    and $current_plan_refresh.source_alignment.release_approval_valid == false
+    and $current_plan_refresh.source_alignment.independent_approval_verifier_ready == false
+    and $current_plan_refresh.source_alignment.self_reported_approval_can_authorize_release == false
+    and ($current_plan_refresh.current_plan[3].blockers | index("operator_release_approval_required")) != null
+    and ($current_plan_refresh.current_plan[3].blockers | index("independent_release_approval_verifier_unavailable")) != null
+    and ($current_plan_refresh.current_plan[3].blockers | index("release_artifact_present_branch_unsupported_without_independent_approval_verifier")) != null
+    and $current_plan_refresh.claim_boundary.release_approval_claim_ready == false
+    and $current_plan_refresh.current_plan[3].waiting_for_release_artifact == true
+    and $current_plan_refresh.current_plan[3].release_artifact_present == false
+    and $current_plan_refresh.current_plan[3].release_artifact_valid == false
+    and $current_plan_refresh.current_plan[3].signed_notarized_stapled_artifact_present == false
+    and $current_plan_refresh.current_plan[3].local_distribution_artifact_written == false
+    and $current_plan_refresh.current_plan[3].public_distribution_artifact_written == false
+    and $current_plan_refresh.current_plan[3].public_upload_performed == false
+    and ($current_plan_refresh.current_plan[3].blockers | index("signed_notarized_stapled_artifact_missing") != null)
+    and ($current_plan_refresh.current_plan[3].blockers | index("public_distribution_artifact_not_written") != null)
     and (
       (
         $current_plan_refresh.source_alignment.real_backend_receipt_present == true
@@ -1548,11 +1523,24 @@ jq -n \
     and $current_plan_refresh.source_alignment.release_artifact_intake_ready == true
     and $current_plan_refresh.source_alignment.release_artifact_intake_root_report_required_count == 37
     and $current_plan_refresh.source_alignment.release_artifact_intake_waiting_for_artifact == $current_plan_refresh.current_plan[3].waiting_for_release_artifact
+    and $current_plan_refresh.source_alignment.release_artifact_intake_artifact_present == $current_plan_refresh.current_plan[3].release_artifact_present
+    and $current_plan_refresh.source_alignment.release_artifact_intake_artifact_valid == $current_plan_refresh.current_plan[3].release_artifact_valid
+    and $current_plan_refresh.source_alignment.release_artifact_intake_artifact_present == false
+    and $current_plan_refresh.source_alignment.release_artifact_intake_artifact_valid == false
+    and $current_plan_refresh.source_alignment.release_artifact_intake_receipt_contract_version == 0
+    and $current_plan_refresh.source_alignment.release_artifact_intake_evidence_readback_valid == false
+    and $current_plan_refresh.source_alignment.release_artifact_intake_present_artifact_branch_supported == false
+    and $current_plan_refresh.source_alignment.release_artifact_intake_independent_approval_verifier_contract_ready == false
     and $current_plan_refresh.source_alignment.release_artifact_roundtrip_ready == true
     and $current_plan_refresh.source_alignment.release_artifact_roundtrip_root_report_required_count == 41
     and $current_plan_refresh.source_alignment.release_artifact_roundtrip_waiting_branch_ready == true
-    and $current_plan_refresh.source_alignment.release_artifact_roundtrip_present_branch_ready == true
-    and $current_plan_refresh.source_alignment.release_artifact_roundtrip_present_artifact_valid == true
+    and $current_plan_refresh.source_alignment.release_artifact_roundtrip_present_branch_ready == false
+    and $current_plan_refresh.source_alignment.release_artifact_roundtrip_present_artifact_present == false
+    and $current_plan_refresh.source_alignment.release_artifact_roundtrip_present_artifact_valid == false
+    and $current_plan_refresh.source_alignment.release_artifact_roundtrip_present_artifact_branch_supported == false
+    and $current_plan_refresh.source_alignment.release_artifact_roundtrip_independent_approval_verifier_contract_ready == false
+    and $current_plan_refresh.source_alignment.release_artifact_roundtrip_legacy_simulated_rejected == true
+    and $current_plan_refresh.source_alignment.release_artifact_roundtrip_v3_valid_branch_selftest_ready == true
     and $current_plan_refresh.source_alignment.selected_ids_match == true
     and ($current_plan_refresh.source_alignment.real_backend_receipt_present | type) == "boolean"
     and ($current_plan_refresh.refresh_markdown_sha256 | test("^[0-9a-f]{64}$"))
@@ -1588,44 +1576,34 @@ jq -n \
     and ($blocker_closure.closure_state.backend_receipt_claim_ready | type) == "boolean"
     and $blocker_closure.closure_state.backend_adapter_promoted == false
     and $blocker_closure.closure_state.readback_evidence_recorded == false
-    and (
-      (
-        $blocker_closure.closure_state.release_approval_present == false
-        and $blocker_closure.closure_state.release_approval_valid == false
-        and ($blocker_closure.critical_blockers | map(.id) | index("release_approval_missing")) != null
-        and $blocker_closure.claim_boundary.release_approval_claim_ready == false
-      )
-      or
-      (
-        $blocker_closure.closure_state.release_approval_present == true
-        and $blocker_closure.closure_state.release_approval_valid == true
-        and ($blocker_closure.critical_blockers | map(.id) | index("release_approval_missing")) == null
-        and $blocker_closure.claim_boundary.release_approval_claim_ready == true
-      )
-    )
-    and (
-      (
-        $blocker_closure.closure_state.release_artifact_present == false
-        and $blocker_closure.closure_state.release_artifact_valid == false
-        and $blocker_closure.closure_state.signed_notarized_stapled_artifact_present == false
-        and $blocker_closure.closure_state.public_distribution_artifact_written == false
-      )
-      or
-      (
-        $blocker_closure.closure_state.release_artifact_present == true
-        and $blocker_closure.closure_state.release_artifact_valid == true
-        and $blocker_closure.closure_state.signed_notarized_stapled_artifact_present == true
-        and $blocker_closure.closure_state.public_distribution_artifact_written == true
-        and $blocker_closure.closure_state.public_upload_performed == false
-      )
-    )
+    and $blocker_closure.closure_state.release_approval_present == false
+    and $blocker_closure.closure_state.release_approval_valid == false
+    and $blocker_closure.closure_state.independent_approval_verifier_ready == false
+    and $blocker_closure.closure_state.self_reported_approval_can_authorize_release == false
+    and ($blocker_closure.critical_blockers | map(.id) | index("release_approval_missing")) != null
+    and ($blocker_closure.critical_blockers | map(.id) | index("independent_release_approval_verifier_unavailable")) != null
+    and $blocker_closure.claim_boundary.release_approval_claim_ready == false
+    and $blocker_closure.closure_state.release_artifact_present == false
+    and $blocker_closure.closure_state.release_artifact_valid == false
+    and $blocker_closure.closure_state.release_artifact_receipt_contract_version == 0
+    and $blocker_closure.closure_state.release_artifact_evidence_readback_valid == false
+    and $blocker_closure.closure_state.release_artifact_present_artifact_branch_supported == false
+    and $blocker_closure.closure_state.release_artifact_independent_approval_verifier_contract_ready == false
+    and $blocker_closure.closure_state.signed_notarized_stapled_artifact_present == false
+    and $blocker_closure.closure_state.public_distribution_artifact_written == false
+    and $blocker_closure.closure_state.public_upload_performed == false
     and $blocker_closure.closure_state.local_release_artifact_roundtrip_ready == true
-    and $blocker_closure.closure_state.release_artifact_roundtrip_present_branch_ready == true
-    and $blocker_closure.closure_state.release_artifact_roundtrip_present_artifact_valid == true
+    and $blocker_closure.closure_state.release_artifact_roundtrip_present_branch_ready == false
+    and $blocker_closure.closure_state.release_artifact_roundtrip_present_artifact_present == false
+    and $blocker_closure.closure_state.release_artifact_roundtrip_present_artifact_valid == false
+    and $blocker_closure.closure_state.release_artifact_roundtrip_present_artifact_branch_supported == false
+    and $blocker_closure.closure_state.release_artifact_roundtrip_independent_approval_verifier_contract_ready == false
+    and $blocker_closure.closure_state.release_artifact_roundtrip_legacy_simulated_rejected == true
+    and $blocker_closure.closure_state.release_artifact_roundtrip_v3_valid_branch_selftest_ready == true
     and $blocker_closure.closure_state.next_required_artifact_gate == "signed_notarized_stapled_artifact_gate"
     and $blocker_closure.closure_state.selected_ids == ["message_search","file_upload_send","media_download_playback","notifications","room_settings"]
     and $blocker_closure.critical_blocker_count == ($blocker_closure.critical_blockers | length)
-    and ($blocker_closure.critical_blocker_count >= 0 and $blocker_closure.critical_blocker_count <= 9)
+    and ($blocker_closure.critical_blocker_count >= 0 and $blocker_closure.critical_blocker_count <= 10)
     and (
       (
         $blocker_closure.closure_state.backend_agent_available == true
@@ -1672,7 +1650,7 @@ jq -n \
       )
     )
     and ($blocker_closure.future_plan | map(.id)) == ["r62_minimum_ui_demo_gate","backend_real_receipt_return","ui_refresh_after_real_receipt","release_artifact_roundtrip_and_signed_artifact_gate"]
-    and (($blocker_closure.next_unblock_sequence | length) >= 1 and ($blocker_closure.next_unblock_sequence | length) <= 6)
+    and (($blocker_closure.next_unblock_sequence | length) >= 1 and ($blocker_closure.next_unblock_sequence | length) <= 7)
     and $blocker_closure.source_alignment.current_plan_refresh_ready == true
     and $blocker_closure.source_alignment.current_plan_ids_match == true
     and $blocker_closure.source_alignment.current_plan_root_report_required_count == 41
@@ -1686,17 +1664,30 @@ jq -n \
     and $blocker_closure.source_alignment.release_approval_intake_ready == true
     and $blocker_closure.source_alignment.release_approval_present == $blocker_closure.closure_state.release_approval_present
     and $blocker_closure.source_alignment.release_approval_valid == $blocker_closure.closure_state.release_approval_valid
+    and $blocker_closure.source_alignment.independent_approval_verifier_ready == $blocker_closure.closure_state.independent_approval_verifier_ready
+    and $blocker_closure.source_alignment.self_reported_approval_can_authorize_release == $blocker_closure.closure_state.self_reported_approval_can_authorize_release
     and $blocker_closure.source_alignment.release_artifact_boundary_ready == true
     and $blocker_closure.source_alignment.release_artifact_intake_ready == true
     and $blocker_closure.source_alignment.release_artifact_intake_root_report_required_count == 37
     and $blocker_closure.source_alignment.release_artifact_present == $blocker_closure.closure_state.release_artifact_present
     and $blocker_closure.source_alignment.release_artifact_valid == $blocker_closure.closure_state.release_artifact_valid
+    and $blocker_closure.source_alignment.release_artifact_intake_receipt_contract_version == $blocker_closure.closure_state.release_artifact_receipt_contract_version
+    and $blocker_closure.source_alignment.release_artifact_intake_evidence_readback_valid == $blocker_closure.closure_state.release_artifact_evidence_readback_valid
     and $blocker_closure.source_alignment.release_artifact_intake_signed_notarized_stapled_artifact_present == $blocker_closure.closure_state.signed_notarized_stapled_artifact_present
     and $blocker_closure.source_alignment.release_artifact_roundtrip_ready == true
     and $blocker_closure.source_alignment.release_artifact_roundtrip_root_report_required_count == 41
     and $blocker_closure.source_alignment.release_artifact_roundtrip_waiting_branch_ready == true
-    and $blocker_closure.source_alignment.release_artifact_roundtrip_present_branch_ready == true
-    and $blocker_closure.source_alignment.release_artifact_roundtrip_present_artifact_valid == true
+    and $blocker_closure.source_alignment.release_artifact_present == false
+    and $blocker_closure.source_alignment.release_artifact_valid == false
+    and $blocker_closure.source_alignment.release_artifact_present_artifact_branch_supported == false
+    and $blocker_closure.source_alignment.release_artifact_independent_approval_verifier_contract_ready == false
+    and $blocker_closure.source_alignment.release_artifact_roundtrip_present_branch_ready == false
+    and $blocker_closure.source_alignment.release_artifact_roundtrip_present_artifact_present == false
+    and $blocker_closure.source_alignment.release_artifact_roundtrip_present_artifact_valid == false
+    and $blocker_closure.source_alignment.release_artifact_roundtrip_present_artifact_branch_supported == false
+    and $blocker_closure.source_alignment.release_artifact_roundtrip_independent_approval_verifier_contract_ready == false
+    and $blocker_closure.source_alignment.release_artifact_roundtrip_legacy_simulated_rejected == true
+    and $blocker_closure.source_alignment.release_artifact_roundtrip_v3_valid_branch_selftest_ready == true
     and $blocker_closure.source_alignment.root_report_replay_required_count_after_blocker_closure == 41
     and $blocker_closure.source_alignment.selected_ids_match == true
     and $blocker_closure.claim_boundary.local_blocker_closure_ready == true
@@ -1750,7 +1741,7 @@ jq -n \
     and $backend_delivery_audit.delivery_state.root_report_replay_required_count_after_delivery_audit == 41
     and ($backend_delivery_audit.critical_blockers | length) >= $backend_delivery_audit.critical_blocker_count
     and ($backend_delivery_audit.critical_blockers | length) <= ($backend_delivery_audit.critical_blocker_count + 1)
-    and ($backend_delivery_audit.critical_blocker_count >= 0 and $backend_delivery_audit.critical_blocker_count <= 10)
+    and ($backend_delivery_audit.critical_blocker_count >= 0 and $backend_delivery_audit.critical_blocker_count <= 11)
     and (
       (
         $backend_delivery_audit.delivery_state.delivery_receipt_valid == true
@@ -1765,12 +1756,19 @@ jq -n \
     and $backend_delivery_audit.source_alignment.backend_dispatch_packet_ready == true
     and $backend_delivery_audit.source_alignment.backend_receipt_refresh_lock_ready == true
     and $backend_delivery_audit.source_alignment.blocker_closure_ready == true
-    and ($backend_delivery_audit.source_alignment.blocker_closure_critical_blocker_count >= 0 and $backend_delivery_audit.source_alignment.blocker_closure_critical_blocker_count <= 9)
+    and ($backend_delivery_audit.source_alignment.blocker_closure_critical_blocker_count >= 0 and $backend_delivery_audit.source_alignment.blocker_closure_critical_blocker_count <= 10)
     and $backend_delivery_audit.source_alignment.selected_ids_match == true
     and $backend_delivery_audit.source_alignment.dispatch_archive_match == true
     and $backend_delivery_audit.source_alignment.root_report_replay_required_count_after_blocker_closure == 41
     and $backend_delivery_audit.source_alignment.blocker_closure_local_release_artifact_roundtrip_ready == true
-    and $backend_delivery_audit.source_alignment.blocker_closure_release_artifact_roundtrip_present_artifact_valid == true
+    and $backend_delivery_audit.source_alignment.blocker_closure_release_artifact_present == false
+    and $backend_delivery_audit.source_alignment.blocker_closure_release_artifact_valid == false
+    and $backend_delivery_audit.source_alignment.blocker_closure_release_artifact_roundtrip_present_artifact_present == false
+    and $backend_delivery_audit.source_alignment.blocker_closure_release_artifact_roundtrip_present_artifact_valid == false
+    and $backend_delivery_audit.source_alignment.blocker_closure_release_artifact_receipt_contract_version == 0
+    and $backend_delivery_audit.source_alignment.blocker_closure_release_artifact_evidence_readback_valid == false
+    and $backend_delivery_audit.source_alignment.blocker_closure_release_artifact_roundtrip_legacy_simulated_rejected == true
+    and $backend_delivery_audit.source_alignment.blocker_closure_release_artifact_roundtrip_v3_valid_branch_selftest_ready == true
     and $backend_delivery_audit.source_alignment.root_report_replay_required_count_after_delivery_audit == 41
     and $backend_delivery_audit.claim_boundary.local_backend_delivery_audit_ready == true
     and ($backend_delivery_audit.claim_boundary.real_backend_receipt_claim_ready | type) == "boolean"
@@ -1801,7 +1799,7 @@ jq -n \
     and $backend_delivery_receipt_roundtrip.source_alignment.present_branch_backend_delivery_claim_ready == true
     and (
       $backend_delivery_receipt_roundtrip.source_alignment.present_branch_critical_blocker_count >= 0
-      and $backend_delivery_receipt_roundtrip.source_alignment.present_branch_critical_blocker_count <= 9
+      and $backend_delivery_receipt_roundtrip.source_alignment.present_branch_critical_blocker_count <= 10
     )
     and ($backend_delivery_receipt_roundtrip.source_alignment.present_branch_real_backend_receipt_present | type) == "boolean"
     and ($backend_delivery_receipt_roundtrip.source_alignment.present_branch_backend_receipt_valid | type) == "boolean"
@@ -1879,7 +1877,7 @@ jq -n \
     and $risk_future_plan.latest_plan_ids == ["r151_harsh_top_design_v46_badge_micro_surface_light_glass_minimum_ui_demo_gate","backend_delivery_receipt_return","backend_real_receipt_return","ui_refresh_after_real_receipt","release_artifact_roundtrip_and_signed_artifact_gate"]
     and ($risk_future_plan.critical_blockers | length) >= $risk_future_plan.critical_blocker_count
     and ($risk_future_plan.critical_blockers | length) <= ($risk_future_plan.critical_blocker_count + 1)
-    and ($risk_future_plan.critical_blocker_count >= 0 and $risk_future_plan.critical_blocker_count <= 10)
+    and ($risk_future_plan.critical_blocker_count >= 0 and $risk_future_plan.critical_blocker_count <= 11)
     and (
       (
         $risk_future_plan.source_alignment.backend_delivery_receipt_present == false
@@ -2327,6 +2325,9 @@ jq -n \
         release_approval_intake_waiting_for_approval:$release_approval_intake.release_approval_state.waiting_for_release_approval,
         release_approval_present:$release_approval_intake.release_approval_state.release_approval_present,
         release_approval_valid:$release_approval_intake.release_approval_state.release_approval_valid,
+        independent_approval_verifier_ready:$release_approval_intake.release_approval_state.independent_approval_verifier_ready,
+        self_reported_approval_can_authorize_release:$release_approval_intake.release_approval_state.self_reported_approval_can_authorize_release,
+        approval_valid_branch_supported:$release_approval_intake.source_alignment.approval_valid_branch_supported,
         release_approval_intake_template_sha256:$release_approval_intake.template_sha256,
         release_approval_intake_template_bytes:$release_approval_intake.template_bytes,
         release_approval_intake_root_report_required_count:$release_approval_intake.release_approval_state.root_report_replay_required_count_after_intake,
@@ -2395,6 +2396,8 @@ jq -n \
         release_artifact_valid:$release_artifact_intake.release_artifact_state.release_artifact_valid,
         release_artifact_intake_artifact_present:$release_artifact_intake.release_artifact_state.release_artifact_present,
         release_artifact_intake_artifact_valid:$release_artifact_intake.release_artifact_state.release_artifact_valid,
+        release_artifact_intake_present_artifact_branch_supported:$release_artifact_intake.source_alignment.present_artifact_branch_supported,
+        release_artifact_intake_independent_approval_verifier_contract_ready:$release_artifact_intake.source_alignment.independent_approval_verifier_contract_ready,
         release_artifact_intake_signed_notarized_stapled_artifact_present:$release_artifact_intake.release_artifact_state.signed_notarized_stapled_artifact_present,
         release_artifact_intake_public_distribution_artifact_written:$release_artifact_intake.release_artifact_state.public_distribution_artifact_written,
         release_artifact_intake_template_sha256:$release_artifact_intake.template_sha256,
@@ -2404,9 +2407,14 @@ jq -n \
         release_artifact_roundtrip_present_branch_ready:$release_artifact_roundtrip.source_alignment.present_branch_ready,
         release_artifact_roundtrip_waiting_branch_ready:$release_artifact_roundtrip.source_alignment.waiting_branch_ready,
         release_artifact_roundtrip_present_artifact_valid:$release_artifact_roundtrip.source_alignment.present_branch_release_artifact_valid,
+        release_artifact_roundtrip_present_artifact_branch_supported:$release_artifact_roundtrip.source_alignment.present_artifact_branch_supported,
+        release_artifact_roundtrip_independent_approval_verifier_contract_ready:$release_artifact_roundtrip.source_alignment.independent_approval_verifier_contract_ready,
         release_artifact_roundtrip_root_report_required_count:$release_artifact_roundtrip.source_alignment.root_report_replay_required_count_after_roundtrip,
-        release_artifact_roundtrip_simulated_artifact_sha256:$release_artifact_roundtrip.source_report_sha256.simulated_artifact,
-        release_artifact_roundtrip_present_report_sha256:$release_artifact_roundtrip.source_report_sha256.simulated_artifact_intake,
+        release_artifact_roundtrip_legacy_simulated_rejected:$release_artifact_roundtrip.source_alignment.legacy_simulated_artifact_rejected,
+        release_artifact_roundtrip_v3_valid_branch_selftest_ready:$release_artifact_roundtrip.source_alignment.v3_valid_branch_selftest_ready,
+        release_artifact_roundtrip_legacy_artifact_sha256:$release_artifact_roundtrip.source_report_sha256.legacy_v1_simulated_artifact,
+        release_artifact_roundtrip_legacy_rejection_report_sha256:$release_artifact_roundtrip.source_report_sha256.legacy_v1_rejection_intake,
+        release_artifact_roundtrip_v3_selftest_log_sha256:$release_artifact_roundtrip.source_report_sha256.v3_intake_selftest_log,
         current_plan_refresh_ready:$current_plan_refresh.current_plan_refresh_gate_ready,
         current_plan_refresh_minimum_gate_id:$current_plan_refresh.current_minimum_gate.gate_id,
         current_plan_refresh_root_report_required_count:$current_plan_refresh.current_minimum_gate.root_report_replay_required_count_after_current_plan_refresh,
@@ -2624,10 +2632,16 @@ jq -n \
         release_artifact_intake_root_report_required_count:$release_artifact_intake.root_report_replay_required_count_after_intake,
         release_artifact_intake_waiting_for_artifact:$release_artifact_intake.release_artifact_state.waiting_for_release_artifact,
         release_artifact_intake_release_artifact_valid:$release_artifact_intake.release_artifact_state.release_artifact_valid,
+        release_artifact_intake_present_artifact_branch_supported:$release_artifact_intake.source_alignment.present_artifact_branch_supported,
+        release_artifact_intake_independent_approval_verifier_contract_ready:$release_artifact_intake.source_alignment.independent_approval_verifier_contract_ready,
         release_artifact_roundtrip_ready:$release_artifact_roundtrip.release_artifact_roundtrip_gate_ready,
         release_artifact_roundtrip_root_report_required_count:$release_artifact_roundtrip.source_alignment.root_report_replay_required_count_after_roundtrip,
         release_artifact_roundtrip_present_branch_ready:$release_artifact_roundtrip.source_alignment.present_branch_ready,
         release_artifact_roundtrip_present_artifact_valid:$release_artifact_roundtrip.source_alignment.present_branch_release_artifact_valid,
+        release_artifact_roundtrip_present_artifact_branch_supported:$release_artifact_roundtrip.source_alignment.present_artifact_branch_supported,
+        release_artifact_roundtrip_independent_approval_verifier_contract_ready:$release_artifact_roundtrip.source_alignment.independent_approval_verifier_contract_ready,
+        release_artifact_roundtrip_legacy_simulated_rejected:$release_artifact_roundtrip.source_alignment.legacy_simulated_artifact_rejected,
+        release_artifact_roundtrip_v3_valid_branch_selftest_ready:$release_artifact_roundtrip.source_alignment.v3_valid_branch_selftest_ready,
         current_plan_refresh_ids:$current_plan_refresh.current_plan_ids,
         current_plan_refresh_minimum_gate_id:$current_plan_refresh.current_minimum_gate.gate_id,
         current_plan_refresh_root_report_required_count:$current_plan_refresh.current_minimum_gate.root_report_replay_required_count_after_current_plan_refresh,
@@ -2707,10 +2721,6 @@ jq -n \
         external_mutation:false
       }
     }' >"$REPORT_TMP"
-
-if [[ "${HEPTA_UI_ROOT_REPORT_REPLAY_DEBUG_COPY:-0}" == "1" ]]; then
-  cp "$REPORT_TMP" "$REPORT_PATH.debug"
-fi
 
 jq -e '
   .status == "ready"
@@ -2879,21 +2889,13 @@ jq -e '
   and .source_alignment.operator_briefing_refresh_dispatch_archive_sha256 == .source_alignment.backend_dispatch_packet_archive_sha256
   and (.source_alignment.operator_briefing_refresh_markdown_sha256 | test("^[0-9a-f]{64}$"))
   and .source_alignment.release_approval_intake_ready == true
-  and (
-    (
-      .source_alignment.release_approval_intake_waiting_for_approval == true
-      and .source_alignment.release_approval_present == false
-      and .source_alignment.release_approval_valid == false
-      and .claim_boundary.release_approval_claim_ready == false
-    )
-    or
-    (
-      .source_alignment.release_approval_intake_waiting_for_approval == false
-      and .source_alignment.release_approval_present == true
-      and .source_alignment.release_approval_valid == true
-      and .claim_boundary.release_approval_claim_ready == true
-    )
-  )
+  and .source_alignment.release_approval_intake_waiting_for_approval == true
+  and .source_alignment.release_approval_present == false
+  and .source_alignment.release_approval_valid == false
+  and .source_alignment.independent_approval_verifier_ready == false
+  and .source_alignment.self_reported_approval_can_authorize_release == false
+  and .source_alignment.approval_valid_branch_supported == false
+  and .claim_boundary.release_approval_claim_ready == false
   and (.source_alignment.release_approval_intake_template_sha256 | test("^[0-9a-f]{64}$"))
   and .source_alignment.release_approval_intake_template_bytes > 0
   and .source_alignment.release_approval_intake_root_report_required_count == 34
@@ -2957,32 +2959,27 @@ jq -e '
   and (.source_alignment.release_artifact_boundary_markdown_sha256 | test("^[0-9a-f]{64}$"))
   and .source_alignment.release_artifact_intake_ready == true
   and .source_alignment.release_artifact_intake_root_report_required_count == 37
-  and (
-    (
-      .source_alignment.release_artifact_intake_waiting_for_artifact == true
-      and .source_alignment.release_artifact_present == false
-      and .source_alignment.release_artifact_valid == false
-      and .source_alignment.release_artifact_intake_signed_notarized_stapled_artifact_present == false
-      and .source_alignment.release_artifact_intake_public_distribution_artifact_written == false
-    )
-    or
-    (
-      .source_alignment.release_artifact_intake_waiting_for_artifact == false
-      and .source_alignment.release_artifact_present == true
-      and .source_alignment.release_artifact_valid == true
-      and .source_alignment.release_artifact_intake_signed_notarized_stapled_artifact_present == true
-      and .source_alignment.release_artifact_intake_public_distribution_artifact_written == true
-    )
-  )
+  and .source_alignment.release_artifact_intake_waiting_for_artifact == true
+  and .source_alignment.release_artifact_present == false
+  and .source_alignment.release_artifact_valid == false
+  and .source_alignment.release_artifact_intake_present_artifact_branch_supported == false
+  and .source_alignment.release_artifact_intake_independent_approval_verifier_contract_ready == false
+  and .source_alignment.release_artifact_intake_signed_notarized_stapled_artifact_present == false
+  and .source_alignment.release_artifact_intake_public_distribution_artifact_written == false
   and (.source_alignment.release_artifact_intake_markdown_sha256 | test("^[0-9a-f]{64}$"))
   and .source_alignment.release_artifact_roundtrip_ready == true
   and .source_alignment.release_artifact_roundtrip_ready_count == 2
-  and .source_alignment.release_artifact_roundtrip_present_branch_ready == true
+  and .source_alignment.release_artifact_roundtrip_present_branch_ready == false
   and .source_alignment.release_artifact_roundtrip_waiting_branch_ready == true
-  and .source_alignment.release_artifact_roundtrip_present_artifact_valid == true
+  and .source_alignment.release_artifact_roundtrip_present_artifact_valid == false
+  and .source_alignment.release_artifact_roundtrip_present_artifact_branch_supported == false
+  and .source_alignment.release_artifact_roundtrip_independent_approval_verifier_contract_ready == false
+  and .source_alignment.release_artifact_roundtrip_legacy_simulated_rejected == true
+  and .source_alignment.release_artifact_roundtrip_v3_valid_branch_selftest_ready == true
   and .source_alignment.release_artifact_roundtrip_root_report_required_count == 41
-  and (.source_alignment.release_artifact_roundtrip_simulated_artifact_sha256 | test("^[0-9a-f]{64}$"))
-  and (.source_alignment.release_artifact_roundtrip_present_report_sha256 | test("^[0-9a-f]{64}$"))
+  and (.source_alignment.release_artifact_roundtrip_legacy_artifact_sha256 | test("^[0-9a-f]{64}$"))
+  and (.source_alignment.release_artifact_roundtrip_legacy_rejection_report_sha256 | test("^[0-9a-f]{64}$"))
+  and (.source_alignment.release_artifact_roundtrip_v3_selftest_log_sha256 | test("^[0-9a-f]{64}$"))
   and .source_alignment.current_plan_refresh_ready == true
   and .source_alignment.current_plan_refresh_minimum_gate_id == "r62_minimum_ui_demo_gate"
   and .source_alignment.current_plan_refresh_root_report_required_count == 41
@@ -2990,7 +2987,7 @@ jq -e '
   and (.source_alignment.current_plan_refresh_markdown_sha256 | test("^[0-9a-f]{64}$"))
   and .source_alignment.blocker_closure_ready == true
   and .source_alignment.blocker_closure_root_report_required_count == 41
-  and (.source_alignment.blocker_closure_critical_blocker_count >= 0 and .source_alignment.blocker_closure_critical_blocker_count <= 9)
+  and (.source_alignment.blocker_closure_critical_blocker_count >= 0 and .source_alignment.blocker_closure_critical_blocker_count <= 10)
   and (.source_alignment.blocker_closure_backend_agent_available | type) == "boolean"
   and (.source_alignment.blocker_closure_real_backend_receipt_present | type) == "boolean"
   and .source_alignment.blocker_closure_release_artifact_valid == .source_alignment.release_artifact_valid
@@ -3003,7 +3000,7 @@ jq -e '
       and .source_alignment.backend_delivery_audit_delivery_receipt_valid == false
       and .source_alignment.backend_delivery_audit_waiting_for_delivery_receipt == true
       and .source_alignment.backend_delivery_audit_critical_blocker_count >= 1
-      and .source_alignment.backend_delivery_audit_critical_blocker_count <= 10
+      and .source_alignment.backend_delivery_audit_critical_blocker_count <= 11
       and .source_alignment.backend_delivery_audit_backend_delivery_claim_ready == false
       and .claim_boundary.backend_delivery_claim_ready == false
     )
@@ -3014,7 +3011,7 @@ jq -e '
       and .source_alignment.backend_delivery_audit_waiting_for_delivery_receipt == false
       and (
         .source_alignment.backend_delivery_audit_critical_blocker_count >= 0
-        and .source_alignment.backend_delivery_audit_critical_blocker_count <= 9
+        and .source_alignment.backend_delivery_audit_critical_blocker_count <= 11
       )
       and .source_alignment.backend_delivery_audit_backend_delivery_claim_ready == true
       and .claim_boundary.backend_delivery_claim_ready == true
@@ -3077,7 +3074,7 @@ jq -e '
   and .source_alignment.risk_future_plan_action_matrix_case_count == 15
   and .source_alignment.risk_future_plan_harsh_action_matrix_ready == true
   and .source_alignment.risk_future_plan_harsh_action_failure_count == 0
-  and (.source_alignment.risk_future_plan_critical_blocker_count >= 0 and .source_alignment.risk_future_plan_critical_blocker_count <= 10)
+  and (.source_alignment.risk_future_plan_critical_blocker_count >= 0 and .source_alignment.risk_future_plan_critical_blocker_count <= 11)
   and .source_alignment.risk_future_plan_root_report_required_count == 45
   and (.source_alignment.risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
   and (.source_alignment.evidence_archive_sha256 | test("^[0-9a-f]{64}$"))
@@ -3191,8 +3188,15 @@ jq -e '
   and .future_plan_replay.release_artifact_intake_release_artifact_valid == .source_alignment.release_artifact_valid
   and .future_plan_replay.release_artifact_roundtrip_ready == true
   and .future_plan_replay.release_artifact_roundtrip_root_report_required_count == 41
-  and .future_plan_replay.release_artifact_roundtrip_present_branch_ready == true
-  and .future_plan_replay.release_artifact_roundtrip_present_artifact_valid == true
+  and .future_plan_replay.release_artifact_intake_release_artifact_valid == false
+  and .future_plan_replay.release_artifact_intake_present_artifact_branch_supported == false
+  and .future_plan_replay.release_artifact_intake_independent_approval_verifier_contract_ready == false
+  and .future_plan_replay.release_artifact_roundtrip_present_branch_ready == false
+  and .future_plan_replay.release_artifact_roundtrip_present_artifact_valid == false
+  and .future_plan_replay.release_artifact_roundtrip_present_artifact_branch_supported == false
+  and .future_plan_replay.release_artifact_roundtrip_independent_approval_verifier_contract_ready == false
+  and .future_plan_replay.release_artifact_roundtrip_legacy_simulated_rejected == true
+  and .future_plan_replay.release_artifact_roundtrip_v3_valid_branch_selftest_ready == true
   and .future_plan_replay.current_plan_refresh_ids == ["r62_minimum_ui_demo_gate","backend_real_receipt_return","ui_refresh_after_real_receipt","release_artifact_roundtrip_and_signed_artifact_gate"]
   and .future_plan_replay.current_plan_refresh_minimum_gate_id == "r62_minimum_ui_demo_gate"
   and .future_plan_replay.current_plan_refresh_root_report_required_count == 41
@@ -3200,8 +3204,8 @@ jq -e '
   and .future_plan_replay.current_plan_refresh_next_required_artifact_gate == "signed_notarized_stapled_artifact_gate"
   and .future_plan_replay.blocker_closure_ready == true
   and .future_plan_replay.blocker_closure_root_report_required_count == 41
-  and (.future_plan_replay.blocker_closure_critical_blocker_count >= 0 and .future_plan_replay.blocker_closure_critical_blocker_count <= 9)
-  and ((.future_plan_replay.blocker_closure_next_unblock_sequence | length) >= 1 and (.future_plan_replay.blocker_closure_next_unblock_sequence | length) <= 6)
+  and (.future_plan_replay.blocker_closure_critical_blocker_count >= 0 and .future_plan_replay.blocker_closure_critical_blocker_count <= 10)
+  and ((.future_plan_replay.blocker_closure_next_unblock_sequence | length) >= 1 and (.future_plan_replay.blocker_closure_next_unblock_sequence | length) <= 7)
   and .future_plan_replay.backend_delivery_audit_ready == true
   and .future_plan_replay.backend_delivery_audit_root_report_required_count == 41
   and .future_plan_replay.backend_delivery_audit_waiting_for_delivery_receipt == .source_alignment.backend_delivery_audit_waiting_for_delivery_receipt
@@ -3276,34 +3280,19 @@ jq -e '
   and .future_plan_replay.risk_future_plan_action_matrix_ready == true
   and .future_plan_replay.risk_future_plan_action_matrix_case_count == 15
   and .future_plan_replay.risk_future_plan_root_report_required_count == 45
-  and (.future_plan_replay.risk_future_plan_critical_blocker_count >= 0 and .future_plan_replay.risk_future_plan_critical_blocker_count <= 10)
+  and (.future_plan_replay.risk_future_plan_critical_blocker_count >= 0 and .future_plan_replay.risk_future_plan_critical_blocker_count <= 11)
   and ((.future_plan_replay.risk_future_plan_next_unblock_sequence | length) >= 1 and (.future_plan_replay.risk_future_plan_next_unblock_sequence | length) <= 6)
   and (.future_plan_replay.backend_priority_ids | length) == 12
   and (.future_plan_replay.backend_priority_ids[0] == "message_search")
   and (.future_plan_replay.backend_priority_ids[1] == "file_upload_send")
   and (.future_plan_replay.backend_priority_ids[2] == "media_download_playback")
-  and (
-    (
-      .source_alignment.release_approval_valid == false
-      and (.future_plan_replay.release_blockers | index("operator_release_approval_required")) != null
-    )
-    or
-    (
-      .source_alignment.release_approval_valid == true
-      and (.future_plan_replay.release_blockers | index("operator_release_approval_required")) == null
-    )
-  )
-  and (
-    (
-      .source_alignment.release_artifact_intake_public_distribution_artifact_written == false
-      and (.future_plan_replay.release_blockers | index("public_distribution_artifact_not_written")) != null
-    )
-    or
-    (
-      .source_alignment.release_artifact_intake_public_distribution_artifact_written == true
-      and (.future_plan_replay.release_blockers | index("public_distribution_artifact_not_written")) == null
-    )
-  )
+  and .source_alignment.release_approval_valid == false
+  and .source_alignment.independent_approval_verifier_ready == false
+  and .source_alignment.self_reported_approval_can_authorize_release == false
+  and (.future_plan_replay.release_blockers | index("operator_release_approval_required")) != null
+  and (.future_plan_replay.release_blockers | index("independent_release_approval_verifier_unavailable")) != null
+  and .source_alignment.release_artifact_intake_public_distribution_artifact_written == false
+  and (.future_plan_replay.release_blockers | index("public_distribution_artifact_not_written")) != null
   and .claim_boundary.live_product_claim_ready == false
   and .claim_boundary.public_distribution_claim_ready == false
   and .claim_boundary.release_claim_ready == false
@@ -3341,6 +3330,9 @@ jq -e '
   and .side_effects.external_mutation == false
 ' "$REPORT_TMP" >/dev/null
 
-mkdir -p "$(dirname "$REPORT_PATH")"
-cp "$REPORT_TMP" "$REPORT_PATH"
+hepta_safe_atomic_replace_owned_json "$REPORT_TMP" "$REPORT_PATH" root_report \
+  gate hepta_ui_root_report_replay_gate \
+  report_path "$REPORT_PATH" \
+  product "Hepta UI" \
+  runtime hepta
 cat "$REPORT_TMP"

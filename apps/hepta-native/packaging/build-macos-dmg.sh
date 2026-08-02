@@ -1,278 +1,1021 @@
-#!/bin/bash
-#
-# Build a fully codesigned, notarized, and stapled macOS DMG for Hepta,
-# with the Applications-folder icon fix applied.
-#
-# Why this script exists:
-#   1. cargo-packager's built-in DMG output triggers a macOS Tahoe bug
-#      where the Applications folder icon is invisible. We have to fix
-#      the DMG layout post-build, which invalidates any DMG signature.
-#   2. cargo-packager 0.10.1 hard-codes `--timestamp` with no retry, and
-#      Apple's timestamp service occasionally returns "A timestamp was
-#      expected but was not found." When that happens, cargo-packager
-#      dies and a fresh build re-hits the same flaky service.
-#   3. cargo-packager's error reporting (shell.rs:86) reads `errno`
-#      after a failed subprocess, which is garbage data -- it surfaces
-#      as the misleading "File exists (os error 17)".
-#
-# Strategy: do all codesign and notarization ourselves so we can retry
-# on transient timestamp failures. cargo-packager is reduced to building
-# the unsigned .app and DMG layout.
-#
-# Flow:
-#   1. Comment out signing_identity in Cargo.toml so cargo-packager
-#      skips both codesign and notarize entirely.
-#   2. Run `cargo packager --release` with APPLE_* unset. Produces an
-#      unsigned .app and unsigned DMG.
-#   3. Codesign the standalone .app (binary first, then bundle) with
-#      hardened runtime + entitlements + timestamp, retrying on
-#      timestamp-service transient failures.
-#   4. Apply the Applications-folder icon fix to the DMG.
-#   5. Mount the fixed DMG read-write, replace the unsigned .app inside
-#      with our signed copy, recompress.
-#   6. Codesign the DMG itself (with retry on timestamp failures).
-#   7. Submit the DMG to Apple's notary service via xcrun notarytool.
-#   8. Staple the notarization ticket and verify with spctl.
-#
-# Required environment variables (none are written into this script):
-#   APPLE_ID        Apple ID email used for notarization
-#   APPLE_PASSWORD  App-specific password for that Apple ID
-#   APPLE_TEAM_ID   Apple Developer Team ID
-#
-# The Developer ID signing certificate name is read from
-# package.metadata.packager.macos.signing_identity in Cargo.toml.
-#
-# Usage:
-#   APPLE_ID=… APPLE_PASSWORD=… APPLE_TEAM_ID=… ./packaging/build-macos-dmg.sh
+#!/bin/bash -p
+set +x
+PS4='+ '
+set -Eeuo pipefail
 
-set -euo pipefail
+# Capture release authority before the first external command, immediately
+# remove it from the exported environment, and never expose it to the unsigned
+# package lane or ordinary signing/readback tools.
+CAPTURED_SIGNING_IDENTITY="${HEPTA_SIGNING_IDENTITY:-}"
+CAPTURED_EXPECTED_TEAM_ID="${HEPTA_EXPECTED_TEAM_ID:-}"
+CAPTURED_NOTARY_PROFILE="${HEPTA_NOTARY_PROFILE:-${HEPTA_NATIVE_NOTARYTOOL_PROFILE:-}}"
+CAPTURED_DIRECT_APPLE_CREDENTIALS_PRESENT=false
+if [[ -n "${APPLE_ID:-}" || -n "${APPLE_PASSWORD:-}" || -n "${APPLE_TEAM_ID:-}" ]]; then
+  CAPTURED_DIRECT_APPLE_CREDENTIALS_PRESENT=true
+fi
+unset HEPTA_SIGNING_IDENTITY HEPTA_EXPECTED_TEAM_ID
+unset HEPTA_NOTARY_PROFILE HEPTA_NATIVE_NOTARYTOOL_PROFILE
+unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+unset RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_GEMFILE BUNDLE_PATH
+export -n CAPTURED_SIGNING_IDENTITY CAPTURED_EXPECTED_TEAM_ID CAPTURED_NOTARY_PROFILE
+export -n CAPTURED_DIRECT_APPLE_CREDENTIALS_PRESENT
+SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PATH="$SYSTEM_PATH"
+TMPDIR="/private/tmp"
+export PATH TMPDIR
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CARGO_TOML="$PROJECT_DIR/Cargo.toml"
-ENTITLEMENTS="$PROJECT_DIR/packaging/Entitlements.plist"
-BG_IMAGE="$PROJECT_DIR/packaging/Hepta Native macOS dmg background.png"
+# Sign, notarize, and staple a DMG that contains one exact, previously-built
+# Hepta.app. The release lane never rebuilds or edits Cargo.toml: when no app is
+# supplied it first invokes the pinned formal-unsigned pipeline, then consumes
+# that output unchanged apart from Apple code-signing metadata.
 
-cd "$PROJECT_DIR"
+APP_PATH=""
+APP_RECEIPT_PATH="${HEPTA_NATIVE_UNSIGNED_APP_RECEIPT_PATH:-}"
+OUTPUT_PATH=""
+RECEIPT_PATH="${HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH:-}"
+BOOTSTRAP_TOOLS=0
+PREFLIGHT_ONLY=0
 
-# --- Validate required env vars and config files ------------------------------
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --app-path) APP_PATH="${2:-}"; shift 2 ;;
+    --app-receipt) APP_RECEIPT_PATH="${2:-}"; shift 2 ;;
+    --output) OUTPUT_PATH="${2:-}"; shift 2 ;;
+    --receipt) RECEIPT_PATH="${2:-}"; shift 2 ;;
+    --bootstrap-tools) BOOTSTRAP_TOOLS=1; shift ;;
+    --preflight) PREFLIGHT_ONLY=1; shift ;;
+    --help|-h)
+      cat <<'EOF'
+usage: packaging/build-macos-dmg.sh [options]
 
-for var in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-    if [[ -z "${!var:-}" ]]; then
-        echo "Error: $var is not set." >&2
-        echo "Required env vars: APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID" >&2
-        exit 1
-    fi
+Options:
+  --app-path PATH       Exact formal unsigned Hepta.app to consume. When
+                        omitted, the canonical current-package gate creates it.
+  --app-receipt PATH    Required current-package JSON receipt for --app-path.
+                        May also be set with HEPTA_NATIVE_UNSIGNED_APP_RECEIPT_PATH.
+  --output PATH         Output DMG (default: dist/Hepta_<version>_<arch>.dmg).
+  --receipt PATH        JSON release receipt (default: <output>.receipt.json).
+  --bootstrap-tools     Allow the formal unsigned lane to install pinned tools.
+  --preflight           Validate identity, credentials, tools, and inputs only.
+
+Required authority:
+  HEPTA_SIGNING_IDENTITY, or package.metadata.packager.macos.signing_identity
+  HEPTA_NOTARY_PROFILE (keychain profile only; direct password argv is rejected)
+
+Actual signing/notary execution is disabled until an independent release-
+approval verifier is available. Only --preflight is currently supported.
+EOF
+      exit 0
+      ;;
+    *) echo "unknown argument: $1" >&2; exit 64 ;;
+  esac
 done
 
-if [[ ! -f "$ENTITLEMENTS" ]]; then
-    echo "Error: Entitlements file not found at $ENTITLEMENTS" >&2
-    exit 1
-fi
-if [[ ! -f "$BG_IMAGE" ]]; then
-    echo "Error: DMG background image not found at $BG_IMAGE" >&2
-    exit 1
+# Signing, notarization submission, stapling, and DMG attachment are release
+# approval-scoped actions.  This lane has no independent verifier that can bind
+# an approval artifact to the exact source/action tuple, so actual execution is
+# deliberately unreachable.  Keep this guard immediately after argument
+# parsing and before tool discovery, output creation, package staging, or any
+# release side effect.  A future implementation must replace this constant
+# guard with independent approval verification, not an environment boolean.
+if [[ "$PREFLIGHT_ONLY" != "1" ]]; then
+  printf '%s\n' 'independent_release_approval_verifier_unavailable: actual release execution is disabled; run --preflight only' >&2
+  exit 77
 fi
 
-# Read signing_identity from Cargo.toml. Use [[:space:]] -- BSD sed on macOS
-# does not understand \s.
-SIGNING_IDENTITY=$(sed -n 's/^signing_identity[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CARGO_TOML")
+CANONICAL_HOME="$(/usr/bin/env -i PATH="$SYSTEM_PATH" /usr/bin/ruby --disable-gems -retc -e 'print Etc.getpwuid(Process.uid).dir')"
+[[ "$CANONICAL_HOME" == /* && -d "$CANONICAL_HOME" && ! -L "$CANONICAL_HOME" ]] || {
+  printf 'could not resolve canonical OS-account home\n' >&2
+  exit 2
+}
+PATH="$SYSTEM_PATH:$CANONICAL_HOME/.cargo/bin"
+HOME="$CANONICAL_HOME"
+export PATH HOME
+
+SCRIPT_DIR="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+REPO_ROOT="$(cd "$PROJECT_DIR/../.." && pwd -P)"
+CARGO_TOML="$PROJECT_DIR/Cargo.toml"
+ENTITLEMENTS="$SCRIPT_DIR/Entitlements.plist"
+APP_BUNDLE_FINGERPRINT="$SCRIPT_DIR/app-bundle-fingerprint-v1.rb"
+FINDER_BOOKMARK_RESOLVER="$SCRIPT_DIR/resolve-finder-bookmark-v1.swift"
+
+[[ "$(uname -s)" == "Darwin" ]] || { echo "macOS release packaging requires Darwin" >&2; exit 2; }
+for command in awk codesign ditto find hdiutil jq mount plutil readlink ruby security shasum spctl swift swiftc xattr xcrun; do
+  command -v "$command" >/dev/null 2>&1 || { echo "$command is required" >&2; exit 2; }
+done
+PRODUCT_VERSION="$(awk -F '"' '/^version[[:space:]]*=/ { print $2; exit }' "$CARGO_TOML")"
+case "$(uname -m)" in
+  arm64) PACKAGER_ARCH=aarch64 ;;
+  x86_64) PACKAGER_ARCH=x86_64 ;;
+  *) PACKAGER_ARCH="$(uname -m)" ;;
+esac
+if [[ -z "$OUTPUT_PATH" ]]; then
+  OUTPUT_PATH="$PROJECT_DIR/dist/Hepta_${PRODUCT_VERSION}_${PACKAGER_ARCH}.dmg"
+fi
+[[ "$OUTPUT_PATH" == /* ]] || OUTPUT_PATH="$PROJECT_DIR/$OUTPUT_PATH"
+if [[ -z "$RECEIPT_PATH" ]]; then RECEIPT_PATH="$OUTPUT_PATH.receipt.json"; fi
+[[ "$RECEIPT_PATH" == /* ]] || RECEIPT_PATH="$PROJECT_DIR/$RECEIPT_PATH"
+EVIDENCE_DIR="${HEPTA_NATIVE_RELEASE_EVIDENCE_DIR:-${RECEIPT_PATH%.json}.evidence}"
+[[ "$EVIDENCE_DIR" == /* ]] || EVIDENCE_DIR="$PROJECT_DIR/$EVIDENCE_DIR"
+normalize_path() {
+  ruby -e '
+    cursor = File.expand_path(ARGV.fetch(0))
+    suffix = []
+    until File.exist?(cursor) || File.dirname(cursor) == cursor
+      suffix.unshift(File.basename(cursor))
+      cursor = File.dirname(cursor)
+    end
+    base = File.realpath(cursor)
+    print File.join(base, *suffix)
+  ' "$1"
+}
+path_is_within() {
+  ruby -e '
+    path = File.expand_path(ARGV.fetch(0))
+    root = File.expand_path(ARGV.fetch(1))
+    exit(path.start_with?(root + File::SEPARATOR) ? 0 : 1)
+  ' "$1" "$2"
+}
+paths_overlap() {
+  [[ "$1" == "$2" ]] || path_is_within "$1" "$2" || path_is_within "$2" "$1"
+}
+assert_release_inputs_disjoint() {
+  local input_path target_path
+  for input_path in "$APP_PATH" "$APP_RECEIPT_PATH"; do
+    [[ -n "$input_path" ]] || continue
+    for target_path in "$OUTPUT_PATH" "$RECEIPT_PATH" "$EVIDENCE_DIR"; do
+      if paths_overlap "$input_path" "$target_path"; then
+        release_fail "release_input_output_path_overlap" \
+          "formal app/app-receipt must not equal, contain, or be contained by output, receipt, or evidence paths" 64
+      fi
+    done
+  done
+  if [[ -n "$APP_PATH" && -n "$APP_RECEIPT_PATH" ]] && paths_overlap "$APP_PATH" "$APP_RECEIPT_PATH"; then
+    release_fail "release_input_paths_overlap" "formal app and app-receipt paths must not overlap" 64
+  fi
+}
+OUTPUT_PATH="$(normalize_path "$OUTPUT_PATH")"
+RECEIPT_PATH="$(normalize_path "$RECEIPT_PATH")"
+EVIDENCE_DIR="$(normalize_path "$EVIDENCE_DIR")"
+if [[ "$OUTPUT_PATH" == "$RECEIPT_PATH" || "$OUTPUT_PATH" == "$EVIDENCE_DIR" || "$RECEIPT_PATH" == "$EVIDENCE_DIR" ]] \
+  || path_is_within "$OUTPUT_PATH" "$EVIDENCE_DIR" \
+  || path_is_within "$RECEIPT_PATH" "$EVIDENCE_DIR" \
+  || path_is_within "$EVIDENCE_DIR" "$OUTPUT_PATH" \
+  || path_is_within "$EVIDENCE_DIR" "$RECEIPT_PATH"; then
+  echo "output, receipt, and evidence paths must not overlap" >&2
+  exit 64
+fi
+
+# Resolve caller-controlled release inputs before creating any output or
+# evidence directory.  This early pass deliberately emits only stderr: a
+# structured failure receipt cannot be written safely until the receipt path
+# has been proven disjoint from both inputs.
+if [[ -n "$APP_PATH" ]]; then
+  [[ "$APP_PATH" == /* ]] || APP_PATH="$PROJECT_DIR/$APP_PATH"
+  APP_PATH="$(normalize_path "$APP_PATH")"
+  [[ -d "$APP_PATH" ]] || { echo "formal app not found: $APP_PATH" >&2; exit 2; }
+fi
+if [[ -n "$APP_RECEIPT_PATH" ]]; then
+  [[ "$APP_RECEIPT_PATH" == /* ]] || APP_RECEIPT_PATH="$PROJECT_DIR/$APP_RECEIPT_PATH"
+  APP_RECEIPT_PATH="$(normalize_path "$APP_RECEIPT_PATH")"
+  [[ -s "$APP_RECEIPT_PATH" ]] || { echo "formal unsigned app receipt not found: $APP_RECEIPT_PATH" >&2; exit 2; }
+fi
+for early_input_path in "$APP_PATH" "$APP_RECEIPT_PATH"; do
+  [[ -n "$early_input_path" ]] || continue
+  for early_target_path in "$OUTPUT_PATH" "$RECEIPT_PATH" "$EVIDENCE_DIR"; do
+    if paths_overlap "$early_input_path" "$early_target_path"; then
+      echo "formal app/app-receipt must not overlap release output, receipt, or evidence paths" >&2
+      exit 64
+    fi
+  done
+done
+if [[ -n "$APP_PATH" && -n "$APP_RECEIPT_PATH" ]] && paths_overlap "$APP_PATH" "$APP_RECEIPT_PATH"; then
+  echo "formal app and app-receipt paths must not overlap" >&2
+  exit 64
+fi
+
+[[ ! -e "$OUTPUT_PATH" && ! -L "$OUTPUT_PATH" ]] || { echo "refusing to replace existing DMG: $OUTPUT_PATH" >&2; exit 1; }
+[[ ! -e "$RECEIPT_PATH" && ! -L "$RECEIPT_PATH" ]] || { echo "refusing to replace existing receipt: $RECEIPT_PATH" >&2; exit 1; }
+[[ ! -e "$EVIDENCE_DIR" && ! -L "$EVIDENCE_DIR" ]] || { echo "refusing to replace existing evidence: $EVIDENCE_DIR" >&2; exit 1; }
+mkdir -p "$(dirname "$OUTPUT_PATH")" "$(dirname "$RECEIPT_PATH")" "$(dirname "$EVIDENCE_DIR")"
+OUTPUT_PARENT="$(cd "$(dirname "$OUTPUT_PATH")" && pwd -P)"
+RECEIPT_PARENT="$(cd "$(dirname "$RECEIPT_PATH")" && pwd -P)"
+EVIDENCE_PARENT="$(cd "$(dirname "$EVIDENCE_DIR")" && pwd -P)"
+
+WORK_DIR="$(mktemp -d /private/tmp/hepta-signed-release.XXXXXX)"
+EVIDENCE_STAGE_DIR="$(mktemp -d "$EVIDENCE_PARENT/.hepta-release-evidence-stage.XXXXXX")"
+chmod 700 "$EVIDENCE_STAGE_DIR"
+read -r EVIDENCE_STAGE_DEVICE EVIDENCE_STAGE_INODE < <(/usr/bin/stat -f '%d %i' "$EVIDENCE_STAGE_DIR")
+MOUNT_POINT=""
+MOUNT_DEVICE_IDS=""
+OUTPUT_INSTALLED_BY_THIS_RUN=false
+OUTPUT_INSTALL_PENDING=false
+OUTPUT_INSTALLED_DEVICE=""
+OUTPUT_INSTALLED_INODE=""
+SUCCESS_RECEIPT_INSTALLED_BY_THIS_RUN=false
+SUCCESS_RECEIPT_INSTALL_PENDING=false
+SUCCESS_RECEIPT_EXPECTED_DEVICE=""
+SUCCESS_RECEIPT_EXPECTED_INODE=""
+EVIDENCE_INSTALLED_BY_THIS_RUN=false
+EVIDENCE_INSTALL_PENDING=false
+EVIDENCE_INSTALLED_DEVICE=""
+EVIDENCE_INSTALLED_INODE=""
+EVIDENCE_OWNER_TOKEN="$WORK_DIR/evidence-owner-token"
+printf '%s\n' "hepta-release-evidence-owner:$$:${RANDOM:-0}" >"$EVIDENCE_OWNER_TOKEN"
+chmod 600 "$EVIDENCE_OWNER_TOKEN"
+read -r EVIDENCE_OWNER_TOKEN_DEVICE EVIDENCE_OWNER_TOKEN_INODE < <(/usr/bin/stat -f '%d %i' "$EVIDENCE_OWNER_TOKEN")
+RELEASE_STAGE="formal_unsigned_input"
+failure_receipt_written=false
+FAILURE_SIGNAL=""
+APP_SIGNED=false
+DMG_SIGNED=false
+NOTARY_ATTEMPTED=false
+NOTARY_SUBMITTED=false
+NOTARY_ACCEPTED=false
+NOTARY_EXIT_CODE=-1
+NOTARY_SUBMISSION_ID=""
+NOTARY_SUBMISSION_STATE="not_attempted"
+NOTARY_SUBMISSION_CONFIRMED=false
+NOTARY_SUBMISSION_MAY_HAVE_OCCURRED=false
+NOTARYTOOL_LOG="$EVIDENCE_STAGE_DIR/notarytool-submit.log"
+NOTARYTOOL_LOG_FINAL="$EVIDENCE_DIR/notarytool-submit.log"
+NOTARYTOOL_LOG_SHA=""
+NOTARYTOOL_LOG_BYTES=0
+STAPLED=false
+SPCTL_READY=false
+DMG_READBACK_READY=false
+refresh_notary_evidence() {
+  if [[ -f "$NOTARYTOOL_LOG" ]]; then
+    NOTARYTOOL_LOG_SHA="$(shasum -a 256 "$NOTARYTOOL_LOG" 2>/dev/null | awk '{print $1}')"
+    NOTARYTOOL_LOG_BYTES="$(wc -c <"$NOTARYTOOL_LOG" | tr -d ' ')"
+    candidate_id="$(jq -r '.id // empty' "$NOTARYTOOL_LOG" 2>/dev/null || true)"
+    if [[ -n "$candidate_id" ]]; then NOTARY_SUBMISSION_ID="$candidate_id"; fi
+  fi
+}
+publish_staged_evidence() {
+  local install_identity
+  [[ "$EVIDENCE_INSTALLED_BY_THIS_RUN" == "false" ]] || return 0
+  EVIDENCE_INSTALL_PENDING=true
+  if ! install_identity="$(ruby -e '
+    stage, destination, expected_parent, owner = ARGV
+    abort "evidence parent changed" unless File.realpath(File.dirname(destination)) == expected_parent
+    abort "evidence target already exists" if File.exist?(destination) || File.symlink?(destination)
+    stage_stat = File.lstat(stage)
+    owner_stat = File.lstat(owner)
+    abort "unsafe evidence stage" unless stage_stat.directory? && !stage_stat.symlink?
+    abort "unsafe evidence owner token" unless owner_stat.file? && !owner_stat.symlink? && owner_stat.nlink == 1
+    entries = Dir.children(stage).sort
+    entries.each do |name|
+      abort "unsafe evidence name" if name == "." || name == ".." || name.include?(File::SEPARATOR)
+      stat = File.lstat(File.join(stage, name))
+      abort "unsafe evidence entry" unless stat.file? && !stat.symlink? && stat.nlink == 1
+    end
+    created = false
+    begin
+      Dir.mkdir(destination, 0o700)
+      created = true
+      destination_stat = File.lstat(destination)
+      abort "unsafe installed evidence directory" unless destination_stat.directory? && !destination_stat.symlink?
+      File.link(owner, File.join(destination, ".hepta-release-owner"))
+      entries.each do |name|
+        source = File.join(stage, name)
+        target = File.join(destination, name)
+        source_stat = File.lstat(source)
+        File.link(source, target)
+        target_stat = File.lstat(target)
+        abort "installed evidence identity mismatch" unless target_stat.file? && !target_stat.symlink? && target_stat.dev == source_stat.dev && target_stat.ino == source_stat.ino
+      end
+      installed_owner = File.lstat(File.join(destination, ".hepta-release-owner"))
+      abort "installed evidence owner mismatch" unless installed_owner.dev == owner_stat.dev && installed_owner.ino == owner_stat.ino
+      print [destination_stat.dev, destination_stat.ino, entries.length].join(" ")
+    rescue Exception
+      if created
+        begin
+          installed_owner = File.lstat(File.join(destination, ".hepta-release-owner"))
+          if installed_owner.dev == owner_stat.dev && installed_owner.ino == owner_stat.ino
+            Dir.children(destination).each do |name|
+              path = File.join(destination, name)
+              stat = File.lstat(path)
+              File.unlink(path) if stat.file? && !stat.symlink?
+            end
+            Dir.rmdir(destination)
+          end
+        rescue Exception
+        end
+      end
+      raise
+    end
+  ' "$EVIDENCE_STAGE_DIR" "$EVIDENCE_DIR" "$EVIDENCE_PARENT" "$EVIDENCE_OWNER_TOKEN")"; then
+    return 1
+  fi
+  read -r EVIDENCE_INSTALLED_DEVICE EVIDENCE_INSTALLED_INODE EVIDENCE_INSTALLED_FILE_COUNT <<<"$install_identity"
+  EVIDENCE_INSTALLED_BY_THIS_RUN=true
+  EVIDENCE_INSTALL_PENDING=false
+  [[ "$EVIDENCE_INSTALLED_FILE_COUNT" -ge 0 ]]
+}
+write_failure_receipt() {
+  local exit_code="$1" blocker="$2" receipt_parent temporary
+  [[ "$failure_receipt_written" == "false" && ! -e "$RECEIPT_PATH" && ! -L "$RECEIPT_PATH" ]] || return 0
+  receipt_parent="$(normalize_path "$(dirname "$RECEIPT_PATH")")"
+  temporary="$(mktemp "$receipt_parent/.hepta-release-failure.XXXXXX")"
+  refresh_notary_evidence
+  publish_staged_evidence || return 1
+  if [[ -f "$NOTARYTOOL_LOG" ]]; then
+    [[ -f "$NOTARYTOOL_LOG_FINAL" && ! -L "$NOTARYTOOL_LOG_FINAL" ]] || return 1
+    [[ "$(shasum -a 256 "$NOTARYTOOL_LOG_FINAL" | awk '{print $1}')" == "$NOTARYTOOL_LOG_SHA" ]] || return 1
+    [[ "$(wc -c <"$NOTARYTOOL_LOG_FINAL" | tr -d ' ')" == "$NOTARYTOOL_LOG_BYTES" ]] || return 1
+  fi
+  if ! jq -n \
+    --arg stage "$RELEASE_STAGE" --arg blocker "$blocker" --arg signal "$FAILURE_SIGNAL" --arg output "$OUTPUT_PATH" \
+    --argjson exit_code "$exit_code" --argjson output_exists "$(if [[ -e "$OUTPUT_PATH" ]]; then echo true; else echo false; fi)" \
+    --argjson app_signed "$APP_SIGNED" --argjson dmg_signed "$DMG_SIGNED" \
+    --argjson notary_attempted "$NOTARY_ATTEMPTED" --argjson notary_submitted "$NOTARY_SUBMITTED" --argjson notary_accepted "$NOTARY_ACCEPTED" \
+    --argjson notary_exit_code "$NOTARY_EXIT_CODE" --arg notary_submission_id "$NOTARY_SUBMISSION_ID" \
+    --arg notary_submission_state "$NOTARY_SUBMISSION_STATE" --argjson notary_submission_confirmed "$NOTARY_SUBMISSION_CONFIRMED" \
+    --argjson notary_submission_may_have_occurred "$NOTARY_SUBMISSION_MAY_HAVE_OCCURRED" \
+    --arg notarytool_log_path "$NOTARYTOOL_LOG_FINAL" --arg notarytool_log_sha "$NOTARYTOOL_LOG_SHA" --argjson notarytool_log_bytes "$NOTARYTOOL_LOG_BYTES" \
+    --argjson notarytool_log_present "$(if [[ -f "$NOTARYTOOL_LOG" ]]; then echo true; else echo false; fi)" \
+    --argjson stapled "$STAPLED" --argjson spctl_ready "$SPCTL_READY" --argjson dmg_readback_ready "$DMG_READBACK_READY" \
+    '{artifact_kind:"signed_notarized_stapled_artifact",artifact_version:3,receipt_contract_version:3,status:"not_ready",failure:{stage:$stage,exit_code:$exit_code,blocker:$blocker,signal:(if $signal == "" then null else $signal end)},artifact_evidence:{signed:$app_signed,dmg_signed:$dmg_signed,notarized:$notary_accepted,stapled:$stapled,dmg_stapled:$stapled,app_stapled:false,spctl_ready:$spctl_ready,dmg_readback_ready:$dmg_readback_ready,local_distribution_artifact_written:$output_exists,public_upload_performed:false,signed_artifact_path:$output,notarytool_exit_code:$notary_exit_code,notary_submission_id:(if $notary_submission_id == "" then null else $notary_submission_id end),notary_submission_state:$notary_submission_state,notary_submission_confirmed:$notary_submission_confirmed,notary_submission_may_have_occurred:$notary_submission_may_have_occurred,notarytool_submit_log_path:(if $notarytool_log_present then $notarytool_log_path else null end),notarytool_submit_log_sha256:(if $notarytool_log_present and $notarytool_log_sha != "" then $notarytool_log_sha else null end),notarytool_submit_log_bytes:(if $notarytool_log_present then $notarytool_log_bytes else 0 end),notary_keychain_profile_only:true,direct_apple_id_password_mode_supported:false,credential_environment_scrubbed_before_first_external_command:true},claim_boundary:{release_artifact_claim_ready:false,release_execution_ready:false,public_distribution_claim_ready:false,release_claim_ready:false,live_product_claim_ready:false},side_effects:{network_call_attempted:$notary_attempted,network_call_confirmed:$notary_submitted,network_call_may_have_occurred:$notary_submission_may_have_occurred,notary_submission_attempted:$notary_attempted,notary_submission_confirmed:$notary_submission_confirmed,notary_submission_may_have_occurred:$notary_submission_may_have_occurred,app_signed:$app_signed,app_notarized:$notary_accepted,app_stapled:false,dmg_stapled:$stapled,public_upload_performed:false}}' \
+    >"$temporary"; then
+    rm -f "$temporary"
+    return 1
+  fi
+  if ! FAILURE_RECEIPT_INSTALL_IDENTITY="$(ruby -rdigest -rjson -e '
+    temporary, receipt, expected_parent = ARGV
+    abort "receipt parent changed" unless File.realpath(File.dirname(receipt)) == expected_parent
+    abort "receipt target already exists" if File.exist?(receipt) || File.symlink?(receipt)
+    stat = File.lstat(temporary)
+    abort "unsafe failure receipt temporary" unless stat.file? && !stat.symlink? && stat.nlink == 1
+    payload = JSON.parse(File.binread(temporary))
+    abort "invalid failure receipt" unless payload["status"] == "not_ready" && payload["artifact_version"] == 3
+    temporary_sha = Digest::SHA256.file(temporary).hexdigest
+    File.link(temporary, receipt)
+    installed = File.lstat(receipt)
+    abort "installed failure receipt identity mismatch" unless installed.file? && !installed.symlink? && installed.dev == stat.dev && installed.ino == stat.ino
+    abort "installed failure receipt hash mismatch" unless Digest::SHA256.file(receipt).hexdigest == temporary_sha
+    JSON.parse(File.binread(receipt))
+    print [installed.dev, installed.ino, temporary_sha].join(" ")
+  ' "$temporary" "$RECEIPT_PATH" "$receipt_parent")"; then
+    rm -f "$temporary"
+    return 1
+  fi
+  rm -f "$temporary"
+  failure_receipt_written=true
+}
+remove_unpaired_final_output() {
+  if [[ "$SUCCESS_RECEIPT_INSTALL_PENDING" == "true" && "$SUCCESS_RECEIPT_INSTALLED_BY_THIS_RUN" == "false" ]]; then
+    ruby -e '
+      path, expected_device, expected_inode = ARGV
+      stat = File.lstat(path) rescue nil
+      exit 0 unless stat
+      abort "pending receipt identity changed; refusing cleanup" unless stat.file? && !stat.symlink? && stat.dev.to_s == expected_device && stat.ino.to_s == expected_inode
+      File.unlink(path)
+    ' "$RECEIPT_PATH" "$SUCCESS_RECEIPT_EXPECTED_DEVICE" "$SUCCESS_RECEIPT_EXPECTED_INODE" || true
+    SUCCESS_RECEIPT_INSTALL_PENDING=false
+  fi
+  if [[ ( "$OUTPUT_INSTALLED_BY_THIS_RUN" == "true" || "$OUTPUT_INSTALL_PENDING" == "true" ) \
+    && "$SUCCESS_RECEIPT_INSTALLED_BY_THIS_RUN" == "false" ]]; then
+    ruby -e '
+      path, expected_device, expected_inode = ARGV
+      stat = File.lstat(path) rescue nil
+      exit 0 unless stat
+      abort "owned output identity changed; refusing cleanup" unless stat.file? && !stat.symlink? && stat.dev.to_s == expected_device && stat.ino.to_s == expected_inode
+      File.unlink(path)
+    ' "$OUTPUT_PATH" "$OUTPUT_INSTALLED_DEVICE" "$OUTPUT_INSTALLED_INODE" || true
+    OUTPUT_INSTALLED_BY_THIS_RUN=false
+    OUTPUT_INSTALL_PENDING=false
+  fi
+  if [[ ( "$EVIDENCE_INSTALLED_BY_THIS_RUN" == "true" || "$EVIDENCE_INSTALL_PENDING" == "true" ) \
+    && "$SUCCESS_RECEIPT_INSTALLED_BY_THIS_RUN" == "false" ]]; then
+    ruby -e '
+      root, owner_device, owner_inode = ARGV
+      stat = File.lstat(root) rescue nil
+      exit 0 unless stat
+      abort "unsafe owned evidence root" unless stat.directory? && !stat.symlink?
+      owner = File.lstat(File.join(root, ".hepta-release-owner")) rescue nil
+      abort "owned evidence token missing or changed" unless owner && owner.file? && !owner.symlink? && owner.dev.to_s == owner_device && owner.ino.to_s == owner_inode
+      Dir.children(root).each do |name|
+        path = File.join(root, name)
+        child = File.lstat(path)
+        abort "unsafe owned evidence child" unless child.file? && !child.symlink?
+        File.unlink(path)
+      end
+      Dir.rmdir(root)
+    ' "$EVIDENCE_DIR" "$EVIDENCE_OWNER_TOKEN_DEVICE" "$EVIDENCE_OWNER_TOKEN_INODE" || true
+    EVIDENCE_INSTALLED_BY_THIS_RUN=false
+    EVIDENCE_INSTALL_PENDING=false
+  fi
+}
+release_fail() {
+  local blocker="$1" message="$2" exit_code="${3:-1}"
+  trap - ERR
+  trap '' INT TERM
+  echo "$message" >&2
+  remove_unpaired_final_output
+  if ! write_failure_receipt "$exit_code" "$blocker"; then
+    echo "unable to persist structured release failure receipt/evidence" >&2
+  fi
+  exit "$exit_code"
+}
+on_release_error() {
+  local exit_code=$?
+  trap - ERR
+  trap '' INT TERM
+  set +e
+  remove_unpaired_final_output
+  write_failure_receipt "$exit_code" "unexpected_release_command_failure" || true
+  exit "$exit_code"
+}
+on_release_signal() {
+  local signal="$1" exit_code="$2"
+  trap - ERR INT TERM
+  set +e
+  FAILURE_SIGNAL="$signal"
+  RELEASE_STAGE="terminated"
+  if [[ "$NOTARY_ATTEMPTED" == "true" && "$NOTARY_SUBMISSION_CONFIRMED" == "false" ]]; then
+    NOTARY_SUBMISSION_STATE="unknown_after_interruption"
+    NOTARY_SUBMISSION_MAY_HAVE_OCCURRED=true
+  fi
+  remove_unpaired_final_output
+  write_failure_receipt "$exit_code" "release_terminated" || true
+  exit "$exit_code"
+}
+cleanup() {
+  local device detach_failed=false
+  if [[ -n "$MOUNT_DEVICE_IDS" ]]; then
+    while IFS= read -r device; do
+      [[ -n "$device" ]] || continue
+      hdiutil detach "$device" -force >/dev/null 2>&1 || detach_failed=true
+    done <<<"$MOUNT_DEVICE_IDS"
+  fi
+  if [[ "$detach_failed" == "true" || ( -z "$MOUNT_DEVICE_IDS" && -n "$MOUNT_POINT" ) ]]; then
+    [[ -z "$MOUNT_POINT" ]] || hdiutil detach "$MOUNT_POINT" -force >/dev/null 2>&1 || true
+  fi
+  ruby -e '
+    root, expected_device, expected_inode = ARGV
+    stat = File.lstat(root) rescue nil
+    exit 0 unless stat
+    abort "evidence stage identity changed" unless stat.directory? && !stat.symlink? && stat.dev.to_s == expected_device && stat.ino.to_s == expected_inode
+    Dir.children(root).each do |name|
+      path = File.join(root, name)
+      child = File.lstat(path)
+      abort "unsafe evidence stage child" unless child.file? && !child.symlink?
+      File.unlink(path)
+    end
+    Dir.rmdir(root)
+  ' "$EVIDENCE_STAGE_DIR" "$EVIDENCE_STAGE_DEVICE" "$EVIDENCE_STAGE_INODE" >/dev/null 2>&1 || true
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
+trap on_release_error ERR
+trap 'on_release_signal INT 130' INT
+trap 'on_release_signal TERM 143' TERM
+
+[[ -f "$ENTITLEMENTS" ]] || release_fail "entitlements_missing" "entitlements file not found: $ENTITLEMENTS" 2
+[[ -s "$APP_BUNDLE_FINGERPRINT" ]] || release_fail "bundle_fingerprint_helper_missing" "app bundle fingerprint helper not found: $APP_BUNDLE_FINGERPRINT" 2
+[[ -s "$FINDER_BOOKMARK_RESOLVER" ]] || release_fail "finder_bookmark_resolver_missing" "Finder bookmark resolver not found: $FINDER_BOOKMARK_RESOLVER" 2
+ruby -c "$APP_BUNDLE_FINGERPRINT" >/dev/null
+swiftc -parse "$FINDER_BOOKMARK_RESOLVER"
+
+if [[ -n "$APP_PATH" ]]; then
+  [[ "$APP_PATH" == /* ]] || APP_PATH="$PROJECT_DIR/$APP_PATH"
+  APP_PATH="$(normalize_path "$APP_PATH")"
+  [[ -d "$APP_PATH" ]] || release_fail "formal_app_missing" "formal app not found: $APP_PATH" 2
+  [[ -n "$APP_RECEIPT_PATH" ]] || release_fail "formal_app_receipt_required" "--app-receipt is required with --app-path; arbitrary app bundles are not release inputs" 2
+fi
+if [[ -n "$APP_RECEIPT_PATH" ]]; then
+  [[ "$APP_RECEIPT_PATH" == /* ]] || APP_RECEIPT_PATH="$PROJECT_DIR/$APP_RECEIPT_PATH"
+  APP_RECEIPT_PATH="$(normalize_path "$APP_RECEIPT_PATH")"
+  [[ -s "$APP_RECEIPT_PATH" ]] || release_fail "formal_app_receipt_missing" "formal unsigned app receipt not found: $APP_RECEIPT_PATH" 2
+fi
+assert_release_inputs_disjoint
+
+SIGNING_IDENTITY="$CAPTURED_SIGNING_IDENTITY"
 if [[ -z "$SIGNING_IDENTITY" ]]; then
-    echo "Error: signing_identity not found in Cargo.toml -- required for notarization." >&2
-    exit 1
+  SIGNING_IDENTITY="$(awk -F '"' '/^signing_identity[[:space:]]*=/ { print $2; exit }' "$CARGO_TOML")"
+fi
+[[ -n "$SIGNING_IDENTITY" ]] || release_fail "developer_id_identity_not_configured" "Developer ID signing identity is not configured" 2
+EXPECTED_TEAM_ID="$CAPTURED_EXPECTED_TEAM_ID"
+[[ "$EXPECTED_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] \
+  || release_fail "expected_team_identifier_missing_or_invalid" "set HEPTA_EXPECTED_TEAM_ID to the trusted 10-character Team ID" 2
+if [[ ! "$SIGNING_IDENTITY" =~ ^Developer\ ID\ Application:\ .+\ \(([A-Z0-9]{10})\)$ \
+  || "${BASH_REMATCH[1]:-}" != "$EXPECTED_TEAM_ID" ]]; then
+  release_fail "developer_id_identity_invalid_or_team_mismatch" "Developer ID identity must be exact and end in the trusted Team ID" 2
+fi
+if ! INSTALLED_SIGNING_IDENTITIES="$(/usr/bin/security find-identity -v -p codesigning 2>&1)"; then
+  release_fail "developer_id_identity_lookup_failed" "unable to query installed Developer ID signing identities" 2
+fi
+if ! /usr/bin/ruby -e '
+  expected = ARGV.fetch(0)
+  matches = STDIN.each_line.count do |line|
+    match = line.match(/^\s*\d+\)\s+[0-9A-Fa-f]{40}\s+"([^"]+)"\s*$/)
+    match && match[1] == expected
+  end
+  exit(matches == 1 ? 0 : 1)
+' "$SIGNING_IDENTITY" <<<"$INSTALLED_SIGNING_IDENTITIES"; then
+  release_fail "developer_id_identity_not_installed" "configured Developer ID signing identity is not installed: $SIGNING_IDENTITY" 2
 fi
 
-# --- Codesign helper with timestamp-failure retry -----------------------------
-#
-# Apple's timestamp service occasionally returns "A timestamp was expected
-# but was not found." That's transient -- the next attempt, possibly
-# minutes later, usually succeeds. We retry with exponential backoff.
-#
-# kind=app : adds --entitlements + --options runtime (for .app bundles
-#            and Mach-O binaries). Required for hardened runtime.
-# kind=dmg : timestamp-only (codesigning a DMG file).
+NOTARY_PROFILE="$CAPTURED_NOTARY_PROFILE"
+if [[ "$CAPTURED_DIRECT_APPLE_CREDENTIALS_PRESENT" == true ]]; then
+  release_fail "direct_apple_id_password_notary_mode_unsupported" "unset APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID; release notarization is keychain-profile-only" 2
+fi
+if [[ -z "$NOTARY_PROFILE" ]]; then
+  release_fail "notary_keychain_profile_required" "set HEPTA_NOTARY_PROFILE; direct APPLE_ID/APPLE_PASSWORD credentials are rejected because argv is observable" 2
+fi
+
+if [[ "$PREFLIGHT_ONLY" == "1" ]]; then
+  jq -n \
+    --arg identity "$SIGNING_IDENTITY" \
+    --arg expected_team_id "$EXPECTED_TEAM_ID" \
+    --arg notary_mode "keychain_profile" \
+    --arg app_path "$APP_PATH" \
+    --arg app_receipt_path "$APP_RECEIPT_PATH" \
+    --arg output "$OUTPUT_PATH" \
+    '{status:"ready",preflight_scope:"tools_credentials_and_path_shape_only",signing_identity:$identity,expected_team_identifier:$expected_team_id,notary_mode:$notary_mode,notary_keychain_profile_only:true,direct_apple_id_password_mode_supported:false,credential_environment_scrubbed_before_first_external_command:true,independent_approval_verifier_ready:false,release_execution_ready:false,actual_release_execution_supported:false,blockers:["independent_release_approval_verifier_unavailable"],app_path:(if $app_path=="" then null else $app_path end),app_receipt_path:(if $app_receipt_path=="" then null else $app_receipt_path end),output:$output,canonical_input_verified:false,consumes_canonical_current_package:false,receipt_json_validated:false,exact_app_source_binding_validated:false,builds_second_app:false,publishes:false}'
+  exit 0
+fi
+
+if [[ -z "$APP_PATH" ]]; then
+  # Keep the exact unsigned input beside the release receipt.  The copied
+  # current-package receipt contains this absolute artifact path, so staging
+  # under WORK_DIR would leave a dangling source-evidence reference after the
+  # release command's cleanup trap runs.
+  FORMAL_STAGE="${RECEIPT_PATH}.unsigned-app"
+  FORMAL_STAGE="$(normalize_path "$FORMAL_STAGE")"
+  [[ ! -e "$FORMAL_STAGE" ]] || release_fail "formal_unsigned_stage_exists" "refusing to replace formal unsigned app stage: $FORMAL_STAGE" 2
+  if paths_overlap "$FORMAL_STAGE" "$OUTPUT_PATH" \
+    || paths_overlap "$FORMAL_STAGE" "$RECEIPT_PATH" \
+    || paths_overlap "$FORMAL_STAGE" "$EVIDENCE_DIR"; then
+    release_fail "formal_unsigned_stage_path_overlap" "formal unsigned app stage must not overlap release outputs" 64
+  fi
+  FORMAL_TARGET="$WORK_DIR/formal-target"
+  FORMAL_RECEIPT="$WORK_DIR/formal-unsigned-package-receipt.json"
+  FORMAL_ARGS=(--build --no-launch --output "$FORMAL_RECEIPT" --stage-dir "$FORMAL_STAGE" --target-dir "$FORMAL_TARGET")
+  if [[ "$BOOTSTRAP_TOOLS" == "1" ]]; then FORMAL_ARGS+=(--bootstrap-tools); fi
+  /usr/bin/env \
+    -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID \
+    -u HEPTA_NOTARY_PROFILE -u HEPTA_NATIVE_NOTARYTOOL_PROFILE \
+    PATH="$PATH" HOME="$HOME" TMPDIR="$TMPDIR" \
+    "$REPO_ROOT/scripts/hepta-native-current-package-gate.sh" "${FORMAL_ARGS[@]}" >/dev/null
+  APP_RECEIPT_PATH="$FORMAL_RECEIPT"
+fi
+
+PRIVATE_APP_RECEIPT="$WORK_DIR/input-current-package-receipt.json"
+cp "$APP_RECEIPT_PATH" "$PRIVATE_APP_RECEIPT"
+if ! jq empty "$PRIVATE_APP_RECEIPT" >/dev/null 2>&1; then
+  release_fail "formal_app_receipt_invalid_json" "formal unsigned app receipt is not valid JSON" 2
+fi
+if [[ -z "$APP_PATH" ]]; then
+  APP_PATH="$(jq -r '.artifact.path // empty' "$PRIVATE_APP_RECEIPT")"
+  [[ "$APP_PATH" == /* ]] || release_fail "formal_app_path_not_absolute" "formal package receipt app path is not absolute" 2
+  APP_PATH="$(normalize_path "$APP_PATH")"
+fi
+assert_release_inputs_disjoint
+
+[[ -f "$APP_PATH/Contents/Info.plist" ]] || release_fail "formal_app_info_plist_missing" "formal app Info.plist is missing" 2
+[[ -x "$APP_PATH/Contents/MacOS/hepta-native" ]] || release_fail "formal_app_executable_missing" "formal app executable is missing" 2
+
+SOURCE_APP_PATH="$APP_PATH"
+SOURCE_BINARY_SHA="$(shasum -a 256 "$SOURCE_APP_PATH/Contents/MacOS/hepta-native" | awk '{print $1}')"
+SOURCE_APP_FINGERPRINT="$(ruby "$APP_BUNDLE_FINGERPRINT" "$SOURCE_APP_PATH")"
+if [[ "$(jq -r '.symlinks_rejected and .supported_entry_types_only' <<<"$SOURCE_APP_FINGERPRINT")" != "true" ]]; then
+  release_fail "formal_app_contains_symlinks_or_unsupported_entries" "formal unsigned app contains rejected symlinks or unsupported filesystem entries"
+fi
+CURRENT_SOURCE_BINDING="$($REPO_ROOT/scripts/hepta-ui-source-fingerprint)"
+if ! jq -e \
+  --arg app_path "$SOURCE_APP_PATH" \
+  --arg binary_sha256 "$SOURCE_BINARY_SHA" \
+  --argjson bundle_fingerprint "$SOURCE_APP_FINGERPRINT" \
+  --argjson current_binding "$CURRENT_SOURCE_BINDING" \
+  '
+    .schema_version == 1
+    and .kind == "hepta-native-current-package-gate"
+    and .status == "ready"
+    and .local_package_ready == true
+    and .signed == false
+    and .notarized == false
+    and .stapled == false
+    and .artifact.path == $app_path
+    and .artifact.binary_sha256 == $binary_sha256
+    and .artifact.bundle_fingerprint == $bundle_fingerprint
+    and .artifact.full_head_embedded == true
+    and .artifact.developer_id_signed == false
+    and .source_binding.worktree_clean == true
+    and .source_binding.repository_worktree_clean == true
+    and .repository_worktree_clean == true
+    and .source_stable_during_run == true
+    and .source_binding.head == $current_binding.head
+    and .source_binding.head_tree == $current_binding.head_tree
+    and .source_binding.source_fingerprint == $current_binding.source_fingerprint
+    and $current_binding.worktree_clean == true
+    and $current_binding.repository_worktree_clean == true
+  ' "$PRIVATE_APP_RECEIPT" >/dev/null; then
+  release_fail "formal_app_receipt_not_exact_current_source" "formal unsigned app receipt does not bind this exact full app bundle to the current clean stable source"
+fi
+PERSISTED_UNSIGNED_RECEIPT="$EVIDENCE_STAGE_DIR/formal-unsigned-package-receipt.json"
+cp "$PRIVATE_APP_RECEIPT" "$PERSISTED_UNSIGNED_RECEIPT"
+UNSIGNED_RECEIPT_SHA="$(shasum -a 256 "$PERSISTED_UNSIGNED_RECEIPT" | awk '{print $1}')"
+SOURCE_HEAD="$(jq -r '.source_binding.head' "$PERSISTED_UNSIGNED_RECEIPT")"
+SOURCE_TREE="$(jq -r '.source_binding.head_tree' "$PERSISTED_UNSIGNED_RECEIPT")"
+SOURCE_FINGERPRINT="$(jq -r '.source_binding.source_fingerprint' "$PERSISTED_UNSIGNED_RECEIPT")"
+SIGNED_APP="$WORK_DIR/Hepta.app"
+SIGNED_DMG="$WORK_DIR/Hepta.signed.dmg"
+ditto "$SOURCE_APP_PATH" "$SIGNED_APP"
+PRIVATE_COPY_FINGERPRINT="$(ruby "$APP_BUNDLE_FINGERPRINT" "$SIGNED_APP")"
+SOURCE_APP_FINGERPRINT_AFTER_COPY="$(ruby "$APP_BUNDLE_FINGERPRINT" "$SOURCE_APP_PATH")"
+CURRENT_SOURCE_BINDING_AFTER_COPY="$($REPO_ROOT/scripts/hepta-ui-source-fingerprint)"
+if [[ "$PRIVATE_COPY_FINGERPRINT" != "$SOURCE_APP_FINGERPRINT" \
+  || "$SOURCE_APP_FINGERPRINT_AFTER_COPY" != "$SOURCE_APP_FINGERPRINT" \
+  || "$CURRENT_SOURCE_BINDING_AFTER_COPY" != "$CURRENT_SOURCE_BINDING" ]]; then
+  release_fail "release_input_changed_before_signing" "source, formal app bundle, or private signing copy changed before signing"
+fi
+cmp "$SOURCE_APP_PATH/Contents/MacOS/hepta-native" "$SIGNED_APP/Contents/MacOS/hepta-native"
 
 codesign_with_retry() {
-    local target="$1"
-    local kind="$2"
-    local cs_args=(--force --sign "$SIGNING_IDENTITY" --timestamp)
-    if [[ "$kind" == "app" ]]; then
-        cs_args+=(--entitlements "$ENTITLEMENTS" --options runtime)
+  local target="$1"
+  local kind="$2"
+  local arguments=(--force --sign "$SIGNING_IDENTITY" --timestamp)
+  if [[ "$kind" == app ]]; then
+    arguments+=(--entitlements "$ENTITLEMENTS" --options runtime)
+  fi
+  local attempt=1 delay=15 log_file="$WORK_DIR/codesign.$(basename "$target").log"
+  while (( attempt <= 5 )); do
+    if codesign "${arguments[@]}" "$target" >"$log_file" 2>&1; then return 0; fi
+    if ! grep -qi timestamp "$log_file" || (( attempt == 5 )); then
+      cat "$log_file" >&2
+      return 1
     fi
-
-    local max_attempts=5
-    local attempt=1
-    local delay=15
-    local logfile
-    logfile=$(mktemp)
-
-    while (( attempt <= max_attempts )); do
-        if codesign "${cs_args[@]}" "$target" >"$logfile" 2>&1; then
-            # Show codesign's stderr lines (e.g. "replacing existing signature")
-            # so the user can see what happened.
-            cat "$logfile" >&2
-            rm -f "$logfile"
-            return 0
-        fi
-
-        # Codesign exited non-zero. Print what it said.
-        cat "$logfile" >&2
-
-        # Anything mentioning "timestamp" in a failure is the Apple
-        # timestamp service flaking -- retry. Other failures are real
-        # codesign errors and should not retry.
-        if grep -qi 'timestamp' "$logfile"; then
-            if (( attempt < max_attempts )); then
-                echo "  -> Apple timestamp service transient failure; sleeping ${delay}s before retry $((attempt+1))/${max_attempts}..." >&2
-                sleep "$delay"
-                delay=$(( delay * 2 ))
-            fi
-            attempt=$(( attempt + 1 ))
-        else
-            echo "  -> codesign failed with a non-transient error; giving up." >&2
-            rm -f "$logfile"
-            return 1
-        fi
-    done
-
-    echo "  -> codesign still failing after ${max_attempts} attempts; Apple's timestamp service is down. Try again later." >&2
-    rm -f "$logfile"
-    return 1
+    sleep "$delay"
+    delay=$((delay * 2))
+    attempt=$((attempt + 1))
+  done
 }
 
-# --- Step 1: Clean prior build artifacts in dist/ -----------------------------
-
-PRODUCT_VERSION=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CARGO_TOML" | head -1)
-case "$(uname -m)" in
-    arm64)  PACKAGER_ARCH=aarch64 ;;
-    x86_64) PACKAGER_ARCH=x86_64 ;;
-    *)      PACKAGER_ARCH=$(uname -m) ;;
-esac
-CANONICAL_DMG="$PROJECT_DIR/dist/Hepta_${PRODUCT_VERSION}_${PACKAGER_ARCH}.dmg"
-
-echo "==> Cleaning prior build artifacts in dist/..."
-rm -rf "$PROJECT_DIR/dist/Hepta.app" \
-       "$PROJECT_DIR/dist/.cargo-packager" \
-       "$CANONICAL_DMG"
-
-# --- Step 2: Run cargo-packager with signing disabled -------------------------
-#
-# We comment out signing_identity so cargo-packager's codesign + notarize
-# block (gated on `signing_identity.as_ref()` in app/mod.rs:134) is
-# completely skipped. We also unset APPLE_* so cargo-packager has no
-# way to find notarization credentials. Result: unsigned .app + DMG.
-
-sed -i.bak 's/^signing_identity[[:space:]]*=/#&/' "$CARGO_TOML"
-trap 'mv "$CARGO_TOML.bak" "$CARGO_TOML" 2>/dev/null && echo "Restored Cargo.toml"' EXIT
-
-TS_MARKER=$(mktemp)
-
-echo "==> Running cargo packager (unsigned: we sign + notarize ourselves with retries)..."
-env -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID cargo packager --release
-
-APP_PATH="$PROJECT_DIR/dist/Hepta.app"
-DMG_FILE=$(find "$PROJECT_DIR/dist" -maxdepth 1 -name '*.dmg' -newer "$TS_MARKER" -print -quit)
-rm -f "$TS_MARKER"
-
-if [[ -z "$DMG_FILE" || ! -f "$DMG_FILE" ]]; then
-    echo "Error: cargo packager did not produce a DMG in dist/" >&2
-    exit 1
+xattr -cr "$SIGNED_APP"
+RELEASE_STAGE="codesign_app"
+codesign_with_retry "$SIGNED_APP/Contents/MacOS/hepta-native" app
+codesign_with_retry "$SIGNED_APP" app
+CODESIGN_APP_LOG="$EVIDENCE_STAGE_DIR/codesign-verify-app.log"
+codesign --verify --strict --deep --verbose=2 "$SIGNED_APP" >"$CODESIGN_APP_LOG" 2>&1
+CODESIGN_APP_DETAILS_LOG="$EVIDENCE_STAGE_DIR/codesign-details-app.log"
+codesign -d --verbose=4 "$SIGNED_APP" >"$CODESIGN_APP_DETAILS_LOG" 2>&1
+SIGNED_APP_TEAM_ID="$(awk -F= '/^TeamIdentifier=/ {sub(/^[^=]*=/, ""); print; exit}' "$CODESIGN_APP_DETAILS_LOG")"
+SIGNED_APP_RUNTIME_VERSION="$(awk -F= '/^Runtime Version=/ {sub(/^[^=]*=/, ""); print; exit}' "$CODESIGN_APP_DETAILS_LOG")"
+SIGNED_APP_TIMESTAMP="$(awk -F= '/^Timestamp=/ {sub(/^[^=]*=/, ""); print; exit}' "$CODESIGN_APP_DETAILS_LOG")"
+SIGNED_APP_FLAGS="$(awk '/^CodeDirectory / {for (field = 1; field <= NF; field += 1) if ($field ~ /^flags=/) {sub(/^flags=/, "", $field); print $field; exit}}' "$CODESIGN_APP_DETAILS_LOG")"
+[[ "$SIGNED_APP_TEAM_ID" == "$EXPECTED_TEAM_ID" ]] || release_fail "signed_app_team_identifier_mismatch" "signed app TeamIdentifier does not match expected Team ID"
+[[ -n "$SIGNED_APP_RUNTIME_VERSION" && "$SIGNED_APP_FLAGS" == *runtime* ]] \
+  || release_fail "signed_app_hardened_runtime_missing" "signed app does not carry a system-reported hardened runtime signature"
+[[ -n "$SIGNED_APP_TIMESTAMP" ]] || release_fail "signed_app_secure_timestamp_missing" "signed app signature has no system-reported secure timestamp"
+APP_SIGNED=true
+SIGNED_APP_FINGERPRINT="$(ruby "$APP_BUNDLE_FINGERPRINT" "$SIGNED_APP")"
+if [[ "$(jq -r '.symlinks_rejected and .supported_entry_types_only' <<<"$SIGNED_APP_FINGERPRINT")" != "true" ]]; then
+  release_fail "signed_app_contains_symlinks_or_unsupported_entries" "private signed app contains rejected symlinks or unsupported filesystem entries"
 fi
-if [[ ! -d "$APP_PATH" ]]; then
-    echo "Error: $APP_PATH not found after cargo packager run." >&2
-    exit 1
+SIGNED_BINARY_SHA="$(shasum -a 256 "$SIGNED_APP/Contents/MacOS/hepta-native" | awk '{print $1}')"
+SIGNED_BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw "$SIGNED_APP/Contents/Info.plist" 2>/dev/null || true)"
+[[ "$SIGNED_BUNDLE_ID" == "ai.hepta.nativeapp" ]] || release_fail "signed_app_bundle_identifier_mismatch" "signed app bundle identifier is not ai.hepta.nativeapp"
+
+RELEASE_STAGE="create_and_codesign_dmg"
+"$SCRIPT_DIR/create-macos-dmg-from-app.sh" \
+  --app-path "$SIGNED_APP" \
+  --output "$SIGNED_DMG" >/dev/null
+codesign_with_retry "$SIGNED_DMG" dmg
+CODESIGN_DMG_LOG="$EVIDENCE_STAGE_DIR/codesign-verify-dmg.log"
+codesign --verify --strict --verbose=2 "$SIGNED_DMG" >"$CODESIGN_DMG_LOG" 2>&1
+CODESIGN_DMG_DETAILS_LOG="$EVIDENCE_STAGE_DIR/codesign-details-dmg.log"
+codesign -d --verbose=4 "$SIGNED_DMG" >"$CODESIGN_DMG_DETAILS_LOG" 2>&1
+SIGNED_DMG_TEAM_ID="$(awk -F= '/^TeamIdentifier=/ {sub(/^[^=]*=/, ""); print; exit}' "$CODESIGN_DMG_DETAILS_LOG")"
+SIGNED_DMG_TIMESTAMP="$(awk -F= '/^Timestamp=/ {sub(/^[^=]*=/, ""); print; exit}' "$CODESIGN_DMG_DETAILS_LOG")"
+[[ "$SIGNED_DMG_TEAM_ID" == "$EXPECTED_TEAM_ID" ]] || release_fail "signed_dmg_team_identifier_mismatch" "signed DMG TeamIdentifier does not match expected Team ID"
+[[ -n "$SIGNED_DMG_TIMESTAMP" ]] || release_fail "signed_dmg_secure_timestamp_missing" "signed DMG signature has no system-reported secure timestamp"
+DMG_SIGNED=true
+
+RELEASE_STAGE="notary_submission"
+NOTARY_ATTEMPTED=true
+NOTARY_SUBMISSION_MAY_HAVE_OCCURRED=true
+NOTARY_SUBMISSION_STATE="attempted_unconfirmed"
+trap - ERR
+set +e
+NOTARY_AUTH_MODE=keychain_profile
+/usr/bin/env -i PATH="$SYSTEM_PATH" HOME="$HOME" TMPDIR="$TMPDIR" \
+  /usr/bin/xcrun notarytool submit "$SIGNED_DMG" --keychain-profile "$NOTARY_PROFILE" \
+  --wait --output-format json >"$NOTARYTOOL_LOG" 2>&1
+NOTARY_EXIT_CODE=$?
+set -e
+trap on_release_error ERR
+refresh_notary_evidence
+if [[ "$NOTARY_EXIT_CODE" -ne 0 ]]; then
+  NOTARY_SUBMISSION_STATE="unknown_after_nonzero_exit"
+  cat "$NOTARYTOOL_LOG" >&2
+  release_fail "notarytool_nonzero_exit" "notarytool exited non-zero; submission may have occurred and is not confirmed" "$NOTARY_EXIT_CODE"
 fi
-echo "==> Found unsigned DMG: $DMG_FILE"
-
-# --- Step 3: Codesign the standalone .app -------------------------------------
-
-echo "==> Codesigning $APP_PATH..."
-xattr -cr "$APP_PATH"
-codesign_with_retry "$APP_PATH/Contents/MacOS/hepta-native" app
-codesign_with_retry "$APP_PATH" app
-codesign --verify --verbose=2 "$APP_PATH"
-
-# --- Step 4: Apply Applications-folder icon fix to DMG ------------------------
-
-echo "==> Applying Applications folder icon fix to DMG..."
-"$SCRIPT_DIR/fix-dmg-applications-icon.sh" "$DMG_FILE" "$BG_IMAGE"
-
-# --- Step 5: Embed signed .app into DMG ---------------------------------------
-#
-# The DMG produced by cargo-packager contains the unsigned .app from
-# step 2. The icon fix didn't touch the .app inside (only the
-# Applications symlink and DMG-level metadata). We mount the fixed DMG
-# read-write, ditto the signed .app over the unsigned one (same name,
-# so the .DS_Store icon position survives), unmount, recompress.
-
-echo "==> Embedding signed .app into DMG..."
-DMG_DIR="$(dirname "$DMG_FILE")"
-DMG_BASE="$(basename "$DMG_FILE" .dmg)"
-DMG_RW="$DMG_DIR/${DMG_BASE}_signing.dmg"
-
-hdiutil convert "$DMG_FILE" -format UDRW -o "$DMG_RW" >/dev/null
-MOUNT_OUTPUT=$(hdiutil attach "$DMG_RW" -readwrite -noverify -noautoopen)
-MOUNT_DIR=$(echo "$MOUNT_OUTPUT" | grep -oE '/Volumes/.*' | head -1)
-DEV_NAME=$(echo "$MOUNT_OUTPUT" | head -1 | awk '{print $1}')
-
-if [[ -z "$MOUNT_DIR" || -z "$DEV_NAME" ]]; then
-    echo "Error: failed to mount $DMG_RW" >&2
-    rm -f "$DMG_RW"
-    exit 1
+if [[ -z "$NOTARY_SUBMISSION_ID" ]]; then
+  NOTARY_SUBMISSION_STATE="unconfirmed_missing_submission_id"
+  cat "$NOTARYTOOL_LOG" >&2
+  release_fail "notary_submission_id_missing" "notarytool did not return a submission id"
 fi
+NOTARY_SUBMITTED=true
+NOTARY_SUBMISSION_CONFIRMED=true
+if ! jq -e '.status == "Accepted"' "$NOTARYTOOL_LOG" >/dev/null; then
+  NOTARY_SUBMISSION_STATE="rejected"
+  cat "$NOTARYTOOL_LOG" >&2
+  release_fail "notary_submission_not_accepted" "notarytool did not return an Accepted submission receipt"
+fi
+NOTARY_ACCEPTED=true
+NOTARY_SUBMISSION_STATE="accepted"
+STAPLER_STAPLE_LOG="$EVIDENCE_STAGE_DIR/stapler-staple.log"
+STAPLER_VALIDATE_LOG="$EVIDENCE_STAGE_DIR/stapler-validate.log"
+SPCTL_LOG="$EVIDENCE_STAGE_DIR/spctl-assessment.log"
+xcrun stapler staple "$SIGNED_DMG" >"$STAPLER_STAPLE_LOG" 2>&1
+xcrun stapler validate "$SIGNED_DMG" >"$STAPLER_VALIDATE_LOG" 2>&1
+STAPLED=true
+RELEASE_STAGE="spctl_assessment"
+if ! spctl --assess --type open --context context:primary-signature --verbose "$SIGNED_DMG" >"$SPCTL_LOG" 2>&1; then
+  cat "$SPCTL_LOG" >&2
+  release_fail "spctl_assessment_failed" "spctl assessment failed"
+fi
+SPCTL_READY=true
 
-cleanup_rw() {
-    hdiutil detach "$DEV_NAME" -force >/dev/null 2>&1 || true
-    rm -f "$DMG_RW"
+RELEASE_STAGE="readonly_dmg_payload_verification"
+DMG_ATTACH_PLIST="$EVIDENCE_STAGE_DIR/dmg-readonly-attach.plist"
+DMG_MOUNT_LOG="$EVIDENCE_STAGE_DIR/dmg-readonly-mount.log"
+set +e
+hdiutil attach -readonly -nobrowse -noautoopen -plist "$SIGNED_DMG" >"$DMG_ATTACH_PLIST"
+DMG_ATTACH_STATUS=$?
+set -e
+MOUNT_DEVICE_IDS="$(grep -Eo '/dev/disk[0-9]+' "$DMG_ATTACH_PLIST" | sort -u || true)"
+[[ "$DMG_ATTACH_STATUS" -eq 0 ]] || release_fail "dmg_readonly_attach_failed" "hdiutil attach failed after device evidence capture" "$DMG_ATTACH_STATUS"
+MOUNT_POINTS="$(ruby -r rexml/document -e '
+  document = REXML::Document.new(File.binread(ARGV.fetch(0)))
+  points = REXML::XPath.match(document, "//key").map do |item|
+    item.next_element&.text.to_s if item.text == "mount-point"
+  end.compact.reject(&:empty?).uniq
+  puts points
+' "$DMG_ATTACH_PLIST")"
+MOUNT_POINT="$(printf '%s\n' "$MOUNT_POINTS" | sed -n '1p')"
+MOUNT_POINT_COUNT="$(printf '%s\n' "$MOUNT_POINTS" | awk 'NF {count += 1} END {print count + 0}')"
+[[ -n "$MOUNT_DEVICE_IDS" ]] || release_fail "dmg_attached_device_identifier_missing" "hdiutil attach did not return a detachable device identifier"
+[[ "$MOUNT_POINT_COUNT" == "1" && -n "$MOUNT_POINT" && -d "$MOUNT_POINT" ]] \
+  || release_fail "dmg_readonly_mount_point_missing_or_ambiguous" "hdiutil did not return exactly one mounted volume"
+mount | awk -v mount_point="$MOUNT_POINT" 'index($0, " on " mount_point " (") {print; found=1} END {exit(found ? 0 : 1)}' >"$DMG_MOUNT_LOG"
+if ! grep -Eq '\(([^)]*,[[:space:]]*)?(read-only|rdonly)(,[^)]*)?\)' "$DMG_MOUNT_LOG"; then
+  release_fail "dmg_not_mounted_read_only" "final DMG mount was not read-only"
+fi
+TOP_LEVEL_APP_COUNT="$(find "$MOUNT_POINT" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print | wc -l | tr -d ' ')"
+[[ "$TOP_LEVEL_APP_COUNT" == "1" && -d "$MOUNT_POINT/Hepta.app" ]] || release_fail "dmg_exact_hepta_app_missing" "final DMG does not contain exactly one top-level Hepta.app"
+MOUNTED_APP_FINGERPRINT="$(ruby "$APP_BUNDLE_FINGERPRINT" "$MOUNT_POINT/Hepta.app")"
+printf '%s\n' "$SIGNED_APP_FINGERPRINT" >"$EVIDENCE_STAGE_DIR/signed-app-bundle-fingerprint.json"
+printf '%s\n' "$MOUNTED_APP_FINGERPRINT" >"$EVIDENCE_STAGE_DIR/mounted-app-bundle-fingerprint.json"
+MOUNTED_BINARY_SHA="$(shasum -a 256 "$MOUNT_POINT/Hepta.app/Contents/MacOS/hepta-native" | awk '{print $1}')"
+MOUNTED_BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw "$MOUNT_POINT/Hepta.app/Contents/Info.plist" 2>/dev/null || true)"
+[[ "$MOUNTED_APP_FINGERPRINT" == "$SIGNED_APP_FINGERPRINT" ]] || release_fail "dmg_app_bundle_fingerprint_mismatch" "mounted DMG Hepta.app does not match the exact signed app bundle fingerprint"
+[[ "$MOUNTED_BINARY_SHA" == "$SIGNED_BINARY_SHA" ]] || release_fail "dmg_app_binary_sha_mismatch" "mounted DMG Hepta.app binary hash does not match the signed binary"
+[[ "$MOUNTED_BUNDLE_ID" == "$SIGNED_BUNDLE_ID" ]] || release_fail "dmg_app_bundle_identifier_mismatch" "mounted DMG Hepta.app bundle identifier does not match the signed app"
+APPLICATIONS_ALIAS_KIND=""
+APPLICATIONS_ALIAS_TARGET=""
+APPLICATIONS_ALIAS_RESOLUTION_PATH="$EVIDENCE_STAGE_DIR/applications-alias-resolution.json"
+if [[ ! -f "$MOUNT_POINT/Applications" || -L "$MOUNT_POINT/Applications" ]]; then
+  release_fail "dmg_applications_alias_missing" "final DMG does not contain a valid Applications alias"
+fi
+if ! swift "$FINDER_BOOKMARK_RESOLVER" "$MOUNT_POINT/Applications" >"$APPLICATIONS_ALIAS_RESOLUTION_PATH" 2>"$EVIDENCE_STAGE_DIR/applications-alias-resolution.stderr.log"; then
+  release_fail "dmg_applications_alias_unresolvable" "final DMG Applications entry is not a resolvable Finder bookmark alias"
+fi
+APPLICATIONS_ALIAS_TARGET="$(jq -r '.resolved_target // empty' "$APPLICATIONS_ALIAS_RESOLUTION_PATH")"
+if [[ "$APPLICATIONS_ALIAS_TARGET" != "/Applications" || "$(jq -r '.bookmark_data_stale == false' "$APPLICATIONS_ALIAS_RESOLUTION_PATH")" != "true" ]]; then
+  release_fail "dmg_applications_alias_wrong_target" "final DMG Applications alias does not resolve exactly to /Applications"
+fi
+APPLICATIONS_ALIAS_KIND="finder_bookmark_alias"
+DMG_READBACK_READY=true
+DETACH_FAILED=false
+while IFS= read -r attached_device; do
+  [[ -n "$attached_device" ]] || continue
+  hdiutil detach "$attached_device" >/dev/null 2>&1 || DETACH_FAILED=true
+done <<<"$MOUNT_DEVICE_IDS"
+[[ "$DETACH_FAILED" == "false" ]] || release_fail "dmg_detach_failed" "final DMG device could not be detached cleanly"
+MOUNT_POINT=""
+MOUNT_DEVICE_IDS=""
+
+DMG_SHA="$(shasum -a 256 "$SIGNED_DMG" | awk '{print $1}')"
+DMG_BYTES="$(wc -c <"$SIGNED_DMG" | tr -d ' ')"
+NOTARY_SHA="$(shasum -a 256 "$NOTARYTOOL_LOG" | awk '{print $1}')"
+CODESIGN_APP_SHA="$(shasum -a 256 "$CODESIGN_APP_LOG" | awk '{print $1}')"
+CODESIGN_DMG_SHA="$(shasum -a 256 "$CODESIGN_DMG_LOG" | awk '{print $1}')"
+STAPLER_STAPLE_SHA="$(shasum -a 256 "$STAPLER_STAPLE_LOG" | awk '{print $1}')"
+STAPLER_VALIDATE_SHA="$(shasum -a 256 "$STAPLER_VALIDATE_LOG" | awk '{print $1}')"
+SPCTL_SHA="$(shasum -a 256 "$SPCTL_LOG" | awk '{print $1}')"
+DMG_ATTACH_SHA="$(shasum -a 256 "$DMG_ATTACH_PLIST" | awk '{print $1}')"
+DMG_MOUNT_SHA="$(shasum -a 256 "$DMG_MOUNT_LOG" | awk '{print $1}')"
+APPLICATIONS_ALIAS_RESOLUTION_SHA="$(shasum -a 256 "$APPLICATIONS_ALIAS_RESOLUTION_PATH" | awk '{print $1}')"
+RELEASE_STAGE="final_artifact_placement"
+# Release approval is a separately bound operator artifact.  An environment
+# boolean is not authorization and therefore cannot promote this receipt.
+RELEASE_APPROVAL_VALID=false
+PERSISTED_UNSIGNED_RECEIPT_FINAL="$EVIDENCE_DIR/formal-unsigned-package-receipt.json"
+APPLICATIONS_ALIAS_RESOLUTION_PATH_FINAL="$EVIDENCE_DIR/applications-alias-resolution.json"
+CODESIGN_APP_LOG_FINAL="$EVIDENCE_DIR/codesign-verify-app.log"
+CODESIGN_DMG_LOG_FINAL="$EVIDENCE_DIR/codesign-verify-dmg.log"
+STAPLER_STAPLE_LOG_FINAL="$EVIDENCE_DIR/stapler-staple.log"
+STAPLER_VALIDATE_LOG_FINAL="$EVIDENCE_DIR/stapler-validate.log"
+SPCTL_LOG_FINAL="$EVIDENCE_DIR/spctl-assessment.log"
+DMG_ATTACH_PLIST_FINAL="$EVIDENCE_DIR/dmg-readonly-attach.plist"
+DMG_MOUNT_LOG_FINAL="$EVIDENCE_DIR/dmg-readonly-mount.log"
+jq -n \
+  --arg source_app "$SOURCE_APP_PATH" \
+  --arg source_binary_sha256 "$SOURCE_BINARY_SHA" \
+  --arg signed_binary_sha256 "$SIGNED_BINARY_SHA" \
+  --argjson source_app_bundle_fingerprint "$SOURCE_APP_FINGERPRINT" \
+  --argjson signed_app_bundle_fingerprint "$SIGNED_APP_FINGERPRINT" \
+  --argjson mounted_app_bundle_fingerprint "$MOUNTED_APP_FINGERPRINT" \
+  --arg mounted_binary_sha256 "$MOUNTED_BINARY_SHA" \
+  --arg mounted_bundle_identifier "$MOUNTED_BUNDLE_ID" \
+  --arg applications_alias_kind "$APPLICATIONS_ALIAS_KIND" \
+  --arg applications_alias_resolved_target "$APPLICATIONS_ALIAS_TARGET" \
+  --arg applications_alias_resolution_path "$APPLICATIONS_ALIAS_RESOLUTION_PATH_FINAL" \
+  --arg applications_alias_resolution_sha256 "$APPLICATIONS_ALIAS_RESOLUTION_SHA" \
+  --arg unsigned_package_receipt_path "$PERSISTED_UNSIGNED_RECEIPT_FINAL" \
+  --arg unsigned_package_receipt_sha256 "$UNSIGNED_RECEIPT_SHA" \
+  --arg source_head "$SOURCE_HEAD" \
+  --arg source_tree "$SOURCE_TREE" \
+  --arg source_fingerprint "$SOURCE_FINGERPRINT" \
+  --arg signed_artifact_path "$OUTPUT_PATH" \
+  --arg signed_artifact_sha256 "$DMG_SHA" \
+  --argjson signed_artifact_bytes "$DMG_BYTES" \
+  --arg notarization_ticket_sha256 "$NOTARY_SHA" \
+  --arg codesign_verify_app_sha256 "$CODESIGN_APP_SHA" \
+  --arg codesign_verify_dmg_sha256 "$CODESIGN_DMG_SHA" \
+  --arg stapler_staple_sha256 "$STAPLER_STAPLE_SHA" \
+  --arg stapler_validate_sha256 "$STAPLER_VALIDATE_SHA" \
+  --arg spctl_assessment_sha256 "$SPCTL_SHA" \
+  --arg dmg_readonly_attach_sha256 "$DMG_ATTACH_SHA" \
+  --arg dmg_readonly_mount_sha256 "$DMG_MOUNT_SHA" \
+  --arg notarytool_submit_log_path "$NOTARYTOOL_LOG_FINAL" \
+  --arg notarytool_submit_log_sha256 "$NOTARYTOOL_LOG_SHA" \
+  --argjson notarytool_submit_log_bytes "$NOTARYTOOL_LOG_BYTES" \
+  --argjson notarytool_exit_code "$NOTARY_EXIT_CODE" \
+  --arg notary_submission_id "$NOTARY_SUBMISSION_ID" \
+  --arg notary_submission_state "$NOTARY_SUBMISSION_STATE" \
+  --argjson notary_submission_confirmed "$NOTARY_SUBMISSION_CONFIRMED" \
+  --argjson notary_submission_may_have_occurred "$NOTARY_SUBMISSION_MAY_HAVE_OCCURRED" \
+  --arg codesign_verify_app_log_path "$CODESIGN_APP_LOG_FINAL" \
+  --arg codesign_verify_dmg_log_path "$CODESIGN_DMG_LOG_FINAL" \
+  --arg stapler_staple_log_path "$STAPLER_STAPLE_LOG_FINAL" \
+  --arg stapler_validate_log_path "$STAPLER_VALIDATE_LOG_FINAL" \
+  --arg spctl_assessment_log_path "$SPCTL_LOG_FINAL" \
+  --arg dmg_readonly_attach_path "$DMG_ATTACH_PLIST_FINAL" \
+  --arg dmg_readonly_mount_log_path "$DMG_MOUNT_LOG_FINAL" \
+  --arg identity "$SIGNING_IDENTITY" \
+  --arg signing_team_identifier "$EXPECTED_TEAM_ID" \
+  --arg codesign_app_runtime_version "$SIGNED_APP_RUNTIME_VERSION" \
+  --arg codesign_app_flags "$SIGNED_APP_FLAGS" \
+  --arg codesign_app_timestamp "$SIGNED_APP_TIMESTAMP" \
+  --arg codesign_dmg_timestamp "$SIGNED_DMG_TIMESTAMP" \
+  --arg notary_auth_mode "$NOTARY_AUTH_MODE" \
+  --argjson release_approval_valid "$RELEASE_APPROVAL_VALID" \
+  '{
+    artifact_kind:"signed_notarized_stapled_artifact",
+    artifact_version:3,
+    receipt_contract_version:3,
+    owner_lane:"release_operator",
+    product:"Hepta Native",
+    bundle_identifier:"ai.hepta.nativeapp",
+    release_approval_valid:$release_approval_valid,
+    status:"ready",
+    source_evidence:{source_app:$source_app,source_binary_sha256:$source_binary_sha256,signed_binary_sha256:$signed_binary_sha256,source_app_bundle_fingerprint:$source_app_bundle_fingerprint,signed_app_bundle_fingerprint:$signed_app_bundle_fingerprint,unsigned_package_receipt_path:$unsigned_package_receipt_path,unsigned_package_receipt_sha256:$unsigned_package_receipt_sha256,source_head:$source_head,source_tree:$source_tree,source_fingerprint:$source_fingerprint,source_worktree_clean:true,source_stable_during_unsigned_package_run:true,private_copy_recomputed_before_signing:true,consumed_exact_formal_app:true,built_second_product_app:false},
+    artifact_evidence:{
+      signed:true,notarized:true,stapled:true,dmg_stapled:true,app_stapled:false,
+      local_distribution_artifact_written:true,
+      public_distribution_artifact_written:true,
+      public_distribution_artifact_semantics:"local_signed_notarized_stapled_dmg_written_not_public_upload",
+      public_upload_performed:false,
+      signed_artifact_path:$signed_artifact_path,
+      signed_artifact_sha256:$signed_artifact_sha256,
+      signed_artifact_bytes:$signed_artifact_bytes,
+      notarization_ticket_sha256:$notarization_ticket_sha256,
+      codesign_verify_app_sha256:$codesign_verify_app_sha256,
+      codesign_verify_dmg_sha256:$codesign_verify_dmg_sha256,
+      stapler_staple_sha256:$stapler_staple_sha256,
+      stapler_validate_sha256:$stapler_validate_sha256,
+      spctl_assessment_sha256:$spctl_assessment_sha256,
+      dmg_mounted_read_only:true,
+      mounted_app_bundle_fingerprint:$mounted_app_bundle_fingerprint,
+      mounted_binary_sha256:$mounted_binary_sha256,
+      mounted_bundle_identifier:$mounted_bundle_identifier,
+      applications_alias_verified:true,
+      applications_alias_kind:$applications_alias_kind,
+      applications_alias_resolved_target:$applications_alias_resolved_target,
+      applications_alias_resolution_path:$applications_alias_resolution_path,
+      applications_alias_resolution_sha256:$applications_alias_resolution_sha256,
+      dmg_readonly_attach_sha256:$dmg_readonly_attach_sha256,
+      dmg_readonly_mount_sha256:$dmg_readonly_mount_sha256,
+      notarytool_submit_log_path:$notarytool_submit_log_path,
+      notarytool_submit_log_sha256:$notarytool_submit_log_sha256,
+      notarytool_submit_log_bytes:$notarytool_submit_log_bytes,
+      notarytool_exit_code:$notarytool_exit_code,
+      notary_submission_id:$notary_submission_id,
+      notary_submission_state:$notary_submission_state,
+      notary_submission_confirmed:$notary_submission_confirmed,
+      notary_submission_may_have_occurred:$notary_submission_may_have_occurred,
+      codesign_verify_app_log_path:$codesign_verify_app_log_path,
+      codesign_verify_dmg_log_path:$codesign_verify_dmg_log_path,
+      stapler_staple_log_path:$stapler_staple_log_path,
+      stapler_validate_log_path:$stapler_validate_log_path,
+      spctl_assessment_log_path:$spctl_assessment_log_path,
+      dmg_readonly_attach_path:$dmg_readonly_attach_path,
+      dmg_readonly_mount_log_path:$dmg_readonly_mount_log_path,
+      signing_identity:$identity,
+      signing_team_identifier:$signing_team_identifier,
+      codesign_app_runtime_version:$codesign_app_runtime_version,
+      codesign_app_flags:$codesign_app_flags,
+      codesign_app_timestamp:$codesign_app_timestamp,
+      codesign_dmg_timestamp:$codesign_dmg_timestamp,
+      notary_auth_mode:$notary_auth_mode,
+      notary_keychain_profile_only:true,
+      direct_apple_id_password_mode_supported:false,
+      credential_environment_scrubbed_before_first_external_command:true
+    },
+    claim_boundary:{release_artifact_claim_ready:false,release_execution_ready:false,public_distribution_claim_ready:false,release_claim_ready:false,live_product_claim_ready:false},
+    side_effects:{credential_value_captured:false,credential_environment_scrubbed_before_first_external_command:true,keychain_identity_lookup_performed:true,network_call_performed:true,notary_submission_performed:true,app_signed:true,app_notarized:true,app_stapled:false,dmg_stapled:true,local_distribution_artifact_written:true,public_distribution_artifact_written:true,public_upload_performed:false,external_mutation:true}
+  }' \
+  >"$WORK_DIR/release-success.json"
+
+OUTPUT_INSTALL_TMP="$(mktemp "$OUTPUT_PARENT/.hepta-release-output.XXXXXX")"
+/bin/cp "$SIGNED_DMG" "$OUTPUT_INSTALL_TMP"
+if [[ "$(shasum -a 256 "$OUTPUT_INSTALL_TMP" | awk '{print $1}')" != "$DMG_SHA" ]]; then
+  rm -f "$OUTPUT_INSTALL_TMP"
+  release_fail "final_artifact_hash_changed" "staged local DMG hash changed during final placement"
+fi
+read -r OUTPUT_INSTALLED_DEVICE OUTPUT_INSTALLED_INODE < <(/usr/bin/stat -f '%d %i' "$OUTPUT_INSTALL_TMP")
+OUTPUT_INSTALL_PENDING=true
+if ! OUTPUT_INSTALL_IDENTITY="$(ruby -rdigest -e '
+  temporary, destination, expected_parent = ARGV
+  abort "output parent changed" unless File.realpath(File.dirname(destination)) == expected_parent
+  abort "output target already exists" if File.exist?(destination) || File.symlink?(destination)
+  stat = File.lstat(temporary)
+  abort "unsafe output temporary" unless stat.file? && !stat.symlink? && stat.nlink == 1
+  File.link(temporary, destination)
+  installed = File.lstat(destination)
+  abort "installed output identity mismatch" unless installed.file? && !installed.symlink? && installed.dev == stat.dev && installed.ino == stat.ino
+  digest = Digest::SHA256.file(destination).hexdigest
+  print [installed.dev, installed.ino, digest].join(" ")
+' "$OUTPUT_INSTALL_TMP" "$OUTPUT_PATH" "$OUTPUT_PARENT")"; then
+  rm -f "$OUTPUT_INSTALL_TMP"
+  release_fail "final_artifact_exclusive_install_failed" "refusing to replace a raced or unsafe final DMG target"
+fi
+read -r OUTPUT_INSTALLED_DEVICE OUTPUT_INSTALLED_INODE OUTPUT_INSTALLED_SHA <<<"$OUTPUT_INSTALL_IDENTITY"
+OUTPUT_INSTALLED_BY_THIS_RUN=true
+OUTPUT_INSTALL_PENDING=false
+[[ "$OUTPUT_INSTALLED_SHA" == "$DMG_SHA" ]] || {
+  rm -f "$OUTPUT_INSTALL_TMP"
+  release_fail "final_artifact_hash_changed" "installed local DMG hash changed during exclusive placement"
 }
-trap 'cleanup_rw; mv "$CARGO_TOML.bak" "$CARGO_TOML" 2>/dev/null && echo "Restored Cargo.toml"' EXIT
-
-if [[ ! -d "$MOUNT_DIR/Hepta.app" ]]; then
-    echo "Error: Hepta.app not found inside mounted DMG at $MOUNT_DIR" >&2
-    exit 1
+rm -f "$OUTPUT_INSTALL_TMP"
+if [[ "$(shasum -a 256 "$OUTPUT_PATH" | awk '{print $1}')" != "$DMG_SHA" ]]; then
+  release_fail "final_artifact_hash_changed" "published local DMG hash changed during final placement"
 fi
-rm -rf "$MOUNT_DIR/Hepta.app"
-ditto "$APP_PATH" "$MOUNT_DIR/Hepta.app"
 
-sync
-sleep 2
-hdiutil detach "$DEV_NAME" >/dev/null
-sleep 1
+if ! publish_staged_evidence; then
+  release_fail "release_evidence_exclusive_install_failed" "refusing to publish raced or unsafe release evidence"
+fi
 
-rm -f "$DMG_FILE"
-hdiutil convert "$DMG_RW" -format UDZO -imagekey zlib-level=9 -o "$DMG_FILE" >/dev/null
-rm -f "$DMG_RW"
+SUCCESS_RECEIPT_TMP="$(mktemp "$RECEIPT_PARENT/.hepta-release-success.XXXXXX")"
+/bin/cp "$WORK_DIR/release-success.json" "$SUCCESS_RECEIPT_TMP"
+read -r SUCCESS_RECEIPT_EXPECTED_DEVICE SUCCESS_RECEIPT_EXPECTED_INODE < <(/usr/bin/stat -f '%d %i' "$SUCCESS_RECEIPT_TMP")
+SUCCESS_RECEIPT_INSTALL_PENDING=true
+if ! SUCCESS_RECEIPT_INSTALL_IDENTITY="$(ruby -rdigest -rjson -e '
+  temporary, destination, expected_parent, output, output_device, output_inode, output_sha, evidence, evidence_device, evidence_inode = ARGV
+  abort "receipt parent changed" unless File.realpath(File.dirname(destination)) == expected_parent
+  abort "receipt target already exists" if File.exist?(destination) || File.symlink?(destination)
+  stat = File.lstat(temporary)
+  abort "unsafe success receipt temporary" unless stat.file? && !stat.symlink? && stat.nlink == 1
+  output_stat = File.lstat(output)
+  abort "installed output identity changed" unless output_stat.file? && !output_stat.symlink? && output_stat.dev.to_s == output_device && output_stat.ino.to_s == output_inode
+  abort "installed output hash changed" unless Digest::SHA256.file(output).hexdigest == output_sha
+  evidence_stat = File.lstat(evidence)
+  abort "installed evidence identity changed" unless evidence_stat.directory? && !evidence_stat.symlink? && evidence_stat.dev.to_s == evidence_device && evidence_stat.ino.to_s == evidence_inode
+  receipt = JSON.parse(File.binread(temporary))
+  abort "invalid success receipt" unless receipt["status"] == "ready" && receipt["artifact_version"] == 3
+  abort "receipt/output path mismatch" unless receipt.dig("artifact_evidence", "signed_artifact_path") == output
+  abort "receipt/output hash mismatch" unless receipt.dig("artifact_evidence", "signed_artifact_sha256") == output_sha
+  temporary_sha = Digest::SHA256.file(temporary).hexdigest
+  File.link(temporary, destination)
+  installed = File.lstat(destination)
+  abort "installed receipt identity mismatch" unless installed.file? && !installed.symlink? && installed.dev == stat.dev && installed.ino == stat.ino
+  abort "installed receipt hash mismatch" unless Digest::SHA256.file(destination).hexdigest == temporary_sha
+  JSON.parse(File.binread(destination))
+  print [installed.dev, installed.ino, temporary_sha].join(" ")
+' "$SUCCESS_RECEIPT_TMP" "$RECEIPT_PATH" "$RECEIPT_PARENT" "$OUTPUT_PATH" "$OUTPUT_INSTALLED_DEVICE" "$OUTPUT_INSTALLED_INODE" "$DMG_SHA" "$EVIDENCE_DIR" "$EVIDENCE_INSTALLED_DEVICE" "$EVIDENCE_INSTALLED_INODE")"; then
+  rm -f "$SUCCESS_RECEIPT_TMP"
+  release_fail "release_receipt_exclusive_install_failed" "refusing to replace a raced or unsafe release receipt target"
+fi
+read -r SUCCESS_RECEIPT_INSTALLED_DEVICE SUCCESS_RECEIPT_INSTALLED_INODE SUCCESS_RECEIPT_INSTALLED_SHA <<<"$SUCCESS_RECEIPT_INSTALL_IDENTITY"
+rm -f "$SUCCESS_RECEIPT_TMP"
+SUCCESS_RECEIPT_INSTALLED_BY_THIS_RUN=true
+SUCCESS_RECEIPT_INSTALL_PENDING=false
+failure_receipt_written=true
 
-# RW DMG is gone; drop that part of the trap.
-trap 'mv "$CARGO_TOML.bak" "$CARGO_TOML" 2>/dev/null && echo "Restored Cargo.toml"' EXIT
-
-# --- Step 6: Codesign the DMG itself ------------------------------------------
-
-echo "==> Codesigning DMG..."
-codesign_with_retry "$DMG_FILE" dmg
-
-# --- Step 7: Notarize ---------------------------------------------------------
-#
-# notarytool exits non-zero if the submission ends in any state other
-# than "Accepted", so set -e catches a rejection.
-
-echo "==> Submitting DMG for notarization (this can take several minutes)..."
-xcrun notarytool submit "$DMG_FILE" \
-    --apple-id "$APPLE_ID" \
-    --password "$APPLE_PASSWORD" \
-    --team-id "$APPLE_TEAM_ID" \
-    --wait
-
-# --- Step 8: Staple and verify ------------------------------------------------
-
-echo "==> Stapling notarization ticket to DMG..."
-xcrun stapler staple "$DMG_FILE"
-xcrun stapler validate "$DMG_FILE"
-
-echo "==> Verifying DMG with spctl..."
-spctl --assess --type open --context context:primary-signature --verbose "$DMG_FILE" || true
-
-echo ""
-echo "==> Done!"
-echo "    DMG:      $DMG_FILE"
-echo "    Identity: $SIGNING_IDENTITY"
+printf 'DMG: %s\nReceipt: %s\n' "$OUTPUT_PATH" "$RECEIPT_PATH"

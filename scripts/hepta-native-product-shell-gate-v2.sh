@@ -91,7 +91,7 @@ requirements = {
   "composer.commands" => ["src/shared/slash_commands.rs", %w[SlashCommand]],
   "composer.menu" => ["src/shared/room_input_popup_menu.rs", %w[RoomInputPopupMenu]],
   "composer.upload" => ["src/shared/file_upload_modal.rs", %w[FileUploadModal]],
-  "mobile.main" => ["src/home/main_mobile_ui.rs", %w[MainMobileUI RoomScreen]],
+  "mobile.adaptive_navigation" => ["src/home/home_screen.rs", %w[AdaptiveView StackNavigation RoomScreen]],
   "navigation.home" => ["src/home/home_screen.rs", %w[HomeScreen NavigationTabBar MainDesktopUI]],
   "navigation.tabs" => ["src/home/navigation_tab_bar.rs", %w[NavigationTabBar]],
   "navigation.spaces" => ["src/home/spaces_bar.rs", %w[SpacesBar]],
@@ -120,7 +120,6 @@ default_entry_paths = %w[
   src/home/mod.rs
   src/home/home_screen.rs
   src/home/main_desktop_ui.rs
-  src/home/main_mobile_ui.rs
 ].freeze
 forbidden_default_markers = %w[
   hepta_fixture_cockpit
@@ -146,9 +145,183 @@ contains_marker = lambda do |relative_path, marker|
   path = app_dir.join(relative_path)
   path.file? && path.binread.include?(marker)
 end
+
+# The default mobile shell is not MainMobileUI. It is the Mobile variant of
+# HomeScreen's AdaptiveView, backed by StackNavigation and populated from a
+# RoomScreen template at runtime. Check the ordered, comment-stripped widget
+# and action path so an unused module containing the same nouns cannot satisfy
+# the product contract.
+home_screen_path = app_dir.join("src/home/home_screen.rs")
+app_path = app_dir.join("src/app.rs")
+home_screen_source = home_screen_path.file? ? home_screen_path.binread : ""
+app_source = app_path.file? ? app_path.binread : ""
+
+# Retain only executable/token-bearing source. A line-only comment pass lets
+# block comments and string/raw-string decoys satisfy marker checks. This
+# scanner handles nested block comments, escaped strings, byte strings, raw
+# strings, and ordinary character literals while preserving newlines and code
+# punctuation for the ordered widget/runtime chain below.
+strip_non_executable_source = lambda do |source|
+  output = +""
+  index = 0
+  block_depth = 0
+  string_quote = nil
+  raw_closer = nil
+  while index < source.bytesize
+    if block_depth.positive?
+      if source.byteslice(index, 2) == "/*"
+        block_depth += 1
+        output << "  "
+        index += 2
+      elsif source.byteslice(index, 2) == "*/"
+        block_depth -= 1
+        output << "  "
+        index += 2
+      else
+        byte = source.getbyte(index)
+        output << (byte == 10 ? "\n" : " ")
+        index += 1
+      end
+      next
+    end
+
+    if raw_closer
+      if source.byteslice(index, raw_closer.bytesize) == raw_closer
+        output << (" " * raw_closer.bytesize)
+        index += raw_closer.bytesize
+        raw_closer = nil
+      else
+        byte = source.getbyte(index)
+        output << (byte == 10 ? "\n" : " ")
+        index += 1
+      end
+      next
+    end
+
+    if string_quote
+      byte = source.getbyte(index)
+      if byte == 92
+        output << " "
+        index += 1
+        if index < source.bytesize
+          output << (source.getbyte(index) == 10 ? "\n" : " ")
+          index += 1
+        end
+      elsif byte == string_quote
+        output << " "
+        index += 1
+        string_quote = nil
+      else
+        output << (byte == 10 ? "\n" : " ")
+        index += 1
+      end
+      next
+    end
+
+    if source.byteslice(index, 2) == "//"
+      while index < source.bytesize && source.getbyte(index) != 10
+        output << " "
+        index += 1
+      end
+      next
+    end
+    if source.byteslice(index, 2) == "/*"
+      block_depth = 1
+      output << "  "
+      index += 2
+      next
+    end
+
+    # rustc accepts up to 255 raw-string delimiter hashes. Scan the complete
+    # language limit so a 16+ hash string cannot reintroduce marker nouns.
+    raw_match = source.byteslice(index, [source.bytesize - index, 258].min)&.match(/\A(?:br|r)(\#{0,255})"/)
+    if raw_match
+      opener = raw_match[0]
+      raw_closer = "\"#{raw_match[1]}"
+      output << (" " * opener.bytesize)
+      index += opener.bytesize
+      next
+    end
+
+    byte = source.getbyte(index)
+    if byte == 34
+      string_quote = 34
+      output << " "
+      index += 1
+      next
+    end
+    # Treat only a syntactically closed short quote as a character literal;
+    # Rust lifetimes such as 'a remain executable tokens.
+    if byte == 39
+      char_match = source.byteslice(index, [source.bytesize - index, 12].min)&.match(/\A'(?:\\.|[^'\\\n])'/)
+      if char_match
+        output << (" " * char_match[0].bytesize)
+        index += char_match[0].bytesize
+        next
+      end
+    end
+    output << byte
+    index += 1
+  end
+  output.gsub(/\s+/, " ")
+end
+
+active_home_screen_source = strip_non_executable_source.call(home_screen_source)
+active_app_source = strip_non_executable_source.call(app_source)
+
+mobile_widget_tree_markers = [
+  "main_adaptive_view := AdaptiveView {",
+  "Mobile := SolidView {",
+  "view_stack := StackNavigation {",
+  "stack_templates: {",
+  "RoomScreenStackNavigationView := mod.widgets.RobrixStackNavigationView {",
+  "room_screen := mod.widgets.RoomScreen {}",
+].freeze
+mobile_runtime_markers = [
+  "RoomsListAction::Selected(selected_room) if !effective_is_desktop(cx) => {",
+  "self.push_selected_screen_view(cx, app_state, selected_room);",
+  "stack_navigation.create_view_from_template(cx, id!(RoomScreenStackNavigationView))",
+  ".room_screen(cx, ids!(room_screen)) .set_displayed_room(cx, room_name_id, thread_root);",
+  "stack_navigation.push(cx, view_id);",
+].freeze
+
+ordered_markers_present = lambda do |source, markers|
+  cursor = 0
+  markers.all? do |marker|
+    found = source.index(marker, cursor)
+    if found
+      cursor = found + marker.length
+      true
+    else
+      false
+    end
+  end
+end
+
+mobile_widget_tree_checks = {
+  "app_default_route_instantiates_home_screen" =>
+    active_app_source.include?("home_screen := HomeScreen {}"),
+  "adaptive_mobile_stack_room_template_ordered" =>
+    ordered_markers_present.call(active_home_screen_source, mobile_widget_tree_markers),
+  "mobile_selection_instantiates_and_pushes_room_template" =>
+    ordered_markers_present.call(active_home_screen_source, mobile_runtime_markers),
+}
+mobile_widget_tree_ready = mobile_widget_tree_checks.values.all?
+
+legacy_mobile_path = app_dir.join("src/home/main_mobile_ui.rs")
+legacy_mobile_module = {
+  "path" => "src/home/main_mobile_ui.rs",
+  "present" => legacy_mobile_path.file?,
+  "registered" => contains_marker.call("src/home/mod.rs", "main_mobile_ui::script_mod(vm)"),
+  "instantiated_by_default_app_or_home" =>
+    active_app_source.include?("MainMobileUI") || active_home_screen_source.include?("MainMobileUI"),
+  "authoritative_for_product_gate" => false,
+  "cleanup_deferred_to_upstream_ledger" => true,
+}
+
 shell_relationships = {
   "desktop_owns_room_screen" => contains_marker.call("src/home/main_desktop_ui.rs", "RoomScreen"),
-  "mobile_owns_room_screen" => contains_marker.call("src/home/main_mobile_ui.rs", "RoomScreen"),
+  "mobile_owns_room_screen" => mobile_widget_tree_ready,
   "home_owns_navigation" => contains_marker.call("src/home/home_screen.rs", "NavigationTabBar"),
   "room_owns_composer" => contains_marker.call("src/home/room_screen.rs", "RoomInputBar"),
 }
@@ -258,6 +431,14 @@ report = {
     "downstream_source_contracts_ready" => downstream_source_contracts_ready,
     "module_checks" => module_checks,
     "shell_relationships" => shell_relationships,
+    "mobile_widget_tree_contract" => {
+      "path" => "src/home/home_screen.rs",
+      "ready" => mobile_widget_tree_ready,
+      "checks" => mobile_widget_tree_checks,
+      "widget_tree_markers" => mobile_widget_tree_markers,
+      "runtime_markers" => mobile_runtime_markers,
+    },
+    "legacy_mobile_module" => legacy_mobile_module,
     "source_contract_checks" => source_contract_checks,
     "forbidden_default_marker_hits" => default_marker_hits,
   },

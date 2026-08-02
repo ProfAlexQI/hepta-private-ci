@@ -59,17 +59,69 @@ case "$REQUIRE" in
     VERIFY_WINDOW=1
     ;;
 esac
-if [[ -z "$EVIDENCE_DIR" ]]; then EVIDENCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-current-readiness.XXXXXX")"; fi
-mkdir -p "$EVIDENCE_DIR" "$TARGET_DIR"
-EVIDENCE_DIR="$(cd "$EVIDENCE_DIR" && pwd -P)"
-if [[ -z "$REPORT_PATH" ]]; then REPORT_PATH="$EVIDENCE_DIR/current-readiness.json"; fi
-mkdir -p "$(dirname "$REPORT_PATH")"
+for command in git jq ruby shasum uuidgen; do command -v "$command" >/dev/null 2>&1 || { echo "$command is required" >&2; exit 2; }; done
 
-for command in git jq shasum uuidgen; do command -v "$command" >/dev/null 2>&1 || { echo "$command is required" >&2; exit 2; }; done
+normalize_future_path() {
+  ruby -e '
+    cursor = File.expand_path(ARGV.fetch(0))
+    suffix = []
+    until File.exist?(cursor) || File.dirname(cursor) == cursor
+      suffix.unshift(File.basename(cursor))
+      cursor = File.dirname(cursor)
+    end
+    base = File.realpath(cursor)
+    print File.join(base, *suffix)
+  ' "$1"
+}
+
+path_is_within() {
+  ruby -e '
+    path = File.expand_path(ARGV.fetch(0))
+    root = File.expand_path(ARGV.fetch(1))
+    exit(path.start_with?(root + File::SEPARATOR) ? 0 : 1)
+  ' "$1" "$2"
+}
+
+if [[ -z "$EVIDENCE_DIR" ]]; then
+  EVIDENCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-current-readiness.XXXXXX")"
+elif [[ -L "$EVIDENCE_DIR" || ( -e "$EVIDENCE_DIR" && ! -d "$EVIDENCE_DIR" ) ]]; then
+  echo "--evidence-dir must be a real directory, not a symlink or non-directory" >&2
+  exit 64
+fi
+if [[ -L "$TARGET_DIR" || ( -e "$TARGET_DIR" && ! -d "$TARGET_DIR" ) ]]; then
+  echo "--target-dir must be a real directory, not a symlink or non-directory" >&2
+  exit 64
+fi
+EVIDENCE_DIR="$(normalize_future_path "$EVIDENCE_DIR")"
+TARGET_DIR="$(normalize_future_path "$TARGET_DIR")"
+if [[ "$EVIDENCE_DIR" == "$TARGET_DIR" ]] || path_is_within "$EVIDENCE_DIR" "$TARGET_DIR" || path_is_within "$TARGET_DIR" "$EVIDENCE_DIR"; then
+  echo "--evidence-dir and --target-dir must not overlap" >&2
+  exit 64
+fi
+mkdir -p "$EVIDENCE_DIR" "$TARGET_DIR"
+if [[ -z "$REPORT_PATH" ]]; then REPORT_PATH="$EVIDENCE_DIR/current-readiness.json"; fi
+if [[ -L "$REPORT_PATH" || ( -e "$REPORT_PATH" && ! -f "$REPORT_PATH" ) ]]; then
+  echo "--output must be a regular file path, not a symlink or special file" >&2
+  exit 64
+fi
+REPORT_PATH="$(normalize_future_path "$REPORT_PATH")"
+CANONICAL_CURRENT_REPORT="$EVIDENCE_DIR/current-readiness.json"
+if [[ "$REPORT_PATH" == "$EVIDENCE_DIR" || "$REPORT_PATH" == "$TARGET_DIR" ]] \
+  || path_is_within "$REPORT_PATH" "$TARGET_DIR" || path_is_within "$TARGET_DIR" "$REPORT_PATH"; then
+  echo "--output must not overlap --target-dir or equal --evidence-dir" >&2
+  exit 64
+fi
+if path_is_within "$REPORT_PATH" "$EVIDENCE_DIR" \
+  && [[ "$REPORT_PATH" != "$CANONICAL_CURRENT_REPORT" ]]; then
+  echo "--output must not be placed inside the producer-owned evidence tree (except current-readiness.json)" >&2
+  exit 64
+fi
+mkdir -p "$(dirname "$REPORT_PATH")"
 RUN_NONCE="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 
 BINDING_BEFORE="$EVIDENCE_DIR/source-binding-before.json"
 BINDING_AFTER="$EVIDENCE_DIR/source-binding-after.json"
+BINDING_FINAL="$EVIDENCE_DIR/source-binding-final.json"
 SYNC_REPORT="$EVIDENCE_DIR/native-upstream-sync.json"
 PRODUCT_REPORT="$EVIDENCE_DIR/native-product-shell.json"
 TOKEN_REPORT="$EVIDENCE_DIR/token-sync.json"
@@ -78,15 +130,53 @@ PACKAGE_REPORT="$EVIDENCE_DIR/native-current-package.json"
 BROWSER_REPORT="$EVIDENCE_DIR/control-browser-smoke.json"
 MOBILE_REPORT="$EVIDENCE_DIR/native-mobile-readiness.json"
 WINDOW_REPORT="$EVIDENCE_DIR/native-window-current.json"
+BROWSER_LOG="$EVIDENCE_DIR/control-browser-smoke.log"
+CURRENT_REPORT="$CANONICAL_CURRENT_REPORT"
 
-# Evidence directories are reusable, but child receipts never are. Truncate
-# every current-run output before invoking a producer so a crash cannot expose
-# a prior ready receipt at the same path.
-for current_run_report in "$SYNC_REPORT" "$PRODUCT_REPORT" "$TOKEN_REPORT" "$FEATURE_REPORT" "$PACKAGE_REPORT" "$BROWSER_REPORT" "$MOBILE_REPORT" "$WINDOW_REPORT"; do
-  : >"$current_run_report"
+MATRIX_LIVE_RECEIPT="$(normalize_future_path "${HEPTA_UI_MATRIX_LIVE_RECEIPT:-$EVIDENCE_DIR/matrix-live.json}")"
+BRIDGE_LIVE_RECEIPT="$(normalize_future_path "${HEPTA_UI_BRIDGE_LIVE_RECEIPT:-$EVIDENCE_DIR/hepta-bridge-live.json}")"
+DEVICE_RECEIPT="$(normalize_future_path "${HEPTA_UI_DEVICE_LAB_RECEIPT:-$EVIDENCE_DIR/device-lab.json}")"
+ACCESSIBILITY_RECEIPT="$(normalize_future_path "${HEPTA_UI_ACCESSIBILITY_RECEIPT:-$EVIDENCE_DIR/accessibility.json}")"
+RELEASE_RECEIPT="$(normalize_future_path "${HEPTA_UI_RELEASE_RECEIPT:-$EVIDENCE_DIR/release.json}")"
+
+writable_paths=(
+  "$BINDING_BEFORE" "$BINDING_AFTER" "$BINDING_FINAL" "$SYNC_REPORT" "$PRODUCT_REPORT"
+  "$TOKEN_REPORT" "$FEATURE_REPORT" "$PACKAGE_REPORT" "$BROWSER_REPORT"
+  "$MOBILE_REPORT" "$WINDOW_REPORT" "$BROWSER_LOG" "$CURRENT_REPORT" "$REPORT_PATH"
+)
+for writable_path in "${writable_paths[@]}"; do
+  if [[ -L "$writable_path" || ( -e "$writable_path" && ! -f "$writable_path" ) ]]; then
+    echo "current-readiness output path must be a regular file and not a symlink: $writable_path" >&2
+    exit 64
+  fi
+done
+for input_path in "$MATRIX_LIVE_RECEIPT" "$BRIDGE_LIVE_RECEIPT" "$DEVICE_RECEIPT" "$ACCESSIBILITY_RECEIPT" "$RELEASE_RECEIPT"; do
+  for writable_path in "${writable_paths[@]}"; do
+    if [[ "$input_path" == "$writable_path" ]]; then
+      echo "current-readiness input receipt collides with an output path: $input_path" >&2
+      exit 64
+    fi
+  done
+done
+for child_report in "$SYNC_REPORT" "$PRODUCT_REPORT" "$TOKEN_REPORT" "$FEATURE_REPORT" "$PACKAGE_REPORT" "$BROWSER_REPORT" "$MOBILE_REPORT" "$WINDOW_REPORT"; do
+  if [[ "$REPORT_PATH" == "$child_report" ]]; then
+    echo "--output must not replace a child receipt: $child_report" >&2
+    exit 64
+  fi
 done
 
-scripts/hepta-ui-source-fingerprint >"$BINDING_BEFORE"
+# Evidence directories are reusable, but child receipts never are. Atomically
+# replace each receipt with a fail-closed sentinel before invoking a producer;
+# this neither follows a pre-positioned symlink nor exposes a prior ready row.
+for current_run_report in "$SYNC_REPORT" "$PRODUCT_REPORT" "$TOKEN_REPORT" "$FEATURE_REPORT" "$PACKAGE_REPORT" "$BROWSER_REPORT" "$MOBILE_REPORT" "$WINDOW_REPORT"; do
+  sentinel="$(mktemp "$EVIDENCE_DIR/.current-run-receipt.XXXXXX")"
+  printf '{"schema_version":0,"status":"not_ready","blockers":["current_run_producer_not_completed"]}\n' >"$sentinel"
+  mv -f -- "$sentinel" "$current_run_report"
+done
+
+binding_tmp="$(mktemp "$EVIDENCE_DIR/.source-binding-before.XXXXXX")"
+scripts/hepta-ui-source-fingerprint >"$binding_tmp"
+mv -f -- "$binding_tmp" "$BINDING_BEFORE"
 
 sync_rc=0
 scripts/hepta-native-robrix-upstream-sync-check-v2.sh --json --strict >"$SYNC_REPORT" || sync_rc=$?
@@ -124,8 +214,10 @@ fi
 
 browser_rc=0
 if [[ "$VERIFY_BROWSER" == "1" ]]; then
+  browser_log_tmp="$(mktemp "$EVIDENCE_DIR/.control-browser-smoke-log.XXXXXX")"
   HEPTA_CONTROL_UI_BROWSER_SMOKE_REPORT_PATH="$BROWSER_REPORT" \
-    scripts/hepta-control-ui-browser-smoke.sh >"$EVIDENCE_DIR/control-browser-smoke.log" 2>&1 || browser_rc=$?
+    scripts/hepta-control-ui-browser-smoke.sh >"$browser_log_tmp" 2>&1 || browser_rc=$?
+  mv -f -- "$browser_log_tmp" "$BROWSER_LOG"
 else
   jq -n '{schema_version:1,kind:"hepta-control-ui-browser-smoke-current-wrapper",status:"not_run",browser_smoke_ready:false,blockers:["control_browser_smoke_not_run_for_current_source"]}' >"$BROWSER_REPORT"
 fi
@@ -145,13 +237,15 @@ normalize_child_report "$PACKAGE_REPORT" 1 hepta-native-current-package-gate nat
 normalize_child_report "$BROWSER_REPORT" 1 hepta-control-ui-browser-smoke-current-wrapper control_browser_report_invalid
 normalize_child_report "$MOBILE_REPORT" 1 hepta-native-mobile-readiness-gate native_mobile_report_invalid
 
-scripts/hepta-ui-source-fingerprint >"$BINDING_AFTER"
+binding_tmp="$(mktemp "$EVIDENCE_DIR/.source-binding-after.XXXXXX")"
+scripts/hepta-ui-source-fingerprint >"$binding_tmp"
+mv -f -- "$binding_tmp" "$BINDING_AFTER"
 source_fingerprint="$(jq -r '.source_fingerprint' "$BINDING_AFTER")"
 source_head="$(jq -r '.head' "$BINDING_AFTER")"
 source_tree="$(jq -r '.head_tree' "$BINDING_AFTER")"
 
 if [[ "$VERIFY_BROWSER" == "1" && -s "$BROWSER_REPORT" ]]; then
-  tmp_browser="$EVIDENCE_DIR/.control-browser-smoke.bound.$$"
+  tmp_browser="$(mktemp "$EVIDENCE_DIR/.control-browser-smoke.bound.XXXXXX")"
   browser_original_valid=false
   if [[ "$browser_rc" == "0" ]] && jq -e '
       .schema_version == 1
@@ -207,6 +301,11 @@ receipt_json() {
   local capability="$3"
   local expected_kind="$4"
   local expected_producer="$5"
+  if [[ -L "$path" ]]; then
+    jq -n --arg name "$name" --arg path "$path" --arg capability "$capability" \
+      '{name:$name,path:$path,present:true,bound_to_current_source:false,capability:$capability,ready:false,reason:"receipt_symlink_rejected"}'
+    return
+  fi
   if [[ ! -s "$path" ]]; then
     jq -n --arg name "$name" --arg path "$path" --arg capability "$capability" \
       '{name:$name,path:$path,present:false,bound_to_current_source:false,capability:$capability,ready:false,reason:"receipt_missing"}'
@@ -220,7 +319,7 @@ receipt_json() {
   local artifact_path expected_sha actual_sha="" artifact_hash_valid=false
   artifact_path="$(jq -r '.artifact.path // ""' "$path")"
   expected_sha="$(jq -r '.artifact.sha256 // ""' "$path")"
-  if [[ -f "$artifact_path" && "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+  if [[ -f "$artifact_path" && ! -L "$artifact_path" && "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
     actual_sha="$(shasum -a 256 "$artifact_path" | awk '{print $1}')"
     [[ "$actual_sha" == "$expected_sha" ]] && artifact_hash_valid=true
   fi
@@ -240,12 +339,7 @@ receipt_json() {
        scope:($r.scope // null),signed:false,notarized:false,stapled:false}'
 }
 
-MATRIX_LIVE_RECEIPT="${HEPTA_UI_MATRIX_LIVE_RECEIPT:-$EVIDENCE_DIR/matrix-live.json}"
-BRIDGE_LIVE_RECEIPT="${HEPTA_UI_BRIDGE_LIVE_RECEIPT:-$EVIDENCE_DIR/hepta-bridge-live.json}"
 NATIVE_WINDOW_RECEIPT="$WINDOW_REPORT"
-DEVICE_RECEIPT="${HEPTA_UI_DEVICE_LAB_RECEIPT:-$EVIDENCE_DIR/device-lab.json}"
-ACCESSIBILITY_RECEIPT="${HEPTA_UI_ACCESSIBILITY_RECEIPT:-$EVIDENCE_DIR/accessibility.json}"
-RELEASE_RECEIPT="${HEPTA_UI_RELEASE_RECEIPT:-$EVIDENCE_DIR/release.json}"
 
 matrix_receipt="$(receipt_json matrix_live "$MATRIX_LIVE_RECEIPT" matrix_live_ready hepta-ui-matrix-live-receipt-v1 scripts/hepta-ui-matrix-live-verifier-v1)"
 bridge_receipt="$(receipt_json hepta_bridge_live "$BRIDGE_LIVE_RECEIPT" hepta_live_bridge_ready hepta-ui-bridge-live-receipt-v1 scripts/hepta-ui-bridge-live-verifier-v1)"
@@ -268,7 +362,7 @@ if [[ -d "$package_app_path" && -x "$package_binary_path" ]]; then
   fi
 fi
 
-report="$(jq -n \
+report="$(jq -L "$ROOT_DIR/scripts/lib" -n \
   --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg require "$REQUIRE" --arg evidence_dir "$EVIDENCE_DIR" \
   --argjson binding_before "$(cat "$BINDING_BEFORE")" --argjson binding_after "$(cat "$BINDING_AFTER")" \
   --argjson binding_stable "$binding_stable" --argjson sync "$(cat "$SYNC_REPORT")" --argjson product "$(cat "$PRODUCT_REPORT")" \
@@ -285,40 +379,28 @@ report="$(jq -n \
   --arg expected_package_app_path "$expected_package_app_path" \
   --arg package_binary_path "$package_binary_path" --arg package_binary_actual_sha256 "$package_binary_actual_sha256" \
   --arg package_bundle_actual_sha256 "$package_bundle_actual_sha256" --argjson package_artifact_hash_valid "$package_artifact_hash_valid" '
+    include "hepta-ui-current-readiness-v1";
     ($browser_file[0]) as $browser |
-    ($binding_stable and $binding_after.repository_worktree_clean and $sync_exit_code == 0 and $product_exit_code == 0 and $token_exit_code == 0 and $feature_exit_code == 0 and $mobile_exit_code == 0 and $sync_bound and $product_bound and $token_bound and $feature_bound and $package_bound and $mobile_bound and $sync.status == "ready" and $sync.path_ledger_ready == true and $product.status == "ready" and $tokens.status == "ready" and $feature.feature_matrix_ready == true and $package.static_package_contract_ready == true and $mobile.status == "source_contract_ready" and $mobile.mobile_source_contract_ready == true and ($mobile.hard_boundaries.android_emulator_visual_verified // true) == false and ($mobile.hard_boundaries.android_emulator_rotation_verified // true) == false and ($mobile.hard_boundaries.android_emulator_ime_verified // true) == false) as $source_ready |
-    (($browser.schema_version // null) == 1 and ($browser.kind // "") == "hepta-control-ui-browser-smoke-current-wrapper" and ($browser.producer // "") == "scripts/hepta-ui-current-readiness.sh" and ($browser.original_receipt_valid // false) == true and ($browser.browser_child_exit_code // -1) == 0 and ($browser.source_binding.head // "") == $binding_after.head and ($browser.source_binding.head_tree // "") == $binding_after.head_tree and ($browser.source_binding.source_fingerprint // "") == $binding_after.source_fingerprint and ($browser.browser_smoke_ready // false) == true) as $browser_ready |
-    (
-      $window_verifier_executed == true
-      and $window_exit_code == 0
-      and $window_receipt.ready == true
-      and $window_receipt.source_stable_during_run == true
-      and $window_receipt.independent_verifier_ready == true
-      and $window_receipt.scope == "unauthenticated_local_macos_product_shell"
-      and ($window_receipt.run_nonce // "") == $run_nonce
-      and ($window_receipt.package.current_source_local_package_ready // false) == true
-      and ($window_receipt.package.visual_capture_binary_is_exact_packaged_executable // false) == true
-      and ($window_receipt.package.visual_capture_binary_is_separate_developer_diagnostics_build // true) == false
-      and ($window_receipt.package.report_path // "") == $package_report_path
-      and ($window_receipt.package.report_sha256 // "") == $package_report_sha256
-      and ($window_receipt.package.app_path // "") == ($package.artifact.path // "")
-      and ($package.artifact.path // "") == $expected_package_app_path
-      and ($window_receipt.package.binary_path // "") == $package_binary_path
-      and ($window_receipt.package.binary_sha256 // "") == $package_binary_actual_sha256
-      and ($window_receipt.package.bundle_fingerprint_sha256 // "") == $package_bundle_actual_sha256
-      and $package_artifact_hash_valid == true
-      and ($window_receipt.automation.no_remote // false) == true
-      and ($window_receipt.automation.host_kind // "") == "local"
-      and ($window_receipt.automation.host_source // "") == "forced_local_services"
-      and ($window_receipt.host_window.title // "") == "Hepta"
-      and ($window_receipt.host_window.exact_title_match_count // 0) == 1
-      and ($window_receipt.isolation.real_product_data_path_denied // false) == true
-      and ($window_receipt.isolation.real_product_cache_path_denied // false) == true
-      and ($window_receipt.isolation.keychain_services_denied // false) == true
-      and ($window_receipt.isolation.network_denied_by_sandbox // false) == true
-      and ($window_receipt.isolation.force_login_argument // false) == true
-    ) as $promotion_independent_verifiers_ready |
-    ($source_ready and $package.local_package_ready == true and $browser_ready and $window_receipt.ready and $promotion_independent_verifiers_ready) as $local_ready |
+    {
+      binding_stable:$binding_stable,binding_after:$binding_after,
+      sync_exit_code:$sync_exit_code,product_exit_code:$product_exit_code,token_exit_code:$token_exit_code,
+      feature_exit_code:$feature_exit_code,package_exit_code:$package_exit_code,mobile_exit_code:$mobile_exit_code,
+      sync_bound:$sync_bound,product_bound:$product_bound,token_bound:$token_bound,
+      feature_bound:$feature_bound,package_bound:$package_bound,mobile_bound:$mobile_bound,
+      sync:$sync,product:$product,tokens:$tokens,feature:$feature,package:$package,mobile:$mobile,browser:$browser,
+      window_verifier_executed:$window_verifier_executed,window_exit_code:$window_exit_code,
+      window_receipt:$window_receipt,run_nonce:$run_nonce,
+      package_report_path:$package_report_path,package_report_sha256:$package_report_sha256,
+      expected_package_app_path:$expected_package_app_path,package_binary_path:$package_binary_path,
+      package_binary_actual_sha256:$package_binary_actual_sha256,
+      package_bundle_actual_sha256:$package_bundle_actual_sha256,
+      package_artifact_hash_valid:$package_artifact_hash_valid
+    } as $truth_context |
+    ($truth_context | hepta_ui_readiness_truth) as $truth |
+    $truth.source as $source_ready |
+    $truth.browser as $browser_ready |
+    $truth.promotion as $promotion_independent_verifiers_ready |
+    $truth.local as $local_ready |
     false as $full_ready |
     false as $release_independent_verification_ready |
     ($full_ready and $release_receipt.ready and $release_independent_verification_ready) as $ga_ready |
@@ -349,11 +431,54 @@ report="$(jq -n \
       promotion_receipts:[$window_receipt,$matrix_receipt,$bridge_receipt,$device_receipt,$accessibility_receipt,$release_receipt],
       hard_boundaries:{promotion_independent_verifiers_ready:$promotion_independent_verifiers_ready,matrix_live_ready:false,hepta_live_bridge_ready:false,real_device_lab_ready:false,accessibility_ready:false,ios_accessibility_update_consumed:($mobile.hard_boundaries.ios_accessibility_update_consumed // false),android_accessibility_update_consumed:($mobile.hard_boundaries.android_accessibility_update_consumed // false),android_secure_session_persistence_ready:($mobile.hard_boundaries.android_secure_session_persistence_ready // false),android_emulator_visual_verified:false,android_emulator_rotation_verified:false,android_emulator_ime_verified:false,mobile_full_product_ready:($mobile.hard_boundaries.mobile_full_product_ready // false),release_independent_verification_ready:$release_independent_verification_ready,signed:false,notarized:false,stapled:false,public_distribution_ready:false},
       external_side_effects_performed:false,
-      blockers:([if $binding_stable then empty else "source_changed_during_gate" end,if $binding_after.repository_worktree_clean then empty else "repository_worktree_dirty" end,if $sync_exit_code == 0 then empty else "upstream_sync_child_failed" end,if $product_exit_code == 0 then empty else "native_product_child_failed" end,if $token_exit_code == 0 then empty else "token_sync_child_failed" end,if $feature_exit_code == 0 then empty else "feature_matrix_child_failed" end,if $mobile_exit_code == 0 then empty else "native_mobile_child_failed" end,if $window_exit_code == 0 then empty else "native_window_verifier_failed" end,if $sync_bound then empty else "upstream_sync_receipt_not_bound" end,if $product_bound then empty else "native_product_receipt_not_bound" end,if $token_bound then empty else "token_receipt_not_bound" end,if $feature_bound then empty else "feature_receipt_not_bound" end,if $package_bound then empty else "package_receipt_not_bound" end,if $mobile_bound then empty else "native_mobile_receipt_not_bound" end,if $sync.status == "ready" then empty else "upstream_sync_or_path_ledger_not_ready" end,if $product.status == "ready" then empty else "native_product_shell_not_ready" end,if $tokens.status == "ready" then empty else "token_sync_not_ready" end,if $feature.feature_matrix_ready == true then empty else "native_feature_matrix_not_ready" end,if $package.static_package_contract_ready == true then empty else "package_metadata_not_ready" end,if $mobile.mobile_source_contract_ready == true then empty else "native_mobile_source_contract_not_ready" end,if $package.local_package_ready == true then empty else "current_source_local_package_not_ready" end,if $browser_ready then empty else "control_browser_current_receipt_not_ready" end,if $promotion_independent_verifiers_ready then empty else "native_window_independent_promotion_not_ready" end,if $window_receipt.ready then empty else "native_window_current_receipt_not_ready" end,if $matrix_receipt.ready then empty else "matrix_live_not_ready" end,if $bridge_receipt.ready then empty else "hepta_live_bridge_not_ready" end,if $device_receipt.ready then empty else "real_device_lab_not_ready" end,if $accessibility_receipt.ready then empty else "accessibility_not_ready" end,"pinned_makepad_mobile_accessibility_backend_not_implemented","android_secure_credential_backend_not_supported","independent_release_verifier_not_implemented",if $release_receipt.ready then empty else "public_release_not_ready" end])
+      blockers:([if $binding_stable then empty else "source_changed_during_gate" end,if $binding_after.repository_worktree_clean then empty else "repository_worktree_dirty" end,if $sync_exit_code == 0 then empty else "upstream_sync_child_failed" end,if $product_exit_code == 0 then empty else "native_product_child_failed" end,if $token_exit_code == 0 then empty else "token_sync_child_failed" end,if $feature_exit_code == 0 then empty else "feature_matrix_child_failed" end,if $package_exit_code == 0 then empty else "native_package_child_failed" end,if $mobile_exit_code == 0 then empty else "native_mobile_child_failed" end,if $window_exit_code == 0 then empty else "native_window_verifier_failed" end,if $sync_bound then empty else "upstream_sync_receipt_not_bound" end,if $product_bound then empty else "native_product_receipt_not_bound" end,if $token_bound then empty else "token_receipt_not_bound" end,if $feature_bound then empty else "feature_receipt_not_bound" end,if $package_bound then empty else "package_receipt_not_bound" end,if $mobile_bound then empty else "native_mobile_receipt_not_bound" end,if $sync.status == "ready" then empty else "upstream_sync_or_path_ledger_not_ready" end,if $product.status == "ready" then empty else "native_product_shell_not_ready" end,if $tokens.status == "ready" then empty else "token_sync_not_ready" end,if $feature.feature_matrix_ready == true then empty else "native_feature_matrix_not_ready" end,if $package.status == "ready" then empty else "native_package_status_not_ready" end,if $package.static_package_contract_ready == true then empty else "package_metadata_not_ready" end,if $mobile.mobile_source_contract_ready == true then empty else "native_mobile_source_contract_not_ready" end,if $package.local_package_ready == true then empty else "current_source_local_package_not_ready" end,if $browser_ready then empty else "control_browser_current_receipt_not_ready" end,if $promotion_independent_verifiers_ready then empty else "native_window_independent_promotion_not_ready" end,if $window_receipt.ready then empty else "native_window_current_receipt_not_ready" end,if $matrix_receipt.ready then empty else "matrix_live_not_ready" end,if $bridge_receipt.ready then empty else "hepta_live_bridge_not_ready" end,if $device_receipt.ready then empty else "real_device_lab_not_ready" end,if $accessibility_receipt.ready then empty else "accessibility_not_ready" end,"pinned_makepad_mobile_accessibility_backend_not_implemented","android_secure_credential_backend_not_supported","independent_release_verifier_not_implemented",if $release_receipt.ready then empty else "public_release_not_ready" end])
     }')"
 
-printf '%s\n' "$report" >"$REPORT_PATH"
-if [[ "$REPORT_PATH" != "$EVIDENCE_DIR/current-readiness.json" ]]; then printf '%s\n' "$report" >"$EVIDENCE_DIR/current-readiness.json"; fi
+write_report_atomically() {
+  local destination="$1" temporary
+  temporary="$(mktemp "$(dirname "$destination")/.hepta-current-readiness.XXXXXX")"
+  printf '%s\n' "$report" >"$temporary"
+  mv -f -- "$temporary" "$destination"
+}
+
+# The child receipts and report assembly above can be expensive. Re-capture the
+# source at the publication boundary so a concurrent HEAD/tree/source change
+# cannot publish a stale ready receipt merely because the earlier snapshot was
+# clean. The final receipt remains structured and fail-closed.
+binding_tmp="$(mktemp "$EVIDENCE_DIR/.source-binding-final.XXXXXX")"
+scripts/hepta-ui-source-fingerprint >"$binding_tmp"
+mv -f -- "$binding_tmp" "$BINDING_FINAL"
+publish_source_stable=false
+if jq -e --slurpfile evaluated "$BINDING_AFTER" '
+    .head == $evaluated[0].head
+    and .head_tree == $evaluated[0].head_tree
+    and .source_fingerprint == $evaluated[0].source_fingerprint
+    and .repository_worktree_clean == true
+    and $evaluated[0].repository_worktree_clean == true
+  ' "$BINDING_FINAL" >/dev/null; then
+  publish_source_stable=true
+fi
+report="$(jq -c \
+  --slurpfile final_binding "$BINDING_FINAL" \
+  --argjson publish_source_stable "$publish_source_stable" '
+    . + {
+      source_binding_at_publish:$final_binding[0],
+      source_publish_boundary_stable:$publish_source_stable
+    }
+    | if $publish_source_stable then . else
+        .source_binding = $final_binding[0]
+        | .source_stable_during_run = false
+        | .current_head_active_truth_ready = false
+        | .readiness.source = false
+        | .readiness.local_demo = false
+        | .readiness.full_product = false
+        | .readiness.public_ga = false
+        | .status = (if .report_only then "report_complete" else "not_ready" end)
+        | .blockers = ((.blockers + ["source_changed_or_became_dirty_before_atomic_publish"]) | unique)
+      end
+  ' <<<"$report")"
+write_report_atomically "$REPORT_PATH"
+if [[ "$REPORT_PATH" != "$CURRENT_REPORT" ]]; then write_report_atomically "$CURRENT_REPORT"; fi
 printf '%s\n' "$report"
 [[ "$REQUIRE" == "none" ]] && exit 0
 jq -e '.status == "ready"' <<<"$report" >/dev/null

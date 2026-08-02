@@ -1,0 +1,154 @@
+#!/bin/bash -p
+set +x
+PS4='+ '
+set -euo pipefail
+unset BASH_ENV ENV CDPATH GLOBIGNORE RUBYOPT RUBYLIB
+PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+ROOT="$SCRIPT_ROOT"
+CONTRACT_REL=".github/hepta-ci-contract-v1.json"
+
+usage() {
+  echo "usage: scripts/hepta-ui-contract-commit-closure-gate verify [--root PATH] [--contract RELATIVE_PATH]" >&2
+  exit 2
+}
+
+fail() {
+  echo "hepta-ui-contract-commit-closure-gate: $1" >&2
+  exit 1
+}
+
+validate_relative_path() {
+  local path="$1"
+  [[ -n "$path" ]] || fail "empty required path"
+  case "$path" in
+    /*|.|..|../*|*/../*|*/..|*//*|*/|*[!A-Za-z0-9._/-]*)
+      fail "unsafe required path: $path"
+      ;;
+  esac
+}
+
+verify_index_file() {
+  local path="$1"
+  local object_type
+  validate_relative_path "$path"
+  if [[ ! -e "$ROOT/$path" && ! -L "$ROOT/$path" ]]; then
+    fail "required worktree file is missing: $path"
+  fi
+  if ! git -C "$ROOT" cat-file -e ":$path" 2>/dev/null; then
+    fail "required file is absent from the staged tree: $path"
+  fi
+  object_type="$(git -C "$ROOT" cat-file -t ":$path" 2>/dev/null || true)"
+  [[ "$object_type" == "blob" ]] || fail "required path is not an indexed file: $path"
+  if ! git -C "$ROOT" diff --quiet -- "$path"; then
+    fail "required file has unstaged drift from the staged tree: $path"
+  fi
+  verified_file_count=$((verified_file_count + 1))
+}
+
+verify_index_directory() {
+  local path="$1"
+  local absolute file_count=0 relative
+  validate_relative_path "$path"
+  absolute="$ROOT/$path"
+  [[ -d "$absolute" && ! -L "$absolute" ]] || fail "required directory is missing or a symlink: $path"
+
+  while IFS= read -r -d '' file; do
+    relative="${file#"$ROOT/"}"
+    verify_index_file "$relative"
+    file_count=$((file_count + 1))
+  done < <(find "$absolute" \( -type f -o -type l \) -print0)
+
+  (( file_count > 0 )) || fail "required directory is empty: $path"
+  if ! git -C "$ROOT" diff --quiet -- "$path"; then
+    fail "required directory has unstaged drift from the staged tree: $path"
+  fi
+  verified_directory_count=$((verified_directory_count + 1))
+}
+
+[[ "${1:-}" == "verify" ]] || usage
+shift
+while (( $# > 0 )); do
+  case "$1" in
+    --root)
+      [[ $# -ge 2 ]] || usage
+      ROOT="$2"
+      shift 2
+      ;;
+    --contract)
+      [[ $# -ge 2 ]] || usage
+      CONTRACT_REL="$2"
+      shift 2
+      ;;
+    *) usage ;;
+  esac
+done
+
+ROOT="$(cd "$ROOT" && pwd -P)"
+[[ "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)" == "$ROOT" ]] \
+  || fail "root is not the top level of a Git worktree: $ROOT"
+validate_relative_path "$CONTRACT_REL"
+
+verified_file_count=0
+verified_directory_count=0
+verify_index_file "$CONTRACT_REL"
+CONTRACT="$ROOT/$CONTRACT_REL"
+
+jq -e '
+  .ui_commit_closure.capability_version == 1
+  and .ui_commit_closure.index_semantics == "HEAD plus staged overlay; required paths must match the worktree"
+  and (.ui_commit_closure.required_files | type == "array" and length > 0)
+  and (.ui_commit_closure.required_directories | type == "array" and length > 0)
+  and ([.ui_commit_closure.required_files[], .ui_commit_closure.required_directories[]]
+    | all(type == "string" and length > 0))
+  and ([
+    "apps/hepta-native/packaging/app-bundle-fingerprint-v1.rb",
+    "apps/hepta-native/packaging/build-macos-dmg.sh",
+    "apps/hepta-native/packaging/create-macos-dmg-from-app.sh",
+    "apps/hepta-native/packaging/fix-dmg-applications-icon.sh",
+    "apps/hepta-native/packaging/resolve-finder-bookmark-v1.swift",
+    "scripts/fixtures/hepta-ui-release-consumer-ready-v1.tar.gz",
+    "scripts/hepta-native-macos-release-chain-self-test.sh",
+    "scripts/hepta-ui-backend-delivery-audit-gate.sh",
+    "scripts/hepta-ui-backend-delivery-receipt-roundtrip-gate.sh",
+    "scripts/hepta-ui-blocker-closure-gate.sh",
+    "scripts/hepta-ui-current-plan-refresh-gate.sh",
+    "scripts/hepta-ui-release-approval-intake-gate.sh",
+    "scripts/hepta-ui-release-artifact-boundary-gate.sh",
+    "scripts/hepta-ui-release-artifact-intake-gate.sh",
+    "scripts/hepta-ui-release-artifact-intake-v3-self-test.sh",
+    "scripts/hepta-ui-release-artifact-roundtrip-gate.sh",
+    "scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh",
+    "scripts/hepta-ui-release-signing-capability-gate.sh",
+    "scripts/hepta-ui-risk-future-plan-gate.sh",
+    "scripts/hepta-ui-root-report-replay-gate.sh",
+    "scripts/lib/hepta-safe-managed-output-v1.sh"
+  ] - .ui_commit_closure.required_files | length == 0)
+' "$CONTRACT" >/dev/null || fail "invalid ui_commit_closure contract"
+
+required_file_paths="$(
+  jq -er '
+    [
+      (.ui_product_contract | .. | strings | select(startswith("scripts/")) | split(" ")[0]),
+      (.ui_commit_closure.gate_entrypoint | split(" ")[0]),
+      (.ui_commit_closure.self_test_entrypoint | split(" ")[0]),
+      (.ui_commit_closure.required_files[])
+    ]
+    | unique[]
+  ' "$CONTRACT"
+)" || fail "could not resolve required UI contract files"
+while IFS= read -r path; do
+  verify_index_file "$path"
+done <<<"$required_file_paths"
+
+required_directory_paths="$(
+  jq -er '.ui_commit_closure.required_directories | unique[]' "$CONTRACT"
+)" || fail "could not resolve required UI contract directories"
+while IFS= read -r path; do
+  verify_index_directory "$path"
+done <<<"$required_directory_paths"
+
+printf 'hepta-ui-contract-commit-closure-gate: PASS (%s indexed files across %s required directories)\n' \
+  "$verified_file_count" "$verified_directory_count"

@@ -1,16 +1,351 @@
 {
-  "type": "object",
-  "required": ["product", "status", "evidence_scope", "live_product_complete", "audit_percent", "p0_p21_converged", "p0_p29_converged", "p0_p39_converged", "convergence_percent", "convergence_lanes"],
-  "properties": {
-    "product": { "const": "Hepta" },
-    "status": { "enum": ["static_contract_incomplete", "static_contract_complete"] },
-    "evidence_scope": { "const": "static marker, asset, schema, and declared smoke-contract coverage only" },
-    "live_product_complete": { "const": false },
-    "audit_percent": { "type": "number", "minimum": 0, "maximum": 100 },
-    "p0_p21_converged": { "type": "boolean" },
-    "p0_p29_converged": { "type": "boolean" },
-    "p0_p39_converged": { "type": "boolean" },
-    "convergence_percent": { "type": "number", "minimum": 0, "maximum": 100 },
-    "convergence_lanes": { "type": "array", "minItems": 40 }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.local/schemas/ui-contract-audit.schema.json",
+  "title": "Hepta UI contract audit digest-bound HTTP report",
+  "oneOf": [
+    { "$ref": "#/$defs/summaryEnvelope" },
+    { "$ref": "#/$defs/pageEnvelope" }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "summaryEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "status",
+        "route",
+        "content_sha256",
+        "full_size_bytes",
+        "top_level_kind",
+        "top_level_entries",
+        "scalar_summary",
+        "full_detail"
+      ],
+      "properties": {
+        "schema": { "const": "hepta_report_summary_v2" },
+        "status": { "const": "static_contract_ready" },
+        "route": { "const": "/api/ui-contract-audit" },
+        "content_sha256": { "$ref": "#/$defs/sha256" },
+        "full_size_bytes": { "type": "integer", "minimum": 131073 },
+        "top_level_kind": { "const": "object" },
+        "top_level_entries": { "type": "integer", "minimum": 1 },
+        "scalar_summary": { "$ref": "#/$defs/scalarSummary" },
+        "full_detail": { "$ref": "#/$defs/fullDetail" }
+      }
+    },
+    "scalarSummary": {
+      "type": "object",
+      "required": [
+        "action_dispatched",
+        "compatibility_mode",
+        "confirmation_required_for_real_mutation",
+        "control_surface",
+        "control_ui_live_operator_surface_percent",
+        "control_ui_product_complete",
+        "control_ui_product_status",
+        "cursor_written",
+        "dry_run_only",
+        "external_agent_benchmark_executed",
+        "external_agent_spawned",
+        "external_side_effects",
+        "gateway_mutation_performed",
+        "message_sent",
+        "missing_route_count",
+        "model_invoked",
+        "native_route",
+        "plan_target",
+        "product",
+        "read_only"
+      ],
+      "properties": {
+        "action_dispatched": { "const": false },
+        "compatibility_mode": { "const": "native_ui_contract_audit" },
+        "confirmation_required_for_real_mutation": { "const": false },
+        "control_surface": { "const": "ui_contract_audit" },
+        "control_ui_live_operator_surface_percent": { "const": 0 },
+        "control_ui_product_complete": { "const": false },
+        "control_ui_product_status": { "const": "static_contract_complete" },
+        "cursor_written": { "const": false },
+        "dry_run_only": { "const": false },
+        "external_agent_benchmark_executed": { "const": false },
+        "external_agent_spawned": { "const": false },
+        "external_side_effects": { "const": false },
+        "gateway_mutation_performed": { "const": false },
+        "message_sent": { "const": false },
+        "missing_route_count": { "const": 0 },
+        "model_invoked": { "const": false },
+        "native_route": { "const": true },
+        "plan_target": { "type": "null" },
+        "product": { "const": "Hepta" },
+        "read_only": { "const": true }
+      },
+      "additionalProperties": {
+        "type": ["string", "integer", "number", "boolean", "null"]
+      }
+    },
+    "fullDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["detail", "cursor", "snapshot", "encoding"],
+      "properties": {
+        "detail": { "const": "full" },
+        "cursor": { "const": 0 },
+        "snapshot": { "$ref": "#/$defs/sha256" },
+        "encoding": { "const": "base64_json_bytes" }
+      }
+    },
+    "pageEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "status",
+        "route",
+        "content_sha256",
+        "full_size_bytes",
+        "encoding",
+        "cursor",
+        "page_size_bytes",
+        "page_data",
+        "next_cursor",
+        "complete"
+      ],
+      "properties": {
+        "schema": { "const": "hepta_report_page_v2" },
+        "status": { "const": "static_contract_ready" },
+        "route": { "const": "/api/ui-contract-audit" },
+        "content_sha256": { "$ref": "#/$defs/sha256" },
+        "full_size_bytes": { "type": "integer", "minimum": 131073 },
+        "encoding": { "const": "base64_json_bytes" },
+        "cursor": { "type": "integer", "minimum": 0 },
+        "page_size_bytes": { "type": "integer", "minimum": 1, "maximum": 73728 },
+        "page_data": { "type": "string", "minLength": 4 },
+        "next_cursor": { "type": ["integer", "null"], "minimum": 1 },
+        "complete": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "complete": { "const": true } }, "required": ["complete"] },
+          "then": { "properties": { "next_cursor": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "complete": { "const": false } }, "required": ["complete"] },
+          "then": { "properties": { "next_cursor": { "type": "integer", "minimum": 1 } } }
+        }
+      ]
+    },
+    "evidenceLayerVerified": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "coverage_percent", "verified", "evidence_ref"],
+      "properties": {
+        "status": { "const": "verified" },
+        "coverage_percent": { "const": 100 },
+        "verified": { "const": true },
+        "evidence_ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidenceLayerUnverified": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "coverage_percent", "verified", "evidence_ref"],
+      "properties": {
+        "status": { "const": "not_bound_to_report" },
+        "coverage_percent": { "const": 0 },
+        "verified": { "const": false },
+        "evidence_ref": { "type": "null" }
+      }
+    },
+    "evidenceCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "static_contract",
+        "unit_state",
+        "browser_behavior",
+        "backend_mutation_readback",
+        "live_adapter",
+        "overall_evidence_percent",
+        "all_required_layers_verified",
+        "boundary"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "static_contract": { "$ref": "#/$defs/evidenceLayerVerified" },
+        "unit_state": { "$ref": "#/$defs/evidenceLayerUnverified" },
+        "browser_behavior": { "$ref": "#/$defs/evidenceLayerUnverified" },
+        "backend_mutation_readback": { "$ref": "#/$defs/evidenceLayerUnverified" },
+        "live_adapter": { "$ref": "#/$defs/evidenceLayerUnverified" },
+        "overall_evidence_percent": { "const": 20 },
+        "all_required_layers_verified": { "const": false },
+        "boundary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "routeMatrix": {
+      "type": "object",
+      "required": [
+        "product",
+        "runtime",
+        "status",
+        "ready",
+        "route_count",
+        "implemented_route_count",
+        "missing_route_count",
+        "missing_routes",
+        "side_effect_free",
+        "evidence_scope",
+        "live_product_complete",
+        "routes"
+      ],
+      "properties": {
+        "product": { "const": "Hepta" },
+        "runtime": { "const": "hepta" },
+        "status": { "const": "ready" },
+        "ready": { "const": true },
+        "route_count": { "type": "integer", "minimum": 1 },
+        "implemented_route_count": { "type": "integer", "minimum": 1 },
+        "missing_route_count": { "const": 0 },
+        "missing_routes": { "type": "array", "maxItems": 0 },
+        "side_effect_free": { "const": true },
+        "evidence_scope": { "type": "string", "minLength": 1 },
+        "live_product_complete": { "const": false },
+        "routes": { "type": "array", "minItems": 1 }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_transcript_exposed",
+        "transcript_text_exposed",
+        "raw_token_exposed",
+        "raw_action_payload_exposed",
+        "raw_agent_payload_exposed"
+      ],
+      "properties": {
+        "raw_transcript_exposed": { "const": false },
+        "transcript_text_exposed": { "const": false },
+        "raw_token_exposed": { "const": false },
+        "raw_action_payload_exposed": { "const": false },
+        "raw_agent_payload_exposed": { "const": false }
+      }
+    },
+    "sideEffects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_invoked",
+        "external_side_effects",
+        "gateway_mutation_performed",
+        "telegram_read_performed",
+        "message_sent",
+        "cursor_written"
+      ],
+      "properties": {
+        "model_invoked": { "const": false },
+        "external_side_effects": { "const": false },
+        "gateway_mutation_performed": { "const": false },
+        "telegram_read_performed": { "const": false },
+        "message_sent": { "const": false },
+        "cursor_written": { "const": false }
+      }
+    },
+    "sourcePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "runtime",
+        "status",
+        "source_command",
+        "native_route",
+        "compatibility_mode",
+        "side_effect_free",
+        "control_surface",
+        "plan_target",
+        "dry_run_only",
+        "read_only",
+        "control_ui_product_status",
+        "control_ui_product_complete",
+        "control_ui_live_operator_surface_percent",
+        "control_ui_evidence",
+        "confirmation_required_for_real_mutation",
+        "route_matrix_ready",
+        "route_count",
+        "implemented_route_count",
+        "missing_route_count",
+        "get_route_count",
+        "post_route_count",
+        "dry_run_route_count",
+        "read_only_route_count",
+        "guarded_post_route_count",
+        "approval_route_count",
+        "guarded_approval_route_count",
+        "gateway_replacement_ready",
+        "gateway_replacement_blocker_count",
+        "external_agent_benchmark_executed",
+        "external_agent_spawned",
+        "action_dispatched",
+        "model_invoked",
+        "external_side_effects",
+        "gateway_mutation_performed",
+        "telegram_read_performed",
+        "message_sent",
+        "cursor_written",
+        "route_matrix",
+        "redaction",
+        "side_effects",
+        "next_migration_slice"
+      ],
+      "properties": {
+        "product": { "const": "Hepta" },
+        "runtime": { "const": "hepta" },
+        "status": { "const": "static_contract_ready" },
+        "source_command": { "const": "/ui-contract-audit --json" },
+        "native_route": { "const": true },
+        "compatibility_mode": { "const": "native_ui_contract_audit" },
+        "side_effect_free": { "const": true },
+        "control_surface": { "const": "ui_contract_audit" },
+        "plan_target": { "type": "null" },
+        "dry_run_only": { "const": false },
+        "read_only": { "const": true },
+        "control_ui_product_status": { "const": "static_contract_complete" },
+        "control_ui_product_complete": { "const": false },
+        "control_ui_live_operator_surface_percent": { "const": 0 },
+        "control_ui_evidence": { "$ref": "#/$defs/evidenceCoverage" },
+        "confirmation_required_for_real_mutation": { "const": false },
+        "route_matrix_ready": { "const": true },
+        "route_count": { "type": "integer", "minimum": 1 },
+        "implemented_route_count": { "type": "integer", "minimum": 1 },
+        "missing_route_count": { "const": 0 },
+        "get_route_count": { "type": "integer", "minimum": 1 },
+        "post_route_count": { "type": "integer", "minimum": 0 },
+        "dry_run_route_count": { "type": "integer", "minimum": 0 },
+        "read_only_route_count": { "type": "integer", "minimum": 1 },
+        "guarded_post_route_count": { "type": "integer", "minimum": 0 },
+        "approval_route_count": { "type": "integer", "minimum": 0 },
+        "guarded_approval_route_count": { "type": "integer", "minimum": 0 },
+        "gateway_replacement_ready": { "type": "boolean" },
+        "gateway_replacement_blocker_count": { "type": "integer", "minimum": 0 },
+        "external_agent_benchmark_executed": { "const": false },
+        "external_agent_spawned": { "const": false },
+        "action_dispatched": { "const": false },
+        "model_invoked": { "const": false },
+        "external_side_effects": { "const": false },
+        "gateway_mutation_performed": { "const": false },
+        "telegram_read_performed": { "const": false },
+        "message_sent": { "const": false },
+        "cursor_written": { "const": false },
+        "route_matrix": { "$ref": "#/$defs/routeMatrix" },
+        "redaction": { "$ref": "#/$defs/redaction" },
+        "side_effects": { "$ref": "#/$defs/sideEffects" },
+        "next_migration_slice": { "type": "string", "minLength": 1 }
+      }
+    }
   }
 }

@@ -1,0 +1,268 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "open3"
+require "pathname"
+require "set"
+
+ROOT = Pathname.new(
+  ENV.fetch("HEPTA_CONTROL_UI_ROUTE_RETIREMENT_REPO_ROOT", Pathname.new(__dir__).join("..").expand_path.to_s),
+).expand_path
+CATALOG = Pathname.new(
+  ENV.fetch(
+    "HEPTA_CONTROL_UI_ROUTE_RETIREMENT_CATALOG",
+    ROOT.join("codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl").to_s,
+  ),
+).expand_path
+MANIFEST = Pathname.new(
+  ENV.fetch(
+    "HEPTA_CONTROL_UI_ROUTE_RETIREMENT_MANIFEST",
+    ROOT.join("codex-rs/hepta-native-gateway/routes/control_ui_route_retirement_candidates_v1.json").to_s,
+  ),
+).expand_path
+
+GENERATED_PATHS = %w[
+  codex-rs/hepta-native-gateway/src/route_registry/generated_control_ui_routes.rs
+  codex-rs/hepta-native-gateway/src/route_registry/native_report_bindings.rs
+  codex-rs/hepta-native-gateway/src/runtime_ingress/generated_control_ui_routes.rs
+  codex-rs/hepta-native-gateway/src/route_definition/generated_control_ui_routes.rs
+].freeze
+ROUTE_CONSTANT_SOURCE = "codex-rs/hepta-native-gateway/src/route_registry.rs"
+NON_SOURCE_PREFIXES = %w[
+  artifacts/
+].freeze
+
+def fail!(message)
+  warn "hepta-control-ui-route-retirement-candidates-gate: #{message}"
+  exit 1
+end
+
+def read_json(path, label)
+  JSON.parse(path.binread)
+rescue Errno::ENOENT
+  fail!("missing #{label}: #{path}")
+rescue JSON::ParserError => error
+  fail!("invalid #{label}: #{error.message}")
+end
+
+def read_jsonl(path)
+  path.each_line.each_with_object([]) do |line, records|
+    stripped = line.strip
+    next if stripped.empty?
+
+    records << JSON.parse(stripped)
+  rescue JSON::ParserError => error
+    fail!("invalid route catalog JSONL: #{error.message}")
+  end
+rescue Errno::ENOENT
+  fail!("missing route catalog: #{path}")
+end
+
+def tracked_source_paths
+  stdout, stderr, status = Open3.capture3(
+    "git", "-C", ROOT.to_s, "ls-files", "--cached", "--others", "--exclude-standard", "-z",
+  )
+  fail!("unable to enumerate repository sources: #{stderr.strip}") unless status.success?
+  stdout.split("\0").reject(&:empty?)
+end
+
+def source_contains?(relative_path, marker)
+  path = ROOT.join(relative_path)
+  fail!("consumer evidence file is missing: #{relative_path}") unless path.file?
+  path.binread.include?(marker)
+end
+
+def exact_path_consumers(route_path)
+  exclusions = Set.new(
+    GENERATED_PATHS + [
+      CATALOG.relative_path_from(ROOT).to_s,
+      MANIFEST.relative_path_from(ROOT).to_s,
+      ROUTE_CONSTANT_SOURCE,
+    ],
+  )
+  tracked_source_paths.each_with_object([]) do |relative_path, consumers|
+    next if exclusions.include?(relative_path)
+    next if relative_path.start_with?("scripts/archive/")
+    next if NON_SOURCE_PREFIXES.any? { |prefix| relative_path.start_with?(prefix) }
+
+    path = ROOT.join(relative_path)
+    next unless path.file? && path.size <= 5_000_000
+
+    source = path.binread
+    next if source.include?("\0")
+    consumers << relative_path if source.include?(route_path)
+  end.sort
+end
+
+def consumer_scope(path)
+  case path
+  when %r{\Aapps/hepta-control-ui/} then "control_ui"
+  when %r{\Aapps/hepta-native/} then "native_ui"
+  when %r{\A\.github/} then "ci"
+  when %r{\Adocs/} then "docs"
+  when %r{\Ascripts/} then "scripts"
+  else "other"
+  end
+end
+
+output_path = nil
+until ARGV.empty?
+  argument = ARGV.shift
+  case argument
+  when "--output"
+    output_path = ARGV.shift
+    fail!("--output requires a path") if output_path.nil? || output_path.empty?
+  when "--help"
+    puts "Usage: scripts/hepta-control-ui-route-retirement-candidates-gate [--output PATH]"
+    exit 0
+  else
+    fail!("unknown argument: #{argument}")
+  end
+end
+
+records = read_jsonl(CATALOG)
+manifest = read_json(MANIFEST, "retirement candidate manifest")
+fail!("retirement candidate schema drifted") unless
+  manifest["schema"] == "hepta_control_ui_route_retirement_candidates_v1"
+
+routes = records.select { |record| record["kind"] == "control_ui_route" }
+special = records.select { |record| record["kind"] == "special_native_report" }
+renderers = records.select { |record| record["kind"] == "renderer" }
+legacy_routes = routes.select { |route| route["legacy_compatibility_route"] == true }
+canonical_routes = routes.select { |route| route["legacy_compatibility_route"] == false }
+legacy_get_routes = legacy_routes.select { |route| route["method"] == "GET" }
+quarantined_routes = routes.select do |route|
+  route["permission_profile"] == "control_ui_quarantined_legacy_mutation"
+end
+
+metrics = {
+  "route_count" => routes.length,
+  "legacy_compatibility_route_count" => legacy_routes.length,
+  "canonical_route_count" => canonical_routes.length,
+  "quarantined_legacy_mutation_route_count" => quarantined_routes.length,
+}
+fail!("catalog metrics drifted from candidate manifest") unless
+  metrics == manifest.fetch("expected_catalog_metrics")
+
+report_id_binding_counts = Hash.new(0)
+routes.each do |route|
+  report_id_binding_counts[route["native_report_id"]] += 1 unless route["native_report_id"].nil?
+end
+special.each { |route| report_id_binding_counts[route.fetch("report_id")] += 1 }
+renderer_by_id = renderers.to_h { |renderer| [renderer.fetch("id"), renderer] }
+
+legacy_get_with_native_report = legacy_get_routes.count { |route| !route["native_report_id"].nil? }
+legacy_get_with_unique_native_report = legacy_get_routes.count do |route|
+  report_id = route["native_report_id"]
+  !report_id.nil? && report_id_binding_counts[report_id] == 1
+end
+legacy_get_with_active_renderer = legacy_get_routes.count do |route|
+  renderer_by_id.fetch(route["native_report_id"], {})["status"] == "active"
+end
+structurally_unbound_legacy_get = legacy_get_routes.count do |route|
+  route["native_report_id"].nil? && route.fetch("aliases").empty? && !route.fetch("watchdog_probe")
+end
+
+candidate_receipts = manifest.fetch("candidates").map do |candidate|
+  key = candidate.fetch("key")
+  matches = routes.select { |route| route["key"] == key }
+  fail!("candidate #{key} does not resolve exactly once") unless matches.length == 1
+  route = matches.first
+  fail!("candidate #{key} is not a legacy GET route") unless
+    route["method"] == "GET" && route["legacy_compatibility_route"] == true
+  fail!("candidate #{key} is canonical, aliased, watchdog-bound, or mutation-quarantined") unless
+    route["dispatch_handler"] == "RetiredCompatibility" &&
+      route.fetch("aliases").empty? &&
+      route["watchdog_probe"] == false &&
+      route["permission_profile"] == "control_ui_metadata_read"
+  fail!("candidate #{key} native report id drifted") unless
+    route["native_report_id"] == candidate.fetch("native_report_id")
+  fail!("candidate #{key} was marked eligible despite unresolved consumers") unless
+    candidate["eligible_for_retirement"] == false
+
+  report_id = route.fetch("native_report_id")
+  fail!("candidate #{key} native report binding is no longer unique; re-audit required") unless
+    report_id_binding_counts[report_id] == 1
+  fail!("candidate #{key} renderer is not active; re-audit required") unless
+    renderer_by_id.fetch(report_id, {})["status"] == "active"
+
+  blocker_receipts = candidate.fetch("blockers").map do |blocker|
+    marker_present = source_contains?(blocker.fetch("file"), blocker.fetch("marker"))
+    fail!("candidate #{key} blocker evidence disappeared: #{blocker.fetch('id')}") unless marker_present
+    {
+      "id" => blocker.fetch("id"),
+      "file" => blocker.fetch("file"),
+      "marker_present" => marker_present,
+    }
+  end
+  blocker_ids = blocker_receipts.map { |blocker| blocker.fetch("id") }
+  required_blockers = %w[
+    active_native_report_renderer
+    positive_http_contract_test
+    downstream_native_report_chain
+  ]
+  fail!("candidate #{key} blocker classes drifted") unless blocker_ids.sort == required_blockers.sort
+
+  consumers = exact_path_consumers(route.fetch("path"))
+  consumer_counts = consumers.group_by { |path| consumer_scope(path) }
+    .transform_values(&:length)
+  direct_product_consumer_count = %w[control_ui native_ui ci docs scripts]
+    .sum { |scope| consumer_counts.fetch(scope, 0) }
+  fail!("candidate #{key} gained a direct product/CI/docs/script path consumer") unless
+    direct_product_consumer_count.zero?
+
+  {
+    "key" => key,
+    "method" => route.fetch("method"),
+    "path" => route.fetch("path"),
+    "native_report_id" => report_id,
+    "dispatch_handler" => route.fetch("dispatch_handler"),
+    "watchdog_probe" => route.fetch("watchdog_probe"),
+    "aliases" => route.fetch("aliases"),
+    "exact_path_external_consumers" => consumers,
+    "exact_path_external_consumer_count" => consumers.length,
+    "direct_product_surface_consumer_count" => direct_product_consumer_count,
+    "native_report_binding_count" => report_id_binding_counts.fetch(report_id),
+    "native_report_renderer_status" => renderer_by_id.fetch(report_id).fetch("status"),
+    "blockers" => blocker_receipts,
+    "eligible_for_retirement" => false,
+  }
+end
+
+receipt = {
+  "schema" => "hepta_control_ui_route_retirement_candidate_receipt_v1",
+  "status" => "ready",
+  "retirement_status" => "blocked",
+  "catalog" => CATALOG.relative_path_from(ROOT).to_s,
+  "catalog_sha256" => Digest::SHA256.file(CATALOG).hexdigest,
+  "manifest" => MANIFEST.relative_path_from(ROOT).to_s,
+  "manifest_sha256" => Digest::SHA256.file(MANIFEST).hexdigest,
+  "catalog_metrics" => metrics,
+  "dependency_map" => {
+    "legacy_get_route_count" => legacy_get_routes.length,
+    "legacy_get_with_native_report_binding_count" => legacy_get_with_native_report,
+    "legacy_get_with_unique_native_report_binding_count" => legacy_get_with_unique_native_report,
+    "legacy_get_with_active_renderer_count" => legacy_get_with_active_renderer,
+    "structurally_unbound_legacy_get_route_count" => structurally_unbound_legacy_get,
+    "retired_compatibility_dispatch_count" => legacy_get_routes.count { |route| route["dispatch_handler"] == "RetiredCompatibility" },
+    "native_gateway_dispatch_count" => legacy_get_routes.count { |route| route["dispatch_handler"] == "NativeGateway" },
+    "watchdog_bound_count" => legacy_get_routes.count { |route| route["watchdog_probe"] == true },
+    "route_alias_count" => legacy_get_routes.sum { |route| route.fetch("aliases").length },
+  },
+  "candidate_count" => candidate_receipts.length,
+  "eligible_candidate_count" => candidate_receipts.count { |candidate| candidate["eligible_for_retirement"] },
+  "candidates" => candidate_receipts,
+  "http_behavior_changed" => false,
+  "route_count_reduced" => false,
+  "next_required_action" => "retire or explicitly preserve the positive native-report contract and downstream report chain before changing the canonical catalog",
+}
+
+serialized = JSON.pretty_generate(receipt) + "\n"
+if output_path
+  destination = Pathname.new(output_path).expand_path
+  destination.dirname.mkpath
+  destination.binwrite(serialized)
+end
+puts serialized

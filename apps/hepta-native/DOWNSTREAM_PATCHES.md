@@ -51,10 +51,14 @@ not itself prove correctness or readiness.
 | `packaging/ai.hepta.nativeapp.metainfo.xml` | packaging identity and attribution | Add Hepta AppStream metadata while retaining Robrix/Matrix provenance and license attribution. | XML parse; attribution audit |
 | `packaging/build-ios-testflight.sh` | packaging identity and provenance | Enforce `Hepta` display/bundle names while retaining `ai.hepta.nativeapp` and `hepta-native`, reject stale output, restore and verify the generated executable mode, require a successful current-source device build, verify exact HEAD plus compiled actool output, and emit a signing receipt; it does not authorize upload by default. | `bash -n`; mobile readiness gate; authorized signed-device packaging only |
 | `packaging/build-macos-unsigned-app.sh` | local packaging provenance | Build a resource-complete current-source macOS app with pinned disposable tools while retaining explicit unsigned/public-release boundaries. | current package gate; repeated manifest comparison |
-| `packaging/build-macos-dmg.sh` | packaging identity | Point the existing macOS packaging workflow at the Hepta app, icon, background, and artifact names; it does not authorize signing or publication. | `bash -n`; unsigned local packaging check |
+| `packaging/app-bundle-fingerprint-v1.rb` | release artifact provenance | Canonicalize every app-bundle directory/file path, type, mode, byte count, and content hash into one bundle fingerprint while rejecting symlinks and unsupported filesystem entries. | Ruby syntax; current-package gate; macOS release-chain self-test mode/symlink negatives; mounted-DMG readback |
+| `packaging/resolve-finder-bookmark-v1.swift` | release artifact provenance | Resolve the mounted DMG's Finder bookmark alias without trusting Spotlight metadata, reject stale bookmarks, and require its canonical target to be exactly `/Applications`. | Swift parse; real read-only `hdiutil` Finder-bookmark positive and wrong-target probes; macOS release-chain self-test |
+| `packaging/create-macos-dmg-from-app.sh` | single-artifact release packaging | Create an unsigned DMG container from one exact, previously-built `Hepta.app`; never build, sign, notarize, staple, upload, or publish. | `bash -n`; mount/readback of a DMG created from the current formal unsigned app |
+| `packaging/build-macos-dmg.sh` | packaging identity | Consume the exact formal unsigned app and its canonical current-package receipt, sign a disposable copy, create/sign/notarize/staple its DMG, require an Accepted notarization response, and write a local receipt; it never rebuilds a second product app or publishes the artifact. | `bash -n`; `scripts/hepta-native-macos-release-chain-self-test.sh`; truthful no-identity preflight failure; signed execution requires external Developer ID/notary authority |
 | `packaging/fix-dmg-applications-icon.sh` | packaging identity | Update the DMG helper for the renamed Hepta image. | `bash -n`; local DMG layout check |
 | `packaging/debian-copyright` | packaging identity and attribution | Update installed Hepta paths while preserving upstream and third-party notices. | package inventory; attribution audit |
 | `packaging/icon_google_play_512.png` | brand asset | Replace the store artwork with the Hepta icon. | image decode and dimension check |
+| `packaging/android-emulator-login-template-v1/**` | Android emulator visual contract | Pin portable, hash-bound portrait/landscape/IME login templates derived from external historical emulator evidence; the manifest deliberately omits private receipt paths and grants no accessibility, authentication, real-device, credential, signing, or release claim. | Android emulator smoke self-test; template exact-match and unrelated/cross-state/blank negative probes; mobile readiness gate |
 | `packaging/ios/icons/Assets.xcassets/AppIcon.appiconset/*.png` | generated brand assets | Materialize every opaque RGB iOS icon, including the marketing icon, from the canonical `resources/icon_1024.png`. | `scripts/hepta-native-ios-icons verify`; mobile readiness gate |
 | `packaging/HeptaNative.icns` | brand asset | Add the Hepta macOS application icon. | icon decode; unsigned local package inspection |
 | `packaging/Hepta Native macOS dmg background.png` | brand asset | Add the Hepta DMG background used by the local packaging recipe. | image decode and DMG layout check |
@@ -65,6 +69,7 @@ not itself prove correctness or readiness.
 | `src/main.rs` | product identity | Launch the renamed `hepta_native` library entry point. | `cargo check --locked`; launch smoke |
 | `src/lib.rs` | product integration | Register the side-effect-free bridge contract and Hepta application identity/data namespace. | `cargo check --locked`; product-shell v2 gate |
 | `src/sliding_sync.rs` | Matrix compatibility and identity | Preserve the upstream Sliding Sync path while changing only the product-owned SSO callback scheme. | Native focused tests; live Matrix remains a separate gate |
+| `hepta-live-bridge-backend-contract-v1.json` | live bridge backend handoff | Record the canonical snapshot-only endpoint, strict BridgeUpdate metadata/session/correlation/provenance requirements, audited non-authoritative legacy GET shapes, and current blocked implementation truth. | live-bridge contract gate/self-test; strict envelope validator; no-live-receipt boundary check |
 | `src/hepta_bridge/**` | typed bridge | Add a narrow, fail-closed, session-bound runtime/task/tool/approval presentation boundary; the product facade stays disabled until an authoritative adapter exists. | bridge unit tests; origin/session/correlation checks; no-live-receipt boundary check |
 | `src/persistence/app_state.rs` | product identity | Restore persisted window state under the Hepta product title without changing upstream window-state behavior. | `cargo check --locked`; launch and restore smoke |
 | `src/persistence/matrix_session_store/**` | security | Persist Matrix session material through authenticated metadata and platform credential/private-file abstractions; fail closed where a secure backend is unavailable and never fall back to plaintext. | secure-session unit tests; crash-consistency tests; platform credential review |
@@ -125,6 +130,12 @@ prefix, so they are not upstream drift and do not appear in the table above:
   screenshot, and emits a current-source-bound receipt. It never downloads a
   runtime, creates a simulator/account, signs, contacts a real device, uploads,
   or promotes safe-area, keyboard, VoiceOver, RTL, or Dynamic Type readiness.
+- `scripts/hepta-native-android-emulator-smoke.sh` is the corresponding narrow
+  Android producer: on an explicitly selected, already-booted headless ARM64
+  AVD it builds a fresh source-bound APK, removes any stale package, captures
+  portrait/landscape/IME evidence, replays the versioned login templates, and
+  emits a schema-v3 receipt. It never creates or boots an AVD, downloads an SDK,
+  supplies credentials, contacts a real device, release-signs, or uploads.
 
 ## Non-negotiable boundaries
 

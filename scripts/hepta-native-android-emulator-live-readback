@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+TRUSTED_ADB_RESOLVER="$ROOT_DIR/scripts/hepta-android-trusted-adb"
+RECEIPT=""
+OUTPUT=""
+
+usage() {
+  cat <<'EOF'
+usage: scripts/hepta-native-android-emulator-live-readback \
+  --receipt /absolute/schema-v3-receipt.json \
+  [--output /absolute/live-readback.json]
+
+Performs an explicitly opted-in, emulator-only readback through the OS
+account's canonical Google-signed adb. It uses a private sanitized adb server,
+targets only the receipt's emulator-N serial, and verifies the exact AVD, boot
+session, ABI, installed APK bytes/version, producer nonce, process instance,
+and pre/post focus around one credential-free `am start -W` probe. It does not
+enumerate adb transports, accept a real-device serial, or supply credentials.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --receipt) RECEIPT="${2:-}"; shift 2 ;;
+    --output) OUTPUT="${2:-}"; shift 2 ;;
+    --help|-h) usage; exit 0 ;;
+    *) echo "error: unknown argument: $1" >&2; usage >&2; exit 64 ;;
+  esac
+done
+
+[[ "$RECEIPT" = /* && -s "$RECEIPT" ]] || { echo "error: --receipt must be an absolute non-empty file" >&2; exit 64; }
+for command in awk chmod date env grep jq mkdir mktemp rm ruby sed shasum tr wc; do
+  command -v "$command" >/dev/null 2>&1 || { echo "error: $command is required" >&2; exit 2; }
+done
+[[ -x "$TRUSTED_ADB_RESOLVER" ]] || { echo "error: trusted adb resolver is unavailable" >&2; exit 2; }
+
+EXPECTED_ADB_PATH="$(jq -r '.host_toolchain.adb_binary_path // ""' "$RECEIPT")"
+EXPECTED_ADB_SHA256="$(jq -r '.host_toolchain.adb_binary_sha256 // ""' "$RECEIPT")"
+SERIAL="$(jq -r '.device.adb_serial // ""' "$RECEIPT")"
+AVD_NAME="$(jq -r '.device.avd_name // ""' "$RECEIPT")"
+EXPECTED_BOOT_ID="$(jq -r '.device.boot_id // ""' "$RECEIPT")"
+EXPECTED_PID="$(jq -r '.runtime.pid // 0' "$RECEIPT")"
+EXPECTED_PROCESS_START_TICKS="$(jq -r '.runtime.process_start_time_ticks // 0' "$RECEIPT")"
+EXPECTED_PACKAGE_PATH="$(jq -r '.runtime.installed_package_path // ""' "$RECEIPT")"
+EXPECTED_APK_SHA256="$(jq -r '.artifact.sha256 // ""' "$RECEIPT")"
+EXPECTED_VERSION_CODE="$(jq -r '.artifact.version_code // 0' "$RECEIPT")"
+EXPECTED_VERSION_NAME="$(jq -r '.artifact.version_name // ""' "$RECEIPT")"
+SESSION_PROBE_PATH="$(jq -r '.session_probe.path // ""' "$RECEIPT")"
+SESSION_PROBE_NONCE="$(jq -r '.session_probe.nonce // ""' "$RECEIPT")"
+SESSION_PROBE_SHA256="$(jq -r '.session_probe.sha256 // ""' "$RECEIPT")"
+
+# Reject unsafe or real-device receipt identities before starting any adb
+# server. Every device command below is explicitly scoped to this serial.
+[[ "$SERIAL" =~ ^emulator-[0-9]+$ ]] || { echo "error: receipt serial is not an emulator serial" >&2; exit 1; }
+[[ "$AVD_NAME" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "error: receipt AVD name is unsafe" >&2; exit 1; }
+[[ "$EXPECTED_BOOT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+  || { echo "error: receipt boot_id is malformed" >&2; exit 1; }
+[[ "$EXPECTED_PID" =~ ^[1-9][0-9]*$ ]] || { echo "error: receipt PID is malformed" >&2; exit 1; }
+[[ "$EXPECTED_PROCESS_START_TICKS" =~ ^[1-9][0-9]*$ ]] \
+  || { echo "error: receipt process start time is malformed" >&2; exit 1; }
+[[ "$EXPECTED_PACKAGE_PATH" =~ ^/data/app/[0-9A-Za-z._~=/+-]+/base\.apk$ ]] \
+  || { echo "error: receipt installed package path is unsafe" >&2; exit 1; }
+[[ "$EXPECTED_APK_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "error: receipt APK SHA is malformed" >&2; exit 1; }
+[[ "$EXPECTED_VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || { echo "error: receipt version code is malformed" >&2; exit 1; }
+[[ "$EXPECTED_VERSION_NAME" =~ ^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$ ]] \
+  || { echo "error: receipt version name is malformed" >&2; exit 1; }
+[[ "$SESSION_PROBE_PATH" =~ ^/data/local/tmp/hepta-native-smoke-[0-9a-f]{24}$ ]] \
+  || { echo "error: receipt session probe path is unsafe" >&2; exit 1; }
+[[ "$SESSION_PROBE_NONCE" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+  || { echo "error: receipt session nonce is malformed" >&2; exit 1; }
+[[ "$(printf '%s' "$SESSION_PROBE_NONCE" | shasum -a 256 | awk '{print $1}')" == "$SESSION_PROBE_SHA256" ]] \
+  || { echo "error: receipt session nonce SHA does not match" >&2; exit 1; }
+
+TRUSTED_ADB_REPORT="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin "$TRUSTED_ADB_RESOLVER")"
+jq -e '
+  .schema_version == 1
+  and .kind == "hepta-android-trusted-adb"
+  and .status == "ready"
+  and .ready == true
+  and .adb.architecture == "arm64"
+  and .adb.identifier == "adb"
+  and .adb.authority == "Developer ID Application: Google LLC (EQHXZ8M8AV)"
+  and .adb.team_identifier == "EQHXZ8M8AV"
+  and .adb.strict_codesign_verified == true
+  and .caller_environment_trusted == false
+' >/dev/null <<<"$TRUSTED_ADB_REPORT"
+ACCOUNT_HOME="$(jq -r '.account_home' <<<"$TRUSTED_ADB_REPORT")"
+ADB="$(jq -r '.adb.path' <<<"$TRUSTED_ADB_REPORT")"
+TRUSTED_ADB_SHA256="$(jq -r '.adb.sha256' <<<"$TRUSTED_ADB_REPORT")"
+[[ "$EXPECTED_ADB_PATH" == "$ADB" ]] || { echo "error: receipt adb path does not match canonical signed adb" >&2; exit 1; }
+[[ "$EXPECTED_ADB_SHA256" == "$TRUSTED_ADB_SHA256" ]] || { echo "error: receipt adb SHA does not match canonical signed adb" >&2; exit 1; }
+
+# A private server socket plus an empty environment prevents caller-provided
+# ADB_SERVER_SOCKET / ANDROID_ADB_SERVER_PORT routing from fabricating replies.
+ADB_SERVER_DIR="$(mktemp -d "/tmp/hepta-trusted-adb-server.XXXXXX")"
+chmod 0700 "$ADB_SERVER_DIR"
+ADB_SERVER_SOCKET="localfilesystem:$ADB_SERVER_DIR/server.sock"
+ADB_SERVER_STARTED=false
+trusted_adb() {
+  env -i HOME="$ACCOUNT_HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+    "$ADB" -L "$ADB_SERVER_SOCKET" "$@"
+}
+cleanup() {
+  if [[ "$ADB_SERVER_STARTED" == true ]]; then
+    trusted_adb kill-server >/dev/null 2>&1 || true
+  fi
+  case "$ADB_SERVER_DIR" in
+    /tmp/hepta-trusted-adb-server.*) rm -R -- "$ADB_SERVER_DIR" ;;
+  esac
+}
+trap cleanup EXIT
+trusted_adb start-server >/dev/null
+ADB_SERVER_STARTED=true
+
+if ! LIVE_STATE="$(trusted_adb -s "$SERIAL" get-state 2>/dev/null | tr -d '\r')"; then
+  echo "error: receipt emulator serial is not an online device" >&2
+  exit 1
+fi
+[[ "$LIVE_STATE" == "device" ]] || { echo "error: receipt emulator serial is not online" >&2; exit 1; }
+LIVE_AVD="$(trusted_adb -s "$SERIAL" emu avd name | tr -d '\r' | sed '/^OK$/d' | sed '/^[[:space:]]*$/d')"
+LIVE_QEMU_AVD="$(trusted_adb -s "$SERIAL" shell getprop ro.boot.qemu.avd_name | tr -d '\r')"
+LIVE_BOOT_ID="$(trusted_adb -s "$SERIAL" shell cat /proc/sys/kernel/random/boot_id | tr -d '\r')"
+LIVE_BOOT_COMPLETED="$(trusted_adb -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')"
+LIVE_ABI="$(trusted_adb -s "$SERIAL" shell getprop ro.product.cpu.abi | tr -d '\r')"
+LIVE_UNAME="$(trusted_adb -s "$SERIAL" shell uname -m | tr -d '\r')"
+[[ "$LIVE_AVD" == "$AVD_NAME" && "$LIVE_QEMU_AVD" == "$AVD_NAME" ]] || { echo "error: live AVD identity mismatch" >&2; exit 1; }
+[[ "$LIVE_BOOT_ID" == "$EXPECTED_BOOT_ID" ]] || { echo "error: emulator boot session changed" >&2; exit 1; }
+[[ "$LIVE_BOOT_COMPLETED" == "1" && "$LIVE_ABI" == "arm64-v8a" && "$LIVE_UNAME" == "aarch64" ]] \
+  || { echo "error: live emulator boot/ABI contract mismatch" >&2; exit 1; }
+
+LIVE_PACKAGE_OUTPUT="$(trusted_adb -s "$SERIAL" shell pm path ai.hepta.nativeapp | tr -d '\r')"
+LIVE_PACKAGE_PATH="$(ruby -e '
+  paths = STDIN.each_line.map { |line| line.chomp[/\Apackage:(\/.*)\z/, 1] }.compact
+  abort unless paths.length == 1
+  puts paths.first
+' <<<"$LIVE_PACKAGE_OUTPUT")"
+[[ "$LIVE_PACKAGE_PATH" == "$EXPECTED_PACKAGE_PATH" ]] || { echo "error: installed package path changed" >&2; exit 1; }
+LIVE_APK_SHA256="$(trusted_adb -s "$SERIAL" exec-out cat "$LIVE_PACKAGE_PATH" | shasum -a 256 | awk '{print $1}')"
+[[ "$LIVE_APK_SHA256" == "$EXPECTED_APK_SHA256" ]] || { echo "error: installed APK bytes do not match the receipt" >&2; exit 1; }
+
+PACKAGE_DUMP="$(trusted_adb -s "$SERIAL" shell dumpsys package ai.hepta.nativeapp | tr -d '\r')"
+LIVE_VERSION_CODES="$(sed -n 's/^[[:space:]]*versionCode=\([0-9][0-9]*\).*/\1/p' <<<"$PACKAGE_DUMP")"
+LIVE_VERSION_NAMES="$(sed -n 's/^[[:space:]]*versionName=//p' <<<"$PACKAGE_DUMP")"
+[[ "$(wc -l <<<"$LIVE_VERSION_CODES" | tr -d ' ')" == "1" && "$LIVE_VERSION_CODES" =~ ^[1-9][0-9]*$ ]] \
+  || { echo "error: installed package versionCode is ambiguous" >&2; exit 1; }
+[[ "$(wc -l <<<"$LIVE_VERSION_NAMES" | tr -d ' ')" == "1" && "$LIVE_VERSION_NAMES" =~ ^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$ ]] \
+  || { echo "error: installed package versionName is ambiguous" >&2; exit 1; }
+LIVE_VERSION_CODE="$LIVE_VERSION_CODES"
+LIVE_VERSION_NAME="$LIVE_VERSION_NAMES"
+[[ "$LIVE_VERSION_CODE" == "$EXPECTED_VERSION_CODE" && "$LIVE_VERSION_NAME" == "$EXPECTED_VERSION_NAME" ]] \
+  || { echo "error: installed package version changed" >&2; exit 1; }
+
+LIVE_SESSION_NONCE="$(trusted_adb -s "$SERIAL" exec-out cat "$SESSION_PROBE_PATH")"
+[[ "$LIVE_SESSION_NONCE" == "$SESSION_PROBE_NONCE" ]] || { echo "error: producer session nonce is absent or changed" >&2; exit 1; }
+
+read_live_pid() {
+  local value
+  value="$(trusted_adb -s "$SERIAL" shell pidof ai.hepta.nativeapp | tr -d '\r')"
+  [[ "$value" =~ ^[1-9][0-9]*$ ]] || return 1
+  printf '%s\n' "$value"
+}
+read_process_start_ticks() {
+  local pid="$1" process_stat
+  process_stat="$(trusted_adb -s "$SERIAL" shell cat "/proc/$pid/stat" | tr -d '\r')"
+  ruby -e '
+    text = STDIN.read.strip
+    match = text.match(/\A\d+ \(.*\) (.*)\z/)
+    abort unless match
+    fields = match[1].split
+    value = Integer(fields.fetch(19), 10)
+    abort unless value.positive?
+    puts value
+  ' <<<"$process_stat"
+}
+focus_ready() {
+  local dump="$1"
+  grep -Eq 'topResumedActivity=.*ai\.hepta\.nativeapp/\.MakepadApp' <<<"$dump" \
+    && grep -Eq 'mCurrentFocus=.*ai\.hepta\.nativeapp/ai\.hepta\.nativeapp\.MakepadApp' <<<"$dump" \
+    && grep -Eq 'mFocusedApp=.*ai\.hepta\.nativeapp/\.MakepadApp' <<<"$dump"
+}
+
+PRE_PID="$(read_live_pid)" || { echo "error: Hepta does not have exactly one live primary PID before the probe" >&2; exit 1; }
+PRE_PROCESS_START_TICKS="$(read_process_start_ticks "$PRE_PID")" \
+  || { echo "error: Hepta process identity is unavailable before the probe" >&2; exit 1; }
+PRE_ACTIVITY_DUMP="$(trusted_adb -s "$SERIAL" shell dumpsys activity activities | tr -d '\r')"
+[[ "$PRE_PID" == "$EXPECTED_PID" && "$PRE_PROCESS_START_TICKS" == "$EXPECTED_PROCESS_START_TICKS" ]] \
+  || { echo "error: live process instance no longer matches the producer session" >&2; exit 1; }
+focus_ready "$PRE_ACTIVITY_DUMP" || { echo "error: Hepta is not focused before the live probe" >&2; exit 1; }
+
+# This is the sole intentional emulator mutation. The explicit opt-in repeats
+# a credential-free start against the already-running exact process instance.
+START_REPORT="$(trusted_adb -s "$SERIAL" shell am start -W -n ai.hepta.nativeapp/.MakepadApp | tr -d '\r')"
+grep -Fxq 'Status: ok' <<<"$START_REPORT" || { echo "error: credential-free live start probe failed" >&2; exit 1; }
+POST_PID="$(read_live_pid)" || { echo "error: Hepta does not have exactly one live primary PID after the probe" >&2; exit 1; }
+POST_PROCESS_START_TICKS="$(read_process_start_ticks "$POST_PID")" \
+  || { echo "error: Hepta process identity is unavailable after the probe" >&2; exit 1; }
+POST_ACTIVITY_DUMP="$(trusted_adb -s "$SERIAL" shell dumpsys activity activities | tr -d '\r')"
+[[ "$POST_PID" == "$PRE_PID" && "$POST_PROCESS_START_TICKS" == "$PRE_PROCESS_START_TICKS" ]] \
+  || { echo "error: credential-free start did not preserve the producer process instance" >&2; exit 1; }
+focus_ready "$POST_ACTIVITY_DUMP" || { echo "error: Hepta is not focused after the live probe" >&2; exit 1; }
+
+trusted_adb kill-server >/dev/null
+ADB_SERVER_STARTED=false
+
+REPORT="$(jq -n \
+  --arg verified_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg receipt "$RECEIPT" --argjson trusted_adb "$TRUSTED_ADB_REPORT" \
+  --arg serial "$SERIAL" --arg avd "$AVD_NAME" --arg boot_id "$LIVE_BOOT_ID" \
+  --arg abi "$LIVE_ABI" --arg uname "$LIVE_UNAME" --arg package_path "$LIVE_PACKAGE_PATH" \
+  --arg apk_sha "$LIVE_APK_SHA256" --argjson version_code "$LIVE_VERSION_CODE" --arg version_name "$LIVE_VERSION_NAME" \
+  --argjson pid "$POST_PID" --argjson process_start_ticks "$POST_PROCESS_START_TICKS" \
+  --arg session_probe_path "$SESSION_PROBE_PATH" --arg session_probe_sha "$SESSION_PROBE_SHA256" '
+  {
+    schema_version:1,kind:"hepta-native-android-emulator-live-readback",status:"ready",ready:true,
+    verified_at_utc:$verified_at,receipt:$receipt,trusted_adb:$trusted_adb,
+    adb_server:{caller_routing_environment_trusted:false,private_socket:true,started:true,killed_before_report:true,all_device_commands_explicitly_serial_scoped:true,all_transports_enumerated:false},
+    device:{serial:$serial,avd_name:$avd,boot_id:$boot_id,boot_completed:true,guest_abi:$abi,guest_uname_machine:$uname,real_device_contacted:false},
+    package:{path:$package_path,apk_sha256:$apk_sha,version_code:$version_code,version_name:$version_name,pid:$pid,process_start_time_ticks:$process_start_ticks,top_resumed:true,current_focus:true,focused_app:true},
+    session_probe:{path:$session_probe_path,sha256:$session_probe_sha,readback_matched:true},
+    credential_free_current_session_probe:{kind:"am_start_w_existing_process",performed:true,status:"ok",credentials_supplied:false,pid_before:$pid,pid_after:$pid,pid_unchanged:true,process_start_time_ticks_before:$process_start_ticks,process_start_time_ticks_after:$process_start_ticks,process_instance_unchanged:true,focus_ready_before:true,focus_ready_after:true},
+    independently_verified_claims:{emulator_runtime:true,unauthenticated_login_surface_visual:false,unauthenticated_login_surface_rotation:false,unauthenticated_login_surface_ime:false},
+    local_host_side_effects:{private_adb_server_started:true,private_adb_server_killed:true},
+    local_emulator_side_effects:{app_start_probe_performed:true},
+    forbidden_actions_performed:{real_device_contact:false,credential_supply:false,package_install:false,package_uninstall:false,force_stop:false,rotation_change:false,ime_input:false,release_sign:false,upload:false}
+  }
+')"
+
+if [[ -n "$OUTPUT" ]]; then
+  [[ "$OUTPUT" = /* ]] || { echo "error: --output must be absolute" >&2; exit 64; }
+  mkdir -p "$(dirname "$OUTPUT")"
+  printf '%s\n' "$REPORT" >"$OUTPUT"
+fi
+printf '%s\n' "$REPORT"

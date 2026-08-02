@@ -1,0 +1,85 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+
+if ARGV.length != 1 || %w[--help -h].include?(ARGV[0])
+  warn "usage: scripts/hepta-android-window-orientation-probe /absolute/dumpsys-window-displays.txt"
+  exit(ARGV.length == 1 ? 0 : 64)
+end
+
+path = File.expand_path(ARGV.fetch(0))
+text = File.binread(path)
+
+lines = text.lines
+display_headers = lines.each_with_index.each_with_object([]) do |(line, index), headers|
+  match = line.match(/^\s*Display: mDisplayId=(\d+)\b/)
+  headers << [index, match[1].to_i] if match
+end
+default_headers = display_headers.select { |(_, display_id)| display_id.zero? }
+default_display_block = nil
+if default_headers.length == 1
+  start_index = default_headers.first.first
+  later_headers = display_headers.map { |(index, _)| index if index > start_index }.compact
+  end_index = later_headers.min || lines.length
+  default_display_block = lines[start_index...end_index].join
+end
+
+# Rotation, display rotation, and current logical geometry must all come from
+# the one default-display block. Never combine first/last matches from separate
+# displays in a multi-display dumpsys response.
+rotation_numbers = (default_display_block || "").scan(/^\s*mRotation=(\d)\b/).flatten.map(&:to_i).uniq
+rotation_number = rotation_numbers.one? ? rotation_numbers.first : nil
+display_summary = (default_display_block || "").split(/^\s*Display areas in top down Z order:/, 2).first
+rotation_names = display_summary.scan(/\bmDisplayRotation=ROTATION_(0|90|180|270)\b/).flatten.map(&:to_i).uniq
+rotation_name = rotation_names.one? ? rotation_names.first : nil
+rotation_from_name = { 0 => 0, 90 => 1, 180 => 2, 270 => 3 }[rotation_name]
+
+logical_width = nil
+logical_height = nil
+if (match = display_summary.match(/^\s*init=\d+x\d+.*\bcur=(\d+)x(\d+)\b/))
+  logical_width = match[1].to_i
+  logical_height = match[2].to_i
+elsif (match = display_summary.match(/^\s*mGlobalConfiguration=.*?\bmBounds=Rect\(0, 0 - (\d+), (\d+)\).*?\bmDisplayRotation=ROTATION_(?:0|90|180|270)\b/))
+  logical_width = match[1].to_i
+  logical_height = match[2].to_i
+elsif (match = display_summary.match(/^\s*overrideConfig=.*?\bmBounds=Rect\(0, 0 - (\d+), (\d+)\).*?\bmDisplayRotation=ROTATION_(?:0|90|180|270)\b/))
+  logical_width = match[1].to_i
+  logical_height = match[2].to_i
+end
+
+rotation_consistent = !rotation_number.nil? && !rotation_from_name.nil? && rotation_number == rotation_from_name
+geometry_orientation = if logical_width && logical_height && logical_width != logical_height
+  logical_width > logical_height ? "landscape" : "portrait"
+end
+rotation_orientation = if rotation_number
+  [1, 3].include?(rotation_number) ? "landscape" : "portrait"
+end
+ready = rotation_consistent && !geometry_orientation.nil? && geometry_orientation == rotation_orientation
+
+report = {
+  schema_version: 1,
+  kind: "hepta-android-window-orientation-probe",
+  status: ready ? "ready" : "not_ready",
+  ready: ready,
+  source: path,
+  display_id: default_display_block ? 0 : nil,
+  rotation: rotation_number,
+  display_rotation_degrees: rotation_name,
+  logical_width: logical_width,
+  logical_height: logical_height,
+  orientation: ready ? geometry_orientation : nil,
+  checks: {
+    exactly_one_default_display_block: default_headers.length == 1,
+    exactly_one_default_display_rotation_number: rotation_numbers.length == 1,
+    exactly_one_default_display_rotation_name: rotation_names.length == 1,
+    rotation_number_present: !rotation_number.nil?,
+    display_rotation_present: !rotation_from_name.nil?,
+    rotation_sources_consistent: rotation_consistent,
+    nonsquare_logical_geometry_present: !geometry_orientation.nil?,
+    rotation_matches_logical_geometry: !geometry_orientation.nil? && geometry_orientation == rotation_orientation,
+  },
+}
+
+puts JSON.pretty_generate(report)
+exit(ready ? 0 : 1)

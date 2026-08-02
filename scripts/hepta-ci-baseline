@@ -6,7 +6,7 @@ MANIFEST="$ROOT/codex-rs/Cargo.toml"
 source "$ROOT/scripts/lib/hepta-v2-test-inventory.sh"
 
 usage() {
-  echo "usage: scripts/hepta-ci-baseline <contract|contract-self-test|static|nightly-static|rust-backend|full-workspace>" >&2
+  echo "usage: scripts/hepta-ci-baseline <contract|contract-self-test|static|ui-contract|nightly-static|rust-backend|full-workspace>" >&2
   exit 2
 }
 
@@ -69,6 +69,122 @@ run_static_gate() {
   "$@" >/dev/null
 }
 
+run_ui_contract() (
+  require_tools base64 bash cargo cmp curl diff ditto file find git jq mktemp node perl plutil python3 readlink rg ruby rustup sed seq shasum sips sort stat strings unzip uuidgen wc
+  assert_lockfiles_clean
+  cd "$ROOT"
+  local schema_validator="${HEPTA_CHECK_JSONSCHEMA_BIN:-}"
+  if [[ -z "$schema_validator" ]]; then
+    schema_validator="$(command -v check-jsonschema 2>/dev/null || true)"
+  elif [[ "$schema_validator" != */* ]]; then
+    schema_validator="$(command -v "$schema_validator" 2>/dev/null || true)"
+  fi
+  if [[ -z "$schema_validator" || ! -x "$schema_validator" \
+    || "$("$schema_validator" --version 2>/dev/null)" != "check-jsonschema, version 0.37.4" ]]; then
+    echo "Hepta UI contract requires check-jsonschema 0.37.4" >&2
+    exit 1
+  fi
+  export HEPTA_CHECK_JSONSCHEMA_BIN="$schema_validator"
+
+  run_static_gate ui-contract-commit-closure-self-test \
+    scripts/hepta-ui-contract-commit-closure-gate-self-test.sh
+  run_static_gate ui-contract-commit-closure \
+    scripts/hepta-ui-contract-commit-closure-gate verify
+
+  local evidence_dir cleanup_evidence=0
+  evidence_dir="${HEPTA_UI_CI_EVIDENCE_DIR:-}"
+  if [[ -z "$evidence_dir" ]]; then
+    evidence_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-ci-contract.XXXXXX")"
+    cleanup_evidence=1
+  else
+    mkdir -p "$evidence_dir"
+    evidence_dir="$(cd "$evidence_dir" && pwd -P)"
+  fi
+  if [[ "$cleanup_evidence" == "1" ]]; then
+    trap 'rm -R -- "$evidence_dir"' EXIT
+  fi
+
+  run_static_gate native-product-shell-v2 \
+    scripts/hepta-native-product-shell-gate-v2.sh \
+      --output "$evidence_dir/native-product-shell.json"
+  run_static_gate native-product-shell-v2-self-test \
+    scripts/hepta-native-product-shell-gate-v2-self-test.sh
+  run_static_gate native-mobile-readiness-self-test \
+    scripts/hepta-native-mobile-readiness-self-test.sh
+  run_static_gate native-android-emulator-smoke-self-test \
+    scripts/hepta-native-android-emulator-smoke-self-test.sh
+  run_static_gate native-android-emulator-live-readback-self-test \
+    scripts/hepta-native-android-emulator-live-readback-self-test.sh
+  run_static_gate current-readiness-self-test \
+    scripts/hepta-ui-current-readiness-self-test.sh
+  run_static_gate native-current-package-self-test \
+    scripts/hepta-native-current-package-gate-self-test.sh
+  run_static_gate native-window-verifier-self-test \
+    scripts/hepta-ui-native-window-verifier-self-test.sh
+  run_static_gate native-macos-release-chain-self-test \
+    scripts/hepta-native-macos-release-chain-self-test.sh
+  run_static_gate release-artifact-intake-v3-self-test \
+    scripts/hepta-ui-release-artifact-intake-v3-self-test.sh
+  run_static_gate release-consumer-forged-tuple-self-test \
+    scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh
+  run_static_gate native-live-bridge-contract-self-test \
+    scripts/hepta-native-live-bridge-contract-gate-self-test.sh
+  run_static_gate native-live-bridge-contract \
+    scripts/hepta-native-live-bridge-contract-gate.sh \
+      --output "$evidence_dir/native-live-bridge-blocker.json"
+  jq -e '
+    .status == "blocked"
+    and .contract_gate_ready == true
+    and .backend_handoff_ready == true
+    and .hepta_live_bridge_ready == false
+    and .actual_request.performed == false
+  ' "$evidence_dir/native-live-bridge-blocker.json" >/dev/null
+  run_static_gate native-live-bridge-rust-contract \
+    cargo test --locked --offline --manifest-path apps/hepta-native/Cargo.toml hepta_bridge
+  run_static_gate legacy-visual-archive-self-test \
+    scripts/hepta-ui-legacy-visual-archive-self-test.sh
+  run_static_gate browser-entrypoint-migration \
+    scripts/hepta-live-gates-entrypoint-migration.sh
+  run_static_gate control-ui-debt-audit \
+    scripts/hepta-control-ui-debt-audit \
+      --output "$evidence_dir/control-ui-debt.json"
+  run_static_gate control-ui-css-metrics-self-test \
+    scripts/hepta-control-ui-css-metrics-self-test.sh
+  run_static_gate control-ui-route-retirement-self-test \
+    scripts/hepta-control-ui-route-retirement-candidates-gate-self-test.sh
+  run_static_gate control-ui-route-retirement \
+    scripts/hepta-control-ui-route-retirement-candidates-gate \
+      --output "$evidence_dir/control-ui-route-retirement.json"
+  jq -e '
+    .status == "ready"
+    and .retirement_status == "blocked"
+    and .eligible_candidate_count == 0
+    and .http_behavior_changed == false
+    and .route_count_reduced == false
+  ' "$evidence_dir/control-ui-route-retirement.json" >/dev/null
+
+  scripts/hepta-ui-current-readiness.sh \
+    --evidence-dir "$evidence_dir/current-readiness" \
+    --output "$evidence_dir/current-readiness.json" \
+    --target-dir "${HEPTA_NATIVE_CARGO_TARGET_DIR:-$evidence_dir/native-target}" \
+    --verify-features \
+    --verify-browser \
+    --require source >/dev/null
+
+  jq -e '
+    .status == "ready"
+    and .readiness.source == true
+    and .source_binding.repository_worktree_clean == true
+    and .gates.native_product_shell.status == "ready"
+    and .gates.native_mobile.source_contract_ready == true
+    and .gates.control_browser.ready == true
+  ' "$evidence_dir/current-readiness.json" >/dev/null
+
+  assert_lockfiles_clean
+  git diff --check
+  git diff --cached --check
+)
+
 budgeted_cargo() {
   local name="$1"
   local max_seconds="$2"
@@ -106,6 +222,11 @@ run_rust_backend() {
       -p hepta-gateway \
       -p hepta-native-gateway \
       -p hepta-cli --bin hepta
+  assert_test_inventory "Control UI Rust static contract" 2 'control_ui_.*' \
+    "$ROOT/codex-rs/hepta-core/src/control_ui.rs"
+  budgeted_cargo ci-hepta-core-control-ui-contract-tests 1200 \
+    env RUST_MIN_STACK=33554432 cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-core control_ui_
   assert_test_inventory "Architecture V2 stable contracts" 12 '.*' \
     "$ROOT/codex-rs/hepta-contracts/tests/stable_contracts.rs"
   budgeted_cargo ci-hepta-contracts-tests 600 \
@@ -384,6 +505,9 @@ case "$1" in
     ;;
   static)
     run_static
+    ;;
+  ui-contract)
+    run_ui_contract
     ;;
   nightly-static)
     run_static

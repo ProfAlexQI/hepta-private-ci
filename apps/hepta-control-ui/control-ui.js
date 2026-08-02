@@ -28,6 +28,53 @@
     "gateway-retry-dead-letter": "/api/gateway-retry-dead-letter",
     "multi-agent-runtime": "/api/multi-agent-runtime",
   });
+  const UNAVAILABLE_PREVIEW_CONTROLS = Object.freeze([
+    {
+      selector: "[data-plan-action]",
+      label: "Unavailable in read-only preview; live adapter not bound",
+    },
+    {
+      selector: "[data-chat-add]",
+      label: "New conversation unavailable in read-only preview",
+    },
+    {
+      selector: '[data-chat-row-menu-item="pin"]',
+      label: "Pin unavailable in read-only preview",
+    },
+    {
+      selector: '[data-chat-row-menu-item="archive"]',
+      label: "Archive unavailable in read-only preview",
+    },
+    {
+      selector: "[data-chat-folder]",
+      label: "Conversation folders require the live adapter",
+    },
+    {
+      selector: "[data-agent-chat-send]",
+      label: "Send unavailable: live adapter not bound",
+    },
+    {
+      selector: "[data-agent-chat-plan]",
+      label: "Plan unavailable: live adapter not bound",
+    },
+    {
+      selector: "[data-chat-routing-mode]",
+      label: "Reply routing requires the live adapter",
+    },
+    {
+      selector: "[data-chat-autoscroll-mode]",
+      label: "Auto-scroll mode is unavailable in the static preview",
+    },
+  ]);
+  const LOCAL_ROUTE_ACTIONS = Object.freeze({
+    "open-evidence": "#evidence",
+    "open-approvals": "#approvals",
+    "open-sources": "#evidence",
+  });
+  const LOCAL_ARTIFACT_DRAFTS = Object.freeze({
+    "evidence-note": "[Evidence note — local draft only]",
+    "decision-log": "[Decision log — local draft only]",
+  });
   let commandGeneration = 0;
   let activeCommandRequest = null;
 
@@ -218,6 +265,118 @@
     );
   }
 
+  function configureUnavailablePreviewControls() {
+    for (const control of UNAVAILABLE_PREVIEW_CONTROLS) {
+      for (const node of document.querySelectorAll(control.selector)) {
+        if (!(node instanceof HTMLButtonElement || node instanceof HTMLSelectElement)) {
+          continue;
+        }
+        node.disabled = true;
+        node.setAttribute("aria-disabled", "true");
+        node.setAttribute("aria-label", control.label);
+        node.title = control.label;
+        node.dataset.controlUiUnavailable = "live-adapter";
+      }
+    }
+
+    for (const conversation of document.querySelectorAll("[data-chat-conversation]")) {
+      conversation.setAttribute("aria-disabled", "true");
+      conversation.setAttribute("title", "Seeded read-only conversation preview");
+      conversation.tabIndex = -1;
+      conversation.dataset.controlUiConversationMode = "seeded-read-only";
+    }
+
+    const composer = document.getElementById("chat-message");
+    if (composer instanceof HTMLTextAreaElement) {
+      composer.placeholder = "Local draft only";
+      composer.setAttribute("aria-label", "Local draft; sending unavailable");
+      composer.title = "Local draft only; live adapter not bound";
+      composer.dataset.controlUiComposerMode = "local-draft-only";
+    }
+
+    const taskPublisherLink = document.querySelector(
+      '[data-control-ui-action-control="new-task"]',
+    );
+    if (taskPublisherLink instanceof HTMLAnchorElement) {
+      const label = "View task publisher contract (read-only)";
+      taskPublisherLink.setAttribute("aria-label", label);
+      taskPublisherLink.title = label;
+      taskPublisherLink.dataset.controlUiActionControl = "task-publisher-catalog";
+      const text = taskPublisherLink.querySelector("span:last-child");
+      if (text) {
+        text.textContent = "Task spec";
+      }
+    }
+
+    const status = document.querySelector("[data-chat-send-state]");
+    if (status) {
+      status.dataset.chatSendState = "read-only";
+      status.textContent = "read-only · live adapter not bound";
+    }
+  }
+
+  function setComposerStatus(message) {
+    const status = document.querySelector("[data-chat-send-state]");
+    if (!status) {
+      return;
+    }
+    status.dataset.chatSendState = "local-draft";
+    status.textContent = message;
+  }
+
+  function insertLocalDraftText(text) {
+    const composer = document.getElementById("chat-message");
+    if (!(composer instanceof HTMLTextAreaElement)) {
+      return;
+    }
+    const prefix = composer.value && !composer.value.endsWith("\n") ? "\n" : "";
+    const insertion = `${prefix}${text}`;
+    composer.setRangeText(insertion, composer.selectionStart, composer.selectionEnd, "end");
+    composer.dispatchEvent(new Event("input", { bubbles: true }));
+    composer.focus();
+    setComposerStatus("local draft updated · not sent");
+  }
+
+  function closeOwningPopover(node) {
+    const popover = node.closest("[popover]");
+    if (popover && typeof popover.hidePopover === "function") {
+      popover.hidePopover();
+    }
+  }
+
+  function configureLocalJsonPreview() {
+    const input = document.getElementById("json-input");
+    const preview = document.getElementById("json-preview");
+    if (!(input instanceof HTMLTextAreaElement) || !preview) {
+      return;
+    }
+    input.addEventListener("input", () => {
+      const source = input.value.trim();
+      if (!source) {
+        setStatus(preview, "empty", "Paste JSON for local inspection. Nothing is uploaded.");
+        return;
+      }
+      try {
+        preview.textContent = JSON.stringify(JSON.parse(source), null, 2);
+        preview.dataset.state = "ready";
+      } catch (error) {
+        setStatus(preview, "error", `Invalid JSON: ${safeMessage(error)}`);
+      }
+    });
+  }
+
+  function configureComposerPickerSearch() {
+    for (const input of document.querySelectorAll("[data-chat-composer-picker-search]")) {
+      input.addEventListener("input", () => {
+        const query = input.value.trim().toLocaleLowerCase();
+        const popover = input.closest("[data-chat-composer-popover]");
+        for (const item of popover?.querySelectorAll("[data-chat-composer-picker-item]") || []) {
+          item.hidden = Boolean(query) && !item.textContent.toLocaleLowerCase().includes(query);
+        }
+      });
+    }
+  }
+
   function supersedeActiveCommandRequest() {
     const previous = activeCommandRequest;
     if (!previous) {
@@ -335,6 +494,37 @@
         return;
       }
 
+      const localRouteButton = target?.closest("[data-chat-row-menu-item]");
+      const localRoute = localRouteButton
+        ? LOCAL_ROUTE_ACTIONS[localRouteButton.dataset.chatRowMenuItem]
+        : "";
+      if (localRoute) {
+        event.preventDefault();
+        window.location.hash = localRoute;
+        closeOwningPopover(localRouteButton);
+        copyStatus("Opened a local read-only surface.");
+        return;
+      }
+
+      const artifactButton = target?.closest("[data-chat-artifact-insert]");
+      if (artifactButton) {
+        event.preventDefault();
+        const draft = LOCAL_ARTIFACT_DRAFTS[artifactButton.dataset.chatArtifactInsert];
+        if (draft) {
+          insertLocalDraftText(draft);
+          closeOwningPopover(artifactButton);
+        }
+        return;
+      }
+
+      const commandButton = target?.closest("[data-chat-command-insert]");
+      if (commandButton) {
+        event.preventDefault();
+        insertLocalDraftText(commandButton.dataset.chatCommandInsert || "");
+        closeOwningPopover(commandButton);
+        return;
+      }
+
       const runButton = target?.closest('[data-run-command="read-only"]');
       if (
         runButton &&
@@ -363,8 +553,12 @@
     });
   }
 
+  configureUnavailablePreviewControls();
   configureReadOnlyButtons();
   configureLocalInteractions();
+  configureLocalJsonPreview();
+  configureComposerPickerSearch();
   document.documentElement.dataset.controlUiProgressiveEnhancement = "ready";
+  document.documentElement.dataset.controlUiCapabilityMode = "local-read-only";
   void hydrateOperatorSnapshot();
 })();

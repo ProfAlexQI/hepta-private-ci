@@ -23,12 +23,32 @@ RUNTIME_CSS_FILES = %w[
   styles.accessibility.css
 ].freeze
 RETIRED_POPOVER_STATE = "data-chat-composer-popover-open"
+RETIRED_FIRST_BATCH_LEGACY_CLASSES = %w[
+  evidence-grid
+  diff-hunk
+  inline-form
+  drilldown-panel
+  live-drilldown
+  endpoint-grid
+  diff-list
+  table-list
+  endpoint-recovery-banner
+  convergence-ledger
+  convergence-ledger__header
+  convergence-ledger__grid
+  convergence-lane
+  kv-grid
+  composer-panel
+  composer-grid
+  check-row
+  muted-copy
+].freeze
 LIMITS = {
-  "runtime_css_bytes_max" => 227_851,
-  "legacy_css_bytes_max" => 201_297,
-  "legacy_css_lines_max" => 3_856,
-  "runtime_important_count_max" => 1_384,
-  "legacy_important_count_max" => 1_103,
+  "runtime_css_bytes_max" => 225_010,
+  "legacy_css_bytes_max" => 198_456,
+  "legacy_css_lines_max" => 3_747,
+  "runtime_important_count_max" => 1_383,
+  "legacy_important_count_max" => 1_102,
   "route_count_max" => 284,
   "legacy_compatibility_route_count_max" => 206,
   "canonical_route_count_min" => 78,
@@ -99,6 +119,9 @@ end
 duplicate_route_identities = route_identity_counts.select { |_identity, count| count > 1 }
 legacy_popover_state_marker_count = [runtime_css, index_html, control_ui_js]
   .sum { |source| source.scan(RETIRED_POPOVER_STATE).length }
+retired_first_batch_legacy_class_markers = RETIRED_FIRST_BATCH_LEGACY_CLASSES.select do |class_name|
+  runtime_css.match?(/\.#{Regexp.escape(class_name)}(?![A-Za-z0-9_-])/)
+end
 canonical_index_renderer_count = control_ui_rs.scan(
   /pub const CONTROL_UI_INDEX_HTML: &str = include_str!\("\.\.\/\.\.\/\.\.\/apps\/hepta-control-ui\/index\.html"\);/
 ).length
@@ -111,6 +134,8 @@ metrics = {
   "runtime_important_count" => runtime_css.scan(/!important/).length,
   "legacy_important_count" => legacy_css.scan(/!important/).length,
   "retired_popover_state_marker_count" => legacy_popover_state_marker_count,
+  "retired_first_batch_legacy_class_marker_count" =>
+    retired_first_batch_legacy_class_markers.length,
   "route_count" => routes.length,
   "legacy_compatibility_route_count" => legacy_routes,
   "canonical_route_count" => canonical_routes,
@@ -148,6 +173,8 @@ checks = {
     metrics["legacy_important_count"] <= LIMITS["legacy_important_count_max"],
   "retired_popover_state_absent" =>
     metrics["retired_popover_state_marker_count"].zero?,
+  "retired_first_batch_legacy_classes_absent" =>
+    metrics["retired_first_batch_legacy_class_marker_count"].zero?,
   "route_count_does_not_expand" =>
     metrics["route_count"] <= LIMITS["route_count_max"],
   "legacy_compatibility_routes_do_not_expand" =>
@@ -178,6 +205,8 @@ report = {
   "duplicate_route_identities" => duplicate_route_identities.map do |identity, count|
     { "method" => identity[0], "path" => identity[1], "count" => count }
   end,
+  "retired_first_batch_legacy_class_markers" =>
+    retired_first_batch_legacy_class_markers,
   "non_claims" => [
     "Route-count checks prevent compatibility expansion; they do not prove that a route can be removed safely.",
     "Static and browser UI evidence does not prove live backend operator workflows.",

@@ -1,7 +1,13 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
+set +x
+PS4='+ '
 set -euo pipefail
+unset BASH_ENV ENV CDPATH GLOBIGNORE RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_GEMFILE BUNDLE_PATH
+SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PATH="$SYSTEM_PATH"
+export PATH
 
-cd "$(dirname "$0")/.."
+cd "$(/usr/bin/dirname "$0")/.."
 
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-/Users/qianqi/.openclaw/tmp/hepta-ui-product-readiness.mention-taxonomy-20260615}"
 REPORT_PATH="${HEPTA_UI_RELEASE_APPROVAL_INTAKE_REPORT_PATH:-$READINESS_DIR/ui-release-approval-intake-gate.json}"
@@ -10,6 +16,36 @@ APPROVAL_INPUT_PATH="${HEPTA_UI_RELEASE_APPROVAL_INPUT_PATH:-}"
 TEMPLATE_PATH="$INTAKE_DIR/release-approval-template.json"
 MARKDOWN_PATH="$INTAKE_DIR/release-approval-intake.md"
 ACCEPTED_APPROVAL_INPUT_PATH="$INTAKE_DIR/release-approval-input.accepted.json"
+CAPTURED_APPROVAL_INPUT_PATH="$INTAKE_DIR/release-approval-input.captured.json"
+
+SYSTEM_ENV="/usr/bin/env"
+SYSTEM_JQ="/usr/bin/jq"
+SYSTEM_RUBY="/usr/bin/ruby"
+SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
+for bootstrap_system_tool in \
+  "$SYSTEM_ENV" \
+  "$SYSTEM_JQ" \
+  "$SYSTEM_RUBY" \
+  /bin/cat \
+  /bin/cp \
+  /bin/mkdir \
+  /bin/rm \
+  /usr/bin/dirname \
+  /usr/bin/mktemp; do
+  if [[ ! -x "$bootstrap_system_tool" || -L "$bootstrap_system_tool" ]]; then
+    printf 'Missing canonical macOS bootstrap tool: %s\n' "$bootstrap_system_tool" >&2
+    exit 2
+  fi
+done
+
+jq() { "$SYSTEM_JQ" "$@"; }
+cat() { /bin/cat "$@"; }
+cp() { /bin/cp "$@"; }
+dirname() { /usr/bin/dirname "$@"; }
+mkdir() { /bin/mkdir "$@"; }
+mktemp() { /usr/bin/mktemp "$@"; }
+rm() { /bin/rm "$@"; }
 
 DISTRIBUTION_PREFLIGHT_REPORT_PATH="$READINESS_DIR/native-distribution-preflight-gate.json"
 RELEASE_OPERATOR_DRY_RUN_REPORT_PATH="$READINESS_DIR/ui-release-operator-dry-run-gate.json"
@@ -33,30 +69,189 @@ require_report() {
 }
 
 file_sha256() {
-  shasum -a 256 "$1" | awk '{print $1}'
+  /usr/bin/shasum -a 256 "$1" | /usr/bin/awk '{print $1}'
 }
 
 file_bytes() {
-  wc -c <"$1" | tr -d ' '
+  /usr/bin/wc -c <"$1" | /usr/bin/tr -d ' '
+}
+
+absolute_path() {
+  "$SYSTEM_ENV" -i PATH="$SYSTEM_PATH" HOME="/var/empty" TMPDIR="${TMPDIR:-/tmp}" \
+    "$SYSTEM_RUBY" -e 'print File.expand_path(ARGV.fetch(0))' "$1"
+}
+
+canonical_path() {
+  "$SYSTEM_ENV" -i PATH="$SYSTEM_PATH" HOME="/var/empty" TMPDIR="${TMPDIR:-/tmp}" \
+    "$SYSTEM_RUBY" -e '
+      cursor = File.expand_path(ARGV.fetch(0))
+      suffix = []
+      until File.exist?(cursor) || File.dirname(cursor) == cursor
+        suffix.unshift(File.basename(cursor))
+        cursor = File.dirname(cursor)
+      end
+      print File.join(File.realpath(cursor), *suffix)
+    ' "$1"
+}
+
+paths_overlap() {
+  "$SYSTEM_ENV" -i PATH="$SYSTEM_PATH" HOME="/var/empty" TMPDIR="${TMPDIR:-/tmp}" \
+    "$SYSTEM_RUBY" -e '
+      left = File.expand_path(ARGV.fetch(0))
+      right = File.expand_path(ARGV.fetch(1))
+      overlap = left == right || left.start_with?(right + File::SEPARATOR) || right.start_with?(left + File::SEPARATOR)
+      exit(overlap ? 0 : 1)
+    ' "$1" "$2"
+}
+
+normalize_trust_boundary_path() {
+  local label="$1" path="$2" absolute canonical
+  absolute="$(absolute_path "$path")"
+  canonical="$(canonical_path "$absolute")"
+  if [[ "$absolute" != "$canonical" ]]; then
+    printf '%s path contains a symlinked component: %s\n' "$label" "$path" >&2
+    exit 64
+  fi
+  printf '%s' "$canonical"
 }
 
 require_command jq
 require_command shasum
+
+READINESS_DIR="$(normalize_trust_boundary_path readiness "$READINESS_DIR")"
+REPORT_PATH="$(normalize_trust_boundary_path report "$REPORT_PATH")"
+INTAKE_DIR="$(normalize_trust_boundary_path intake "$INTAKE_DIR")"
+if [[ -n "$APPROVAL_INPUT_PATH" ]]; then
+  if [[ "$APPROVAL_INPUT_PATH" != /* ]]; then
+    printf 'release approval input path must be absolute: %s\n' "$APPROVAL_INPUT_PATH" >&2
+    exit 64
+  fi
+  APPROVAL_INPUT_PATH="$(normalize_trust_boundary_path approval_input "$APPROVAL_INPUT_PATH")"
+fi
+TEMPLATE_PATH="$INTAKE_DIR/release-approval-template.json"
+MARKDOWN_PATH="$INTAKE_DIR/release-approval-intake.md"
+ACCEPTED_APPROVAL_INPUT_PATH="$INTAKE_DIR/release-approval-input.accepted.json"
+CAPTURED_APPROVAL_INPUT_PATH="$INTAKE_DIR/release-approval-input.captured.json"
+DISTRIBUTION_PREFLIGHT_REPORT_PATH="$READINESS_DIR/native-distribution-preflight-gate.json"
+RELEASE_OPERATOR_DRY_RUN_REPORT_PATH="$READINESS_DIR/ui-release-operator-dry-run-gate.json"
+OPERATOR_BRIEFING_REFRESH_REPORT_PATH="$READINESS_DIR/ui-operator-briefing-refresh-gate.json"
+EVIDENCE_ARCHIVE_REPORT_PATH="$READINESS_DIR/ui-evidence-archive-gate.json"
+
+if paths_overlap "$REPORT_PATH" "$INTAKE_DIR"; then
+  printf 'release approval report and intake paths must not overlap\n' >&2
+  exit 64
+fi
+if [[ -n "$APPROVAL_INPUT_PATH" ]] \
+  && { paths_overlap "$APPROVAL_INPUT_PATH" "$REPORT_PATH" || paths_overlap "$APPROVAL_INPUT_PATH" "$INTAKE_DIR"; }; then
+  printf 'release approval input must not overlap report or intake paths\n' >&2
+  exit 64
+fi
+for source_report_path in \
+  "$DISTRIBUTION_PREFLIGHT_REPORT_PATH" \
+  "$RELEASE_OPERATOR_DRY_RUN_REPORT_PATH" \
+  "$OPERATOR_BRIEFING_REFRESH_REPORT_PATH" \
+  "$EVIDENCE_ARCHIVE_REPORT_PATH"; do
+  if paths_overlap "$source_report_path" "$REPORT_PATH" \
+    || paths_overlap "$source_report_path" "$INTAKE_DIR" \
+    || { [[ -n "$APPROVAL_INPUT_PATH" ]] && paths_overlap "$source_report_path" "$APPROVAL_INPUT_PATH"; }; then
+    printf 'release approval source report collides with output or approval input: %s\n' "$source_report_path" >&2
+    exit 64
+  fi
+done
+for fixed_output in \
+  "$TEMPLATE_PATH" \
+  "$MARKDOWN_PATH" \
+  "$ACCEPTED_APPROVAL_INPUT_PATH" \
+  "$CAPTURED_APPROVAL_INPUT_PATH"; do
+  if paths_overlap "$fixed_output" "$REPORT_PATH" \
+    || { [[ -n "$APPROVAL_INPUT_PATH" ]] && paths_overlap "$fixed_output" "$APPROVAL_INPUT_PATH"; }; then
+    printf 'release approval fixed output collides with report or input: %s\n' "$fixed_output" >&2
+    exit 64
+  fi
+  if [[ -L "$fixed_output" || ( -e "$fixed_output" && ! -f "$fixed_output" ) ]]; then
+    printf 'release approval fixed output is not a safe regular-file target: %s\n' "$fixed_output" >&2
+    exit 64
+  fi
+done
+if [[ -L "$REPORT_PATH" || ( -e "$REPORT_PATH" && ! -f "$REPORT_PATH" ) ]]; then
+  printf 'release approval report is not a safe regular-file target: %s\n' "$REPORT_PATH" >&2
+  exit 64
+fi
+if [[ -e "$INTAKE_DIR" && ! -d "$INTAKE_DIR" ]]; then
+  printf 'release approval intake path is not a directory: %s\n' "$INTAKE_DIR" >&2
+  exit 64
+fi
 
 require_report "$DISTRIBUTION_PREFLIGHT_REPORT_PATH"
 require_report "$RELEASE_OPERATOR_DRY_RUN_REPORT_PATH"
 require_report "$OPERATOR_BRIEFING_REFRESH_REPORT_PATH"
 require_report "$EVIDENCE_ARCHIVE_REPORT_PATH"
 
-rm -rf "$INTAKE_DIR"
 mkdir -p "$INTAKE_DIR"
+if [[ "$(canonical_path "$INTAKE_DIR")" != "$INTAKE_DIR" || -L "$INTAKE_DIR" ]]; then
+  printf 'release approval intake path changed during initialization\n' >&2
+  exit 64
+fi
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-release-approval-intake.XXXXXX")"
 REPORT_TMP="$TMP_DIR/release-approval-intake-report.json"
 APPROVAL_CAPTURE_PATH="$TMP_DIR/release-approval-input.json"
+TEMPLATE_TMP="$TMP_DIR/release-approval-template.json"
+MARKDOWN_TMP="$TMP_DIR/release-approval-intake.md"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+atomic_replace_from_file() {
+  local source_path="$1" destination_path="$2" destination_dir temporary_path
+  destination_dir="$(/usr/bin/dirname "$destination_path")"
+  mkdir -p "$destination_dir"
+  if [[ "$(canonical_path "$destination_dir")" != "$(absolute_path "$destination_dir")" || -L "$destination_dir" ]]; then
+    printf 'release approval output directory contains a symlinked component: %s\n' "$destination_dir" >&2
+    return 1
+  fi
+  if [[ -L "$destination_path" || ( -e "$destination_path" && ! -f "$destination_path" ) ]]; then
+    printf 'refusing unsafe release approval output target: %s\n' "$destination_path" >&2
+    return 1
+  fi
+  temporary_path="$(mktemp "$destination_dir/.hepta-release-approval-intake.XXXXXX")"
+  if ! /bin/cp "$source_path" "$temporary_path" \
+    || [[ ! -f "$temporary_path" || -L "$temporary_path" ]]; then
+    /bin/rm -f "$temporary_path"
+    return 1
+  fi
+  if ! "$SYSTEM_ENV" -i PATH="$SYSTEM_PATH" HOME="/var/empty" TMPDIR="${TMPDIR:-/tmp}" \
+    "$SYSTEM_RUBY" -e '
+      source, destination = ARGV
+      if File.symlink?(destination) || (File.exist?(destination) && !File.file?(destination))
+        abort "unsafe destination"
+      end
+      File.rename(source, destination)
+      abort "unsafe result" unless File.file?(destination) && !File.symlink?(destination)
+    ' "$temporary_path" "$destination_path"; then
+    /bin/rm -f "$temporary_path"
+    return 1
+  fi
+}
+
+safe_remove_regular_leaf() {
+  local path="$1"
+  "$SYSTEM_ENV" -i PATH="$SYSTEM_PATH" HOME="/var/empty" TMPDIR="${TMPDIR:-/tmp}" \
+    "$SYSTEM_RUBY" -e '
+      path = ARGV.fetch(0)
+      begin
+        stat = File.lstat(path)
+      rescue Errno::ENOENT
+        exit 0
+      end
+      abort "unsafe leaf" unless stat.file? && !stat.symlink?
+      File.unlink(path)
+    ' "$path"
+}
+
 approval_present=false
+# No system-verifiable Telegram authorization receipt or cryptographically
+# signed approval policy is available in this repository today.  A local JSON
+# document is evidence to inspect, not independent release authority.
+INDEPENDENT_APPROVAL_VERIFIER_READY=false
 approval_input_path_json=null
 approval_captured_input_path_json=null
 approval_sha_json=null
@@ -64,13 +259,12 @@ approval_bytes=0
 
 if [[ -n "$APPROVAL_INPUT_PATH" ]]; then
   require_report "$APPROVAL_INPUT_PATH"
-  cp "$APPROVAL_INPUT_PATH" "$APPROVAL_CAPTURE_PATH"
-  cp "$APPROVAL_INPUT_PATH" "$ACCEPTED_APPROVAL_INPUT_PATH"
+  /bin/cp "$APPROVAL_INPUT_PATH" "$APPROVAL_CAPTURE_PATH"
   approval_present=true
   approval_input_path_json="$(jq -n --arg path "$APPROVAL_INPUT_PATH" '$path')"
-  approval_captured_input_path_json="$(jq -n --arg path "$ACCEPTED_APPROVAL_INPUT_PATH" '$path')"
-  approval_sha_json="$(jq -n --arg sha "$(file_sha256 "$APPROVAL_INPUT_PATH")" '$sha')"
-  approval_bytes="$(file_bytes "$APPROVAL_INPUT_PATH")"
+  approval_captured_input_path_json="$(jq -n --arg path "$CAPTURED_APPROVAL_INPUT_PATH" '$path')"
+  approval_sha_json="$(jq -n --arg sha "$(file_sha256 "$APPROVAL_CAPTURE_PATH")" '$sha')"
+  approval_bytes="$(file_bytes "$APPROVAL_CAPTURE_PATH")"
 else
   jq -n '{present:false}' >"$APPROVAL_CAPTURE_PATH"
 fi
@@ -117,6 +311,7 @@ jq -n \
         operator_briefing_refresh_markdown_sha256:$operator_refresh.refresh_markdown_sha256
       },
       post_approval_requirements:{
+        independent_approval_verifier_required:true,
         signed_notarized_stapled_artifact_gate_required:true,
         public_artifact_policy_required:true,
         no_release_claim_from_approval_only:true
@@ -139,7 +334,7 @@ jq -n \
         app_stapled:false,
         public_distribution_artifact_written:false
       }
-    }' >"$TEMPLATE_PATH"
+    }' >"$TEMPLATE_TMP"
 
 jq -r '
   "# Hepta UI Release Approval Intake\n\n"
@@ -158,18 +353,19 @@ jq -r '
   + "- `operator_identity_hash`\n"
   + "- `source_evidence.dry_run_manifest_sha256`\n"
   + "- `source_evidence.evidence_archive_sha256`\n"
+  + "- independently verified approval receipt (not currently available)\n"
   + "- `post_approval_requirements.signed_notarized_stapled_artifact_gate_required`\n\n"
   + "## Post-Approval Requirements\n\n"
   + "- signed app evidence\n"
   + "- notarized app evidence\n"
   + "- stapled app evidence\n"
   + "- explicit public artifact policy\n"
-' "$TEMPLATE_PATH" >"$MARKDOWN_PATH"
+' "$TEMPLATE_TMP" >"$MARKDOWN_TMP"
 
-template_sha="$(file_sha256 "$TEMPLATE_PATH")"
-template_bytes="$(file_bytes "$TEMPLATE_PATH")"
-markdown_sha="$(file_sha256 "$MARKDOWN_PATH")"
-markdown_bytes="$(file_bytes "$MARKDOWN_PATH")"
+template_sha="$(file_sha256 "$TEMPLATE_TMP")"
+template_bytes="$(file_bytes "$TEMPLATE_TMP")"
+markdown_sha="$(file_sha256 "$MARKDOWN_TMP")"
+markdown_bytes="$(file_bytes "$MARKDOWN_TMP")"
 
 jq -n \
   --arg product "Hepta UI" \
@@ -193,6 +389,7 @@ jq -n \
   --argjson template_bytes "$template_bytes" \
   --argjson markdown_bytes "$markdown_bytes" \
   --argjson approval_present "$approval_present" \
+  --argjson independent_approval_verifier_ready "$INDEPENDENT_APPROVAL_VERIFIER_READY" \
   --argjson approval_input_path "$approval_input_path_json" \
   --argjson approval_captured_input_path "$approval_captured_input_path_json" \
   --argjson approval_sha "$approval_sha_json" \
@@ -201,7 +398,7 @@ jq -n \
   --slurpfile release_dry_run_file "$RELEASE_OPERATOR_DRY_RUN_REPORT_PATH" \
   --slurpfile operator_refresh_file "$OPERATOR_BRIEFING_REFRESH_REPORT_PATH" \
   --slurpfile evidence_archive_file "$EVIDENCE_ARCHIVE_REPORT_PATH" \
-  --slurpfile template_file "$TEMPLATE_PATH" \
+  --slurpfile template_file "$TEMPLATE_TMP" \
   --slurpfile approval_file "$APPROVAL_CAPTURE_PATH" \
   '
   ($distribution_file[0]) as $distribution
@@ -258,6 +455,7 @@ jq -n \
       and $template.release_target.bundle_identifier == $distribution.package_metadata.bundle_identifier
       and $template.source_evidence.dry_run_manifest_sha256 == $dry.dry_run_manifest_sha256
       and $template.source_evidence.evidence_archive_sha256 == $archive.archive_sha256
+      and $template.post_approval_requirements.independent_approval_verifier_required == true
       and $template.post_approval_requirements.signed_notarized_stapled_artifact_gate_required == true
       and $template.post_approval_requirements.no_release_claim_from_approval_only == true
       and sha_ready($template_sha)
@@ -287,7 +485,9 @@ jq -n \
       and $approval.operator_approval_recorded == true
       and (($approval.operator_identity_hash // "") | test("^[0-9a-f]{64}$"))
       and $approval.release_target.bundle_identifier == $distribution.package_metadata.bundle_identifier
-      and (approval_evidence_match or approval_authorization_context_match)
+      and approval_evidence_match
+      and approval_authorization_context_match
+      and $independent_approval_verifier_ready == true
       and $approval.post_approval_requirements.signed_notarized_stapled_artifact_gate_required == true
       and $approval.post_approval_requirements.no_release_claim_from_approval_only == true
       and ($approval.claim_boundary.release_claim_ready // false) == false
@@ -335,6 +535,8 @@ jq -n \
         release_approval_present:$approval_present,
         release_approval_valid:$approval_ready,
         release_approval_claim_ready:$approval_ready,
+        independent_approval_verifier_ready:$independent_approval_verifier_ready,
+        self_reported_approval_can_authorize_release:false,
         approval_only_can_make_release_claim:false,
         signed_notarized_stapled_artifact_present:false,
         public_distribution_artifact_written:false,
@@ -353,7 +555,7 @@ jq -n \
         if $approval_ready then
           ["signed_notarized_stapled_artifact_missing","public_distribution_artifact_not_written"]
         else
-          ["operator_release_approval_required","signed_notarized_stapled_artifact_missing","public_distribution_artifact_not_written"]
+          ["operator_release_approval_required","independent_release_approval_verifier_unavailable","signed_notarized_stapled_artifact_missing","public_distribution_artifact_not_written"]
         end
       ),
       source_alignment:{
@@ -364,7 +566,7 @@ jq -n \
         dry_run_manifest_sha256:$dry.dry_run_manifest_sha256,
         evidence_archive_sha256:$archive.archive_sha256,
         release_public_distribution_not_approved_risk_present:($operator_refresh.refreshed_operator_briefing.updated_critical_risks | map(.id) | index("release_public_distribution_not_approved") != null),
-        approval_valid_branch_supported:true,
+        approval_valid_branch_supported:$independent_approval_verifier_ready,
         root_report_replay_required_count_after_intake:34
       },
       claim_boundary:{
@@ -400,9 +602,7 @@ jq -n \
     }' >"$REPORT_TMP"
 
 jq -e '
-  .status == "ready"
-  and .release_approval_intake_gate_ready == true
-  and .intake_kind == "local_release_approval_intake_contract"
+  .intake_kind == "local_release_approval_intake_contract"
   and .intake_version == 1
   and (.template_sha256 | test("^[0-9a-f]{64}$"))
   and .template_bytes > 0
@@ -410,17 +610,31 @@ jq -e '
   and .markdown_bytes > 0
   and (
     (
-      .release_approval_state.waiting_for_release_approval == true
-      and .release_approval_state.release_approval_present == false
-      and .release_approval_state.release_approval_valid == false
+      .status == "ready"
+      and .release_approval_intake_gate_ready == true
+      and (
+        (
+          .release_approval_state.waiting_for_release_approval == true
+          and .release_approval_state.release_approval_present == false
+          and .release_approval_state.release_approval_valid == false
+        )
+        or (
+          .release_approval_state.waiting_for_release_approval == false
+          and .release_approval_state.release_approval_present == true
+          and .release_approval_state.release_approval_valid == true
+        )
+      )
     )
     or (
-      .release_approval_state.waiting_for_release_approval == false
-      and .release_approval_state.release_approval_present == true
-      and .release_approval_state.release_approval_valid == true
+      .status == "failed"
+      and .release_approval_intake_gate_ready == false
+      and .release_approval_state.release_approval_valid == false
     )
   )
   and .release_approval_state.approval_only_can_make_release_claim == false
+  and .release_approval_state.independent_approval_verifier_ready == false
+  and .release_approval_state.self_reported_approval_can_authorize_release == false
+  and (.approval_blockers | index("independent_release_approval_verifier_unavailable") != null)
   and .release_approval_state.signed_notarized_stapled_artifact_present == false
   and .release_approval_state.public_distribution_artifact_written == false
   and .release_approval_state.root_report_replay_required_count_after_intake == 34
@@ -429,8 +643,8 @@ jq -e '
   and .source_alignment.operator_briefing_refresh_ready == true
   and .source_alignment.evidence_archive_ready == true
   and .source_alignment.release_public_distribution_not_approved_risk_present == true
-  and .source_alignment.approval_valid_branch_supported == true
-  and .claim_boundary.local_release_approval_intake_ready == true
+  and .source_alignment.approval_valid_branch_supported == false
+  and .claim_boundary.local_release_approval_intake_ready == .release_approval_intake_gate_ready
   and .claim_boundary.release_execution_ready == false
   and .claim_boundary.live_product_claim_ready == false
   and .claim_boundary.public_distribution_claim_ready == false
@@ -451,6 +665,17 @@ jq -e '
   and .side_effects.external_mutation == false
 ' "$REPORT_TMP" >/dev/null
 
-mkdir -p "$(dirname "$REPORT_PATH")"
-cp "$REPORT_TMP" "$REPORT_PATH"
-cat "$REPORT_TMP"
+atomic_replace_from_file "$TEMPLATE_TMP" "$TEMPLATE_PATH"
+atomic_replace_from_file "$MARKDOWN_TMP" "$MARKDOWN_PATH"
+atomic_replace_from_file "$APPROVAL_CAPTURE_PATH" "$CAPTURED_APPROVAL_INPUT_PATH"
+if jq -e '.release_approval_state.release_approval_valid == true' "$REPORT_TMP" >/dev/null; then
+  atomic_replace_from_file "$APPROVAL_CAPTURE_PATH" "$ACCEPTED_APPROVAL_INPUT_PATH"
+else
+  safe_remove_regular_leaf "$ACCEPTED_APPROVAL_INPUT_PATH"
+fi
+atomic_replace_from_file "$REPORT_TMP" "$REPORT_PATH"
+/bin/cat "$REPORT_TMP"
+if jq -e '.status == "ready" and .release_approval_intake_gate_ready == true' "$REPORT_TMP" >/dev/null; then
+  exit 0
+fi
+exit 1

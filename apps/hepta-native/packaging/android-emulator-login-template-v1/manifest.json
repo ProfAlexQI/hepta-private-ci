@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "kind": "hepta-native-android-emulator-login-template-manifest",
+  "status": "ready",
+  "scope": "unauthenticated_android_login_surface_on_hepta_pixel_api_34_arm64",
+  "source_evidence": {
+    "head": "3e93658fef1bffdd73a9ade5d668f88e4fe1ff3c",
+    "avd": "Hepta_Pixel_API_34_arm64",
+    "receipt": {
+      "sha256": "c6ec76341505bcc20e10fd53714c374897f8ec97b07a8f4e4488f463e418c759",
+      "external_not_committed": true
+    },
+    "captured_frames": {
+      "portrait_sha256": "2dfaf3948b4a11af4514e2093d77cc0dc929516932dcf9dfacd501fe48adedb1",
+      "landscape_sha256": "1e354535bffdcdea2d740f0aed189a755731aee3afa0495b6813fbf2106f000b",
+      "ime_sha256": "48ece820b88dd0478e698cae8c86a6ad2a81d746c25a25b6e0a7e023f1b75636"
+    },
+    "claim_scope": "visual_template_seed_only"
+  },
+  "normalization": {
+    "portrait": "64x128",
+    "landscape": "128x64",
+    "ime": "64x128"
+  },
+  "templates": {
+    "portrait": {
+      "path": "apps/hepta-native/packaging/android-emulator-login-template-v1/portrait.png",
+      "sha256": "19c36f0e2feb33f41d5b0ba3a5fbeff3a0d9e98ccd70123cd33a4e246fe767e6"
+    },
+    "landscape": {
+      "path": "apps/hepta-native/packaging/android-emulator-login-template-v1/landscape.png",
+      "sha256": "7fcd567a6b5b4c9fa9caa945bcb1e74cac12e4d1a20f6696f310a1141c11c085"
+    },
+    "ime": {
+      "path": "apps/hepta-native/packaging/android-emulator-login-template-v1/ime.png",
+      "sha256": "8e10400d49a85b2e2c343af869c992ad0ac07d90e2bacd10f57e998c6f1a1f20"
+    }
+  },
+  "claim_boundary": "Visual template identity only. No semantic accessibility, authentication, real-device, secure-credential, or release claim."
+}

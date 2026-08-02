@@ -18,6 +18,9 @@ jq -e --slurpfile design "$TEST_DIR/design.json" '
   and $design[0].status == "ready"
   and .css_bytes == $control.css_bytes
   and .metrics.runtime_css_bytes == .css_bytes.gateway_stylesheet_body_bytes
+  and .metrics.retired_first_batch_legacy_class_marker_count == 0
+  and .checks.retired_first_batch_legacy_classes_absent == true
+  and (.retired_first_batch_legacy_class_markers | length) == 0
   and $control.runtime_css_bytes == $control.css_bytes.leaf_source_bytes
   and .css_bytes.gateway_stylesheet_body_bytes == (.css_bytes.leaf_source_bytes + .css_bytes.gateway_join_separator_bytes)
   and .css_bytes.gateway_join_separator_bytes == (.css_bytes.leaf_file_count - 1)

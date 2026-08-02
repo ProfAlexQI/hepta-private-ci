@@ -1,19 +1,75 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
+set +x
+PS4='+ '
 set -euo pipefail
+unset BASH_ENV ENV CDPATH GLOBIGNORE RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_GEMFILE BUNDLE_PATH
+SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PATH="$SYSTEM_PATH"
+export PATH
 
-cd "$(dirname "$0")/.."
+cd "$(/usr/bin/dirname "$0")/.."
+REPO_ROOT="$(pwd -P)"
+. "$REPO_ROOT/scripts/lib/hepta-safe-managed-output-v1.sh"
 
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-/Users/qianqi/.openclaw/tmp/hepta-ui-product-readiness.mention-taxonomy-20260615}"
 REPORT_PATH="${HEPTA_UI_BACKEND_DELIVERY_AUDIT_REPORT_PATH:-$READINESS_DIR/ui-backend-delivery-audit-gate.json}"
 AUDIT_DIR="${HEPTA_UI_BACKEND_DELIVERY_AUDIT_DIR:-$READINESS_DIR/backend-delivery-audit}"
 DELIVERY_RECEIPT_INPUT_PATH="${HEPTA_UI_BACKEND_DELIVERY_RECEIPT_INPUT_PATH:-}"
+READINESS_DIR="$(hepta_safe_normalize_path readiness "$READINESS_DIR")"
+REPORT_PATH="$(hepta_safe_normalize_path report "$REPORT_PATH")"
+AUDIT_DIR="$(hepta_safe_normalize_path audit "$AUDIT_DIR")"
+if [[ -n "$DELIVERY_RECEIPT_INPUT_PATH" ]]; then
+  DELIVERY_RECEIPT_INPUT_PATH="$(hepta_safe_normalize_path delivery_receipt_input "$DELIVERY_RECEIPT_INPUT_PATH")"
+fi
 DELIVERY_RECEIPT_TEMPLATE_PATH="$AUDIT_DIR/backend-delivery-receipt-template.json"
 AUDIT_MARKDOWN_PATH="$AUDIT_DIR/backend-delivery-audit.md"
 ACCEPTED_DELIVERY_RECEIPT_INPUT_PATH="$AUDIT_DIR/backend-delivery-receipt-input.accepted.json"
+REPORT_PARENT="$(hepta_safe_normalize_path report_parent "$(/usr/bin/dirname "$REPORT_PATH")")"
+hepta_safe_require_directory_target readiness "$READINESS_DIR"
+hepta_safe_require_directory_target audit "$AUDIT_DIR"
+hepta_safe_require_directory_target report_parent "$REPORT_PARENT"
+hepta_safe_require_regular_target report "$REPORT_PATH"
+hepta_safe_require_regular_target delivery_template "$DELIVERY_RECEIPT_TEMPLATE_PATH"
+hepta_safe_require_regular_target audit_markdown "$AUDIT_MARKDOWN_PATH"
+hepta_safe_require_regular_target accepted_delivery_receipt "$ACCEPTED_DELIVERY_RECEIPT_INPUT_PATH"
+if [[ -n "$DELIVERY_RECEIPT_INPUT_PATH" ]]; then
+  hepta_safe_require_regular_target delivery_receipt_input "$DELIVERY_RECEIPT_INPUT_PATH"
+fi
+if hepta_safe_paths_overlap "$READINESS_DIR" "$REPO_ROOT"; then
+  printf 'backend-delivery audit readiness must not overlap the repository\n' >&2
+  exit 64
+fi
+if ! hepta_safe_is_strict_descendant "$AUDIT_DIR" "$READINESS_DIR"; then
+  printf 'backend-delivery audit directory must be a strict readiness child\n' >&2
+  exit 64
+fi
+if [[ "$REPORT_PARENT" != "$READINESS_DIR" ]] \
+  && ! hepta_safe_is_strict_descendant "$REPORT_PARENT" "$READINESS_DIR"; then
+  printf 'backend-delivery audit report parent must remain inside readiness\n' >&2
+  exit 64
+fi
+if hepta_safe_paths_overlap "$REPORT_PATH" "$AUDIT_DIR"; then
+  printf 'backend-delivery audit report and managed directory must be disjoint\n' >&2
+  exit 64
+fi
+hepta_safe_require_owned_json_target_or_absent \
+  "$ACCEPTED_DELIVERY_RECEIPT_INPUT_PATH" accepted_delivery_receipt \
+  delivery_kind backend_dispatch_packet_delivery_receipt \
+  delivery_version 1 \
+  owner_lane backend_contract
 
 BACKEND_DISPATCH_PACKET_REPORT_PATH="$READINESS_DIR/ui-backend-dispatch-packet-gate.json"
 BACKEND_RECEIPT_REFRESH_LOCK_REPORT_PATH="$READINESS_DIR/ui-backend-receipt-refresh-lock-gate.json"
 BLOCKER_CLOSURE_REPORT_PATH="$READINESS_DIR/ui-blocker-closure-gate.json"
+for protected_input in "$BACKEND_DISPATCH_PACKET_REPORT_PATH" \
+  "$BACKEND_RECEIPT_REFRESH_LOCK_REPORT_PATH" "$BLOCKER_CLOSURE_REPORT_PATH" \
+  ${DELIVERY_RECEIPT_INPUT_PATH:+"$DELIVERY_RECEIPT_INPUT_PATH"}; do
+  if hepta_safe_paths_overlap "$protected_input" "$AUDIT_DIR" \
+    || hepta_safe_paths_overlap "$protected_input" "$REPORT_PATH"; then
+    printf 'backend-delivery audit output overlaps protected input: %s\n' "$protected_input" >&2
+    exit 64
+  fi
+done
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -46,14 +102,16 @@ require_report "$BACKEND_DISPATCH_PACKET_REPORT_PATH"
 require_report "$BACKEND_RECEIPT_REFRESH_LOCK_REPORT_PATH"
 require_report "$BLOCKER_CLOSURE_REPORT_PATH"
 
-rm -rf "$AUDIT_DIR"
-mkdir -p "$AUDIT_DIR"
+mkdir -p "$AUDIT_DIR" "$REPORT_PARENT"
+hepta_safe_revalidate_directory audit "$AUDIT_DIR"
+hepta_safe_revalidate_directory report_parent "$REPORT_PARENT"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-backend-delivery-audit.XXXXXX")"
 REPORT_DRAFT="$TMP_DIR/backend-delivery-audit-draft.json"
 REPORT_TMP="$TMP_DIR/backend-delivery-audit-report.json"
 RECEIPT_CAPTURE_PATH="$TMP_DIR/backend-delivery-receipt-input.json"
 MARKDOWN_TMP="$TMP_DIR/backend-delivery-audit.md"
+TEMPLATE_TMP="$TMP_DIR/backend-delivery-receipt-template.json"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 delivery_receipt_present=false
@@ -65,12 +123,11 @@ delivery_receipt_bytes=0
 if [[ -n "$DELIVERY_RECEIPT_INPUT_PATH" ]]; then
   require_report "$DELIVERY_RECEIPT_INPUT_PATH"
   cp "$DELIVERY_RECEIPT_INPUT_PATH" "$RECEIPT_CAPTURE_PATH"
-  cp "$DELIVERY_RECEIPT_INPUT_PATH" "$ACCEPTED_DELIVERY_RECEIPT_INPUT_PATH"
   delivery_receipt_present=true
   delivery_receipt_input_path_json="$(jq -n --arg path "$DELIVERY_RECEIPT_INPUT_PATH" '$path')"
   delivery_receipt_captured_input_path_json="$(jq -n --arg path "$ACCEPTED_DELIVERY_RECEIPT_INPUT_PATH" '$path')"
-  delivery_receipt_sha_json="$(jq -n --arg sha "$(file_sha256 "$DELIVERY_RECEIPT_INPUT_PATH")" '$sha')"
-  delivery_receipt_bytes="$(file_bytes "$DELIVERY_RECEIPT_INPUT_PATH")"
+  delivery_receipt_sha_json="$(jq -n --arg sha "$(file_sha256 "$RECEIPT_CAPTURE_PATH")" '$sha')"
+  delivery_receipt_bytes="$(file_bytes "$RECEIPT_CAPTURE_PATH")"
 else
   jq -n '{present:false}' >"$RECEIPT_CAPTURE_PATH"
 fi
@@ -139,7 +196,8 @@ jq -n \
         real_backend_receipt_present:$receipt_refresh.receipt_state.real_backend_receipt_present,
         dispatch_archive_sha256:$dispatch.archive_sha256
       }
-    }' >"$DELIVERY_RECEIPT_TEMPLATE_PATH"
+    }' >"$TEMPLATE_TMP"
+hepta_safe_atomic_replace "$TEMPLATE_TMP" "$DELIVERY_RECEIPT_TEMPLATE_PATH" delivery_receipt_template
 
 template_sha="$(file_sha256 "$DELIVERY_RECEIPT_TEMPLATE_PATH")"
 template_bytes="$(file_bytes "$DELIVERY_RECEIPT_TEMPLATE_PATH")"
@@ -202,7 +260,7 @@ jq -n \
       and ($receipt_refresh.claim_boundary.backend_receipt_claim_ready | type) == "boolean"
       and $receipt_refresh.claim_boundary.live_product_claim_ready == false
       and $blocker.blocker_closure_gate_ready == true
-      and ($blocker.critical_blocker_count >= 0 and $blocker.critical_blocker_count <= 9)
+      and ($blocker.critical_blocker_count >= 0 and $blocker.critical_blocker_count <= 10)
       and $blocker.closure_state.dispatch_archive_sha256 == $dispatch.archive_sha256
       and ($blocker.closure_state.backend_agent_available | type) == "boolean"
       and $blocker.closure_state.external_dispatch_performed == false
@@ -342,7 +400,14 @@ jq -n \
         backend_receipt_claim_ready:$receipt_refresh.claim_boundary.backend_receipt_claim_ready,
         root_report_replay_required_count_after_blocker_closure:$blocker.closure_state.root_report_replay_required_count_after_blocker_closure,
         blocker_closure_local_release_artifact_roundtrip_ready:$blocker.closure_state.local_release_artifact_roundtrip_ready,
+        blocker_closure_release_artifact_present:$blocker.closure_state.release_artifact_present,
+        blocker_closure_release_artifact_valid:$blocker.closure_state.release_artifact_valid,
+        blocker_closure_release_artifact_receipt_contract_version:$blocker.closure_state.release_artifact_receipt_contract_version,
+        blocker_closure_release_artifact_evidence_readback_valid:$blocker.closure_state.release_artifact_evidence_readback_valid,
+        blocker_closure_release_artifact_roundtrip_present_artifact_present:$blocker.closure_state.release_artifact_roundtrip_present_artifact_present,
         blocker_closure_release_artifact_roundtrip_present_artifact_valid:$blocker.closure_state.release_artifact_roundtrip_present_artifact_valid,
+        blocker_closure_release_artifact_roundtrip_legacy_simulated_rejected:$blocker.closure_state.release_artifact_roundtrip_legacy_simulated_rejected,
+        blocker_closure_release_artifact_roundtrip_v3_valid_branch_selftest_ready:$blocker.closure_state.release_artifact_roundtrip_v3_valid_branch_selftest_ready,
         root_report_replay_required_count_after_delivery_audit:41
       },
       claim_boundary:{
@@ -384,6 +449,23 @@ jq -n \
       }
     }' >"$REPORT_DRAFT"
 
+if [[ "$(jq -r '.delivery_state.delivery_receipt_valid == true' "$REPORT_DRAFT")" == "true" ]]; then
+  hepta_safe_atomic_replace_owned_json \
+    "$RECEIPT_CAPTURE_PATH" "$ACCEPTED_DELIVERY_RECEIPT_INPUT_PATH" accepted_delivery_receipt \
+    delivery_kind backend_dispatch_packet_delivery_receipt \
+    delivery_version 1 \
+    owner_lane backend_contract
+else
+  hepta_safe_unlink_owned_json_target_if_present \
+    "$ACCEPTED_DELIVERY_RECEIPT_INPUT_PATH" accepted_delivery_receipt \
+    delivery_kind backend_dispatch_packet_delivery_receipt \
+    delivery_version 1 \
+    owner_lane backend_contract
+  jq '.delivery_state.delivery_receipt_captured_input_path = null' \
+    "$REPORT_DRAFT" >"$REPORT_DRAFT.without-accepted"
+  mv "$REPORT_DRAFT.without-accepted" "$REPORT_DRAFT"
+fi
+
 jq -r '
   "# Hepta UI Backend Delivery Audit\n\n"
   + "- Kind: \(.audit_kind)\n"
@@ -405,7 +487,7 @@ jq -r '
   + "\n"
 ' "$REPORT_DRAFT" >"$MARKDOWN_TMP"
 
-mv "$MARKDOWN_TMP" "$AUDIT_MARKDOWN_PATH"
+hepta_safe_atomic_replace "$MARKDOWN_TMP" "$AUDIT_MARKDOWN_PATH" backend_delivery_audit_markdown
 
 audit_markdown_sha="$(file_sha256 "$AUDIT_MARKDOWN_PATH")"
 audit_markdown_bytes="$(file_bytes "$AUDIT_MARKDOWN_PATH")"
@@ -475,7 +557,7 @@ jq -e '
   and .source_alignment.backend_dispatch_packet_ready == true
   and .source_alignment.backend_receipt_refresh_lock_ready == true
   and .source_alignment.blocker_closure_ready == true
-  and (.source_alignment.blocker_closure_critical_blocker_count >= 0 and .source_alignment.blocker_closure_critical_blocker_count <= 9)
+  and (.source_alignment.blocker_closure_critical_blocker_count >= 0 and .source_alignment.blocker_closure_critical_blocker_count <= 10)
   and .source_alignment.selected_ids_match == true
   and .source_alignment.dispatch_archive_match == true
   and (.source_alignment.backend_agent_available | type) == "boolean"
@@ -485,7 +567,21 @@ jq -e '
   and (.source_alignment.backend_receipt_claim_ready | type) == "boolean"
   and .source_alignment.root_report_replay_required_count_after_blocker_closure == 41
   and .source_alignment.blocker_closure_local_release_artifact_roundtrip_ready == true
-  and .source_alignment.blocker_closure_release_artifact_roundtrip_present_artifact_valid == true
+  and .source_alignment.blocker_closure_release_artifact_roundtrip_present_artifact_present == .source_alignment.blocker_closure_release_artifact_present
+  and .source_alignment.blocker_closure_release_artifact_roundtrip_present_artifact_valid == .source_alignment.blocker_closure_release_artifact_valid
+  and (
+    if .source_alignment.blocker_closure_release_artifact_valid then
+      .source_alignment.blocker_closure_release_artifact_present == true
+      and .source_alignment.blocker_closure_release_artifact_receipt_contract_version == 3
+      and .source_alignment.blocker_closure_release_artifact_evidence_readback_valid == true
+    else
+      .source_alignment.blocker_closure_release_artifact_present == false
+      and .source_alignment.blocker_closure_release_artifact_receipt_contract_version == 0
+      and .source_alignment.blocker_closure_release_artifact_evidence_readback_valid == false
+    end
+  )
+  and .source_alignment.blocker_closure_release_artifact_roundtrip_legacy_simulated_rejected == true
+  and .source_alignment.blocker_closure_release_artifact_roundtrip_v3_valid_branch_selftest_ready == true
   and .source_alignment.root_report_replay_required_count_after_delivery_audit == 41
   and .claim_boundary.local_backend_delivery_audit_ready == true
   and .claim_boundary.local_backend_dispatch_packet_ready == true
@@ -519,5 +615,5 @@ jq -e '
   and .audit_markdown_bytes > 0
 ' "$REPORT_TMP" >/dev/null
 
-mv "$REPORT_TMP" "$REPORT_PATH"
+hepta_safe_atomic_replace "$REPORT_TMP" "$REPORT_PATH" backend_delivery_audit_report
 cat "$REPORT_PATH"

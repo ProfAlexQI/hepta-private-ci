@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "kind": "hepta-ui-historical-top-design-archive",
+  "status": "archived_historical_compatibility",
+  "archive_root": "scripts/archive/hepta-ui-top-design-v1",
+  "canonical_current_readiness": {
+    "entrypoint": "scripts/hepta-ui-current-readiness.sh",
+    "invokes_historical_gates": false,
+    "invokes_html_native_fixture": false
+  },
+  "historical_gates": {
+    "count": 40,
+    "first_stage": 2,
+    "last_stage": 41,
+    "standalone_roots": [2, 3],
+    "predecessor_rule": "vN invokes v(N-1) for every N from 4 through 41",
+    "fixture_execution_stages": [12],
+    "implementation_glob": "scripts/archive/hepta-ui-top-design-v1/gates/hepta-ui-harsh-top-design-referee-v*-gate.sh",
+    "compatibility_glob": "scripts/hepta-ui-harsh-top-design-referee-v*-gate.sh",
+    "compatibility_strategy": "relative_symlink",
+    "supported_invocation": "compatibility_path"
+  },
+  "native_fixture": {
+    "implementation_path": "scripts/archive/hepta-ui-top-design-v1/native-fixture/hepta-native-fixture-visual-smoke.sh",
+    "compatibility_path": "scripts/hepta-native-fixture-visual-smoke.sh",
+    "compatibility_strategy": "relative_symlink",
+    "current_readiness_consumer": false,
+    "historical_runtime_consumers": [
+      "scripts/hepta-ui-harsh-top-design-referee-v12-interaction-state-crop-gate.sh"
+    ],
+    "active_static_source_consumers": [
+      "scripts/hepta-native-spaces-room-membership-edge-contract-gate.sh",
+      "scripts/hepta-ui-backend-alignment-evidence-gate.sh"
+    ],
+    "active_metadata_only_consumers": [
+      "scripts/hepta-native-window-smoke.sh",
+      "scripts/hepta-ui-backend-promotion-packet-gate.sh"
+    ],
+    "historical_report_consumers": [
+      "scripts/hepta-ui-demo-evidence-gate.sh",
+      "scripts/hepta-ui-harsh-top-design-referee-check.sh",
+      "scripts/hepta-ui-root-report-replay-gate.sh",
+      "scripts/hepta-ui-top-design-referee-refresh-gate.sh"
+    ]
+  },
+  "external_dependency_inventory": {
+    "scan_roots": ["scripts", ".github", "codex-rs", "apps", "docs"],
+    "current_readiness_direct_runtime_consumers": [],
+    "ci_direct_runtime_consumers": [],
+    "rust_direct_runtime_consumers": [],
+    "rust_catalog_only_consumers": [
+      "codex-rs/hepta-native-gateway/src/gate_runner_tests.rs"
+    ],
+    "historical_catalogs": [
+      "docs/architecture/HEPTA_SHELL_GATE_MIGRATION_INPUT_V1.json"
+    ],
+    "historical_evidence_assets": [
+      "docs/architecture/assets/hepta-ui-2026-08-01/current-source-readiness.json",
+      "docs/architecture/assets/hepta-ui-2026-08-01/screenshot-manifest.json"
+    ],
+    "historical_docs": [
+      "docs/architecture/HEPTA_DESKTOP_MOBILE_DESIGN_REFEREE_AUDIT_2026-06-17.md",
+      "docs/architecture/HEPTA_NATIVE_NON_BASE_EDGE_RISK_PLAN_2026-06-15.md"
+    ]
+  },
+  "direct_reference_inventory": {
+    "historical_gate_script_reference_files": [
+      "docs/architecture/HEPTA_SHELL_GATE_MIGRATION_INPUT_V1.json",
+      "docs/architecture/assets/hepta-ui-2026-08-01/current-source-readiness.json"
+    ],
+    "native_fixture_script_reference_files": [
+      "docs/architecture/HEPTA_DESKTOP_MOBILE_DESIGN_REFEREE_AUDIT_2026-06-17.md",
+      "docs/architecture/HEPTA_NATIVE_NON_BASE_EDGE_RISK_PLAN_2026-06-15.md",
+      "scripts/archive/hepta-ui-top-design-v1/gates/hepta-ui-harsh-top-design-referee-v12-interaction-state-crop-gate.sh",
+      "scripts/hepta-native-spaces-room-membership-edge-contract-gate.sh",
+      "scripts/hepta-native-window-smoke.sh",
+      "scripts/hepta-ui-backend-alignment-evidence-gate.sh",
+      "scripts/hepta-ui-backend-promotion-packet-gate.sh"
+    ],
+    "historical_receipt_reference_files": [
+      "docs/architecture/assets/hepta-ui-2026-08-01/current-source-readiness.json",
+      "docs/architecture/assets/hepta-ui-2026-08-01/screenshot-manifest.json",
+      "scripts/hepta-ui-backend-alignment-evidence-gate.sh",
+      "scripts/hepta-ui-demo-evidence-gate.sh",
+      "scripts/hepta-ui-harsh-top-design-referee-check.sh",
+      "scripts/hepta-ui-root-report-replay-gate.sh",
+      "scripts/hepta-ui-top-design-referee-refresh-gate.sh"
+    ]
+  },
+  "receipt_compatibility": {
+    "implementation_storage_paths_changed": true,
+    "compatibility_entrypoint_paths_changed": false,
+    "receipt_paths_changed": false,
+    "schemas_changed": false,
+    "execution_semantics_changed": false,
+    "current_readiness_authority_changed": false
+  },
+  "self_test": "scripts/hepta-ui-legacy-visual-archive-self-test.sh"
+}

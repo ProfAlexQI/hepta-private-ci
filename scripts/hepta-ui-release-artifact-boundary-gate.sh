@@ -1,7 +1,15 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
+set +x
+PS4='+ '
 set -euo pipefail
+unset BASH_ENV ENV CDPATH GLOBIGNORE RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_GEMFILE BUNDLE_PATH
+SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PATH="$SYSTEM_PATH"
+export PATH
 
-cd "$(dirname "$0")/.."
+cd "$(/usr/bin/dirname "$0")/.."
+REPO_ROOT="$(pwd -P)"
+. "$REPO_ROOT/scripts/lib/hepta-safe-managed-output-v1.sh"
 
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-/Users/qianqi/.openclaw/tmp/hepta-ui-product-readiness.mention-taxonomy-20260615}"
 REPORT_PATH="${HEPTA_UI_RELEASE_ARTIFACT_BOUNDARY_REPORT_PATH:-$READINESS_DIR/ui-release-artifact-boundary-gate.json}"
@@ -42,6 +50,54 @@ file_bytes() {
 require_command jq
 require_command shasum
 
+READINESS_DIR="$(hepta_safe_normalize_path readiness "$READINESS_DIR")"
+REPORT_PATH="$(hepta_safe_normalize_path report "$REPORT_PATH")"
+BOUNDARY_DIR="$(hepta_safe_normalize_path boundary "$BOUNDARY_DIR")"
+BOUNDARY_MARKDOWN_PATH="$BOUNDARY_DIR/release-artifact-boundary.md"
+PACKAGING_REPORT_PATH="$READINESS_DIR/native-packaging-gate.json"
+DISTRIBUTION_PREFLIGHT_REPORT_PATH="$READINESS_DIR/native-distribution-preflight-gate.json"
+RELEASE_OPERATOR_DRY_RUN_REPORT_PATH="$READINESS_DIR/ui-release-operator-dry-run-gate.json"
+RELEASE_APPROVAL_INTAKE_REPORT_PATH="$READINESS_DIR/ui-release-approval-intake-gate.json"
+TOP_DESIGN_REFEREE_REFRESH_REPORT_PATH="$READINESS_DIR/ui-top-design-referee-refresh-gate.json"
+EVIDENCE_ARCHIVE_REPORT_PATH="$READINESS_DIR/ui-evidence-archive-gate.json"
+REPORT_PARENT="$(hepta_safe_normalize_path report_parent "$(/usr/bin/dirname "$REPORT_PATH")")"
+
+hepta_safe_require_directory_target readiness "$READINESS_DIR"
+hepta_safe_require_directory_target boundary "$BOUNDARY_DIR"
+hepta_safe_require_directory_target report_parent "$REPORT_PARENT"
+hepta_safe_require_regular_target report "$REPORT_PATH"
+hepta_safe_require_regular_target boundary_markdown "$BOUNDARY_MARKDOWN_PATH"
+if hepta_safe_paths_overlap "$READINESS_DIR" "$REPO_ROOT"; then
+  printf 'release artifact boundary readiness must not overlap the repository\n' >&2
+  exit 64
+fi
+if ! hepta_safe_is_strict_descendant "$BOUNDARY_DIR" "$READINESS_DIR"; then
+  printf 'release artifact boundary directory must be a strict readiness child\n' >&2
+  exit 64
+fi
+if [[ "$REPORT_PARENT" != "$READINESS_DIR" ]] \
+  && ! hepta_safe_is_strict_descendant "$REPORT_PARENT" "$READINESS_DIR"; then
+  printf 'release artifact boundary report parent must remain inside readiness\n' >&2
+  exit 64
+fi
+if hepta_safe_paths_overlap "$REPORT_PATH" "$BOUNDARY_DIR"; then
+  printf 'release artifact boundary report and managed directory must be disjoint\n' >&2
+  exit 64
+fi
+for protected_source in \
+  "$PACKAGING_REPORT_PATH" \
+  "$DISTRIBUTION_PREFLIGHT_REPORT_PATH" \
+  "$RELEASE_OPERATOR_DRY_RUN_REPORT_PATH" \
+  "$RELEASE_APPROVAL_INTAKE_REPORT_PATH" \
+  "$TOP_DESIGN_REFEREE_REFRESH_REPORT_PATH" \
+  "$EVIDENCE_ARCHIVE_REPORT_PATH"; do
+  if hepta_safe_paths_overlap "$protected_source" "$BOUNDARY_DIR" \
+    || hepta_safe_paths_overlap "$protected_source" "$REPORT_PATH"; then
+    printf 'release artifact boundary output overlaps a protected source: %s\n' "$protected_source" >&2
+    exit 64
+  fi
+done
+
 require_report "$PACKAGING_REPORT_PATH"
 require_report "$DISTRIBUTION_PREFLIGHT_REPORT_PATH"
 require_report "$RELEASE_OPERATOR_DRY_RUN_REPORT_PATH"
@@ -49,14 +105,15 @@ require_report "$RELEASE_APPROVAL_INTAKE_REPORT_PATH"
 require_report "$TOP_DESIGN_REFEREE_REFRESH_REPORT_PATH"
 require_report "$EVIDENCE_ARCHIVE_REPORT_PATH"
 
-rm -rf "$BOUNDARY_DIR"
-mkdir -p "$BOUNDARY_DIR"
+/bin/mkdir -p "$REPORT_PARENT" "$BOUNDARY_DIR"
+hepta_safe_revalidate_directory report_parent "$REPORT_PARENT"
+hepta_safe_revalidate_directory boundary "$BOUNDARY_DIR"
 
-TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-release-artifact-boundary.XXXXXX")"
+TMP_DIR="$(/usr/bin/mktemp -d /private/tmp/hepta-ui-release-artifact-boundary.XXXXXX)"
 REPORT_DRAFT="$TMP_DIR/release-artifact-boundary-draft.json"
 REPORT_TMP="$TMP_DIR/release-artifact-boundary-report.json"
 MARKDOWN_TMP="$TMP_DIR/release-artifact-boundary.md"
-trap 'rm -rf "$TMP_DIR"' EXIT
+trap '/bin/rm -rf "$TMP_DIR"' EXIT
 
 packaging_sha="$(file_sha256 "$PACKAGING_REPORT_PATH")"
 distribution_sha="$(file_sha256 "$DISTRIBUTION_PREFLIGHT_REPORT_PATH")"
@@ -131,6 +188,13 @@ jq -n \
       and $dry.claim_boundary.public_distribution_claim_ready == false
       and $dry.claim_boundary.release_claim_ready == false
       and $approval.release_approval_intake_gate_ready == true
+      and $approval.release_approval_state.waiting_for_release_approval == true
+      and $approval.release_approval_state.release_approval_present == false
+      and $approval.release_approval_state.release_approval_valid == false
+      and $approval.release_approval_state.independent_approval_verifier_ready == false
+      and $approval.release_approval_state.self_reported_approval_can_authorize_release == false
+      and ($approval.approval_blockers | index("independent_release_approval_verifier_unavailable") != null)
+      and $approval.claim_boundary.release_approval_claim_ready == false
       and $approval.release_approval_state.approval_only_can_make_release_claim == false
       and $approval.release_approval_state.signed_notarized_stapled_artifact_present == false
       and $approval.release_approval_state.public_distribution_artifact_written == false
@@ -189,6 +253,8 @@ jq -n \
         release_approval_waiting_for_approval:$approval.release_approval_state.waiting_for_release_approval,
         release_approval_present:$approval.release_approval_state.release_approval_present,
         release_approval_valid:$approval.release_approval_state.release_approval_valid,
+        independent_approval_verifier_ready:$approval.release_approval_state.independent_approval_verifier_ready,
+        self_reported_approval_can_authorize_release:$approval.release_approval_state.self_reported_approval_can_authorize_release,
         approval_only_can_make_release_claim:false,
         signed_app_artifact_present:false,
         notarized_app_artifact_present:false,
@@ -217,6 +283,7 @@ jq -n \
       },
       release_blockers:[
         (if $approval.release_approval_state.release_approval_valid then empty else "operator_release_approval_required" end),
+        "independent_release_approval_verifier_unavailable",
         "signed_notarized_stapled_artifact_missing",
         "public_distribution_artifact_not_written",
         (if $top_design.claim_boundary.real_backend_receipt_claim_ready then empty else "real_backend_receipt_missing" end),
@@ -291,22 +358,14 @@ jq -e '
   and .boundary_markdown_bytes > 0
   and .release_artifact_boundary.unsigned_app_bundle_probe_ready == true
   and .release_artifact_boundary.unsigned_app_bundle_codesign_status == "unsigned_expected"
-  and (
-    (
-      .release_artifact_boundary.release_approval_waiting_for_approval == true
-      and .release_artifact_boundary.release_approval_present == false
-      and .release_artifact_boundary.release_approval_valid == false
-      and (.release_blockers | index("operator_release_approval_required") != null)
-      and .claim_boundary.release_approval_claim_ready == false
-    )
-    or (
-      .release_artifact_boundary.release_approval_waiting_for_approval == false
-      and .release_artifact_boundary.release_approval_present == true
-      and .release_artifact_boundary.release_approval_valid == true
-      and (.release_blockers | index("operator_release_approval_required") == null)
-      and .claim_boundary.release_approval_claim_ready == true
-    )
-  )
+  and .release_artifact_boundary.release_approval_waiting_for_approval == true
+  and .release_artifact_boundary.release_approval_present == false
+  and .release_artifact_boundary.release_approval_valid == false
+  and .release_artifact_boundary.independent_approval_verifier_ready == false
+  and .release_artifact_boundary.self_reported_approval_can_authorize_release == false
+  and (.release_blockers | index("operator_release_approval_required") != null)
+  and (.release_blockers | index("independent_release_approval_verifier_unavailable") != null)
+  and .claim_boundary.release_approval_claim_ready == false
   and .release_artifact_boundary.approval_only_can_make_release_claim == false
   and .release_artifact_boundary.signed_app_artifact_present == false
   and .release_artifact_boundary.notarized_app_artifact_present == false
@@ -368,7 +427,6 @@ jq -e '
   and .side_effects.external_mutation == false
 ' "$REPORT_TMP" >/dev/null
 
-mkdir -p "$(dirname "$REPORT_PATH")"
-cp "$MARKDOWN_TMP" "$BOUNDARY_MARKDOWN_PATH"
-cp "$REPORT_TMP" "$REPORT_PATH"
+hepta_safe_atomic_replace "$MARKDOWN_TMP" "$BOUNDARY_MARKDOWN_PATH" boundary_markdown
+hepta_safe_atomic_replace "$REPORT_TMP" "$REPORT_PATH" boundary_report
 cat "$REPORT_TMP"

@@ -1,12 +1,46 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
+set +x
+PS4='+ '
 set -euo pipefail
+unset BASH_ENV ENV CDPATH GLOBIGNORE RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_GEMFILE BUNDLE_PATH
+SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PATH="$SYSTEM_PATH"
+export PATH
 
-cd "$(dirname "$0")/.."
+cd "$(/usr/bin/dirname "$0")/.."
+REPO_ROOT="$(pwd -P)"
+. "$REPO_ROOT/scripts/lib/hepta-safe-managed-output-v1.sh"
 
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-/Users/qianqi/.openclaw/tmp/hepta-ui-product-readiness.mention-taxonomy-20260615}"
 REPORT_PATH="${HEPTA_UI_RISK_FUTURE_PLAN_REPORT_PATH:-$READINESS_DIR/ui-risk-future-plan-gate.json}"
 RISK_PLAN_DIR="${HEPTA_UI_RISK_FUTURE_PLAN_DIR:-$READINESS_DIR/risk-future-plan}"
+READINESS_DIR="$(hepta_safe_normalize_path readiness "$READINESS_DIR")"
+REPORT_PATH="$(hepta_safe_normalize_path report "$REPORT_PATH")"
+RISK_PLAN_DIR="$(hepta_safe_normalize_path risk_plan "$RISK_PLAN_DIR")"
 RISK_PLAN_MARKDOWN_PATH="$RISK_PLAN_DIR/risk-future-plan.md"
+REPORT_PARENT="$(hepta_safe_normalize_path report_parent "$(/usr/bin/dirname "$REPORT_PATH")")"
+hepta_safe_require_directory_target readiness "$READINESS_DIR"
+hepta_safe_require_directory_target risk_plan "$RISK_PLAN_DIR"
+hepta_safe_require_directory_target report_parent "$REPORT_PARENT"
+hepta_safe_require_regular_target report "$REPORT_PATH"
+hepta_safe_require_regular_target risk_plan_markdown "$RISK_PLAN_MARKDOWN_PATH"
+if hepta_safe_paths_overlap "$READINESS_DIR" "$REPO_ROOT"; then
+  printf 'risk/future-plan readiness must not overlap the repository\n' >&2
+  exit 64
+fi
+if ! hepta_safe_is_strict_descendant "$RISK_PLAN_DIR" "$READINESS_DIR"; then
+  printf 'risk/future-plan directory must be a strict readiness child\n' >&2
+  exit 64
+fi
+if [[ "$REPORT_PARENT" != "$READINESS_DIR" ]] \
+  && ! hepta_safe_is_strict_descendant "$REPORT_PARENT" "$READINESS_DIR"; then
+  printf 'risk/future-plan report parent must remain inside readiness\n' >&2
+  exit 64
+fi
+if hepta_safe_paths_overlap "$REPORT_PATH" "$RISK_PLAN_DIR"; then
+  printf 'risk/future-plan report and managed directory must be disjoint\n' >&2
+  exit 64
+fi
 
 TOP_DESIGN_REFEREE_REFRESH_REPORT_PATH="$READINESS_DIR/ui-top-design-referee-refresh-gate.json"
 CURRENT_PLAN_REFRESH_REPORT_PATH="$READINESS_DIR/ui-current-plan-refresh-gate.json"
@@ -15,6 +49,16 @@ BACKEND_DELIVERY_AUDIT_REPORT_PATH="$READINESS_DIR/ui-backend-delivery-audit-gat
 BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_REPORT_PATH="$READINESS_DIR/ui-backend-delivery-receipt-roundtrip-gate.json"
 EVIDENCE_ARCHIVE_REPORT_PATH="$READINESS_DIR/ui-evidence-archive-gate.json"
 SCREENSHOT_MANIFEST_PATH="$READINESS_DIR/screenshot-manifest.json"
+for protected_input in "$TOP_DESIGN_REFEREE_REFRESH_REPORT_PATH" \
+  "$CURRENT_PLAN_REFRESH_REPORT_PATH" "$BLOCKER_CLOSURE_REPORT_PATH" \
+  "$BACKEND_DELIVERY_AUDIT_REPORT_PATH" "$BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_REPORT_PATH" \
+  "$EVIDENCE_ARCHIVE_REPORT_PATH" "$SCREENSHOT_MANIFEST_PATH"; do
+  if hepta_safe_paths_overlap "$protected_input" "$RISK_PLAN_DIR" \
+    || hepta_safe_paths_overlap "$protected_input" "$REPORT_PATH"; then
+    printf 'risk/future-plan output overlaps protected input: %s\n' "$protected_input" >&2
+    exit 64
+  fi
+done
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -51,8 +95,9 @@ require_report "$BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_REPORT_PATH"
 require_report "$EVIDENCE_ARCHIVE_REPORT_PATH"
 require_report "$SCREENSHOT_MANIFEST_PATH"
 
-rm -rf "$RISK_PLAN_DIR"
-mkdir -p "$RISK_PLAN_DIR"
+mkdir -p "$RISK_PLAN_DIR" "$REPORT_PARENT"
+hepta_safe_revalidate_directory risk_plan "$RISK_PLAN_DIR"
+hepta_safe_revalidate_directory report_parent "$REPORT_PARENT"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-risk-future-plan.XXXXXX")"
 REPORT_DRAFT="$TMP_DIR/risk-future-plan-draft.json"
@@ -226,12 +271,12 @@ jq -n \
       and ($current.source_alignment.real_backend_receipt_present | type) == "boolean"
       and $blocker.blocker_closure_gate_ready == true
       and $blocker.status == "ready"
-      and ($blocker.critical_blocker_count >= 0 and $blocker.critical_blocker_count <= 9)
+      and ($blocker.critical_blocker_count >= 0 and $blocker.critical_blocker_count <= 10)
       and $blocker.closure_state.root_report_replay_required_count_after_blocker_closure == 41
       and $blocker.claim_boundary.live_product_claim_ready == false
       and $delivery.backend_delivery_audit_gate_ready == true
       and $delivery.status == "ready"
-      and ($delivery.critical_blocker_count >= 0 and $delivery.critical_blocker_count <= 10)
+      and ($delivery.critical_blocker_count >= 0 and $delivery.critical_blocker_count <= 11)
       and $delivery.delivery_state.root_report_replay_required_count_after_delivery_audit == 41
       and (
         (
@@ -251,7 +296,7 @@ jq -n \
       and ($delivery.delivery_state.real_backend_receipt_present | type) == "boolean"
       and ($delivery.delivery_state.backend_receipt_valid | type) == "boolean"
       and $delivery.delivery_state.selected_ids == selected_ids
-      and ($delivery.source_alignment.blocker_closure_critical_blocker_count >= 0 and $delivery.source_alignment.blocker_closure_critical_blocker_count <= 9)
+      and ($delivery.source_alignment.blocker_closure_critical_blocker_count >= 0 and $delivery.source_alignment.blocker_closure_critical_blocker_count <= 10)
       and $delivery_roundtrip.backend_delivery_receipt_roundtrip_gate_ready == true
       and $delivery_roundtrip.status == "ready"
       and $delivery_roundtrip.roundtrip_kind == "local_backend_delivery_receipt_valid_branch_replay"
@@ -416,6 +461,7 @@ jq -n \
           action:"record release approval and a real signed/notarized/stapled artifact, then refresh UI readiness before any public distribution claim",
           blockers:[
             (if $blocker.closure_state.release_approval_valid then empty else "operator_release_approval_required" end),
+            (if $blocker.closure_state.independent_approval_verifier_ready then empty else "independent_release_approval_verifier_unavailable" end),
             (if $blocker.closure_state.release_artifact_valid then empty else "signed_notarized_stapled_artifact_missing" end),
             (if $blocker.closure_state.public_distribution_artifact_written then empty else "public_distribution_artifact_not_written" end),
             (if $delivery.delivery_state.real_backend_receipt_present then empty else "real_backend_receipt_missing" end)
@@ -574,10 +620,6 @@ jq \
   '. + {risk_plan_markdown_sha256:$markdown_sha, risk_plan_markdown_bytes:$markdown_bytes}' \
   "$REPORT_DRAFT" >"$REPORT_TMP"
 
-if [[ "${HEPTA_UI_RISK_FUTURE_PLAN_DEBUG_COPY:-0}" == "1" ]]; then
-  cp "$REPORT_TMP" "$REPORT_PATH.debug"
-fi
-
 jq -e '
   .status == "ready"
   and .risk_future_plan_gate_ready == true
@@ -639,7 +681,7 @@ jq -e '
   and .latest_plan_ids == ["r151_harsh_top_design_v46_badge_micro_surface_light_glass_minimum_ui_demo_gate","backend_delivery_receipt_return","backend_real_receipt_return","ui_refresh_after_real_receipt","release_artifact_roundtrip_and_signed_artifact_gate"]
   and (.critical_blockers | length) >= .critical_blocker_count
   and (.critical_blockers | length) <= (.critical_blocker_count + 1)
-  and (.critical_blocker_count >= 0 and .critical_blocker_count <= 10)
+  and (.critical_blocker_count >= 0 and .critical_blocker_count <= 11)
   and (
     (
       .source_alignment.backend_delivery_receipt_present == false
@@ -728,6 +770,6 @@ jq -e '
   and .risk_plan_markdown_bytes > 0
 ' "$REPORT_TMP" >/dev/null
 
-cp "$MARKDOWN_TMP" "$RISK_PLAN_MARKDOWN_PATH"
-cp "$REPORT_TMP" "$REPORT_PATH"
+hepta_safe_atomic_replace "$MARKDOWN_TMP" "$RISK_PLAN_MARKDOWN_PATH" risk_future_plan_markdown
+hepta_safe_atomic_replace "$REPORT_TMP" "$REPORT_PATH" risk_future_plan_report
 cat "$REPORT_TMP"

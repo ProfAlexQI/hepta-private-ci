@@ -7,6 +7,7 @@
 
 mod adapter;
 mod contract;
+mod live_policy;
 mod presenter;
 
 pub use adapter::{BridgeAdapterError, BridgeCapabilities};
@@ -16,6 +17,10 @@ pub use contract::{
     BridgeUpdateKind, ConversationBinding, CorrelationId, Cursor, HEPTA_BRIDGE_SCHEMA_VERSION,
     IdempotencyKey, MirrorPolicy, OpaquePayloadHash, Origin, PreparedActionId, Provenance,
     Redaction, RedactionStatus, Revision, SessionId, TimestampMillis,
+};
+pub use live_policy::{
+    HEPTA_LIVE_BRIDGE_SNAPSHOT_PATH, LiveBridgeActivationContext, LiveBridgeBlocker,
+    LiveBridgePreflight,
 };
 pub use presenter::{
     BridgePresenter, DEFAULT_PRESENTATION_PAYLOAD_CAP_BYTES, MAX_PRESENTATION_PAYLOAD_CAP_BYTES,
