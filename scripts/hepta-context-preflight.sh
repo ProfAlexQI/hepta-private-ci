@@ -110,25 +110,32 @@ run_stage "context memory temporal fact graph dry-run gate" \
   bash "$repo_root/scripts/hepta-context-memory-temporal-fact-graph-gate.sh"
 
 run_stage "context memory temporal graph shadow eval gate" \
-  bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-eval"
 
 run_stage "context memory temporal graph shadow store skeleton gate" \
-  bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-store"
 
 run_stage "context memory temporal graph shadow replay gate" \
-  bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-replay-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-replay"
 
 run_stage "context memory temporal graph shadow traversal diff gate" \
-  bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-traversal-diff"
 
 run_stage "context memory temporal graph shadow traversal quality/SLO gate" \
-  bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-traversal-quality"
 
 run_stage "context memory temporal graph shadow retrieval canary guard gate" \
-  bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard"
 
 run_stage "context memory temporal graph shadow retrieval rollback/kill-switch gate" \
-  bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh"
+  "$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch"
 
 run_stage "context memory eval harness seed gate" \
   bash "$repo_root/scripts/hepta-context-memory-eval-harness-seed-gate.sh"

@@ -24,13 +24,20 @@ bash "$repo_root/scripts/hepta-context-memory-write-chain-receipt-freshness-gate
 bash "$repo_root/scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-temporal-fact-schema-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-temporal-fact-graph-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-replay-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh"
-bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-eval"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-store"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-replay"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-traversal-diff"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-traversal-quality"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard"
+"$repo_root/scripts/hepta-gate-pair-runner" gate \
+  "hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch"
 bash "$repo_root/scripts/hepta-context-memory-eval-harness-seed-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-recall-quality-gate.sh"

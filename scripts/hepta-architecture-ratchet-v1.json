@@ -10,7 +10,7 @@
     "work_graph_logical_modules": 4,
     "work_graph_effective_lines": 32739,
     "gate_compat_pairs": 299,
-    "gate_compat_effective_lines": 73687,
+    "gate_compat_effective_lines": 72954,
     "single_exec_wrappers": 0,
     "first_party_modules_over_5000": 0
   },
@@ -18,7 +18,7 @@
     "work_graph_logical_modules": 4,
     "work_graph_effective_lines": 32739,
     "gate_compat_pairs": 299,
-    "gate_compat_effective_lines": 73687,
+    "gate_compat_effective_lines": 72954,
     "single_exec_wrappers": 0,
     "first_party_modules_over_5000": 0
   },
@@ -27,7 +27,7 @@
       "work_graph_logical_modules": 4,
       "work_graph_effective_lines": 25000,
       "gate_compat_pairs": 299,
-      "gate_compat_effective_lines": 73686,
+      "gate_compat_effective_lines": 72953,
       "single_exec_wrappers": 0,
       "first_party_modules_over_5000": 0
     },

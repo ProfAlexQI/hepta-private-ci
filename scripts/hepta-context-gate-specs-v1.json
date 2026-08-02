@@ -100,8 +100,8 @@
       "gate": {
         "path": "scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate",
         "compatibility_alias": "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-front-door.gate",
-        "sha256": "e7715d0ef69c30630a13ce3b71ef8fb11c725be78e2e0855ba34d008b599a047",
-        "lines": 1992
+        "sha256": "503a1f5204e23a08736ecb81d81b1114ce96b05cadca1f5b2c96f7796172381e",
+        "lines": 2000
       },
       "report": {
         "path": "scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.report",

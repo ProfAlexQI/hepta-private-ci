@@ -6,6 +6,13 @@ pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
     "hepta-context-memory-shadow-quality-summary",
     "hepta-context-memory-shadow-quality-trend-snapshot",
     "hepta-context-memory-shadow-regression-dashboard",
+    "hepta-context-memory-temporal-graph-shadow-eval",
+    "hepta-context-memory-temporal-graph-shadow-replay",
+    "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard",
+    "hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch",
+    "hepta-context-memory-temporal-graph-shadow-store",
+    "hepta-context-memory-temporal-graph-shadow-traversal-diff",
+    "hepta-context-memory-temporal-graph-shadow-traversal-quality",
     "hepta-systems-current-reality-matrix-compact-cache-boundary-readback",
     "hepta-systems-work-graph-adapter-projection-fixture",
     "hepta-systems-work-graph-append-only-event-intake-preview",
@@ -183,6 +190,377 @@ fn context_memory_shadow_fixture() -> (
     let summary = snapshot.context_memory_shadow_quality_summary_report(&request);
     let trend = snapshot.context_memory_shadow_quality_trend_snapshot_report(&request);
     (ranked_recall, dashboard, summary, trend)
+}
+
+struct ContextMemoryTemporalGraphFixture {
+    eval: hepta_core::ContextMemoryTemporalGraphShadowEvalReport,
+    store: hepta_core::ContextMemoryTemporalGraphShadowStoreReport,
+    replay: hepta_core::ContextMemoryTemporalGraphShadowReplayReport,
+    traversal_diff: hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport,
+    traversal_quality: hepta_core::ContextMemoryTemporalGraphShadowTraversalQualityReport,
+    retrieval_canary_guard: hepta_core::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport,
+    retrieval_rollback_kill_switch:
+        hepta_core::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport,
+}
+
+fn context_memory_temporal_graph_fixture() -> ContextMemoryTemporalGraphFixture {
+    let snapshot = hepta_memory::StoreSnapshot {
+        sessions: Vec::new(),
+        memories: vec![hepta_core::MemoryRecord {
+            id: "typed-compat-memory".to_string(),
+            scope: hepta_core::MemoryScope::LongTerm,
+            content: "timeout retry guidance".to_string(),
+        }],
+        transcripts: vec![
+            hepta_core::TranscriptEntry {
+                entry_id: "typed-compat-session-1".to_string(),
+                session_id: hepta_core::SessionId("typed-compat-session".to_string()),
+                sequence: 1,
+                kind: hepta_core::TranscriptEntryKind::Message,
+                role: Some(hepta_core::MessageRole::Assistant),
+                content: "timeout surfaced during tool run".to_string(),
+                created_at_unix_ms: 101,
+                tool_name: None,
+                correlation_id: None,
+                summary_of_range: None,
+            },
+            hepta_core::TranscriptEntry {
+                entry_id: "typed-compat-session-2".to_string(),
+                session_id: hepta_core::SessionId("typed-compat-session".to_string()),
+                sequence: 2,
+                kind: hepta_core::TranscriptEntryKind::Summary,
+                role: Some(hepta_core::MessageRole::Assistant),
+                content: "timeout retried successfully".to_string(),
+                created_at_unix_ms: 102,
+                tool_name: None,
+                correlation_id: None,
+                summary_of_range: None,
+            },
+        ],
+    };
+    let request = hepta_core::ContextRecallRequest {
+        session_id: hepta_core::SessionId("typed-compat-session".to_string()),
+        query_text: Some("timeout".to_string()),
+        recent_window_limit: 1,
+        transcript_limit: 1,
+        memory_limit: 1,
+        allow_cross_session: true,
+    };
+    ContextMemoryTemporalGraphFixture {
+        eval: snapshot.context_memory_temporal_graph_shadow_eval_report(),
+        store: snapshot.context_memory_temporal_graph_shadow_store_report(&request),
+        replay: snapshot.context_memory_temporal_graph_shadow_replay_report(&request),
+        traversal_diff: snapshot
+            .context_memory_temporal_graph_shadow_traversal_diff_report(&request),
+        traversal_quality: snapshot
+            .context_memory_temporal_graph_shadow_traversal_quality_report(&request),
+        retrieval_canary_guard: snapshot
+            .context_memory_temporal_graph_shadow_retrieval_canary_guard_report(&request),
+        retrieval_rollback_kill_switch: snapshot
+            .context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report(&request),
+    }
+}
+
+fn state(value: bool, enabled: &'static str, disabled: &'static str) -> Value {
+    Value::String(if value { enabled } else { disabled }.to_string())
+}
+
+fn context_memory_temporal_graph_typed_report<T: serde::Serialize>(
+    report: &T,
+    integrity: bool,
+    gate: &str,
+    schema: &str,
+    legacy_business_fields: Value,
+) -> Result<Value, TypedCompatReportError> {
+    let mut value = context_memory_typed_report(report, integrity, gate, schema)?;
+    let object = contract_object_mut(&mut value, "context-memory temporal-graph typed report")?;
+    if !legacy_business_fields
+        .as_object()
+        .is_some_and(|fields| !fields.is_empty())
+    {
+        return Err(TypedCompatReportError::ContractViolation(format!(
+            "{gate} must expose non-empty legacy business fields"
+        )));
+    }
+    object.insert("legacy_business_fields".to_string(), legacy_business_fields);
+    object.insert(
+        "production_authority_granted".to_string(),
+        Value::Bool(false),
+    );
+    object.insert("write_authority_granted".to_string(), Value::Bool(false));
+    object.insert("ready_for_live_execution".to_string(), Value::Bool(false));
+    object.insert("mutation_enabled".to_string(), Value::Bool(false));
+    Ok(value)
+}
+
+fn temporal_graph_eval_legacy_business_fields(
+    report: &hepta_core::ContextMemoryTemporalGraphShadowEvalReport,
+) -> Value {
+    serde_json::json!({
+        "result": "pass",
+        "payload_light": "pass",
+        "schema": report.schema_version,
+        "mode": match report.mode {
+            hepta_core::ContextMemoryTemporalGraphShadowEvalMode::DeterministicShadow => "deterministic-shadow",
+            hepta_core::ContextMemoryTemporalGraphShadowEvalMode::Unknown => "unknown",
+        },
+        "fixture_count": report.fixture_count(),
+        "fixture_pass_count": report.fixture_pass_count(),
+        "positive_fixture_count": report.positive_fixture_count(),
+        "negative_fixture_count": report.negative_fixture_count(),
+        "node_coverage_floor_basis_points": report.node_coverage_floor_basis_points,
+        "edge_coverage_floor_basis_points": report.edge_coverage_floor_basis_points,
+        "validity_window_floor_basis_points": report.validity_window_floor_basis_points,
+        "supersedes_floor_basis_points": report.supersedes_floor_basis_points,
+        "latency_max_ms": report.latency_max_ms,
+        "regret_max_basis_points": report.regret_max_basis_points,
+        "min_positive_node_coverage_basis_points": report.min_positive_node_coverage_basis_points(),
+        "min_positive_edge_coverage_basis_points": report.min_positive_edge_coverage_basis_points(),
+        "min_positive_validity_window_coverage_basis_points": report.min_positive_validity_window_coverage_basis_points(),
+        "min_positive_supersedes_coverage_basis_points": report.min_positive_supersedes_coverage_basis_points(),
+        "max_positive_latency_ms": report.max_positive_latency_ms(),
+        "max_positive_regret_basis_points": report.max_positive_regret_basis_points(),
+        "regression_fixture": state(report.regression_blocked_count() > 0, "blocked", "unblocked"),
+        "operator_approval": state(report.operator_approval_required, "required", "not-required"),
+        "production_route": state(report.production_route, "enabled", "disabled"),
+        "graph_write": state(report.graph_write, "enabled", "disabled"),
+        "runtime_activation": state(report.runtime_activation, "enabled", "disabled"),
+    })
+}
+
+fn temporal_graph_store_legacy_business_fields(
+    report: &hepta_core::ContextMemoryTemporalGraphShadowStoreReport,
+) -> Value {
+    serde_json::json!({
+        "result": "pass",
+        "payload_light": "pass",
+        "schema": report.schema_version,
+        "source_graph_schema": report.source_graph_schema_version,
+        "mode": "approval-gated-shadow-store-skeleton",
+        "node_count": report.node_count,
+        "edge_count": report.edge_count,
+        "provenance_edge_count": report.provenance_edge_count,
+        "validity_window_edge_count": report.validity_window_edge_count,
+        "supersedes_edge_count": report.supersedes_edge_count,
+        "open_node_count": report.open_node_count,
+        "invalidated_node_count": report.invalidated_node_count,
+        "stage_required_count": report.readiness_stage_required_count(),
+        "stage_projected_count": report.readiness_stage_projected_count(),
+        "store_digest": state(!report.store_digest.is_empty(), "present", "missing"),
+        "freshness_check": state(report.freshness_check_pass, "pass", "fail"),
+        "replay_guard": state(report.replay_guard_pass, "pass", "fail"),
+        "stale_replay_rejected": state(report.stale_replay_rejected, "pass", "fail"),
+        "operator_approval": state(report.operator_approval_required, "required", "not-required"),
+        "operator_approval_recorded_count": usize::from(report.operator_approval_recorded),
+        "recorded_receipt_count": report.receipt_recorded_count(),
+        "persisted_receipt_count": report.receipt_persisted_count(),
+        "production_route": state(report.production_route, "enabled", "disabled"),
+        "production_write_count": report.production_write_count(),
+        "graph_write_count": report.graph_write_count(),
+        "hot_path_write": state(report.hot_path_write, "enabled", "disabled"),
+        "prompt_assembly_change": state(report.prompt_assembly_change, "enabled", "disabled"),
+        "runtime_activation": state(report.runtime_activation, "enabled", "disabled"),
+        "operator_activation": state(report.operator_activation_allowed, "enabled", "disabled"),
+    })
+}
+
+fn temporal_graph_replay_legacy_business_fields(
+    report: &hepta_core::ContextMemoryTemporalGraphShadowReplayReport,
+) -> Value {
+    serde_json::json!({
+        "result": "pass",
+        "payload_light": "pass",
+        "schema": report.schema_version,
+        "source_store_schema": report.source_store_schema_version,
+        "mode": "approval-gated-shadow-wal-replay",
+        "node_count": report.node_count,
+        "edge_count": report.edge_count,
+        "provenance_replay_count": report.provenance_replay_count,
+        "bitemporal_validity_replay_count": report.bitemporal_validity_replay_count,
+        "fact_invalidation_replay_count": report.fact_invalidation_replay_count,
+        "supersede_tombstone_replay_count": report.supersede_tombstone_replay_count,
+        "stage_required_count": report.replay_stage_required_count(),
+        "stage_projected_count": report.replay_stage_projected_count(),
+        "replay_digest_count": report.replay_digest_count(),
+        "freshness_pass_count": report.freshness_pass_count(),
+        "replay_guard_pass_count": report.replay_guard_pass_count(),
+        "stale_replay_rejected_count": report.stale_replay_rejected_count(),
+        "operator_approval": state(report.operator_approval_required, "required", "not-required"),
+        "operator_approval_recorded_count": usize::from(report.operator_approval_recorded),
+        "recorded_receipt_count": report.receipt_recorded_count(),
+        "persisted_receipt_count": report.receipt_persisted_count(),
+        "production_route": state(report.production_route, "enabled", "disabled"),
+        "production_write_count": report.production_write_count(),
+        "graph_write_count": report.graph_write_count(),
+        "hot_path_write": state(report.hot_path_write, "enabled", "disabled"),
+        "prompt_assembly_change": state(report.prompt_assembly_change, "enabled", "disabled"),
+        "runtime_activation": state(report.runtime_activation, "enabled", "disabled"),
+        "operator_activation": state(report.operator_activation_allowed, "enabled", "disabled"),
+    })
+}
+
+fn temporal_graph_traversal_diff_legacy_business_fields(
+    report: &hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport,
+) -> Value {
+    serde_json::json!({
+        "result": "pass",
+        "payload_light": "pass",
+        "schema": report.schema_version,
+        "source_replay_schema": report.source_replay_schema_version,
+        "mode": "shadow-retrieval-traversal-diff",
+        "production_selection_count": report.production_selection_count,
+        "lexical_bm25_candidate_count": report.lexical_bm25_candidate_count,
+        "semantic_candidate_count": report.semantic_candidate_count,
+        "graph_traversal_candidate_count": report.graph_traversal_candidate_count,
+        "hybrid_candidate_count": report.hybrid_candidate_count,
+        "overlap_candidate_count": report.overlap_candidate_count,
+        "graph_expansion_candidate_count": report.graph_expansion_candidate_count,
+        "win_count": report.traversal_diff_win_count,
+        "loss_count": report.traversal_diff_loss_count,
+        "cost_count": report.traversal_diff_cost_count,
+        "stage_required_count": report.traversal_stage_required_count(),
+        "stage_projected_count": report.traversal_stage_projected_count(),
+        "digest_count": report.traversal_digest_count(),
+        "freshness_pass_count": report.freshness_pass_count(),
+        "replay_guard_pass_count": report.replay_guard_pass_count(),
+        "stale_replay_rejected_count": report.stale_replay_rejected_count(),
+        "aggregate_counters_only": state(report.aggregate_counters_only, "pass", "fail"),
+        "llm_rerank": state(report.llm_rerank, "enabled", "disabled"),
+        "graph_persistence": state(report.graph_persistence, "enabled", "disabled"),
+        "production_route": state(report.production_route, "enabled", "disabled"),
+        "production_write_count": report.production_write_count(),
+        "graph_write_count": report.graph_write_count(),
+        "hot_path_write": state(report.hot_path_write, "enabled", "disabled"),
+        "prompt_assembly_change": state(report.prompt_assembly_change, "enabled", "disabled"),
+        "runtime_activation": state(report.runtime_activation, "enabled", "disabled"),
+        "operator_activation": state(report.operator_activation_allowed, "enabled", "disabled"),
+    })
+}
+
+fn temporal_graph_traversal_quality_legacy_business_fields(
+    report: &hepta_core::ContextMemoryTemporalGraphShadowTraversalQualityReport,
+) -> Value {
+    serde_json::json!({
+        "result": "pass",
+        "payload_light": "pass",
+        "schema": report.schema_version,
+        "source_traversal_diff_schema": report.source_traversal_diff_schema_version,
+        "mode": "shadow-traversal-quality-slo",
+        "fixture_count": report.quality_fixture_count,
+        "slo_required_count": report.quality_slo_required_count,
+        "slo_pass_count": report.quality_slo_pass_count,
+        "coverage_basis_points": report.coverage_basis_points,
+        "precision_basis_points": report.precision_basis_points,
+        "leak_rate_basis_points": report.leak_rate_basis_points,
+        "latency_budget_ms": report.latency_budget_ms,
+        "projected_latency_ms": report.projected_latency_ms,
+        "token_saved_estimate": report.token_saved_estimate,
+        "operator_review_required_count": report.operator_review_required_count,
+        "win_count": report.traversal_win_count,
+        "loss_count": report.traversal_loss_count,
+        "cost_count": report.traversal_cost_count,
+        "stage_required_count": report.traversal_quality_stage_required_count(),
+        "stage_projected_count": report.traversal_quality_stage_projected_count(),
+        "digest_count": report.traversal_quality_digest_count(),
+        "freshness_pass_count": report.freshness_pass_count(),
+        "replay_guard_pass_count": report.replay_guard_pass_count(),
+        "stale_replay_rejected_count": report.stale_replay_rejected_count(),
+        "aggregate_counters_only": state(report.aggregate_counters_only, "pass", "fail"),
+        "llm_rerank": state(report.llm_rerank, "enabled", "disabled"),
+        "graph_persistence": state(report.graph_persistence, "enabled", "disabled"),
+        "production_route": state(report.production_route, "enabled", "disabled"),
+        "production_write_count": report.production_write_count(),
+        "graph_write_count": report.graph_write_count(),
+        "hot_path_write": state(report.hot_path_write, "enabled", "disabled"),
+        "prompt_assembly_change": state(report.prompt_assembly_change, "enabled", "disabled"),
+        "runtime_activation": state(report.runtime_activation, "enabled", "disabled"),
+        "operator_activation": state(report.operator_activation_allowed, "enabled", "disabled"),
+    })
+}
+
+fn temporal_graph_retrieval_canary_guard_legacy_business_fields(
+    report: &hepta_core::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport,
+) -> Value {
+    serde_json::json!({
+        "result": "pass",
+        "payload_light": "pass",
+        "schema": report.schema_version,
+        "source_traversal_quality_schema": report.source_traversal_quality_schema_version,
+        "mode": "shadow-retrieval-canary-guard",
+        "fixture_count": report.guard_fixture_count,
+        "stage_required_count": report.guard_stage_required_count,
+        "stage_projected_count": report.guard_stage_projected_count,
+        "quality_slo_pass_count": report.quality_slo_pass_count,
+        "operator_approval_required_count": report.operator_approval_required_count,
+        "operator_approval_recorded_count": report.operator_approval_recorded_count,
+        "feature_flag_registered_count": report.feature_flag_registered_count,
+        "feature_flag_enabled_count": report.feature_flag_enabled_count,
+        "kill_switch_registered_count": report.kill_switch_registered_count,
+        "kill_switch_ready_count": report.kill_switch_ready_count,
+        "rollback_rehearsal_required_count": report.rollback_rehearsal_required_count,
+        "rollback_rehearsal_pass_count": report.rollback_rehearsal_pass_count,
+        "activation_denial_count": report.activation_denial_count,
+        "canary_route_opened_count": report.canary_route_opened_count,
+        "digest_count": report.retrieval_canary_guard_digest_count(),
+        "freshness_pass_count": report.freshness_pass_count(),
+        "replay_guard_pass_count": report.replay_guard_pass_count(),
+        "stale_replay_rejected_count": report.stale_replay_rejected_count(),
+        "aggregate_counters_only": state(report.aggregate_counters_only, "pass", "fail"),
+        "llm_rerank": state(report.llm_rerank, "enabled", "disabled"),
+        "graph_persistence": state(report.graph_persistence, "enabled", "disabled"),
+        "production_route": state(report.production_route, "enabled", "disabled"),
+        "production_write_count": report.production_write_count(),
+        "graph_write_count": report.graph_write_count(),
+        "rollback_write_count": report.rollback_write_count(),
+        "hot_path_write": state(report.hot_path_write, "enabled", "disabled"),
+        "prompt_assembly_change": state(report.prompt_assembly_change, "enabled", "disabled"),
+        "runtime_activation": state(report.runtime_activation, "enabled", "disabled"),
+        "operator_activation": state(report.operator_activation_allowed, "enabled", "disabled"),
+    })
+}
+
+fn temporal_graph_retrieval_rollback_kill_switch_legacy_business_fields(
+    report: &hepta_core::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport,
+) -> Value {
+    serde_json::json!({
+        "result": "pass",
+        "payload_light": "pass",
+        "schema": report.schema_version,
+        "source_retrieval_canary_guard_schema": report.source_retrieval_canary_guard_schema_version,
+        "mode": "shadow-retrieval-rollback-kill-switch",
+        "fixture_count": report.evidence_fixture_count,
+        "stage_required_count": report.evidence_stage_required_count,
+        "stage_projected_count": report.evidence_stage_projected_count,
+        "canary_guard_pass_count": report.canary_guard_pass_count,
+        "operator_approval_required_count": report.operator_approval_required_count,
+        "operator_approval_recorded_count": report.operator_approval_recorded_count,
+        "feature_flag_registered_count": report.feature_flag_registered_count,
+        "feature_flag_enabled_count": report.feature_flag_enabled_count,
+        "kill_switch_registered_count": report.kill_switch_registered_count,
+        "kill_switch_readback_count": report.kill_switch_readback_count,
+        "kill_switch_pass_count": report.kill_switch_pass_count,
+        "rollback_rehearsal_required_count": report.rollback_rehearsal_required_count,
+        "rollback_rehearsal_readback_count": report.rollback_rehearsal_readback_count,
+        "rollback_rehearsal_pass_count": report.rollback_rehearsal_pass_count,
+        "route_denial_count": report.route_denial_count,
+        "rollback_write_denial_count": report.rollback_write_denial_count,
+        "canary_route_opened_count": report.canary_route_opened_count,
+        "digest_count": report.retrieval_rollback_kill_switch_digest_count(),
+        "freshness_pass_count": report.freshness_pass_count(),
+        "replay_guard_pass_count": report.replay_guard_pass_count(),
+        "stale_replay_rejected_count": report.stale_replay_rejected_count(),
+        "aggregate_counters_only": state(report.aggregate_counters_only, "pass", "fail"),
+        "llm_rerank": state(report.llm_rerank, "enabled", "disabled"),
+        "graph_persistence": state(report.graph_persistence, "enabled", "disabled"),
+        "production_route": state(report.production_route, "enabled", "disabled"),
+        "production_write_count": report.production_write_count(),
+        "graph_write_count": report.graph_write_count(),
+        "rollback_write_count": report.rollback_write_count(),
+        "hot_path_write": state(report.hot_path_write, "enabled", "disabled"),
+        "prompt_assembly_change": state(report.prompt_assembly_change, "enabled", "disabled"),
+        "runtime_activation": state(report.runtime_activation, "enabled", "disabled"),
+        "operator_activation": state(report.operator_activation_allowed, "enabled", "disabled"),
+    })
 }
 
 fn context_memory_typed_report<T: serde::Serialize>(
@@ -427,6 +805,88 @@ pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
                 "context_memory_shadow_quality_trend_snapshot_v1",
             )
         }
+        "hepta-context-memory-temporal-graph-shadow-eval" => {
+            let report = context_memory_temporal_graph_fixture().eval;
+            let legacy_business_fields = temporal_graph_eval_legacy_business_fields(&report);
+            context_memory_temporal_graph_typed_report(
+                &report,
+                report.has_temporal_graph_shadow_integrity(),
+                "hepta_context_memory_temporal_graph_shadow_eval_gate",
+                "context_memory_temporal_graph_shadow_eval_v1",
+                legacy_business_fields,
+            )
+        }
+        "hepta-context-memory-temporal-graph-shadow-store" => {
+            let report = context_memory_temporal_graph_fixture().store;
+            let legacy_business_fields = temporal_graph_store_legacy_business_fields(&report);
+            context_memory_temporal_graph_typed_report(
+                &report,
+                report.has_shadow_store_integrity(),
+                "hepta_context_memory_temporal_graph_shadow_store_gate",
+                "context_memory_temporal_graph_shadow_store_v1",
+                legacy_business_fields,
+            )
+        }
+        "hepta-context-memory-temporal-graph-shadow-replay" => {
+            let report = context_memory_temporal_graph_fixture().replay;
+            let legacy_business_fields = temporal_graph_replay_legacy_business_fields(&report);
+            context_memory_temporal_graph_typed_report(
+                &report,
+                report.has_shadow_replay_integrity(),
+                "hepta_context_memory_temporal_graph_shadow_replay_gate",
+                "context_memory_temporal_graph_shadow_replay_v1",
+                legacy_business_fields,
+            )
+        }
+        "hepta-context-memory-temporal-graph-shadow-traversal-diff" => {
+            let report = context_memory_temporal_graph_fixture().traversal_diff;
+            let legacy_business_fields =
+                temporal_graph_traversal_diff_legacy_business_fields(&report);
+            context_memory_temporal_graph_typed_report(
+                &report,
+                report.has_traversal_diff_integrity(),
+                "hepta_context_memory_temporal_graph_shadow_traversal_diff_gate",
+                "context_memory_temporal_graph_shadow_traversal_diff_v1",
+                legacy_business_fields,
+            )
+        }
+        "hepta-context-memory-temporal-graph-shadow-traversal-quality" => {
+            let report = context_memory_temporal_graph_fixture().traversal_quality;
+            let legacy_business_fields =
+                temporal_graph_traversal_quality_legacy_business_fields(&report);
+            context_memory_temporal_graph_typed_report(
+                &report,
+                report.has_traversal_quality_integrity(),
+                "hepta_context_memory_temporal_graph_shadow_traversal_quality_gate",
+                "context_memory_temporal_graph_shadow_traversal_quality_v1",
+                legacy_business_fields,
+            )
+        }
+        "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard" => {
+            let report = context_memory_temporal_graph_fixture().retrieval_canary_guard;
+            let legacy_business_fields =
+                temporal_graph_retrieval_canary_guard_legacy_business_fields(&report);
+            context_memory_temporal_graph_typed_report(
+                &report,
+                report.has_retrieval_canary_guard_integrity(),
+                "hepta_context_memory_temporal_graph_shadow_retrieval_canary_guard_gate",
+                "context_memory_temporal_graph_shadow_retrieval_canary_guard_v1",
+                legacy_business_fields,
+            )
+        }
+        "hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch" => {
+            let report = context_memory_temporal_graph_fixture()
+                .retrieval_rollback_kill_switch;
+            let legacy_business_fields =
+                temporal_graph_retrieval_rollback_kill_switch_legacy_business_fields(&report);
+            context_memory_temporal_graph_typed_report(
+                &report,
+                report.has_retrieval_rollback_kill_switch_integrity(),
+                "hepta_context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_gate",
+                "context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_v1",
+                legacy_business_fields,
+            )
+        }
         "hepta-systems-current-reality-matrix-compact-cache-boundary-readback" => serialize_report!(crate::hepta_current_reality_matrix_compact_cache_boundary_readback_report()),
         "hepta-systems-work-graph-adapter-projection-fixture" => serialize_report!(crate::hepta_work_graph_adapter_projection_fixture_report()),
         "hepta-systems-work-graph-append-only-event-intake-preview" => serialize_report!(crate::hepta_work_graph_append_only_event_intake_preview_report()),
@@ -623,6 +1083,323 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn legacy_shell_business_fields(prefix: &str, baseline: &str) -> Value {
+        let mut fields = serde_json::Map::new();
+        for line in baseline.lines().filter(|line| !line.is_empty()) {
+            let (key, raw_value) = line
+                .split_once('=')
+                .expect("legacy baseline line should contain equals");
+            let suffix = key
+                .strip_prefix(prefix)
+                .expect("legacy baseline line should use the expected prefix");
+            let key = if suffix.is_empty() {
+                "result".to_string()
+            } else {
+                suffix
+                    .strip_prefix('.')
+                    .expect("legacy baseline suffix should start with a dot")
+                    .replace('-', "_")
+            };
+            let value = raw_value
+                .parse::<u64>()
+                .map(Value::from)
+                .unwrap_or_else(|_| Value::String(raw_value.to_string()));
+            assert!(fields.insert(key, value).is_none());
+        }
+        Value::Object(fields)
+    }
+
+    #[test]
+    fn temporal_graph_typed_reports_recursively_preserve_legacy_business_fields() {
+        let baselines = [
+            (
+                "hepta-context-memory-temporal-graph-shadow-eval",
+                "temporal-graph-shadow-eval",
+                r#"temporal-graph-shadow-eval=pass
+temporal-graph-shadow-eval.payload-light=pass
+temporal-graph-shadow-eval.schema=1
+temporal-graph-shadow-eval.mode=deterministic-shadow
+temporal-graph-shadow-eval.fixture-count=4
+temporal-graph-shadow-eval.fixture-pass-count=4
+temporal-graph-shadow-eval.positive-fixture-count=3
+temporal-graph-shadow-eval.negative-fixture-count=1
+temporal-graph-shadow-eval.node-coverage-floor-basis-points=10000
+temporal-graph-shadow-eval.edge-coverage-floor-basis-points=10000
+temporal-graph-shadow-eval.validity-window-floor-basis-points=10000
+temporal-graph-shadow-eval.supersedes-floor-basis-points=10000
+temporal-graph-shadow-eval.latency-max-ms=100
+temporal-graph-shadow-eval.regret-max-basis-points=0
+temporal-graph-shadow-eval.min-positive-node-coverage-basis-points=10000
+temporal-graph-shadow-eval.min-positive-edge-coverage-basis-points=10000
+temporal-graph-shadow-eval.min-positive-validity-window-coverage-basis-points=10000
+temporal-graph-shadow-eval.min-positive-supersedes-coverage-basis-points=10000
+temporal-graph-shadow-eval.max-positive-latency-ms=47
+temporal-graph-shadow-eval.max-positive-regret-basis-points=0
+temporal-graph-shadow-eval.regression-fixture=blocked
+temporal-graph-shadow-eval.operator-approval=required
+temporal-graph-shadow-eval.production-route=disabled
+temporal-graph-shadow-eval.graph-write=disabled
+temporal-graph-shadow-eval.runtime-activation=disabled"#,
+            ),
+            (
+                "hepta-context-memory-temporal-graph-shadow-store",
+                "temporal-graph-shadow-store",
+                r#"temporal-graph-shadow-store=pass
+temporal-graph-shadow-store.payload-light=pass
+temporal-graph-shadow-store.schema=1
+temporal-graph-shadow-store.source-graph-schema=1
+temporal-graph-shadow-store.mode=approval-gated-shadow-store-skeleton
+temporal-graph-shadow-store.node-count=5
+temporal-graph-shadow-store.edge-count=10
+temporal-graph-shadow-store.provenance-edge-count=5
+temporal-graph-shadow-store.validity-window-edge-count=5
+temporal-graph-shadow-store.supersedes-edge-count=0
+temporal-graph-shadow-store.open-node-count=5
+temporal-graph-shadow-store.invalidated-node-count=0
+temporal-graph-shadow-store.stage-required-count=6
+temporal-graph-shadow-store.stage-projected-count=6
+temporal-graph-shadow-store.store-digest=present
+temporal-graph-shadow-store.freshness-check=pass
+temporal-graph-shadow-store.replay-guard=pass
+temporal-graph-shadow-store.stale-replay-rejected=pass
+temporal-graph-shadow-store.operator-approval=required
+temporal-graph-shadow-store.operator-approval-recorded-count=0
+temporal-graph-shadow-store.recorded-receipt-count=0
+temporal-graph-shadow-store.persisted-receipt-count=0
+temporal-graph-shadow-store.production-route=disabled
+temporal-graph-shadow-store.production-write-count=0
+temporal-graph-shadow-store.graph-write-count=0
+temporal-graph-shadow-store.hot-path-write=disabled
+temporal-graph-shadow-store.prompt-assembly-change=disabled
+temporal-graph-shadow-store.runtime-activation=disabled
+temporal-graph-shadow-store.operator-activation=disabled"#,
+            ),
+            (
+                "hepta-context-memory-temporal-graph-shadow-replay",
+                "temporal-graph-shadow-replay",
+                r#"temporal-graph-shadow-replay=pass
+temporal-graph-shadow-replay.payload-light=pass
+temporal-graph-shadow-replay.schema=1
+temporal-graph-shadow-replay.source-store-schema=1
+temporal-graph-shadow-replay.mode=approval-gated-shadow-wal-replay
+temporal-graph-shadow-replay.node-count=5
+temporal-graph-shadow-replay.edge-count=10
+temporal-graph-shadow-replay.provenance-replay-count=5
+temporal-graph-shadow-replay.bitemporal-validity-replay-count=5
+temporal-graph-shadow-replay.fact-invalidation-replay-count=0
+temporal-graph-shadow-replay.supersede-tombstone-replay-count=0
+temporal-graph-shadow-replay.stage-required-count=6
+temporal-graph-shadow-replay.stage-projected-count=6
+temporal-graph-shadow-replay.replay-digest-count=6
+temporal-graph-shadow-replay.freshness-pass-count=6
+temporal-graph-shadow-replay.replay-guard-pass-count=6
+temporal-graph-shadow-replay.stale-replay-rejected-count=6
+temporal-graph-shadow-replay.operator-approval=required
+temporal-graph-shadow-replay.operator-approval-recorded-count=0
+temporal-graph-shadow-replay.recorded-receipt-count=0
+temporal-graph-shadow-replay.persisted-receipt-count=0
+temporal-graph-shadow-replay.production-route=disabled
+temporal-graph-shadow-replay.production-write-count=0
+temporal-graph-shadow-replay.graph-write-count=0
+temporal-graph-shadow-replay.hot-path-write=disabled
+temporal-graph-shadow-replay.prompt-assembly-change=disabled
+temporal-graph-shadow-replay.runtime-activation=disabled
+temporal-graph-shadow-replay.operator-activation=disabled"#,
+            ),
+            (
+                "hepta-context-memory-temporal-graph-shadow-traversal-diff",
+                "temporal-graph-shadow-traversal-diff",
+                r#"temporal-graph-shadow-traversal-diff=pass
+temporal-graph-shadow-traversal-diff.payload-light=pass
+temporal-graph-shadow-traversal-diff.schema=1
+temporal-graph-shadow-traversal-diff.source-replay-schema=1
+temporal-graph-shadow-traversal-diff.mode=shadow-retrieval-traversal-diff
+temporal-graph-shadow-traversal-diff.production-selection-count=5
+temporal-graph-shadow-traversal-diff.lexical-bm25-candidate-count=5
+temporal-graph-shadow-traversal-diff.semantic-candidate-count=5
+temporal-graph-shadow-traversal-diff.graph-traversal-candidate-count=10
+temporal-graph-shadow-traversal-diff.hybrid-candidate-count=10
+temporal-graph-shadow-traversal-diff.overlap-candidate-count=5
+temporal-graph-shadow-traversal-diff.graph-expansion-candidate-count=5
+temporal-graph-shadow-traversal-diff.win-count=1
+temporal-graph-shadow-traversal-diff.loss-count=0
+temporal-graph-shadow-traversal-diff.cost-count=5
+temporal-graph-shadow-traversal-diff.stage-required-count=5
+temporal-graph-shadow-traversal-diff.stage-projected-count=5
+temporal-graph-shadow-traversal-diff.digest-count=5
+temporal-graph-shadow-traversal-diff.freshness-pass-count=5
+temporal-graph-shadow-traversal-diff.replay-guard-pass-count=5
+temporal-graph-shadow-traversal-diff.stale-replay-rejected-count=5
+temporal-graph-shadow-traversal-diff.aggregate-counters-only=pass
+temporal-graph-shadow-traversal-diff.llm-rerank=disabled
+temporal-graph-shadow-traversal-diff.graph-persistence=disabled
+temporal-graph-shadow-traversal-diff.production-route=disabled
+temporal-graph-shadow-traversal-diff.production-write-count=0
+temporal-graph-shadow-traversal-diff.graph-write-count=0
+temporal-graph-shadow-traversal-diff.hot-path-write=disabled
+temporal-graph-shadow-traversal-diff.prompt-assembly-change=disabled
+temporal-graph-shadow-traversal-diff.runtime-activation=disabled
+temporal-graph-shadow-traversal-diff.operator-activation=disabled"#,
+            ),
+            (
+                "hepta-context-memory-temporal-graph-shadow-traversal-quality",
+                "temporal-graph-shadow-traversal-quality",
+                r#"temporal-graph-shadow-traversal-quality=pass
+temporal-graph-shadow-traversal-quality.payload-light=pass
+temporal-graph-shadow-traversal-quality.schema=1
+temporal-graph-shadow-traversal-quality.source-traversal-diff-schema=1
+temporal-graph-shadow-traversal-quality.mode=shadow-traversal-quality-slo
+temporal-graph-shadow-traversal-quality.fixture-count=5
+temporal-graph-shadow-traversal-quality.slo-required-count=5
+temporal-graph-shadow-traversal-quality.slo-pass-count=5
+temporal-graph-shadow-traversal-quality.coverage-basis-points=10000
+temporal-graph-shadow-traversal-quality.precision-basis-points=10000
+temporal-graph-shadow-traversal-quality.leak-rate-basis-points=0
+temporal-graph-shadow-traversal-quality.latency-budget-ms=20
+temporal-graph-shadow-traversal-quality.projected-latency-ms=5
+temporal-graph-shadow-traversal-quality.token-saved-estimate=768
+temporal-graph-shadow-traversal-quality.operator-review-required-count=5
+temporal-graph-shadow-traversal-quality.win-count=1
+temporal-graph-shadow-traversal-quality.loss-count=0
+temporal-graph-shadow-traversal-quality.cost-count=5
+temporal-graph-shadow-traversal-quality.stage-required-count=5
+temporal-graph-shadow-traversal-quality.stage-projected-count=5
+temporal-graph-shadow-traversal-quality.digest-count=5
+temporal-graph-shadow-traversal-quality.freshness-pass-count=5
+temporal-graph-shadow-traversal-quality.replay-guard-pass-count=5
+temporal-graph-shadow-traversal-quality.stale-replay-rejected-count=5
+temporal-graph-shadow-traversal-quality.aggregate-counters-only=pass
+temporal-graph-shadow-traversal-quality.llm-rerank=disabled
+temporal-graph-shadow-traversal-quality.graph-persistence=disabled
+temporal-graph-shadow-traversal-quality.production-route=disabled
+temporal-graph-shadow-traversal-quality.production-write-count=0
+temporal-graph-shadow-traversal-quality.graph-write-count=0
+temporal-graph-shadow-traversal-quality.hot-path-write=disabled
+temporal-graph-shadow-traversal-quality.prompt-assembly-change=disabled
+temporal-graph-shadow-traversal-quality.runtime-activation=disabled
+temporal-graph-shadow-traversal-quality.operator-activation=disabled"#,
+            ),
+            (
+                "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard",
+                "temporal-graph-shadow-retrieval-canary-guard",
+                r#"temporal-graph-shadow-retrieval-canary-guard=pass
+temporal-graph-shadow-retrieval-canary-guard.payload-light=pass
+temporal-graph-shadow-retrieval-canary-guard.schema=1
+temporal-graph-shadow-retrieval-canary-guard.source-traversal-quality-schema=1
+temporal-graph-shadow-retrieval-canary-guard.mode=shadow-retrieval-canary-guard
+temporal-graph-shadow-retrieval-canary-guard.fixture-count=5
+temporal-graph-shadow-retrieval-canary-guard.stage-required-count=5
+temporal-graph-shadow-retrieval-canary-guard.stage-projected-count=5
+temporal-graph-shadow-retrieval-canary-guard.quality-slo-pass-count=5
+temporal-graph-shadow-retrieval-canary-guard.operator-approval-required-count=5
+temporal-graph-shadow-retrieval-canary-guard.operator-approval-recorded-count=0
+temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5
+temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0
+temporal-graph-shadow-retrieval-canary-guard.kill-switch-registered-count=5
+temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5
+temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-required-count=5
+temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5
+temporal-graph-shadow-retrieval-canary-guard.activation-denial-count=5
+temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0
+temporal-graph-shadow-retrieval-canary-guard.digest-count=5
+temporal-graph-shadow-retrieval-canary-guard.freshness-pass-count=5
+temporal-graph-shadow-retrieval-canary-guard.replay-guard-pass-count=5
+temporal-graph-shadow-retrieval-canary-guard.stale-replay-rejected-count=5
+temporal-graph-shadow-retrieval-canary-guard.aggregate-counters-only=pass
+temporal-graph-shadow-retrieval-canary-guard.llm-rerank=disabled
+temporal-graph-shadow-retrieval-canary-guard.graph-persistence=disabled
+temporal-graph-shadow-retrieval-canary-guard.production-route=disabled
+temporal-graph-shadow-retrieval-canary-guard.production-write-count=0
+temporal-graph-shadow-retrieval-canary-guard.graph-write-count=0
+temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0
+temporal-graph-shadow-retrieval-canary-guard.hot-path-write=disabled
+temporal-graph-shadow-retrieval-canary-guard.prompt-assembly-change=disabled
+temporal-graph-shadow-retrieval-canary-guard.runtime-activation=disabled
+temporal-graph-shadow-retrieval-canary-guard.operator-activation=disabled"#,
+            ),
+            (
+                "hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch",
+                "temporal-graph-shadow-retrieval-rollback-kill-switch",
+                r#"temporal-graph-shadow-retrieval-rollback-kill-switch=pass
+temporal-graph-shadow-retrieval-rollback-kill-switch.payload-light=pass
+temporal-graph-shadow-retrieval-rollback-kill-switch.schema=1
+temporal-graph-shadow-retrieval-rollback-kill-switch.source-retrieval-canary-guard-schema=1
+temporal-graph-shadow-retrieval-rollback-kill-switch.mode=shadow-retrieval-rollback-kill-switch
+temporal-graph-shadow-retrieval-rollback-kill-switch.fixture-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.stage-required-count=6
+temporal-graph-shadow-retrieval-rollback-kill-switch.stage-projected-count=6
+temporal-graph-shadow-retrieval-rollback-kill-switch.canary-guard-pass-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.operator-approval-required-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.operator-approval-recorded-count=0
+temporal-graph-shadow-retrieval-rollback-kill-switch.feature-flag-registered-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.feature-flag-enabled-count=0
+temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-registered-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-readback-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-pass-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-required-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-readback-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-pass-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.route-denial-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-denial-count=5
+temporal-graph-shadow-retrieval-rollback-kill-switch.canary-route-opened-count=0
+temporal-graph-shadow-retrieval-rollback-kill-switch.digest-count=6
+temporal-graph-shadow-retrieval-rollback-kill-switch.freshness-pass-count=6
+temporal-graph-shadow-retrieval-rollback-kill-switch.replay-guard-pass-count=6
+temporal-graph-shadow-retrieval-rollback-kill-switch.stale-replay-rejected-count=6
+temporal-graph-shadow-retrieval-rollback-kill-switch.aggregate-counters-only=pass
+temporal-graph-shadow-retrieval-rollback-kill-switch.llm-rerank=disabled
+temporal-graph-shadow-retrieval-rollback-kill-switch.graph-persistence=disabled
+temporal-graph-shadow-retrieval-rollback-kill-switch.production-route=disabled
+temporal-graph-shadow-retrieval-rollback-kill-switch.production-write-count=0
+temporal-graph-shadow-retrieval-rollback-kill-switch.graph-write-count=0
+temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-count=0
+temporal-graph-shadow-retrieval-rollback-kill-switch.hot-path-write=disabled
+temporal-graph-shadow-retrieval-rollback-kill-switch.prompt-assembly-change=disabled
+temporal-graph-shadow-retrieval-rollback-kill-switch.runtime-activation=disabled
+temporal-graph-shadow-retrieval-rollback-kill-switch.operator-activation=disabled"#,
+            ),
+        ];
+
+        for (id, prefix, baseline) in baselines {
+            let expected = legacy_shell_business_fields(prefix, baseline);
+            let report = typed_compat_report(id).expect("temporal graph report should render");
+            assert_eq!(
+                report.get("legacy_business_fields"),
+                Some(&expected),
+                "{id} legacy business projection drifted"
+            );
+            for field in [
+                "production_authority_granted",
+                "write_authority_granted",
+                "ready_for_live_execution",
+                "mutation_enabled",
+            ] {
+                assert_eq!(
+                    report.get(field),
+                    Some(&Value::Bool(false)),
+                    "{id}: {field}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn temporal_graph_typed_report_integrity_fails_closed() {
+        let error = context_memory_temporal_graph_typed_report(
+            &serde_json::json!({"production_write": false}),
+            false,
+            "hepta_context_memory_temporal_graph_shadow_eval_gate",
+            "context_memory_temporal_graph_shadow_eval_v1",
+            serde_json::json!({"result": "pass"}),
+        )
+        .expect_err("invalid source integrity must not render a compatibility report");
+        assert!(matches!(
+            error,
+            TypedCompatReportError::ContractViolation(message)
+                if message.contains("failed its read-only integrity contract")
+        ));
     }
 
     #[test]

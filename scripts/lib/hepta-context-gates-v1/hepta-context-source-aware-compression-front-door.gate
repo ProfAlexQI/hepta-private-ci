@@ -88,13 +88,13 @@ memory_write_chain_receipt_freshness_gate_script="hepta-context-memory-write-cha
 memory_formation_candidate_no_leak_gate_script="hepta-context-memory-formation-candidate-no-leak-export-gate.sh"
 memory_temporal_fact_schema_gate_script="hepta-context-memory-temporal-fact-schema-gate.sh"
 memory_temporal_fact_graph_gate_script="hepta-context-memory-temporal-fact-graph-gate.sh"
-memory_temporal_graph_shadow_eval_gate_script="hepta-context-memory-temporal-graph-shadow-eval-gate.sh"
-memory_temporal_graph_shadow_store_gate_script="hepta-context-memory-temporal-graph-shadow-store-gate.sh"
-memory_temporal_graph_shadow_replay_gate_script="hepta-context-memory-temporal-graph-shadow-replay-gate.sh"
-memory_temporal_graph_shadow_traversal_diff_gate_script="hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh"
-memory_temporal_graph_shadow_traversal_quality_gate_script="hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh"
-memory_temporal_graph_shadow_retrieval_canary_guard_gate_script="hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh"
-memory_temporal_graph_shadow_retrieval_rollback_kill_switch_gate_script="hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh"
+memory_temporal_graph_shadow_eval_pair_id="hepta-context-memory-temporal-graph-shadow-eval"
+memory_temporal_graph_shadow_store_pair_id="hepta-context-memory-temporal-graph-shadow-store"
+memory_temporal_graph_shadow_replay_pair_id="hepta-context-memory-temporal-graph-shadow-replay"
+memory_temporal_graph_shadow_traversal_diff_pair_id="hepta-context-memory-temporal-graph-shadow-traversal-diff"
+memory_temporal_graph_shadow_traversal_quality_pair_id="hepta-context-memory-temporal-graph-shadow-traversal-quality"
+memory_temporal_graph_shadow_retrieval_canary_guard_pair_id="hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard"
+memory_temporal_graph_shadow_retrieval_rollback_kill_switch_pair_id="hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch"
 memory_eval_harness_seed_gate_script="hepta-context-memory-eval-harness-seed-gate.sh"
 memory_adaptive_allocator_eval_shadow_gate_script="hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 memory_recall_quality_gate_script="hepta-context-memory-recall-quality-gate.sh"
@@ -400,8 +400,10 @@ required_contract_terms=(
   "scripts/hepta-gate-pair-runner report hepta-context-memory-ranked-recall-shadow-eval"
   "scripts/hepta-gate-pair-runner gate hepta-context-memory-ranked-recall-shadow-eval"
   "Temporal graph shadow eval"
-  "temporal-graph-shadow-eval=pass"
-  "temporal-graph-shadow-eval.payload-light=pass"
+  "legacy_business_fields"
+  "production_authority_granted"
+  "write_authority_granted"
+  "context_memory_temporal_graph_shadow_eval_v1"
   "topology_coverage"
   "validity_window_replay"
   "supersedes_replay"
@@ -411,8 +413,8 @@ required_contract_terms=(
   "supersedes-floor-basis-points"
   "ContextMemoryTemporalGraphShadowEvalReport"
   "context_memory_temporal_graph_shadow_eval_report"
-  "hepta-context-memory-temporal-graph-shadow-eval-report.sh"
-  "hepta-context-memory-temporal-graph-shadow-eval-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-eval"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-eval"
   "Temporal graph shadow store skeleton"
   "approval-gated shadow temporal graph store"
   "memory_temporal_graph_shadow_store"
@@ -429,8 +431,9 @@ required_contract_terms=(
   "must not write graph facts"
   "ContextMemoryTemporalGraphShadowStoreReport"
   "context_memory_temporal_graph_shadow_store_report"
-  "hepta-context-memory-temporal-graph-shadow-store-report.sh"
-  "hepta-context-memory-temporal-graph-shadow-store-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-store"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-store"
+  "context_memory_temporal_graph_shadow_store_v1"
   "Temporal graph shadow replay surface"
   "approval-gated shadow temporal graph WAL replay"
   "memory_temporal_graph_shadow_replay"
@@ -441,8 +444,9 @@ required_contract_terms=(
   "replay_guard_replayed"
   "ContextMemoryTemporalGraphShadowReplayReport"
   "context_memory_temporal_graph_shadow_replay_report"
-  "hepta-context-memory-temporal-graph-shadow-replay-report.sh"
-  "hepta-context-memory-temporal-graph-shadow-replay-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-replay"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-replay"
+  "context_memory_temporal_graph_shadow_replay_v1"
   "Temporal graph shadow traversal diff surface"
   "memory_temporal_graph_shadow_traversal_diff"
   "lexical_bm25_candidate_count"
@@ -455,26 +459,30 @@ required_contract_terms=(
   "production_route=false"
   "ContextMemoryTemporalGraphShadowTraversalDiffReport"
   "context_memory_temporal_graph_shadow_traversal_diff_report"
-  "hepta-context-memory-temporal-graph-shadow-traversal-diff-report.sh"
-  "hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-traversal-diff"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-traversal-diff"
+  "context_memory_temporal_graph_shadow_traversal_diff_v1"
   "Temporal graph shadow traversal quality/SLO surface"
   "memory_temporal_graph_shadow_traversal_quality"
   "ContextMemoryTemporalGraphShadowTraversalQualityReport"
   "context_memory_temporal_graph_shadow_traversal_quality_report"
-  "hepta-context-memory-temporal-graph-shadow-traversal-quality-report.sh"
-  "hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-traversal-quality"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-traversal-quality"
+  "context_memory_temporal_graph_shadow_traversal_quality_v1"
   "Temporal graph shadow retrieval canary guard surface"
   "memory_temporal_graph_shadow_retrieval_canary_guard"
   "ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport"
   "context_memory_temporal_graph_shadow_retrieval_canary_guard_report"
-  "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-report.sh"
-  "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard"
+  "context_memory_temporal_graph_shadow_retrieval_canary_guard_v1"
   "Temporal graph shadow retrieval rollback/kill-switch evidence surface"
   "memory_temporal_graph_shadow_retrieval_rollback_kill_switch"
   "ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport"
   "context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report"
-  "hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-report.sh"
-  "hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh"
+  "scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch"
+  "scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch"
+  "context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_v1"
   "MemoryProvider boundary"
   "MemoryProviderContextUpdateEnvelope"
   "MemoryProviderReport"
@@ -917,37 +925,37 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_temporal_graph_shadow_eval_gate_script" \
+  "$memory_temporal_graph_shadow_eval_pair_id" \
   "memory temporal graph shadow eval debug gate"
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_temporal_graph_shadow_store_gate_script" \
+  "$memory_temporal_graph_shadow_store_pair_id" \
   "memory temporal graph shadow store debug gate"
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_temporal_graph_shadow_replay_gate_script" \
+  "$memory_temporal_graph_shadow_replay_pair_id" \
   "memory temporal graph shadow replay debug gate"
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_temporal_graph_shadow_traversal_diff_gate_script" \
+  "$memory_temporal_graph_shadow_traversal_diff_pair_id" \
   "memory temporal graph shadow traversal diff debug gate"
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_temporal_graph_shadow_traversal_quality_gate_script" \
+  "$memory_temporal_graph_shadow_traversal_quality_pair_id" \
   "memory temporal graph shadow traversal quality debug gate"
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_temporal_graph_shadow_retrieval_canary_guard_gate_script" \
+  "$memory_temporal_graph_shadow_retrieval_canary_guard_pair_id" \
   "memory temporal graph shadow retrieval canary guard debug gate"
 
 assert_file_contains \
   "$debug_gate" \
-  "$memory_temporal_graph_shadow_retrieval_rollback_kill_switch_gate_script" \
+  "$memory_temporal_graph_shadow_retrieval_rollback_kill_switch_pair_id" \
   "memory temporal graph shadow retrieval rollback/kill-switch debug gate"
 
 assert_file_contains \

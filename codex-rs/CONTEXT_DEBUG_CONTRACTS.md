@@ -987,7 +987,8 @@ into durable memory, must not alter prompt assembly, and must not enable
 runtime activation. The context debug gate and preflight must run
 `scripts/hepta-context-memory-temporal-fact-graph-gate.sh` after
 `scripts/hepta-context-memory-temporal-fact-schema-gate.sh` and before
-`scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh`. It must keep
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-eval`.
+It must keep
 `runtime-activation=disabled`.
 Temporal graph shadow eval: recall diagnostics may expose an offline,
 behavior-neutral deterministic-shadow scoreboard for temporal fact graph
@@ -1019,21 +1020,17 @@ Rust-backed fixture is `ContextMemoryTemporalGraphShadowEvalReport` in
 exposed through `context_memory_temporal_graph_shadow_eval_report` on both
 `StoreSnapshot` and `InMemoryStore`.
 
-`scripts/hepta-context-memory-temporal-graph-shadow-eval-report.sh` emits the
-payload-light scoreboard, and
-`scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh` verifies the
-report, Rust-backed fixture boundary, hepta-core/hepta-memory helper tests,
-debug/preflight wiring, source-aware front-door static check, release manifest
-entries, and no-leak constraints. The context debug gate and preflight must run
-`scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh` after
-`scripts/hepta-context-memory-temporal-fact-graph-gate.sh` and before
-`scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate output must
-include `temporal-graph-shadow-eval=pass`,
-`temporal-graph-shadow-eval.payload-light=pass`,
-`temporal-graph-shadow-eval.fixtures=4`,
-`temporal-graph-shadow-eval.regression-fixture=blocked`,
-`temporal-graph-shadow-eval.graph-write=disabled`, and
-`temporal-graph-shadow-eval.runtime-activation=disabled`.
+`scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-eval`
+emits the authoritative typed
+JSON report with schema `context_memory_temporal_graph_shadow_eval_v1`; the
+corresponding `scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-eval`
+command verifies its SHA-bound Rust binding and fails
+closed. The former shell scoreboard remains only as an exact recursively
+compared object in `legacy_business_fields`; it is not the authoritative
+output protocol. The typed envelope fixes `production_authority_granted=false`
+and `write_authority_granted=false`, and all side-effect fields remain false.
+The context debug gate and preflight invoke the pair runner directly after the
+temporal fact graph gate and before the shadow store pair.
 
 Temporal graph shadow store skeleton: recall diagnostics may expose an
 approval-gated shadow temporal graph store readiness surface derived from the
@@ -1069,23 +1066,16 @@ not write rollback state. The Rust-backed report is
 and `recall_context_memory_temporal_graph_shadow_store_report` on both
 `StoreSnapshot` and `InMemoryStore`.
 
-`scripts/hepta-context-memory-temporal-graph-shadow-store-report.sh` emits the
-payload-light shadow store skeleton scoreboard, and
-`scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh` verifies the
-report, Rust-backed fixture boundary, hepta-core/hepta-memory helper tests,
-debug/preflight wiring, source-aware front-door static check, release manifest
-entries, and no-leak constraints. The context debug gate and preflight must run
-`scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh` after
-`scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh` and before
-`scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate output must
-include `temporal-graph-shadow-store=pass`,
-`temporal-graph-shadow-store.payload-light=pass`,
-`temporal-graph-shadow-store.stage-projected-count=6`,
-`temporal-graph-shadow-store.recorded-receipt-count=0`,
-`temporal-graph-shadow-store.persisted-receipt-count=0`,
-`temporal-graph-shadow-store.production-write=disabled`,
-`temporal-graph-shadow-store.graph-write=disabled`, and
-`temporal-graph-shadow-store.runtime-activation=disabled`.
+`scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-store`
+emits the authoritative typed
+JSON report with schema `context_memory_temporal_graph_shadow_store_v1`; its
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-store`
+command verifies the SHA-bound Rust binding and fails closed. The legacy
+payload-light scoreboard is preserved only in `legacy_business_fields` and is
+covered by exact recursive JSON equality. The typed envelope fixes
+`production_authority_granted=false` and `write_authority_granted=false`, and
+all side-effect fields remain false. Debug and preflight invoke this pair
+directly after shadow eval and before shadow replay.
 
 Temporal graph shadow replay surface: recall diagnostics may expose an
 approval-gated shadow temporal graph WAL replay surface derived only from the
@@ -1117,23 +1107,16 @@ activation, and must not allow operator activation. The Rust-backed report is
 and `recall_context_memory_temporal_graph_shadow_replay_report` on both
 `StoreSnapshot` and `InMemoryStore`.
 
-`scripts/hepta-context-memory-temporal-graph-shadow-replay-report.sh` emits the
-payload-light shadow replay scoreboard, and
-`scripts/hepta-context-memory-temporal-graph-shadow-replay-gate.sh` verifies
-the report, Rust-backed fixture boundary, hepta-core/hepta-memory helper tests,
-debug/preflight wiring, source-aware front-door static check, release manifest
-entries, and no-leak constraints. The context debug gate and preflight must run
-`scripts/hepta-context-memory-temporal-graph-shadow-replay-gate.sh` after
-`scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh` and before
-`scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate output must
-include `temporal-graph-shadow-replay=pass`,
-`temporal-graph-shadow-replay.payload-light=pass`,
-`temporal-graph-shadow-replay.stage-projected-count=6`,
-`temporal-graph-shadow-replay.recorded-receipt-count=0`,
-`temporal-graph-shadow-replay.persisted-receipt-count=0`,
-`temporal-graph-shadow-replay.production-write=disabled`,
-`temporal-graph-shadow-replay.graph-write=disabled`, and
-`temporal-graph-shadow-replay.runtime-activation=disabled`.
+`scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-replay`
+emits the authoritative typed
+JSON report with schema `context_memory_temporal_graph_shadow_replay_v1`; its
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-replay`
+command verifies the SHA-bound Rust binding and fails closed. The legacy
+scoreboard is retained only under `legacy_business_fields` with exact recursive
+JSON equality. The typed envelope fixes `production_authority_granted=false`
+and `write_authority_granted=false`, and all side-effect fields remain false.
+Debug and preflight invoke this pair directly after shadow store and before
+traversal diff.
 
 Temporal graph shadow traversal diff surface: recall diagnostics may expose a
 shadow temporal graph retrieval/traversal diff surface derived only from the
@@ -1167,25 +1150,17 @@ operator activation. The Rust-backed report is
 helpers and `recall_context_memory_temporal_graph_shadow_traversal_diff_report`
 on both `StoreSnapshot` and `InMemoryStore`.
 
-`scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-report.sh`
-emits the payload-light shadow traversal diff scoreboard, and
-`scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh`
-verifies the report, Rust-backed context-plane projections, hepta-core and
-hepta-memory helper tests, debug/preflight wiring, source-aware front-door
-static check, release manifest entries, and no-leak constraints. The context
-debug gate and preflight must run
-`scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh`
-after `scripts/hepta-context-memory-temporal-graph-shadow-replay-gate.sh` and
-before `scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate
-output must include `temporal-graph-shadow-traversal-diff=pass`,
-`temporal-graph-shadow-traversal-diff.payload-light=pass`,
-`temporal-graph-shadow-traversal-diff.stage-projected-count=5`,
-`temporal-graph-shadow-traversal-diff.llm-rerank=disabled`,
-`temporal-graph-shadow-traversal-diff.graph-persistence=disabled`,
-`temporal-graph-shadow-traversal-diff.production-route=disabled`,
-`temporal-graph-shadow-traversal-diff.production-write=disabled`,
-`temporal-graph-shadow-traversal-diff.graph-write=disabled`, and
-`temporal-graph-shadow-traversal-diff.runtime-activation=disabled`.
+`scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-traversal-diff`
+emits the
+authoritative typed JSON report with schema
+`context_memory_temporal_graph_shadow_traversal_diff_v1`; its
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-traversal-diff`
+command verifies the SHA-bound Rust binding and fails closed. The legacy scoreboard is
+retained only under `legacy_business_fields` with exact recursive JSON
+equality. The typed envelope fixes `production_authority_granted=false` and
+`write_authority_granted=false`, and all side-effect fields remain false.
+Debug and preflight invoke this pair directly after shadow replay and before
+traversal quality.
 Temporal graph shadow traversal quality/SLO surface: recall diagnostics may
 expose a shadow temporal graph traversal quality/SLO surface derived only from
 the temporal graph shadow traversal diff report. It is an evidence-quality
@@ -1221,32 +1196,17 @@ context-plane helpers and
 `recall_context_memory_temporal_graph_shadow_traversal_quality_report` on both
 `StoreSnapshot` and `InMemoryStore`.
 
-`scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-report.sh`
-emits the payload-light shadow traversal quality/SLO scoreboard, and
-`scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh`
-verifies the report, Rust-backed context-plane projections, hepta-core and
-hepta-memory helper tests, debug/preflight wiring, source-aware front-door
-static check, release manifest entries, and no-leak constraints. The context
-debug gate and preflight must run
-`scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh`
-after
-`scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh`
-and before `scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate
-output must include `temporal-graph-shadow-traversal-quality=pass`,
-`temporal-graph-shadow-traversal-quality.payload-light=pass`,
-`temporal-graph-shadow-traversal-quality.slo-pass-count=5`,
-`temporal-graph-shadow-traversal-quality.coverage-basis-points=10000`,
-`temporal-graph-shadow-traversal-quality.precision-basis-points=10000`,
-`temporal-graph-shadow-traversal-quality.leak-rate-basis-points=0`,
-`temporal-graph-shadow-traversal-quality.projected-latency-ms=5`,
-`temporal-graph-shadow-traversal-quality.token-saved-estimate=768`,
-`temporal-graph-shadow-traversal-quality.stage-projected-count=5`,
-`temporal-graph-shadow-traversal-quality.llm-rerank=disabled`,
-`temporal-graph-shadow-traversal-quality.graph-persistence=disabled`,
-`temporal-graph-shadow-traversal-quality.production-route=disabled`,
-`temporal-graph-shadow-traversal-quality.production-write-count=0`,
-`temporal-graph-shadow-traversal-quality.graph-write-count=0`, and
-`temporal-graph-shadow-traversal-quality.runtime-activation=disabled`.
+`scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-traversal-quality`
+emits the
+authoritative typed JSON report with schema
+`context_memory_temporal_graph_shadow_traversal_quality_v1`; its
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-traversal-quality`
+command verifies the SHA-bound Rust binding and fails closed. The legacy scoreboard is
+retained only under `legacy_business_fields` with exact recursive JSON
+equality. The typed envelope fixes `production_authority_granted=false` and
+`write_authority_granted=false`, and all side-effect fields remain false.
+Debug and preflight invoke this pair directly after traversal diff and before
+the retrieval canary guard.
 Temporal graph shadow retrieval canary guard surface: recall diagnostics may
 expose a shadow temporal graph retrieval canary guard derived only from the
 temporal graph shadow traversal quality/SLO surface. It is an approval-gated
@@ -1287,33 +1247,17 @@ context-plane helpers and
 `recall_context_memory_temporal_graph_shadow_retrieval_canary_guard_report` on
 both `StoreSnapshot` and `InMemoryStore`.
 
-`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-report.sh`
-emits the payload-light shadow retrieval canary guard scoreboard, and
-`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh`
-verifies the report, Rust-backed context-plane projections, hepta-core and
-hepta-memory helper tests, debug/preflight wiring, source-aware front-door
-static check, release manifest entries, and no-leak constraints. The context
-debug gate and preflight must run
-`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh`
-after
-`scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh`
-and before `scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate
-output must include `temporal-graph-shadow-retrieval-canary-guard=pass`,
-`temporal-graph-shadow-retrieval-canary-guard.payload-light=pass`,
-`temporal-graph-shadow-retrieval-canary-guard.stage-projected-count=5`,
-`temporal-graph-shadow-retrieval-canary-guard.quality-slo-pass-count=5`,
-`temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5`,
-`temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0`,
-`temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5`,
-`temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5`,
-`temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0`,
-`temporal-graph-shadow-retrieval-canary-guard.llm-rerank=disabled`,
-`temporal-graph-shadow-retrieval-canary-guard.graph-persistence=disabled`,
-`temporal-graph-shadow-retrieval-canary-guard.production-route=disabled`,
-`temporal-graph-shadow-retrieval-canary-guard.production-write-count=0`,
-`temporal-graph-shadow-retrieval-canary-guard.graph-write-count=0`,
-`temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0`, and
-`temporal-graph-shadow-retrieval-canary-guard.runtime-activation=disabled`.
+`scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard`
+emits the
+authoritative typed JSON report with schema
+`context_memory_temporal_graph_shadow_retrieval_canary_guard_v1`; its
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard`
+command verifies the SHA-bound Rust binding and fails closed. The legacy
+scoreboard is retained only under `legacy_business_fields` with exact recursive
+JSON equality. The typed envelope fixes `production_authority_granted=false`
+and `write_authority_granted=false`, and all side-effect fields remain false.
+Debug and preflight invoke this pair directly after traversal quality and
+before rollback/kill-switch evidence.
 Temporal graph shadow retrieval rollback/kill-switch evidence surface:
 recall diagnostics may expose a shadow temporal graph retrieval rollback
 kill-switch surface derived only from the retrieval canary guard. This shadow
@@ -1354,17 +1298,16 @@ on context-plane helpers and
 `recall_context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report`
 on both `StoreSnapshot` and `InMemoryStore`.
 
-`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-report.sh`
-emits the payload-light shadow retrieval rollback/kill-switch scoreboard, and
-`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh`
-verifies the report, Rust-backed context-plane projections, hepta-core and
-hepta-memory helper tests, debug/preflight wiring, source-aware front-door
-static check, release manifest entries, and no-leak constraints. The context
-debug gate and preflight must run
-`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh`
-after
-`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh`
-and before `scripts/hepta-context-memory-eval-harness-seed-gate.sh`.
+`scripts/hepta-gate-pair-runner report hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch`
+emits the authoritative typed JSON report with schema
+`context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_v1`; its
+`scripts/hepta-gate-pair-runner gate hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch`
+command verifies the SHA-bound Rust binding and fails closed. The legacy
+scoreboard is retained only under `legacy_business_fields` with exact recursive
+JSON equality. The typed envelope fixes `production_authority_granted=false`
+and `write_authority_granted=false`, and all side-effect fields remain false.
+Debug and preflight invoke this pair directly after the canary guard and before
+the eval harness seed gate.
 Context memory eval harness seed: recall diagnostics may expose an offline,
 behavior-neutral eval harness seed for future quality gates. The seed may
 contain only fixed metric names (`recall_coverage`, `missing_critical_fact`,
@@ -1388,7 +1331,8 @@ activate adaptive allocation, must not activate source-aware compression, must
 not write graph facts, must not write production memory, must not alter prompt
 assembly, and must not enable runtime activation. The context debug gate and
 preflight must run `scripts/hepta-context-memory-eval-harness-seed-gate.sh`
-after `scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh` and before
+after `scripts/hepta-gate-pair-runner gate
+hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch` and before
 the source-aware compression front-door report. It must keep
 `runtime-activation=disabled`. Its core implementation boundary is
 `codex-rs/hepta-core/src/memory/eval_harness/eval_seed.rs`, re-exported
