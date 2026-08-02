@@ -296,13 +296,10 @@ out_dir = "./dist"
 ## `robius-packaging-commands` tool outputs the resources that it discovers after each build.
 ## See the README from the `robius-packaging-commands` repo for more details.
 resources = [
-    # Makepad resources
+    # This pinned Makepad 2.x fork consolidates Chinese and emoji fonts into
+    # makepad_widgets/resources. The separate makepad_fonts_* trees belong to
+    # the old Makepad widget stack and are not emitted by the current build.
     { src = "./dist/resources/makepad_widgets", target = "makepad_widgets" },
-    { src = "./dist/resources/makepad_fonts_chinese_bold", target = "makepad_fonts_chinese_bold" },
-    { src = "./dist/resources/makepad_fonts_chinese_bold_2", target = "makepad_fonts_chinese_bold_2" },
-    { src = "./dist/resources/makepad_fonts_chinese_regular", target = "makepad_fonts_chinese_regular" },
-    { src = "./dist/resources/makepad_fonts_chinese_regular_2", target = "makepad_fonts_chinese_regular_2" },
-    { src = "./dist/resources/makepad_fonts_emoji", target = "makepad_fonts_emoji" },
     # Hepta Native resources
     { src = "./dist/resources/hepta-native", target = "hepta-native" },
 ]

@@ -138,6 +138,14 @@ packaging_rust_toolchain="$(jq -r '.metadata["hepta-packaging"].rust_toolchain /
 formal_script_metadata="$(jq -r '.metadata["hepta-packaging"].formal_unsigned_macos_script // empty' <<<"$package_metadata")"
 declared_resources="$(jq -c '.metadata.packager.resources // []' <<<"$package_metadata")"
 declared_resource_count="$(jq 'length' <<<"$declared_resources")"
+declared_resource_targets_ready=false
+if jq -e '
+  length == 2
+  and ([.[].target] | sort) == ["hepta-native", "makepad_widgets"]
+  and all(.[]; (.src | startswith("./dist/resources/")))
+' >/dev/null <<<"$declared_resources"; then
+  declared_resource_targets_ready=true
+fi
 
 static_ready=false
 if [[ "$bundle_id" == "ai.hepta.nativeapp" && "$bundle_name" == "Hepta" && "$bundle_display_name" == "Hepta" \
@@ -146,7 +154,7 @@ if [[ "$bundle_id" == "ai.hepta.nativeapp" && "$bundle_name" == "Hepta" && "$bun
   && "$packager_version" == "0.11.8" && "$robius_packaging_version" == "0.3.3" \
   && "$packaging_rust_toolchain" == "1.95.0" \
   && "$formal_script_metadata" == "./packaging/build-macos-unsigned-app.sh" \
-  && "$declared_resource_count" -ge 7 ]]; then
+  && "$declared_resource_targets_ready" == "true" ]]; then
   static_ready=true
 fi
 
@@ -161,6 +169,7 @@ collector_sources_complete=false
 artifact_head_embedded=false
 binary_rpath_ready=false
 bundle_unsigned=false
+linker_adhoc_signature=false
 launch_probe_ready=false
 launch_probe_seconds=0
 launch_exit_code='null'
@@ -243,8 +252,12 @@ if [[ "$BUILD" == "1" && "$darwin_build_supported" == "true" ]]; then
     expected_head="$(jq -r '.head' <<<"$source_binding_before")"
     if LC_ALL=C grep -aFq -- "$expected_head" "$binary"; then artifact_head_embedded=true; fi
     if otool -l "$binary" | grep -Fq '@executable_path/../Frameworks'; then binary_rpath_ready=true; fi
-    if [[ ! -e "$app_bundle/Contents/_CodeSignature" ]] \
-      && ! codesign -dv --verbose=4 "$app_bundle" >/dev/null 2>&1; then
+    codesign_details="$(codesign -dv --verbose=4 "$app_bundle" 2>&1 || true)"
+    if grep -Fq 'Signature=adhoc' <<<"$codesign_details" \
+      && grep -Fq 'TeamIdentifier=not set' <<<"$codesign_details" \
+      && ! grep -Fq 'Authority=' <<<"$codesign_details" \
+      && [[ ! -e "$app_bundle/Contents/_CodeSignature" ]]; then
+      linker_adhoc_signature=true
       bundle_unsigned=true
     fi
 
@@ -289,8 +302,9 @@ if [[ "$BUILD" == "1" && "$darwin_build_supported" == "true" ]]; then
       --arg info_plist_sha256 "$plist_sha" --arg icon_sha256 "$icon_sha" \
       --argjson bytes "$bundle_bytes" --argjson head_embedded "$artifact_head_embedded" \
       --arg expected_head "$expected_head" --argjson rpath_ready "$binary_rpath_ready" \
-      --argjson unsigned "$bundle_unsigned" --arg build_log "$build_log" --arg launch_log "$launch_log" \
-      '{probe_type:"formal_cargo_packager_robius_unsigned_app",path:$path,bytes:$bytes,binary_kind:$binary_kind,binary_sha256:$binary_sha256,info_plist_sha256:$info_plist_sha256,icon_sha256:$icon_sha256,expected_head:$expected_head,full_head_embedded:$head_embedded,makepad_bundle_rpath_ready:$rpath_ready,bundle_signature:(if $unsigned then "unsigned" else "unexpected_signature" end),build_log:$build_log,launch_log:$launch_log}')"
+      --argjson unsigned "$bundle_unsigned" --argjson linker_adhoc "$linker_adhoc_signature" \
+      --arg build_log "$build_log" --arg launch_log "$launch_log" \
+      '{probe_type:"formal_cargo_packager_robius_unsigned_app",path:$path,bytes:$bytes,binary_kind:$binary_kind,binary_sha256:$binary_sha256,info_plist_sha256:$info_plist_sha256,icon_sha256:$icon_sha256,expected_head:$expected_head,full_head_embedded:$head_embedded,makepad_bundle_rpath_ready:$rpath_ready,bundle_signature:(if $unsigned then "linker_adhoc_no_developer_id" else "unexpected_developer_identity" end),linker_adhoc_signature:$linker_adhoc,developer_id_signed:false,build_log:$build_log,launch_log:$launch_log}')"
 
     if [[ "$static_ready" == "true" && "$resources_complete" == "true" \
       && "$collector_sources_complete" == "true" && "$artifact_head_embedded" == "true" \
@@ -329,7 +343,8 @@ report="$(jq -n \
   --arg url_hepta "$url_hepta" --arg url_matrix "$url_matrix" --arg product_name "$product_name" \
   --arg package_version "$package_version" --arg packager_version "$packager_version" \
   --arg robius_packaging_version "$robius_packaging_version" --arg tools_dir "$TOOLS_DIR" \
-  --argjson declared_resource_count "$declared_resource_count" --argjson static_ready "$static_ready" \
+  --argjson declared_resource_count "$declared_resource_count" \
+  --argjson declared_resource_targets_ready "$declared_resource_targets_ready" --argjson static_ready "$static_ready" \
   --argjson build_requested "$BUILD" --argjson bootstrap_tools "$BOOTSTRAP_TOOLS" \
   --argjson formal_pipeline_exit_code "$formal_pipeline_exit_code" \
   --argjson formal_ready "$formal_unsigned_packaging_pipeline_ready" \
@@ -354,6 +369,7 @@ report="$(jq -n \
     build_requested:($build_requested == 1),
     formal_pipeline_exit_code:$formal_pipeline_exit_code,
     declared_resource_tree_count:$declared_resource_count,
+    declared_resource_targets_ready:$declared_resource_targets_ready,
     declared_resources_byte_exact:$resources_complete,
     collector_sources_byte_exact:$collector_sources_complete,
     resource_trees:$resource_reports,
