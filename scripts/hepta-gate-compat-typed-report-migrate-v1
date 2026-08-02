@@ -34,9 +34,50 @@ CURRENT_REALITY_REGISTRY_PATH = File.join(
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 DOMAIN = "hepta_gate_pair_compat_payloads"
 TARGET_PAIR_COUNT = 298
-TARGET_CAPTURED_COUNT = 94
-TARGET_DECLARATIVE_COUNT = 204
-TARGET_TYPED_COUNT = 141
+TARGET_CAPTURED_COUNT = 77
+TARGET_DECLARATIVE_COUNT = 221
+TARGET_TYPED_COUNT = 158
+CONTROLLED_LIVE_PAIR_IDS = %w[
+  hepta-systems-controlled-canary-readiness-plan
+  hepta-systems-controlled-live-operator-packet-non-send-readback
+  hepta-systems-controlled-live-operator-packet-preview
+  hepta-systems-controlled-live-operator-readiness-dashboard
+  hepta-systems-controlled-live-readiness-audit
+  hepta-systems-controlled-live-readiness-denial-readback-index
+  hepta-systems-controlled-live-required-evidence-collection-plan
+  hepta-systems-controlled-live-required-evidence-gap-diff-view
+  hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment
+  hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-credential-boundary-readback
+  hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback
+  hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-non-send-readback
+  hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-rollback-rehearsal-boundary-readback
+  hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-transport-boundary-readback
+  hepta-systems-controlled-live-required-evidence-gap-operator-readback
+  hepta-systems-controlled-live-required-evidence-gap-summary
+  hepta-systems-controlled-live-required-evidence-readback-index
+].freeze
+CONTROLLED_LIVE_V2_PAIR_IDS = %w[
+  hepta-systems-controlled-live-readiness-audit
+  hepta-systems-controlled-live-readiness-denial-readback-index
+  hepta-systems-controlled-live-operator-packet-preview
+  hepta-systems-controlled-live-operator-packet-non-send-readback
+  hepta-systems-controlled-live-required-evidence-collection-plan
+  hepta-systems-controlled-live-required-evidence-readback-index
+].freeze
+CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS = %w[
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.gate
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.report
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.gate
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.report
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit.gate
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit.report
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index.gate
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index.report
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.gate
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.report
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.gate
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.report
+].freeze
 RETIRED_PAIR_ID = "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording"
 RETIRED_GATE_PATH = "scripts/lib/hepta-gate-pair-compat-v1/#{RETIRED_PAIR_ID}.gate"
 RETIRED_REPORT_PATH = "scripts/lib/hepta-gate-pair-compat-v1/#{RETIRED_PAIR_ID}.report"
@@ -105,6 +146,15 @@ def transform_source(source, ids)
       "scripts/#{id}-report.sh"
     )
   end
+  transformed = CONTROLLED_LIVE_V2_PAIR_IDS.reduce(transformed) do |current, id|
+    current.gsub(
+      "scripts/lib/hepta-gate-pair-compat-v1/#{id}-v2.gate",
+      "scripts/#{id}-gate.sh"
+    ).gsub(
+      "scripts/lib/hepta-gate-pair-compat-v1/#{id}-v2.report",
+      "scripts/#{id}-report.sh"
+    )
+  end
   transformed
     .gsub(EXPORTED_TYPED_INTERNAL_SOURCE_ASSIGNMENT, TYPED_INTERNAL_SOURCE_ASSIGNMENT)
     .gsub(RETIRED_SOURCE_ASSIGNMENT, TYPED_INTERNAL_SOURCE_ASSIGNMENT)
@@ -121,6 +171,13 @@ def rewrite_spec(spec, sources, ids)
   if retired.length == 1
     raise "retired dirty-worktree pair is not captured" unless retired.first.fetch("template") ==
       "captured_shell_compat_v1"
+  end
+  controlled = spec.fetch("pairs").select do |pair|
+    CONTROLLED_LIVE_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  raise "controlled-live typed pair inventory drifted" unless controlled.length == 17
+  raise "controlled-live typed pair mode drifted" unless controlled.all? do |pair|
+    %w[captured_shell_compat_v1 typed_rust_report_v1].include?(pair.fetch("template"))
   end
   pairs = spec.fetch("pairs").reject { |pair| pair.fetch("id") == RETIRED_PAIR_ID }.map do |pair|
     id = pair.fetch("id")
@@ -165,7 +222,16 @@ def rewrite_spec(spec, sources, ids)
   raise "typed migration captured count drifted" unless captured == TARGET_CAPTURED_COUNT
   raise "typed migration legacy count drifted" unless legacy.zero?
   raise "typed migration declarative count drifted" unless declarative == TARGET_DECLARATIVE_COUNT
-  supplemental = spec.fetch("supplemental_payloads", []).map do |payload|
+  supplemental_paths = spec.fetch("supplemental_payloads", []).map { |payload| payload.fetch("path") }
+  retired_controlled_supplemental_count = (
+    supplemental_paths & CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS
+  ).length
+  raise "controlled-live supplemental payload inventory drifted" unless [0, 12].include?(
+    retired_controlled_supplemental_count
+  )
+  supplemental = spec.fetch("supplemental_payloads", []).reject do |payload|
+    CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS.include?(payload.fetch("path"))
+  end.map do |payload|
     raise "retired dirty-worktree payload preserved as supplemental" if [
       RETIRED_GATE_PATH, RETIRED_REPORT_PATH
     ].include?(payload.fetch("path"))
@@ -339,6 +405,22 @@ def refresh_contracts(ids)
     "additional_zero_caller_pair_retirement_ids" => [RETIRED_PAIR_ID],
     "internal_rust_source_semantics_preserved" => true
   }
+  receipt.fetch("typed_conversion").merge!(
+    "controlled_live_conversion_count" => CONTROLLED_LIVE_PAIR_IDS.length,
+    "controlled_live_dynamic_worktree_pair_count" => CONTROLLED_LIVE_V2_PAIR_IDS.length,
+    "controlled_live_worktree_observation_mode" => "single_cli_git_observation_explicit_runtime_source_chain",
+    "controlled_live_clean_active_blocker_count" => 6,
+    "controlled_live_clean_satisfied_slot_count" => 1,
+    "controlled_live_dirty_active_blocker_count" => 7,
+    "controlled_live_dirty_satisfied_slot_count" => 0,
+    "controlled_live_pair_payload_retirement_count" => 34,
+    "controlled_live_supplemental_payload_retirement_count" => 12,
+    "controlled_live_shell_body_retirement_count" => 46,
+    "controlled_live_supplemental_payload_paths" => CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS,
+    "controlled_live_shell_snapshots_preserved" => false,
+    "controlled_live_production_authority_granted" => false,
+    "controlled_live_write_authority_granted" => false
+  )
   retirement = receipt.fetch("retirement")
   dead_pairs = retirement.fetch("dead_pairs")
   dead_pairs << RETIRED_PAIR_ID unless dead_pairs.include?(RETIRED_PAIR_ID)
@@ -424,6 +506,11 @@ def plan
   verify_runtime_bindings(ids)
   spec = JSON.parse(File.binread(SPEC_PATH))
   selected = spec.fetch("pairs").select { |pair| ids.include?(pair.fetch("id")) }
+  controlled = spec.fetch("pairs").select do |pair|
+    CONTROLLED_LIVE_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  supplemental_paths = spec.fetch("supplemental_payloads", []).map { |payload| payload.fetch("path") }
+  controlled_supplemental = supplemental_paths & CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS
   puts JSON.pretty_generate(
     status: "ready",
     target_pair_count: TARGET_PAIR_COUNT,
@@ -436,6 +523,19 @@ def plan
     retired_pair_count: spec.fetch("pairs").count { |pair| pair.fetch("id") == RETIRED_PAIR_ID },
     retired_pair_id: RETIRED_PAIR_ID,
     retired_payload_paths: [RETIRED_GATE_PATH, RETIRED_REPORT_PATH],
+    controlled_live_selected_pair_count: controlled.length,
+    controlled_live_captured_pair_count: controlled.count do |pair|
+      pair.fetch("template") == "captured_shell_compat_v1"
+    end,
+    controlled_live_typed_pair_count: controlled.count do |pair|
+      pair.fetch("template") == "typed_rust_report_v1"
+    end,
+    controlled_live_dynamic_worktree_pair_count: CONTROLLED_LIVE_V2_PAIR_IDS.length,
+    controlled_live_pair_payload_retirement_count: controlled.count do |pair|
+      pair.fetch("template") == "captured_shell_compat_v1"
+    end * 2,
+    controlled_live_supplemental_payload_retirement_count: controlled_supplemental.length,
+    controlled_live_supplemental_payload_paths: controlled_supplemental,
     snapshots_used: false,
     shell_payloads_preserved: false
   )
@@ -445,6 +545,13 @@ def apply
   ids = binding_ids
   verify_runtime_bindings(ids)
   spec = JSON.parse(File.binread(SPEC_PATH))
+  controlled_captured_count = spec.fetch("pairs").count do |pair|
+    CONTROLLED_LIVE_PAIR_IDS.include?(pair.fetch("id")) &&
+      pair.fetch("template") == "captured_shell_compat_v1"
+  end
+  controlled_supplemental_count = spec.fetch("supplemental_payloads", []).count do |payload|
+    CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS.include?(payload.fetch("path"))
+  end
   sources = canonical_sources
   updated = rewrite_spec(spec, sources, ids)
   atomic_write(SPEC_PATH, JSON.pretty_generate(updated) + "\n", 0o644)
@@ -462,7 +569,12 @@ def apply
     typed_pair_count: ids.length,
     callers_rewritten_to_public_typed_surfaces: true,
     shell_payloads_preserved: false,
-    retired_pair_count: 1,
+    retired_pair_count: spec.fetch("pairs").count { |pair| pair.fetch("id") == RETIRED_PAIR_ID },
+    controlled_live_converted_pair_count: controlled_captured_count,
+    controlled_live_pair_payload_retirement_count: controlled_captured_count * 2,
+    controlled_live_supplemental_payload_retirement_count: controlled_supplemental_count,
+    controlled_live_shell_body_retirement_count: controlled_captured_count * 2 +
+      controlled_supplemental_count,
     architecture_ratchet_deferred: DEFER_ARCHITECTURE_RATCHET
   )
 end

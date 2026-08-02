@@ -402,6 +402,18 @@ typed_report_contract() {
       source_stem="context_memory_${suffix//-/_}"
       printf '%s\t%s\n' "hepta_${source_stem}_gate" "${source_stem}_v1"
       ;;
+    hepta-systems-controlled-*)
+      suffix="${id#hepta-systems-}"
+      source_stem="${suffix//-/_}"
+      case "$id" in
+        hepta-systems-controlled-live-readiness-audit|hepta-systems-controlled-live-readiness-denial-readback-index|hepta-systems-controlled-live-operator-packet-preview|hepta-systems-controlled-live-operator-packet-non-send-readback|hepta-systems-controlled-live-required-evidence-collection-plan|hepta-systems-controlled-live-required-evidence-readback-index)
+          printf '%s\t%s\n' "${source_stem}_gate" "${source_stem}_v2"
+          ;;
+        *)
+          printf '%s\t%s\n' "${source_stem}_gate" "${source_stem}_v1"
+          ;;
+      esac
+      ;;
     hepta-systems-dirty-worktree-*)
       suffix="${id#hepta-systems-}"
       source_stem="${suffix//-/_}"

@@ -1,12 +1,15 @@
 use std::process::Command;
 use std::process::ExitCode;
 
+use hepta_runtime::ControlledLiveWorktreeObservation;
 use hepta_runtime::DirtyWorktreeObservation;
 use hepta_runtime::RETIRED_DIRTY_WORKTREE_COMPAT_REPORT_ID;
 use hepta_runtime::TYPED_COMPAT_REPORT_IDS;
+use hepta_runtime::is_controlled_live_typed_compat_report;
 use hepta_runtime::is_dirty_worktree_typed_compat_report;
 use hepta_runtime::retired_dirty_worktree_owner_decision_source_report;
 use hepta_runtime::typed_compat_report;
+use hepta_runtime::typed_compat_report_with_controlled_live_worktree_observation;
 use hepta_runtime::typed_compat_report_with_dirty_worktree_observation;
 
 const INTERNAL_DIRTY_WORKTREE_OWNER_DECISION_SOURCE: &str =
@@ -32,6 +35,8 @@ fn main() -> ExitCode {
 
     let report = if id == INTERNAL_DIRTY_WORKTREE_OWNER_DECISION_SOURCE {
         internal_dirty_worktree_owner_decision_source_report()
+    } else if is_controlled_live_typed_compat_report(&id) {
+        controlled_live_report(&id)
     } else if is_dirty_worktree_typed_compat_report(&id) {
         dirty_worktree_report(&id)
     } else {
@@ -53,8 +58,19 @@ fn main() -> ExitCode {
 fn dirty_worktree_report(
     id: &str,
 ) -> Result<serde_json::Value, hepta_runtime::TypedCompatReportError> {
-    let observation = dirty_worktree_observation()?;
+    let status = git_status_porcelain_v1_z()?;
+    let observation = DirtyWorktreeObservation::from_porcelain_v1_z(&status)
+        .map_err(hepta_runtime::TypedCompatReportError::ContractViolation)?;
     typed_compat_report_with_dirty_worktree_observation(id, &observation)
+}
+
+fn controlled_live_report(
+    id: &str,
+) -> Result<serde_json::Value, hepta_runtime::TypedCompatReportError> {
+    let status = git_status_porcelain_v1_z()?;
+    let observation = ControlledLiveWorktreeObservation::from_porcelain_v1_z(&status)
+        .map_err(hepta_runtime::TypedCompatReportError::ContractViolation)?;
+    typed_compat_report_with_controlled_live_worktree_observation(id, &observation)
 }
 
 fn internal_dirty_worktree_owner_decision_source_report()
@@ -69,13 +85,14 @@ fn internal_dirty_worktree_owner_decision_source_report()
             "unknown internal dirty-worktree source report id".to_string(),
         ));
     }
-    let observation = dirty_worktree_observation()?;
+    let status = git_status_porcelain_v1_z()?;
+    let observation = DirtyWorktreeObservation::from_porcelain_v1_z(&status)
+        .map_err(hepta_runtime::TypedCompatReportError::ContractViolation)?;
     retired_dirty_worktree_owner_decision_source_report(&observation)
         .map_err(hepta_runtime::TypedCompatReportError::ContractViolation)
 }
 
-fn dirty_worktree_observation()
--> Result<DirtyWorktreeObservation, hepta_runtime::TypedCompatReportError> {
+fn git_status_porcelain_v1_z() -> Result<Vec<u8>, hepta_runtime::TypedCompatReportError> {
     let root = std::env::var_os("HEPTA_REPO_ROOT").ok_or_else(|| {
         hepta_runtime::TypedCompatReportError::ContractViolation(
             "dirty-worktree report requires explicit HEPTA_REPO_ROOT".to_string(),
@@ -98,6 +115,5 @@ fn dirty_worktree_observation()
             "git status failed while observing dirty worktree".to_string(),
         ));
     }
-    DirtyWorktreeObservation::from_porcelain_v1_z(&output.stdout)
-        .map_err(hepta_runtime::TypedCompatReportError::ContractViolation)
+    Ok(output.stdout)
 }

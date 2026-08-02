@@ -13,6 +13,23 @@ pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
     "hepta-context-memory-temporal-graph-shadow-store",
     "hepta-context-memory-temporal-graph-shadow-traversal-diff",
     "hepta-context-memory-temporal-graph-shadow-traversal-quality",
+    "hepta-systems-controlled-canary-readiness-plan",
+    "hepta-systems-controlled-live-operator-packet-non-send-readback",
+    "hepta-systems-controlled-live-operator-packet-preview",
+    "hepta-systems-controlled-live-operator-readiness-dashboard",
+    "hepta-systems-controlled-live-readiness-audit",
+    "hepta-systems-controlled-live-readiness-denial-readback-index",
+    "hepta-systems-controlled-live-required-evidence-collection-plan",
+    "hepta-systems-controlled-live-required-evidence-gap-diff-view",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-credential-boundary-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-non-send-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-rollback-rehearsal-boundary-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-transport-boundary-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-summary",
+    "hepta-systems-controlled-live-required-evidence-readback-index",
     "hepta-systems-current-reality-matrix-compact-cache-boundary-readback",
     "hepta-systems-dirty-worktree-release-boundary-actionable-clean-worktree-strategy",
     "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-approval-acceptance-boundary-readback",
@@ -795,7 +812,23 @@ pub fn typed_compat_report_with_dirty_worktree_observation(
         .map_err(TypedCompatReportError::ContractViolation)
 }
 
+pub fn typed_compat_report_with_controlled_live_worktree_observation(
+    id: &str,
+    observation: &crate::ControlledLiveWorktreeObservation,
+) -> Result<Value, TypedCompatReportError> {
+    if !crate::is_controlled_live_typed_compat_report(id) {
+        return Err(TypedCompatReportError::UnknownReport(id.to_string()));
+    }
+    crate::controlled_live_typed_compat_report(id, observation)
+        .map_err(TypedCompatReportError::ContractViolation)
+}
+
 pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
+    if crate::is_controlled_live_typed_compat_report(id) {
+        return Err(TypedCompatReportError::ContractViolation(format!(
+            "controlled-live typed compatibility report requires an explicit repository observation: {id}"
+        )));
+    }
     if crate::is_dirty_worktree_typed_compat_report(id) {
         return Err(TypedCompatReportError::ContractViolation(format!(
             "dirty-worktree typed compatibility report requires an explicit repository observation: {id}"

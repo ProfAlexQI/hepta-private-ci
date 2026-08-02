@@ -1,11 +1,11 @@
 {
   "schema": "hepta_gate_pair_entrypoints_v2",
   "status": "pruned",
-  "source_registry_sha256": "d6ac7f980bc5dd564fe14c2d511aa7477278a64ee7a06c7155dc505a48e5b4d1",
+  "source_registry_sha256": "488cc29f635e3880c0d04138ff43bf43ebfd01d41a7bc380bfaca39986f11a17",
   "pair_count": 298,
   "original_entrypoint_count": 596,
-  "retained_entrypoint_count": 62,
-  "virtual_entrypoint_count": 534,
+  "retained_entrypoint_count": 57,
+  "virtual_entrypoint_count": 539,
   "normalized_virtual_entrypoint_count": 2,
   "normalized_virtual_entrypoint_limit": 2,
   "virtual_entrypoint_template_kinds": [
@@ -61,14 +61,9 @@
     "scripts/hepta-context-plane-operator-approval-packet-negative-export-gate.sh",
     "scripts/hepta-context-plane-operator-approval-packet-negative-export-report.sh",
     "scripts/hepta-context-plane-operator-approval-packet-report.sh",
-    "scripts/hepta-systems-controlled-live-operator-packet-non-send-readback-report.sh",
-    "scripts/hepta-systems-controlled-live-operator-packet-preview-report.sh",
     "scripts/hepta-systems-controlled-live-operator-readiness-dashboard-gate.sh",
     "scripts/hepta-systems-controlled-live-operator-readiness-dashboard-report.sh",
     "scripts/hepta-systems-controlled-live-readiness-audit-report.sh",
-    "scripts/hepta-systems-controlled-live-required-evidence-collection-plan-report.sh",
-    "scripts/hepta-systems-controlled-live-required-evidence-gap-summary-report.sh",
-    "scripts/hepta-systems-controlled-live-required-evidence-readback-index-report.sh",
     "scripts/hepta-systems-current-canonical-wrapper-gate.sh",
     "scripts/hepta-systems-current-reality-capability-matrix-report.sh",
     "scripts/hepta-systems-current-reality-matrix-compact-cache-boundary-readback-report.sh",
@@ -80,6 +75,6 @@
     "scripts/hepta-systems-workflow-temporal-lite-replay-alignment-recovery-receipt-local-persistence-readback-gate.sh",
     "scripts/hepta-systems-workflow-temporal-lite-replay-alignment-recovery-window-feature-gated-readback-gate.sh"
   ],
-  "virtual_paths_sha256": "4a052f466071871029692ff03eda8df3210b7e12e800a51a2e8948f13bd6072c",
+  "virtual_paths_sha256": "39d32d528fe8797004eb920a913f876a4bd36d9b81e1af907d7bfa95da734e7e",
   "reversible_unpack": true
 }

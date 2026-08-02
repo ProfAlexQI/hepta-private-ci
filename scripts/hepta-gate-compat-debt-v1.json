@@ -3,7 +3,7 @@
   "status": "bounded_family_migration_debt",
   "registry": {
     "path": "scripts/hepta-gate-pair-specs-v1.json",
-    "sha256": "d6ac7f980bc5dd564fe14c2d511aa7477278a64ee7a06c7155dc505a48e5b4d1"
+    "sha256": "488cc29f635e3880c0d04138ff43bf43ebfd01d41a7bc380bfaca39986f11a17"
   },
   "compatibility_store": "scripts/lib/hepta-gate-pair-compat-v2",
   "logical_overlay_store": "scripts/lib/hepta-gate-pair-compat-v1",
@@ -14,39 +14,39 @@
   "entrypoint_registry": "scripts/hepta-gate-pair-entrypoints-v2.json",
   "ceilings": {
     "pair_count": 298,
-    "captured_shell_pair_count": 94,
+    "captured_shell_pair_count": 77,
     "legacy_workgraph_pair_count": 0,
-    "compatibility_payload_count": 213,
-    "logical_compatibility_payload_count": 510,
-    "normalized_effective_lines": 66352,
+    "compatibility_payload_count": 193,
+    "logical_compatibility_payload_count": 464,
+    "normalized_effective_lines": 60699,
     "unregistered_payload_count": 0,
-    "physical_entrypoint_count": 62,
+    "physical_entrypoint_count": 57,
     "virtual_entrypoint_count": 2,
-    "logical_virtual_entrypoint_count": 534
+    "logical_virtual_entrypoint_count": 539
   },
   "baselines": {
     "pair_count": 298,
-    "captured_shell_pair_count": 94,
+    "captured_shell_pair_count": 77,
     "legacy_workgraph_pair_count": 0,
-    "compatibility_payload_count": 213,
-    "logical_compatibility_payload_count": 510,
-    "normalized_effective_lines": 66352,
+    "compatibility_payload_count": 193,
+    "logical_compatibility_payload_count": 464,
+    "normalized_effective_lines": 60699,
     "unregistered_payload_count": 0,
-    "physical_entrypoint_count": 62,
+    "physical_entrypoint_count": 57,
     "virtual_entrypoint_count": 2,
-    "logical_virtual_entrypoint_count": 534,
-    "declarative_pair_count": 204
+    "logical_virtual_entrypoint_count": 539,
+    "declarative_pair_count": 221
   },
   "decline_targets": {
     "next": {
       "pair_count": 298,
       "captured_shell_pair_count": 49,
       "legacy_workgraph_pair_count": 0,
-      "compatibility_payload_count": 212,
-      "logical_compatibility_payload_count": 509,
-      "normalized_effective_lines": 66351,
+      "compatibility_payload_count": 192,
+      "logical_compatibility_payload_count": 463,
+      "normalized_effective_lines": 60698,
       "unregistered_payload_count": 0,
-      "physical_entrypoint_count": 59,
+      "physical_entrypoint_count": 56,
       "logical_virtual_entrypoint_count": 529,
       "declarative_pair_count": 249
     },
@@ -70,7 +70,7 @@
     "decline_targets_are_not_release_claims": true
   },
   "floors": {
-    "declarative_pair_count": 204
+    "declarative_pair_count": 221
   },
   "migration_policy": {
     "counts_may_only_improve": true,

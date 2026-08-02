@@ -91,6 +91,7 @@ mod config_store;
 mod context_recall_operator_invocation;
 mod context_recall_operator_scheduler;
 mod controlled_canary_readiness_plan;
+mod controlled_live_compat_report;
 mod controlled_live_evidence_receipt_store_acceptance_authority_packet_non_send_readback;
 mod controlled_live_evidence_receipt_store_acceptance_authority_packet_persistence_denial_readback_without_persistence;
 mod controlled_live_evidence_receipt_store_acceptance_authority_packet_readback_without_acceptance;
@@ -315,6 +316,16 @@ use runtime_kernel::outcome_recorder::OutcomeRecorder;
 use runtime_kernel::safety_gate_client::SafetyGateClient;
 use runtime_preference_context::AttachedPreferenceContextState;
 
+pub use controlled_live_compat_report::{
+    CONTROLLED_LIVE_TYPED_COMPAT_REPORT_IDS, ControlledLiveWorktreeObservation,
+    controlled_live_operator_packet_non_send_readback_report_from_sources,
+    controlled_live_operator_packet_preview_report_from_sources,
+    controlled_live_readiness_audit_report_from_observation,
+    controlled_live_readiness_denial_readback_index_report_from_sources,
+    controlled_live_required_evidence_collection_plan_report_from_sources,
+    controlled_live_required_evidence_readback_index_report_from_sources,
+    controlled_live_typed_compat_report, is_controlled_live_typed_compat_report,
+};
 pub use dirty_worktree_compat_report::{
     DIRTY_WORKTREE_TYPED_COMPAT_REPORT_IDS, DirtyWorktreeObservation,
     DirtyWorktreeObservationEntry, RETIRED_DIRTY_WORKTREE_COMPAT_REPORT_ID,
@@ -336,6 +347,7 @@ pub use ndu_h1_runtime::NduH1ShadowEvent;
 pub use typed_compat_report::TYPED_COMPAT_REPORT_IDS;
 pub use typed_compat_report::TypedCompatReportError;
 pub use typed_compat_report::typed_compat_report;
+pub use typed_compat_report::typed_compat_report_with_controlled_live_worktree_observation;
 pub use typed_compat_report::typed_compat_report_with_dirty_worktree_observation;
 
 include!("runtime_kernel/exports.rs");

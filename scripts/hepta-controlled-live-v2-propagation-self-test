@@ -2,19 +2,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-PAYLOAD_BUNDLE="$ROOT/scripts/hepta-gate-pair-payload-bundle"
-COMPAT_ROOT="$("$PAYLOAD_BUNDLE" materialize-overlay)"
-AUDIT_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report"
-DENIAL_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report"
-PACKET_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.report"
-NONSEND_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback-v2.report"
-PLAN_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.report"
-INDEX_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.report"
+TYPED_REPORT="$ROOT/scripts/hepta-typed-compat-report"
+PAIR_RUNNER="$ROOT/scripts/hepta-gate-pair-runner"
 LEDGER="$ROOT/scripts/hepta-controlled-live-v2-propagation-ledger.json"
 IMPACT="$ROOT/scripts/hepta-controlled-live-worktree-boundary-v2-impact.json"
 SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
 
-PAIR_IDS=(
+DYNAMIC_IDS=(
+  hepta-systems-controlled-live-readiness-audit
+  hepta-systems-controlled-live-readiness-denial-readback-index
   hepta-systems-controlled-live-operator-packet-preview
   hepta-systems-controlled-live-operator-packet-non-send-readback
   hepta-systems-controlled-live-required-evidence-collection-plan
@@ -26,12 +22,12 @@ fail() {
   exit 1
 }
 
-for executable in "$AUDIT_REPORT" "$DENIAL_REPORT" "$PACKET_REPORT" "$NONSEND_REPORT" "$PLAN_REPORT" "$INDEX_REPORT"; do
-  [[ -x "$executable" ]] || fail "missing executable v2 report: $executable"
+for executable in "$TYPED_REPORT" "$PAIR_RUNNER"; do
+  [[ -x "$executable" ]] || fail "missing executable: $executable"
 done
-[[ -f "$LEDGER" ]] || fail "missing propagation ledger: $LEDGER"
-[[ -f "$IMPACT" ]] || fail "missing worktree-boundary impact ledger: $IMPACT"
-[[ -f "$SPEC_FILE" ]] || fail "missing pair spec registry: $SPEC_FILE"
+for source in "$LEDGER" "$IMPACT" "$SPEC_FILE"; do
+  [[ -f "$source" ]] || fail "missing contract: $source"
+done
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 
@@ -39,40 +35,15 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 fixture_root="$tmpdir/repo"
 mkdir -p "$fixture_root"
-
-for source_dir in scripts codex-rs docs plugins apps; do
-  source_root="$ROOT"
-  if [[ "$source_dir" == "scripts" ]]; then
-    source_root="$COMPAT_ROOT"
-  fi
-  ln -s "$source_root/$source_dir" "$fixture_root/$source_dir"
-done
-
 git -C "$fixture_root" init -q
-git -C "$fixture_root" config user.name "Hepta controlled-live v2 fixture"
-git -C "$fixture_root" config user.email "hepta-fixture@invalid"
-git -C "$fixture_root" add scripts codex-rs docs plugins apps
-git -C "$fixture_root" commit -qm "Create controlled-live v2 propagation fixture"
 
 render_chain() {
   local label="$1"
-  HEPTA_REPO_ROOT="$fixture_root" "$AUDIT_REPORT" >"$tmpdir/$label-audit.json"
-  HEPTA_REPO_ROOT="$fixture_root" \
-    HEPTA_CONTROLLED_LIVE_AUDIT_JSON="$tmpdir/$label-audit.json" \
-    "$DENIAL_REPORT" >"$tmpdir/$label-denial.json"
-  HEPTA_REPO_ROOT="$fixture_root" \
-    HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/$label-denial.json" \
-    "$PACKET_REPORT" >"$tmpdir/$label-packet.json"
-  HEPTA_REPO_ROOT="$fixture_root" \
-    HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON="$tmpdir/$label-packet.json" \
-    "$NONSEND_REPORT" >"$tmpdir/$label-nonsend.json"
-  HEPTA_REPO_ROOT="$fixture_root" \
-    HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/$label-denial.json" \
-    HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_NONSEND_JSON="$tmpdir/$label-nonsend.json" \
-    "$PLAN_REPORT" >"$tmpdir/$label-plan.json"
-  HEPTA_REPO_ROOT="$fixture_root" \
-    HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_PLAN_JSON="$tmpdir/$label-plan.json" \
-    "$INDEX_REPORT" >"$tmpdir/$label-index.json"
+  local report_id
+  for report_id in "${DYNAMIC_IDS[@]}"; do
+    HEPTA_REPO_ROOT="$fixture_root" "$TYPED_REPORT" "$report_id" \
+      >"$tmpdir/$label-${report_id#hepta-systems-controlled-live-}.json"
+  done
 }
 
 assert_chain() {
@@ -83,6 +54,19 @@ assert_chain() {
   local satisfied_count="$5"
   local dirty_slot_state="$6"
   local dirty_slot_active="$7"
+  local report_file
+
+  for report_file in "$tmpdir/$label-"*.json; do
+    jq -e '
+      .runtime == "hepta"
+      and .product == "Hepta"
+      and .status == "ready_blocked"
+      and .production_authority_granted == false
+      and .write_authority_granted == false
+      and .controlled_live_cutover_ready == false
+      and (.side_effects | to_entries | all(.value == false))
+    ' "$report_file" >/dev/null
+  done
 
   jq -e \
     --arg boundary_state "$boundary_state" \
@@ -92,300 +76,148 @@ assert_chain() {
     --arg dirty_slot_state "$dirty_slot_state" \
     --argjson dirty_slot_active "$dirty_slot_active" \
     '
-    .status == "ready_blocked"
-    and .source_worktree_boundary_state == $boundary_state
-    and .source_dirty_worktree_boundary_tracked == $dirty_tracked
-    and .source_blocker_count == $active_count
-    and .stable_blocker_slot_count == 7
-    and .active_blocker_count == $active_count
-    and .satisfied_entry_count == $satisfied_count
-    and .required_evidence_count == $active_count
-    and .operator_packet_preview_ready == true
-    and .controlled_live_cutover_ready == false
-    and .live_execution_allowed == false
-    and any(.blocker_readbacks[]; .source_blocker_id == "dirty_worktree_boundary"
-      and .current_state == $dirty_slot_state
-      and .active_blocker == $dirty_slot_active
-      and .evidence_required == $dirty_slot_active
-      and .blocks_cutover == $dirty_slot_active)
-    and (.side_effects | to_entries | all(.value == false))
-    ' "$tmpdir/$label-packet.json" >/dev/null
+      .source_worktree_boundary_state == $boundary_state
+      and .source_dirty_worktree_boundary_tracked == $dirty_tracked
+      and .source_blocker_count == $active_count
+      and .stable_blocker_slot_count == 7
+      and .active_blocker_count == $active_count
+      and .satisfied_entry_count == $satisfied_count
+      and .required_evidence_count == $active_count
+      and .operator_packet_preview_ready == true
+      and .live_execution_allowed == false
+      and any(.blocker_readbacks[];
+        .source_blocker_id == "dirty_worktree_boundary"
+        and .current_state == $dirty_slot_state
+        and .active_blocker == $dirty_slot_active
+        and .evidence_required == $dirty_slot_active
+        and .blocks_cutover == $dirty_slot_active)
+    ' "$tmpdir/$label-operator-packet-preview.json" >/dev/null
 
   jq -e \
     --arg boundary_state "$boundary_state" \
-    --argjson dirty_tracked "$dirty_tracked" \
     --argjson active_count "$active_count" \
     --argjson satisfied_count "$satisfied_count" \
     '
-    .status == "ready_blocked"
-    and .source_worktree_boundary_state == $boundary_state
-    and .source_dirty_worktree_boundary_tracked == $dirty_tracked
-    and .source_blocker_count == $active_count
-    and .source_active_blocker_count == $active_count
-    and .source_satisfied_entry_count == $satisfied_count
-    and .stable_blocker_slot_count == 7
-    and .non_send_readback_ready == true
-    and .controlled_live_cutover_ready == false
-    and .live_execution_allowed == false
-    and .packet_send_attempted == false
-    and .packet_persisted == false
-    and (.side_effects | to_entries | all(.value == false))
-    ' "$tmpdir/$label-nonsend.json" >/dev/null
+      .source_worktree_boundary_state == $boundary_state
+      and .source_blocker_count == $active_count
+      and .source_active_blocker_count == $active_count
+      and .source_satisfied_entry_count == $satisfied_count
+      and .stable_blocker_slot_count == 7
+      and .non_send_readback_ready == true
+      and .packet_send_attempted == false
+      and .packet_persisted == false
+      and .live_execution_allowed == false
+    ' "$tmpdir/$label-operator-packet-non-send-readback.json" >/dev/null
 
   jq -e \
     --arg boundary_state "$boundary_state" \
-    --argjson dirty_tracked "$dirty_tracked" \
     --argjson active_count "$active_count" \
     --argjson satisfied_count "$satisfied_count" \
     --arg dirty_slot_state "$dirty_slot_state" \
     --argjson dirty_slot_active "$dirty_slot_active" \
     '
-    .status == "ready_blocked"
-    and .source_worktree_boundary_state == $boundary_state
-    and .source_dirty_worktree_boundary_tracked == $dirty_tracked
-    and .source_blocker_count == $active_count
-    and .stable_blocker_slot_count == 7
-    and .active_blocker_count == $active_count
-    and .required_evidence_count == $active_count
-    and .satisfied_entry_count == $satisfied_count
-    and .evidence_collection_plan_ready == true
-    and .controlled_live_cutover_ready == false
-    and .live_execution_allowed == false
-    and .evidence_recorded_count == 0
-    and .approval_accepted == false
-    and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary"
-      and .current_state == $dirty_slot_state
-      and .active_blocker == $dirty_slot_active
-      and .evidence_required == $dirty_slot_active
-      and .blocks_cutover == $dirty_slot_active)
-    and (.side_effects | to_entries | all(.value == false))
-    ' "$tmpdir/$label-plan.json" >/dev/null
+      .source_worktree_boundary_state == $boundary_state
+      and .source_blocker_count == $active_count
+      and .stable_blocker_slot_count == 7
+      and .active_blocker_count == $active_count
+      and .required_evidence_count == $active_count
+      and .satisfied_entry_count == $satisfied_count
+      and .evidence_collection_plan_ready == true
+      and .evidence_recorded_count == 0
+      and .approval_accepted == false
+      and .live_execution_allowed == false
+      and any(.entries[];
+        .source_blocker_id == "dirty_worktree_boundary"
+        and .current_state == $dirty_slot_state
+        and .active_blocker == $dirty_slot_active
+        and .evidence_required == $dirty_slot_active
+        and .blocks_cutover == $dirty_slot_active)
+    ' "$tmpdir/$label-required-evidence-collection-plan.json" >/dev/null
 
   jq -e \
     --arg boundary_state "$boundary_state" \
-    --argjson dirty_tracked "$dirty_tracked" \
     --argjson active_count "$active_count" \
     --argjson satisfied_count "$satisfied_count" \
     --arg dirty_slot_state "$dirty_slot_state" \
     --argjson dirty_slot_active "$dirty_slot_active" \
     '
-    .status == "ready_blocked"
-    and .source_worktree_boundary_state == $boundary_state
-    and .source_dirty_worktree_boundary_tracked == $dirty_tracked
-    and .source_blocker_count == $active_count
-    and .stable_blocker_slot_count == 7
-    and .active_blocker_count == $active_count
-    and .missing_evidence_count == $active_count
-    and .satisfied_entry_count == $satisfied_count
-    and .readback_index_ready == true
-    and .controlled_live_cutover_ready == false
-    and .live_execution_allowed == false
-    and .evidence_recorded_count == 0
-    and .approval_accepted == false
-    and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary"
-      and .evidence_state == $dirty_slot_state
-      and .active_blocker == $dirty_slot_active
-      and .evidence_required == $dirty_slot_active
-      and .blocks_cutover == $dirty_slot_active)
-    and (.side_effects | to_entries | all(.value == false))
-    ' "$tmpdir/$label-index.json" >/dev/null
+      .source_worktree_boundary_state == $boundary_state
+      and .source_blocker_count == $active_count
+      and .stable_blocker_slot_count == 7
+      and .active_blocker_count == $active_count
+      and .missing_evidence_count == $active_count
+      and .satisfied_entry_count == $satisfied_count
+      and .readback_index_ready == true
+      and .evidence_recorded_count == 0
+      and .approval_accepted == false
+      and .live_execution_allowed == false
+      and any(.entries[];
+        .source_blocker_id == "dirty_worktree_boundary"
+        and .evidence_state == $dirty_slot_state
+        and .active_blocker == $dirty_slot_active
+        and .evidence_required == $dirty_slot_active
+        and .blocks_cutover == $dirty_slot_active)
+    ' "$tmpdir/$label-required-evidence-readback-index.json" >/dev/null
 }
 
 render_chain clean
 assert_chain clean clean false 6 1 satisfied false
-
 touch "$fixture_root/synthetic-dirty-boundary"
 render_chain dirty
 assert_chain dirty dirty true 7 0 missing true
 
-HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_READBACK_JSON="$tmpdir/clean-index.json" \
-  "$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-summary-report.sh" \
-  >"$tmpdir/clean-legacy-gap-summary.json"
-HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_READBACK_JSON="$tmpdir/dirty-index.json" \
-  "$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-summary-report.sh" \
-  >"$tmpdir/dirty-legacy-gap-summary.json"
-
 jq -e '
-  .status == "blocked"
-  and .source_readback_index_ready == true
-  and .source_index_entry_count == 7
-  and .source_missing_evidence_count == 6
-  and .lib_export_present == true
-  and .gap_entry_count == 7
-  and .missing_evidence_count == 6
-  and .gap_summary_ready == false
-  and .controlled_live_cutover_ready == false
-  and .live_execution_allowed == false
-  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .evidence_state == "satisfied" and .evidence_missing == false)
-  and (.side_effects | to_entries | all(.value == false))
-' "$tmpdir/clean-legacy-gap-summary.json" >/dev/null
-
-jq -e '
-  .status == "ready_blocked"
-  and .source_readback_index_ready == true
-  and .source_index_entry_count == 7
-  and .source_missing_evidence_count == 7
-  and .lib_export_present == true
-  and .gap_entry_count == 7
-  and .missing_evidence_count == 7
-  and .gap_summary_ready == true
-  and .controlled_live_cutover_ready == false
-  and .live_execution_allowed == false
-  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .evidence_state == "missing" and .evidence_missing == true)
-  and (.side_effects | to_entries | all(.value == false))
-' "$tmpdir/dirty-legacy-gap-summary.json" >/dev/null
-
-jq '.side_effects.provider_invoked = true' "$tmpdir/clean-denial.json" >"$tmpdir/invalid-denial.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/invalid-denial.json" \
-  "$PACKET_REPORT" >"$tmpdir/invalid-packet-result.json"
-jq -e '.status == "blocked" and .operator_packet_preview_ready == false and .controlled_live_cutover_ready == false and .live_execution_allowed == false' \
-  "$tmpdir/invalid-packet-result.json" >/dev/null
-
-jq '.side_effects.channel_send_performed = true' "$tmpdir/clean-packet.json" >"$tmpdir/invalid-packet.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON="$tmpdir/invalid-packet.json" \
-  "$NONSEND_REPORT" >"$tmpdir/invalid-nonsend-result.json"
-jq -e '.status == "blocked" and .non_send_readback_ready == false and .controlled_live_cutover_ready == false and .live_execution_allowed == false' \
-  "$tmpdir/invalid-nonsend-result.json" >/dev/null
-
-jq '.side_effects.package_or_release_written = true' "$tmpdir/clean-nonsend.json" >"$tmpdir/invalid-nonsend.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/clean-denial.json" \
-  HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_NONSEND_JSON="$tmpdir/invalid-nonsend.json" \
-  "$PLAN_REPORT" >"$tmpdir/invalid-plan-result.json"
-jq -e '.status == "blocked" and .evidence_collection_plan_ready == false and .controlled_live_cutover_ready == false and .live_execution_allowed == false' \
-  "$tmpdir/invalid-plan-result.json" >/dev/null
-
-jq '.side_effects.public_ga_promoted = true' "$tmpdir/clean-plan.json" >"$tmpdir/invalid-plan.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_PLAN_JSON="$tmpdir/invalid-plan.json" \
-  "$INDEX_REPORT" >"$tmpdir/invalid-index-result.json"
-jq -e '.status == "blocked" and .readback_index_ready == false and .controlled_live_cutover_ready == false and .live_execution_allowed == false' \
-  "$tmpdir/invalid-index-result.json" >/dev/null
-
-jq 'del(.side_effects.provider_invoked)' "$tmpdir/clean-denial.json" >"$tmpdir/missing-key-denial.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/missing-key-denial.json" \
-  "$PACKET_REPORT" >"$tmpdir/missing-key-packet-result.json"
-jq -e '.status == "blocked" and .operator_packet_preview_ready == false and .controlled_live_cutover_ready == false and .live_execution_allowed == false' \
-  "$tmpdir/missing-key-packet-result.json" >/dev/null
-
-jq '.side_effects = {}' "$tmpdir/clean-packet.json" >"$tmpdir/empty-side-effects-packet.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON="$tmpdir/empty-side-effects-packet.json" \
-  "$NONSEND_REPORT" >"$tmpdir/empty-side-effects-nonsend-result.json"
-jq -e '.status == "blocked" and .non_send_readback_ready == false and .controlled_live_cutover_ready == false and .live_execution_allowed == false' \
-  "$tmpdir/empty-side-effects-nonsend-result.json" >/dev/null
-
-jq '.source_dirty_worktree_boundary_tracked = true' "$tmpdir/clean-denial.json" >"$tmpdir/mismatched-denial-boundary.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/mismatched-denial-boundary.json" \
-  "$PACKET_REPORT" >"$tmpdir/mismatched-boundary-packet-result.json"
-jq -e '.status == "blocked" and .operator_packet_preview_ready == false' \
-  "$tmpdir/mismatched-boundary-packet-result.json" >/dev/null
-
-jq '.stable_blocker_slot_count = 8' "$tmpdir/clean-packet.json" >"$tmpdir/mismatched-packet-slots.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON="$tmpdir/mismatched-packet-slots.json" \
-  "$NONSEND_REPORT" >"$tmpdir/mismatched-slots-nonsend-result.json"
-jq -e '.status == "blocked" and .non_send_readback_ready == false' \
-  "$tmpdir/mismatched-slots-nonsend-result.json" >/dev/null
-
-jq '.source_worktree_boundary_state = "dirty"' "$tmpdir/clean-nonsend.json" >"$tmpdir/mismatched-nonsend-boundary.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/clean-denial.json" \
-  HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_NONSEND_JSON="$tmpdir/mismatched-nonsend-boundary.json" \
-  "$PLAN_REPORT" >"$tmpdir/mismatched-boundary-plan-result.json"
-jq -e '.status == "blocked" and .evidence_collection_plan_ready == false' \
-  "$tmpdir/mismatched-boundary-plan-result.json" >/dev/null
-
-jq '.stable_blocker_slot_count = 8' "$tmpdir/clean-plan.json" >"$tmpdir/mismatched-plan-slots.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_PLAN_JSON="$tmpdir/mismatched-plan-slots.json" \
-  "$INDEX_REPORT" >"$tmpdir/mismatched-slots-index-result.json"
-jq -e '.status == "blocked" and .readback_index_ready == false' \
-  "$tmpdir/mismatched-slots-index-result.json" >/dev/null
-
-jq -e '
-  .stable_blocker_slot_count == 7
+  .typed_pair_count == 17
+  and .dynamic_worktree_pair_count == 6
+  and .stable_blocker_slot_count == 7
   and .clean_active_blocker_count == 6
   and .dirty_active_blocker_count == 7
-  and (.migrated_intake_pairs | length) == 4
-  and (.remaining_gap_and_boundary_pairs | length) == 9
+  and (.static_conservative_gap_and_boundary_pairs | length) == 9
   and .state_contract.controlled_live_cutover_ready == false
   and .state_contract.live_execution_allowed == false
-  and .state_contract.provider_or_model_invocation_allowed == false
-  and .state_contract.channel_send_allowed == false
-  and .state_contract.release_or_public_ga_allowed == false
-  and .legacy_payloads_preserved_in_place == true
+  and .legacy_payloads_preserved_in_place == false
+  and .retired_shell_body_count == 46
   and .service_or_external_mutation_allowed == false
 ' "$LEDGER" >/dev/null
+jq -e '
+  .typed_pair_count == 17
+  and .dynamic_worktree_pair_count == 6
+  and .retired_pair_payload_count == 34
+  and .retired_supplemental_payload_count == 12
+  and .retired_shell_body_count == 46
+  and .legacy_payloads_preserved_in_place == false
+  and .service_or_external_mutation_allowed == false
+' "$IMPACT" >/dev/null
 
-base_rc="$(jq -r '.base_rc' "$LEDGER")"
-git -C "$ROOT" cat-file -e "$base_rc^{commit}" || fail "missing ledger base RC commit: $base_rc"
+jq -e '
+  ([.pairs[] | select(.id | startswith("hepta-systems-controlled")) | select(.template == "typed_rust_report_v1")] | length) == 17
+  and ([.supplemental_payloads[] | select(.path | test("hepta-systems-controlled-live-(operator-packet-(preview|non-send-readback)|readiness-(audit|denial-readback-index)|required-evidence-(collection-plan|readback-index))\\.(gate|report)$"))] | length) == 0
+' "$SPEC_FILE" >/dev/null
 
-for pair_id in "${PAIR_IDS[@]}"; do
-  spec="$(jq -cer --arg id "$pair_id" '.pairs[] | select(.id == $id)' "$SPEC_FILE")" || fail "missing pair spec: $pair_id"
-  migration="$(jq -cer --arg id "$pair_id" '.migrated_pairs[] | select(.id == $id)' "$IMPACT")" || fail "missing impact migration: $pair_id"
-  source_report="$(jq -r '.source_report' <<<"$spec")"
-  report_implementation="$(jq -r '.report_implementation' <<<"$spec")"
-  gate_implementation="$(jq -r '.gate_implementation' <<<"$spec")"
-  expected_report="$(jq -r '.v2_report' <<<"$migration")"
-  expected_gate="$(jq -r '.v2_gate' <<<"$migration")"
-  [[ "$source_report" == "$report_implementation" ]] || fail "pair source/report implementation mismatch: $pair_id"
-  [[ "$report_implementation" == "$expected_report" ]] || fail "pair does not select impact-ledger v2 report: $pair_id"
-  [[ "$gate_implementation" == "$expected_gate" ]] || fail "pair does not select impact-ledger v2 gate: $pair_id"
-  [[ "$(shasum -a 256 "$COMPAT_ROOT/$report_implementation" | awk '{print $1}')" == "$(jq -r '.report_implementation_sha256' <<<"$spec")" ]] \
-    || fail "v2 report hash mismatch: $pair_id"
-  [[ "$(shasum -a 256 "$COMPAT_ROOT/$gate_implementation" | awk '{print $1}')" == "$(jq -r '.gate_implementation_sha256' <<<"$spec")" ]] \
-    || fail "v2 gate hash mismatch: $pair_id"
-  for legacy_key in legacy_report legacy_gate; do
-    legacy_path="$(jq -r --arg key "$legacy_key" '.[$key]' <<<"$migration")"
-    [[ "$legacy_path" == scripts/lib/hepta-gate-pair-compat-v1/* ]] || fail "invalid legacy path for $pair_id: $legacy_path"
-    base_blob="$(git -C "$ROOT" rev-parse "$base_rc:$legacy_path")" || fail "legacy payload missing from base RC: $legacy_path"
-    legacy_blob="$tmpdir/legacy-$(basename "$legacy_path")"
-    "$PAYLOAD_BUNDLE" --legacy-blob-to "$legacy_path" "$legacy_blob"
-    current_blob="$(git -C "$ROOT" hash-object "$legacy_blob")"
-    [[ "$current_blob" == "$base_blob" ]] || fail "legacy payload changed since base RC: $legacy_path"
-  done
+for report_id in "${DYNAMIC_IDS[@]}"; do
+  HEPTA_REPO_ROOT="$fixture_root" "$TYPED_REPORT" "$report_id" | jq -S . \
+    >"$tmpdir/direct-${report_id#hepta-systems-controlled-live-}.json"
+  HEPTA_REPO_ROOT="$fixture_root" "$PAIR_RUNNER" report "$report_id" | jq -S . \
+    >"$tmpdir/pair-${report_id#hepta-systems-controlled-live-}.json"
+  cmp "$tmpdir/direct-${report_id#hepta-systems-controlled-live-}.json" \
+    "$tmpdir/pair-${report_id#hepta-systems-controlled-live-}.json" \
+    || fail "typed pair parity mismatch: $report_id"
 done
 
-HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/clean-denial.json" "$PACKET_REPORT" | jq -S . >"$tmpdir/direct-packet.json"
-HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/clean-denial.json" "$ROOT/scripts/hepta-systems-controlled-live-operator-packet-preview-report.sh" | jq -S . >"$tmpdir/pair-packet.json"
-cmp "$tmpdir/direct-packet.json" "$tmpdir/pair-packet.json" || fail "packet report pair parity mismatch"
-
-HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON="$tmpdir/clean-packet.json" "$NONSEND_REPORT" | jq -S . >"$tmpdir/direct-nonsend.json"
-HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON="$tmpdir/clean-packet.json" "$ROOT/scripts/hepta-systems-controlled-live-operator-packet-non-send-readback-report.sh" | jq -S . >"$tmpdir/pair-nonsend.json"
-cmp "$tmpdir/direct-nonsend.json" "$tmpdir/pair-nonsend.json" || fail "non-send report pair parity mismatch"
-
-HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/clean-denial.json" HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_NONSEND_JSON="$tmpdir/clean-nonsend.json" "$PLAN_REPORT" | jq -S . >"$tmpdir/direct-plan.json"
-HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/clean-denial.json" HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_NONSEND_JSON="$tmpdir/clean-nonsend.json" "$ROOT/scripts/hepta-systems-controlled-live-required-evidence-collection-plan-report.sh" | jq -S . >"$tmpdir/pair-plan.json"
-cmp "$tmpdir/direct-plan.json" "$tmpdir/pair-plan.json" || fail "evidence plan report pair parity mismatch"
-
-HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_PLAN_JSON="$tmpdir/clean-plan.json" "$INDEX_REPORT" | jq -S . >"$tmpdir/direct-index.json"
-HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_PLAN_JSON="$tmpdir/clean-plan.json" "$ROOT/scripts/hepta-systems-controlled-live-required-evidence-readback-index-report.sh" | jq -S . >"$tmpdir/pair-index.json"
-cmp "$tmpdir/direct-index.json" "$tmpdir/pair-index.json" || fail "evidence index report pair parity mismatch"
-
-jq -n '
-  {
-    status:"ready",
-    schema_version:"hepta_controlled_live_v2_propagation_self_test_v1",
-    migrated_pair_count:4,
-    remaining_pair_count:9,
-    stable_blocker_slot_count:7,
-    clean_active_blocker_count:6,
-    dirty_active_blocker_count:7,
-    clean_dirty_worktree_slot_state:"satisfied",
-    dirty_dirty_worktree_slot_state:"missing",
-    pair_report_parity:true,
-    remaining_gap_family_clean_state:"conservatively_blocked",
-    invalid_upstream_side_effects_fail_closed:true,
-    missing_side_effect_keys_fail_closed:true,
-    mismatched_boundary_metadata_fail_closed:true,
-    legacy_payload_blobs_preserved:true,
-    controlled_live_cutover_ready:false,
-    live_execution_allowed:false,
-    external_side_effects_performed:false
-  }
-'
+jq -n '{
+  status:"ready",
+  schema_version:"hepta_controlled_live_v2_typed_propagation_self_test_v1",
+  typed_pair_count:17,
+  dynamic_worktree_pair_count:6,
+  static_conservative_gap_and_boundary_pair_count:9,
+  stable_blocker_slot_count:7,
+  clean_active_blocker_count:6,
+  dirty_active_blocker_count:7,
+  pair_report_parity:true,
+  source_drift_negative_tests:"rust_focused",
+  legacy_payload_blobs_preserved:false,
+  retired_shell_body_count:46,
+  controlled_live_cutover_ready:false,
+  live_execution_allowed:false,
+  external_side_effects_performed:false
+}'

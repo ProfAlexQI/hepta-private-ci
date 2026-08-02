@@ -2,16 +2,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-AUDIT_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report"
-DENIAL_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report"
+TYPED_REPORT="$ROOT/scripts/hepta-typed-compat-report"
+AUDIT_ID="hepta-systems-controlled-live-readiness-audit"
+DENIAL_ID="hepta-systems-controlled-live-readiness-denial-readback-index"
 
 fail() {
   printf 'hepta-controlled-live-worktree-boundary-v2-self-test: FAIL: %s\n' "$1" >&2
   exit 1
 }
 
-[[ -x "$AUDIT_REPORT" ]] || fail "missing executable v2 audit report: $AUDIT_REPORT"
-[[ -x "$DENIAL_REPORT" ]] || fail "missing executable v2 denial report: $DENIAL_REPORT"
+[[ -x "$TYPED_REPORT" ]] || fail "missing typed compatibility report runner: $TYPED_REPORT"
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 
@@ -19,22 +19,15 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 fixture_root="$tmpdir/repo"
 mkdir -p "$fixture_root"
-
-for source_dir in scripts codex-rs docs plugins apps; do
-  ln -s "$ROOT/$source_dir" "$fixture_root/$source_dir"
-done
-
 git -C "$fixture_root" init -q
-git -C "$fixture_root" config user.name "Hepta synthetic fixture"
-git -C "$fixture_root" config user.email "hepta-fixture@invalid"
-git -C "$fixture_root" add scripts codex-rs docs plugins apps
-git -C "$fixture_root" commit -qm "Create controlled-live boundary fixture"
 
-HEPTA_REPO_ROOT="$fixture_root" "$AUDIT_REPORT" >"$tmpdir/clean-audit.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_AUDIT_JSON="$tmpdir/clean-audit.json" \
-  "$DENIAL_REPORT" >"$tmpdir/clean-denial.json"
+render_pair() {
+  local label="$1"
+  HEPTA_REPO_ROOT="$fixture_root" "$TYPED_REPORT" "$AUDIT_ID" >"$tmpdir/$label-audit.json"
+  HEPTA_REPO_ROOT="$fixture_root" "$TYPED_REPORT" "$DENIAL_ID" >"$tmpdir/$label-denial.json"
+}
 
+render_pair clean
 jq -e '
   .status == "ready_blocked"
   and .schema_version == "controlled_live_readiness_audit_v2"
@@ -50,8 +43,10 @@ jq -e '
   and .live_execution_allowed == false
   and .activation_allowed == false
   and all(.blockers[]; .id != "dirty_worktree_boundary")
+  and .production_authority_granted == false
+  and .write_authority_granted == false
+  and (.side_effects | to_entries | all(.value == false))
 ' "$tmpdir/clean-audit.json" >/dev/null
-
 jq -e '
   .status == "ready_blocked"
   and .source_worktree_boundary_state == "clean"
@@ -63,19 +58,19 @@ jq -e '
   and .readback_index_ready == true
   and .controlled_live_cutover_ready == false
   and .ready_for_live_execution == false
-  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .current_state == "satisfied" and .active_blocker == false and .blocks_cutover == false)
+  and any(.entries[];
+    .source_blocker_id == "dirty_worktree_boundary"
+    and .current_state == "satisfied"
+    and .active_blocker == false
+    and .evidence_required == false
+    and .blocks_cutover == false)
 ' "$tmpdir/clean-denial.json" >/dev/null
 
 touch "$fixture_root/synthetic-dirty-boundary"
-HEPTA_REPO_ROOT="$fixture_root" "$AUDIT_REPORT" >"$tmpdir/dirty-audit.json"
-HEPTA_REPO_ROOT="$fixture_root" \
-  HEPTA_CONTROLLED_LIVE_AUDIT_JSON="$tmpdir/dirty-audit.json" \
-  "$DENIAL_REPORT" >"$tmpdir/dirty-denial.json"
-
+render_pair dirty
 jq -e '
   .status == "ready_blocked"
   and .schema_version == "controlled_live_readiness_audit_v2"
-  and .git_status_source == "actual_repository"
   and .git_status_entry_count == 1
   and .git_untracked_count == 1
   and .git_tracked_change_count == 0
@@ -89,8 +84,10 @@ jq -e '
   and .live_execution_allowed == false
   and .activation_allowed == false
   and any(.blockers[]; .id == "dirty_worktree_boundary")
+  and .production_authority_granted == false
+  and .write_authority_granted == false
+  and (.side_effects | to_entries | all(.value == false))
 ' "$tmpdir/dirty-audit.json" >/dev/null
-
 jq -e '
   .status == "ready_blocked"
   and .source_worktree_boundary_state == "dirty"
@@ -102,29 +99,22 @@ jq -e '
   and .readback_index_ready == true
   and .controlled_live_cutover_ready == false
   and .ready_for_live_execution == false
-  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .current_state == "missing" and .active_blocker == true and .blocks_cutover == true)
+  and any(.entries[];
+    .source_blocker_id == "dirty_worktree_boundary"
+    and .current_state == "missing"
+    and .active_blocker == true
+    and .evidence_required == true
+    and .blocks_cutover == true)
 ' "$tmpdir/dirty-denial.json" >/dev/null
 
-jq -n '
-  {
-    status:"ready",
-    schema_version:"hepta_controlled_live_worktree_boundary_v2_self_test",
-    clean_fixture:{
-      audit_ready:true,
-      active_blocker_count:6,
-      dirty_worktree_blocker_present:false,
-      cutover_ready:false,
-      live_execution_allowed:false
-    },
-    dirty_fixture:{
-      audit_ready:true,
-      active_blocker_count:7,
-      dirty_worktree_blocker_present:true,
-      cutover_ready:false,
-      live_execution_allowed:false
-    },
-    stable_readback_slot_count:7,
-    repository_state_fabricated:false,
-    external_side_effects_performed:false
-  }
-  '
+jq -n '{
+  status:"ready",
+  schema_version:"hepta_controlled_live_worktree_boundary_v2_typed_self_test_v1",
+  observation_mode:"single_cli_git_observation_explicit_runtime_source_chain",
+  clean_fixture:{active_blocker_count:6,satisfied_slot_count:1},
+  dirty_fixture:{active_blocker_count:7,satisfied_slot_count:0},
+  stable_readback_slot_count:7,
+  production_authority_granted:false,
+  write_authority_granted:false,
+  external_side_effects_performed:false
+}'

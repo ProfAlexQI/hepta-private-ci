@@ -1,17 +1,22 @@
 {
-  "schema_version": "hepta_controlled_live_v2_propagation_ledger_v1",
-  "base_rc": "a26ea104a7268c2f5d971092fcbb7e07e2d6485c",
-  "migration": "clean_worktree_boundary_v2_propagation",
+  "schema_version": "hepta_controlled_live_typed_propagation_ledger_v2",
+  "migration": "typed_rust_clean_worktree_boundary_v2_propagation",
+  "typed_pair_count": 17,
+  "dynamic_worktree_pair_count": 6,
   "stable_blocker_slot_count": 7,
   "clean_active_blocker_count": 6,
+  "clean_satisfied_slot_count": 1,
   "dirty_active_blocker_count": 7,
-  "migrated_intake_pairs": [
+  "dirty_satisfied_slot_count": 0,
+  "dynamic_worktree_pairs": [
+    "hepta-systems-controlled-live-readiness-audit",
+    "hepta-systems-controlled-live-readiness-denial-readback-index",
     "hepta-systems-controlled-live-operator-packet-preview",
     "hepta-systems-controlled-live-operator-packet-non-send-readback",
     "hepta-systems-controlled-live-required-evidence-collection-plan",
     "hepta-systems-controlled-live-required-evidence-readback-index"
   ],
-  "remaining_gap_and_boundary_pairs": [
+  "static_conservative_gap_and_boundary_pairs": [
     "hepta-systems-controlled-live-required-evidence-gap-summary",
     "hepta-systems-controlled-live-required-evidence-gap-diff-view",
     "hepta-systems-controlled-live-required-evidence-gap-operator-readback",
@@ -22,7 +27,7 @@
     "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-rollback-rehearsal-boundary-readback",
     "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback"
   ],
-  "remaining_reason": "The nine deeper gap, attachment, transport, credential, rollback, and kill-switch projections form a separate boundary-contract family. They retain conservative legacy blocking until every previous/current-state and closed-boundary invariant can be migrated and tested atomically.",
+  "static_conservative_policy": "The nine deeper gap and boundary reports remain typed, read-only, and conservatively expose seven missing evidence slots independent of clean-worktree observation.",
   "state_contract": {
     "clean_dirty_worktree_slot": {
       "current_state": "satisfied",
@@ -38,10 +43,16 @@
     },
     "controlled_live_cutover_ready": false,
     "live_execution_allowed": false,
+    "production_authority_granted": false,
+    "write_authority_granted": false,
     "provider_or_model_invocation_allowed": false,
     "channel_send_allowed": false,
     "release_or_public_ga_allowed": false
   },
-  "legacy_payloads_preserved_in_place": true,
+  "legacy_payloads_preserved_in_place": false,
+  "shell_snapshots_preserved": false,
+  "retired_pair_payload_count": 34,
+  "retired_supplemental_payload_count": 12,
+  "retired_shell_body_count": 46,
   "service_or_external_mutation_allowed": false
 }
