@@ -39,7 +39,7 @@ scripts/hepta-native-robrix-upstream-sync-check-v2.sh --json --strict
 scripts/hepta-native-product-shell-gate-v2.sh --json
 scripts/hepta-ui-light-glass-token-sync.rb --check
 scripts/hepta-native-feature-matrix-gate.sh --output /tmp/native-features.json
-scripts/hepta-native-current-package-gate.sh --build --output /tmp/native-package.json
+scripts/hepta-native-current-package-gate.sh --build --bootstrap-tools --output /tmp/native-package.json
 scripts/hepta-ui-native-window-verifier-v1 \
   --package-report /tmp/native-package.json \
   --run-nonce 11111111-1111-1111-1111-111111111111 \

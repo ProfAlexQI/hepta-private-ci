@@ -197,7 +197,9 @@ fi
 
 package_rc=0
 package_args=(--output "$PACKAGE_REPORT" --target-dir "$TARGET_DIR")
-if [[ "$VERIFY_PACKAGE" == "1" ]]; then package_args+=(--build --stage-dir "$EVIDENCE_DIR/native-current-package"); fi
+if [[ "$VERIFY_PACKAGE" == "1" ]]; then
+  package_args+=(--build --bootstrap-tools --stage-dir "$EVIDENCE_DIR/native-current-package")
+fi
 scripts/hepta-native-current-package-gate.sh "${package_args[@]}" || package_rc=$?
 
 window_rc=125

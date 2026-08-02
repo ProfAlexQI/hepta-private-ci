@@ -211,6 +211,7 @@ grep -Fq -- 'write_report_atomically()' scripts/hepta-ui-current-readiness.sh
 grep -Fq -- 'current_run_producer_not_completed' scripts/hepta-ui-current-readiness.sh
 grep -Fq -- 'source_binding_at_publish:$final_binding[0]' scripts/hepta-ui-current-readiness.sh
 grep -Fq -- 'source_changed_or_became_dirty_before_atomic_publish' scripts/hepta-ui-current-readiness.sh
+grep -Fq -- 'package_args+=(--build --bootstrap-tools --stage-dir "$EVIDENCE_DIR/native-current-package")' scripts/hepta-ui-current-readiness.sh
 if grep -Fq -- ': >"$current_run_report"' scripts/hepta-ui-current-readiness.sh; then
   echo "current readiness still truncates reusable child receipt paths in place" >&2
   exit 1
