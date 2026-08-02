@@ -9,7 +9,11 @@ use anyhow::anyhow;
 
 pub const DEFAULT_OVERALL_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_PAGES: usize = 100;
-pub const MAX_ITEMS: usize = 1_024;
+/// Maximum catalog size accepted across all pages of one discovery request.
+///
+/// This matches the upstream MCP catalog limit while retaining a hard,
+/// fail-closed aggregate bound for canonical and compatibility clients.
+pub const MAX_ITEMS: usize = 2_048;
 pub const MAX_CURSOR_BYTES: usize = 64 * 1_024;
 
 /// Collects an MCP paginated response under one shared, fail-closed budget.
@@ -89,6 +93,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn accepts_exact_item_budget_across_pages() {
+        let mut page = 0;
+        let items = collect_paginated("tools/list", None, |_| {
+            page += 1;
+            async move {
+                Ok((
+                    vec![page as u16; MAX_ITEMS / 2],
+                    (page == 1).then(|| "next".to_string()),
+                ))
+            }
+        })
+        .await
+        .expect("exact item budget");
+
+        assert_eq!(items.len(), MAX_ITEMS);
+        assert!(items[..MAX_ITEMS / 2].iter().all(|item| *item == 1));
+        assert!(items[MAX_ITEMS / 2..].iter().all(|item| *item == 2));
+    }
+
+    #[tokio::test]
     async fn rejects_repeated_and_oversized_cursors() {
         let repeated = collect_paginated("tools/list", None, |_| async {
             Ok((Vec::<u8>::new(), Some("same".to_string())))
@@ -126,5 +150,23 @@ mod tests {
         .await
         .expect_err("item budget");
         assert!(items.to_string().contains("item pagination budget"));
+    }
+
+    #[tokio::test]
+    async fn rejects_single_item_past_budget_across_pages() {
+        let mut page = 0;
+        let error = collect_paginated("resources/list", None, |_| {
+            page += 1;
+            async move {
+                Ok(match page {
+                    1 => (vec![0_u8; MAX_ITEMS], Some("next".to_string())),
+                    _ => (vec![0_u8], None),
+                })
+            }
+        })
+        .await
+        .expect_err("single item beyond aggregate budget");
+
+        assert!(error.to_string().contains("2048-item pagination budget"));
     }
 }
