@@ -116,7 +116,7 @@ script_mod! {
                     spacing: 12.0
 
                     credentials_column := View {
-                        width: 275
+                        width: 260
                         height: Fit
                         flow: Down
                         align: Align{x: 0.5, y: 0.0}
@@ -136,7 +136,7 @@ script_mod! {
                         }
 
                         user_id_input := RobrixTextInput {
-                            width: 275, height: Fit{min: FitBound.Abs(44)}
+                            width: 260, height: Fit{min: FitBound.Abs(44)}
                             flow: Right, // do not wrap
                             padding: 10,
                             empty_text: "User ID"
@@ -146,7 +146,7 @@ script_mod! {
                         }
 
                         View {
-                            width: 275, height: Fit{min: FitBound.Abs(44)}
+                            width: 260, height: Fit{min: FitBound.Abs(44)}
                             flow: Overlay
                             align: Align{x: 1.0, y: 0.5}
 
@@ -203,11 +203,11 @@ script_mod! {
                         }
 
                         View {
-                            width: 275, height: Fit,
+                            width: 260, height: Fit,
                             flow: Down,
 
                             homeserver_input := RobrixTextInput {
-                                width: 275, height: Fit{min: FitBound.Abs(44)},
+                                width: 260, height: Fit{min: FitBound.Abs(44)},
                                 flow: Right, // do not wrap
                                 padding: Inset{top: 5, bottom: 5, left: 10, right: 10}
                                 empty_text: "matrix.org"
@@ -221,7 +221,7 @@ script_mod! {
                             }
 
                             View {
-                                width: 275,
+                                width: 260,
                                 height: Fit,
                                 flow: Right,
                                 padding: Inset{top: 3, left: 2, right: 2}
@@ -245,7 +245,7 @@ script_mod! {
                         }
 
                         login_button := RobrixIconButton {
-                            width: 275,
+                            width: 260,
                             height: 44
                             padding: 10
                             margin: Inset{top: 2, bottom: 2}
