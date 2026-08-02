@@ -1,4 +1,5 @@
 name: Bazel Windows MSVC
+run-name: Bazel Windows MSVC @ ${{ github.ref_name }}
 
 on:
   pull_request:
