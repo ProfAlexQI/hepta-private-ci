@@ -56,7 +56,7 @@ if [[ "$CONTRACT_ONLY" == true ]]; then
         build_wrapper:"scripts/hepta-native-mobile-cargo",
         receipt_kind:"hepta-native-ios-simulator-smoke-receipt",
         identity:{bundle_identifier:$bundle_identifier,display_name:$product_name,name:$product_name,executable:$executable},
-        requirements:{clean_committed_source:true,already_booted_simulator:true,current_head_embedded:true,stale_bundle_removed:true,compiled_asset_catalog_ready:true,artifact_sha256:true,screenshot_sha256:true},
+        requirements:{clean_committed_source:true,already_booted_simulator:true,current_head_embedded:true,stale_bundle_removed:true,compiled_asset_catalog_ready:true,artifact_sha256:true,screenshot_sha256:true,visible_screenshot_content:true},
         forbidden_actions:{runtime_download:false,simulator_create:false,account_create:false,code_sign:false,real_device_contact:false,upload:false},
         external_side_effects_performed:false
       }
@@ -316,8 +316,23 @@ if ! awk -v pid="$LAUNCH_PID" -v bundle="$BUNDLE_IDENTIFIER" '
   exit 1
 fi
 
-xcrun simctl io "$DEVICE_UDID" screenshot --type=png "$SCREENSHOT_PATH" >/dev/null
-[[ -s "$SCREENSHOT_PATH" ]] || { echo "error: simctl did not create a screenshot" >&2; exit 1; }
+VISUAL_CONTENT_REPORT='{}'
+SCREENSHOT_ATTEMPTS=0
+for attempt in $(seq 1 30); do
+  SCREENSHOT_ATTEMPTS="$attempt"
+  xcrun simctl io "$DEVICE_UDID" screenshot --type=png "$SCREENSHOT_PATH" >/dev/null
+  if [[ -s "$SCREENSHOT_PATH" ]] \
+    && VISUAL_CONTENT_REPORT="$($ROOT_DIR/scripts/hepta-image-content-probe --image "$SCREENSHOT_PATH" 2>/dev/null)" \
+    && jq -e '.ready == true' >/dev/null <<<"$VISUAL_CONTENT_REPORT"; then
+    break
+  fi
+  sleep 1
+done
+if ! jq -e '.ready == true' >/dev/null <<<"$VISUAL_CONTENT_REPORT"; then
+  echo "error: simulator did not render a non-blank UI within $SCREENSHOT_ATTEMPTS screenshot attempts" >&2
+  exit 1
+fi
+VISUAL_CONTENT_REPORT="$(jq --argjson attempts "$SCREENSHOT_ATTEMPTS" '. + {capture_attempts:$attempts}' <<<"$VISUAL_CONTENT_REPORT")"
 SCREENSHOT_WIDTH="$(sips -g pixelWidth "$SCREENSHOT_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
 SCREENSHOT_HEIGHT="$(sips -g pixelHeight "$SCREENSHOT_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
 [[ "$SCREENSHOT_WIDTH" =~ ^[1-9][0-9]*$ && "$SCREENSHOT_HEIGHT" =~ ^[1-9][0-9]*$ ]] \
@@ -350,6 +365,7 @@ jq -n \
   --arg screenshot_sha256 "$SCREENSHOT_SHA256" \
   --argjson screenshot_width "$SCREENSHOT_WIDTH" \
   --argjson screenshot_height "$SCREENSHOT_HEIGHT" \
+  --argjson visual_content "$VISUAL_CONTENT_REPORT" \
   --arg bundle_identifier "$BUILT_IDENTIFIER" \
   --arg display_name "$BUILT_DISPLAY_NAME" \
   --arg bundle_name "$BUILT_BUNDLE_NAME" \
@@ -370,6 +386,7 @@ jq -n \
       device:$device,
       artifact:{path:$artifact_path,sha256:$artifact_sha256,format:"zip",stale_artifact_accepted:false},
       screenshot:{path:$screenshot_path,sha256:$screenshot_sha256,format:"png",width:$screenshot_width,height:$screenshot_height},
+      visual_content:$visual_content,
       bundle:{identifier:$bundle_identifier,display_name:$display_name,name:$bundle_name,executable:$executable},
       asset_catalog:$asset_catalog,
       launch:{ready:true,install_succeeded:true,launch_succeeded:true,pid:$launch_pid,output:$launch_output,app_container:$app_container},

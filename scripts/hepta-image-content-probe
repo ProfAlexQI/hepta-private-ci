@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE_PATH=""
+REPORT_PATH=""
+MIN_NON_BLACK_RATIO="0.02"
+MIN_LUMA_SPAN="48"
+MIN_LUMA_BUCKETS="4"
+
+usage() {
+  cat <<'EOF'
+usage: scripts/hepta-image-content-probe --image /path/to/image.png [options]
+
+Options:
+  --output /path/to/report.json
+  --min-non-black-ratio RATIO  default: 0.02
+  --min-luma-span VALUE        default: 48
+  --min-luma-buckets COUNT     default: 4
+
+Converts the image to a deterministic uncompressed BMP with macOS `sips`,
+samples the central viewport, and rejects blank/uniform frames. The JSON
+report is printed to stdout and optionally written to --output.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --image) IMAGE_PATH="${2:-}"; shift 2 ;;
+    --output) REPORT_PATH="${2:-}"; shift 2 ;;
+    --min-non-black-ratio) MIN_NON_BLACK_RATIO="${2:-}"; shift 2 ;;
+    --min-luma-span) MIN_LUMA_SPAN="${2:-}"; shift 2 ;;
+    --min-luma-buckets) MIN_LUMA_BUCKETS="${2:-}"; shift 2 ;;
+    --help|-h) usage; exit 0 ;;
+    *) echo "error: unknown argument: $1" >&2; usage >&2; exit 64 ;;
+  esac
+done
+
+[[ -n "$IMAGE_PATH" && -s "$IMAGE_PATH" ]] \
+  || { echo "error: --image must identify a non-empty image" >&2; exit 64; }
+for command in sips ruby; do
+  command -v "$command" >/dev/null 2>&1 \
+    || { echo "error: $command is required" >&2; exit 2; }
+done
+
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-image-content.XXXXXX")"
+trap 'rm -rf "$TMP_DIR"' EXIT
+BMP_PATH="$TMP_DIR/probe.bmp"
+sips -s format bmp "$IMAGE_PATH" --out "$BMP_PATH" >/dev/null
+
+REPORT="$(ruby -rjson -rdigest -e '
+  image_path, bmp_path, min_non_black, min_span, min_buckets = ARGV
+  min_non_black = Float(min_non_black)
+  min_span = Integer(min_span, 10)
+  min_buckets = Integer(min_buckets, 10)
+  data = File.binread(bmp_path)
+  abort "invalid BMP signature" unless data.byteslice(0, 2) == "BM".b
+  pixel_offset = data.byteslice(10, 4).unpack1("V")
+  width = data.byteslice(18, 4).unpack1("l<")
+  raw_height = data.byteslice(22, 4).unpack1("l<")
+  planes = data.byteslice(26, 2).unpack1("v")
+  bits_per_pixel = data.byteslice(28, 2).unpack1("v")
+  compression = data.byteslice(30, 4).unpack1("V")
+  abort "invalid BMP dimensions" unless width.positive? && !raw_height.zero?
+  abort "unsupported BMP plane count" unless planes == 1
+  abort "unsupported BMP depth" unless [24, 32].include?(bits_per_pixel)
+  abort "unsupported BMP compression" unless [0, 3].include?(compression)
+
+  height = raw_height.abs
+  top_down = raw_height.negative?
+  bytes_per_pixel = bits_per_pixel / 8
+  row_stride = ((width * bits_per_pixel + 31) / 32) * 4
+  expected_size = pixel_offset + row_stride * height
+  abort "truncated BMP payload" if data.bytesize < expected_size
+
+  x0 = (width * 0.05).floor
+  x1 = (width * 0.95).ceil
+  y0 = (height * 0.10).floor
+  y1 = (height * 0.90).ceil
+  step = [1, Math.sqrt(width * height / 100_000.0).floor].max
+  samples = 0
+  non_black = 0
+  luma_min = 255
+  luma_max = 0
+  buckets = {}
+  y = y0
+  while y < y1
+    stored_y = top_down ? y : (height - 1 - y)
+    x = x0
+    while x < x1
+      offset = pixel_offset + stored_y * row_stride + x * bytes_per_pixel
+      c0 = data.getbyte(offset)
+      c1 = data.getbyte(offset + 1)
+      c2 = data.getbyte(offset + 2)
+      sum = c0 + c1 + c2
+      luma = sum / 3
+      non_black += 1 if sum > 90
+      luma_min = luma if luma < luma_min
+      luma_max = luma if luma > luma_max
+      buckets[luma / 8] = true
+      samples += 1
+      x += step
+    end
+    y += step
+  end
+  abort "no pixels sampled" if samples.zero?
+
+  ratio = non_black.fdiv(samples)
+  span = luma_max - luma_min
+  bucket_count = buckets.length
+  ready = ratio >= min_non_black && span >= min_span && bucket_count >= min_buckets
+  puts JSON.pretty_generate(
+    schema_version: 1,
+    kind: "hepta-image-content-probe",
+    status: ready ? "ready" : "not_ready",
+    ready: ready,
+    image: {
+      path: File.expand_path(image_path),
+      sha256: Digest::SHA256.file(image_path).hexdigest,
+      width: width,
+      height: height
+    },
+    sample: {
+      pixels: samples,
+      central_horizontal_fraction: 0.90,
+      central_vertical_fraction: 0.80,
+      step: step,
+      non_black_pixels: non_black,
+      non_black_ratio: ratio,
+      luma_min: luma_min,
+      luma_max: luma_max,
+      luma_span: span,
+      luma_bucket_count: bucket_count
+    },
+    thresholds: {
+      min_non_black_ratio: min_non_black,
+      min_luma_span: min_span,
+      min_luma_buckets: min_buckets
+    }
+  )
+' "$IMAGE_PATH" "$BMP_PATH" "$MIN_NON_BLACK_RATIO" "$MIN_LUMA_SPAN" "$MIN_LUMA_BUCKETS")"
+
+if [[ -n "$REPORT_PATH" ]]; then
+  mkdir -p "$(dirname "$REPORT_PATH")"
+  printf '%s\n' "$REPORT" >"$REPORT_PATH"
+fi
+printf '%s\n' "$REPORT"
+ruby -rjson -e 'exit(JSON.parse(STDIN.read).fetch("ready") ? 0 : 1)' <<<"$REPORT"

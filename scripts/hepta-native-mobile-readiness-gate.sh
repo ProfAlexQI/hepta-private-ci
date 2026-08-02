@@ -114,6 +114,8 @@ if ruby -e '
       %q{xcrun simctl install},
       %q{xcrun simctl launch --terminate-running-process},
       %q{xcrun simctl io},
+      %q{scripts/hepta-image-content-probe},
+      %q{visual_content:$visual_content},
       %q{signing:{performed:false}},
       %q{ios_real_device_verified:false},
       %q{safe_area_verified:false},
@@ -331,6 +333,17 @@ if [[ -n "$IOS_SIMULATOR_RECEIPT" ]]; then
         and (.screenshot.sha256 | test("^[0-9a-f]{64}$"))
         and .screenshot.width > 0
         and .screenshot.height > 0
+        and .visual_content.schema_version == 1
+        and .visual_content.kind == "hepta-image-content-probe"
+        and .visual_content.status == "ready"
+        and .visual_content.ready == true
+        and .visual_content.image.sha256 == .screenshot.sha256
+        and .visual_content.image.width == .screenshot.width
+        and .visual_content.image.height == .screenshot.height
+        and .visual_content.sample.non_black_ratio >= .visual_content.thresholds.min_non_black_ratio
+        and .visual_content.sample.luma_span >= .visual_content.thresholds.min_luma_span
+        and .visual_content.sample.luma_bucket_count >= .visual_content.thresholds.min_luma_buckets
+        and (.visual_content.capture_attempts >= 1 and .visual_content.capture_attempts <= 30)
         and .bundle.identifier == "ai.hepta.nativeapp"
         and .bundle.display_name == "Hepta"
         and .bundle.name == "Hepta"
@@ -370,11 +383,19 @@ if [[ -n "$IOS_SIMULATOR_RECEIPT" ]]; then
     receipt_artifact_sha256="$(jq -r '.artifact.sha256' "$IOS_SIMULATOR_RECEIPT")"
     receipt_screenshot_path="$(jq -r '.screenshot.path' "$IOS_SIMULATOR_RECEIPT")"
     receipt_screenshot_sha256="$(jq -r '.screenshot.sha256' "$IOS_SIMULATOR_RECEIPT")"
+    receipt_visual_probe="$(scripts/hepta-image-content-probe --image "$receipt_screenshot_path" 2>/dev/null || true)"
     if [[ -s "$receipt_artifact_path" && -s "$receipt_screenshot_path" \
       && "$(shasum -a 256 "$receipt_artifact_path" | awk '{print $1}')" == "$receipt_artifact_sha256" \
       && "$(shasum -a 256 "$receipt_screenshot_path" | awk '{print $1}')" == "$receipt_screenshot_sha256" ]] \
       && ruby -e 'abort unless File.binread(ARGV.fetch(0), 4).start_with?("PK")' "$receipt_artifact_path" >/dev/null 2>&1 \
       && ruby -e 'abort unless File.binread(ARGV.fetch(0), 8) == "\x89PNG\r\n\x1a\n".b' "$receipt_screenshot_path" >/dev/null 2>&1 \
+      && jq -e --arg sha256 "$receipt_screenshot_sha256" '
+        .schema_version == 1
+        and .kind == "hepta-image-content-probe"
+        and .status == "ready"
+        and .ready == true
+        and .image.sha256 == $sha256
+      ' >/dev/null <<<"$receipt_visual_probe" \
       && verify_ios_simulator_artifact "$IOS_SIMULATOR_RECEIPT" "$receipt_artifact_path"; then
       ios_simulator_receipt_ready=true
       ios_simulator_receipt_status="ready"
