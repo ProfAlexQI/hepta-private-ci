@@ -18,7 +18,7 @@ if [[ -n "$internal_report_id" ]]; then
   export HEPTA_REPO_ROOT="${HEPTA_COMPAT_SOURCE_REPO_ROOT:-$ROOT}"
   set -- --internal-dirty-worktree-owner-decision-source
 fi
-export HEPTA_REPO_ROOT="${HEPTA_REPO_ROOT:-$ROOT}"
+export HEPTA_REPO_ROOT="${HEPTA_COMPAT_SOURCE_REPO_ROOT:-${HEPTA_REPO_ROOT:-$ROOT}}"
 binary="${HEPTA_TYPED_COMPAT_REPORT_BIN:-}"
 
 if [[ -n "$binary" ]]; then

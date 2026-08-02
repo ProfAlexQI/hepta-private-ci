@@ -119,7 +119,7 @@ verify() {
   local pair_count captured_count legacy_count declarative_count payload_count normalized_payload_count
   local normalized_effective_lines
   local registered_payload_count unregistered_count retained_entrypoint_count virtual_entrypoint_count
-  local normalized_virtual_entrypoint_count
+  local normalized_virtual_entrypoint_count expected_logical_virtual_entrypoint_count
   pair_count="$(jq '.pairs | length' "$registry")"
   captured_count="$(jq '[.pairs[] | select(.template == "captured_shell_compat_v1")] | length' "$registry")"
   legacy_count="$(jq '[.pairs[] | select(.template == "legacy_workgraph_projection_v1")] | length' "$registry")"
@@ -141,6 +141,10 @@ verify() {
   retained_entrypoint_count="$(jq -er '.retained_entrypoint_count' "$entrypoint_registry")"
   virtual_entrypoint_count="$(jq -er '.virtual_entrypoint_count' "$entrypoint_registry")"
   normalized_virtual_entrypoint_count="$(jq -er '.normalized_virtual_entrypoint_count' "$entrypoint_registry")"
+  expected_logical_virtual_entrypoint_count="$((2 * pair_count - retained_entrypoint_count))"
+  [[ "$expected_logical_virtual_entrypoint_count" -ge 0 && "$virtual_entrypoint_count" -eq "$expected_logical_virtual_entrypoint_count" ]] || {
+    echo "Hepta logical virtual entrypoint accounting drifted" >&2; return 1
+  }
 
   [[ "$pair_count" -le "$(jq -er '.ceilings.pair_count' "$CONTRACT")" \
     && "$captured_count" -le "$(jq -er '.ceilings.captured_shell_pair_count' "$CONTRACT")" \
@@ -166,6 +170,10 @@ verify() {
     and .ceilings.physical_entrypoint_count == .baselines.physical_entrypoint_count
     and .ceilings.virtual_entrypoint_count == .baselines.virtual_entrypoint_count
     and .ceilings.logical_virtual_entrypoint_count == .baselines.logical_virtual_entrypoint_count
+    and .ceilings.logical_virtual_entrypoint_count ==
+      (2 * .ceilings.pair_count - .ceilings.physical_entrypoint_count)
+    and .baselines.logical_virtual_entrypoint_count ==
+      (2 * .baselines.pair_count - .baselines.physical_entrypoint_count)
     and .floors.declarative_pair_count == .baselines.declarative_pair_count
     and .ceilings.normalized_effective_lines == .baselines.normalized_effective_lines
     and .decline_targets.next.pair_count <= .baselines.pair_count
@@ -174,8 +182,12 @@ verify() {
     and .decline_targets.next.logical_compatibility_payload_count < .baselines.logical_compatibility_payload_count
     and .decline_targets.next.normalized_effective_lines < .baselines.normalized_effective_lines
     and .decline_targets.next.physical_entrypoint_count < .baselines.physical_entrypoint_count
+    and .decline_targets.next.logical_virtual_entrypoint_count ==
+      (2 * .decline_targets.next.pair_count - .decline_targets.next.physical_entrypoint_count)
     and .decline_targets.next.declarative_pair_count > .baselines.declarative_pair_count
     and .decline_targets.terminal.pair_count < .decline_targets.next.pair_count
+    and .decline_targets.terminal.logical_virtual_entrypoint_count ==
+      (2 * .decline_targets.terminal.pair_count - .decline_targets.terminal.physical_entrypoint_count)
     and .decline_targets.terminal.normalized_effective_lines < .decline_targets.next.normalized_effective_lines
   ' "$CONTRACT" >/dev/null || {
     echo "Hepta gate compatibility monotonic ratchet contract drifted" >&2

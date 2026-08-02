@@ -2,15 +2,18 @@ use std::process::Command;
 use std::process::ExitCode;
 
 use hepta_runtime::ControlledLiveWorktreeObservation;
+use hepta_runtime::CurrentRealityCapabilityMatrixSources;
 use hepta_runtime::DirtyWorktreeObservation;
 use hepta_runtime::RETIRED_DIRTY_WORKTREE_COMPAT_REPORT_ID;
 use hepta_runtime::TYPED_COMPAT_REPORT_IDS;
 use hepta_runtime::is_controlled_live_typed_compat_report;
+use hepta_runtime::is_current_reality_typed_compat_report;
 use hepta_runtime::is_dirty_worktree_typed_compat_report;
 use hepta_runtime::is_plugin_typed_compat_report;
 use hepta_runtime::retired_dirty_worktree_owner_decision_source_report;
 use hepta_runtime::typed_compat_report;
 use hepta_runtime::typed_compat_report_with_controlled_live_worktree_observation;
+use hepta_runtime::typed_compat_report_with_current_reality_sources;
 use hepta_runtime::typed_compat_report_with_dirty_worktree_observation;
 use hepta_runtime::typed_compat_report_with_plugin_repo_root;
 
@@ -41,6 +44,8 @@ fn main() -> ExitCode {
         controlled_live_report(&id)
     } else if is_dirty_worktree_typed_compat_report(&id) {
         dirty_worktree_report(&id)
+    } else if is_current_reality_typed_compat_report(&id) {
+        current_reality_report(&id)
     } else if is_plugin_typed_compat_report(&id) {
         plugin_report(&id)
     } else {
@@ -57,6 +62,25 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn current_reality_report(
+    id: &str,
+) -> Result<serde_json::Value, hepta_runtime::TypedCompatReportError> {
+    let root = std::env::var_os("HEPTA_REPO_ROOT").ok_or_else(|| {
+        hepta_runtime::TypedCompatReportError::ContractViolation(
+            "current-reality compatibility report requires explicit HEPTA_REPO_ROOT".to_string(),
+        )
+    })?;
+    let status = git_status_porcelain_v1_z()?;
+    let observed = DirtyWorktreeObservation::from_porcelain_v1_z(&status)
+        .map_err(hepta_runtime::TypedCompatReportError::ContractViolation)?;
+    let sources = CurrentRealityCapabilityMatrixSources::from_repository_inputs(
+        std::path::Path::new(&root),
+        &observed,
+    )
+    .map_err(|error| hepta_runtime::TypedCompatReportError::ContractViolation(error.to_string()))?;
+    typed_compat_report_with_current_reality_sources(id, &sources)
 }
 
 fn plugin_report(id: &str) -> Result<serde_json::Value, hepta_runtime::TypedCompatReportError> {

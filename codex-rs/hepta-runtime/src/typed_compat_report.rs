@@ -40,6 +40,7 @@ pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
     "hepta-systems-controlled-live-required-evidence-gap-operator-readback",
     "hepta-systems-controlled-live-required-evidence-gap-summary",
     "hepta-systems-controlled-live-required-evidence-readback-index",
+    "hepta-systems-current-reality-capability-matrix",
     "hepta-systems-dirty-worktree-release-boundary-actionable-clean-worktree-strategy",
     "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-approval-acceptance-boundary-readback",
     "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-decision-checklist",
@@ -837,6 +838,27 @@ pub fn typed_compat_report_with_controlled_live_worktree_observation(
         .map_err(TypedCompatReportError::ContractViolation)
 }
 
+pub fn is_current_reality_typed_compat_report(id: &str) -> bool {
+    id == crate::CURRENT_REALITY_CAPABILITY_MATRIX_PAIR_ID
+}
+
+pub fn typed_compat_report_with_current_reality_sources(
+    id: &str,
+    sources: &crate::CurrentRealityCapabilityMatrixSources,
+) -> Result<Value, TypedCompatReportError> {
+    if !is_current_reality_typed_compat_report(id) {
+        return Err(TypedCompatReportError::UnknownReport(id.to_string()));
+    }
+    let report = crate::current_reality_capability_matrix_report_from_sources(sources)
+        .map_err(|error| TypedCompatReportError::ContractViolation(error.to_string()))?;
+    if !report.has_current_reality_integrity(sources) {
+        return Err(TypedCompatReportError::ContractViolation(
+            "typed current-reality report failed source integrity".to_string(),
+        ));
+    }
+    serialize_report!(&report)
+}
+
 pub fn is_plugin_typed_compat_report(id: &str) -> bool {
     crate::plugin_compat_report::PLUGIN_COMPAT_REPORT_IDS.contains(&id)
 }
@@ -878,6 +900,11 @@ pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
     if crate::is_dirty_worktree_typed_compat_report(id) {
         return Err(TypedCompatReportError::ContractViolation(format!(
             "dirty-worktree typed compatibility report requires an explicit repository observation: {id}"
+        )));
+    }
+    if is_current_reality_typed_compat_report(id) {
+        return Err(TypedCompatReportError::ContractViolation(format!(
+            "current-reality typed compatibility report requires explicit repository sources: {id}"
         )));
     }
     if is_plugin_typed_compat_report(id) {

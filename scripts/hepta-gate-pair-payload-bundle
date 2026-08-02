@@ -18,8 +18,6 @@ STORE_ROOT = File.join(ROOT, STORE_RELATIVE)
 BUNDLE_ROOT = File.join(SCRIPTS_ROOT, "lib/hepta-gate-pair-compat-v2")
 BUNDLE_PATH = File.join(BUNDLE_ROOT, "payloads.bundle.gz")
 REGISTRY_PATH = File.join(BUNDLE_ROOT, "registry.json")
-CURRENT_REALITY_REGISTRY_PATH = File.join(BUNDLE_ROOT, "current-reality-capabilities.json")
-CURRENT_REALITY_PAYLOAD = [STORE_RELATIVE, "hepta-systems-current-reality-capability-matrix.report"].join("/")
 ENTRYPOINT_REGISTRY_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-entrypoints-v2.json")
 LONG_PATH_REGISTRY_PATH = File.join(SCRIPTS_ROOT, "lib/hepta-long-path-v1/registry.json")
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
@@ -220,7 +218,6 @@ def write_registry(entries, metrics, canonical)
     reversible_unpack: true
   }
   atomic_write(REGISTRY_PATH, JSON.pretty_generate(registry) + "\n", 0o644)
-  write_current_reality_registry(entries)
 end
 def write_bundle(entries)
   normalized_entries = entries.sort.map do |logical_path, source|
@@ -253,32 +250,6 @@ def write_bundle(entries)
   )
   write_registry(entries, bundle.metrics, canonical)
 end
-def current_reality_registry(entries)
-  source = entries.fetch(CURRENT_REALITY_PAYLOAD)
-  close = source.index("\n  ] as $capabilities |")
-  raise "current-reality capability registry has no closing marker" unless close
-  prefix = source.byteslice(0, close)
-  open = prefix.rindex("\n  [\n    {\n      id:")
-  raise "current-reality capability registry has no opening marker" unless open
-  ids = prefix.byteslice(open, prefix.bytesize - open).scan(/\n      id:"([a-z0-9_]+)"/).flatten
-  raise "current-reality capability registry is empty" if ids.empty?
-  raise "current-reality capability registry has duplicate ids" unless ids.uniq.length == ids.length
-  {
-    schema: "hepta_current_reality_capability_registry_v1",
-    source_payload: CURRENT_REALITY_PAYLOAD,
-    source_sha256: Digest::SHA256.hexdigest(source),
-    capability_ids: ids
-  }
-end
-
-def write_current_reality_registry(entries)
-  atomic_write(
-    CURRENT_REALITY_REGISTRY_PATH,
-    JSON.pretty_generate(current_reality_registry(entries)) + "\n",
-    0o644
-  )
-end
-
 def pack
   if HeptaReadableTokenSource.present?(BUNDLE_ROOT) &&
       !HeptaPromotedGateAliases.materialized_payload_store?(ROOT)
@@ -405,9 +376,6 @@ def verify
   raise "legacy gate payload gzip roundtrip drifted" unless decode_envelope_bytes(
     legacy_blob(legacy_roundtrip_path, legacy_roundtrip_source)
   ) == legacy_roundtrip_source
-  expected_current_reality_registry = JSON.pretty_generate(current_reality_registry(entries)) + "\n"
-  raise "current-reality capability registry drifted" unless File.file?(CURRENT_REALITY_REGISTRY_PATH) &&
-    File.binread(CURRENT_REALITY_REGISTRY_PATH) == expected_current_reality_registry
   registered_hashes.each do |logical_path, expected_sha|
     source = entries.fetch(logical_path) { raise "missing registered bundled payload: #{logical_path}" }
     raise "bundled payload SHA drifted: #{logical_path}" unless Digest::SHA256.hexdigest(source) == expected_sha

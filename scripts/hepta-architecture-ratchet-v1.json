@@ -9,16 +9,16 @@
   "ceilings": {
     "work_graph_logical_modules": 4,
     "work_graph_effective_lines": 32739,
-    "gate_compat_pairs": 294,
-    "gate_compat_effective_lines": 57196,
+    "gate_compat_pairs": 273,
+    "gate_compat_effective_lines": 48967,
     "single_exec_wrappers": 0,
     "first_party_modules_over_5000": 0
   },
   "baselines": {
     "work_graph_logical_modules": 4,
     "work_graph_effective_lines": 32739,
-    "gate_compat_pairs": 294,
-    "gate_compat_effective_lines": 57196,
+    "gate_compat_pairs": 273,
+    "gate_compat_effective_lines": 48967,
     "single_exec_wrappers": 0,
     "first_party_modules_over_5000": 0
   },
@@ -26,8 +26,8 @@
     "next": {
       "work_graph_logical_modules": 4,
       "work_graph_effective_lines": 25000,
-      "gate_compat_pairs": 294,
-      "gate_compat_effective_lines": 57195,
+      "gate_compat_pairs": 273,
+      "gate_compat_effective_lines": 48966,
       "single_exec_wrappers": 0,
       "first_party_modules_over_5000": 0
     },
@@ -35,7 +35,7 @@
       "work_graph_logical_modules": 4,
       "work_graph_effective_lines": 25000,
       "gate_compat_pairs": 199,
-      "gate_compat_effective_lines": 50000,
+      "gate_compat_effective_lines": 40000,
       "single_exec_wrappers": 0,
       "first_party_modules_over_5000": 0
     }

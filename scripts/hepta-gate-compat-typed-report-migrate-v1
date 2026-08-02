@@ -27,16 +27,179 @@ FAMILY_RECEIPT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-family-receipt-
 DEBT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-debt-v1.json")
 ARCHITECTURE_RATCHET_PATH = File.join(ROOT, "scripts/hepta-architecture-ratchet-v1.json")
 ENTRYPOINT_REGISTRY_PATH = File.join(ROOT, "scripts/hepta-gate-pair-entrypoints-v2.json")
-CURRENT_REALITY_REGISTRY_PATH = File.join(
-  BUNDLE_ROOT,
-  "current-reality-capabilities.json"
-)
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 DOMAIN = "hepta_gate_pair_compat_payloads"
-TARGET_PAIR_COUNT = 294
-TARGET_CAPTURED_COUNT = 60
-TARGET_DECLARATIVE_COUNT = 234
-TARGET_TYPED_COUNT = 171
+TARGET_PAIR_COUNT = 273
+TARGET_CAPTURED_COUNT = 38
+TARGET_DECLARATIVE_COUNT = 235
+TARGET_TYPED_COUNT = 172
+CURRENT_REALITY_PAIR_ID = "hepta-systems-current-reality-capability-matrix"
+CURRENT_REALITY_SUPPLEMENTAL_PAYLOAD_PATHS = %w[
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.gate
+  scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report
+].freeze
+CURRENT_REALITY_LEGACY_EXACT_HEAD_COMMIT_SHA =
+  "a4b33153dd521746a4fbf2190d8e82912b65f186"
+CURRENT_REALITY_LEGACY_EXACT_HEAD_RECEIPT_SHA256 =
+  "f553fccac558170c8c23a742a397e4d77f173d9dfec3d0ae5e645a81ac51e5de"
+CURRENT_REALITY_CAPABILITY_ID_ORDER_SHA256 =
+  "aa9a8ffc24bd806bc1c5205e0a32c7f1008a49e7401d4d32718161cbf0161df4"
+CURRENT_REALITY_BLOCKED_IDS = %w[
+  dirty_worktree_release_boundary_inventory
+  dirty_worktree_release_boundary_grouping_freeze_plan
+  dirty_worktree_release_boundary_grouping_freeze_operator_readback
+  dirty_worktree_release_boundary_actionable_clean_worktree_strategy
+  dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet
+  dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_non_send_readback
+  dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_git_mutation_boundary_readback
+  dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_checklist
+  dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_checklist_packet_readback
+  dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_recording_boundary_readback
+  dirty_worktree_release_boundary_clean_worktree_strategy_operator_approval_acceptance_boundary_readback
+  dirty_worktree_release_boundary_clean_worktree_strategy_operator_evidence_recording_boundary_readback
+  dirty_worktree_release_boundary_release_risk_snapshot
+  dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal
+].freeze
+STALE_WORKGRAPH_RETIRED_PAIR_IDS = %w[
+  hepta-systems-work-graph-contract-preview
+  hepta-systems-work-graph-durable-identity-preview
+  hepta-systems-work-graph-paeadr-retention-readback-ack-tdnp-rcpt-retention-readback-ack-tdnp-receipt-preview
+  hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-acknowledgement-preview
+  hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-preview
+  hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-replay-idempotency-preview
+  hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-preview
+  hepta-systems-work-graph-persistence-promotion-blocker-preview
+  hepta-systems-work-graph-promotion-precondition-preview
+  hepta-systems-work-graph-replay-readback-preview
+  hepta-systems-work-graph-shadow-adapter-readback-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-acknowledgement-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-acknowledgement-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-acknowledgement-replay-idempotency-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-receipt-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-acknowledgement-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-preview
+  hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-receipt-preview
+].freeze
+STALE_WORKGRAPH_TYPED_ANCHOR_ID =
+  "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-preview"
+STALE_WORKGRAPH_TYPED_ANCHOR_GATE =
+  "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_preview_gate"
+STALE_WORKGRAPH_TYPED_ANCHOR_SCHEMA =
+  "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_preview_v1"
+STALE_WORKGRAPH_TYPED_ANCHOR_READY_FIELD =
+  "ready_for_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_preview"
+STALE_WORKGRAPH_REGULAR_PROBE_GATES = {
+  "hepta-systems-work-graph-activation-enforcement-blocker-preview.report" => %w[
+    hepta_work_graph_activation_enforcement_blocker_preview_gate
+    hepta_work_graph_promotion_precondition_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-authority-blocker-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_authority_blocker_preview_gate
+    hepta_work_graph_persistence_operator_readiness_receipt_acknowledgement_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-effect-application-blocker-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_effect_application_blocker_preview_gate
+    hepta_work_graph_persistence_acceptance_record_receipt_acknowledgement_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-replay-idempotency-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_replay_idempotency_preview_gate
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_acknowledgement_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_preview_gate
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_replay_idempotency_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_preview_gate
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_receipt_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-acknowledgement-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_preview_gate
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_receipt_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-receipt-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_receipt_preview_gate
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-receipt-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_receipt_preview_gate
+    hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-record-intake-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_record_intake_preview_gate
+    hepta_work_graph_persistence_acceptance_authority_blocker_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-record-receipt-acknowledgement-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_record_receipt_acknowledgement_preview_gate
+    hepta_work_graph_persistence_acceptance_record_receipt_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-acceptance-record-receipt-preview.report" => %w[
+    hepta_work_graph_persistence_acceptance_record_receipt_preview_gate
+    hepta_work_graph_persistence_acceptance_record_intake_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-canary-dry-run-preview.report" => %w[
+    hepta_work_graph_persistence_canary_dry_run_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-canary-readback-receipt-preview.report" => %w[
+    hepta_work_graph_persistence_canary_readback_receipt_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-enforcement-rollout-blocker-preview.report" => %w[
+    hepta_work_graph_persistence_enforcement_rollout_blocker_preview_gate
+    hepta_work_graph_persistence_shadow_live_readback_comparison_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-feature-flag-preview.report" => %w[
+    hepta_work_graph_persistence_feature_flag_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-operator-readiness-packet-preview.report" => %w[
+    hepta_work_graph_persistence_operator_readiness_packet_preview_gate
+    hepta_work_graph_persistence_enforcement_rollout_blocker_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-operator-readiness-receipt-acknowledgement-preview.report" => %w[
+    hepta_work_graph_persistence_operator_readiness_receipt_acknowledgement_preview_gate
+    hepta_work_graph_persistence_operator_readiness_receipt_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-operator-readiness-receipt-preview.report" => %w[
+    hepta_work_graph_persistence_operator_readiness_receipt_preview_gate
+    hepta_work_graph_persistence_operator_readiness_packet_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-persistence-shadow-live-readback-comparison-preview.report" => %w[
+    hepta_work_graph_persistence_shadow_live_readback_comparison_preview_gate
+    hepta_work_graph_persistence_promotion_blocker_preview_gate
+    hepta_work_graph_durable_identity_preview_gate
+  ],
+  "hepta-systems-work-graph-task-result-contract-preview.report" => %w[
+    hepta_work_graph_task_result_contract_preview_gate
+    hepta_work_graph_contract_preview_gate
+  ]
+}.freeze
+STALE_WORKGRAPH_TERMINAL_PROBE_MODULES = {
+  "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-ack-replay-idempotency-preview.report" =>
+    "wg_terminal_receipt_retention_readback_ack_terminal_decision_receipt_ack_replay_idempotency_preview",
+  "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-acknowledgement-replay-idempotency-preview.report" =>
+    "wg_term_decision_receipt_retention_readback_ack_terminal_decision_receipt_ack_replay_preview"
+}.freeze
 PLUGIN_TYPED_PAIR_IDS = %w[
   hepta-systems-plugin-contribution-point-abi
   hepta-systems-plugin-contribution-point-loader-binding
@@ -298,12 +461,58 @@ def verify_plugin_binding_proofs(registry)
   end
 end
 
+def expected_current_reality_equivalence_proof
+  {
+    "baseline" => "exact_head_captured_shell_compat_v2_at_a4b33153dd52",
+    "parity_oracle" => "stable_id_order_report_backed_sources_and_catalog_invariants_v1",
+    "legacy_evidence_mode" => "preexisting_exact_head_receipt_sha256_binding",
+    "legacy_exact_head_commit_sha" => CURRENT_REALITY_LEGACY_EXACT_HEAD_COMMIT_SHA,
+    "legacy_exact_head_receipt_sha256" =>
+      CURRENT_REALITY_LEGACY_EXACT_HEAD_RECEIPT_SHA256,
+    "capability_count" => 104,
+    "report_backed_capability_count" => 43,
+    "catalog_invariant_capability_count" => 61,
+    "report_backed_source_binding_count" => 43,
+    "total_source_binding_count" => 48,
+    "unique_report_backed_source_count" => 43,
+    "catalog_invariant_source_id" => "current-reality-static-invariant-v1",
+    "synthetic_source_count" => 0,
+    "compatibility_alias_count" => 2,
+    "capability_id_order_sha256" => CURRENT_REALITY_CAPABILITY_ID_ORDER_SHA256,
+    "capability_id_order_mismatch_count" => 0,
+    "legacy_ready_count" => 90,
+    "legacy_blocked_count" => 14,
+    "typed_ready_or_ready_blocked_count" => 90,
+    "typed_blocked_count" => 14,
+    "promoted_to_typed_ready_blocked_ids" => [],
+    "blocked_ids" => CURRENT_REALITY_BLOCKED_IDS,
+    "live_enabled_mismatch_count" => 0,
+    "clean_active_blocker_count" => 6,
+    "clean_satisfied_slot_count" => 1,
+    "dirty_active_blocker_count" => 7,
+    "dirty_satisfied_slot_count" => 0,
+    "captured_snapshots_preserved" => false,
+    "side_effects_preserved_false" => true,
+    "production_authority_preserved_false" => true,
+    "write_authority_preserved_false" => true
+  }
+end
+
+def verify_current_reality_binding_proof(registry)
+  observed = registry.fetch("equivalence_proofs").fetch(CURRENT_REALITY_PAIR_ID)
+  expected = expected_current_reality_equivalence_proof
+  differing_keys = (observed.keys | expected.keys).select { |key| observed[key] != expected[key] }
+  raise "current-reality equivalence proof drifted: #{differing_keys.first}" unless
+    differing_keys.empty?
+end
+
 def binding_ids
   registry = JSON.parse(File.binread(BINDINGS_PATH))
   raise "invalid typed report binding schema" unless registry.fetch("schema") ==
     "hepta_gate_typed_report_bindings_v2"
   verify_context_plane_binding_proofs(registry)
   verify_plugin_binding_proofs(registry)
+  verify_current_reality_binding_proof(registry)
   ids = registry.fetch("report_ids")
   raise "typed report binding count drifted" unless ids.length == TARGET_TYPED_COUNT &&
     ids.uniq.length == TARGET_TYPED_COUNT
@@ -314,6 +523,168 @@ def run_command(*command)
   output, error, status = Open3.capture3(*command)
   return output if status.success?
   raise "command failed (#{command.join(' ')}): #{error.strip}"
+end
+
+def current_reality_parity_oracle(spec)
+  pair = spec.fetch("pairs").find { |candidate| candidate.fetch("id") == CURRENT_REALITY_PAIR_ID }
+  raise "current-reality pair is missing" unless pair
+  raise "current-reality pair mode drifted" unless %w[
+    captured_shell_compat_v1 typed_rust_report_v1
+  ].include?(pair.fetch("template"))
+
+  typed_output = run_command(REPORT_RUNNER, CURRENT_REALITY_PAIR_ID)
+  report = JSON.parse(typed_output)
+  typed_report_sha256 = Digest::SHA256.hexdigest(typed_output)
+  capabilities = report.fetch("capabilities")
+  ids = capabilities.map { |capability| capability.fetch("id") }
+  id_order_sha256 = Digest::SHA256.hexdigest(ids.join("\n") + "\n")
+  raise "current-reality capability count drifted" unless capabilities.length == 104
+  raise "current-reality capability id order drifted" unless id_order_sha256 ==
+    CURRENT_REALITY_CAPABILITY_ID_ORDER_SHA256
+  blocked_ids = capabilities.reject { |capability| capability.fetch("ready") }
+    .map { |capability| capability.fetch("id") }
+  raise "current-reality blocker set drifted" unless blocked_ids == CURRENT_REALITY_BLOCKED_IDS
+  raise "current-reality source topology drifted" unless
+    report.fetch("report_backed_capability_count") == 43 &&
+      report.fetch("catalog_invariant_capability_count") == 61
+  report_backed = capabilities.select do |capability|
+    capability.fetch("source_kind") == "report_backed"
+  end
+  invariants = capabilities.select do |capability|
+    capability.fetch("source_kind") == "catalog_invariant"
+  end
+  source_bindings = report.fetch("source_bindings")
+  report_bindings = source_bindings.select do |binding|
+    binding.fetch("generation") == "typed_report_constructor"
+  end
+  synthetic_sources = capabilities.select do |capability|
+    capability.fetch("source_report_id").start_with?("typed-current-reality-")
+  end
+  alias_count = capabilities.count { |capability| capability.key?("compatibility_alias_successor") }
+  raise "current-reality source classification drifted" unless
+    report_backed.length == 43 && invariants.length == 61 &&
+      report_backed.map { |source| source.fetch("source_report_id") }.uniq.length == 43 &&
+      report_backed.all? { |source| source.fetch("source_sha256").match?(/\A[0-9a-f]{64}\z/) } &&
+      invariants.all? { |source|
+        source.fetch("source_report_id") == "current-reality-static-invariant-v1"
+      } &&
+      source_bindings.length == 48 && report_bindings.length == 43 &&
+      synthetic_sources.empty? && alias_count == 2
+  raise "current-reality ready accounting drifted" unless
+    report.fetch("local_capability_ready_count") == 90 &&
+      report.fetch("local_capability_blocked_count") == 14
+  raise "current-reality live boundary opened" unless
+    capabilities.all? { |capability| capability.fetch("live_enabled") == false }
+  %w[
+    production_authority_granted write_authority_granted approval_authority_granted
+    mutation_authority_granted evidence_authority_granted send_authority_granted
+  ].each do |field|
+    raise "current-reality authority opened: #{field}" unless report.fetch(field) == false
+  end
+  raise "current-reality side effect opened" unless
+    report.fetch("side_effects").values.all? { |value| value == false }
+  expected_slots = case report.fetch("worktree_boundary_state")
+  when "clean" then [6, 1]
+  when "dirty" then [7, 0]
+  else raise "current-reality worktree state drifted"
+  end
+  observed_slots = [
+    report.fetch("controlled_live_active_blocker_count"),
+    report.fetch("controlled_live_satisfied_readback_slot_count")
+  ]
+  raise "current-reality controlled-live parity drifted" unless observed_slots == expected_slots
+  {
+    "status" =>
+      "typed_report_executed_with_legacy_exact_head_receipt_bound_not_reexecuted",
+    "typed_report_executed_this_run" => true,
+    "typed_report_sha256" => typed_report_sha256,
+    "typed_report_digest_mode" => "sha256_exact_stdout_bytes",
+    "legacy_exact_head_receipt_bound" => true,
+    "legacy_exact_head_report_executed_this_run" => false,
+    "legacy_exact_head_commit_sha" => CURRENT_REALITY_LEGACY_EXACT_HEAD_COMMIT_SHA,
+    "legacy_exact_head_receipt_sha256" =>
+      CURRENT_REALITY_LEGACY_EXACT_HEAD_RECEIPT_SHA256,
+    "capability_count" => capabilities.length,
+    "report_backed_capability_count" => report.fetch("report_backed_capability_count"),
+    "catalog_invariant_capability_count" => report.fetch("catalog_invariant_capability_count"),
+    "report_backed_source_binding_count" => report_bindings.length,
+    "total_source_binding_count" => source_bindings.length,
+    "unique_report_backed_source_count" =>
+      report_backed.map { |source| source.fetch("source_report_id") }.uniq.length,
+    "catalog_invariant_source_id" => "current-reality-static-invariant-v1",
+    "synthetic_source_count" => synthetic_sources.length,
+    "compatibility_alias_count" => alias_count,
+    "capability_id_order_sha256" => id_order_sha256,
+    "capability_id_order_mismatch_count" => 0,
+    "legacy_ready_count" => 90,
+    "legacy_blocked_count" => 14,
+    "typed_ready_or_ready_blocked_count" => 90,
+    "typed_blocked_count" => 14,
+    "promoted_to_typed_ready_blocked_ids" => [],
+    "blocked_ids" => blocked_ids,
+    "observed_worktree_state" => report.fetch("worktree_boundary_state"),
+    "observed_active_blocker_count" => observed_slots.fetch(0),
+    "observed_satisfied_slot_count" => observed_slots.fetch(1),
+    "authority_or_side_effect_mismatch_count" => 0
+  }
+end
+
+def verify_stale_workgraph_retirement_preconditions(spec)
+  selected = spec.fetch("pairs").select do |pair|
+    STALE_WORKGRAPH_RETIRED_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  unless [0, STALE_WORKGRAPH_RETIRED_PAIR_IDS.length].include?(selected.length) &&
+      selected.all? { |pair| pair.fetch("template") == "captured_shell_compat_v1" }
+    raise "stale WorkGraph retirement inventory drifted"
+  end
+  supplemental_paths = spec.fetch("supplemental_payloads", []).map { |item| item.fetch("path") }
+  stale_supplemental = supplemental_paths.select do |path|
+    STALE_WORKGRAPH_RETIRED_PAIR_IDS.any? do |id|
+      path == "scripts/lib/hepta-gate-pair-compat-v1/#{id}.gate" ||
+        path == "scripts/lib/hepta-gate-pair-compat-v1/#{id}.report"
+    end
+  end
+  raise "stale WorkGraph pair survived as supplemental" unless stale_supplemental.empty?
+  STALE_WORKGRAPH_RETIRED_PAIR_IDS.each do |id|
+    %W[scripts/#{id}-gate.sh scripts/#{id}-report.sh].each do |relative|
+      raise "stale WorkGraph pair retains a physical entrypoint: #{relative}" if
+        File.exist?(File.join(ROOT, relative))
+    end
+  end
+  ignored_files = [
+    File.expand_path(__FILE__), SPEC_PATH, FAMILY_RECEIPT_PATH
+  ].to_set
+  executable_callers = run_command("git", "-C", ROOT, "ls-files", "-z")
+    .split("\0").map do |relative|
+      absolute = File.join(ROOT, relative)
+      next if ignored_files.include?(absolute) || relative.start_with?(
+        "docs/", "scripts/lib/hepta-gate-pair-compat-v2/"
+      ) || !File.file?(absolute)
+      body = File.binread(absolute)
+      id = STALE_WORKGRAPH_RETIRED_PAIR_IDS.find { |candidate| body.include?(candidate) }
+      id && "#{relative}:#{id}"
+    end.compact
+  raise "stale WorkGraph pair retains an executable caller: #{executable_callers.first}" unless
+    executable_callers.empty?
+  family_entries = HeptaReadableTokenSource.read(
+    root: FAMILY_ROOT,
+    artifact_schema: FAMILY_SCHEMA,
+    domain: FAMILY_DOMAIN,
+    name_validator: ->(name) { name.match?(/\A[a-z0-9-]+\.(?:gate|report)\z/) },
+    strict_metadata: true
+  ).first
+  affected_family = family_entries.select do |entry|
+    STALE_WORKGRAPH_REGULAR_PROBE_GATES.key?(entry.name) ||
+      STALE_WORKGRAPH_TERMINAL_PROBE_MODULES.key?(entry.name)
+  end
+  transformed_family = affected_family.map do |entry|
+    transform_stale_workgraph_family_source(entry.name, entry.source)
+  end
+  raise "stale WorkGraph family consumer inventory drifted" unless affected_family.length == 23
+  raise "stale WorkGraph family semantic rebind is incomplete" if transformed_family.any? do |body|
+    STALE_WORKGRAPH_RETIRED_PAIR_IDS.any? { |id| body.include?(id) }
+  end
+  selected.length
 end
 
 def parse_context_plane_line_protocol(output, label)
@@ -803,6 +1174,248 @@ def transform_source(source, ids)
     .gsub(RETIRED_SOURCE_ASSIGNMENT, TYPED_INTERNAL_SOURCE_ASSIGNMENT)
 end
 
+def transform_stale_workgraph_source_probes(name, source)
+  regular_probe_gates = STALE_WORKGRAPH_REGULAR_PROBE_GATES[name]
+  terminal_probe_module = STALE_WORKGRAPH_TERMINAL_PROBE_MODULES[name]
+  return source unless regular_probe_gates || terminal_probe_module
+
+  bool_helper = <<~'SHELL'.strip
+    bool_for() {
+      if "$@"; then
+        printf 'true\n'
+      else
+        printf 'false\n'
+      fi
+    }
+  SHELL
+  transformed = source.dup
+  if regular_probe_gates
+    anchor_helper = <<~SHELL.strip
+      typed_workgraph_family_anchor_report="\$(
+        "\$ROOT/scripts/hepta-typed-compat-report" "#{STALE_WORKGRAPH_TYPED_ANCHOR_ID}" | jq -ce \\
+          --arg gate "#{STALE_WORKGRAPH_TYPED_ANCHOR_GATE}" \\
+          --arg schema "#{STALE_WORKGRAPH_TYPED_ANCHOR_SCHEMA}" \\
+          --arg ready "#{STALE_WORKGRAPH_TYPED_ANCHOR_READY_FIELD}" '
+          if .runtime == "hepta" and .product == "Hepta" and .status == "ready"
+            and .gate == \$gate and .schema_version == \$schema and .[\$ready] == true
+            and .ready_for_operator_acceptance == false
+            and .ready_for_live_persistence == false
+            and (.required_prior_gates | type == "array" and length == 42
+              and (unique | length) == 42 and all(type == "string"))
+            and .durable_identity_evidence.schema_version == "work_graph_durable_identity_preview_v1"
+            and .durable_identity_evidence.required_prior_gate == "hepta_work_graph_durable_identity_preview_gate"
+            and .durable_identity_evidence.durable_field_count == 7
+            and .durable_identity_evidence.preview_binding_count == 5
+            and .durable_identity_evidence.invariant_count == 7
+            and .durable_identity_evidence.currently_satisfied == false
+            and (.side_effects | type == "object" and (to_entries | all(.value == false)))
+          then .
+          else error("typed WorkGraph family anchor failed compatibility integrity")
+          end'
+      )"
+
+      typed_workgraph_gate_backed() {
+        local expected_gate="\$1"
+        jq -e --arg expected_gate "\$expected_gate" \\
+          '.required_prior_gates | index(\$expected_gate) != null' \\
+          <<<"\$typed_workgraph_family_anchor_report" >/dev/null
+      }
+    SHELL
+    unless transformed.include?("typed_workgraph_family_anchor_report=")
+      raise "missing or duplicate bool helper in #{name}" unless transformed.scan(bool_helper).length == 1
+      transformed.sub!(bool_helper, "#{bool_helper}\n\n#{anchor_helper}")
+    end
+
+    generic_probe =
+      "bool_for path_exists codex-rs/hepta-runtime/src/runtime_kernel/exports_workgraph.rs"
+    legacy_probe = %r{bool_for path_exists codex-rs/hepta-runtime/src/(work_graph_[a-z0-9_]+)\.rs}
+    generic_count = transformed.scan(generic_probe).length
+    legacy_modules = transformed.scan(legacy_probe).flatten
+    semantic_probe = /bool_for typed_workgraph_gate_backed ([a-z0-9_]+)/
+    semantic_gates = transformed.scan(semantic_probe).flatten
+    if generic_count == regular_probe_gates.length && legacy_modules.empty? && semantic_gates.empty?
+      index = 0
+      transformed.gsub!(generic_probe) do
+        gate = regular_probe_gates.fetch(index)
+        index += 1
+        "bool_for typed_workgraph_gate_backed #{gate}"
+      end
+    elsif legacy_modules.length == regular_probe_gates.length && generic_count.zero? && semantic_gates.empty?
+      legacy_gates = legacy_modules.map do |module_name|
+        module_name == "work_graph_task_result_contract" ?
+          "hepta_work_graph_task_result_contract_preview_gate" : "hepta_#{module_name}_gate"
+      end
+      raise "legacy WorkGraph probe plan drifted for #{name}" unless legacy_gates == regular_probe_gates
+      transformed.gsub!(legacy_probe) do
+        gate = legacy_gates.shift
+        "bool_for typed_workgraph_gate_backed #{gate}"
+      end
+    elsif generic_count.zero? && legacy_modules.empty? && semantic_gates == regular_probe_gates
+      # Already transformed; retain exact idempotent source.
+    else
+      raise "mixed or incomplete WorkGraph source probes for #{name}"
+    end
+    semantic_gates = transformed.scan(semantic_probe).flatten
+    raise "typed WorkGraph gate membership plan drifted for #{name}" unless
+      semantic_gates == regular_probe_gates
+  else
+    predecessor_helper = <<~'SHELL'.strip
+      typed_prior_compatibility_backed() {
+        jq -e --arg expected_gate "$prior_compatibility_gate" \
+          'index($expected_gate) != null' \
+          <<<"$required_prior_gates" >/dev/null
+      }
+    SHELL
+    unless transformed.include?("typed_prior_compatibility_backed()")
+      raise "missing or duplicate bool helper in #{name}" unless transformed.scan(bool_helper).length == 1
+      transformed.sub!(bool_helper, "#{bool_helper}\n\n#{predecessor_helper}")
+    end
+    legacy_assignment =
+      "rust_module=\"codex-rs/hepta-runtime/src/#{terminal_probe_module}.rs\"\n"
+    generic_assignment =
+      "rust_module=\"codex-rs/hepta-runtime/src/runtime_kernel/exports_workgraph.rs\"\n"
+    semantic_call = 'rust_module_present="$(bool_for typed_prior_compatibility_backed)"'
+    legacy_call = 'rust_module_present="$(bool_for path_exists "$rust_module")"'
+    if transformed.include?(legacy_assignment) ^ transformed.include?(generic_assignment)
+      transformed.sub!(legacy_assignment, "") || transformed.sub!(generic_assignment, "")
+      raise "missing terminal WorkGraph module probe for #{name}" unless
+        transformed.sub!(legacy_call, semantic_call)
+    elsif transformed.include?(semantic_call) &&
+        !transformed.include?(legacy_assignment) && !transformed.include?(generic_assignment)
+      # Already transformed; retain exact idempotent source.
+    else
+      raise "mixed or incomplete terminal WorkGraph source probe for #{name}"
+    end
+    raise "typed predecessor compatibility probe drifted for #{name}" unless
+      transformed.scan("bool_for typed_prior_compatibility_backed").length == 1
+  end
+  raise "generic WorkGraph exports probe survived for #{name}" if
+    transformed.include?("runtime_kernel/exports_workgraph.rs")
+  transformed
+end
+
+def transform_stale_workgraph_family_source(name, source)
+  return source unless STALE_WORKGRAPH_REGULAR_PROBE_GATES.key?(name) ||
+    STALE_WORKGRAPH_TERMINAL_PROBE_MODULES.key?(name)
+
+  durable_capture = <<~'SHELL'.strip
+    durable_identity_report="$(
+      capture_json_report \
+        "hepta-work-graph-durable-identity-preview-report" \
+        "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-durable-identity-preview.report"
+    )"
+  SHELL
+  typed_durable_capture = <<~'SHELL'.strip
+    current_workgraph_inventory_report="$(
+      capture_json_report \
+        "hepta-work-graph-current-state-inventory-report" \
+        "$ROOT/scripts/hepta-typed-compat-report" \
+        "hepta-systems-work-graph-current-state-inventory"
+    )"
+    durable_identity_report="$(
+      jq -c '
+        if .gate == "hepta_work_graph_current_state_inventory_gate"
+          and .schema_version == "work_graph_current_state_inventory_v1"
+          and .ready_for_work_graph_contract_preview == true
+          and .ready_for_scheduler_cutover == false
+          and ([.side_effects[]] | all(. == false))
+        then {
+          schema_version: "work_graph_durable_identity_preview_v1",
+          durable_field_count: 7,
+          preview_binding_count: 5,
+          invariant_count: 7,
+          compatibility_successor_gate: .gate
+        }
+        else error("typed current WorkGraph inventory failed durable identity compatibility integrity")
+        end
+      ' <<<"$current_workgraph_inventory_report"
+    )"
+  SHELL
+  transformed = source.gsub(durable_capture, typed_durable_capture)
+  prior_successors = {
+    "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-acknowledgement-preview" => {
+      id: "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-acknowledgement-preview",
+      gate: "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_acknowledgement_preview_gate",
+      schema: "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_acknowledgement_preview_v1",
+      ready_field: "ready_for_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_acknowledgement_replay_idempotency_preview",
+      compatibility_gate: "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_acknowledgement_preview_gate"
+    },
+    "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-acknowledgement-preview" => {
+      id: "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-preview",
+      gate: "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_preview_gate",
+      schema: "work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_preview_v1",
+      ready_field: "ready_for_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_preview",
+      compatibility_gate: "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_acknowledgement_preview_gate"
+    }
+  }
+  typed_prior_capture = <<~'SHELL'.strip
+    "$ROOT/$prior_report_script" "$prior_report_id" | jq -ce \
+      --arg typed_gate "$prior_typed_gate" \
+      --arg typed_schema "$prior_typed_schema" \
+      --arg ready_field "$prior_ready_field" \
+      --arg compatibility_gate "$prior_compatibility_gate" '
+        if .runtime == "hepta"
+          and .product == "Hepta"
+          and .status == "ready"
+          and .gate == $typed_gate
+          and .schema_version == $typed_schema
+          and .[$ready_field] == true
+          and .ready_for_live_persistence == false
+          and .ready_for_operator_acceptance == false
+          and (.required_prior_gates | type == "array")
+          and (.required_prior_gates | all(type == "string"))
+          and (.side_effects | type == "object")
+          and ([.side_effects[]] | all(. == false))
+        then
+          (.required_prior_gates | map(select(. != "hepta_work_graph_durable_identity_preview_gate"))) +
+            [$compatibility_gate, "hepta_work_graph_durable_identity_preview_gate"]
+        else
+          error("typed WorkGraph successor failed compatibility integrity")
+        end
+      '
+  SHELL
+  legacy_prior_capture = <<~'SHELL'.strip
+    "$ROOT/$prior_report_script" | jq -c '(.required_prior_gates | map(select(. != "hepta_work_graph_durable_identity_preview_gate"))) + [.gate, "hepta_work_graph_durable_identity_preview_gate"]'
+  SHELL
+  migrated_prior_capture = <<~'SHELL'.strip
+    "$ROOT/$prior_report_script" "$prior_report_id" | jq -c '(.required_prior_gates | map(select(. != "hepta_work_graph_durable_identity_preview_gate"))) + [.gate, "hepta_work_graph_durable_identity_preview_gate"]'
+  SHELL
+  prior_successors.each do |legacy_id, successor|
+    legacy_assignment =
+      "prior_report_script=\"scripts/lib/hepta-gate-pair-compat-v1/#{legacy_id}.report\"\n" \
+      "prior_gate_script=\"scripts/lib/hepta-gate-pair-compat-v1/#{legacy_id}.gate\""
+    migrated_assignment =
+      "prior_report_script=\"scripts/hepta-typed-compat-report\"\n" \
+      "prior_report_id=\"#{successor.fetch(:id)}\"\n" \
+      "prior_gate_script=\"scripts/hepta-gate-pair-runner\""
+    typed_assignment =
+      "prior_report_script=\"scripts/hepta-typed-compat-report\"\n" \
+      "prior_report_id=\"#{successor.fetch(:id)}\"\n" \
+      "prior_typed_gate=\"#{successor.fetch(:gate)}\"\n" \
+      "prior_typed_schema=\"#{successor.fetch(:schema)}\"\n" \
+      "prior_ready_field=\"#{successor.fetch(:ready_field)}\"\n" \
+      "prior_compatibility_gate=\"#{successor.fetch(:compatibility_gate)}\"\n" \
+      "prior_gate_script=\"scripts/hepta-gate-pair-runner\""
+    transformed = transformed
+      .gsub(legacy_assignment, typed_assignment)
+      .gsub(migrated_assignment, typed_assignment)
+      .gsub(legacy_prior_capture, typed_prior_capture)
+      .gsub(migrated_prior_capture, typed_prior_capture)
+  end
+  STALE_WORKGRAPH_RETIRED_PAIR_IDS.each do |id|
+    transformed = transformed
+      .gsub(
+        "scripts/lib/hepta-gate-pair-compat-v1/#{id}.report",
+        "scripts/hepta-typed-compat-report"
+      )
+      .gsub(
+        "scripts/lib/hepta-gate-pair-compat-v1/#{id}.gate",
+        "scripts/hepta-gate-pair-runner"
+      )
+  end
+  transform_stale_workgraph_source_probes(name, transformed)
+end
+
 def rewrite_spec(spec, sources, ids)
   id_set = ids.to_set
   runner_sha = Digest::SHA256.file(REPORT_RUNNER).hexdigest
@@ -844,7 +1457,23 @@ def rewrite_spec(spec, sources, ids)
       plugin_retired.all? { |pair| pair.fetch("template") == "captured_shell_compat_v1" }
     raise "plugin retired pair inventory drifted"
   end
-  retired_ids = ([RETIRED_PAIR_ID] + PLUGIN_RETIRED_PAIR_IDS).to_set
+  current_reality = spec.fetch("pairs").select do |pair|
+    pair.fetch("id") == CURRENT_REALITY_PAIR_ID
+  end
+  raise "current-reality typed pair inventory drifted" unless current_reality.length == 1
+  raise "current-reality typed pair mode drifted" unless %w[
+    captured_shell_compat_v1 typed_rust_report_v1
+  ].include?(current_reality.first.fetch("template"))
+  stale_workgraph = spec.fetch("pairs").select do |pair|
+    STALE_WORKGRAPH_RETIRED_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  unless [0, STALE_WORKGRAPH_RETIRED_PAIR_IDS.length].include?(stale_workgraph.length) &&
+      stale_workgraph.all? { |pair| pair.fetch("template") == "captured_shell_compat_v1" }
+    raise "stale WorkGraph retired pair inventory drifted"
+  end
+  retired_ids = (
+    [RETIRED_PAIR_ID] + PLUGIN_RETIRED_PAIR_IDS + STALE_WORKGRAPH_RETIRED_PAIR_IDS
+  ).to_set
   pairs = spec.fetch("pairs").reject do |pair|
     retired_ids.include?(pair.fetch("id"))
   end.map do |pair|
@@ -905,6 +1534,12 @@ def rewrite_spec(spec, sources, ids)
     end
   end
   raise "plugin typed migration intersects supplemental payloads" unless plugin_supplemental.empty?
+  current_reality_supplemental_count = (
+    supplemental_paths & CURRENT_REALITY_SUPPLEMENTAL_PAYLOAD_PATHS
+  ).length
+  raise "current-reality supplemental payload inventory drifted" unless [0, 2].include?(
+    current_reality_supplemental_count
+  )
   retired_controlled_supplemental_count = (
     supplemental_paths & CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS
   ).length
@@ -912,7 +1547,8 @@ def rewrite_spec(spec, sources, ids)
     retired_controlled_supplemental_count
   )
   supplemental = spec.fetch("supplemental_payloads", []).reject do |payload|
-    CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS.include?(payload.fetch("path"))
+    CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS.include?(payload.fetch("path")) ||
+      CURRENT_REALITY_SUPPLEMENTAL_PAYLOAD_PATHS.include?(payload.fetch("path"))
   end.map do |payload|
     raise "retired dirty-worktree payload preserved as supplemental" if [
       RETIRED_GATE_PATH, RETIRED_REPORT_PATH
@@ -945,20 +1581,6 @@ def rewrite_bundle(spec, sources, ids)
   )
 end
 
-def refresh_current_reality_registry(sources, ids)
-  registry = JSON.parse(File.binread(CURRENT_REALITY_REGISTRY_PATH))
-  source_path = registry.fetch("source_payload")
-  source = transform_source(sources.fetch(source_path), ids)
-  source_sha256 = Digest::SHA256.hexdigest(source)
-  return if registry.fetch("source_sha256") == source_sha256
-  registry["source_sha256"] = source_sha256
-  atomic_write(
-    CURRENT_REALITY_REGISTRY_PATH,
-    JSON.pretty_generate(registry) + "\n",
-    0o644
-  )
-end
-
 def semantic_json_cost(value)
   case value
   when Hash
@@ -988,9 +1610,62 @@ def rewrite_family_bundle(ids)
     ].any? { |assignment| entry.source.include?(assignment) }
   end
   raise "retired dirty-worktree source consumer count drifted" unless retired_source_consumers == 2
-  entries = baseline_entries.map do |entry|
-    HeptaNormalizedTokenBundle::Entry.new(entry.name, transform_source(entry.source, ids))
+  affected_family_entries = baseline_entries.select do |entry|
+    STALE_WORKGRAPH_REGULAR_PROBE_GATES.key?(entry.name) ||
+      STALE_WORKGRAPH_TERMINAL_PROBE_MODULES.key?(entry.name)
   end
+  stale_path_occurrences = affected_family_entries.sum do |entry|
+    STALE_WORKGRAPH_RETIRED_PAIR_IDS.sum do |id|
+      entry.source.scan(
+        %r{scripts/lib/hepta-gate-pair-compat-v1/#{Regexp.escape(id)}\.(?:gate|report)}
+      ).length
+    end
+  end
+  legacy_module_probe_count = affected_family_entries.sum do |entry|
+    entry.source.scan(
+      %r{codex-rs/hepta-runtime/src/(?:work_graph|wg)_[a-z0-9_]+\.rs}
+    ).length
+  end
+  generic_exports_probe_count = affected_family_entries.sum do |entry|
+    entry.source.scan("codex-rs/hepta-runtime/src/runtime_kernel/exports_workgraph.rs").length
+  end
+  semantic_gate_probe_count = affected_family_entries.sum do |entry|
+    entry.source.scan(/bool_for typed_workgraph_gate_backed [a-z0-9_]+/).length
+  end
+  semantic_predecessor_probe_count = affected_family_entries.sum do |entry|
+    entry.source.scan("bool_for typed_prior_compatibility_backed").length
+  end
+  unless affected_family_entries.length == 23 && [0, 72].include?(stale_path_occurrences) &&
+      legacy_module_probe_count + generic_exports_probe_count + semantic_gate_probe_count +
+        semantic_predecessor_probe_count == 61
+    raise "stale WorkGraph family consumer inventory drifted"
+  end
+  entries = baseline_entries.map do |entry|
+    transformed = transform_stale_workgraph_family_source(
+      entry.name,
+      transform_source(entry.source, ids)
+    )
+    HeptaNormalizedTokenBundle::Entry.new(entry.name, transformed)
+  end
+  stale_family_reference = entries.find do |entry|
+    STALE_WORKGRAPH_RETIRED_PAIR_IDS.any? { |id| entry.source.include?(id) }
+  end
+  raise "stale WorkGraph path survived family semantic rebind" if stale_family_reference
+  rebound_reports = entries.select do |entry|
+    STALE_WORKGRAPH_REGULAR_PROBE_GATES.key?(entry.name) ||
+      STALE_WORKGRAPH_TERMINAL_PROBE_MODULES.key?(entry.name)
+  end
+  raise "stale WorkGraph rebound report inventory drifted" unless rebound_reports.length == 23
+  raise "generic WorkGraph exports probe survived semantic rebind" unless rebound_reports.none? do |entry|
+    entry.source.include?("runtime_kernel/exports_workgraph.rs") ||
+      entry.source.match?(%r{path_exists codex-rs/hepta-runtime/src/(?:work_graph|wg)_[a-z0-9_]+\.rs})
+  end
+  raise "typed WorkGraph anchor membership rebind drifted" unless rebound_reports.sum do |entry|
+    entry.source.scan(/bool_for typed_workgraph_gate_backed [a-z0-9_]+/).length
+  end == 59
+  raise "typed WorkGraph predecessor rebind drifted" unless rebound_reports.sum do |entry|
+    entry.source.scan("bool_for typed_prior_compatibility_backed").length
+  end == 2
   sources = entries.to_h { |entry| [entry.name, entry.source] }
   bundle = HeptaNormalizedTokenBundle.build(
     entries,
@@ -1044,10 +1719,23 @@ def rewrite_family_bundle(ids)
   atomic_write(SPEC_PATH, JSON.pretty_generate(spec) + "\n", 0o644)
 end
 
+def logical_virtual_entrypoint_count(pair_count, physical_entrypoint_count)
+  count = 2 * pair_count - physical_entrypoint_count
+  raise "logical virtual entrypoint count became negative" if count.negative?
+  count
+end
+
 def measured_result
   payload = JSON.parse(File.binread(File.join(BUNDLE_ROOT, "registry.json")))
   family = JSON.parse(File.binread(FAMILY_REGISTRY_PATH))
   entrypoints = JSON.parse(File.binread(ENTRYPOINT_REGISTRY_PATH))
+  physical_entrypoint_count = entrypoints.fetch("retained_entrypoint_count")
+  logical_virtual_count = logical_virtual_entrypoint_count(
+    TARGET_PAIR_COUNT,
+    physical_entrypoint_count
+  )
+  raise "entrypoint registry logical virtual count drifted" unless
+    entrypoints.fetch("virtual_entrypoint_count") == logical_virtual_count
   {
     "pair_count" => TARGET_PAIR_COUNT,
     "captured_pair_count" => TARGET_CAPTURED_COUNT,
@@ -1061,12 +1749,12 @@ def measured_result
     "normalized_effective_lines" => payload.fetch("normalized_effective_lines") +
       family.fetch("metrics").fetch("exact_normalized_effective_lines") +
       family.fetch("metrics").fetch("semantic_registry_effective_lines"),
-    "physical_entrypoint_count" => entrypoints.fetch("retained_entrypoint_count"),
-    "logical_virtual_entrypoint_count" => entrypoints.fetch("virtual_entrypoint_count")
+    "physical_entrypoint_count" => physical_entrypoint_count,
+    "logical_virtual_entrypoint_count" => logical_virtual_count
   }
 end
 
-def refresh_contracts(ids, context_plane_parity, plugin_parity)
+def refresh_contracts(ids, context_plane_parity, plugin_parity, current_reality_parity)
   result = measured_result
   receipt = JSON.parse(File.binread(FAMILY_RECEIPT_PATH))
   prior_typed_conversion = receipt.fetch("typed_conversion", {})
@@ -1230,14 +1918,124 @@ def refresh_contracts(ids, context_plane_parity, plugin_parity)
     "plugin_production_authority_granted" => false,
     "plugin_write_authority_granted" => false
   )
+  receipt.fetch("typed_conversion").merge!(
+    "current_reality_conversion_count" => 1,
+    "current_reality_pair_payload_retirement_count" => 2,
+    "current_reality_supplemental_payload_retirement_count" => 2,
+    "current_reality_shell_body_retirement_count" => 4,
+    "current_reality_parity_oracle" =>
+      "stable_id_order_report_backed_sources_and_catalog_invariants_v1",
+    "current_reality_parity_oracle_execution_status" =>
+      current_reality_parity.fetch("status"),
+    "current_reality_typed_report_executed_this_run" =>
+      current_reality_parity.fetch("typed_report_executed_this_run"),
+    "current_reality_typed_report_sha256" =>
+      current_reality_parity.fetch("typed_report_sha256"),
+    "current_reality_typed_report_digest_mode" =>
+      current_reality_parity.fetch("typed_report_digest_mode"),
+    "current_reality_legacy_exact_head_receipt_bound" =>
+      current_reality_parity.fetch("legacy_exact_head_receipt_bound"),
+    "current_reality_legacy_exact_head_report_executed_this_run" =>
+      current_reality_parity.fetch("legacy_exact_head_report_executed_this_run"),
+    "current_reality_legacy_exact_head_commit_sha" =>
+      current_reality_parity.fetch("legacy_exact_head_commit_sha"),
+    "current_reality_legacy_exact_head_receipt_sha256" =>
+      current_reality_parity.fetch("legacy_exact_head_receipt_sha256"),
+    "current_reality_capability_count" =>
+      current_reality_parity.fetch("capability_count"),
+    "current_reality_report_backed_capability_count" =>
+      current_reality_parity.fetch("report_backed_capability_count"),
+    "current_reality_catalog_invariant_capability_count" =>
+      current_reality_parity.fetch("catalog_invariant_capability_count"),
+    "current_reality_report_backed_source_binding_count" =>
+      current_reality_parity.fetch("report_backed_source_binding_count"),
+    "current_reality_total_source_binding_count" =>
+      current_reality_parity.fetch("total_source_binding_count"),
+    "current_reality_unique_report_backed_source_count" =>
+      current_reality_parity.fetch("unique_report_backed_source_count"),
+    "current_reality_catalog_invariant_source_id" =>
+      current_reality_parity.fetch("catalog_invariant_source_id"),
+    "current_reality_synthetic_source_count" =>
+      current_reality_parity.fetch("synthetic_source_count"),
+    "current_reality_compatibility_alias_count" =>
+      current_reality_parity.fetch("compatibility_alias_count"),
+    "current_reality_capability_id_order_sha256" =>
+      current_reality_parity.fetch("capability_id_order_sha256"),
+    "current_reality_capability_id_order_mismatch_count" =>
+      current_reality_parity.fetch("capability_id_order_mismatch_count"),
+    "current_reality_legacy_ready_count" =>
+      current_reality_parity.fetch("legacy_ready_count"),
+    "current_reality_legacy_blocked_count" =>
+      current_reality_parity.fetch("legacy_blocked_count"),
+    "current_reality_typed_ready_or_ready_blocked_count" =>
+      current_reality_parity.fetch("typed_ready_or_ready_blocked_count"),
+    "current_reality_typed_blocked_count" =>
+      current_reality_parity.fetch("typed_blocked_count"),
+    "current_reality_promoted_to_typed_ready_blocked_ids" =>
+      current_reality_parity.fetch("promoted_to_typed_ready_blocked_ids"),
+    "current_reality_blocked_ids" =>
+      current_reality_parity.fetch("blocked_ids"),
+    "current_reality_authority_or_side_effect_mismatch_count" =>
+      current_reality_parity.fetch("authority_or_side_effect_mismatch_count"),
+    "current_reality_shell_snapshots_preserved" => false,
+    "current_reality_production_authority_granted" => false,
+    "current_reality_write_authority_granted" => false,
+    "stale_workgraph_successor_rebound_retirement_pair_count" =>
+      STALE_WORKGRAPH_RETIRED_PAIR_IDS.length,
+    "stale_workgraph_successor_rebound_retirement_pair_ids" =>
+      STALE_WORKGRAPH_RETIRED_PAIR_IDS,
+    "stale_workgraph_pair_payload_retirement_count" =>
+      STALE_WORKGRAPH_RETIRED_PAIR_IDS.length * 2,
+    "stale_workgraph_supplemental_payload_retirement_count" => 0,
+    "stale_workgraph_physical_entrypoint_count" => 0,
+    "stale_workgraph_executable_incoming_caller_count" => 0,
+    "stale_workgraph_family_consumer_rebind_count" => 23,
+    "stale_workgraph_family_legacy_path_rebind_count" => 72,
+    "stale_workgraph_family_durable_identity_data_rebind_count" => 20,
+    "stale_workgraph_family_legacy_rust_probe_typed_successor_rebind_count" => 61,
+    "stale_workgraph_family_typed_anchor_gate_membership_rebind_count" => 59,
+    "stale_workgraph_family_typed_predecessor_compatibility_rebind_count" => 2,
+    "stale_workgraph_family_generic_exports_path_probe_count" => 0,
+    "stale_workgraph_family_legacy_rust_module_presence_claimed" => false,
+    "stale_workgraph_family_rebind_target" =>
+      "typed_workgraph_anchor_gate_membership_and_typed_predecessor_compatibility",
+    "stale_workgraph_family_shell_snapshots_preserved" => false,
+    "stale_workgraph_l1_retirement_receipt" =>
+      "docs/architecture/HEPTA_WORKGRAPH_L1_RETIREMENT_V1.json",
+    "stale_workgraph_l1_retirement_receipt_sha256" => Digest::SHA256.file(
+      File.join(ROOT, "docs/architecture/HEPTA_WORKGRAPH_L1_RETIREMENT_V1.json")
+    ).hexdigest,
+    "stale_workgraph_compatibility_alias_successors" => {
+      "hepta-systems-work-graph-durable-identity-preview" =>
+        "hepta-systems-work-graph-current-state-inventory",
+      "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-receipt-preview" =>
+        "hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-retention-expiry-readback-acknowledgement-terminal-decision-non-promotion-receipt-preview"
+    }
+  )
   retirement = receipt.fetch("retirement")
   dead_pairs = retirement.fetch("dead_pairs")
   dead_pairs << RETIRED_PAIR_ID unless dead_pairs.include?(RETIRED_PAIR_ID)
   PLUGIN_RETIRED_PAIR_IDS.each do |id|
     dead_pairs << id unless dead_pairs.include?(id)
   end
+  STALE_WORKGRAPH_RETIRED_PAIR_IDS.each do |id|
+    dead_pairs << id unless dead_pairs.include?(id)
+  end
   dead_pairs.sort!
   retirement["dead_pair_count"] = dead_pairs.length
+  protected_pairs = receipt.fetch("baseline").fetch("protected_pairs")
+  reclassified_protected = protected_pairs & STALE_WORKGRAPH_RETIRED_PAIR_IDS
+  raise "stale WorkGraph protected reclassification drifted" unless reclassified_protected.sort == [
+    "hepta-systems-work-graph-durable-identity-preview",
+    "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-receipt-preview"
+  ].sort || reclassified_protected.empty?
+  receipt.fetch("baseline")["protected_pairs"] =
+    protected_pairs - STALE_WORKGRAPH_RETIRED_PAIR_IDS
+  receipt.fetch("typed_conversion")["stale_workgraph_reclassified_protected_pair_count"] = 2
+  receipt.fetch("typed_conversion")["stale_workgraph_reclassified_protected_pair_ids"] = [
+    "hepta-systems-work-graph-durable-identity-preview",
+    "hepta-systems-work-graph-terminal-receipt-retention-readback-ack-terminal-decision-receipt-retention-readback-ack-terminal-decision-receipt-retention-expiry-readback-receipt-preview"
+  ]
   receipt["result"] = result
   atomic_write(FAMILY_RECEIPT_PATH, JSON.pretty_generate(receipt) + "\n", 0o644)
 
@@ -1260,6 +2058,12 @@ def refresh_contracts(ids, context_plane_parity, plugin_parity)
   debt.fetch("floors")["declarative_pair_count"] = TARGET_DECLARATIVE_COUNT
   terminal = debt.fetch("decline_targets").fetch("terminal")
   next_target = debt.fetch("decline_targets").fetch("next")
+  if result.fetch("normalized_payload_count") <= terminal.fetch("compatibility_payload_count")
+    terminal["compatibility_payload_count"] = 100
+  end
+  if result.fetch("normalized_effective_lines") <= terminal.fetch("normalized_effective_lines")
+    terminal["normalized_effective_lines"] = 40_000
+  end
   bounded_next = lambda do |current, preferred, terminal_value|
     raise "no room for an honest next decline target" unless current > terminal_value + 1
     [[preferred, current - 1].min, terminal_value + 1].max
@@ -1286,7 +2090,15 @@ def refresh_contracts(ids, context_plane_parity, plugin_parity)
       terminal.fetch("physical_entrypoint_count")
     )
   )
+  next_target["logical_virtual_entrypoint_count"] = logical_virtual_entrypoint_count(
+    next_target.fetch("pair_count"),
+    next_target.fetch("physical_entrypoint_count")
+  )
   terminal["declarative_pair_count"] = terminal.fetch("pair_count")
+  terminal["logical_virtual_entrypoint_count"] = logical_virtual_entrypoint_count(
+    terminal.fetch("pair_count"),
+    terminal.fetch("physical_entrypoint_count")
+  )
   debt.fetch("migration_policy").merge!(
     "typed_report_bindings_are_sha256_bound" => true,
     "typed_reports_reuse_existing_rust_semantics" => true,
@@ -1304,6 +2116,10 @@ def refresh_contracts(ids, context_plane_parity, plugin_parity)
     end
     architecture_terminal = architecture.fetch("decline_targets").fetch("terminal")
     architecture_next = architecture.fetch("decline_targets").fetch("next")
+    if result.fetch("normalized_effective_lines") <=
+        architecture_terminal.fetch("gate_compat_effective_lines")
+      architecture_terminal["gate_compat_effective_lines"] = 40_000
+    end
     architecture_next["gate_compat_pairs"] = TARGET_PAIR_COUNT
     architecture_next["gate_compat_effective_lines"] = bounded_next.call(
       result.fetch("normalized_effective_lines"), 75_000,
@@ -1319,6 +2135,8 @@ def plan
   spec = JSON.parse(File.binread(SPEC_PATH))
   context_plane_parity = context_plane_parity_oracle(spec)
   plugin_parity = plugin_parity_oracle(spec)
+  current_reality_parity = current_reality_parity_oracle(spec)
+  stale_workgraph_retirement_count = verify_stale_workgraph_retirement_preconditions(spec)
   selected = spec.fetch("pairs").select { |pair| ids.include?(pair.fetch("id")) }
   controlled = spec.fetch("pairs").select do |pair|
     CONTROLLED_LIVE_PAIR_IDS.include?(pair.fetch("id"))
@@ -1334,6 +2152,7 @@ def plan
   end
   supplemental_paths = spec.fetch("supplemental_payloads", []).map { |payload| payload.fetch("path") }
   controlled_supplemental = supplemental_paths & CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS
+  current_reality_supplemental = supplemental_paths & CURRENT_REALITY_SUPPLEMENTAL_PAYLOAD_PATHS
   puts JSON.pretty_generate(
     status: "ready",
     target_pair_count: TARGET_PAIR_COUNT,
@@ -1385,6 +2204,21 @@ def plan
     end * 2 + plugin_retired.length * 2,
     plugin_supplemental_payload_retirement_count: 0,
     plugin_parity: plugin_parity,
+    current_reality_converted_pair_count: selected.count do |pair|
+      pair.fetch("id") == CURRENT_REALITY_PAIR_ID &&
+        pair.fetch("template") == "captured_shell_compat_v1"
+    end,
+    current_reality_pair_payload_retirement_count: selected.count do |pair|
+      pair.fetch("id") == CURRENT_REALITY_PAIR_ID &&
+        pair.fetch("template") == "captured_shell_compat_v1"
+    end * 2,
+    current_reality_supplemental_payload_retirement_count:
+      current_reality_supplemental.length,
+    current_reality_supplemental_payload_paths: current_reality_supplemental,
+    current_reality_parity: current_reality_parity,
+    stale_workgraph_retired_pair_count: stale_workgraph_retirement_count,
+    stale_workgraph_pair_payload_retirement_count:
+      stale_workgraph_retirement_count * 2,
     snapshots_used: false,
     shell_payloads_preserved: false
   )
@@ -1396,6 +2230,8 @@ def apply
   spec = JSON.parse(File.binread(SPEC_PATH))
   context_plane_parity = context_plane_parity_oracle(spec)
   plugin_parity = plugin_parity_oracle(spec)
+  current_reality_parity = current_reality_parity_oracle(spec)
+  stale_workgraph_retirement_count = verify_stale_workgraph_retirement_preconditions(spec)
   controlled_captured_count = spec.fetch("pairs").count do |pair|
     CONTROLLED_LIVE_PAIR_IDS.include?(pair.fetch("id")) &&
       pair.fetch("template") == "captured_shell_compat_v1"
@@ -1414,15 +2250,21 @@ def apply
   plugin_retired_count = spec.fetch("pairs").count do |pair|
     PLUGIN_RETIRED_PAIR_IDS.include?(pair.fetch("id"))
   end
+  current_reality_captured_count = spec.fetch("pairs").count do |pair|
+    pair.fetch("id") == CURRENT_REALITY_PAIR_ID &&
+      pair.fetch("template") == "captured_shell_compat_v1"
+  end
+  current_reality_supplemental_count = spec.fetch("supplemental_payloads", []).count do |payload|
+    CURRENT_REALITY_SUPPLEMENTAL_PAYLOAD_PATHS.include?(payload.fetch("path"))
+  end
   sources = canonical_sources
   updated = rewrite_spec(spec, sources, ids)
   atomic_write(SPEC_PATH, JSON.pretty_generate(updated) + "\n", 0o644)
   rewrite_bundle(updated, sources, ids)
-  refresh_current_reality_registry(sources, ids)
   rewrite_family_bundle(ids)
   system(PAYLOAD_TOOL, "pack") || raise("typed compatibility payload repack failed")
   system(ENTRYPOINT_TOOL, "pack") || raise("typed compatibility entrypoint repack failed")
-  refresh_contracts(ids, context_plane_parity, plugin_parity)
+  refresh_contracts(ids, context_plane_parity, plugin_parity, current_reality_parity)
   puts JSON.pretty_generate(
     status: "ready",
     pair_count: updated.fetch("pairs").length,
@@ -1450,6 +2292,16 @@ def apply
     plugin_shell_body_retirement_count: plugin_captured_count * 2 +
       plugin_retired_count * 2,
     plugin_parity: plugin_parity,
+    current_reality_converted_pair_count: current_reality_captured_count,
+    current_reality_pair_payload_retirement_count: current_reality_captured_count * 2,
+    current_reality_supplemental_payload_retirement_count:
+      current_reality_supplemental_count,
+    current_reality_shell_body_retirement_count: current_reality_captured_count * 2 +
+      current_reality_supplemental_count,
+    current_reality_parity: current_reality_parity,
+    stale_workgraph_retired_pair_count: stale_workgraph_retirement_count,
+    stale_workgraph_pair_payload_retirement_count:
+      stale_workgraph_retirement_count * 2,
     architecture_ratchet_deferred: DEFER_ARCHITECTURE_RATCHET
   )
 end

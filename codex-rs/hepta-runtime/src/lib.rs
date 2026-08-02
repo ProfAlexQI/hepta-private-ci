@@ -351,9 +351,11 @@ pub use ndu_h1_runtime::NduH1RuntimeStatus;
 pub use ndu_h1_runtime::NduH1ShadowEvent;
 pub use typed_compat_report::TYPED_COMPAT_REPORT_IDS;
 pub use typed_compat_report::TypedCompatReportError;
+pub use typed_compat_report::is_current_reality_typed_compat_report;
 pub use typed_compat_report::is_plugin_typed_compat_report;
 pub use typed_compat_report::typed_compat_report;
 pub use typed_compat_report::typed_compat_report_with_controlled_live_worktree_observation;
+pub use typed_compat_report::typed_compat_report_with_current_reality_sources;
 pub use typed_compat_report::typed_compat_report_with_dirty_worktree_observation;
 pub use typed_compat_report::typed_compat_report_with_plugin_repo_root;
 

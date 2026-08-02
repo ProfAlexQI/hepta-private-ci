@@ -419,6 +419,11 @@ typed_report_contract() {
           ;;
       esac
       ;;
+    hepta-systems-current-reality-capability-matrix)
+      printf '%s\t%s\n' \
+        "hepta_systems_current_reality_capability_matrix_gate" \
+        "current_reality_capability_matrix_v2"
+      ;;
     hepta-systems-dirty-worktree-*)
       suffix="${id#hepta-systems-}"
       source_stem="${suffix//-/_}"
