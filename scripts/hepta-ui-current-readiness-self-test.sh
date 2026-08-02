@@ -58,4 +58,12 @@ for key in head head_tree source_fingerprint; do
   fi
 done
 
+# Browser evidence can exceed macOS ARG_MAX. It must be passed to jq as a
+# file, never expanded into an `--argjson` command-line argument.
+grep -Fq -- '--slurpfile browser_file "$BROWSER_REPORT"' scripts/hepta-ui-current-readiness.sh
+if grep -Fq -- '--argjson browser "$(cat "$BROWSER_REPORT")"' scripts/hepta-ui-current-readiness.sh; then
+  echo "current readiness expands the browser receipt onto the command line" >&2
+  exit 1
+fi
+
 echo "hepta-ui current readiness fail-closed self-test: PASS"

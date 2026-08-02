@@ -223,13 +223,14 @@ report="$(jq -n \
   --argjson binding_before "$(cat "$BINDING_BEFORE")" --argjson binding_after "$(cat "$BINDING_AFTER")" \
   --argjson binding_stable "$binding_stable" --argjson sync "$(cat "$SYNC_REPORT")" --argjson product "$(cat "$PRODUCT_REPORT")" \
   --argjson tokens "$(cat "$TOKEN_REPORT" 2>/dev/null || echo '{"status":"not_ready"}')" \
-  --argjson feature "$(cat "$FEATURE_REPORT")" --argjson package "$(cat "$PACKAGE_REPORT")" --argjson browser "$(cat "$BROWSER_REPORT")" \
+  --argjson feature "$(cat "$FEATURE_REPORT")" --argjson package "$(cat "$PACKAGE_REPORT")" --slurpfile browser_file "$BROWSER_REPORT" \
   --argjson matrix_receipt "$matrix_receipt" --argjson bridge_receipt "$bridge_receipt" --argjson window_receipt "$window_receipt" \
   --argjson device_receipt "$device_receipt" --argjson accessibility_receipt "$accessibility_receipt" --argjson release_receipt "$release_receipt" \
   --argjson sync_bound "$sync_bound" --argjson product_bound "$product_bound" --argjson token_bound "$token_bound" \
   --argjson feature_bound "$feature_bound" --argjson package_bound "$package_bound" \
   --argjson sync_exit_code "$sync_rc" --argjson product_exit_code "$product_rc" --argjson token_exit_code "$token_rc" \
   --argjson feature_exit_code "$feature_rc" --argjson package_exit_code "$package_rc" --argjson browser_exit_code "$browser_rc" '
+    ($browser_file[0]) as $browser |
     ($binding_stable and $binding_after.repository_worktree_clean and $sync_exit_code == 0 and $product_exit_code == 0 and $token_exit_code == 0 and $feature_exit_code == 0 and $sync_bound and $product_bound and $token_bound and $feature_bound and $package_bound and $sync.status == "ready" and $sync.path_ledger_ready == true and $product.status == "ready" and $tokens.status == "ready" and $feature.feature_matrix_ready == true and $package.static_package_contract_ready == true) as $source_ready |
     (($browser.schema_version // null) == 1 and ($browser.kind // "") == "hepta-control-ui-browser-smoke-current-wrapper" and ($browser.producer // "") == "scripts/hepta-ui-current-readiness.sh" and ($browser.original_receipt_valid // false) == true and ($browser.browser_child_exit_code // -1) == 0 and ($browser.source_binding.head // "") == $binding_after.head and ($browser.source_binding.head_tree // "") == $binding_after.head_tree and ($browser.source_binding.source_fingerprint // "") == $binding_after.source_fingerprint and ($browser.browser_smoke_ready // false) == true) as $browser_ready |
     false as $promotion_independent_verifiers_ready |

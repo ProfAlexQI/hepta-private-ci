@@ -135,7 +135,10 @@ if [[ "$BUILD" == "1" && "$darwin_build_supported" == "true" ]]; then
 
   binary_kind="$(file -b "$app_bundle/Contents/MacOS/hepta-native")"
   expected_head="$(jq -r '.head' <<<"$source_binding_before")"
-  if strings -a "$app_bundle/Contents/MacOS/hepta-native" | grep -Fq "$expected_head"; then
+  # Search the binary directly. Under `set -o pipefail`, `strings | grep -q`
+  # reports failure after a successful early match because `strings` receives
+  # SIGPIPE when grep exits.
+  if LC_ALL=C grep -aFq -- "$expected_head" "$app_bundle/Contents/MacOS/hepta-native"; then
     artifact_head_embedded=true
   fi
   binary_sha="$(shasum -a 256 "$app_bundle/Contents/MacOS/hepta-native" | awk '{print $1}')"
