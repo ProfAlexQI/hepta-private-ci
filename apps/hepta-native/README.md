@@ -17,6 +17,34 @@ the explicit `developer-diagnostics` feature. Signing, notarization, public
 distribution, live Hepta adapters, and real-device validation are separate
 gates.
 
+## Formal unsigned macOS package
+
+The local macOS package gate uses the upstream Robius resource collector and
+`cargo-packager` to build a current-HEAD, resource-complete `.app`. Its tools
+are version-pinned and can be installed into a disposable directory; it does
+not use Apple credentials and does not sign, notarize, staple, upload, or
+publish anything.
+
+```sh
+TOOLS=/Users/qianqi/.openclaw/tmp/hepta-ui-packaging-tools
+TARGET=/Users/qianqi/.openclaw/tmp/cargo-targets/hepta-ui-packaging
+EVIDENCE=/Users/qianqi/.openclaw/tmp/hepta-native-unsigned-package
+
+scripts/hepta-native-current-package-gate.sh \
+  --build --bootstrap-tools \
+  --tools-dir "$TOOLS" \
+  --target-dir "$TARGET" \
+  --stage-dir "$EVIDENCE" \
+  --output "$EVIDENCE/report.json"
+```
+
+A passing report proves the bundle contains the exact current HEAD, every
+declared Makepad/Hepta resource tree was copied byte-for-byte, the bundle has
+no Developer ID signature, and its executable survives a clean local launch
+probe. It is a local demo artifact, not a distributable release. Developer ID
+signing, notarization, stapling, real-device validation, and public release
+remain independently false until their own authorized gates pass.
+
 ## Downstream platform boundary
 
 The full imported Robrix shell retains its macOS, Linux, Windows, Android,

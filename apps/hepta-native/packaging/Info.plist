@@ -9,7 +9,7 @@
 	<key>CFBundleExecutable</key>
 	<string>hepta-native</string>
 	<key>CFBundleIconFile</key>
-	<string>HeptaNative.icns</string>
+	<string>Hepta.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>ai.hepta.nativeapp</string>
 	<key>CFBundleInfoDictionaryVersion</key>

@@ -351,6 +351,14 @@ frameworks = []
 info_plist_path = "./packaging/Info.plist"
 entitlements = "./packaging/Entitlements.plist"
 
+[package.metadata.hepta-packaging]
+## Exact, source-audited tools used by the formal unsigned macOS app gate.
+## They are installed under a caller-selected temporary root, never globally.
+cargo_packager_version = "0.11.8"
+robius_packaging_commands_version = "0.3.3"
+rust_toolchain = "1.95.0"
+formal_unsigned_macos_script = "./packaging/build-macos-unsigned-app.sh"
+
 
 ## Configuration for `cargo packager`'s generation of a macOS `.dmg`.
 [package.metadata.packager.dmg]
