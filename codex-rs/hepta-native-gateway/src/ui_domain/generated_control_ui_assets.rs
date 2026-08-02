@@ -12,7 +12,7 @@ pub(super) fn native_gateway_binary_asset(path: &str) -> Option<NativeGatewayBin
         "/control-ui.js" => Some(NativeGatewayBinaryAsset {
     content_type: "text/javascript; charset=utf-8",
     cache_control: "public, max-age=3600, must-revalidate",
-    etag: "\"sha256-51d4e758d635a832583cc0b0957007ca8dd083627e252efd18c204ea72d0ffe9\"",
+    etag: "\"sha256-b576a32831da4f2198f6e3b3ea7dce83c775cce0f78dd38e5e05cde760d48f83\"",
     body: hepta_core::control_ui::CONTROL_UI_JS,
 }),
         _ => None,

@@ -33,7 +33,7 @@ Hepta Control UI is a dependency-free, static-first local frontend for Hepta's R
 ## Safety model
 
 - Local-first HTML/CSS snapshot and digest-bound `/control-ui.js` asset embedded and served by the Hepta Rust binary.
-- The external script uses a strict 21-route canonical GET registry, same-origin enforcement, `Accept: application/json`, an abort timeout, bounded JSON parsing, and `textContent` rendering. It never calls a mutation endpoint.
+- The external script uses a strict 21-route canonical GET registry, same-origin enforcement, `Accept: application/json`, latest-request-wins cancellation, an abort timeout, streaming UTF-8 byte bounds, strict JSON media types, and `textContent` rendering. It never calls a mutation endpoint.
 - No hosted SaaS identity, public ingress, or external provider execution claim.
 - Mutation surfaces require explicit confirmation or dry-run review.
 - Apply/rollback stays plan-first and copy-only unless the operator executes reviewed commands outside the UI.

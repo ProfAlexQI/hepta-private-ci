@@ -853,7 +853,13 @@ fn control_ui_root_serves_rust_rendered_shell_and_assets() {
     let javascript_text = std::str::from_utf8(javascript.body).expect("JavaScript UTF-8");
     assert!(javascript_text.contains("const READ_ONLY_ROUTES = Object.freeze({"));
     assert!(javascript_text.contains("/api/operator-snapshot"));
+    assert!(javascript_text.contains("let commandGeneration = 0"));
+    assert!(javascript_text.contains("let activeCommandRequest = null"));
     assert!(javascript_text.contains("new AbortController()"));
+    assert!(javascript_text.contains("response.body?.getReader()"));
+    assert!(javascript_text.contains("reader.cancel(\"Response exceeded the local display limit\")"));
+    assert!(javascript_text.contains("new TextDecoder(\"utf-8\", { fatal: true })"));
+    assert!(javascript_text.contains("source_path: path"));
     assert!(javascript_text.contains("textContent"));
     assert!(!javascript_text.contains("innerHTML"));
     assert!(route_manifest_entry("GET", "/control-ui.js").is_some());

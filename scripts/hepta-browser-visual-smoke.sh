@@ -91,6 +91,8 @@ done
 if ! grep -Fqi "content-security-policy:" "$root_headers" \
   || ! grep -Fqi "script-src 'self';" "$root_headers" \
   || ! grep -Fqi "connect-src 'self';" "$root_headers" \
+  || ! grep -Fqi "object-src 'none';" "$root_headers" \
+  || ! grep -Fqi "form-action 'none';" "$root_headers" \
   || grep -Fqi "script-src 'self' 'unsafe-inline'" "$root_headers"; then
   echo "control UI response CSP does not enforce same-origin external scripts and connections" >&2
   exit 1
@@ -110,7 +112,13 @@ fi
 for marker in \
   'const SNAPSHOT_PATH = "/api/operator-snapshot"' \
   'const READ_ONLY_ROUTES = Object.freeze({' \
+  'let commandGeneration = 0' \
+  'let activeCommandRequest = null' \
   'new AbortController()' \
+  'response.body?.getReader()' \
+  'reader.cancel("Response exceeded the local display limit")' \
+  'new TextDecoder("utf-8", { fatal: true })' \
+  'source_path: path' \
   'headers: { Accept: "application/json" }' \
   'url.origin !== window.location.origin' \
   'textContent'; do
@@ -6453,7 +6461,10 @@ const routes = [
       throw new Error(`${path} rendered an error state`);
     }
     const output = await page.locator("#command-runner-output").textContent();
-    JSON.parse(output || "null");
+    const rendered = JSON.parse(output || "null");
+    if (rendered?.source_path !== path || !("data" in rendered)) {
+      throw new Error(`${path} rendered without an exact source-path envelope`);
+    }
     results.push({ command_id: commandId, path, status: response.status(), content_type: contentType, state });
   }
 
@@ -6531,6 +6542,514 @@ const routes = [
 NODE
 }
 
+run_progressive_enhancement_adversarial_qa() {
+  node - "$CHROME_BIN" "$BASE_URL" <<'NODE'
+const { chromium } = require("playwright");
+
+const [chromeBin, baseUrl] = process.argv.slice(2);
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+(async () => {
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: chromeBin,
+    args: [
+      "--disable-background-networking",
+      "--disable-component-update",
+      "--disable-default-apps",
+      "--disable-extensions",
+      "--disable-sync",
+      "--no-default-browser-check",
+      "--no-first-run",
+    ],
+  });
+  const failures = [];
+
+  async function openCase(configure, initScript) {
+    const context = await browser.newContext();
+    if (initScript) {
+      await context.addInitScript(initScript);
+    }
+    const page = await context.newPage();
+    await page.route("**/api/operator-snapshot", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "ready" }),
+      }),
+    );
+    await configure(page);
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(
+      () => document.documentElement.dataset.controlUiProgressiveEnhancement === "ready",
+      null,
+      { timeout: 10000 },
+    );
+    return { context, page };
+  }
+
+  async function clickCommand(page, commandId) {
+    await page.evaluate((id) => {
+      const button = document.querySelector(
+        `[data-command-id="${id}"] [data-run-command="read-only"]`,
+      );
+      if (!(button instanceof HTMLButtonElement) || button.disabled) {
+        throw new Error(`read-only command is not clickable: ${id}`);
+      }
+      button.click();
+    }, commandId);
+  }
+
+  async function outputState(page) {
+    return page.evaluate(() => {
+      const output = document.getElementById("command-runner-output");
+      let parsed = null;
+      try {
+        parsed = JSON.parse(output?.textContent || "null");
+      } catch (_error) {
+        // Error states are intentionally plain text, but must retain their source path.
+      }
+      return {
+        state: output?.dataset.state || "",
+        source_path: output?.dataset.sourcePath || "",
+        text: output?.textContent || "",
+        parsed,
+      };
+    });
+  }
+
+  let race;
+  {
+    const { context, page } = await openCase(async (casePage) => {
+      await casePage.route("**/api/control-ui", async (route) => {
+        await sleep(450);
+        try {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ marker: "OLDER_SLOW_CONTROL" }),
+          });
+        } catch (_error) {
+          // The superseded fetch is expected to be aborted by the browser.
+        }
+      });
+      await casePage.route("**/api/config", async (route) => {
+        await sleep(20);
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ marker: "NEWER_FAST_CONFIG" }),
+        });
+      });
+    });
+    await clickCommand(page, "control-ui");
+    await sleep(15);
+    await clickCommand(page, "config-surface");
+    await page.waitForFunction(
+      () => document.getElementById("command-runner-output")?.dataset.state === "ready",
+      null,
+      { timeout: 5000 },
+    );
+    await sleep(550);
+    const output = await outputState(page);
+    const oldCardState = await page
+      .locator('[data-command-id="control-ui"]')
+      .getAttribute("data-command-state");
+    race = {
+      latest_result_retained:
+        output.source_path === "/api/config" &&
+        output.parsed?.source_path === "/api/config" &&
+        output.parsed?.data?.marker === "NEWER_FAST_CONFIG",
+      old_card_state: oldCardState,
+      output,
+    };
+    if (!race.latest_result_retained || oldCardState !== "superseded") {
+      failures.push("older slow request overwrote the newer command result");
+    }
+    await context.close();
+  }
+
+  let staleTimeout;
+  {
+    const initScript = () => {
+      const nativeAbort = AbortController.prototype.abort;
+      AbortController.prototype.abort = function abortWithAdversarialDelay(reason) {
+        if (
+          reason?.name === "AbortError" &&
+          String(reason.message).includes("Superseded by a newer command") &&
+          !window.__heptaIgnoredSupersedeAbort
+        ) {
+          window.__heptaIgnoredSupersedeAbort = 1;
+          return;
+        }
+        return nativeAbort.call(this, reason);
+      };
+      const nativeSetTimeout = window.setTimeout.bind(window);
+      window.setTimeout = (callback, delay, ...args) =>
+        nativeSetTimeout(callback, delay === 8000 ? 140 : delay, ...args);
+    };
+    const { context, page } = await openCase(async (casePage) => {
+      await casePage.route("**/api/control-ui", async (route) => {
+        await sleep(420);
+        try {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ marker: "TOO_LATE" }),
+          });
+        } catch (_error) {
+          // The accelerated old timeout intentionally cancels this response.
+        }
+      });
+      await casePage.route("**/api/config", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ marker: "NEWER_SUCCESS" }),
+        }),
+      );
+    }, initScript);
+    await clickCommand(page, "control-ui");
+    await sleep(15);
+    await clickCommand(page, "config-surface");
+    await sleep(260);
+    const output = await outputState(page);
+    const ignoredSupersedeAbort = await page.evaluate(
+      () => window.__heptaIgnoredSupersedeAbort || 0,
+    );
+    staleTimeout = {
+      stale_timeout_suppressed:
+        ignoredSupersedeAbort === 1 &&
+        output.state === "ready" &&
+        output.source_path === "/api/config" &&
+        output.parsed?.data?.marker === "NEWER_SUCCESS",
+      ignored_supersede_abort_count: ignoredSupersedeAbort,
+      output,
+    };
+    if (!staleTimeout.stale_timeout_suppressed) {
+      failures.push("stale timeout error overwrote the newer successful result");
+    }
+    await context.close();
+  }
+
+  let oversizedUtf8;
+  {
+    const oversizedBody = JSON.stringify({ payload: "😀".repeat(600000) });
+    const { context, page } = await openCase(async (casePage) => {
+      await casePage.route("**/api/control-ui", (route) =>
+        route.fulfill({
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "content-length": "1",
+          },
+          body: oversizedBody,
+        }),
+      );
+    });
+    await clickCommand(page, "control-ui");
+    await page.waitForFunction(
+      () => document.getElementById("command-runner-output")?.dataset.state === "error",
+      null,
+      { timeout: 10000 },
+    );
+    const output = await outputState(page);
+    oversizedUtf8 = {
+      utf8_bytes: Buffer.byteLength(oversizedBody, "utf8"),
+      utf16_code_units: oversizedBody.length,
+      rejected:
+        output.source_path === "/api/control-ui" &&
+        output.text.includes("exceeded the local display limit"),
+      output,
+    };
+    if (!oversizedUtf8.rejected || oversizedUtf8.utf8_bytes <= 2 * 1024 * 1024) {
+      failures.push("multi-byte response bypassed the UTF-8 byte limit");
+    }
+    await context.close();
+  }
+
+  let oversizedHeader;
+  {
+    const { context, page } = await openCase(async (casePage) => {
+      await casePage.route("**/api/control-ui", (route) =>
+        route.fulfill({
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "content-length": String(2 * 1024 * 1024 + 1),
+          },
+          body: "{}",
+        }),
+      );
+    });
+    await clickCommand(page, "control-ui");
+    await page.waitForFunction(
+      () => document.getElementById("command-runner-output")?.dataset.state === "error",
+      null,
+      { timeout: 5000 },
+    );
+    const output = await outputState(page);
+    oversizedHeader = {
+      rejected:
+        output.source_path === "/api/control-ui" &&
+        output.text.includes("exceeded the local display limit"),
+      output,
+    };
+    if (!oversizedHeader.rejected) {
+      failures.push("oversized Content-Length was not rejected before rendering");
+    }
+    await context.close();
+  }
+
+  let noContentLengthStream;
+  {
+    const initScript = () => {
+      const nativeFetch = window.fetch.bind(window);
+      window.__heptaNoLengthStream = {
+        pull_count: 0,
+        total_chunk_count: 20,
+        cancelled: false,
+        content_length: null,
+      };
+      window.fetch = (input, init) => {
+        const requestUrl = new URL(
+          input instanceof Request ? input.url : String(input),
+          window.location.href,
+        );
+        if (requestUrl.pathname !== "/api/control-ui") {
+          return nativeFetch(input, init);
+        }
+        const chunk = new Uint8Array(256 * 1024);
+        chunk.fill(0x61);
+        const stream = new ReadableStream(
+          {
+            pull(controller) {
+              window.__heptaNoLengthStream.pull_count += 1;
+              controller.enqueue(chunk);
+              if (
+                window.__heptaNoLengthStream.pull_count >=
+                window.__heptaNoLengthStream.total_chunk_count
+              ) {
+                controller.close();
+              }
+            },
+            cancel() {
+              window.__heptaNoLengthStream.cancelled = true;
+            },
+          },
+          { highWaterMark: 0 },
+        );
+        const response = new Response(stream, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+        window.__heptaNoLengthStream.content_length = response.headers.get("content-length");
+        return Promise.resolve(response);
+      };
+    };
+    const { context, page } = await openCase(async () => {}, initScript);
+    await clickCommand(page, "control-ui");
+    await page.waitForFunction(
+      () => document.getElementById("command-runner-output")?.dataset.state === "error",
+      null,
+      { timeout: 5000 },
+    );
+    const output = await outputState(page);
+    const streamState = await page.evaluate(() => window.__heptaNoLengthStream);
+    noContentLengthStream = {
+      rejected_at_bound:
+        output.source_path === "/api/control-ui" &&
+        output.text.includes("exceeded the local display limit") &&
+        streamState.content_length === null &&
+        streamState.cancelled === true &&
+        streamState.pull_count < streamState.total_chunk_count &&
+        streamState.pull_count <= 9,
+      stream_state: streamState,
+      output,
+    };
+    if (!noContentLengthStream.rejected_at_bound) {
+      failures.push("no-Content-Length stream was not cancelled at the byte limit");
+    }
+    await context.close();
+  }
+
+  let jsonp;
+  {
+    const { context, page } = await openCase(async (casePage) => {
+      await casePage.route("**/api/control-ui", (route) =>
+        route.fulfill({
+          status: 200,
+          headers: { "content-type": "application/jsonp" },
+          body: JSON.stringify({ marker: "INVALID_JSONP" }),
+        }),
+      );
+    });
+    await clickCommand(page, "control-ui");
+    await page.waitForFunction(
+      () => document.getElementById("command-runner-output")?.dataset.state === "error",
+      null,
+      { timeout: 5000 },
+    );
+    const output = await outputState(page);
+    jsonp = {
+      rejected:
+        output.source_path === "/api/control-ui" && output.text.includes("Response is not JSON"),
+      output,
+    };
+    if (!jsonp.rejected) {
+      failures.push("application/jsonp was accepted as JSON");
+    }
+    await context.close();
+  }
+
+  let structuredJson;
+  {
+    const { context, page } = await openCase(async (casePage) => {
+      await casePage.route("**/api/control-ui", (route) =>
+        route.fulfill({
+          status: 200,
+          headers: { "content-type": "application/problem+json; charset=utf-8" },
+          body: JSON.stringify({ marker: "VALID_STRUCTURED_JSON" }),
+        }),
+      );
+    });
+    await clickCommand(page, "control-ui");
+    await page.waitForFunction(
+      () => document.getElementById("command-runner-output")?.dataset.state === "ready",
+      null,
+      { timeout: 5000 },
+    );
+    const output = await outputState(page);
+    structuredJson = {
+      accepted:
+        output.source_path === "/api/control-ui" &&
+        output.parsed?.source_path === "/api/control-ui" &&
+        output.parsed?.data?.marker === "VALID_STRUCTURED_JSON",
+      output,
+    };
+    if (!structuredJson.accepted) {
+      failures.push("valid application/*+json media type was rejected");
+    }
+    await context.close();
+  }
+
+  let redirect;
+  {
+    let externalRequestCount = 0;
+    const { context, page } = await openCase(async (casePage) => {
+      casePage.on("request", (request) => {
+        if (new URL(request.url()).origin !== new URL(baseUrl).origin) {
+          externalRequestCount += 1;
+        }
+      });
+      await casePage.route("http://127.0.0.1:9/**", (route) => route.abort());
+      await casePage.route("**/api/control-ui", (route) =>
+        route.fulfill({
+          status: 302,
+          headers: {
+            location: "http://127.0.0.1:9/redirect-target",
+            "content-type": "application/json",
+          },
+          body: "{}",
+        }),
+      );
+    });
+    await clickCommand(page, "control-ui");
+    await page.waitForFunction(
+      () => document.getElementById("command-runner-output")?.dataset.state === "error",
+      null,
+      { timeout: 5000 },
+    );
+    const output = await outputState(page);
+    redirect = {
+      blocked:
+        output.source_path === "/api/control-ui" &&
+        output.text.includes("Unable to load /api/control-ui") &&
+        externalRequestCount === 0,
+      external_request_count: externalRequestCount,
+      output,
+    };
+    if (!redirect.blocked) {
+      failures.push("redirect escaped the same-origin read-only boundary");
+    }
+    await context.close();
+  }
+
+  let xss;
+  {
+    const poison =
+      '</p><img id="hepta-xss-probe" src=x onerror="window.__heptaXss=1">' +
+      "<script>window.__heptaXss=2</script><svg onload=window.__heptaXss=3>";
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.route("**/api/operator-snapshot", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: poison }),
+      }),
+    );
+    await page.route("**/api/control-ui", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ poison }),
+      }),
+    );
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(
+      () => document.documentElement.dataset.controlUiProgressiveEnhancement === "ready",
+      null,
+      { timeout: 10000 },
+    );
+    await clickCommand(page, "control-ui");
+    await page.waitForFunction(
+      () => document.getElementById("command-runner-output")?.dataset.state === "ready",
+      null,
+      { timeout: 5000 },
+    );
+    xss = await page.evaluate(() => ({
+      blocked:
+        !window.__heptaXss &&
+        document.querySelectorAll('#hepta-xss-probe, script:not([src])').length === 0 &&
+        document.getElementById("command-runner-output")?.children.length === 0,
+      execution_marker: window.__heptaXss || 0,
+      injected_node_count: document.querySelectorAll('#hepta-xss-probe, script:not([src])').length,
+      output_child_count: document.getElementById("command-runner-output")?.children.length || 0,
+      output_source_path: document.getElementById("command-runner-output")?.dataset.sourcePath || "",
+    }));
+    if (!xss.blocked || xss.output_source_path !== "/api/control-ui") {
+      failures.push("JSON or snapshot content crossed the text-only DOM boundary");
+    }
+    await context.close();
+  }
+
+  await browser.close();
+  const report = {
+    schema: "hepta_control_ui_progressive_enhancement_adversarial_v1",
+    status: failures.length === 0 ? "ready" : "failed",
+    race,
+    stale_timeout: staleTimeout,
+    oversized_utf8: oversizedUtf8,
+    oversized_content_length: oversizedHeader,
+    no_content_length_stream: noContentLengthStream,
+    jsonp,
+    structured_json: structuredJson,
+    redirect,
+    xss,
+    failures,
+  };
+  process.stdout.write(`${JSON.stringify(report)}\n`);
+  if (failures.length > 0) {
+    process.exit(1);
+  }
+})().catch((error) => {
+  console.error(error?.stack || error);
+  process.exit(1);
+});
+NODE
+}
+
 capture_viewport "desktop" "1365x900"
 capture_viewport "narrow" "768x900"
 capture_viewport "mobile" "500x844"
@@ -6563,6 +7082,31 @@ if [[ "$progressive_qa_status" != "0" ]] || ! jq -e '
 ' <<<"$progressive_qa_json" >/dev/null; then
   echo "Control UI progressive-enhancement browser QA failed" >&2
   jq '.' <<<"$progressive_qa_json" >&2 || true
+  exit 1
+fi
+
+progressive_adversarial_qa_status=0
+progressive_adversarial_qa_json="$(run_progressive_enhancement_adversarial_qa)" \
+  || progressive_adversarial_qa_status="$?"
+printf '%s\n' "$progressive_adversarial_qa_json" \
+  >"$OUT_DIR/progressive-enhancement-adversarial-qa.json"
+if [[ "$progressive_adversarial_qa_status" != "0" ]] || ! jq -e '
+  .status == "ready"
+  and .race.latest_result_retained == true
+  and .race.old_card_state == "superseded"
+  and .stale_timeout.stale_timeout_suppressed == true
+  and .oversized_utf8.rejected == true
+  and .oversized_content_length.rejected == true
+  and .no_content_length_stream.rejected_at_bound == true
+  and .jsonp.rejected == true
+  and .structured_json.accepted == true
+  and .redirect.blocked == true
+  and .redirect.external_request_count == 0
+  and .xss.blocked == true
+  and (.failures | length) == 0
+' <<<"$progressive_adversarial_qa_json" >/dev/null; then
+  echo "Control UI progressive-enhancement adversarial QA failed" >&2
+  jq '.' <<<"$progressive_adversarial_qa_json" >&2 || true
   exit 1
 fi
 
@@ -7248,6 +7792,7 @@ report="$(jq -n \
   --argjson phone320_bytes "$(wc -c <"$OUT_DIR/phone320.png" | tr -d ' ')" \
   --argjson density_qa "$density_qa_json" \
   --argjson progressive_enhancement_qa "$progressive_qa_json" \
+  --argjson progressive_enhancement_adversarial_qa "$progressive_adversarial_qa_json" \
   '{
     schema_version:1,
     kind:"hepta-browser-visual-smoke",
@@ -7445,8 +7990,10 @@ report="$(jq -n \
     control_ui_cross_origin_request_count:$progressive_enhancement_qa.cross_origin_request_count,
     control_ui_mutation_endpoint_called:$progressive_enhancement_qa.mutation_endpoint_called,
     control_ui_live_adapter_bound:$progressive_enhancement_qa.live_adapter_bound,
+    control_ui_progressive_adversarial_ready:($progressive_enhancement_adversarial_qa.status == "ready"),
     density_qa:$density_qa,
     progressive_enhancement_qa:$progressive_enhancement_qa,
+    progressive_enhancement_adversarial_qa:$progressive_enhancement_adversarial_qa,
     checked_assets:[
 		      {path:"/styles.css", markers:[".tg-conversation-rail",".tg-thread-panel",".command-palette","safe-area-inset-bottom","mrog","data-control-ui-compact-product-path","data-control-ui-primary-shell-light-glass","crs","cwb","cce","pce","ppe","cpe","mpb","ipc","avr","rpf","rcs","mmp","tsp","csh","rms","hte","rsc","rpe","mbp","bsp","rsp","fcp","strong){filter","--x:0 1px #fff6","text-shadow:var(--x)","rdlg","oclg","data-control-ui-tspcfrg","dsc","mecs","cmv","ctlg","cplg","cpsg","rmlg","ttlg","bmslg","mslg","tiblg","stslg","talg","body[data-view=chat] .hepta-secondary-map{display:none}","gar26","cps","cpis","cpt","cpc","cpir","cph","cprw","cprr","cpkc","cpilg","data-control-ui-command-palette-input=light-glass","data-control-ui-command-palette-result=light-glass"]},
       {path:"/assets/hepta-agent-logo.png", dimensions:$logo_dimensions, sha256:$logo_sha}

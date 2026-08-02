@@ -4,6 +4,7 @@
   const REQUEST_TIMEOUT_MS = 8000;
   const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
   const SNAPSHOT_PATH = "/api/operator-snapshot";
+  const JSON_MEDIA_TYPE = /^application\/[a-z0-9!#$%&'*+.^_`|~-]+\+json$/;
   const READ_ONLY_ROUTES = Object.freeze({
     "control-ui": "/api/control-ui",
     "config-surface": "/api/config",
@@ -27,6 +28,8 @@
     "gateway-retry-dead-letter": "/api/gateway-retry-dead-letter",
     "multi-agent-runtime": "/api/multi-agent-runtime",
   });
+  let commandGeneration = 0;
+  let activeCommandRequest = null;
 
   function isEmptyPayload(value) {
     if (value === null || value === undefined) {
@@ -43,7 +46,69 @@
     return message.slice(0, 240);
   }
 
-  async function getSameOriginJson(path) {
+  function isJsonMediaType(contentType) {
+    const mediaType = contentType.split(";", 1)[0].trim().toLowerCase();
+    return mediaType === "application/json" || JSON_MEDIA_TYPE.test(mediaType);
+  }
+
+  function responseContentLength(response) {
+    const value = response.headers.get("content-length");
+    if (value === null || !/^\d+$/.test(value.trim())) {
+      return null;
+    }
+    const length = Number(value);
+    return Number.isSafeInteger(length) ? length : Number.POSITIVE_INFINITY;
+  }
+
+  async function readBoundedResponseBytes(response) {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Bounded response streaming is unavailable");
+    }
+    const chunks = [];
+    let byteLength = 0;
+    let cancelled = false;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        byteLength += value.byteLength;
+        if (byteLength > MAX_RESPONSE_BYTES) {
+          cancelled = true;
+          try {
+            await reader.cancel("Response exceeded the local display limit");
+          } catch (_cancelError) {
+            // The byte boundary is authoritative even if transport cancellation races.
+          }
+          throw new Error("Response exceeded the local display limit");
+        }
+        chunks.push(value);
+      }
+    } catch (error) {
+      if (!cancelled) {
+        try {
+          await reader.cancel();
+        } catch (_cancelError) {
+          // Preserve the original read or validation error.
+        }
+      }
+      throw error;
+    } finally {
+      reader.releaseLock();
+    }
+
+    const bodyBytes = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bodyBytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bodyBytes;
+  }
+
+  async function getSameOriginJson(path, requestController = new AbortController()) {
     if (!Object.values(READ_ONLY_ROUTES).includes(path) && path !== SNAPSHOT_PATH) {
       throw new Error("Request is not in the read-only registry");
     }
@@ -53,8 +118,10 @@
       throw new Error("Cross-origin or non-canonical request blocked");
     }
 
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = window.setTimeout(
+      () => requestController.abort(new DOMException("Request timed out", "TimeoutError")),
+      REQUEST_TIMEOUT_MS,
+    );
     try {
       const response = await fetch(url.href, {
         method: "GET",
@@ -63,18 +130,25 @@
         cache: "no-store",
         redirect: "error",
         headers: { Accept: "application/json" },
-        signal: controller.signal,
+        signal: requestController.signal,
       });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
       const contentType = response.headers.get("content-type") || "";
-      if (!contentType.toLowerCase().startsWith("application/json")) {
+      if (!isJsonMediaType(contentType)) {
         throw new Error("Response is not JSON");
       }
-      const body = await response.text();
-      if (body.length > MAX_RESPONSE_BYTES) {
+      const contentLength = responseContentLength(response);
+      if (contentLength !== null && contentLength > MAX_RESPONSE_BYTES) {
         throw new Error("Response exceeded the local display limit");
+      }
+      const bodyBytes = await readBoundedResponseBytes(response);
+      let body;
+      try {
+        body = new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes);
+      } catch (_error) {
+        throw new Error("Response is not valid UTF-8");
       }
       if (!body.trim()) {
         return { data: null, empty: true };
@@ -144,6 +218,30 @@
     );
   }
 
+  function supersedeActiveCommandRequest() {
+    const previous = activeCommandRequest;
+    if (!previous) {
+      return;
+    }
+    activeCommandRequest = null;
+    previous.controller.abort(
+      new DOMException("Superseded by a newer command", "AbortError"),
+    );
+    previous.card?.setAttribute("data-command-state", "superseded");
+    if (previous.button.dataset.commandGeneration === String(previous.generation)) {
+      previous.button.disabled = false;
+      previous.button.removeAttribute("aria-busy");
+      delete previous.button.dataset.commandGeneration;
+    }
+  }
+
+  function commandRequestIsCurrent(generation, controller) {
+    return (
+      activeCommandRequest?.generation === generation &&
+      activeCommandRequest.controller === controller
+    );
+  }
+
   async function runReadOnlyCommand(button) {
     const commandId = commandIdFor(button);
     const path = READ_ONLY_ROUTES[commandId];
@@ -156,21 +254,39 @@
       return;
     }
     const card = button.closest("[data-command-id]");
+    supersedeActiveCommandRequest();
+    const generation = ++commandGeneration;
+    const controller = new AbortController();
+    activeCommandRequest = { generation, controller, button, card, path };
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
+    button.dataset.commandGeneration = String(generation);
     card?.setAttribute("data-command-state", "loading");
+    output.dataset.sourcePath = path;
     setStatus(output, "loading", `Loading ${path}…`);
     try {
-      const result = await getSameOriginJson(path);
-      output.textContent = JSON.stringify(result.data, null, 2);
+      const result = await getSameOriginJson(path, controller);
+      if (!commandRequestIsCurrent(generation, controller)) {
+        return;
+      }
+      output.textContent = JSON.stringify({ source_path: path, data: result.data }, null, 2);
       output.dataset.state = result.empty ? "empty" : "ready";
       card?.setAttribute("data-command-state", result.empty ? "empty" : "ready");
     } catch (error) {
+      if (!commandRequestIsCurrent(generation, controller)) {
+        return;
+      }
       setStatus(output, "error", `Unable to load ${path}: ${safeMessage(error)}`);
       card?.setAttribute("data-command-state", "error");
     } finally {
-      button.disabled = false;
-      button.removeAttribute("aria-busy");
+      if (button.dataset.commandGeneration === String(generation)) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        delete button.dataset.commandGeneration;
+      }
+      if (commandRequestIsCurrent(generation, controller)) {
+        activeCommandRequest = null;
+      }
     }
   }
 
@@ -220,7 +336,11 @@
       }
 
       const runButton = target?.closest('[data-run-command="read-only"]');
-      if (runButton && runButton.dataset.readOnlyRegistry === "allowed") {
+      if (
+        runButton &&
+        !runButton.disabled &&
+        runButton.dataset.readOnlyRegistry === "allowed"
+      ) {
         event.preventDefault();
         void runReadOnlyCommand(runButton);
       }
