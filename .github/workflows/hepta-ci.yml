@@ -90,6 +90,8 @@ jobs:
           persist-credentials: false
       - name: Install static gate tools
         run: brew install jq ripgrep
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@f133eefe930d61f0d9371efd474daf0125ed3dd1 # 1.95.0
       - name: Run bounded static gates
         run: scripts/hepta-ci-baseline static
 
@@ -108,9 +110,8 @@ jobs:
       - name: Materialize immutable upstream intake refs for counted evidence
         run: scripts/hepta-ci-materialize-upstream-intake materialize
       - name: Install Rust 1.95.0
-        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
+        uses: dtolnay/rust-toolchain@f133eefe930d61f0d9371efd474daf0125ed3dd1 # 1.95.0
         with:
-          toolchain: 1.95.0
           components: rustfmt, clippy
       - name: Set up sandboxed rusty_v8
         shell: bash
@@ -173,9 +174,7 @@ jobs:
       - name: Bind full-workspace cache identity
         run: echo "HEPTA_CI_CACHE_IDENTITY=${RUNNER_OS}-hepta-ci-v2-full-workspace-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock', 'apps/hepta-native/Cargo.lock', 'MODULE.bazel.lock') }}" >>"$GITHUB_ENV"
       - name: Install Rust 1.95.0
-        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
-        with:
-          toolchain: 1.95.0
+        uses: dtolnay/rust-toolchain@f133eefe930d61f0d9371efd474daf0125ed3dd1 # 1.95.0
       - name: Set up sandboxed rusty_v8
         shell: bash
         run: |

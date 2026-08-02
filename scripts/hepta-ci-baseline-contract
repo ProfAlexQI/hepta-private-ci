@@ -295,7 +295,7 @@ verify_contract() {
   while IFS= read -r command_name; do
     require_literal "$baseline" "run: $command_name" "baseline command $command_name"
   done < <(jq -er '.baseline_workflow.required_commands[]' "$CONTRACT")
-  require_literal "$baseline" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
+  require_literal "$baseline" "uses: dtolnay/rust-toolchain@f133eefe930d61f0d9371efd474daf0125ed3dd1 # 1.95.0" "pinned Rust 1.95.0 toolchain action"
   require_literal "$baseline" "components: rustfmt, clippy" "bounded backend Clippy component"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-safe-lint-security-baseline" run' "safe lint/security baseline execution"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-dependency-security" scan' "dependency security execution"
@@ -331,7 +331,7 @@ verify_contract() {
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence run ${{ matrix.platform }} ${{ matrix.runner }}' "platform receipt execution"
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence verify-receipt ${{ matrix.platform }} ${{ matrix.runner }}' "platform receipt verification"
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence verify-success-receipt ${{ matrix.platform }} ${{ matrix.runner }}' "successful platform receipt promotion eligibility"
-  require_literal "$full" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
+  require_literal "$full" "uses: dtolnay/rust-toolchain@f133eefe930d61f0d9371efd474daf0125ed3dd1 # 1.95.0" "pinned Rust 1.95.0 toolchain action"
   require_literal "$full" "components: rustfmt, clippy" "full preflight V2 Clippy component"
   require_literal "$full" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned full preflight Cargo cache action"
   require_exact_literal "$full" "          persist-credentials: false" "full checkout credential isolation"
