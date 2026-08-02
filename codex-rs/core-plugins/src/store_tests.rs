@@ -431,6 +431,71 @@ fn active_plugin_version_compares_semver_versions_semantically() {
 }
 
 #[test]
+fn active_marker_rejects_invalid_utf8_multiline_nonregular_and_missing_target() {
+    let tmp = tempdir().unwrap();
+
+    let invalid_utf8_root = tmp.path().join("invalid-utf8");
+    fs::create_dir_all(invalid_utf8_root.join("1.0.0")).unwrap();
+    fs::write(
+        invalid_utf8_root.join(ACTIVE_PLUGIN_VERSION_FILE),
+        [0xff, 0xfe],
+    )
+    .unwrap();
+    assert_eq!(active_plugin_version_in_root(&invalid_utf8_root), None);
+
+    let multiline_root = tmp.path().join("multiline");
+    fs::create_dir_all(multiline_root.join("1.0.0")).unwrap();
+    fs::write(
+        multiline_root.join(ACTIVE_PLUGIN_VERSION_FILE),
+        "1.0.0\n2.0.0\n",
+    )
+    .unwrap();
+    assert_eq!(active_plugin_version_in_root(&multiline_root), None);
+
+    let nonregular_root = tmp.path().join("nonregular");
+    fs::create_dir_all(nonregular_root.join("1.0.0")).unwrap();
+    fs::create_dir_all(nonregular_root.join(ACTIVE_PLUGIN_VERSION_FILE)).unwrap();
+    assert_eq!(active_plugin_version_in_root(&nonregular_root), None);
+
+    let missing_target_root = tmp.path().join("missing-target");
+    fs::create_dir_all(&missing_target_root).unwrap();
+    fs::write(
+        missing_target_root.join(ACTIVE_PLUGIN_VERSION_FILE),
+        "1.0.0\n",
+    )
+    .unwrap();
+    assert_eq!(active_plugin_version_in_root(&missing_target_root), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn active_marker_and_target_symlinks_fail_closed() {
+    let tmp = tempdir().unwrap();
+    let marker_link_root = tmp.path().join("marker-link");
+    let marker_target = tmp.path().join("marker-target");
+    fs::create_dir_all(marker_link_root.join("1.0.0")).unwrap();
+    fs::write(&marker_target, "1.0.0\n").unwrap();
+    std::os::unix::fs::symlink(
+        &marker_target,
+        marker_link_root.join(ACTIVE_PLUGIN_VERSION_FILE),
+    )
+    .unwrap();
+    assert_eq!(active_plugin_version_in_root(&marker_link_root), None);
+
+    let version_link_root = tmp.path().join("version-link");
+    let version_target = tmp.path().join("version-target");
+    fs::create_dir_all(&version_link_root).unwrap();
+    fs::create_dir_all(&version_target).unwrap();
+    fs::write(
+        version_link_root.join(ACTIVE_PLUGIN_VERSION_FILE),
+        "1.0.0\n",
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(&version_target, version_link_root.join("1.0.0")).unwrap();
+    assert_eq!(active_plugin_version_in_root(&version_link_root), None);
+}
+
+#[test]
 fn version_comparator_breaks_equal_semver_and_invalid_versions_deterministically() {
     assert_eq!(
         compare_plugin_versions("1.0.0+alpha", "1.0.0+beta"),
@@ -451,7 +516,7 @@ fn version_comparator_breaks_equal_semver_and_invalid_versions_deterministically
 }
 
 #[test]
-fn install_with_new_version_keeps_existing_plugin_root_and_prunes_old_versions() {
+fn install_with_new_version_publishes_marker_and_retains_old_generation() {
     let tmp = tempdir().unwrap();
     let store = PluginStore::new(tmp.path().to_path_buf());
     let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
@@ -480,7 +545,65 @@ fn install_with_new_version_keeps_existing_plugin_root_and_prunes_old_versions()
     );
     assert!(plugin_base_root.join("root-sentinel").is_file());
     assert!(plugin_base_root.join("2.0.0").is_dir());
-    assert!(!plugin_base_root.join("1.0.0").exists());
+    assert!(plugin_base_root.join("1.0.0").is_dir());
+    assert_eq!(
+        fs::read_to_string(plugin_base_root.join(ACTIVE_PLUGIN_VERSION_FILE)).unwrap(),
+        "2.0.0\n"
+    );
+}
+
+#[test]
+fn retry_rejects_inactive_orphan_without_replacing_active_generation() {
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "v1", "sample-plugin", Some("1.0.0"));
+    fs::write(tmp.path().join("v1/skills/SKILL.md"), "active-version-one").unwrap();
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("v1")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+
+    let plugin_base_root = store.plugin_base_root(&plugin_id);
+    let inactive_orphan = plugin_base_root.join("2.0.0");
+    fs::create_dir_all(&inactive_orphan).unwrap();
+    fs::write(inactive_orphan.join("orphan-sentinel"), "preserve orphan").unwrap();
+    write_plugin_with_version(tmp.path(), "v2", "sample-plugin", Some("2.0.0"));
+    fs::write(
+        tmp.path().join("v2/skills/SKILL.md"),
+        "candidate-version-two",
+    )
+    .unwrap();
+
+    let err = store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("v2")).unwrap(),
+            plugin_id.clone(),
+        )
+        .expect_err("retry must not replace an inactive orphan generation");
+
+    assert!(
+        err.to_string()
+            .contains("inactive plugin cache version collision")
+    );
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+    assert_eq!(
+        fs::read_to_string(plugin_base_root.join(ACTIVE_PLUGIN_VERSION_FILE)).unwrap(),
+        "1.0.0\n"
+    );
+    assert_eq!(
+        fs::read_to_string(plugin_base_root.join("1.0.0/skills/SKILL.md")).unwrap(),
+        "active-version-one"
+    );
+    assert_eq!(
+        fs::read_to_string(inactive_orphan.join("orphan-sentinel")).unwrap(),
+        "preserve orphan"
+    );
 }
 
 #[cfg(unix)]
@@ -525,41 +648,107 @@ fn install_with_new_version_activation_failure_preserves_existing_version() {
 }
 
 #[test]
-fn cleanup_failure_is_best_effort_when_new_version_is_active() {
-    let tmp = tempdir().unwrap();
-    let target_root = tmp.path().join("plugin");
-    fs::create_dir_all(target_root.join("1.0.0")).unwrap();
-    fs::create_dir_all(target_root.join("2.0.0")).unwrap();
-    let mut attempted_removals = Vec::new();
+fn mixed_semver_and_opaque_version_order_is_total_across_all_permutations() {
+    let permutations = [
+        ["2.0.0", "10.0.0", "15x"],
+        ["2.0.0", "15x", "10.0.0"],
+        ["10.0.0", "2.0.0", "15x"],
+        ["10.0.0", "15x", "2.0.0"],
+        ["15x", "2.0.0", "10.0.0"],
+        ["15x", "10.0.0", "2.0.0"],
+    ];
 
-    remove_old_plugin_versions_with(&target_root, "2.0.0", |path| {
-        attempted_removals.push(path.to_path_buf());
-        Err(io::Error::other("simulated locked version"))
-    })
-    .expect("lower locked version may remain when the new version is active");
-
-    assert_eq!(attempted_removals, vec![target_root.join("1.0.0")]);
-    assert_eq!(
-        active_plugin_version_in_root(&target_root),
-        Some("2.0.0".to_string())
-    );
+    for permutation in permutations {
+        let selected = permutation
+            .into_iter()
+            .max_by(|left, right| compare_plugin_versions(left, right));
+        assert_eq!(selected, Some("10.0.0"), "permutation {permutation:?}");
+    }
+    assert_eq!(compare_plugin_versions("10.0.0", "15x"), Ordering::Greater);
+    assert_eq!(compare_plugin_versions("15x", "10.0.0"), Ordering::Less);
 }
 
 #[test]
-fn cleanup_failure_errors_when_old_version_would_remain_active() {
+fn explicit_marker_allows_safe_downgrade_without_deleting_newer_generation() {
     let tmp = tempdir().unwrap();
-    let target_root = tmp.path().join("plugin");
-    fs::create_dir_all(target_root.join("1.0.0")).unwrap();
-    fs::create_dir_all(target_root.join("2.0.0")).unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "v2", "sample-plugin", Some("2.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("v2")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    write_plugin_with_version(tmp.path(), "v1", "sample-plugin", Some("1.0.0"));
 
-    let err = remove_old_plugin_versions_with(&target_root, "1.0.0", |_| {
-        Err(io::Error::other("simulated locked version"))
-    })
-    .expect_err("a higher locked version prevents the new version from becoming active");
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("v1")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
 
+    let plugin_root = store.plugin_base_root(&plugin_id);
     assert_eq!(
-        err.to_string(),
-        "failed to activate updated plugin cache version `1.0.0` while `2.0.0` remains active"
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+    assert!(plugin_root.join("1.0.0").is_dir());
+    assert!(plugin_root.join("2.0.0").is_dir());
+}
+
+#[test]
+fn reader_can_continue_using_old_generation_after_distinct_version_activation() {
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "v1", "sample-plugin", Some("1.0.0"));
+    fs::write(tmp.path().join("v1/skills/SKILL.md"), "version-one").unwrap();
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("v1")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    let old_skill = store
+        .active_plugin_root(&plugin_id)
+        .unwrap()
+        .join("skills/SKILL.md");
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let (activated_tx, activated_rx) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        assert_eq!(fs::read_to_string(&old_skill).unwrap(), "version-one");
+        ready_tx.send(()).unwrap();
+        activated_rx.recv().unwrap();
+        fs::read_to_string(&old_skill)
+    });
+    ready_rx.recv().unwrap();
+    write_plugin_with_version(tmp.path(), "v2", "sample-plugin", Some("2.0.0"));
+    fs::write(tmp.path().join("v2/skills/SKILL.md"), "version-two").unwrap();
+
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("v2")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    activated_tx.send(()).unwrap();
+
+    assert_eq!(reader.join().unwrap().unwrap(), "version-one");
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("2.0.0".to_string())
+    );
+    assert_eq!(
+        fs::read_to_string(
+            store
+                .active_plugin_root(&plugin_id)
+                .unwrap()
+                .join("skills/SKILL.md")
+        )
+        .unwrap(),
+        "version-two"
     );
 }
 
@@ -823,6 +1012,59 @@ fn install_rejects_nested_socket_without_replacing_existing_plugin() {
     assert!(
         err.to_string()
             .contains("plugin source contains unsupported file type")
+    );
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn install_rejects_source_root_junction_without_replacing_existing_plugin() {
+    use std::process::Command;
+
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "old-source", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("old-source")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    write_plugin_with_version(
+        tmp.path(),
+        "junction-target",
+        "sample-plugin",
+        Some("2.0.0"),
+    );
+    let junction_path = tmp.path().join("source-junction");
+    let output = Command::new("cmd")
+        .arg("/C")
+        .arg("mklink")
+        .arg("/J")
+        .arg(&junction_path)
+        .arg(tmp.path().join("junction-target"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "mklink /J failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let err = store
+        .install(
+            AbsolutePathBuf::try_from(junction_path).unwrap(),
+            plugin_id.clone(),
+        )
+        .expect_err("source-root junction must fail closed");
+
+    assert!(
+        err.to_string()
+            .contains("plugin source contains unsupported Windows reparse point")
     );
     assert_eq!(
         store.active_plugin_version(&plugin_id),

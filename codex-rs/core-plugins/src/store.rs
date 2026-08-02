@@ -14,11 +14,13 @@ use sha2::Sha256;
 use std::cmp::Ordering;
 use std::fs;
 use std::io;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
 pub const DEFAULT_PLUGIN_VERSION: &str = "local";
 const DEFAULT_AGENT_PLUGIN_VERSION: &str = "1.0.0";
+const ACTIVE_PLUGIN_VERSION_FILE: &str = ".hepta-active-version";
 pub const PLUGINS_CACHE_DIR: &str = "plugins/cache";
 pub const PLUGINS_DATA_DIR: &str = "plugins/data";
 
@@ -398,14 +400,37 @@ fn replace_plugin_root_atomically(
     let staged_root = staged_dir.path().join(plugin_dir_name);
     let staged_version_root = staged_root.join(plugin_version);
     copy_dir_recursive(source, &staged_version_root)?;
+    write_active_plugin_version_marker(&staged_root, plugin_version)?;
 
     let target_version_root = target_root.join(plugin_version);
-    if target_root.exists() && !target_version_root.exists() {
-        fs::rename(&staged_version_root, &target_version_root).map_err(|err| {
-            PluginStoreError::io("failed to activate updated plugin cache version", err)
-        })?;
-        remove_old_plugin_versions(target_root, plugin_version)?;
-        return Ok(());
+    if target_root.exists() {
+        match ensure_active_plugin_version_marker(target_root)? {
+            Some(active_version) if active_version != plugin_version => {
+                if target_version_root.exists() {
+                    return Err(PluginStoreError::Invalid(format!(
+                        "inactive plugin cache version collision at {} while `{active_version}` remains active",
+                        target_version_root.display()
+                    )));
+                }
+                // The old marker remains authoritative throughout the sibling rename. Readers that
+                // already resolved the old generation can continue using it after publication.
+                fs::rename(&staged_version_root, &target_version_root).map_err(|err| {
+                    PluginStoreError::io("failed to activate updated plugin cache version", err)
+                })?;
+                // Publishing the marker is the only authority change. If it fails, the previous
+                // marker remains authoritative and the newly copied sibling is an inactive orphan.
+                write_active_plugin_version_marker(target_root, plugin_version)?;
+                return Ok(());
+            }
+            Some(_) => {}
+            None if target_version_root.exists() => {
+                return Err(PluginStoreError::Invalid(format!(
+                    "inactive plugin cache version collision at {} with no active generation",
+                    target_version_root.display()
+                )));
+            }
+            None => {}
+        }
     }
 
     if target_root.exists() {
@@ -444,12 +469,33 @@ fn replace_plugin_root_atomically(
     Ok(())
 }
 
+enum ActivePluginVersionMarker {
+    Found(String),
+    Missing,
+    Rejected,
+}
+
 fn active_plugin_version_in_root(target_root: &Path) -> Option<String> {
+    match read_active_plugin_version_marker(target_root) {
+        ActivePluginVersionMarker::Found(version) => return Some(version),
+        ActivePluginVersionMarker::Rejected => return None,
+        ActivePluginVersionMarker::Missing => {}
+    }
+    legacy_active_plugin_version_in_root(target_root)
+}
+
+fn legacy_active_plugin_version_in_root(target_root: &Path) -> Option<String> {
     let discovered_versions = fs::read_dir(target_root)
         .ok()?
         .filter_map(Result::ok)
         .filter_map(|entry| {
-            entry.file_type().ok().filter(std::fs::FileType::is_dir)?;
+            let metadata = fs::symlink_metadata(entry.path()).ok()?;
+            if metadata.file_type().is_symlink()
+                || !metadata.file_type().is_dir()
+                || is_windows_reparse_point(&metadata)
+            {
+                return None;
+            }
             entry.file_name().into_string().ok()
         })
         .filter(|version| validate_plugin_version_segment(version).is_ok())
@@ -465,48 +511,91 @@ fn active_plugin_version_in_root(target_root: &Path) -> Option<String> {
         .max_by(|left, right| compare_plugin_versions(left, right))
 }
 
-fn remove_old_plugin_versions(
+fn ensure_active_plugin_version_marker(
     target_root: &Path,
-    plugin_version: &str,
-) -> Result<(), PluginStoreError> {
-    remove_old_plugin_versions_with(target_root, plugin_version, |path| fs::remove_dir_all(path))
-}
-
-fn remove_old_plugin_versions_with(
-    target_root: &Path,
-    plugin_version: &str,
-    mut remove_dir_all: impl FnMut(&Path) -> io::Result<()>,
-) -> Result<(), PluginStoreError> {
-    if let Ok(entries) = fs::read_dir(target_root) {
-        for entry in entries.filter_map(Result::ok) {
-            let Ok(file_type) = entry.file_type() else {
-                continue;
+) -> Result<Option<String>, PluginStoreError> {
+    match read_active_plugin_version_marker(target_root) {
+        ActivePluginVersionMarker::Found(version) => Ok(Some(version)),
+        ActivePluginVersionMarker::Rejected => Err(PluginStoreError::Invalid(format!(
+            "invalid active plugin version marker at {}",
+            target_root.join(ACTIVE_PLUGIN_VERSION_FILE).display()
+        ))),
+        ActivePluginVersionMarker::Missing => {
+            let Some(version) = legacy_active_plugin_version_in_root(target_root) else {
+                return Ok(None);
             };
-            if !file_type.is_dir() {
-                continue;
-            }
-            let Ok(version) = entry.file_name().into_string() else {
-                continue;
-            };
-            if version == plugin_version || validate_plugin_version_segment(&version).is_err() {
-                continue;
-            }
-            let _ = remove_dir_all(&entry.path());
+            write_active_plugin_version_marker(target_root, &version)?;
+            Ok(Some(version))
         }
     }
+}
 
-    let active_version = active_plugin_version_in_root(target_root);
-    if active_version.as_deref() == Some(plugin_version) {
-        return Ok(());
+fn read_active_plugin_version_marker(target_root: &Path) -> ActivePluginVersionMarker {
+    let marker_path = target_root.join(ACTIVE_PLUGIN_VERSION_FILE);
+    let metadata = match fs::symlink_metadata(&marker_path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            return ActivePluginVersionMarker::Missing;
+        }
+        Err(_) => return ActivePluginVersionMarker::Rejected,
+    };
+    if metadata.file_type().is_symlink()
+        || !metadata.file_type().is_file()
+        || is_windows_reparse_point(&metadata)
+    {
+        return ActivePluginVersionMarker::Rejected;
     }
-    Err(PluginStoreError::Invalid(match active_version {
-        Some(active_version) => format!(
-            "failed to activate updated plugin cache version `{plugin_version}` while `{active_version}` remains active"
-        ),
-        None => format!(
-            "failed to activate updated plugin cache version `{plugin_version}` because no active version could be selected"
-        ),
-    }))
+    let Ok(contents) = fs::read_to_string(&marker_path) else {
+        return ActivePluginVersionMarker::Rejected;
+    };
+    let version = contents.strip_suffix('\n').unwrap_or(&contents);
+    if version.is_empty()
+        || version.contains(['\r', '\n'])
+        || validate_plugin_version_segment(version).is_err()
+    {
+        return ActivePluginVersionMarker::Rejected;
+    }
+    let version_root = target_root.join(version);
+    let Ok(version_metadata) = fs::symlink_metadata(&version_root) else {
+        return ActivePluginVersionMarker::Rejected;
+    };
+    if version_metadata.file_type().is_symlink()
+        || !version_metadata.file_type().is_dir()
+        || is_windows_reparse_point(&version_metadata)
+    {
+        return ActivePluginVersionMarker::Rejected;
+    }
+    ActivePluginVersionMarker::Found(version.to_string())
+}
+
+fn write_active_plugin_version_marker(
+    target_root: &Path,
+    plugin_version: &str,
+) -> Result<(), PluginStoreError> {
+    validate_plugin_version_segment(plugin_version).map_err(PluginStoreError::Invalid)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(target_root).map_err(|err| {
+        PluginStoreError::io(
+            "failed to create temporary active plugin version marker",
+            err,
+        )
+    })?;
+    temporary
+        .write_all(format!("{plugin_version}\n").as_bytes())
+        .map_err(|err| PluginStoreError::io("failed to write active plugin version marker", err))?;
+    temporary
+        .as_file_mut()
+        .flush()
+        .map_err(|err| PluginStoreError::io("failed to flush active plugin version marker", err))?;
+    temporary
+        .as_file_mut()
+        .sync_all()
+        .map_err(|err| PluginStoreError::io("failed to sync active plugin version marker", err))?;
+    temporary
+        .persist(target_root.join(ACTIVE_PLUGIN_VERSION_FILE))
+        .map_err(|err| {
+            PluginStoreError::io("failed to publish active plugin version marker", err.error)
+        })?;
+    Ok(())
 }
 
 fn compare_plugin_versions(left: &str, right: &str) -> Ordering {
@@ -514,7 +603,9 @@ fn compare_plugin_versions(left: &str, right: &str) -> Ordering {
         (Ok(left_version), Ok(right_version)) => left_version
             .cmp(&right_version)
             .then_with(|| left.cmp(right)),
-        _ => left.cmp(right),
+        (Ok(_), Err(_)) => Ordering::Greater,
+        (Err(_), Ok(_)) => Ordering::Less,
+        (Err(_), Err(_)) => left.cmp(right),
     }
 }
 
