@@ -503,6 +503,16 @@ self_test() (
   r9_ref="refs/remotes/upstream/hepta-intake-20260724-r9"
   r9_sha="000d2540ad73996f3589ae178bfe447bfd67cef2"
   git clone -q --shared --no-checkout "$ROOT" "$ref_fixture"
+  git -C "$ref_fixture" fetch -q --no-tags "$ROOT" \
+    "$predecessor_ref:refs/hepta-ci-self-test/predecessor" \
+    "$r2_ref:refs/hepta-ci-self-test/r2" \
+    "$r3_ref:refs/hepta-ci-self-test/r3" \
+    "$r4_ref:refs/hepta-ci-self-test/r4" \
+    "$r5_ref:refs/hepta-ci-self-test/r5" \
+    "$r6_ref:refs/hepta-ci-self-test/r6" \
+    "$r7_ref:refs/hepta-ci-self-test/r7" \
+    "$r8_ref:refs/hepta-ci-self-test/r8" \
+    "$r9_ref:refs/hepta-ci-self-test/r9"
   git -C "$ref_fixture" update-ref "$predecessor_ref" "$predecessor_sha"
   git -C "$ref_fixture" update-ref "$r2_ref" "$r2_sha"
   git -C "$ref_fixture" update-ref "$r3_ref" "$r3_sha"
