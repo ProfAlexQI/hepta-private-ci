@@ -71,6 +71,8 @@ def hepta_ui_promotion_independent_verifiers_ready:
     and ($c.window_receipt.automation.application_process.identity_safe_termination_confirmed // false) == true
     and ($c.window_receipt.host_window.title // "") == "Hepta"
     and ($c.window_receipt.host_window.exact_title_match_count // 0) == 1
+    and ($c.window_receipt.host_window.bounds_within_tolerance // false) == true
+    and ($c.window_receipt.host_window.minimum_capture_size_ready // false) == true
     and ($c.window_receipt.isolation.home_isolated // false) == true
     and ($c.window_receipt.isolation.real_product_data_path_denied // false) == true
     and ($c.window_receipt.isolation.real_product_cache_path_denied // false) == true

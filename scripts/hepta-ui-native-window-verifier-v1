@@ -11,6 +11,7 @@ REPORT_PATH=""
 PACKAGE_REPORT=""
 RUN_NONCE=""
 WINDOW_BOUNDS="80,70,1200,720"
+WINDOW_BOUNDS_TOLERANCE=32
 STARTUP_TIMEOUT_SEC=180
 
 while [[ $# -gt 0 ]]; do
@@ -29,7 +30,8 @@ usage: scripts/hepta-ui-native-window-verifier-v1 [options]
   --output FILE            write the promotion receipt
   --package-report FILE    current-run native package receipt (required)
   --run-nonce VALUE        current orchestrator run nonce (required)
-  --bounds X,Y,W,H         requested macOS window bounds (default 80,70,1200,720)
+  --bounds X,Y,W,H         requested macOS window bounds (default 80,70,1200,720;
+                           compositor frame adjustment must stay within 32px)
   --startup-timeout SEC    window/capture timeout (default 180)
 
 Starts the exact executable from the current package receipt under a macOS
@@ -516,6 +518,11 @@ ACTUAL_X=""
 ACTUAL_Y=""
 ACTUAL_WIDTH=""
 ACTUAL_HEIGHT=""
+BOUNDS_DELTA_X=""
+BOUNDS_DELTA_Y=""
+BOUNDS_DELTA_WIDTH=""
+BOUNDS_DELTA_HEIGHT=""
+BOUNDS_WITHIN_TOLERANCE=false
 CURRENT_STAGE="window_position_and_focus"
 for attempt in {1..4}; do
   if ! run_logged_command "peekaboo-set-bounds-$attempt" peekaboo window set-bounds \
@@ -541,14 +548,28 @@ for attempt in {1..4}; do
   ACTUAL_Y="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[0][1]' <<<"$WINDOW_LIST")"
   ACTUAL_WIDTH="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[1][0]' <<<"$WINDOW_LIST")"
   ACTUAL_HEIGHT="$(jq -r --argjson id "$WINDOW_ID" '.data.windows[] | select(.windowID == $id) | .bounds[1][1]' <<<"$WINDOW_LIST")"
-  [[ "$ACTUAL_WIDTH" == "$WINDOW_WIDTH" && "$ACTUAL_HEIGHT" == "$WINDOW_HEIGHT" ]] && break
+  if [[ "$ACTUAL_X" =~ ^-?[0-9]+$ && "$ACTUAL_Y" =~ ^-?[0-9]+$ \
+    && "$ACTUAL_WIDTH" =~ ^[0-9]+$ && "$ACTUAL_HEIGHT" =~ ^[0-9]+$ ]]; then
+    BOUNDS_DELTA_X=$((ACTUAL_X - WINDOW_X)); (( BOUNDS_DELTA_X < 0 )) && BOUNDS_DELTA_X=$((-BOUNDS_DELTA_X))
+    BOUNDS_DELTA_Y=$((ACTUAL_Y - WINDOW_Y)); (( BOUNDS_DELTA_Y < 0 )) && BOUNDS_DELTA_Y=$((-BOUNDS_DELTA_Y))
+    BOUNDS_DELTA_WIDTH=$((ACTUAL_WIDTH - WINDOW_WIDTH)); (( BOUNDS_DELTA_WIDTH < 0 )) && BOUNDS_DELTA_WIDTH=$((-BOUNDS_DELTA_WIDTH))
+    BOUNDS_DELTA_HEIGHT=$((ACTUAL_HEIGHT - WINDOW_HEIGHT)); (( BOUNDS_DELTA_HEIGHT < 0 )) && BOUNDS_DELTA_HEIGHT=$((-BOUNDS_DELTA_HEIGHT))
+    if (( BOUNDS_DELTA_X <= WINDOW_BOUNDS_TOLERANCE \
+      && BOUNDS_DELTA_Y <= WINDOW_BOUNDS_TOLERANCE \
+      && BOUNDS_DELTA_WIDTH <= WINDOW_BOUNDS_TOLERANCE \
+      && BOUNDS_DELTA_HEIGHT <= WINDOW_BOUNDS_TOLERANCE \
+      && ACTUAL_WIDTH >= 900 && ACTUAL_HEIGHT >= 600 )); then
+      BOUNDS_WITHIN_TOLERANCE=true
+      break
+    fi
+  fi
 done
 WINDOW_MATCH_COUNT="$(jq '[.data.windows[]? | select(.title == "Hepta")] | length' <<<"$WINDOW_LIST")"
 [[ "$WINDOW_MATCH_COUNT" == "1" ]] || {
   fail "native window title match was no longer unique before capture"
 }
-[[ "$ACTUAL_WIDTH" == "$WINDOW_WIDTH" && "$ACTUAL_HEIGHT" == "$WINDOW_HEIGHT" ]] || {
-  fail "native window bounds did not settle: requested $WINDOW_BOUNDS, got ${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}"
+[[ "$BOUNDS_WITHIN_TOLERANCE" == true ]] || {
+  fail "native window bounds exceeded ${WINDOW_BOUNDS_TOLERANCE}px tolerance or minimum size: requested $WINDOW_BOUNDS, got ${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}"
 }
 
 CURRENT_STAGE="window_capture"
@@ -601,6 +622,9 @@ jq -n \
   --arg package_bundle_sha "$PACKAGE_BUNDLE_SHA_FINAL" \
   --arg host_path "$HOST_SCREENSHOT" --arg host_sha "$HOST_SHA" --arg host_dimensions "$HOST_DIMENSIONS" \
   --arg bounds "$WINDOW_BOUNDS" --arg actual_bounds "${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}" --argjson window_match_count "$WINDOW_MATCH_COUNT" \
+  --argjson bounds_tolerance "$WINDOW_BOUNDS_TOLERANCE" --argjson bounds_within_tolerance "$BOUNDS_WITHIN_TOLERANCE" \
+  --argjson bounds_delta_x "$BOUNDS_DELTA_X" --argjson bounds_delta_y "$BOUNDS_DELTA_Y" \
+  --argjson bounds_delta_width "$BOUNDS_DELTA_WIDTH" --argjson bounds_delta_height "$BOUNDS_DELTA_HEIGHT" \
   --arg app_log "$APP_LOG" --arg host_probe "$HOST_PROBE" --arg sandbox_profile "$SANDBOX_PROFILE" \
   --arg verifier_stdout "$VERIFIER_STDOUT_LOG" --arg verifier_stderr "$VERIFIER_STDERR_LOG" \
   --arg command_log_dir "$COMMAND_LOG_DIR" --arg original_home "$ORIGINAL_HOME" --arg isolated_home "$ISOLATED_HOME" \
@@ -613,7 +637,7 @@ jq -n \
     run_nonce:$run_nonce,
     scope:"unauthenticated_local_macos_product_shell",
     package:{report_path:$package_report,report_sha256:$package_report_sha,app_path:$package_app,binary_path:$package_binary,binary_sha256:$package_binary_sha,bundle_fingerprint_sha256:$package_bundle_sha,current_source_local_package_ready:true,visual_capture_binary_is_exact_packaged_executable:true},
-    window:{requested_bounds:$bounds,actual_bounds:$actual_bounds,title:"Hepta",exact_title_match_count:$window_match_count,host_capture:{path:$host_path,sha256:$host_sha,dimensions:$host_dimensions,content_probe:$host_probe}},
+    window:{requested_bounds:$bounds,actual_bounds:$actual_bounds,bounds_tolerance_pixels:$bounds_tolerance,bounds_within_tolerance:$bounds_within_tolerance,bounds_delta:{x:$bounds_delta_x,y:$bounds_delta_y,width:$bounds_delta_width,height:$bounds_delta_height},minimum_capture_size_ready:true,title:"Hepta",exact_title_match_count:$window_match_count,host_capture:{path:$host_path,sha256:$host_sha,dimensions:$host_dimensions,content_probe:$host_probe}},
     logs:{application:$app_log,verifier_stdout:$verifier_stdout,verifier_stderr:$verifier_stderr,command_directory:$command_log_dir},
     process:{start_token:$app_start_token,command:$app_command,identity_safe_termination_confirmed:$app_termination_confirmed},
     isolation:{macos_sandbox_profile:$sandbox_profile,original_home:$original_home,isolated_home:$isolated_home,home_isolated:($isolated_home != $original_home),real_product_data_path_denied:true,real_product_cache_path_denied:true,keychain_services_denied:true,network_denied_by_sandbox:true,force_login_argument:true,user_input_performed:false,matrix_login_performed:false}
@@ -638,6 +662,9 @@ if ! jq -n \
   --arg manifest "$EVIDENCE_MANIFEST" --arg manifest_sha "$(shasum -a 256 "$EVIDENCE_MANIFEST" | awk '{print $1}')" \
   --arg host_screenshot "$HOST_SCREENSHOT" --arg host_sha "$HOST_SHA" --arg host_dimensions "$HOST_DIMENSIONS" \
   --arg requested_bounds "$WINDOW_BOUNDS" --arg actual_bounds "${ACTUAL_X},${ACTUAL_Y},${ACTUAL_WIDTH},${ACTUAL_HEIGHT}" --argjson window_match_count "$WINDOW_MATCH_COUNT" \
+  --argjson bounds_tolerance "$WINDOW_BOUNDS_TOLERANCE" --argjson bounds_within_tolerance "$BOUNDS_WITHIN_TOLERANCE" \
+  --argjson bounds_delta_x "$BOUNDS_DELTA_X" --argjson bounds_delta_y "$BOUNDS_DELTA_Y" \
+  --argjson bounds_delta_width "$BOUNDS_DELTA_WIDTH" --argjson bounds_delta_height "$BOUNDS_DELTA_HEIGHT" \
   --arg package_report "$PACKAGE_REPORT" --arg package_report_sha "$PACKAGE_REPORT_SHA" \
   --arg package_app "$PACKAGE_APP" --arg package_binary "$PACKAGE_BINARY" --arg package_binary_sha "$PACKAGE_BINARY_SHA_FINAL" \
   --arg package_bundle_sha "$PACKAGE_BUNDLE_SHA_FINAL" \
@@ -664,7 +691,7 @@ if ! jq -n \
     exact_packaged_executable_capture_performed:true,
     current_head_embedded_in_binary:true,
     package:{report_path:$package_report,report_sha256:$package_report_sha,app_path:$package_app,binary_path:$package_binary,binary_sha256:$package_binary_sha,bundle_fingerprint_sha256:$package_bundle_sha,current_source_local_package_ready:true,visual_capture_binary_is_exact_packaged_executable:true,visual_capture_binary_is_separate_developer_diagnostics_build:false},
-    host_window:{title:"Hepta",exact_title_match_count:$window_match_count,requested_bounds:$requested_bounds,actual_bounds:$actual_bounds,screenshot:{path:$host_screenshot,sha256:$host_sha,dimensions:$host_dimensions}},
+    host_window:{title:"Hepta",exact_title_match_count:$window_match_count,requested_bounds:$requested_bounds,actual_bounds:$actual_bounds,bounds_tolerance_pixels:$bounds_tolerance,bounds_within_tolerance:$bounds_within_tolerance,bounds_delta:{x:$bounds_delta_x,y:$bounds_delta_y,width:$bounds_delta_width,height:$bounds_delta_height},minimum_capture_size_ready:true,screenshot:{path:$host_screenshot,sha256:$host_sha,dimensions:$host_dimensions}},
     evidence_manifest:{path:$manifest,sha256:$manifest_sha},
     artifact:{path:$archive,sha256:$archive_sha,bytes:$archive_bytes,format:"tar.gz"},
     logs:{verifier_stdout:$verifier_stdout,verifier_stderr:$verifier_stderr,application:$app_log,command_directory:$command_log_dir},

@@ -27,7 +27,7 @@ jq -n '{
     scope:"unauthenticated_local_macos_product_shell",run_nonce:"11111111-1111-1111-1111-111111111111",
     package:{current_source_local_package_ready:true,visual_capture_binary_is_exact_packaged_executable:true,visual_capture_binary_is_separate_developer_diagnostics_build:false,report_path:"/evidence/native-current-package.json",report_sha256:"package-report-sha",app_path:"/evidence/native-current-package/Hepta.app",binary_path:"/evidence/native-current-package/Hepta.app/Contents/MacOS/hepta-native",binary_sha256:"binary-sha",bundle_fingerprint_sha256:"bundle-sha"},
     automation:{no_remote:true,host_kind:"local",host_source:"forced_local_services",application_process:{identity_safe_termination_confirmed:true}},
-    host_window:{title:"Hepta",exact_title_match_count:1},
+    host_window:{title:"Hepta",exact_title_match_count:1,bounds_within_tolerance:true,minimum_capture_size_ready:true},
     isolation:{home_isolated:true,real_product_data_path_denied:true,real_product_cache_path_denied:true,keychain_services_denied:true,network_denied_by_sandbox:true,force_login_argument:true}
   },
   package_report_path:"/evidence/native-current-package.json",package_report_sha256:"package-report-sha",
@@ -49,13 +49,14 @@ jq -L scripts/lib -n --slurpfile positive "$TEST_DIR/positive-truth-input.json" 
     {name:"diagnostics_flag_true",input:($base | .window_receipt.package.visual_capture_binary_is_separate_developer_diagnostics_build = true),expected:{source:true,browser:true,promotion:false,local:false}},
     {name:"isolated_home_missing",input:($base | del(.window_receipt.isolation.home_isolated)),expected:{source:true,browser:true,promotion:false,local:false}},
     {name:"window_process_termination_missing",input:($base | del(.window_receipt.automation.application_process.identity_safe_termination_confirmed)),expected:{source:true,browser:true,promotion:false,local:false}},
+    {name:"window_bounds_tolerance_missing",input:($base | del(.window_receipt.host_window.bounds_within_tolerance)),expected:{source:true,browser:true,promotion:false,local:false}},
     {name:"local_package_false",input:($base | .package.local_package_ready = false),expected:{source:true,browser:true,promotion:true,local:false}},
     {name:"static_package_contract_survives_nonbuild_exit",input:($base | .package_exit_code = 1),expected:{source:true,browser:true,promotion:true,local:false}},
     {name:"static_package_contract_survives_nonbuild_status",input:($base | .package.status = "not_ready"),expected:{source:true,browser:true,promotion:true,local:false}}
   ]
   | map(. + {actual:(.input | hepta_ui_readiness_truth)} | del(.input))
 ' >"$TEST_DIR/readiness-truth-table.json"
-jq -e 'length == 12 and all(.[]; .actual == .expected)' "$TEST_DIR/readiness-truth-table.json" >/dev/null
+jq -e 'length == 13 and all(.[]; .actual == .expected)' "$TEST_DIR/readiness-truth-table.json" >/dev/null
 
 # A reused evidence directory must not preserve a ready feature/browser receipt.
 jq -n '{schema_version:1,kind:"hepta-native-feature-matrix-gate",status:"ready",feature_matrix_ready:true}' >"$TEST_DIR/native-feature-matrix.json"
