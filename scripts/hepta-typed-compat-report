@@ -2,6 +2,22 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+internal_report_id="${HEPTA_TYPED_COMPAT_INTERNAL_REPORT_ID:-}"
+if [[ -z "$internal_report_id" \
+  && $# == 0 \
+  && "${HEPTA_GATE_COMPAT_CALLER_ID:-}" == "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-approval-acceptance-boundary-readback-without-acceptance" ]]; then
+  internal_report_id="hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording"
+fi
+if [[ -n "$internal_report_id" ]]; then
+  [[ $# == 0 \
+    && "$internal_report_id" == "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording" ]] || {
+    echo "invalid internal typed compatibility report request" >&2
+    exit 1
+  }
+  export HEPTA_TYPED_COMPAT_INTERNAL_REPORT_ID="$internal_report_id"
+  export HEPTA_REPO_ROOT="${HEPTA_COMPAT_SOURCE_REPO_ROOT:-$ROOT}"
+  set -- --internal-dirty-worktree-owner-decision-source
+fi
 export HEPTA_REPO_ROOT="${HEPTA_REPO_ROOT:-$ROOT}"
 binary="${HEPTA_TYPED_COMPAT_REPORT_BIN:-}"
 

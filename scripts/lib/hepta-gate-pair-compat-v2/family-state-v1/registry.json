@@ -509,8 +509,8 @@
           "mode": "exact_parameterized",
           "original_gate_sha256": "620adeb983b3870175432fd51dc0db44814f13213fcf2419a81baa94f9af2935",
           "original_report_sha256": "37c1d97b26be92a61fc5621d01dad6563a76a70e9ecaae81ebc15c9b10c36bb3",
-          "gate_sha256": "94836e528e04e4708e36fad00a9d6ab5ab8f09628ecb893b49b48cf01e28d5cf",
-          "report_sha256": "7d011317e0c5154a03d4b663381abccc79fb1976593ad9fa65bad10b8ad55437",
+          "gate_sha256": "713c85c643b36b0cc038c259069ab2de24f8fa8ea2272da24f16f030cb462235",
+          "report_sha256": "22af9e5bb41bd62fe6b30a35fa3170ef85fc8ed3ebf231d47d14b2833cd753df",
           "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-approval-acceptance-boundary-readback-without-acceptance"
         },
         {
@@ -554,8 +554,8 @@
           "mode": "exact_parameterized",
           "original_gate_sha256": "7e20006228000843400c669cede7d5c659e47fc52cc29641ca64fb6ee4752d32",
           "original_report_sha256": "6aeb3d79d4792959771e12ff4a2b1daab65c003b602797520b9a9dea1e884aa9",
-          "gate_sha256": "e68ca99339eb1ac633d1a7e5d7bf53a5a3de3e25f75fa1d4cd305419ef59460d",
-          "report_sha256": "5f56006cef6fa8128ede41e62dc2aa0b3cc5f71da2f4f07f218a8f44895e0396",
+          "gate_sha256": "35d9535dbcaccf5c1fa4ce2728a2938bf82caf3f4daa851aa05031a139b7eed6",
+          "report_sha256": "820d5289f7a7653f196a5c8e45d8be300efffa74b88801f472c6b7d23371b19e",
           "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-outcome-readback"
         }
       ],

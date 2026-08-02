@@ -1,7 +1,7 @@
 {
   "schema": "hepta_current_reality_capability_registry_v1",
   "source_payload": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report",
-  "source_sha256": "9db5269ff4e8a6ff141386ca3674e6e9be271aa2be85d9ab9d31f2680bfcae09",
+  "source_sha256": "27b22596b5419dece8916cc1f1dac278140e68ca5f7d8ea61087bcf59e43cdce",
   "capability_ids": [
     "plugins_contribution_point_abi",
     "plugins_loader_binding_fixture",

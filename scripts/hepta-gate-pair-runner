@@ -402,6 +402,17 @@ typed_report_contract() {
       source_stem="context_memory_${suffix//-/_}"
       printf '%s\t%s\n' "hepta_${source_stem}_gate" "${source_stem}_v1"
       ;;
+    hepta-systems-dirty-worktree-*)
+      suffix="${id#hepta-systems-}"
+      source_stem="${suffix//-/_}"
+      if [[ "$suffix" == "dirty-worktree-release-boundary-owner-freeze-classification-rehearsal" ]]; then
+        printf '%s\t%s\n' \
+          "${source_stem}_without_git_mutation_gate" \
+          "${source_stem}_v1"
+      else
+        printf '%s\t%s\n' "${source_stem}_gate" "${source_stem}_v1"
+      fi
+      ;;
     hepta-systems-work-graph-*)
       suffix="${id#hepta-systems-work-graph-}"
       source_stem="work_graph_${suffix//-/_}"

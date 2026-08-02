@@ -33,9 +33,25 @@ CURRENT_REALITY_REGISTRY_PATH = File.join(
 )
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 DOMAIN = "hepta_gate_pair_compat_payloads"
-TARGET_PAIR_COUNT = 299
-TARGET_CAPTURED_COUNT = 112
-TARGET_DECLARATIVE_COUNT = 187
+TARGET_PAIR_COUNT = 298
+TARGET_CAPTURED_COUNT = 94
+TARGET_DECLARATIVE_COUNT = 204
+TARGET_TYPED_COUNT = 141
+RETIRED_PAIR_ID = "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording"
+RETIRED_GATE_PATH = "scripts/lib/hepta-gate-pair-compat-v1/#{RETIRED_PAIR_ID}.gate"
+RETIRED_REPORT_PATH = "scripts/lib/hepta-gate-pair-compat-v1/#{RETIRED_PAIR_ID}.report"
+RETIRED_SOURCE_ASSIGNMENT = %(
+  SOURCE_REPORT="$ROOT/#{RETIRED_REPORT_PATH}"
+).strip
+EXPORTED_TYPED_INTERNAL_SOURCE_ASSIGNMENT = %(
+  export HEPTA_TYPED_COMPAT_INTERNAL_REPORT_ID="#{RETIRED_PAIR_ID}"
+  SOURCE_REPORT="$ROOT/scripts/hepta-typed-compat-report"
+).strip
+TYPED_INTERNAL_SOURCE_ASSIGNMENT = 'SOURCE_REPORT="$ROOT/scripts/hepta-typed-compat-report"'
+DEFER_ARCHITECTURE_RATCHET = ENV.fetch(
+  "HEPTA_COMPAT_DEFER_ARCHITECTURE_RATCHET",
+  ""
+) == "1"
 
 def usage
   warn "usage: scripts/hepta-gate-compat-typed-report-migrate-v1 <plan|apply>"
@@ -54,7 +70,8 @@ def binding_ids
   raise "invalid typed report binding schema" unless registry.fetch("schema") ==
     "hepta_gate_typed_report_bindings_v2"
   ids = registry.fetch("report_ids")
-  raise "typed report binding count drifted" unless ids.length == 124 && ids.uniq.length == 124
+  raise "typed report binding count drifted" unless ids.length == TARGET_TYPED_COUNT &&
+    ids.uniq.length == TARGET_TYPED_COUNT
   ids
 end
 
@@ -79,7 +96,7 @@ def canonical_sources
 end
 
 def transform_source(source, ids)
-  ids.reduce(source) do |current, id|
+  transformed = ids.reduce(source) do |current, id|
     current.gsub(
       "scripts/lib/hepta-gate-pair-compat-v1/#{id}.gate",
       "scripts/#{id}-gate.sh"
@@ -88,6 +105,9 @@ def transform_source(source, ids)
       "scripts/#{id}-report.sh"
     )
   end
+  transformed
+    .gsub(EXPORTED_TYPED_INTERNAL_SOURCE_ASSIGNMENT, TYPED_INTERNAL_SOURCE_ASSIGNMENT)
+    .gsub(RETIRED_SOURCE_ASSIGNMENT, TYPED_INTERNAL_SOURCE_ASSIGNMENT)
 end
 
 def rewrite_spec(spec, sources, ids)
@@ -96,7 +116,13 @@ def rewrite_spec(spec, sources, ids)
   registry_sha = Digest::SHA256.file(BINDINGS_PATH).hexdigest
   source_sha = Digest::SHA256.file(REPORT_SOURCE).hexdigest
   cli_source_sha = Digest::SHA256.file(REPORT_CLI_SOURCE).hexdigest
-  pairs = spec.fetch("pairs").map do |pair|
+  retired = spec.fetch("pairs").select { |pair| pair.fetch("id") == RETIRED_PAIR_ID }
+  raise "retired dirty-worktree pair count drifted" unless retired.length <= 1
+  if retired.length == 1
+    raise "retired dirty-worktree pair is not captured" unless retired.first.fetch("template") ==
+      "captured_shell_compat_v1"
+  end
+  pairs = spec.fetch("pairs").reject { |pair| pair.fetch("id") == RETIRED_PAIR_ID }.map do |pair|
     id = pair.fetch("id")
     if id_set.include?(id)
       raise "typed conversion source is not captured: #{id}" unless [
@@ -140,6 +166,9 @@ def rewrite_spec(spec, sources, ids)
   raise "typed migration legacy count drifted" unless legacy.zero?
   raise "typed migration declarative count drifted" unless declarative == TARGET_DECLARATIVE_COUNT
   supplemental = spec.fetch("supplemental_payloads", []).map do |payload|
+    raise "retired dirty-worktree payload preserved as supplemental" if [
+      RETIRED_GATE_PATH, RETIRED_REPORT_PATH
+    ].include?(payload.fetch("path"))
     source = transform_source(sources.fetch(payload.fetch("path")), ids)
     payload.merge("sha256" => Digest::SHA256.hexdigest(source))
   end
@@ -194,13 +223,22 @@ def semantic_json_cost(value)
 end
 
 def rewrite_family_bundle(ids)
-  entries = HeptaReadableTokenSource.read(
+  baseline_entries = HeptaReadableTokenSource.read(
     root: FAMILY_ROOT,
     artifact_schema: FAMILY_SCHEMA,
     domain: FAMILY_DOMAIN,
     name_validator: ->(name) { name.match?(/\A[a-z0-9-]+\.(?:gate|report)\z/) },
     strict_metadata: true
-  ).first.map do |entry|
+  ).first
+  retired_source_consumers = baseline_entries.count do |entry|
+    [
+      RETIRED_SOURCE_ASSIGNMENT,
+      EXPORTED_TYPED_INTERNAL_SOURCE_ASSIGNMENT,
+      TYPED_INTERNAL_SOURCE_ASSIGNMENT
+    ].any? { |assignment| entry.source.include?(assignment) }
+  end
+  raise "retired dirty-worktree source consumer count drifted" unless retired_source_consumers == 2
+  entries = baseline_entries.map do |entry|
     HeptaNormalizedTokenBundle::Entry.new(entry.name, transform_source(entry.source, ids))
   end
   sources = entries.to_h { |entry| [entry.name, entry.source] }
@@ -296,8 +334,16 @@ def refresh_contracts(ids)
     "report_cli_source_sha256" => Digest::SHA256.file(REPORT_CLI_SOURCE).hexdigest,
     "callers_rewritten_to_public_typed_surfaces" => true,
     "captured_snapshots_used" => false,
-    "retired_shell_payloads_preserved" => false
+    "retired_shell_payloads_preserved" => false,
+    "additional_zero_caller_pair_retirement_count" => 1,
+    "additional_zero_caller_pair_retirement_ids" => [RETIRED_PAIR_ID],
+    "internal_rust_source_semantics_preserved" => true
   }
+  retirement = receipt.fetch("retirement")
+  dead_pairs = retirement.fetch("dead_pairs")
+  dead_pairs << RETIRED_PAIR_ID unless dead_pairs.include?(RETIRED_PAIR_ID)
+  dead_pairs.sort!
+  retirement["dead_pair_count"] = dead_pairs.length
   receipt["result"] = result
   atomic_write(FAMILY_RECEIPT_PATH, JSON.pretty_generate(receipt) + "\n", 0o644)
 
@@ -326,6 +372,7 @@ def refresh_contracts(ids)
   end
   next_captured = bounded_next.call(TARGET_CAPTURED_COUNT, 49, 0)
   next_target.merge!(
+    "pair_count" => TARGET_PAIR_COUNT,
     "captured_shell_pair_count" => next_captured,
     "declarative_pair_count" => TARGET_PAIR_COUNT - next_captured,
     "compatibility_payload_count" => bounded_next.call(
@@ -353,21 +400,23 @@ def refresh_contracts(ids)
   )
   atomic_write(DEBT_PATH, JSON.pretty_generate(debt) + "\n", 0o644)
 
-  architecture = JSON.parse(File.binread(ARCHITECTURE_RATCHET_PATH))
-  %w[ceilings baselines].each do |section|
-    architecture.fetch(section)["gate_compat_pairs"] = TARGET_PAIR_COUNT
-    architecture.fetch(section)["gate_compat_effective_lines"] = result.fetch(
-      "normalized_effective_lines"
+  unless DEFER_ARCHITECTURE_RATCHET
+    architecture = JSON.parse(File.binread(ARCHITECTURE_RATCHET_PATH))
+    %w[ceilings baselines].each do |section|
+      architecture.fetch(section)["gate_compat_pairs"] = TARGET_PAIR_COUNT
+      architecture.fetch(section)["gate_compat_effective_lines"] = result.fetch(
+        "normalized_effective_lines"
+      )
+    end
+    architecture_terminal = architecture.fetch("decline_targets").fetch("terminal")
+    architecture.fetch("decline_targets").fetch("next")[
+      "gate_compat_effective_lines"
+    ] = bounded_next.call(
+      result.fetch("normalized_effective_lines"), 75_000,
+      architecture_terminal.fetch("gate_compat_effective_lines")
     )
+    atomic_write(ARCHITECTURE_RATCHET_PATH, JSON.pretty_generate(architecture) + "\n", 0o644)
   end
-  architecture_terminal = architecture.fetch("decline_targets").fetch("terminal")
-  architecture.fetch("decline_targets").fetch("next")[
-    "gate_compat_effective_lines"
-  ] = bounded_next.call(
-    result.fetch("normalized_effective_lines"), 75_000,
-    architecture_terminal.fetch("gate_compat_effective_lines")
-  )
-  atomic_write(ARCHITECTURE_RATCHET_PATH, JSON.pretty_generate(architecture) + "\n", 0o644)
 end
 
 def plan
@@ -377,9 +426,16 @@ def plan
   selected = spec.fetch("pairs").select { |pair| ids.include?(pair.fetch("id")) }
   puts JSON.pretty_generate(
     status: "ready",
+    target_pair_count: TARGET_PAIR_COUNT,
+    target_captured_pair_count: TARGET_CAPTURED_COUNT,
+    target_declarative_pair_count: TARGET_DECLARATIVE_COUNT,
+    target_typed_pair_count: TARGET_TYPED_COUNT,
     selected_pair_count: selected.length,
     captured_pair_count: selected.count { |pair| pair.fetch("template") == "captured_shell_compat_v1" },
     typed_pair_count: selected.count { |pair| pair.fetch("template") == "typed_rust_report_v1" },
+    retired_pair_count: spec.fetch("pairs").count { |pair| pair.fetch("id") == RETIRED_PAIR_ID },
+    retired_pair_id: RETIRED_PAIR_ID,
+    retired_payload_paths: [RETIRED_GATE_PATH, RETIRED_REPORT_PATH],
     snapshots_used: false,
     shell_payloads_preserved: false
   )
@@ -405,7 +461,9 @@ def apply
     declarative_pair_count: TARGET_DECLARATIVE_COUNT,
     typed_pair_count: ids.length,
     callers_rewritten_to_public_typed_surfaces: true,
-    shell_payloads_preserved: false
+    shell_payloads_preserved: false,
+    retired_pair_count: 1,
+    architecture_ratchet_deferred: DEFER_ARCHITECTURE_RATCHET
   )
 end
 

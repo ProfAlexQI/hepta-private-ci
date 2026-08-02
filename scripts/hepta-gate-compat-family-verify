@@ -16,14 +16,15 @@ REGISTRY_PATH = ENV.fetch(
 RECEIPT_PATH = File.join(ROOT, "scripts/hepta-gate-compat-family-receipt-v1.json")
 STATE_MACHINE = File.join(ROOT, "scripts/hepta-gate-compat-family-state-machine")
 PAYLOAD_REGISTRY_PATH = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2/registry.json")
-TARGET_PAIR_COUNT = 299
-TARGET_CAPTURED_COUNT = 112
-TARGET_DECLARATIVE_COUNT = 187
-TARGET_TYPED_COUNT = 124
+TARGET_PAIR_COUNT = 298
+TARGET_CAPTURED_COUNT = 94
+TARGET_DECLARATIVE_COUNT = 204
+TARGET_TYPED_COUNT = 141
 TARGET_FAMILY_COUNT = 56
 TARGET_MIGRATED_STATE_COUNT = 148
 TARGET_RETIRED_MEMBER_COUNT = 92
 BASELINE_NORMALIZED_EFFECTIVE_LINES = 141_142
+ADDITIONAL_RETIRED_PAIR_ID = "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording"
 
 def usage
   warn "usage: scripts/hepta-gate-compat-family-verify <verify|self-test>"
@@ -98,6 +99,9 @@ def verify
   result_ids = pairs.map { |pair| pair.fetch("id") }.to_set
   raise "externally protected pair was removed" unless protected.subset?(result_ids)
   dead = receipt.fetch("retirement").fetch("dead_pairs").to_set
+  raise "additional zero-caller dirty-worktree pair retirement is unbound" unless dead.include?(
+    ADDITIONAL_RETIRED_PAIR_ID
+  )
   raise "dead pair remains registered" unless (dead & result_ids).empty?
   migrated = registry.fetch("families").flat_map do |family|
     family.fetch("states").map { |state| state.fetch("id") }
