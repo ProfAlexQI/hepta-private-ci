@@ -284,12 +284,11 @@ verify_k2_split_budgets() {
   verify_split_family 12 4800 \
     codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_*.rs
   verify_file_max apps/hepta-native/src/home/room_screen.rs 5000
-  verify_split_family 9 5000 apps/hepta-native/src/home/room_screen/*.rs
-  verify_file_max \
-    apps/hepta-native/src/home/hepta_telegram_base_contract/tests.rs \
-    20
-  verify_split_family 6 4000 \
-    apps/hepta-native/src/home/hepta_telegram_base_contract/tests/contract_part_*.rs
+  verify_split_family 2 600 \
+    apps/hepta-native/src/home/room_screen/message_content.rs \
+    apps/hepta-native/src/home/room_screen/timeline_item_preview.rs
+  verify_file_max apps/hepta-native/src/sliding_sync.rs 5000
+  verify_file_max apps/hepta-native/src/sliding_sync/user_power_levels.rs 200
   verify_file_max codex-rs/hepta-core/src/upstream_codex_sync.rs 9700
   verify_file_max codex-rs/hepta-core/src/upstream_codex_sync/tests.rs 4000
   local report_root
@@ -556,7 +555,6 @@ verify() {
     codex-rs/hepta-memory/src/tests/outcome_store/*.rs
   verify_file_max codex-rs/hepta-memory/src/runtime_state_store.rs 440
   verify_file_max codex-rs/hepta-memory/src/tests/runtime_state_store.rs 120
-  verify_file_max apps/hepta-native/src/home/room_screen.rs 38000
   verify_file_max codex-rs/hepta-runtime/src/execution_admission.rs 360
   scripts/hepta-workgraph-module-bundle verify >/dev/null
   verify_tree_with_generated_total_max "$RUNTIME_WHOLE_TREE_MAX_LINES" '*.rs' \

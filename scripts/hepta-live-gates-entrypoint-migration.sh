@@ -75,13 +75,15 @@ if [[ "$(wc -l <"$canonical_browser" | tr -d ' ')" -gt 100 ]]; then
   echo "canonical browser smoke entrypoint is no longer a short orchestrator" >&2
   exit 1
 fi
-if [[ "$(wc -l <"$legacy_browser" | tr -d ' ')" -gt 20 ]]; then
-  echo "legacy browser smoke entrypoint is no longer a thin wrapper" >&2
-  exit 1
-fi
-if cmp -s "$canonical_browser" "$legacy_browser"; then
-  echo "legacy browser smoke must not duplicate the canonical implementation" >&2
-  exit 1
+if [[ ! -L "$legacy_browser" ]]; then
+  if [[ "$(wc -l <"$legacy_browser" | tr -d ' ')" -gt 20 ]]; then
+    echo "legacy browser smoke entrypoint is no longer a thin wrapper" >&2
+    exit 1
+  fi
+  if cmp -s "$canonical_browser" "$legacy_browser"; then
+    echo "legacy browser smoke must not duplicate the canonical implementation" >&2
+    exit 1
+  fi
 fi
 
 legacy_content_wrappers=("$legacy_soak")

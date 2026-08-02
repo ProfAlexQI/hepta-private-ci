@@ -19,5 +19,5 @@ Responsibilities are intentionally separated:
 - `validate-results.sh` enforces the fail-closed jq truth tables.
 - `receipt.sh` emits the stable `hepta-browser-visual-smoke` receipt.
 
-The legacy `scripts/hepta-codex-browser-visual-smoke.sh` is only an `exec`
-wrapper. New behavior belongs in the canonical modules, never in the wrapper.
+The legacy `scripts/hepta-codex-browser-visual-smoke.sh` is only a compatibility
+symlink. New behavior belongs in the canonical modules, never in the alias.
