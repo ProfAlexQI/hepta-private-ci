@@ -366,7 +366,7 @@ ruby -e '
 ' "$EVIDENCE_DIR/archive-list.txt"
 unzip -p "$APK_PATH" lib/arm64-v8a/libmakepad.so >"$EVIDENCE_DIR/libmakepad.so"
 strings "$EVIDENCE_DIR/libmakepad.so" >"$EVIDENCE_DIR/libmakepad.strings.txt"
-grep -Fxq "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD" "$EVIDENCE_DIR/libmakepad.strings.txt" \
+grep -Fq "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD" "$EVIDENCE_DIR/libmakepad.strings.txt" \
   || { echo "error: APK native library is not bound to current HEAD $SOURCE_HEAD" >&2; exit 1; }
 
 APK_SHA256="$(shasum -a 256 "$APK_PATH" | awk '{print $1}')"

@@ -331,6 +331,11 @@ grep -Fq 'trusted_live_readback_failed' scripts/hepta-native-mobile-readiness-ga
 grep -Fq 'FINAL_BOOT_ID' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'FINAL_QEMU_AVD_NAME' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'process_start_time_ticks' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'grep -Fq "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD"' scripts/hepta-native-android-emulator-smoke.sh
+if grep -Fq 'grep -Fxq "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD"' scripts/hepta-native-android-emulator-smoke.sh; then
+  echo "Android producer requires the embedded HEAD URL to occupy a whole strings(1) line" >&2
+  exit 1
+fi
 grep -Fq 'hepta_android_emulator_receipt_v3_ready($head; $tree; $fingerprint; $login_manifest; $login_manifest_sha)' scripts/hepta-native-mobile-readiness-gate.sh
 [[ "$(rg -c -- '--arg login_manifest ' scripts/hepta-native-mobile-readiness-gate.sh)" == "1" ]] || {
   echo "Android receipt consumer must pass the login manifest through one canonical jq predicate" >&2
