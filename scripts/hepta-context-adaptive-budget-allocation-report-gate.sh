@@ -3,7 +3,10 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo_root/codex-rs/Cargo.toml"
-protocol="$repo_root/codex-rs/protocol/src/protocol.rs"
+protocol_turn_context="$repo_root/codex-rs/protocol/src/protocol/turn_context"
+protocol_common="$protocol_turn_context/common.rs"
+protocol_compression="$protocol_turn_context/compression.rs"
+protocol_manifest="$protocol_turn_context/manifest.rs"
 context_manifest="$repo_root/codex-rs/core/src/context_manager/manifest.rs"
 context_manifest_policy="$repo_root/codex-rs/core/src/context_manager/manifest/policy.rs"
 context_manifest_tests="$repo_root/codex-rs/core/src/context_manager/manifest/tests.rs"
@@ -37,6 +40,19 @@ assert_file_contains() {
   fi
 }
 
+assert_unique_protocol_owner() {
+  local pattern="$1"
+  local expected_owner="$2"
+  local label="$3"
+  local owners
+
+  owners="$(rg -l "$pattern" "$protocol_turn_context" -g '*.rs' || true)"
+  if [[ "$(printf '%s\n' "$owners" | sed '/^$/d' | wc -l | tr -d ' ')" != "1" \
+    || "$owners" != "$expected_owner" ]]; then
+    fail "$label must have exactly one typed owner: $expected_owner"
+  fi
+}
+
 for term in \
   "manifest adaptive budget-allocation list" \
   "Context adaptive budget allocation dry-run report" \
@@ -51,17 +67,33 @@ for term in \
   assert_file_contains "$contracts" "$term" "adaptive budget allocation contract"
 done
 
-assert_file_contains "$protocol" \
+assert_file_contains "$protocol_common" \
   "TURN_CONTEXT_ADAPTIVE_BUDGET_ALLOCATION_SCHEMA_VERSION" \
   "adaptive budget allocation protocol schema version"
-assert_file_contains "$protocol" \
+assert_file_contains "$protocol_compression" \
   "TurnContextAdaptiveBudgetAllocation" \
   "adaptive budget allocation protocol item"
-assert_file_contains "$protocol" \
+assert_file_contains "$protocol_compression" \
   "TurnContextBudgetAllocationAction" \
   "adaptive budget allocation protocol action"
-assert_file_contains "$protocol" \
+assert_file_contains "$protocol_manifest" \
   "adaptive_budget_allocations_have_integrity" \
+  "adaptive budget allocation protocol integrity"
+assert_unique_protocol_owner \
+  '^pub const TURN_CONTEXT_ADAPTIVE_BUDGET_ALLOCATION_SCHEMA_VERSION:' \
+  "$protocol_common" \
+  "adaptive budget allocation protocol schema version"
+assert_unique_protocol_owner \
+  '^pub struct TurnContextAdaptiveBudgetAllocation ' \
+  "$protocol_compression" \
+  "adaptive budget allocation protocol item"
+assert_unique_protocol_owner \
+  '^pub enum TurnContextBudgetAllocationAction ' \
+  "$protocol_compression" \
+  "adaptive budget allocation protocol action"
+assert_unique_protocol_owner \
+  '^    pub fn adaptive_budget_allocations_have_integrity\(' \
+  "$protocol_manifest" \
   "adaptive budget allocation protocol integrity"
 
 assert_file_contains "$source_registry_entry" \

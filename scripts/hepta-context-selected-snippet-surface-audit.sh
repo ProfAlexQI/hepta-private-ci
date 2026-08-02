@@ -440,15 +440,19 @@ assert_context_gate_target_dir_contract() {
 turn_protocol_source="$repo_root/codex-rs/app-server-protocol/src/protocol/v2/turn.rs"
 app_server_readme="$repo_root/codex-rs/app-server/README.md"
 native_gateway_root="$repo_root/codex-rs/hepta-native-gateway/src/native_gateway.rs"
-native_gateway_source="$(mktemp -t hepta-selected-snippet-native-gateway-source.XXXXXX)"
-cat \
-  "$repo_root/codex-rs/hepta-native-gateway/src/route_registry.rs" \
-  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/report_types.rs" \
-  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/release_ui_reports.rs" \
-  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/report_registry.rs" \
-  "$native_gateway_root" \
-  >"$native_gateway_source"
-trap 'rm -f "$native_gateway_source"' EXIT
+native_route_registry="$repo_root/codex-rs/hepta-native-gateway/src/route_registry.rs"
+native_report_types="$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/report_types.rs"
+native_release_ui_reports="$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/release_ui_reports.rs"
+native_route_catalog="$repo_root/codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl"
+native_route_catalog_verifier="$repo_root/scripts/hepta-native-route-catalog"
+native_route_specs="$repo_root/codex-rs/hepta-native-gateway/src/route_registry/generated_control_ui_routes.rs"
+native_report_bindings="$repo_root/codex-rs/hepta-native-gateway/src/route_registry/native_report_bindings.rs"
+native_route_policies="$repo_root/codex-rs/hepta-native-gateway/src/route_definition/generated_control_ui_routes.rs"
+native_route_lifecycles="$repo_root/codex-rs/hepta-native-gateway/src/runtime_ingress/generated_control_ui_routes.rs"
+native_report_registry="$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs"
+native_generated_dispatch="$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/generated_dispatch.rs"
+
+"$native_route_catalog_verifier" verify >/dev/null
 context_gate_cargo_scripts=(
   "$repo_root/scripts/hepta-context-preflight.sh:context preflight"
   "$repo_root/scripts/hepta-context-response-debug-export-gate.sh:response-debug export gate"
@@ -485,13 +489,12 @@ done < <(
     "$repo_root/codex-rs/app-server-protocol/src" \
     | sort
 )
-selected_snippet_core_protocol_source_marker_allowed_paths=(
+selected_snippet_core_source_marker_allowed_paths=(
   "$repo_root/codex-rs/core/src/context_manager/controller.rs"
   "$repo_root/codex-rs/core/src/context_manager/history_tests.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest/classification.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest/options.rs"
-  "$repo_root/codex-rs/core/src/context_manager/manifest/policy.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest/policy/compression.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest/rewrite.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest/selected_recall.rs"
@@ -506,16 +509,43 @@ selected_snippet_core_protocol_source_marker_allowed_paths=(
   "$repo_root/codex-rs/core/src/session/tests/contract_part_02.rs"
   "$repo_root/codex-rs/core/src/session/tests/contract_part_03.rs"
   "$repo_root/codex-rs/core/src/session/tests/contract_part_04.rs"
-  "$repo_root/codex-rs/protocol/src/protocol.rs"
 )
-selected_snippet_core_protocol_source_marker_paths=()
+selected_snippet_protocol_request_marker_allowed_paths=(
+  "$repo_root/codex-rs/protocol/src/protocol.rs"
+  "$repo_root/codex-rs/protocol/src/protocol/tests.rs"
+)
+selected_snippet_protocol_turn_context_marker_allowed_paths=(
+  "$repo_root/codex-rs/protocol/src/protocol/turn_context/manifest.rs"
+  "$repo_root/codex-rs/protocol/src/protocol/turn_context/recall.rs"
+  "$repo_root/codex-rs/protocol/src/protocol/turn_context/stable_hash.rs"
+)
+selected_snippet_core_source_marker_paths=()
 while IFS= read -r source_path; do
-  selected_snippet_core_protocol_source_marker_paths+=("$source_path")
+  selected_snippet_core_source_marker_paths+=("$source_path")
 done < <(
   rg -l \
     '<selected_context_recall>|selected_context_recall|LIVE_RECALL_SELECTED_SNIPPETS|context_recall_selected_snippets|recall_selected_snippets|TurnContextRecallSelectedSnippet|ContextRecallSelectedSnippet|selected[- ]snippet|selected[- ]recall|recall[- ]snippets?' \
     "$repo_root/codex-rs/core/src" \
+    | sort
+)
+selected_snippet_protocol_request_marker_paths=()
+while IFS= read -r source_path; do
+  selected_snippet_protocol_request_marker_paths+=("$source_path")
+done < <(
+  rg -l \
+    '\bcontext_recall_selected_snippets\b' \
     "$repo_root/codex-rs/protocol/src" \
+    -g '*.rs' \
+    | sort
+)
+selected_snippet_protocol_turn_context_marker_paths=()
+while IFS= read -r source_path; do
+  selected_snippet_protocol_turn_context_marker_paths+=("$source_path")
+done < <(
+  rg -l \
+    'recall_selected_snippets|TurnContextRecallSelectedSnippet' \
+    "$repo_root/codex-rs/protocol/src/protocol/turn_context" \
+    -g '*.rs' \
     | sort
 )
 selected_snippet_runtime_source_marker_allowed_paths=(
@@ -530,6 +560,7 @@ selected_snippet_runtime_source_marker_allowed_paths=(
   "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/context_turn_ops/approved_candidate.rs"
   "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/exports_workgraph.rs"
   "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tests/part_01.rs"
   "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
   "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/turn_coordinator.rs"
   "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/types.rs"
@@ -555,7 +586,7 @@ selected_snippet_external_source_marker_allowed_paths=(
   "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/release_ui_reports.rs"
   "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/report_types.rs"
   "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_01.rs"
-  "$repo_root/codex-rs/hepta-native-gateway/src/route_registry.rs"
+  "$repo_root/codex-rs/hepta-native-gateway/src/route_registry/generated_control_ui_routes.rs"
   "$repo_root/codex-rs/exec/src/lib.rs"
   "$repo_root/codex-rs/exec/src/lib_tests.rs"
   "$repo_root/codex-rs/tui/src/app/thread_routing.rs"
@@ -742,9 +773,29 @@ for source_path in "${selected_snippet_app_server_protocol_source_marker_paths[@
   fi
 done
 
-for source_path in "${selected_snippet_core_protocol_source_marker_paths[@]}"; do
-  if ! array_contains "$source_path" "${selected_snippet_core_protocol_source_marker_allowed_paths[@]}"; then
-    fail "core/protocol source outside the selected-snippet marker allowlist references selected-snippet live handoff: $source_path"
+for source_path in "${selected_snippet_core_source_marker_paths[@]}"; do
+  if ! array_contains "$source_path" "${selected_snippet_core_source_marker_allowed_paths[@]}"; then
+    fail "core source outside the selected-snippet marker allowlist references selected-snippet live handoff: $source_path"
+  fi
+done
+for source_path in "${selected_snippet_protocol_request_marker_paths[@]}"; do
+  if ! array_contains "$source_path" "${selected_snippet_protocol_request_marker_allowed_paths[@]}"; then
+    fail "protocol request marker outside its declaration/test owner allowlist: $source_path"
+  fi
+done
+for expected_path in "${selected_snippet_protocol_request_marker_allowed_paths[@]}"; do
+  if ! array_contains "$expected_path" "${selected_snippet_protocol_request_marker_paths[@]}"; then
+    fail "protocol request marker owner is missing: $expected_path"
+  fi
+done
+for source_path in "${selected_snippet_protocol_turn_context_marker_paths[@]}"; do
+  if ! array_contains "$source_path" "${selected_snippet_protocol_turn_context_marker_allowed_paths[@]}"; then
+    fail "protocol turn-context source outside the selected-snippet typed-owner allowlist: $source_path"
+  fi
+done
+for expected_path in "${selected_snippet_protocol_turn_context_marker_allowed_paths[@]}"; do
+  if ! array_contains "$expected_path" "${selected_snippet_protocol_turn_context_marker_paths[@]}"; then
+    fail "protocol turn-context selected-snippet typed owner is missing: $expected_path"
   fi
 done
 
@@ -753,10 +804,30 @@ for source_path in "${selected_snippet_runtime_source_marker_paths[@]}"; do
     fail "hepta-runtime source outside the selected-snippet marker allowlist references selected-snippet handoff: $source_path"
   fi
 done
+for expected_path in "${selected_snippet_runtime_source_marker_allowed_paths[@]}"; do
+  if ! array_contains "$expected_path" "${selected_snippet_runtime_source_marker_paths[@]}"; then
+    fail "hepta-runtime selected-snippet marker owner is missing: $expected_path"
+  fi
+done
+assert_file_fixed_occurrence_count \
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs" \
+  '#[path = "tests/part_01.rs"]' \
+  1 \
+  "hepta-runtime selected-snippet test wrapper/leaf binding"
+assert_file_fixed_occurrence_count \
+  "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tests/part_01.rs" \
+  'native_turn_messages_with_context_recall_handoff_consumes_opted_in_runtime_handoff_without_leak' \
+  1 \
+  "hepta-runtime selected-snippet test leaf owner"
 
 for source_path in "${selected_snippet_external_source_marker_paths[@]}"; do
   if ! array_contains "$source_path" "${selected_snippet_external_source_marker_allowed_paths[@]}"; then
     fail "external app/native/TUI/exec source outside the selected-snippet marker allowlist references selected-snippet handoff: $source_path"
+  fi
+done
+for expected_path in "${selected_snippet_external_source_marker_allowed_paths[@]}"; do
+  if ! array_contains "$expected_path" "${selected_snippet_external_source_marker_paths[@]}"; then
+    fail "external app/native/TUI/exec selected-snippet marker owner is missing: $expected_path"
   fi
 done
 
@@ -922,20 +993,7 @@ native_gateway_handoff_report="$(
     /^fn hepta_context_recall_worker_scheduler_handoff_report/ { in_report = 1 }
     /^fn hepta_provider_metadata_inventory_report/ { in_report = 0 }
     in_report { print }
-  ' "$native_gateway_source"
-)"
-native_gateway_non_test_source="$(
-  awk '
-    /^mod tests \{/ { exit }
-    { print }
-  ' "$native_gateway_source"
-)"
-native_gateway_handoff_route_handler="$(
-  awk '
-    /HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT =>/ { in_route = 1 }
-    in_route && /HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT =>/ { exit }
-    in_route { print }
-  ' "$native_gateway_source"
+  ' "$native_release_ui_reports"
 )"
 native_gateway_handoff_control_spec="$(
   awk '
@@ -953,12 +1011,36 @@ native_gateway_handoff_control_spec="$(
       in_spec = 0
       spec = ""
     }
-  ' "$native_gateway_source"
+  ' "$native_route_specs"
+)"
+native_gateway_handoff_renderer_binding="$(
+  rg -F \
+    'json_report!("native_report_018", _context => json_or_error(&hepta_context_recall_worker_scheduler_handoff_report())),' \
+    "$native_report_registry" \
+    || true
+)"
+native_gateway_handoff_report_binding="$(
+  rg -F \
+    'NativeReportRouteSpec { path: "/api/hepta-context-recall-worker-scheduler-handoff", report_id: NativeReportId(18) },' \
+    "$native_report_bindings" \
+    || true
+)"
+native_gateway_handoff_route_policy="$(
+  rg -F \
+    'ControlUiRoutePolicy { method: "GET", path_pattern: "/api/hepta-context-recall-worker-scheduler-handoff", dispatch_handler: RouteDispatchHandler::NativeGateway, required_gate: None, watchdog_probe: false, response_policy: RouteResponsePolicy::DigestBoundPagination, report_binding: RouteReportBinding::NativeExact, native_report_id: Some(NativeReportId(18)), receipt_state: None, evidence_effect_class: "read_only", aliases: &[], legacy_compatibility_route: false },' \
+    "$native_route_policies" \
+    || true
+)"
+native_gateway_handoff_route_lifecycle="$(
+  rg -F \
+    'IngressLifecycleSpec { method: "GET", path_pattern: "/api/hepta-context-recall-worker-scheduler-handoff", effect_class: IngressEffectClass::MetadataRead, authority_owner: IngressAuthorityOwner::RuntimeKernelRequestBinding, secret_access: IngressAccessPolicy::Forbidden, config_access: IngressAccessPolicy::MetadataOnly, network_access: IngressAccessPolicy::Forbidden, durable_intent: IngressLifecycleRequirement::NotRequired, effect_ack: IngressLifecycleRequirement::NotRequired, terminal_receipt: IngressLifecycleRequirement::NotRequired, default_enablement: IngressDefaultEnablement::ReadOnlyEnabled, source: "control_ui_route_specs" },' \
+    "$native_route_lifecycles" \
+    || true
 )"
 native_gateway_handoff_approval_env_reads="$(
   {
     rg -n 'env_truthy\(HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV\)' \
-      "$native_gateway_source" \
+      "$native_release_ui_reports" \
       || true
   } \
     | wc -l \
@@ -980,59 +1062,78 @@ native_gateway_handoff_status_block="$(
 )"
 
 assert_rust_function_signature_match \
-  "$native_gateway_source" \
+  "$native_release_ui_reports" \
   "hepta_context_recall_worker_scheduler_handoff_report" \
   "fn hepta_context_recall_worker_scheduler_handoff_report() -> HeptaContextRecallWorkerSchedulerHandoffResponse {" \
   "native gateway selected-snippet dry-run route"
 assert_rust_const_string_assignment_match \
-  "$native_gateway_source" \
+  "$native_route_registry" \
   "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT" \
   "/api/hepta-context-recall-worker-scheduler-handoff" \
   "native gateway selected-snippet dry-run route"
-assert_text_lines_containing_match \
-  "$native_gateway_non_test_source" \
-  "/api/hepta-context-recall-worker-scheduler-handoff" \
-  "native gateway selected-snippet endpoint path literal production usage" \
-  '"/api/hepta-context-recall-worker-scheduler-handoff";'
+assert_file_fixed_occurrence_count \
+  "$native_route_registry" \
+  '"/api/hepta-context-recall-worker-scheduler-handoff"' \
+  1 \
+  "native gateway selected-snippet endpoint path literal owner"
 assert_rust_const_string_assignment_match \
-  "$native_gateway_source" \
+  "$native_gateway_root" \
   "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV" \
   "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED" \
   "native gateway selected-snippet approval env"
-assert_text_lines_containing_match \
-  "$native_gateway_non_test_source" \
-  "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV" \
-  "native gateway selected-snippet approval env production usage" \
-  "const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV: &str =" \
-  "env_truthy(HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV);" \
-  "operator_approval_env: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV,"
-assert_text_lines_containing_match \
-  "$native_gateway_non_test_source" \
-  "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT" \
-  "native gateway selected-snippet endpoint production usage" \
-  "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT => {" \
-  "pub(crate) const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT: &str =" \
-  "endpoint: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT," \
-  "pattern: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT,"
-assert_text_lines_containing_match \
-  "$native_gateway_non_test_source" \
-  "/hepta-context-recall-worker-scheduler-handoff --dry-run --json" \
-  "native gateway selected-snippet source command production usage" \
+assert_file_fixed_occurrence_count \
+  "$native_gateway_root" \
+  'const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV: &str =' \
+  1 \
+  "native gateway selected-snippet approval env declaration owner"
+assert_file_fixed_occurrence_count \
+  "$native_release_ui_reports" \
+  'env_truthy(HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV)' \
+  1 \
+  "native gateway selected-snippet approval env read owner"
+assert_file_fixed_occurrence_count \
+  "$native_release_ui_reports" \
+  'operator_approval_env: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV,' \
+  1 \
+  "native gateway selected-snippet approval env report owner"
+assert_file_fixed_occurrence_count \
+  "$native_route_registry" \
+  'pub(crate) const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT: &str =' \
+  1 \
+  "native gateway selected-snippet endpoint declaration owner"
+assert_file_fixed_occurrence_count \
+  "$native_release_ui_reports" \
+  'endpoint: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT,' \
+  1 \
+  "native gateway selected-snippet report endpoint owner"
+assert_file_fixed_occurrence_count \
+  "$native_route_specs" \
+  'pattern: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT,' \
+  1 \
+  "native gateway selected-snippet route pattern owner"
+assert_file_fixed_occurrence_count \
+  "$native_release_ui_reports" \
   'source_command: "/hepta-context-recall-worker-scheduler-handoff --dry-run --json",' \
-  'source_command: "/hepta-context-recall-worker-scheduler-handoff --dry-run --json",'
-assert_text_lines_containing_match \
-  "$native_gateway_non_test_source" \
-  'capability: "hepta-context-recall-worker-scheduler-handoff"' \
-  "native gateway selected-snippet ControlUi capability production usage" \
-  'capability: "hepta-context-recall-worker-scheduler-handoff",'
-assert_text_lines_containing_match \
-  "$native_gateway_non_test_source" \
-  'side_effect_boundary: "read-only selected-snippet worker scheduler handoff route contract; exposes explicit operator gate status without running workers, invoking models, injecting snippets, writing registries, or promoting stable schema"' \
-  "native gateway selected-snippet ControlUi side-effect boundary production usage" \
-  'side_effect_boundary: "read-only selected-snippet worker scheduler handoff route contract; exposes explicit operator gate status without running workers, invoking models, injecting snippets, writing registries, or promoting stable schema",'
+  1 \
+  "native gateway selected-snippet report source-command owner"
+assert_file_fixed_occurrence_count \
+  "$native_route_specs" \
+  'source_command: "/hepta-context-recall-worker-scheduler-handoff --dry-run --json",' \
+  1 \
+  "native gateway selected-snippet route source-command owner"
+assert_file_fixed_occurrence_count \
+  "$native_route_specs" \
+  'capability: "hepta-context-recall-worker-scheduler-handoff",' \
+  1 \
+  "native gateway selected-snippet route capability owner"
+assert_file_fixed_occurrence_count \
+  "$native_route_specs" \
+  'side_effect_boundary: "read-only selected-snippet worker scheduler handoff route contract; exposes explicit operator gate status without running workers, invoking models, injecting snippets, writing registries, or promoting stable schema" },' \
+  1 \
+  "native gateway selected-snippet route side-effect boundary owner"
 
 assert_rust_struct_fields_match \
-  "$native_gateway_source" \
+  "$native_report_types" \
   "HeptaContextRecallWorkerSchedulerHandoffResponse" \
   "native gateway selected-snippet dry-run response" \
   "allowed_runtime_entrypoints" \
@@ -1064,11 +1165,11 @@ assert_rust_struct_fields_match \
   "status" \
   "tui_exec_app_server_defaults_none"
 assert_rust_struct_header_match \
-  "$native_gateway_source" \
+  "$native_report_types" \
   "HeptaContextRecallWorkerSchedulerHandoffResponse" \
   "native gateway selected-snippet dry-run response"
 assert_rust_struct_fields_match \
-  "$native_gateway_source" \
+  "$native_report_types" \
   "HeptaContextRecallWorkerSchedulerHandoffSideEffects" \
   "native gateway selected-snippet dry-run side effects" \
   "credential_read" \
@@ -1088,7 +1189,7 @@ assert_rust_struct_fields_match \
   "telegram_read_performed" \
   "worker_task_ran"
 assert_rust_struct_header_match \
-  "$native_gateway_source" \
+  "$native_report_types" \
   "HeptaContextRecallWorkerSchedulerHandoffSideEffects" \
   "native gateway selected-snippet dry-run side effects"
 assert_report_entrypoints_match \
@@ -1116,16 +1217,16 @@ assert_text_lines_containing_match \
   'blockers.push("context_recall_worker_scheduler_operator_approval_env_disabled");' \
   'blockers.push("native_gateway_route_is_plan_only_no_worker_execution");' \
   "let mut blockers = Vec::new();"
-assert_text_lines_containing_match \
-  "$native_gateway_non_test_source" \
-  "context_recall_worker_scheduler_operator_approval_env_disabled" \
-  "native gateway selected-snippet operator approval blocker production usage" \
-  'blockers.push("context_recall_worker_scheduler_operator_approval_env_disabled");'
-assert_text_lines_containing_match \
-  "$native_gateway_non_test_source" \
-  "native_gateway_route_is_plan_only_no_worker_execution" \
-  "native gateway selected-snippet plan-only blocker production usage" \
-  'blockers.push("native_gateway_route_is_plan_only_no_worker_execution");'
+assert_file_fixed_occurrence_count \
+  "$native_release_ui_reports" \
+  'blockers.push("context_recall_worker_scheduler_operator_approval_env_disabled");' \
+  1 \
+  "native gateway selected-snippet operator approval blocker owner"
+assert_file_fixed_occurrence_count \
+  "$native_release_ui_reports" \
+  'blockers.push("native_gateway_route_is_plan_only_no_worker_execution");' \
+  1 \
+  "native gateway selected-snippet plan-only blocker owner"
 assert_report_scalar_assignments_match \
   "$native_gateway_handoff_report" \
   "native gateway selected-snippet dry-run route" \
@@ -1230,7 +1331,7 @@ assert_text_not_matches \
   "native gateway selected-snippet dry-run route side-effect source"
 
 assert_file_fixed_occurrence_count \
-  "$native_gateway_source" \
+  "$native_gateway_root" \
   '"HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED"' \
   1 \
   "native gateway selected-snippet approval env literal"
@@ -1250,13 +1351,13 @@ assert_text_contains \
   '"operator_gate_visible"' \
   "native gateway selected-snippet approval env"
 assert_text_not_contains \
-  "$native_gateway_handoff_route_handler" \
+  "$native_gateway_handoff_renderer_binding" \
   'HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV' \
-  "native gateway selected-snippet route binding"
+  "native gateway selected-snippet renderer binding"
 assert_text_not_contains \
-  "$native_gateway_handoff_route_handler" \
+  "$native_gateway_handoff_renderer_binding" \
   'operator_approval_enabled' \
-  "native gateway selected-snippet route binding"
+  "native gateway selected-snippet renderer binding"
 assert_text_not_contains \
   "$native_gateway_handoff_control_spec" \
   'HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV' \
@@ -1265,61 +1366,75 @@ assert_text_not_contains \
   "$native_gateway_handoff_control_spec" \
   'operator_approval_enabled' \
   "native gateway selected-snippet ControlUi route spec"
-
-assert_text_contains \
-  "$native_gateway_handoff_route_handler" \
-  'HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT => {' \
-  "native gateway selected-snippet route binding"
-assert_text_contains \
-  "$native_gateway_handoff_route_handler" \
-  '"200 OK"' \
-  "native gateway selected-snippet route binding"
-assert_text_contains \
-  "$native_gateway_handoff_route_handler" \
-  '"application/json; charset=utf-8"' \
-  "native gateway selected-snippet route binding"
-assert_text_contains \
-  "$native_gateway_handoff_route_handler" \
-  'json_or_error(&hepta_context_recall_worker_scheduler_handoff_report())' \
-  "native gateway selected-snippet route binding"
-assert_text_not_contains \
-  "$native_gateway_handoff_route_handler" \
-  'run_context_recall_operator_invocation' \
-  "native gateway selected-snippet route binding"
-assert_text_not_contains \
-  "$native_gateway_handoff_route_handler" \
-  'run_worker_scheduler_with_context_recall' \
-  "native gateway selected-snippet route binding"
-assert_text_not_contains \
-  "$native_gateway_handoff_route_handler" \
-  'run_ready_worker_tasks_with_context_recall' \
-  "native gateway selected-snippet route binding"
-assert_text_not_contains \
-  "$native_gateway_handoff_route_handler" \
-  'run_due_worker_tasks_with_context_recall' \
-  "native gateway selected-snippet route binding"
 
 assert_trimmed_text_block_match \
-  "$native_gateway_handoff_route_handler" \
-  "native gateway selected-snippet route binding" \
-  'HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT => {' \
-  'return (' \
-  '"200 OK",' \
-  '"application/json; charset=utf-8",' \
-  'json_or_error(&hepta_context_recall_worker_scheduler_handoff_report()),' \
-  ');' \
-  '}'
+  "$native_gateway_handoff_renderer_binding" \
+  "native gateway selected-snippet typed renderer binding" \
+  'json_report!("native_report_018", _context => json_or_error(&hepta_context_recall_worker_scheduler_handoff_report())),'
+
+assert_trimmed_text_block_match \
+  "$native_gateway_handoff_report_binding" \
+  "native gateway selected-snippet path/report binding" \
+  'NativeReportRouteSpec { path: "/api/hepta-context-recall-worker-scheduler-handoff", report_id: NativeReportId(18) },'
+
+assert_trimmed_text_block_match \
+  "$native_gateway_handoff_route_policy" \
+  "native gateway selected-snippet dispatch/report policy" \
+  'ControlUiRoutePolicy { method: "GET", path_pattern: "/api/hepta-context-recall-worker-scheduler-handoff", dispatch_handler: RouteDispatchHandler::NativeGateway, required_gate: None, watchdog_probe: false, response_policy: RouteResponsePolicy::DigestBoundPagination, report_binding: RouteReportBinding::NativeExact, native_report_id: Some(NativeReportId(18)), receipt_state: None, evidence_effect_class: "read_only", aliases: &[], legacy_compatibility_route: false },'
+
+assert_trimmed_text_block_match \
+  "$native_gateway_handoff_route_lifecycle" \
+  "native gateway selected-snippet permission lifecycle" \
+  'IngressLifecycleSpec { method: "GET", path_pattern: "/api/hepta-context-recall-worker-scheduler-handoff", effect_class: IngressEffectClass::MetadataRead, authority_owner: IngressAuthorityOwner::RuntimeKernelRequestBinding, secret_access: IngressAccessPolicy::Forbidden, config_access: IngressAccessPolicy::MetadataOnly, network_access: IngressAccessPolicy::Forbidden, durable_intent: IngressLifecycleRequirement::NotRequired, effect_ack: IngressLifecycleRequirement::NotRequired, terminal_receipt: IngressLifecycleRequirement::NotRequired, default_enablement: IngressDefaultEnablement::ReadOnlyEnabled, source: "control_ui_route_specs" },'
+
+if [ "$(jq -s '[.[] | select(.kind == "control_ui_route" and .path == "/api/hepta-context-recall-worker-scheduler-handoff")] | length' "$native_route_catalog")" != "1" ]; then
+  fail "native gateway selected-snippet route must have exactly one typed catalog owner"
+fi
+if ! jq -e -s '
+  [.[] | select(.kind == "control_ui_route" and .path == "/api/hepta-context-recall-worker-scheduler-handoff")] | first |
+  .method == "GET" and
+  .pattern_expr == "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT" and
+  .permission_profile == "control_ui_metadata_read" and
+  .dispatch_handler == "NativeGateway" and
+  .response_policy == "DigestBoundPagination" and
+  .report_binding == "NativeExact" and
+  .native_report_id == 18 and
+  .renderer_key == "native_report_018" and
+  .evidence_effect_class == "read_only" and
+  .legacy_compatibility_route == false
+' "$native_route_catalog" >/dev/null; then
+  fail "native gateway selected-snippet typed catalog route continuity drifted"
+fi
+if ! jq -e -s '
+  ([.[] | select(.kind == "renderer" and .id == 18 and .key == "native_report_018" and .status == "active")] | length) == 1 and
+  ([.[] | select(.kind == "permission_profile" and .id == "control_ui_metadata_read" and .effect_class == "MetadataRead" and .authority_owner == "RuntimeKernelRequestBinding" and .secret_access == "Forbidden" and .network_access == "Forbidden" and .default_enablement == "ReadOnlyEnabled")] | length) == 1
+' "$native_route_catalog" >/dev/null; then
+  fail "native gateway selected-snippet renderer/permission catalog continuity drifted"
+fi
+
+for term in \
+  'if let Some(report_id) = resolved_native_report_id(method, path) {' \
+  'native_report_registry::render_registered_native_report(' \
+  'route_manifest.native_report_binding_mismatch'
+do
+  if ! grep -F "$term" "$native_generated_dispatch" >/dev/null; then
+    fail "native gateway selected-snippet fail-closed dispatch must contain: $term"
+  fi
+done
+for term in \
+  'if crate::route_registry::native_report_id(path) != Some(report_id) {' \
+  'if crate::route_registry::native_report_key(report_id) != Some(definition.key) {' \
+  'Some((definition.renderer)(NativeReportContext {'
+do
+  if ! grep -F "$term" "$native_report_registry" >/dev/null; then
+    fail "native gateway selected-snippet fail-closed renderer must contain: $term"
+  fi
+done
 
 assert_trimmed_text_block_match \
   "$native_gateway_handoff_control_spec" \
   "native gateway selected-snippet ControlUi route spec" \
-  'ControlUiRouteSpec {' \
-  'method: "GET",' \
-  'pattern: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT,' \
-  'source_command: "/hepta-context-recall-worker-scheduler-handoff --dry-run --json",' \
-  'capability: "hepta-context-recall-worker-scheduler-handoff",' \
-  'side_effect_boundary: "read-only selected-snippet worker scheduler handoff route contract; exposes explicit operator gate status without running workers, invoking models, injecting snippets, writing registries, or promoting stable schema",' \
-  '},'
+  'ControlUiRouteSpec { method: "GET", pattern: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT, source_command: "/hepta-context-recall-worker-scheduler-handoff --dry-run --json", capability: "hepta-context-recall-worker-scheduler-handoff", side_effect_boundary: "read-only selected-snippet worker scheduler handoff route contract; exposes explicit operator gate status without running workers, invoking models, injecting snippets, writing registries, or promoting stable schema" },'
 assert_text_contains \
   "$native_gateway_handoff_control_spec" \
   'method: "GET"' \

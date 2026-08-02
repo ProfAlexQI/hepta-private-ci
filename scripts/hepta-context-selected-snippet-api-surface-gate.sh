@@ -3,7 +3,9 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo_root/codex-rs/Cargo.toml"
-protocol="$repo_root/codex-rs/protocol/src/protocol.rs"
+protocol_root="$repo_root/codex-rs/protocol/src"
+protocol_op="$protocol_root/protocol.rs"
+protocol_tests="$protocol_root/protocol/tests.rs"
 app_server_protocol_turn="$repo_root/codex-rs/app-server-protocol/src/protocol/v2/turn.rs"
 app_server_protocol_tests="$repo_root/codex-rs/app-server-protocol/src/protocol/v2/tests.rs"
 app_server_turn_processor="$repo_root/codex-rs/app-server/src/request_processors/turn_processor.rs"
@@ -59,6 +61,19 @@ assert_file_contains() {
 
   if ! grep -F "$needle" "$file_path" >/dev/null; then
     fail "$label must contain: $needle"
+  fi
+}
+
+assert_unique_protocol_owner() {
+  local pattern="$1"
+  local expected_owner="$2"
+  local label="$3"
+  local owners
+
+  owners="$(rg -l "$pattern" "$protocol_root" -g '*.rs' || true)"
+  if [[ "$(printf '%s\n' "$owners" | sed '/^$/d' | wc -l | tr -d ' ')" != "1" \
+    || "$owners" != "$expected_owner" ]]; then
+    fail "$label must have exactly one protocol owner: $expected_owner"
   fi
 }
 
@@ -132,9 +147,24 @@ for term in \
   ".get(\"source_id\")" \
   "selected_snippets.has_shadow_integrity()"
 do
-  assert_file_contains "$protocol" "$term" \
+  assert_file_contains "$protocol_tests" "$term" \
     "core protocol selected-snippet request contract"
 done
+assert_file_contains "$protocol_op" \
+  "context_recall_selected_snippets: Option<TurnContextRecallSelectedSnippetEnvelope>" \
+  "core protocol selected-snippet request field"
+assert_unique_protocol_owner \
+  '^        context_recall_selected_snippets: Option<TurnContextRecallSelectedSnippetEnvelope>,' \
+  "$protocol_op" \
+  "core protocol selected-snippet request field"
+assert_unique_protocol_owner \
+  '^fn user_input_with_turn_context_deserializes_without_selected_snippet_handoff\(' \
+  "$protocol_tests" \
+  "core protocol selected-snippet absent handoff test"
+assert_unique_protocol_owner \
+  '^fn user_input_with_turn_context_serializes_selected_snippet_handoff\(' \
+  "$protocol_tests" \
+  "core protocol selected-snippet serialized handoff test"
 
 for term in \
   "pub context_recall_selected_snippets: Option<ContextRecallSelectedSnippetEnvelope>" \

@@ -3,7 +3,11 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo_root/codex-rs/Cargo.toml"
-protocol="$repo_root/codex-rs/protocol/src/protocol.rs"
+protocol_turn_context="$repo_root/codex-rs/protocol/src/protocol/turn_context"
+protocol_common="$protocol_turn_context/common.rs"
+protocol_memory="$protocol_turn_context/memory.rs"
+protocol_manifest="$protocol_turn_context/manifest.rs"
+protocol_stable_hash="$protocol_turn_context/stable_hash.rs"
 context_manifest_options="$repo_root/codex-rs/core/src/context_manager/manifest/options.rs"
 context_manifest_tests="$repo_root/codex-rs/core/src/context_manager/manifest/tests.rs"
 hepta_core_memory="$repo_root/codex-rs/hepta-core/src/memory.rs"
@@ -43,6 +47,19 @@ assert_file_contains() {
   fi
 }
 
+assert_unique_protocol_owner() {
+  local pattern="$1"
+  local expected_owner="$2"
+  local label="$3"
+  local owners
+
+  owners="$(rg -l "$pattern" "$protocol_turn_context" -g '*.rs' || true)"
+  if [[ "$(printf '%s\n' "$owners" | sed '/^$/d' | wc -l | tr -d ' ')" != "1" \
+    || "$owners" != "$expected_owner" ]]; then
+    fail "$label must have exactly one typed owner: $expected_owner"
+  fi
+}
+
 for term in \
   "Memory temporal fact schema dry-run" \
   "memory_temporal_facts" \
@@ -67,20 +84,40 @@ for term in \
   assert_file_contains "$contracts" "$term" "memory temporal fact contract"
 done
 
-assert_file_contains "$protocol" \
+assert_file_contains "$protocol_common" \
   "TURN_CONTEXT_MEMORY_TEMPORAL_FACT_SCHEMA_VERSION" \
   "memory temporal fact protocol schema version"
-assert_file_contains "$protocol" \
+assert_file_contains "$protocol_memory" \
   "TurnContextMemoryTemporalFactType" \
   "memory temporal fact protocol type"
-assert_file_contains "$protocol" \
+assert_file_contains "$protocol_memory" \
   "TurnContextMemoryTemporalFact" \
   "memory temporal fact protocol struct"
-assert_file_contains "$protocol" \
+assert_file_contains "$protocol_manifest" \
   "memory_temporal_facts_have_integrity" \
   "memory temporal fact protocol integrity"
-assert_file_contains "$protocol" \
+assert_file_contains "$protocol_stable_hash" \
   "update_memory_temporal_facts" \
+  "memory temporal fact protocol ledger hash"
+assert_unique_protocol_owner \
+  '^pub const TURN_CONTEXT_MEMORY_TEMPORAL_FACT_SCHEMA_VERSION:' \
+  "$protocol_common" \
+  "memory temporal fact protocol schema version"
+assert_unique_protocol_owner \
+  '^pub enum TurnContextMemoryTemporalFactType ' \
+  "$protocol_memory" \
+  "memory temporal fact protocol type"
+assert_unique_protocol_owner \
+  '^pub struct TurnContextMemoryTemporalFact ' \
+  "$protocol_memory" \
+  "memory temporal fact protocol struct"
+assert_unique_protocol_owner \
+  '^    pub fn memory_temporal_facts_have_integrity\(' \
+  "$protocol_manifest" \
+  "memory temporal fact protocol integrity"
+assert_unique_protocol_owner \
+  '^    pub\(super\) fn update_memory_temporal_facts\(' \
+  "$protocol_stable_hash" \
   "memory temporal fact protocol ledger hash"
 
 assert_file_contains "$context_manifest_options" \
