@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_root/scripts/lib/hepta-rust-toolchain.sh"
+hepta_rust_toolchain_init "$repo_root"
 manifest="$repo_root/codex-rs/Cargo.toml"
 lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
 target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"

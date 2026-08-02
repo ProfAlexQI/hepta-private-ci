@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_root/scripts/lib/hepta-rust-toolchain.sh"
+hepta_rust_toolchain_init "$repo_root"
 
 bash "$repo_root/scripts/hepta-context-release-manifest-gate.sh"
 bash "$repo_root/scripts/hepta-context-manifest-replay-hash-boundary-gate.sh"
