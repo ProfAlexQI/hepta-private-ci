@@ -17,6 +17,7 @@ pub use plugin_namespace::agent_plugin_schema_status;
 pub use plugin_namespace::find_plugin_manifest_path;
 pub use plugin_namespace::plugin_namespace_for_skill_path;
 pub use plugin_namespace::resolve_plugin_manifest_path;
+pub use plugin_namespace::resolve_regular_plugin_manifest_candidate;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum SkillDiscoveryMode {

@@ -3,6 +3,8 @@
 use codex_exec_server::ExecutorFileSystem;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::fs;
+use std::io;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -53,32 +55,117 @@ pub fn find_plugin_manifest_path(plugin_root: &Path) -> Option<PathBuf> {
 }
 
 pub fn resolve_plugin_manifest_path(plugin_root: &Path) -> PluginManifestPathResolution {
-    let agent_manifest_path = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
-    match fs::symlink_metadata(&agent_manifest_path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.file_type().is_file() => {
+    let agent_manifest_relative_path = Path::new(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
+    match resolve_regular_plugin_manifest_candidate(plugin_root, agent_manifest_relative_path) {
+        PluginManifestPathResolution::Found(agent_manifest_path) => {
+            match fs::read_to_string(&agent_manifest_path) {
+                Ok(contents)
+                    if agent_plugin_schema_status(&contents)
+                        != AgentPluginSchemaStatus::Unrelated =>
+                {
+                    return PluginManifestPathResolution::Found(agent_manifest_path);
+                }
+                Ok(_) => {}
+                Err(_) => return PluginManifestPathResolution::Rejected,
+            }
+        }
+        PluginManifestPathResolution::Rejected => {
             return PluginManifestPathResolution::Rejected;
         }
-        Ok(_) => match fs::read_to_string(&agent_manifest_path) {
-            Ok(contents)
-                if agent_plugin_schema_status(&contents) != AgentPluginSchemaStatus::Unrelated =>
-            {
-                return PluginManifestPathResolution::Found(agent_manifest_path);
-            }
-            Ok(_) => {}
-            Err(_) => return PluginManifestPathResolution::Rejected,
-        },
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(_) => return PluginManifestPathResolution::Rejected,
+        PluginManifestPathResolution::NotFound => {}
     }
 
-    match DISCOVERABLE_PLUGIN_MANIFEST_PATHS
-        .iter()
-        .map(|relative_path| plugin_root.join(relative_path))
-        .find(|manifest_path| manifest_path.is_file())
-    {
-        Some(path) => PluginManifestPathResolution::Found(path),
-        None => PluginManifestPathResolution::NotFound,
+    for relative_path in DISCOVERABLE_PLUGIN_MANIFEST_PATHS {
+        match resolve_regular_plugin_manifest_candidate(plugin_root, Path::new(relative_path)) {
+            PluginManifestPathResolution::Found(manifest_path) => {
+                return PluginManifestPathResolution::Found(manifest_path);
+            }
+            PluginManifestPathResolution::Rejected => {
+                return PluginManifestPathResolution::Rejected;
+            }
+            PluginManifestPathResolution::NotFound => {}
+        }
     }
+    PluginManifestPathResolution::NotFound
+}
+
+/// Resolves a manifest candidate only when every component beneath `plugin_root` is a regular,
+/// non-link path. Inspecting every component prevents a regular leaf from hiding behind a linked
+/// `.codex-plugin`/`.claude-plugin` directory (including Windows directory reparse points).
+pub fn resolve_regular_plugin_manifest_candidate(
+    plugin_root: &Path,
+    relative_path: &Path,
+) -> PluginManifestPathResolution {
+    let root_metadata = match fs::symlink_metadata(plugin_root) {
+        Ok(metadata) => metadata,
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return PluginManifestPathResolution::NotFound;
+        }
+        Err(_) => return PluginManifestPathResolution::Rejected,
+    };
+    if root_metadata.file_type().is_symlink()
+        || !root_metadata.file_type().is_dir()
+        || is_windows_reparse_point(&root_metadata)
+    {
+        return PluginManifestPathResolution::Rejected;
+    }
+
+    let components = relative_path.components().collect::<Vec<_>>();
+    if components.is_empty()
+        || components
+            .iter()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return PluginManifestPathResolution::Rejected;
+    }
+
+    let mut candidate = plugin_root.to_path_buf();
+    for (index, component) in components.iter().enumerate() {
+        let Component::Normal(component) = component else {
+            return PluginManifestPathResolution::Rejected;
+        };
+        candidate.push(component);
+        let metadata = match fs::symlink_metadata(&candidate) {
+            Ok(metadata) => metadata,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return PluginManifestPathResolution::NotFound;
+            }
+            Err(_) => return PluginManifestPathResolution::Rejected,
+        };
+        if metadata.file_type().is_symlink() || is_windows_reparse_point(&metadata) {
+            return PluginManifestPathResolution::Rejected;
+        }
+        let is_leaf = index + 1 == components.len();
+        if (is_leaf && !metadata.file_type().is_file())
+            || (!is_leaf && !metadata.file_type().is_dir())
+        {
+            return PluginManifestPathResolution::Rejected;
+        }
+    }
+    PluginManifestPathResolution::Found(candidate)
+}
+
+#[cfg(windows)]
+fn is_windows_reparse_point(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_windows_reparse_point(_metadata: &fs::Metadata) -> bool {
+    false
 }
 
 #[derive(serde::Deserialize)]
@@ -94,19 +181,83 @@ enum PluginManifestNameResolution {
     NotFound,
 }
 
+enum ExecutorManifestPathResolution {
+    Found(AbsolutePathBuf),
+    Rejected,
+    NotFound,
+}
+
+async fn resolve_executor_manifest_candidate(
+    fs: &dyn ExecutorFileSystem,
+    plugin_root: &AbsolutePathBuf,
+    relative_path: &Path,
+) -> ExecutorManifestPathResolution {
+    let root_metadata = match fs.get_metadata(plugin_root, /*sandbox*/ None).await {
+        Ok(metadata) => metadata,
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return ExecutorManifestPathResolution::NotFound;
+        }
+        Err(_) => return ExecutorManifestPathResolution::Rejected,
+    };
+    if root_metadata.is_symlink || !root_metadata.is_directory {
+        return ExecutorManifestPathResolution::Rejected;
+    }
+
+    let components = relative_path.components().collect::<Vec<_>>();
+    if components.is_empty()
+        || components
+            .iter()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return ExecutorManifestPathResolution::Rejected;
+    }
+
+    let mut candidate = plugin_root.clone();
+    for (index, component) in components.iter().enumerate() {
+        let Component::Normal(component) = component else {
+            return ExecutorManifestPathResolution::Rejected;
+        };
+        candidate = candidate.join(component);
+        let metadata = match fs.get_metadata(&candidate, /*sandbox*/ None).await {
+            Ok(metadata) => metadata,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return ExecutorManifestPathResolution::NotFound;
+            }
+            Err(_) => return ExecutorManifestPathResolution::Rejected,
+        };
+        if metadata.is_symlink {
+            return ExecutorManifestPathResolution::Rejected;
+        }
+        let is_leaf = index + 1 == components.len();
+        if (is_leaf && !metadata.is_file) || (!is_leaf && !metadata.is_directory) {
+            return ExecutorManifestPathResolution::Rejected;
+        }
+    }
+    ExecutorManifestPathResolution::Found(candidate)
+}
+
 async fn plugin_manifest_name(
     fs: &dyn ExecutorFileSystem,
     plugin_root: &AbsolutePathBuf,
 ) -> PluginManifestNameResolution {
-    let agent_manifest_path = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
-    match fs
-        .get_metadata(&agent_manifest_path, /*sandbox*/ None)
-        .await
+    match resolve_executor_manifest_candidate(
+        fs,
+        plugin_root,
+        Path::new(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH),
+    )
+    .await
     {
-        Ok(metadata) => {
-            if metadata.is_symlink || !metadata.is_file {
-                return PluginManifestNameResolution::Rejected;
-            }
+        ExecutorManifestPathResolution::Found(agent_manifest_path) => {
             match fs
                 .read_file_text(&agent_manifest_path, /*sandbox*/ None)
                 .await
@@ -125,25 +276,23 @@ async fn plugin_manifest_name(
                 Err(_) => return PluginManifestNameResolution::Rejected,
             }
         }
-        Err(error) => {
-            if !matches!(
-                error.kind(),
-                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
-            ) {
-                return PluginManifestNameResolution::Rejected;
-            }
+        ExecutorManifestPathResolution::Rejected => {
+            return PluginManifestNameResolution::Rejected;
         }
+        ExecutorManifestPathResolution::NotFound => {}
     }
 
     let mut manifest_path = None;
     for relative_path in DISCOVERABLE_PLUGIN_MANIFEST_PATHS {
-        let candidate = plugin_root.join(relative_path);
-        match fs.get_metadata(&candidate, /*sandbox*/ None).await {
-            Ok(metadata) if metadata.is_file => {
+        match resolve_executor_manifest_candidate(fs, plugin_root, Path::new(relative_path)).await {
+            ExecutorManifestPathResolution::Rejected => {
+                return PluginManifestNameResolution::Rejected;
+            }
+            ExecutorManifestPathResolution::Found(candidate) => {
                 manifest_path = Some(candidate);
                 break;
             }
-            Ok(_) | Err(_) => {}
+            ExecutorManifestPathResolution::NotFound => {}
         }
     }
     let Some(manifest_path) = manifest_path else {
@@ -178,7 +327,8 @@ pub async fn plugin_namespace_for_skill_path(
     fs: &dyn ExecutorFileSystem,
     path: &AbsolutePathBuf,
 ) -> Option<String> {
-    for ancestor in path.ancestors() {
+    let parent = path.parent()?;
+    for ancestor in parent.ancestors() {
         match plugin_manifest_name(fs, &ancestor).await {
             PluginManifestNameResolution::Found(name) => return Some(name),
             PluginManifestNameResolution::Rejected => return None,
@@ -300,6 +450,197 @@ mod tests {
         assert_eq!(
             find_plugin_manifest_path(&plugin_root),
             Some(codex_manifest)
+        );
+    }
+
+    #[tokio::test]
+    async fn nonregular_legacy_manifest_fails_closed_before_other_fallbacks() {
+        let tmp = tempdir().expect("tempdir");
+        let outer_root = tmp.path().join("plugins/outer");
+        let plugin_root = outer_root.join("sample");
+        let skill_path = plugin_root.join("skills/search/SKILL.md");
+        let codex_manifest = plugin_root.join(".codex-plugin/plugin.json");
+        let claude_manifest = plugin_root.join(".claude-plugin/plugin.json");
+        let outer_manifest = outer_root.join(".codex-plugin/plugin.json");
+        fs::create_dir_all(&codex_manifest).expect("nonregular Codex manifest");
+        fs::create_dir_all(claude_manifest.parent().expect("Claude parent")).expect("mkdir");
+        fs::create_dir_all(outer_manifest.parent().expect("outer parent")).expect("mkdir");
+        fs::create_dir_all(skill_path.parent().expect("skill parent")).expect("mkdir");
+        fs::write(claude_manifest, r#"{"name":"claude"}"#).expect("write Claude manifest");
+        fs::write(outer_manifest, r#"{"name":"outer"}"#).expect("write outer manifest");
+        fs::write(&skill_path, "---\ndescription: search\n---\n").expect("write skill");
+
+        assert_eq!(find_plugin_manifest_path(&plugin_root), None);
+        assert_eq!(
+            resolve_plugin_manifest_path(&plugin_root),
+            PluginManifestPathResolution::Rejected
+        );
+        assert_eq!(
+            plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &skill_path.abs()).await,
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn symlinked_legacy_manifest_fails_closed_before_other_fallbacks() {
+        let tmp = tempdir().expect("tempdir");
+        let outer_root = tmp.path().join("plugins/outer");
+        let plugin_root = outer_root.join("sample");
+        let skill_path = plugin_root.join("skills/search/SKILL.md");
+        let codex_manifest = plugin_root.join(".codex-plugin/plugin.json");
+        let claude_manifest = plugin_root.join(".claude-plugin/plugin.json");
+        let outer_manifest = outer_root.join(".codex-plugin/plugin.json");
+        let manifest_target = tmp.path().join("legacy-plugin.json");
+        fs::create_dir_all(codex_manifest.parent().expect("Codex parent")).expect("mkdir");
+        fs::create_dir_all(claude_manifest.parent().expect("Claude parent")).expect("mkdir");
+        fs::create_dir_all(outer_manifest.parent().expect("outer parent")).expect("mkdir");
+        fs::create_dir_all(skill_path.parent().expect("skill parent")).expect("mkdir");
+        fs::write(&manifest_target, r#"{"name":"linked"}"#).expect("write target");
+        std::os::unix::fs::symlink(&manifest_target, &codex_manifest).expect("symlink manifest");
+        fs::write(claude_manifest, r#"{"name":"claude"}"#).expect("write Claude manifest");
+        fs::write(outer_manifest, r#"{"name":"outer"}"#).expect("write outer manifest");
+        fs::write(&skill_path, "---\ndescription: search\n---\n").expect("write skill");
+
+        assert_eq!(find_plugin_manifest_path(&plugin_root), None);
+        assert_eq!(
+            resolve_plugin_manifest_path(&plugin_root),
+            PluginManifestPathResolution::Rejected
+        );
+        assert_eq!(
+            plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &skill_path.abs()).await,
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn symlinked_legacy_manifest_directory_fails_closed() {
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("plugins/sample");
+        let skill_path = plugin_root.join("skills/search/SKILL.md");
+        let linked_manifest_dir = tmp.path().join("linked-codex-plugin");
+        fs::create_dir_all(&linked_manifest_dir).expect("linked manifest directory");
+        fs::create_dir_all(skill_path.parent().expect("skill parent")).expect("skill directory");
+        fs::write(
+            linked_manifest_dir.join("plugin.json"),
+            r#"{"name":"linked"}"#,
+        )
+        .expect("write linked manifest");
+        std::os::unix::fs::symlink(&linked_manifest_dir, plugin_root.join(".codex-plugin"))
+            .expect("symlink manifest directory");
+        fs::write(&skill_path, "---\ndescription: search\n---\n").expect("write skill");
+
+        assert_eq!(find_plugin_manifest_path(&plugin_root), None);
+        assert_eq!(
+            resolve_plugin_manifest_path(&plugin_root),
+            PluginManifestPathResolution::Rejected
+        );
+        assert_eq!(
+            plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &skill_path.abs()).await,
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn symlinked_plugin_root_fails_closed() {
+        let tmp = tempdir().expect("tempdir");
+        let real_plugin_root = tmp.path().join("real-plugin");
+        let linked_plugin_root = tmp.path().join("linked-plugin");
+        let real_skill_path = real_plugin_root.join("skills/search/SKILL.md");
+        fs::create_dir_all(real_skill_path.parent().expect("skill parent"))
+            .expect("skill directory");
+        fs::create_dir_all(real_plugin_root.join(".codex-plugin")).expect("manifest directory");
+        fs::write(
+            real_plugin_root.join(".codex-plugin/plugin.json"),
+            r#"{"name":"linked"}"#,
+        )
+        .expect("write manifest");
+        fs::write(&real_skill_path, "---\ndescription: search\n---\n").expect("write skill");
+        std::os::unix::fs::symlink(&real_plugin_root, &linked_plugin_root)
+            .expect("symlink plugin root");
+        let linked_skill_path = linked_plugin_root.join("skills/search/SKILL.md");
+
+        assert_eq!(find_plugin_manifest_path(&linked_plugin_root), None);
+        assert_eq!(
+            resolve_plugin_manifest_path(&linked_plugin_root),
+            PluginManifestPathResolution::Rejected
+        );
+        assert_eq!(
+            plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &linked_skill_path.abs()).await,
+            None
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn junctioned_legacy_manifest_directory_fails_closed() {
+        use std::process::Command;
+
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("plugins/sample");
+        let junction_target = tmp.path().join("junction-codex-plugin");
+        fs::create_dir_all(&plugin_root).expect("plugin root");
+        fs::create_dir_all(&junction_target).expect("junction target");
+        fs::write(
+            junction_target.join("plugin.json"),
+            r#"{"name":"junction"}"#,
+        )
+        .expect("write junction manifest");
+        let output = Command::new("cmd")
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(plugin_root.join(".codex-plugin"))
+            .arg(&junction_target)
+            .output()
+            .expect("create manifest junction");
+        assert!(
+            output.status.success(),
+            "mklink /J failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        assert_eq!(find_plugin_manifest_path(&plugin_root), None);
+        assert_eq!(
+            resolve_plugin_manifest_path(&plugin_root),
+            PluginManifestPathResolution::Rejected
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn junctioned_plugin_root_fails_closed() {
+        use std::process::Command;
+
+        let tmp = tempdir().expect("tempdir");
+        let real_plugin_root = tmp.path().join("real-plugin");
+        let junction_plugin_root = tmp.path().join("junction-plugin");
+        fs::create_dir_all(real_plugin_root.join(".codex-plugin")).expect("manifest directory");
+        fs::write(
+            real_plugin_root.join(".codex-plugin/plugin.json"),
+            r#"{"name":"junction"}"#,
+        )
+        .expect("write manifest");
+        let output = Command::new("cmd")
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&junction_plugin_root)
+            .arg(&real_plugin_root)
+            .output()
+            .expect("create plugin root junction");
+        assert!(
+            output.status.success(),
+            "mklink /J failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        assert_eq!(find_plugin_manifest_path(&junction_plugin_root), None);
+        assert_eq!(
+            resolve_plugin_manifest_path(&junction_plugin_root),
+            PluginManifestPathResolution::Rejected
         );
     }
 

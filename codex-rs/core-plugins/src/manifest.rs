@@ -7,8 +7,10 @@ use crate::manifest_tool_declarations::resolve_tool_declarations;
 use codex_config::HooksFile;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_plugins::AGENT_PLUGIN_MANIFEST_RELATIVE_PATH;
+use codex_utils_plugins::PluginManifestPathResolution;
 use codex_utils_plugins::SkillDiscoveryMode;
 use codex_utils_plugins::find_plugin_manifest_path;
+use codex_utils_plugins::resolve_regular_plugin_manifest_candidate;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::fs;
@@ -184,11 +186,19 @@ pub fn load_plugin_manifest(plugin_root: &Path) -> Option<PluginManifest> {
     let agent_manifest_path = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
     let manifest_path = find_plugin_manifest_path(plugin_root)?;
     let contents = fs::read_to_string(&manifest_path).ok()?;
-    let overlay_path = plugin_root.join(".codex-plugin/plugin.json");
+    let overlay_relative_path = Path::new(".codex-plugin/plugin.json");
+    let overlay_path = plugin_root.join(overlay_relative_path);
     let overlay = if manifest_path == agent_manifest_path {
-        fs::read_to_string(&overlay_path)
-            .ok()
-            .map(|contents| (overlay_path, contents))
+        match read_optional_regular_file(plugin_root, overlay_relative_path) {
+            Ok(contents) => contents.map(|contents| (overlay_path, contents)),
+            Err(err) => {
+                tracing::warn!(
+                    path = %overlay_path.display(),
+                    "failed to read optional plugin manifest overlay: {err}"
+                );
+                return None;
+            }
+        }
     } else {
         None
     };
@@ -208,6 +218,20 @@ pub fn load_plugin_manifest(plugin_root: &Path) -> Option<PluginManifest> {
             );
             None
         }
+    }
+}
+
+fn read_optional_regular_file(
+    plugin_root: &Path,
+    relative_path: &Path,
+) -> io::Result<Option<String>> {
+    match resolve_regular_plugin_manifest_candidate(plugin_root, relative_path) {
+        PluginManifestPathResolution::Found(path) => fs::read_to_string(path).map(Some),
+        PluginManifestPathResolution::NotFound => Ok(None),
+        PluginManifestPathResolution::Rejected => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "plugin manifest overlay must be a regular file without linked path components",
+        )),
     }
 }
 

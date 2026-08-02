@@ -339,6 +339,128 @@ fn symlinked_root_manifest_fails_closed_without_legacy_fallback() {
 
 #[cfg(unix)]
 #[test]
+fn symlinked_plugin_root_fails_closed() {
+    let tmp = tempdir().expect("tempdir");
+    let real_plugin_root = tmp.path().join("real-plugin");
+    let linked_plugin_root = tmp.path().join("linked-plugin");
+    write_agent_plugin_manifest(&real_plugin_root, "");
+    std::os::unix::fs::symlink(&real_plugin_root, &linked_plugin_root)
+        .expect("symlink plugin root");
+
+    assert_eq!(load_plugin_manifest(&linked_plugin_root), None);
+}
+
+#[cfg(windows)]
+#[test]
+fn junctioned_plugin_root_fails_closed() {
+    use std::process::Command;
+
+    let tmp = tempdir().expect("tempdir");
+    let real_plugin_root = tmp.path().join("real-plugin");
+    let junction_plugin_root = tmp.path().join("junction-plugin");
+    write_agent_plugin_manifest(&real_plugin_root, "");
+    let output = Command::new("cmd")
+        .arg("/C")
+        .arg("mklink")
+        .arg("/J")
+        .arg(&junction_plugin_root)
+        .arg(&real_plugin_root)
+        .output()
+        .expect("create plugin root junction");
+    assert!(
+        output.status.success(),
+        "mklink /J failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(load_plugin_manifest(&junction_plugin_root), None);
+}
+
+#[test]
+fn nonregular_agent_overlay_fails_closed() {
+    let tmp = tempdir().expect("tempdir");
+    let plugin_root = tmp.path().join("demo-plugin");
+    write_agent_plugin_manifest(&plugin_root, "");
+    fs::create_dir_all(plugin_root.join(".codex-plugin/plugin.json")).expect("nonregular overlay");
+
+    assert_eq!(load_plugin_manifest(&plugin_root), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_agent_overlay_fails_closed() {
+    let tmp = tempdir().expect("tempdir");
+    let plugin_root = tmp.path().join("demo-plugin");
+    let overlay_target = tmp.path().join("overlay.json");
+    write_agent_plugin_manifest(&plugin_root, "");
+    fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("overlay parent");
+    fs::write(
+        &overlay_target,
+        r#"{"interface":{"displayName":"Linked Overlay"}}"#,
+    )
+    .expect("overlay target");
+    std::os::unix::fs::symlink(
+        &overlay_target,
+        plugin_root.join(".codex-plugin/plugin.json"),
+    )
+    .expect("symlink overlay");
+
+    assert_eq!(load_plugin_manifest(&plugin_root), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_agent_overlay_directory_fails_closed() {
+    let tmp = tempdir().expect("tempdir");
+    let plugin_root = tmp.path().join("demo-plugin");
+    let overlay_target = tmp.path().join("linked-codex-plugin");
+    write_agent_plugin_manifest(&plugin_root, "");
+    fs::create_dir_all(&overlay_target).expect("overlay target");
+    fs::write(
+        overlay_target.join("plugin.json"),
+        r#"{"interface":{"displayName":"Linked Overlay"}}"#,
+    )
+    .expect("overlay target manifest");
+    std::os::unix::fs::symlink(&overlay_target, plugin_root.join(".codex-plugin"))
+        .expect("symlink overlay directory");
+
+    assert_eq!(load_plugin_manifest(&plugin_root), None);
+}
+
+#[cfg(windows)]
+#[test]
+fn junctioned_agent_overlay_directory_fails_closed() {
+    use std::process::Command;
+
+    let tmp = tempdir().expect("tempdir");
+    let plugin_root = tmp.path().join("demo-plugin");
+    let overlay_target = tmp.path().join("junction-codex-plugin");
+    write_agent_plugin_manifest(&plugin_root, "");
+    fs::create_dir_all(&overlay_target).expect("overlay target");
+    fs::write(
+        overlay_target.join("plugin.json"),
+        r#"{"interface":{"displayName":"Junction Overlay"}}"#,
+    )
+    .expect("overlay target manifest");
+    let output = Command::new("cmd")
+        .arg("/C")
+        .arg("mklink")
+        .arg("/J")
+        .arg(plugin_root.join(".codex-plugin"))
+        .arg(&overlay_target)
+        .output()
+        .expect("create overlay junction");
+    assert!(
+        output.status.success(),
+        "mklink /J failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(load_plugin_manifest(&plugin_root), None);
+}
+
+#[cfg(unix)]
+#[test]
 fn unreadable_root_manifest_fails_closed_without_legacy_fallback() {
     use std::os::unix::fs::PermissionsExt;
 
