@@ -7,9 +7,7 @@ use crate::manifest_tool_declarations::resolve_tool_declarations;
 use codex_config::HooksFile;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_plugins::AGENT_PLUGIN_MANIFEST_RELATIVE_PATH;
-use codex_utils_plugins::AgentPluginSchemaStatus;
 use codex_utils_plugins::SkillDiscoveryMode;
-use codex_utils_plugins::agent_plugin_schema_status;
 use codex_utils_plugins::find_plugin_manifest_path;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
@@ -19,8 +17,6 @@ use std::path::Component;
 use std::path::Path;
 const MAX_DEFAULT_PROMPT_COUNT: usize = 3;
 const MAX_DEFAULT_PROMPT_LEN: usize = 128;
-const LEGACY_PLUGIN_MANIFEST_RELATIVE_PATHS: &[&str] =
-    &[".codex-plugin/plugin.json", ".claude-plugin/plugin.json"];
 
 #[path = "agent_plugin_manifest.rs"]
 mod agent_plugin_manifest;
@@ -186,42 +182,24 @@ struct RawCodexAgentPluginExtension {
 
 pub fn load_plugin_manifest(plugin_root: &Path) -> Option<PluginManifest> {
     let agent_manifest_path = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
-    if agent_manifest_path.is_file() {
-        let contents = fs::read_to_string(&agent_manifest_path).ok()?;
-        if matches!(
-            agent_plugin_schema_status(&contents),
-            AgentPluginSchemaStatus::Supported | AgentPluginSchemaStatus::Unsupported
-        ) {
-            let overlay_path = plugin_root.join(".codex-plugin/plugin.json");
-            let overlay = fs::read_to_string(&overlay_path)
-                .ok()
-                .map(|contents| (overlay_path, contents));
-            return match parse_resolved_plugin_manifest(
-                plugin_root,
-                &agent_manifest_path,
-                &contents,
-                overlay
-                    .as_ref()
-                    .map(|(path, contents)| (path.as_path(), contents.as_str())),
-            ) {
-                Ok(manifest) => Some(manifest),
-                Err(err) => {
-                    tracing::warn!(
-                        path = %agent_manifest_path.display(),
-                        "failed to parse plugin manifest: {err}"
-                    );
-                    None
-                }
-            };
-        }
-    }
-
-    let manifest_path = LEGACY_PLUGIN_MANIFEST_RELATIVE_PATHS
-        .iter()
-        .map(|relative_path| plugin_root.join(relative_path))
-        .find(|manifest_path| manifest_path.is_file())?;
+    let manifest_path = find_plugin_manifest_path(plugin_root)?;
     let contents = fs::read_to_string(&manifest_path).ok()?;
-    match parse_resolved_plugin_manifest(plugin_root, &manifest_path, &contents, None) {
+    let overlay_path = plugin_root.join(".codex-plugin/plugin.json");
+    let overlay = if manifest_path == agent_manifest_path {
+        fs::read_to_string(&overlay_path)
+            .ok()
+            .map(|contents| (overlay_path, contents))
+    } else {
+        None
+    };
+    match parse_resolved_plugin_manifest(
+        plugin_root,
+        &manifest_path,
+        &contents,
+        overlay
+            .as_ref()
+            .map(|(path, contents)| (path.as_path(), contents.as_str())),
+    ) {
         Ok(manifest) => Some(manifest),
         Err(err) => {
             tracing::warn!(

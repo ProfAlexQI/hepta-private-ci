@@ -22,6 +22,13 @@ pub enum AgentPluginSchemaStatus {
     Unrelated,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PluginManifestPathResolution {
+    Found(PathBuf),
+    Rejected,
+    NotFound,
+}
+
 pub fn agent_plugin_schema_status(contents: &str) -> AgentPluginSchemaStatus {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(contents) else {
         return AgentPluginSchemaStatus::Unrelated;
@@ -39,29 +46,39 @@ pub fn agent_plugin_schema_status(contents: &str) -> AgentPluginSchemaStatus {
 }
 
 pub fn find_plugin_manifest_path(plugin_root: &Path) -> Option<PathBuf> {
+    match resolve_plugin_manifest_path(plugin_root) {
+        PluginManifestPathResolution::Found(path) => Some(path),
+        PluginManifestPathResolution::Rejected | PluginManifestPathResolution::NotFound => None,
+    }
+}
+
+pub fn resolve_plugin_manifest_path(plugin_root: &Path) -> PluginManifestPathResolution {
     let agent_manifest_path = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
     match fs::symlink_metadata(&agent_manifest_path) {
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.file_type().is_file() => {
-            return None;
+            return PluginManifestPathResolution::Rejected;
         }
-        Ok(_) => {
-            if fs::read_to_string(&agent_manifest_path)
-                .ok()
-                .is_some_and(|contents| {
-                    agent_plugin_schema_status(&contents) != AgentPluginSchemaStatus::Unrelated
-                })
+        Ok(_) => match fs::read_to_string(&agent_manifest_path) {
+            Ok(contents)
+                if agent_plugin_schema_status(&contents) != AgentPluginSchemaStatus::Unrelated =>
             {
-                return Some(agent_manifest_path);
+                return PluginManifestPathResolution::Found(agent_manifest_path);
             }
-        }
+            Ok(_) => {}
+            Err(_) => return PluginManifestPathResolution::Rejected,
+        },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(_) => return None,
+        Err(_) => return PluginManifestPathResolution::Rejected,
     }
 
-    DISCOVERABLE_PLUGIN_MANIFEST_PATHS
+    match DISCOVERABLE_PLUGIN_MANIFEST_PATHS
         .iter()
         .map(|relative_path| plugin_root.join(relative_path))
         .find(|manifest_path| manifest_path.is_file())
+    {
+        Some(path) => PluginManifestPathResolution::Found(path),
+        None => PluginManifestPathResolution::NotFound,
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -86,12 +103,15 @@ async fn plugin_manifest_name(
         .get_metadata(&agent_manifest_path, /*sandbox*/ None)
         .await
     {
-        Ok(metadata) if metadata.is_file => {
-            if let Ok(contents) = fs
+        Ok(metadata) => {
+            if metadata.is_symlink || !metadata.is_file {
+                return PluginManifestNameResolution::Rejected;
+            }
+            match fs
                 .read_file_text(&agent_manifest_path, /*sandbox*/ None)
                 .await
             {
-                match agent_plugin_schema_status(&contents) {
+                Ok(contents) => match agent_plugin_schema_status(&contents) {
                     AgentPluginSchemaStatus::Supported => {
                         return plugin_name_from_manifest_contents(plugin_root, &contents)
                             .map(PluginManifestNameResolution::Found)
@@ -101,10 +121,18 @@ async fn plugin_manifest_name(
                         return PluginManifestNameResolution::Rejected;
                     }
                     AgentPluginSchemaStatus::Unrelated => {}
-                }
+                },
+                Err(_) => return PluginManifestNameResolution::Rejected,
             }
         }
-        Ok(_) | Err(_) => {}
+        Err(error) => {
+            if !matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) {
+                return PluginManifestNameResolution::Rejected;
+            }
+        }
     }
 
     let mut manifest_path = None;
@@ -164,8 +192,10 @@ pub async fn plugin_namespace_for_skill_path(
 mod tests {
     use super::AGENT_PLUGIN_MANIFEST_RELATIVE_PATH;
     use super::AGENT_PLUGIN_SCHEMA_URI;
+    use super::PluginManifestPathResolution;
     use super::find_plugin_manifest_path;
     use super::plugin_namespace_for_skill_path;
+    use super::resolve_plugin_manifest_path;
     use codex_exec_server::LOCAL_FS;
     use codex_utils_absolute_path::test_support::PathBufExt;
     use std::fs;
@@ -273,27 +303,39 @@ mod tests {
         );
     }
 
-    #[test]
-    fn nonregular_agent_manifest_fails_closed_before_legacy_fallback() {
+    #[tokio::test]
+    async fn nonregular_agent_manifest_fails_closed_before_legacy_fallback() {
         let tmp = tempdir().expect("tempdir");
         let plugin_root = tmp.path().join("plugins/sample");
+        let skill_path = plugin_root.join("skills/search/SKILL.md");
         let legacy_manifest = plugin_root.join(".codex-plugin/plugin.json");
         fs::create_dir_all(plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH))
             .expect("root manifest directory");
         fs::create_dir_all(legacy_manifest.parent().expect("legacy parent")).expect("mkdir");
+        fs::create_dir_all(skill_path.parent().expect("skill parent")).expect("skill directory");
         fs::write(legacy_manifest, r#"{"name":"legacy"}"#).expect("write legacy manifest");
+        fs::write(&skill_path, "---\ndescription: search\n---\n").expect("write skill");
 
         assert_eq!(find_plugin_manifest_path(&plugin_root), None);
+        assert_eq!(
+            resolve_plugin_manifest_path(&plugin_root),
+            PluginManifestPathResolution::Rejected
+        );
+        assert_eq!(
+            plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &skill_path.abs()).await,
+            None
+        );
     }
 
     #[cfg(unix)]
-    #[test]
-    fn symlinked_agent_manifest_fails_closed_before_legacy_fallback() {
+    #[tokio::test]
+    async fn symlinked_agent_manifest_fails_closed_before_legacy_fallback() {
         let tmp = tempdir().expect("tempdir");
         let plugin_root = tmp.path().join("plugins/sample");
         let manifest_target = tmp.path().join("portable-plugin.json");
+        let skill_path = plugin_root.join("skills/search/SKILL.md");
         let legacy_manifest = plugin_root.join(".codex-plugin/plugin.json");
-        fs::create_dir_all(&plugin_root).expect("plugin root");
+        fs::create_dir_all(skill_path.parent().expect("skill parent")).expect("plugin root");
         fs::write(
             &manifest_target,
             format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"sample"}}"#),
@@ -306,8 +348,53 @@ mod tests {
         .expect("symlink manifest");
         fs::create_dir_all(legacy_manifest.parent().expect("legacy parent")).expect("mkdir");
         fs::write(legacy_manifest, r#"{"name":"legacy"}"#).expect("write legacy manifest");
+        fs::write(&skill_path, "---\ndescription: search\n---\n").expect("write skill");
 
         assert_eq!(find_plugin_manifest_path(&plugin_root), None);
+        assert_eq!(
+            resolve_plugin_manifest_path(&plugin_root),
+            PluginManifestPathResolution::Rejected
+        );
+        assert_eq!(
+            plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &skill_path.abs()).await,
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unreadable_agent_manifest_fails_closed_before_legacy_fallback() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("plugins/sample");
+        let root_manifest = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
+        let skill_path = plugin_root.join("skills/search/SKILL.md");
+        let legacy_manifest = plugin_root.join(".codex-plugin/plugin.json");
+        fs::create_dir_all(skill_path.parent().expect("skill parent")).expect("skill directory");
+        fs::create_dir_all(legacy_manifest.parent().expect("legacy parent")).expect("mkdir");
+        fs::write(
+            &root_manifest,
+            format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"sample"}}"#),
+        )
+        .expect("write Agent Plugin manifest");
+        fs::write(legacy_manifest, r#"{"name":"legacy"}"#).expect("write legacy manifest");
+        fs::write(&skill_path, "---\ndescription: search\n---\n").expect("write skill");
+        fs::set_permissions(&root_manifest, fs::Permissions::from_mode(0o000))
+            .expect("make root manifest unreadable");
+
+        assert_eq!(find_plugin_manifest_path(&plugin_root), None);
+        assert_eq!(
+            resolve_plugin_manifest_path(&plugin_root),
+            PluginManifestPathResolution::Rejected
+        );
+        assert_eq!(
+            plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &skill_path.abs()).await,
+            None
+        );
+
+        fs::set_permissions(&root_manifest, fs::Permissions::from_mode(0o600))
+            .expect("restore root manifest permissions");
     }
 
     #[tokio::test]

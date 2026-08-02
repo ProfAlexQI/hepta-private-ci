@@ -309,6 +309,54 @@ fn unrelated_root_manifest_preserves_legacy_precedence() {
 }
 
 #[test]
+fn nonregular_root_manifest_fails_closed_without_legacy_fallback() {
+    let tmp = tempdir().expect("tempdir");
+    let plugin_root = tmp.path().join("demo-plugin");
+    fs::create_dir_all(plugin_root.join("plugin.json")).expect("root manifest directory");
+    write_codex_overlay(&plugin_root, r#"{"name":"legacy-fallback"}"#);
+
+    assert_eq!(load_plugin_manifest(&plugin_root), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_root_manifest_fails_closed_without_legacy_fallback() {
+    let tmp = tempdir().expect("tempdir");
+    let plugin_root = tmp.path().join("demo-plugin");
+    let manifest_target = tmp.path().join("portable-plugin.json");
+    fs::create_dir_all(&plugin_root).expect("create plugin root");
+    fs::write(
+        &manifest_target,
+        format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"demo-plugin"}}"#),
+    )
+    .expect("write manifest target");
+    std::os::unix::fs::symlink(&manifest_target, plugin_root.join("plugin.json"))
+        .expect("symlink root manifest");
+    write_codex_overlay(&plugin_root, r#"{"name":"legacy-fallback"}"#);
+
+    assert_eq!(load_plugin_manifest(&plugin_root), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn unreadable_root_manifest_fails_closed_without_legacy_fallback() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempdir().expect("tempdir");
+    let plugin_root = tmp.path().join("demo-plugin");
+    write_agent_plugin_manifest(&plugin_root, "");
+    write_codex_overlay(&plugin_root, r#"{"name":"legacy-fallback"}"#);
+    let root_manifest = plugin_root.join("plugin.json");
+    fs::set_permissions(&root_manifest, fs::Permissions::from_mode(0o000))
+        .expect("make root manifest unreadable");
+
+    assert_eq!(load_plugin_manifest(&plugin_root), None);
+
+    fs::set_permissions(&root_manifest, fs::Permissions::from_mode(0o600))
+        .expect("restore root manifest permissions");
+}
+
+#[test]
 fn rejects_invalid_names_and_wrong_portable_metadata_types() {
     let tmp = tempdir().expect("tempdir");
     let plugin_root = tmp.path().join("demo-plugin");

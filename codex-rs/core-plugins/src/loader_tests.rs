@@ -368,6 +368,35 @@ async fn invalid_agent_plugin_manifest_does_not_fall_back_to_default_apps() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn unreadable_agent_plugin_manifest_does_not_fall_back_to_default_apps() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (_tmp, plugin_root) = plugin_root();
+    let root_manifest = plugin_root.join("plugin.json");
+    fs::write(
+        &root_manifest,
+        format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"demo-plugin"}}"#),
+    )
+    .expect("write Agent Plugin manifest");
+    fs::write(
+        plugin_root.join(".app.json"),
+        r#"{"apps":{"default":{"id":"connector_default"}}}"#,
+    )
+    .expect("write default app config");
+    fs::set_permissions(&root_manifest, fs::Permissions::from_mode(0o000))
+        .expect("make root manifest unreadable");
+
+    assert_eq!(
+        load_plugin_apps(plugin_root.as_path()).await,
+        Vec::<AppConnectorId>::new()
+    );
+
+    fs::set_permissions(&root_manifest, fs::Permissions::from_mode(0o600))
+        .expect("restore root manifest permissions");
+}
+
 #[tokio::test]
 async fn agent_plugin_codex_overlay_explicitly_activates_apps_and_hooks() {
     let (_tmp, plugin_root) = plugin_root();

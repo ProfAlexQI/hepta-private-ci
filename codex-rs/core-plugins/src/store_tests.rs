@@ -255,12 +255,7 @@ fn agent_plugin_blank_version_uses_portable_default() {
 #[test]
 fn agent_plugin_unsafe_version_uses_stable_directory_safe_digest() {
     let tmp = tempdir().unwrap();
-    write_agent_plugin_with_version(
-        tmp.path(),
-        "portable",
-        "portable",
-        Some("release/2026"),
-    );
+    write_agent_plugin_with_version(tmp.path(), "portable", "portable", Some("release/2026"));
 
     assert_eq!(
         plugin_version_for_source(&tmp.path().join("portable")).unwrap(),
@@ -420,23 +415,229 @@ fn install_rejects_manifest_names_that_do_not_match_marketplace_plugin_name() {
 
 #[cfg(unix)]
 #[test]
-fn install_rejects_symbolic_links_in_plugin_sources() {
+fn install_rejects_source_root_symlink_without_replacing_existing_plugin() {
     let tmp = tempdir().unwrap();
-    write_plugin(tmp.path(), "sample-plugin", "sample-plugin");
-    let plugin_root = tmp.path().join("sample-plugin");
-    std::os::unix::fs::symlink(
-        plugin_root.join("skills/SKILL.md"),
-        plugin_root.join("linked-skill.md"),
-    )
-    .unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
     let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "old-source", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("old-source")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    write_plugin_with_version(tmp.path(), "new-source", "sample-plugin", Some("2.0.0"));
+    let source_link = tmp.path().join("source-link");
+    std::os::unix::fs::symlink(tmp.path().join("new-source"), &source_link).unwrap();
 
-    let err = PluginStore::new(tmp.path().to_path_buf())
-        .install(AbsolutePathBuf::try_from(plugin_root).unwrap(), plugin_id)
-        .expect_err("symlinked plugin source must fail closed");
+    let err = store
+        .install(
+            AbsolutePathBuf::try_from(source_link).unwrap(),
+            plugin_id.clone(),
+        )
+        .expect_err("symlinked plugin root must fail closed");
 
     assert!(
         err.to_string()
             .contains("plugin source contains unsupported symbolic link")
+    );
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+}
+
+#[test]
+fn install_rejects_non_directory_source_without_replacing_existing_plugin() {
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "old-source", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("old-source")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    let source_file = tmp.path().join("not-a-directory");
+    fs::write(&source_file, "not a plugin directory").unwrap();
+
+    let err = store
+        .install_with_version(
+            AbsolutePathBuf::try_from(source_file).unwrap(),
+            plugin_id.clone(),
+            "2.0.0".to_string(),
+        )
+        .expect_err("non-directory plugin root must fail closed");
+
+    assert!(err.to_string().contains("is not a directory"));
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn install_rejects_nested_symlink_without_replacing_existing_plugin() {
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "old-source", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("old-source")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    write_plugin_with_version(tmp.path(), "new-source", "sample-plugin", Some("2.0.0"));
+    let new_source = tmp.path().join("new-source");
+    std::os::unix::fs::symlink(
+        new_source.join("skills/SKILL.md"),
+        new_source.join("linked-skill.md"),
+    )
+    .unwrap();
+
+    let err = store
+        .install(
+            AbsolutePathBuf::try_from(new_source).unwrap(),
+            plugin_id.clone(),
+        )
+        .expect_err("nested symlink must fail closed");
+
+    assert!(
+        err.to_string()
+            .contains("plugin source contains unsupported symbolic link")
+    );
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn install_rejects_nested_fifo_without_replacing_existing_plugin() {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "old-source", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("old-source")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    write_plugin_with_version(tmp.path(), "new-source", "sample-plugin", Some("2.0.0"));
+    let new_source = tmp.path().join("new-source");
+    let fifo_path = new_source.join("events.fifo");
+    let fifo_path_c = CString::new(fifo_path.as_os_str().as_bytes()).unwrap();
+    let result = unsafe { libc::mkfifo(fifo_path_c.as_ptr(), 0o600) };
+    assert_eq!(result, 0, "mkfifo failed: {}", io::Error::last_os_error());
+
+    let err = store
+        .install(
+            AbsolutePathBuf::try_from(new_source).unwrap(),
+            plugin_id.clone(),
+        )
+        .expect_err("nested FIFO must fail closed");
+
+    assert!(
+        err.to_string()
+            .contains("plugin source contains unsupported file type")
+    );
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn install_rejects_nested_socket_without_replacing_existing_plugin() {
+    use std::os::unix::net::UnixListener;
+
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "old-source", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("old-source")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    write_plugin_with_version(tmp.path(), "new-source", "sample-plugin", Some("2.0.0"));
+    let new_source = tmp.path().join("new-source");
+    let _listener = UnixListener::bind(new_source.join("events.sock")).unwrap();
+
+    let err = store
+        .install(
+            AbsolutePathBuf::try_from(new_source).unwrap(),
+            plugin_id.clone(),
+        )
+        .expect_err("nested socket must fail closed");
+
+    assert!(
+        err.to_string()
+            .contains("plugin source contains unsupported file type")
+    );
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn install_rejects_nested_junction_without_replacing_existing_plugin() {
+    use std::process::Command;
+
+    let tmp = tempdir().unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    let plugin_id = PluginId::new("sample-plugin".to_string(), "debug".to_string()).unwrap();
+    write_plugin_with_version(tmp.path(), "old-source", "sample-plugin", Some("1.0.0"));
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("old-source")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    write_plugin_with_version(tmp.path(), "new-source", "sample-plugin", Some("2.0.0"));
+    let new_source = tmp.path().join("new-source");
+    let junction_target = tmp.path().join("junction-target");
+    let junction_path = new_source.join("junction");
+    fs::create_dir_all(&junction_target).unwrap();
+    let output = Command::new("cmd")
+        .arg("/C")
+        .arg("mklink")
+        .arg("/J")
+        .arg(&junction_path)
+        .arg(&junction_target)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "mklink /J failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let err = store
+        .install(
+            AbsolutePathBuf::try_from(new_source).unwrap(),
+            plugin_id.clone(),
+        )
+        .expect_err("nested junction must fail closed");
+
+    assert!(
+        err.to_string()
+            .contains("plugin source contains unsupported Windows reparse point")
+    );
+    assert_eq!(
+        store.active_plugin_version(&plugin_id),
+        Some("1.0.0".to_string())
     );
 }

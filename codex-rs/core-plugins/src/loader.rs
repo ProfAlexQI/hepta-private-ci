@@ -34,8 +34,9 @@ use codex_plugin::PluginTelemetryMetadata;
 use codex_protocol::protocol::Product;
 use codex_protocol::protocol::SkillScope;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_plugins::PluginManifestPathResolution;
 use codex_utils_plugins::SkillDiscoveryMode;
-use codex_utils_plugins::find_plugin_manifest_path;
+use codex_utils_plugins::resolve_plugin_manifest_path;
 use serde::Deserialize;
 use serde_json::Map as JsonMap;
 use serde_json::Value as JsonValue;
@@ -852,7 +853,10 @@ pub async fn load_plugin_apps(plugin_root: &Path) -> Vec<AppConnectorId> {
         )
         .await;
     }
-    if find_plugin_manifest_path(plugin_root).is_some() {
+    if !matches!(
+        resolve_plugin_manifest_path(plugin_root),
+        PluginManifestPathResolution::NotFound
+    ) {
         return Vec::new();
     }
     load_apps_from_paths(plugin_root, default_app_config_paths(plugin_root)).await

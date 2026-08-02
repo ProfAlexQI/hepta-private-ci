@@ -128,12 +128,7 @@ impl PluginStore {
         plugin_id: PluginId,
         plugin_version: String,
     ) -> Result<PluginInstallResult, PluginStoreError> {
-        if !source_path.as_path().is_dir() {
-            return Err(PluginStoreError::Invalid(format!(
-                "plugin source path is not a directory: {}",
-                source_path.display()
-            )));
-        }
+        validate_plugin_source_root(source_path.as_path())?;
 
         let plugin_name = plugin_name_for_source(source_path.as_path())?;
         if plugin_name != plugin_id.plugin_name {
@@ -182,6 +177,7 @@ impl PluginStoreError {
 }
 
 pub fn plugin_version_for_source(source_path: &Path) -> Result<String, PluginStoreError> {
+    validate_plugin_source_root(source_path)?;
     let (plugin_version, is_agent_plugin) = plugin_manifest_version_for_source(source_path)?;
     let plugin_version = plugin_version.unwrap_or_else(|| {
         if is_agent_plugin {
@@ -263,10 +259,7 @@ fn plugin_manifest_version_for_source(
     };
     let version = version.trim();
     if is_agent_plugin {
-        return Ok((
-            (!version.is_empty()).then(|| version.to_string()),
-            true,
-        ));
+        return Ok(((!version.is_empty()).then(|| version.to_string()), true));
     }
     if version.is_empty() {
         return Err(PluginStoreError::Invalid(
@@ -299,6 +292,51 @@ fn remove_existing_target(path: &Path) -> Result<(), PluginStoreError> {
             PluginStoreError::io("failed to remove existing plugin cache entry", err)
         })
     }
+}
+
+fn validate_plugin_source_root(source: &Path) -> Result<(), PluginStoreError> {
+    let metadata = fs::symlink_metadata(source)
+        .map_err(|err| PluginStoreError::io("failed to inspect plugin source path", err))?;
+    reject_unsupported_source_link(source, &metadata)?;
+    if !metadata.file_type().is_dir() {
+        return Err(PluginStoreError::Invalid(format!(
+            "plugin source path is not a directory: {}",
+            source.display()
+        )));
+    }
+    Ok(())
+}
+
+fn reject_unsupported_source_link(
+    source: &Path,
+    metadata: &fs::Metadata,
+) -> Result<(), PluginStoreError> {
+    if metadata.file_type().is_symlink() {
+        return Err(PluginStoreError::Invalid(format!(
+            "plugin source contains unsupported symbolic link: {}",
+            source.display()
+        )));
+    }
+    if is_windows_reparse_point(metadata) {
+        return Err(PluginStoreError::Invalid(format!(
+            "plugin source contains unsupported Windows reparse point: {}",
+            source.display()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn is_windows_reparse_point(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_windows_reparse_point(_metadata: &fs::Metadata) -> bool {
+    false
 }
 
 fn replace_plugin_root_atomically(
@@ -369,6 +407,7 @@ fn replace_plugin_root_atomically(
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), PluginStoreError> {
+    validate_plugin_source_root(source)?;
     fs::create_dir_all(target)
         .map_err(|err| PluginStoreError::io("failed to create plugin target directory", err))?;
 
@@ -379,20 +418,16 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), PluginStoreErr
             entry.map_err(|err| PluginStoreError::io("failed to enumerate plugin source", err))?;
         let source_path = entry.path();
         let target_path = target.join(entry.file_name());
-        let file_type = entry
-            .file_type()
+        let metadata = fs::symlink_metadata(&source_path)
             .map_err(|err| PluginStoreError::io("failed to inspect plugin source entry", err))?;
+        reject_unsupported_source_link(&source_path, &metadata)?;
+        let file_type = metadata.file_type();
 
         if file_type.is_dir() {
             copy_dir_recursive(&source_path, &target_path)?;
         } else if file_type.is_file() {
             fs::copy(&source_path, &target_path)
                 .map_err(|err| PluginStoreError::io("failed to copy plugin file", err))?;
-        } else if file_type.is_symlink() {
-            return Err(PluginStoreError::Invalid(format!(
-                "plugin source contains unsupported symbolic link: {}",
-                source_path.display()
-            )));
         } else {
             return Err(PluginStoreError::Invalid(format!(
                 "plugin source contains unsupported file type: {}",
