@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Hepta's AndroidManifest, used by `cargo makepad android build-aab` (and
-  `build`). cargo-makepad substitutes the {token} placeholders below at build
+  `build`). cargo-makepad substitutes the named placeholders below at build
   time. See `cargo makepad android help` for the supported tokens.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -42,17 +42,17 @@
         android:label="{label}"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/MakepadAppTheme"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:usesCleartextTraffic="false"
         android:supportsRtl="true"
         android:debuggable="{debuggable}"
         android:largeHeap="true"
         tools:targetApi="{target_sdk_version}">
 
-        <meta-data android:name="android.max_aspect" android:value="2.1" />
-
         <activity
             android:name=".{class_name}"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|fontScale|locale|layoutDirection"
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustNothing|stateUnchanged"
@@ -60,6 +60,22 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Matrix links are external navigation inputs. The app still owns
+                 validation and does not infer trust from Android dispatch. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="matrix" />
+            </intent-filter>
+            <!-- Restrict the private callback scheme to the SSO callback host
+                 used by Hepta instead of accepting every hepta-native URI. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="hepta-native" android:host="login" />
             </intent-filter>
         </activity>
     </application>
