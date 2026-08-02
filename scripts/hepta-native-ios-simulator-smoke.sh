@@ -303,8 +303,15 @@ LAUNCH_OUTPUT="$(xcrun simctl launch --terminate-running-process "$DEVICE_UDID" 
 LAUNCH_PID="$(awk -v bundle="$BUNDLE_IDENTIFIER" '$1 == bundle ":" && $2 ~ /^[0-9]+$/ {print $2; exit}' <<<"$LAUNCH_OUTPUT")"
 [[ "$LAUNCH_PID" =~ ^[0-9]+$ ]] || { echo "error: could not parse a launch pid from: $LAUNCH_OUTPUT" >&2; exit 1; }
 sleep 2
-PROCESS_REPORT="$(xcrun simctl spawn "$DEVICE_UDID" ps -axo pid=,command=)"
-if ! awk -v pid="$LAUNCH_PID" '$1 == pid {found=1} END {exit(found ? 0 : 1)}' <<<"$PROCESS_REPORT"; then
+# Simulator runtimes do not guarantee that the userland `ps` utility is
+# present (the iOS 17.5 runtime is one such case). launchd is the process
+# authority for Simulator apps, so verify the exact UIKitApplication job and
+# PID through launchctl instead of depending on an optional binary.
+PROCESS_REPORT="$(xcrun simctl spawn "$DEVICE_UDID" launchctl list)"
+if ! awk -v pid="$LAUNCH_PID" -v bundle="$BUNDLE_IDENTIFIER" '
+  $1 == pid && index($3, "UIKitApplication:" bundle "[") == 1 {found=1}
+  END {exit(found ? 0 : 1)}
+' <<<"$PROCESS_REPORT"; then
   echo "error: Hepta process $LAUNCH_PID exited before screenshot capture" >&2
   exit 1
 fi
