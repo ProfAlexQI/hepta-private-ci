@@ -544,12 +544,21 @@ verify_android_emulator_artifact() {
 
 verify_android_emulator_host_tools() {
   local receipt="$1" sdk_root emulator qemu emulator_sha qemu_sha ndk_root ndk_source_properties ndk_clang ndk_source_properties_sha ndk_clang_sha
+  local android_jar aapt aapt2 d8_jar zipalign apksigner_jar java javac path sha
   sdk_root="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin "$ANDROID_TRUSTED_ADB_PATH" | jq -er 'select(.ready == true) | .sdk_root')" || return 1
   emulator="$sdk_root/emulator/emulator"
   qemu="$sdk_root/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless"
   ndk_root="$sdk_root/ndk/28.2.13676358"
   ndk_source_properties="$ndk_root/source.properties"
   ndk_clang="$ndk_root/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang"
+  android_jar="$sdk_root/platforms/android-33-ext4/android.jar"
+  aapt="$sdk_root/build-tools/33.0.1/aapt"
+  aapt2="$sdk_root/build-tools/33.0.1/aapt2"
+  d8_jar="$sdk_root/build-tools/33.0.1/lib/d8.jar"
+  zipalign="$sdk_root/build-tools/33.0.1/zipalign"
+  apksigner_jar="$sdk_root/build-tools/33.0.1/lib/apksigner.jar"
+  java="$sdk_root/openjdk/bin/java"
+  javac="$sdk_root/openjdk/bin/javac"
   safe_absolute_regular_file "$emulator" || return 1
   safe_absolute_regular_file "$qemu" || return 1
   safe_absolute_regular_file "$ndk_source_properties" || return 1
@@ -569,6 +578,27 @@ verify_android_emulator_host_tools() {
   [[ "$(shasum -a 256 "$qemu" | awk '{print $1}')" == "$qemu_sha" ]] || return 1
   [[ "$(shasum -a 256 "$ndk_source_properties" | awk '{print $1}')" == "$ndk_source_properties_sha" ]] || return 1
   [[ "$(shasum -a 256 "$ndk_clang" | awk '{print $1}')" == "$ndk_clang_sha" ]] || return 1
+  while IFS=$'\t' read -r path sha; do
+    safe_absolute_regular_file "$path" || return 1
+    [[ "$(shasum -a 256 "$path" | awk '{print $1}')" == "$sha" ]] || return 1
+  done <<EOF
+$android_jar	$(jq -r '.host_toolchain.makepad_android_sdk.android_jar_sha256' "$receipt")
+$aapt	$(jq -r '.host_toolchain.makepad_android_sdk.aapt_sha256' "$receipt")
+$aapt2	$(jq -r '.host_toolchain.makepad_android_sdk.aapt2_sha256' "$receipt")
+$d8_jar	$(jq -r '.host_toolchain.makepad_android_sdk.d8_jar_sha256' "$receipt")
+$zipalign	$(jq -r '.host_toolchain.makepad_android_sdk.zipalign_sha256' "$receipt")
+$apksigner_jar	$(jq -r '.host_toolchain.makepad_android_sdk.apksigner_jar_sha256' "$receipt")
+$java	$(jq -r '.host_toolchain.makepad_android_sdk.java_sha256' "$receipt")
+$javac	$(jq -r '.host_toolchain.makepad_android_sdk.javac_sha256' "$receipt")
+EOF
+  [[ "$(jq -r '.host_toolchain.makepad_android_sdk.android_jar_path' "$receipt")" == "$android_jar" ]] || return 1
+  [[ "$(jq -r '.host_toolchain.makepad_android_sdk.aapt_path' "$receipt")" == "$aapt" ]] || return 1
+  [[ "$(jq -r '.host_toolchain.makepad_android_sdk.aapt2_path' "$receipt")" == "$aapt2" ]] || return 1
+  [[ "$(jq -r '.host_toolchain.makepad_android_sdk.d8_jar_path' "$receipt")" == "$d8_jar" ]] || return 1
+  [[ "$(jq -r '.host_toolchain.makepad_android_sdk.zipalign_path' "$receipt")" == "$zipalign" ]] || return 1
+  [[ "$(jq -r '.host_toolchain.makepad_android_sdk.apksigner_jar_path' "$receipt")" == "$apksigner_jar" ]] || return 1
+  [[ "$(jq -r '.host_toolchain.makepad_android_sdk.java_path' "$receipt")" == "$java" ]] || return 1
+  [[ "$(jq -r '.host_toolchain.makepad_android_sdk.javac_path' "$receipt")" == "$javac" ]] || return 1
 }
 
 verify_android_emulator_screenshot() {
@@ -840,6 +870,24 @@ if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
         and (.host_toolchain.ndk.source_properties_sha256 | test("^[0-9a-f]{64}$"))
         and (.host_toolchain.ndk.clang_binary_path | type == "string" and startswith("/") and endswith("/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang"))
         and (.host_toolchain.ndk.clang_binary_sha256 | test("^[0-9a-f]{64}$"))
+        and .host_toolchain.makepad_android_sdk.platform == "android-33-ext4"
+        and .host_toolchain.makepad_android_sdk.build_tools_version == "33.0.1"
+        and (.host_toolchain.makepad_android_sdk.android_jar_path | type == "string" and startswith("/") and endswith("/platforms/android-33-ext4/android.jar"))
+        and (.host_toolchain.makepad_android_sdk.android_jar_sha256 | test("^[0-9a-f]{64}$"))
+        and (.host_toolchain.makepad_android_sdk.aapt_path | type == "string" and startswith("/") and endswith("/build-tools/33.0.1/aapt"))
+        and (.host_toolchain.makepad_android_sdk.aapt_sha256 | test("^[0-9a-f]{64}$"))
+        and (.host_toolchain.makepad_android_sdk.aapt2_path | type == "string" and startswith("/") and endswith("/build-tools/33.0.1/aapt2"))
+        and (.host_toolchain.makepad_android_sdk.aapt2_sha256 | test("^[0-9a-f]{64}$"))
+        and (.host_toolchain.makepad_android_sdk.d8_jar_path | type == "string" and startswith("/") and endswith("/build-tools/33.0.1/lib/d8.jar"))
+        and (.host_toolchain.makepad_android_sdk.d8_jar_sha256 | test("^[0-9a-f]{64}$"))
+        and (.host_toolchain.makepad_android_sdk.zipalign_path | type == "string" and startswith("/") and endswith("/build-tools/33.0.1/zipalign"))
+        and (.host_toolchain.makepad_android_sdk.zipalign_sha256 | test("^[0-9a-f]{64}$"))
+        and (.host_toolchain.makepad_android_sdk.apksigner_jar_path | type == "string" and startswith("/") and endswith("/build-tools/33.0.1/lib/apksigner.jar"))
+        and (.host_toolchain.makepad_android_sdk.apksigner_jar_sha256 | test("^[0-9a-f]{64}$"))
+        and (.host_toolchain.makepad_android_sdk.java_path | type == "string" and startswith("/") and endswith("/openjdk/bin/java"))
+        and (.host_toolchain.makepad_android_sdk.java_sha256 | test("^[0-9a-f]{64}$"))
+        and (.host_toolchain.makepad_android_sdk.javac_path | type == "string" and startswith("/") and endswith("/openjdk/bin/javac"))
+        and (.host_toolchain.makepad_android_sdk.javac_sha256 | test("^[0-9a-f]{64}$"))
         and .device.state == "device"
         and .device.boot_completed == true
         and (.device.adb_serial | test("^emulator-[0-9]+$"))

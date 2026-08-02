@@ -196,8 +196,12 @@ expect_probe_failure blank "$TEST_DIR/blank.png" "$TEMPLATE_DIR/portrait.png" po
 FAKE_SDK="$TEST_DIR/fake-sdk"
 FAKE_NDK="$FAKE_SDK/ndk/28.2.13676358"
 mkdir -p "$FAKE_SDK/platform-tools" "$FAKE_SDK/emulator/qemu/darwin-aarch64" "$FAKE_SDK/build-tools/35.0.0" \
+  "$FAKE_SDK/platforms/android-33-ext4" "$FAKE_SDK/build-tools/33.0.1/lib" "$FAKE_SDK/openjdk/bin" \
   "$FAKE_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin"
 printf '%s\n' 'Pkg.Desc = Android NDK' 'Pkg.ReleaseName = r28b' >"$FAKE_NDK/source.properties"
+printf 'android jar\n' >"$FAKE_SDK/platforms/android-33-ext4/android.jar"
+printf 'd8 jar\n' >"$FAKE_SDK/build-tools/33.0.1/lib/d8.jar"
+printf 'apksigner jar\n' >"$FAKE_SDK/build-tools/33.0.1/lib/apksigner.jar"
 SENTINEL="$TEST_DIR/external-tool-called"
 for tool in \
   "$FAKE_SDK/platform-tools/adb" \
@@ -205,6 +209,11 @@ for tool in \
   "$FAKE_SDK/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless" \
   "$FAKE_SDK/build-tools/35.0.0/aapt" \
   "$FAKE_SDK/build-tools/35.0.0/apksigner" \
+  "$FAKE_SDK/build-tools/33.0.1/aapt" \
+  "$FAKE_SDK/build-tools/33.0.1/aapt2" \
+  "$FAKE_SDK/build-tools/33.0.1/zipalign" \
+  "$FAKE_SDK/openjdk/bin/java" \
+  "$FAKE_SDK/openjdk/bin/javac" \
   "$FAKE_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang"; do
   printf '#!/usr/bin/env bash\nprintf called >>%q\nexit 99\n' "$SENTINEL" >"$tool"
   chmod 0755 "$tool"
@@ -246,7 +255,8 @@ jq -n \
     artifact:{path:"/tmp/Hepta.apk",sha256:$sha,stale_artifact_accepted:false,full_head_embedded:true,artifact_source_bound:true},
     host_toolchain:{
       adb_binary_path:"/tmp/Android/sdk/platform-tools/adb",adb_binary_sha256:$sha,emulator_binary_sha256:$sha,qemu_binary_sha256:$sha,
-      ndk:{directory_version:"28.2.13676358",release_name:"r28b",root_path:"/tmp/Android/sdk/ndk/28.2.13676358",source_properties_path:"/tmp/Android/sdk/ndk/28.2.13676358/source.properties",source_properties_sha256:$sha,host_prebuilt:"darwin-x86_64",clang_binary_path:"/tmp/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",clang_binary_sha256:$sha}
+      ndk:{directory_version:"28.2.13676358",release_name:"r28b",root_path:"/tmp/Android/sdk/ndk/28.2.13676358",source_properties_path:"/tmp/Android/sdk/ndk/28.2.13676358/source.properties",source_properties_sha256:$sha,host_prebuilt:"darwin-x86_64",clang_binary_path:"/tmp/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",clang_binary_sha256:$sha},
+      makepad_android_sdk:{platform:"android-33-ext4",build_tools_version:"33.0.1",android_jar_path:"/tmp/Android/sdk/platforms/android-33-ext4/android.jar",android_jar_sha256:$sha,aapt_path:"/tmp/Android/sdk/build-tools/33.0.1/aapt",aapt_sha256:$sha,aapt2_path:"/tmp/Android/sdk/build-tools/33.0.1/aapt2",aapt2_sha256:$sha,d8_jar_path:"/tmp/Android/sdk/build-tools/33.0.1/lib/d8.jar",d8_jar_sha256:$sha,zipalign_path:"/tmp/Android/sdk/build-tools/33.0.1/zipalign",zipalign_sha256:$sha,apksigner_jar_path:"/tmp/Android/sdk/build-tools/33.0.1/lib/apksigner.jar",apksigner_jar_sha256:$sha,java_path:"/tmp/Android/sdk/openjdk/bin/java",java_sha256:$sha,javac_path:"/tmp/Android/sdk/openjdk/bin/javac",javac_sha256:$sha}
     },
     device:{adb_serial:"emulator-5554",avd_name:"Hepta_Pixel_API_34_arm64",qemu_avd_name:"Hepta_Pixel_API_34_arm64",boot_id:$boot_id},
     avd:{name:"Hepta_Pixel_API_34_arm64"},
@@ -298,6 +308,9 @@ expect_receipt_failure adb_path '.host_toolchain.adb_binary_path = "platform-too
 expect_receipt_failure ndk_release '.host_toolchain.ndk.release_name = "r28c"'
 expect_receipt_failure ndk_source_hash '.host_toolchain.ndk.source_properties_sha256 = "bad"'
 expect_receipt_failure ndk_clang_path '.host_toolchain.ndk.clang_binary_path = "/tmp/clang"'
+expect_receipt_failure android_jar_hash '.host_toolchain.makepad_android_sdk.android_jar_sha256 = "bad"'
+expect_receipt_failure build_tools_version '.host_toolchain.makepad_android_sdk.build_tools_version = "34.0.0"'
+expect_receipt_failure javac_path '.host_toolchain.makepad_android_sdk.javac_path = "/tmp/javac"'
 expect_receipt_failure real_device_serial '.device.adb_serial = "R58M123456A"'
 expect_receipt_failure avd_identity '.device.qemu_avd_name = "forged-avd"'
 expect_receipt_failure boot_session '.session_probe.boot_id = "99999999-2222-3333-4444-555555555555"'

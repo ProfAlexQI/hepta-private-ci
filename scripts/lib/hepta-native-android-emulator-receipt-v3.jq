@@ -34,6 +34,24 @@ def hepta_android_emulator_receipt_v3_ready($head; $tree; $fingerprint; $manifes
   and (.host_toolchain.ndk.source_properties_sha256 | sha)
   and (.host_toolchain.ndk.clang_binary_path | absolute_evidence_path and endswith("/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang"))
   and (.host_toolchain.ndk.clang_binary_sha256 | sha)
+  and .host_toolchain.makepad_android_sdk.platform == "android-33-ext4"
+  and .host_toolchain.makepad_android_sdk.build_tools_version == "33.0.1"
+  and (.host_toolchain.makepad_android_sdk.android_jar_path | absolute_evidence_path and endswith("/platforms/android-33-ext4/android.jar"))
+  and (.host_toolchain.makepad_android_sdk.android_jar_sha256 | sha)
+  and (.host_toolchain.makepad_android_sdk.aapt_path | absolute_evidence_path and endswith("/build-tools/33.0.1/aapt"))
+  and (.host_toolchain.makepad_android_sdk.aapt_sha256 | sha)
+  and (.host_toolchain.makepad_android_sdk.aapt2_path | absolute_evidence_path and endswith("/build-tools/33.0.1/aapt2"))
+  and (.host_toolchain.makepad_android_sdk.aapt2_sha256 | sha)
+  and (.host_toolchain.makepad_android_sdk.d8_jar_path | absolute_evidence_path and endswith("/build-tools/33.0.1/lib/d8.jar"))
+  and (.host_toolchain.makepad_android_sdk.d8_jar_sha256 | sha)
+  and (.host_toolchain.makepad_android_sdk.zipalign_path | absolute_evidence_path and endswith("/build-tools/33.0.1/zipalign"))
+  and (.host_toolchain.makepad_android_sdk.zipalign_sha256 | sha)
+  and (.host_toolchain.makepad_android_sdk.apksigner_jar_path | absolute_evidence_path and endswith("/build-tools/33.0.1/lib/apksigner.jar"))
+  and (.host_toolchain.makepad_android_sdk.apksigner_jar_sha256 | sha)
+  and (.host_toolchain.makepad_android_sdk.java_path | absolute_evidence_path and endswith("/openjdk/bin/java"))
+  and (.host_toolchain.makepad_android_sdk.java_sha256 | sha)
+  and (.host_toolchain.makepad_android_sdk.javac_path | absolute_evidence_path and endswith("/openjdk/bin/javac"))
+  and (.host_toolchain.makepad_android_sdk.javac_sha256 | sha)
   and (.device.adb_serial | type == "string" and test("^emulator-[0-9]+$"))
   and .device.avd_name == .device.qemu_avd_name
   and .device.avd_name == .avd.name

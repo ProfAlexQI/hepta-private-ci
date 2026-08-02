@@ -15,6 +15,8 @@ HEADLESS_AVD_PROCESS_PROBE="$ROOT_DIR/scripts/hepta-android-headless-avd-process
 NDK_DIRECTORY_VERSION="28.2.13676358"
 NDK_RELEASE_NAME="r28b"
 NDK_HOST_PREBUILT="darwin-x86_64"
+MAKEPAD_ANDROID_PLATFORM="android-33-ext4"
+MAKEPAD_ANDROID_BUILD_TOOLS_VERSION="33.0.1"
 
 AVD_NAME=""
 ADB_SERIAL=""
@@ -83,6 +85,7 @@ if [[ "$CONTRACT_ONLY" == true ]]; then
           stale_package_removed:true,
           pinned_fresh_apk_build:true,
           pinned_ndk_r28b_bound:true,
+          pinned_makepad_android_sdk_bound:true,
           full_head_embedded:true,
           portrait_landscape_ime_png_sha256:true,
           dumpsys_window_rotation_and_logical_geometry_ready:true,
@@ -170,6 +173,14 @@ QEMU="$SDK_ROOT/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless"
 NDK_ROOT="$SDK_ROOT/ndk/$NDK_DIRECTORY_VERSION"
 NDK_SOURCE_PROPERTIES="$NDK_ROOT/source.properties"
 NDK_CLANG="$NDK_ROOT/toolchains/llvm/prebuilt/$NDK_HOST_PREBUILT/bin/clang"
+MAKEPAD_ANDROID_JAR="$SDK_ROOT/platforms/$MAKEPAD_ANDROID_PLATFORM/android.jar"
+MAKEPAD_AAPT="$SDK_ROOT/build-tools/$MAKEPAD_ANDROID_BUILD_TOOLS_VERSION/aapt"
+MAKEPAD_AAPT2="$SDK_ROOT/build-tools/$MAKEPAD_ANDROID_BUILD_TOOLS_VERSION/aapt2"
+MAKEPAD_D8_JAR="$SDK_ROOT/build-tools/$MAKEPAD_ANDROID_BUILD_TOOLS_VERSION/lib/d8.jar"
+MAKEPAD_ZIPALIGN="$SDK_ROOT/build-tools/$MAKEPAD_ANDROID_BUILD_TOOLS_VERSION/zipalign"
+MAKEPAD_APKSIGNER_JAR="$SDK_ROOT/build-tools/$MAKEPAD_ANDROID_BUILD_TOOLS_VERSION/lib/apksigner.jar"
+MAKEPAD_JAVA="$SDK_ROOT/openjdk/bin/java"
+MAKEPAD_JAVAC="$SDK_ROOT/openjdk/bin/javac"
 [[ -x "$ADB" ]] || { echo "error: Android adb is missing: $ADB" >&2; exit 2; }
 [[ -x "$EMULATOR" ]] || { echo "error: Android emulator is missing: $EMULATOR" >&2; exit 2; }
 [[ -x "$QEMU" ]] || { echo "error: ARM64 headless qemu is missing: $QEMU" >&2; exit 2; }
@@ -177,6 +188,12 @@ NDK_CLANG="$NDK_ROOT/toolchains/llvm/prebuilt/$NDK_HOST_PREBUILT/bin/clang"
 [[ -x "$NDK_CLANG" ]] || { echo "error: pinned Android NDK clang is missing: $NDK_CLANG" >&2; exit 2; }
 grep -Fxq "Pkg.ReleaseName = $NDK_RELEASE_NAME" "$NDK_SOURCE_PROPERTIES" \
   || { echo "error: pinned Android NDK release is not $NDK_RELEASE_NAME" >&2; exit 2; }
+for pinned_file in "$MAKEPAD_ANDROID_JAR" "$MAKEPAD_D8_JAR" "$MAKEPAD_APKSIGNER_JAR"; do
+  [[ -s "$pinned_file" ]] || { echo "error: pinned Makepad Android SDK file is missing: $pinned_file" >&2; exit 2; }
+done
+for pinned_executable in "$MAKEPAD_AAPT" "$MAKEPAD_AAPT2" "$MAKEPAD_ZIPALIGN" "$MAKEPAD_JAVA" "$MAKEPAD_JAVAC"; do
+  [[ -x "$pinned_executable" ]] || { echo "error: pinned Makepad Android SDK executable is missing: $pinned_executable" >&2; exit 2; }
+done
 [[ -x "$ORIENTATION_PROBE" ]] || { echo "error: Android window orientation probe is missing: $ORIENTATION_PROBE" >&2; exit 2; }
 [[ -f "$HEADLESS_AVD_PROCESS_PROBE" ]] || { echo "error: Android headless AVD process probe is missing: $HEADLESS_AVD_PROCESS_PROBE" >&2; exit 2; }
 
@@ -359,6 +376,14 @@ EMULATOR_SHA256="$(shasum -a 256 "$EMULATOR" | awk '{print $1}')"
 QEMU_SHA256="$(shasum -a 256 "$QEMU" | awk '{print $1}')"
 NDK_SOURCE_PROPERTIES_SHA256="$(shasum -a 256 "$NDK_SOURCE_PROPERTIES" | awk '{print $1}')"
 NDK_CLANG_SHA256="$(shasum -a 256 "$NDK_CLANG" | awk '{print $1}')"
+MAKEPAD_ANDROID_JAR_SHA256="$(shasum -a 256 "$MAKEPAD_ANDROID_JAR" | awk '{print $1}')"
+MAKEPAD_AAPT_SHA256="$(shasum -a 256 "$MAKEPAD_AAPT" | awk '{print $1}')"
+MAKEPAD_AAPT2_SHA256="$(shasum -a 256 "$MAKEPAD_AAPT2" | awk '{print $1}')"
+MAKEPAD_D8_JAR_SHA256="$(shasum -a 256 "$MAKEPAD_D8_JAR" | awk '{print $1}')"
+MAKEPAD_ZIPALIGN_SHA256="$(shasum -a 256 "$MAKEPAD_ZIPALIGN" | awk '{print $1}')"
+MAKEPAD_APKSIGNER_JAR_SHA256="$(shasum -a 256 "$MAKEPAD_APKSIGNER_JAR" | awk '{print $1}')"
+MAKEPAD_JAVA_SHA256="$(shasum -a 256 "$MAKEPAD_JAVA" | awk '{print $1}')"
+MAKEPAD_JAVAC_SHA256="$(shasum -a 256 "$MAKEPAD_JAVAC" | awk '{print $1}')"
 
 set +e
 "$ADB" -s "$ADB_SERIAL" uninstall "$PACKAGE_NAME" >"$EVIDENCE_DIR/adb-uninstall.txt" 2>&1
@@ -678,6 +703,24 @@ jq -n \
   --arg ndk_host_prebuilt "$NDK_HOST_PREBUILT" \
   --arg ndk_clang "$NDK_CLANG" \
   --arg ndk_clang_sha256 "$NDK_CLANG_SHA256" \
+  --arg makepad_android_platform "$MAKEPAD_ANDROID_PLATFORM" \
+  --arg makepad_android_build_tools_version "$MAKEPAD_ANDROID_BUILD_TOOLS_VERSION" \
+  --arg makepad_android_jar "$MAKEPAD_ANDROID_JAR" \
+  --arg makepad_android_jar_sha256 "$MAKEPAD_ANDROID_JAR_SHA256" \
+  --arg makepad_aapt "$MAKEPAD_AAPT" \
+  --arg makepad_aapt_sha256 "$MAKEPAD_AAPT_SHA256" \
+  --arg makepad_aapt2 "$MAKEPAD_AAPT2" \
+  --arg makepad_aapt2_sha256 "$MAKEPAD_AAPT2_SHA256" \
+  --arg makepad_d8_jar "$MAKEPAD_D8_JAR" \
+  --arg makepad_d8_jar_sha256 "$MAKEPAD_D8_JAR_SHA256" \
+  --arg makepad_zipalign "$MAKEPAD_ZIPALIGN" \
+  --arg makepad_zipalign_sha256 "$MAKEPAD_ZIPALIGN_SHA256" \
+  --arg makepad_apksigner_jar "$MAKEPAD_APKSIGNER_JAR" \
+  --arg makepad_apksigner_jar_sha256 "$MAKEPAD_APKSIGNER_JAR_SHA256" \
+  --arg makepad_java "$MAKEPAD_JAVA" \
+  --arg makepad_java_sha256 "$MAKEPAD_JAVA_SHA256" \
+  --arg makepad_javac "$MAKEPAD_JAVAC" \
+  --arg makepad_javac_sha256 "$MAKEPAD_JAVAC_SHA256" \
   --argjson pid "$APP_PID" \
   --argjson process_start_time_ticks "$PROCESS_START_TIME_TICKS" \
   --arg installed_package_path "$INSTALLED_PACKAGE_PATH" \
@@ -751,6 +794,17 @@ jq -n \
           directory_version:$ndk_directory_version,release_name:$ndk_release_name,root_path:$ndk_root,
           source_properties_path:$ndk_source_properties,source_properties_sha256:$ndk_source_properties_sha256,
           host_prebuilt:$ndk_host_prebuilt,clang_binary_path:$ndk_clang,clang_binary_sha256:$ndk_clang_sha256
+        },
+        makepad_android_sdk:{
+          platform:$makepad_android_platform,build_tools_version:$makepad_android_build_tools_version,
+          android_jar_path:$makepad_android_jar,android_jar_sha256:$makepad_android_jar_sha256,
+          aapt_path:$makepad_aapt,aapt_sha256:$makepad_aapt_sha256,
+          aapt2_path:$makepad_aapt2,aapt2_sha256:$makepad_aapt2_sha256,
+          d8_jar_path:$makepad_d8_jar,d8_jar_sha256:$makepad_d8_jar_sha256,
+          zipalign_path:$makepad_zipalign,zipalign_sha256:$makepad_zipalign_sha256,
+          apksigner_jar_path:$makepad_apksigner_jar,apksigner_jar_sha256:$makepad_apksigner_jar_sha256,
+          java_path:$makepad_java,java_sha256:$makepad_java_sha256,
+          javac_path:$makepad_javac,javac_sha256:$makepad_javac_sha256
         }
       },
       device:{adb_serial:$serial,state:"device",boot_completed:true,avd_name:$avd_name,qemu_avd_name:$qemu_avd_name,avd_name_match:true,boot_id:$boot_id,model:$device_model},
