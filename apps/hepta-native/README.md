@@ -97,11 +97,11 @@ scripts/hepta-native-ios-icons verify
 The TestFlight script separates the Makepad bundle-id component (`nativeapp`)
 from the Cargo package and executable (`hepta-native`), while enforcing the
 user-visible `CFBundleDisplayName` and `CFBundleName` as `Hepta`. It deletes
-reusable bundle output before building, requires `run-device` to succeed,
-validates compiled actool output, and verifies that the binary embeds the
-current committed HEAD before signing. Missing distribution identity, profile,
-device, SDK metadata, branding, compiled assets, or source binding is a hard
-failure.
+reusable bundle output before building, restores and verifies the generated
+app executable mode, requires `run-device` to succeed, validates compiled
+actool output, and verifies that the binary embeds the current committed HEAD
+before signing. Missing distribution identity, profile, device, SDK metadata,
+branding, compiled assets, or source binding is a hard failure.
 
 For a local simulator that is already installed and booted, generate a
 current-source runtime receipt without downloading a runtime, creating an

@@ -167,7 +167,12 @@ CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     build -p "$CARGO_PACKAGE" --locked --release
 
 [[ -d "$APP_BUNDLE" ]] || { echo "error: current build did not create $APP_BUNDLE" >&2; exit 1; }
-[[ -x "$BINARY" ]] || { echo "error: current build did not create $BINARY" >&2; exit 1; }
+[[ -f "$BINARY" ]] || { echo "error: current build did not create $BINARY" >&2; exit 1; }
+# cargo-makepad's generated-bundle copy can lose the executable bit even when
+# the freshly-linked target binary is valid. Normalize the bundle payload
+# before archiving or simctl installation and prove the mode was restored.
+chmod 0755 "$BINARY"
+[[ -x "$BINARY" ]] || { echo "error: current build did not create executable $BINARY" >&2; exit 1; }
 [[ -s "$PLIST" ]] || { echo "error: current build did not create Info.plist" >&2; exit 1; }
 plutil -lint "$PLIST" >/dev/null
 

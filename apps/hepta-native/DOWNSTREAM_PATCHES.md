@@ -48,7 +48,7 @@ not itself prove correctness or readiness.
 | `packaging/hepta-native.desktop` | packaging identity | Add the renamed Hepta Linux desktop entry. | desktop-entry validation; package file inventory |
 | `packaging/rs.robius.robrix.metainfo.xml` | packaging rename | Remove the upstream AppStream filename as part of the explicit Hepta rename. | strict upstream sync check; package file inventory |
 | `packaging/ai.hepta.nativeapp.metainfo.xml` | packaging identity and attribution | Add Hepta AppStream metadata while retaining Robrix/Matrix provenance and license attribution. | XML parse; attribution audit |
-| `packaging/build-ios-testflight.sh` | packaging identity and provenance | Enforce `Hepta` display/bundle names while retaining `ai.hepta.nativeapp` and `hepta-native`, reject stale output, require a successful current-source device build, verify exact HEAD plus compiled actool output, and emit a signing receipt; it does not authorize upload by default. | `bash -n`; mobile readiness gate; authorized signed-device packaging only |
+| `packaging/build-ios-testflight.sh` | packaging identity and provenance | Enforce `Hepta` display/bundle names while retaining `ai.hepta.nativeapp` and `hepta-native`, reject stale output, restore and verify the generated executable mode, require a successful current-source device build, verify exact HEAD plus compiled actool output, and emit a signing receipt; it does not authorize upload by default. | `bash -n`; mobile readiness gate; authorized signed-device packaging only |
 | `packaging/build-macos-unsigned-app.sh` | local packaging provenance | Build a resource-complete current-source macOS app with pinned disposable tools while retaining explicit unsigned/public-release boundaries. | current package gate; repeated manifest comparison |
 | `packaging/build-macos-dmg.sh` | packaging identity | Point the existing macOS packaging workflow at the Hepta app, icon, background, and artifact names; it does not authorize signing or publication. | `bash -n`; unsigned local packaging check |
 | `packaging/fix-dmg-applications-icon.sh` | packaging identity | Update the DMG helper for the renamed Hepta image. | `bash -n`; local DMG layout check |
@@ -118,10 +118,11 @@ prefix, so they are not upstream drift and do not appear in the table above:
   and deliberately negative source-gate cases.
 - `scripts/hepta-native-ios-simulator-smoke.sh` is the narrow runtime-evidence
   exception: on an explicitly selected, already-booted local simulator it
-  builds through the pinned wrapper, installs/launches with `simctl`, captures
-  a screenshot, and emits a current-source-bound receipt. It never downloads a
-  runtime, creates a simulator/account, signs, contacts a real device, uploads,
-  or promotes safe-area, keyboard, VoiceOver, RTL, or Dynamic Type readiness.
+  builds through the pinned wrapper, restores and verifies the generated app
+  executable mode, installs/launches with `simctl`, captures a screenshot, and
+  emits a current-source-bound receipt. It never downloads a runtime, creates a
+  simulator/account, signs, contacts a real device, uploads, or promotes
+  safe-area, keyboard, VoiceOver, RTL, or Dynamic Type readiness.
 
 ## Non-negotiable boundaries
 

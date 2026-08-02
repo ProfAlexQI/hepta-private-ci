@@ -119,6 +119,12 @@ TESTFLIGHT_BUILD_NUMBER="$BUILD_NUMBER" \
     run-device -p "$CARGO_PACKAGE" --locked --release
 
 [[ -d "$APP_BUNDLE" ]] || { echo "Error: current build did not create $APP_BUNDLE" >&2; exit 1; }
+[[ -f "$BINARY" ]] || { echo "Error: current build did not create $BINARY" >&2; exit 1; }
+# The pinned cargo-makepad copy step currently preserves the executable bytes
+# but can drop their mode inside the generated .app. Restore the canonical app
+# executable mode before signing or packaging, then fail closed if it did not
+# take effect.
+chmod 0755 "$BINARY"
 [[ -x "$BINARY" ]] || { echo "Error: current build did not create executable $BINARY" >&2; exit 1; }
 if [[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" != "$SOURCE_HEAD" \
   || "$(git -C "$REPO_ROOT" rev-parse HEAD^{tree})" != "$SOURCE_TREE" \

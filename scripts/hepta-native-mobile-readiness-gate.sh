@@ -81,6 +81,7 @@ if ruby -e '
       %q{APP_BUNDLE="$BUILD_DIR/${CARGO_PACKAGE}.app"},
       %q{rm -rf "$APP_BUNDLE" "$SCENT"},
       %q{run-device -p "$CARGO_PACKAGE" --locked --release},
+      %q{chmod 0755 "$BINARY"},
       %q{scripts/hepta-native-mobile-cargo},
       %q{https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD},
       %q{set_or_add CFBundleDisplayName string "$PRODUCT_NAME"},
