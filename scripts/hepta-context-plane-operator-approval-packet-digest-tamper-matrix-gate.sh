@@ -6,9 +6,10 @@ contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
 preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
 front_door_gate="$repo_root/scripts/lib/hepta-context-gates-v1/hepta-context-source-aware-compression-front-door.gate"
-approval_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-report.sh"
-negative_export_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-negative-export-report.sh"
-digest_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-canonical-export-digest-report.sh"
+pair_runner="$repo_root/scripts/hepta-gate-pair-runner"
+approval_id="hepta-context-plane-operator-approval-packet"
+negative_export_id="hepta-context-plane-operator-approval-packet-negative-export"
+digest_id="hepta-context-plane-operator-approval-packet-canonical-export-digest"
 
 fail() {
   echo "hepta-context-plane-operator-approval-packet-digest-tamper-matrix-gate: $*" >&2
@@ -54,6 +55,33 @@ assert_line_before() {
 
 line_count() {
   printf '%s\n' "$1" | wc -l | tr -d ' '
+}
+
+typed_legacy_protocol() {
+  local pair_id="$1"
+  local report
+
+  report="$("$pair_runner" report "$pair_id")" ||
+    fail "typed report failed for $pair_id"
+  jq -e --arg pair_id "$pair_id" '
+    .gate == $pair_id
+    and (.legacy_business_field_order | type == "array")
+    and (.legacy_business_fields | type == "object")
+    and (.legacy_business_field_order | length) == (.legacy_business_fields | length)
+    and (.legacy_business_field_order | unique | length) == (.legacy_business_field_order | length)
+    and (. as $report | [
+      $report.legacy_business_field_order[] as $key
+      | ($report.legacy_business_fields | has($key))
+    ] | all)
+    and (.side_effects | to_entries | all(.value == false))
+    and .production_authority_granted == false
+    and .write_authority_granted == false
+  ' <<<"$report" >/dev/null || fail "typed legacy projection drifted for $pair_id"
+  jq -r '
+    . as $report
+    | $report.legacy_business_field_order[] as $key
+    | "\($key)=\($report.legacy_business_fields[$key])"
+  ' <<<"$report"
 }
 
 sha256_digest() {
@@ -166,9 +194,10 @@ assert_rejected() {
   fi
 }
 
-approval_status="$(bash "$approval_report")"
-negative_status="$(bash "$negative_export_report")"
-digest_status="$(bash "$digest_report")"
+approval_status="$(typed_legacy_protocol "$approval_id")"
+negative_status="$(typed_legacy_protocol "$negative_export_id")"
+digest_status="$(typed_legacy_protocol "$digest_id")"
+"$pair_runner" gate "$digest_id" >/dev/null || fail "typed canonical digest gate failed"
 
 if ! canonical_guard_accepts "$approval_status" "$negative_status" "$digest_status"; then
   fail "canonical baseline export must pass before tamper fixtures run"

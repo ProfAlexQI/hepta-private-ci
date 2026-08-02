@@ -34,9 +34,87 @@ CURRENT_REALITY_REGISTRY_PATH = File.join(
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
 DOMAIN = "hepta_gate_pair_compat_payloads"
 TARGET_PAIR_COUNT = 298
-TARGET_CAPTURED_COUNT = 77
-TARGET_DECLARATIVE_COUNT = 221
-TARGET_TYPED_COUNT = 158
+TARGET_CAPTURED_COUNT = 69
+TARGET_DECLARATIVE_COUNT = 229
+TARGET_TYPED_COUNT = 166
+CONTEXT_PLANE_PAIR_IDS = %w[
+  hepta-context-plane-activation-blocker-matrix
+  hepta-context-plane-operator-approval-packet
+  hepta-context-plane-operator-approval-packet-canonical-export-digest
+  hepta-context-plane-operator-approval-packet-freshness
+  hepta-context-plane-operator-approval-packet-freshness-dependency-chain
+  hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest
+  hepta-context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift
+  hepta-context-plane-operator-approval-packet-negative-export
+].freeze
+CONTEXT_PLANE_STATUS_SOURCE_ID = "hepta-context-plane-status"
+CONTEXT_PLANE_TAMPER_SOURCE_ID =
+  "hepta-context-plane-operator-approval-packet-digest-tamper-matrix"
+CONTEXT_PLANE_TAMPER_REPORT = File.join(
+  ROOT,
+  "scripts/hepta-context-plane-operator-approval-packet-digest-tamper-matrix-gate.sh"
+)
+CONTEXT_PLANE_FORWARD_ACTIVATION_TARGET_IDS = %w[
+  memory_temporal_graph_shadow_retrieval_promotion_readiness
+].freeze
+CONTEXT_PLANE_LEGACY_PROVIDER_V2_CANDIDATE_IDS = %w[fact].freeze
+CONTEXT_PLANE_FORWARD_PROVIDER_V2_CANDIDATE_IDS = %w[
+  task
+  preference
+  decision
+  summary
+].freeze
+CONTEXT_PLANE_LEGACY_FIELD_COUNTS = {
+  "hepta-context-plane-activation-blocker-matrix" => 277,
+  "hepta-context-plane-operator-approval-packet" => 279,
+  "hepta-context-plane-operator-approval-packet-canonical-export-digest" => 10,
+  "hepta-context-plane-operator-approval-packet-freshness" => 14,
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain" => 20,
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest" => 15,
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift" => 21,
+  "hepta-context-plane-operator-approval-packet-negative-export" => 4
+}.freeze
+CONTEXT_PLANE_GENERATION_SEQUENCES = {
+  "hepta-context-plane-activation-blocker-matrix" => [271, 271],
+  "hepta-context-plane-operator-approval-packet" => [272, 272],
+  "hepta-context-plane-operator-approval-packet-canonical-export-digest" => [273, 273],
+  "hepta-context-plane-operator-approval-packet-freshness" => [273, 273],
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain" => [274, 273],
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest" => [275, 273],
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift" => [276, 276],
+  "hepta-context-plane-operator-approval-packet-negative-export" => [272, 272]
+}.freeze
+CONTEXT_PLANE_SOURCE_TOPOLOGY = {
+  "hepta-context-plane-activation-blocker-matrix" => [
+    [CONTEXT_PLANE_STATUS_SOURCE_ID, 270, 270, :shape_only]
+  ],
+  "hepta-context-plane-operator-approval-packet" => [
+    ["hepta-context-plane-activation-blocker-matrix", 271, 271, :captured]
+  ],
+  "hepta-context-plane-operator-approval-packet-canonical-export-digest" => [
+    ["hepta-context-plane-operator-approval-packet", 272, 272, :captured],
+    ["hepta-context-plane-operator-approval-packet-negative-export", 272, 272, :captured]
+  ],
+  "hepta-context-plane-operator-approval-packet-freshness" => [
+    ["hepta-context-plane-operator-approval-packet-canonical-export-digest", 273, 273, :captured]
+  ],
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain" => [
+    ["hepta-context-plane-operator-approval-packet", 272, 272, :captured],
+    ["hepta-context-plane-operator-approval-packet-negative-export", 272, 272, :captured],
+    ["hepta-context-plane-operator-approval-packet-canonical-export-digest", 273, 273, :captured],
+    [CONTEXT_PLANE_TAMPER_SOURCE_ID, 273, 273, :tamper],
+    ["hepta-context-plane-operator-approval-packet-freshness", 273, 273, :captured]
+  ],
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest" => [
+    ["hepta-context-plane-operator-approval-packet-freshness-dependency-chain", 274, 273, :captured]
+  ],
+  "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift" => [
+    ["hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest", 275, 273, :captured]
+  ],
+  "hepta-context-plane-operator-approval-packet-negative-export" => [
+    ["hepta-context-plane-operator-approval-packet", 272, 272, :captured]
+  ]
+}.freeze
 CONTROLLED_LIVE_PAIR_IDS = %w[
   hepta-systems-controlled-canary-readiness-plan
   hepta-systems-controlled-live-operator-packet-non-send-readback
@@ -106,14 +184,341 @@ def atomic_write(path, content, mode = nil)
   File.rename(staging, path)
 end
 
+def expected_context_plane_equivalence_proof(id)
+  {
+    "baseline" => "exact_head_captured_shell_compat_v1",
+    "parity_oracle" =>
+      "recursive_business_fields_and_format_specific_source_receipts_v1",
+    "business_field_comparison" =>
+      "exact_line_protocol_scalar_map_equality",
+    "legacy_business_field_count" => CONTEXT_PLANE_LEGACY_FIELD_COUNTS.fetch(id),
+    "business_field_order_mismatch_count" => 0,
+    "business_field_mismatch_count" => 0,
+    "source_topology_mismatch_count" => 0,
+    "source_line_count_mismatch_count" => 0,
+    "source_digest_mismatch_count" => 0,
+    "generation_sequence_mismatch_count" => 0,
+    "forward_schema_delta_mode" => "single_typed_extension_fail_closed_v1",
+    "forward_added_activation_target_ids" =>
+      CONTEXT_PLANE_FORWARD_ACTIVATION_TARGET_IDS,
+    "forward_removed_activation_target_count" => 0,
+    "legacy_provider_v2_scope_candidate_ids" =>
+      CONTEXT_PLANE_LEGACY_PROVIDER_V2_CANDIDATE_IDS,
+    "forward_provider_v2_candidate_ids" =>
+      CONTEXT_PLANE_FORWARD_PROVIDER_V2_CANDIDATE_IDS,
+    "typed_payload_retains_forward_schema" => true,
+    "captured_snapshots_preserved" => false,
+    "side_effects_preserved_false" => true,
+    "production_authority_preserved_false" => true,
+    "write_authority_preserved_false" => true
+  }
+end
+
+def verify_context_plane_binding_proofs(registry)
+  proofs = registry.fetch("equivalence_proofs")
+  context_plane_ids = proofs.keys.select do |id|
+    id.start_with?("hepta-context-plane-")
+  end.sort
+  raise "context-plane equivalence proof inventory drifted" unless context_plane_ids ==
+    CONTEXT_PLANE_PAIR_IDS.sort
+  CONTEXT_PLANE_PAIR_IDS.each do |id|
+    expected = expected_context_plane_equivalence_proof(id)
+    observed = proofs.fetch(id)
+    next if observed == expected
+    differing_keys = (observed.keys | expected.keys).select do |key|
+      observed[key] != expected[key]
+    end
+    raise "context-plane equivalence proof drifted for #{id}: #{differing_keys.first}"
+  end
+end
+
 def binding_ids
   registry = JSON.parse(File.binread(BINDINGS_PATH))
   raise "invalid typed report binding schema" unless registry.fetch("schema") ==
     "hepta_gate_typed_report_bindings_v2"
+  verify_context_plane_binding_proofs(registry)
   ids = registry.fetch("report_ids")
   raise "typed report binding count drifted" unless ids.length == TARGET_TYPED_COUNT &&
     ids.uniq.length == TARGET_TYPED_COUNT
   ids
+end
+
+def run_command(*command)
+  output, error, status = Open3.capture3(*command)
+  return output if status.success?
+  raise "command failed (#{command.join(' ')}): #{error.strip}"
+end
+
+def parse_context_plane_line_protocol(output, label)
+  raise "#{label} did not end with a newline" unless output.end_with?("\n")
+  lines = output.lines(chomp: true)
+  raise "#{label} was empty" if lines.empty?
+  fields = {}
+  lines.each_with_index do |line, index|
+    key, value = line.split("=", 2)
+    if key.nil? || key.empty? || value.nil? || fields.key?(key)
+      raise "#{label} invalid line protocol at line #{index + 1}"
+    end
+    fields[key] = value
+  end
+  [fields, lines.length]
+end
+
+def context_plane_scalar_string(value, label)
+  case value
+  when String then value
+  when Integer, Float then value.to_s
+  when true then "true"
+  when false then "false"
+  else
+    raise "#{label} is not a scalar legacy line-protocol value"
+  end
+end
+
+def expected_context_plane_schema(id)
+  suffix = id.delete_prefix("hepta-context-plane-").tr("-", "_")
+  "context_plane_#{suffix}_typed_v1"
+end
+
+def context_plane_false_hash?(value)
+  value.is_a?(Hash) && !value.empty? && value.values.all? { |entry| entry == false }
+end
+
+def context_plane_forbidden_true_paths(value, current_path = [], result = [])
+  forbidden = %w[
+    production_authority_granted
+    write_authority_granted
+    ready_for_live_execution
+    mutation_enabled
+    provider_invoked
+    model_invoked
+    external_send_performed
+    channel_send_performed
+    filesystem_written
+    runtime_mutation_performed
+    graph_state_persisted
+  ]
+  case value
+  when Hash
+    value.each do |key, child|
+      result << (current_path + [key]).join(".") if forbidden.include?(key) && child != false
+      context_plane_forbidden_true_paths(child, current_path + [key], result)
+    end
+  when Array
+    value.each_with_index do |child, index|
+      context_plane_forbidden_true_paths(child, current_path + [index.to_s], result)
+    end
+  end
+  result
+end
+
+def expected_context_plane_forward_delta
+  {
+    "legacy_status_schema_version" => 20,
+    "current_status_schema_version" => 21,
+    "legacy_activation_schema_version" => 20,
+    "current_activation_schema_version" => 21,
+    "legacy_operator_packet_schema_version" => 19,
+    "current_operator_packet_schema_version" => 20,
+    "added_activation_target_ids" => CONTEXT_PLANE_FORWARD_ACTIVATION_TARGET_IDS,
+    "removed_activation_target_ids" => [],
+    "legacy_provider_v2_scope_candidate_ids" =>
+      CONTEXT_PLANE_LEGACY_PROVIDER_V2_CANDIDATE_IDS,
+    "forward_provider_v2_candidate_ids" =>
+      CONTEXT_PLANE_FORWARD_PROVIDER_V2_CANDIDATE_IDS,
+    "production_authority_granted" => false,
+    "write_authority_granted" => false,
+    "side_effects" => {
+      "channel_send_performed" => false,
+      "external_send_performed" => false,
+      "filesystem_written" => false,
+      "graph_state_persisted" => false,
+      "model_invoked" => false,
+      "provider_invoked" => false,
+      "runtime_mutation_performed" => false
+    }
+  }
+end
+
+def load_context_plane_typed_reports
+  CONTEXT_PLANE_PAIR_IDS.to_h do |id|
+    output = run_command(REPORT_RUNNER, id)
+    report = JSON.parse(output)
+    raise "typed context-plane report is not an object: #{id}" unless report.is_a?(Hash)
+    raise "typed context-plane gate drifted: #{id}" unless report.fetch("gate") == id
+    raise "typed context-plane runtime drifted: #{id}" unless report.fetch("runtime") == "hepta"
+    raise "typed context-plane product drifted: #{id}" unless report.fetch("product") == "Hepta"
+    raise "typed context-plane status drifted: #{id}" unless report.fetch("status") == "pass"
+    raise "typed context-plane schema drifted: #{id}" unless report.fetch("schema_version") ==
+      expected_context_plane_schema(id)
+    raise "typed context-plane envelope side effects opened: #{id}" unless
+      context_plane_false_hash?(report.fetch("side_effects"))
+    forbidden = context_plane_forbidden_true_paths(report)
+    raise "typed context-plane authority/effect opened: #{id}: #{forbidden.first}" unless
+      forbidden.empty?
+    unless report.fetch("forward_schema_delta") == expected_context_plane_forward_delta
+      raise "typed context-plane forward schema delta drifted: #{id}"
+    end
+    [id, report]
+  end
+end
+
+def context_plane_parity_oracle(spec)
+  pairs = spec.fetch("pairs").select do |pair|
+    CONTEXT_PLANE_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  raise "context-plane parity inventory drifted" unless pairs.length ==
+    CONTEXT_PLANE_PAIR_IDS.length
+  captured_count = pairs.count do |pair|
+    pair.fetch("template") == "captured_shell_compat_v1"
+  end
+  typed_count = pairs.count do |pair|
+    pair.fetch("template") == "typed_rust_report_v1"
+  end
+  unless [
+    [0, CONTEXT_PLANE_PAIR_IDS.length],
+    [CONTEXT_PLANE_PAIR_IDS.length, 0]
+  ].include?([captured_count, typed_count])
+    raise "context-plane parity requires all eight pairs captured or typed"
+  end
+
+  typed_reports = load_context_plane_typed_reports
+  if captured_count.zero?
+    return {
+      "status" => "binding_bound_post_migration",
+      "baseline_reports_executed" => false,
+      "report_count" => CONTEXT_PLANE_PAIR_IDS.length,
+      "legacy_line_count" => CONTEXT_PLANE_LEGACY_FIELD_COUNTS.values.sum,
+      "business_field_order_mismatch_count" => 0,
+      "business_missing_field_count" => 0,
+      "business_extra_field_count" => 0,
+      "business_value_mismatch_count" => 0,
+      "business_field_mismatch_count" => 0,
+      "source_topology_mismatch_count" => 0,
+      "source_line_count_mismatch_count" => 0,
+      "source_digest_mismatch_count" => 0,
+      "generation_sequence_mismatch_count" => 0,
+      "forward_added_activation_target_count" => 1,
+      "forward_removed_activation_target_count" => 0,
+      "legacy_provider_v2_candidate_count" => 1,
+      "forward_provider_v2_candidate_count" => 4,
+      "captured_snapshots_preserved" => false
+    }
+  end
+
+  captured_outputs = {}
+  captured_fields = {}
+  legacy_line_count = 0
+  CONTEXT_PLANE_PAIR_IDS.each do |id|
+    output = run_command(PAIR_RUNNER, "report", id)
+    fields, line_count = parse_context_plane_line_protocol(output, id)
+    expected_line_count = CONTEXT_PLANE_LEGACY_FIELD_COUNTS.fetch(id)
+    raise "context-plane captured line count drifted for #{id}" unless line_count ==
+      expected_line_count
+    captured_outputs[id] = output
+    captured_fields[id] = fields
+    legacy_line_count += line_count
+  end
+  tamper_output = run_command(CONTEXT_PLANE_TAMPER_REPORT)
+  raise "context-plane tamper receipt line count drifted" unless tamper_output.lines.length == 16
+
+  business_missing = []
+  business_extra = []
+  business_values = []
+  business_order = []
+  source_topology = []
+  source_lines = []
+  source_digests = []
+  generation_sequences = []
+
+  CONTEXT_PLANE_PAIR_IDS.each do |id|
+    report = typed_reports.fetch(id)
+    legacy = report.fetch("legacy_business_fields")
+    raise "typed context-plane legacy fields are not an object: #{id}" unless legacy.is_a?(Hash)
+    scalar_legacy = legacy.to_h do |key, value|
+      [key, context_plane_scalar_string(value, "#{id}.legacy_business_fields.#{key}")]
+    end
+    old_fields = captured_fields.fetch(id)
+    business_order << id unless report.fetch("legacy_business_field_order") == old_fields.keys
+    (old_fields.keys - scalar_legacy.keys).each { |key| business_missing << "#{id}:#{key}" }
+    (scalar_legacy.keys - old_fields.keys).each { |key| business_extra << "#{id}:#{key}" }
+    (old_fields.keys & scalar_legacy.keys).each do |key|
+      next if old_fields.fetch(key) == scalar_legacy.fetch(key)
+      business_values << "#{id}:#{key}"
+    end
+
+    expected_generation, expected_sequence = CONTEXT_PLANE_GENERATION_SEQUENCES.fetch(id)
+    unless report.fetch("generation") == expected_generation &&
+        report.fetch("sequence") == expected_sequence
+      generation_sequences << "#{id}:report"
+    end
+    observed_sources = report.fetch("sources")
+    expected_sources = CONTEXT_PLANE_SOURCE_TOPOLOGY.fetch(id)
+    unless observed_sources.is_a?(Array) && observed_sources.length == expected_sources.length
+      source_topology << "#{id}:source-count"
+      next
+    end
+    expected_sources.each_with_index do |(source_id, generation, sequence, mode), index|
+      source = observed_sources.fetch(index)
+      unless source.is_a?(Hash) && source["report_id"] == source_id
+        source_topology << "#{id}:source-#{index}"
+        next
+      end
+      unless source["generation"] == generation && source["sequence"] == sequence
+        generation_sequences << "#{id}:source-#{index}"
+      end
+      if mode == :shape_only
+        unless source["line_count"].is_a?(Integer) && source["line_count"].positive? &&
+            source["sha256"].is_a?(String) && source["sha256"].match?(/\A[0-9a-f]{64}\z/)
+          source_topology << "#{id}:source-#{index}-shape"
+        end
+        next
+      end
+      source_output = mode == :tamper ? tamper_output : captured_outputs.fetch(source_id)
+      source_lines << "#{id}:source-#{index}" unless source["line_count"] ==
+        source_output.lines.length
+      source_digests << "#{id}:source-#{index}" unless source["sha256"] ==
+        Digest::SHA256.hexdigest(source_output)
+    end
+  end
+
+  business_mismatch_count = business_missing.length + business_extra.length +
+    business_values.length
+  mismatch_groups = {
+    "business_order" => [business_order.length, business_order.first],
+    "business" => [business_mismatch_count, business_missing.first || business_extra.first ||
+      business_values.first],
+    "source_topology" => [source_topology.length, source_topology.first],
+    "source_line_count" => [source_lines.length, source_lines.first],
+    "source_digest" => [source_digests.length, source_digests.first],
+    "generation_sequence" => [generation_sequences.length, generation_sequences.first]
+  }
+  first_failure = mismatch_groups.find { |_name, (count, _first)| count.positive? }
+  if first_failure
+    name, (count, first) = first_failure
+    raise "context-plane parity #{name} mismatch count #{count}; first=#{first}"
+  end
+
+  {
+    "status" => "executed_exact_head_captured_vs_typed",
+    "baseline_reports_executed" => true,
+    "report_count" => CONTEXT_PLANE_PAIR_IDS.length,
+    "legacy_line_count" => legacy_line_count,
+    "business_field_order_mismatch_count" => business_order.length,
+    "business_missing_field_count" => business_missing.length,
+    "business_extra_field_count" => business_extra.length,
+    "business_value_mismatch_count" => business_values.length,
+    "business_field_mismatch_count" => business_mismatch_count,
+    "source_topology_mismatch_count" => source_topology.length,
+    "source_line_count_mismatch_count" => source_lines.length,
+    "source_digest_mismatch_count" => source_digests.length,
+    "generation_sequence_mismatch_count" => generation_sequences.length,
+    "forward_added_activation_target_count" => 1,
+    "forward_removed_activation_target_count" => 0,
+    "legacy_provider_v2_candidate_count" => 1,
+    "forward_provider_v2_candidate_count" => 4,
+    "captured_snapshots_preserved" => false
+  }
 end
 
 def verify_runtime_bindings(ids)
@@ -179,6 +584,13 @@ def rewrite_spec(spec, sources, ids)
   raise "controlled-live typed pair mode drifted" unless controlled.all? do |pair|
     %w[captured_shell_compat_v1 typed_rust_report_v1].include?(pair.fetch("template"))
   end
+  context_plane = spec.fetch("pairs").select do |pair|
+    CONTEXT_PLANE_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  raise "context-plane typed pair inventory drifted" unless context_plane.length == 8
+  raise "context-plane typed pair mode drifted" unless context_plane.all? do |pair|
+    %w[captured_shell_compat_v1 typed_rust_report_v1].include?(pair.fetch("template"))
+  end
   pairs = spec.fetch("pairs").reject { |pair| pair.fetch("id") == RETIRED_PAIR_ID }.map do |pair|
     id = pair.fetch("id")
     if id_set.include?(id)
@@ -223,6 +635,13 @@ def rewrite_spec(spec, sources, ids)
   raise "typed migration legacy count drifted" unless legacy.zero?
   raise "typed migration declarative count drifted" unless declarative == TARGET_DECLARATIVE_COUNT
   supplemental_paths = spec.fetch("supplemental_payloads", []).map { |payload| payload.fetch("path") }
+  context_plane_supplemental = supplemental_paths.select do |path|
+    CONTEXT_PLANE_PAIR_IDS.any? do |id|
+      path == "scripts/lib/hepta-gate-pair-compat-v1/#{id}.gate" ||
+        path == "scripts/lib/hepta-gate-pair-compat-v1/#{id}.report"
+    end
+  end
+  raise "context-plane typed migration intersects supplemental payloads" unless context_plane_supplemental.empty?
   retired_controlled_supplemental_count = (
     supplemental_paths & CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS
   ).length
@@ -267,7 +686,9 @@ def refresh_current_reality_registry(sources, ids)
   registry = JSON.parse(File.binread(CURRENT_REALITY_REGISTRY_PATH))
   source_path = registry.fetch("source_payload")
   source = transform_source(sources.fetch(source_path), ids)
-  registry["source_sha256"] = Digest::SHA256.hexdigest(source)
+  source_sha256 = Digest::SHA256.hexdigest(source)
+  return if registry.fetch("source_sha256") == source_sha256
+  registry["source_sha256"] = source_sha256
   atomic_write(
     CURRENT_REALITY_REGISTRY_PATH,
     JSON.pretty_generate(registry) + "\n",
@@ -382,9 +803,36 @@ def measured_result
   }
 end
 
-def refresh_contracts(ids)
+def refresh_contracts(ids, context_plane_parity)
   result = measured_result
   receipt = JSON.parse(File.binread(FAMILY_RECEIPT_PATH))
+  prior_typed_conversion = receipt.fetch("typed_conversion", {})
+  if !context_plane_parity.fetch("baseline_reports_executed") &&
+      prior_typed_conversion["context_plane_parity_oracle_execution_status"] ==
+        "executed_exact_head_captured_vs_typed" &&
+      prior_typed_conversion["context_plane_baseline_reports_executed"] == true
+    context_plane_parity = context_plane_parity.merge(
+      "status" => "executed_exact_head_captured_vs_typed",
+      "baseline_reports_executed" => true,
+      "business_field_order_mismatch_count" => 0,
+      "business_missing_field_count" =>
+        prior_typed_conversion.fetch("context_plane_business_missing_field_count"),
+      "business_extra_field_count" =>
+        prior_typed_conversion.fetch("context_plane_business_extra_field_count"),
+      "business_value_mismatch_count" =>
+        prior_typed_conversion.fetch("context_plane_business_value_mismatch_count"),
+      "business_field_mismatch_count" =>
+        prior_typed_conversion.fetch("context_plane_business_field_mismatch_count"),
+      "source_topology_mismatch_count" =>
+        prior_typed_conversion.fetch("context_plane_source_topology_mismatch_count"),
+      "source_line_count_mismatch_count" =>
+        prior_typed_conversion.fetch("context_plane_source_line_count_mismatch_count"),
+      "source_digest_mismatch_count" =>
+        prior_typed_conversion.fetch("context_plane_source_digest_mismatch_count"),
+      "generation_sequence_mismatch_count" =>
+        prior_typed_conversion.fetch("context_plane_generation_sequence_mismatch_count")
+    )
+  end
   receipt.fetch("honest_shortfall").merge!(
     "status" => "resolved_by_typed_semantic_conversion",
     "additional_true_declarative_conversions_required" => 0,
@@ -420,6 +868,55 @@ def refresh_contracts(ids)
     "controlled_live_shell_snapshots_preserved" => false,
     "controlled_live_production_authority_granted" => false,
     "controlled_live_write_authority_granted" => false
+  )
+  receipt.fetch("typed_conversion").merge!(
+    "context_plane_conversion_count" => CONTEXT_PLANE_PAIR_IDS.length,
+    "context_plane_pair_payload_retirement_count" => CONTEXT_PLANE_PAIR_IDS.length * 2,
+    "context_plane_supplemental_payload_retirement_count" => 0,
+    "context_plane_parity_oracle" => "recursive_business_fields_and_format_specific_source_receipts_v1",
+    "context_plane_parity_oracle_execution_status" => context_plane_parity.fetch("status"),
+    "context_plane_baseline_reports_executed" =>
+      context_plane_parity.fetch("baseline_reports_executed"),
+    "context_plane_report_count" => context_plane_parity.fetch("report_count"),
+    "context_plane_legacy_line_count" => context_plane_parity.fetch("legacy_line_count"),
+    "context_plane_business_field_order_mismatch_count" =>
+      context_plane_parity.fetch("business_field_order_mismatch_count"),
+    "context_plane_business_field_order_bound_by_source_digest" => true,
+    "context_plane_business_missing_field_count" =>
+      context_plane_parity.fetch("business_missing_field_count"),
+    "context_plane_business_extra_field_count" =>
+      context_plane_parity.fetch("business_extra_field_count"),
+    "context_plane_business_value_mismatch_count" =>
+      context_plane_parity.fetch("business_value_mismatch_count"),
+    "context_plane_business_field_mismatch_count" =>
+      context_plane_parity.fetch("business_field_mismatch_count"),
+    "context_plane_source_topology_mismatch_count" =>
+      context_plane_parity.fetch("source_topology_mismatch_count"),
+    "context_plane_source_line_count_mismatch_count" =>
+      context_plane_parity.fetch("source_line_count_mismatch_count"),
+    "context_plane_source_digest_mismatch_count" =>
+      context_plane_parity.fetch("source_digest_mismatch_count"),
+    "context_plane_generation_sequence_mismatch_count" =>
+      context_plane_parity.fetch("generation_sequence_mismatch_count"),
+    "context_plane_forward_schema_delta_mode" =>
+      "single_typed_extension_fail_closed_v1",
+    "context_plane_forward_added_activation_target_ids" =>
+      CONTEXT_PLANE_FORWARD_ACTIVATION_TARGET_IDS,
+    "context_plane_forward_added_activation_target_count" =>
+      context_plane_parity.fetch("forward_added_activation_target_count"),
+    "context_plane_forward_removed_activation_target_count" =>
+      context_plane_parity.fetch("forward_removed_activation_target_count"),
+    "context_plane_legacy_provider_v2_candidate_ids" =>
+      CONTEXT_PLANE_LEGACY_PROVIDER_V2_CANDIDATE_IDS,
+    "context_plane_legacy_provider_v2_candidate_count" =>
+      context_plane_parity.fetch("legacy_provider_v2_candidate_count"),
+    "context_plane_forward_provider_v2_candidate_ids" =>
+      CONTEXT_PLANE_FORWARD_PROVIDER_V2_CANDIDATE_IDS,
+    "context_plane_forward_provider_v2_candidate_count" =>
+      context_plane_parity.fetch("forward_provider_v2_candidate_count"),
+    "context_plane_shell_snapshots_preserved" => false,
+    "context_plane_production_authority_granted" => false,
+    "context_plane_write_authority_granted" => false
   )
   retirement = receipt.fetch("retirement")
   dead_pairs = retirement.fetch("dead_pairs")
@@ -505,9 +1002,13 @@ def plan
   ids = binding_ids
   verify_runtime_bindings(ids)
   spec = JSON.parse(File.binread(SPEC_PATH))
+  context_plane_parity = context_plane_parity_oracle(spec)
   selected = spec.fetch("pairs").select { |pair| ids.include?(pair.fetch("id")) }
   controlled = spec.fetch("pairs").select do |pair|
     CONTROLLED_LIVE_PAIR_IDS.include?(pair.fetch("id"))
+  end
+  context_plane = spec.fetch("pairs").select do |pair|
+    CONTEXT_PLANE_PAIR_IDS.include?(pair.fetch("id"))
   end
   supplemental_paths = spec.fetch("supplemental_payloads", []).map { |payload| payload.fetch("path") }
   controlled_supplemental = supplemental_paths & CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS
@@ -536,6 +1037,19 @@ def plan
     end * 2,
     controlled_live_supplemental_payload_retirement_count: controlled_supplemental.length,
     controlled_live_supplemental_payload_paths: controlled_supplemental,
+    context_plane_selected_pair_count: context_plane.length,
+    context_plane_captured_pair_count: context_plane.count do |pair|
+      pair.fetch("template") == "captured_shell_compat_v1"
+    end,
+    context_plane_typed_pair_count: context_plane.count do |pair|
+      pair.fetch("template") == "typed_rust_report_v1"
+    end,
+    context_plane_pair_payload_retirement_count: context_plane.count do |pair|
+      pair.fetch("template") == "captured_shell_compat_v1"
+    end * 2,
+    context_plane_supplemental_payload_retirement_count: 0,
+    context_plane_shell_snapshots_preserved: false,
+    context_plane_parity: context_plane_parity,
     snapshots_used: false,
     shell_payloads_preserved: false
   )
@@ -545,12 +1059,17 @@ def apply
   ids = binding_ids
   verify_runtime_bindings(ids)
   spec = JSON.parse(File.binread(SPEC_PATH))
+  context_plane_parity = context_plane_parity_oracle(spec)
   controlled_captured_count = spec.fetch("pairs").count do |pair|
     CONTROLLED_LIVE_PAIR_IDS.include?(pair.fetch("id")) &&
       pair.fetch("template") == "captured_shell_compat_v1"
   end
   controlled_supplemental_count = spec.fetch("supplemental_payloads", []).count do |payload|
     CONTROLLED_LIVE_SUPPLEMENTAL_PAYLOAD_PATHS.include?(payload.fetch("path"))
+  end
+  context_plane_captured_count = spec.fetch("pairs").count do |pair|
+    CONTEXT_PLANE_PAIR_IDS.include?(pair.fetch("id")) &&
+      pair.fetch("template") == "captured_shell_compat_v1"
   end
   sources = canonical_sources
   updated = rewrite_spec(spec, sources, ids)
@@ -560,7 +1079,7 @@ def apply
   rewrite_family_bundle(ids)
   system(PAYLOAD_TOOL, "pack") || raise("typed compatibility payload repack failed")
   system(ENTRYPOINT_TOOL, "pack") || raise("typed compatibility entrypoint repack failed")
-  refresh_contracts(ids)
+  refresh_contracts(ids, context_plane_parity)
   puts JSON.pretty_generate(
     status: "ready",
     pair_count: updated.fetch("pairs").length,
@@ -575,6 +1094,11 @@ def apply
     controlled_live_supplemental_payload_retirement_count: controlled_supplemental_count,
     controlled_live_shell_body_retirement_count: controlled_captured_count * 2 +
       controlled_supplemental_count,
+    context_plane_converted_pair_count: context_plane_captured_count,
+    context_plane_pair_payload_retirement_count: context_plane_captured_count * 2,
+    context_plane_supplemental_payload_retirement_count: 0,
+    context_plane_shell_body_retirement_count: context_plane_captured_count * 2,
+    context_plane_parity: context_plane_parity,
     architecture_ratchet_deferred: DEFER_ARCHITECTURE_RATCHET
   )
 end

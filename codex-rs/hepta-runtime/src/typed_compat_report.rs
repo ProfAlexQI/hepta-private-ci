@@ -13,6 +13,14 @@ pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
     "hepta-context-memory-temporal-graph-shadow-store",
     "hepta-context-memory-temporal-graph-shadow-traversal-diff",
     "hepta-context-memory-temporal-graph-shadow-traversal-quality",
+    "hepta-context-plane-activation-blocker-matrix",
+    "hepta-context-plane-operator-approval-packet",
+    "hepta-context-plane-operator-approval-packet-canonical-export-digest",
+    "hepta-context-plane-operator-approval-packet-freshness",
+    "hepta-context-plane-operator-approval-packet-freshness-dependency-chain",
+    "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest",
+    "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift",
+    "hepta-context-plane-operator-approval-packet-negative-export",
     "hepta-systems-controlled-canary-readiness-plan",
     "hepta-systems-controlled-live-operator-packet-non-send-readback",
     "hepta-systems-controlled-live-operator-packet-preview",
@@ -824,6 +832,10 @@ pub fn typed_compat_report_with_controlled_live_worktree_observation(
 }
 
 pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
+    if crate::context_plane_compat_report::is_context_plane_typed_compat_report(id) {
+        return crate::context_plane_compat_report::context_plane_typed_compat_report(id)
+            .map_err(TypedCompatReportError::ContractViolation);
+    }
     if crate::is_controlled_live_typed_compat_report(id) {
         return Err(TypedCompatReportError::ContractViolation(format!(
             "controlled-live typed compatibility report requires an explicit repository observation: {id}"
@@ -1148,6 +1160,42 @@ mod tests {
                     "{id}: {field}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn context_plane_reports_are_typed_source_bound_and_read_only() {
+        for id in crate::context_plane_compat_report::CONTEXT_PLANE_COMPAT_REPORT_IDS {
+            let report = typed_compat_report(id).expect("context-plane report should render");
+            let object = report
+                .as_object()
+                .expect("context-plane report should be an object");
+            assert_eq!(object.get("runtime"), Some(&Value::String("hepta".into())));
+            assert_eq!(object.get("product"), Some(&Value::String("Hepta".into())));
+            assert_eq!(object.get("status"), Some(&Value::String("pass".into())));
+            assert_eq!(object.get("gate"), Some(&Value::String((*id).into())));
+            assert_eq!(
+                object.get("production_authority_granted"),
+                Some(&Value::Bool(false))
+            );
+            assert_eq!(
+                object.get("write_authority_granted"),
+                Some(&Value::Bool(false))
+            );
+            assert!(
+                object
+                    .get("legacy_business_fields")
+                    .and_then(Value::as_object)
+                    .is_some_and(|fields| !fields.is_empty())
+            );
+            assert!(
+                object
+                    .get("side_effects")
+                    .and_then(Value::as_object)
+                    .is_some_and(|effects| effects
+                        .values()
+                        .all(|value| value == &Value::Bool(false)))
+            );
         }
     }
 

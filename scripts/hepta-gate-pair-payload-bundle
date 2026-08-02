@@ -304,13 +304,24 @@ def pack
     return
   end
   raise "missing compatibility payload store" unless Dir.exist?(STORE_ROOT)
-  entries = Dir.glob(File.join(STORE_ROOT, "*.{gate,report}")).sort.to_h do |path|
+  registered_paths = registered_hashes.keys.sort
+  materialized_paths = Dir.glob(File.join(STORE_ROOT, "*.{gate,report}")).sort.reject do |path|
+    File.lstat(path).symlink?
+  end
+  materialized_relative_paths = materialized_paths.map do |path|
+    path.delete_prefix("#{ROOT}/")
+  end
+  raise "materialized compatibility payload path-set drifted" unless materialized_relative_paths ==
+    registered_paths
+  entries = materialized_paths.to_h do |path|
+    stat = File.lstat(path)
+    raise "materialized compatibility payload is not a regular file: #{path}" unless stat.file?
     [path.delete_prefix("#{ROOT}/"), decode_envelope(path)]
   end
   raise "unexpected compatibility payload count: #{entries.length}" unless entries.length == EXPECTED_PAYLOAD_COUNT
   entries = active_entries(entries)
   write_bundle(entries)
-  FileUtils.rm_rf(STORE_ROOT)
+  materialized_paths.each { |path| File.delete(path) }
   verify
 end
 

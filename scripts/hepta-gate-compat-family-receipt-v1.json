@@ -256,17 +256,17 @@
     "rejected_declarative_snapshot_count": 37,
     "rejected_reason": "captured report snapshots preserve full semantic payloads, are not compact state parameters, and exceed measured debt ceilings",
     "retired_full_shell_bodies_preserved_as_supplemental_aliases": false,
-    "historical_additional_true_declarative_conversions_required": 158
+    "historical_additional_true_declarative_conversions_required": 166
   },
   "result": {
     "pair_count": 298,
-    "captured_pair_count": 77,
-    "declarative_pair_count": 221,
-    "spec_sha256": "488cc29f635e3880c0d04138ff43bf43ebfd01d41a7bc380bfaca39986f11a17",
+    "captured_pair_count": 69,
+    "declarative_pair_count": 229,
+    "spec_sha256": "b38742487254c6dccf6773dd38542321ed73a8b965a66de58e8ce81ce17f3561",
     "family_registry_sha256": "095ea41992a94cd4c9663dcfcd42976570861ad268354841e92c7c0ec314628d",
-    "logical_compatibility_payload_count": 464,
-    "normalized_payload_count": 193,
-    "normalized_effective_lines": 60699,
+    "logical_compatibility_payload_count": 448,
+    "normalized_payload_count": 177,
+    "normalized_effective_lines": 59113,
     "physical_entrypoint_count": 57,
     "logical_virtual_entrypoint_count": 539
   },
@@ -280,11 +280,11 @@
   },
   "typed_conversion": {
     "status": "ready",
-    "converted_state_count": 158,
+    "converted_state_count": 166,
     "template": "typed_rust_report_v1",
     "binding_registry": "scripts/hepta-gate-typed-report-bindings-v2.json",
-    "binding_registry_sha256": "13c113892f3e6e80592ba3cfc7252bcb0a31e9bb24fe9e66a37fe1db501ff75f",
-    "report_source_sha256": "b69d80730c167e760a1e9968abfc8e31c98cc8245d205afc8a823c0b52836663",
+    "binding_registry_sha256": "53b965982facead1910559825aefeecb156fe8b6061f740f97d7cc3286de5e57",
+    "report_source_sha256": "ba6195a25c22bf85ae1a71069e2ee4a44de290cec577391af136d4a37e8a7964",
     "report_cli_source_sha256": "e772ce19039d19e4314b0fad40a792b1f98afd0bbbcd3677f268c921401980ab",
     "callers_rewritten_to_public_typed_surfaces": true,
     "captured_snapshots_used": false,
@@ -320,6 +320,44 @@
     ],
     "controlled_live_shell_snapshots_preserved": false,
     "controlled_live_production_authority_granted": false,
-    "controlled_live_write_authority_granted": false
+    "controlled_live_write_authority_granted": false,
+    "context_plane_conversion_count": 8,
+    "context_plane_pair_payload_retirement_count": 16,
+    "context_plane_supplemental_payload_retirement_count": 0,
+    "context_plane_parity_oracle": "recursive_business_fields_and_format_specific_source_receipts_v1",
+    "context_plane_parity_oracle_execution_status": "executed_exact_head_captured_vs_typed",
+    "context_plane_baseline_reports_executed": true,
+    "context_plane_report_count": 8,
+    "context_plane_legacy_line_count": 640,
+    "context_plane_business_field_order_mismatch_count": 0,
+    "context_plane_business_field_order_bound_by_source_digest": true,
+    "context_plane_business_missing_field_count": 0,
+    "context_plane_business_extra_field_count": 0,
+    "context_plane_business_value_mismatch_count": 0,
+    "context_plane_business_field_mismatch_count": 0,
+    "context_plane_source_topology_mismatch_count": 0,
+    "context_plane_source_line_count_mismatch_count": 0,
+    "context_plane_source_digest_mismatch_count": 0,
+    "context_plane_generation_sequence_mismatch_count": 0,
+    "context_plane_forward_schema_delta_mode": "single_typed_extension_fail_closed_v1",
+    "context_plane_forward_added_activation_target_ids": [
+      "memory_temporal_graph_shadow_retrieval_promotion_readiness"
+    ],
+    "context_plane_forward_added_activation_target_count": 1,
+    "context_plane_forward_removed_activation_target_count": 0,
+    "context_plane_legacy_provider_v2_candidate_ids": [
+      "fact"
+    ],
+    "context_plane_legacy_provider_v2_candidate_count": 1,
+    "context_plane_forward_provider_v2_candidate_ids": [
+      "task",
+      "preference",
+      "decision",
+      "summary"
+    ],
+    "context_plane_forward_provider_v2_candidate_count": 4,
+    "context_plane_shell_snapshots_preserved": false,
+    "context_plane_production_authority_granted": false,
+    "context_plane_write_authority_granted": false
   }
 }

@@ -2,7 +2,7 @@
   "schema": "hepta_gate_typed_report_bindings_v2",
   "status": "ready",
   "source_of_truth": "codex-rs/hepta-runtime/src/typed_compat_report.rs",
-  "selection": "runtime_backed_workgraph_workflow_context_memory_dirty_worktree_and_controlled_live_reports",
+  "selection": "runtime_backed_workgraph_workflow_context_memory_context_plane_dirty_worktree_and_controlled_live_reports",
   "report_ids": [
     "hepta-context-memory-ranked-recall-shadow-eval",
     "hepta-context-memory-shadow-quality-summary",
@@ -15,6 +15,14 @@
     "hepta-context-memory-temporal-graph-shadow-store",
     "hepta-context-memory-temporal-graph-shadow-traversal-diff",
     "hepta-context-memory-temporal-graph-shadow-traversal-quality",
+    "hepta-context-plane-activation-blocker-matrix",
+    "hepta-context-plane-operator-approval-packet",
+    "hepta-context-plane-operator-approval-packet-canonical-export-digest",
+    "hepta-context-plane-operator-approval-packet-freshness",
+    "hepta-context-plane-operator-approval-packet-freshness-dependency-chain",
+    "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest",
+    "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift",
+    "hepta-context-plane-operator-approval-packet-negative-export",
     "hepta-systems-controlled-canary-readiness-plan",
     "hepta-systems-controlled-live-operator-packet-non-send-readback",
     "hepta-systems-controlled-live-operator-packet-preview",
@@ -216,6 +224,254 @@
       "baseline": "exact_head_captured_shell_compat_v1",
       "business_field_comparison": "exact_recursive_json_equality",
       "business_field_mismatch_count": 0,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-context-plane-activation-blocker-matrix": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "recursive_business_fields_and_format_specific_source_receipts_v1",
+      "business_field_comparison": "exact_line_protocol_scalar_map_equality",
+      "legacy_business_field_count": 277,
+      "business_field_order_mismatch_count": 0,
+      "business_field_mismatch_count": 0,
+      "source_topology_mismatch_count": 0,
+      "source_line_count_mismatch_count": 0,
+      "source_digest_mismatch_count": 0,
+      "generation_sequence_mismatch_count": 0,
+      "forward_schema_delta_mode": "single_typed_extension_fail_closed_v1",
+      "forward_added_activation_target_ids": [
+        "memory_temporal_graph_shadow_retrieval_promotion_readiness"
+      ],
+      "forward_removed_activation_target_count": 0,
+      "legacy_provider_v2_scope_candidate_ids": [
+        "fact"
+      ],
+      "forward_provider_v2_candidate_ids": [
+        "task",
+        "preference",
+        "decision",
+        "summary"
+      ],
+      "typed_payload_retains_forward_schema": true,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-context-plane-operator-approval-packet": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "recursive_business_fields_and_format_specific_source_receipts_v1",
+      "business_field_comparison": "exact_line_protocol_scalar_map_equality",
+      "legacy_business_field_count": 279,
+      "business_field_order_mismatch_count": 0,
+      "business_field_mismatch_count": 0,
+      "source_topology_mismatch_count": 0,
+      "source_line_count_mismatch_count": 0,
+      "source_digest_mismatch_count": 0,
+      "generation_sequence_mismatch_count": 0,
+      "forward_schema_delta_mode": "single_typed_extension_fail_closed_v1",
+      "forward_added_activation_target_ids": [
+        "memory_temporal_graph_shadow_retrieval_promotion_readiness"
+      ],
+      "forward_removed_activation_target_count": 0,
+      "legacy_provider_v2_scope_candidate_ids": [
+        "fact"
+      ],
+      "forward_provider_v2_candidate_ids": [
+        "task",
+        "preference",
+        "decision",
+        "summary"
+      ],
+      "typed_payload_retains_forward_schema": true,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-context-plane-operator-approval-packet-canonical-export-digest": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "recursive_business_fields_and_format_specific_source_receipts_v1",
+      "business_field_comparison": "exact_line_protocol_scalar_map_equality",
+      "legacy_business_field_count": 10,
+      "business_field_order_mismatch_count": 0,
+      "business_field_mismatch_count": 0,
+      "source_topology_mismatch_count": 0,
+      "source_line_count_mismatch_count": 0,
+      "source_digest_mismatch_count": 0,
+      "generation_sequence_mismatch_count": 0,
+      "forward_schema_delta_mode": "single_typed_extension_fail_closed_v1",
+      "forward_added_activation_target_ids": [
+        "memory_temporal_graph_shadow_retrieval_promotion_readiness"
+      ],
+      "forward_removed_activation_target_count": 0,
+      "legacy_provider_v2_scope_candidate_ids": [
+        "fact"
+      ],
+      "forward_provider_v2_candidate_ids": [
+        "task",
+        "preference",
+        "decision",
+        "summary"
+      ],
+      "typed_payload_retains_forward_schema": true,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-context-plane-operator-approval-packet-freshness": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "recursive_business_fields_and_format_specific_source_receipts_v1",
+      "business_field_comparison": "exact_line_protocol_scalar_map_equality",
+      "legacy_business_field_count": 14,
+      "business_field_order_mismatch_count": 0,
+      "business_field_mismatch_count": 0,
+      "source_topology_mismatch_count": 0,
+      "source_line_count_mismatch_count": 0,
+      "source_digest_mismatch_count": 0,
+      "generation_sequence_mismatch_count": 0,
+      "forward_schema_delta_mode": "single_typed_extension_fail_closed_v1",
+      "forward_added_activation_target_ids": [
+        "memory_temporal_graph_shadow_retrieval_promotion_readiness"
+      ],
+      "forward_removed_activation_target_count": 0,
+      "legacy_provider_v2_scope_candidate_ids": [
+        "fact"
+      ],
+      "forward_provider_v2_candidate_ids": [
+        "task",
+        "preference",
+        "decision",
+        "summary"
+      ],
+      "typed_payload_retains_forward_schema": true,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-context-plane-operator-approval-packet-freshness-dependency-chain": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "recursive_business_fields_and_format_specific_source_receipts_v1",
+      "business_field_comparison": "exact_line_protocol_scalar_map_equality",
+      "legacy_business_field_count": 20,
+      "business_field_order_mismatch_count": 0,
+      "business_field_mismatch_count": 0,
+      "source_topology_mismatch_count": 0,
+      "source_line_count_mismatch_count": 0,
+      "source_digest_mismatch_count": 0,
+      "generation_sequence_mismatch_count": 0,
+      "forward_schema_delta_mode": "single_typed_extension_fail_closed_v1",
+      "forward_added_activation_target_ids": [
+        "memory_temporal_graph_shadow_retrieval_promotion_readiness"
+      ],
+      "forward_removed_activation_target_count": 0,
+      "legacy_provider_v2_scope_candidate_ids": [
+        "fact"
+      ],
+      "forward_provider_v2_candidate_ids": [
+        "task",
+        "preference",
+        "decision",
+        "summary"
+      ],
+      "typed_payload_retains_forward_schema": true,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "recursive_business_fields_and_format_specific_source_receipts_v1",
+      "business_field_comparison": "exact_line_protocol_scalar_map_equality",
+      "legacy_business_field_count": 15,
+      "business_field_order_mismatch_count": 0,
+      "business_field_mismatch_count": 0,
+      "source_topology_mismatch_count": 0,
+      "source_line_count_mismatch_count": 0,
+      "source_digest_mismatch_count": 0,
+      "generation_sequence_mismatch_count": 0,
+      "forward_schema_delta_mode": "single_typed_extension_fail_closed_v1",
+      "forward_added_activation_target_ids": [
+        "memory_temporal_graph_shadow_retrieval_promotion_readiness"
+      ],
+      "forward_removed_activation_target_count": 0,
+      "legacy_provider_v2_scope_candidate_ids": [
+        "fact"
+      ],
+      "forward_provider_v2_candidate_ids": [
+        "task",
+        "preference",
+        "decision",
+        "summary"
+      ],
+      "typed_payload_retains_forward_schema": true,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "recursive_business_fields_and_format_specific_source_receipts_v1",
+      "business_field_comparison": "exact_line_protocol_scalar_map_equality",
+      "legacy_business_field_count": 21,
+      "business_field_order_mismatch_count": 0,
+      "business_field_mismatch_count": 0,
+      "source_topology_mismatch_count": 0,
+      "source_line_count_mismatch_count": 0,
+      "source_digest_mismatch_count": 0,
+      "generation_sequence_mismatch_count": 0,
+      "forward_schema_delta_mode": "single_typed_extension_fail_closed_v1",
+      "forward_added_activation_target_ids": [
+        "memory_temporal_graph_shadow_retrieval_promotion_readiness"
+      ],
+      "forward_removed_activation_target_count": 0,
+      "legacy_provider_v2_scope_candidate_ids": [
+        "fact"
+      ],
+      "forward_provider_v2_candidate_ids": [
+        "task",
+        "preference",
+        "decision",
+        "summary"
+      ],
+      "typed_payload_retains_forward_schema": true,
+      "captured_snapshots_preserved": false,
+      "side_effects_preserved_false": true,
+      "production_authority_preserved_false": true,
+      "write_authority_preserved_false": true
+    },
+    "hepta-context-plane-operator-approval-packet-negative-export": {
+      "baseline": "exact_head_captured_shell_compat_v1",
+      "parity_oracle": "recursive_business_fields_and_format_specific_source_receipts_v1",
+      "business_field_comparison": "exact_line_protocol_scalar_map_equality",
+      "legacy_business_field_count": 4,
+      "business_field_order_mismatch_count": 0,
+      "business_field_mismatch_count": 0,
+      "source_topology_mismatch_count": 0,
+      "source_line_count_mismatch_count": 0,
+      "source_digest_mismatch_count": 0,
+      "generation_sequence_mismatch_count": 0,
+      "forward_schema_delta_mode": "single_typed_extension_fail_closed_v1",
+      "forward_added_activation_target_ids": [
+        "memory_temporal_graph_shadow_retrieval_promotion_readiness"
+      ],
+      "forward_removed_activation_target_count": 0,
+      "legacy_provider_v2_scope_candidate_ids": [
+        "fact"
+      ],
+      "forward_provider_v2_candidate_ids": [
+        "task",
+        "preference",
+        "decision",
+        "summary"
+      ],
+      "typed_payload_retains_forward_schema": true,
+      "captured_snapshots_preserved": false,
       "side_effects_preserved_false": true,
       "production_authority_preserved_false": true,
       "write_authority_preserved_false": true
