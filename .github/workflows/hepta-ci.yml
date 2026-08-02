@@ -40,6 +40,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes jq ripgrep
       - name: Verify CI contract
         run: scripts/hepta-ci-baseline contract
+      - name: Materialize immutable upstream intake refs for contract fixtures
+        run: scripts/hepta-ci-materialize-upstream-intake materialize
       - name: Exercise fail-closed contract fixtures
         run: scripts/hepta-ci-baseline contract-self-test
 
