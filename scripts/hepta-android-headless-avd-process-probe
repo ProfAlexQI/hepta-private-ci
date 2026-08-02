@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+
+avd = ARGV.fetch(0)
+qemu = File.expand_path(ARGV.fetch(1))
+
+abort "unsafe AVD name" unless avd.match?(/\A[A-Za-z0-9._-]+\z/)
+abort "QEMU path must be absolute" unless qemu.start_with?(File::SEPARATOR)
+
+matching = STDIN.each_line.map do |line|
+  command = line.chomp
+  next unless command.start_with?("#{qemu} ")
+  next unless command.match?(/(?:^|\s)-no-window(?:\s|$)/)
+  next unless command.match?(/(?:^|\s)(?:-avd\s+|@)#{Regexp.escape(avd)}(?:\s|$)/)
+
+  command
+end.compact
+
+abort "expected exactly one already-running headless AVD process" unless matching.length == 1
+puts matching.fetch(0)

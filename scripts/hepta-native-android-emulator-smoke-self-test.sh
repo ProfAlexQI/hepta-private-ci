@@ -10,11 +10,35 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 PRODUCER="scripts/hepta-native-android-emulator-smoke.sh"
 PROBE="scripts/hepta-android-login-template-probe"
 ORIENTATION_PROBE="scripts/hepta-android-window-orientation-probe"
+HEADLESS_AVD_PROCESS_PROBE="scripts/hepta-android-headless-avd-process-probe"
 TEMPLATE_DIR="apps/hepta-native/packaging/android-emulator-login-template-v1"
 MANIFEST="$TEMPLATE_DIR/manifest.json"
 
 bash -n "$PRODUCER" "$PROBE" scripts/hepta-native-mobile-readiness-gate.sh
 ruby -c "$ORIENTATION_PROBE" >/dev/null
+ruby -c "$HEADLESS_AVD_PROCESS_PROBE" >/dev/null
+
+# A wrapper command can contain the complete emulator invocation. Only the
+# process whose executable identity is the pinned QEMU binary may be accepted.
+QEMU_FIXTURE="/Users/example/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless"
+printf '%s\n' \
+  "/bin/zsh -lc $QEMU_FIXTURE -avd Hepta_Pixel_API_34_arm64 -no-window" \
+  "/usr/bin/ruby $HEADLESS_AVD_PROCESS_PROBE Hepta_Pixel_API_34_arm64 $QEMU_FIXTURE" \
+  "$QEMU_FIXTURE -avd Hepta_Pixel_API_34_arm64 -port 5554 -no-window -no-audio" \
+  | ruby "$HEADLESS_AVD_PROCESS_PROBE" Hepta_Pixel_API_34_arm64 "$QEMU_FIXTURE" \
+  >"$TEST_DIR/headless-avd-process.txt"
+[[ "$(cat "$TEST_DIR/headless-avd-process.txt")" == \
+  "$QEMU_FIXTURE -avd Hepta_Pixel_API_34_arm64 -port 5554 -no-window -no-audio" ]]
+
+if printf '%s\n' \
+    "$QEMU_FIXTURE -avd Hepta_Pixel_API_34_arm64 -no-window" \
+    "$QEMU_FIXTURE @Hepta_Pixel_API_34_arm64 -no-window" \
+    | ruby "$HEADLESS_AVD_PROCESS_PROBE" Hepta_Pixel_API_34_arm64 "$QEMU_FIXTURE" \
+      >"$TEST_DIR/headless-avd-duplicate.stdout" 2>"$TEST_DIR/headless-avd-duplicate.stderr"; then
+  echo "headless AVD process probe accepted duplicate QEMU processes" >&2
+  exit 1
+fi
+grep -Fq 'expected exactly one already-running headless AVD process' "$TEST_DIR/headless-avd-duplicate.stderr"
 
 # Android's `wm size` reports the immutable physical panel geometry, so the
 # canonical Pixel API 34 landscape state must be classified from WindowManager

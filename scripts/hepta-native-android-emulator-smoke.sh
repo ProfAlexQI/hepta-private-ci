@@ -11,6 +11,7 @@ CARGO_PACKAGE="hepta-native"
 LOGIN_TEMPLATE_DIR="$APP_DIR/packaging/android-emulator-login-template-v1"
 LOGIN_TEMPLATE_MANIFEST="$LOGIN_TEMPLATE_DIR/manifest.json"
 ORIENTATION_PROBE="$ROOT_DIR/scripts/hepta-android-window-orientation-probe"
+HEADLESS_AVD_PROCESS_PROBE="$ROOT_DIR/scripts/hepta-android-headless-avd-process-probe"
 
 AVD_NAME=""
 ADB_SERIAL=""
@@ -166,6 +167,7 @@ QEMU="$SDK_ROOT/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless"
 [[ -x "$EMULATOR" ]] || { echo "error: Android emulator is missing: $EMULATOR" >&2; exit 2; }
 [[ -x "$QEMU" ]] || { echo "error: ARM64 headless qemu is missing: $QEMU" >&2; exit 2; }
 [[ -x "$ORIENTATION_PROBE" ]] || { echo "error: Android window orientation probe is missing: $ORIENTATION_PROBE" >&2; exit 2; }
+[[ -f "$HEADLESS_AVD_PROCESS_PROBE" ]] || { echo "error: Android headless AVD process probe is missing: $HEADLESS_AVD_PROCESS_PROBE" >&2; exit 2; }
 
 latest_build_tool() {
   local name="$1" candidate
@@ -247,16 +249,9 @@ DEVICE_BOOT_ID="$($ADB -s "$ADB_SERIAL" shell cat /proc/sys/kernel/random/boot_i
 
 # Record only the one relevant emulator process. A complete process listing can
 # leak unrelated command-line arguments into otherwise shareable evidence.
-ps -axo command= | ruby -e '
-  avd = ARGV.fetch(0)
-  commands = STDIN.each_line.map(&:chomp)
-  matching = commands.select do |command|
-    (command.match?(/(?:^|\s)-avd\s+#{Regexp.escape(avd)}(?:\s|$)/) || command.match?(/(?:^|\s)@#{Regexp.escape(avd)}(?:\s|$)/)) &&
-      command.match?(/(?:^|\s)-no-window(?:\s|$)/)
-  end
-  abort "expected exactly one already-running headless AVD process" unless matching.length == 1
-  puts matching.fetch(0)
-' "$AVD_NAME" >"$EVIDENCE_DIR/headless-avd-process.txt"
+ps -axo command= \
+  | ruby "$HEADLESS_AVD_PROCESS_PROBE" "$AVD_NAME" "$QEMU" \
+  >"$EVIDENCE_DIR/headless-avd-process.txt"
 
 AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
 AVD_CONFIG="$AVD_HOME/$AVD_NAME.avd/config.ini"
