@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use crate::control_ui::CONTROL_UI_JS;
 use crate::control_ui::CONTROL_UI_README;
 use crate::control_ui::CONTROL_UI_RUST_RENDERER_MARKERS;
 
@@ -231,12 +232,62 @@ fn native_post_real_handler_inventory_is_empty(source: &str) -> bool {
     source.contains("pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] = &[];")
 }
 
+fn control_ui_readonly_get_registry_is_strict() -> bool {
+    const PATHS: [&str; 21] = [
+        "/api/control-ui",
+        "/api/config",
+        "/api/optional-configs",
+        "/api/hepta-merge-completion",
+        "/api/external-agent-benchmark",
+        "/api/sessions",
+        "/api/session-activity",
+        "/api/operator-console",
+        "/api/subagent-observatory",
+        "/api/events",
+        "/api/events-report",
+        "/api/activity",
+        "/api/transcript",
+        "/api/approvals",
+        "/api/policy",
+        "/api/operator-security",
+        "/api/gateway-runtime",
+        "/api/gateway-dispatch",
+        "/api/gateway-ledger",
+        "/api/gateway-retry-dead-letter",
+        "/api/multi-agent-runtime",
+    ];
+    let Ok(source) = std::str::from_utf8(CONTROL_UI_JS) else {
+        return false;
+    };
+    let Some(registry_start) = source.find("const READ_ONLY_ROUTES = Object.freeze({") else {
+        return false;
+    };
+    let Some(relative_end) = source[registry_start..].find("\n  });") else {
+        return false;
+    };
+    let registry = &source[registry_start..registry_start + relative_end];
+    registry.matches(": \"/api/").count() == PATHS.len()
+        && PATHS
+            .iter()
+            .all(|path| registry.matches(&format!("\"{path}\"")).count() == 1)
+        && source.contains("const SNAPSHOT_PATH = \"/api/operator-snapshot\"")
+        && source.contains("method: \"GET\"")
+        && source.contains("headers: { Accept: \"application/json\" }")
+        && source.contains("new AbortController()")
+        && source.contains("url.origin !== window.location.origin")
+        && source.contains("textContent")
+        && !source.contains("innerHTML")
+}
+
 pub fn operator_security_report() -> OperatorSecurityReport {
     let loopback_bind_enforced = HEPTA_NATIVE_GATEWAY_RS.contains("is_loopback_bind_addr")
         && HEPTA_NATIVE_GATEWAY_RS.contains("HEPTA_ALLOW_NON_LOOPBACK_UI")
         && HEPTA_NATIVE_GATEWAY_RS.contains("refusing to serve UI on non-loopback address");
     let security_headers_present = HEPTA_NATIVE_HTTP_TRANSPORT_RS
         .contains("Content-Security-Policy")
+        && HEPTA_NATIVE_HTTP_TRANSPORT_RS.contains("script-src 'self';")
+        && !HEPTA_NATIVE_HTTP_TRANSPORT_RS.contains("script-src 'self' 'unsafe-inline'")
+        && HEPTA_NATIVE_HTTP_TRANSPORT_RS.contains("connect-src 'self'")
         && HEPTA_NATIVE_HTTP_TRANSPORT_RS.contains("X-Content-Type-Options: nosniff")
         && HEPTA_NATIVE_HTTP_TRANSPORT_RS.contains("Referrer-Policy: no-referrer");
     let post_actions_dry_run_only = native_post_route_spec_matches(
@@ -268,13 +319,14 @@ pub fn operator_security_report() -> OperatorSecurityReport {
         true,
     ) && native_post_plan_response_is_side_effect_free(
     ) && real_handler_inventory_empty;
-    let read_only_command_allowlist_present = native_post_route_spec_matches(
-        "/api/commands/<id>",
-        "/<allowlisted read-only command> --json",
-        "readonly_command",
-        true,
-        false,
-    );
+    let read_only_command_allowlist_present = control_ui_readonly_get_registry_is_strict()
+        && native_post_route_spec_matches(
+            "/api/commands/<id>",
+            "/<allowlisted read-only command> --json",
+            "readonly_command",
+            true,
+            false,
+        );
     let unsupported_post_fail_closed = HEPTA_NATIVE_GATEWAY_RS.contains("405 Method Not Allowed")
         && HEPTA_NATIVE_GATEWAY_RS.contains("supported POST endpoints are /api/actions/<action>");
     let policy_approval_bridge_present = CONTROL_UI_RUST_RENDERER_MARKERS
@@ -329,7 +381,7 @@ pub fn operator_security_report() -> OperatorSecurityReport {
             "read-only-command-allowlist",
             "Read-only command runner allowlist",
             read_only_command_allowlist_present,
-            "POST /api/commands/<id> accepts only named read-only commands",
+            "The browser exposes exactly 21 canonical same-origin GET reports; the compatibility POST command planner remains allowlisted and plan-only",
         ),
         lane(
             "unsupported-post-fail-closed",
@@ -476,7 +528,7 @@ pub fn operator_security_endpoint_guards() -> Vec<OperatorSecurityEndpointGuard>
         guard(
             "static-assets",
             "GET",
-            "/ | /index.html | /styles.css | /assets/hepta-agent-logo.png",
+            "/ | /index.html | /styles.css | /control-ui.js | /assets/hepta-agent-logo.png",
             "observer",
             "low",
             "serve local bundled assets with security headers",
@@ -519,11 +571,11 @@ pub fn operator_security_endpoint_guards() -> Vec<OperatorSecurityEndpointGuard>
         ),
         guard(
             "readonly-command-runner",
-            "POST",
-            "/api/commands/<allowlisted_id>",
+            "GET",
+            "21 fixed canonical /api report paths",
             "developer",
             "medium",
-            "allowlisted read-only command execution only",
+            "same-origin read-only JSON inspection only; unregistered cards stay copy-only",
             false,
             true,
             false,
@@ -754,6 +806,11 @@ mod tests {
                 .iter()
                 .any(|guard| guard.id == "dry-run-action-planner" && guard.dry_run_only)
         );
+        assert!(report.endpoint_guards.iter().any(|guard| {
+            guard.id == "readonly-command-runner"
+                && guard.method == "GET"
+                && !guard.external_side_effects
+        }));
         assert!(report.endpoint_guards.iter().any(|guard| {
             guard.id == "task-publisher-confirm"
                 && !guard.dry_run_only

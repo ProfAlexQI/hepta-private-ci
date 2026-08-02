@@ -17,13 +17,21 @@ mkdir -p "$OUT_DIR"
 root_html="$(curl -fsS "$BASE_URL/")"
 styles_css="$(curl -fsS "$BASE_URL/styles.css")"
 gateway_status_html="$(curl -fsS "$BASE_URL/gateway-status")"
+root_headers="$OUT_DIR/root.headers"
+curl -fsS -D "$root_headers" -o /dev/null "$BASE_URL/"
+control_ui_js_file="$OUT_DIR/control-ui.js"
+control_ui_js_headers="$OUT_DIR/control-ui-js.headers"
+curl -fsS -D "$control_ui_js_headers" "$BASE_URL/control-ui.js" -o "$control_ui_js_file"
+control_ui_js="$(<"$control_ui_js_file")"
 logo_png="$OUT_DIR/hepta-agent-logo.png"
 curl -fsS "$BASE_URL/assets/hepta-agent-logo.png" -o "$logo_png"
 merge_json="$(curl -fsS "$BASE_URL/api/hepta-merge-completion")"
 
 for needle in \
   'data-rust-frontend-renderer="hepta-core::control_ui"' \
-  'data-no-js-frontend="true"' \
+  'data-no-js-fallback="navigation"' \
+  'data-progressive-enhancement="same-origin-read-only"' \
+  'data-js-artifacts="external-read-only"' \
   'data-telegram-multi-agent-chat="true"' \
   'data-control-ui-product-first="true"' \
   'data-control-ui-primary-path="telegram-chat-shell"' \
@@ -54,6 +62,7 @@ for needle in \
   'data-control-ui-command-palette-close="light-glass"' \
   'data-control-ui-command-palette-result="light-glass"' \
   'href="./styles.css"' \
+  'defer src="./control-ui.js"' \
   'src="./assets/hepta-agent-logo.png"'; do
   if [[ "$root_html" != *"$needle"* ]]; then
     echo "control UI root is missing expected marker: $needle" >&2
@@ -63,7 +72,7 @@ done
 
 for forbidden in \
   "Native gateway entrypoint running" \
-  "<script" \
+  "<script>" \
   "Rust/no-JS chat workspace" \
   "old JS" \
   "blank module fallback" \
@@ -75,6 +84,44 @@ for forbidden in \
   "Fixture mode"; do
   if [[ "$root_html" == *"$forbidden"* ]]; then
     echo "control UI root includes forbidden fallback marker: $forbidden" >&2
+    exit 1
+  fi
+done
+
+if ! grep -Fqi "content-security-policy:" "$root_headers" \
+  || ! grep -Fqi "script-src 'self';" "$root_headers" \
+  || ! grep -Fqi "connect-src 'self';" "$root_headers" \
+  || grep -Fqi "script-src 'self' 'unsafe-inline'" "$root_headers"; then
+  echo "control UI response CSP does not enforce same-origin external scripts and connections" >&2
+  exit 1
+fi
+
+source_js_sha="$(shasum -a 256 apps/hepta-control-ui/control-ui.js | awk '{print $1}')"
+served_js_sha="$(shasum -a 256 "$control_ui_js_file" | awk '{print $1}')"
+served_js_etag="$(awk 'tolower($1) == "etag:" { gsub(/\r/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit }' "$control_ui_js_headers")"
+if [[ "$served_js_sha" != "$source_js_sha" || "$served_js_etag" != "\"sha256-${source_js_sha}\"" ]]; then
+  echo "control UI JavaScript source, served bytes, and ETag digest are not bound" >&2
+  exit 1
+fi
+if [[ "$(grep -o ': \"/api/' "$control_ui_js_file" | wc -l | tr -d ' ')" != "21" ]]; then
+  echo "control UI JavaScript does not expose exactly 21 fixed read-only report routes" >&2
+  exit 1
+fi
+for marker in \
+  'const SNAPSHOT_PATH = "/api/operator-snapshot"' \
+  'const READ_ONLY_ROUTES = Object.freeze({' \
+  'new AbortController()' \
+  'headers: { Accept: "application/json" }' \
+  'url.origin !== window.location.origin' \
+  'textContent'; do
+  if [[ "$control_ui_js" != *"$marker"* ]]; then
+    echo "control UI JavaScript is missing safety marker: $marker" >&2
+    exit 1
+  fi
+done
+for forbidden_js in 'innerHTML' 'eval(' 'new Function(' 'http://' 'https://'; do
+  if [[ "$control_ui_js" == *"$forbidden_js"* ]]; then
+    echo "control UI JavaScript contains forbidden capability: $forbidden_js" >&2
     exit 1
   fi
 done
@@ -6241,6 +6288,249 @@ run_density_qa() {
 NODE
 }
 
+run_progressive_enhancement_qa() {
+  node - "$CHROME_BIN" "$BASE_URL" <<'NODE'
+const { chromium } = require("playwright");
+
+const [chromeBin, baseUrl] = process.argv.slice(2);
+const routes = [
+  ["control-ui", "/api/control-ui"],
+  ["config-surface", "/api/config"],
+  ["optional-configs", "/api/optional-configs"],
+  ["hepta-merge-completion", "/api/hepta-merge-completion"],
+  ["external-agent-benchmark", "/api/external-agent-benchmark"],
+  ["sessions", "/api/sessions"],
+  ["session-activity", "/api/session-activity"],
+  ["operator-console", "/api/operator-console"],
+  ["subagent-observatory", "/api/subagent-observatory"],
+  ["events", "/api/events"],
+  ["events-report", "/api/events-report"],
+  ["activity", "/api/activity"],
+  ["transcript", "/api/transcript"],
+  ["approvals", "/api/approvals"],
+  ["policy", "/api/policy"],
+  ["operator-security", "/api/operator-security"],
+  ["gateway-runtime", "/api/gateway-runtime"],
+  ["gateway-dispatch", "/api/gateway-dispatch"],
+  ["gateway-ledger", "/api/gateway-ledger"],
+  ["gateway-retry-dead-letter", "/api/gateway-retry-dead-letter"],
+  ["multi-agent-runtime", "/api/multi-agent-runtime"],
+];
+
+(async () => {
+  const origin = new URL(baseUrl).origin;
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: chromeBin,
+    args: [
+      "--disable-background-networking",
+      "--disable-component-update",
+      "--disable-default-apps",
+      "--disable-extensions",
+      "--disable-sync",
+      "--no-default-browser-check",
+      "--no-first-run",
+    ],
+  });
+  const context = await browser.newContext();
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+  const page = await context.newPage();
+  const requests = [];
+  const consoleErrors = [];
+  page.on("request", (request) => {
+    if (/^https?:/i.test(request.url())) {
+      requests.push({ url: request.url(), method: request.method() });
+    }
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.waitForFunction(
+    () => document.documentElement.dataset.controlUiProgressiveEnhancement === "ready",
+    null,
+    { timeout: 10000 },
+  );
+  await page.waitForFunction(
+    () => {
+      const status = document.getElementById("operator-snapshot-status");
+      return status && status.dataset.state !== "loading";
+    },
+    null,
+    { timeout: 10000 },
+  );
+  const snapshotState = await page.locator("#operator-snapshot-status").getAttribute("data-state");
+  if (snapshotState !== "ready" && snapshotState !== "empty") {
+    throw new Error(`operator snapshot did not reach a usable state: ${snapshotState}`);
+  }
+
+  await page.locator("#hepta-command-panel").evaluate((panel) => {
+    for (let node = panel; node && node !== document.documentElement; node = node.parentElement) {
+      node.hidden = false;
+      if (node instanceof HTMLDetailsElement) {
+        node.open = true;
+      }
+      node.style.setProperty("display", node === panel ? "block" : "revert", "important");
+      node.style.setProperty("visibility", "visible", "important");
+      node.style.setProperty("opacity", "1", "important");
+      node.style.setProperty("pointer-events", "auto", "important");
+    }
+  });
+
+  const chatItemCount = await page.locator(".tg-chat-item").count();
+  await page.locator("#chat-search").fill("__hepta_no_matching_chat__");
+  const hiddenChatItemCount = await page.locator(".tg-chat-item[hidden]").count();
+  await page.locator("#chat-search").fill("");
+  if (chatItemCount === 0 || hiddenChatItemCount !== chatItemCount) {
+    throw new Error("local chat search did not filter every non-matching item");
+  }
+
+  await page.locator("#command-palette-input").evaluate((input) => {
+    input.value = "__hepta_no_matching_command__";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const paletteItemCount = await page.locator("#command-palette-results .command-palette__item").count();
+  const hiddenPaletteItemCount = await page
+    .locator("#command-palette-results .command-palette__item[hidden]")
+    .count();
+  await page.locator("#command-palette-input").evaluate((input) => {
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  if (paletteItemCount === 0 || hiddenPaletteItemCount !== paletteItemCount) {
+    throw new Error("local command palette search did not filter every non-matching item");
+  }
+
+  await page
+    .locator('[data-command-id="control-ui"] [data-copy="/control-ui --json"]')
+    .click({ force: true });
+  await page.waitForFunction(
+    () => document.getElementById("toast")?.textContent === "Copied to clipboard.",
+    null,
+    { timeout: 5000 },
+  );
+  const copiedText = await page.evaluate(() => navigator.clipboard.readText());
+  if (copiedText !== "/control-ui --json") {
+    throw new Error("copy interaction did not preserve the exact command text");
+  }
+
+  const results = [];
+  for (const [commandId, path] of routes) {
+    const selector = `[data-command-id="${commandId}"] [data-run-command="read-only"]`;
+    const button = page.locator(selector);
+    if ((await button.count()) !== 1) {
+      throw new Error(`missing unique read-only button for ${commandId}`);
+    }
+    if (await button.isDisabled()) {
+      throw new Error(`allowlisted read-only button is disabled: ${commandId}`);
+    }
+    const responsePromise = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === path && response.request().method() === "GET",
+      { timeout: 10000 },
+    );
+    await button.click({ force: true });
+    const response = await responsePromise;
+    const contentType = response.headers()["content-type"] || "";
+    if (response.status() !== 200 || !contentType.toLowerCase().startsWith("application/json")) {
+      throw new Error(`${path} returned ${response.status()} ${contentType}`);
+    }
+    await page.waitForFunction(
+      (id) => {
+        const state = document.querySelector(`[data-command-id="${id}"]`)?.dataset.commandState;
+        return state === "ready" || state === "empty" || state === "error";
+      },
+      commandId,
+      { timeout: 10000 },
+    );
+    const state = await page
+      .locator(`[data-command-id="${commandId}"]`)
+      .getAttribute("data-command-state");
+    if (state === "error") {
+      throw new Error(`${path} rendered an error state`);
+    }
+    const output = await page.locator("#command-runner-output").textContent();
+    JSON.parse(output || "null");
+    results.push({ command_id: commandId, path, status: response.status(), content_type: contentType, state });
+  }
+
+  const buttonAudit = await page.$$eval('[data-run-command="read-only"]', (buttons) =>
+    buttons.map((button) => ({
+      command_id: button.closest("[data-command-id]")?.dataset.commandId || "",
+      disabled: button.disabled,
+      registry: button.dataset.readOnlyRegistry || "",
+    })),
+  );
+  const allowedButtonCount = buttonAudit.filter(
+    (button) => !button.disabled && button.registry === "allowed",
+  ).length;
+  const unsafeButtonCount = buttonAudit.filter(
+    (button) => button.registry !== "allowed" && !button.disabled,
+  ).length;
+
+  const crossOriginRequests = requests.filter((request) => new URL(request.url).origin !== origin);
+  const nonGetRequests = requests.filter((request) => request.method !== "GET");
+  const expectedApiPaths = ["/api/operator-snapshot", ...routes.map((route) => route[1])];
+  const apiRequests = requests.filter((request) => new URL(request.url).pathname.startsWith("/api/"));
+  const unexpectedApiRequests = apiRequests.filter(
+    (request) => !expectedApiPaths.includes(new URL(request.url).pathname),
+  );
+  const missingOrDuplicateApiPaths = expectedApiPaths.filter(
+    (path) => apiRequests.filter((request) => new URL(request.url).pathname === path).length !== 1,
+  );
+
+  const report = {
+    schema: "hepta_control_ui_progressive_enhancement_browser_v1",
+    status: "ready",
+    registry_route_count: routes.length,
+    successful_route_count: results.length,
+    snapshot_state: snapshotState,
+    snapshot_request_count: apiRequests.filter(
+      (request) => new URL(request.url).pathname === "/api/operator-snapshot",
+    ).length,
+    copy_interaction_ready: copiedText === "/control-ui --json",
+    chat_search_ready: hiddenChatItemCount === chatItemCount,
+    command_palette_search_ready: hiddenPaletteItemCount === paletteItemCount,
+    allowed_button_count: allowedButtonCount,
+    non_allowlisted_button_count: buttonAudit.length - allowedButtonCount,
+    unsafe_enabled_button_count: unsafeButtonCount,
+    same_origin_request_count: requests.length - crossOriginRequests.length,
+    cross_origin_request_count: crossOriginRequests.length,
+    non_get_request_count: nonGetRequests.length,
+    unexpected_api_request_count: unexpectedApiRequests.length,
+    missing_or_duplicate_api_paths: missingOrDuplicateApiPaths,
+    console_error_count: consoleErrors.length,
+    results,
+    live_adapter_bound: false,
+    mutation_endpoint_called: false,
+  };
+
+  await browser.close();
+  const failed = results.length !== routes.length
+    || allowedButtonCount !== routes.length
+    || unsafeButtonCount !== 0
+    || crossOriginRequests.length !== 0
+    || nonGetRequests.length !== 0
+    || unexpectedApiRequests.length !== 0
+    || missingOrDuplicateApiPaths.length !== 0
+    || consoleErrors.length !== 0
+    || copiedText !== "/control-ui --json"
+    || hiddenChatItemCount !== chatItemCount
+    || hiddenPaletteItemCount !== paletteItemCount;
+  process.stdout.write(`${JSON.stringify(report)}\n`);
+  if (failed) {
+    process.exit(1);
+  }
+})().catch((error) => {
+  console.error(error?.stack || error);
+  process.exit(1);
+});
+NODE
+}
+
 capture_viewport "desktop" "1365x900"
 capture_viewport "narrow" "768x900"
 capture_viewport "mobile" "500x844"
@@ -6249,6 +6539,32 @@ capture_viewport "phone320" "320x844"
 density_qa_status=0
 density_qa_json="$(run_density_qa)" || density_qa_status="$?"
 printf '%s\n' "$density_qa_json" >"$OUT_DIR/density-qa.json"
+
+progressive_qa_status=0
+progressive_qa_json="$(run_progressive_enhancement_qa)" || progressive_qa_status="$?"
+printf '%s\n' "$progressive_qa_json" >"$OUT_DIR/progressive-enhancement-qa.json"
+if [[ "$progressive_qa_status" != "0" ]] || ! jq -e '
+  .status == "ready"
+  and .registry_route_count == 21
+  and .successful_route_count == 21
+  and .snapshot_request_count == 1
+  and .copy_interaction_ready == true
+  and .chat_search_ready == true
+  and .command_palette_search_ready == true
+  and .allowed_button_count == 21
+  and .unsafe_enabled_button_count == 0
+  and .cross_origin_request_count == 0
+  and .non_get_request_count == 0
+  and .unexpected_api_request_count == 0
+  and (.missing_or_duplicate_api_paths | length) == 0
+  and .console_error_count == 0
+  and .live_adapter_bound == false
+  and .mutation_endpoint_called == false
+' <<<"$progressive_qa_json" >/dev/null; then
+  echo "Control UI progressive-enhancement browser QA failed" >&2
+  jq '.' <<<"$progressive_qa_json" >&2 || true
+  exit 1
+fi
 
 if [[ "$density_qa_status" != "0" ]] || ! jq -e '
 	  (
@@ -6924,12 +7240,14 @@ report="$(jq -n \
   --argjson native_post_real_activation_enabled "$native_post_real_activation_enabled" \
   --arg logo_dimensions "$logo_dimensions" \
   --arg logo_sha "$(shasum -a 256 "$logo_png" | awk '{print $1}')" \
+  --arg control_ui_js_sha "$served_js_sha" \
   --arg desktop_sha "$(shasum -a 256 "$OUT_DIR/desktop.png" | awk '{print $1}')" \
   --arg narrow_sha "$(shasum -a 256 "$OUT_DIR/narrow.png" | awk '{print $1}')" \
   --arg mobile_sha "$(shasum -a 256 "$OUT_DIR/mobile.png" | awk '{print $1}')" \
   --arg phone320_sha "$(shasum -a 256 "$OUT_DIR/phone320.png" | awk '{print $1}')" \
   --argjson phone320_bytes "$(wc -c <"$OUT_DIR/phone320.png" | tr -d ' ')" \
   --argjson density_qa "$density_qa_json" \
+  --argjson progressive_enhancement_qa "$progressive_qa_json" \
   '{
     schema_version:1,
     kind:"hepta-browser-visual-smoke",
@@ -6942,7 +7260,9 @@ report="$(jq -n \
     browser:"playwright-system-chrome",
     checked_text:[
       "data-rust-frontend-renderer=\"hepta-core::control_ui\"",
-      "data-no-js-frontend=\"true\"",
+      "data-no-js-fallback=\"navigation\"",
+      "data-progressive-enhancement=\"same-origin-read-only\"",
+      "defer src=\"./control-ui.js\"",
       "data-telegram-multi-agent-chat=\"true\"",
       "data-control-ui-product-first=\"true\"",
       "data-control-ui-primary-path=\"telegram-chat-shell\"",
@@ -7119,10 +7439,18 @@ report="$(jq -n \
 	    control_ui_visual_density_qa_ready:true,
     control_ui_browser_error_page_absent:true,
     control_ui_horizontal_overflow_free:true,
+    control_ui_progressive_enhancement_ready:true,
+    control_ui_readonly_registry_route_count:$progressive_enhancement_qa.registry_route_count,
+    control_ui_readonly_registry_successful_route_count:$progressive_enhancement_qa.successful_route_count,
+    control_ui_cross_origin_request_count:$progressive_enhancement_qa.cross_origin_request_count,
+    control_ui_mutation_endpoint_called:$progressive_enhancement_qa.mutation_endpoint_called,
+    control_ui_live_adapter_bound:$progressive_enhancement_qa.live_adapter_bound,
     density_qa:$density_qa,
+    progressive_enhancement_qa:$progressive_enhancement_qa,
     checked_assets:[
 		      {path:"/styles.css", markers:[".tg-conversation-rail",".tg-thread-panel",".command-palette","safe-area-inset-bottom","mrog","data-control-ui-compact-product-path","data-control-ui-primary-shell-light-glass","crs","cwb","cce","pce","ppe","cpe","mpb","ipc","avr","rpf","rcs","mmp","tsp","csh","rms","hte","rsc","rpe","mbp","bsp","rsp","fcp","strong){filter","--x:0 1px #fff6","text-shadow:var(--x)","rdlg","oclg","data-control-ui-tspcfrg","dsc","mecs","cmv","ctlg","cplg","cpsg","rmlg","ttlg","bmslg","mslg","tiblg","stslg","talg","body[data-view=chat] .hepta-secondary-map{display:none}","gar26","cps","cpis","cpt","cpc","cpir","cph","cprw","cprr","cpkc","cpilg","data-control-ui-command-palette-input=light-glass","data-control-ui-command-palette-result=light-glass"]},
       {path:"/assets/hepta-agent-logo.png", dimensions:$logo_dimensions, sha256:$logo_sha}
+      ,{path:"/control-ui.js", sha256:$control_ui_js_sha, source_bound:true, etag_bound:true, inline_script:false}
     ],
     telegram_live_send_enabled:$telegram_live_send_enabled,
     native_post_real_activation_enabled:$native_post_real_activation_enabled,

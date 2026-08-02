@@ -151,6 +151,26 @@ fn rejects_response_when_absolute_deadline_is_already_expired() {
     drop(client);
 }
 
+#[test]
+fn response_csp_allows_only_same_origin_external_scripts() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+    let mut client = TcpStream::connect(listener.local_addr().expect("address")).expect("client");
+    let (mut server, _) = listener.accept().expect("server");
+    let writer = thread::spawn(move || {
+        write_http_response(&mut server, "200 OK", "text/plain", b"ready").expect("write response");
+    });
+
+    let mut response = String::new();
+    client
+        .read_to_string(&mut response)
+        .expect("read response headers");
+    writer.join().expect("response writer");
+
+    assert!(response.contains("script-src 'self';"));
+    assert!(response.contains("connect-src 'self';"));
+    assert!(!response.contains("script-src 'self' 'unsafe-inline'"));
+}
+
 #[cfg(unix)]
 #[test]
 fn absolute_response_deadline_stops_a_slow_reader_that_keeps_making_progress() {

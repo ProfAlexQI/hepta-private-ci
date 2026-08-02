@@ -523,11 +523,11 @@ def validate_catalog!(records)
     fail!("static asset #{index} key is invalid") unless key.match?(/\A[a-z][a-z0-9_]*\z/) && !seen_asset_keys[key]
     seen_asset_keys[key] = true
     path = asset.fetch("path")
-    fail!("static asset #{index} path is invalid") unless path.match?(%r{\A/assets/[a-zA-Z0-9._-]+\z}) && !seen_asset_paths[path]
+    fail!("static asset #{index} path is invalid") unless path.match?(%r{\A/(?:assets/[a-zA-Z0-9._-]+|control-ui\.js)\z}) && !seen_asset_paths[path]
     fail!("static asset #{index} path collides with a route") if known_paths.include?(path)
     seen_asset_paths[path] = true
     source_path = asset.fetch("source_path")
-    fail!("static asset #{index} source is not a canonical Control UI asset") unless source_path.match?(%r{\Aapps/hepta-control-ui/assets/[a-zA-Z0-9._-]+\z})
+    fail!("static asset #{index} source is not a canonical Control UI asset") unless source_path.match?(%r{\Aapps/hepta-control-ui/(?:assets/[a-zA-Z0-9._-]+|control-ui\.js)\z})
     source = ROOT.join(source_path)
     fail!("static asset #{index} source is missing: #{source_path}") unless source.file?
     core_const = asset.fetch("core_const")
@@ -536,7 +536,12 @@ def validate_catalog!(records)
     fail!("static asset #{index} constants are invalid") unless constants.all? { |name| name.match?(/\A[A-Z][A-Z0-9_]*\z/) }
     fail!("static asset #{index} constants are duplicated") unless constants.uniq.length == constants.length && constants.none? { |name| seen_asset_constants[name] }
     constants.each { |name| seen_asset_constants[name] = true }
-    fail!("static asset #{index} content type drifted") unless asset.fetch("content_type") == "image/png"
+    expected_content_type = {
+      ".png" => "image/png",
+      ".js" => "text/javascript; charset=utf-8",
+    }[File.extname(source_path)]
+    fail!("static asset #{index} extension is unsupported") unless expected_content_type
+    fail!("static asset #{index} content type drifted") unless asset.fetch("content_type") == expected_content_type
     cache_control = asset.fetch("cache_control")
     fail!("static asset #{index} cache policy is unsafe") unless cache_control == "public, max-age=3600, must-revalidate"
     expected_sha256 = asset.fetch("sha256")
@@ -841,8 +846,9 @@ def bootstrap_static_assets
   # Migration-only seed for a legacy v1 catalog. Once upgraded, the JSONL
   # catalog owns these records and their exact digests.
   [
-    ["hepta_agent_logo", "/assets/hepta-agent-logo.png", "apps/hepta-control-ui/assets/hepta-agent-logo.png", "CONTROL_UI_HEPTA_AGENT_LOGO_PNG"],
-  ].map do |key, path, source_path, core_const|
+    ["hepta_agent_logo", "/assets/hepta-agent-logo.png", "apps/hepta-control-ui/assets/hepta-agent-logo.png", "CONTROL_UI_HEPTA_AGENT_LOGO_PNG", "image/png"],
+    ["control_ui_js", "/control-ui.js", "apps/hepta-control-ui/control-ui.js", "CONTROL_UI_JS", "text/javascript; charset=utf-8"],
+  ].map do |key, path, source_path, core_const, content_type|
     {
       "kind" => "static_asset",
       "key" => key,
@@ -850,7 +856,7 @@ def bootstrap_static_assets
       "source_path" => source_path,
       "core_const" => core_const,
       "sha256_const" => "#{core_const}_SHA256",
-      "content_type" => "image/png",
+      "content_type" => content_type,
       "cache_control" => "public, max-age=3600, must-revalidate",
       "sha256" => Digest::SHA256.file(ROOT.join(source_path)).hexdigest,
     }

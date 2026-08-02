@@ -47,7 +47,7 @@ for marker in "${required_html[@]}"; do
   }
 done
 
-grep -Fq 'data-thread-signature="rust-no-js-static:4"' "$index_html" || {
+grep -Fq 'data-thread-signature="rust-static-progressive:5"' "$index_html" || {
   print -u2 'Architecture V2 diagnostic did not advance the static thread signature'
   exit 1
 }
@@ -83,8 +83,13 @@ if (( readback_count != 3 )); then
   print -u2 "Architecture V2 diagnostic expected 3 read-only sources, found $readback_count"
   exit 1
 fi
-if grep -Fqi '<script' "$index_html"; then
-  print -u2 'Architecture V2 diagnostic must preserve the no-JS frontend'
+if ! grep -Fq '<script defer src="./control-ui.js"></script>' "$index_html"; then
+  print -u2 'Architecture V2 diagnostic is missing the governed progressive enhancement asset'
+  exit 1
+fi
+script_count=$(grep -Foc '<script' "$index_html" | tr -d ' ')
+if (( script_count != 1 )) || grep -Fq '<script>' "$index_html"; then
+  print -u2 'Architecture V2 diagnostic must preserve exactly one external script and no inline script'
   exit 1
 fi
 

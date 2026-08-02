@@ -1,7 +1,9 @@
 use serde::Serialize;
 
 /// Canonical Control UI document. Rust embeds and serves this exact snapshot;
-/// there is no second renderer-owned HTML body.
+/// there is no second renderer-owned HTML body. A bounded same-origin script
+/// progressively enhances read-only inspection while anchors remain usable
+/// without JavaScript.
 pub const CONTROL_UI_INDEX_HTML: &str = include_str!("../../../apps/hepta-control-ui/index.html");
 pub const CONTROL_UI_STYLES_CSS: &str = concat!(
     include_str!("../../../apps/hepta-control-ui/light-glass-tokens.generated.css"),
@@ -365,11 +367,15 @@ applyControlUiHostileFixture
 data-task-result-drawer-action
 data-task-result-drawer-actions="product"
 HEPTA_UI
-rust-no-js-frontend
+rust-static-progressive-frontend
 hepta-core::control_ui
 data-rust-frontend-renderer
-data-js-artifacts="removed"
-data-no-js-frontend="true"
+data-js-artifacts="external-read-only"
+data-no-js-fallback="navigation"
+data-progressive-enhancement="same-origin-read-only"
+/control-ui.js
+/api/operator-snapshot
+control-ui-readonly-registry-count
 data-control-ui-runtime-rail="local-review-safety-evidence"
 data-control-ui-secondary-nav="collapsed"
 data-control-ui-composer-product-first="true"
@@ -974,6 +980,7 @@ pub fn control_ui_report() -> ControlUiReport {
     let renderer_contract_aligned = same_unique_ids(&declared_screen_ids, &app_screen_ids)
         && same_unique_ids(&declared_command_ids, &app_command_ids);
     let rust_frontend_html = control_ui_index_html();
+    let progressive_javascript = std::str::from_utf8(CONTROL_UI_JS).unwrap_or_default();
     let local_preview_ready = screen_coverage_percent == 100
         && asset_coverage_percent == 100
         && developer_interaction_percent == 100
@@ -981,11 +988,16 @@ pub fn control_ui_report() -> ControlUiReport {
         && renderer_contract_aligned
         && rust_frontend_html.contains("Hepta Control UI")
         && rust_frontend_html.contains("data-rust-frontend-renderer")
-        && rust_frontend_html.contains("data-no-js-frontend=\"true\"")
-        && rust_frontend_html.contains("data-js-artifacts=\"removed\"")
+        && rust_frontend_html.contains("data-no-js-fallback=\"navigation\"")
+        && rust_frontend_html.contains("data-progressive-enhancement=\"same-origin-read-only\"")
+        && rust_frontend_html.contains("data-js-artifacts=\"external-read-only\"")
         && rust_frontend_html.contains("hepta-core::control_ui")
-        && !rust_frontend_html.contains("<script")
-        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("rust-no-js-frontend");
+        && rust_frontend_html.contains("<script defer src=\"./control-ui.js\"></script>")
+        && !rust_frontend_html.contains("<script>")
+        && progressive_javascript.contains("/api/operator-snapshot")
+        && progressive_javascript.contains("READ_ONLY_ROUTES")
+        && !progressive_javascript.contains("innerHTML")
+        && CONTROL_UI_RUST_RENDERER_MARKERS.contains("rust-static-progressive-frontend");
     let frontend_manifest = control_ui_frontend_manifest();
     let rust_frontend_ownership = control_ui_rust_frontend_ownership(&assets, &frontend_manifest);
     let static_contract_percent = [
@@ -1597,12 +1609,12 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
     ];
     let p4_checks = [
         CONTROL_UI_QUALITY_SMOKE_MJS.contains("Hepta Control UI quality smoke passed"),
-        CONTROL_UI_SMOKE_SH.contains("Rust/no-JS contract smoke"),
+        CONTROL_UI_SMOKE_SH.contains("Rust-embedded progressive-enhancement contract smoke"),
         CONTROL_UI_QUALITY_SMOKE_MJS.contains("styles.css budget exceeded"),
         CONTROL_UI_QUALITY_SMOKE_MJS.contains("README budget exceeded"),
         CONTROL_UI_QUALITY_SMOKE_MJS.contains("HEPTA_CHAT_BOUNDARY"),
         CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
-        CONTROL_UI_README.contains("Rust/no-JS contract smoke"),
+        CONTROL_UI_README.contains("Rust-embedded progressive-enhancement contract smoke"),
         CONTROL_UI_RUST_RENDERER_MARKERS.len() < 327_000,
         CONTROL_UI_STYLES_CSS.len() < CONTROL_UI_UNIFIED_LANE_STYLES_CSS_BUDGET_BYTES,
         !CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.alert("),
@@ -1790,7 +1802,7 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         CONTROL_UI_HARDENING_SMOKE_MJS.contains("real module split should export module registry"),
         CONTROL_UI_HARDENING_SMOKE_MJS.contains("modules.controlUiModules"),
         CONTROL_UI_P0_P21_HARDENING_DOC.contains("P19: real module split"),
-        CONTROL_UI_MODULE_BOUNDARIES_README.contains("single-file static delivery"),
+        CONTROL_UI_MODULE_BOUNDARIES_README.contains("static-first delivery rule"),
         CONTROL_UI_README.contains("apps/hepta-control-ui/modules"),
     ];
     let p20_checks = [
@@ -1819,8 +1831,9 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         CONTROL_UI_README.contains("not a hosted SaaS"),
     ];
     let p22_checks = [
-        CONTROL_UI_INDEX_HTML.contains("data-no-js-frontend=\"true\"")
-            && !CONTROL_UI_INDEX_HTML.contains("<script"),
+        CONTROL_UI_INDEX_HTML.contains("data-no-js-fallback=\"navigation\"")
+            && CONTROL_UI_INDEX_HTML.contains("<script defer src=\"./control-ui.js\"></script>")
+            && !CONTROL_UI_INDEX_HTML.contains("<script>"),
         CONTROL_UI_MODULE_INDEX_JS.contains("window.__HEPTA_UI_MODULE_REGISTRY"),
         CONTROL_UI_MODULE_INDEX_JS.contains("controlUiModules"),
         CONTROL_UI_BUILD_SMOKE_MJS.contains("Hepta Control UI build split smoke passed"),
@@ -2355,7 +2368,7 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
     }
 }
 
-/// Return the canonical zero-JavaScript Control UI snapshot embedded from
+/// Return the canonical static Control UI snapshot embedded from
 /// `apps/hepta-control-ui/index.html`.
 ///
 /// The gateway and direct-file preview intentionally consume the same bytes;
@@ -2381,6 +2394,11 @@ pub fn control_ui_assets() -> Vec<ControlUiAsset> {
             "apps/hepta-control-ui/assets/hepta-agent-logo.png",
             "image/png",
             CONTROL_UI_HEPTA_AGENT_LOGO_PNG,
+        ),
+        asset_bytes(
+            "apps/hepta-control-ui/control-ui.js",
+            "text/javascript",
+            CONTROL_UI_JS,
         ),
         asset("apps/hepta-control-ui/README.md", "docs", CONTROL_UI_README),
     ]
@@ -3020,7 +3038,7 @@ pub fn control_ui_rust_frontend_ownership(
         status: if rust_embedded_static_asset_coverage_percent == 100
             && frontend_manifest.rust_view_model_ready
         {
-            "rust-embedded-no-js-frontend"
+            "rust-embedded-progressive-frontend"
         } else {
             "incomplete"
         },
@@ -3029,9 +3047,9 @@ pub fn control_ui_rust_frontend_ownership(
         rust_embedded_static_asset_coverage_percent,
         rust_view_model_ready: frontend_manifest.rust_view_model_ready,
         rust_view_model_source: frontend_manifest.source,
-        browser_renderer_language: "html-css-rust-embedded",
-        pure_browser_rust_runtime: true,
-        boundary: "apps/hepta-control-ui/index.html is the single authoritative HTML snapshot; Rust embeds and serves it with the read-only view-model report, and no browser-side JavaScript artifacts are served.",
+        browser_renderer_language: "html-css-javascript-rust-embedded",
+        pure_browser_rust_runtime: false,
+        boundary: "apps/hepta-control-ui/index.html is the single authoritative HTML snapshot; Rust embeds it and the digest-bound /control-ui.js asset, which only performs allowlisted same-origin GET inspection and local copy/search enhancement. Navigation remains usable without JavaScript.",
     }
 }
 
@@ -3567,7 +3585,7 @@ fn control_ui_evidence_coverage(
         coverage_percent: static_contract_percent,
         verified: static_contract_verified,
         evidence_ref: Some(
-            "hepta-core::control_ui static marker, asset, schema, and no-JS render contract",
+            "hepta-core::control_ui static marker, asset, schema, no-JavaScript navigation fallback, and bounded same-origin read-only enhancement contract",
         ),
     };
     let unit_state = unevidenced_control_ui_layer();
@@ -3717,7 +3735,7 @@ mod tests {
         assert_eq!(report.screen_count, 26);
         assert_eq!(report.implemented_screen_count, 26);
         assert_eq!(report.screen_coverage_percent, 100);
-        assert_eq!(report.asset_count, 4);
+        assert_eq!(report.asset_count, 5);
         assert_eq!(report.asset_coverage_percent, 100);
         assert_eq!(report.command_binding_count, 51);
         assert!(same_unique_ids(
@@ -3812,10 +3830,10 @@ mod tests {
         );
         assert_eq!(
             report.rust_frontend_ownership.status,
-            "rust-embedded-no-js-frontend"
+            "rust-embedded-progressive-frontend"
         );
         assert!(report.rust_frontend_ownership.rust_view_model_ready);
-        assert!(report.rust_frontend_ownership.pure_browser_rust_runtime);
+        assert!(!report.rust_frontend_ownership.pure_browser_rust_runtime);
         assert_eq!(rust_frontend_html, CONTROL_UI_INDEX_HTML);
         assert_eq!(report.frontend_manifest.primary_nav[0], "chat");
         assert!(
@@ -3864,7 +3882,8 @@ mod tests {
         }
         assert!(!rust_frontend_html.contains("class=\"hepta-product-path\""));
         assert!(!rust_frontend_html.contains("Ask / Plan / Evidence / Approve"));
-        assert!(!rust_frontend_html.contains("<script"));
+        assert!(rust_frontend_html.contains("<script defer src=\"./control-ui.js\"></script>"));
+        assert!(!rust_frontend_html.contains("<script>"));
         assert!(
             rust_frontend_html.find("telegram-chat-shell").unwrap()
                 < rust_frontend_html.find("evidence-panel").unwrap()
@@ -3882,7 +3901,7 @@ mod tests {
         ] {
             assert!(
                 rust_frontend_html.contains(nav_marker),
-                "missing no-JS nav href: {nav_marker}"
+                "missing no-JavaScript fallback nav href: {nav_marker}"
             );
         }
         assert!(

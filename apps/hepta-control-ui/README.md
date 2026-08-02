@@ -5,7 +5,7 @@ live-adapter completion are not claimed.
 
 ## Overview
 
-Hepta Control UI is a dependency-free, static-first local frontend for Hepta's Rust-native operator surface. It ships with a smoke-checked P0-P39 convergence ledger, including the prior P0-P21 convergence ledger and P0-P29 convergence ledger, Rust/no-JS contract smoke, browser screenshot regression, perceptual visual diff baseline, a11y/chaos/schema gates, golden/hostile fixtures, productized result drawer gates, and release walkthrough gates. Retired Node VM smoke labels remain only as historical markers; the served UI has no browser JavaScript or ESM modules.
+Hepta Control UI is a dependency-free, static-first local frontend for Hepta's Rust-native operator surface. It ships with a smoke-checked P0-P39 convergence ledger, including the prior P0-P21 convergence ledger and P0-P29 convergence ledger, Rust-embedded progressive-enhancement contract smoke, browser screenshot regression, perceptual visual diff baseline, a11y/chaos/schema gates, golden/hostile fixtures, productized result drawer gates, and release walkthrough gates. A small external script adds only same-origin, read-only inspection plus local copy/search behavior; anchors remain the no-JavaScript navigation fallback.
 
 ## Interaction model
 
@@ -19,9 +19,9 @@ Hepta Control UI is a dependency-free, static-first local frontend for Hepta's R
 - Read-only V2 trace fails closed; authority, live, and production state stay unverified.
 - Shared Global Brain / isolated Workspace Context boundary.
 - Workspace Room for members, tasks, artifact previews, room activity, orchestration, and dry-run task actions.
-- Hepta runtime control-plane bridge inside the Workspace Room: status, sessions, tasks, approvals, events/logs, and runtime modules are represented by the Rust-served static snapshot without browser JavaScript.
+- Hepta runtime control-plane bridge inside the Workspace Room: status, sessions, tasks, approvals, events/logs, and runtime modules are represented by the Rust-served snapshot; only the fixed read-only registry is hydrated in-browser.
 - Runtime alignment maps sessions, agents, tasks/subagents/ACP, approvals, nodes, channels, cron, logs, skills, config, provider auth/media, and mobile WebChat into Hepta routes and safety boundaries.
-- OpenClaw 2026.5.12 polish is represented as no-JS Rust markers for auto-scroll, recovery, session badges, active-tab Nodes polling, live-adapter wording, and terminal QR guards.
+- Historical OpenClaw 2026.5.12 polish remains represented by Rust/static markers; the active enhancement intentionally implements only the current 21-route read-only registry, operator snapshot hydration, copy, and local search.
 - Exec approvals mirror gateway/node target, per-agent scope, ask/security mode, allowlist diff, redacted snapshot hash, role guard, and human-gated apply bridge as dry-run evidence.
 - Scoped POST task/evidence/replay/promotion/handoff paths are preferred; legacy GET task detail endpoints are internal/raw diagnostics only.
 - Mobile layers: Chats → Thread → Room.
@@ -32,11 +32,12 @@ Hepta Control UI is a dependency-free, static-first local frontend for Hepta's R
 
 ## Safety model
 
-- Local-first HTML/CSS snapshot embedded and served by the Hepta Rust binary.
+- Local-first HTML/CSS snapshot and digest-bound `/control-ui.js` asset embedded and served by the Hepta Rust binary.
+- The external script uses a strict 21-route canonical GET registry, same-origin enforcement, `Accept: application/json`, an abort timeout, bounded JSON parsing, and `textContent` rendering. It never calls a mutation endpoint.
 - No hosted SaaS identity, public ingress, or external provider execution claim.
 - Mutation surfaces require explicit confirmation or dry-run review.
 - Apply/rollback stays plan-first and copy-only unless the operator executes reviewed commands outside the UI.
-- Browser-side JS artifacts are removed; legacy JavaScript endpoints are not served.
+- Inline script, dynamic code execution, cross-origin fetch, and unregistered endpoint construction are prohibited. Without JavaScript, hash-anchor navigation and copy-ready command text remain available.
 
 ## Gates
 
@@ -48,30 +49,13 @@ HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo test --manifest-path codex-rs/Cargo.toml
 ./scripts/hepta-ui-product-readiness-gate.sh
 ```
 
-Main smoke covers contract, Rust/no-JS assets, quality, browser route safety, release, maturity, hardening, build split parity, cross-browser readiness, schema, soak/leak, a11y, productization, golden/hostile fixtures, product result drawer markers, JSON summary, server checks, `telegram-chat-shell`, work/runtime rail/composer markers, compact narrow/mobile markers, product-copy guards, and Chrome desktop/narrow/mobile screenshots.
+Main smoke covers the Rust-embedded static assets and progressive-enhancement contract, all 21 allowlisted GET interactions, zero cross-origin browser requests, browser route safety, release, maturity, hardening, build split parity, cross-browser readiness, schema, soak/leak, a11y, productization, golden/hostile fixtures, product result drawer markers, JSON summary, server checks, `telegram-chat-shell`, work/runtime rail/composer markers, compact narrow/mobile markers, product-copy guards, and Chrome desktop/narrow/mobile screenshots.
 
-The combined product readiness gate wraps Control UI browser screenshots, Native
-fixture screenshots, and Native packaging metadata. It emits
-`ui_product_readiness_gate_ready=true` plus `readiness.json`,
-`static-contract.json`, `artifact-summary.json`, `native-base-gap-drilldown.json`,
-`native-base-gap-work-queue.json`, `native-base-gap-backend-handoff.json`,
-`screenshot-manifest.json`, and
-`native-packaging-gate.json` with key artifact paths, viewports, bytes, hashes,
-12/12 Native base-gap drilldown state, per-gap acceptance criteria,
-priority-ordered UI contract-ready backend next slices, backend contract handoff,
-locked side-effect boundaries, packaging readiness, logs, and an opt-in true
-Makepad window smoke report. Set
-`HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SMOKE=1` to collect real
-desktop/mobile Makepad screenshots in the combined artifact; the default gate
-remains deterministic and does not require an unlocked macOS desktop.
-When collecting unattended evidence on a locked or permission-blocked desktop,
-pair it with `HEPTA_UI_PRODUCT_READINESS_ALLOW_NATIVE_WINDOW_BLOCKED=1` so the
-artifact records the local blocker without claiming true-window screenshots
-passed.
+The combined product-readiness gate emits source-bound JSON, screenshot, Native fixture, and packaging evidence. True Makepad-window capture remains opt-in through `HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SMOKE=1`; a locked or permission-blocked desktop must be recorded as blocked rather than promoted as passing.
 
 ## Architecture notes
 
-`index.html` is the sole zero-JavaScript HTML snapshot. `hepta-core::control_ui` embeds its exact bytes and serves them at `/` and `/index.html`; no second HTML body exists. `/styles.css` serves styles, `/assets/hepta-agent-logo.png` the only binary image, and `/gateway-status` the gateway page. Retired browser modules keep only a boundary ledger under `apps/hepta-control-ui/modules/`:
+`index.html` is the sole HTML snapshot. `hepta-core::control_ui` embeds its exact bytes and serves them at `/` and `/index.html`; no second HTML body exists. `/control-ui.js` is the sole executable browser asset and is separately digest-bound in the route catalog. `/styles.css` serves styles, `/assets/hepta-agent-logo.png` serves the bundled image, and `/gateway-status` serves the gateway page. Retired browser modules keep only a boundary ledger under `apps/hepta-control-ui/modules/`:
 
 - chat-state
 - chat-render

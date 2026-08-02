@@ -806,7 +806,8 @@ fn control_ui_root_serves_rust_rendered_shell_and_assets() {
     assert_eq!(body, hepta_core::control_ui::CONTROL_UI_INDEX_HTML);
     assert!(body.contains("data-rust-frontend-renderer=\"hepta-core::control_ui\""));
     assert!(body.contains("data-control-ui-product-first=\"true\""));
-    assert!(!body.contains("<script src="));
+    assert!(body.contains("<script defer src=\"./control-ui.js\"></script>"));
+    assert!(!body.contains("<script>"));
 
     let (status, content_type, legacy_body) =
         route_native_gateway_request("GET", "/gateway-status", &options);
@@ -838,9 +839,29 @@ fn control_ui_root_serves_rust_rendered_shell_and_assets() {
     assert!(logo.body.starts_with(b"\x89PNG\r\n\x1a\n"));
     assert!(logo.body.len() > 1024);
 
+    let javascript = route_native_gateway_binary_asset("GET", "/control-ui.js")
+        .expect("Control UI JavaScript asset route");
+    assert_eq!(javascript.content_type, "text/javascript; charset=utf-8");
+    assert_eq!(
+        javascript.cache_control,
+        "public, max-age=3600, must-revalidate"
+    );
+    assert_eq!(
+        format!("{:x}", Sha256::digest(javascript.body)),
+        hepta_core::control_ui::CONTROL_UI_JS_SHA256
+    );
+    let javascript_text = std::str::from_utf8(javascript.body).expect("JavaScript UTF-8");
+    assert!(javascript_text.contains("const READ_ONLY_ROUTES = Object.freeze({"));
+    assert!(javascript_text.contains("/api/operator-snapshot"));
+    assert!(javascript_text.contains("new AbortController()"));
+    assert!(javascript_text.contains("textContent"));
+    assert!(!javascript_text.contains("innerHTML"));
+    assert!(route_manifest_entry("GET", "/control-ui.js").is_some());
+
     assert!(route_native_gateway_binary_asset("GET", "/assets/k.png").is_none());
     assert!(route_manifest_entry("GET", "/assets/k.png").is_none());
     assert!(route_native_gateway_binary_asset("POST", "/assets/hepta-agent-logo.png").is_none());
+    assert!(route_native_gateway_binary_asset("POST", "/control-ui.js").is_none());
     assert!(route_native_gateway_binary_asset("POST", "/assets/k.png").is_none());
 }
 

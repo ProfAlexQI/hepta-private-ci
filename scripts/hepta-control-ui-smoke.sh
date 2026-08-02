@@ -28,4 +28,4 @@ if [[ "${HEPTA_CONTROL_UI_SKIP_BROWSER_SMOKE:-0}" != "1" ]]; then
 fi
 
 echo "Hepta Control UI hardening smoke passed (Rust-native retired Node suite)"
-echo "Hepta Control UI Rust/no-JS contract smoke passed"
+echo "Hepta Control UI Rust-embedded progressive-enhancement contract smoke passed"
