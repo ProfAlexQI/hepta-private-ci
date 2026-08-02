@@ -2,16 +2,8 @@
 //! or long-presses on a room in the room list.
 
 use makepad_widgets::*;
-use matrix_sdk::ruma::{OwnedRoomAliasId, OwnedRoomId};
+use matrix_sdk::ruma::OwnedRoomId;
 use crate::{home::invite_modal::InviteModalAction, shared::popup_list::{PopupKind, enqueue_popup_notification}, sliding_sync::{MatrixRequest, submit_async_request}, utils::RoomNameId};
-
-pub const ROOM_CONTEXT_STATUS_CONFIRMATION_COMPACT_LABEL: &str =
-    "Room status changes run only after confirmation.";
-pub const ROOM_CONTEXT_LINK_COMPACT_LABEL: &str = "Room link uses the existing Matrix link path.";
-pub const ROOM_CONTEXT_NOTIFICATION_MODE_COMPACT_LABEL: &str =
-    "Notification mode writes run only after confirmation; timed mute stays unwired.";
-pub const ROOM_CONTEXT_NOTIFICATION_LOADED_ATTENTION_EVIDENCE: &str = "Room context notification preview reads only loaded RoomsList unread count, mention count, and manual unread state before any confirmed notification mode write. It sends no notification rule read, timed mute, global notification preference, keyword, push gateway/device, message, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const ROOM_CONTEXT_SETTINGS_LOADED_IDENTITY_EVIDENCE: &str = "Room context settings preview reads only loaded RoomsList metadata for canonical alias, alternative alias count, avatar cache state, tombstone state, and room name/id. It sends no m.room.name, m.room.topic, m.room.avatar, m.room.canonical_alias, m.room.tombstone, membership, notification rule, account/profile, gateway/runtime/auth, or live mutation request.";
 
 const BUTTON_HEIGHT: f64 = 35.0;
 const MENU_WIDTH: f64 = 215.0;
@@ -131,13 +123,6 @@ pub struct RoomContextMenuDetails {
     pub is_favorite: bool,
     pub is_low_priority: bool,
     pub is_marked_unread: bool,
-    pub num_unread_messages: u64,
-    pub num_unread_mentions: u64,
-    pub canonical_alias: Option<OwnedRoomAliasId>,
-    pub alt_aliases: Vec<OwnedRoomAliasId>,
-    pub alt_alias_count: usize,
-    pub room_avatar_loaded: bool,
-    pub is_tombstoned: bool,
 }
 
 /// Actions emitted from the RoomContextMenu widget, as they must be handled

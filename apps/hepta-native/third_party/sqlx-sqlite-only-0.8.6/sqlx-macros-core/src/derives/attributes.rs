@@ -222,7 +222,6 @@ pub fn check_transparent_attributes(
 
     Ok(attributes)
 }
-
 pub fn check_enum_attributes(input: &DeriveInput) -> syn::Result<SqlxContainerAttributes> {
     let attributes = parse_container_attributes(&input.attrs)?;
 

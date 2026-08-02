@@ -22,50 +22,6 @@ use crate::{
     utils::{self, MatchQuality},
 };
 
-pub const MENTION_PICKER_SEND_LOCAL_BOUNDARY_EVIDENCE: &str = "MentionableTextInput extracts compact @room and @user mentions from already loaded composer text and RoomScreen room_members cache. It exposes a minimal local suggestion row while the active token is an unfinished @mention: @room when power levels allow it and up to three cached-member matches from the loaded room_members cache. It also keeps a live local completed-mention pill tray after insertion: completed @room, literal Matrix user-id, loaded-member, and unmatched local @tokens are summarized as removable local pills, and clicking a pill only removes that completed token from the composer text before the existing send-time Mentions payload scan. The preview shows cached suggestion count, current selected token, loaded member identity preview, avatar MXC presence, no-match state, local tray count, or pill payload state. Clicking a suggestion, ArrowUp/ArrowDown selection plus Tab/Enter insertion, or primary Tab insertion only replaces the active @token and appends a space; after that trailing space the helper stops intercepting Enter so the existing composer send path can submit normally. The send path preserves markdown, /html, and /plain message creation, then add_mentions attaches Matrix Mentions to the existing RoomInputBar MatrixRequest::SendMessage payload for @room, literal Matrix user ids, and cached member display/localpart matches without submitting member lookup, room-state, membership, account/profile, gateway/runtime/auth, or live mutation requests. The attachment review Send path now reuses mentions_for_text from the same loaded member cache and passes AttachmentConfig.mentions alongside the caption in MatrixRequest::SendAttachment. Full popup search, rich popup highlight styling, remote member lookup, rich attachment payload editing, and edit mention payload rewrites remain unwired.";
-pub const MENTION_PICKER_SEND_LOCAL_BOUNDARY_LABEL: &str = "@mention picker: cached suggestions and completed-token pills edit composer text locally; Send attaches compact Matrix Mentions.";
-pub const MENTION_PICKER_CACHED_SUGGESTION_LABEL: &str = "Cached mention suggestions use ArrowUp/ArrowDown, Tab, Enter, or click to insert local tokens; Send attaches Matrix Mentions.";
-pub const MENTION_PICKER_CACHED_SELECTION_EVIDENCE: &str = "MentionableTextInput shows cached suggestion count, selected token, loaded member display name, Matrix user id, localpart, avatar MXC presence, and no-match state for the active @query from already loaded room_members only. This preview starts no remote member lookup, popup search, pill editor, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MENTION_PICKER_LOADED_IDENTITY_EVIDENCE: &str = "MentionableTextInput renders a selected suggestion identity preview from already loaded RoomMember data: display name availability, Matrix user id, localpart, and avatar MXC presence. The @room row reflects the already loaded power-level permission state. This preview does not query remote members, fetch avatars, open a popup search, build a pill editor, mutate membership, send room-state, touch account/profile, gateway/runtime/auth, or start live mutation.";
-pub const MENTION_PICKER_LOADED_IDENTITY_LABEL: &str = "Loaded member identity preview: display name, user id, localpart, and avatar MXC status stay local.";
-pub const MENTION_PICKER_LOCAL_CANDIDATE_ROWS_EVIDENCE: &str = "MentionableTextInput exposes local candidate rows for the active @query from @room power-level state plus up to three cached RoomMember matches. The row preview records rank, selected state, token, display name availability, Matrix user id, localpart, avatar MXC status, and cache source from already loaded room_members only. It starts no remote member lookup, server-side directory search, profile/avatar fetch, duplicate-name disambiguation, rich popup search, pill editor, attachment/edit mention payload, SendAttachment, extra SendMessage, typing notice, room-state, membership, account/profile, gateway/runtime/auth, retry automation, or live mutation request.";
-pub const MENTION_PICKER_LOCAL_CANDIDATE_ROWS_LABEL: &str = "Local candidate rows: rank, selection, token, display/user id/localpart, avatar MXC, and cache source only.";
-pub const MENTION_PICKER_LOCAL_DUPLICATE_HINTS_EVIDENCE: &str = "MentionableTextInput exposes local duplicate-name hints for the active @query by counting already loaded room_members display-name collisions inside the same cached suggestion pass. The hint reports cached candidate count, duplicate display-name group count, selected token, selected display collision count, and reminds the user that localpart and Matrix user id remain the only disambiguation clues before insertion. It starts no remote member lookup, server-side directory search, profile/avatar fetch, rich duplicate-name disambiguation UI, hover card, pill editor, attachment/edit mention payload, SendAttachment, extra SendMessage, typing notice, room-state, membership, account/profile, gateway/runtime/auth, retry automation, or live mutation request.";
-pub const MENTION_PICKER_LOCAL_DUPLICATE_HINTS_LABEL: &str =
-    "Local duplicate hints: cached display-name collisions use localpart/user-id clues only.";
-pub const MENTION_PICKER_LIFECYCLE_METADATA_EVIDENCE: &str = "MentionableTextInput lifecycle metadata reuses only the local active @query, cached suggestion count, selected token, @room power-level allowance, and already loaded room_members cache for active query, no-match, keyboard selection, Tab/Enter insertion, click insertion, and trailing-space send release states. ArrowUp/ArrowDown only changes selected_suggestion_index, Tab/Enter/click only replace the active @token and append a trailing space, and completed mentions no longer intercept Enter before the existing RoomInputBar SendMessage path. This sends no remote member lookup, profile fetch, avatar fetch, popup search, pill editor, disambiguation UI, attachment/edit mention payload request, extra SendMessage, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MENTION_PICKER_LIFECYCLE_METADATA_LABEL: &str =
-    "@mention lifecycle metadata is local; keyboard/click insertion only edits the active token.";
-pub const MENTION_PICKER_KEYBOARD_SELECTION_EVIDENCE: &str = "MentionableTextInput ArrowUp/ArrowDown selection and Tab/Enter insertion are local active-token controls. Arrow keys only update selected_suggestion_index over cached @room or already loaded RoomMember suggestions, and Tab/Enter only replace the unfinished @token plus trailing space before returning Enter to the existing RoomInputBar SendMessage path. They start no remote member lookup, server-side member directory search, profile/avatar fetch, rich popup search, pill editor, attachment/edit mention payload, extra SendMessage, typing notice, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MENTION_PICKER_KEYBOARD_SELECTION_LABEL: &str = "Mention keyboard selection: ArrowUp/ArrowDown and Tab/Enter stay local to cached active-token insertion.";
-pub const MENTION_PICKER_RICH_POPUP_BOUNDARY_EVIDENCE: &str = "MentionableTextInput keeps rich mention picker scope as boundary metadata only: the compact row is not a floating popup search, rich highlighted result list, pill editor, disambiguation UI, remote member lookup, profile/avatar fetch, attachment/edit mention payload editor, membership mutation, gateway/runtime/auth, or live mutation path. It only reports active @query, cached suggestion count, selected token or no-match state, and loaded identity from RoomScreen room_members before the existing SendMessage mention payload path.";
-pub const MENTION_PICKER_RICH_POPUP_BOUNDARY_LABEL: &str = "Rich mention popup, pill editor, and remote lookup stay unwired; compact cache row stays local.";
-pub const MENTION_PICKER_DIRECTORY_DISAMBIGUATION_BOUNDARY_EVIDENCE: &str = "MentionableTextInput directory/disambiguation boundary metadata keeps mention_picker_send UI-safe after cached room_members suggestions and send-time Matrix Mentions. Directory can now submit a read-only MatrixRequest::SearchUserDirectory request for the active @query, render client.search_users result/error metadata, and expose up to three visible directory result promotion buttons that replace only the active @token with a literal Matrix user id before the existing SendMessage add_mentions path. duplicate display-name disambiguation UI, remote profile hover cards, avatar/profile fetch beyond directory response fields, rich highlighted popup results beyond the bounded buttons, multi-select mention tray, pill editor, attachment/edit mention payload editor, room-state, membership, account/profile, gateway/runtime/auth, and live mutation remain local blocked controls. The boundary is derived only from the active @query, cached suggestion count, selected token, loaded room_members cache size, and optional user-directory result; Hover can render a local snapshot from those cached values without submitting SendAttachment, extra SendMessage, room-state, membership, gateway/runtime/auth, or live mutation request.";
-pub const MENTION_PICKER_DIRECTORY_DISAMBIGUATION_BOUNDARY_LABEL: &str = "Directory live reads Matrix user-directory metadata and can promote result rows to local @tokens; Hover can render cached local snapshots; duplicate-name disambiguation, remote profile hover-card adapters, pill editor, attachment/edit mention payloads, and live mutation stay local blocked.";
-pub const MENTION_PICKER_RICH_DIRECTORY_CONTROLS_EVIDENCE: &str = "MentionableTextInput exposes Rich, Directory, Hover, Tray, and Pills as visible controls in the compact @mention preview. Rich and Pills render a local rich mention packet snapshot from the active @query, cached suggestion count, selected token, @room power-level allowance, loaded room_members cache size, and the existing SendMessage/add_mentions handoff metadata. Directory submits MatrixRequest::SearchUserDirectory for a non-empty active @query, SlidingSync calls client.search_users, UserDirectorySearchAction::Searched repaints read-only result/error metadata, and the bounded directory result promotion row can insert a literal Matrix user id into the composer without sending. Hover renders a local hover-card snapshot from already available directory result metadata or the selected cached RoomMember/@room suggestion. Tray only updates the local rich/directory boundary label and popup copy. It starts no floating popup search, duplicate display-name disambiguation, remote profile hover card fetch, avatar/profile fetch beyond directory response fields, rich highlighted result list beyond bounded directory buttons, multi-select mention tray, pill editor mutation, attachment/edit mention payload editor, SendAttachment, extra SendMessage, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MENTION_PICKER_RICH_DIRECTORY_CONTROLS_LABEL: &str = "Directory reads Matrix user-directory metadata and can promote result rows locally; Hover renders local cached/directory hover-card snapshots; Rich, Tray, and Pills stay local mention-picker metadata actions.";
-pub const MENTION_PICKER_HOVER_CARD_SNAPSHOT_LIVE_EVIDENCE: &str = "MentionableTextInput Hover is a live local hover-card snapshot built only from already available @mention metadata. If a Matrix user-directory result is cached, Hover summarizes up to three returned rows with user id, display name availability, avatar MXC presence, result count, and limited flag. Otherwise it summarizes the selected cached RoomMember/@room suggestion from loaded room_members and power-level state. It submits no MatrixRequest::SearchUserDirectory, no profile/avatar fetch, no remote hover-card request, no duplicate-name disambiguation workflow, no rich popup search, no multi-select tray mutation, no pill editor mutation, no SendMessage, no SendAttachment, no room-state, membership, account/profile, gateway/runtime/auth, retry automation, or live mutation request.";
-pub const MENTION_PICKER_HOVER_CARD_SNAPSHOT_LIVE_LABEL: &str =
-    "Mention Hover card snapshot uses cached directory or loaded member metadata only.";
-pub const MENTION_PICKER_DIRECTORY_RESULT_PROMOTION_LIVE_EVIDENCE: &str = "MentionableTextInput renders up to three live user-directory result buttons after MatrixRequest::SearchUserDirectory returns. Clicking a directory result promotes only that result's literal Matrix user id into the active @token using the same local insert_mention_token path as cached suggestions, appends a trailing space, refreshes the completed mention pill tray, and relies on the existing SendMessage/add_mentions or attachment-caption AttachmentConfig.mentions scan later. It performs no automatic insertion on search completion, extra SendMessage, SendAttachment, profile/avatar fetch beyond directory response fields, duplicate-name disambiguation workflow, multi-select tray mutation, pill editor mutation, attachment/edit mention payload rewrite, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MENTION_PICKER_DIRECTORY_RESULT_PROMOTION_LIVE_LABEL: &str = "Directory result promotion: live directory rows can insert literal Matrix user-id @tokens locally.";
-pub const MENTION_PICKER_LOCAL_PILL_TRAY_LIVE_EVIDENCE: &str = "MentionableTextInput exposes a live local completed-mention pill tray from composer text plus already loaded room_members cache. Completed @room, literal Matrix user-id, loaded-member display/localpart matches, and unmatched local @tokens are summarized after insertion; up to three visible pills can be clicked to remove that completed token from composer text. Removal only rewrites the local TextInput, recomputes cached suggestion/tray metadata, and updates the existing send-time Mentions payload preview. It submits no remote member lookup, profile/avatar fetch, server-side directory search, duplicate-name disambiguation, SendMessage, SendAttachment, edit/reply mention payload rewrite, room-state, membership, account/profile, gateway/runtime/auth, retry automation, or live mutation request.";
-pub const MENTION_PICKER_LOCAL_PILL_TRAY_LIVE_LABEL: &str = "Mention pill tray: completed @tokens are removable local composer pills before SendMessage/add_mentions.";
-pub const MENTION_PICKER_PREFLIGHT_DETAIL_CONTROLS_EVIDENCE: &str = "MentionableTextInput exposes Request, Result, Error, Retry, and Source as visible local preflight detail controls in the compact @mention preview. Clicking any control only updates local mention preflight metadata and popup copy from the active @query, cached suggestion count, selected token, @room power-level allowance, loaded room_members cache size, and existing SendMessage/add_mentions source. It starts no remote member lookup, server-side member directory search, duplicate-name disambiguation, profile/avatar fetch, rich popup search, pill editor, attachment/edit mention payload editor, SendAttachment, extra SendMessage, typing notice, room-state, membership, account/profile, gateway/runtime/auth, retry automation, or live mutation request.";
-pub const MENTION_PICKER_PREFLIGHT_DETAIL_CONTROLS_LABEL: &str = "Mention Request/Result/Error/Retry/Source detail stays local to cached suggestions and the existing SendMessage mention payload path.";
-pub const MENTION_PICKER_SEND_PAYLOAD_METADATA_EVIDENCE: &str = "MentionableTextInput exposes send-time mention payload metadata for the existing RoomInputBar MatrixRequest::SendMessage and attachment-caption SendAttachment paths: text format, scanned @token count, deduped Matrix mention user count, literal Matrix user-id token count, cached RoomMember display/localpart match count, unmatched local token count, @room flag state, and loaded room_members cache size. The metadata is computed locally from the composer text, @room power-level allowance, and already loaded room_members cache before add_mentions attaches Matrix Mentions once for text sends or mentions_for_text provides AttachmentConfig.mentions for captioned media sends. It performs no remote member lookup, profile/avatar fetch, popup search, rich popup highlight styling, pill editor, disambiguation UI, rich attachment payload editor, edit mention payload request, extra SendMessage, extra SendAttachment, typing notice, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MENTION_PICKER_SEND_PAYLOAD_METADATA_LABEL: &str =
-    "@mention send payload metadata: local token scan and loaded member-cache counts only.";
-pub const MENTION_PICKER_PAYLOAD_SCOPE_CONTROLS_EVIDENCE: &str = "MentionableTextInput exposes Send, Attach, Edit, Reply, Source, Packet, Contract, and Taxonomy as visible local payload-scope controls in the compact @mention preview. Clicking any control only updates local payload-scope metadata and popup copy from the active @query, cached suggestion count, selected token, loaded room_members cache size, @room allowance, existing SendMessage/add_mentions source, and attachment-caption AttachmentConfig.mentions source. Packet persists the drilldown acceptance matrix; Contract maps it to typed rich-picker, directory, and Send/Attach/Edit/Reply payload contract slots; Taxonomy records remote hover/profile/disambiguation/edit-reply result slots as not-assigned or not-wired. It starts no rich attachment mention payload editor, edit-message mention payload rewrite, reply mention rewriting, remote member lookup, server-side member directory search beyond explicit Directory, profile/avatar fetch, remote hover-card fetch, rich popup search, pill editor, extra SendAttachment beyond the review-row handoff, extra SendMessage, typing notice, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const MENTION_PICKER_PAYLOAD_SCOPE_CONTROLS_LABEL: &str = "Mention Send/Attach/Edit/Reply/Source/Packet/Contract/Taxonomy scope: Send and attachment captions are live compact payloads; typed mention payload contract still gates rich/edit scopes.";
-pub const MENTION_PICKER_PAYLOAD_DRILLDOWN_PACKET_EVIDENCE: &str = "MentionableTextInput exposes a visible Packet control that persists the mention payload drilldown acceptance matrix as local metadata while mention_picker_send remains a base gap. The packet combines rich picker, server directory, duplicate-name disambiguation, hover-card, tray, pills, SendMessage/add_mentions, attachment-caption AttachmentConfig.mentions, rich attachment/edit/reply payload scopes, and Request/Result/Error/Retry/Source preflight acceptance criteria from the active @query, cached suggestion count, selected token, loaded room_members cache size, and @room allowance. It starts no remote member lookup, server-side member directory search, duplicate-name disambiguation, profile/avatar fetch, rich popup search, hover-card fetch, pill editor mutation, rich attachment/edit/reply mention payload rewrite, extra SendAttachment beyond the review-row handoff, extra SendMessage, typing notice, room-state, membership, account/profile, gateway/runtime/auth, retry automation, or live mutation request.";
-pub const MENTION_PICKER_PAYLOAD_DRILLDOWN_PACKET_LABEL: &str = "Mention payload drilldown packet: rich picker, directory, preflight, and Send/Attach/Edit/Reply payload-scope acceptance criteria stay local until typed mention contracts exist.";
-pub const MENTION_PICKER_PAYLOAD_TYPED_CONTRACT_PACKET_EVIDENCE: &str = "MentionableTextInput exposes a visible Contract control that maps the mention payload drilldown Packet to typed mention contract slots while mention_picker_send remains a base gap. The contract covers rich picker request/result/error/retry/source, server-directory lookup, duplicate-name disambiguation, hover-card source, tray state, pill draft, SendMessage/add_mentions handoff, attachment-caption AttachmentConfig.mentions handoff, rich attachment/edit/reply payload scopes, source-hash, stale-token handling, idempotency, and promotion blockers from the active @query, cached suggestion count, selected token, loaded room_members cache size, and @room allowance. It starts no remote member lookup, server-side member directory search, duplicate-name disambiguation, profile/avatar fetch, hover-card fetch, rich popup search, pill editor mutation, rich attachment/edit/reply mention payload rewrite, extra SendAttachment beyond the review-row handoff, extra SendMessage, typing notice, room-state, membership, account/profile, gateway/runtime/auth, retry automation, or live mutation request.";
-pub const MENTION_PICKER_PAYLOAD_TYPED_CONTRACT_PACKET_LABEL: &str = "Mention Contract maps Packet to typed rich-picker, directory, and Send/Attach/Edit/Reply payload contracts locally.";
-pub const MENTION_PICKER_REMOTE_RESULT_TAXONOMY_PACKET_EVIDENCE: &str = "MentionableTextInput exposes a visible Taxonomy control that records remote hover/profile/disambiguation/edit-reply mention result slots as local metadata while mention_picker_send remains a base gap. The packet names the current live references as SendMessage/add_mentions, attachment-caption AttachmentConfig.mentions, read-only MatrixRequest::SearchUserDirectory/client.search_users, bounded directory result promotion to literal Matrix user-id tokens, local hover-card snapshots from cached directory or loaded member metadata, local completed-token pill tray removal, local rich packet snapshots, and local Packet/Contract metadata. Remote rich picker result promotion, richer directory result rendering, duplicate-name disambiguation, remote hover-card/profile fetch, avatar/profile fetch beyond directory response fields, rich attachment editors, edit/reply mention payload rewrites, multi-select tray, pill editor mutation, retry/cancel automation, source-hash reconciliation, and audit redaction remain not-assigned or not-wired. It performs no remote member lookup beyond explicit Directory, no profile/avatar fetch, no remote hover-card request, no duplicate-name disambiguation workflow, no rich popup search, no attachment/edit/reply mention payload rewrite, no extra SendMessage, no extra SendAttachment, no typing notice, no room-state, membership, account/profile, gateway/runtime/auth/provider, Telegram delivery, or live mutation request.";
-pub const MENTION_PICKER_REMOTE_RESULT_TAXONOMY_PACKET_LABEL: &str = "Mention Taxonomy records remote hover/profile/disambiguation/edit-reply result slots as local not-wired metadata.";
-const MAX_CACHED_MEMBER_SUGGESTIONS: usize = 3;
-
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
@@ -79,14 +35,6 @@ script_mod! {
             is_multiline: true,
         }
     }
-}
-
-#[derive(Debug)]
-pub enum MentionableTextInputAction {
-    PowerLevelsUpdated {
-        room_id: OwnedRoomId,
-        can_notify_room: bool,
-    },
 }
 
 #[derive(Script, ScriptHook, Widget)]
@@ -182,20 +130,6 @@ impl Widget for MentionableTextInput {
 
         if let Event::Actions(actions) = event {
             for action in actions {
-                if let Some(MentionableTextInputAction::PowerLevelsUpdated {
-                    room_id,
-                    can_notify_room,
-                }) = action.downcast_ref()
-                {
-                    if self.room_id.as_ref() == Some(room_id)
-                        && self.can_notify_room != *can_notify_room
-                    {
-                        self.can_notify_room = *can_notify_room;
-                        if self.active_trigger.is_some_and(|t| t.kind == TriggerKind::User) {
-                            self.refresh_popup(cx);
-                        }
-                    }
-                }
                 // Handle updated matches for the current query, but only if it's ours.
                 if let Some(results) = action.downcast_ref::<MentionMatches>() {
                     if results.owner == uid && results.request_id == self.request_id {
@@ -488,52 +422,6 @@ impl MentionableTextInputRef {
     /// Returns the mentions whose links still exist in the given `text`.
     pub fn get_mentions_in(&self, text: &str) -> Mentions {
         self.borrow().map_or_else(Mentions::new, |inner| inner.real_mentions_in_markdown(text))
-    }
-
-    /// Refreshes the popup's local member cache without performing a remote lookup.
-    pub fn update_cached_member_suggestions(
-        &self,
-        cx: &mut Cx,
-        room_members: Option<&[RoomMember]>,
-    ) {
-        let Some(mut inner) = self.borrow_mut() else {
-            return;
-        };
-        inner.room_members = room_members.map(|members| Arc::new(members.to_vec()));
-        if inner.active_trigger.is_some_and(|trigger| trigger.kind == TriggerKind::User) {
-            inner.refresh_popup(cx);
-        }
-    }
-
-    /// Returns the already-selected local mention payload for text or attachment captions.
-    pub fn mentions_for_text(
-        &self,
-        entered_text: &str,
-        _room_members: Option<&[RoomMember]>,
-    ) -> Option<Mentions> {
-        let mentions = self.get_mentions_in(entered_text);
-        (!mentions.user_ids.is_empty() || mentions.room).then_some(mentions)
-    }
-
-    /// Summarizes the local send-time mention payload without issuing any Matrix request.
-    pub fn send_payload_metadata_label(
-        &self,
-        entered_text: &str,
-        room_members: Option<&[RoomMember]>,
-    ) -> String {
-        let mentions = self.mentions_for_text(entered_text, room_members);
-        let user_count = mentions
-            .as_ref()
-            .map_or(0, |mentions| mentions.user_ids.len());
-        let room_flag = mentions.as_ref().is_some_and(|mentions| mentions.room);
-        let token_count = entered_text
-            .split_whitespace()
-            .filter(|token| token.starts_with('@'))
-            .count();
-        format!(
-            "Mention send payload metadata: scanned @tokens {token_count}; Matrix mention users {user_count}; @room flag {room_flag}; loaded room_members {}.",
-            room_members.map_or(0, <[RoomMember]>::len),
-        )
     }
 }
 

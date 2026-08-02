@@ -8,45 +8,7 @@ use matrix_sdk::{
 };
 use matrix_sdk::reqwest::StatusCode;
 
-use crate::{
-    home::room_screen::TimelineUpdate,
-    media_cache::{error_to_media_cache_entry, MediaCacheEntry},
-    shared::image_viewer::ImageViewerError,
-    sliding_sync::{submit_async_request, MatrixRequest},
-};
-
-/// Populates the modal from the timeline media cache after a full-size fetch.
-pub fn populate_matrix_image_modal(
-    cx: &mut Cx,
-    media_source: MediaSource,
-    media_cache: &mut crate::media_cache::MediaCache,
-) {
-    let MediaSource::Plain(mxc_uri) = media_source else {
-        return;
-    };
-    let source = MediaSource::Plain(mxc_uri.clone());
-    match media_cache.try_get_media_or_fetch(&source, MediaFormat::File) {
-        (MediaCacheEntry::Loaded(data), MediaFormat::File) => {
-            cx.action(crate::shared::image_viewer::ImageViewerAction::Show(
-                crate::shared::image_viewer::LoadState::Loaded(data),
-            ));
-        }
-        (MediaCacheEntry::Failed(status_code), MediaFormat::File) => {
-            let error = match status_code {
-                StatusCode::NOT_FOUND => ImageViewerError::NotFound,
-                StatusCode::INTERNAL_SERVER_ERROR => ImageViewerError::ConnectionFailed,
-                StatusCode::PARTIAL_CONTENT => ImageViewerError::BadData,
-                StatusCode::UNAUTHORIZED => ImageViewerError::Unauthorized,
-                _ => ImageViewerError::Unknown,
-            };
-            cx.action(crate::shared::image_viewer::ImageViewerAction::Show(
-                crate::shared::image_viewer::LoadState::Error(error),
-            ));
-            media_cache.remove(&mxc_uri);
-        }
-        _ => {}
-    }
-}
+use crate::{home::room_screen::TimelineUpdate, media_cache::{error_to_media_cache_entry, MediaCacheEntry}, shared::image_viewer::ImageViewerError, sliding_sync::{submit_async_request, MatrixRequest}};
 
 /// Fetches the full-size image for the image viewer.
 ///
@@ -70,9 +32,7 @@ pub fn get_image_name_and_filesize(event_tl_item: &EventTimelineItem) -> (String
     if let Some(message) = event_tl_item.content().as_message() {
         if let MessageType::Image(image_content) = message.msgtype() {
             let name = image_content.filename().to_string();
-            let size = image_content
-                .info
-                .as_ref()
+            let size = image_content.info.as_ref()
                 .and_then(|info| info.size)
                 .map_or(0, u64::from);
             return (name, size);
@@ -96,15 +56,15 @@ fn show_fetched_image_in_viewer(
 ) {
     let action = match data {
         Ok(data) => ImageViewerFetchAction::Loaded(data.into()),
-        Err(e) => ImageViewerFetchAction::Failed(match error_to_media_cache_entry(e, &request) {
-            MediaCacheEntry::Failed(StatusCode::NOT_FOUND) => ImageViewerError::NotFound,
-            MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR) => {
-                ImageViewerError::ConnectionFailed
+        Err(e) => ImageViewerFetchAction::Failed(
+            match error_to_media_cache_entry(e, &request) {
+                MediaCacheEntry::Failed(StatusCode::NOT_FOUND) => ImageViewerError::NotFound,
+                MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR) => ImageViewerError::ConnectionFailed,
+                MediaCacheEntry::Failed(StatusCode::PARTIAL_CONTENT) => ImageViewerError::BadData,
+                MediaCacheEntry::Failed(StatusCode::UNAUTHORIZED) => ImageViewerError::Unauthorized,
+                _ => ImageViewerError::Unknown,
             }
-            MediaCacheEntry::Failed(StatusCode::PARTIAL_CONTENT) => ImageViewerError::BadData,
-            MediaCacheEntry::Failed(StatusCode::UNAUTHORIZED) => ImageViewerError::Unauthorized,
-            _ => ImageViewerError::Unknown,
-        }),
+        ),
     };
     Cx::post_action(action);
 }

@@ -483,15 +483,6 @@ pub struct AvatarImage {
     pub uri: OwnedMxcUri,
     pub data: Arc<[u8]>,
 }
-impl AvatarImage {
-    pub fn data(&self) -> &Arc<[u8]> {
-        &self.data
-    }
-
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-}
 impl<U, D> From<(U, D)> for AvatarImage
 where
     U: Into<OwnedMxcUri>,
@@ -531,11 +522,6 @@ impl std::fmt::Debug for AvatarState {
     }
 }
 impl AvatarState {
-    /// Returns the fetched avatar bytes, if this state is loaded.
-    pub fn data(&self) -> Option<&Arc<[u8]>> {
-        self.image().map(AvatarImage::data)
-    }
-
     /// Tries to update this `AvatarState` if it has a known avatar URI
     /// by loading the avatar from the cache.
     ///

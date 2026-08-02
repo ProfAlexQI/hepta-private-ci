@@ -241,7 +241,6 @@ fn expand_derive_from_row_struct(
         }
     ))
 }
-
 fn expand_derive_from_row_struct_unnamed(
     input: &DeriveInput,
     fields: &Punctuated<Field, Comma>,

@@ -20,10 +20,13 @@ resets, commits, pushes, or changes the worktree.
 
 ## Active downstream patches
 
-At raw-import commit `7ac362f9690aa870591f4edcf533934af18921cb`, there
-were no content changes to the 232 imported upstream files. New rows must be
-added here as overlays land; a row documents provenance but does not itself
-prove correctness or readiness.
+The immutable, byte-exact raw snapshot is
+`7ac362f9690aa870591f4edcf533934af18921cb`. It is a provenance object, not an
+active readiness implementation. The import in the current branch lineage is
+`a9cf73726c892cec5e3fae12792f8b98ba93ea58`; every difference between the
+locked manifest and the current tree is governed below, including files that
+already differed at that lineage import. A row documents provenance but does
+not itself prove correctness or readiness.
 
 <!-- DOWNSTREAM_PATCHES_V1_BEGIN -->
 | Local path or glob | Class | Purpose | Required verification |
@@ -31,6 +34,12 @@ prove correctness or readiness.
 | `.cargo/config.toml` | product identity | Set the stable cross-platform Hepta application identifier without changing Makepad's platform model. | `cargo check --locked`; package metadata audit |
 | `Cargo.toml` | dependency and packaging policy | Keep the complete Robrix dependency graph, pin upstream Git revisions, add the narrow bridge/keyring dependencies and features, and declare Hepta package metadata. | `cargo check --locked`; dependency pin and package metadata audit |
 | `Cargo.lock` | dependency policy | Freeze the exact dependency graph used by the downstream Native build. | `cargo check --locked`; lockfile source/revision audit |
+| `rust-toolchain.toml` | reproducible toolchain | Pin the Native toolchain to Rust 1.95.0 instead of a moving `stable` channel. | feature-matrix gate; `rustc --version` receipt |
+| `deny.toml` | dependency policy | Define the license, ban, and source checks used by the Native dependency audit. | dependency-policy self-test; `cargo deny` where installed |
+| `dependency-source-policy-v1.json` | dependency provenance | Record exact lockfile, manifest, registry, Git, and vendored-source provenance for the resolved Native graph. | `hepta-native-dependency-policy verify` |
+| `hepta-native-dependency-policy` | dependency provenance tooling | Verify pinned Git revisions, allowed registries, vendored provenance, licenses, and policy hashes without fetching or mutating dependencies. | `hepta-native-dependency-policy-self-test`; policy verify |
+| `hepta-native-dependency-policy-self-test` | dependency provenance tooling | Exercise positive and deliberately negative dependency-policy cases. | execute self-test; shell/Ruby syntax check |
+| `canonical-assets-v1.tsv` | asset deduplication policy | Declare the single canonical store-icon source and its generated packaging materialization after retiring the unused Control texture. | `scripts/hepta-native-canonical-assets verify` |
 | `README.md` | product documentation and attribution | Document the upstream-first Hepta Native build, frozen Robrix baseline, downstream boundaries, and preserved upstream reference material. | copy review; provenance audit |
 | `build.rs` | product identity and provenance | Embed Hepta desktop metadata while exposing Hepta and frozen Robrix revisions as separate build-time values. | `cargo check --locked`; revision and package metadata audit |
 | `packaging/Info.plist` | packaging identity | Apply the Hepta macOS bundle name, identifier, executable, icon, deep link, and permission copy. | plist parse; unsigned local package inspection |
@@ -58,6 +67,9 @@ prove correctness or readiness.
 | `src/persistence/matrix_state.rs` | security | Replace upstream plaintext session persistence with the authenticated secure session store, bounded migration, authoritative same-user logout cleanup, and HTTPS production boundary. | secure-session unit tests; relogin/migration/logout/fail-closed checks |
 | `src/persistence/mod.rs` | security | Register the secure Matrix session persistence module. | `cargo check --locked`; secure-session unit tests |
 | `src/home/light_themed_dock.rs` | Hepta visual system | Apply shared light-glass chrome to the upstream desktop dock. | desktop screenshot gate; contrast review |
+| `src/home/edited_indicator.rs` | upstream-first behavior restoration | Remove the former local cockpit-era edit-history contract overlay and restore the upstream edit-indicator behavior compatible with the current timeline API. | Native feature matrix; focused timeline tests |
+| `src/home/loading_pane.rs` | Matrix SDK compatibility | Adapt backwards-pagination cancellation to the current typed timeline-request queue while removing obsolete cockpit boundary copy. | Native feature matrix; pagination focused tests |
+| `src/home/search_messages.rs` | upstream-first behavior restoration | Restore the upstream local search surface after removing the former cockpit-era evidence and popup overlay. | Native feature matrix; search-surface smoke |
 | `src/home/add_room.rs` | product identity and accessibility | Apply Hepta copy/surface styling and 44pt controls to the upstream room join/search surface. | copy review; touch-target review; focused tests |
 | `src/home/location_preview.rs` | product identity | Replace residual upstream product-facing copy while preserving the Robrix location-preview behavior. | copy review; `cargo check --locked` |
 | `src/home/navigation_tab_bar.rs` | Hepta visual system | Apply shared light-glass chrome to upstream mobile navigation. | mobile screenshot gate; touch-target review |
@@ -71,6 +83,7 @@ prove correctness or readiness.
 | `src/logout/logout_state_machine.rs` | session security | Bind post-server logout cleanup to the authoritative current Matrix user and fail closed if local secure material cannot be removed. | logout state-machine tests; same-user cleanup audit |
 | `src/room/room_input_bar.rs` | Hepta visual system | Restyle the real upstream Matrix composer; it remains a Matrix message composer and is not a live Hepta execution hook. | composer unit tests; message-send regression check; screenshots |
 | `src/settings/about_settings.rs` | product identity | Replace Robrix-facing about copy with Hepta/upstream attribution. | attribution/license check; settings screenshot |
+| `src/settings/account_settings.rs` | upstream-first account surface | Restore the real Robrix/Matrix account and device surface after removing the former marker-heavy cockpit contract overlay. | Native feature matrix; account/device focused tests; no live mutation claim |
 | `src/settings/developer_diagnostics.rs` | developer-only diagnostics | Expose read-only provenance and disabled-bridge diagnostics, hidden unless the non-default developer feature is enabled. | default-feature hidden check; developer-feature test |
 | `src/settings/mod.rs` | developer-only diagnostics | Register the diagnostics widget while preserving its runtime feature visibility boundary. | feature matrix check; product-shell v2 gate |
 | `src/settings/settings_screen.rs` | developer-only diagnostics | Place the hidden-by-default diagnostics surface in settings rather than on the product home. | default-feature hidden check; settings route test |
@@ -82,6 +95,9 @@ prove correctness or readiness.
 | `src/shared/room_input_popup_menu.rs` | Hepta visual system and accessibility | Apply restrained glass and 44pt focusable menu rows to the upstream composer action menu. | popover screenshot; keyboard and touch-target review |
 | `src/shared/styles.rs` | Hepta visual system | Map the upstream semantic style layer to the Hepta light-glass palette. | contrast tests; desktop/mobile screenshots |
 | `src/tsp/mod.rs` | product identity | Apply the Hepta product user agent and user-facing TSP copy while retaining the upstream experimental TSP implementation. | `cargo check --locked`; TSP feature check |
+| `third_party/aquamarine-0.6.0/**` | vendored compatibility dependency | Retain the minimal proc-macro compatibility crate required by the updated TSP/Matrix lock without network resolution. | `HEPTA_PROVENANCE.json`; license presence; dependency-policy verify/self-test |
+| `third_party/sqlx-sqlite-only-0.8.6/**` | vendored compatibility dependency | Retain the SQLite-only SQLx compatibility subset required by the updated Matrix persistence graph. | `HEPTA_PROVENANCE.json`; MIT/Apache licenses; dependency-policy verify/self-test |
+| `third_party/wasm_evt_listener-0.1.0/**` | vendored compatibility dependency | Retain the event-listener compatibility crate required by the updated cross-platform dependency graph. | `HEPTA_PROVENANCE.json`; license presence; dependency-policy verify/self-test |
 <!-- DOWNSTREAM_PATCHES_V1_END -->
 
 ## Read-only verification tooling

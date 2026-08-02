@@ -5,8 +5,6 @@ use matrix_sdk::{media::{MediaFormat, MediaRequestParameters, MediaThumbnailSett
 use matrix_sdk::reqwest::StatusCode;
 use crate::{home::room_screen::TimelineUpdate, shared::attachment_download::media_source_mxc, sliding_sync::{self, MatrixRequest}};
 
-pub const MEDIA_FETCH_CACHE_READ_EVIDENCE: &str = "MediaCache may submit the existing Matrix FetchMedia read request only for a missing MXC thumbnail or full-file cache entry used by image and sticker previews. Cache hits, Requested, Loaded, Failed, clear pending/failed, insert_into_cache, TimelineUpdate::MediaFetched, and SignalToUI only update local media cache/redraw state and send no manual Download, Play, Decrypt, message, room-state, membership, account, profile, or live mutation request.";
-
 /// The value type in the media cache, one per Matrix URI.
 #[derive(Debug, Clone)]
 pub struct MediaCacheValue {

@@ -16,7 +16,8 @@
     "remote_name": "robrix-upstream",
     "commit": "a5a664da569c577ab1a3e5a33f45dcc9364954a0",
     "tree": "e620da0561b6632e85eed31008f811bf94c4c24a",
-    "raw_import_commit": "7ac362f9690aa870591f4edcf533934af18921cb"
+    "raw_import_commit": "7ac362f9690aa870591f4edcf533934af18921cb",
+    "current_lineage_import_commit": "a9cf73726c892cec5e3fae12792f8b98ba93ea58"
   },
   "license": {
     "spdx": "MIT",

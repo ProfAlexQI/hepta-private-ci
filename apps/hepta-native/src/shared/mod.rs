@@ -3,7 +3,6 @@ use makepad_widgets::ScriptVm;
 pub mod attachment_download;
 pub mod avatar;
 pub mod collapsible_header;
-pub mod command_text_input;
 pub mod expand_arrow;
 pub mod confirmation_modal;
 pub mod file_upload_modal;
@@ -50,7 +49,6 @@ pub fn script_mod(vm: &mut ScriptVm) {
     popup_list::script_mod(vm);
     verification_badge::script_mod(vm);
     mention_popup::script_mod(vm);
-    command_text_input::script_mod(vm);
     mentionable_text_input::script_mod(vm);
     restore_status_view::script_mod(vm);
     confirmation_modal::script_mod(vm);

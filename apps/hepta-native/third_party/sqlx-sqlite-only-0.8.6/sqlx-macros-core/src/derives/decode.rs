@@ -90,7 +90,6 @@ fn expand_derive_decode_transparent(
 
     Ok(tts)
 }
-
 fn expand_derive_decode_weak_enum(
     input: &DeriveInput,
     variants: &Punctuated<Variant, Comma>,

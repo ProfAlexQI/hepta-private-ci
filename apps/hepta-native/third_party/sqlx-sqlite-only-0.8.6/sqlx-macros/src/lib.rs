@@ -21,7 +21,6 @@ pub fn expand_query(input: TokenStream) -> TokenStream {
         }
     }
 }
-
 #[cfg(feature = "derive")]
 #[proc_macro_derive(Encode, attributes(sqlx))]
 pub fn derive_encode(tokenstream: TokenStream) -> TokenStream {

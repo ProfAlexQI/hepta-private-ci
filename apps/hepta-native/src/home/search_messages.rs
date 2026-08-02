@@ -1,15 +1,7 @@
+
 //! UI widgets for searching messages in one or more rooms.
 
 use makepad_widgets::*;
-
-use crate::shared::popup_list::{PopupKind, enqueue_popup_notification};
-
-pub const SIDEBAR_MESSAGE_SEARCH_LOADED_TIMELINE_BOUNDARY_EVIDENCE: &str = "SearchMessagesButton only opens the current room's local loaded-timeline search preview. It does not submit a Matrix-backed message search query, server-side history request, event context fetch, pagination request, room preview fetch, message send, edit, redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const SIDEBAR_MESSAGE_SEARCH_LOADED_TIMELINE_BOUNDARY_LABEL: &str =
-    "Messages search opens local loaded-timeline search only; no Matrix-backed history query.";
-pub const SIDEBAR_MESSAGE_SEARCH_OPEN_HANDOFF_EVIDENCE: &str = "SearchMessagesButton emits SearchMessagesAction::LocalPreviewOpened, and the active RoomScreen handles that action by opening the existing telegram_message_search_strip for the currently selected room. This handoff only reveals the loaded-timeline search UI and sends no Matrix-backed search, server-side history query, event context fetch, timeline pagination/reload, room preview fetch, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
-pub const SIDEBAR_MESSAGE_SEARCH_OPEN_HANDOFF_LABEL: &str =
-    "Messages opens this chat's loaded-timeline search strip.";
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -20,27 +12,32 @@ script_mod! {
         ..mod.widgets.RoundedView
 
         width: Fit,
-        height: 34,
+        height: 35,
         margin: 0
+        enabled: false
 
         draw_bg +: {
-            color: (COLOR_TELEGRAM_INPUT)
-            color_hover: #243447
-            color_down: #2B5278
-            border_radius: 17.0
-            border_color: (COLOR_TELEGRAM_BORDER)
+            color: (COLOR_BG_DISABLED)
+            // color: (COLOR_ROBRIX_PURPLE) // or `color: (COLOR_ACTIVE_PRIMARY)`
+            // color_hover: (COLOR_PRIMARY_DARKER) // make it whiter (this value is mixed in with `color`)
+            border_radius: 4.0
+            border_color: (COLOR_SECONDARY)
             border_size: 1.0
         }
         draw_icon +: {
             svg: (ICON_SEARCH)
-            color: (COLOR_TELEGRAM_BLUE)
+            color: (COLOR_FG_DISABLED)
+            // color: (COLOR_PRIMARY),
+            // color_hover: (COLOR_PRIMARY),
         }
-        icon_walk: Walk{width: 15, height: 15, margin: Inset{left: -1, right: -2} }
+        icon_walk: Walk{width: 16, height: 16, margin: Inset{left: -1, right: -2} }
 
-        text: "Messages"
+        // text: "Search Messages"
+        text: "Search (TODO)"
         draw_text +: {
-            color: (COLOR_TELEGRAM_TEXT)
-            text_style: theme.font_bold { font_size: 10.5 },
+            color: (COLOR_FG_DISABLED)
+            // color: (COLOR_PRIMARY),
+            // color_hover: (COLOR_PRIMARY),
         }
     }
 
@@ -49,8 +46,7 @@ script_mod! {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct SearchMessagesButton {
-    #[deref]
-    button: Button,
+    #[deref] button: Button,
 }
 
 impl Widget for SearchMessagesButton {
@@ -59,12 +55,8 @@ impl Widget for SearchMessagesButton {
 
         if let Event::Actions(actions) = event {
             if self.button.clicked(actions) {
-                enqueue_popup_notification(
-                    SIDEBAR_MESSAGE_SEARCH_OPEN_HANDOFF_LABEL,
-                    PopupKind::Info,
-                    Some(4.0),
-                );
-                cx.action(SearchMessagesAction::LocalPreviewOpened);
+
+                // cx.action(AddRoomAction::SearchMessagesButtonClicked);
             }
         }
     }
@@ -74,6 +66,6 @@ impl Widget for SearchMessagesButton {
 }
 
 #[derive(Debug)]
-pub enum SearchMessagesAction {
-    LocalPreviewOpened,
+pub enum AddRoomAction {
+    SearchMessagesButtonClicked,
 }

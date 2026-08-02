@@ -9,7 +9,7 @@
 	<key>CFBundleExecutable</key>
 	<string>hepta-native</string>
 	<key>CFBundleIconFile</key>
-	<string>Hepta.icns</string>
+	<string>HeptaNative.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>ai.hepta.nativeapp</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -42,8 +42,6 @@
 			<string>Viewer</string>
 		</dict>
 	</array>
-	<key>LSRequiresCarbon</key>
-	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>

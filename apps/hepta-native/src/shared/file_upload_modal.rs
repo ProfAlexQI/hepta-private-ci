@@ -479,7 +479,7 @@ pub fn submit_attachment_upload(upload: AttachmentUpload) {
     }
 
     let upload_id = next_file_upload_attempt_id();
-    submit_async_request(MatrixRequest::UploadAttachment {
+    submit_async_request(MatrixRequest::SendAttachment {
         upload_id,
         upload,
     });

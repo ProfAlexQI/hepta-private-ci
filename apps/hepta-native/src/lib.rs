@@ -46,20 +46,6 @@ pub mod settings;
 /// Side-effect-free contract boundary for optional Hepta runtime integration.
 #[cfg(feature = "hepta-bridge")]
 pub mod hepta_bridge;
-/// Local bounded fixture and governed action surfaces retained across the
-/// upstream-first UI migration.
-pub mod hepta_fixture;
-pub mod hepta_fixture_smoke;
-pub mod hepta_composer;
-pub mod hepta_command_templates;
-pub mod hepta_context_snapshot;
-pub mod hepta_action_bridge;
-pub mod hepta_action_queue;
-pub mod hepta_runtime_status;
-pub mod hepta_mobile_packaging;
-pub mod hepta_productization;
-pub mod hepta_runtime_bridge;
-pub mod hepta_event;
 
 /// Login screen
 pub mod login;

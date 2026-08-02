@@ -16,12 +16,6 @@ use crate::{
     utils::time_ago,
 };
 
-pub const LIVE_LOCATION_CONTINUOUS_UPDATES_BOUNDARY_EVIDENCE: &str = "LocationPreview now exposes explicit local Start and Stop device-update controls while preserving the existing one-shot location send path. Opening the preview requests LocationRequest::UpdateOnce; Start Device Updates submits only LocationRequest::StartUpdates, Stop Device Updates and Cancel submit only LocationRequest::StopUpdates when local continuous updates are active. These controls do not create a live-location Matrix event, do not submit SendMessage, and do not emit room-state, membership, account/profile, gateway/runtime/auth, or live mutation requests.";
-pub const LIVE_LOCATION_CONTINUOUS_UPDATES_BOUNDARY_LABEL: &str =
-    "Live location: device updates off; one-time send remains guarded.";
-pub const LIVE_LOCATION_CONTINUOUS_UPDATES_ACTIVE_LABEL: &str =
-    "Live location: device updates on locally; no Matrix live event.";
-
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*

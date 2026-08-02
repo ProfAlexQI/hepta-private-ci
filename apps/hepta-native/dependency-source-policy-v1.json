@@ -2,11 +2,11 @@
   "schema_version": "hepta_native_dependency_source_policy_v1",
   "cargo_lock": {
     "path": "Cargo.lock",
-    "sha256": "c95d6ae6818809b0e40531c06f9529c0ba8ae08220fcfe5d03f07b36139528d1"
+    "sha256": "f6d8270b9076039f6de7dbc815f9bb69fc2dd1b6c5301e5fdacb74e226627842"
   },
   "root_manifest": {
     "path": "Cargo.toml",
-    "sha256": "fecb33661f5bb98456b507fbcfea0774e3f9bca2b87ca692b72523eed5c8b07a"
+    "sha256": "927ae5a57dbc2d5d6e4f3414ad01417e6e3d2d11640dabf6430ad0028ac3e791"
   },
   "cargo_deny": {
     "version": "0.20.2",

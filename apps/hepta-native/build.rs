@@ -8,22 +8,13 @@ use std::path::PathBuf;
 const ROBRIX_UPSTREAM_FULL_SHA: &str = "a5a664da569c577ab1a3e5a33f45dcc9364954a0";
 
 const CANONICAL_ASSET_MANIFEST: &str = "canonical-assets-v1.tsv";
-const CANONICAL_ASSET_CONTRACT: &[(&str, &str, &str, &str, usize)] = &[
-    (
-        "control_ui_glass_k",
-        "apps/hepta-control-ui/assets/k.png",
-        "apps/hepta-native/resources/img/hepta-glass-k.png",
-        "a54bc0d6352c3130d2d22b7df80f1fabaa94f5098fec12046e4f262e6d0d7c28",
-        2_499_731,
-    ),
-    (
-        "google_play_icon_512",
-        "apps/hepta-native/resources/icon_512.png",
-        "apps/hepta-native/packaging/icon_google_play_512.png",
-        "ddaea2f8da2463a99b7c51ff0959ce746daebdee53190e80a78b361c27fc4d9a",
-        222_778,
-    ),
-];
+const CANONICAL_ASSET_CONTRACT: &[(&str, &str, &str, &str, usize)] = &[(
+    "google_play_icon_512",
+    "apps/hepta-native/resources/icon_512.png",
+    "apps/hepta-native/packaging/icon_google_play_512.png",
+    "ddaea2f8da2463a99b7c51ff0959ce746daebdee53190e80a78b361c27fc4d9a",
+    222_778,
+)];
 
 fn safe_relative_path(raw: &str) -> Option<PathBuf> {
     let path = Path::new(raw);
@@ -182,24 +173,59 @@ fn main() {
 
 /// Returns the current Hepta revision as a commit hash and permalink.
 fn read_hepta_git_info() -> (String, String) {
-    // Tell cargo to re-run when the git-tracked HEAD changes.
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    if let Ok(head) = std::fs::read_to_string(".git/HEAD") {
-        if let Some(branch_ref) = head.trim().strip_prefix("ref: ") {
-            println!("cargo:rerun-if-changed=.git/{branch_ref}");
+    let manifest_dir =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| ".".into()));
+    let repo_root = manifest_dir.join("../..");
+    let git_output = |arguments: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo_root)
+            .args(arguments)
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+    };
+
+    // Worktrees keep HEAD in their per-worktree git dir and branch refs in the
+    // common git dir. Watch both, plus packed-refs, so a reused Cargo target can
+    // never retain a revision from another checkout.
+    let git_dir = git_output(&["rev-parse", "--absolute-git-dir"]).map(PathBuf::from);
+    let common_dir = git_output(&["rev-parse", "--git-common-dir"]).map(|path| {
+        let path = PathBuf::from(path);
+        if path.is_absolute() {
+            path
+        } else {
+            repo_root.join(path)
         }
+    });
+    let head_path = git_dir.as_ref().map(|directory| directory.join("HEAD"));
+    if let Some(path) = &head_path {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    if let (Some(path), Some(common_dir)) = (&head_path, &common_dir) {
+        if let Ok(head) = std::fs::read_to_string(path) {
+            if let Some(branch_ref) = head.trim().strip_prefix("ref: ") {
+                println!(
+                    "cargo:rerun-if-changed={}",
+                    common_dir.join(branch_ref).display()
+                );
+            }
+        }
+        println!(
+            "cargo:rerun-if-changed={}",
+            common_dir.join("packed-refs").display()
+        );
+    } else if let Some(common_dir) = &common_dir {
+        println!(
+            "cargo:rerun-if-changed={}",
+            common_dir.join("packed-refs").display()
+        );
     }
 
-    let Ok(output) = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-    else {
+    let Some(full_sha) = git_output(&["rev-parse", "HEAD"]) else {
         return (String::new(), String::new());
     };
-    if !output.status.success() {
-        return (String::new(), String::new());
-    }
-    let full_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if full_sha.len() < 8 {
         return (String::new(), String::new());
     }
