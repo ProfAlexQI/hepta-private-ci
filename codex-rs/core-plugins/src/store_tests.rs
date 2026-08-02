@@ -33,6 +33,27 @@ fn write_plugin(root: &Path, dir_name: &str, manifest_name: &str) {
     );
 }
 
+fn write_agent_plugin_with_version(
+    root: &Path,
+    dir_name: &str,
+    manifest_name: &str,
+    manifest_version: Option<&str>,
+) {
+    let plugin_root = root.join(dir_name);
+    fs::create_dir_all(plugin_root.join("skills")).unwrap();
+    let version = manifest_version
+        .map(|manifest_version| format!(r#","version":"{manifest_version}""#))
+        .unwrap_or_default();
+    fs::write(
+        plugin_root.join("plugin.json"),
+        format!(
+            r#"{{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"{manifest_name}"{version}}}"#
+        ),
+    )
+    .unwrap();
+    fs::write(plugin_root.join("skills/SKILL.md"), "skill").unwrap();
+}
+
 #[test]
 fn try_new_rejects_relative_codex_home() {
     let err = PluginStore::try_new(PathBuf::from("relative"))
@@ -207,6 +228,48 @@ fn install_uses_manifest_version_when_present() {
         }
     );
     assert!(installed_path.join(".codex-plugin/plugin.json").is_file());
+}
+
+#[test]
+fn agent_plugin_without_version_uses_portable_default() {
+    let tmp = tempdir().unwrap();
+    write_agent_plugin_with_version(tmp.path(), "portable", "portable", None);
+
+    assert_eq!(
+        plugin_version_for_source(&tmp.path().join("portable")).unwrap(),
+        "1.0.0"
+    );
+}
+
+#[test]
+fn agent_plugin_blank_version_uses_portable_default() {
+    let tmp = tempdir().unwrap();
+    write_agent_plugin_with_version(tmp.path(), "portable", "portable", Some("   "));
+
+    assert_eq!(
+        plugin_version_for_source(&tmp.path().join("portable")).unwrap(),
+        "1.0.0"
+    );
+}
+
+#[test]
+fn agent_plugin_unsafe_version_uses_stable_directory_safe_digest() {
+    let tmp = tempdir().unwrap();
+    write_agent_plugin_with_version(
+        tmp.path(),
+        "portable",
+        "portable",
+        Some("release/2026"),
+    );
+
+    assert_eq!(
+        plugin_version_for_source(&tmp.path().join("portable")).unwrap(),
+        "agent-plugins-e0c8bf07e64cc64c33ddff90"
+    );
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("portable/plugin.json")).unwrap(),
+        r#"{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"portable","version":"release/2026"}"#
+    );
 }
 
 #[test]
