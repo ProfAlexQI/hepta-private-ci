@@ -121,11 +121,12 @@ HEPTA_NATIVE_IOS_SIMULATOR_RECEIPT=/tmp/hepta-ios-simulator/receipt.json \
 The simulator runner removes stale output, uses only the pinned mobile wrapper,
 requires an installable `ai.hepta.nativeapp` / `Hepta` / `hepta-native` bundle,
 requires compiled `Assets.car` or the strict actool legacy icon-output set,
-installs and launches with `simctl`, and hashes both its app archive and GPU
-screenshot. Supplying the receipt environment variable makes receipt parsing
-strict: stale source bindings or changed artifacts fail the gate. Omitting it
-keeps simulator runtime verification hard-false without making the static
-source contract fail.
+merges and re-verifies the validated legacy partial plist when the active
+Xcode SDK is newer than the selected runtime, installs and launches with
+`simctl`, and hashes both its app archive and GPU screenshot. Supplying the
+receipt environment variable makes receipt parsing strict: stale source
+bindings or changed artifacts fail the gate. Omitting it keeps simulator
+runtime verification hard-false without making the static source contract fail.
 
 Run the report-only mobile source gate with:
 

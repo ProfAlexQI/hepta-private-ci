@@ -119,10 +119,11 @@ prefix, so they are not upstream drift and do not appear in the table above:
 - `scripts/hepta-native-ios-simulator-smoke.sh` is the narrow runtime-evidence
   exception: on an explicitly selected, already-booted local simulator it
   builds through the pinned wrapper, restores and verifies the generated app
-  executable mode, installs/launches with `simctl`, captures a screenshot, and
-  emits a current-source-bound receipt. It never downloads a runtime, creates a
-  simulator/account, signs, contacts a real device, uploads, or promotes
-  safe-area, keyboard, VoiceOver, RTL, or Dynamic Type readiness.
+  executable mode, validates and merges the loose-icon fallback when Xcode and
+  the selected runtime differ, installs/launches with `simctl`, captures a
+  screenshot, and emits a current-source-bound receipt. It never downloads a
+  runtime, creates a simulator/account, signs, contacts a real device, uploads,
+  or promotes safe-area, keyboard, VoiceOver, RTL, or Dynamic Type readiness.
 
 ## Non-negotiable boundaries
 

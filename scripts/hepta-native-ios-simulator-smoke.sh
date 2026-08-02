@@ -249,6 +249,16 @@ else
     --arg sha256 "$ACTOOL_INFO_SHA256" \
     --argjson outputs "$ICON_OUTPUTS" \
     '{compiled_asset_catalog_ready:true,mode:"actool_info_and_opaque_icon_outputs",evidence:{path:$path,sha256:$sha256},icon_outputs:$outputs}')"
+
+  # A newer Xcode SDK can return non-zero against an older simulator runtime
+  # after still producing the complete legacy icon set and partial plist. The
+  # pinned cargo-makepad warning path leaves that plist unmerged, so merge it
+  # only after validating every emitted icon byte above.
+  /usr/libexec/PlistBuddy -c "Merge $ACTOOL_INFO" "$PLIST"
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$PLIST")" == "AppIcon" ]] \
+    || { echo "error: fallback phone icon metadata was not merged" >&2; exit 1; }
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconName' "$PLIST")" == "AppIcon" ]] \
+    || { echo "error: fallback iPad icon metadata was not merged" >&2; exit 1; }
 fi
 jq -e '
   .compiled_asset_catalog_ready == true

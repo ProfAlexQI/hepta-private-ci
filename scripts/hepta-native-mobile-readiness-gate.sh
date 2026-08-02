@@ -281,7 +281,9 @@ verify_ios_simulator_artifact() {
   if [[ "$mode" == "actool_info_and_opaque_icon_outputs" ]]; then
     if ! plutil -lint "$app_bundle/actool-Info.plist" >/dev/null 2>&1 \
       || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$app_bundle/actool-Info.plist" 2>/dev/null)" != "AppIcon" ]] \
-      || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconName' "$app_bundle/actool-Info.plist" 2>/dev/null)" != "AppIcon" ]]; then
+      || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconName' "$app_bundle/actool-Info.plist" 2>/dev/null)" != "AppIcon" ]] \
+      || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$plist" 2>/dev/null)" != "AppIcon" ]] \
+      || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconName' "$plist" 2>/dev/null)" != "AppIcon" ]]; then
       rm -rf "$extract_root"
       return 1
     fi
