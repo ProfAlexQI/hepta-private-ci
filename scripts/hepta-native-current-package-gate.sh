@@ -52,7 +52,7 @@ platform="$(uname -s)"
 darwin_build_supported=false
 if [[ "$platform" == "Darwin" ]]; then
   darwin_build_supported=true
-  for command in file codesign otool grep; do
+  for command in file codesign otool grep plutil open pgrep; do
     command -v "$command" >/dev/null 2>&1 || { echo "$command is required for a Darwin app build" >&2; exit 2; }
   done
 fi
@@ -127,6 +127,7 @@ bundle_display_name="$(plist_value "$PLIST" CFBundleDisplayName)"
 bundle_executable="$(plist_value "$PLIST" CFBundleExecutable)"
 bundle_icon="$(plist_value "$PLIST" CFBundleIconFile)"
 bundle_type="$(plist_value "$PLIST" CFBundlePackageType)"
+source_requires_carbon="$(plutil -extract LSRequiresCarbon raw "$PLIST" 2>/dev/null || true)"
 url_schemes="$(plist_url_schemes "$PLIST")"
 url_hepta="$(printf '%s\n' "$url_schemes" | sed -n '1p')"
 url_matrix="$(printf '%s\n' "$url_schemes" | sed -n '2p')"
@@ -150,6 +151,7 @@ fi
 static_ready=false
 if [[ "$bundle_id" == "ai.hepta.nativeapp" && "$bundle_name" == "Hepta" && "$bundle_display_name" == "Hepta" \
   && "$bundle_executable" == "hepta-native" && "$bundle_icon" == "Hepta.icns" && "$bundle_type" == "APPL" \
+  && "$source_requires_carbon" == "false" \
   && "$url_hepta" == "hepta-native" && "$url_matrix" == "matrix" && "$product_name" == "Hepta" \
   && "$packager_version" == "0.11.8" && "$robius_packaging_version" == "0.3.3" \
   && "$packaging_rust_toolchain" == "1.95.0" \
@@ -173,6 +175,7 @@ linker_adhoc_signature=false
 launch_probe_ready=false
 launch_probe_seconds=0
 launch_exit_code='null'
+launch_via_launch_services=false
 build_log=""
 launch_log=""
 
@@ -260,21 +263,38 @@ if [[ "$BUILD" == "1" && "$darwin_build_supported" == "true" ]]; then
       linker_adhoc_signature=true
       bundle_unsigned=true
     fi
+    bundle_requires_carbon="$(plutil -extract LSRequiresCarbon raw "$bundled_plist" 2>/dev/null || true)"
 
     launch_log="$STAGE_DIR/launch-probe.log"
+    launch_stderr="$STAGE_DIR/launch-probe.stderr.log"
     launch_home="$STAGE_DIR/launch-home"
     mkdir -p "$launch_home"
     start_epoch="$(date +%s)"
+    set +e
     env -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID \
       -u APPLE_CERTIFICATE -u APPLE_CERTIFICATE_PASSWORD \
-      HOME="$launch_home" TMPDIR="$launch_home" "$binary" >"$launch_log" 2>&1 &
-    launch_pid=$!
+      open -n -g \
+        --env "HOME=$launch_home" --env "TMPDIR=$launch_home" \
+        --env "HTTPS_PROXY=http://127.0.0.1:9" --env "HTTP_PROXY=http://127.0.0.1:9" \
+        --env "ALL_PROXY=http://127.0.0.1:9" --env "NO_PROXY=localhost,127.0.0.1" \
+        -o "$launch_log" --stderr "$launch_stderr" "$app_bundle"
+    open_exit_code=$?
+    set -e
+    launch_pid=""
+    if [[ "$open_exit_code" == "0" ]]; then
+      for _ in {1..40}; do
+        launch_pid="$(pgrep -f "$binary" | head -n 1 || true)"
+        [[ -z "$launch_pid" ]] || break
+        sleep 0.25
+      done
+    fi
+    if [[ -n "$launch_pid" ]]; then launch_via_launch_services=true; fi
     for _ in {1..20}; do
-      if ! kill -0 "$launch_pid" >/dev/null 2>&1; then break; fi
+      if [[ -z "$launch_pid" ]] || ! kill -0 "$launch_pid" >/dev/null 2>&1; then break; fi
       sleep 0.25
     done
     launch_probe_seconds=$(( $(date +%s) - start_epoch ))
-    if kill -0 "$launch_pid" >/dev/null 2>&1; then
+    if [[ -n "$launch_pid" ]] && kill -0 "$launch_pid" >/dev/null 2>&1; then
       launch_probe_ready=true
       kill -TERM "$launch_pid" >/dev/null 2>&1 || true
       for _ in {1..20}; do
@@ -282,12 +302,8 @@ if [[ "$BUILD" == "1" && "$darwin_build_supported" == "true" ]]; then
         sleep 0.1
       done
       kill -KILL "$launch_pid" >/dev/null 2>&1 || true
-      wait "$launch_pid" >/dev/null 2>&1 || true
-    else
-      set +e
-      wait "$launch_pid"
-      launch_exit_code=$?
-      set -e
+    elif [[ -n "$launch_pid" ]]; then
+      launch_exit_code=1
     fi
 
     binary_kind="$(file -b "$binary")"
@@ -303,12 +319,14 @@ if [[ "$BUILD" == "1" && "$darwin_build_supported" == "true" ]]; then
       --argjson bytes "$bundle_bytes" --argjson head_embedded "$artifact_head_embedded" \
       --arg expected_head "$expected_head" --argjson rpath_ready "$binary_rpath_ready" \
       --argjson unsigned "$bundle_unsigned" --argjson linker_adhoc "$linker_adhoc_signature" \
-      --arg build_log "$build_log" --arg launch_log "$launch_log" \
-      '{probe_type:"formal_cargo_packager_robius_unsigned_app",path:$path,bytes:$bytes,binary_kind:$binary_kind,binary_sha256:$binary_sha256,info_plist_sha256:$info_plist_sha256,icon_sha256:$icon_sha256,expected_head:$expected_head,full_head_embedded:$head_embedded,makepad_bundle_rpath_ready:$rpath_ready,bundle_signature:(if $unsigned then "linker_adhoc_no_developer_id" else "unexpected_developer_identity" end),linker_adhoc_signature:$linker_adhoc,developer_id_signed:false,build_log:$build_log,launch_log:$launch_log}')"
+      --arg bundle_requires_carbon "$bundle_requires_carbon" --argjson launch_services "$launch_via_launch_services" \
+      --arg build_log "$build_log" --arg launch_log "$launch_log" --arg launch_stderr "$launch_stderr" \
+      '{probe_type:"formal_cargo_packager_robius_unsigned_app",path:$path,bytes:$bytes,binary_kind:$binary_kind,binary_sha256:$binary_sha256,info_plist_sha256:$info_plist_sha256,icon_sha256:$icon_sha256,expected_head:$expected_head,full_head_embedded:$head_embedded,makepad_bundle_rpath_ready:$rpath_ready,ls_requires_carbon:($bundle_requires_carbon == "true"),bundle_signature:(if $unsigned then "linker_adhoc_no_developer_id" else "unexpected_developer_identity" end),linker_adhoc_signature:$linker_adhoc,developer_id_signed:false,launch_via_launch_services:$launch_services,build_log:$build_log,launch_log:$launch_log,launch_stderr_log:$launch_stderr}')"
 
     if [[ "$static_ready" == "true" && "$resources_complete" == "true" \
       && "$collector_sources_complete" == "true" && "$artifact_head_embedded" == "true" \
       && "$binary_rpath_ready" == "true" && "$bundle_unsigned" == "true" \
+      && "$bundle_requires_carbon" == "false" && "$launch_via_launch_services" == "true" \
       && "$launch_probe_ready" == "true" && "$binary_kind" == Mach-O\ *executable* \
       && "$bundle_bytes" -gt 1000000 && -n "$icon_sha" ]]; then
       formal_unsigned_packaging_pipeline_ready=true
@@ -340,6 +358,7 @@ report="$(jq -n \
   --arg platform "$platform" --argjson darwin_build_supported "$darwin_build_supported" \
   --arg bundle_id "$bundle_id" --arg bundle_name "$bundle_name" --arg bundle_display_name "$bundle_display_name" \
   --arg bundle_executable "$bundle_executable" --arg bundle_icon "$bundle_icon" --arg bundle_type "$bundle_type" \
+  --arg source_requires_carbon "$source_requires_carbon" \
   --arg url_hepta "$url_hepta" --arg url_matrix "$url_matrix" --arg product_name "$product_name" \
   --arg package_version "$package_version" --arg packager_version "$packager_version" \
   --arg robius_packaging_version "$robius_packaging_version" --arg tools_dir "$TOOLS_DIR" \
@@ -351,6 +370,7 @@ report="$(jq -n \
   --argjson resources_complete "$resources_complete" --argjson collector_sources_complete "$collector_sources_complete" \
   --argjson resource_reports "$resource_reports" --argjson collector_source_reports "$collector_source_reports" \
   --argjson launch_probe_ready "$launch_probe_ready" --argjson launch_probe_seconds "$launch_probe_seconds" \
+  --argjson launch_via_launch_services "$launch_via_launch_services" \
   --argjson launch_exit_code "$launch_exit_code" --argjson current_source_build_ready "$current_source_build_ready" \
   --argjson local_package_ready "$local_package_ready" --argjson artifact "$artifact_json" \
   '{
@@ -365,7 +385,7 @@ report="$(jq -n \
     rust_toolchain:$rust_toolchain,
     host_platform:$platform,
     darwin_app_build_supported:$darwin_build_supported,
-    package_metadata:{product_name:$product_name,version:$package_version,bundle_identifier:$bundle_id,bundle_name:$bundle_name,bundle_display_name:$bundle_display_name,bundle_executable:$bundle_executable,bundle_icon_file:$bundle_icon,bundle_package_type:$bundle_type,url_schemes:[$url_hepta,$url_matrix]},
+    package_metadata:{product_name:$product_name,version:$package_version,bundle_identifier:$bundle_id,bundle_name:$bundle_name,bundle_display_name:$bundle_display_name,bundle_executable:$bundle_executable,bundle_icon_file:$bundle_icon,bundle_package_type:$bundle_type,ls_requires_carbon:($source_requires_carbon == "true"),url_schemes:[$url_hepta,$url_matrix]},
     packaging_tools:{cargo_packager_version:$packager_version,robius_packaging_commands_version:$robius_packaging_version,temporary_tools_root:$tools_dir,bootstrap_requested:($bootstrap_tools == 1)},
     static_package_contract_ready:$static_ready,
     build_requested:($build_requested == 1),
@@ -381,6 +401,7 @@ report="$(jq -n \
     formal_unsigned_packaging_pipeline_ready:$formal_ready,
     current_source_build_ready:$current_source_build_ready,
     staged_app_launch_verified:$launch_probe_ready,
+    launch_via_launch_services:$launch_via_launch_services,
     launch_probe_seconds:$launch_probe_seconds,
     launch_exit_code:$launch_exit_code,
     local_package_ready:$local_package_ready,
@@ -391,7 +412,7 @@ report="$(jq -n \
     public_distribution_ready:false,
     public_ga_ready:false,
     external_side_effects_performed:false,
-    blockers:([if $source_binding.worktree_clean then empty else "ui_source_worktree_dirty" end,if $source_stable then empty else "ui_source_changed_during_package_gate" end,if $static_ready then empty else "package_metadata_contract_not_ready" end,if (($build_requested == 1) and ($darwin_build_supported == false)) then "darwin_app_build_not_supported_on_host" else empty end,if ($build_requested == 1) then (if $formal_pipeline_exit_code == 0 then empty else "formal_unsigned_packaging_command_failed" end) else "formal_unsigned_packaging_not_requested" end,if $resources_complete then empty else "declared_package_resources_not_byte_exact" end,if $collector_sources_complete then empty else "robius_collector_sources_not_byte_exact" end,if $formal_ready then empty else "formal_unsigned_packaging_pipeline_not_ready" end,if $launch_probe_ready then empty else "staged_app_launch_not_verified" end,"developer_id_signing_not_performed","notarization_not_performed","stapling_not_performed","public_distribution_not_authorized"])
+    blockers:([if $source_binding.worktree_clean then empty else "ui_source_worktree_dirty" end,if $source_stable then empty else "ui_source_changed_during_package_gate" end,if $static_ready then empty else "package_metadata_contract_not_ready" end,if (($build_requested == 1) and ($darwin_build_supported == false)) then "darwin_app_build_not_supported_on_host" else empty end,if ($build_requested == 1) then (if $formal_pipeline_exit_code == 0 then empty else "formal_unsigned_packaging_command_failed" end) else "formal_unsigned_packaging_not_requested" end,if $resources_complete then empty else "declared_package_resources_not_byte_exact" end,if $collector_sources_complete then empty else "robius_collector_sources_not_byte_exact" end,if $formal_ready then empty else "formal_unsigned_packaging_pipeline_not_ready" end,if $launch_via_launch_services then empty else "launch_services_bundle_launch_not_verified" end,if $launch_probe_ready then empty else "staged_app_launch_not_verified" end,"developer_id_signing_not_performed","notarization_not_performed","stapling_not_performed","public_distribution_not_authorized"])
   }')"
 
 if [[ -n "$REPORT_PATH" ]]; then printf '%s\n' "$report" >"$REPORT_PATH"; else printf '%s\n' "$report"; fi

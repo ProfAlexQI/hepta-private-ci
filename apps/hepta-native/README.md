@@ -41,12 +41,12 @@ scripts/hepta-native-current-package-gate.sh \
 A passing report proves the bundle contains the exact current HEAD, every
 declared Makepad/Hepta resource tree was copied byte-for-byte, the bundle has
 no Developer ID identity or sealed-resource signature, and its executable
-survives a clean local launch probe. Modern Apple linkers still place an ad-hoc
-signature on the Mach-O itself; the gate records that separately and never
-misrepresents it as Developer ID signing. This is a local demo artifact, not a
-distributable release. Developer ID signing, notarization, stapling,
-real-device validation, and public release remain independently false until
-their own authorized gates pass.
+survives a clean LaunchServices (`open`) probe with `LSRequiresCarbon=false`.
+Modern Apple linkers still place an ad-hoc signature on the Mach-O itself; the
+gate records that separately and never misrepresents it as Developer ID
+signing. This is a local demo artifact, not a distributable release. Developer
+ID signing, notarization, stapling, real-device validation, and public release
+remain independently false until their own authorized gates pass.
 
 ## Downstream platform boundary
 

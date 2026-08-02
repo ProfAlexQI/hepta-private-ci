@@ -28,6 +28,8 @@
 	<string>public.app-category.social-networking</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>11.0</string>
+	<key>LSRequiresCarbon</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
