@@ -19,10 +19,7 @@ BUNDLE_ROOT = File.join(SCRIPTS_ROOT, "lib/hepta-gate-pair-compat-v2")
 BUNDLE_PATH = File.join(BUNDLE_ROOT, "payloads.bundle.gz")
 REGISTRY_PATH = File.join(BUNDLE_ROOT, "registry.json")
 CURRENT_REALITY_REGISTRY_PATH = File.join(BUNDLE_ROOT, "current-reality-capabilities.json")
-CURRENT_REALITY_PAYLOAD = [
-  STORE_RELATIVE,
-  "hepta-systems-current-reality-capability-matrix.report"
-].join("/")
+CURRENT_REALITY_PAYLOAD = [STORE_RELATIVE, "hepta-systems-current-reality-capability-matrix.report"].join("/")
 ENTRYPOINT_REGISTRY_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-entrypoints-v2.json")
 LONG_PATH_REGISTRY_PATH = File.join(SCRIPTS_ROOT, "lib/hepta-long-path-v1/registry.json")
 SCHEMA = "hepta_gate_pair_normalized_payload_bundle_v3"
@@ -50,10 +47,7 @@ def usage
 end
 def atomic_write(path, content, mode = nil)
   FileUtils.mkdir_p(File.dirname(path))
-  staging = File.join(
-    File.dirname(path),
-    ".hepta-gate-payload-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp"
-  )
+  staging = File.join(File.dirname(path), ".hepta-gate-payload-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp")
   File.binwrite(staging, content)
   File.chmod(mode, staging) if mode
   File.rename(staging, path)
@@ -69,12 +63,8 @@ def decode_envelope_bytes(body)
 end
 def legacy_blob(logical_path, source)
   return source unless registered_hashes.key?(logical_path)
-  deflater = Zlib::Deflate.new(
-    Zlib::DEFAULT_COMPRESSION,
-    -Zlib::MAX_WBITS,
-    Zlib::DEF_MEM_LEVEL,
-    Zlib::DEFAULT_STRATEGY
-  )
+  deflater = Zlib::Deflate.new(Zlib::DEFAULT_COMPRESSION, -Zlib::MAX_WBITS,
+                               Zlib::DEF_MEM_LEVEL, Zlib::DEFAULT_STRATEGY)
   compressed = deflater.deflate(source, Zlib::FINISH)
   deflater.close
   gzip = LEGACY_GZIP_HEADER + compressed +
@@ -342,9 +332,7 @@ def verify
   raise "gate payload canonical normalization drifted" unless canonical_payload ==
     rebuilt_payload
   expected_gzip = HeptaReadableTokenSource.deterministic_gzip(rebuilt_payload)
-  raise "gate payload generated gzip is not byte-identical" unless File.binread(
-    BUNDLE_PATH
-  ) == expected_gzip
+  raise "gate payload generated gzip is not byte-identical" unless File.binread(BUNDLE_PATH) == expected_gzip
   artifact_entries = decode_bundle
   raise "gate payload artifact reassembly drifted" unless aggregate_sha(artifact_entries) ==
     aggregate_sha(entries)
@@ -521,11 +509,7 @@ def materialize_overlay
   link_children(ROOT, staging, [".git", "docs", "scripts"])
   overlay_docs = File.join(staging, "docs")
   link_children(File.join(ROOT, "docs"), overlay_docs, ["architecture"])
-  link_children(
-    File.join(ROOT, "docs/architecture"),
-    File.join(overlay_docs, "architecture"),
-    []
-  )
+  link_children(File.join(ROOT, "docs/architecture"), File.join(overlay_docs, "architecture"), [])
   overlay_scripts = File.join(staging, "scripts")
   pair_wrapper_names = spec.fetch("pairs").flat_map do |pair|
     ["#{pair.fetch("id")}-gate.sh", File.basename(pair.fetch("report_path"))]
@@ -544,11 +528,7 @@ def materialize_overlay
   spec.fetch("pairs").each do |pair|
     id = pair.fetch("id")
     atomic_write(File.join(overlay_scripts, "#{id}-gate.sh"), wrapper_body("gate", id), 0o755)
-    atomic_write(
-      File.join(staging, pair.fetch("report_path")),
-      wrapper_body("report", id),
-      0o755
-    )
+    atomic_write(File.join(staging, pair.fetch("report_path")), wrapper_body("report", id), 0o755)
   end
   materialize_long_path_aliases(staging)
   atomic_write(
