@@ -1038,6 +1038,9 @@ if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
           android_emulator_live_readback_ready=true
           android_emulator_receipt_ready=true
           android_emulator_receipt_status="ready"
+          android_emulator_login_visual_ready=true
+          android_emulator_login_rotation_ready=true
+          android_emulator_login_ime_ready=true
         fi
         if [[ "$android_emulator_live_readback_ready" != true ]]; then
           android_emulator_live_readback_report="$(jq -n \

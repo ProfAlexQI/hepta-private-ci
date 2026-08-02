@@ -83,6 +83,9 @@ grep -Fq -- 'HEPTA_NATIVE_ANDROID_EMULATOR_LIVE_READBACK' scripts/hepta-native-m
 grep -Fq -- 'independently_verified_claims.unauthenticated_login_surface_rotation == false' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin "$ANDROID_EMULATOR_LIVE_READBACK_PATH"' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'reason:"trusted_live_readback_failed"' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'android_emulator_login_visual_ready=true' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'android_emulator_login_rotation_ready=true' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'android_emulator_login_ime_ready=true' scripts/hepta-native-mobile-readiness-gate.sh
 if grep -Fq -- 'android_emulator_rotation_verified:$android_emulator_receipt_ready' scripts/hepta-native-mobile-readiness-gate.sh; then
   echo "generic Android rotation claim still fans out from the login receipt" >&2
   exit 1
