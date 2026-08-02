@@ -14,6 +14,23 @@ pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
     "hepta-context-memory-temporal-graph-shadow-traversal-diff",
     "hepta-context-memory-temporal-graph-shadow-traversal-quality",
     "hepta-systems-current-reality-matrix-compact-cache-boundary-readback",
+    "hepta-systems-dirty-worktree-release-boundary-actionable-clean-worktree-strategy",
+    "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-approval-acceptance-boundary-readback",
+    "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-decision-checklist",
+    "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-decision-checklist-packet-readback",
+    "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-decision-recording-boundary-readback",
+    "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-evidence-recording-boundary-readback",
+    "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-packet",
+    "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-packet-git-mutation-boundary-readback",
+    "hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-packet-non-send-readback",
+    "hepta-systems-dirty-worktree-release-boundary-grouping-freeze-operator-readback",
+    "hepta-systems-dirty-worktree-release-boundary-grouping-freeze-plan",
+    "hepta-systems-dirty-worktree-release-boundary-inventory",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-evidence-recording-boundary-readback-without-recording",
+    "hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-rehearsal",
+    "hepta-systems-dirty-worktree-release-boundary-release-risk-snapshot",
+    "hepta-systems-dirty-worktree-release-boundary-test-only-clean-worktree-strategy-rehearsal",
+    "hepta-systems-dirty-worktree-release-boundary-test-only-rehearsal-outcome-readback",
     "hepta-systems-work-graph-adapter-projection-fixture",
     "hepta-systems-work-graph-append-only-event-intake-preview",
     "hepta-systems-work-graph-append-only-store-enablement-precondition-preview",
@@ -767,7 +784,23 @@ fn workflow_durable_store_adapter_compat_report() -> Result<Value, TypedCompatRe
     Ok(report)
 }
 
+pub fn typed_compat_report_with_dirty_worktree_observation(
+    id: &str,
+    observation: &crate::DirtyWorktreeObservation,
+) -> Result<Value, TypedCompatReportError> {
+    if !crate::is_dirty_worktree_typed_compat_report(id) {
+        return Err(TypedCompatReportError::UnknownReport(id.to_string()));
+    }
+    crate::dirty_worktree_typed_compat_report(id, observation)
+        .map_err(TypedCompatReportError::ContractViolation)
+}
+
 pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
+    if crate::is_dirty_worktree_typed_compat_report(id) {
+        return Err(TypedCompatReportError::ContractViolation(format!(
+            "dirty-worktree typed compatibility report requires an explicit repository observation: {id}"
+        )));
+    }
     match id {
         "hepta-context-memory-ranked-recall-shadow-eval" => {
             let (report, _, _, _) = context_memory_shadow_fixture();

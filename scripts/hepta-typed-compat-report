@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+export HEPTA_REPO_ROOT="${HEPTA_REPO_ROOT:-$ROOT}"
 binary="${HEPTA_TYPED_COMPAT_REPORT_BIN:-}"
 
 if [[ -n "$binary" ]]; then

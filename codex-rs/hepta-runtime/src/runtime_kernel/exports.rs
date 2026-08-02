@@ -289,6 +289,7 @@ pub use dirty_worktree_release_boundary_grouping_freeze_plan::{
     dirty_worktree_release_boundary_grouping_freeze_plan_fixture_entries,
     dirty_worktree_release_boundary_grouping_freeze_plan_report,
     dirty_worktree_release_boundary_grouping_freeze_plan_report_from_inventory,
+    dirty_worktree_release_boundary_grouping_freeze_plan_report_from_inventory_and_entries,
     dirty_worktree_release_boundary_grouping_freeze_plan_scope,
 };
 pub use dirty_worktree_release_boundary_grouping_freeze_operator_readback::{

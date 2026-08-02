@@ -126,6 +126,15 @@ pub fn dirty_worktree_release_boundary_grouping_freeze_plan_report_from_inventor
     inventory: &DirtyWorktreeReleaseBoundaryInventoryReport,
 ) -> DirtyWorktreeReleaseBoundaryGroupingFreezePlanReport {
     let entries = dirty_worktree_release_boundary_grouping_freeze_plan_fixture_entries();
+    dirty_worktree_release_boundary_grouping_freeze_plan_report_from_inventory_and_entries(
+        inventory, entries,
+    )
+}
+
+pub fn dirty_worktree_release_boundary_grouping_freeze_plan_report_from_inventory_and_entries(
+    inventory: &DirtyWorktreeReleaseBoundaryInventoryReport,
+    entries: Vec<DirtyWorktreeReleaseBoundaryGroupingFreezePlanEntry>,
+) -> DirtyWorktreeReleaseBoundaryGroupingFreezePlanReport {
     let freeze_plan_ready_count = entries
         .iter()
         .filter(|entry| entry.freeze_plan_ready)

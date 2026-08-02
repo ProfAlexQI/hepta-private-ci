@@ -160,6 +160,7 @@ mod controlled_live_required_evidence_readback_index;
 mod core_fusion;
 mod current_reality_matrix_compact_cache_boundary_readback;
 mod delivery_queue;
+mod dirty_worktree_compat_report;
 mod dirty_worktree_release_boundary_actionable_clean_worktree_strategy;
 mod dirty_worktree_release_boundary_clean_worktree_strategy_operator_approval_acceptance_boundary_readback;
 mod dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_checklist;
@@ -314,6 +315,12 @@ use runtime_kernel::outcome_recorder::OutcomeRecorder;
 use runtime_kernel::safety_gate_client::SafetyGateClient;
 use runtime_preference_context::AttachedPreferenceContextState;
 
+pub use dirty_worktree_compat_report::{
+    DIRTY_WORKTREE_TYPED_COMPAT_REPORT_IDS, DirtyWorktreeObservation,
+    DirtyWorktreeObservationEntry, RETIRED_DIRTY_WORKTREE_COMPAT_REPORT_ID,
+    dirty_worktree_typed_compat_report, is_dirty_worktree_typed_compat_report,
+    retired_dirty_worktree_owner_decision_source_report,
+};
 pub use execution_admission::EffectBroker;
 pub use execution_admission::EffectPlan;
 pub use execution_admission::ExactExecutionAuthority;
@@ -329,6 +336,7 @@ pub use ndu_h1_runtime::NduH1ShadowEvent;
 pub use typed_compat_report::TYPED_COMPAT_REPORT_IDS;
 pub use typed_compat_report::TypedCompatReportError;
 pub use typed_compat_report::typed_compat_report;
+pub use typed_compat_report::typed_compat_report_with_dirty_worktree_observation;
 
 include!("runtime_kernel/exports.rs");
 include!("runtime_kernel/exports_workgraph.rs");
