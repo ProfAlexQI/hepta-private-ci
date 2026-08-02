@@ -9,6 +9,7 @@ CONTROL_UI = ROOT.join("apps/hepta-control-ui")
 LEGACY_CSS = CONTROL_UI.join("styles.legacy.css")
 INDEX_HTML = CONTROL_UI.join("index.html")
 CONTROL_UI_JS = CONTROL_UI.join("control-ui.js")
+STYLES_MANIFEST = CONTROL_UI.join("styles.css")
 CONTROL_UI_RS = ROOT.join("codex-rs/hepta-core/src/control_ui.rs")
 ROUTE_CATALOG = ROOT.join(
   "codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl"
@@ -58,6 +59,7 @@ required_paths = [
   LEGACY_CSS,
   INDEX_HTML,
   CONTROL_UI_JS,
+  STYLES_MANIFEST,
   CONTROL_UI_RS,
   ROUTE_CATALOG,
 ] + RUNTIME_CSS_FILES.map { |name| CONTROL_UI.join(name) }
@@ -65,6 +67,11 @@ missing_paths = required_paths.reject(&:file?)
 fail!("missing source paths: #{missing_paths.join(', ')}") unless missing_paths.empty?
 
 runtime_css = RUNTIME_CSS_FILES.map { |name| CONTROL_UI.join(name).binread }.join("\n")
+runtime_css_leaf_source_bytes = RUNTIME_CSS_FILES.sum do |name|
+  CONTROL_UI.join(name).size
+end
+runtime_css_join_separator_bytes = [RUNTIME_CSS_FILES.length - 1, 0].max
+direct_preview_manifest_bytes = STYLES_MANIFEST.size
 legacy_css = LEGACY_CSS.binread
 index_html = INDEX_HTML.binread
 control_ui_js = CONTROL_UI_JS.binread
@@ -97,6 +104,7 @@ canonical_index_renderer_count = control_ui_rs.scan(
 ).length
 
 metrics = {
+  # Compatibility alias for css_bytes.gateway_stylesheet_body_bytes.
   "runtime_css_bytes" => runtime_css.bytesize,
   "legacy_css_bytes" => legacy_css.bytesize,
   "legacy_css_lines" => legacy_css.lines.count,
@@ -110,6 +118,22 @@ metrics = {
   "duplicate_route_identity_count" => duplicate_route_identities.length,
   "canonical_index_renderer_count" => canonical_index_renderer_count,
 }
+
+css_bytes = {
+  "schema_version" => 1,
+  "measurement" => "uncompressed_file_bytes_excluding_http_headers",
+  "leaf_file_count" => RUNTIME_CSS_FILES.length,
+  "leaf_source_bytes" => runtime_css_leaf_source_bytes,
+  "gateway_join_separator" => "\\n",
+  "gateway_join_separator_bytes" => runtime_css_join_separator_bytes,
+  "gateway_stylesheet_body_bytes" => runtime_css.bytesize,
+  "direct_preview_manifest_bytes" => direct_preview_manifest_bytes,
+  "direct_preview_css_payload_bytes" =>
+    direct_preview_manifest_bytes + runtime_css_leaf_source_bytes,
+}
+fail!("CSS byte accounting is inconsistent") unless
+  css_bytes["gateway_stylesheet_body_bytes"] ==
+    css_bytes["leaf_source_bytes"] + css_bytes["gateway_join_separator_bytes"]
 
 checks = {
   "runtime_css_bytes_within_ratchet" =>
@@ -145,6 +169,10 @@ report = {
   "status" => checks.values.all? ? "ready" : "not_ready",
   "scope" => "Control UI CSS and compatibility-route debt ratchet",
   "metrics" => metrics,
+  "css_bytes" => css_bytes,
+  "compatibility_aliases" => {
+    "metrics.runtime_css_bytes" => "css_bytes.gateway_stylesheet_body_bytes",
+  },
   "limits" => LIMITS,
   "checks" => checks,
   "duplicate_route_identities" => duplicate_route_identities.map do |identity, count|

@@ -10,6 +10,7 @@ REQUIRE="source"
 VERIFY_FEATURES=0
 VERIFY_PACKAGE=0
 VERIFY_BROWSER=0
+VERIFY_WINDOW=0
 TARGET_DIR="${HEPTA_NATIVE_CARGO_TARGET_DIR:-${TMPDIR:-/tmp}/hepta-ui-current-readiness-target}"
 
 while [[ $# -gt 0 ]]; do
@@ -17,9 +18,11 @@ while [[ $# -gt 0 ]]; do
     --evidence-dir) EVIDENCE_DIR="${2:-}"; shift 2 ;;
     --output) REPORT_PATH="${2:-}"; shift 2 ;;
     --verify) VERIFY_FEATURES=1; VERIFY_PACKAGE=1; shift ;;
+    --verify-local) VERIFY_FEATURES=1; VERIFY_PACKAGE=1; VERIFY_BROWSER=1; VERIFY_WINDOW=1; shift ;;
     --verify-features) VERIFY_FEATURES=1; shift ;;
     --verify-package) VERIFY_PACKAGE=1; shift ;;
     --verify-browser) VERIFY_BROWSER=1; shift ;;
+    --verify-window) VERIFY_WINDOW=1; shift ;;
     --target-dir) TARGET_DIR="${2:-}"; shift 2 ;;
     --require) REQUIRE="${2:-}"; shift 2 ;;
     --help|-h)
@@ -29,9 +32,11 @@ usage: scripts/hepta-ui-current-readiness.sh [options]
   --evidence-dir DIR       write all current-run receipts under DIR
   --output FILE            write the orchestrator report (default stdout)
   --verify                 run Native feature matrix and local unsigned package
+  --verify-local           run every source/local-demo verifier
   --verify-features        run no-default/default/all-features Cargo checks
   --verify-package         build and stage a current-source unsigned Hepta.app
   --verify-browser         run the Control four-viewport browser smoke
+  --verify-window          run the independent current-package Native window verifier
   --target-dir DIR         shared Native Cargo target directory
   --require LEVEL          none|source|local|full|ga (default source)
 
@@ -63,11 +68,12 @@ FEATURE_REPORT="$EVIDENCE_DIR/native-feature-matrix.json"
 PACKAGE_REPORT="$EVIDENCE_DIR/native-current-package.json"
 BROWSER_REPORT="$EVIDENCE_DIR/control-browser-smoke.json"
 MOBILE_REPORT="$EVIDENCE_DIR/native-mobile-readiness.json"
+WINDOW_REPORT="$EVIDENCE_DIR/native-window-current.json"
 
 # Evidence directories are reusable, but child receipts never are. Truncate
 # every current-run output before invoking a producer so a crash cannot expose
 # a prior ready receipt at the same path.
-for current_run_report in "$SYNC_REPORT" "$PRODUCT_REPORT" "$TOKEN_REPORT" "$FEATURE_REPORT" "$PACKAGE_REPORT" "$BROWSER_REPORT" "$MOBILE_REPORT"; do
+for current_run_report in "$SYNC_REPORT" "$PRODUCT_REPORT" "$TOKEN_REPORT" "$FEATURE_REPORT" "$PACKAGE_REPORT" "$BROWSER_REPORT" "$MOBILE_REPORT" "$WINDOW_REPORT"; do
   : >"$current_run_report"
 done
 
@@ -94,6 +100,15 @@ package_rc=0
 package_args=(--output "$PACKAGE_REPORT" --target-dir "$TARGET_DIR")
 if [[ "$VERIFY_PACKAGE" == "1" ]]; then package_args+=(--build --stage-dir "$EVIDENCE_DIR/native-current-package"); fi
 scripts/hepta-native-current-package-gate.sh "${package_args[@]}" || package_rc=$?
+
+window_rc=0
+if [[ "$VERIFY_WINDOW" == "1" ]]; then
+  scripts/hepta-ui-native-window-verifier-v1 \
+    --package-report "$PACKAGE_REPORT" \
+    --evidence-dir "$EVIDENCE_DIR/native-window" \
+    --output "$WINDOW_REPORT" \
+    --target-dir "$TARGET_DIR" || window_rc=$?
+fi
 
 browser_rc=0
 if [[ "$VERIFY_BROWSER" == "1" ]]; then
@@ -207,7 +222,9 @@ receipt_json() {
       {name:$name,path:$path,present:true,schema_and_producer_valid:$identity,bound_to_current_source:$bound,
        artifact:{path:$artifact_path,expected_sha256:$expected_sha,actual_sha256:$actual_sha,hash_valid:$artifact_hash_valid},
        capability:$capability,ready:($identity and $bound and $artifact_hash_valid and ($r.status == "ready") and (($r[$capability] // false) == true)),
-       reported_status:($r.status // "unknown"),signed:false,notarized:false,stapled:false}'
+       reported_status:($r.status // "unknown"),source_stable_during_run:($r.source_stable_during_run // false),
+       independent_verifier_ready:($r.independent_promotion_verifier_ready // false),package:($r.package // null),
+       scope:($r.scope // null),signed:false,notarized:false,stapled:false}'
 }
 
 MATRIX_LIVE_RECEIPT="${HEPTA_UI_MATRIX_LIVE_RECEIPT:-$EVIDENCE_DIR/matrix-live.json}"
@@ -223,6 +240,7 @@ window_receipt="$(receipt_json native_window "$NATIVE_WINDOW_RECEIPT" native_win
 device_receipt="$(receipt_json device_lab "$DEVICE_RECEIPT" real_device_lab_ready hepta-ui-device-lab-receipt-v1 scripts/hepta-ui-device-lab-verifier-v1)"
 accessibility_receipt="$(receipt_json accessibility "$ACCESSIBILITY_RECEIPT" accessibility_ready hepta-ui-accessibility-receipt-v1 scripts/hepta-ui-accessibility-verifier-v1)"
 release_receipt="$(receipt_json release "$RELEASE_RECEIPT" public_distribution_ready hepta-ui-release-receipt-v1 scripts/hepta-ui-release-verifier-v1)"
+package_report_sha256="$(shasum -a 256 "$PACKAGE_REPORT" | awk '{print $1}')"
 
 report="$(jq -n \
   --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg require "$REQUIRE" --arg evidence_dir "$EVIDENCE_DIR" \
@@ -235,11 +253,24 @@ report="$(jq -n \
   --argjson sync_bound "$sync_bound" --argjson product_bound "$product_bound" --argjson token_bound "$token_bound" \
   --argjson feature_bound "$feature_bound" --argjson package_bound "$package_bound" --argjson mobile_bound "$mobile_bound" \
   --argjson sync_exit_code "$sync_rc" --argjson product_exit_code "$product_rc" --argjson token_exit_code "$token_rc" \
-  --argjson feature_exit_code "$feature_rc" --argjson package_exit_code "$package_rc" --argjson browser_exit_code "$browser_rc" --argjson mobile_exit_code "$mobile_rc" '
+  --argjson feature_exit_code "$feature_rc" --argjson package_exit_code "$package_rc" --argjson browser_exit_code "$browser_rc" --argjson mobile_exit_code "$mobile_rc" \
+  --argjson window_exit_code "$window_rc" --arg package_report_path "$PACKAGE_REPORT" --arg package_report_sha256 "$package_report_sha256" '
     ($browser_file[0]) as $browser |
-    ($binding_stable and $binding_after.repository_worktree_clean and $sync_exit_code == 0 and $product_exit_code == 0 and $token_exit_code == 0 and $feature_exit_code == 0 and $mobile_exit_code == 0 and $sync_bound and $product_bound and $token_bound and $feature_bound and $package_bound and $mobile_bound and $sync.status == "ready" and $sync.path_ledger_ready == true and $product.status == "ready" and $tokens.status == "ready" and $feature.feature_matrix_ready == true and $package.static_package_contract_ready == true and $mobile.status == "source_contract_ready" and $mobile.mobile_source_contract_ready == true) as $source_ready |
+    ($binding_stable and $binding_after.repository_worktree_clean and $sync_exit_code == 0 and $product_exit_code == 0 and $token_exit_code == 0 and $feature_exit_code == 0 and $mobile_exit_code == 0 and $sync_bound and $product_bound and $token_bound and $feature_bound and $package_bound and $mobile_bound and $sync.status == "ready" and $sync.path_ledger_ready == true and $product.status == "ready" and $tokens.status == "ready" and $feature.feature_matrix_ready == true and $package.static_package_contract_ready == true and $mobile.status == "source_contract_ready" and $mobile.mobile_source_contract_ready == true and ($mobile.hard_boundaries.android_emulator_visual_verified // true) == false and ($mobile.hard_boundaries.android_emulator_rotation_verified // true) == false and ($mobile.hard_boundaries.android_emulator_ime_verified // true) == false) as $source_ready |
     (($browser.schema_version // null) == 1 and ($browser.kind // "") == "hepta-control-ui-browser-smoke-current-wrapper" and ($browser.producer // "") == "scripts/hepta-ui-current-readiness.sh" and ($browser.original_receipt_valid // false) == true and ($browser.browser_child_exit_code // -1) == 0 and ($browser.source_binding.head // "") == $binding_after.head and ($browser.source_binding.head_tree // "") == $binding_after.head_tree and ($browser.source_binding.source_fingerprint // "") == $binding_after.source_fingerprint and ($browser.browser_smoke_ready // false) == true) as $browser_ready |
-    false as $promotion_independent_verifiers_ready |
+    (
+      $window_exit_code == 0
+      and $window_receipt.ready == true
+      and $window_receipt.source_stable_during_run == true
+      and $window_receipt.independent_verifier_ready == true
+      and $window_receipt.scope == "unauthenticated_local_macos_product_shell"
+      and ($window_receipt.package.current_source_local_package_ready // false) == true
+      and ($window_receipt.package.visual_capture_binary_is_separate_developer_diagnostics_build // false) == true
+      and ($window_receipt.package.report_path // "") == $package_report_path
+      and ($window_receipt.package.report_sha256 // "") == $package_report_sha256
+      and ($window_receipt.package.app_path // "") == ($package.artifact.path // "")
+      and ($window_receipt.package.binary_sha256 // "") == ($package.artifact.binary_sha256 // "")
+    ) as $promotion_independent_verifiers_ready |
     ($source_ready and $package.local_package_ready == true and $browser_ready and $window_receipt.ready and $promotion_independent_verifiers_ready) as $local_ready |
     false as $full_ready |
     false as $release_independent_verification_ready |
@@ -264,13 +295,14 @@ report="$(jq -n \
         token_sync:{status:($tokens.status // "not_ready"),exit_code:$token_exit_code,bound_to_current_source:$token_bound,schema_version:($tokens.schema_version // null),report:"token-sync.json"},
         native_feature_matrix:{status:$feature.status,exit_code:$feature_exit_code,bound_to_current_source:$feature_bound,ready:($feature.feature_matrix_ready // false),report:"native-feature-matrix.json"},
         native_package:{status:$package.status,exit_code:$package_exit_code,bound_to_current_source:$package_bound,static_ready:($package.static_package_contract_ready // false),local_package_ready:($package.local_package_ready // false),report:"native-current-package.json"},
-        native_mobile:{status:$mobile.status,exit_code:$mobile_exit_code,bound_to_current_source:$mobile_bound,source_contract_ready:($mobile.mobile_source_contract_ready // false),full_product_ready:($mobile.hard_boundaries.mobile_full_product_ready // false),report:"native-mobile-readiness.json"},
+        native_window:{status:$window_receipt.reported_status,exit_code:$window_exit_code,bound_to_current_source:$window_receipt.bound_to_current_source,receipt_ready:$window_receipt.ready,independent_promotion_ready:$promotion_independent_verifiers_ready,scope:$window_receipt.scope,report:"native-window-current.json"},
+        native_mobile:{status:$mobile.status,exit_code:$mobile_exit_code,bound_to_current_source:$mobile_bound,source_contract_ready:($mobile.mobile_source_contract_ready // false),android_unauthenticated_login_surface:{visual_verified:($mobile.hard_boundaries.android_emulator_unauthenticated_login_surface_visual_verified // false),rotation_verified:($mobile.hard_boundaries.android_emulator_unauthenticated_login_surface_rotation_verified // false),ime_verified:($mobile.hard_boundaries.android_emulator_unauthenticated_login_surface_ime_verified // false)},generic_android_visual_rotation_ime_claims_hard_false:(($mobile.hard_boundaries.android_emulator_visual_verified // false) == false and ($mobile.hard_boundaries.android_emulator_rotation_verified // false) == false and ($mobile.hard_boundaries.android_emulator_ime_verified // false) == false),full_product_ready:($mobile.hard_boundaries.mobile_full_product_ready // false),report:"native-mobile-readiness.json"},
         control_browser:{status:($browser.status // "not_run"),exit_code:$browser_exit_code,ready:$browser_ready,report:"control-browser-smoke.json"}
       },
       promotion_receipts:[$window_receipt,$matrix_receipt,$bridge_receipt,$device_receipt,$accessibility_receipt,$release_receipt],
-      hard_boundaries:{promotion_independent_verifiers_ready:$promotion_independent_verifiers_ready,matrix_live_ready:false,hepta_live_bridge_ready:false,real_device_lab_ready:false,accessibility_ready:false,ios_accessibility_update_consumed:($mobile.hard_boundaries.ios_accessibility_update_consumed // false),android_accessibility_update_consumed:($mobile.hard_boundaries.android_accessibility_update_consumed // false),android_secure_session_persistence_ready:($mobile.hard_boundaries.android_secure_session_persistence_ready // false),mobile_full_product_ready:($mobile.hard_boundaries.mobile_full_product_ready // false),release_independent_verification_ready:$release_independent_verification_ready,signed:false,notarized:false,stapled:false,public_distribution_ready:false},
+      hard_boundaries:{promotion_independent_verifiers_ready:$promotion_independent_verifiers_ready,matrix_live_ready:false,hepta_live_bridge_ready:false,real_device_lab_ready:false,accessibility_ready:false,ios_accessibility_update_consumed:($mobile.hard_boundaries.ios_accessibility_update_consumed // false),android_accessibility_update_consumed:($mobile.hard_boundaries.android_accessibility_update_consumed // false),android_secure_session_persistence_ready:($mobile.hard_boundaries.android_secure_session_persistence_ready // false),android_emulator_visual_verified:false,android_emulator_rotation_verified:false,android_emulator_ime_verified:false,mobile_full_product_ready:($mobile.hard_boundaries.mobile_full_product_ready // false),release_independent_verification_ready:$release_independent_verification_ready,signed:false,notarized:false,stapled:false,public_distribution_ready:false},
       external_side_effects_performed:false,
-      blockers:([if $binding_stable then empty else "source_changed_during_gate" end,if $binding_after.repository_worktree_clean then empty else "repository_worktree_dirty" end,if $sync_exit_code == 0 then empty else "upstream_sync_child_failed" end,if $product_exit_code == 0 then empty else "native_product_child_failed" end,if $token_exit_code == 0 then empty else "token_sync_child_failed" end,if $feature_exit_code == 0 then empty else "feature_matrix_child_failed" end,if $mobile_exit_code == 0 then empty else "native_mobile_child_failed" end,if $sync_bound then empty else "upstream_sync_receipt_not_bound" end,if $product_bound then empty else "native_product_receipt_not_bound" end,if $token_bound then empty else "token_receipt_not_bound" end,if $feature_bound then empty else "feature_receipt_not_bound" end,if $package_bound then empty else "package_receipt_not_bound" end,if $mobile_bound then empty else "native_mobile_receipt_not_bound" end,if $sync.status == "ready" then empty else "upstream_sync_or_path_ledger_not_ready" end,if $product.status == "ready" then empty else "native_product_shell_not_ready" end,if $tokens.status == "ready" then empty else "token_sync_not_ready" end,if $feature.feature_matrix_ready == true then empty else "native_feature_matrix_not_ready" end,if $package.static_package_contract_ready == true then empty else "package_metadata_not_ready" end,if $mobile.mobile_source_contract_ready == true then empty else "native_mobile_source_contract_not_ready" end,if $package.local_package_ready == true then empty else "current_source_local_package_not_ready" end,if $browser_ready then empty else "control_browser_current_receipt_not_ready" end,"promotion_independent_verifiers_not_implemented",if $window_receipt.ready then empty else "native_window_current_receipt_not_ready" end,if $matrix_receipt.ready then empty else "matrix_live_not_ready" end,if $bridge_receipt.ready then empty else "hepta_live_bridge_not_ready" end,if $device_receipt.ready then empty else "real_device_lab_not_ready" end,if $accessibility_receipt.ready then empty else "accessibility_not_ready" end,"pinned_makepad_mobile_accessibility_backend_not_implemented","android_secure_credential_backend_not_supported","independent_release_verifier_not_implemented",if $release_receipt.ready then empty else "public_release_not_ready" end])
+      blockers:([if $binding_stable then empty else "source_changed_during_gate" end,if $binding_after.repository_worktree_clean then empty else "repository_worktree_dirty" end,if $sync_exit_code == 0 then empty else "upstream_sync_child_failed" end,if $product_exit_code == 0 then empty else "native_product_child_failed" end,if $token_exit_code == 0 then empty else "token_sync_child_failed" end,if $feature_exit_code == 0 then empty else "feature_matrix_child_failed" end,if $mobile_exit_code == 0 then empty else "native_mobile_child_failed" end,if $window_exit_code == 0 then empty else "native_window_verifier_failed" end,if $sync_bound then empty else "upstream_sync_receipt_not_bound" end,if $product_bound then empty else "native_product_receipt_not_bound" end,if $token_bound then empty else "token_receipt_not_bound" end,if $feature_bound then empty else "feature_receipt_not_bound" end,if $package_bound then empty else "package_receipt_not_bound" end,if $mobile_bound then empty else "native_mobile_receipt_not_bound" end,if $sync.status == "ready" then empty else "upstream_sync_or_path_ledger_not_ready" end,if $product.status == "ready" then empty else "native_product_shell_not_ready" end,if $tokens.status == "ready" then empty else "token_sync_not_ready" end,if $feature.feature_matrix_ready == true then empty else "native_feature_matrix_not_ready" end,if $package.static_package_contract_ready == true then empty else "package_metadata_not_ready" end,if $mobile.mobile_source_contract_ready == true then empty else "native_mobile_source_contract_not_ready" end,if $package.local_package_ready == true then empty else "current_source_local_package_not_ready" end,if $browser_ready then empty else "control_browser_current_receipt_not_ready" end,if $promotion_independent_verifiers_ready then empty else "native_window_independent_promotion_not_ready" end,if $window_receipt.ready then empty else "native_window_current_receipt_not_ready" end,if $matrix_receipt.ready then empty else "matrix_live_not_ready" end,if $bridge_receipt.ready then empty else "hepta_live_bridge_not_ready" end,if $device_receipt.ready then empty else "real_device_lab_not_ready" end,if $accessibility_receipt.ready then empty else "accessibility_not_ready" end,"pinned_makepad_mobile_accessibility_backend_not_implemented","android_secure_credential_backend_not_supported","independent_release_verifier_not_implemented",if $release_receipt.ready then empty else "public_release_not_ready" end])
     }')"
 
 printf '%s\n' "$report" >"$REPORT_PATH"

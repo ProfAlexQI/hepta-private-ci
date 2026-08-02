@@ -143,7 +143,9 @@ the sole `arm64-v8a` Makepad library embeds the full current HEAD, re-reads the
 package/activity/Hepta label with Android build tools, and verifies the debug
 signer. It also rehashes and content-probes distinct portrait, landscape-top,
 landscape-scrolled, and IME PNGs. A valid receipt may promote only local
-emulator runtime, visual, rotation, and IME evidence. Missing or invalid
+emulator runtime plus unauthenticated login-surface visual, rotation, and IME
+evidence. Generic Android product visual/rotation/IME claims remain hard-false,
+as do authenticated rooms and timelines. Missing or invalid
 evidence never promotes a real device, TalkBack, secure credentials, release
 signing, full-product readiness, or GA readiness.
 

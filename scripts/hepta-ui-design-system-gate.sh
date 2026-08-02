@@ -27,7 +27,7 @@ CONTROL_CSS_BUDGET_BYTES=300000
 CONTROL_IMPORTANT_BUDGET=2100
 
 for required in "$TOKEN_SOURCE" "$NATIVE_THEME" "apps/hepta-native/src/shared/mod.rs" \
-  "docs/architecture/HEPTA_UI_LIGHT_TEMPERED_GLASS_STANDARD_2026.md" "${CONTROL_CSS_FILES[@]}"; do
+  "docs/architecture/HEPTA_UI_LIGHT_TEMPERED_GLASS_STANDARD_2026.md" apps/hepta-control-ui/styles.css "${CONTROL_CSS_FILES[@]}"; do
   [[ -s "$required" ]] || { echo "missing design-system input: $required" >&2; exit 1; }
 done
 
@@ -55,8 +55,12 @@ rg -Fq 'COLOR_HEPTA_GLASS' "$NATIVE_THEME"
 rg -Fq 'HEPTA_RADIUS_PANEL' "$NATIVE_THEME"
 
 runtime_css_bytes="$(wc -c "${CONTROL_CSS_FILES[@]}" | awk 'END {print $1}')"
+runtime_css_join_separator_bytes="$(( ${#CONTROL_CSS_FILES[@]} - 1 ))"
+gateway_stylesheet_body_bytes="$(( runtime_css_bytes + runtime_css_join_separator_bytes ))"
+direct_preview_manifest_bytes="$(wc -c < apps/hepta-control-ui/styles.css | tr -d ' ')"
+direct_preview_css_payload_bytes="$(( direct_preview_manifest_bytes + runtime_css_bytes ))"
 important_count="$(rg -o '!important' "${CONTROL_CSS_FILES[@]}" | wc -l | tr -d ' ')"
-[[ "$runtime_css_bytes" -lt "$CONTROL_CSS_BUDGET_BYTES" ]] || { echo "Control CSS exceeds $CONTROL_CSS_BUDGET_BYTES bytes" >&2; exit 1; }
+[[ "$gateway_stylesheet_body_bytes" -lt "$CONTROL_CSS_BUDGET_BYTES" ]] || { echo "Control gateway stylesheet exceeds $CONTROL_CSS_BUDGET_BYTES bytes" >&2; exit 1; }
 [[ "$important_count" -le "$CONTROL_IMPORTANT_BUDGET" ]] || { echo "Control !important count exceeds $CONTROL_IMPORTANT_BUDGET" >&2; exit 1; }
 
 if rg -Fq 'assets/k.png' "${CONTROL_CSS_FILES[@]}" apps/hepta-control-ui/index.html codex-rs/hepta-core/src/control_ui.rs; then
@@ -103,6 +107,9 @@ source_binding="$(scripts/hepta-ui-source-fingerprint)"
 jq -n \
   --arg rust_toolchain "$rust_toolchain" --argjson source_binding "$source_binding" --argjson token_report "$token_report" \
   --argjson contrast "$contrast_json" --argjson runtime_css_bytes "$runtime_css_bytes" \
+  --argjson runtime_css_file_count "${#CONTROL_CSS_FILES[@]}" --argjson runtime_css_join_separator_bytes "$runtime_css_join_separator_bytes" \
+  --argjson gateway_stylesheet_body_bytes "$gateway_stylesheet_body_bytes" --argjson direct_preview_manifest_bytes "$direct_preview_manifest_bytes" \
+  --argjson direct_preview_css_payload_bytes "$direct_preview_css_payload_bytes" \
   --argjson runtime_css_budget_bytes "$CONTROL_CSS_BUDGET_BYTES" --argjson important_count "$important_count" \
   --argjson important_budget "$CONTROL_IMPORTANT_BUDGET" --argjson static_popover_count "$static_popover_count" \
   --argjson static_trigger_count "$static_trigger_count" '
@@ -117,7 +124,14 @@ jq -n \
     token_report:$token_report,
     dim_text_contrast:$contrast,
     rust_toolchain:$rust_toolchain,
-    control:{runtime_css_bytes:$runtime_css_bytes,runtime_css_budget_bytes:$runtime_css_budget_bytes,important_count:$important_count,important_budget:$important_budget,retired_texture_asset_free:true,accessibility_media_queries_ready:true,static_auto_popover_count:$static_popover_count,static_popover_trigger_count:$static_trigger_count},
+    control:{
+      runtime_css_bytes:$runtime_css_bytes,
+      runtime_css_bytes_compatibility_alias_for:"css_bytes.leaf_source_bytes",
+      runtime_css_budget_bytes:$runtime_css_budget_bytes,
+      gateway_stylesheet_body_budget_bytes:$runtime_css_budget_bytes,
+      css_bytes:{schema_version:1,measurement:"uncompressed_file_bytes_excluding_http_headers",leaf_file_count:$runtime_css_file_count,leaf_source_bytes:$runtime_css_bytes,gateway_join_separator:"\\n",gateway_join_separator_bytes:$runtime_css_join_separator_bytes,gateway_stylesheet_body_bytes:$gateway_stylesheet_body_bytes,direct_preview_manifest_bytes:$direct_preview_manifest_bytes,direct_preview_css_payload_bytes:$direct_preview_css_payload_bytes},
+      important_count:$important_count,important_budget:$important_budget,retired_texture_asset_free:true,accessibility_media_queries_ready:true,static_auto_popover_count:$static_popover_count,static_popover_trigger_count:$static_trigger_count
+    },
     native:{semantic_theme_registered:true,retired_light_glass_module_absent:true},
     external_side_effects_performed:false
   }' >"$REPORT_PATH"

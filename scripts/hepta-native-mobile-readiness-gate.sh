@@ -232,9 +232,12 @@ ios_simulator_receipt_summary="$(jq -n \
 android_emulator_receipt_supplied=false
 android_emulator_receipt_ready=false
 android_emulator_receipt_status="missing"
+android_emulator_login_visual_ready=false
+android_emulator_login_rotation_ready=false
+android_emulator_login_ime_ready=false
 android_emulator_receipt_summary="$(jq -n \
   --arg path "$ANDROID_EMULATOR_RECEIPT" \
-  '{supplied:false,path:$path,status:"missing",ready:false,claims:{runtime:false,visual:false,rotation:false,ime:false}}')"
+  '{supplied:false,path:$path,status:"missing",ready:false,scope:null,claims:{runtime:false,unauthenticated_login_surface_visual:false,unauthenticated_login_surface_rotation:false,unauthenticated_login_surface_ime:false,visual:false,rotation:false,ime:false},deprecated_generic_claims_hard_false:true}')"
 
 verify_ios_simulator_artifact() {
   local receipt="$1" archive="$2" extract_root app_bundle_count app_bundle plist binary mode evidence_path evidence_sha
@@ -549,6 +552,7 @@ if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
       --arg fingerprint "$(jq -r '.source_fingerprint' <<<"$SOURCE_AFTER")" '
         .schema_version == 2
         and .kind == "hepta-native-android-arm64-emulator-runtime-receipt"
+        and .scope == "unauthenticated_android_login_surface_on_arm64_emulator"
         and .status == "ready"
         and .ready == true
         and .source_binding.head == $head
@@ -624,21 +628,33 @@ if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
         and ([.visual_inspection.portrait.path,.visual_inspection.landscape_top.path,.visual_inspection.landscape_scrolled.path,.visual_inspection.ime.path] | unique | length == 4)
         and ([.visual_inspection.portrait.sha256,.visual_inspection.landscape_top.sha256,.visual_inspection.landscape_scrolled.sha256,.visual_inspection.ime.sha256] | unique | length == 4)
         and .visual_inspection.portrait.width < .visual_inspection.portrait.height
+        and .visual_inspection.portrait.app_remains_foreground == true
         and .visual_inspection.portrait.form_fits_viewport == true
+        and .visual_inspection.portrait.login_action_visible == true
+        and .visual_inspection.portrait.all_sso_marks_visible == true
+        and .visual_inspection.portrait.signup_visible == true
         and .visual_inspection.landscape_top.width > .visual_inspection.landscape_top.height
         and .visual_inspection.landscape_top.app_remains_foreground == true
         and .visual_inspection.landscape_top.top_content_visible == true
+        and .visual_inspection.landscape_top.lower_content_visible == true
+        and .visual_inspection.landscape_top.two_column_layout_visible == true
         and .visual_inspection.landscape_scrolled.width > .visual_inspection.landscape_scrolled.height
         and .visual_inspection.landscape_scrolled.app_remains_foreground == true
         and .visual_inspection.landscape_scrolled.lower_content_visible == true
         and .visual_inspection.landscape_scrolled.sign_in_action_visible == true
         and .visual_inspection.ime.width < .visual_inspection.ime.height
+        and .visual_inspection.ime.app_remains_foreground == true
         and .visual_inspection.ime.input_shown == true
+        and .visual_inspection.ime.input_view_shown == true
+        and .visual_inspection.ime.focused_field == "homeserver"
         and .visual_inspection.ime.focused_field_visible == true
         and .visual_inspection.ime.soft_input_mode == "ADJUST_NOTHING_WITH_MAKEPAD_KEYBOARD_VIEW"
         and .visual_inspection.ime.manifest_soft_input_mode == "STATE_UNCHANGED|ADJUST_NOTHING"
         and .visual_inspection.ime.manifest_soft_input_contract_ready == true
         and .visual_inspection.ime.lower_form_covered == false
+        and .visual_inspection.ime.login_action_visible == true
+        and .visual_inspection.ime.sso_marks_visible == true
+        and .visual_inspection.ime.signup_visible == true
         and .asset_rendering.brand_mark_correct == true
         and .asset_rendering.sso_provider_marks_correct == true
         and .asset_rendering.provider_marks_texture_free == true
@@ -680,13 +696,19 @@ if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
       && verify_android_emulator_screenshot "$ANDROID_EMULATOR_RECEIPT" ime; then
       android_emulator_receipt_ready=true
       android_emulator_receipt_status="ready"
+      android_emulator_login_visual_ready=true
+      android_emulator_login_rotation_ready=true
+      android_emulator_login_ime_ready=true
     fi
   fi
   android_emulator_receipt_summary="$(jq -n \
     --arg path "$ANDROID_EMULATOR_RECEIPT" \
     --arg status "$android_emulator_receipt_status" \
     --argjson ready "$android_emulator_receipt_ready" \
-    '{supplied:true,path:$path,status:$status,ready:$ready,claims:{runtime:$ready,visual:$ready,rotation:$ready,ime:$ready}}')"
+    --argjson login_visual "$android_emulator_login_visual_ready" \
+    --argjson login_rotation "$android_emulator_login_rotation_ready" \
+    --argjson login_ime "$android_emulator_login_ime_ready" \
+    '{supplied:true,path:$path,status:$status,ready:$ready,scope:"unauthenticated_android_login_surface_on_arm64_emulator",claims:{runtime:$ready,unauthenticated_login_surface_visual:$login_visual,unauthenticated_login_surface_rotation:$login_rotation,unauthenticated_login_surface_ime:$login_ime,visual:false,rotation:false,ime:false},deprecated_generic_claims_hard_false:true}')"
 fi
 
 SOURCE_FINAL="$(scripts/hepta-ui-source-fingerprint)"
@@ -704,9 +726,12 @@ if [[ "$(jq -r '.head' <<<"$SOURCE_AFTER")" != "$(jq -r '.head' <<<"$SOURCE_FINA
   if [[ "$android_emulator_receipt_supplied" == true ]]; then
     android_emulator_receipt_ready=false
     android_emulator_receipt_status="invalid"
+    android_emulator_login_visual_ready=false
+    android_emulator_login_rotation_ready=false
+    android_emulator_login_ime_ready=false
     android_emulator_receipt_summary="$(jq -n \
       --arg path "$ANDROID_EMULATOR_RECEIPT" \
-      '{supplied:true,path:$path,status:"invalid",ready:false,claims:{runtime:false,visual:false,rotation:false,ime:false}}')"
+      '{supplied:true,path:$path,status:"invalid",ready:false,scope:null,claims:{runtime:false,unauthenticated_login_surface_visual:false,unauthenticated_login_surface_rotation:false,unauthenticated_login_surface_ime:false,visual:false,rotation:false,ime:false},deprecated_generic_claims_hard_false:true}')"
   fi
 fi
 
@@ -740,6 +765,9 @@ report="$(jq -n \
   --argjson android_emulator_receipt_supplied "$android_emulator_receipt_supplied" \
   --argjson android_emulator_receipt_ready "$android_emulator_receipt_ready" \
   --argjson android_emulator_receipt_summary "$android_emulator_receipt_summary" \
+  --argjson android_login_visual_ready "$android_emulator_login_visual_ready" \
+  --argjson android_login_rotation_ready "$android_emulator_login_rotation_ready" \
+  --argjson android_login_ime_ready "$android_emulator_login_ime_ready" \
   --argjson toolchain_ready "$toolchain_wrapper_ready" \
   --argjson toolchain "$toolchain_report" \
   --argjson icons_ready "$ios_icon_contract_ready" \
@@ -782,9 +810,13 @@ report="$(jq -n \
         plaintext_credential_fallback_allowed:false,
         ios_simulator_runtime_verified:$ios_simulator_receipt_ready,
         android_emulator_runtime_verified:$android_emulator_receipt_ready,
-        android_emulator_visual_verified:$android_emulator_receipt_ready,
-        android_emulator_rotation_verified:$android_emulator_receipt_ready,
-        android_emulator_ime_verified:$android_emulator_receipt_ready,
+        android_emulator_unauthenticated_login_surface_visual_verified:$android_login_visual_ready,
+        android_emulator_unauthenticated_login_surface_rotation_verified:$android_login_rotation_ready,
+        android_emulator_unauthenticated_login_surface_ime_verified:$android_login_ime_ready,
+        android_emulator_visual_verified:false,
+        android_emulator_rotation_verified:false,
+        android_emulator_ime_verified:false,
+        deprecated_generic_android_emulator_claims_hard_false:true,
         ios_real_device_verified:false,
         android_real_device_verified:false,
         voiceover_verified:false,

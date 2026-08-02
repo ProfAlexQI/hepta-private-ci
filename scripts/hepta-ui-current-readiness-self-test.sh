@@ -24,9 +24,17 @@ jq -n --argjson binding "$binding" --arg path "$artifact" --arg sha "$artifact_s
   {schema_version:1,kind:"hepta-ui-matrix-live-receipt-v1",producer:"scripts/hepta-ui-matrix-live-verifier-v1",
    status:"ready",source_binding:$stale,artifact:{path:$path,sha256:$sha},matrix_live_ready:true}
 ' >"$TEST_DIR/stale-matrix.json"
+jq -n --argjson binding "$binding" --arg path "$artifact" --arg sha "$artifact_sha" '{
+  schema_version:1,kind:"hepta-ui-native-window-receipt-v1",producer:"scripts/hepta-ui-native-window-verifier-v1",
+  status:"ready",source_binding:$binding,source_stable_during_run:true,
+  scope:"unauthenticated_local_macos_product_shell",independent_promotion_verifier_ready:true,
+  artifact:{path:$path,sha256:$sha},native_window_ready:true,
+  package:{report_path:"/forged/package.json",report_sha256:("a" * 64),app_path:"/forged/Hepta.app",binary_sha256:("b" * 64),current_source_local_package_ready:true,visual_capture_binary_is_separate_developer_diagnostics_build:true}
+}' >"$TEST_DIR/forged-window.json"
 
 HEPTA_UI_RELEASE_RECEIPT="$TEST_DIR/forged-release.json" \
 HEPTA_UI_MATRIX_LIVE_RECEIPT="$TEST_DIR/stale-matrix.json" \
+HEPTA_UI_NATIVE_WINDOW_RECEIPT="$TEST_DIR/forged-window.json" \
   scripts/hepta-ui-current-readiness.sh --evidence-dir "$TEST_DIR" --output "$TEST_DIR/report.json" --require none >/dev/null
 
 jq -e '
@@ -34,12 +42,19 @@ jq -e '
   and .gates.native_feature_matrix.status == "not_run"
   and .gates.native_feature_matrix.ready == false
   and .gates.control_browser.status == "not_run"
+  and .gates.native_mobile.generic_android_visual_rotation_ime_claims_hard_false == true
   and ([.promotion_receipts[] | select(.name == "matrix_live") | .ready] == [false])
+  and ([.promotion_receipts[] | select(.name == "native_window") | .ready] == [true])
+  and .gates.native_window.independent_promotion_ready == false
 ' "$TEST_DIR/report.json" >/dev/null
 jq -e '
-  .readiness.full_product == false
+  .readiness.local_demo == false
+  and .readiness.full_product == false
   and .readiness.public_ga == false
   and .hard_boundaries.promotion_independent_verifiers_ready == false
+  and .hard_boundaries.android_emulator_visual_verified == false
+  and .hard_boundaries.android_emulator_rotation_verified == false
+  and .hard_boundaries.android_emulator_ime_verified == false
   and .hard_boundaries.release_independent_verification_ready == false
   and .hard_boundaries.signed == false
   and .hard_boundaries.notarized == false
@@ -63,6 +78,14 @@ done
 grep -Fq -- '--slurpfile browser_file "$BROWSER_REPORT"' scripts/hepta-ui-current-readiness.sh
 if grep -Fq -- '--argjson browser "$(cat "$BROWSER_REPORT")"' scripts/hepta-ui-current-readiness.sh; then
   echo "current readiness expands the browser receipt onto the command line" >&2
+  exit 1
+fi
+
+# A current window capability alone is insufficient: promotion must bind the
+# independent verifier back to the exact current-run package receipt.
+grep -Fq -- 'and ($window_receipt.package.report_sha256 // "") == $package_report_sha256' scripts/hepta-ui-current-readiness.sh
+if grep -Fq -- 'false as $promotion_independent_verifiers_ready' scripts/hepta-ui-current-readiness.sh; then
+  echo "native-window promotion verifier remains hard-coded false" >&2
   exit 1
 fi
 

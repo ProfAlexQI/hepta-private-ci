@@ -3,7 +3,7 @@
 The only active UI readiness entry point is:
 
 ```sh
-scripts/hepta-ui-current-readiness.sh --evidence-dir <new-directory> --verify
+scripts/hepta-ui-current-readiness.sh --evidence-dir <new-directory> --verify-local --require local
 ```
 
 It binds every generated receipt to the current Git HEAD and a deterministic
@@ -16,7 +16,10 @@ The readiness levels are deliberately separate:
 - `source`: strict upstream ledger, Native product shell, canonical tokens,
   no-default/default/all-feature checks, and package metadata.
 - `local`: source plus a current-source unsigned package, Control browser smoke,
-  and current Native-window evidence.
+  and an independently captured current-HEAD macOS Native window. This is an
+  unauthenticated local demo surface only: the exact formal unsigned package is
+  bound to the receipt, while the isolated visual run uses the explicit
+  `developer-diagnostics` build so saved Matrix credentials are never read.
 - `full`: local plus live Matrix, authoritative Hepta adapter, real-device, and
   accessibility receipts.
 - `ga`: full plus signed, notarized, stapled, explicitly authorized public
@@ -36,6 +39,10 @@ scripts/hepta-native-product-shell-gate-v2.sh --json
 scripts/hepta-ui-light-glass-token-sync.rb --check
 scripts/hepta-native-feature-matrix-gate.sh --output /tmp/native-features.json
 scripts/hepta-native-current-package-gate.sh --build --output /tmp/native-package.json
+scripts/hepta-ui-native-window-verifier-v1 \
+  --package-report /tmp/native-package.json \
+  --evidence-dir /tmp/native-window \
+  --output /tmp/native-window-current.json
 ```
 
 None of these commands signs, notarizes, staples, uploads, publishes, sends a
