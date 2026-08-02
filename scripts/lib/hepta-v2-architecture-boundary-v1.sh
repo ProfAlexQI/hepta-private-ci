@@ -725,8 +725,7 @@ verify_sealed_execution_boundaries() {
 }
 
 verify_quarantined_native_process_surface() {
-  local source="codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
-  local tests_dir="codex-rs/hepta-runtime/src/runtime_kernel/tests"
+  local source="codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs" tests_dir="codex-rs/hepta-runtime/src/runtime_kernel/tests"
   local registry_block production_tools premodel_block offering_block
   registry_block="$(sed -n '/^    fn new() -> Self {/,/^    #\[cfg(test)\]/p' "$ROOT/$source")"
   production_tools="$(sed -n '/^fn native_openclaw_compatible_tools()/,/^#\[cfg(test)\]/p' "$ROOT/$source")"
@@ -1162,8 +1161,7 @@ verify_provider_effect_boundary() {
 }
 
 verify_release_mutation_quarantines() {
-  local source="codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
-  local adapters="codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
+  local source="codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs" adapters="codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
   local regression="codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_provider_idempotency.rs"
   local function block live_case_count
 
@@ -1914,11 +1912,9 @@ self_test() (
   cp "$ROOT/codex-rs/hepta-native-gateway/src/secure_key_file.rs" \
     "$fixture/codex-rs/hepta-native-gateway/src/secure_key_file.rs"
   mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel"
-  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs" \
-    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs" "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
   mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests"
-  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests"/part_*.rs \
-    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests/"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests"/part_*.rs "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests/"
   for source in \
     context_freezer.rs approval_state.rs cross_process_write_lock.rs execution_attempt.rs execution_bus.rs execution_lease.rs \
     outcome_recorder.rs outcome_sink.rs provider_effect.rs provider_support.rs safety_gate_client.rs session_ops.rs \
@@ -1928,12 +1924,10 @@ self_test() (
       "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/$source"
   done
   mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support"
-  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs" \
-    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs" "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
   mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/safety_gate_client"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/safety_gate_client/admission.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/safety_gate_client/admission.rs"
-  mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests"
   for regression in \
     capability_descriptor dispatch_selector exact_safety execution_lease \
     maintenance_mutation native_mutation outcome_flow process_control sealed_read \
@@ -2463,8 +2457,7 @@ PY
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
   expect_fixture_denied "$fixture" \
     "Architecture V2 live native mutation bypasses quarantine"
-  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs" \
-    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs" "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support/native_compat_adapters.rs"
 
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
