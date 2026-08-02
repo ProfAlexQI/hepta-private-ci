@@ -94,11 +94,38 @@ scripts/hepta-native-ios-icons materialize
 scripts/hepta-native-ios-icons verify
 ```
 
-The TestFlight script now separates the Makepad product name (`nativeapp`) from
-the Cargo package and executable (`hepta-native`), deletes reusable bundle
-output before building, requires `run-device` to succeed, and verifies that the
-binary embeds the current committed HEAD before signing. Missing distribution
-identity, profile, device, SDK metadata, or source binding is a hard failure.
+The TestFlight script separates the Makepad bundle-id component (`nativeapp`)
+from the Cargo package and executable (`hepta-native`), while enforcing the
+user-visible `CFBundleDisplayName` and `CFBundleName` as `Hepta`. It deletes
+reusable bundle output before building, requires `run-device` to succeed,
+validates compiled actool output, and verifies that the binary embeds the
+current committed HEAD before signing. Missing distribution identity, profile,
+device, SDK metadata, branding, compiled assets, or source binding is a hard
+failure.
+
+For a local simulator that is already installed and booted, generate a
+current-source runtime receipt without downloading a runtime, creating an
+account, contacting a real device, or signing anything:
+
+```sh
+export HEPTA_NATIVE_MOBILE_TOOLS_DIR=/absolute/path/hepta-native-mobile-tools-c4335cee-v1
+export CARGO_TARGET_DIR=/absolute/path/hepta-native-ios-target
+scripts/hepta-native-ios-simulator-smoke.sh \
+  --device booted \
+  --output /tmp/hepta-ios-simulator/receipt.json \
+  --screenshot /tmp/hepta-ios-simulator/hepta.png
+HEPTA_NATIVE_IOS_SIMULATOR_RECEIPT=/tmp/hepta-ios-simulator/receipt.json \
+  scripts/hepta-native-mobile-readiness-gate.sh --output /tmp/hepta-mobile.json
+```
+
+The simulator runner removes stale output, uses only the pinned mobile wrapper,
+requires an installable `ai.hepta.nativeapp` / `Hepta` / `hepta-native` bundle,
+requires compiled `Assets.car` or the strict actool legacy icon-output set,
+installs and launches with `simctl`, and hashes both its app archive and GPU
+screenshot. Supplying the receipt environment variable makes receipt parsing
+strict: stale source bindings or changed artifacts fail the gate. Omitting it
+keeps simulator runtime verification hard-false without making the static
+source contract fail.
 
 Run the report-only mobile source gate with:
 
@@ -108,9 +135,10 @@ scripts/hepta-native-mobile-readiness-gate.sh --output /tmp/hepta-mobile.json
 
 That report deliberately keeps full mobile readiness false. At the pinned
 Makepad revision, iOS and Android discard `AccessibilityUpdate`; Android also
-has no approved secure credential backend in this downstream. Simulator,
-real-device, VoiceOver/TalkBack, safe-area, keyboard, RTL, font scaling, and
-power receipts remain required rather than being inferred from source builds.
+has no approved secure credential backend in this downstream. A valid optional
+receipt can verify only this local iOS simulator build/install/launch/screenshot
+lane. Real-device, VoiceOver/TalkBack, safe-area, keyboard, RTL, font scaling,
+and power receipts remain required rather than being inferred from it.
 
 ## Frozen upstream documentation (reference only)
 

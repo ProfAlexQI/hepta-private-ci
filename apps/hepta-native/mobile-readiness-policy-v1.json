@@ -12,7 +12,11 @@
   "downstream_boundaries": {
     "android_secure_credential_backend_supported": false,
     "android_session_behavior": "fail_closed_relogin_required",
-    "plaintext_credential_fallback_allowed": false
+    "plaintext_credential_fallback_allowed": false,
+    "ios_bundle_identifier": "ai.hepta.nativeapp",
+    "ios_product_name": "Hepta",
+    "ios_executable": "hepta-native",
+    "ios_simulator_smoke_signing_performed": false
   },
   "promotion_requirements": {
     "ios_simulator_receipt_required": true,

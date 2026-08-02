@@ -31,6 +31,7 @@ cd "$APP_DIR"
 ORG="${ORG:-ai.hepta}"
 APP="${APP:-nativeapp}"
 CARGO_PACKAGE="${CARGO_PACKAGE:-hepta-native}"
+PRODUCT_NAME="Hepta"
 SIGNING_IDENTITY="${IOS_SIGNING_IDENTITY:-Apple Distribution}"
 PROFILE_UUID="${IOS_PROVISIONING_PROFILE_UUID:?set IOS_PROVISIONING_PROFILE_UUID}"
 DEVICE="${IOS_DEVICE:-IPhone}"
@@ -40,8 +41,12 @@ if [[ "$CARGO_PACKAGE" != "hepta-native" ]]; then
   echo "Error: CARGO_PACKAGE must remain hepta-native; --app controls the bundle id separately." >&2
   exit 64
 fi
+if [[ "$ORG.$APP" != "ai.hepta.nativeapp" ]]; then
+  echo "Error: ORG and APP must remain ai.hepta and nativeapp for the canonical Hepta bundle id." >&2
+  exit 64
+fi
 
-for command in git jq rustup security xcrun codesign ditto shasum strings; do
+for command in git jq rustup security xcrun codesign ditto shasum strings sips plutil; do
   command -v "$command" >/dev/null 2>&1 || { echo "Error: $command is required." >&2; exit 2; }
 done
 
@@ -165,6 +170,8 @@ set_or_add() {
   fi
 }
 set_or_add CFBundlePackageType string APPL
+set_or_add CFBundleDisplayName string "$PRODUCT_NAME"
+set_or_add CFBundleName string "$PRODUCT_NAME"
 set_or_add CFBundleIconName string AppIcon
 if ! /usr/libexec/PlistBuddy -c "Add :UILaunchScreen dict" "$PLIST" 2>/dev/null; then
   /usr/libexec/PlistBuddy -c "Print :UILaunchScreen" "$PLIST" >/dev/null
@@ -173,12 +180,69 @@ set_or_add UILaunchScreen:UIImageName string AppIcon60x60
 set_or_add UILaunchScreen:UIColorName string LaunchScreenBackground
 set_or_add ITSAppUsesNonExemptEncryption bool false
 
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$PLIST")" == "AppIcon" ]] \
+  || { echo "Error: built bundle does not select the compiled AppIcon catalog." >&2; exit 1; }
+ASSET_CAR="$APP_BUNDLE/Assets.car"
+ASSET_CATALOG_REPORT='{}'
+if [[ -s "$ASSET_CAR" ]]; then
+  ASSET_CATALOG_REPORT="$(jq -n \
+    --arg sha256 "$(shasum -a 256 "$ASSET_CAR" | awk '{print $1}')" \
+    '{compiled_asset_catalog_ready:true,mode:"assets_car",evidence:{path:"Assets.car",sha256:$sha256}}')"
+else
+  plutil -lint "$ASSET_INFO" >/dev/null
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$ASSET_INFO")" == "AppIcon" ]] \
+    || { echo "Error: actool phone icon contract is missing." >&2; exit 1; }
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconName' "$ASSET_INFO")" == "AppIcon" ]] \
+    || { echo "Error: actool iPad icon contract is missing." >&2; exit 1; }
+  ICON_OUTPUTS='[]'
+  for specification in \
+    'AppIcon60x60@2x.png:120' \
+    'AppIcon60x60@3x.png:180' \
+    'AppIcon76x76@2x~ipad.png:152' \
+    'AppIcon83.5x83.5@2x~ipad.png:167'; do
+    icon_name="${specification%%:*}"
+    expected_pixels="${specification##*:}"
+    icon_path="$APP_BUNDLE/$icon_name"
+    [[ -s "$icon_path" ]] || { echo "Error: actool output is missing $icon_name." >&2; exit 1; }
+    icon_width="$(sips -g pixelWidth "$icon_path" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+    icon_height="$(sips -g pixelHeight "$icon_path" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+    icon_alpha="$(sips -g hasAlpha "$icon_path" 2>/dev/null | awk '/hasAlpha:/ {print $2}')"
+    [[ "$icon_width" == "$expected_pixels" && "$icon_height" == "$expected_pixels" && "$icon_alpha" == "no" ]] \
+      || { echo "Error: invalid compiled icon output $icon_name." >&2; exit 1; }
+    ICON_OUTPUTS="$(jq \
+      --arg path "$icon_name" \
+      --arg sha256 "$(shasum -a 256 "$icon_path" | awk '{print $1}')" \
+      --argjson pixels "$expected_pixels" \
+      '. + [{path:$path,sha256:$sha256,width:$pixels,height:$pixels,alpha:false}]' <<<"$ICON_OUTPUTS")"
+  done
+  ASSET_CATALOG_REPORT="$(jq -n \
+    --arg sha256 "$(shasum -a 256 "$ASSET_INFO" | awk '{print $1}')" \
+    --argjson outputs "$ICON_OUTPUTS" \
+    '{compiled_asset_catalog_ready:true,mode:"actool_info_and_opaque_icon_outputs",evidence:{path:"actool-partial-info.plist",sha256:$sha256},icon_outputs:$outputs}')"
+fi
+jq -e '.compiled_asset_catalog_ready == true and (.evidence.sha256 | test("^[0-9a-f]{64}$"))' >/dev/null <<<"$ASSET_CATALOG_REPORT"
+
 VERSION="$(cargo metadata --locked --offline --no-deps --format-version 1 \
   | jq -r --arg package "$CARGO_PACKAGE" '.packages[] | select(.name == $package) | .version' \
   | sed 's/-.*$//')"
 [[ "$VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]] || { echo "Error: invalid release version '$VERSION'." >&2; exit 1; }
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$PLIST"
+
+# cargo-makepad derives the generated bundle name from --app and currently
+# emits "Nativeapp". Branding is package metadata, not the executable or
+# bundle-id component, so rewrite it deterministically and reject any drift
+# before signing. A signed Nativeapp-branded payload must never be emitted.
+BUILT_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")"
+BUILT_EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST")"
+BUILT_DISPLAY_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$PLIST")"
+BUILT_BUNDLE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$PLIST")"
+[[ "$BUILT_IDENTIFIER" == "ai.hepta.nativeapp" ]] || { echo "Error: final bundle id drifted to $BUILT_IDENTIFIER" >&2; exit 1; }
+[[ "$BUILT_IDENTIFIER" == "$ORG.$APP" ]] || { echo "Error: requested bundle id drifted to $BUILT_IDENTIFIER" >&2; exit 1; }
+[[ "$BUILT_EXECUTABLE" == "hepta-native" ]] || { echo "Error: final executable drifted to $BUILT_EXECUTABLE" >&2; exit 1; }
+[[ "$BUILT_EXECUTABLE" == "$CARGO_PACKAGE" ]] || { echo "Error: requested executable drifted to $BUILT_EXECUTABLE" >&2; exit 1; }
+[[ "$BUILT_DISPLAY_NAME" == "$PRODUCT_NAME" ]] || { echo "Error: CFBundleDisplayName drifted to $BUILT_DISPLAY_NAME" >&2; exit 1; }
+[[ "$BUILT_BUNDLE_NAME" == "$PRODUCT_NAME" ]] || { echo "Error: CFBundleName drifted to $BUILT_BUNDLE_NAME" >&2; exit 1; }
 
 security cms -D -i "$PROFILE_PATH" >"$PROFILE_PLIST"
 /usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$PROFILE_PLIST" >"$ENTITLEMENTS"
@@ -218,14 +282,17 @@ jq -n \
   --arg artifact_sha256 "$IPA_SHA256" \
   --arg bundle_identifier "$BUILT_IDENTIFIER" \
   --arg executable "$BUILT_EXECUTABLE" \
+  --arg display_name "$BUILT_DISPLAY_NAME" \
+  --arg bundle_name "$BUILT_BUNDLE_NAME" \
   --arg sdk_version "$SDK_VER" \
   --arg signing_identity "$SIGNING_IDENTITY" \
   --arg signing_identity_sha1 "$CERT_SHA1" \
   --arg provisioning_profile_uuid "$PROFILE_UUID" \
   --argjson toolchain "$TOOLCHAIN_REPORT" \
   --argjson icons "$ICON_REPORT" \
+  --argjson asset_catalog "$ASSET_CATALOG_REPORT" \
   --argjson uploaded "$UPLOADED" \
-  '{schema_version:1,kind:"hepta-native-ios-testflight-package",status:"ready",source_binding:{head:$source_head,head_tree:$source_tree,worktree_clean:true},artifact:{path:$artifact_path,sha256:$artifact_sha256},bundle:{identifier:$bundle_identifier,executable:$executable,linked_sdk:$sdk_version},toolchain:$toolchain,icons:$icons,signing:{performed:true,identity:$signing_identity,identity_sha1:$signing_identity_sha1,provisioning_profile_uuid:$provisioning_profile_uuid},testflight_uploaded:$uploaded,public_distribution_authorized:false,stale_artifact_accepted:false}' \
+  '{schema_version:1,kind:"hepta-native-ios-testflight-package",status:"ready",source_binding:{head:$source_head,head_tree:$source_tree,worktree_clean:true},artifact:{path:$artifact_path,sha256:$artifact_sha256},bundle:{identifier:$bundle_identifier,display_name:$display_name,name:$bundle_name,executable:$executable,linked_sdk:$sdk_version},toolchain:$toolchain,icons:$icons,asset_catalog:$asset_catalog,signing:{performed:true,identity:$signing_identity,identity_sha1:$signing_identity_sha1,provisioning_profile_uuid:$provisioning_profile_uuid},testflight_uploaded:$uploaded,public_distribution_authorized:false,stale_artifact_accepted:false}' \
   >"$RECEIPT_PATH"
 
 ls -lh "$IPA_PATH"

@@ -40,7 +40,7 @@ not itself prove correctness or readiness.
 | `hepta-native-dependency-policy` | dependency provenance tooling | Verify pinned Git revisions, allowed registries, vendored provenance, licenses, and policy hashes without fetching or mutating dependencies. | `hepta-native-dependency-policy-self-test`; policy verify |
 | `hepta-native-dependency-policy-self-test` | dependency provenance tooling | Exercise positive and deliberately negative dependency-policy cases. | execute self-test; shell/Ruby syntax check |
 | `canonical-assets-v1.tsv` | asset deduplication policy | Declare the single canonical store-icon source and its generated packaging materialization after retiring the unused Control texture. | `scripts/hepta-native-canonical-assets verify` |
-| `mobile-readiness-policy-v1.json` | mobile readiness policy | Bind known pinned-Makepad accessibility and Android credential-store limitations to explicit fail-closed promotion requirements. | `scripts/hepta-native-mobile-readiness-gate.sh` |
+| `mobile-readiness-policy-v1.json` | mobile readiness policy | Bind the canonical iOS identity, non-signing simulator lane, known pinned-Makepad accessibility boundary, and Android credential-store limitation to explicit fail-closed promotion requirements. | `scripts/hepta-native-mobile-readiness-gate.sh`; iOS simulator receipt negative cases |
 | `README.md` | product documentation and attribution | Document the upstream-first Hepta Native build, frozen Robrix baseline, downstream boundaries, and preserved upstream reference material. | copy review; provenance audit |
 | `build.rs` | product identity and provenance | Embed Hepta desktop metadata while exposing Hepta and frozen Robrix revisions as separate build-time values. | `cargo check --locked`; revision and package metadata audit |
 | `packaging/Info.plist` | packaging identity | Apply the Hepta macOS bundle name, identifier, executable, icon, deep link, and permission copy. | plist parse; unsigned local package inspection |
@@ -48,7 +48,7 @@ not itself prove correctness or readiness.
 | `packaging/hepta-native.desktop` | packaging identity | Add the renamed Hepta Linux desktop entry. | desktop-entry validation; package file inventory |
 | `packaging/rs.robius.robrix.metainfo.xml` | packaging rename | Remove the upstream AppStream filename as part of the explicit Hepta rename. | strict upstream sync check; package file inventory |
 | `packaging/ai.hepta.nativeapp.metainfo.xml` | packaging identity and attribution | Add Hepta AppStream metadata while retaining Robrix/Matrix provenance and license attribution. | XML parse; attribution audit |
-| `packaging/build-ios-testflight.sh` | packaging identity and provenance | Separate the Hepta bundle product from the Cargo package, reject stale build output, require a successful current-source device build, verify the exact HEAD and opaque icon contract, and emit a signing receipt; it does not authorize upload by default. | `bash -n`; mobile readiness gate; authorized signed-device packaging only |
+| `packaging/build-ios-testflight.sh` | packaging identity and provenance | Enforce `Hepta` display/bundle names while retaining `ai.hepta.nativeapp` and `hepta-native`, reject stale output, require a successful current-source device build, verify exact HEAD plus compiled actool output, and emit a signing receipt; it does not authorize upload by default. | `bash -n`; mobile readiness gate; authorized signed-device packaging only |
 | `packaging/build-macos-unsigned-app.sh` | local packaging provenance | Build a resource-complete current-source macOS app with pinned disposable tools while retaining explicit unsigned/public-release boundaries. | current package gate; repeated manifest comparison |
 | `packaging/build-macos-dmg.sh` | packaging identity | Point the existing macOS packaging workflow at the Hepta app, icon, background, and artifact names; it does not authorize signing or publication. | `bash -n`; unsigned local packaging check |
 | `packaging/fix-dmg-applications-icon.sh` | packaging identity | Update the DMG helper for the renamed Hepta image. | `bash -n`; local DMG layout check |
@@ -116,6 +116,12 @@ prefix, so they are not upstream drift and do not appear in the table above:
   notarization, stapling, distribution, or full-product readiness.
 - `scripts/hepta-native-product-shell-gate-v2-self-test.sh` exercises positive
   and deliberately negative source-gate cases.
+- `scripts/hepta-native-ios-simulator-smoke.sh` is the narrow runtime-evidence
+  exception: on an explicitly selected, already-booted local simulator it
+  builds through the pinned wrapper, installs/launches with `simctl`, captures
+  a screenshot, and emits a current-source-bound receipt. It never downloads a
+  runtime, creates a simulator/account, signs, contacts a real device, uploads,
+  or promotes safe-area, keyboard, VoiceOver, RTL, or Dynamic Type readiness.
 
 ## Non-negotiable boundaries
 
