@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+codex-core-plugins.workspace = true
+codex-tools.workspace = true
 hepta-contracts.workspace = true
 hepta-core.workspace = true
 hepta-egress.workspace = true

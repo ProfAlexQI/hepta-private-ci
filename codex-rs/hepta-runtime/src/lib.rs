@@ -228,6 +228,8 @@ mod multi_agent;
 mod ndu_h1_runtime;
 mod operator_policy;
 mod output_directives;
+#[allow(dead_code)]
+mod plugin_compat_report;
 mod plugin_keyed_store;
 mod process_supervisor;
 mod query;
