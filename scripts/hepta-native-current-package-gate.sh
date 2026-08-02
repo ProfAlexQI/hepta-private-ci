@@ -354,7 +354,9 @@ report="$(jq -n \
   --argjson launch_exit_code "$launch_exit_code" --argjson current_source_build_ready "$current_source_build_ready" \
   --argjson local_package_ready "$local_package_ready" --argjson artifact "$artifact_json" \
   '{
-    schema_version:2,
+    # Keep schema v1 for the current-readiness consumer; all formal packaging
+    # evidence fields added here are backwards-compatible extensions.
+    schema_version:1,
     kind:"hepta-native-current-package-gate",
     status:$status,
     source_binding:$source_binding,
