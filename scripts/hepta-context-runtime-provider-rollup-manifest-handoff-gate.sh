@@ -8,7 +8,8 @@ runtime_turn_handoff="$repo_root/codex-rs/hepta-runtime/src/query/context_recall
 runtime_query_tests="$repo_root/codex-rs/hepta-runtime/src/query/tests.rs"
 runtime_context_turn_ops="$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/context_turn_ops.rs"
 runtime_tool_support="$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
-runtime_tests="$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
+runtime_tests_root="$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
+runtime_tests="$repo_root/codex-rs/hepta-runtime/src/runtime_kernel/tests/part_01.rs"
 session_tests="$repo_root/codex-rs/core/src/session/tests/contract_part_03.rs"
 contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
 debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
@@ -142,6 +143,24 @@ do
   assert_file_contains "$runtime_tests" "$term" \
     "runtime native selected-snippet handoff regression"
 done
+
+assert_file_contains "$runtime_tests_root" \
+  '#[path = "tests/part_01.rs"]' \
+  "runtime native selected-snippet handoff test owner"
+assert_file_contains "$runtime_tests_root" \
+  "mod part_01;" \
+  "runtime native selected-snippet handoff test owner"
+if grep -F "$runtime_native_handoff_test" "$runtime_tests_root" >/dev/null; then
+  fail "runtime native selected-snippet handoff regression remains in the legacy root owner"
+fi
+runtime_native_handoff_owners="$(
+  rg -l -F "$runtime_native_handoff_test" \
+    "$repo_root/codex-rs/hepta-runtime/src/runtime_kernel" \
+    --glob '*.rs'
+)"
+if [[ "$runtime_native_handoff_owners" != "$runtime_tests" ]]; then
+  fail "runtime native selected-snippet handoff regression owner drifted: $runtime_native_handoff_owners"
+fi
 
 for term in \
   "$core_combined_test" \
