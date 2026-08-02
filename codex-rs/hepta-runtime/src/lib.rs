@@ -88,6 +88,9 @@ use serde_json::json;
 mod agent_harness;
 mod approval_broker;
 mod config_store;
+// Staged privately until the typed-compat registry cutover consumes the adapter.
+#[allow(dead_code)]
+mod context_plane_compat_report;
 mod context_recall_operator_invocation;
 mod context_recall_operator_scheduler;
 mod controlled_canary_readiness_plan;
