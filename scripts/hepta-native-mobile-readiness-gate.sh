@@ -22,7 +22,7 @@ EOF
   esac
 done
 
-for command in git jq ruby rustup shasum; do
+for command in git jq ruby rustup shasum ditto strings plutil sips find unzip; do
   command -v "$command" >/dev/null 2>&1 || { echo "$command is required" >&2; exit 2; }
 done
 
@@ -224,6 +224,80 @@ ios_simulator_receipt_status="missing"
 ios_simulator_receipt_summary="$(jq -n \
   --arg path "$IOS_SIMULATOR_RECEIPT" \
   '{supplied:false,path:$path,status:"missing",ready:false}')"
+
+verify_ios_simulator_artifact() {
+  local receipt="$1" archive="$2" extract_root app_bundle_count app_bundle plist binary mode evidence_path evidence_sha
+  # Reject absolute paths, parent traversal, backslashes, and control bytes
+  # before extraction. The smoke producer emits only portable slash-separated
+  # app-bundle members, so these shapes are never needed by valid evidence.
+  if ! unzip -Z -1 "$archive" 2>/dev/null | ruby -e '
+      entries = STDIN.each_line.map(&:chomp)
+      abort if entries.empty?
+      entries.each do |entry|
+        abort if entry.empty? || entry.start_with?("/") || entry.include?("\\")
+        abort if entry.bytes.any? { |byte| byte < 0x20 || byte == 0x7f }
+        abort if entry.split("/").include?("..")
+      end
+    '; then
+    return 1
+  fi
+
+  extract_root="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ios-sim-receipt.XXXXXX")"
+  if ! ditto -x -k "$archive" "$extract_root" >/dev/null 2>&1; then
+    rm -rf "$extract_root"
+    return 1
+  fi
+  # No archive member may redirect later hash/metadata reads outside the
+  # extraction root. This is checked before discovering or opening the app.
+  if [[ -n "$(find "$extract_root" -type l -print -quit)" ]]; then
+    rm -rf "$extract_root"
+    return 1
+  fi
+  app_bundle_count="$(find "$extract_root" -maxdepth 2 -type d -name 'hepta-native.app' | wc -l | tr -d '[:space:]')"
+  [[ "$app_bundle_count" == "1" ]] || { rm -rf "$extract_root"; return 1; }
+  app_bundle="$(find "$extract_root" -maxdepth 2 -type d -name 'hepta-native.app' -print -quit)"
+  plist="$app_bundle/Info.plist"
+  binary="$app_bundle/hepta-native"
+  if [[ ! -s "$plist" || ! -x "$binary" ]] \
+    || ! plutil -lint "$plist" >/dev/null 2>&1 \
+    || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" 2>/dev/null)" != "ai.hepta.nativeapp" ]] \
+    || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$plist" 2>/dev/null)" != "Hepta" ]] \
+    || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$plist" 2>/dev/null)" != "Hepta" ]] \
+    || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist" 2>/dev/null)" != "hepta-native" ]] \
+    || ! strings "$binary" | grep -F "https://github.com/ProfAlexQI/Hepta/commit/$(jq -r '.source_binding.head' "$receipt")" >/dev/null; then
+    rm -rf "$extract_root"
+    return 1
+  fi
+
+  mode="$(jq -r '.asset_catalog.mode' "$receipt")"
+  evidence_path="$(jq -r '.asset_catalog.evidence.path' "$receipt")"
+  evidence_sha="$(jq -r '.asset_catalog.evidence.sha256' "$receipt")"
+  if [[ ! -s "$app_bundle/$evidence_path" \
+    || "$(shasum -a 256 "$app_bundle/$evidence_path" | awk '{print $1}')" != "$evidence_sha" ]]; then
+    rm -rf "$extract_root"
+    return 1
+  fi
+  if [[ "$mode" == "actool_info_and_opaque_icon_outputs" ]]; then
+    if ! plutil -lint "$app_bundle/actool-Info.plist" >/dev/null 2>&1 \
+      || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$app_bundle/actool-Info.plist" 2>/dev/null)" != "AppIcon" ]] \
+      || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconName' "$app_bundle/actool-Info.plist" 2>/dev/null)" != "AppIcon" ]]; then
+      rm -rf "$extract_root"
+      return 1
+    fi
+    while IFS=$'\t' read -r icon_path icon_sha icon_width icon_height; do
+      if [[ ! -s "$app_bundle/$icon_path" \
+        || "$(shasum -a 256 "$app_bundle/$icon_path" | awk '{print $1}')" != "$icon_sha" \
+        || "$(sips -g pixelWidth "$app_bundle/$icon_path" 2>/dev/null | awk '/pixelWidth:/ {print $2}')" != "$icon_width" \
+        || "$(sips -g pixelHeight "$app_bundle/$icon_path" 2>/dev/null | awk '/pixelHeight:/ {print $2}')" != "$icon_height" \
+        || "$(sips -g hasAlpha "$app_bundle/$icon_path" 2>/dev/null | awk '/hasAlpha:/ {print $2}')" != "no" ]]; then
+        rm -rf "$extract_root"
+        return 1
+      fi
+    done < <(jq -r '.asset_catalog.icon_outputs[] | [.path,.sha256,(.width|tostring),(.height|tostring)] | @tsv' "$receipt")
+  fi
+  rm -rf "$extract_root"
+}
+
 if [[ -n "$IOS_SIMULATOR_RECEIPT" ]]; then
   ios_simulator_receipt_supplied=true
   ios_simulator_receipt_status="invalid"
@@ -259,8 +333,24 @@ if [[ -n "$IOS_SIMULATOR_RECEIPT" ]]; then
         and .bundle.name == "Hepta"
         and .bundle.executable == "hepta-native"
         and .asset_catalog.compiled_asset_catalog_ready == true
-        and (.asset_catalog.mode == "assets_car" or .asset_catalog.mode == "actool_info_and_opaque_icon_outputs")
         and (.asset_catalog.evidence.sha256 | test("^[0-9a-f]{64}$"))
+        and (
+          if .asset_catalog.mode == "assets_car" then
+            .asset_catalog.evidence.path == "Assets.car"
+            and ((.asset_catalog.icon_outputs // []) | length == 0)
+          elif .asset_catalog.mode == "actool_info_and_opaque_icon_outputs" then
+            .asset_catalog.evidence.path == "actool-Info.plist"
+            and (.asset_catalog.icon_outputs | length == 4)
+            and (.asset_catalog.icon_outputs | map(.path) | unique | length == 4)
+            and (.asset_catalog.icon_outputs | map({path,width,height,alpha}) | sort_by(.path)) == ([
+              {path:"AppIcon60x60@2x.png",width:120,height:120,alpha:false},
+              {path:"AppIcon60x60@3x.png",width:180,height:180,alpha:false},
+              {path:"AppIcon76x76@2x~ipad.png",width:152,height:152,alpha:false},
+              {path:"AppIcon83.5x83.5@2x~ipad.png",width:167,height:167,alpha:false}
+            ] | sort_by(.path))
+            and (.asset_catalog.icon_outputs | all(.sha256 | test("^[0-9a-f]{64}$")))
+          else false end
+        )
         and .launch.ready == true
         and .launch.install_succeeded == true
         and .launch.launch_succeeded == true
@@ -281,7 +371,8 @@ if [[ -n "$IOS_SIMULATOR_RECEIPT" ]]; then
       && "$(shasum -a 256 "$receipt_artifact_path" | awk '{print $1}')" == "$receipt_artifact_sha256" \
       && "$(shasum -a 256 "$receipt_screenshot_path" | awk '{print $1}')" == "$receipt_screenshot_sha256" ]] \
       && ruby -e 'abort unless File.binread(ARGV.fetch(0), 4).start_with?("PK")' "$receipt_artifact_path" >/dev/null 2>&1 \
-      && ruby -e 'abort unless File.binread(ARGV.fetch(0), 8) == "\x89PNG\r\n\x1a\n".b' "$receipt_screenshot_path" >/dev/null 2>&1; then
+      && ruby -e 'abort unless File.binread(ARGV.fetch(0), 8) == "\x89PNG\r\n\x1a\n".b' "$receipt_screenshot_path" >/dev/null 2>&1 \
+      && verify_ios_simulator_artifact "$IOS_SIMULATOR_RECEIPT" "$receipt_artifact_path"; then
       ios_simulator_receipt_ready=true
       ios_simulator_receipt_status="ready"
     fi
