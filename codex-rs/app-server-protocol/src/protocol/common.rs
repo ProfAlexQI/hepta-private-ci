@@ -625,6 +625,12 @@ client_request_definitions! {
         serialization: None,
         response: v2::PluginListResponse,
     },
+    #[experimental("plugin/search")]
+    PluginSearch => "plugin/search" {
+        params: v2::PluginSearchParams,
+        serialization: None,
+        response: v2::PluginSearchResponse,
+    },
     PluginRead => "plugin/read" {
         params: v2::PluginReadParams,
         serialization: None,
@@ -1708,6 +1714,18 @@ mod tests {
             },
         };
         assert_eq!(plugin_list.serialization_scope(), None);
+
+        let plugin_search = ClientRequest::PluginSearch {
+            request_id: request_id(),
+            params: v2::PluginSearchParams {
+                search_term: "linear".into(),
+                scope: Some(v2::PluginSearchScope::Global),
+                cwds: None,
+                cursor: None,
+                limit: Some(16),
+            },
+        };
+        assert_eq!(plugin_search.serialization_scope(), None);
 
         let plugin_read = ClientRequest::PluginRead {
             request_id: request_id(),

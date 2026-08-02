@@ -163,6 +163,8 @@ pub enum Feature {
     ComputerUse,
     /// Temporary internal-only flag for PS-backed remote plugin catalog development.
     RemotePlugin,
+    /// Enable the experimental, read-only remote plugin search endpoint.
+    RemotePluginSearch,
     /// Enable remote plugin sharing flows.
     PluginSharing,
     /// Show the startup prompt for migrating external agent config into Hepta.
@@ -1024,6 +1026,12 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::RemotePlugin,
         key: "remote_plugin",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::RemotePluginSearch,
+        key: "remote_plugin_search",
         stage: Stage::UnderDevelopment,
         default_enabled: false,
     },

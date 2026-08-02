@@ -1111,6 +1111,11 @@ impl MessageProcessor {
             ClientRequest::PluginList { params, .. } => {
                 self.plugin_processor.plugin_list(params).await
             }
+            ClientRequest::PluginSearch { params, .. } => {
+                self.plugin_processor
+                    .plugin_search(&request_id, params)
+                    .await
+            }
             ClientRequest::PluginRead { params, .. } => {
                 self.plugin_processor.plugin_read(params).await
             }

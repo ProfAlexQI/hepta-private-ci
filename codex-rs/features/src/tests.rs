@@ -130,6 +130,16 @@ fn request_permissions_tool_is_under_development() {
 }
 
 #[test]
+fn remote_plugin_search_is_under_development_and_default_off() {
+    assert_eq!(Feature::RemotePluginSearch.stage(), Stage::UnderDevelopment);
+    assert_eq!(Feature::RemotePluginSearch.default_enabled(), false);
+    assert_eq!(
+        feature_for_key("remote_plugin_search"),
+        Some(Feature::RemotePluginSearch)
+    );
+}
+
+#[test]
 fn remote_compaction_v2_is_under_development() {
     assert_eq!(Feature::RemoteCompactionV2.stage(), Stage::UnderDevelopment);
     assert_eq!(Feature::RemoteCompactionV2.default_enabled(), false);

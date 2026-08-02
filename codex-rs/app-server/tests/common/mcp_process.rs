@@ -59,6 +59,7 @@ use codex_app_server_protocol::ModelProviderCapabilitiesReadParams;
 use codex_app_server_protocol::PluginInstallParams;
 use codex_app_server_protocol::PluginListParams;
 use codex_app_server_protocol::PluginReadParams;
+use codex_app_server_protocol::PluginSearchParams;
 use codex_app_server_protocol::PluginSkillReadParams;
 use codex_app_server_protocol::PluginUninstallParams;
 use codex_app_server_protocol::ProcessKillParams;
@@ -684,6 +685,15 @@ impl McpProcess {
     ) -> anyhow::Result<i64> {
         let params = Some(serde_json::to_value(params)?);
         self.send_request("plugin/list", params).await
+    }
+
+    /// Send an experimental, read-only `plugin/search` JSON-RPC request.
+    pub async fn send_plugin_search_request(
+        &mut self,
+        params: PluginSearchParams,
+    ) -> anyhow::Result<i64> {
+        let params = Some(serde_json::to_value(params)?);
+        self.send_request("plugin/search", params).await
     }
 
     /// Send a `plugin/read` JSON-RPC request.

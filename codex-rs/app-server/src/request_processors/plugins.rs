@@ -33,6 +33,8 @@ use super::plugin_mutation_journal::PluginMutationEnvelope;
 use super::plugin_mutation_journal::PluginMutationJournal;
 use super::plugin_mutation_journal::PluginMutationJournalError;
 
+mod search;
+
 #[derive(Clone)]
 pub(crate) struct PluginRequestProcessor {
     auth_manager: Arc<AuthManager>,
@@ -2163,7 +2165,9 @@ fn remote_plugin_catalog_error_to_jsonrpc(
         | RemotePluginCatalogError::ArchiveJoin(_)
         | RemotePluginCatalogError::MissingUploadEtag
         | RemotePluginCatalogError::UnexpectedResponse(_)
-        | RemotePluginCatalogError::CacheRemove(_) => internal_error(message),
+        | RemotePluginCatalogError::CacheRemove(_)
+        | RemotePluginCatalogError::GovernedEgress(_)
+        | RemotePluginCatalogError::SearchResponseBound(_) => internal_error(message),
     }
 }
 

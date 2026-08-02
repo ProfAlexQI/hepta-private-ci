@@ -2799,6 +2799,50 @@ fn plugin_list_params_serializes_marketplace_kind_filter() {
 }
 
 #[test]
+fn plugin_search_params_and_scope_use_experimental_camel_case_wire_shape() {
+    let cwd = if cfg!(windows) {
+        r"C:\plugins"
+    } else {
+        "/plugins"
+    };
+    let cwd = AbsolutePathBuf::try_from(PathBuf::from(cwd)).unwrap();
+    assert_eq!(
+        serde_json::to_value(PluginSearchParams {
+            search_term: "linear".into(),
+            scope: Some(PluginSearchScope::Personal),
+            cwds: Some(vec![cwd.clone()]),
+            cursor: Some("next".into()),
+            limit: Some(16),
+        })
+        .unwrap(),
+        json!({
+            "searchTerm": "linear",
+            "scope": "personal",
+            "cwds": [cwd.as_path().display().to_string()],
+            "cursor": "next",
+            "limit": 16,
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<PluginSearchParams>(json!({
+            "searchTerm": "calendar",
+            "scope": "workspace",
+            "cwds": null,
+            "cursor": null,
+            "limit": null,
+        }))
+        .unwrap(),
+        PluginSearchParams {
+            search_term: "calendar".into(),
+            scope: Some(PluginSearchScope::Workspace),
+            cwds: None,
+            cursor: None,
+            limit: None,
+        }
+    );
+}
+
+#[test]
 fn plugin_read_params_serialization_uses_install_source_fields() {
     let marketplace_path = if cfg!(windows) {
         r"C:\plugins\marketplace.json"

@@ -77,6 +77,7 @@ chrono = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 hepta-authority = { workspace = true }
+hepta-egress = { workspace = true }
 hepta-runtime = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

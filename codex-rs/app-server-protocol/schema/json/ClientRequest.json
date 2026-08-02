@@ -1780,6 +1780,14 @@
       ],
       "type": "object"
     },
+    "PluginSearchScope": {
+      "enum": [
+        "global",
+        "workspace",
+        "personal"
+      ],
+      "type": "string"
+    },
     "PluginShareCheckoutParams": {
       "properties": {
         "remotePluginId": {

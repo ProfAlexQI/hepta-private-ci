@@ -28,6 +28,7 @@ use std::time::Duration;
 use url::Url;
 
 mod remote_installed_plugin_sync;
+mod search;
 mod share;
 
 pub use remote_installed_plugin_sync::RemoteInstalledPluginBundleSyncError;
@@ -36,6 +37,16 @@ pub use remote_installed_plugin_sync::RemotePluginCacheMutationGuard;
 pub use remote_installed_plugin_sync::mark_remote_plugin_cache_mutation_in_flight;
 pub use remote_installed_plugin_sync::maybe_start_remote_installed_plugin_bundle_sync;
 pub use remote_installed_plugin_sync::sync_remote_installed_plugin_bundles_once;
+pub use search::DEFAULT_PLUGIN_SEARCH_LIMIT;
+pub use search::MAX_PLUGIN_SEARCH_CURSOR_BYTES;
+pub use search::MAX_PLUGIN_SEARCH_CURSOR_CHARS;
+pub use search::MAX_PLUGIN_SEARCH_LIMIT;
+pub use search::MAX_PLUGIN_SEARCH_RESPONSE_BYTES;
+pub use search::MAX_PLUGIN_SEARCH_TERM_BYTES;
+pub use search::MAX_PLUGIN_SEARCH_TERM_CHARS;
+pub use search::RemotePluginSearchPage;
+pub use search::RemotePluginSearchRequest;
+pub use search::search_remote_plugins;
 pub use share::RemotePluginShareAccessPolicy;
 pub use share::RemotePluginShareDiscoverability;
 pub use share::RemotePluginSharePrincipal;
@@ -54,6 +65,7 @@ pub use share::save_remote_plugin_share;
 pub use share::update_remote_plugin_share_targets;
 
 pub const REMOTE_GLOBAL_MARKETPLACE_NAME: &str = "chatgpt-global";
+pub const REMOTE_CREATED_BY_ME_MARKETPLACE_NAME: &str = "created-by-me-remote";
 pub const REMOTE_WORKSPACE_MARKETPLACE_NAME: &str = "workspace-directory";
 pub const REMOTE_WORKSPACE_SHARED_WITH_ME_MARKETPLACE_NAME: &str = "workspace-shared-with-me";
 pub const REMOTE_WORKSPACE_SHARED_WITH_ME_PRIVATE_MARKETPLACE_NAME: &str =
@@ -61,6 +73,7 @@ pub const REMOTE_WORKSPACE_SHARED_WITH_ME_PRIVATE_MARKETPLACE_NAME: &str =
 pub const REMOTE_WORKSPACE_SHARED_WITH_ME_UNLISTED_MARKETPLACE_NAME: &str =
     "workspace-shared-with-me-unlisted";
 pub const REMOTE_GLOBAL_MARKETPLACE_DISPLAY_NAME: &str = "ChatGPT Plugins";
+pub const REMOTE_CREATED_BY_ME_MARKETPLACE_DISPLAY_NAME: &str = "Created by me";
 pub const REMOTE_WORKSPACE_MARKETPLACE_DISPLAY_NAME: &str = "Workspace Directory";
 pub const REMOTE_WORKSPACE_SHARED_WITH_ME_PRIVATE_MARKETPLACE_DISPLAY_NAME: &str = "Shared with me";
 pub const REMOTE_WORKSPACE_SHARED_WITH_ME_UNLISTED_MARKETPLACE_DISPLAY_NAME: &str =
@@ -302,12 +315,20 @@ pub enum RemotePluginCatalogError {
 
     #[error("{0}")]
     CacheRemove(String),
+
+    #[error("remote plugin search was denied by governed egress: {0}")]
+    GovernedEgress(String),
+
+    #[error("remote plugin search response violated its {0} bound")]
+    SearchResponseBound(&'static str),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
-enum RemotePluginScope {
+pub enum RemotePluginScope {
     #[serde(rename = "GLOBAL")]
     Global,
+    #[serde(rename = "USER")]
+    User,
     #[serde(rename = "WORKSPACE")]
     Workspace,
 }
@@ -316,6 +337,7 @@ impl RemotePluginScope {
     fn api_value(self) -> &'static str {
         match self {
             Self::Global => "GLOBAL",
+            Self::User => "USER",
             Self::Workspace => "WORKSPACE",
         }
     }
@@ -323,6 +345,7 @@ impl RemotePluginScope {
     fn marketplace_name(self) -> &'static str {
         match self {
             Self::Global => REMOTE_GLOBAL_MARKETPLACE_NAME,
+            Self::User => REMOTE_CREATED_BY_ME_MARKETPLACE_NAME,
             Self::Workspace => REMOTE_WORKSPACE_MARKETPLACE_NAME,
         }
     }
@@ -330,6 +353,7 @@ impl RemotePluginScope {
     fn marketplace_display_name(self) -> &'static str {
         match self {
             Self::Global => REMOTE_GLOBAL_MARKETPLACE_DISPLAY_NAME,
+            Self::User => REMOTE_CREATED_BY_ME_MARKETPLACE_DISPLAY_NAME,
             Self::Workspace => REMOTE_WORKSPACE_MARKETPLACE_DISPLAY_NAME,
         }
     }
@@ -337,6 +361,7 @@ impl RemotePluginScope {
     fn from_marketplace_name(name: &str) -> Option<Self> {
         match name {
             REMOTE_GLOBAL_MARKETPLACE_NAME => Some(Self::Global),
+            REMOTE_CREATED_BY_ME_MARKETPLACE_NAME => Some(Self::User),
             REMOTE_WORKSPACE_MARKETPLACE_NAME
             | REMOTE_WORKSPACE_SHARED_WITH_ME_MARKETPLACE_NAME
             | REMOTE_WORKSPACE_SHARED_WITH_ME_PRIVATE_MARKETPLACE_NAME
@@ -442,6 +467,7 @@ fn remote_plugin_canonical_marketplace_name(
 ) -> Result<&'static str, RemotePluginCatalogError> {
     match plugin.scope {
         RemotePluginScope::Global => Ok(REMOTE_GLOBAL_MARKETPLACE_NAME),
+        RemotePluginScope::User => Ok(REMOTE_CREATED_BY_ME_MARKETPLACE_NAME),
         RemotePluginScope::Workspace => match workspace_plugin_discoverability(plugin)? {
             RemotePluginShareDiscoverability::Listed => Ok(REMOTE_WORKSPACE_MARKETPLACE_NAME),
             RemotePluginShareDiscoverability::Private
@@ -1003,7 +1029,7 @@ fn remote_plugin_share_context(
     plugin: &RemotePluginDirectoryItem,
 ) -> Result<Option<RemotePluginShareContext>, RemotePluginCatalogError> {
     match plugin.scope {
-        RemotePluginScope::Global => Ok(None),
+        RemotePluginScope::Global | RemotePluginScope::User => Ok(None),
         RemotePluginScope::Workspace => {
             let discoverability = workspace_plugin_discoverability(plugin)?;
             Ok(Some(RemotePluginShareContext {

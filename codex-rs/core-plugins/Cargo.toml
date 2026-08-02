@@ -23,6 +23,7 @@ codex-git-utils = { workspace = true }
 codex-hooks = { workspace = true }
 codex-http-client = { workspace = true }
 codex-login = { workspace = true }
+hepta-egress = { workspace = true }
 http = { workspace = true }
 codex-model-provider = { workspace = true }
 codex-otel = { workspace = true }
