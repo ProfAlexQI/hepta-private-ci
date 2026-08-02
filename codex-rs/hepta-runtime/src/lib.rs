@@ -159,6 +159,7 @@ mod controlled_live_required_evidence_gap_operator_readback;
 mod controlled_live_required_evidence_gap_summary;
 mod controlled_live_required_evidence_readback_index;
 mod core_fusion;
+mod current_reality_capability_matrix;
 mod current_reality_matrix_compact_cache_boundary_readback;
 mod delivery_queue;
 mod dirty_worktree_compat_report;
@@ -328,6 +329,7 @@ pub use controlled_live_compat_report::{
     controlled_live_required_evidence_readback_index_report_from_sources,
     controlled_live_typed_compat_report, is_controlled_live_typed_compat_report,
 };
+pub use current_reality_capability_matrix::*;
 pub use dirty_worktree_compat_report::{
     DIRTY_WORKTREE_TYPED_COMPAT_REPORT_IDS, DirtyWorktreeObservation,
     DirtyWorktreeObservationEntry, RETIRED_DIRTY_WORKTREE_COMPAT_REPORT_ID,
