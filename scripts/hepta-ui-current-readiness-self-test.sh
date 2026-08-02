@@ -50,8 +50,8 @@ jq -L scripts/lib -n --slurpfile positive "$TEST_DIR/positive-truth-input.json" 
     {name:"isolated_home_missing",input:($base | del(.window_receipt.isolation.home_isolated)),expected:{source:true,browser:true,promotion:false,local:false}},
     {name:"window_process_termination_missing",input:($base | del(.window_receipt.automation.application_process.identity_safe_termination_confirmed)),expected:{source:true,browser:true,promotion:false,local:false}},
     {name:"local_package_false",input:($base | .package.local_package_ready = false),expected:{source:true,browser:true,promotion:true,local:false}},
-    {name:"package_child_failed_with_stale_ready_receipt",input:($base | .package_exit_code = 1),expected:{source:false,browser:true,promotion:true,local:false}},
-    {name:"package_status_not_ready_with_stale_static_flag",input:($base | .package.status = "not_ready"),expected:{source:false,browser:true,promotion:true,local:false}}
+    {name:"static_package_contract_survives_nonbuild_exit",input:($base | .package_exit_code = 1),expected:{source:true,browser:true,promotion:true,local:false}},
+    {name:"static_package_contract_survives_nonbuild_status",input:($base | .package.status = "not_ready"),expected:{source:true,browser:true,promotion:true,local:false}}
   ]
   | map(. + {actual:(.input | hepta_ui_readiness_truth)} | del(.input))
 ' >"$TEST_DIR/readiness-truth-table.json"

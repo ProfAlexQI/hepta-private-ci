@@ -10,7 +10,6 @@ def hepta_ui_source_ready:
     and $c.product_exit_code == 0
     and $c.token_exit_code == 0
     and $c.feature_exit_code == 0
-    and $c.package_exit_code == 0
     and $c.mobile_exit_code == 0
     and $c.sync_bound == true
     and $c.product_bound == true
@@ -23,7 +22,6 @@ def hepta_ui_source_ready:
     and $c.product.status == "ready"
     and $c.tokens.status == "ready"
     and $c.feature.feature_matrix_ready == true
-    and $c.package.status == "ready"
     and $c.package.static_package_contract_ready == true
     and $c.mobile.status == "source_contract_ready"
     and $c.mobile.mobile_source_contract_ready == true
@@ -88,6 +86,8 @@ def hepta_ui_readiness_truth:
   ($c | hepta_ui_promotion_independent_verifiers_ready) as $promotion_ready |
   (
     $source_ready
+    and $c.package_exit_code == 0
+    and $c.package.status == "ready"
     and $c.package.local_package_ready == true
     and $browser_ready
     and $c.window_receipt.ready == true
