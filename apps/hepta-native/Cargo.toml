@@ -311,7 +311,7 @@ before-each-package-command = """
 robius-packaging-commands before-each-package \
     --force-makepad \
     --binary-name hepta-native \
-    --path-to-binary ./target/release/hepta-native
+    --path-to-binary "${CARGO_TARGET_DIR:?}/release/hepta-native"
 """
 
 deep_link_protocols = [

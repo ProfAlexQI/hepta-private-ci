@@ -51,6 +51,7 @@ HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo test --manifest-path codex-rs/Cargo.toml
 ```
 
 Main smoke covers the Rust-embedded static assets and progressive-enhancement contract, all 21 allowlisted GET interactions, zero cross-origin browser requests, browser route safety, release, maturity, hardening, build split parity, cross-browser readiness, schema, soak/leak, a11y, productization, golden/hostile fixtures, product result drawer markers, JSON summary, server checks, `telegram-chat-shell`, work/runtime rail/composer markers, compact narrow/mobile markers, product-copy guards, and Chrome desktop/narrow/mobile screenshots.
+It resolves `check-jsonschema` 0.37.4 exactly and, when needed, provisions it in a disposable virtual environment rather than installing it globally.
 
 The combined product-readiness gate emits source-bound JSON, screenshot, Native fixture, and packaging evidence. True Makepad-window capture remains opt-in through `HEPTA_UI_PRODUCT_READINESS_INCLUDE_NATIVE_WINDOW_SMOKE=1`; a locked or permission-blocked desktop must be recorded as blocked rather than promoted as passing.
 

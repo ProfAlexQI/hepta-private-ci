@@ -90,6 +90,8 @@ run_ui_contract() (
     scripts/hepta-ui-contract-commit-closure-gate-self-test.sh
   run_static_gate ui-contract-commit-closure \
     scripts/hepta-ui-contract-commit-closure-gate verify
+  run_static_gate control-ui-schema-validator-self-test \
+    scripts/hepta-control-ui-schema-validator-v1-self-test.sh
 
   local evidence_dir cleanup_evidence=0
   evidence_dir="${HEPTA_UI_CI_EVIDENCE_DIR:-}"

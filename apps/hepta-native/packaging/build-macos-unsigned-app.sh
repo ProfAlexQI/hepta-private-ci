@@ -91,28 +91,22 @@ for output in "$PACKAGER_DIST" "$APP_BUNDLE" "$COLLECTED_RESOURCES"; do
   [[ ! -e "$output" ]] || { echo "refusing to replace existing packaging output: $output" >&2; exit 1; }
 done
 
-# The Robius hook intentionally resolves ./target and ./dist relative to the
-# app crate. Temporary symlinks preserve that upstream contract while keeping
-# all large/generated state out of the source tree.
-TARGET_LINK="$APP_DIR/target"
+# The Robius hook resolves ./dist relative to the app crate and reads the
+# externally supplied CARGO_TARGET_DIR directly. A temporary dist symlink keeps
+# generated package state out of the source tree without disturbing an existing
+# developer target directory.
 DIST_LINK="$APP_DIR/dist"
-[[ ! -e "$TARGET_LINK" && ! -L "$TARGET_LINK" ]] || {
-  echo "refusing to replace existing app target path: $TARGET_LINK" >&2
-  exit 1
-}
 [[ ! -e "$DIST_LINK" && ! -L "$DIST_LINK" ]] || {
   echo "refusing to replace existing app dist path: $DIST_LINK" >&2
   exit 1
 }
 
 cleanup() {
-  if [[ -L "$TARGET_LINK" && "$(readlink "$TARGET_LINK")" == "$TARGET_DIR" ]]; then rm -f "$TARGET_LINK"; fi
   if [[ -L "$DIST_LINK" && "$(readlink "$DIST_LINK")" == "$PACKAGER_DIST" ]]; then rm -f "$DIST_LINK"; fi
 }
 trap cleanup EXIT INT TERM
 
 mkdir -p "$PACKAGER_DIST"
-ln -s "$TARGET_DIR" "$TARGET_LINK"
 ln -s "$PACKAGER_DIST" "$DIST_LINK"
 
 cd "$APP_DIR"

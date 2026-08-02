@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
 
 GATE="scripts/hepta-native-current-package-gate.sh"
+UNSIGNED_SCRIPT="apps/hepta-native/packaging/build-macos-unsigned-app.sh"
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-native-current-package-gate-self-test.XXXXXX")"
 trap 'rm -rf "$TEST_DIR"' EXIT
 
@@ -27,6 +28,13 @@ run_not_ready_report() {
 }
 
 /bin/bash -n "$GATE"
+/bin/bash -n "$UNSIGNED_SCRIPT"
+
+grep -Fq -- '--path-to-binary "${CARGO_TARGET_DIR:?}/release/hepta-native"' apps/hepta-native/Cargo.toml \
+  || fail "Robius packaging hook does not consume the external Cargo target"
+if rg -n 'TARGET_LINK|ln -s "\$TARGET_DIR"' "$UNSIGNED_SCRIPT" >/dev/null; then
+  fail "formal packaging still replaces the app crate target path"
+fi
 
 help_output="$(/bin/bash "$GATE" --help)"
 grep -Fq -- '[--launch-probe | --no-launch]' <<<"$help_output" \

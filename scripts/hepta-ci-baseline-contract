@@ -445,6 +445,7 @@ RELEASE_CLOSURE_PATHS
     "UI managed-output helper partial-stage negative"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'HEPTA_CHECK_JSONSCHEMA_BIN' "Control UI JSON Schema validator path requirement"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'check-jsonschema, version 0.37.4' "pinned Control UI JSON Schema validator version"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-control-ui-schema-validator-v1-self-test.sh' "Control UI JSON Schema validator resolver self-test"
   require_literal "$ROOT/scripts/lib/hepta-browser-visual-smoke-v1/static-contract.sh" \
     '"$HEPTA_BROWSER_SCHEMA_VALIDATOR" --schemafile "$source_schema_path" "$source_payload_path"' \
     "Control UI reassembled source payload schema validation"

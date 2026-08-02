@@ -12,6 +12,8 @@ source scripts/lib/hepta-safe-output-v1.sh
 export HEPTA_AUTOLOAD=0
 export HEPTA_AUTOSAVE=0
 export CARGO_INCREMENTAL=0
+HEPTA_CHECK_JSONSCHEMA_BIN="$(scripts/hepta-control-ui-schema-validator-v1 --bootstrap)"
+export HEPTA_CHECK_JSONSCHEMA_BIN
 
 MANIFEST="codex-rs/Cargo.toml"
 HOST="${HEPTA_CONTROL_UI_SMOKE_HOST:-127.0.0.1}"
