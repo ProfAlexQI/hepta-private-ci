@@ -503,9 +503,15 @@ self_test() (
   r9_ref="refs/remotes/upstream/hepta-intake-20260724-r9"
   r9_sha="000d2540ad73996f3589ae178bfe447bfd67cef2"
   git clone -q --shared --no-checkout "$ROOT" "$ref_fixture"
-  git -C "$ref_fixture" fetch -q --no-tags "$ROOT" \
-    "$predecessor_sha" "$r2_sha" "$r3_sha" "$r4_sha" "$r5_sha" \
-    "$r6_sha" "$r7_sha" "$r8_sha" "$r9_sha"
+  for frozen_sha in "$predecessor_sha" "$r2_sha" "$r3_sha" "$r4_sha" "$r5_sha" \
+    "$r6_sha" "$r7_sha" "$r8_sha" "$r9_sha"; do
+    copied_sha="$(git -C "$ROOT" cat-file commit "$frozen_sha" | \
+      git -C "$ref_fixture" hash-object -t commit -w --stdin)"
+    [[ "$copied_sha" == "$frozen_sha" ]] || {
+      echo "Hepta CI contract self-test copied unexpected frozen commit: $copied_sha" >&2
+      return 1
+    }
+  done
   git -C "$ref_fixture" update-ref "$predecessor_ref" "$predecessor_sha"
   git -C "$ref_fixture" update-ref "$r2_ref" "$r2_sha"
   git -C "$ref_fixture" update-ref "$r3_ref" "$r3_sha"
