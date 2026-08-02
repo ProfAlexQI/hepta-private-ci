@@ -113,14 +113,14 @@ script_mod! {
                     height: Fit
                     flow: Flow.Right{wrap: true}
                     align: Align{x: 0.5, y: 0.0}
-                    spacing: 12.0
+                    spacing: 4.0
 
                     credentials_column := View {
                         width: 260
                         height: Fit
                         flow: Down
                         align: Align{x: 0.5, y: 0.0}
-                        spacing: 8.0
+                        spacing: 5.0
 
                         mod.widgets.HeptaBrandMark {}
 
@@ -259,7 +259,7 @@ script_mod! {
                         height: Fit
                         flow: Down
                         align: Align{x: 0.5, y: 0.0}
-                        spacing: 10.0
+                        spacing: 7.0
 
                         LineH {
                             width: 275
