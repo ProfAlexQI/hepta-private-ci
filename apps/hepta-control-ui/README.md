@@ -46,6 +46,7 @@ HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo test --manifest-path codex-rs/Cargo.toml
 HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 cargo test --manifest-path codex-rs/Cargo.toml -q -p codex-cli --bin hepta native_gateway
 ./scripts/hepta-control-ui-browser-smoke.sh
 ./scripts/hepta-control-ui-smoke.sh
+./scripts/hepta-control-ui-debt-audit
 ./scripts/hepta-ui-product-readiness-gate.sh
 ```
 

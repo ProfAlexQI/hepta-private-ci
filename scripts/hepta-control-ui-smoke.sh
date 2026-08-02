@@ -13,6 +13,8 @@ CONTROL_UI_RUST_MIN_STACK="${RUST_MIN_STACK:-33554432}"
 
 MANIFEST="codex-rs/Cargo.toml"
 
+./scripts/hepta-control-ui-debt-audit >/dev/null
+
 RUST_MIN_STACK="${CONTROL_UI_RUST_MIN_STACK}" \
   hepta_ui_cargo test --manifest-path "${MANIFEST}" -q -p hepta-core control_ui_report_is_complete_and_asset_backed
 RUST_MIN_STACK="${CONTROL_UI_RUST_MIN_STACK}" \
