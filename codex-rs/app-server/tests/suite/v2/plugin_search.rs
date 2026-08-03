@@ -11,11 +11,27 @@ use codex_app_server_protocol::PluginSearchResponse;
 use codex_app_server_protocol::PluginSearchScope;
 use codex_app_server_protocol::RequestId;
 use pretty_assertions::assert_eq;
+use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
+
+fn assert_no_plugin_mutation_storage(codex_home: &Path) {
+    assert!(
+        !codex_home
+            .join(".hepta-authority")
+            .join("plugin-mutation")
+            .join("journal.json")
+            .exists()
+    );
+    assert!(
+        !codex_home
+            .join("hepta-plugin-mutation-journal.json")
+            .exists()
+    );
+}
 
 #[tokio::test]
 async fn plugin_search_requires_experimental_api_capability() -> Result<()> {
@@ -88,12 +104,7 @@ async fn plugin_search_is_read_only_and_feature_gated() -> Result<()> {
             next_cursor: None,
         }
     );
-    assert!(
-        !codex_home
-            .path()
-            .join("hepta-plugin-mutation-journal.json")
-            .exists()
-    );
+    assert_no_plugin_mutation_storage(codex_home.path());
     Ok(())
 }
 
@@ -126,12 +137,7 @@ remote_plugin_search = true
         assert!(response.data.is_empty());
         assert!(response.next_cursor.is_none());
     }
-    assert!(
-        !codex_home
-            .path()
-            .join("hepta-plugin-mutation-journal.json")
-            .exists()
-    );
+    assert_no_plugin_mutation_storage(codex_home.path());
     Ok(())
 }
 
@@ -176,12 +182,7 @@ async fn plugin_search_input_budgets_fail_closed_without_echoing_user_text() -> 
     .await??;
     assert_eq!(error.error.code, -32600);
     assert!(error.error.message.contains("result-count budget"));
-    assert!(
-        !codex_home
-            .path()
-            .join("hepta-plugin-mutation-journal.json")
-            .exists()
-    );
+    assert_no_plugin_mutation_storage(codex_home.path());
     Ok(())
 }
 

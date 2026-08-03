@@ -55,6 +55,13 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS: &str =
     "CODEX_TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS";
 
+fn plugin_mutation_journal_path(codex_home: &Path) -> PathBuf {
+    codex_home
+        .join(".hepta-authority")
+        .join("plugin-mutation")
+        .join("journal.json")
+}
+
 #[tokio::test]
 async fn plugin_share_save_uploads_local_plugin() -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -278,7 +285,7 @@ async fn plugin_share_save_persists_authenticated_terminal_receipt() -> Result<(
         }
     );
     assert_authenticated_plugin_mutation_receipt(codex_home.path(), &anchor_path, &response)?;
-    let journal_path = codex_home.path().join("hepta-plugin-mutation-journal.json");
+    let journal_path = plugin_mutation_journal_path(codex_home.path());
     let journal_before_replay = std::fs::read(&journal_path)?;
     let anchor_before_replay = std::fs::read(&anchor_path)?;
     drop(mcp);
@@ -1581,7 +1588,7 @@ fn assert_authenticated_plugin_mutation_receipt(
     anchor_path: &Path,
     expected_response: &PluginShareSaveResponse,
 ) -> Result<()> {
-    let journal_path = codex_home.join("hepta-plugin-mutation-journal.json");
+    let journal_path = plugin_mutation_journal_path(codex_home);
     let state: PersistedPluginMutationState =
         serde_json::from_slice(&std::fs::read(&journal_path)?)?;
     assert_eq!(state.version, 2);

@@ -1,5 +1,6 @@
 use hepta_authority::AuthenticatedJournalStore;
 use hepta_authority::AuthenticationFraming;
+use hepta_authority::LegacyJournalMigrationStore;
 use hepta_authority::PLUGIN_MUTATION_EXTERNAL_ANCHOR_FILE_ENV;
 use hepta_authority::PLUGIN_MUTATION_JOURNAL_ENGINE;
 use hepta_authority::PLUGIN_MUTATION_JOURNAL_POLICY;
@@ -19,7 +20,10 @@ use std::path::PathBuf;
 
 const JOURNAL_VERSION: u32 = 2;
 const LEGACY_JOURNAL_VERSION: u32 = 1;
+const RETIRED_LEGACY_JOURNAL_VERSION: u32 = 3;
 const ANCHOR_VERSION: u32 = 1;
+const MIGRATION_MARKER_VERSION: u32 = 1;
+const MIGRATION_LAYOUT_VERSION: u32 = 1;
 const MAX_RECORDS: usize = PLUGIN_MUTATION_JOURNAL_POLICY.max_active_records;
 const RETAIN_TERMINAL_RECORDS: usize = 512;
 const MAX_CHECKPOINTED_TERMINALS: usize =
@@ -27,571 +31,328 @@ const MAX_CHECKPOINTED_TERMINALS: usize =
 const MAX_JOURNAL_BYTES: u64 = PLUGIN_MUTATION_JOURNAL_POLICY.max_journal_bytes;
 const MAX_ANCHOR_BYTES: u64 = 64 * 1024;
 const MAX_KEY_BYTES: u64 = 1024;
+const MAX_MIGRATION_MARKER_BYTES: u64 = 64 * 1024;
 const MAX_TERMINAL_RESPONSE_BYTES: usize = PLUGIN_MUTATION_JOURNAL_POLICY.max_record_bytes;
 const MAX_TERMINAL_ERROR_BYTES: usize = 64 * 1024;
 const JOURNAL_HASH_DOMAIN: &str = "hepta-plugin-mutation-journal-v2";
 const JOURNAL_MAC_DOMAIN: &[u8] = b"hepta.plugin-mutation-journal.hmac-sha256.v2";
 const ANCHOR_MAC_DOMAIN: &[u8] = b"hepta.plugin-mutation-anchor.hmac-sha256.v1";
+const MIGRATION_MARKER_MAC_DOMAIN: &[u8] = b"hepta.plugin-mutation-layout-marker.hmac-sha256.v1";
+const MIGRATION_TOMBSTONE_MAC_DOMAIN: &[u8] =
+    b"hepta.plugin-mutation-layout-tombstone.hmac-sha256.v1";
+const ACTIVE_JOURNAL_RELATIVE_PATH: &str = ".hepta-authority/plugin-mutation/journal.json";
 const CHECKPOINT_HASH_DOMAIN: &str = "hepta-plugin-mutation-checkpoint-v1";
 const CHECKPOINT_GENESIS_HASH: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
-#[derive(Debug, thiserror::Error)]
-#[error("{message}")]
-pub struct PluginMutationJournalError {
-    message: String,
-}
+include!("plugin_mutation_journal/state_and_migration.rs");
 
-impl PluginMutationJournalError {
-    fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-        }
+fn mutate_current_state<T>(
+    journal_store: &AuthenticatedJournalStore,
+    anchor_store: &AuthenticatedJournalStore,
+    key: &[u8; 32],
+    mutate: impl FnOnce(&mut PluginMutationState) -> Result<T, PluginMutationJournalError>,
+) -> Result<T, PluginMutationJournalError> {
+    let mut loaded = read_state(journal_store, key)?;
+    if loaded.origin != StateOrigin::Current {
+        return Err(PluginMutationJournalError::new(
+            "secure plugin mutation layout did not contain a current journal",
+        ));
     }
+    verify_or_initialize_anchor(anchor_store, &loaded, key)?;
+    apply_state_mutation(journal_store, anchor_store, key, &mut loaded.state, mutate)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PluginMutationEnvelope {
-    pub request_binding: String,
-    pub operation: String,
-    pub target_binding: String,
-    pub payload_digest: String,
-    pub idempotency_binding: String,
-    pub effect_plan_hash: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PluginMutationBegin {
-    Planned,
-    ReplayedSuccess(Value),
-    ReplayedFailure(String),
-    InDoubt,
-}
-
-#[derive(Debug, Clone)]
-pub struct PluginMutationJournal {
-    path: PathBuf,
-    anchor_path: PathBuf,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum PluginMutationStatus {
-    Planned,
-    Committing,
-    Succeeded,
-    Failed,
-}
-
-impl PluginMutationStatus {
-    const fn is_terminal(self) -> bool {
-        matches!(self, Self::Succeeded | Self::Failed)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PluginMutationRecord {
-    envelope: PluginMutationEnvelope,
-    status: PluginMutationStatus,
-    provider_ack_hash: Option<String>,
-    terminal_receipt_hash: Option<String>,
-    response: Option<Value>,
-    error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PluginMutationCheckpoint {
-    compacted_records: u64,
-    terminal_records: Vec<PluginMutationRecord>,
-    history_hash: String,
-}
-
-impl Default for PluginMutationCheckpoint {
-    fn default() -> Self {
-        Self {
-            compacted_records: 0,
-            terminal_records: Vec::new(),
-            history_hash: CHECKPOINT_GENESIS_HASH.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PluginMutationState {
-    version: u32,
-    generation: u64,
-    checkpoint: PluginMutationCheckpoint,
-    records: Vec<PluginMutationRecord>,
-    state_hash: String,
-    mac: String,
-}
-
-#[derive(Serialize)]
-struct UnsignedPluginMutationState<'a> {
-    version: u32,
-    generation: u64,
-    checkpoint: &'a PluginMutationCheckpoint,
-    records: &'a [PluginMutationRecord],
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LegacyPluginMutationState {
-    version: u32,
-    generation: u64,
-    records: Vec<PluginMutationRecord>,
-    state_hash: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PluginMutationAnchor {
-    version: u32,
-    generation: u64,
-    state_hash: String,
-    mac: String,
-}
-
-#[derive(Deserialize)]
-struct VersionHeader {
-    version: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StateOrigin {
-    New,
-    LegacyMigrated,
-    Current,
-}
-
-struct LoadedState {
-    state: PluginMutationState,
-    origin: StateOrigin,
-}
-
-impl PluginMutationState {
-    fn empty(key: &[u8; 32]) -> Result<Self, PluginMutationJournalError> {
-        let mut state = Self {
-            version: JOURNAL_VERSION,
-            generation: 0,
-            checkpoint: PluginMutationCheckpoint::default(),
-            records: Vec::new(),
-            state_hash: String::new(),
-            mac: String::new(),
-        };
+fn apply_state_mutation<T>(
+    journal_store: &AuthenticatedJournalStore,
+    anchor_store: &AuthenticatedJournalStore,
+    key: &[u8; 32],
+    state: &mut PluginMutationState,
+    mutate: impl FnOnce(&mut PluginMutationState) -> Result<T, PluginMutationJournalError>,
+) -> Result<T, PluginMutationJournalError> {
+    let mutation_result = mutate(state);
+    if mutation_result.is_ok() {
+        validate_state(state)?;
         state.refresh_integrity(key)?;
-        Ok(state)
+        publish_state(journal_store, state)?;
+        publish_anchor(anchor_store, state, key)?;
     }
-
-    fn refresh_integrity(&mut self, key: &[u8; 32]) -> Result<(), PluginMutationJournalError> {
-        let unsigned = UnsignedPluginMutationState {
-            version: self.version,
-            generation: self.generation,
-            checkpoint: &self.checkpoint,
-            records: &self.records,
-        };
-        let encoded = serde_json::to_vec(&unsigned)
-            .map_err(|error| PluginMutationJournalError::new(format!("encode journal: {error}")))?;
-        self.state_hash = content_hash(JOURNAL_HASH_DOMAIN, &[&encoded]);
-        self.mac = hmac_hex(
-            key,
-            JOURNAL_MAC_DOMAIN,
-            &[self.state_hash.as_bytes(), &self.generation.to_be_bytes()],
-        )?;
-        Ok(())
-    }
-
-    fn verify(&self, key: &[u8; 32]) -> Result<(), PluginMutationJournalError> {
-        if self.version != JOURNAL_VERSION {
-            return Err(PluginMutationJournalError::new(format!(
-                "unsupported plugin mutation journal version {}",
-                self.version
-            )));
-        }
-        validate_checkpoint(&self.checkpoint)?;
-        for record in &self.records {
-            validate_record(record)?;
-        }
-        validate_unique_request_bindings(
-            self.records.iter().chain(&self.checkpoint.terminal_records),
-        )?;
-        let mut candidate = self.clone();
-        candidate.refresh_integrity(key)?;
-        if !PLUGIN_MUTATION_JOURNAL_ENGINE
-            .constant_time_equal(&candidate.state_hash, &self.state_hash)
-            || !PLUGIN_MUTATION_JOURNAL_ENGINE.constant_time_equal(&candidate.mac, &self.mac)
-        {
-            return Err(PluginMutationJournalError::new(
-                "plugin mutation journal integrity check failed",
-            ));
-        }
-        Ok(())
-    }
-
-    fn find_record(&self, request_binding: &str) -> Option<&PluginMutationRecord> {
-        self.records
-            .iter()
-            .find(|record| record.envelope.request_binding == request_binding)
-            .or_else(|| {
-                self.checkpoint
-                    .terminal_records
-                    .iter()
-                    .find(|record| record.envelope.request_binding == request_binding)
-            })
-    }
+    mutation_result
 }
 
-impl LegacyPluginMutationState {
-    fn refresh_hash(&mut self) -> Result<(), PluginMutationJournalError> {
-        self.state_hash.clear();
-        let encoded = serde_json::to_vec(self).map_err(|error| {
-            PluginMutationJournalError::new(format!("encode legacy journal: {error}"))
-        })?;
-        self.state_hash = content_hash("hepta-plugin-mutation-journal", &[&encoded]);
-        Ok(())
-    }
-
-    fn verify(&self) -> Result<(), PluginMutationJournalError> {
-        if self.version != LEGACY_JOURNAL_VERSION {
-            return Err(PluginMutationJournalError::new(
-                "legacy plugin mutation journal version is invalid",
-            ));
-        }
-        for record in &self.records {
-            validate_record(record)?;
-        }
-        validate_unique_request_bindings(self.records.iter())?;
-        let mut candidate = self.clone();
-        candidate.refresh_hash()?;
-        if !PLUGIN_MUTATION_JOURNAL_ENGINE
-            .constant_time_equal(&candidate.state_hash, &self.state_hash)
-        {
-            return Err(PluginMutationJournalError::new(
-                "legacy plugin mutation journal integrity check failed",
-            ));
-        }
-        Ok(())
-    }
-
-    fn migrate(self, key: &[u8; 32]) -> Result<PluginMutationState, PluginMutationJournalError> {
-        let mut state = PluginMutationState {
-            version: JOURNAL_VERSION,
-            generation: self.generation,
-            checkpoint: PluginMutationCheckpoint::default(),
-            records: self.records,
-            state_hash: String::new(),
-            mac: String::new(),
-        };
-        state.refresh_integrity(key)?;
-        Ok(state)
-    }
+fn read_optional_store_bytes(
+    store: &AuthenticatedJournalStore,
+    label: &str,
+) -> Result<Option<Vec<u8>>, PluginMutationJournalError> {
+    store
+        .read()
+        .map_err(|error| store_error(&format!("read {label}"), error))
 }
 
-impl PluginMutationAnchor {
-    fn for_state(
-        state: &PluginMutationState,
-        key: &[u8; 32],
-    ) -> Result<Self, PluginMutationJournalError> {
-        let mut anchor = Self {
-            version: ANCHOR_VERSION,
-            generation: state.generation,
-            state_hash: state.state_hash.clone(),
-            mac: String::new(),
-        };
-        anchor.refresh_mac(key)?;
-        Ok(anchor)
-    }
-
-    fn refresh_mac(&mut self, key: &[u8; 32]) -> Result<(), PluginMutationJournalError> {
-        self.mac = hmac_hex(
-            key,
-            ANCHOR_MAC_DOMAIN,
-            &[
-                &self.version.to_be_bytes(),
-                &self.generation.to_be_bytes(),
-                self.state_hash.as_bytes(),
-            ],
-        )?;
-        Ok(())
-    }
-
-    fn verify(&self, key: &[u8; 32]) -> Result<(), PluginMutationJournalError> {
-        if self.version != ANCHOR_VERSION {
-            return Err(PluginMutationJournalError::new(
-                "plugin mutation anchor version is invalid",
-            ));
-        }
-        require_content_hash(&self.state_hash, "plugin mutation anchor state hash")?;
-        let mut candidate = self.clone();
-        candidate.refresh_mac(key)?;
-        if !PLUGIN_MUTATION_JOURNAL_ENGINE.constant_time_equal(&candidate.mac, &self.mac) {
-            return Err(PluginMutationJournalError::new(
-                "plugin mutation anchor integrity check failed",
-            ));
-        }
-        Ok(())
-    }
+fn read_optional_key(
+    store: &AuthenticatedJournalStore,
+    label: &str,
+) -> Result<Option<[u8; 32]>, PluginMutationJournalError> {
+    read_optional_store_bytes(store, label)?
+        .map(|bytes| decode_key(&bytes))
+        .transpose()
 }
 
-impl PluginMutationJournal {
-    #[cfg(test)]
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        let path = path.into();
-        let anchor_path = path.with_extension("anchor");
-        Self { path, anchor_path }
-    }
+fn read_optional_legacy_key(
+    store: &LegacyJournalMigrationStore,
+    label: &str,
+) -> Result<Option<[u8; 32]>, PluginMutationJournalError> {
+    store
+        .read()
+        .map_err(|error| store_error(&format!("read {label}"), error))?
+        .map(|bytes| decode_key(&bytes))
+        .transpose()
+}
 
-    pub fn for_codex_home(codex_home: &Path) -> Result<Self, PluginMutationJournalError> {
-        Self::for_codex_home_with_lookup(codex_home, |name| std::env::var_os(name))
-    }
+fn publish_key(
+    store: &AuthenticatedJournalStore,
+    key: &[u8; 32],
+) -> Result<(), PluginMutationJournalError> {
+    store
+        .publish(hex_encode(key).as_bytes())
+        .map_err(|error| store_error("publish active plugin mutation journal key", error))
+}
 
-    fn for_codex_home_with_lookup(
-        codex_home: &Path,
-        mut lookup: impl FnMut(&str) -> Option<std::ffi::OsString>,
-    ) -> Result<Self, PluginMutationJournalError> {
-        let configured_anchor_path = lookup(PLUGIN_MUTATION_EXTERNAL_ANCHOR_FILE_ENV)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from);
-        let anchor_path = match configured_anchor_path {
-            Some(anchor_path) => anchor_path,
-            None => default_external_anchor_path(codex_home)?,
-        };
-        if !anchor_path.is_absolute() {
-            return Err(PluginMutationJournalError::new(format!(
-                "{PLUGIN_MUTATION_EXTERNAL_ANCHOR_FILE_ENV} must be absolute"
-            )));
-        }
-        if anchor_path.starts_with(codex_home) {
-            return Err(PluginMutationJournalError::new(
-                "plugin mutation external anchor must be outside CODEX_HOME",
-            ));
-        }
-        let parent = anchor_path.parent().ok_or_else(|| {
-            PluginMutationJournalError::new("plugin mutation external anchor has no parent")
+fn optional_journal_version(
+    bytes: Option<&[u8]>,
+    label: &str,
+) -> Result<Option<u32>, PluginMutationJournalError> {
+    bytes
+        .map(|bytes| {
+            serde_json::from_slice::<VersionHeader>(bytes)
+                .map(|header| header.version)
+                .map_err(|error| {
+                    PluginMutationJournalError::new(format!("decode {label} header: {error}"))
+                })
+        })
+        .transpose()
+}
+
+fn decode_active_layout_state(
+    bytes: Option<&[u8]>,
+    key: &[u8; 32],
+) -> Result<Option<PluginMutationState>, PluginMutationJournalError> {
+    let Some(bytes) = bytes else {
+        return Ok(None);
+    };
+    let version = optional_journal_version(Some(bytes), "active plugin mutation journal")?
+        .ok_or_else(|| {
+            PluginMutationJournalError::new("active plugin mutation journal header is missing")
         })?;
-        if !parent.exists() {
-            match std::fs::create_dir(parent) {
-                Ok(()) => {
-                    #[cfg(unix)]
-                    std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
-                        .map_err(|error| {
-                            PluginMutationJournalError::new(format!(
-                                "secure plugin mutation external anchor directory: {error}"
-                            ))
-                        })?;
-                }
-                Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
-                Err(error) => {
-                    return Err(PluginMutationJournalError::new(format!(
-                        "create plugin mutation external anchor directory: {error}"
-                    )));
-                }
-            }
-        }
-        let metadata = std::fs::symlink_metadata(parent).map_err(|error| {
-            PluginMutationJournalError::new(format!(
-                "inspect plugin mutation external anchor directory: {error}"
-            ))
+    if version != JOURNAL_VERSION {
+        return Err(PluginMutationJournalError::new(format!(
+            "unsupported active plugin mutation journal version {version}"
+        )));
+    }
+    let state: PluginMutationState = serde_json::from_slice(bytes).map_err(|error| {
+        PluginMutationJournalError::new(format!("decode active plugin mutation journal: {error}"))
+    })?;
+    state.verify(key)?;
+    Ok(Some(state))
+}
+
+fn decode_legacy_layout_journal(
+    bytes: Option<&[u8]>,
+    key: &[u8; 32],
+    layout: &PluginMutationLayoutMigration,
+) -> Result<LegacyLayoutJournal, PluginMutationJournalError> {
+    let Some(bytes) = bytes else {
+        return Ok(LegacyLayoutJournal::Missing);
+    };
+    let version = optional_journal_version(Some(bytes), "legacy plugin mutation journal")?
+        .ok_or_else(|| {
+            PluginMutationJournalError::new("legacy plugin mutation journal header is missing")
         })?;
-        if !metadata.file_type().is_dir() {
-            return Err(PluginMutationJournalError::new(
-                "plugin mutation external anchor parent must be a directory",
-            ));
-        }
-        #[cfg(unix)]
-        if metadata.permissions().mode() & 0o077 != 0 {
-            return Err(PluginMutationJournalError::new(
-                "plugin mutation external anchor directory permissions must be private",
-            ));
-        }
-        Ok(Self {
-            path: codex_home.join("hepta-plugin-mutation-journal.json"),
-            anchor_path,
-        })
-    }
-
-    pub fn begin(
-        &self,
-        envelope: PluginMutationEnvelope,
-    ) -> Result<PluginMutationBegin, PluginMutationJournalError> {
-        validate_envelope(&envelope)?;
-        self.with_locked_state(|state| {
-            if let Some(record) = state.find_record(&envelope.request_binding) {
-                if record.envelope != envelope {
-                    return Err(PluginMutationJournalError::new(
-                        "plugin mutation request binding was reused with different authority",
-                    ));
-                }
-                return replay_record(record);
-            }
-            if state.records.len() >= MAX_RECORDS {
-                compact_terminal_records(state, RETAIN_TERMINAL_RECORDS)?;
-            }
-            if state.records.len() >= MAX_RECORDS {
-                return Err(PluginMutationJournalError::new(
-                    "plugin mutation journal is full with non-terminal records",
-                ));
-            }
-            state.records.push(PluginMutationRecord {
-                envelope,
-                status: PluginMutationStatus::Planned,
-                provider_ack_hash: None,
-                terminal_receipt_hash: None,
-                response: None,
-                error: None,
-            });
-            state.generation = state.generation.checked_add(1).ok_or_else(|| {
-                PluginMutationJournalError::new("plugin mutation generation exhausted")
-            })?;
-            Ok(PluginMutationBegin::Planned)
-        })
-    }
-
-    pub fn mark_committing(&self, request_binding: &str) -> Result<(), PluginMutationJournalError> {
-        self.update_record(request_binding, |record| {
-            if record.status != PluginMutationStatus::Planned {
-                return Err(PluginMutationJournalError::new(
-                    "plugin mutation must be planned before committing",
-                ));
-            }
-            record.status = PluginMutationStatus::Committing;
-            Ok(())
-        })
-    }
-
-    pub fn succeed(
-        &self,
-        request_binding: &str,
-        provider_ack_hash: String,
-        terminal_receipt_hash: String,
-        response: Value,
-    ) -> Result<(), PluginMutationJournalError> {
-        require_content_hash(&provider_ack_hash, "provider ACK hash")?;
-        require_content_hash(&terminal_receipt_hash, "terminal receipt hash")?;
-        let response_bytes = serde_json::to_vec(&response).map_err(|error| {
-            PluginMutationJournalError::new(format!(
-                "encode plugin mutation terminal response: {error}"
-            ))
-        })?;
-        if response_bytes.len() > MAX_TERMINAL_RESPONSE_BYTES {
-            return Err(PluginMutationJournalError::new(format!(
-                "plugin mutation terminal response exceeds {MAX_TERMINAL_RESPONSE_BYTES} bytes"
-            )));
-        }
-        self.update_record(request_binding, |record| {
-            if record.status != PluginMutationStatus::Committing {
-                return Err(PluginMutationJournalError::new(
-                    "plugin mutation must be committing before success",
-                ));
-            }
-            record.status = PluginMutationStatus::Succeeded;
-            record.provider_ack_hash = Some(provider_ack_hash);
-            record.terminal_receipt_hash = Some(terminal_receipt_hash);
-            record.response = Some(response);
-            Ok(())
-        })
-    }
-
-    pub fn fail(
-        &self,
-        request_binding: &str,
-        provider_ack_hash: String,
-        terminal_receipt_hash: String,
-        error: String,
-    ) -> Result<(), PluginMutationJournalError> {
-        require_content_hash(&provider_ack_hash, "provider ACK hash")?;
-        require_content_hash(&terminal_receipt_hash, "terminal receipt hash")?;
-        if error.is_empty() {
-            return Err(PluginMutationJournalError::new(
-                "plugin mutation terminal error cannot be empty",
-            ));
-        }
-        if error.len() > MAX_TERMINAL_ERROR_BYTES {
-            return Err(PluginMutationJournalError::new(format!(
-                "plugin mutation terminal error exceeds {MAX_TERMINAL_ERROR_BYTES} bytes"
-            )));
-        }
-        self.update_record(request_binding, |record| {
-            if record.status != PluginMutationStatus::Committing {
-                return Err(PluginMutationJournalError::new(
-                    "plugin mutation must be committing before failure",
-                ));
-            }
-            record.status = PluginMutationStatus::Failed;
-            record.provider_ack_hash = Some(provider_ack_hash);
-            record.terminal_receipt_hash = Some(terminal_receipt_hash);
-            record.error = Some(error);
-            Ok(())
-        })
-    }
-
-    fn update_record(
-        &self,
-        request_binding: &str,
-        update: impl FnOnce(&mut PluginMutationRecord) -> Result<(), PluginMutationJournalError>,
-    ) -> Result<(), PluginMutationJournalError> {
-        self.with_locked_state(|state| {
-            let record = state
-                .records
-                .iter_mut()
-                .find(|record| record.envelope.request_binding == request_binding)
-                .ok_or_else(|| {
-                    PluginMutationJournalError::new(
-                        "plugin mutation record is missing or already checkpointed",
-                    )
+    match version {
+        LEGACY_JOURNAL_VERSION => {
+            let state: LegacyPluginMutationState =
+                serde_json::from_slice(bytes).map_err(|error| {
+                    PluginMutationJournalError::new(format!(
+                        "decode legacy v1 plugin mutation journal: {error}"
+                    ))
                 })?;
-            update(record)?;
-            state.generation = state.generation.checked_add(1).ok_or_else(|| {
-                PluginMutationJournalError::new("plugin mutation generation exhausted")
+            state.verify()?;
+            Ok(LegacyLayoutJournal::Source(MigrationSourceState {
+                source: MigrationSource::LegacyV1,
+                state: state.migrate(key)?,
+            }))
+        }
+        JOURNAL_VERSION => {
+            let state: PluginMutationState = serde_json::from_slice(bytes).map_err(|error| {
+                PluginMutationJournalError::new(format!(
+                    "decode legacy v2 plugin mutation journal: {error}"
+                ))
             })?;
-            Ok(())
-        })
+            state.verify(key)?;
+            Ok(LegacyLayoutJournal::Source(MigrationSourceState {
+                source: MigrationSource::LegacyV2,
+                state,
+            }))
+        }
+        RETIRED_LEGACY_JOURNAL_VERSION => {
+            let tombstone: RetiredLegacyPluginMutationJournal = serde_json::from_slice(bytes)
+                .map_err(|error| {
+                    PluginMutationJournalError::new(format!(
+                        "decode retired legacy plugin mutation journal: {error}"
+                    ))
+                })?;
+            tombstone.verify(key, &layout.legacy_identity)?;
+            Ok(LegacyLayoutJournal::Retired(tombstone))
+        }
+        version => Err(PluginMutationJournalError::new(format!(
+            "unsupported legacy plugin mutation journal version {version}"
+        ))),
     }
+}
 
-    fn with_locked_state<T>(
-        &self,
-        mutate: impl FnOnce(&mut PluginMutationState) -> Result<T, PluginMutationJournalError>,
-    ) -> Result<T, PluginMutationJournalError> {
-        let journal_store = private_store(
-            &self.path,
-            MAX_JOURNAL_BYTES,
-            "hepta-plugin-mutation-journal",
-        )?
-        .with_lock_path(self.path.with_extension("lock"))
-        .map_err(|error| store_error("configure plugin mutation journal lock", error))?;
-        let anchor_store = private_store(
-            &self.anchor_path,
-            MAX_ANCHOR_BYTES,
-            "hepta-plugin-mutation-anchor",
-        )?;
-        let key_store = private_store(
-            &self.path.with_extension("key"),
-            MAX_KEY_BYTES,
-            "hepta-plugin-mutation-key",
-        )?;
-        let _lock = journal_store
-            .lock()
-            .map_err(|error| store_error("lock plugin mutation journal", error))?;
+fn decode_migration_marker(
+    bytes: Option<&[u8]>,
+    key: &[u8; 32],
+    layout: &PluginMutationLayoutMigration,
+) -> Result<Option<PluginMutationMigrationMarker>, PluginMutationJournalError> {
+    let Some(bytes) = bytes else {
+        return Ok(None);
+    };
+    let marker: PluginMutationMigrationMarker = serde_json::from_slice(bytes).map_err(|error| {
+        PluginMutationJournalError::new(format!(
+            "decode plugin mutation layout migration marker: {error}"
+        ))
+    })?;
+    marker.verify(key, &layout.legacy_identity)?;
+    Ok(Some(marker))
+}
 
-        (|| {
-            let version = journal_version(&journal_store)?;
-            let key = load_or_create_key(
-                &key_store,
-                version.is_none() || version == Some(LEGACY_JOURNAL_VERSION),
-            )?;
-            let mut loaded = read_state(&journal_store, &key)?;
-            verify_or_initialize_anchor(&anchor_store, &loaded, &key)?;
-            let mutation_result = mutate(&mut loaded.state);
-            if mutation_result.is_ok() {
-                validate_state(&loaded.state)?;
-                loaded.state.refresh_integrity(&key)?;
-                publish_state(&journal_store, &loaded.state)?;
-                publish_anchor(&anchor_store, &loaded.state, &key)?;
+fn publish_migration_marker(
+    store: &AuthenticatedJournalStore,
+    marker: &PluginMutationMigrationMarker,
+) -> Result<(), PluginMutationJournalError> {
+    let bytes = serde_json::to_vec(marker).map_err(|error| {
+        PluginMutationJournalError::new(format!(
+            "encode plugin mutation layout migration marker: {error}"
+        ))
+    })?;
+    store
+        .publish(&bytes)
+        .map_err(|error| store_error("publish plugin mutation layout migration marker", error))
+}
+
+fn publish_legacy_tombstone(
+    store: &LegacyJournalMigrationStore,
+    claim: PluginMutationMigrationClaim,
+    key: &[u8; 32],
+) -> Result<(), PluginMutationJournalError> {
+    let tombstone = RetiredLegacyPluginMutationJournal::new(claim, key)?;
+    let bytes = serde_json::to_vec(&tombstone).map_err(|error| {
+        PluginMutationJournalError::new(format!(
+            "encode retired legacy plugin mutation journal: {error}"
+        ))
+    })?;
+    store
+        .publish(&bytes)
+        .map_err(|error| store_error("publish retired legacy plugin mutation journal", error))
+}
+
+fn state_for_migration_claim(
+    claim: &PluginMutationMigrationClaim,
+    legacy: LegacyLayoutJournal,
+    key: &[u8; 32],
+) -> Result<PluginMutationState, PluginMutationJournalError> {
+    match (claim.source, legacy) {
+        (MigrationSource::Fresh, LegacyLayoutJournal::Missing) => PluginMutationState::empty(key),
+        (source, LegacyLayoutJournal::Source(evidence)) if source == evidence.source => {
+            Ok(evidence.state)
+        }
+        _ => Err(PluginMutationJournalError::new(
+            "legacy plugin mutation evidence does not match the preparing migration marker",
+        )),
+    }
+}
+
+fn store_has_bytes(
+    store: &AuthenticatedJournalStore,
+    label: &str,
+) -> Result<bool, PluginMutationJournalError> {
+    Ok(read_optional_store_bytes(store, label)?.is_some())
+}
+
+fn preflight_migration_anchor(
+    store: &AuthenticatedJournalStore,
+    state: &PluginMutationState,
+    key: &[u8; 32],
+    source: MigrationSource,
+) -> Result<(), PluginMutationJournalError> {
+    match read_plugin_mutation_anchor(store, key)? {
+        Some(anchor) => validate_anchor_relation(&anchor, state),
+        None if source != MigrationSource::LegacyV2 => Ok(()),
+        None => Err(PluginMutationJournalError::new(
+            "external anchor is missing for a legacy authenticated plugin mutation journal",
+        )),
+    }
+}
+
+fn reconcile_migration_anchor(
+    store: &AuthenticatedJournalStore,
+    state: &PluginMutationState,
+    key: &[u8; 32],
+    allow_missing: bool,
+) -> Result<(), PluginMutationJournalError> {
+    match read_plugin_mutation_anchor(store, key)? {
+        Some(anchor) => {
+            validate_anchor_relation(&anchor, state)?;
+            if anchor.generation < state.generation {
+                publish_anchor(store, state, key)?;
             }
-            mutation_result
-        })()
+            Ok(())
+        }
+        None if allow_missing => publish_anchor(store, state, key),
+        None => Err(PluginMutationJournalError::new(
+            "plugin mutation anchor is missing after secure-layout publication",
+        )),
     }
+}
+
+fn read_plugin_mutation_anchor(
+    store: &AuthenticatedJournalStore,
+    key: &[u8; 32],
+) -> Result<Option<PluginMutationAnchor>, PluginMutationJournalError> {
+    let Some(bytes) = read_optional_store_bytes(store, "plugin mutation anchor")? else {
+        return Ok(None);
+    };
+    let anchor: PluginMutationAnchor = serde_json::from_slice(&bytes).map_err(|error| {
+        PluginMutationJournalError::new(format!("decode plugin mutation anchor: {error}"))
+    })?;
+    anchor.verify(key)?;
+    Ok(Some(anchor))
+}
+
+fn validate_anchor_relation(
+    anchor: &PluginMutationAnchor,
+    state: &PluginMutationState,
+) -> Result<(), PluginMutationJournalError> {
+    if anchor.generation > state.generation {
+        return Err(PluginMutationJournalError::new(
+            "plugin mutation journal rollback detected during layout migration",
+        ));
+    }
+    if anchor.generation == state.generation && anchor.state_hash != state.state_hash {
+        return Err(PluginMutationJournalError::new(
+            "plugin mutation journal same-generation fork detected during layout migration",
+        ));
+    }
+    Ok(())
+}
+
+fn legacy_private_store(
+    path: &Path,
+    max_bytes: u64,
+    staging_prefix: &str,
+) -> Result<LegacyJournalMigrationStore, PluginMutationJournalError> {
+    LegacyJournalMigrationStore::new(path, max_bytes, staging_prefix)
+        .map_err(|error| store_error("configure legacy authenticated journal store", error))
 }
 
 fn default_external_anchor_path(codex_home: &Path) -> Result<PathBuf, PluginMutationJournalError> {
@@ -605,14 +366,21 @@ fn default_external_anchor_path(codex_home: &Path) -> Result<PathBuf, PluginMuta
             "CODEX_HOME has no parent for the external authority anchor",
         )
     })?;
-    let identity = Sha256::digest(codex_home.as_os_str().to_string_lossy().as_bytes());
-    let identity = identity
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+    let identity = codex_home_identity(codex_home)?;
     Ok(parent
         .join(".hepta-authority")
         .join(format!("plugin-mutation-{identity}.anchor")))
+}
+
+fn codex_home_identity(codex_home: &Path) -> Result<String, PluginMutationJournalError> {
+    if !codex_home.is_absolute() {
+        return Err(PluginMutationJournalError::new(
+            "CODEX_HOME must be absolute for plugin mutation storage",
+        ));
+    }
+    Ok(hex_encode(&Sha256::digest(
+        codex_home.as_os_str().to_string_lossy().as_bytes(),
+    )))
 }
 
 fn replay_record(
@@ -1077,281 +845,39 @@ fn hmac_hex(
         })
 }
 
+fn migration_claim_mac(
+    key: &[u8; 32],
+    domain: &[u8],
+    phase: Option<MigrationPhase>,
+    claim: &PluginMutationMigrationClaim,
+) -> Result<String, PluginMutationJournalError> {
+    let layout_version = claim.layout_version.to_be_bytes();
+    let source = [match claim.source {
+        MigrationSource::Fresh => 0,
+        MigrationSource::LegacyV1 => 1,
+        MigrationSource::LegacyV2 => 2,
+    }];
+    let generation = claim.generation.to_be_bytes();
+    let phase = phase.map(|phase| match phase {
+        MigrationPhase::Preparing => [0],
+        MigrationPhase::Committed => [1],
+    });
+    let mut values: Vec<&[u8]> = Vec::with_capacity(7);
+    values.push(&layout_version);
+    values.push(claim.legacy_identity.as_bytes());
+    values.push(claim.destination.as_bytes());
+    values.push(&source);
+    values.push(&generation);
+    values.push(claim.state_hash.as_bytes());
+    if let Some(phase) = phase.as_ref() {
+        values.push(phase);
+    }
+    hmac_hex(key, domain, &values)
+}
+
 fn hex_decode(value: &str) -> Result<Vec<u8>, PluginMutationJournalError> {
     decode_canonical_hex(value)
         .map_err(|error| PluginMutationJournalError::new(format!("decode hex value: {error}")))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn private_root() -> Result<tempfile::TempDir, PluginMutationJournalError> {
-        let root = tempfile::tempdir()
-            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
-        #[cfg(unix)]
-        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))
-            .map_err(|error| PluginMutationJournalError::new(format!("secure tempdir: {error}")))?;
-        Ok(root)
-    }
-
-    fn envelope_index(index: u64) -> PluginMutationEnvelope {
-        PluginMutationEnvelope {
-            request_binding: format!("{index:064x}"),
-            operation: "plugin_share_save".to_string(),
-            target_binding: "plugin-path".to_string(),
-            payload_digest: format!("sha256:{}", "a".repeat(64)),
-            idempotency_binding: format!("{:064x}", index.saturating_add(10_000)),
-            effect_plan_hash: format!("sha256:{}", "c".repeat(64)),
-        }
-    }
-
-    fn terminal_record(index: u64, status: PluginMutationStatus) -> PluginMutationRecord {
-        let (response, error) = match status {
-            PluginMutationStatus::Succeeded => (Some(serde_json::json!({"index": index})), None),
-            PluginMutationStatus::Failed => (None, Some(format!("failure-{index}"))),
-            _ => (None, None),
-        };
-        PluginMutationRecord {
-            envelope: envelope_index(index),
-            status,
-            provider_ack_hash: status
-                .is_terminal()
-                .then(|| format!("sha256:{}", "d".repeat(64))),
-            terminal_receipt_hash: status
-                .is_terminal()
-                .then(|| format!("sha256:{}", "e".repeat(64))),
-            response,
-            error,
-        }
-    }
-
-    #[test]
-    fn replays_terminal_success_and_blocks_in_doubt() -> Result<(), PluginMutationJournalError> {
-        let root = private_root()?;
-        let journal = PluginMutationJournal::new(root.path().join("journal.json"));
-        let envelope = envelope_index(1);
-        assert_eq!(
-            journal.begin(envelope.clone())?,
-            PluginMutationBegin::Planned
-        );
-        assert_eq!(
-            journal.begin(envelope.clone())?,
-            PluginMutationBegin::InDoubt
-        );
-        journal.mark_committing(&envelope.request_binding)?;
-        journal.succeed(
-            &envelope.request_binding,
-            format!("sha256:{}", "d".repeat(64)),
-            format!("sha256:{}", "e".repeat(64)),
-            serde_json::json!({"ok": true}),
-        )?;
-        assert_eq!(
-            journal.begin(envelope)?,
-            PluginMutationBegin::ReplayedSuccess(serde_json::json!({"ok": true}))
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn rejects_request_binding_reuse_with_different_payload()
-    -> Result<(), PluginMutationJournalError> {
-        let root = private_root()?;
-        let journal = PluginMutationJournal::new(root.path().join("journal.json"));
-        let first = envelope_index(2);
-        journal.begin(first.clone())?;
-        let mut conflicting = first;
-        conflicting.payload_digest = format!("sha256:{}", "f".repeat(64));
-        assert!(journal.begin(conflicting).is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn checkpoint_preserves_success_and_failure_replay_after_record_limit()
-    -> Result<(), PluginMutationJournalError> {
-        let root = private_root()?;
-        let path = root.path().join("journal.json");
-        let journal = PluginMutationJournal::new(&path);
-        journal.begin(envelope_index(1))?;
-        journal.with_locked_state(|state| {
-            state.records = (1..=MAX_RECORDS as u64)
-                .map(|index| {
-                    terminal_record(
-                        index,
-                        if index == 2 {
-                            PluginMutationStatus::Failed
-                        } else {
-                            PluginMutationStatus::Succeeded
-                        },
-                    )
-                })
-                .collect();
-            state.generation = state.generation.saturating_add(1);
-            Ok(())
-        })?;
-        assert_eq!(
-            journal.begin(envelope_index(MAX_RECORDS as u64 + 1))?,
-            PluginMutationBegin::Planned
-        );
-        assert_eq!(
-            journal.begin(envelope_index(1))?,
-            PluginMutationBegin::ReplayedSuccess(serde_json::json!({"index": 1}))
-        );
-        assert_eq!(
-            journal.begin(envelope_index(2))?,
-            PluginMutationBegin::ReplayedFailure("failure-2".to_string())
-        );
-        let state: PluginMutationState =
-            serde_json::from_slice(&read_private_bytes(&path, "plugin mutation journal")?)
-                .map_err(|error| {
-                    PluginMutationJournalError::new(format!("decode state: {error}"))
-                })?;
-        assert_eq!(
-            state.checkpoint.compacted_records,
-            (MAX_RECORDS - RETAIN_TERMINAL_RECORDS) as u64
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn rejects_authenticated_journal_rollback() -> Result<(), PluginMutationJournalError> {
-        let root = private_root()?;
-        let path = root.path().join("journal.json");
-        let journal = PluginMutationJournal::new(&path);
-        journal.begin(envelope_index(1))?;
-        let old_state = read_private_bytes(&path, "plugin mutation journal")?;
-        journal.begin(envelope_index(2))?;
-        publish_private_bytes(&path, &old_state, "plugin mutation journal")?;
-        let error = journal
-            .begin(envelope_index(3))
-            .expect_err("rollback must fail closed");
-        assert!(error.to_string().contains("rollback detected"));
-        Ok(())
-    }
-
-    #[test]
-    fn migrates_verified_v1_state_and_creates_anchor() -> Result<(), PluginMutationJournalError> {
-        let root = private_root()?;
-        let path = root.path().join("journal.json");
-        let mut legacy = LegacyPluginMutationState {
-            version: LEGACY_JOURNAL_VERSION,
-            generation: 7,
-            records: vec![terminal_record(7, PluginMutationStatus::Succeeded)],
-            state_hash: String::new(),
-        };
-        legacy.refresh_hash()?;
-        publish_private_bytes(
-            &path,
-            &serde_json::to_vec(&legacy).map_err(|error| {
-                PluginMutationJournalError::new(format!("encode legacy state: {error}"))
-            })?,
-            "plugin mutation journal",
-        )?;
-        let journal = PluginMutationJournal::new(&path);
-        assert_eq!(
-            journal.begin(envelope_index(7))?,
-            PluginMutationBegin::ReplayedSuccess(serde_json::json!({"index": 7}))
-        );
-        let state: PluginMutationState =
-            serde_json::from_slice(&read_private_bytes(&path, "plugin mutation journal")?)
-                .map_err(|error| {
-                    PluginMutationJournalError::new(format!("decode v2 state: {error}"))
-                })?;
-        assert_eq!(state.version, JOURNAL_VERSION);
-        assert!(path.with_extension("key").is_file());
-        assert!(path.with_extension("anchor").is_file());
-        Ok(())
-    }
-
-    #[test]
-    fn production_journal_places_anchor_outside_codex_home()
-    -> Result<(), PluginMutationJournalError> {
-        let root = tempfile::tempdir()
-            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
-        let codex_home = root.path().join("codex-home");
-        std::fs::create_dir(&codex_home).map_err(|error| {
-            PluginMutationJournalError::new(format!("create CODEX_HOME: {error}"))
-        })?;
-        #[cfg(unix)]
-        std::fs::set_permissions(&codex_home, std::fs::Permissions::from_mode(0o700)).map_err(
-            |error| PluginMutationJournalError::new(format!("secure CODEX_HOME: {error}")),
-        )?;
-        let journal = PluginMutationJournal::for_codex_home_with_lookup(&codex_home, |_| None)?;
-        assert!(!journal.anchor_path.starts_with(&codex_home));
-        let second_codex_home = root.path().join("second-codex-home");
-        std::fs::create_dir(&second_codex_home).map_err(|error| {
-            PluginMutationJournalError::new(format!("create second CODEX_HOME: {error}"))
-        })?;
-        let second =
-            PluginMutationJournal::for_codex_home_with_lookup(&second_codex_home, |_| None)?;
-        assert_ne!(journal.anchor_path, second.anchor_path);
-        journal.begin(envelope_index(1))?;
-        assert!(journal.path.is_file());
-        assert!(journal.anchor_path.is_file());
-        Ok(())
-    }
-
-    #[test]
-    fn external_anchor_rejects_whole_codex_home_rollback() -> Result<(), PluginMutationJournalError>
-    {
-        let root = tempfile::tempdir()
-            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
-        let codex_home = root.path().join("codex-home");
-        std::fs::create_dir(&codex_home).map_err(|error| {
-            PluginMutationJournalError::new(format!("create CODEX_HOME: {error}"))
-        })?;
-        #[cfg(unix)]
-        std::fs::set_permissions(&codex_home, std::fs::Permissions::from_mode(0o700)).map_err(
-            |error| PluginMutationJournalError::new(format!("secure CODEX_HOME: {error}")),
-        )?;
-        let journal = PluginMutationJournal::for_codex_home_with_lookup(&codex_home, |_| None)?;
-        journal.begin(envelope_index(1))?;
-        let old_state = read_private_bytes(&journal.path, "plugin mutation journal")?;
-        journal.begin(envelope_index(2))?;
-        publish_private_bytes(&journal.path, &old_state, "plugin mutation journal")?;
-        let error = journal
-            .begin(envelope_index(3))
-            .expect_err("external anchor must reject CODEX_HOME rollback");
-        assert!(error.to_string().contains("rollback detected"));
-        Ok(())
-    }
-
-    #[test]
-    fn terminal_payloads_are_bounded() -> Result<(), PluginMutationJournalError> {
-        let root = private_root()?;
-        let journal = PluginMutationJournal::new(root.path().join("journal.json"));
-        let envelope = envelope_index(1);
-        journal.begin(envelope.clone())?;
-        journal.mark_committing(&envelope.request_binding)?;
-        let response = serde_json::json!({"payload": "x".repeat(MAX_TERMINAL_RESPONSE_BYTES)});
-        let error = journal
-            .succeed(
-                &envelope.request_binding,
-                format!("sha256:{}", "d".repeat(64)),
-                format!("sha256:{}", "e".repeat(64)),
-                response,
-            )
-            .expect_err("oversized terminal response must fail closed");
-        assert!(error.to_string().contains("terminal response exceeds"));
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_constructor_rejects_non_private_parent() -> Result<(), PluginMutationJournalError> {
-        let root = private_root()?;
-        let public = root.path().join("public");
-        std::fs::create_dir(&public).map_err(|error| {
-            PluginMutationJournalError::new(format!("create public parent: {error}"))
-        })?;
-        std::fs::set_permissions(&public, std::fs::Permissions::from_mode(0o755)).map_err(
-            |error| PluginMutationJournalError::new(format!("set public parent mode: {error}")),
-        )?;
-        let journal = PluginMutationJournal::new(public.join("journal.json"));
-        let error = journal
-            .begin(envelope_index(1))
-            .expect_err("non-private journal parent must fail closed");
-        assert!(error.to_string().contains("owned mode-0700 directory"));
-        Ok(())
-    }
-}
+include!("plugin_mutation_journal/tests.rs");

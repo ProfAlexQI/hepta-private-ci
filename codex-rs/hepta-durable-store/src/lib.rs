@@ -1,135 +1,15 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 //! Descriptor-relative private durable storage for authenticated journals.
 
-use std::path::Path;
-use std::path::PathBuf;
-
-use anyhow::Context;
-use anyhow::Result;
-
 const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 
-#[derive(Debug, Clone)]
-pub struct AuthenticatedJournalStore {
-    path: PathBuf,
-    lock_path: PathBuf,
-    max_bytes: u64,
-    staging_prefix: String,
-}
+mod store;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DurableFileSnapshot {
-    pub bytes: Vec<u8>,
-    pub modified_unix_ms: Option<u64>,
-}
-
-#[cfg(unix)]
-#[derive(Debug)]
-pub struct AuthenticatedJournalStoreLock {
-    file: std::fs::File,
-}
-
-#[cfg(not(unix))]
-#[derive(Debug)]
-pub struct AuthenticatedJournalStoreLock;
-
-impl AuthenticatedJournalStore {
-    pub fn new(
-        path: impl Into<PathBuf>,
-        max_bytes: u64,
-        staging_prefix: impl Into<String>,
-    ) -> Result<Self> {
-        let path = path.into();
-        let file_name = path
-            .file_name()
-            .context("authenticated journal path must name a file")?;
-        let mut lock_name = file_name.to_os_string();
-        lock_name.push(".lock");
-        let lock_path = path.with_file_name(lock_name);
-        let store = Self {
-            path,
-            lock_path,
-            max_bytes,
-            staging_prefix: staging_prefix.into(),
-        };
-        store.validate()?;
-        Ok(store)
-    }
-
-    pub fn with_lock_path(mut self, lock_path: impl Into<PathBuf>) -> Result<Self> {
-        self.lock_path = lock_path.into();
-        self.validate()?;
-        Ok(self)
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    pub fn read(&self) -> Result<Option<Vec<u8>>> {
-        self.read_snapshot()
-            .map(|snapshot| snapshot.map(|snapshot| snapshot.bytes))
-    }
-
-    pub fn read_snapshot(&self) -> Result<Option<DurableFileSnapshot>> {
-        platform::read_private_file(&self.path, self.max_bytes)
-    }
-
-    pub fn publish(&self, bytes: &[u8]) -> Result<()> {
-        self.read_snapshot()?;
-        platform::write_private_file_atomically(
-            &self.path,
-            bytes,
-            self.max_bytes,
-            &self.staging_prefix,
-        )
-    }
-
-    pub fn append(&self, bytes: &[u8]) -> Result<()> {
-        platform::append_private_file(&self.path, bytes, self.max_bytes)
-    }
-
-    pub fn update<T>(
-        &self,
-        update: impl FnOnce(Option<&[u8]>) -> Result<(Vec<u8>, T)>,
-    ) -> Result<T> {
-        let _lock = self.lock()?;
-        let current = self.read()?;
-        let (bytes, output) = update(current.as_deref())?;
-        self.publish(&bytes)?;
-        Ok(output)
-    }
-
-    pub fn lock(&self) -> Result<AuthenticatedJournalStoreLock> {
-        platform::lock_private_file(&self.lock_path)
-    }
-
-    fn validate(&self) -> Result<()> {
-        if self.max_bytes == 0 {
-            anyhow::bail!("authenticated journal byte limit must be positive");
-        }
-        let target_parent = self
-            .path
-            .parent()
-            .context("authenticated journal path has no parent")?;
-        if self.lock_path.parent() != Some(target_parent) {
-            anyhow::bail!("authenticated journal lock must share the target parent");
-        }
-        let prefix = self
-            .staging_prefix
-            .strip_prefix('.')
-            .unwrap_or(&self.staging_prefix);
-        if prefix.is_empty()
-            || !prefix
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-        {
-            anyhow::bail!("authenticated journal staging prefix is invalid");
-        }
-        Ok(())
-    }
-}
+pub use store::AuthenticatedJournalStore;
+pub use store::AuthenticatedJournalStoreLock;
+pub use store::DurableFileSnapshot;
+pub use store::LegacyJournalMigrationStore;
 
 #[cfg(unix)]
 mod platform {
@@ -159,11 +39,32 @@ mod platform {
 
     static TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+    #[derive(Clone, Copy)]
+    enum ParentDirectoryPolicy {
+        Private,
+        LegacyMigration,
+    }
+
     pub(super) fn read_private_file(
         path: &Path,
         max_bytes: u64,
     ) -> Result<Option<DurableFileSnapshot>> {
-        let (parent, name) = match open_parent(path, false) {
+        read_file_with_parent_policy(path, max_bytes, ParentDirectoryPolicy::Private)
+    }
+
+    pub(super) fn read_legacy_private_file(
+        path: &Path,
+        max_bytes: u64,
+    ) -> Result<Option<DurableFileSnapshot>> {
+        read_file_with_parent_policy(path, max_bytes, ParentDirectoryPolicy::LegacyMigration)
+    }
+
+    fn read_file_with_parent_policy(
+        path: &Path,
+        max_bytes: u64,
+        policy: ParentDirectoryPolicy,
+    ) -> Result<Option<DurableFileSnapshot>> {
+        let (parent, name) = match open_parent(path, false, policy) {
             Ok(value) => value,
             Err(error) if is_not_found(&error) => return Ok(None),
             Err(error) => return Err(error),
@@ -177,10 +78,41 @@ mod platform {
         max_bytes: u64,
         staging_prefix: &str,
     ) -> Result<()> {
+        write_file_with_parent_policy(
+            path,
+            bytes,
+            max_bytes,
+            staging_prefix,
+            ParentDirectoryPolicy::Private,
+        )
+    }
+
+    pub(super) fn write_legacy_private_file_atomically(
+        path: &Path,
+        bytes: &[u8],
+        max_bytes: u64,
+        staging_prefix: &str,
+    ) -> Result<()> {
+        write_file_with_parent_policy(
+            path,
+            bytes,
+            max_bytes,
+            staging_prefix,
+            ParentDirectoryPolicy::LegacyMigration,
+        )
+    }
+
+    fn write_file_with_parent_policy(
+        path: &Path,
+        bytes: &[u8],
+        max_bytes: u64,
+        staging_prefix: &str,
+        policy: ParentDirectoryPolicy,
+    ) -> Result<()> {
         if bytes.len() as u64 > max_bytes {
             anyhow::bail!("authenticated journal file exceeds its bounded size");
         }
-        let (parent, name) = open_parent(path, true)?;
+        let (parent, name) = open_parent(path, true, policy)?;
         let prefix = staging_prefix.strip_prefix('.').unwrap_or(staging_prefix);
         let mut temporary = None;
         for _ in 0..32 {
@@ -232,7 +164,7 @@ mod platform {
     }
 
     pub(super) fn append_private_file(path: &Path, bytes: &[u8], max_bytes: u64) -> Result<()> {
-        let (parent, name) = open_parent(path, true)?;
+        let (parent, name) = open_parent(path, true, ParentDirectoryPolicy::Private)?;
         let mut file = open_file_at(
             &parent,
             &name,
@@ -262,14 +194,64 @@ mod platform {
     }
 
     pub(super) fn lock_private_file(path: &Path) -> Result<AuthenticatedJournalStoreLock> {
-        let (parent, name) = open_parent(path, true)?;
-        let file = open_file_at(
-            &parent,
-            &name,
-            libc::O_RDWR | libc::O_CREAT | libc::O_NONBLOCK | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-            PRIVATE_FILE_MODE,
-        )
-        .context("open authenticated journal lock without links")?;
+        lock_file_with_parent_policy(path, ParentDirectoryPolicy::Private)
+    }
+
+    pub(super) fn lock_legacy_private_file(path: &Path) -> Result<AuthenticatedJournalStoreLock> {
+        lock_file_with_parent_policy(path, ParentDirectoryPolicy::LegacyMigration)
+    }
+
+    fn lock_file_with_parent_policy(
+        path: &Path,
+        policy: ParentDirectoryPolicy,
+    ) -> Result<AuthenticatedJournalStoreLock> {
+        let (parent, name) = open_parent(path, true, policy)?;
+        let mut file = None;
+        for _ in 0..32 {
+            match open_file_at(
+                &parent,
+                &name,
+                libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+                0,
+            ) {
+                Ok(existing) => {
+                    file = Some(existing);
+                    break;
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error).context("open authenticated journal lock without links");
+                }
+            }
+            match open_file_at(
+                &parent,
+                &name,
+                libc::O_RDWR
+                    | libc::O_CREAT
+                    | libc::O_EXCL
+                    | libc::O_NONBLOCK
+                    | libc::O_CLOEXEC
+                    | libc::O_NOFOLLOW,
+                PRIVATE_FILE_MODE,
+            ) {
+                Ok(created) => {
+                    file = Some(created);
+                    break;
+                }
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::AlreadyExists | io::ErrorKind::NotFound
+                    ) =>
+                {
+                    continue;
+                }
+                Err(error) => {
+                    return Err(error).context("create authenticated journal lock without links");
+                }
+            }
+        }
+        let file = file.context("exhausted authenticated journal lock creation attempts")?;
         validate_private_file(&file, 0)?;
         lock_file(&file)?;
         Ok(AuthenticatedJournalStoreLock { file })
@@ -312,7 +294,11 @@ mod platform {
         }
     }
 
-    fn open_parent(path: &Path, create: bool) -> Result<(File, CString)> {
+    fn open_parent(
+        path: &Path,
+        create: bool,
+        policy: ParentDirectoryPolicy,
+    ) -> Result<(File, CString)> {
         #[cfg(target_os = "macos")]
         let normalized_path = normalize_macos_system_root_alias(path);
         #[cfg(target_os = "macos")]
@@ -360,7 +346,12 @@ mod platform {
             directory = open_directory_at(directory.as_raw_fd(), &component)
                 .context("open authenticated journal directory without links")?;
         }
-        validate_private_directory(&directory)?;
+        match policy {
+            ParentDirectoryPolicy::Private => validate_private_directory(&directory)?,
+            ParentDirectoryPolicy::LegacyMigration => {
+                validate_legacy_migration_directory(&directory)?
+            }
+        }
         Ok((directory, name))
     }
 
@@ -441,6 +432,21 @@ mod platform {
         Ok(())
     }
 
+    fn validate_legacy_migration_directory(directory: &File) -> Result<()> {
+        let metadata = directory
+            .metadata()
+            .context("inspect legacy authenticated journal directory")?;
+        if !metadata.file_type().is_dir()
+            || metadata.uid() != effective_uid()
+            || metadata.permissions().mode() & 0o7022 != 0
+        {
+            anyhow::bail!(
+                "legacy authenticated journal parent must be owned and not writable by group or other users"
+            );
+        }
+        Ok(())
+    }
+
     fn validate_private_file(file: &File, max_bytes: u64) -> Result<()> {
         let metadata = file
             .metadata()
@@ -516,6 +522,13 @@ mod platform {
         anyhow::bail!("authenticated journal durable stores require Unix descriptor semantics")
     }
 
+    pub(super) fn read_legacy_private_file(
+        _path: &Path,
+        _max_bytes: u64,
+    ) -> Result<Option<DurableFileSnapshot>> {
+        anyhow::bail!("legacy authenticated journal migrations require Unix descriptor semantics")
+    }
+
     pub(super) fn write_private_file_atomically(
         _path: &Path,
         _bytes: &[u8],
@@ -525,6 +538,15 @@ mod platform {
         anyhow::bail!("authenticated journal durable stores require Unix descriptor semantics")
     }
 
+    pub(super) fn write_legacy_private_file_atomically(
+        _path: &Path,
+        _bytes: &[u8],
+        _max_bytes: u64,
+        _staging_prefix: &str,
+    ) -> Result<()> {
+        anyhow::bail!("legacy authenticated journal migrations require Unix descriptor semantics")
+    }
+
     pub(super) fn append_private_file(_path: &Path, _bytes: &[u8], _max_bytes: u64) -> Result<()> {
         anyhow::bail!("authenticated journal durable stores require Unix descriptor semantics")
     }
@@ -532,106 +554,11 @@ mod platform {
     pub(super) fn lock_private_file(_path: &Path) -> Result<AuthenticatedJournalStoreLock> {
         anyhow::bail!("authenticated journal durable stores require Unix descriptor semantics")
     }
+
+    pub(super) fn lock_legacy_private_file(_path: &Path) -> Result<AuthenticatedJournalStoreLock> {
+        anyhow::bail!("legacy authenticated journal migrations require Unix descriptor semantics")
+    }
 }
 
 #[cfg(all(test, unix))]
-mod tests {
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
-    use std::os::unix::fs::symlink;
-
-    use tempfile::TempDir;
-
-    use super::*;
-
-    fn private_root() -> Result<TempDir> {
-        let root = TempDir::new()?;
-        fs::set_permissions(
-            root.path(),
-            fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE),
-        )?;
-        Ok(root)
-    }
-
-    #[test]
-    fn update_is_private_atomic_bounded_and_recoverable() -> Result<()> {
-        let root = private_root()?;
-        let path = root.path().join("journal.json");
-        let store = AuthenticatedJournalStore::new(&path, 64, "journal")?;
-        store.update(|current| {
-            assert!(current.is_none());
-            Ok((b"first".to_vec(), ()))
-        })?;
-        let before = store.read()?.context("published journal")?;
-        assert_eq!(before, b"first");
-        assert_eq!(
-            fs::metadata(&path)?.permissions().mode() & 0o7777,
-            PRIVATE_FILE_MODE
-        );
-        let failed = store.update::<()>(|_| anyhow::bail!("crash before publication"));
-        assert!(failed.is_err());
-        assert_eq!(store.read()?.context("preserved journal")?, before);
-        assert!(store.publish(&[0; 65]).is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn symlink_redirection_and_non_private_parent_fail_closed() -> Result<()> {
-        let root = private_root()?;
-        let victim = root.path().join("victim");
-        fs::write(&victim, b"victim")?;
-        fs::set_permissions(&victim, fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
-        let target = root.path().join("journal.json");
-        symlink(&victim, &target)?;
-        let store = AuthenticatedJournalStore::new(&target, 64, "journal")?;
-        assert!(store.read().is_err());
-        assert!(store.publish(b"replacement").is_err());
-        assert_eq!(fs::read(&victim)?, b"victim");
-
-        let public = root.path().join("public");
-        fs::create_dir(&public)?;
-        fs::set_permissions(&public, fs::Permissions::from_mode(0o755))?;
-        let public_store =
-            AuthenticatedJournalStore::new(public.join("journal.json"), 64, "journal")?;
-        assert!(public_store.publish(b"denied").is_err());
-        Ok(())
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn macos_system_root_alias_support_keeps_nested_symlinks_fail_closed() -> Result<()> {
-        assert_eq!(
-            platform::normalize_macos_system_root_alias(Path::new("/var/tmp/journal.json")),
-            PathBuf::from("/private/var/tmp/journal.json")
-        );
-        assert_eq!(
-            platform::normalize_macos_system_root_alias(Path::new("/various/journal.json")),
-            PathBuf::from("/various/journal.json")
-        );
-
-        let root = tempfile::Builder::new()
-            .prefix("hepta-durable-store-")
-            .tempdir_in("/var/tmp")?;
-        fs::set_permissions(
-            root.path(),
-            fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE),
-        )?;
-        let store =
-            AuthenticatedJournalStore::new(root.path().join("journal.json"), 64, "journal")?;
-        store.publish(b"through-system-alias")?;
-        assert_eq!(
-            store.read()?.context("published journal")?,
-            b"through-system-alias"
-        );
-
-        let outside = root.path().join("outside");
-        let linked = root.path().join("linked");
-        fs::create_dir(&outside)?;
-        symlink(&outside, &linked)?;
-        let redirected =
-            AuthenticatedJournalStore::new(linked.join("journal.json"), 64, "journal")?;
-        assert!(redirected.publish(b"denied").is_err());
-        assert!(!outside.join("journal.json").exists());
-        Ok(())
-    }
-}
+mod tests;

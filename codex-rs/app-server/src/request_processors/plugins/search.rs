@@ -319,7 +319,23 @@ mod tests {
     use super::*;
     use codex_app_server_protocol::RequestId;
     use codex_app_server_transport::ConnectionId;
+    use std::path::Path;
     use tempfile::TempDir;
+
+    fn assert_no_plugin_mutation_storage(codex_home: &Path) {
+        assert!(
+            !codex_home
+                .join(".hepta-authority")
+                .join("plugin-mutation")
+                .join("journal.json")
+                .exists()
+        );
+        assert!(
+            !codex_home
+                .join("hepta-plugin-mutation-journal.json")
+                .exists()
+        );
+    }
 
     #[test]
     fn invalid_inputs_fail_before_network_or_authority() {
@@ -371,11 +387,6 @@ mod tests {
         assert!(diagnostic.contains(PLUGIN_SEARCH_EGRESS_TARGET_CLASS));
         assert!(admission._broker.completed_provider_ack_hash().is_err());
         assert!(admission._broker.completed_receipt_hash().is_err());
-        assert!(
-            !codex_home
-                .path()
-                .join("hepta-plugin-mutation-journal.json")
-                .exists()
-        );
+        assert_no_plugin_mutation_storage(codex_home.path());
     }
 }
