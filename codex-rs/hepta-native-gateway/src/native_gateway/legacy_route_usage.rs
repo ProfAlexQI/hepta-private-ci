@@ -35,9 +35,10 @@ use sha2::Sha256;
 use crate::route_definition::RouteDefinition;
 use crate::route_definition::RouteDispatchHandler;
 
-const TELEMETRY_RELATIVE_PATH: &str = "control-ui/legacy-route-usage-v1.jsonl";
+const TELEMETRY_RELATIVE_PATH: &str = "control-ui/legacy-http-events-v1.jsonl";
 const TELEMETRY_ENABLED_ENV: &str = "HEPTA_CONTROL_UI_LEGACY_ROUTE_TELEMETRY";
-const TELEMETRY_SCHEMA: &str = "hepta_legacy_route_usage_event_v1";
+const TELEMETRY_RUN_CLASS_ENV: &str = "HEPTA_CONTROL_UI_LEGACY_ROUTE_RUN_CLASS";
+const TELEMETRY_SCHEMA: &str = "hepta_control_ui_legacy_http_event_v1";
 const TELEMETRY_HEALTH_SCHEMA: &str = "hepta_legacy_route_telemetry_health_v1";
 const TELEMETRY_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const TELEMETRY_MAX_EVENT_BYTES: usize = 16 * 1024;
@@ -54,8 +55,16 @@ static PERSIST_ERROR_COUNT: AtomicU64 = AtomicU64::new(0);
 static INCOMPLETE_OBSERVATION_COUNT: AtomicU64 = AtomicU64::new(0);
 static CORRUPT_FILE_COUNT: AtomicU64 = AtomicU64::new(0);
 static CAPACITY_REACHED: AtomicBool = AtomicBool::new(false);
+#[cfg(not(test))]
+static PROCESS_START_RECORDED: AtomicBool = AtomicBool::new(false);
+#[cfg(not(test))]
+static LAST_HEARTBEAT_DAY: AtomicU64 = AtomicU64::new(u64::MAX);
+#[cfg(test)]
+static TEST_LIFECYCLE_STATE: OnceLock<Mutex<BTreeMap<PathBuf, (bool, u64)>>> = OnceLock::new();
 static ROUTE_CATALOG_SHA: OnceLock<String> = OnceLock::new();
 static PROCESS_RUN_IDENTIFIER_SHA: OnceLock<String> = OnceLock::new();
+static PROCESS_RUN_CLASS: OnceLock<String> = OnceLock::new();
+static TELEMETRY_EMIT_LOCK: Mutex<()> = Mutex::new(());
 #[cfg(not(test))]
 static TELEMETRY_SENDER: OnceLock<std::result::Result<SyncSender<TelemetryWrite>, String>> =
     OnceLock::new();
@@ -100,6 +109,14 @@ enum ResponseWriteResult {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum TelemetryEventType {
+    ProcessStart,
+    Heartbeat,
+    LegacyRequest,
+}
+
 #[derive(Debug)]
 struct PendingObservation {
     route_key: &'static str,
@@ -119,6 +136,7 @@ struct TelemetryWrite {
 #[derive(Debug, PartialEq, Eq, Serialize)]
 struct LegacyRouteUsageEvent<'a> {
     schema: &'static str,
+    event_type: TelemetryEventType,
     process_run_identifier_sha256: &'a str,
     sequence: u64,
     time_unix_ms: u64,
@@ -128,13 +146,17 @@ struct LegacyRouteUsageEvent<'a> {
     catalog_sha: &'a str,
     source_binding_valid: bool,
     catalog_binding_valid: bool,
-    route_key: &'a str,
-    route_state: LegacyRouteState,
-    consumer_class: AnonymousConsumerClass,
+    route_key: Option<&'a str>,
+    route_state: Option<LegacyRouteState>,
+    consumer_class: Option<AnonymousConsumerClass>,
     preflight: Option<PreflightResult>,
     http_status: Option<u16>,
     write_result: Option<ResponseWriteResult>,
     observation_complete: bool,
+    dropped_event_count: u64,
+    persist_error_count: u64,
+    incomplete_observation_count: u64,
+    capacity_reached: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -142,6 +164,11 @@ pub(super) struct LegacyRouteTelemetryHealth {
     schema: &'static str,
     status: &'static str,
     enable_env: &'static str,
+    run_class_env: &'static str,
+    run_class: &'static str,
+    run_class_binding_valid: bool,
+    heartbeat_trigger: &'static str,
+    unobserved_days_count_as_active: bool,
     enabled: bool,
     writer_healthy: bool,
     process_run_identifier_sha256: &'static str,
@@ -168,6 +195,7 @@ pub(super) struct LegacyRouteTelemetryHealth {
 }
 
 pub(super) fn begin_request(request: &str, method: &str, path: &str) {
+    record_process_lifecycle();
     let Some(definition) = crate::route_definition::route_definition(method, path)
         .filter(|definition| definition.legacy_compatibility_route && method == "GET")
     else {
@@ -209,38 +237,12 @@ pub(super) fn finish_request(_result: &Result<()>) {
     let Some(observation) = observation else {
         return;
     };
-    let sequence = EVENT_SEQUENCE
-        .fetch_add(1, Ordering::Relaxed)
-        .saturating_add(1);
-    let head_sha = hepta_core::production_surface_report().source_git_head;
-    let catalog_sha = route_catalog_sha();
-    let source_binding_valid = valid_source_head(head_sha);
-    let catalog_binding_valid = valid_sha256(catalog_sha);
     let observation_complete = observation.preflight.is_some()
         && observation.http_status.is_some()
         && observation.write_result.is_some();
     if !observation_complete {
         INCOMPLETE_OBSERVATION_COUNT.fetch_add(1, Ordering::Relaxed);
     }
-    let event = LegacyRouteUsageEvent {
-        schema: TELEMETRY_SCHEMA,
-        process_run_identifier_sha256: process_run_identifier_sha(),
-        sequence,
-        time_unix_ms: unix_time_ms(),
-        process_class: "hepta_native_gateway",
-        run_class: if cfg!(test) { "test" } else { "serve_ui" },
-        head_sha,
-        catalog_sha,
-        source_binding_valid,
-        catalog_binding_valid,
-        route_key: observation.route_key,
-        route_state: observation.route_state,
-        consumer_class: observation.consumer_class,
-        preflight: observation.preflight,
-        http_status: observation.http_status,
-        write_result: observation.write_result,
-        observation_complete,
-    };
     let path = match telemetry_path() {
         Ok(Some(path)) => path,
         Ok(None) => {
@@ -252,9 +254,223 @@ pub(super) fn finish_request(_result: &Result<()>) {
             return;
         }
     };
-    if let Err(error) = record_event(path, &event) {
+    if let Err(error) = emit_event(
+        path,
+        TelemetryEventType::LegacyRequest,
+        Some(observation.route_key),
+        Some(observation.route_state),
+        Some(observation.consumer_class),
+        observation.preflight,
+        observation.http_status,
+        observation.write_result,
+        observation_complete,
+    ) {
         record_persist_error(&error);
     }
+}
+
+fn record_process_lifecycle() {
+    let path = match telemetry_path() {
+        Ok(Some(path)) => path,
+        Ok(None) => return,
+        Err(error) => {
+            record_persist_error(&error);
+            return;
+        }
+    };
+    let _guard = TELEMETRY_EMIT_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !process_start_recorded(&path) {
+        match emit_event_locked(
+            path.clone(),
+            TelemetryEventType::ProcessStart,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            true,
+        ) {
+            Ok(()) => mark_process_start_recorded(&path),
+            Err(error) => {
+                record_persist_error(&error);
+                return;
+            }
+        }
+    }
+    let day = unix_time_ms() / 86_400_000;
+    if last_heartbeat_day(&path) == day {
+        return;
+    }
+    match emit_event_locked(
+        path.clone(),
+        TelemetryEventType::Heartbeat,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        true,
+    ) {
+        Ok(()) => mark_heartbeat_day(&path, day),
+        Err(error) => record_persist_error(&error),
+    }
+}
+
+#[cfg(not(test))]
+fn process_start_recorded(_path: &Path) -> bool {
+    PROCESS_START_RECORDED.load(Ordering::Acquire)
+}
+
+#[cfg(test)]
+fn process_start_recorded(path: &Path) -> bool {
+    lifecycle_state()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(path)
+        .is_some_and(|state| state.0)
+}
+
+#[cfg(not(test))]
+fn mark_process_start_recorded(_path: &Path) {
+    PROCESS_START_RECORDED.store(true, Ordering::Release);
+}
+
+#[cfg(test)]
+fn mark_process_start_recorded(path: &Path) {
+    lifecycle_state()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .entry(path.to_path_buf())
+        .or_insert((false, u64::MAX))
+        .0 = true;
+}
+
+#[cfg(not(test))]
+fn last_heartbeat_day(_path: &Path) -> u64 {
+    LAST_HEARTBEAT_DAY.load(Ordering::Acquire)
+}
+
+#[cfg(test)]
+fn last_heartbeat_day(path: &Path) -> u64 {
+    lifecycle_state()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(path)
+        .map_or(u64::MAX, |state| state.1)
+}
+
+#[cfg(not(test))]
+fn mark_heartbeat_day(_path: &Path, day: u64) {
+    LAST_HEARTBEAT_DAY.store(day, Ordering::Release);
+}
+
+#[cfg(test)]
+fn mark_heartbeat_day(path: &Path, day: u64) {
+    lifecycle_state()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .entry(path.to_path_buf())
+        .or_insert((false, u64::MAX))
+        .1 = day;
+}
+
+#[cfg(test)]
+fn lifecycle_state() -> &'static Mutex<BTreeMap<PathBuf, (bool, u64)>> {
+    TEST_LIFECYCLE_STATE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_event(
+    path: PathBuf,
+    event_type: TelemetryEventType,
+    route_key: Option<&str>,
+    route_state: Option<LegacyRouteState>,
+    consumer_class: Option<AnonymousConsumerClass>,
+    preflight: Option<PreflightResult>,
+    http_status: Option<u16>,
+    write_result: Option<ResponseWriteResult>,
+    observation_complete: bool,
+) -> Result<()> {
+    let _guard = TELEMETRY_EMIT_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    emit_event_locked(
+        path,
+        event_type,
+        route_key,
+        route_state,
+        consumer_class,
+        preflight,
+        http_status,
+        write_result,
+        observation_complete,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_event_locked(
+    path: PathBuf,
+    event_type: TelemetryEventType,
+    route_key: Option<&str>,
+    route_state: Option<LegacyRouteState>,
+    consumer_class: Option<AnonymousConsumerClass>,
+    preflight: Option<PreflightResult>,
+    http_status: Option<u16>,
+    write_result: Option<ResponseWriteResult>,
+    observation_complete: bool,
+) -> Result<()> {
+    let head_sha = hepta_core::production_surface_report().source_git_head;
+    let catalog_sha = route_catalog_sha();
+    let event = LegacyRouteUsageEvent {
+        schema: TELEMETRY_SCHEMA,
+        event_type,
+        process_run_identifier_sha256: process_run_identifier_sha(),
+        sequence: EVENT_SEQUENCE
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1),
+        time_unix_ms: unix_time_ms(),
+        process_class: "hepta_native_gateway",
+        run_class: process_run_class()?,
+        head_sha,
+        catalog_sha,
+        source_binding_valid: valid_source_head(head_sha),
+        catalog_binding_valid: valid_sha256(catalog_sha),
+        route_key,
+        route_state,
+        consumer_class,
+        preflight,
+        http_status,
+        write_result,
+        observation_complete,
+        dropped_event_count: DROPPED_EVENT_COUNT.load(Ordering::Relaxed),
+        persist_error_count: PERSIST_ERROR_COUNT.load(Ordering::Relaxed),
+        incomplete_observation_count: INCOMPLETE_OBSERVATION_COUNT.load(Ordering::Relaxed),
+        capacity_reached: CAPACITY_REACHED.load(Ordering::Relaxed),
+    };
+    record_event(path, &event)
+}
+
+fn process_run_class_value() -> &'static str {
+    PROCESS_RUN_CLASS
+        .get_or_init(|| env::var(TELEMETRY_RUN_CLASS_ENV).unwrap_or_else(|_| "operator".into()))
+        .as_str()
+}
+
+fn process_run_class() -> Result<&'static str> {
+    let value = process_run_class_value();
+    anyhow::ensure!(
+        valid_run_class(value),
+        "legacy route telemetry run class must be operator or ci_test"
+    );
+    Ok(value)
+}
+
+fn valid_run_class(value: &str) -> bool {
+    matches!(value, "operator" | "ci_test")
 }
 
 pub(super) fn telemetry_health() -> LegacyRouteTelemetryHealth {
@@ -269,9 +485,12 @@ pub(super) fn telemetry_health() -> LegacyRouteTelemetryHealth {
     let incomplete_observation_count = INCOMPLETE_OBSERVATION_COUNT.load(Ordering::Relaxed);
     let corrupt_file_count = CORRUPT_FILE_COUNT.load(Ordering::Relaxed);
     let capacity_reached = CAPACITY_REACHED.load(Ordering::Relaxed);
+    let run_class = process_run_class_value();
+    let run_class_binding_valid = valid_run_class(run_class);
     let writer_healthy = enabled
         && source_binding_valid
         && catalog_binding_valid
+        && run_class_binding_valid
         && disabled_event_count == 0
         && dropped_event_count == 0
         && persist_error_count == 0
@@ -288,6 +507,11 @@ pub(super) fn telemetry_health() -> LegacyRouteTelemetryHealth {
             "writer_degraded"
         },
         enable_env: TELEMETRY_ENABLED_ENV,
+        run_class_env: TELEMETRY_RUN_CLASS_ENV,
+        run_class,
+        run_class_binding_valid,
+        heartbeat_trigger: "first_parsed_supported_http_request_each_utc_day",
+        unobserved_days_count_as_active: false,
         enabled,
         writer_healthy,
         process_run_identifier_sha256: process_run_identifier_sha(),
@@ -309,7 +533,7 @@ pub(super) fn telemetry_health() -> LegacyRouteTelemetryHealth {
         // The append writer only validates the existing tail. A separate bounded reader must
         // validate every record before this stream can support a retirement decision.
         file_contents_fully_validated: false,
-        summary_producer_available: false,
+        summary_producer_available: true,
         // A process-local append stream is not, by itself, a complete observation window.
         observation_window_complete: false,
         zero_usage_claim_allowed: false,
@@ -399,16 +623,12 @@ fn write_result(result: &Result<()>) -> ResponseWriteResult {
 fn route_catalog_sha() -> &'static str {
     ROUTE_CATALOG_SHA
         .get_or_init(|| {
-            let mut definitions = crate::route_definition::route_definition_registry();
-            definitions.sort_by_key(|definition| {
-                (
-                    definition.lifecycle.method,
-                    definition.lifecycle.path_pattern,
-                )
-            });
-            serde_json::to_vec(&definitions)
-                .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
-                .unwrap_or_else(|_| "unknown".to_string())
+            format!(
+                "{:x}",
+                Sha256::digest(include_bytes!(
+                    "../../routes/control_ui_route_catalog_v1.jsonl"
+                ))
+            )
         })
         .as_str()
 }
@@ -798,22 +1018,27 @@ mod tests {
     fn test_event() -> LegacyRouteUsageEvent<'static> {
         LegacyRouteUsageEvent {
             schema: TELEMETRY_SCHEMA,
+            event_type: TelemetryEventType::LegacyRequest,
             process_run_identifier_sha256: "1111111111111111111111111111111111111111111111111111111111111111",
             sequence: 7,
             time_unix_ms: 1_722_600_000_000,
             process_class: "hepta_native_gateway",
-            run_class: "test",
+            run_class: "ci_test",
             head_sha: "0e52c78003b6",
             catalog_sha: "2222222222222222222222222222222222222222222222222222222222222222",
             source_binding_valid: true,
             catalog_binding_valid: true,
-            route_key: "/api/example/<anonymous>",
-            route_state: LegacyRouteState::Legacy200,
-            consumer_class: AnonymousConsumerClass::Browser,
+            route_key: Some("/api/example/<anonymous>"),
+            route_state: Some(LegacyRouteState::Legacy200),
+            consumer_class: Some(AnonymousConsumerClass::Browser),
             preflight: Some(PreflightResult::Accepted),
             http_status: Some(200),
             write_result: Some(ResponseWriteResult::Ok),
             observation_complete: true,
+            dropped_event_count: 0,
+            persist_error_count: 0,
+            incomplete_observation_count: 0,
+            capacity_reached: false,
         }
     }
 
@@ -839,16 +1064,11 @@ mod tests {
 
     #[test]
     fn catalog_digest_binds_complete_route_definitions() {
-        let mut definitions = crate::route_definition::route_definition_registry();
-        definitions.sort_by_key(|definition| {
-            (
-                definition.lifecycle.method,
-                definition.lifecycle.path_pattern,
-            )
-        });
         let expected = format!(
             "{:x}",
-            Sha256::digest(serde_json::to_vec(&definitions).expect("route definitions JSON"))
+            Sha256::digest(include_bytes!(
+                "../../routes/control_ui_route_catalog_v1.jsonl"
+            ))
         );
         assert_eq!(route_catalog_sha(), expected);
         assert!(valid_sha256(route_catalog_sha()));
@@ -873,12 +1093,17 @@ mod tests {
                 .keys()
                 .collect::<Vec<_>>(),
             vec![
+                "capacity_reached",
                 "catalog_binding_valid",
                 "catalog_sha",
                 "consumer_class",
+                "dropped_event_count",
+                "event_type",
                 "head_sha",
                 "http_status",
+                "incomplete_observation_count",
                 "observation_complete",
+                "persist_error_count",
                 "preflight",
                 "process_class",
                 "process_run_identifier_sha256",
@@ -936,7 +1161,15 @@ mod tests {
             .expect("private parent permissions");
         let target = redirected.path().join("redirected.jsonl");
         fs::write(&target, b"").expect("redirected file");
-        symlink(&target, parent.join("legacy-route-usage-v1.jsonl")).expect("target symlink");
+        symlink(
+            &target,
+            parent.join(
+                Path::new(TELEMETRY_RELATIVE_PATH)
+                    .file_name()
+                    .expect("telemetry file name"),
+            ),
+        )
+        .expect("target symlink");
         let target_error = persist_event(&root.path().join(TELEMETRY_RELATIVE_PATH), &test_event())
             .expect_err("symlink target must fail closed");
         assert!(format!("{target_error:#}").contains("non-symlink telemetry file"));
@@ -1030,16 +1263,27 @@ mod tests {
             finish_request(&Ok(()));
         });
         assert!(INCOMPLETE_OBSERVATION_COUNT.load(Ordering::Relaxed) > before);
-        let value: serde_json::Value = serde_json::from_str(
-            fs::read_to_string(root.path().join(TELEMETRY_RELATIVE_PATH))
-                .expect("gap telemetry")
-                .trim(),
-        )
-        .expect("gap telemetry JSON");
+        let contents =
+            fs::read_to_string(root.path().join(TELEMETRY_RELATIVE_PATH)).expect("gap telemetry");
+        let value: serde_json::Value =
+            serde_json::from_str(contents.lines().last().expect("request telemetry event"))
+                .expect("gap telemetry JSON");
         assert!(value["http_status"].is_null());
         assert!(value["write_result"].is_null());
         assert_eq!(value["observation_complete"], false);
         assert_eq!(telemetry_health().retirement_evidence_ready, false);
+    }
+
+    #[test]
+    fn run_class_is_process_fixed_and_not_request_header_controlled() {
+        let forged = "GET / HTTP/1.1\r\nX-Hepta-Run-Class: operator\r\n\r\n";
+        assert!(valid_run_class("ci_test"));
+        assert!(valid_run_class("operator"));
+        assert!(!valid_run_class("operator_from_header"));
+        assert_eq!(
+            anonymous_consumer_class(forged),
+            AnonymousConsumerClass::Unclassified
+        );
     }
 
     #[cfg(unix)]

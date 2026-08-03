@@ -151,10 +151,14 @@ fn legacy_route_telemetry_covers_all_states_without_request_identifiers() {
     let telemetry_path = telemetry_root
         .path()
         .join(legacy_route_usage::telemetry_relative_path());
-    let events = fs::read_to_string(telemetry_path)
+    let all_events = fs::read_to_string(telemetry_path)
         .expect("legacy route telemetry JSONL")
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("telemetry event"))
+        .collect::<Vec<_>>();
+    let events = all_events
+        .iter()
+        .filter(|event| event["event_type"] == "legacy_request")
         .collect::<Vec<_>>();
     assert_eq!(events.len(), cases.len());
     for (event, (definition, _, _, route_state, preflight, consumer_class)) in
@@ -165,7 +169,7 @@ fn legacy_route_telemetry_covers_all_states_without_request_identifiers() {
         assert_eq!(event["consumer_class"], consumer_class);
         assert_eq!(event["preflight"], preflight);
         assert_eq!(event["write_result"], "ok");
-        assert_eq!(event["schema"], "hepta_legacy_route_usage_event_v1");
+        assert_eq!(event["schema"], "hepta_control_ui_legacy_http_event_v1");
         assert_eq!(event["observation_complete"], true);
         assert!(event["sequence"].as_u64().is_some());
         assert_eq!(
@@ -176,7 +180,7 @@ fn legacy_route_telemetry_covers_all_states_without_request_identifiers() {
         );
         assert!(event["time_unix_ms"].as_u64().is_some());
         assert_eq!(event["process_class"], "hepta_native_gateway");
-        assert_eq!(event["run_class"], "test");
+        assert!(matches!(event["run_class"].as_str(), Some("operator" | "ci_test")));
         assert!(!event["head_sha"].as_str().unwrap_or_default().is_empty());
         assert_eq!(event["catalog_sha"].as_str().map(str::len), Some(64));
     }
@@ -241,12 +245,12 @@ fn rejection_writer_records_actual_503_without_route_state_fallback() {
     let telemetry_path = telemetry_root
         .path()
         .join(legacy_route_usage::telemetry_relative_path());
-    let event: serde_json::Value = serde_json::from_str(
-        fs::read_to_string(telemetry_path)
-            .expect("rejection telemetry")
-            .trim(),
-    )
-    .expect("rejection telemetry JSON");
+    let contents = fs::read_to_string(telemetry_path).expect("rejection telemetry");
+    let event = contents
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("telemetry event"))
+        .find(|event| event["event_type"] == "legacy_request")
+        .expect("rejection telemetry event");
     assert_eq!(event["http_status"], 503);
     assert_eq!(event["write_result"], "ok");
     assert_eq!(event["observation_complete"], true);

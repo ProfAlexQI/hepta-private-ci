@@ -1,0 +1,28 @@
+{
+  "schema": "hepta_control_ui_http_evidence_registry_separation_v1",
+  "status": "blocked",
+  "catalog_route_count": 284,
+  "legacy_http_route_count": 206,
+  "canonical_evidence_selector_count": 206,
+  "active_legacy_renderer_count": 206,
+  "http_registry_independent": false,
+  "evidence_registry_independent": false,
+  "renderer_id_reordering_allowed": false,
+  "retirement_may_delete_renderer": false,
+  "retirement_may_change_canonical_evidence": false,
+  "required_post_separation_contract": {
+    "removed_http_path_status": 404,
+    "canonical_evidence_status": 200,
+    "stable_selector_preserved": true,
+    "renderer_and_downstream_chain_preserved": true
+  },
+  "blockers": [
+    "catalog_record_still_generates_http_lifecycle_dispatch_and_native_report_binding",
+    "canonical_evidence_still_resolves_through_route_definition_registry",
+    "no_generated_independent_evidence_definition_registry"
+  ],
+  "decision": {
+    "route_retirement_allowed": false,
+    "next_action": "generate and test an independent EvidenceDefinition registry before removing any legacy HTTP path"
+  }
+}

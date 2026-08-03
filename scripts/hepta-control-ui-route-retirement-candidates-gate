@@ -22,6 +22,13 @@ MANIFEST = Pathname.new(
     ROOT.join("codex-rs/hepta-native-gateway/routes/control_ui_route_retirement_candidates_v1.json").to_s,
   ),
 ).expand_path
+SEPARATION = Pathname.new(
+  ENV.fetch(
+    "HEPTA_CONTROL_UI_HTTP_EVIDENCE_SEPARATION_CONTRACT",
+    ROOT.join("codex-rs/hepta-native-gateway/routes/control_ui_http_evidence_registry_separation_v1.json").to_s,
+  ),
+).expand_path
+WINDOW_SUMMARY = ENV["HEPTA_CONTROL_UI_ROUTE_RETIREMENT_WINDOW_SUMMARY"]
 
 GENERATED_PATHS = %w[
   codex-rs/hepta-native-gateway/src/route_registry/generated_control_ui_routes.rs
@@ -124,8 +131,15 @@ end
 
 records = read_jsonl(CATALOG)
 manifest = read_json(MANIFEST, "retirement candidate manifest")
+separation = read_json(SEPARATION, "HTTP/evidence separation contract")
 fail!("retirement candidate schema drifted") unless
   manifest["schema"] == "hepta_control_ui_route_retirement_candidates_v1"
+fail!("HTTP/evidence separation contract drifted") unless
+  separation["schema"] == "hepta_control_ui_http_evidence_registry_separation_v1" &&
+    separation["status"] == "blocked" &&
+    separation["http_registry_independent"] == false &&
+    separation["evidence_registry_independent"] == false &&
+    separation.dig("decision", "route_retirement_allowed") == false
 
 routes = records.select { |record| record["kind"] == "control_ui_route" }
 special = records.select { |record| record["kind"] == "special_native_report" }
@@ -145,6 +159,71 @@ metrics = {
 }
 fail!("catalog metrics drifted from candidate manifest") unless
   metrics == manifest.fetch("expected_catalog_metrics")
+fail!("separation contract metrics drifted") unless
+  separation.values_at("catalog_route_count", "legacy_http_route_count") ==
+    [metrics.fetch("route_count"), metrics.fetch("legacy_compatibility_route_count")]
+
+window = if WINDOW_SUMMARY.nil? || WINDOW_SUMMARY.empty?
+  {
+    "configured" => false,
+    "eligible" => false,
+    "event_file_rehashed_by_gate" => false,
+    "promotion_authoritative" => false,
+    "blockers" => ["runtime_window_summary_missing"],
+  }
+else
+  summary_path = Pathname.new(WINDOW_SUMMARY).expand_path
+  summary = read_json(summary_path, "legacy HTTP observation window")
+  current_head, stderr, status = Open3.capture3("git", "-C", ROOT.to_s, "rev-parse", "HEAD")
+  fail!("unable to resolve exact source HEAD: #{stderr.strip}") unless status.success?
+  eligible = summary.dig("decision", "eligible")
+  blockers = summary.dig("decision", "blockers")
+  fail!("legacy HTTP observation window schema or source binding drifted") unless
+    summary["schema"] == "hepta_control_ui_legacy_http_window_v1" &&
+      summary["producer"] == "hepta-native-gateway/hepta-legacy-route-window" &&
+      summary["promotion_authoritative"] == false &&
+      summary["durable_process_stop_observed"] == false &&
+      summary["continuous_coverage_declared"] == false &&
+      summary["shutdown_flush_verified"] == false &&
+      summary["event_file_sha256"].is_a?(String) &&
+      summary["event_file_sha256"].match?(/\A[0-9a-f]{64}\z/) &&
+      summary["source_head_sha"] == current_head.strip &&
+      summary["route_catalog_sha256"] == Digest::SHA256.file(CATALOG).hexdigest &&
+      (eligible.instance_of?(TrueClass) || eligible.instance_of?(FalseClass))
+  fail!("legacy HTTP observation window attempted unsupported promotion") if eligible
+  numeric_fields = %w[
+    event_count process_segment_count operator_active_day_count window_start_unix_ms
+    window_end_unix_ms window_span_days trailing_zero_use_days total_legacy_requests
+    non_ci_legacy_requests
+  ]
+  fail!("legacy HTTP observation window metrics are missing or inconsistent") unless
+    numeric_fields.all? { |field| summary[field].is_a?(Integer) && summary[field] >= 0 } &&
+      summary["event_count"] > 0 && summary["process_segment_count"] > 0 &&
+      summary["window_end_unix_ms"] >= summary["window_start_unix_ms"] &&
+      (summary["window_end_unix_ms"] - summary["window_start_unix_ms"]) / 86_400_000 ==
+        summary["window_span_days"] &&
+      summary["trailing_zero_use_days"] <= summary["window_span_days"] &&
+      summary["total_legacy_requests"] >= summary["non_ci_legacy_requests"] &&
+      summary["routes"].is_a?(Hash)
+  fail!("legacy HTTP observation window decision is internally inconsistent") unless
+    blockers.is_a?(Array) && blockers.all? { |blocker| blocker.is_a?(String) && !blocker.empty? } &&
+      ((eligible && summary["status"] == "ready" && blockers.empty? &&
+        summary["window_span_days"].to_i >= 30 &&
+        summary["operator_active_day_count"].to_i >= 14 &&
+        summary["trailing_zero_use_days"].to_i >= 14 &&
+        summary["window_end_unix_ms"] >= Time.now.to_i * 1000 - 2 * 86_400_000 &&
+        summary["non_ci_legacy_requests"] == 0) ||
+       (!eligible && summary["status"] == "blocked" && !blockers.empty?))
+  {
+    "configured" => true,
+    "summary_sha256" => Digest::SHA256.file(summary_path).hexdigest,
+    "event_file_sha256" => summary.fetch("event_file_sha256"),
+    "event_file_rehashed_by_gate" => false,
+    "promotion_authoritative" => false,
+    "eligible" => eligible,
+    "blockers" => blockers,
+  }
+end
 
 report_id_binding_counts = Hash.new(0)
 routes.each do |route|
@@ -161,6 +240,9 @@ end
 legacy_get_with_active_renderer = legacy_get_routes.count do |route|
   renderer_by_id.fetch(route["native_report_id"], {})["status"] == "active"
 end
+fail!("separation evidence/renderer counts drifted") unless
+  separation.values_at("canonical_evidence_selector_count", "active_legacy_renderer_count") ==
+    [legacy_get_routes.length, legacy_get_with_active_renderer]
 structurally_unbound_legacy_get = legacy_get_routes.count do |route|
   route["native_report_id"].nil? && route.fetch("aliases").empty? && !route.fetch("watchdog_probe")
 end
@@ -239,6 +321,24 @@ receipt = {
   "catalog_sha256" => Digest::SHA256.file(CATALOG).hexdigest,
   "manifest" => MANIFEST.relative_path_from(ROOT).to_s,
   "manifest_sha256" => Digest::SHA256.file(MANIFEST).hexdigest,
+  "http_evidence_separation_contract" => SEPARATION.relative_path_from(ROOT).to_s,
+  "http_evidence_separation_contract_sha256" => Digest::SHA256.file(SEPARATION).hexdigest,
+  "registry_separation" => {
+    "status" => separation.fetch("status"),
+    "http_registry_independent" => separation.fetch("http_registry_independent"),
+    "evidence_registry_independent" => separation.fetch("evidence_registry_independent"),
+    "canonical_evidence_selector_count" => separation.fetch("canonical_evidence_selector_count"),
+    "route_retirement_allowed" => separation.dig("decision", "route_retirement_allowed"),
+    "blockers" => separation.fetch("blockers"),
+  },
+  "runtime_window" => window,
+  "observation_epoch" => {
+    "event_schema" => "hepta_control_ui_legacy_http_event_v1",
+    "event_relative_path" => "control-ui/legacy-http-events-v1.jsonl",
+    "predecessor_event_path_accepted" => false,
+    "window_reset_required" => true,
+    "summary_producer" => "cargo run -p hepta-native-gateway --bin hepta-legacy-route-window --",
+  },
   "catalog_metrics" => metrics,
   "dependency_map" => {
     "legacy_get_route_count" => legacy_get_routes.length,
@@ -256,7 +356,7 @@ receipt = {
   "candidates" => candidate_receipts,
   "http_behavior_changed" => false,
   "route_count_reduced" => false,
-  "next_required_action" => "retire or explicitly preserve the positive native-report contract and downstream report chain before changing the canonical catalog",
+  "next_required_action" => "collect a new exact-source 30-day operator window and generate an independent EvidenceDefinition registry; do not delete routes or renderers before both gates pass",
 }
 
 serialized = JSON.pretty_generate(receipt) + "\n"

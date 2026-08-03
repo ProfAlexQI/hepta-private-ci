@@ -9,6 +9,7 @@ mod gate_runner;
 mod gate_spec;
 mod gateway_options;
 mod http_transport;
+pub mod legacy_route_window;
 mod native_gateway;
 mod native_telegram;
 mod operator_mutation;
