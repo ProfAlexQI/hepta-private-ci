@@ -1,9 +1,3 @@
-mod client;
-mod commands;
-mod output;
-mod reader;
-mod state;
-
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
@@ -16,14 +10,14 @@ use clap::ArgAction;
 use clap::Parser;
 use codex_app_server_protocol::AskForApproval;
 
-use crate::client::AppServerClient;
-use crate::client::build_thread_resume_params;
-use crate::client::build_thread_start_params;
-use crate::commands::InputAction;
-use crate::commands::UserCommand;
-use crate::commands::parse_input;
-use crate::output::Output;
-use crate::state::ReaderEvent;
+use codex_debug_client::client::AppServerClient;
+use codex_debug_client::client::build_thread_resume_params;
+use codex_debug_client::client::build_thread_start_params;
+use codex_debug_client::commands::InputAction;
+use codex_debug_client::commands::UserCommand;
+use codex_debug_client::commands::parse_input;
+use codex_debug_client::output::Output;
+use codex_debug_client::state::ReaderEvent;
 
 #[derive(Parser)]
 #[command(author = "Hepta", version, about = "Minimal Hepta app-server client")]
