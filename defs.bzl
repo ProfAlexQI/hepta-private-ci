@@ -13,6 +13,15 @@ PLATFORMS = [
     "windows_arm64",
 ]
 
+RUST_PLATFORM_OVERRIDES = {
+    "linux_arm64_musl": "@rules_rs//rs/experimental/platforms:aarch64-unknown-linux-musl",
+    "linux_amd64_musl": "@rules_rs//rs/experimental/platforms:x86_64-unknown-linux-musl",
+    "macos_amd64": "@rules_rs//rs/experimental/platforms:x86_64-apple-darwin",
+    "macos_arm64": "@rules_rs//rs/experimental/platforms:aarch64-apple-darwin",
+    "windows_amd64": "@rules_rs//rs/experimental/platforms:x86_64-pc-windows-msvc",
+    "windows_arm64": "@rules_rs//rs/experimental/platforms:aarch64-pc-windows-msvc",
+}
+
 # Match Cargo's Windows linker behavior so Bazel-built binaries and tests use
 # the same stack reserve on both Windows ABIs and resolve UCRT imports on MSVC.
 WINDOWS_RUSTC_LINK_FLAGS = select({
@@ -53,12 +62,13 @@ MACOS_WEBRTC_RUSTC_LINK_FLAGS = select({
     "//conditions:default": [],
 })
 
-def multiplatform_binaries(name, platforms = PLATFORMS):
+def multiplatform_binaries(name, platforms = PLATFORMS, target = None):
+    target = target or name
     for platform in platforms:
         platform_data(
             name = name + "_" + platform,
-            platform = "@llvm//platforms:" + platform,
-            target = name,
+            platform = RUST_PLATFORM_OVERRIDES[platform],
+            target = target,
             tags = ["manual"],
         )
 

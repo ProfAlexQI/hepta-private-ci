@@ -1,0 +1,12 @@
+load("//:defs.bzl", "codex_rust_crate")
+
+codex_rust_crate(
+    name = "hepta-core",
+    crate_name = "hepta_core",
+    compile_data = [
+        "//:hepta_core_compile_data",
+        "//codex-rs/hepta-gateway:package-files",
+        "//codex-rs/hepta-kernel:package-files",
+        "//codex-rs/hepta-native-gateway:package-files",
+    ],
+)

@@ -1,0 +1,10 @@
+load("//:defs.bzl", "codex_rust_crate")
+
+codex_rust_crate(
+    name = "hepta-runtime",
+    crate_name = "hepta_runtime",
+    build_script_data = glob([
+        "codegen/workgraph-v3/**",
+        "src/work_graph_control_plane_tests.rs",
+    ]),
+)

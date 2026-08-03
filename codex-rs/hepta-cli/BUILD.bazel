@@ -1,0 +1,19 @@
+load("//:defs.bzl", "codex_rust_crate", "multiplatform_binaries")
+
+codex_rust_crate(
+    name = "hepta-cli",
+    crate_name = "hepta_cli",
+)
+
+multiplatform_binaries(
+    name = "hepta",
+)
+
+filegroup(
+    name = "release_runtime_binaries",
+    srcs = [
+        ":release_binaries",
+        "//codex-rs/code-mode-host:release_binaries",
+    ],
+    tags = ["manual"],
+)

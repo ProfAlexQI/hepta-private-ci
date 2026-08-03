@@ -8,13 +8,5 @@ codex_rust_crate(
 
 multiplatform_binaries(
     name = "codex",
-)
-
-filegroup(
-    name = "release_runtime_binaries",
-    srcs = [
-        ":release_binaries",
-        "//codex-rs/code-mode-host:release_binaries",
-    ],
-    tags = ["manual"],
+    target = ":hepta-codex-compat",
 )

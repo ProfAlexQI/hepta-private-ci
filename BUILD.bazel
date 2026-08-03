@@ -90,3 +90,25 @@ exports_files([
     "workspace_root_test_launcher.bat.tpl",
     "workspace_root_test_launcher.sh.tpl",
 ])
+
+filegroup(
+    name = "hepta_core_compile_data",
+    srcs = glob([
+        "apps/hepta-control-ui/**",
+        "docs/release/HEPTA_CONTROL_UI_P0_P13_MATURITY_2026-04-27.md",
+        "docs/release/HEPTA_CONTROL_UI_P0_P21_HARDENING_2026-04-27.md",
+        "docs/release/HEPTA_CONTROL_UI_P0_P29_ENGINEERING_2026-04-27.md",
+        "docs/release/HEPTA_CONTROL_UI_P0_P39_PRODUCTIZATION_2026-04-28.md",
+        "docs/release/HEPTA_CONTROL_UI_P0_P6_CONVERGENCE_2026-04-27.md",
+        "scripts/hepta-browser-visual-smoke.sh",
+        "scripts/hepta-control-ui-browser-smoke.sh",
+        "scripts/hepta-control-ui-smoke.sh",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "hepta_native_gateway_compile_data",
+    srcs = ["scripts/hepta-gate-pair-specs-v1.json"],
+    visibility = ["//visibility:public"],
+)
