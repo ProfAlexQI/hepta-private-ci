@@ -1,3 +1,4 @@
+use accesskit::{Action as AccessibilityAction, ActionRequest, TreeId};
 use makepad_widgets::*;
 
 use crate::{
@@ -483,6 +484,54 @@ pub struct HomeScreen {
 impl Widget for HomeScreen {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         if let Event::Actions(actions) = event {
+            let is_desktop = effective_is_desktop(cx);
+            for request in actions
+                .iter()
+                .filter_map(|action| action.downcast_ref::<ActionRequest>())
+                .filter(|request| request.target_tree == TreeId::ROOT)
+            {
+                let target = u64::from(request.target_node);
+                match request.action {
+                    AccessibilityAction::Focus => {
+                        let target_path = match target {
+                            crate::accessibility::HOME_ALL_ROOMS_ID => {
+                                Some(ids!(navigation_tab_bar.home_button))
+                            }
+                            crate::accessibility::HOME_ADD_ROOM_ID => {
+                                Some(ids!(navigation_tab_bar.add_room_button))
+                            }
+                            crate::accessibility::HOME_SETTINGS_ID => {
+                                Some(ids!(navigation_tab_bar.profile_icon))
+                            }
+                            crate::accessibility::HOME_TOGGLE_SPACES_ID if !is_desktop => {
+                                Some(ids!(navigation_tab_bar.toggle_spaces_bar_button))
+                            }
+                            _ => None,
+                        };
+                        if let Some(target_path) = target_path {
+                            self.view.view(cx, target_path).set_key_focus(cx);
+                            self.view.redraw(cx);
+                        }
+                    }
+                    AccessibilityAction::Click => match target {
+                        crate::accessibility::HOME_ALL_ROOMS_ID => {
+                            cx.action(NavigationBarAction::GoToHome)
+                        }
+                        crate::accessibility::HOME_ADD_ROOM_ID => {
+                            cx.action(NavigationBarAction::GoToAddRoom)
+                        }
+                        crate::accessibility::HOME_SETTINGS_ID => {
+                            cx.action(NavigationBarAction::OpenSettings)
+                        }
+                        crate::accessibility::HOME_TOGGLE_SPACES_ID if !is_desktop => {
+                            cx.action(NavigationBarAction::ToggleSpacesBar)
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+
             // On desktop, the RoomFilterInputBar is inside this HomeScreen.
             // Check if it changed and re-emit as a MainFilterAction so that
             // RoomsList and SpacesBar can respond without cross-talk from
@@ -605,7 +654,37 @@ impl Widget for HomeScreen {
         // so we must re-set it to the correct page based on `app_state.selected_tab`.
         self.update_active_page_from_selection(cx, app_state);
 
-        self.view.draw_walk(cx, scope, walk)
+        let (page_label, context_label) = match &app_state.selected_tab {
+            SelectedTab::Home => (
+                "Rooms".to_owned(),
+                app_state
+                    .selected_room
+                    .as_ref()
+                    .map(SelectedRoom::display_name)
+                    .unwrap_or_else(|| "All rooms".to_owned()),
+            ),
+            SelectedTab::AddRoom => (
+                "Add or join room".to_owned(),
+                "Add or join room".to_owned(),
+            ),
+            SelectedTab::Settings => ("Settings".to_owned(), "Settings".to_owned()),
+            SelectedTab::Space { space_name_id } => (
+                "Space".to_owned(),
+                format!("Space: {space_name_id}"),
+            ),
+        };
+        let include_toggle_spaces = !effective_is_desktop(cx);
+        let step = self.view.draw_walk(cx, scope, walk);
+        if step.is_done() {
+            crate::accessibility::publish_home_tree(
+                cx,
+                &self.view,
+                &page_label,
+                &context_label,
+                include_toggle_spaces,
+            );
+        }
+        step
     }
 }
 

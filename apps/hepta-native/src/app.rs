@@ -921,8 +921,11 @@ impl App {
 
     fn update_login_visibility(&self, cx: &mut Cx) {
         let show_login = !self.app_state.logged_in;
+        // Force the newly-visible screen to publish a complete semantic tree.
+        // In particular, the authenticated home surface must not regress to
+        // the old single-root placeholder when the login view is hidden.
+        crate::accessibility::reset_cache();
         if !show_login {
-            crate::accessibility::clear(cx, self.ui.area());
             self.ui
                 .modal(cx, ids!(login_screen_view.login_screen.login_status_modal))
                 .close(cx);

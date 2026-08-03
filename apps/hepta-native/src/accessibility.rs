@@ -8,6 +8,20 @@ use makepad_widgets::*;
 
 const ROOT_ID: NodeId = NodeId(1);
 
+pub(crate) const HOME_ALL_ROOMS_ID: u64 = 201;
+pub(crate) const HOME_ADD_ROOM_ID: u64 = 202;
+pub(crate) const HOME_SETTINGS_ID: u64 = 203;
+pub(crate) const HOME_TOGGLE_SPACES_ID: u64 = 204;
+const HOME_MAIN_ID: u64 = 210;
+const HOME_CONTEXT_ID: u64 = 211;
+
+#[derive(Clone, Copy)]
+struct HomeControl {
+    id: u64,
+    bounds: Rect,
+    label: &'static str,
+}
+
 fn set_safe_value(node: &mut Node, role: Role, value: Option<String>) {
     if role != Role::PasswordInput {
         if let Some(value) = value.filter(|value| !value.is_empty()) {
@@ -36,12 +50,11 @@ fn area_bounds(cx: &Cx, area: Area) -> Option<Rect> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn push_node(
+fn push_bounded_node(
     nodes: &mut Vec<(NodeId, Node)>,
     children: &mut Vec<NodeId>,
     focus: &mut NodeId,
-    cx: &Cx,
-    area: Area,
+    bounds: Rect,
     id: u64,
     role: Role,
     label: impl Into<String>,
@@ -49,10 +62,8 @@ fn push_node(
     value: Option<String>,
     enabled: bool,
     actions: &[Action],
+    focused: bool,
 ) {
-    let Some(bounds) = area_bounds(cx, area) else {
-        return;
-    };
     let id = NodeId(id);
     let mut node = Node::new(role);
     let label = label.into();
@@ -74,11 +85,45 @@ fn push_node(
             node.add_action(*action);
         }
     }
-    if cx.has_key_focus(area) {
+    if focused {
         *focus = id;
     }
     children.push(id);
     nodes.push((id, node));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_node(
+    nodes: &mut Vec<(NodeId, Node)>,
+    children: &mut Vec<NodeId>,
+    focus: &mut NodeId,
+    cx: &Cx,
+    area: Area,
+    id: u64,
+    role: Role,
+    label: impl Into<String>,
+    description: &str,
+    value: Option<String>,
+    enabled: bool,
+    actions: &[Action],
+) {
+    let Some(bounds) = area_bounds(cx, area) else {
+        return;
+    };
+    push_bounded_node(
+        nodes,
+        children,
+        focus,
+        bounds,
+        id,
+        role,
+        label,
+        description,
+        value,
+        enabled,
+        actions,
+        cx.has_key_focus(area),
+    );
 }
 
 fn finish_tree(
@@ -413,14 +458,125 @@ pub(crate) fn publish_login_tree(
     publish(cx, finish_tree(root, children, nodes, focus));
 }
 
-pub(crate) fn clear(cx: &mut Cx, area: Area) {
-    let Some(bounds) = area_bounds(cx, area) else {
-        return;
-    };
+fn build_home_tree(
+    bounds: Rect,
+    controls: &[HomeControl],
+    focused_control: Option<u64>,
+    page_label: &str,
+    context_label: &str,
+) -> TreeUpdate {
     let mut root = Node::new(Role::Window);
     root.set_label("Hepta");
     root.set_bounds(bounds);
-    publish(cx, finish_tree(root, Vec::new(), Vec::new(), ROOT_ID));
+    let mut children = Vec::new();
+    let mut nodes = Vec::new();
+    let mut focus = ROOT_ID;
+
+    for control in controls {
+        push_bounded_node(
+            &mut nodes,
+            &mut children,
+            &mut focus,
+            control.bounds,
+            control.id,
+            Role::Button,
+            control.label,
+            "Primary navigation",
+            None,
+            true,
+            &[Action::Focus, Action::Click],
+            focused_control == Some(control.id),
+        );
+    }
+
+    push_bounded_node(
+        &mut nodes,
+        &mut children,
+        &mut focus,
+        bounds,
+        HOME_MAIN_ID,
+        Role::Main,
+        page_label,
+        "Current Hepta workspace",
+        None,
+        true,
+        &[],
+        false,
+    );
+    push_bounded_node(
+        &mut nodes,
+        &mut children,
+        &mut focus,
+        bounds,
+        HOME_CONTEXT_ID,
+        Role::Heading,
+        context_label,
+        "Current view",
+        None,
+        true,
+        &[],
+        false,
+    );
+
+    finish_tree(root, children, nodes, focus)
+}
+
+pub(crate) fn publish_home_tree(
+    cx: &mut Cx,
+    view: &View,
+    page_label: &str,
+    context_label: &str,
+    include_toggle_spaces: bool,
+) {
+    let Some(bounds) = area_bounds(cx, view.area()) else {
+        return;
+    };
+    let candidates = [
+        (
+            HOME_ALL_ROOMS_ID,
+            view.view(cx, ids!(navigation_tab_bar.home_button)).area(),
+            "All rooms",
+        ),
+        (
+            HOME_ADD_ROOM_ID,
+            view.view(cx, ids!(navigation_tab_bar.add_room_button))
+                .area(),
+            "Add or join room",
+        ),
+        (
+            HOME_SETTINGS_ID,
+            view.view(cx, ids!(navigation_tab_bar.profile_icon)).area(),
+            "Settings and profile",
+        ),
+        (
+            HOME_TOGGLE_SPACES_ID,
+            view.view(cx, ids!(navigation_tab_bar.toggle_spaces_bar_button))
+                .area(),
+            "Toggle spaces",
+        ),
+    ];
+    let mut focused_control = None;
+    let controls = candidates
+        .into_iter()
+        .filter(|(id, _, _)| include_toggle_spaces || *id != HOME_TOGGLE_SPACES_ID)
+        .filter_map(|(id, area, label)| {
+            let bounds = area_bounds(cx, area)?;
+            if cx.has_key_focus(area) {
+                focused_control = Some(id);
+            }
+            Some(HomeControl { id, bounds, label })
+        })
+        .collect::<Vec<_>>();
+    publish(
+        cx,
+        build_home_tree(
+            bounds,
+            &controls,
+            focused_control,
+            page_label,
+            context_label,
+        ),
+    );
 }
 
 #[cfg(test)]
@@ -511,5 +667,62 @@ mod tests {
             Some("never-publish-this".into()),
         );
         assert_eq!(password.value(), None);
+    }
+
+    #[test]
+    fn post_login_tree_is_never_a_single_root_node() {
+        let bounds = Rect {
+            x0: 0.0,
+            y0: 0.0,
+            x1: 1280.0,
+            y1: 800.0,
+        };
+        let controls = [HomeControl {
+            id: HOME_ALL_ROOMS_ID,
+            bounds,
+            label: "All rooms",
+        }];
+        let update = build_home_tree(bounds, &controls, None, "Rooms", "General");
+        assert!(valid(&update));
+        assert_eq!(update.nodes.len(), 4);
+        assert!(update.nodes.iter().any(|(id, node)| {
+            *id == NodeId(HOME_ALL_ROOMS_ID)
+                && node.label() == Some("All rooms")
+                && node.supports_action(Action::Click)
+        }));
+        assert!(update.nodes.iter().any(|(id, node)| {
+            *id == NodeId(HOME_MAIN_ID)
+                && node.role() == Role::Main
+                && node.label() == Some("Rooms")
+        }));
+        assert!(update.nodes.iter().any(|(id, node)| {
+            *id == NodeId(HOME_CONTEXT_ID)
+                && node.role() == Role::Heading
+                && node.label() == Some("General")
+        }));
+    }
+
+    #[test]
+    fn post_login_tree_tracks_accessibility_focus() {
+        let bounds = Rect {
+            x0: 0.0,
+            y0: 0.0,
+            x1: 320.0,
+            y1: 640.0,
+        };
+        let controls = [HomeControl {
+            id: HOME_SETTINGS_ID,
+            bounds,
+            label: "Settings and profile",
+        }];
+        let update = build_home_tree(
+            bounds,
+            &controls,
+            Some(HOME_SETTINGS_ID),
+            "Settings",
+            "Settings",
+        );
+        assert!(valid(&update));
+        assert_eq!(update.focus, NodeId(HOME_SETTINGS_ID));
     }
 }

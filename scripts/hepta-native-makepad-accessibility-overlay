@@ -13,17 +13,25 @@ PATCH_SHA256="52b335c8a03aed695f24ed54c9cddd1bbba5a490f6fe6f6855c87e0ed763731a"
 
 SOURCE_PATH=""
 OUTPUT_PATH=""
+VERIFY_PLATFORM_COMPILE=false
+COMPILE_TARGET_DIR=""
+MACOS_MATERIALIZED=false
+MACOS_COMPILE_VERIFIED=false
 
 usage() {
   cat <<'EOF'
 Usage:
   scripts/hepta-native-makepad-accessibility-overlay \
     --source /absolute/path/to/makepad-c4335cee \
-    --output /absolute/path/to/new-overlay
+    --output /absolute/path/to/new-overlay \
+    [--verify-platform-compile] \
+    [--compile-target-dir /absolute/path/to/cargo-target]
 
 Materializes an isolated clone of the exact pinned Makepad revision and applies
-the repository-owned macOS-only AccessKit backend patch. It never mutates the
-source checkout or the global Cargo cache. iOS and Android remain unpatched.
+the repository-owned macOS-only AccessKit backend patch. The optional compile
+check builds the patched makepad-platform crate in isolation; it does not claim
+that the Hepta app consumed the overlay. The source checkout and repository
+Cargo.lock are never mutated. iOS and Android remain unpatched.
 EOF
 }
 
@@ -34,6 +42,8 @@ emit_failure() {
     --arg source_path "$SOURCE_PATH" \
     --arg output_path "$OUTPUT_PATH" \
     --arg pinned_revision "$PINNED_REVISION" \
+    --argjson macos_materialized "$MACOS_MATERIALIZED" \
+    --argjson macos_compile_verified "$MACOS_COMPILE_VERIFIED" \
     '{
       schema:"hepta.makepad-accessibility-overlay-receipt.v1",
       status:"not_ready",
@@ -42,7 +52,8 @@ emit_failure() {
       output_path:$output_path,
       pinned_revision:$pinned_revision,
       readiness:{
-        macos_backend_materialized:false,
+        macos_backend_materialized:$macos_materialized,
+        macos_compile_verified:$macos_compile_verified,
         ios_backend_materialized:false,
         android_backend_materialized:false,
         full_accessibility_ready:false
@@ -67,6 +78,15 @@ while (($#)); do
       OUTPUT_PATH="$2"
       shift 2
       ;;
+    --verify-platform-compile)
+      VERIFY_PLATFORM_COMPILE=true
+      shift
+      ;;
+    --compile-target-dir)
+      (($# >= 2)) || emit_failure "missing_compile_target_dir_value"
+      COMPILE_TARGET_DIR="$2"
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -83,6 +103,10 @@ done
 [[ "$OUTPUT_PATH" == /* ]] || emit_failure "output_path_not_absolute"
 [[ "$OUTPUT_PATH" != *$'\n'* && "$OUTPUT_PATH" != *'"'* ]] \
   || emit_failure "output_path_not_toml_safe"
+if [[ -n "$COMPILE_TARGET_DIR" ]]; then
+  [[ "$COMPILE_TARGET_DIR" == /* ]] || emit_failure "compile_target_dir_not_absolute"
+  [[ "$COMPILE_TARGET_DIR" != *$'\n'* ]] || emit_failure "compile_target_dir_not_safe"
+fi
 [[ -f "$PATCH_PATH" && ! -L "$PATCH_PATH" ]] || emit_failure "patch_missing_or_symlinked"
 [[ "$(sha256_file "$PATCH_PATH")" == "$PATCH_SHA256" ]] \
   || emit_failure "patch_digest_mismatch"
@@ -141,6 +165,7 @@ git -C "$OUTPUT_PATH" diff --check \
 changed_paths="$(git -C "$OUTPUT_PATH" diff --name-only)"
 expected_paths=$'platform/Cargo.toml\nplatform/src/os/apple/macos/macos.rs\nplatform/src/os/apple/macos/macos_window.rs'
 [[ "$changed_paths" == "$expected_paths" ]] || emit_failure "patched_path_set_mismatch"
+MACOS_MATERIALIZED=true
 
 verify_image "$OUTPUT_PATH" patched_postimage \
   "platform/Cargo.toml" \
@@ -179,6 +204,24 @@ verify_image "$SOURCE_PATH" source_postimage \
   "platform/src/os/apple/macos/macos_window.rs" \
   "7c60e2cc50d9914c3faa5d98e3b7b21245e2550e0a6dcbcfeb9971914c924df2"
 
+overlay_lockfile_mutated_by_compile=false
+if [[ "$VERIFY_PLATFORM_COMPILE" == true ]]; then
+  command -v cargo >/dev/null 2>&1 || emit_failure "cargo_missing_for_platform_compile"
+  if [[ -z "$COMPILE_TARGET_DIR" ]]; then
+    COMPILE_TARGET_DIR="$OUTPUT_PATH/.hepta-accessibility-target"
+  fi
+  mkdir -p "$COMPILE_TARGET_DIR" || emit_failure "compile_target_dir_create_failed"
+  cargo check \
+    --manifest-path "$OUTPUT_PATH/platform/Cargo.toml" \
+    --lib \
+    --target-dir "$COMPILE_TARGET_DIR" \
+    >&2 || emit_failure "patched_makepad_platform_compile_failed"
+  MACOS_COMPILE_VERIFIED=true
+  if [[ -n "$(git -C "$OUTPUT_PATH" status --short -- Cargo.lock)" ]]; then
+    overlay_lockfile_mutated_by_compile=true
+  fi
+fi
+
 OUTPUT_PATH="$(cd "$OUTPUT_PATH" && pwd -P)"
 cargo_config="patch.\"https://github.com/kevinaboos/makepad\".makepad-platform.path=\"$OUTPUT_PATH/platform\""
 
@@ -190,6 +233,9 @@ jq -n \
   --arg patch_path "$PATCH_PATH" \
   --arg patch_sha256 "$PATCH_SHA256" \
   --arg cargo_config "$cargo_config" \
+  --argjson compile_requested "$VERIFY_PLATFORM_COMPILE" \
+  --argjson macos_compile_verified "$MACOS_COMPILE_VERIFIED" \
+  --argjson overlay_lockfile_mutated_by_compile "$overlay_lockfile_mutated_by_compile" \
   '{
     schema:"hepta.makepad-accessibility-overlay-receipt.v1",
     status:"ready",
@@ -198,8 +244,13 @@ jq -n \
     output:{path:$output_path,platform_path:($output_path + "/platform")},
     cargo:{
       config_override:$cargo_config,
+      config_override_known_full_app_source_graph_safe:false,
       repository_manifest_and_lock_mutated:false,
-      app_overlay_compile_verified:false
+      isolated_overlay_lockfile_mutated_by_compile:$overlay_lockfile_mutated_by_compile,
+      makepad_platform_compile_requested:$compile_requested,
+      makepad_platform_compile_verified:$macos_compile_verified,
+      app_overlay_compile_verified:false,
+      app_overlay_compile_blocker:"path-only makepad-platform override creates duplicate path/git Makepad source graphs"
     },
     checks:{
       source_revision_exact:true,
@@ -216,12 +267,12 @@ jq -n \
       ios_update_consumer_present:false,
       android_update_consumer_present:false,
       source_checkout_mutated:false,
-      materializer_invoked_cargo:false,
-      global_cargo_cache_mutated:false
+      materializer_invoked_cargo:$compile_requested,
+      global_cargo_cache_mutated:null
     },
     readiness:{
       macos_backend_materialized:true,
-      macos_compile_verified:false,
+      macos_compile_verified:$macos_compile_verified,
       macos_voiceover_runtime_verified:false,
       ios_backend_materialized:false,
       android_backend_materialized:false,

@@ -43,6 +43,12 @@ jq -e '
   and .checks.macos_update_consumer_present == true
   and .checks.ios_update_consumer_present == false
   and .checks.android_update_consumer_present == false
+  and .cargo.config_override_known_full_app_source_graph_safe == false
+  and .cargo.makepad_platform_compile_requested == false
+  and .cargo.makepad_platform_compile_verified == false
+  and .cargo.app_overlay_compile_verified == false
+  and (.cargo.app_overlay_compile_blocker | contains("duplicate path/git Makepad source graphs"))
+  and .checks.global_cargo_cache_mutated == null
   and .readiness.macos_backend_materialized == true
   and .readiness.macos_compile_verified == false
   and .readiness.macos_voiceover_runtime_verified == false
@@ -67,6 +73,7 @@ expect_failure() {
     and .[0].status == "not_ready"
     and .[0].reason == $reason
     and .[0].readiness.macos_backend_materialized == false
+    and .[0].readiness.macos_compile_verified == false
     and .[0].readiness.ios_backend_materialized == false
     and .[0].readiness.android_backend_materialized == false
     and .[0].readiness.full_accessibility_ready == false
@@ -103,7 +110,9 @@ jq -n \
     positive_cases:1,
     negative_cases:$negative_cases,
     macos_backend_materialization_ready:true,
+    macos_platform_compile_verification_available:true,
     macos_compile_verified:false,
+    hepta_app_overlay_compile_verified:false,
     macos_voiceover_runtime_verified:false,
     ios_backend_materialized:false,
     android_backend_materialized:false,
