@@ -1,11 +1,15 @@
+#[cfg(unix)]
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+#[cfg(unix)]
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
 use hepta_core::HeptaError;
+#[cfg(unix)]
 use sha2::Digest as _;
+#[cfg(unix)]
 use sha2::Sha256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -1,6 +1,6 @@
 --- a/rust/private/rustc.bzl
 +++ b/rust/private/rustc.bzl
-@@ -501,11 +501,41 @@
+@@ -511,11 +511,25 @@
                      filtered_args.append(version)
                      # Keep library search path flags
 
@@ -26,7 +26,7 @@
                      filtered_args.append(processed_arg)
                      if processed_arg == "--sysroot" and i + 1 < len(link_args):
                          # Two-part argument, keep the next arg too
-@@ -2256,8 +2256,10 @@
+@@ -2266,8 +2280,10 @@
          use_pic,
          ambiguous_libs,
          get_lib_name,
@@ -38,7 +38,7 @@
      """_summary_
  
      Args:
-@@ -2310,6 +2312,11 @@
+@@ -2320,6 +2336,11 @@
          ):
              return [] if for_darwin else ["-lstatic=%s" % get_lib_name(artifact)]
  
@@ -50,7 +50,7 @@
          if flavor_msvc:
              return [
                  "-lstatic=%s" % get_lib_name(artifact),
-@@ -2346,7 +2353,7 @@
+@@ -2356,7 +2377,7 @@
                  ])
          elif include_link_flags:
              get_lib_name = get_lib_name_for_windows if flavor_msvc else get_lib_name_default
@@ -59,7 +59,7 @@
  
      # Windows toolchains can inherit POSIX defaults like -pthread from C deps,
      # which fails to link with the MinGW/LLD toolchain. Drop them here.
-@@ -2522,17 +2529,25 @@
+@@ -2532,17 +2553,25 @@
          else:
              # For all other crate types we want to link C++ runtime library statically
              # (for example libstdc++.a or libc++.a).
