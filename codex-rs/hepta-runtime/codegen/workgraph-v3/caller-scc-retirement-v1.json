@@ -12,7 +12,7 @@
     "engine": "normalized-rust-token-identifier-owner-graph-v1",
     "module_count": 284,
     "caller_edge_count": 399,
-    "tracked_rust_source_count": 3072,
+    "tracked_rust_source_count": 3073,
     "live_root_module_count": 100,
     "reachable_module_count": 189,
     "reverse_closure_count": 95,
