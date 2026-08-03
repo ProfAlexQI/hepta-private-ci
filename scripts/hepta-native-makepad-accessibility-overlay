@@ -1,0 +1,230 @@
+#!/bin/bash -p
+set -euo pipefail
+
+unset BASH_ENV ENV CDPATH GLOBIGNORE SHELLOPTS 2>/dev/null || true
+export LC_ALL=C
+umask 077
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PATCH_PATH="$ROOT_DIR/patches/makepad_macos_accessibility_c4335cee.patch"
+PINNED_REVISION="c4335cee10b22aca768510c9d072b0ca1bba15c8"
+PINNED_TREE="7506472e89525580cf41bb7e2b891e00275c10b2"
+PATCH_SHA256="52b335c8a03aed695f24ed54c9cddd1bbba5a490f6fe6f6855c87e0ed763731a"
+
+SOURCE_PATH=""
+OUTPUT_PATH=""
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/hepta-native-makepad-accessibility-overlay \
+    --source /absolute/path/to/makepad-c4335cee \
+    --output /absolute/path/to/new-overlay
+
+Materializes an isolated clone of the exact pinned Makepad revision and applies
+the repository-owned macOS-only AccessKit backend patch. It never mutates the
+source checkout or the global Cargo cache. iOS and Android remain unpatched.
+EOF
+}
+
+emit_failure() {
+  local reason="$1"
+  jq -n \
+    --arg reason "$reason" \
+    --arg source_path "$SOURCE_PATH" \
+    --arg output_path "$OUTPUT_PATH" \
+    --arg pinned_revision "$PINNED_REVISION" \
+    '{
+      schema:"hepta.makepad-accessibility-overlay-receipt.v1",
+      status:"not_ready",
+      reason:$reason,
+      source_path:$source_path,
+      output_path:$output_path,
+      pinned_revision:$pinned_revision,
+      readiness:{
+        macos_backend_materialized:false,
+        ios_backend_materialized:false,
+        android_backend_materialized:false,
+        full_accessibility_ready:false
+      }
+    }' >&2
+  exit 1
+}
+
+sha256_file() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+while (($#)); do
+  case "$1" in
+    --source)
+      (($# >= 2)) || emit_failure "missing_source_value"
+      SOURCE_PATH="$2"
+      shift 2
+      ;;
+    --output)
+      (($# >= 2)) || emit_failure "missing_output_value"
+      OUTPUT_PATH="$2"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      emit_failure "unknown_argument:$1"
+      ;;
+  esac
+done
+
+[[ -n "$SOURCE_PATH" ]] || emit_failure "source_path_missing"
+[[ -n "$OUTPUT_PATH" ]] || emit_failure "output_path_missing"
+[[ "$SOURCE_PATH" == /* ]] || emit_failure "source_path_not_absolute"
+[[ "$OUTPUT_PATH" == /* ]] || emit_failure "output_path_not_absolute"
+[[ "$OUTPUT_PATH" != *$'\n'* && "$OUTPUT_PATH" != *'"'* ]] \
+  || emit_failure "output_path_not_toml_safe"
+[[ -f "$PATCH_PATH" && ! -L "$PATCH_PATH" ]] || emit_failure "patch_missing_or_symlinked"
+[[ "$(sha256_file "$PATCH_PATH")" == "$PATCH_SHA256" ]] \
+  || emit_failure "patch_digest_mismatch"
+git -C "$SOURCE_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+  || emit_failure "source_not_git_worktree"
+
+SOURCE_PATH="$(cd "$SOURCE_PATH" && pwd -P)"
+[[ "$SOURCE_PATH" != "$OUTPUT_PATH" ]] || emit_failure "source_output_alias"
+[[ ! -e "$OUTPUT_PATH" && ! -L "$OUTPUT_PATH" ]] || emit_failure "output_path_already_exists"
+[[ -d "$(dirname "$OUTPUT_PATH")" ]] || emit_failure "output_parent_missing"
+
+source_revision="$(git -C "$SOURCE_PATH" rev-parse HEAD 2>/dev/null)" \
+  || emit_failure "source_revision_unreadable"
+[[ "$source_revision" == "$PINNED_REVISION" ]] || emit_failure "source_revision_mismatch"
+source_tree="$(git -C "$SOURCE_PATH" rev-parse 'HEAD^{tree}' 2>/dev/null)" \
+  || emit_failure "source_tree_unreadable"
+[[ "$source_tree" == "$PINNED_TREE" ]] || emit_failure "source_tree_mismatch"
+
+verify_image() {
+  local root="$1"
+  local phase="$2"
+  local path="$3"
+  local expected="$4"
+  [[ -f "$root/$path" && ! -L "$root/$path" ]] \
+    || emit_failure "${phase}_missing_or_symlinked:$path"
+  [[ "$(sha256_file "$root/$path")" == "$expected" ]] \
+    || emit_failure "${phase}_digest_mismatch:$path"
+}
+
+verify_image "$SOURCE_PATH" source_preimage \
+  "platform/Cargo.toml" \
+  "e460bfaba43536f597b130799631739c5caa4883be3b7a898f97de6b2874441b"
+verify_image "$SOURCE_PATH" source_preimage \
+  "platform/src/os/apple/macos/macos.rs" \
+  "42230d0fbc09142f2809c52d273966173f56ea1a76483a2b1cb6acb88741c8a8"
+verify_image "$SOURCE_PATH" source_preimage \
+  "platform/src/os/apple/macos/macos_window.rs" \
+  "7c60e2cc50d9914c3faa5d98e3b7b21245e2550e0a6dcbcfeb9971914c924df2"
+
+git clone --quiet --no-hardlinks "$SOURCE_PATH" "$OUTPUT_PATH" \
+  || emit_failure "isolated_clone_failed"
+git -C "$OUTPUT_PATH" checkout --quiet --detach "$PINNED_REVISION" \
+  || emit_failure "isolated_checkout_failed"
+[[ "$(git -C "$OUTPUT_PATH" rev-parse HEAD)" == "$PINNED_REVISION" ]] \
+  || emit_failure "isolated_revision_mismatch"
+[[ "$(git -C "$OUTPUT_PATH" rev-parse 'HEAD^{tree}')" == "$PINNED_TREE" ]] \
+  || emit_failure "isolated_tree_mismatch"
+
+git -C "$OUTPUT_PATH" apply --check "$PATCH_PATH" \
+  || emit_failure "patch_hunk_check_failed"
+git -C "$OUTPUT_PATH" apply "$PATCH_PATH" \
+  || emit_failure "patch_apply_failed"
+git -C "$OUTPUT_PATH" diff --check \
+  || emit_failure "patched_tree_diff_check_failed"
+
+changed_paths="$(git -C "$OUTPUT_PATH" diff --name-only)"
+expected_paths=$'platform/Cargo.toml\nplatform/src/os/apple/macos/macos.rs\nplatform/src/os/apple/macos/macos_window.rs'
+[[ "$changed_paths" == "$expected_paths" ]] || emit_failure "patched_path_set_mismatch"
+
+verify_image "$OUTPUT_PATH" patched_postimage \
+  "platform/Cargo.toml" \
+  "a3ac4456bdc78ce02d2ad187c02085fd4b8a2542731201221ba0eac4c352697c"
+verify_image "$OUTPUT_PATH" patched_postimage \
+  "platform/src/os/apple/macos/macos.rs" \
+  "85c23ef0fd3224659a282823fa38897823813171f4832cac431554133754b8f3"
+verify_image "$OUTPUT_PATH" patched_postimage \
+  "platform/src/os/apple/macos/macos_window.rs" \
+  "d36fc35b2dc74b7a28e5cf7afcbda3742f99cdf737136796508fbb2d54f2b387"
+
+macos_discard_count="$(rg -c 'CxOsOp::AccessibilityUpdate\(_\) => \{\}' \
+  "$OUTPUT_PATH/platform/src/os/apple/macos/macos.rs" || true)"
+ios_discard_count="$(rg -c 'CxOsOp::AccessibilityUpdate\(_\) => \{\}' \
+  "$OUTPUT_PATH/platform/src/os/apple/ios/ios.rs" || true)"
+android_discard_count="$(rg -c 'CxOsOp::AccessibilityUpdate\(_\) => \{\}' \
+  "$OUTPUT_PATH/platform/src/os/linux/android/android.rs" || true)"
+macos_discard_count="${macos_discard_count:-0}"
+ios_discard_count="${ios_discard_count:-0}"
+android_discard_count="${android_discard_count:-0}"
+[[ "$macos_discard_count" == "0" ]] || emit_failure "macos_backend_still_discarding_updates"
+[[ "$ios_discard_count" == "1" ]] || emit_failure "ios_fail_closed_marker_changed"
+[[ "$android_discard_count" == "1" ]] || emit_failure "android_fail_closed_marker_changed"
+
+[[ "$(git -C "$SOURCE_PATH" rev-parse HEAD)" == "$PINNED_REVISION" ]] \
+  || emit_failure "source_changed_during_materialization"
+[[ "$(git -C "$SOURCE_PATH" rev-parse 'HEAD^{tree}')" == "$PINNED_TREE" ]] \
+  || emit_failure "source_changed_during_materialization"
+verify_image "$SOURCE_PATH" source_postimage \
+  "platform/Cargo.toml" \
+  "e460bfaba43536f597b130799631739c5caa4883be3b7a898f97de6b2874441b"
+verify_image "$SOURCE_PATH" source_postimage \
+  "platform/src/os/apple/macos/macos.rs" \
+  "42230d0fbc09142f2809c52d273966173f56ea1a76483a2b1cb6acb88741c8a8"
+verify_image "$SOURCE_PATH" source_postimage \
+  "platform/src/os/apple/macos/macos_window.rs" \
+  "7c60e2cc50d9914c3faa5d98e3b7b21245e2550e0a6dcbcfeb9971914c924df2"
+
+OUTPUT_PATH="$(cd "$OUTPUT_PATH" && pwd -P)"
+cargo_config="patch.\"https://github.com/kevinaboos/makepad\".makepad-platform.path=\"$OUTPUT_PATH/platform\""
+
+jq -n \
+  --arg source_path "$SOURCE_PATH" \
+  --arg output_path "$OUTPUT_PATH" \
+  --arg pinned_revision "$PINNED_REVISION" \
+  --arg pinned_tree "$PINNED_TREE" \
+  --arg patch_path "$PATCH_PATH" \
+  --arg patch_sha256 "$PATCH_SHA256" \
+  --arg cargo_config "$cargo_config" \
+  '{
+    schema:"hepta.makepad-accessibility-overlay-receipt.v1",
+    status:"ready",
+    source:{path:$source_path,revision:$pinned_revision,tree:$pinned_tree},
+    patch:{path:$patch_path,sha256:$patch_sha256},
+    output:{path:$output_path,platform_path:($output_path + "/platform")},
+    cargo:{
+      config_override:$cargo_config,
+      repository_manifest_and_lock_mutated:false,
+      app_overlay_compile_verified:false
+    },
+    checks:{
+      source_revision_exact:true,
+      source_tree_exact:true,
+      source_preimages_exact:true,
+      patch_hunks_exact:true,
+      patched_paths_exact:true,
+      patched_postimages_exact:true,
+      source_postimages_exact:true,
+      macos_update_consumer_present:true,
+      macos_action_feedback_present:true,
+      macos_focus_feedback_present:true,
+      macos_dpi_conversion_present:true,
+      ios_update_consumer_present:false,
+      android_update_consumer_present:false,
+      source_checkout_mutated:false,
+      materializer_invoked_cargo:false,
+      global_cargo_cache_mutated:false
+    },
+    readiness:{
+      macos_backend_materialized:true,
+      macos_compile_verified:false,
+      macos_voiceover_runtime_verified:false,
+      ios_backend_materialized:false,
+      android_backend_materialized:false,
+      full_accessibility_ready:false
+    }
+  }'

@@ -1,0 +1,284 @@
+diff --git a/platform/Cargo.toml b/platform/Cargo.toml
+index 4a323891..29ed4c42 100644
+--- a/platform/Cargo.toml
++++ b/platform/Cargo.toml
+@@ -27,9 +27,13 @@ makepad-wasm-bridge = { path = "../libs/wasm_bridge", version = "1.0.0" }
+ 
+ [target.aarch64-apple-darwin.dependencies]
+ makepad-objc-sys = { path = "../libs/objc-sys", version = "1.0.0" }
++accesskit = "0.24.1"
++accesskit_macos = "0.26.3"
+ 
+ [target.x86_64-apple-darwin.dependencies]
+ makepad-objc-sys = { path = "../libs/objc-sys", version = "1.0.0" }
++accesskit = "0.24.1"
++accesskit_macos = "0.26.3"
+ 
+ [target.x86_64-apple-ios.dependencies]
+ makepad-objc-sys = { path = "../libs/objc-sys", version = "1.0.0" }
+diff --git a/platform/src/os/apple/macos/macos.rs b/platform/src/os/apple/macos/macos.rs
+index 09224a22..796ed5b3 100644
+--- a/platform/src/os/apple/macos/macos.rs
++++ b/platform/src/os/apple/macos/macos.rs
+@@ -1,4 +1,9 @@
+ use {
++    accesskit::{
++        ActionHandler as AccessibilityActionHandler, ActionRequest, ActivationHandler,
++        Rect as AccessibilityRect, TreeUpdate,
++    },
++    accesskit_macos::SubclassingAdapter,
+     crate::{
+         cx::{Cx, OsType},
+         cx_api::{CxOsApi, CxOsOp, OpenUrlInPlace},
+@@ -50,7 +55,97 @@
+     },
+ };
+ 
+-#[derive(Clone)]
++struct MacosAccessibilityActivation {
++    latest_update: Rc<RefCell<Option<TreeUpdate>>>,
++}
++
++impl ActivationHandler for MacosAccessibilityActivation {
++    fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
++        self.latest_update.borrow().clone()
++    }
++}
++
++struct MacosAccessibilityActions;
++
++impl AccessibilityActionHandler for MacosAccessibilityActions {
++    fn do_action(&mut self, request: ActionRequest) {
++        Cx::post_action(request);
++    }
++}
++
++fn scale_accessibility_update(mut update: TreeUpdate, factor: f64) -> TreeUpdate {
++    if factor.is_finite() && factor > 0.0 && factor != 1.0 {
++        for (_, node) in &mut update.nodes {
++            if let Some(bounds) = node.bounds() {
++                node.set_bounds(AccessibilityRect {
++                    x0: bounds.x0 * factor,
++                    y0: bounds.y0 * factor,
++                    x1: bounds.x1 * factor,
++                    y1: bounds.y1 * factor,
++                });
++            }
++        }
++    }
++    update
++}
++
++#[cfg(test)]
++mod accessibility_tests {
++    use super::*;
++    use accesskit::{Node, NodeId, Role, Tree, TreeId};
++
++    fn update_with_bounds(bounds: AccessibilityRect) -> TreeUpdate {
++        let root = NodeId(1);
++        let mut node = Node::new(Role::Window);
++        node.set_bounds(bounds);
++        TreeUpdate {
++            nodes: vec![(root, node)],
++            tree: Some(Tree {
++                root,
++                toolkit_name: Some("Makepad".into()),
++                toolkit_version: None,
++            }),
++            tree_id: TreeId::ROOT,
++            focus: root,
++        }
++    }
++
++    #[test]
++    fn accessibility_bounds_are_scaled_to_physical_pixels() {
++        let update = scale_accessibility_update(
++            update_with_bounds(AccessibilityRect {
++                x0: 10.0,
++                y0: 20.0,
++                x1: 110.0,
++                y1: 70.0,
++            }),
++            2.0,
++        );
++        assert_eq!(
++            update.nodes[0].1.bounds(),
++            Some(AccessibilityRect {
++                x0: 20.0,
++                y0: 40.0,
++                x1: 220.0,
++                y1: 140.0,
++            })
++        );
++    }
++
++    #[test]
++    fn activation_returns_the_latest_full_tree() {
++        let expected = update_with_bounds(AccessibilityRect {
++            x0: 0.0,
++            y0: 0.0,
++            x1: 100.0,
++            y1: 100.0,
++        });
++        let latest_update = Rc::new(RefCell::new(Some(expected.clone())));
++        let mut handler = MacosAccessibilityActivation { latest_update };
++        assert_eq!(handler.request_initial_tree(), Some(expected));
++    }
++}
++
+ pub struct MetalWindow {
+     pub window_id: WindowId,
+     pub window_geom: WindowGeom,
+@@ -63,6 +158,8 @@ pub struct MetalWindow {
+     /// when the compositor consumes frames unevenly (mirrored/scaled
+     /// displays throttle in 10-25ms phases).
+     pub in_flight_presents: std::sync::Arc<std::sync::atomic::AtomicU32>,
++    accessibility_adapter: Option<SubclassingAdapter>,
++    accessibility_update: Rc<RefCell<Option<TreeUpdate>>>,
+ }
+ 
+ impl MetalWindow {
+@@ -74,12 +171,34 @@ pub(crate) fn new(
+         title: &str,
+         is_fullscreen: bool,
+         macos_config: MacosWindowConfig,
++        initial_accessibility_update: Option<TreeUpdate>,
+     ) -> MetalWindow {
+         let ca_layer: ObjcId = unsafe { msg_send![class!(CAMetalLayer), new] };
+ 
+         let mut cocoa_window = Box::new(MacosWindow::new(window_id, macos_config));
+ 
+-        cocoa_window.init(title, inner_size, position, is_fullscreen, macos_config);
++        let accessibility_update = Rc::new(RefCell::new(None));
++        let mut accessibility_adapter = None;
++        cocoa_window.init(
++            title,
++            inner_size,
++            position,
++            is_fullscreen,
++            macos_config,
++            |view, dpi_factor| {
++                *accessibility_update.borrow_mut() = initial_accessibility_update
++                    .map(|update| scale_accessibility_update(update, dpi_factor));
++                accessibility_adapter = Some(unsafe {
++                    SubclassingAdapter::new(
++                        view.cast(),
++                        MacosAccessibilityActivation {
++                            latest_update: accessibility_update.clone(),
++                        },
++                        MacosAccessibilityActions,
++                    )
++                });
++            },
++        );
+         unsafe {
+             let () = msg_send![ca_layer, setDevice: metal_cx.device];
+             let () = msg_send![ca_layer, setPixelFormat: MTLPixelFormat::BGRA8Unorm];
+@@ -112,6 +231,8 @@ pub(crate) fn new(
+             window_geom: cocoa_window.get_window_geom(),
+             cocoa_window,
+             in_flight_presents: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
++            accessibility_adapter,
++            accessibility_update,
+         }
+     }
+ 
+@@ -159,6 +280,8 @@ pub(crate) fn new_popup(
+             window_geom: cocoa_window.get_window_geom(),
+             cocoa_window,
+             in_flight_presents: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
++            accessibility_adapter: None,
++            accessibility_update: Rc::new(RefCell::new(None)),
+         }
+     }
+ 
+@@ -729,9 +852,23 @@ fn cocoa_event_callback(
+                         self.repaint_pass(main_pass_id);
+                     }
+                 }
++                if let Some(window) = metal_windows.iter_mut().find(|w| w.window_id == window_id) {
++                    if let Some(adapter) = window.accessibility_adapter.as_mut() {
++                        if let Some(events) = adapter.update_view_focus_state(true) {
++                            events.raise();
++                        }
++                    }
++                }
+                 self.call_event_handler(&Event::WindowGotFocus(window_id));
+             }
+             MacosEvent::WindowLostFocus(window_id) => {
++                if let Some(window) = metal_windows.iter_mut().find(|w| w.window_id == window_id) {
++                    if let Some(adapter) = window.accessibility_adapter.as_mut() {
++                        if let Some(events) = adapter.update_view_focus_state(false) {
++                            events.raise();
++                        }
++                    }
++                }
+                 self.call_event_handler(&Event::WindowLostFocus(window_id));
+             }
+             MacosEvent::PopupDismissed(event) => {
+@@ -1029,6 +1166,7 @@ fn handle_platform_ops(
+                         &window.create_title,
+                         window.is_fullscreen,
+                         window.macos,
++                        self.os.latest_accessibility_update.clone(),
+                     );
+                     let visuals = window.window_visuals();
+                     metal_window.cocoa_window.set_window_visuals(visuals);
+@@ -1247,7 +1385,29 @@ fn handle_platform_ops(
+                 CxOsOp::ShowSelectionHandles { .. } => {}
+                 CxOsOp::UpdateSelectionHandles { .. } => {}
+                 CxOsOp::HideSelectionHandles => {}
+-                CxOsOp::AccessibilityUpdate(_) => {}
++                CxOsOp::AccessibilityUpdate(payload) => {
++                    let Ok(update) = payload.0.downcast::<TreeUpdate>() else {
++                        continue;
++                    };
++                    let update = *update;
++                    self.os.latest_accessibility_update = Some(update.clone());
++                    let Some(window) = metal_windows
++                        .iter_mut()
++                        .find(|window| !window.cocoa_window.is_popup)
++                    else {
++                        continue;
++                    };
++                    let update = scale_accessibility_update(
++                        update,
++                        window.window_geom.dpi_factor,
++                    );
++                    *window.accessibility_update.borrow_mut() = Some(update.clone());
++                    if let Some(adapter) = window.accessibility_adapter.as_mut() {
++                        if let Some(events) = adapter.update_if_active(|| update) {
++                            events.raise();
++                        }
++                    }
++                }
+                 CxOsOp::AttachCameraNativePreview { video_id, area } => {
+                     let Some(draw_list_id) = area.draw_list_id() else {
+                         continue;
+@@ -1848,4 +2008,5 @@ pub struct CxOs {
+     pub(crate) native_camera_previews: HashMap<LiveId, MacosNativeCameraPreview>,
+     pub(crate) system_browsers: HashMap<LiveId, MacosSystemBrowser>,
+     pub(crate) internal_drag_items: Option<Arc<Vec<DragItem>>>,
++    pub(crate) latest_accessibility_update: Option<TreeUpdate>,
+ }
+diff --git a/platform/src/os/apple/macos/macos_window.rs b/platform/src/os/apple/macos/macos_window.rs
+index 5ffd6b1a..8ed86cdc 100644
+--- a/platform/src/os/apple/macos/macos_window.rs
++++ b/platform/src/os/apple/macos/macos_window.rs
+@@ -186,6 +186,7 @@ pub fn init(
+         position: Option<Vec2d>,
+         is_fullscreen: bool,
+         macos_config: MacosWindowConfig,
++        before_show: impl FnOnce(ObjcId, f64),
+     ) {
+         self.macos_config = macos_config.normalized();
+         unsafe {
+@@ -255,6 +256,8 @@ pub fn init(
+             let () = msg_send![self.view, setLayerContentsRedrawPolicy: 2];
+ 
+             let () = msg_send![self.window, setContentView: self.view];
++            let dpi_factor: f64 = msg_send![self.window, backingScaleFactor];
++            before_show(self.view, dpi_factor);
+             let () = msg_send![self.window, makeFirstResponder: self.view];
+             if self.is_nonactivating_panel() {
+                 let () = msg_send![self.window, orderFront: nil];
