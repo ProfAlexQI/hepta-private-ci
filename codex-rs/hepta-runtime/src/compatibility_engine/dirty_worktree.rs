@@ -4,6 +4,7 @@ use serde::Serialize;
 use serde_json::Map;
 use serde_json::Value;
 
+use crate::dirty_worktree_release_boundary_grouping_freeze_plan::dirty_worktree_release_boundary_grouping_freeze_plan_report_from_inventory_and_entries;
 use crate::*;
 
 pub const DIRTY_WORKTREE_TYPED_COMPAT_REPORT_IDS: &[&str] = &[
