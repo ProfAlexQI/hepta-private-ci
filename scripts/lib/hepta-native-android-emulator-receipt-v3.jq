@@ -95,5 +95,34 @@ def hepta_android_emulator_receipt_v3_ready($head; $tree; $fingerprint; $manifes
   and .claims.public_distribution_ready == false
   and .claims.full_product_ready == false
   and .claims.public_ga_ready == false
+  and ((.extended_lab // {requested:false}) as $lab |
+    if $lab.requested == true then
+      $lab.status == "executed_with_product_claim_blockers"
+      and $lab.execution_ready == true
+      and $lab.ready == false
+      and $lab.state_restore_verified == true
+      and $lab.modes.rtl.executed == true
+      and $lab.modes.rtl.force_rtl_readback == true
+      and $lab.modes.rtl.ready == false
+      and $lab.modes.font_scale.executed == true
+      and $lab.modes.font_scale.setting_readback_ready == true
+      and $lab.modes.font_scale.ready == false
+      and $lab.modes.rotation_ime.executed == true
+      and $lab.modes.rotation_ime.scope == "unauthenticated_login_surface"
+      and $lab.modes.rotation_ime.generic_app_wide_ready == false
+      and $lab.modes.startup_performance.executed == true
+      and $lab.modes.startup_performance.ready == true
+      and $lab.modes.low_power.executed == true
+      and $lab.modes.low_power.emulator_only == true
+      and $lab.modes.low_power.real_low_power_qualification == false
+      and $lab.modes.low_power.ready == false
+      and ($lab.claims | to_entries | length > 0 and all(.value == false))
+      and ($lab.blockers | map(.code) | index("android_real_device_low_power_performance_receipt_missing") != null)
+      and ($lab.blockers | map(.code) | index("android_real_device_receipt_missing") != null)
+      and ($lab.blockers | map(.code) | index("talkback_receipt_missing") != null)
+      and ($lab.forbidden_actions_performed | to_entries | length > 0 and all(.value == false))
+    else
+      $lab.requested == false
+    end)
   and (.hard_boundaries | to_entries | length > 0 and all(.value == false))
   and (.forbidden_actions_performed | to_entries | length > 0 and all(.value == false));

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "$ROOT_DIR/scripts/hepta-native-mobile-lab-cleanup-v1.sh"
 APP_DIR="$ROOT_DIR/apps/hepta-native"
 PRODUCER="scripts/hepta-native-android-emulator-smoke.sh"
 PACKAGE_NAME="ai.hepta.nativeapp"
@@ -25,6 +26,9 @@ REPORT_PATH=""
 EVIDENCE_DIR=""
 TARGET_DIR=""
 CONTRACT_ONLY=false
+EXTENDED_LAB=false
+LAB_STARTUP_SAMPLES=3
+REPORT_TEMP=""
 
 usage() {
   cat <<'EOF'
@@ -45,6 +49,9 @@ SDK/runtime, supplies credentials, contacts a real device, release-signs, or
 uploads anything.
 
   --contract-only   print the side-effect-free source contract and exit
+  --extended-lab    opt in to reversible emulator-only RTL, font-scale,
+                    landscape+IME, repeated startup, and simulated low-power
+                    modes; generic/real-device/TalkBack claims stay false
   --help, -h        show this help
 EOF
 }
@@ -57,6 +64,7 @@ while [[ $# -gt 0 ]]; do
     --output) REPORT_PATH="${2:-}"; shift 2 ;;
     --evidence-dir) EVIDENCE_DIR="${2:-}"; shift 2 ;;
     --target-dir) TARGET_DIR="${2:-}"; shift 2 ;;
+    --extended-lab) EXTENDED_LAB=true; shift ;;
     --contract-only) CONTRACT_ONLY=true; shift ;;
     --help|-h) usage; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; usage >&2; exit 64 ;;
@@ -93,7 +101,15 @@ if [[ "$CONTRACT_ONLY" == true ]]; then
           versioned_login_template_probe_ready:true,
           uiautomator_xml_ready:true,
           app_foreground_and_focused:true,
-          structured_current_source_receipt:true
+          structured_current_source_receipt:true,
+          extended_lab_opt_in:true,
+          extended_lab_state_snapshot_restore_readback:true,
+          extended_lab_raw_setting_absence_restore:true,
+          extended_lab_unrestorable_frozen_battery_rejected_before_mutation:true,
+          exit_cleanup_preserves_original_status:true,
+          interrupt_cleanup_restore_and_readback:true,
+          cleanup_failure_receipt:true,
+          emulator_only_power_simulation_never_real_device_claim:true
         },
         hard_boundaries:{
           accessibility:false,
@@ -449,14 +465,67 @@ SESSION_PROBE_READBACK="$($ADB -s "$ADB_SERIAL" exec-out cat "$SESSION_PROBE_PAT
 [[ "$SESSION_PROBE_READBACK" == "$SESSION_PROBE_NONCE" ]] \
   || { echo "error: emulator session nonce readback did not match" >&2; exit 1; }
 
+source "$ROOT_DIR/scripts/hepta-native-android-emulator-lab-state-v1.sh"
 ORIGINAL_ACCELEROMETER="$($ADB -s "$ADB_SERIAL" shell settings get system accelerometer_rotation | tr -d '\r')"
 ORIGINAL_ROTATION="$($ADB -s "$ADB_SERIAL" shell settings get system user_rotation | tr -d '\r')"
+EMULATOR_STATE_SNAPSHOT=""
+if [[ "$EXTENDED_LAB" == true ]]; then
+  EMULATOR_STATE_SNAPSHOT="$(hepta_android_emulator_lab_state_snapshot "$ADB" "$ADB_SERIAL")"
+  hepta_android_emulator_lab_state_ready "$EMULATOR_STATE_SNAPSHOT" \
+    || { echo "error: Android extended-lab rejects unreadable or frozen original battery state before mutation" >&2; exit 1; }
+  ORIGINAL_FONT_SCALE="$(jq -r '.font_scale' <<<"$EMULATOR_STATE_SNAPSHOT")"
+  ORIGINAL_FORCE_RTL="$(jq -r '.force_rtl' <<<"$EMULATOR_STATE_SNAPSHOT")"
+  EFFECTIVE_ORIGINAL_FONT_SCALE="$ORIGINAL_FONT_SCALE"
+  EFFECTIVE_ORIGINAL_FORCE_RTL="$ORIGINAL_FORCE_RTL"
+  if [[ "$EFFECTIVE_ORIGINAL_FONT_SCALE" == null ]]; then EFFECTIVE_ORIGINAL_FONT_SCALE=1.0; fi
+  if [[ "$EFFECTIVE_ORIGINAL_FORCE_RTL" == null ]]; then EFFECTIVE_ORIGINAL_FORCE_RTL=0; fi
+fi
 restore_emulator_state() {
-  "$ADB" -s "$ADB_SERIAL" shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
-  "$ADB" -s "$ADB_SERIAL" shell settings put system accelerometer_rotation "$ORIGINAL_ACCELEROMETER" >/dev/null 2>&1 || true
-  "$ADB" -s "$ADB_SERIAL" shell settings put system user_rotation "$ORIGINAL_ROTATION" >/dev/null 2>&1 || true
+  local failed=false
+  "$ADB" -s "$ADB_SERIAL" shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || failed=true
+  if [[ "$EXTENDED_LAB" == true ]]; then
+    hepta_android_emulator_lab_state_restore "$ADB" "$ADB_SERIAL" "$EMULATOR_STATE_SNAPSHOT" >/dev/null 2>&1 || failed=true
+  else
+    hepta_android_restore_setting "$ADB" "$ADB_SERIAL" system accelerometer_rotation "$ORIGINAL_ACCELEROMETER" >/dev/null 2>&1 || failed=true
+    hepta_android_restore_setting "$ADB" "$ADB_SERIAL" system user_rotation "$ORIGINAL_ROTATION" >/dev/null 2>&1 || failed=true
+  fi
+  [[ "$failed" == false ]]
 }
-trap restore_emulator_state EXIT
+android_emulator_state_readback_ready() {
+  if [[ "$EXTENDED_LAB" == true ]]; then
+    [[ "$(hepta_android_emulator_lab_state_snapshot "$ADB" "$ADB_SERIAL" | jq -Sc .)" == "$(jq -Sc . <<<"$EMULATOR_STATE_SNAPSHOT")" ]]
+  else
+    [[ "$($ADB -s "$ADB_SERIAL" shell settings get system accelerometer_rotation | tr -d '\r')" == "$ORIGINAL_ACCELEROMETER" \
+      && "$($ADB -s "$ADB_SERIAL" shell settings get system user_rotation | tr -d '\r')" == "$ORIGINAL_ROTATION" ]]
+  fi
+}
+write_android_cleanup_failure_receipt() {
+  local original_exit="$1" restore_ready="$2" readback_ready="$3" temporary
+  temporary="$(mktemp "$(dirname "$REPORT_PATH")/.hepta-android-cleanup-failure.XXXXXX")" || return 1
+  if ! hepta_mobile_cleanup_failure_json android_emulator "$PRODUCER" "$original_exit" "$restore_ready" "$readback_ready" >"$temporary"; then
+    rm -f -- "$temporary"
+    return 1
+  fi
+  mv -f -- "$temporary" "$REPORT_PATH"
+}
+android_cleanup() {
+  local original_exit=$? restore_ready=true readback_ready=true final_exit
+  trap - EXIT HUP INT TERM
+  set +e
+  restore_emulator_state || restore_ready=false
+  android_emulator_state_readback_ready || readback_ready=false
+  if [[ "$restore_ready" != true || "$readback_ready" != true ]]; then
+    write_android_cleanup_failure_receipt "$original_exit" "$restore_ready" "$readback_ready" \
+      || echo "error: failed to write Android cleanup failure receipt" >&2
+  fi
+  if [[ -n "$REPORT_TEMP" ]]; then rm -f -- "$REPORT_TEMP"; fi
+  final_exit="$(hepta_mobile_cleanup_final_exit_code "$original_exit" "$restore_ready" "$readback_ready")" || final_exit=1
+  exit "$final_exit"
+}
+trap android_cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 app_foreground() {
   local activity_dump="$1"
@@ -573,6 +642,135 @@ IME_TEMPLATE_REPORT_PATH="$EVIDENCE_DIR/screenshot-portrait-ime.login-template-p
   --image "$IME_PATH" --template "$IME_TEMPLATE_PATH" --mode ime \
   --output "$IME_TEMPLATE_REPORT_PATH" >/dev/null
 
+LAB_RESULT='{"requested":false,"status":"not_requested","ready":false}'
+if [[ "$EXTENDED_LAB" == true ]]; then
+  cold_launch_samples() {
+    local label="$1" samples='[]' output total pid
+    for ((sample = 1; sample <= LAB_STARTUP_SAMPLES; sample++)); do
+      output="$EVIDENCE_DIR/lab-${label}-startup-${sample}.txt"
+      "$ADB" -s "$ADB_SERIAL" shell am force-stop "$PACKAGE_NAME"
+      "$ADB" -s "$ADB_SERIAL" shell am start -W -S -n "$ACTIVITY" >"$output"
+      grep -Fxq 'Status: ok' "$output"
+      total="$(sed -n 's/^TotalTime: //p' "$output" | tail -1)"
+      pid="$($ADB -s "$ADB_SERIAL" shell pidof "$PACKAGE_NAME" | tr -d '\r')"
+      [[ "$total" =~ ^[0-9]+$ && "$pid" =~ ^[1-9][0-9]*$ ]]
+      app_foreground "$EVIDENCE_DIR/lab-${label}-startup-${sample}.activity.txt"
+      samples="$(jq -c --argjson sample "$sample" --argjson pid "$pid" --argjson total "$total" \
+        '. + [{sample:$sample,pid:$pid,total_time_ms:$total}]' <<<"$samples")"
+    done
+    printf '%s\n' "$samples"
+  }
+  startup_stats() {
+    jq -c '([.[].total_time_ms] | sort) as $v | {samples:length,min_ms:$v[0],median_ms:$v[(length/2|floor)],max_ms:$v[-1]}' <<<"$1"
+  }
+
+  "$ADB" -s "$ADB_SERIAL" shell input keyevent KEYCODE_BACK
+  "$ADB" -s "$ADB_SERIAL" shell settings put system user_rotation 0
+  wait_for_orientation portrait "$EVIDENCE_DIR/lab-dumpsys-window-portrait.txt"
+  BASE_LAB_SHA="$(shasum -a 256 "$PORTRAIT_PATH" | awk '{print $1}')"
+
+  "$ADB" -s "$ADB_SERIAL" shell settings put global debug.force_rtl 1
+  [[ "$($ADB -s "$ADB_SERIAL" shell settings get global debug.force_rtl | tr -d '\r')" == 1 ]] \
+    || { echo "error: Android force-RTL setting did not apply" >&2; exit 1; }
+  "$ADB" -s "$ADB_SERIAL" shell am force-stop "$PACKAGE_NAME"
+  "$ADB" -s "$ADB_SERIAL" shell am start -W -S -n "$ACTIVITY" >"$EVIDENCE_DIR/lab-rtl-start.txt"
+  grep -Fxq 'Status: ok' "$EVIDENCE_DIR/lab-rtl-start.txt"
+  RTL_PATH="$EVIDENCE_DIR/lab-rtl.png"
+  capture_png lab-rtl portrait "$RTL_PATH" "$EVIDENCE_DIR/lab-rtl.content-probe.json"
+  RTL_SHA="$(shasum -a 256 "$RTL_PATH" | awk '{print $1}')"
+  [[ "$RTL_SHA" != "$BASE_LAB_SHA" ]] && RTL_RASTER_CHANGED=true || RTL_RASTER_CHANGED=false
+  hepta_android_restore_setting "$ADB" "$ADB_SERIAL" global debug.force_rtl "$ORIGINAL_FORCE_RTL"
+  [[ "$($ADB -s "$ADB_SERIAL" shell settings get global debug.force_rtl | tr -d '\r')" == "$ORIGINAL_FORCE_RTL" ]] \
+    || { echo "error: Android force-RTL setting did not restore" >&2; exit 1; }
+
+  FONT_SCALE="1.5"
+  "$ADB" -s "$ADB_SERIAL" shell settings put system font_scale "$FONT_SCALE"
+  [[ "$($ADB -s "$ADB_SERIAL" shell settings get system font_scale | tr -d '\r')" == "$FONT_SCALE" ]] \
+    || { echo "error: Android font-scale setting did not apply" >&2; exit 1; }
+  "$ADB" -s "$ADB_SERIAL" shell am force-stop "$PACKAGE_NAME"
+  "$ADB" -s "$ADB_SERIAL" shell am start -W -S -n "$ACTIVITY" >"$EVIDENCE_DIR/lab-font-scale-start.txt"
+  grep -Fxq 'Status: ok' "$EVIDENCE_DIR/lab-font-scale-start.txt"
+  FONT_SCALE_PATH="$EVIDENCE_DIR/lab-font-scale-1.5.png"
+  capture_png lab-font-scale portrait "$FONT_SCALE_PATH" "$EVIDENCE_DIR/lab-font-scale.content-probe.json"
+  FONT_SCALE_SHA="$(shasum -a 256 "$FONT_SCALE_PATH" | awk '{print $1}')"
+  [[ "$FONT_SCALE_SHA" != "$BASE_LAB_SHA" ]] && FONT_SCALE_RASTER_CHANGED=true || FONT_SCALE_RASTER_CHANGED=false
+  hepta_android_restore_setting "$ADB" "$ADB_SERIAL" system font_scale "$ORIGINAL_FONT_SCALE"
+  [[ "$($ADB -s "$ADB_SERIAL" shell settings get system font_scale | tr -d '\r')" == "$ORIGINAL_FONT_SCALE" ]] \
+    || { echo "error: Android font-scale setting did not restore" >&2; exit 1; }
+
+  "$ADB" -s "$ADB_SERIAL" shell cmd battery reset >/dev/null
+  "$ADB" -s "$ADB_SERIAL" shell cmd power set-mode 0 >/dev/null
+  [[ "$($ADB -s "$ADB_SERIAL" shell settings get global low_power | tr -d '\r')" == 0 ]]
+  NORMAL_STARTUP_SAMPLES="$(cold_launch_samples normal)"
+  jq -e --argjson count "$LAB_STARTUP_SAMPLES" 'length == $count and all(.[]; .total_time_ms >= 0 and .total_time_ms <= 10000)' \
+    >/dev/null <<<"$NORMAL_STARTUP_SAMPLES"
+  "$ADB" -s "$ADB_SERIAL" shell cmd battery unplug >/dev/null
+  "$ADB" -s "$ADB_SERIAL" shell cmd battery set level 15 >/dev/null
+  "$ADB" -s "$ADB_SERIAL" shell cmd power set-mode 1 >/dev/null
+  [[ "$($ADB -s "$ADB_SERIAL" shell settings get global low_power | tr -d '\r')" == 1 ]] \
+    || { echo "error: Android emulator low-power simulation did not apply" >&2; exit 1; }
+  SIMULATED_BATTERY_STATE="$(hepta_android_battery_state_json "$ADB" "$ADB_SERIAL")"
+  jq -e '.level == 15' >/dev/null <<<"$SIMULATED_BATTERY_STATE"
+  LOW_POWER_STARTUP_SAMPLES="$(cold_launch_samples simulated-low-power)"
+  jq -e --argjson count "$LAB_STARTUP_SAMPLES" 'length == $count and all(.[]; .total_time_ms >= 0 and .total_time_ms <= 10000)' \
+    >/dev/null <<<"$LOW_POWER_STARTUP_SAMPLES"
+  LOW_POWER_PATH="$EVIDENCE_DIR/lab-simulated-low-power.png"
+  capture_png lab-simulated-low-power portrait "$LOW_POWER_PATH" "$EVIDENCE_DIR/lab-simulated-low-power.content-probe.json"
+
+  LAB_RESTORE_COMMAND_READY=true
+  LAB_RESTORE_READBACK_READY=true
+  restore_emulator_state || LAB_RESTORE_COMMAND_READY=false
+  android_emulator_state_readback_ready || LAB_RESTORE_READBACK_READY=false
+  if [[ "$LAB_RESTORE_COMMAND_READY" != true || "$LAB_RESTORE_READBACK_READY" != true ]]; then
+    write_android_cleanup_failure_receipt 1 "$LAB_RESTORE_COMMAND_READY" "$LAB_RESTORE_READBACK_READY" \
+      || echo "error: failed to write Android cleanup failure receipt" >&2
+    echo "error: Android extended-lab state restoration/readback failed" >&2
+    exit 1
+  fi
+
+  "$ADB" -s "$ADB_SERIAL" shell am force-stop "$PACKAGE_NAME"
+  "$ADB" -s "$ADB_SERIAL" shell am start -W -S -n "$ACTIVITY" >"$EVIDENCE_DIR/lab-restored-final-start.txt"
+  grep -Fxq 'Status: ok' "$EVIDENCE_DIR/lab-restored-final-start.txt"
+  APP_PID="$($ADB -s "$ADB_SERIAL" shell pidof "$PACKAGE_NAME" | tr -d '\r')"
+  PROCESS_START_TIME_TICKS="$($ADB -s "$ADB_SERIAL" shell cat "/proc/$APP_PID/stat" | tr -d '\r' | ruby -e '
+    text = STDIN.read.strip; match = text.match(/\A\d+ \(.*\) (.*)\z/); abort unless match
+    value = Integer(match[1].split.fetch(19), 10); abort unless value.positive?; puts value
+  ')"
+  app_foreground "$EVIDENCE_DIR/lab-restored-final.activity.txt"
+
+  LAB_RESULT="$(jq -n \
+    --arg rtl_path "$RTL_PATH" --arg rtl_sha "$RTL_SHA" --arg font_path "$FONT_SCALE_PATH" --arg font_sha "$FONT_SCALE_SHA" \
+    --arg low_power_path "$LOW_POWER_PATH" --arg font_scale "$FONT_SCALE" \
+    --arg original_rtl_raw "$ORIGINAL_FORCE_RTL" --arg original_rtl_effective "$EFFECTIVE_ORIGINAL_FORCE_RTL" \
+    --arg original_font_raw "$ORIGINAL_FONT_SCALE" --arg original_font_effective "$EFFECTIVE_ORIGINAL_FONT_SCALE" \
+    --argjson rtl_changed "$RTL_RASTER_CHANGED" --argjson font_changed "$FONT_SCALE_RASTER_CHANGED" \
+    --argjson normal_samples "$NORMAL_STARTUP_SAMPLES" --argjson normal_stats "$(startup_stats "$NORMAL_STARTUP_SAMPLES")" \
+    --argjson low_samples "$LOW_POWER_STARTUP_SAMPLES" --argjson low_stats "$(startup_stats "$LOW_POWER_STARTUP_SAMPLES")" \
+    --argjson simulated_battery "$SIMULATED_BATTERY_STATE" '
+      {
+        requested:true,status:"executed_with_product_claim_blockers",execution_ready:true,ready:false,state_restore_verified:true,
+        modes:{
+          rtl:{executed:true,original_setting:{raw:$original_rtl_raw,effective:$original_rtl_effective},force_rtl_readback:true,capture:{path:$rtl_path,sha256:$rtl_sha},raster_changed:$rtl_changed,ready:false},
+          font_scale:{executed:true,original_setting:{raw:$original_font_raw,effective:$original_font_effective},requested_scale:($font_scale|tonumber),setting_readback_ready:true,capture:{path:$font_path,sha256:$font_sha},raster_changed:$font_changed,ready:false},
+          rotation_ime:{executed:true,scope:"unauthenticated_login_surface",portrait_landscape_portrait:true,ime_targeted_at_hepta:true,ready:true,generic_app_wide_ready:false},
+          startup_performance:{executed:true,scope:"am_start_total_time_on_unauthenticated_emulator",normal:{samples:$normal_samples,statistics:$normal_stats},ready:true},
+          low_power:{executed:true,simulation_backend:"adb_cmd_battery_plus_cmd_power",emulator_only:true,real_low_power_qualification:false,battery_state:$simulated_battery,artifact:$low_power_path,startup:{samples:$low_samples,statistics:$low_stats},ready:false}
+        },
+        claims:{android_rtl_ready:false,android_dynamic_type_ready:false,android_safe_area_ready:false,android_rotation_ready:false,android_ime_ready:false,android_low_power_performance_ready:false,android_real_device_ready:false,talkback_ready:false},
+        blockers:[
+          {code:"android_rtl_semantic_layout_verification_missing",requires:"semantic mirrored layout and interaction evidence",observed:{force_rtl:true,raster_changed:$rtl_changed}},
+          {code:"android_font_scale_semantic_response_verification_missing",requires:"accessible text reflow and interaction evidence",observed:{font_scale:($font_scale|tonumber),raster_changed:$font_changed}},
+          {code:"android_generic_safe_area_rotation_ime_scope_missing",requires:"authenticated app-wide coverage",observed:{unauthenticated_login_rotation_ime:true}},
+          {code:"android_real_device_low_power_performance_receipt_missing",requires:"physical-device effective low-power evidence",observed:{emulator_power_simulation_only:true}},
+          {code:"android_real_device_receipt_missing",requires:"explicit physical-device lab receipt",observed:false},
+          {code:"talkback_receipt_missing",requires:"real provider/action roundtrip on selected device",observed:false}
+        ],
+        forbidden_actions_performed:{credential_supply:false,real_device_contact:false,account_connection:false,sdk_or_runtime_download:false,avd_create_or_boot:false,release_sign:false,upload:false},
+        external_side_effects_performed:false
+      }
+    ')"
+fi
+
 PORTRAIT_SHA256="$(shasum -a 256 "$PORTRAIT_PATH" | awk '{print $1}')"
 LANDSCAPE_SHA256="$(shasum -a 256 "$LANDSCAPE_PATH" | awk '{print $1}')"
 IME_SHA256="$(shasum -a 256 "$IME_PATH" | awk '{print $1}')"
@@ -663,6 +861,7 @@ LANDSCAPE_TEMPLATE_PROBE="$(jq --arg path "$LANDSCAPE_TEMPLATE_REPORT_PATH" '. +
 IME_TEMPLATE_PROBE="$(jq --arg path "$IME_TEMPLATE_REPORT_PATH" '. + {evidence_path:$path}' "$IME_TEMPLATE_REPORT_PATH")"
 LOGIN_TEMPLATE_MANIFEST_SHA256="$(shasum -a 256 "$LOGIN_TEMPLATE_MANIFEST" | awk '{print $1}')"
 HOST_OS="macOS $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
+REPORT_TEMP="$(mktemp "$(dirname "$REPORT_PATH")/.hepta-android-emulator-smoke.XXXXXX")"
 
 jq -n \
   --arg captured_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -765,7 +964,7 @@ jq -n \
   --argjson toolchain "$TOOLCHAIN_REPORT" \
   --arg login_template_manifest "$LOGIN_TEMPLATE_MANIFEST" \
   --arg login_template_manifest_sha256 "$LOGIN_TEMPLATE_MANIFEST_SHA256" \
-  --arg evidence_root "$EVIDENCE_DIR" '
+  --arg evidence_root "$EVIDENCE_DIR" --argjson extended_lab "$LAB_RESULT" '
     {
       schema_version:3,
       kind:"hepta-native-android-emulator-smoke-receipt",
@@ -830,6 +1029,7 @@ jq -n \
       },
       uiautomator:{xml_ready:true,path:$uiautomator_path,sha256:$uiautomator_sha256,node_count:$node_count,visible_node_count:$visible_node_count,package_node_count:$package_node_count,labeled_node_count:$labeled_node_count,semantic_accessibility_ready:false,talkback_ready:false},
       accessibility:{android_accessibility_enabled:($accessibility_enabled == "1"),enabled_services:(if $accessibility_services == "null" then null else $accessibility_services end),semantic_accessibility_ready:false,talkback_ready:false},
+      extended_lab:$extended_lab,
       claims:{
         android_arm64_debug_apk_installable:true,android_emulator_environment_ready:true,android_emulator_runtime_ready:true,
         android_emulator_login_surface_visual_ready:true,android_login_rotation_ready:true,android_login_ime_ready:true,
@@ -840,13 +1040,20 @@ jq -n \
       },
       hard_boundaries:{
         accessibility_verified:false,talkback_verified:false,real_device_verified:false,secure_credential_backend_verified:false,
-        authenticated_matrix_workflow_verified:false,post_login_raster_media_verified:false,release_signed:false,public_distribution_ready:false
+        authenticated_matrix_workflow_verified:false,post_login_raster_media_verified:false,effective_low_power_performance_verified:false,release_signed:false,public_distribution_ready:false
       },
-      local_emulator_side_effects:{old_package_removed:true,apk_installed:true,app_launched:true,orientation_changed_temporarily:true,ime_shown:true,screenshots_captured:true,session_probe_written:true},
-      forbidden_actions_performed:{sdk_or_runtime_download:false,avd_create_or_boot:false,credential_supply:false,real_device_contact:false,release_sign:false,upload:false},
+      device_lab:{
+        real_device_selected:false,talkback_session_selected:false,
+        blockers:[
+          {code:"android_real_device_receipt_missing",claim:"android_real_device_ready",observed:false},
+          {code:"talkback_receipt_missing",claim:"talkback_ready",observed:false}
+        ]
+      },
+      local_emulator_side_effects:{old_package_removed:true,apk_installed:true,app_launched:true,orientation_changed_temporarily:true,ime_shown:true,screenshots_captured:true,session_probe_written:true,extended_lab_requested:$extended_lab.requested,power_state_simulated_temporarily:($extended_lab.requested == true)},
+      forbidden_actions_performed:{sdk_or_runtime_download:false,avd_create_or_boot:false,credential_supply:false,real_device_contact:false,account_connection:false,release_sign:false,upload:false},
       evidence:{root:$evidence_root}
     }
-  ' >"$REPORT_PATH"
+  ' >"$REPORT_TEMP"
 jq -e '
   .schema_version == 3
   and .kind == "hepta-native-android-emulator-smoke-receipt"
@@ -855,10 +1062,21 @@ jq -e '
   and .ready == true
   and (.hard_boundaries | to_entries | all(.value == false))
   and (.forbidden_actions_performed | to_entries | all(.value == false))
-' "$REPORT_PATH" >/dev/null
+' "$REPORT_TEMP" >/dev/null
 
-trap - EXIT
-restore_emulator_state
+FINAL_RESTORE_COMMAND_READY=true
+FINAL_RESTORE_READBACK_READY=true
+restore_emulator_state || FINAL_RESTORE_COMMAND_READY=false
+android_emulator_state_readback_ready || FINAL_RESTORE_READBACK_READY=false
+if [[ "$FINAL_RESTORE_COMMAND_READY" != true || "$FINAL_RESTORE_READBACK_READY" != true ]]; then
+  write_android_cleanup_failure_receipt 1 "$FINAL_RESTORE_COMMAND_READY" "$FINAL_RESTORE_READBACK_READY" \
+    || echo "error: failed to write Android cleanup failure receipt" >&2
+  echo "error: Android final state restoration/readback failed" >&2
+  exit 1
+fi
+trap - EXIT HUP INT TERM
+mv -f -- "$REPORT_TEMP" "$REPORT_PATH"
+REPORT_TEMP=""
 echo "==> Android ARM64 emulator smoke verified for current source $SOURCE_HEAD"
 echo "==> Receipt: $REPORT_PATH"
 echo "==> APK:     $APK_PATH"

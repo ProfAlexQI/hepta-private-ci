@@ -6,9 +6,49 @@ cd "$ROOT_DIR"
 
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ios-ui-qualification-self-test.XXXXXX")"
 trap 'rm -rf "$TEST_DIR"' EXIT
+source scripts/hepta-native-mobile-lab-cleanup-v1.sh
 
+bash -n scripts/hepta-native-ios-simulator-ui-qualification.sh scripts/hepta-native-mobile-lab-cleanup-v1.sh
 scripts/hepta-ios-login-ui-probe --help >/dev/null
 scripts/hepta-native-ios-simulator-ui-qualification.sh --help >/dev/null
+scripts/hepta-native-ios-simulator-ui-qualification.sh --lab-contract-only >"$TEST_DIR/lab-contract.json"
+jq -e '
+  .kind == "hepta-native-ios-simulator-extended-lab-source-contract"
+  and .ready == true
+  and .opt_in == true
+  and (.modes | to_entries | all(.value == true))
+  and .state_contract.snapshot_before_mutation == true
+  and .state_contract.raw_orientation_snapshot == true
+  and .state_contract.orientation_snapshot_backend == "simulator_ax_menu_mark"
+  and .state_contract.restore_to_raw_orientation == true
+  and .state_contract.exact_orientation_readback == true
+  and .state_contract.snapshot_failure_rejected_before_mutation == true
+  and .state_contract.restore_and_readback_before_receipt == true
+  and .state_contract.restore_failure_fails_closed == true
+  and .state_contract.exit_cleanup_preserves_original_status == true
+  and .state_contract.interrupt_cleanup_restore_and_readback == true
+  and .state_contract.cleanup_failure_receipt == true
+  and .claim_boundaries.simulator_only == true
+  and .claim_boundaries.generic_app_wide == false
+  and .claim_boundaries.real_device == false
+  and .claim_boundaries.voiceover == false
+  and .claim_boundaries.effective_low_power == false
+  and (.forbidden_actions | to_entries | all(.value == false))
+' "$TEST_DIR/lab-contract.json" >/dev/null
+
+[[ "$(hepta_mobile_cleanup_final_exit_code 37 true true)" == 37 ]]
+[[ "$(hepta_mobile_cleanup_final_exit_code 130 false false)" == 130 ]]
+[[ "$(hepta_mobile_cleanup_final_exit_code 0 true false)" == 1 ]]
+IOS_CLEANUP_FAILURE="$(hepta_mobile_cleanup_failure_json ios_simulator scripts/hepta-native-ios-simulator-ui-qualification.sh 130 false false)"
+jq -e '
+  .kind == "hepta-native-mobile-lab-cleanup-failure-receipt"
+  and .status == "not_ready" and .ready == false
+  and .original_exit_code == 130 and .final_exit_code == 130
+  and .local_device_state_mutation_performed == true
+  and .local_device_state_may_remain_mutated == true
+  and (.blockers | map(.code) | index("ios_simulator_state_restore_command_failed") != null)
+  and (.blockers | map(.code) | index("ios_simulator_state_restore_readback_mismatch") != null)
+' >/dev/null <<<"$IOS_CLEANUP_FAILURE"
 
 ruby -e '
   width = 640
@@ -105,6 +145,25 @@ for needle in \
   'ios_simulator_login_safe_area_ready:true' \
   'generic_software_keyboard_ready:false' \
   'generic_safe_area_ready:false' \
+  '--extended-lab' \
+  "--path 'Device > Orientation > Landscape Right'" \
+  'xcrun simctl ui "$UDID" content_size "$DYNAMIC_TYPE_SIZE"' \
+  'restore_ios_lab_state' \
+  'AXMenuItemMarkChar' \
+  'ORIGINAL_ORIENTATION="$(simulator_orientation)"' \
+  '--path "Device > Orientation > $ORIGINAL_ORIENTATION"' \
+  'wait_for_simulator_orientation "$ORIGINAL_ORIENTATION"' \
+  'RESTORED_ORIENTATION="$(simulator_orientation)"' \
+  'ios_lab_state_readback_ready' \
+  'write_ios_cleanup_failure_receipt' \
+  'hepta_mobile_cleanup_final_exit_code "$original_exit"' \
+  "trap 'exit 130' INT" \
+  'Simulator extended-lab state restoration failed' \
+  'ios_simulator_effective_low_power_mode_unsupported' \
+  'effective_low_power_mode:false' \
+  'ios_real_device_receipt_missing' \
+  'voiceover_receipt_missing' \
+  'account_connection:false' \
   'credential_supply:false' \
   'real_device_contact:false' \
   'code_sign:false' \
@@ -115,7 +174,23 @@ for needle in \
   }
 done
 
-if rg -n 'security add-generic-password|xcodebuild -allowProvisioningUpdates|notarytool|stapler|curl .*upload|HEPTA_.*PASSWORD' \
+if grep -Fq 'restore_ios_lab_state || true' scripts/hepta-native-ios-simulator-ui-qualification.sh; then
+  echo "iOS cleanup still swallows state restoration failure" >&2
+  exit 1
+fi
+
+ruby -e '
+  source = File.read(ARGV.fetch(0))
+  snapshot = source.index(%q{ORIGINAL_ORIENTATION="$(simulator_orientation)"}) or abort "orientation snapshot missing"
+  mutation = source.index("LAB_STATE_MUTATED=true", snapshot) or abort "lab mutation missing"
+  orientation_flag = source.index("LAB_ORIENTATION_MUTATED=true", snapshot) or abort "orientation mutation flag missing"
+  landscape_click = source.index(%q{--path '\''Device > Orientation > Landscape Right'\''}, orientation_flag) or abort "landscape mutation missing"
+  readback = source.index(%q{RESTORED_ORIENTATION="$(simulator_orientation)"}, landscape_click) or abort "orientation readback missing"
+  cleared = source.index("LAB_STATE_MUTATED=false", readback) or abort "restore success flag missing"
+  abort "iOS lab state ordering is not fail-closed" unless snapshot < mutation && orientation_flag < landscape_click && readback < cleared
+' scripts/hepta-native-ios-simulator-ui-qualification.sh
+
+if rg -n 'security add-generic-password|xcodebuild -allowProvisioningUpdates|notarytool|stapler|curl .*upload|HEPTA_.*PASSWORD|xctrace list devices' \
     scripts/hepta-native-ios-simulator-ui-qualification.sh >/dev/null; then
   echo "iOS UI qualification contains forbidden credential/sign/upload behavior" >&2
   exit 1

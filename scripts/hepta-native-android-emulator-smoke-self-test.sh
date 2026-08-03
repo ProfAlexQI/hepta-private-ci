@@ -11,12 +11,92 @@ PRODUCER="scripts/hepta-native-android-emulator-smoke.sh"
 PROBE="scripts/hepta-android-login-template-probe"
 ORIENTATION_PROBE="scripts/hepta-android-window-orientation-probe"
 HEADLESS_AVD_PROCESS_PROBE="scripts/hepta-android-headless-avd-process-probe"
+STATE_HELPER="scripts/hepta-native-android-emulator-lab-state-v1.sh"
+CLEANUP_HELPER="scripts/hepta-native-mobile-lab-cleanup-v1.sh"
 TEMPLATE_DIR="apps/hepta-native/packaging/android-emulator-login-template-v1"
 MANIFEST="$TEMPLATE_DIR/manifest.json"
 
-bash -n "$PRODUCER" "$PROBE" scripts/hepta-native-mobile-readiness-gate.sh
+bash -n "$PRODUCER" "$PROBE" "$STATE_HELPER" "$CLEANUP_HELPER" scripts/hepta-native-mobile-readiness-gate.sh
 ruby -c "$ORIENTATION_PROBE" >/dev/null
 ruby -c "$HEADLESS_AVD_PROCESS_PROBE" >/dev/null
+source "$STATE_HELPER"
+source "$CLEANUP_HELPER"
+
+[[ "$(hepta_mobile_cleanup_final_exit_code 29 true true)" == 29 ]]
+[[ "$(hepta_mobile_cleanup_final_exit_code 143 true false)" == 143 ]]
+[[ "$(hepta_mobile_cleanup_final_exit_code 0 false true)" == 1 ]]
+ANDROID_CLEANUP_FAILURE="$(hepta_mobile_cleanup_failure_json android_emulator "$PRODUCER" 0 false true)"
+jq -e '
+  .kind == "hepta-native-mobile-lab-cleanup-failure-receipt"
+  and .status == "not_ready" and .ready == false
+  and .original_exit_code == 0 and .final_exit_code == 1
+  and .local_device_state_mutation_performed == true
+  and .local_device_state_may_remain_mutated == true
+  and (.blockers | map(.code)) == ["android_emulator_state_restore_command_failed"]
+' >/dev/null <<<"$ANDROID_CLEANUP_FAILURE"
+
+NONDEFAULT_STATE='{"accelerometer_rotation":"0","user_rotation":"3","font_scale":"null","force_rtl":"null","low_power":"1","battery":{"ac":true,"counter":10000,"dock":false,"health":2,"level":100,"present":true,"scale":100,"status":2,"temp":250,"updates_stopped":false,"usb":false,"wireless":false}}'
+hepta_android_emulator_lab_state_ready "$NONDEFAULT_STATE"
+[[ "$(hepta_android_battery_restore_plan "$(jq -c '.battery' <<<"$NONDEFAULT_STATE")")" == reset ]]
+FROZEN_STATE="$(jq -c '.battery.updates_stopped=true | .battery.level=15' <<<"$NONDEFAULT_STATE")"
+if hepta_android_emulator_lab_state_ready "$FROZEN_STATE"; then
+  echo "Android lab state accepted an unrestorable frozen battery snapshot" >&2
+  exit 1
+fi
+if hepta_android_battery_restore_plan "$(jq -c '.battery' <<<"$FROZEN_STATE")" >/dev/null 2>&1; then
+  echo "Android lab planned a partial frozen battery restoration" >&2
+  exit 1
+fi
+if hepta_android_emulator_lab_state_ready "$(jq 'del(.battery.counter)' <<<"$NONDEFAULT_STATE")"; then
+  echo "Android lab state accepted an incomplete battery snapshot" >&2
+  exit 1
+fi
+FAKE_RESTORE_ADB="$TEST_DIR/fake-restore-adb"
+RESTORE_LOG="$TEST_DIR/restore.log"
+printf '%s\n' '#!/usr/bin/env bash' "printf '%s\\n' \"\$*\" >>$(printf %q "$RESTORE_LOG")" '[[ "$*" != *"settings delete system font_scale"* ]]' >"$FAKE_RESTORE_ADB"
+chmod 0755 "$FAKE_RESTORE_ADB"
+if hepta_android_emulator_lab_state_restore "$FAKE_RESTORE_ADB" emulator-5554 "$NONDEFAULT_STATE"; then
+  echo "Android lab restore ignored a raw-setting restore failure" >&2
+  exit 1
+fi
+grep -Fq 'settings put system user_rotation 3' "$RESTORE_LOG"
+grep -Fq 'settings delete system font_scale' "$RESTORE_LOG"
+grep -Fq 'settings delete global debug.force_rtl' "$RESTORE_LOG"
+grep -Fq 'battery reset' "$RESTORE_LOG"
+grep -Fq 'power set-mode 1' "$RESTORE_LOG"
+: >"$RESTORE_LOG"
+if hepta_android_emulator_lab_state_restore "$FAKE_RESTORE_ADB" emulator-5554 "$FROZEN_STATE"; then
+  echo "Android lab restore accepted an unrestorable frozen state" >&2
+  exit 1
+fi
+[[ ! -s "$RESTORE_LOG" ]] || { echo "Android lab touched adb before rejecting frozen state" >&2; exit 1; }
+
+FAKE_SNAPSHOT_ADB="$TEST_DIR/fake-snapshot-adb"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'case "$*" in' \
+  '  *"settings get system accelerometer_rotation") echo 0 ;;' \
+  '  *"settings get system user_rotation") echo 3 ;;' \
+  '  *"settings get system font_scale"|*"settings get global debug.force_rtl") echo null ;;' \
+  '  *"settings get global low_power") echo 1 ;;' \
+  "  *\"dumpsys battery\") printf '%s\\n' 'Current Battery Service state:' '  AC powered: true' '  USB powered: false' '  Wireless powered: false' '  Dock powered: false' '  Charge counter: 10000' '  status: 2' '  health: 2' '  present: true' '  level: 100' '  scale: 100' '  temperature: 250' ;;" \
+  'esac' >"$FAKE_SNAPSHOT_ADB"
+chmod 0755 "$FAKE_SNAPSHOT_ADB"
+RAW_SNAPSHOT="$(hepta_android_emulator_lab_state_snapshot "$FAKE_SNAPSHOT_ADB" emulator-5554)"
+jq -e '.font_scale == "null" and .force_rtl == "null" and .battery.updates_stopped == false' >/dev/null <<<"$RAW_SNAPSHOT"
+
+FAKE_ABSENCE_ADB="$TEST_DIR/fake-absence-adb"
+ABSENCE_DELETE_COUNT="$TEST_DIR/absence-delete-count"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  "state=$(printf %q "$ABSENCE_DELETE_COUNT")" \
+  'case "$*" in' \
+  '  *"settings delete system font_scale") count=0; [[ ! -f "$state" ]] || count="$(<"$state")"; printf "%s\n" "$((count + 1))" >"$state" ;;' \
+  '  *"settings get system font_scale") count=0; [[ ! -f "$state" ]] || count="$(<"$state")"; if (( count < 2 )); then echo 1.0; else echo null; fi ;;' \
+  'esac' >"$FAKE_ABSENCE_ADB"
+chmod 0755 "$FAKE_ABSENCE_ADB"
+hepta_android_restore_setting "$FAKE_ABSENCE_ADB" emulator-5554 system font_scale null
+[[ "$(<"$ABSENCE_DELETE_COUNT")" == 2 ]]
 
 # A wrapper command can contain the complete emulator invocation. Only the
 # process whose executable identity is the pinned QEMU binary may be accepted.
@@ -107,6 +187,14 @@ jq -e '
   and .receipt.schema_version == 3
   and .receipt.kind == "hepta-native-android-emulator-smoke-receipt"
   and (.requirements | to_entries | all(.value == true))
+  and .requirements.extended_lab_opt_in == true
+  and .requirements.extended_lab_state_snapshot_restore_readback == true
+  and .requirements.extended_lab_raw_setting_absence_restore == true
+  and .requirements.extended_lab_unrestorable_frozen_battery_rejected_before_mutation == true
+  and .requirements.exit_cleanup_preserves_original_status == true
+  and .requirements.interrupt_cleanup_restore_and_readback == true
+  and .requirements.cleanup_failure_receipt == true
+  and .requirements.emulator_only_power_simulation_never_real_device_claim == true
   and (.hard_boundaries | to_entries | all(.value == false))
   and (.forbidden_actions | to_entries | all(.value == false))
   and .external_side_effects_performed == false
@@ -226,6 +314,7 @@ if HEPTA_ANDROID_SMOKE_FORCE_DIRTY_SELF_TEST=1 \
     --output "$TEST_DIR/dirty/report.json" \
     --evidence-dir "$TEST_DIR/dirty/evidence" \
     --target-dir "$TEST_DIR/dirty/target" \
+    --extended-lab \
     >"$TEST_DIR/dirty.stdout" 2>"$TEST_DIR/dirty.stderr"; then
   echo "forced-dirty producer run unexpectedly succeeded" >&2
   exit 1
@@ -290,6 +379,36 @@ receipt_predicate() {
 }
 receipt_predicate "$TEST_DIR/receipt-valid.json"
 
+jq '.extended_lab = {
+  requested:true,status:"executed_with_product_claim_blockers",execution_ready:true,ready:false,state_restore_verified:true,
+  modes:{
+    rtl:{executed:true,force_rtl_readback:true,ready:false},
+    font_scale:{executed:true,setting_readback_ready:true,ready:false},
+    rotation_ime:{executed:true,scope:"unauthenticated_login_surface",generic_app_wide_ready:false},
+    startup_performance:{executed:true,ready:true},
+    low_power:{executed:true,emulator_only:true,real_low_power_qualification:false,ready:false}
+  },
+  claims:{android_rtl_ready:false,android_dynamic_type_ready:false,android_safe_area_ready:false,android_rotation_ready:false,android_ime_ready:false,android_low_power_performance_ready:false,android_real_device_ready:false,talkback_ready:false},
+  blockers:[
+    {code:"android_real_device_low_power_performance_receipt_missing"},
+    {code:"android_real_device_receipt_missing"},
+    {code:"talkback_receipt_missing"}
+  ],
+  forbidden_actions_performed:{credential_supply:false,real_device_contact:false,account_connection:false,sdk_or_runtime_download:false,avd_create_or_boot:false,release_sign:false,upload:false}
+}' "$TEST_DIR/receipt-valid.json" >"$TEST_DIR/receipt-extended-valid.json"
+receipt_predicate "$TEST_DIR/receipt-extended-valid.json"
+for filter in \
+  '.extended_lab.state_restore_verified = false' \
+  '.extended_lab.modes.low_power.real_low_power_qualification = true' \
+  '.extended_lab.claims.android_low_power_performance_ready = true' \
+  '.extended_lab.blockers = []'; do
+  jq "$filter" "$TEST_DIR/receipt-extended-valid.json" >"$TEST_DIR/receipt-extended-invalid.json"
+  if receipt_predicate "$TEST_DIR/receipt-extended-invalid.json"; then
+    echo "consumer predicate accepted invalid extended-lab receipt: $filter" >&2
+    exit 1
+  fi
+done
+
 expect_receipt_failure() {
   local label="$1" filter="$2"
   jq "$filter" "$TEST_DIR/receipt-valid.json" >"$TEST_DIR/receipt-$label.json"
@@ -331,6 +450,26 @@ grep -Fq 'trusted_live_readback_failed' scripts/hepta-native-mobile-readiness-ga
 grep -Fq 'FINAL_BOOT_ID' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'FINAL_QEMU_AVD_NAME' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'process_start_time_ticks' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq -- '--extended-lab' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'restore_emulator_state || LAB_RESTORE_COMMAND_READY=false' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'cmd battery reset' "$STATE_HELPER"
+grep -Fq 'frozen battery state is not exactly restorable' "$STATE_HELPER"
+grep -Fq 'Android extended-lab rejects unreadable or frozen original battery state before mutation' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'trap android_cleanup EXIT' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'android_emulator_state_readback_ready' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'write_android_cleanup_failure_receipt' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'hepta_mobile_cleanup_final_exit_code "$original_exit"' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'REPORT_TEMP="$(mktemp ' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'real_low_power_qualification:false' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'android_real_device_receipt_missing' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'talkback_receipt_missing' scripts/hepta-native-android-emulator-smoke.sh
+ruby -e '
+  source = File.read(ARGV.fetch(0))
+  snapshot = source.index(%q{EMULATOR_STATE_SNAPSHOT="$(hepta_android_emulator_lab_state_snapshot}) or abort "lab snapshot missing"
+  rejection = source.index("hepta_android_emulator_lab_state_ready", snapshot) or abort "lab rejection missing"
+  mutation = source.index(%q{shell settings put system accelerometer_rotation 0}, rejection) or abort "first emulator mutation missing"
+  abort "frozen battery rejection is not before mutation" unless snapshot < rejection && rejection < mutation
+' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'grep -Fq "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD"' scripts/hepta-native-android-emulator-smoke.sh
 if grep -Fq 'grep -Fxq "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD"' scripts/hepta-native-android-emulator-smoke.sh; then
   echo "Android producer requires the embedded HEAD URL to occupy a whole strings(1) line" >&2
