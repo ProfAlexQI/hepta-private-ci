@@ -1,5 +1,6 @@
-use std::ops::Not;
+use std::{collections::BTreeSet, ops::Not};
 
+use accesskit::{Action as AccessibilityAction, ActionData, ActionRequest, TreeId};
 use makepad_widgets::*;
 use url::Url;
 
@@ -399,6 +400,8 @@ pub struct LoginScreen {
     #[rust] sso_pending: bool,
     /// The URL to redirect to after logging in with SSO.
     #[rust] sso_redirect_url: Option<String>,
+    /// Mirrors the modal button's product state for the semantic tree.
+    #[rust] modal_button_enabled: bool,
 }
 
 
@@ -409,7 +412,17 @@ impl Widget for LoginScreen {
     }
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
-        self.view.draw_walk(cx, scope, walk)
+        let step = self.view.draw_walk(cx, scope, walk);
+        if step.is_done() {
+            crate::accessibility::publish_login_tree(
+                cx,
+                &self.view,
+                self.password_visible,
+                self.sso_pending,
+                self.modal_button_enabled,
+            );
+        }
+        step
     }
 }
 
@@ -427,7 +440,69 @@ impl MatchEvent for LoginScreen {
         // Handle toggling password visibility
         let show_pw_button = self.view.button(cx, ids!(show_password_button));
         let hide_pw_button = self.view.button(cx, ids!(hide_password_button));
-        if show_pw_button.clicked(actions) || hide_pw_button.clicked(actions) {
+        let mut accessibility_clicks = BTreeSet::new();
+        for request in actions
+            .iter()
+            .filter_map(|action| action.downcast_ref::<ActionRequest>())
+            .filter(|request| request.target_tree == TreeId::ROOT)
+        {
+            let target = u64::from(request.target_node);
+            match request.action {
+                AccessibilityAction::Focus => match target {
+                    3 => user_id_input.set_key_focus(cx),
+                    4 => password_input.set_key_focus(cx),
+                    5 => homeserver_input.set_key_focus(cx),
+                    6 => {
+                        if self.password_visible {
+                            hide_pw_button.set_key_focus(cx);
+                        } else {
+                            show_pw_button.set_key_focus(cx);
+                        }
+                    }
+                    7 => login_button.set_key_focus(cx),
+                    8..=13 => {
+                        let button_id = match target {
+                            8 => ids!(apple_button),
+                            9 => ids!(facebook_button),
+                            10 => ids!(github_button),
+                            11 => ids!(gitlab_button),
+                            12 => ids!(google_button),
+                            _ => ids!(twitter_button),
+                        };
+                        self.view.view(cx, button_id).set_key_focus(cx);
+                    }
+                    14 => signup_button.set_key_focus(cx),
+                    103 if self.modal_button_enabled => {
+                        login_status_modal_content.button_ref(cx).set_key_focus(cx)
+                    }
+                    _ => {}
+                },
+                AccessibilityAction::SetValue => {
+                    let Some(ActionData::Value(value)) = request.data.as_ref() else {
+                        continue;
+                    };
+                    match target {
+                        3 => user_id_input.set_text(cx, value),
+                        4 => password_input.set_text(cx, value),
+                        5 => homeserver_input.set_text(cx, value),
+                        _ => {}
+                    }
+                }
+                AccessibilityAction::Click => {
+                    if matches!(target, 6..=14)
+                        || (target == 103 && self.modal_button_enabled)
+                    {
+                        accessibility_clicks.insert(target);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if show_pw_button.clicked(actions)
+            || hide_pw_button.clicked(actions)
+            || accessibility_clicks.contains(&6)
+        {
             self.password_visible = !self.password_visible;
             password_input.toggle_is_password(cx);
             show_pw_button.set_visible(cx, !self.password_visible);
@@ -436,12 +511,13 @@ impl MatchEvent for LoginScreen {
             self.redraw(cx);
         }
 
-        if signup_button.clicked(actions) {
+        if signup_button.clicked(actions) || accessibility_clicks.contains(&14) {
             log!("Opening URL \"{}\"", MATRIX_SIGN_UP_URL);
             let _ = robius_open::Uri::new(MATRIX_SIGN_UP_URL).open();
         }
 
         if login_button.clicked(actions)
+            || accessibility_clicks.contains(&7)
             || user_id_input.returned(actions).is_some()
             || password_input.returned(actions).is_some()
             || homeserver_input.returned(actions).is_some()
@@ -467,6 +543,8 @@ impl MatchEvent for LoginScreen {
                     homeserver: homeserver.is_empty().not().then_some(homeserver),
                 })));
             }
+            self.modal_button_enabled = true;
+            login_status_modal_content.button_ref(cx).set_enabled(cx, true);
             login_status_modal.open(cx);
             self.redraw(cx);
         }
@@ -499,6 +577,7 @@ impl MatchEvent for LoginScreen {
                     let login_status_modal_button = login_status_modal_content.button_ref(cx);
                     login_status_modal_button.set_text(cx, "Cancel");
                     login_status_modal_button.set_enabled(cx, false); // Login cancel not yet supported
+                    self.modal_button_enabled = false;
                     login_status_modal.open(cx);
                 }
                 Some(LoginAction::Status { title, status }) => {
@@ -507,6 +586,7 @@ impl MatchEvent for LoginScreen {
                     let login_status_modal_button = login_status_modal_content.button_ref(cx);
                     login_status_modal_button.set_text(cx, "Cancel");
                     login_status_modal_button.set_enabled(cx, true);
+                    self.modal_button_enabled = true;
                     login_status_modal.open(cx);
                     self.redraw(cx);
                 }
@@ -525,6 +605,7 @@ impl MatchEvent for LoginScreen {
                     let login_status_modal_button = login_status_modal_content.button_ref(cx);
                     login_status_modal_button.set_text(cx, "Okay");
                     login_status_modal_button.set_enabled(cx, true);
+                    self.modal_button_enabled = true;
                     login_status_modal.open(cx);
                     self.redraw(cx);
                 }
@@ -544,10 +625,14 @@ impl MatchEvent for LoginScreen {
             }
         }
 
+        if accessibility_clicks.contains(&103) {
+            login_status_modal.close(cx);
+        }
+
         // If the Login SSO screen's "cancel" button was clicked, send a http request to gracefully shutdown the SSO server
         if let Some(sso_redirect_url) = &self.sso_redirect_url {
             let login_status_modal_button = login_status_modal_content.button_ref(cx);
-            if login_status_modal_button.clicked(actions) {
+            if login_status_modal_button.clicked(actions) || accessibility_clicks.contains(&103) {
                 let request_id = id!(SSO_CANCEL_BUTTON);
                 let request = HttpRequest::new(format!("{}/?login_token=",sso_redirect_url), HttpMethod::GET);
                 cx.http_request(request_id, request);
@@ -561,14 +646,17 @@ impl MatchEvent for LoginScreen {
         #[cfg(target_os = "ios")]
         if self.sso_pending {
             let login_status_modal_button = login_status_modal_content.button_ref(cx);
-            if login_status_modal_button.clicked(actions) {
+            if login_status_modal_button.clicked(actions) || accessibility_clicks.contains(&103) {
                 crate::sliding_sync::cancel_active_sso_auth_session();
             }
         }
 
         // Handle any of the SSO login buttons being clicked
-        for (view_ref, brand) in self.view_set(cx, button_set).iter().zip(&provider_brands) {
-            if view_ref.finger_up(actions).is_some() && !self.sso_pending {
+        for (index, (view_ref, brand)) in self.view_set(cx, button_set).iter().zip(&provider_brands).enumerate() {
+            if (view_ref.finger_up(actions).is_some()
+                || accessibility_clicks.contains(&(index as u64 + 8)))
+                && !self.sso_pending
+            {
                 submit_async_request(MatrixRequest::SpawnSSOServer{
                     identity_provider_id: format!("oidc-{}",brand),
                     brand: brand.to_string(),

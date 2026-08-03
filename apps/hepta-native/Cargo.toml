@@ -37,6 +37,7 @@ robius-use-makepad = "0.1.1" ## auto-configures all `robius-*` crates to work wi
 
 
 anyhow = "1.0"
+accesskit = "0.24.1"
 codex-keyring-store = { path = "../../codex-rs/keyring-store" }
 bitflags = "2.6.0"
 blake3 = "1.8"

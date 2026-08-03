@@ -399,8 +399,8 @@ impl MatchEvent for App {
                 Some(AppStateAction::UpgradedInviteToJoinedRoom(room_id)) => {
                     if let Some(selected_room) = self.app_state.selected_room.as_mut() {
                         let did_upgrade = selected_room.upgrade_invite_to_joined(room_id);
-                        // Updating the AppState's selected room and issuing a redraw
-                        // will cause the MainMobileUI to redraw the newly-joined room.
+                        // The authoritative HomeScreen owns both desktop and mobile
+                        // routes, so one redraw updates whichever route is visible.
                         if did_upgrade {
                             self.ui.redraw(cx);
                         }
@@ -822,6 +822,7 @@ impl App {
                 self.persist_runtime_state(cx, "pause");
             }
             Event::Resume => {
+                crate::accessibility::reset_cache();
                 if !self.lifecycle.is_active {
                     log!("App resumed.");
                     self.lifecycle.is_active = true;
@@ -842,6 +843,7 @@ impl App {
                     self.persist_runtime_state(cx, "main window close request");
                 }
             Event::Foreground => {
+                crate::accessibility::reset_cache();
                 if !self.lifecycle.is_foreground {
                     log!("App entered foreground; starting Matrix sync.");
                     self.lifecycle.is_foreground = true;
@@ -920,6 +922,7 @@ impl App {
     fn update_login_visibility(&self, cx: &mut Cx) {
         let show_login = !self.app_state.logged_in;
         if !show_login {
+            crate::accessibility::clear(cx, self.ui.area());
             self.ui
                 .modal(cx, ids!(login_screen_view.login_screen.login_status_modal))
                 .close(cx);

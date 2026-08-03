@@ -80,7 +80,7 @@ Important source files:
 src/app.rs
 src/sliding_sync.rs
 src/home/main_desktop_ui.rs
-src/home/main_mobile_ui.rs
+src/home/main_mobile_ui.rs  # historical upstream source; retired from the current Hepta tree
 src/home/room_screen.rs
 src/home/rooms_list.rs
 src/home/rooms_sidebar.rs
@@ -372,9 +372,9 @@ Desktop-specific modifications:
 
 ## 8. Mobile shell
 
-Robrix source to carry:
+Robrix source originally carried for the mobile spike:
 
-- `src/home/main_mobile_ui.rs`
+- `src/home/main_mobile_ui.rs` (retired after `HomeScreen` became the sole adaptive root)
 - selected-room state model
 - room screen reuse
 - mobile safe-area handling
@@ -404,7 +404,7 @@ Mobile-specific modifications:
 | `src/app.rs` | yes, fork | rename app, initialize Hepta bridge, preserve modal overlay root |
 | `src/sliding_sync.rs` | yes, initially | wrap with HeptaMatrixBridge; later local sync source |
 | `src/home/main_desktop_ui.rs` | yes | add inspector/control pane and Hepta labels |
-| `src/home/main_mobile_ui.rs` | yes | map selected room to selected conversation/task stack |
+| `src/home/main_mobile_ui.rs` | retired after initial fork | `HomeScreen` now owns the selected-conversation and adaptive mobile stack |
 | `src/home/rooms_list.rs` | yes | room list becomes conversation/workspace list |
 | `src/home/rooms_sidebar.rs` | yes | workspace rail, agent/task filters |
 | `src/home/room_screen.rs` | yes | add Hepta event renderers |

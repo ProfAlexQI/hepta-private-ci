@@ -49,6 +49,30 @@ use crate::{
 /// and to have something to immediately show when a user first opens a room.
 const PREPAGINATE_VISIBLE_ROOMS: bool = true;
 
+/// Toggles only the header categories that this list actually renders.
+///
+/// `HeaderCategory` is shared with other list variants and includes categories
+/// that are not part of this three-section room list. Ignoring those categories
+/// is safer than crashing if a stale or reused widget action reaches us.
+fn toggle_supported_rooms_header(
+    category: HeaderCategory,
+    invited_expanded: &mut bool,
+    direct_expanded: &mut bool,
+    regular_expanded: &mut bool,
+) -> bool {
+    let expanded = match category {
+        HeaderCategory::Invites => invited_expanded,
+        HeaderCategory::DirectRooms => direct_expanded,
+        HeaderCategory::RegularRooms => regular_expanded,
+        HeaderCategory::Favorites
+        | HeaderCategory::LowPriority
+        | HeaderCategory::LeftRooms
+        | HeaderCategory::None => return false,
+    };
+    *expanded = !*expanded;
+    true
+}
+
 thread_local! {
     /// The list of all invited rooms, which is only tracked here
     /// because the backend doesn't need to track any info about them.
@@ -1242,18 +1266,14 @@ impl Widget for RoomsList {
             }
             // Handle a collapsible header being clicked.
             else if let CollapsibleHeaderAction::Toggled { category } = action.as_widget_action().cast() {
-                match category {
-                    HeaderCategory::Invites => {
-                        self.is_invited_rooms_header_expanded = !self.is_invited_rooms_header_expanded;
-                    }
-                    HeaderCategory::RegularRooms => {
-                        self.is_regular_rooms_header_expanded = !self.is_regular_rooms_header_expanded;
-                    }
-                    HeaderCategory::DirectRooms => {
-                        self.is_direct_rooms_header_expanded =
-                            !self.is_direct_rooms_header_expanded;
-                    }
-                    _todo => todo!("Handle other header categories"),
+                if !toggle_supported_rooms_header(
+                    category,
+                    &mut self.is_invited_rooms_header_expanded,
+                    &mut self.is_direct_rooms_header_expanded,
+                    &mut self.is_regular_rooms_header_expanded,
+                ) {
+                    error!("BUG: ignored toggle from an inactive rooms-list header category: {category:?}");
+                    continue;
                 }
                 self.redraw(cx);
             }
@@ -1653,4 +1673,59 @@ struct RoomCategoryIndexes {
     first_room_index: usize,
     /// The index after the last room in this category, which is where the next category should start.
     after_rooms_index: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn active_header_categories_toggle_only_their_own_state() {
+        let mut invited = false;
+        let mut direct = false;
+        let mut regular = false;
+
+        assert!(toggle_supported_rooms_header(
+            HeaderCategory::Invites,
+            &mut invited,
+            &mut direct,
+            &mut regular,
+        ));
+        assert_eq!((invited, direct, regular), (true, false, false));
+        assert!(toggle_supported_rooms_header(
+            HeaderCategory::DirectRooms,
+            &mut invited,
+            &mut direct,
+            &mut regular,
+        ));
+        assert_eq!((invited, direct, regular), (true, true, false));
+        assert!(toggle_supported_rooms_header(
+            HeaderCategory::RegularRooms,
+            &mut invited,
+            &mut direct,
+            &mut regular,
+        ));
+        assert_eq!((invited, direct, regular), (true, true, true));
+    }
+
+    #[test]
+    fn inactive_header_categories_are_ignored_without_mutation() {
+        for category in [
+            HeaderCategory::Favorites,
+            HeaderCategory::LowPriority,
+            HeaderCategory::LeftRooms,
+            HeaderCategory::None,
+        ] {
+            let mut invited = true;
+            let mut direct = false;
+            let mut regular = true;
+            assert!(!toggle_supported_rooms_header(
+                category,
+                &mut invited,
+                &mut direct,
+                &mut regular,
+            ));
+            assert_eq!((invited, direct, regular), (true, false, true));
+        }
+    }
 }

@@ -80,7 +80,7 @@ requirements = {
   "desktop.main" => ["src/home/main_desktop_ui.rs", %w[MainDesktopUI RoomScreen]],
   "desktop.sidebar" => ["src/home/rooms_sidebar.rs", %w[RoomsSideBar RoomsList]],
   "desktop.dock" => ["src/home/light_themed_dock.rs", %w[Dock]],
-  "rooms.list" => ["src/home/rooms_list.rs", %w[RoomsList]],
+  "rooms.list" => ["src/home/rooms_list.rs", %w[RoomsList toggle_supported_rooms_header]],
   "rooms.entry" => ["src/home/rooms_list_entry.rs", %w[RoomsListEntry]],
   "room.screen" => ["src/home/room_screen.rs", %w[RoomScreen RoomInputBar]],
   "room.module" => ["src/room/mod.rs", %w[room_input_bar reply_preview]],
@@ -268,6 +268,8 @@ end
 
 active_home_screen_source = strip_non_executable_source.call(home_screen_source)
 active_app_source = strip_non_executable_source.call(app_source)
+rooms_list_source = app_dir.join("src/home/rooms_list.rs").file? ? app_dir.join("src/home/rooms_list.rs").binread : ""
+active_rooms_list_source = strip_non_executable_source.call(rooms_list_source)
 
 mobile_widget_tree_markers = [
   "main_adaptive_view := AdaptiveView {",
@@ -308,16 +310,26 @@ mobile_widget_tree_checks = {
 }
 mobile_widget_tree_ready = mobile_widget_tree_checks.values.all?
 
-legacy_mobile_path = app_dir.join("src/home/main_mobile_ui.rs")
-legacy_mobile_module = {
-  "path" => "src/home/main_mobile_ui.rs",
-  "present" => legacy_mobile_path.file?,
-  "registered" => contains_marker.call("src/home/mod.rs", "main_mobile_ui::script_mod(vm)"),
-  "instantiated_by_default_app_or_home" =>
-    active_app_source.include?("MainMobileUI") || active_home_screen_source.include?("MainMobileUI"),
-  "authoritative_for_product_gate" => false,
-  "cleanup_deferred_to_upstream_ledger" => true,
+rooms_header_toggle_contract = {
+  "supported_toggle_helper_present" =>
+    active_rooms_list_source.include?("fn toggle_supported_rooms_header("),
+  "panic_macro_absent" => !active_rooms_list_source.include?("todo!("),
 }
+rooms_header_toggle_contract_ready = rooms_header_toggle_contract.values.all?
+
+ghost_reference_source = %w[src/app.rs src/home/mod.rs src/home/home_screen.rs src/home/rooms_sidebar.rs]
+  .map { |relative_path| app_dir.join(relative_path).binread if app_dir.join(relative_path).file? }
+  .compact
+  .join("\n")
+retired_ghost_modules = {
+  "src/home/main_mobile_ui.rs" => %w[main_mobile_ui MainMobileUI],
+  "src/home/search_messages.rs" => %w[search_messages SearchMessages],
+}.to_h do |relative_path, identifiers|
+  path_absent = !app_dir.join(relative_path).file?
+  references_absent = identifiers.none? { |identifier| ghost_reference_source.include?(identifier) }
+  [relative_path, { "path_absent" => path_absent, "references_absent" => references_absent, "ready" => path_absent && references_absent }]
+end
+retired_ghost_modules_ready = retired_ghost_modules.values.all? { |check| check["ready"] }
 
 shell_relationships = {
   "desktop_owns_room_screen" => contains_marker.call("src/home/main_desktop_ui.rs", "RoomScreen"),
@@ -339,6 +351,14 @@ source_contract_requirements = {
     "src/persistence/matrix_session_store/mod.rs" => %w[persist_secure_session_with_store load_session_material_with_store],
     "src/persistence/matrix_session_store/credential.rs" => %w[MATRIX_CREDENTIAL_SERVICE SYSTEM_CREDENTIAL_STORE_SUPPORTED],
     "src/persistence/matrix_state.rs" => %w[save_session_material load_session_material clear_session_material],
+  },
+  "password_safe_accessibility_tree" => {
+    "src/accessibility.rs" => %w[TreeUpdate Role::PasswordInput password_nodes_never_expose_a_value semantic_tree_rejects_orphans_and_cycles],
+    "src/login/login_screen.rs" => %w[publish_login_tree],
+    "src/app.rs" => %w[accessibility::clear accessibility::reset_cache],
+  },
+  "promotion_trust_policy" => {
+    "promotion-trust-policy-v1.json" => ["hepta-ui-promotion-trust-policy-v1", "Runtime environment variables cannot select trust anchors"],
   },
   "side_effect_free_bridge_contract" => {
     "src/hepta_bridge/contract.rs" => %w[HEPTA_BRIDGE_SCHEMA_VERSION ConversationBinding],
@@ -384,7 +404,7 @@ source_stable = binding_equal?(binding_before, binding_after)
 sync_bound_to_source = sync_report["source_stable_during_run"] == true &&
   binding_equal?(sync_report.fetch("source_binding", {}), binding_after)
 
-native_ui_ready = source_stable && sync_bound_to_source && provenance_ready && downstream_overlay_accounted && real_robrix_modules_ready && real_shell_relationships_ready && no_cockpit_default && downstream_source_contracts_ready
+native_ui_ready = source_stable && sync_bound_to_source && provenance_ready && downstream_overlay_accounted && real_robrix_modules_ready && real_shell_relationships_ready && rooms_header_toggle_contract_ready && retired_ghost_modules_ready && no_cockpit_default && downstream_source_contracts_ready
 
 # These are intentionally not inferred from source presence or a successful build.
 # Each requires a separate, current-source evidence-producing gate or real device run.
@@ -438,7 +458,10 @@ report = {
       "widget_tree_markers" => mobile_widget_tree_markers,
       "runtime_markers" => mobile_runtime_markers,
     },
-    "legacy_mobile_module" => legacy_mobile_module,
+    "rooms_header_toggle_contract_ready" => rooms_header_toggle_contract_ready,
+    "rooms_header_toggle_contract" => rooms_header_toggle_contract,
+    "retired_ghost_modules_ready" => retired_ghost_modules_ready,
+    "retired_ghost_modules" => retired_ghost_modules,
     "source_contract_checks" => source_contract_checks,
     "forbidden_default_marker_hits" => default_marker_hits,
   },

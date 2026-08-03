@@ -131,6 +131,10 @@ run_ui_contract() (
     scripts/hepta-ui-device-lab-verifier-self-test.sh
   run_static_gate accessibility-promotion-verifier-self-test \
     scripts/hepta-ui-accessibility-verifier-self-test.sh
+  run_static_gate matrix-live-promotion-verifier-self-test \
+    scripts/hepta-ui-matrix-live-verifier-self-test.sh
+  run_static_gate bridge-live-promotion-verifier-self-test \
+    scripts/hepta-ui-bridge-live-verifier-self-test.sh
   run_static_gate native-macos-release-chain-self-test \
     scripts/hepta-native-macos-release-chain-self-test.sh
   run_static_gate release-artifact-intake-v3-self-test \
@@ -151,6 +155,8 @@ run_ui_contract() (
   ' "$evidence_dir/native-live-bridge-blocker.json" >/dev/null
   run_static_gate native-live-bridge-rust-contract \
     cargo test --locked --offline --manifest-path apps/hepta-native/Cargo.toml hepta_bridge
+  run_static_gate native-accessibility-rust-contract \
+    cargo test --locked --offline --manifest-path apps/hepta-native/Cargo.toml accessibility::tests
   run_static_gate legacy-visual-archive-self-test \
     scripts/hepta-ui-legacy-visual-archive-self-test.sh
   run_static_gate browser-entrypoint-migration \

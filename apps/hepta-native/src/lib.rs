@@ -42,6 +42,7 @@ pub mod app;
 pub mod persistence;
 /// The settings screen and settings-related content/widgets.
 pub mod settings;
+mod accessibility;
 
 /// Side-effect-free contract boundary for optional Hepta runtime integration.
 #[cfg(feature = "hepta-bridge")]

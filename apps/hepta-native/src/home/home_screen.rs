@@ -263,13 +263,6 @@ script_mod! {
                             CachedWidget {
                                 room_filter_input_bar := RoomFilterInputBar {}
                             }
-
-                            // Hide this until it's implemented.
-                            // search_messages_button := SearchMessagesButton {
-                            //     // make this button match/align with the RoomFilterInputBar
-                            //     height: 32.5,
-                            //     margin: Inset{right: 2}
-                            // }
                         }
 
                         mod.widgets.MainDesktopUI {}

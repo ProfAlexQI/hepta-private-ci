@@ -32,8 +32,9 @@ not itself prove correctness or readiness.
 | Local path or glob | Class | Purpose | Required verification |
 | --- | --- | --- | --- |
 | `.cargo/config.toml` | product identity | Set the stable cross-platform Hepta application identifier without changing Makepad's platform model. | `cargo check --locked`; package metadata audit |
-| `Cargo.toml` | dependency and packaging policy | Keep the complete Robrix dependency graph, pin upstream Git revisions, add the narrow bridge/keyring dependencies and features, and declare Hepta package metadata. | `cargo check --locked`; dependency pin and package metadata audit |
+| `Cargo.toml` | dependency and packaging policy | Keep the complete Robrix dependency graph, pin upstream Git revisions, add the narrow bridge/keyring/AccessKit dependencies and features, and declare Hepta package metadata. | `cargo check --locked`; dependency pin and package metadata audit |
 | `Cargo.lock` | dependency policy | Freeze the exact dependency graph used by the downstream Native build. | `cargo check --locked`; lockfile source/revision audit |
+| `promotion-trust-policy-v1.json` | promotion trust boundary | Keep every external lab/release attestor disabled until a reviewed source commit pins its producer identity and RSA public-key SHA-256; runtime callers cannot choose trust anchors. | canonical readiness self-test; all promotion verifier negative suites |
 | `rust-toolchain.toml` | reproducible toolchain | Pin the Native toolchain to Rust 1.95.0 instead of a moving `stable` channel. | feature-matrix gate; `rustc --version` receipt |
 | `deny.toml` | dependency policy | Define the license, ban, and source checks used by the Native dependency audit. | dependency-policy self-test; `cargo deny` where installed |
 | `dependency-source-policy-v1.json` | dependency provenance | Record exact lockfile, manifest, registry, Git, and vendored-source provenance for the resolved Native graph. | `hepta-native-dependency-policy verify` |
@@ -55,6 +56,7 @@ not itself prove correctness or readiness.
 | `packaging/resolve-finder-bookmark-v1.swift` | release artifact provenance | Resolve the mounted DMG's Finder bookmark alias without trusting Spotlight metadata, reject stale bookmarks, and require its canonical target to be exactly `/Applications`. | Swift parse; real read-only `hdiutil` Finder-bookmark positive and wrong-target probes; macOS release-chain self-test |
 | `packaging/create-macos-dmg-from-app.sh` | single-artifact release packaging | Create an unsigned DMG container from one exact, previously-built `Hepta.app`; never build, sign, notarize, staple, upload, or publish. | `bash -n`; mount/readback of a DMG created from the current formal unsigned app |
 | `packaging/build-macos-dmg.sh` | packaging identity | Consume the exact formal unsigned app and its canonical current-package receipt, sign a disposable copy, create/sign/notarize/staple its DMG, require an Accepted notarization response, and write a local receipt; it never rebuilds a second product app or publishes the artifact. | `bash -n`; `scripts/hepta-native-macos-release-chain-self-test.sh`; truthful no-identity preflight failure; signed execution requires external Developer ID/notary authority |
+| `packaging/release-execution-approval-trust-v1.json` | release execution trust boundary | Keep signed release execution disabled until a reviewed source commit pins an independent operator key and identity; runtime variables cannot choose the trust root. | approval verifier self-test; macOS packaging fail-closed preflight |
 | `packaging/fix-dmg-applications-icon.sh` | packaging identity | Update the DMG helper for the renamed Hepta image. | `bash -n`; local DMG layout check |
 | `packaging/debian-copyright` | packaging identity and attribution | Update installed Hepta paths while preserving upstream and third-party notices. | package inventory; attribution audit |
 | `packaging/icon_google_play_512.png` | brand asset | Replace the store artwork with the Hepta icon. | image decode and dimension check |
@@ -66,6 +68,7 @@ not itself prove correctness or readiness.
 | `resources/android/AndroidManifest.xml.template` | packaging identity and security | Disable backup and cleartext transport, remove the tall-display aspect limit, retain lifecycle configuration changes, register narrowly scoped Matrix/Hepta deep links without broad media permissions, and keep `adjustNothing` because pinned Makepad reports IME insets to its root `KeyboardView`. The source contract does not claim runtime RTL, Dynamic Type, or general IME completion. | `tests/android_manifest_contract.rb --static-only`; pinned cargo-makepad contract; compiled APK manifest audit |
 | `tests/android_manifest_contract.rb` | packaging verification | Parse the source, plaintext-rendered, or APK-compiled manifest; require the canonical pinned cargo-makepad template contract for APK promotion and fail closed when no actual APK is supplied. | static positive/negative cases; pinned tool receipt; `aapt` APK manifest audit |
 | `src/app.rs` | product identity, theme, diagnostic capture, and mobile inset handling | Apply Hepta title/chrome to the real Robrix application root without replacing its desktop or mobile home shell, configure the root `KeyboardView` shift used with Android `adjustNothing`, and expose the delayed Makepad GPU-frame evidence hook only behind `developer-diagnostics`. | `cargo check --locked`; product-shell v2 gate; default/all-feature checks; desktop/mobile GPU and IME screenshots |
+| `src/accessibility.rs` | accessibility contract | Publish a password-safe, focus-aware AccessKit login tree through Makepad's type-erased accessibility update API while keeping platform-backend and real-device claims fail-closed. | focused AccessKit tree tests; feature-matrix compile; real VoiceOver/TalkBack remains independently gated |
 | `src/main.rs` | product identity | Launch the renamed `hepta_native` library entry point. | `cargo check --locked`; launch smoke |
 | `src/lib.rs` | product integration | Register the side-effect-free bridge contract and Hepta application identity/data namespace. | `cargo check --locked`; product-shell v2 gate |
 | `src/sliding_sync.rs` | Matrix compatibility and identity | Preserve the upstream Sliding Sync path while changing only the product-owned SSO callback scheme. | Native focused tests; live Matrix remains a separate gate |
@@ -78,13 +81,17 @@ not itself prove correctness or readiness.
 | `src/persistence/mod.rs` | security | Register the secure Matrix session persistence module. | `cargo check --locked`; secure-session unit tests |
 | `src/home/light_themed_dock.rs` | Hepta visual system | Apply shared light-glass chrome to the upstream desktop dock. | desktop screenshot gate; contrast review |
 | `src/home/edited_indicator.rs` | upstream-first behavior restoration | Remove the former local cockpit-era edit-history contract overlay and restore the upstream edit-indicator behavior compatible with the current timeline API. | Native feature matrix; focused timeline tests |
+| `src/home/home_screen.rs` | product-shell cleanup | Keep the authoritative adaptive desktop/mobile shell free of references to retired, disabled search UI. | product-shell v2 gate/self-test; Native feature matrix |
 | `src/home/loading_pane.rs` | Matrix SDK compatibility | Adapt backwards-pagination cancellation to the current typed timeline-request queue while removing obsolete cockpit boundary copy. | Native feature matrix; pagination focused tests |
-| `src/home/search_messages.rs` | upstream-first behavior restoration | Restore the upstream local search surface after removing the former cockpit-era evidence and popup overlay. | Native feature matrix; search-surface smoke |
+| `src/home/main_mobile_ui.rs` | retired ghost module | Remove the uninstantiated legacy mobile root after HomeScreen became the single authoritative adaptive shell. | product-shell v2 gate/self-test; strict upstream sync check; Native feature matrix |
+| `src/home/mod.rs` | product-shell registry cleanup | Remove registrations for the retired legacy mobile root and disabled no-action search widget. | product-shell v2 gate/self-test; Native feature matrix |
+| `src/home/search_messages.rs` | retired ghost module | Remove the disabled, uninstantiated search button whose click handler emitted no action; a future search product must enter through a new tested contract. | product-shell v2 gate/self-test; strict upstream sync check; Native feature matrix |
 | `src/home/add_room.rs` | product identity and accessibility | Apply Hepta copy/surface styling and 44pt controls to the upstream room join/search surface. | copy review; touch-target review; focused tests |
 | `src/home/location_preview.rs` | product identity | Replace residual upstream product-facing copy while preserving the Robrix location-preview behavior. | copy review; `cargo check --locked` |
 | `src/home/navigation_tab_bar.rs` | Hepta visual system | Apply shared light-glass chrome to upstream mobile navigation. | mobile screenshot gate; touch-target review |
 | `src/home/room_screen.rs` | Hepta visual system | Restyle the real upstream timeline surface; no live Hepta bridge hook is added here. | room/timeline focused tests; desktop/mobile screenshots |
 | `src/home/room_screen/**` | maintainability | Split message rendering and timeline previews into private modules while preserving the public room-screen and preview paths. | Native feature matrix; architecture budget gate; desktop/mobile screenshots |
+| `src/home/rooms_list.rs` | crash hardening | Treat header categories not rendered by this three-section list as ignored stale actions instead of panicking. | focused header-toggle unit tests; product-shell v2 gate; Native feature matrix |
 | `src/home/rooms_list_entry.rs` | Hepta visual system | Restyle upstream room rows without changing room-list behavior. | room-list screenshot and selection-state checks |
 | `src/home/rooms_sidebar.rs` | Hepta visual system | Restyle the real upstream sidebar and its navigation chrome. | desktop screenshot and resize checks |
 | `src/home/welcome_screen.rs` | product identity and theme | Restyle the upstream empty state and explain the Matrix/Hepta boundary without presenting diagnostics as the product home. | empty-state screenshot and copy review |
@@ -138,6 +145,20 @@ prefix, so they are not upstream drift and do not appear in the table above:
   portrait/landscape/IME evidence, replays the versioned login templates, and
   emits a schema-v3 receipt. It never creates or boots an AVD, downloads an SDK,
   supplies credentials, contacts a real device, release-signs, or uploads.
+
+## Core-module split inventory
+
+- `src/home/room_screen.rs` is now 4,394 lines after extracting the 425-line
+  message widget/action unit to `src/home/room_screen/message_widget.rs`.
+  `room_screen::Message` and `room_screen::MessageAction` remain re-exported,
+  so external paths and timeline ownership are unchanged.
+- `src/sliding_sync.rs` is now 4,492 lines after extracting the 514-line public
+  request/login type seam to `src/sliding_sync/requests.rs`. The parent module
+  re-exports those types; worker dispatch, task lifetime, and drop ordering were
+  not moved.
+- Deeper service/worker splits remain deferred until Matrix runtime tests can
+  review the concurrency boundaries. Architecture ratchets cap both parent
+  modules at 4,500 lines and each new child at 600 lines.
 
 ## Non-negotiable boundaries
 

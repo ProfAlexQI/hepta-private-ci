@@ -12,14 +12,12 @@ pub mod tombstone_footer;
 pub mod loading_pane;
 pub mod location_preview;
 pub mod main_desktop_ui;
-pub mod main_mobile_ui;
 pub mod room_screen;
 pub mod room_read_receipt;
 pub mod rooms_list;
 pub mod rooms_list_entry;
 pub mod rooms_list_header;
 pub mod rooms_sidebar;
-pub mod search_messages;
 pub mod space_lobby;
 pub mod spaces_bar;
 pub mod navigation_tab_bar;
@@ -32,7 +30,6 @@ pub mod room_image_viewer;
 pub mod upload_progress;
 
 pub fn script_mod(vm: &mut ScriptVm) {
-    search_messages::script_mod(vm);
     loading_pane::script_mod(vm);
     location_preview::script_mod(vm);
     add_room::script_mod(vm);
@@ -55,7 +52,6 @@ pub fn script_mod(vm: &mut ScriptVm) {
     rooms_sidebar::script_mod(vm);
     welcome_screen::script_mod(vm);
     light_themed_dock::script_mod(vm);
-    main_mobile_ui::script_mod(vm);
     main_desktop_ui::script_mod(vm);
     spaces_bar::script_mod(vm);
     navigation_tab_bar::script_mod(vm);
