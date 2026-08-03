@@ -165,10 +165,13 @@ jobs:
           cargo install cargo-audit --version 0.22.2 --locked
           cargo install cargo-deny --version 0.20.2 --locked
       - name: Materialize pinned RustSec advisory database
+        env:
+          HEPTA_DEPENDENCY_SECURITY_CACHE_ROOT: ${{ runner.temp }}/hepta-dependency-security
         run: scripts/hepta-dependency-security materialize-db
       - name: Run bounded backend checks and tests
         env:
           CARGO_NET_OFFLINE: "true"
+          HEPTA_DEPENDENCY_SECURITY_CACHE_ROOT: ${{ runner.temp }}/hepta-dependency-security
         shell: bash
         run: scripts/hepta-ci-baseline rust-backend 2>&1 | tee artifacts/rust-backend-gates.log
       - name: Upload backend security evidence
@@ -220,7 +223,13 @@ jobs:
             codex-rs/target
           key: ${{ runner.os }}-hepta-ci-v2-full-workspace-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock', 'apps/hepta-native/Cargo.lock', 'MODULE.bazel.lock') }}
       - name: Require preinstalled evidence tools
-        run: command -v jq && command -v shasum && command -v git && command -v cargo
+        run: |
+          command -v jq && command -v shasum && command -v git && command -v cargo
+          if [[ "${{ matrix.platform }}" == "linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes libcap-dev pkg-config
+            pkg-config --exists libcap
+          fi
       - name: Fetch the locked workspace graph
         run: cargo fetch --locked --manifest-path codex-rs/Cargo.toml
       - name: Run platform-scoped full workspace and emit receipt

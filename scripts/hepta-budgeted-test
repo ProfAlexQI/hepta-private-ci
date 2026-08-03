@@ -132,7 +132,7 @@ self_test() (
   git -C "$temp_repo" config user.name hepta-budget-self-test
   git -C "$temp_repo" config user.email hepta-budget-self-test@invalid
   printf 'baseline\n' >"$temp_repo/baseline"
-  printf '.hepta/\n' >"$temp_repo/.gitignore"
+  printf '.hepta/security/advisory-db/\n' >"$temp_repo/.gitignore"
   git -C "$temp_repo" add baseline .gitignore
   git -C "$temp_repo" commit -qm baseline
 
@@ -149,8 +149,14 @@ self_test() (
   run_budgeted --name write-denial --max-seconds 2 --workspace "$temp_repo" -- \
     sh -c 'printf unexpected > unexpected-file' || rc=$?
   [[ "$rc" -eq 90 ]] || { echo "write self-test expected 90, got $rc" >&2; return 1; }
+  rm -f "$temp_repo/unexpected-file"
 
-  echo '{"schema":"hepta_budgeted_test_self_test_v1","status":"ready","ignored_nested_cache_supported":true,"timeout_enforced":true,"workspace_write_budget_enforced":true}'
+  rc=0
+  run_budgeted --name hepta-write-denial --max-seconds 2 --workspace "$temp_repo" -- \
+    sh -c 'mkdir -p .hepta && printf unexpected > .hepta/unexpected-file' || rc=$?
+  [[ "$rc" -eq 90 ]] || { echo ".hepta write self-test expected 90, got $rc" >&2; return 1; }
+
+  echo '{"schema":"hepta_budgeted_test_self_test_v1","status":"ready","ignored_advisory_cache_supported":true,"other_hepta_writes_denied":true,"timeout_enforced":true,"workspace_write_budget_enforced":true}'
 )
 
 case "${1:-}" in
