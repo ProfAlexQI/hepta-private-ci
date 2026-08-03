@@ -156,8 +156,8 @@ toolchains = use_extension("@rules_rs//rs/experimental/toolchains:module_extensi
 toolchains.toolchain(
     edition = "2024",
     extra_exec_rustc_flags = {
-        "aarch64-pc-windows-msvc": ["-Clink-arg=ucrt.lib"],
-        "x86_64-pc-windows-msvc": ["-Clink-arg=ucrt.lib"],
+        "aarch64-pc-windows-msvc": ["-Ctarget-feature=+crt-static"],
+        "x86_64-pc-windows-msvc": ["-Ctarget-feature=+crt-static"],
     },
     extra_rustc_flags = {
         "aarch64-pc-windows-msvc": ["-Ctarget-feature=+crt-static"],

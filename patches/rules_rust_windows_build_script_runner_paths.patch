@@ -1,6 +1,6 @@
 --- a/cargo/private/cargo_build_script_runner/bin.rs
 +++ b/cargo/private/cargo_build_script_runner/bin.rs
-@@ -24,6 +24,85 @@
+@@ -24,6 +24,81 @@
  use cargo_build_script_runner::cargo_manifest_dir::{remove_symlink, symlink, RunfilesMaker};
  use cargo_build_script_runner::{BuildScriptOutput, CompileAndLinkFlags};
  
@@ -21,11 +21,7 @@
 +#[cfg(windows)]
 +#[link(name = "Kernel32")]
 +unsafe extern "system" {
-+    fn GetShortPathNameW(
-+        lpszLongPath: *const u16,
-+        lpszShortPath: *mut u16,
-+        cchBuffer: u32,
-+    ) -> u32;
++    fn GetShortPathNameW(lpszLongPath: *const u16, lpszShortPath: *mut u16, cchBuffer: u32) -> u32;
 +}
 +
 +#[cfg(windows)]
@@ -86,7 +82,7 @@
  fn run_buildrs() -> Result<(), String> {
      // We use exec_root.join rather than std::fs::canonicalize, to avoid resolving symlinks, as
      // some execution strategies and remote execution environments may use symlinks in ways which
-@@ -31,10 +110,11 @@ fn run_buildrs() -> Result<(), String> {
+@@ -31,10 +106,12 @@ fn run_buildrs() -> Result<(), String> {
      // directory - resolving these may cause tools which inspect $0, or try to resolve files
      // relative to themselves, to fail.
      let exec_root = env::current_dir().expect("Failed to get current directory");
@@ -94,15 +90,16 @@
 -    let rustc_env = env::var("RUSTC").expect("RUSTC was not set");
 -    let manifest_dir = exec_root.join(manifest_dir_env);
 -    let rustc = exec_root.join(&rustc_env);
-+    let manifest_dir_env =
-+        normalize_windows_relative_path(&env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR was not set"));
++    let manifest_dir_env = normalize_windows_relative_path(
++        &env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR was not set"),
++    );
 +    let rustc_env = normalize_windows_relative_path(&env::var("RUSTC").expect("RUSTC was not set"));
 +    let manifest_dir = exec_root_join(&exec_root, &manifest_dir_env);
 +    let rustc = shorten_windows_path(&exec_root_join(&exec_root, &rustc_env));
      let Args {
          progname,
          crate_links,
-@@ -55,7 +135,8 @@ fn run_buildrs() -> Result<(), String> {
+@@ -55,7 +132,7 @@ fn run_buildrs() -> Result<(), String> {
          cargo_manifest_maker.create_runfiles_dir().unwrap()
      }
  
@@ -111,7 +108,7 @@
      // For some reason Google's RBE does not create the output directory, force create it.
      create_dir_all(&out_dir_abs)
          .unwrap_or_else(|_| panic!("Failed to make output directory: {:?}", out_dir_abs));
-@@ -89,11 +170,12 @@ fn run_buildrs() -> Result<(), String> {
+@@ -89,11 +166,12 @@ fn run_buildrs() -> Result<(), String> {
  
      let working_directory = resolve_rundir(&rundir, &exec_root, &manifest_dir)?;
  
@@ -126,16 +123,19 @@
          .env("CARGO_MANIFEST_DIR", manifest_dir)
          .env("RUSTC", rustc)
          .env("RUST_BACKTRACE", "full");
-@@ -123,7 +205,7 @@ fn run_buildrs() -> Result<(), String> {
+@@ -123,7 +201,10 @@ fn run_buildrs() -> Result<(), String> {
  
      for tool_env_var in &["CC", "CXX", "LD"] {
          if let Some(tool_path) = env::var_os(tool_env_var) {
 -            command.env(tool_env_var, exec_root.join(tool_path));
-+            command.env(tool_env_var, exec_root_join(&exec_root, &tool_path.to_string_lossy()));
++            command.env(
++                tool_env_var,
++                exec_root_join(&exec_root, &tool_path.to_string_lossy()),
++            );
          }
      }
  
-@@ -139,7 +221,7 @@ fn run_buildrs() -> Result<(), String> {
+@@ -139,7 +220,7 @@ fn run_buildrs() -> Result<(), String> {
              command.env_remove("AR");
              command.env_remove("ARFLAGS");
          } else {
@@ -144,7 +144,7 @@
          }
      }
  
-@@ -257,7 +339,8 @@ fn resolve_rundir(rundir: &str, exec_root: &Path, manifest_dir: &Path) -> Result
+@@ -277,7 +358,8 @@ fn resolve_rundir(rundir: &str, exec_root: &Path, manifest_dir: &Path) -> Result
      if rundir.is_empty() {
          return Ok(manifest_dir.to_owned());
      }
@@ -154,10 +154,64 @@
      if rundir_path.is_absolute() {
          return Err(format!("rundir must be empty (to run in manifest path) or relative path (relative to exec root), but was {:?}", rundir));
      }
+@@ -388,11 +470,16 @@ impl Args {
+-fn get_target_env_vars<P: AsRef<Path>>(rustc: &P) -> Result<BTreeMap<String, String>, String> {
++fn target_cfg_rustc_args(target: &str) -> Vec<String> {
++    let mut args = vec!["--print=cfg".to_owned(), format!("--target={target}")];
++    if target.ends_with("-pc-windows-msvc") {
++        args.push("-Ctarget-feature=+crt-static".to_owned());
++    }
++    args
++}
++
++fn get_target_env_vars<P: AsRef<Path>>(rustc: &P) -> Result<BTreeMap<String, String>, String> {
+     // As done by Cargo when constructing a cargo::core::compiler::build_context::target_info::TargetInfo.
++    let target = env::var("TARGET").expect("missing TARGET");
+     let output = Command::new(rustc.as_ref())
+-        .arg("--print=cfg")
+-        .arg(format!(
+-            "--target={}",
+-            env::var("TARGET").expect("missing TARGET")
+-        ))
++        .args(target_cfg_rustc_args(&target))
+         .output()
+         .map_err(|err| format!("Error running rustc to get target information: {err}"))?;
+     if !output.status.success() {
+@@ -453,2 +540,30 @@ mod test {
+     #[test]
++    fn target_cfg_rustc_args_enable_static_crt_for_msvc_targets() {
++        for target in ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"] {
++            assert_eq!(
++                target_cfg_rustc_args(target),
++                vec![
++                    "--print=cfg".to_owned(),
++                    format!("--target={target}"),
++                    "-Ctarget-feature=+crt-static".to_owned(),
++                ],
++            );
++        }
++    }
++
++    #[test]
++    fn target_cfg_rustc_args_leave_non_msvc_targets_unchanged() {
++        for target in [
++            "x86_64-pc-windows-gnullvm",
++            "aarch64-pc-windows-gnullvm",
++            "x86_64-unknown-linux-gnu",
++        ] {
++            assert_eq!(
++                target_cfg_rustc_args(target),
++                vec!["--print=cfg".to_owned(), format!("--target={target}")],
++            );
++        }
++    }
++
++    #[test]
+     fn rustc_cfg_parsing() {
 diff --git a/cargo/private/cargo_build_script_runner/cargo_manifest_dir.rs b/cargo/private/cargo_build_script_runner/cargo_manifest_dir.rs
 --- a/cargo/private/cargo_build_script_runner/cargo_manifest_dir.rs
 +++ b/cargo/private/cargo_build_script_runner/cargo_manifest_dir.rs
-@@ -282,7 +282,7 @@
+@@ -316,7 +316,7 @@
      /// been copied into the runfiles directory.
      fn drain_runfiles_dir_windows(&self) -> Result<(), String> {
          for dest in self.runfiles.values() {

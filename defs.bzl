@@ -22,8 +22,8 @@ RUST_PLATFORM_OVERRIDES = {
     "windows_arm64": "@rules_rs//rs/experimental/platforms:aarch64-pc-windows-msvc",
 }
 
-# Match Cargo's Windows linker behavior so Bazel-built binaries and tests use
-# the same stack reserve on both Windows ABIs and resolve UCRT imports on MSVC.
+# Match Cargo's Windows stack reserve while leaving CRT selection to the
+# target and execution Rust toolchains for both Windows ABIs.
 WINDOWS_RUSTC_LINK_FLAGS = select({
     "@rules_rs//rs/experimental/platforms/constraints:windows_gnullvm": [
         "-C",
@@ -32,10 +32,6 @@ WINDOWS_RUSTC_LINK_FLAGS = select({
     "@rules_rs//rs/experimental/platforms/constraints:windows_msvc": [
         "-C",
         "link-arg=/STACK:8388608",  # 8 MiB
-        "-C",
-        "link-arg=/NODEFAULTLIB:libucrt.lib",
-        "-C",
-        "link-arg=ucrt.lib",
     ],
     "//conditions:default": [],
 })

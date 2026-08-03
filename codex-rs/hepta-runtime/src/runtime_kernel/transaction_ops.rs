@@ -3472,6 +3472,16 @@ fn verify_atomic_replace_source_unchanged(
     Ok(())
 }
 
+#[cfg(not(unix))]
+fn verify_atomic_replace_source_unchanged(
+    _target: &SealedWriteTarget,
+    _expected_before: Option<&[u8]>,
+) -> Result<(), HeptaError> {
+    Err(HeptaError(
+        "identity-bound mutation source verification requires Unix openat semantics".into(),
+    ))
+}
+
 #[cfg(unix)]
 fn unlink_staging_entry(parent: &fs::File, name: &std::ffi::OsStr) {
     use std::os::fd::AsRawFd as _;
