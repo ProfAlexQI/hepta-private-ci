@@ -283,12 +283,15 @@ verify_k2_split_budgets() {
   verify_file_max codex-rs/hepta-native-gateway/src/native_gateway/tests.rs 20
   verify_split_family 12 4800 \
     codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_*.rs
-  verify_file_max apps/hepta-native/src/home/room_screen.rs 5000
-  verify_split_family 2 600 \
+  verify_file_max apps/hepta-native/src/home/room_screen.rs 4500
+  verify_split_family 3 600 \
     apps/hepta-native/src/home/room_screen/message_content.rs \
+    apps/hepta-native/src/home/room_screen/message_widget.rs \
     apps/hepta-native/src/home/room_screen/timeline_item_preview.rs
-  verify_file_max apps/hepta-native/src/sliding_sync.rs 5000
-  verify_file_max apps/hepta-native/src/sliding_sync/user_power_levels.rs 200
+  verify_file_max apps/hepta-native/src/sliding_sync.rs 4500
+  verify_split_family 2 600 \
+    apps/hepta-native/src/sliding_sync/requests.rs \
+    apps/hepta-native/src/sliding_sync/user_power_levels.rs
   verify_file_max codex-rs/hepta-core/src/upstream_codex_sync.rs 9700
   verify_file_max codex-rs/hepta-core/src/upstream_codex_sync/tests.rs 4000
   local report_root
