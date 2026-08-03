@@ -851,7 +851,8 @@ fn control_ui_root_serves_rust_rendered_shell_and_assets() {
         hepta_core::control_ui::CONTROL_UI_JS_SHA256
     );
     let javascript_text = std::str::from_utf8(javascript.body).expect("JavaScript UTF-8");
-    assert!(javascript_text.contains("const READ_ONLY_ROUTES = Object.freeze({"));
+    assert!(javascript_text.contains("const COMMAND_CATALOG = Object.freeze(["));
+    assert!(javascript_text.contains("const READ_ONLY_ROUTES = Object.freeze(Object.fromEntries("));
     assert!(javascript_text.contains("/api/operator-snapshot"));
     assert!(javascript_text.contains("let commandGeneration = 0"));
     assert!(javascript_text.contains("let activeCommandRequest = null"));
