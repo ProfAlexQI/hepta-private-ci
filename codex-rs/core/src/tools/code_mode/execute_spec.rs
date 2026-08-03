@@ -22,9 +22,10 @@ SOURCE: /[\s\S]+/
 
     ToolSpec::Freeform(FreeformTool {
         name: codex_code_mode::PUBLIC_TOOL_NAME.to_string(),
-        description: codex_code_mode::build_exec_tool_description(
+        description: codex_code_mode::build_exec_tool_description_with_deferred_availability(
             enabled_tools,
             namespace_descriptions,
+            codex_code_mode::DEFAULT_EXEC_YIELD_TIME_MS,
             code_mode_only,
             deferred_tools_available,
         ),
@@ -62,12 +63,14 @@ mod tests {
             ),
             ToolSpec::Freeform(FreeformTool {
                 name: codex_code_mode::PUBLIC_TOOL_NAME.to_string(),
-                description: codex_code_mode::build_exec_tool_description(
-                    &enabled_tools,
-                    &BTreeMap::new(),
-                    /*code_mode_only*/ true,
-                    /*deferred_tools_available*/ false
-                ),
+                description:
+                    codex_code_mode::build_exec_tool_description_with_deferred_availability(
+                        &enabled_tools,
+                        &BTreeMap::new(),
+                        codex_code_mode::DEFAULT_EXEC_YIELD_TIME_MS,
+                        /*code_mode_only*/ true,
+                        /*deferred_tools_available*/ false
+                    ),
                 format: FreeformToolFormat {
                     r#type: "grammar".to_string(),
                     syntax: "lark".to_string(),

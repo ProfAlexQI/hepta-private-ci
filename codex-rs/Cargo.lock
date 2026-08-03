@@ -2535,12 +2535,63 @@ dependencies = [
 name = "codex-code-mode"
 version = "0.0.0"
 dependencies = [
- "async-channel",
- "async-trait",
+ "codex-code-mode-protocol",
+ "codex-http-client",
+ "codex-install-context",
  "codex-protocol",
- "deno_core_icudata",
+ "codex-websocket-client",
+ "futures",
+ "pretty_assertions",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "codex-code-mode-host"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "codex-code-mode",
+ "codex-code-mode-protocol",
+ "codex-code-mode-runtime",
+ "codex-protocol",
+ "codex-utils-cargo-bin",
+ "futures",
+ "pretty_assertions",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "codex-code-mode-protocol"
+version = "0.0.0"
+dependencies = [
+ "codex-protocol",
  "pretty_assertions",
  "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "codex-code-mode-runtime"
+version = "0.0.0"
+dependencies = [
+ "codex-code-mode-protocol",
+ "codex-protocol",
+ "deno_core_icudata",
+ "futures",
+ "pretty_assertions",
  "serde_json",
  "tokio",
  "tokio-util",

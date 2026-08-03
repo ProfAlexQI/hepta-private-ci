@@ -17,6 +17,7 @@ impl IntoProtocol<ImageDetail> for CodeModeImageDetail {
     fn into_protocol(self) -> ImageDetail {
         let value = self;
         match value {
+            CodeModeImageDetail::Auto | CodeModeImageDetail::Low => ImageDetail::High,
             CodeModeImageDetail::High => ImageDetail::High,
             CodeModeImageDetail::Original => ImageDetail::Original,
         }
@@ -38,6 +39,12 @@ impl IntoProtocol<FunctionCallOutputContentItem>
                     detail: detail
                         .map(IntoProtocol::into_protocol)
                         .or(Some(DEFAULT_IMAGE_DETAIL)),
+                }
+            }
+            codex_code_mode::FunctionCallOutputContentItem::InputAudio { .. } => {
+                FunctionCallOutputContentItem::InputText {
+                    text: "[audio output omitted: unsupported by this protocol baseline]"
+                        .to_string(),
                 }
             }
         }

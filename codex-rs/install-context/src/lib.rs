@@ -5,6 +5,11 @@ use std::sync::OnceLock;
 const RELEASES_DIRNAME: &str = "releases";
 const RESOURCES_DIRNAME: &str = "hepta-resources";
 const STANDALONE_PACKAGES_DIRNAME: &str = "standalone";
+const CODE_MODE_HOST_EXECUTABLE_NAME: &str = if cfg!(windows) {
+    "codex-code-mode-host.exe"
+} else {
+    "codex-code-mode-host"
+};
 static INSTALL_CONTEXT: OnceLock<InstallContext> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -125,6 +130,28 @@ impl InstallContext {
             | Self::Other => default_rg_command(),
         }
     }
+
+    /// Resolve the standalone code-mode host without ever selecting an
+    /// in-process V8 fallback. Managed standalone installs keep the host next
+    /// to the primary executable; other layouts use the current executable's
+    /// directory and finally fall back to PATH lookup by name.
+    pub fn code_mode_host_program(&self) -> PathBuf {
+        self.code_mode_host_program_from_exe(std::env::current_exe().ok().as_deref())
+    }
+
+    fn code_mode_host_program_from_exe(&self, current_exe: Option<&Path>) -> PathBuf {
+        if let Self::Standalone { release_dir, .. } = self {
+            let candidate = release_dir.join(CODE_MODE_HOST_EXECUTABLE_NAME);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+
+        current_exe
+            .and_then(Path::parent)
+            .map(|parent| parent.join(CODE_MODE_HOST_EXECUTABLE_NAME))
+            .unwrap_or_else(|| PathBuf::from(CODE_MODE_HOST_EXECUTABLE_NAME))
+    }
 }
 
 fn standalone_install_context(
@@ -227,6 +254,37 @@ mod tests {
         );
         assert_eq!(context.rg_command(), default_rg_command());
         Ok(())
+    }
+
+    #[test]
+    fn resolves_code_mode_host_from_standalone_release() -> std::io::Result<()> {
+        let release_dir = tempfile::tempdir()?;
+        let host = release_dir.path().join(CODE_MODE_HOST_EXECUTABLE_NAME);
+        fs::write(&host, "")?;
+        let context = InstallContext::Standalone {
+            release_dir: release_dir.path().to_path_buf(),
+            resources_dir: None,
+            platform: standalone_platform(),
+        };
+
+        assert_eq!(
+            context.code_mode_host_program_from_exe(Some(Path::new("/fallback/hepta"))),
+            host
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn missing_code_mode_host_stays_out_of_process() {
+        let context = InstallContext::Other;
+        assert_eq!(
+            context.code_mode_host_program_from_exe(Some(Path::new("/opt/hepta/bin/hepta"))),
+            PathBuf::from("/opt/hepta/bin").join(CODE_MODE_HOST_EXECUTABLE_NAME)
+        );
+        assert_eq!(
+            context.code_mode_host_program_from_exe(None),
+            PathBuf::from(CODE_MODE_HOST_EXECUTABLE_NAME)
+        );
     }
 
     #[test]

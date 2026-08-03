@@ -45,6 +45,10 @@ impl CodeModeService {
         "code-mode-disabled".to_string()
     }
 
+    pub(crate) async fn shutdown(&self) -> Result<(), String> {
+        Ok(())
+    }
+
     pub(crate) async fn start_turn_worker(
         &self,
         _session: &Arc<Session>,

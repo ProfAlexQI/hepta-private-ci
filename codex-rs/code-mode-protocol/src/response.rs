@@ -4,6 +4,8 @@ use serde::Serialize;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageDetail {
+    Auto,
+    Low,
     High,
     Original,
 }
@@ -20,5 +22,8 @@ pub enum FunctionCallOutputContentItem {
         image_url: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         detail: Option<ImageDetail>,
+    },
+    InputAudio {
+        audio_url: String,
     },
 }

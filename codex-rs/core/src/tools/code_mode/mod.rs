@@ -1,3 +1,4 @@
+mod delegate;
 mod execute_handler;
 pub(crate) mod execute_spec;
 mod response_adapter;
@@ -5,16 +6,20 @@ mod wait_handler;
 pub(crate) mod wait_spec;
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use codex_code_mode::CellId;
 use codex_code_mode::CodeModeNestedToolCall;
+use codex_code_mode::CodeModeSession;
+use codex_code_mode::CodeModeSessionProvider;
 use codex_code_mode::CodeModeToolKind;
-use codex_code_mode::CodeModeTurnHost;
+use codex_code_mode::ProcessOwnedCodeModeSessionProvider;
 use codex_code_mode::RuntimeResponse;
 use codex_protocol::models::FunctionCallOutputContentItem;
-use codex_protocol::models::FunctionCallOutputPayload;
-use codex_protocol::models::ResponseInputItem;
 use serde_json::Value as JsonValue;
+use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
 use crate::function_tool::FunctionCallError;
@@ -36,6 +41,8 @@ use codex_utils_output_truncation::TruncationPolicy;
 use codex_utils_output_truncation::formatted_truncate_text_content_items_with_policy;
 use codex_utils_output_truncation::truncate_function_output_items_with_policy;
 
+use delegate::CodeModeDispatchBroker;
+use delegate::CodeModeDispatchWorker;
 pub(crate) use execute_handler::CodeModeExecuteHandler;
 use response_adapter::into_function_call_output_content_items;
 pub(crate) use wait_handler::CodeModeWaitHandler;
@@ -56,43 +63,65 @@ pub(crate) struct ExecContext {
 }
 
 pub(crate) struct CodeModeService {
-    inner: codex_code_mode::CodeModeService,
+    session: OnceCell<Arc<dyn CodeModeSession>>,
+    session_provider: Arc<dyn CodeModeSessionProvider>,
+    dispatch_broker: Arc<CodeModeDispatchBroker>,
+    shutting_down: AtomicBool,
 }
 
 impl CodeModeService {
     pub(crate) fn new() -> Self {
         Self {
-            inner: codex_code_mode::CodeModeService::new(),
+            session: OnceCell::new(),
+            session_provider: Arc::new(ProcessOwnedCodeModeSessionProvider::default()),
+            dispatch_broker: Arc::new(CodeModeDispatchBroker::new()),
+            shutting_down: AtomicBool::new(false),
         }
-    }
-
-    pub(crate) async fn stored_values(&self) -> std::collections::HashMap<String, JsonValue> {
-        self.inner.stored_values().await
-    }
-
-    pub(crate) async fn replace_stored_values(
-        &self,
-        values: std::collections::HashMap<String, JsonValue>,
-    ) {
-        self.inner.replace_stored_values(values).await;
-    }
-
-    pub(crate) fn allocate_cell_id(&self) -> String {
-        self.inner.allocate_cell_id()
     }
 
     pub(crate) async fn execute(
         &self,
         request: codex_code_mode::ExecuteRequest,
-    ) -> Result<RuntimeResponse, String> {
-        self.inner.execute(request).await
+    ) -> Result<codex_code_mode::StartedCell, String> {
+        self.session().await?.execute(request).await
     }
 
     pub(crate) async fn wait(
         &self,
         request: codex_code_mode::WaitRequest,
     ) -> Result<codex_code_mode::WaitOutcome, String> {
-        self.inner.wait(request).await
+        self.session().await?.wait(request).await
+    }
+
+    pub(crate) async fn terminate(
+        &self,
+        cell_id: CellId,
+    ) -> Result<codex_code_mode::WaitOutcome, String> {
+        self.session().await?.terminate(cell_id).await
+    }
+
+    pub(crate) async fn shutdown(&self) -> Result<(), String> {
+        self.shutting_down.store(true, Ordering::Release);
+        match self
+            .session
+            .get_or_try_init(|| async {
+                Err::<Arc<dyn CodeModeSession>, String>(
+                    "code mode session is shutting down".to_string(),
+                )
+            })
+            .await
+        {
+            Ok(session) => session.shutdown().await,
+            Err(_) => Ok(()),
+        }
+    }
+
+    pub(crate) fn mark_cell_ready_for_dispatch(&self, cell_id: &CellId) {
+        self.dispatch_broker.mark_cell_ready_for_dispatch(cell_id);
+    }
+
+    pub(crate) fn finish_cell_dispatch(&self, cell_id: &CellId) {
+        self.dispatch_broker.close_cell(cell_id);
     }
 
     pub(crate) async fn start_turn_worker(
@@ -100,7 +129,7 @@ impl CodeModeService {
         session: &Arc<Session>,
         step_tool_plan: Arc<StepToolPlan>,
         tracker: SharedTurnDiffTracker,
-    ) -> Option<codex_code_mode::CodeModeTurnWorker> {
+    ) -> Option<CodeModeDispatchWorker> {
         let turn = &step_tool_plan.step_context.turn;
         if !turn.features.enabled(Feature::CodeMode) {
             return None;
@@ -110,49 +139,33 @@ impl CodeModeService {
             session: Arc::clone(session),
             turn: Arc::clone(turn),
         };
-        let tool_runtime = ToolCallRuntime::new(Arc::clone(session), step_tool_plan, tracker);
-        let host = Arc::new(CoreTurnHost { exec, tool_runtime });
-        Some(self.inner.start_turn_worker(host))
-    }
-}
-
-struct CoreTurnHost {
-    exec: ExecContext,
-    tool_runtime: ToolCallRuntime,
-}
-
-#[async_trait::async_trait]
-impl CodeModeTurnHost for CoreTurnHost {
-    async fn invoke_tool(
-        &self,
-        invocation: CodeModeNestedToolCall,
-        cancellation_token: CancellationToken,
-    ) -> Result<JsonValue, String> {
-        call_nested_tool(
-            self.exec.clone(),
-            self.tool_runtime.clone(),
-            invocation,
-            cancellation_token,
+        Some(
+            self.dispatch_broker
+                .start_turn_worker(exec, step_tool_plan, tracker),
         )
-        .await
-        .map_err(|error| error.to_string())
     }
 
-    async fn notify(&self, call_id: String, cell_id: String, text: String) -> Result<(), String> {
-        if text.trim().is_empty() {
-            return Ok(());
+    async fn session(&self) -> Result<Arc<dyn CodeModeSession>, String> {
+        if self.shutting_down.load(Ordering::Acquire) {
+            return Err("code mode session is shutting down".to_string());
         }
-        self.exec
-            .session
-            .inject_response_items(vec![ResponseInputItem::CustomToolCallOutput {
-                call_id,
-                name: Some(PUBLIC_TOOL_NAME.to_string()),
-                output: FunctionCallOutputPayload::from_text(text),
-            }])
-            .await
-            .map_err(|_| {
-                format!("failed to inject exec notify message for cell {cell_id}: no active turn")
+        self.session
+            .get_or_try_init(|| async {
+                if self.shutting_down.load(Ordering::Acquire) {
+                    return Err("code mode session is shutting down".to_string());
+                }
+                let session = self
+                    .session_provider
+                    .create_session(self.dispatch_broker.clone())
+                    .await?;
+                if self.shutting_down.load(Ordering::Acquire) {
+                    let _ = session.shutdown().await;
+                    return Err("code mode session is shutting down".to_string());
+                }
+                Ok(session)
             })
+            .await
+            .map(Arc::clone)
     }
 }
 
@@ -181,17 +194,11 @@ pub(super) async fn handle_runtime_response(
         }
         RuntimeResponse::Result {
             content_items,
-            stored_values,
             error_text,
             ..
         } => {
             let mut content_items = into_function_call_output_content_items(content_items);
             sanitize_runtime_image_detail(exec.turn.as_ref(), &mut content_items);
-            exec.session
-                .services
-                .code_mode_service
-                .replace_stored_values(stored_values)
-                .await;
             let success = error_text.is_none();
             if let Some(error_text) = error_text {
                 content_items.push(FunctionCallOutputContentItem::InputText {
@@ -289,7 +296,7 @@ async fn call_nested_tool(
         .handle_tool_call_with_source(
             call,
             ToolCallSource::CodeMode {
-                cell_id,
+                cell_id: cell_id.to_string(),
                 runtime_tool_call_id,
             },
             cancellation_token,

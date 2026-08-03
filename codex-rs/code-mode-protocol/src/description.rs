@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use crate::PUBLIC_TOOL_NAME;
 
 const MAX_JS_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
-const DEFERRED_NESTED_TOOLS_GUIDANCE: &str = r#"Some nested MCP/app tools may be omitted from this description. They are still available on the global `tools` object and listed in `ALL_TOOLS`.
+const DEFERRED_NESTED_TOOLS_GUIDANCE: &str = r#"Some deferred nested tools may be omitted from this description. They are still available on the global `tools` object and listed in `ALL_TOOLS`.
 To find one, filter `ALL_TOOLS` by `name` and `description`."#;
 const EXEC_DESCRIPTION_TEMPLATE: &str = r#"Run JavaScript code to orchestrate/compose tool calls
 - Evaluates the provided JavaScript code in a fresh V8 isolate as an async module.
@@ -17,14 +17,16 @@ const EXEC_DESCRIPTION_TEMPLATE: &str = r#"Run JavaScript code to orchestrate/co
 - Runs raw JavaScript -- no Node, no file system, no network access, no console.
 - Accepts raw JavaScript source text, not JSON, quoted strings, or markdown code fences.
 - You may optionally start the tool input with a first-line pragma like `// @exec: {"yield_time_ms": 10000, "max_output_tokens": 1000}`.
-- `yield_time_ms` asks `exec` to yield early after that many milliseconds if the script is still running.
-- `max_output_tokens` sets the token budget for direct `exec` results. By default the result is truncated to 10000 tokens.
+- `yield_time_ms` asks `exec` to yield early if the script is still running. Defaults to 10000 ms.
+- `max_output_tokens` sets the token budget for direct `exec` results. Defaults to 10000 tokens.
 - When the JS code is fully evaluated, the isolate's lifetime ends and unawaited promises are silently discarded.
 
 - Global helpers:
 - `exit()`: Immediately ends the current script successfully (like an early return from the top level).
 - `text(value: string | number | boolean | undefined | null)`: Appends a text item. Non-string values are stringified with `JSON.stringify(...)` when possible.
-- `image(imageUrlOrItem: string | { image_url: string; detail?: "high" | "original" | null } | ImageContent, detail?: "high" | "original" | null)`: Appends an image item. `image_url` can be an HTTPS URL or a base64-encoded `data:` URL. To forward an MCP tool image, pass an individual `ImageContent` block from `result.content`, for example `image(result.content[0])`. MCP image blocks may request detail with `_meta: { "codex/imageDetail": "original" }`. When provided, the second `detail` argument overrides any detail embedded in the first argument.
+- `image(imageUrlOrItem: string | { image_url: string; detail?: "auto" | "low" | "high" | "original" | null } | ImageContent, detail?: "auto" | "low" | "high" | "original" | null)`: Appends an image item. `image_url` should be a base64-encoded `data:` URL. To forward an MCP tool image, pass an individual `ImageContent` block from `result.content`, for example `image(result.content[0])`. MCP image blocks may request detail with `_meta: { "codex/imageDetail": "original" }`. When provided, the second `detail` argument overrides any detail embedded in the first argument.
+- `audio(audioUrlOrItem: string | { audio_url: string } | AudioContent)`: Appends an audio item. `audio_url` should be a base64-encoded `data:` URL. To forward an MCP tool audio block, pass an individual `AudioContent` block from `result.content`, for example `audio(result.content[0])`.
+- `generatedImage(result: { image_url: string; output_hint?: string })`: Appends an image-generation result and its optional output hint. HTTP(S) URLs are not supported.
 - `store(key: string, value: any)`: stores a serializable value under a string key for later `exec` calls in the same session.
 - `load(key: string)`: returns the stored value for a string key, or `undefined` if it is missing.
 - `notify(value: string | number | boolean | undefined | null)`: immediately injects an extra `custom_tool_call_output` for the current `exec` call. Values are stringified like `text(...)`.
@@ -34,9 +36,9 @@ const EXEC_DESCRIPTION_TEMPLATE: &str = r#"Run JavaScript code to orchestrate/co
 - `yield_control()`: yields the accumulated output to the model immediately while the script keeps running."#;
 const WAIT_DESCRIPTION_TEMPLATE: &str = r#"- Use `wait` only after `exec` returns `Script running with cell ID ...`.
 - `cell_id` identifies the running `exec` cell to resume.
-- `yield_time_ms` controls how long to wait for more output before yielding again. If omitted, `wait` uses its default wait timeout.
-- `max_tokens` limits how much new output this wait call returns.
-- `terminate: true` stops the running cell instead of waiting for more output.
+- `yield_time_ms` controls how long to wait for more output before yielding again. Defaults to 10000 ms.
+- `max_tokens` limits how much new output this wait call returns. Defaults to 10000 tokens.
+- `terminate: true` stops the running cell; false or omitted waits for output.
 - `wait` returns only the new output since the last yield, or the final completion or termination result for that cell.
 - If the cell is still running, `wait` may yield again with the same `cell_id`.
 - If the cell has already finished, `wait` returns the completed result and closes the cell."#;
@@ -127,7 +129,7 @@ pub enum CodeModeToolKind {
     Freeform,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ToolDefinition {
     pub name: String,
     pub tool_name: ToolName,
@@ -249,25 +251,36 @@ pub fn is_code_mode_nested_tool(tool_name: &str) -> bool {
 
 pub fn build_exec_tool_description(
     enabled_tools: &[ToolDefinition],
+    deferred_tools: &[ToolDefinition],
     namespace_descriptions: &BTreeMap<String, ToolNamespaceDescription>,
+    default_exec_yield_time_ms: u64,
     code_mode_only: bool,
-    deferred_tools_available: bool,
 ) -> String {
     let mut sections = Vec::new();
-    sections.push(EXEC_DESCRIPTION_TEMPLATE.to_string());
-    if deferred_tools_available {
+    sections.push(EXEC_DESCRIPTION_TEMPLATE.replace(
+        "Defaults to 10000 ms.",
+        &format!("Defaults to {default_exec_yield_time_ms} ms."),
+    ));
+    if !deferred_tools.is_empty() {
         sections.push(DEFERRED_NESTED_TOOLS_GUIDANCE.to_string());
     }
     if !code_mode_only {
         return sections.join("\n\n");
     }
 
+    let has_mcp_tools = enabled_tools
+        .iter()
+        .chain(deferred_tools)
+        .any(|tool| mcp_structured_content_schema(tool.output_schema.as_ref()).is_some());
+    if has_mcp_tools {
+        sections.push(format!(
+            "Shared MCP Types:\n```ts\n{MCP_TYPESCRIPT_PREAMBLE}\n```"
+        ));
+    }
+
     if !enabled_tools.is_empty() {
         let mut current_namespace: Option<&str> = None;
         let mut nested_tool_sections = Vec::with_capacity(enabled_tools.len());
-        let has_mcp_tools = enabled_tools
-            .iter()
-            .any(|tool| mcp_structured_content_schema(tool.output_schema.as_ref()).is_some());
 
         for tool in enabled_tools {
             let name = tool.name.as_str();
@@ -304,16 +317,44 @@ pub fn build_exec_tool_description(
             }
         }
 
-        if has_mcp_tools {
-            sections.push(format!(
-                "Shared MCP Types:\n```ts\n{MCP_TYPESCRIPT_PREAMBLE}\n```"
-            ));
-        }
         let nested_tool_reference = nested_tool_sections.join("\n\n");
         sections.push(nested_tool_reference);
     }
 
     sections.join("\n\n")
+}
+
+/// Compatibility adapter for callers that know deferred tools exist but do
+/// not yet carry their definitions. This preserves the original Hepta prompt
+/// contract while the standalone host protocol uses typed deferred tools when
+/// they are available.
+pub fn build_exec_tool_description_with_deferred_availability(
+    enabled_tools: &[ToolDefinition],
+    namespace_descriptions: &BTreeMap<String, ToolNamespaceDescription>,
+    default_exec_yield_time_ms: u64,
+    code_mode_only: bool,
+    deferred_tools_available: bool,
+) -> String {
+    let description = build_exec_tool_description(
+        enabled_tools,
+        &[],
+        namespace_descriptions,
+        default_exec_yield_time_ms,
+        code_mode_only,
+    );
+    if !deferred_tools_available {
+        return description;
+    }
+
+    let intro = EXEC_DESCRIPTION_TEMPLATE.replace(
+        "Defaults to 10000 ms.",
+        &format!("Defaults to {default_exec_yield_time_ms} ms."),
+    );
+    description.replacen(
+        &intro,
+        &format!("{intro}\n\n{DEFERRED_NESTED_TOOLS_GUIDANCE}"),
+        1,
+    )
 }
 
 pub fn build_wait_tool_description() -> &'static str {
@@ -649,7 +690,7 @@ fn render_json_schema_object(map: &serde_json::Map<String, JsonValue>) -> String
         .unwrap_or_default();
 
     let mut sorted_properties = properties.iter().collect::<Vec<_>>();
-    sorted_properties.sort_unstable_by(|(name_a, _), (name_b, _)| name_a.cmp(name_b));
+    sorted_properties.sort_unstable_by_key(|(name_a, _)| *name_a);
     if sorted_properties
         .iter()
         .any(|(_, value)| has_property_description(value))
@@ -711,6 +752,7 @@ mod tests {
     use super::ToolNamespaceDescription;
     use super::augment_tool_definition;
     use super::build_exec_tool_description;
+    use super::build_exec_tool_description_with_deferred_availability;
     use super::normalize_code_mode_identifier;
     use super::parse_exec_source;
     use codex_protocol::ToolName;
@@ -862,9 +904,10 @@ mod tests {
                 input_schema: None,
                 output_schema: None,
             }],
+            &[],
             &BTreeMap::new(),
+            crate::DEFAULT_EXEC_YIELD_TIME_MS,
             /*code_mode_only*/ true,
-            /*deferred_tools_available*/ false,
         );
         assert!(description.contains(
             "### `foo`
@@ -877,10 +920,12 @@ bar"
     fn exec_description_mentions_timeout_helpers() {
         let description = build_exec_tool_description(
             &[],
+            &[],
             &BTreeMap::new(),
+            crate::DEFAULT_EXEC_YIELD_TIME_MS,
             /*code_mode_only*/ false,
-            /*deferred_tools_available*/ false,
         );
+        assert!(description.contains("`audio(audioUrlOrItem:"));
         assert!(description.contains("`setTimeout(callback: () => void, delayMs?: number)`"));
         assert!(description.contains("`clearTimeout(timeoutId?: number)`"));
     }
@@ -929,9 +974,10 @@ bar"
                     }))),
                 },
             ],
+            &[],
             &namespace_descriptions,
+            crate::DEFAULT_EXEC_YIELD_TIME_MS,
             /*code_mode_only*/ true,
-            /*deferred_tools_available*/ false,
         );
         assert_eq!(description.matches("## mcp__sample").count(), 1);
         assert!(description.contains("## mcp__sample\nShared namespace guidance."));
@@ -969,9 +1015,10 @@ bar"
                     "additionalProperties": false
                 }))),
             }],
+            &[],
             &namespace_descriptions,
+            crate::DEFAULT_EXEC_YIELD_TIME_MS,
             /*code_mode_only*/ true,
-            /*deferred_tools_available*/ false,
         );
 
         assert!(!description.contains("## mcp__sample"));
@@ -1068,9 +1115,10 @@ bar"
                     output_schema: second_tool.output_schema,
                 },
             ],
+            &[],
             &BTreeMap::new(),
+            crate::DEFAULT_EXEC_YIELD_TIME_MS,
             /*code_mode_only*/ true,
-            /*deferred_tools_available*/ false,
         );
 
         assert_eq!(
@@ -1083,16 +1131,70 @@ bar"
     }
 
     #[test]
+    fn code_mode_only_description_renders_shared_mcp_types_for_deferred_tools() {
+        let deferred_tool = ToolDefinition {
+            name: "mcp__sample__alpha".to_string(),
+            tool_name: ToolName::namespaced("mcp__sample__", "alpha"),
+            description: "Deferred tool".to_string(),
+            kind: CodeModeToolKind::Function,
+            input_schema: Some(json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            })),
+            output_schema: Some(mcp_call_tool_result_schema(json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }))),
+        };
+
+        let description = build_exec_tool_description(
+            &[],
+            &[deferred_tool],
+            &BTreeMap::new(),
+            crate::DEFAULT_EXEC_YIELD_TIME_MS,
+            /*code_mode_only*/ true,
+        );
+
+        assert!(description.contains("Some deferred nested tools may be omitted"));
+        assert!(description.contains("Shared MCP Types:"));
+        assert!(!description.contains("### `mcp__sample__alpha`"));
+    }
+
+    #[test]
     fn exec_description_mentions_deferred_nested_tools_when_available() {
         let description = build_exec_tool_description(
             &[],
+            &[ToolDefinition {
+                name: "deferred_tool".to_string(),
+                tool_name: ToolName::plain("deferred_tool"),
+                description: "Deferred tool".to_string(),
+                kind: CodeModeToolKind::Function,
+                input_schema: None,
+                output_schema: None,
+            }],
             &BTreeMap::new(),
+            crate::DEFAULT_EXEC_YIELD_TIME_MS,
+            /*code_mode_only*/ false,
+        );
+
+        assert!(description.contains("Some deferred nested tools may be omitted"));
+        assert!(description.contains("filter `ALL_TOOLS` by `name` and `description`"));
+        assert!(!description.contains("do not print the full `ALL_TOOLS` array"));
+    }
+
+    #[test]
+    fn compatibility_description_preserves_deferred_tool_guidance() {
+        let description = build_exec_tool_description_with_deferred_availability(
+            &[],
+            &BTreeMap::new(),
+            crate::DEFAULT_EXEC_YIELD_TIME_MS,
             /*code_mode_only*/ false,
             /*deferred_tools_available*/ true,
         );
 
-        assert!(description.contains("Some nested MCP/app tools may be omitted"));
+        assert!(description.contains("Some deferred nested tools may be omitted"));
         assert!(description.contains("filter `ALL_TOOLS` by `name` and `description`"));
-        assert!(!description.contains("do not print the full `ALL_TOOLS` array"));
     }
 }
