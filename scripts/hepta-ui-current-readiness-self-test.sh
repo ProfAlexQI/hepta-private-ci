@@ -97,6 +97,8 @@ jq -e '
   and .gates.native_feature_matrix.status == "not_run"
   and .gates.native_feature_matrix.ready == false
   and .gates.control_browser.status == "not_run"
+  and .gates.native_mobile.ios_unauthenticated_login_surface.software_keyboard_verified == false
+  and .gates.native_mobile.ios_unauthenticated_login_surface.safe_area_verified == false
   and .gates.native_mobile.generic_android_visual_rotation_ime_claims_hard_false == true
   and ([.promotion_receipts[] | select(.name == "matrix_live") | .ready] == [false])
   and ([.promotion_receipts[] | select(.name == "native_window") | .ready] == [false])
@@ -171,6 +173,8 @@ jq -e '
   and .readiness.full_product == false
   and .readiness.public_ga == false
   and .hard_boundaries.promotion_independent_verifiers_ready == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_software_keyboard_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_safe_area_verified == false
   and .hard_boundaries.android_emulator_visual_verified == false
   and .hard_boundaries.android_emulator_rotation_verified == false
   and .hard_boundaries.android_emulator_ime_verified == false
@@ -213,6 +217,9 @@ grep -Fq -- 'current_run_producer_not_completed' scripts/hepta-ui-current-readin
 grep -Fq -- 'source_binding_at_publish:$final_binding[0]' scripts/hepta-ui-current-readiness.sh
 grep -Fq -- 'source_changed_or_became_dirty_before_atomic_publish' scripts/hepta-ui-current-readiness.sh
 grep -Fq -- 'package_args+=(--build --bootstrap-tools --stage-dir "$EVIDENCE_DIR/native-current-package")' scripts/hepta-ui-current-readiness.sh
+grep -Fq -- 'ios_unauthenticated_login_surface:{software_keyboard_verified:' scripts/hepta-ui-current-readiness.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_software_keyboard_verified:' scripts/hepta-ui-current-readiness.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_safe_area_verified:' scripts/hepta-ui-current-readiness.sh
 if grep -Fq -- ': >"$current_run_report"' scripts/hepta-ui-current-readiness.sh; then
   echo "current readiness still truncates reusable child receipt paths in place" >&2
   exit 1

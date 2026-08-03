@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASELINE_PATH=""
+KEYBOARD_PATH=""
+REPORT_PATH=""
+
+usage() {
+  cat <<'EOF'
+usage: scripts/hepta-ios-login-ui-probe \
+  --baseline /absolute/login.png \
+  --keyboard /absolute/login-with-keyboard.png \
+  [--output /absolute/report.json]
+
+Compares two iOS simulator captures of the unauthenticated Hepta login surface.
+The probe verifies a real software-keyboard geometry change while the upper
+login surface and its Hepta-accent interactive region remain stable and inside
+the portrait safe area. It does not claim generic app-wide keyboard, safe-area,
+accessibility, RTL, Dynamic Type, real-device, or release readiness.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --baseline) BASELINE_PATH="${2:-}"; shift 2 ;;
+    --keyboard) KEYBOARD_PATH="${2:-}"; shift 2 ;;
+    --output) REPORT_PATH="${2:-}"; shift 2 ;;
+    --help|-h) usage; exit 0 ;;
+    *) echo "error: unknown argument: $1" >&2; usage >&2; exit 64 ;;
+  esac
+done
+
+for command in jq mktemp ruby shasum sips; do
+  command -v "$command" >/dev/null 2>&1 || { echo "error: $command is required" >&2; exit 2; }
+done
+
+for input_path in "$BASELINE_PATH" "$KEYBOARD_PATH"; do
+  [[ "$input_path" == /* && -s "$input_path" && ! -L "$input_path" ]] \
+    || { echo "error: inputs must be absolute non-symlink image files" >&2; exit 64; }
+done
+[[ "$BASELINE_PATH" != "$KEYBOARD_PATH" ]] || { echo "error: captures must be distinct paths" >&2; exit 64; }
+if [[ -n "$REPORT_PATH" ]]; then
+  [[ "$REPORT_PATH" == /* && ! -L "$REPORT_PATH" ]] \
+    || { echo "error: --output must be an absolute non-symlink path" >&2; exit 64; }
+  mkdir -p "$(dirname "$REPORT_PATH")"
+fi
+
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ios-login-ui-probe.XXXXXX")"
+trap 'rm -rf "$TMP_DIR"' EXIT
+BASELINE_BMP="$TMP_DIR/baseline.bmp"
+KEYBOARD_BMP="$TMP_DIR/keyboard.bmp"
+sips -z 128 64 -s format bmp "$BASELINE_PATH" --out "$BASELINE_BMP" >/dev/null
+sips -z 128 64 -s format bmp "$KEYBOARD_PATH" --out "$KEYBOARD_BMP" >/dev/null
+
+BASELINE_WIDTH="$(sips -g pixelWidth "$BASELINE_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+BASELINE_HEIGHT="$(sips -g pixelHeight "$BASELINE_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+KEYBOARD_WIDTH="$(sips -g pixelWidth "$KEYBOARD_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+KEYBOARD_HEIGHT="$(sips -g pixelHeight "$KEYBOARD_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+BASELINE_SHA256="$(shasum -a 256 "$BASELINE_PATH" | awk '{print $1}')"
+KEYBOARD_SHA256="$(shasum -a 256 "$KEYBOARD_PATH" | awk '{print $1}')"
+
+METRICS="$(ruby -rjson -e '
+  def decode(path)
+    data = File.binread(path)
+    abort "invalid BMP signature" unless data.byteslice(0, 2) == "BM".b
+    pixel_offset = data.byteslice(10, 4).unpack1("V")
+    width = data.byteslice(18, 4).unpack1("l<")
+    raw_height = data.byteslice(22, 4).unpack1("l<")
+    bits = data.byteslice(28, 2).unpack1("v")
+    abort "unexpected normalized geometry" unless width == 64 && raw_height.abs == 128
+    abort "unsupported normalized BMP" unless [24, 32].include?(bits)
+    bytes = bits / 8
+    row_stride = ((width * bits + 31) / 32) * 4
+    top_down = raw_height.negative?
+    pixels = Array.new(width * 128)
+    128.times do |y|
+      stored_y = top_down ? y : (127 - y)
+      64.times do |x|
+        offset = pixel_offset + stored_y * row_stride + x * bytes
+        b = data.getbyte(offset)
+        g = data.getbyte(offset + 1)
+        r = data.getbyte(offset + 2)
+        pixels[y * 64 + x] = [r, g, b]
+      end
+    end
+    pixels
+  end
+
+  def luma(pixel)
+    (pixel[0] * 299 + pixel[1] * 587 + pixel[2] * 114) / 1000
+  end
+
+  def region_metrics(pixels, first_y, last_y)
+    lumas = []
+    edge_count = 0
+    edge_total = 0
+    (first_y..last_y).each do |y|
+      64.times do |x|
+        current = luma(pixels[y * 64 + x])
+        lumas << current
+        if x < 63
+          edge_count += 1 if (current - luma(pixels[y * 64 + x + 1])).abs > 35
+          edge_total += 1
+        end
+        if y < last_y
+          edge_count += 1 if (current - luma(pixels[(y + 1) * 64 + x])).abs > 35
+          edge_total += 1
+        end
+      end
+    end
+    {
+      dark_ratio: lumas.count { |value| value < 110 }.fdiv(lumas.length),
+      mid_ratio: lumas.count { |value| value >= 110 && value < 220 }.fdiv(lumas.length),
+      edge_ratio: edge_count.fdiv(edge_total),
+      luma_min: lumas.min,
+      luma_max: lumas.max
+    }
+  end
+
+  def accent_metrics(pixels)
+    coordinates = []
+    pixels.each_with_index do |(r, g, b), index|
+      next unless r < 100 && g.between?(75, 190) && b.between?(95, 220)
+      next unless g > r + 25 && b > r + 45
+      coordinates << [index % 64, index / 64]
+    end
+    xs = coordinates.map(&:first)
+    ys = coordinates.map(&:last)
+    {
+      count: coordinates.length,
+      min_x: xs.min,
+      max_x: xs.max,
+      min_y: ys.min,
+      max_y: ys.max,
+      min_x_ratio: xs.min&.fdiv(64),
+      max_x_ratio: xs.max&.fdiv(64),
+      min_y_ratio: ys.min&.fdiv(128),
+      max_y_ratio: ys.max&.fdiv(128)
+    }
+  end
+
+  baseline = decode(ARGV.fetch(0))
+  keyboard = decode(ARGV.fetch(1))
+  top_differences = []
+  (10..79).each do |y|
+    64.times do |x|
+      top_differences << (luma(baseline[y * 64 + x]) - luma(keyboard[y * 64 + x])).abs
+    end
+  end
+  baseline_accent = accent_metrics(baseline)
+  keyboard_accent = accent_metrics(keyboard)
+  metrics = {
+    normalized_geometry: {width: 64, height: 128},
+    baseline_bottom: region_metrics(baseline, 79, 127),
+    keyboard_bottom: region_metrics(keyboard, 79, 127),
+    top_surface_difference: {
+      mean_luma_delta: top_differences.sum.fdiv(top_differences.length),
+      ratio_over_20: top_differences.count { |value| value > 20 }.fdiv(top_differences.length)
+    },
+    baseline_accent: baseline_accent,
+    keyboard_accent: keyboard_accent
+  }
+  metrics[:checks] = {
+    baseline_bottom_is_clear: metrics[:baseline_bottom][:mid_ratio] <= 0.10 && metrics[:baseline_bottom][:edge_ratio] <= 0.03,
+    keyboard_geometry_present: metrics[:keyboard_bottom][:mid_ratio] >= 0.30 && metrics[:keyboard_bottom][:edge_ratio] >= 0.04,
+    upper_login_surface_stable: metrics[:top_surface_difference][:mean_luma_delta] <= 3.0 && metrics[:top_surface_difference][:ratio_over_20] <= 0.05,
+    accent_geometry_stable: baseline_accent == keyboard_accent,
+    accent_sample_sufficient: baseline_accent[:count] >= 150,
+    login_interactives_inside_safe_area:
+      baseline_accent[:min_x_ratio].to_f >= 0.12 && baseline_accent[:max_x_ratio].to_f <= 0.88 &&
+      baseline_accent[:min_y_ratio].to_f >= 0.08 && baseline_accent[:max_y_ratio].to_f <= 0.64
+  }
+  metrics[:ready] = metrics[:checks].values.all?
+  puts JSON.generate(metrics)
+' "$BASELINE_BMP" "$KEYBOARD_BMP")"
+
+REPORT="$(jq -n \
+  --arg baseline_path "$BASELINE_PATH" --arg baseline_sha "$BASELINE_SHA256" \
+  --arg keyboard_path "$KEYBOARD_PATH" --arg keyboard_sha "$KEYBOARD_SHA256" \
+  --argjson baseline_width "$BASELINE_WIDTH" --argjson baseline_height "$BASELINE_HEIGHT" \
+  --argjson keyboard_width "$KEYBOARD_WIDTH" --argjson keyboard_height "$KEYBOARD_HEIGHT" \
+  --argjson metrics "$METRICS" '
+    ($baseline_width == $keyboard_width and $baseline_height == $keyboard_height and $baseline_width >= 300 and $baseline_height >= 600) as $dimensions_ready |
+    ($baseline_sha != $keyboard_sha) as $captures_distinct |
+    ($dimensions_ready and $captures_distinct and $metrics.ready) as $ready |
+    {
+      schema_version:1,
+      kind:"hepta-ios-login-ui-probe",
+      producer:"scripts/hepta-ios-login-ui-probe",
+      status:(if $ready then "ready" else "not_ready" end),
+      ready:$ready,
+      scope:"unauthenticated_ios_simulator_login_surface",
+      captures:{
+        baseline:{path:$baseline_path,sha256:$baseline_sha,width:$baseline_width,height:$baseline_height},
+        software_keyboard:{path:$keyboard_path,sha256:$keyboard_sha,width:$keyboard_width,height:$keyboard_height},
+        dimensions_match:$dimensions_ready,
+        byte_distinct:$captures_distinct
+      },
+      metrics:$metrics,
+      claims:{
+        ios_simulator_login_software_keyboard_ready:$ready,
+        ios_simulator_login_safe_area_ready:$ready,
+        generic_software_keyboard_ready:false,
+        generic_safe_area_ready:false,
+        real_device_ready:false,
+        accessibility_ready:false,
+        rtl_ready:false,
+        dynamic_type_ready:false
+      },
+      blockers:([if $dimensions_ready then empty else "capture_dimensions_invalid" end,if $captures_distinct then empty else "captures_not_distinct" end,if $metrics.checks.baseline_bottom_is_clear then empty else "baseline_bottom_not_clear" end,if $metrics.checks.keyboard_geometry_present then empty else "software_keyboard_geometry_missing" end,if $metrics.checks.upper_login_surface_stable then empty else "upper_login_surface_shifted" end,if $metrics.checks.accent_geometry_stable then empty else "login_accent_geometry_shifted" end,if $metrics.checks.accent_sample_sufficient then empty else "login_accent_sample_insufficient" end,if $metrics.checks.login_interactives_inside_safe_area then empty else "login_interactives_outside_safe_area" end]),
+      external_side_effects_performed:false
+    }
+  ')"
+
+if [[ -n "$REPORT_PATH" ]]; then
+  temporary="$(mktemp "$(dirname "$REPORT_PATH")/.hepta-ios-login-ui-probe.XXXXXX")"
+  printf '%s\n' "$REPORT" >"$temporary"
+  mv -f -- "$temporary" "$REPORT_PATH"
+fi
+printf '%s\n' "$REPORT"
+jq -e '.ready == true' >/dev/null <<<"$REPORT"

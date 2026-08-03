@@ -18,6 +18,8 @@ values. By default it never signs, uploads, boots a simulator, or contacts a
 device. Supplying an Android receipt still stays read-only unless the explicit
 HEPTA_NATIVE_ANDROID_EMULATOR_LIVE_READBACK=1 opt-in performs one
 credential-free start probe against that exact already-running emulator.
+Supplying HEPTA_NATIVE_IOS_SIMULATOR_UI_RECEIPT adds scoped login-surface
+software-keyboard and safe-area evidence without promoting generic claims.
 EOF
       exit 0
       ;;
@@ -35,6 +37,8 @@ MANIFEST_PATH="apps/hepta-native/Cargo.toml"
 CREDENTIAL_PATH="apps/hepta-native/src/persistence/matrix_session_store/credential.rs"
 TESTFLIGHT_PATH="apps/hepta-native/packaging/build-ios-testflight.sh"
 IOS_SIMULATOR_SMOKE_PATH="scripts/hepta-native-ios-simulator-smoke.sh"
+IOS_SIMULATOR_UI_QUALIFICATION_PATH="scripts/hepta-native-ios-simulator-ui-qualification.sh"
+IOS_LOGIN_UI_PROBE_PATH="scripts/hepta-ios-login-ui-probe"
 ANDROID_EMULATOR_SMOKE_PATH="scripts/hepta-native-android-emulator-smoke.sh"
 ANDROID_EMULATOR_LIVE_READBACK_PATH="scripts/hepta-native-android-emulator-live-readback"
 ANDROID_TRUSTED_ADB_PATH="scripts/hepta-android-trusted-adb"
@@ -42,6 +46,7 @@ ANDROID_LOGIN_TEMPLATE_PROBE_PATH="scripts/hepta-android-login-template-probe"
 ANDROID_ORIENTATION_PROBE_PATH="scripts/hepta-android-window-orientation-probe"
 ANDROID_LOGIN_TEMPLATE_MANIFEST_PATH="apps/hepta-native/packaging/android-emulator-login-template-v1/manifest.json"
 IOS_SIMULATOR_RECEIPT="${HEPTA_NATIVE_IOS_SIMULATOR_RECEIPT:-}"
+IOS_SIMULATOR_UI_RECEIPT="${HEPTA_NATIVE_IOS_SIMULATOR_UI_RECEIPT:-}"
 ANDROID_EMULATOR_RECEIPT="${HEPTA_NATIVE_ANDROID_EMULATOR_RECEIPT:-}"
 ANDROID_EMULATOR_LIVE_READBACK_OPT_IN="${HEPTA_NATIVE_ANDROID_EMULATOR_LIVE_READBACK:-0}"
 case "$ANDROID_EMULATOR_LIVE_READBACK_OPT_IN" in
@@ -65,6 +70,7 @@ if jq -e '
     and .downstream_boundaries.ios_executable == "hepta-native"
     and .downstream_boundaries.ios_simulator_smoke_signing_performed == false
     and .promotion_requirements.android_emulator_receipt_required == true
+    and .promotion_requirements.ios_simulator_ui_qualification_receipt_required == true
     and (.promotion_requirements | to_entries | all(.value == true))
   ' "$POLICY_PATH" >/dev/null 2>&1; then
   policy_ready=true
@@ -172,6 +178,43 @@ if [[ "$ios_simulator_smoke_source_shape_ready" == true ]] \
     and .external_side_effects_performed == false
   ' >/dev/null <<<"$ios_simulator_smoke_source_contract"; then
   ios_simulator_smoke_source_contract_ready=true
+fi
+
+ios_simulator_ui_source_contract_ready=false
+if bash -n "$IOS_SIMULATOR_UI_QUALIFICATION_PATH" "$IOS_LOGIN_UI_PROBE_PATH" \
+  && ruby -e '
+    qualification = File.binread(ARGV.fetch(0))
+    probe = File.binread(ARGV.fetch(1))
+    qualification_required = [
+      %q{hepta-native-ios-simulator-smoke-receipt},
+      %q{xcrun simctl uninstall "$UDID" "$BUNDLE_ID"},
+      %q{xcrun simctl install "$UDID" "$APP_PATH"},
+      %q{grep -F "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD"},
+      %q{/usr/bin/caffeinate -dimsu -w "$$"},
+      %q{peekaboo window focus --no-remote --app Simulator},
+      %q{peekaboo click --no-remote --coords "$CLICK_X,$CLICK_Y" --no-auto-focus},
+      %q{scripts/hepta-ios-login-ui-probe --baseline "$BASELINE_SCREENSHOT"},
+      %q{ios_simulator_login_software_keyboard_ready:true},
+      %q{ios_simulator_login_safe_area_ready:true},
+      %q{generic_software_keyboard_ready:false},
+      %q{generic_safe_area_ready:false},
+      %q{credential_supply:false},
+      %q{real_device_contact:false},
+      %q{code_sign:false},
+      %q{upload:false},
+    ]
+    probe_required = [
+      %q{kind:"hepta-ios-login-ui-probe"},
+      %q{keyboard_geometry_present},
+      %q{upper_login_surface_stable},
+      %q{login_interactives_inside_safe_area},
+      %q{generic_software_keyboard_ready:false},
+      %q{generic_safe_area_ready:false},
+    ]
+    abort "missing iOS simulator UI qualification contract" unless qualification_required.all? { |needle| qualification.include?(needle) }
+    abort "missing iOS login UI probe contract" unless probe_required.all? { |needle| probe.include?(needle) }
+  ' "$IOS_SIMULATOR_UI_QUALIFICATION_PATH" "$IOS_LOGIN_UI_PROBE_PATH" >/dev/null 2>&1; then
+  ios_simulator_ui_source_contract_ready=true
 fi
 
 android_emulator_smoke_source_shape_ready=false
@@ -372,6 +415,14 @@ ios_simulator_receipt_status="missing"
 ios_simulator_receipt_summary="$(jq -n \
   --arg path "$IOS_SIMULATOR_RECEIPT" \
   '{supplied:false,path:$path,status:"missing",ready:false}')"
+ios_simulator_ui_receipt_supplied=false
+ios_simulator_ui_receipt_ready=false
+ios_simulator_ui_receipt_status="missing"
+ios_simulator_login_keyboard_ready=false
+ios_simulator_login_safe_area_ready=false
+ios_simulator_ui_receipt_summary="$(jq -n \
+  --arg path "$IOS_SIMULATOR_UI_RECEIPT" \
+  '{supplied:false,path:$path,status:"missing",ready:false,scope:null,claims:{unauthenticated_login_surface_software_keyboard:false,unauthenticated_login_surface_safe_area:false,software_keyboard:false,safe_area:false},generic_claims_hard_false:true}')"
 android_emulator_receipt_supplied=false
 android_emulator_receipt_ready=false
 android_emulator_receipt_status="missing"
@@ -802,6 +853,97 @@ if [[ -n "$IOS_SIMULATOR_RECEIPT" ]]; then
     '{supplied:true,path:$path,status:$status,ready:$ready}')"
 fi
 
+if [[ -n "$IOS_SIMULATOR_UI_RECEIPT" ]]; then
+  ios_simulator_ui_receipt_supplied=true
+  ios_simulator_ui_receipt_status="invalid"
+  if [[ "$ios_simulator_receipt_ready" == true && -s "$IOS_SIMULATOR_UI_RECEIPT" && ! -L "$IOS_SIMULATOR_UI_RECEIPT" ]] \
+    && jq -e \
+      --arg head "$(jq -r '.head' <<<"$SOURCE_AFTER")" \
+      --arg tree "$(jq -r '.head_tree' <<<"$SOURCE_AFTER")" \
+      --arg fingerprint "$(jq -r '.source_fingerprint' <<<"$SOURCE_AFTER")" \
+      --arg ios_receipt "$IOS_SIMULATOR_RECEIPT" \
+      --arg ios_receipt_sha "$(shasum -a 256 "$IOS_SIMULATOR_RECEIPT" | awk '{print $1}')" \
+      --arg artifact_path "$(jq -r '.artifact.path' "$IOS_SIMULATOR_RECEIPT")" \
+      --arg artifact_sha "$(jq -r '.artifact.sha256' "$IOS_SIMULATOR_RECEIPT")" \
+      --arg udid "$(jq -r '.device.udid' "$IOS_SIMULATOR_RECEIPT")" '
+        .schema_version == 1
+        and .kind == "hepta-native-ios-simulator-ui-qualification"
+        and .producer == "scripts/hepta-native-ios-simulator-ui-qualification.sh"
+        and .status == "ready"
+        and .ready == true
+        and .source_stable_during_run == true
+        and .source_binding.head == $head
+        and .source_binding.head_tree == $tree
+        and .source_binding.source_fingerprint == $fingerprint
+        and .source_binding.worktree_clean == true
+        and .source_binding.repository_worktree_clean == true
+        and .scope == "unauthenticated_ios_simulator_login_surface"
+        and .input_receipt.path == $ios_receipt
+        and .input_receipt.sha256 == $ios_receipt_sha
+        and .input_receipt.artifact.path == $artifact_path
+        and .input_receipt.artifact.sha256 == $artifact_sha
+        and .device.udid == $udid
+        and .device.state == "Booted"
+        and .device.is_available == true
+        and .device.real_device == false
+        and .launch.fresh_uninstall_install == true
+        and .launch.ready == true
+        and .launch.credentials_supplied == false
+        and .simulator_window.app == "Simulator"
+        and .simulator_window.exact_device_title_match_count == 1
+        and .simulator_window.focus_ready == true
+        and .simulator_window.display_wake_backend == "/usr/bin/caffeinate"
+        and (.captures.baseline.path | type == "string" and startswith("/"))
+        and (.captures.baseline.sha256 | test("^[0-9a-f]{64}$"))
+        and (.captures.software_keyboard.path | type == "string" and startswith("/"))
+        and (.captures.software_keyboard.sha256 | test("^[0-9a-f]{64}$"))
+        and .ui_probe.schema_version == 1
+        and .ui_probe.kind == "hepta-ios-login-ui-probe"
+        and .ui_probe.producer == "scripts/hepta-ios-login-ui-probe"
+        and .ui_probe.status == "ready"
+        and .ui_probe.ready == true
+        and .ui_probe.claims.ios_simulator_login_software_keyboard_ready == true
+        and .ui_probe.claims.ios_simulator_login_safe_area_ready == true
+        and .ui_probe.claims.generic_software_keyboard_ready == false
+        and .ui_probe.claims.generic_safe_area_ready == false
+        and .claims.ios_simulator_login_software_keyboard_ready == true
+        and .claims.ios_simulator_login_safe_area_ready == true
+        and .claims.generic_software_keyboard_ready == false
+        and .claims.generic_safe_area_ready == false
+        and .claims.ios_real_device_ready == false
+        and .claims.voiceover_ready == false
+        and .claims.rtl_ready == false
+        and .claims.dynamic_type_ready == false
+        and .claims.public_distribution_ready == false
+        and (.forbidden_actions_performed | to_entries | all(.value == false))
+        and .external_side_effects_performed == false
+      ' "$IOS_SIMULATOR_UI_RECEIPT" >/dev/null 2>&1; then
+    ui_baseline_path="$(jq -r '.captures.baseline.path' "$IOS_SIMULATOR_UI_RECEIPT")"
+    ui_baseline_sha="$(jq -r '.captures.baseline.sha256' "$IOS_SIMULATOR_UI_RECEIPT")"
+    ui_keyboard_path="$(jq -r '.captures.software_keyboard.path' "$IOS_SIMULATOR_UI_RECEIPT")"
+    ui_keyboard_sha="$(jq -r '.captures.software_keyboard.sha256' "$IOS_SIMULATOR_UI_RECEIPT")"
+    replay_ui_probe="$($IOS_LOGIN_UI_PROBE_PATH \
+      --baseline "$ui_baseline_path" --keyboard "$ui_keyboard_path" 2>/dev/null || true)"
+    if [[ -s "$ui_baseline_path" && -s "$ui_keyboard_path" ]] \
+      && [[ "$(shasum -a 256 "$ui_baseline_path" | awk '{print $1}')" == "$ui_baseline_sha" ]] \
+      && [[ "$(shasum -a 256 "$ui_keyboard_path" | awk '{print $1}')" == "$ui_keyboard_sha" ]] \
+      && jq -e '.status == "ready" and .ready == true' >/dev/null <<<"$replay_ui_probe" \
+      && [[ "$(jq -S -c . <<<"$replay_ui_probe")" == "$(jq -S -c '.ui_probe' "$IOS_SIMULATOR_UI_RECEIPT")" ]]; then
+      ios_simulator_ui_receipt_ready=true
+      ios_simulator_ui_receipt_status="ready"
+      ios_simulator_login_keyboard_ready=true
+      ios_simulator_login_safe_area_ready=true
+    fi
+  fi
+  ios_simulator_ui_receipt_summary="$(jq -n \
+    --arg path "$IOS_SIMULATOR_UI_RECEIPT" \
+    --arg status "$ios_simulator_ui_receipt_status" \
+    --argjson ready "$ios_simulator_ui_receipt_ready" \
+    --argjson keyboard "$ios_simulator_login_keyboard_ready" \
+    --argjson safe_area "$ios_simulator_login_safe_area_ready" \
+    '{supplied:true,path:$path,status:$status,ready:$ready,scope:"unauthenticated_ios_simulator_login_surface",claims:{unauthenticated_login_surface_software_keyboard:$keyboard,unauthenticated_login_surface_safe_area:$safe_area,software_keyboard:false,safe_area:false},generic_claims_hard_false:true}')"
+fi
+
 if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
   android_emulator_receipt_supplied=true
   android_emulator_receipt_status="invalid"
@@ -1098,6 +1240,7 @@ if [[ "$source_stable" == true \
   && "$android_credential_fail_closed_ready" == true \
   && "$testflight_source_contract_ready" == true \
   && "$ios_simulator_smoke_source_contract_ready" == true \
+  && "$ios_simulator_ui_source_contract_ready" == true \
   && "$android_emulator_smoke_source_contract_ready" == true \
   && "$android_emulator_live_readback_source_contract_ready" == true \
   && "$android_login_template_contract_ready" == true \
@@ -1118,6 +1261,7 @@ report="$(jq -n \
   --argjson testflight_ready "$testflight_source_contract_ready" \
   --argjson ios_simulator_smoke_source_ready "$ios_simulator_smoke_source_contract_ready" \
   --argjson ios_simulator_smoke_source_contract "$ios_simulator_smoke_source_contract" \
+  --argjson ios_simulator_ui_source_ready "$ios_simulator_ui_source_contract_ready" \
   --argjson android_emulator_smoke_source_ready "$android_emulator_smoke_source_contract_ready" \
   --argjson android_emulator_smoke_source_contract "$android_emulator_smoke_source_contract" \
   --argjson android_emulator_live_readback_source_ready "$android_emulator_live_readback_source_contract_ready" \
@@ -1125,6 +1269,11 @@ report="$(jq -n \
   --argjson ios_simulator_receipt_supplied "$ios_simulator_receipt_supplied" \
   --argjson ios_simulator_receipt_ready "$ios_simulator_receipt_ready" \
   --argjson ios_simulator_receipt_summary "$ios_simulator_receipt_summary" \
+  --argjson ios_simulator_ui_receipt_supplied "$ios_simulator_ui_receipt_supplied" \
+  --argjson ios_simulator_ui_receipt_ready "$ios_simulator_ui_receipt_ready" \
+  --argjson ios_simulator_ui_receipt_summary "$ios_simulator_ui_receipt_summary" \
+  --argjson ios_login_keyboard_ready "$ios_simulator_login_keyboard_ready" \
+  --argjson ios_login_safe_area_ready "$ios_simulator_login_safe_area_ready" \
   --argjson android_emulator_receipt_supplied "$android_emulator_receipt_supplied" \
   --argjson android_emulator_receipt_ready "$android_emulator_receipt_ready" \
   --argjson android_emulator_receipt_summary "$android_emulator_receipt_summary" \
@@ -1157,6 +1306,7 @@ report="$(jq -n \
         cargo_makepad_exact_toolchain_wrapper_ready:$toolchain_ready,
         testflight_fail_closed_current_source_contract_ready:$testflight_ready,
         ios_simulator_smoke_source_contract_ready:$ios_simulator_smoke_source_ready,
+        ios_simulator_ui_qualification_source_contract_ready:$ios_simulator_ui_source_ready,
         android_emulator_smoke_source_contract_ready:$android_emulator_smoke_source_ready,
         android_emulator_live_readback_source_contract_ready:$android_emulator_live_readback_source_ready,
         android_login_template_contract_ready:$android_login_template_ready,
@@ -1170,6 +1320,7 @@ report="$(jq -n \
       ios_simulator_smoke_source_contract:$ios_simulator_smoke_source_contract,
       android_emulator_smoke_source_contract:$android_emulator_smoke_source_contract,
       ios_simulator_runtime_evidence:$ios_simulator_receipt_summary,
+      ios_simulator_ui_runtime_evidence:$ios_simulator_ui_receipt_summary,
       android_emulator_runtime_evidence:$android_emulator_receipt_summary,
       signing_preflight:{apple_distribution_identity_available:$identity_available,apple_distribution_identity_count:$identity_count,signing_performed:false},
       hard_boundaries:{
@@ -1178,6 +1329,8 @@ report="$(jq -n \
         android_secure_session_persistence_ready:false,
         plaintext_credential_fallback_allowed:false,
         ios_simulator_runtime_verified:$ios_simulator_receipt_ready,
+        ios_simulator_unauthenticated_login_surface_software_keyboard_verified:$ios_login_keyboard_ready,
+        ios_simulator_unauthenticated_login_surface_safe_area_verified:$ios_login_safe_area_ready,
         android_emulator_runtime_verified:$android_emulator_receipt_ready,
         android_emulator_unauthenticated_login_surface_visual_verified:$android_login_visual_ready,
         android_emulator_unauthenticated_login_surface_rotation_verified:$android_login_rotation_ready,
@@ -1199,7 +1352,7 @@ report="$(jq -n \
       },
       local_emulator_side_effects_performed:$android_live_readback_performed,
       external_side_effects_performed:false,
-      blockers:([if $source_stable then empty else "source_changed_during_mobile_gate" end,if $policy_ready then empty else "mobile_policy_contract_not_ready" end,if $makepad_pin_ready then empty else "makepad_revision_not_pinned" end,if $toolchain_ready then empty else "cargo_makepad_exact_toolchain_wrapper_not_ready" end,if $testflight_ready then empty else "testflight_current_source_fail_closed_contract_not_ready" end,if $ios_simulator_smoke_source_ready then empty else "ios_simulator_smoke_source_contract_not_ready" end,if $android_emulator_smoke_source_ready then empty else "android_emulator_smoke_source_contract_not_ready" end,if $android_emulator_live_readback_source_ready then empty else "android_emulator_live_readback_source_contract_not_ready" end,if $android_login_template_ready then empty else "android_login_template_contract_not_ready" end,if $icons_ready then empty else "ios_opaque_icon_contract_not_ready" end,if $credential_ready then empty else "android_credential_fail_closed_contract_not_ready" end,if $ios_targets then empty else "ios_1_95_targets_not_installed" end,if $android_target then empty else "android_1_95_target_not_installed" end,if $identity_available then empty else "apple_distribution_identity_not_available" end,"pinned_makepad_ios_accessibility_update_discarded","pinned_makepad_android_accessibility_update_discarded","android_secure_credential_backend_not_supported",if $ios_simulator_receipt_ready then empty elif $ios_simulator_receipt_supplied then "ios_simulator_receipt_invalid" else "ios_simulator_receipt_missing" end,if $android_emulator_receipt_supplied and $android_live_readback_opt_in != 1 then "android_emulator_live_readback_opt_in_missing" elif $android_emulator_receipt_ready then empty elif $android_emulator_receipt_supplied then "android_emulator_receipt_invalid" else "android_emulator_receipt_missing" end,"ios_real_device_receipt_missing","android_real_device_receipt_missing","voiceover_receipt_missing","talkback_receipt_missing","software_keyboard_receipt_missing","safe_area_receipt_missing","rtl_receipt_missing","dynamic_type_or_font_scale_receipt_missing"])
+      blockers:([if $source_stable then empty else "source_changed_during_mobile_gate" end,if $policy_ready then empty else "mobile_policy_contract_not_ready" end,if $makepad_pin_ready then empty else "makepad_revision_not_pinned" end,if $toolchain_ready then empty else "cargo_makepad_exact_toolchain_wrapper_not_ready" end,if $testflight_ready then empty else "testflight_current_source_fail_closed_contract_not_ready" end,if $ios_simulator_smoke_source_ready then empty else "ios_simulator_smoke_source_contract_not_ready" end,if $ios_simulator_ui_source_ready then empty else "ios_simulator_ui_qualification_source_contract_not_ready" end,if $android_emulator_smoke_source_ready then empty else "android_emulator_smoke_source_contract_not_ready" end,if $android_emulator_live_readback_source_ready then empty else "android_emulator_live_readback_source_contract_not_ready" end,if $android_login_template_ready then empty else "android_login_template_contract_not_ready" end,if $icons_ready then empty else "ios_opaque_canonical_icon_contract_not_ready" end,if $credential_ready then empty else "android_credential_fail_closed_contract_not_ready" end,if $ios_targets then empty else "ios_1_95_targets_not_installed" end,if $android_target then empty else "android_1_95_target_not_installed" end,if $identity_available then empty else "apple_distribution_identity_not_available" end,"pinned_makepad_ios_accessibility_update_discarded","pinned_makepad_android_accessibility_update_discarded","android_secure_credential_backend_not_supported",if $ios_simulator_receipt_ready then empty elif $ios_simulator_receipt_supplied then "ios_simulator_receipt_invalid" else "ios_simulator_receipt_missing" end,if $ios_simulator_ui_receipt_ready then empty elif $ios_simulator_ui_receipt_supplied then "ios_simulator_ui_qualification_receipt_invalid" else "ios_simulator_ui_qualification_receipt_missing" end,if $android_emulator_receipt_supplied and $android_live_readback_opt_in != 1 then "android_emulator_live_readback_opt_in_missing" elif $android_emulator_receipt_ready then empty elif $android_emulator_receipt_supplied then "android_emulator_receipt_invalid" else "android_emulator_receipt_missing" end,"ios_real_device_receipt_missing","android_real_device_receipt_missing","voiceover_receipt_missing","talkback_receipt_missing",if $ios_login_keyboard_ready then "software_keyboard_full_product_scope_missing" else "software_keyboard_receipt_missing" end,if $ios_login_safe_area_ready then "safe_area_full_product_scope_missing" else "safe_area_receipt_missing" end,"rtl_receipt_missing","dynamic_type_or_font_scale_receipt_missing"])
     }
   ')"
 
@@ -1209,6 +1362,9 @@ if [[ -n "$REPORT_PATH" ]]; then
 fi
 printf '%s\n' "$report"
 if [[ "$ios_simulator_receipt_supplied" == true && "$ios_simulator_receipt_ready" != true ]]; then
+  exit 1
+fi
+if [[ "$ios_simulator_ui_receipt_supplied" == true && "$ios_simulator_ui_receipt_ready" != true ]]; then
   exit 1
 fi
 if [[ "$android_emulator_receipt_supplied" == true && "$android_emulator_receipt_ready" != true ]]; then

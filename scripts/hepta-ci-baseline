@@ -113,6 +113,8 @@ run_ui_contract() (
     scripts/hepta-native-product-shell-gate-v2-self-test.sh
   run_static_gate native-mobile-readiness-self-test \
     scripts/hepta-native-mobile-readiness-self-test.sh
+  run_static_gate native-ios-simulator-ui-qualification-self-test \
+    scripts/hepta-native-ios-simulator-ui-qualification-self-test.sh
   run_static_gate native-android-emulator-smoke-self-test \
     scripts/hepta-native-android-emulator-smoke-self-test.sh
   run_static_gate native-android-emulator-live-readback-self-test \

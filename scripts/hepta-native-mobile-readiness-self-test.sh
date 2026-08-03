@@ -11,12 +11,20 @@ scripts/hepta-native-mobile-readiness-gate.sh --output "$TEST_DIR/report.json" >
 
 jq -e '
   .status == "source_contract_ready"
+  and .checks.ios_simulator_ui_qualification_source_contract_ready == true
   and .checks.android_emulator_smoke_source_contract_ready == true
   and .checks.android_emulator_live_readback_source_contract_ready == true
   and .checks.android_login_template_contract_ready == true
   and .android_emulator_smoke_source_contract.status == "ready"
   and .android_emulator_smoke_source_contract.receipt.schema_version == 3
   and (.android_emulator_smoke_source_contract.hard_boundaries | to_entries | all(.value == false))
+  and .ios_simulator_ui_runtime_evidence.supplied == false
+  and .ios_simulator_ui_runtime_evidence.ready == false
+  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_software_keyboard == false
+  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_safe_area == false
+  and .ios_simulator_ui_runtime_evidence.claims.software_keyboard == false
+  and .ios_simulator_ui_runtime_evidence.claims.safe_area == false
+  and .ios_simulator_ui_runtime_evidence.generic_claims_hard_false == true
   and .android_emulator_runtime_evidence.scope == null
   and .android_emulator_runtime_evidence.live_readback.opt_in == false
   and .android_emulator_runtime_evidence.live_readback.performed == false
@@ -36,6 +44,10 @@ jq -e '
   and .hard_boundaries.android_emulator_rotation_verified == false
   and .hard_boundaries.android_emulator_ime_verified == false
   and .hard_boundaries.deprecated_generic_android_emulator_claims_hard_false == true
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_software_keyboard_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_safe_area_verified == false
+  and .hard_boundaries.software_keyboard_verified == false
+  and .hard_boundaries.safe_area_verified == false
   and .hard_boundaries.mobile_full_product_ready == false
   and .hard_boundaries.mobile_public_ga_ready == false
   and .local_emulator_side_effects_performed == false
@@ -77,6 +89,25 @@ jq -e '
   and .android_emulator_runtime_evidence.claims.runtime == false
 ' "$TEST_DIR/invalid-receipt-report.json" >/dev/null
 
+if HEPTA_NATIVE_IOS_SIMULATOR_UI_RECEIPT="$TEST_DIR/invalid-receipt.json" \
+    scripts/hepta-native-mobile-readiness-gate.sh --output "$TEST_DIR/invalid-ios-ui-report.json" \
+      >"$TEST_DIR/invalid-ios-ui.stdout" 2>"$TEST_DIR/invalid-ios-ui.stderr"; then
+  echo "mobile gate accepted an invalid iOS UI qualification receipt" >&2
+  exit 1
+fi
+jq -e '
+  .ios_simulator_ui_runtime_evidence.supplied == true
+  and .ios_simulator_ui_runtime_evidence.status == "invalid"
+  and .ios_simulator_ui_runtime_evidence.ready == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_software_keyboard_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_safe_area_verified == false
+' "$TEST_DIR/invalid-ios-ui-report.json" >/dev/null
+
+grep -Fq -- 'HEPTA_NATIVE_IOS_SIMULATOR_UI_RECEIPT' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_software_keyboard_verified:$ios_login_keyboard_ready' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_safe_area_verified:$ios_login_safe_area_ready' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'generic_software_keyboard_ready == false' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'generic_safe_area_ready == false' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- '.scope == "unauthenticated_android_login_surface_on_arm64_emulator"' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'android_emulator_unauthenticated_login_surface_rotation_verified:$android_login_rotation_ready' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'HEPTA_NATIVE_ANDROID_EMULATOR_LIVE_READBACK' scripts/hepta-native-mobile-readiness-gate.sh
