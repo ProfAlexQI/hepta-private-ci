@@ -134,12 +134,17 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Bind backend paths to runner temp
+        shell: bash
+        run: |
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-rust-backend-target" >>"$GITHUB_ENV"
+          echo "HEPTA_CI_BACKEND_ARTIFACTS_DIR=$RUNNER_TEMP/hepta-backend-artifacts" >>"$GITHUB_ENV"
       - name: Initialize backend failure evidence
         shell: bash
         run: |
-          mkdir -p artifacts
+          mkdir -p "$HEPTA_CI_BACKEND_ARTIFACTS_DIR"
           printf '{"schema":"hepta_ci_job_start_v1","status":"started","job":"rust-backend","head_sha":"%s","run_id":"%s"}\n' \
-            "$GITHUB_SHA" "$GITHUB_RUN_ID" >artifacts/rust-backend-job-start.json
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" >"$HEPTA_CI_BACKEND_ARTIFACTS_DIR/rust-backend-job-start.json"
       - name: Install backend gate tools
         run: sudo apt-get update && sudo apt-get install --yes jq ripgrep
       - name: Materialize immutable upstream intake refs for counted evidence
@@ -148,9 +153,6 @@ jobs:
         uses: dtolnay/rust-toolchain@f133eefe930d61f0d9371efd474daf0125ed3dd1 # 1.95.0
         with:
           components: rustfmt, clippy
-      - name: Bind backend target to runner temp
-        shell: bash
-        run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-rust-backend-target" >>"$GITHUB_ENV"
       - name: Set up sandboxed rusty_v8
         shell: bash
         run: |
@@ -206,9 +208,10 @@ jobs:
               cargo_incremental:$cargo_incremental,
               cargo_profile_dev_debug:$cargo_profile_dev_debug,
               cargo_profile_test_debug:$cargo_profile_test_debug,
+              artifact_dir_scope:"runner_temp",
               target_dir_scope:$target_dir_scope,
               target_cache_reused:false
-            }' >artifacts/rust-backend-resource-receipt.json
+            }' >"$HEPTA_CI_BACKEND_ARTIFACTS_DIR/rust-backend-resource-receipt.json"
           jq -e \
             --arg source_sha "$GITHUB_SHA" \
             --argjson minimum_available_bytes "$HEPTA_RUST_BACKEND_MIN_AVAILABLE_BYTES" \
@@ -221,22 +224,23 @@ jobs:
              and .cargo_incremental == "0"
              and .cargo_profile_dev_debug == "0"
              and .cargo_profile_test_debug == "0"
+             and .artifact_dir_scope == "runner_temp"
              and .target_dir_scope == "runner_temp"
              and .target_cache_reused == false' \
-            artifacts/rust-backend-resource-receipt.json >/dev/null
+            "$HEPTA_CI_BACKEND_ARTIFACTS_DIR/rust-backend-resource-receipt.json" >/dev/null
           df -h "$GITHUB_WORKSPACE"
       - name: Run bounded backend checks and tests
         env:
           CARGO_NET_OFFLINE: "true"
           HEPTA_DEPENDENCY_SECURITY_CACHE_ROOT: ${{ runner.temp }}/hepta-dependency-security
         shell: bash
-        run: scripts/hepta-ci-baseline rust-backend 2>&1 | tee artifacts/rust-backend-gates.log
+        run: scripts/hepta-ci-baseline rust-backend 2>&1 | tee "$HEPTA_CI_BACKEND_ARTIFACTS_DIR/rust-backend-gates.log"
       - name: Upload backend security evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hepta-backend-evidence-${{ github.run_id }}
-          path: artifacts/
+          path: ${{ runner.temp }}/hepta-backend-artifacts/
           if-no-files-found: error
 
   full-workspace:

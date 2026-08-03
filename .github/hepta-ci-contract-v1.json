@@ -82,6 +82,7 @@
       "cargo_incremental": "0",
       "cargo_profile_dev_debug": "0",
       "cargo_profile_test_debug": "0",
+      "artifact_dir_scope": "runner_temp",
       "linux_resource_policy": "linux-hosted-unused-toolchains-prune-v1",
       "min_available_bytes": 21474836480,
       "target_cache_reused": false,

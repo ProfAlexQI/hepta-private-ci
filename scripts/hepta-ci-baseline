@@ -85,7 +85,12 @@ assert_test_inventory() {
 }
 
 run_rust_backend() {
+  local backend_artifacts_dir="${HEPTA_CI_BACKEND_ARTIFACTS_DIR:-$ROOT/artifacts}"
   require_tools cargo cargo-audit cargo-deny git jq perl rg shasum
+  if [[ "${GITHUB_ACTIONS:-}" == "true" && "$backend_artifacts_dir" != "${RUNNER_TEMP:-}/hepta-backend-artifacts" ]]; then
+    echo "hosted backend evidence must use the bound RUNNER_TEMP directory" >&2
+    exit 1
+  fi
   assert_lockfiles_clean
   budgeted_cargo ci-upstream-counted-evidence 3600 \
     "$ROOT/scripts/hepta-upstream-truth-gate" verify-counted-evidence
@@ -93,7 +98,7 @@ run_rust_backend() {
     cargo fmt --all --manifest-path "$MANIFEST" -- --check
   budgeted_cargo ci-safe-lint-security-baseline 1200 \
     "$ROOT/scripts/hepta-safe-lint-security-baseline" run
-  "$ROOT/scripts/hepta-dependency-security" scan "$ROOT/artifacts/dependency-security" >/dev/null
+  "$ROOT/scripts/hepta-dependency-security" scan "$backend_artifacts_dir/dependency-security" >/dev/null
   budgeted_cargo ci-backend-check 2400 \
     cargo check --locked --manifest-path "$MANIFEST" -q \
       -p hepta-contracts \
