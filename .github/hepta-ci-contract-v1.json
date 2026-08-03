@@ -193,7 +193,7 @@
   "upstream_truth": {
     "capability_version": 1,
     "registry": "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json",
-    "registry_sha256": "acf087979d8c019f54ef2cd95937427928ac55f450e4792d668aa6b79de00464",
+    "registry_sha256": "bfecbe795d45a22239d818061ce04ecb18a8da787999799b234a369c7e097944",
     "ci_job": "upstream-truth",
     "semantic_command": "scripts/hepta-upstream-truth-gate verify-semantic",
     "counted_evidence_command": "scripts/hepta-upstream-truth-gate verify-counted-evidence",

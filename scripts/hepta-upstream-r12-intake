@@ -31,6 +31,7 @@ RANGE_START = "61a44880a85d2fd0d8770908dea5733495e571c8"
 RANGE_END = "5157493c23713ac12034cf250ffb0a8ce0670277"
 FROZEN_REF = "refs/remotes/upstream/hepta-intake-20260803-r12"
 LOCAL_CLASSIFICATION_BASE = "1577a50e37c6332ab267dea9d838dab8b8c07536"
+SOURCE_MANIFEST_INTRODUCING_COMMIT = "5fc85573be24ef22ca2f80a0eec9997f1b25d36e"
 HISTORICAL_HOSTED_DEFAULT = "9c6715924b4ce273248d03107383defc171a9a58"
 R13_END = "bb5054fe47abe73ecbbd454751066a28c89f4bb9"
 R13_FROZEN_REF = "refs/remotes/upstream/hepta-intake-20260803-r13"
@@ -838,8 +839,8 @@ def generate() -> None:
             "manifest_sha256": sha256_file(intake_path),
             "commit": LOCAL_CLASSIFICATION_BASE,
             "commit_role": "local_semantic_classification_base",
-            "source_manifest_introducing_commit": None,
-            "source_manifest_introducing_commit_binding_pending": True,
+            "source_manifest_introducing_commit": SOURCE_MANIFEST_INTRODUCING_COMMIT,
+            "source_manifest_introducing_commit_binding_pending": False,
             "range_start_exclusive": RANGE_START,
             "range_end_inclusive": RANGE_END,
             "ordinary_merge_performed": False,
@@ -1006,8 +1007,8 @@ def generate() -> None:
             "manifest_sha256": sha256_file(r13_intake_path),
             "commit": LOCAL_CLASSIFICATION_BASE,
             "commit_role": "local_semantic_classification_base",
-            "source_manifest_introducing_commit": None,
-            "source_manifest_introducing_commit_binding_pending": True,
+            "source_manifest_introducing_commit": SOURCE_MANIFEST_INTRODUCING_COMMIT,
+            "source_manifest_introducing_commit_binding_pending": False,
             "range_start_exclusive": RANGE_END,
             "range_end_inclusive": R13_END,
             "ordinary_merge_performed": False,

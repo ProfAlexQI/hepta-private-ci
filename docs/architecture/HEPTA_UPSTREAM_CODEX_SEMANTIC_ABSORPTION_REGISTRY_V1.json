@@ -596,7 +596,7 @@
       },
       "record": {
         "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-03.json",
-        "sha256": "5ef6c311ce56648ea7152b78a18fd7d2e61c0f0d4ff43ed3257a75e59ddc85cf",
+        "sha256": "13b0b3e6345c0b175ea41afe0902ff118cea8557fe90881c6cda4476a8e64e94",
         "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
       },
       "disposition_bindings": [
@@ -2321,7 +2321,7 @@
       },
       "record": {
         "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R13_SEMANTIC_ABSORPTION_RECORD_2026-08-03.json",
-        "sha256": "6de71607985170a134a9ae5956487844f02cae4e6615b8b36bda56f155dd2544",
+        "sha256": "28bbe3dce2857ab449d1f400a2a26162dbbba2c45039c1c78e9861c6d10e39a9",
         "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
       },
       "disposition_bindings": [
