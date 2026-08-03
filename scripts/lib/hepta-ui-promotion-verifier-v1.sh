@@ -80,11 +80,11 @@ SPECS = {
     stem:"bridge-live", input:"hepta-ui-bridge-live-attestation-v1", output:"hepta-ui-bridge-live-receipt-v1",
     evidence:"hepta_bridge_live_evidence_bundle", capability:"hepta_live_bridge_ready", max_age_ms:900_000,
     roles:{"bridge_get_audit"=>"application/json"},
-    yes:%w[canonical_loopback_endpoint exact_get_request http_status_200 response_deserialized matrix_session_authenticated explicit_user_opt_in session_match correlation_match authoritative_origin_valid redaction_valid provenance_valid raw_source_payload_rejected logout_transport_dropped login_failure_transport_dropped],
+    yes:%w[canonical_loopback_endpoint exact_get_request http_status_200 response_deserialized matrix_session_authenticated explicit_user_opt_in fixture_or_mock_absent run_match session_match correlation_match sequence_match authoritative_origin_valid redaction_valid provenance_valid raw_source_payload_rejected logout_transport_dropped login_failure_transport_dropped],
     no:%w[subscribe prepare confirm reject cancel provider_invocation channel_delivery cursor_write gateway_mutation external_mutation],
-    fixed:{"endpoint"=>"/api/hepta-native-bridge/v1/snapshot", "method"=>"GET", "content_type"=>"application/json"},
-    hashes:%w[request_descriptor_sha256 response_sha256 session_identifier_sha256 correlation_identifier_sha256 matrix_attestation_sha256],
-    positive:%w[response_byte_count bridge_get_observed_unix_ms], zero:%w[mutation_capability_count],
+    fixed:{"platform"=>"macos", "surface"=>"authenticated_post_login", "endpoint"=>"/api/hepta-native-bridge/v1/snapshot", "method"=>"GET", "content_type"=>"application/json"},
+    hashes:%w[request_descriptor_sha256 response_sha256 transport_run_identifier_sha256 session_identifier_sha256 correlation_identifier_sha256 matrix_attestation_sha256],
+    positive:%w[request_expected_sequence response_sequence response_byte_count bridge_get_observed_unix_ms], zero:%w[mutation_capability_count],
     nonempty:[], dynamic:[], uuids:[]
   }
 }.freeze
@@ -286,6 +286,8 @@ def validate_domain(spec, domain, profile, release_identity, release_team)
     check(domain["labeled_actionable_control_count"] == domain["actionable_control_count"], "actionable labels incomplete")
   elsif profile == "matrix"
     check(domain["login_observed_unix_ms"] < domain["authenticated_workflow_observed_unix_ms"] && domain["authenticated_workflow_observed_unix_ms"] < domain["logout_observed_unix_ms"], "Matrix workflow time order invalid")
+  elsif profile == "bridge"
+    check(domain["request_expected_sequence"] == domain["response_sequence"], "bridge transport sequence mismatch")
   end
   domain
 end
@@ -335,6 +337,7 @@ def validate_attestation(profile, spec, opts, source_expected, now_ms, prefix:""
     check(domain["logout_observed_unix_ms"] <= attested_at, "Matrix attestation predates workflow")
   elsif profile == "bridge"
     check(domain["bridge_get_observed_unix_ms"] <= attested_at, "bridge attestation predates GET")
+    check(domain["transport_run_identifier_sha256"] == run_id, "bridge transport run identifier mismatch")
   end
 
   {
@@ -448,7 +451,10 @@ begin
   elsif profile == "bridge"
     output["live_chain_binding"] = {
       "run_identifier_sha256"=>verified.fetch(:run_id),
+      "transport_run_identifier_sha256"=>verified.fetch(:domain).fetch("transport_run_identifier_sha256"),
       "session_identifier_sha256"=>verified.fetch(:domain).fetch("session_identifier_sha256"),
+      "request_expected_sequence"=>verified.fetch(:domain).fetch("request_expected_sequence"),
+      "response_sequence"=>verified.fetch(:domain).fetch("response_sequence"),
       "bridge_get_observed_unix_ms"=>verified.fetch(:domain).fetch("bridge_get_observed_unix_ms"),
       "matrix_attestation_path"=>opts["matrix-receipt"],
       "matrix_attestation_sha256"=>parent.fetch(:receipt_file).fetch(:sha),

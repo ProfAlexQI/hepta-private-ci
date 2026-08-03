@@ -50,6 +50,14 @@ pub(crate) trait BridgeTransport: Send {
     fn handle(&mut self, request: BridgeRequest) -> Result<Vec<BridgeUpdate>, BridgeAdapterError>;
 }
 
+impl BridgeTransport for Box<dyn BridgeTransport> {
+    fn capabilities(&self) -> BridgeCapabilities { self.as_ref().capabilities() }
+
+    fn handle(&mut self, request: BridgeRequest) -> Result<Vec<BridgeUpdate>, BridgeAdapterError> {
+        self.as_mut().handle(request)
+    }
+}
+
 /// The production default: no subscriptions, network access, or mutations.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct DisabledBridgeAdapter;
@@ -86,6 +94,7 @@ pub(crate) struct GuardedBridgeAdapter<T: BridgeTransport> {
     transport: T,
 }
 
+#[cfg(test)]
 impl GuardedBridgeAdapter<DisabledBridgeAdapter> {
     pub fn disabled() -> Self {
         Self {
@@ -95,9 +104,6 @@ impl GuardedBridgeAdapter<DisabledBridgeAdapter> {
 }
 
 impl<T: BridgeTransport> GuardedBridgeAdapter<T> {
-    // The only non-test caller is the intentionally unwired live producer
-    // seam; keep the constructor internal until a backend host lands.
-    #[allow(dead_code)]
     pub(super) fn new(transport: T) -> Self { Self { transport } }
 
     pub fn capabilities(&self) -> BridgeCapabilities { self.transport.capabilities() }

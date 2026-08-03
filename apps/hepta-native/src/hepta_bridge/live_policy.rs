@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use url::{Host, Url};
 
-use super::adapter::BridgeCapabilities;
+use super::{adapter::BridgeCapabilities, contract::SessionId};
 
 /// Canonical read-only endpoint required by the Native bridge contract.
 ///
@@ -21,12 +21,14 @@ pub enum LiveBridgeBlocker {
     EndpointNotLoopback,
     EndpointPathMismatch,
     AuthenticatedSessionBindingMissing,
+    RunIdentifierInvalid,
+    InitialSequenceInvalid,
     AuthoritativeSnapshotContractMissing,
 }
 
 /// Inputs owned by the post-login UI flow and a future trusted host adapter.
 ///
-/// These booleans are deliberately not read from environment variables here.
+/// These inputs are deliberately not read from environment variables here.
 /// Product code must derive them from the in-process login state and from a
 /// successfully authenticated bridge handshake. This prevents process
 /// environment injection from turning a fixture or report endpoint into live
@@ -36,7 +38,9 @@ pub struct LiveBridgeActivationContext<'a> {
     pub matrix_session_authenticated: bool,
     pub explicit_user_opt_in: bool,
     pub endpoint: &'a str,
-    pub authenticated_session_binding: bool,
+    pub authenticated_session_id: SessionId,
+    pub run_identifier_sha256: &'a str,
+    pub initial_sequence: u64,
     pub authoritative_snapshot_contract: bool,
 }
 
@@ -72,8 +76,14 @@ impl LiveBridgePreflight {
             Err(blocker) => blockers.push(blocker),
         }
 
-        if !context.authenticated_session_binding {
+        if context.authenticated_session_id.is_blank() {
             blockers.push(LiveBridgeBlocker::AuthenticatedSessionBindingMissing);
+        }
+        if !is_sha256(context.run_identifier_sha256) {
+            blockers.push(LiveBridgeBlocker::RunIdentifierInvalid);
+        }
+        if context.initial_sequence == 0 {
+            blockers.push(LiveBridgeBlocker::InitialSequenceInvalid);
         }
         if !context.authoritative_snapshot_contract {
             blockers.push(LiveBridgeBlocker::AuthoritativeSnapshotContractMissing);
@@ -106,6 +116,14 @@ impl LiveBridgePreflight {
     }
 }
 
+pub(super) fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
 fn validate_loopback_snapshot_endpoint(endpoint: &str) -> Result<(), LiveBridgeBlocker> {
     let parsed = Url::parse(endpoint).map_err(|_| LiveBridgeBlocker::EndpointInvalid)?;
     if !matches!(parsed.scheme(), "http" | "https")
@@ -136,12 +154,17 @@ fn validate_loopback_snapshot_endpoint(endpoint: &str) -> Result<(), LiveBridgeB
 mod tests {
     use super::*;
 
+    const RUN_IDENTIFIER_SHA256: &str =
+        "7777777777777777777777777777777777777777777777777777777777777777";
+
     fn eligible_context(endpoint: &str) -> LiveBridgeActivationContext<'_> {
         LiveBridgeActivationContext {
             matrix_session_authenticated: true,
             explicit_user_opt_in: true,
             endpoint,
-            authenticated_session_binding: true,
+            authenticated_session_id: SessionId::new("session-7"),
+            run_identifier_sha256: RUN_IDENTIFIER_SHA256,
+            initial_sequence: 3,
             authoritative_snapshot_contract: true,
         }
     }
@@ -167,7 +190,7 @@ mod tests {
     fn post_login_still_requires_explicit_opt_in_and_authenticated_binding() {
         let mut context = eligible_context(CANONICAL_ENDPOINT);
         context.explicit_user_opt_in = false;
-        context.authenticated_session_binding = false;
+        context.authenticated_session_id = SessionId::new(" ");
 
         let preflight = LiveBridgePreflight::evaluate(&context);
 
@@ -179,6 +202,24 @@ mod tests {
                 LiveBridgeBlocker::AuthenticatedSessionBindingMissing,
             ]
         );
+    }
+
+    #[test]
+    fn run_and_sequence_bindings_are_concrete_and_fail_closed() {
+        let mut context = eligible_context(CANONICAL_ENDPOINT);
+        context.run_identifier_sha256 = "not-a-sha256";
+        context.initial_sequence = 0;
+
+        let preflight = LiveBridgePreflight::evaluate(&context);
+
+        assert_eq!(
+            preflight.blockers,
+            vec![
+                LiveBridgeBlocker::RunIdentifierInvalid,
+                LiveBridgeBlocker::InitialSequenceInvalid,
+            ]
+        );
+        assert_eq!(preflight.capabilities(), BridgeCapabilities::default());
     }
 
     #[test]

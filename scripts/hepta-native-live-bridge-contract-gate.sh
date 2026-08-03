@@ -93,6 +93,12 @@ jq -e '
   and .canonical_endpoint.request_body_allowed == false
   and .canonical_endpoint.redirect_allowed == false
   and .canonical_endpoint.mutation_allowed == false
+  and .canonical_endpoint.required_request_bindings == [
+    "run_identifier_sha256",
+    "session_id",
+    "correlation_id",
+    "expected_sequence"
+  ]
   and .response_contract.rust_type == "hepta_native::hepta_bridge::BridgeUpdate"
   and .response_contract.update_type == "snapshot"
   and .response_contract.schema_version == 1
@@ -117,11 +123,21 @@ jq -e '
   and .current_implementation.authoritative_envelope_available == false
   and .current_implementation.authenticated_session_binding_available == false
   and .current_implementation.native_snapshot_transport_seam_available == true
+  and .current_implementation.authenticated_executor_contract_available == true
   and .current_implementation.authenticated_http_executor_available == false
-  and .current_implementation.live_adapter_available == false
+  and .current_implementation.run_session_sequence_binding_enforced == true
+  and .current_implementation.live_adapter_available == true
+  and .current_implementation.production_facade_live_constructor_available == true
+  and .current_implementation.product_lifecycle_wired == false
   and .current_implementation.live_receipt_available == false
-  and .current_implementation.production_default_adapter == "disabled"
+  and .current_implementation.production_default_adapter == "disabled_until_explicit_try_live"
   and .current_implementation.hepta_live_bridge_ready == false
+  and .first_promotion_target == {
+    "platform":"macos",
+    "surface":"authenticated_post_login",
+    "exact_source_required":true,
+    "real_socket_required":true
+  }
   and (.promotion_requirements | length) >= 8
 ' "$CONTRACT_PATH" >/dev/null
 
@@ -140,8 +156,9 @@ done
 
 for marker in \
   'DisabledBridgeAdapter' \
-  'GuardedBridgeAdapter<DisabledBridgeAdapter>' \
-  'GuardedBridgeAdapter::disabled()'
+  'Box<dyn BridgeTransport>' \
+  'pub fn try_live<E>(' \
+  'pub fn disable(&mut self)'
 do
   require_marker "$BRIDGE_MOD_PATH" "$marker"
 done
@@ -150,11 +167,15 @@ require_marker "$BRIDGE_ADAPTER_PATH" 'pub(crate) struct DisabledBridgeAdapter'
 require_marker "$BRIDGE_ADAPTER_PATH" 'BridgeCapabilities::default()'
 
 for marker in \
-  'pub(crate) trait LiveSnapshotHttpExecutor' \
+  'pub trait LiveSnapshotHttpExecutor' \
+  'pub struct AuthenticatedLiveBridgeBinding' \
   'fn execute_get(' \
   'MAX_LIVE_SNAPSHOT_RESPONSE_BYTES' \
+  'run_identifier_sha256' \
+  'expected_sequence' \
+  'response run, session, or sequence binding does not match the request' \
   'redirects or endpoint changes are not allowed' \
-  'authenticated bridge session changed during the request'
+  'authenticated bridge run or session changed during the request'
 do
   require_marker "$LIVE_ADAPTER_PATH" "$marker"
 done
@@ -165,6 +186,8 @@ for marker in \
   'ExplicitOptInMissing' \
   'EndpointNotLoopback' \
   'AuthenticatedSessionBindingMissing' \
+  'RunIdentifierInvalid' \
+  'InitialSequenceInvalid' \
   'AuthoritativeSnapshotContractMissing' \
   'snapshot: self.snapshot_enabled' \
   'prepare: false' \
@@ -175,7 +198,7 @@ do
   require_marker "$LIVE_POLICY_PATH" "$marker"
 done
 
-require_marker "$VALIDATOR_PATH" 'hepta_native_live_bridge_envelope_v1_valid'
+require_marker "$VALIDATOR_PATH" 'hepta_native_live_bridge_envelope_v1_transport_valid'
 
 for endpoint in \
   '/api/operator-snapshot' \
@@ -267,9 +290,19 @@ receipt="$(jq -n \
       request_body_allowed:false,
       redirect_allowed:false,
       response_size_bounded:true,
-      session_and_correlation_binding_required:true,
+      fixture_or_mock_absence_required:true,
+      run_session_correlation_sequence_binding_required:true,
+      authenticated_executor_contract_available:true,
       authenticated_http_executor_available:false,
+      live_adapter_available:true,
+      production_facade_live_constructor_available:true,
       wired_to_product_lifecycle:false
+    },
+    first_promotion_target:{
+      platform:"macos",
+      surface:"authenticated_post_login",
+      exact_source_required:true,
+      real_socket_required:true
     },
     capabilities:{
       snapshot:false,
@@ -288,15 +321,20 @@ receipt="$(jq -n \
       request_descriptor_sha256:null,
       response_bytes:null,
       response_sha256:null,
+      fixture_or_mock_absent:null,
+      run_match:null,
       session_match:null,
-      correlation_match:null
+      correlation_match:null,
+      expected_sequence:null,
+      response_sequence:null,
+      sequence_match:null
     },
     blockers:[
       "canonical_snapshot_endpoint_not_registered",
       "authoritative_bridge_update_envelope_not_available",
       "authenticated_native_session_binding_not_available",
       "authenticated_http_executor_not_available",
-      "snapshot_transport_not_wired_to_product_lifecycle",
+      "post_login_product_lifecycle_not_wired",
       "actual_live_request_not_performed",
       "actual_live_receipt_not_available"
     ],

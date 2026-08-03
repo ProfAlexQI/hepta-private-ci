@@ -282,6 +282,7 @@ impl ConversationBinding {
     pub fn is_valid_for(&self, metadata: &BridgeMetadata) -> bool {
         !self.hepta_session_id.is_blank()
             && self.hepta_session_id == metadata.session_id
+            && self.revision == metadata.revision
             && self
                 .matrix_room_id
                 .as_ref()
@@ -506,18 +507,22 @@ impl BridgeUpdate {
             record.metadata.schema_version == HEPTA_BRIDGE_SCHEMA_VERSION
                 && record.metadata.has_required_ids()
                 && record.metadata.session_id == self.metadata.session_id
+                && record.metadata.correlation_id == self.metadata.correlation_id
                 && record.metadata.origin.is_authoritative_update_origin()
         };
 
         match &self.update {
-            BridgeUpdateKind::Snapshot { snapshot } => snapshot
-                .runtime
-                .iter()
-                .chain(snapshot.tasks.iter())
-                .chain(snapshot.tool_invocations.iter())
-                .chain(snapshot.approvals.iter())
-                .chain(snapshot.activities.iter())
-                .all(record_is_valid),
+            BridgeUpdateKind::Snapshot { snapshot } => {
+                snapshot.revision == self.metadata.revision
+                    && snapshot
+                        .runtime
+                        .iter()
+                        .chain(snapshot.tasks.iter())
+                        .chain(snapshot.tool_invocations.iter())
+                        .chain(snapshot.approvals.iter())
+                        .chain(snapshot.activities.iter())
+                        .all(record_is_valid)
+            }
             BridgeUpdateKind::RuntimeChanged { runtime } => record_is_valid(runtime),
             BridgeUpdateKind::TaskUpsert { task } => record_is_valid(task),
             BridgeUpdateKind::ToolInvocationUpsert { invocation } => record_is_valid(invocation),

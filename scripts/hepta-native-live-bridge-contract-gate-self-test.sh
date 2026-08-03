@@ -28,15 +28,28 @@ jq -e '
   and .transport_seam.request_body_allowed == false
   and .transport_seam.redirect_allowed == false
   and .transport_seam.response_size_bounded == true
-  and .transport_seam.session_and_correlation_binding_required == true
+  and .transport_seam.fixture_or_mock_absence_required == true
+  and .transport_seam.run_session_correlation_sequence_binding_required == true
+  and .transport_seam.authenticated_executor_contract_available == true
   and .transport_seam.authenticated_http_executor_available == false
+  and .transport_seam.live_adapter_available == true
+  and .transport_seam.production_facade_live_constructor_available == true
   and .transport_seam.wired_to_product_lifecycle == false
+  and .first_promotion_target.platform == "macos"
+  and .first_promotion_target.surface == "authenticated_post_login"
+  and .first_promotion_target.exact_source_required == true
+  and .first_promotion_target.real_socket_required == true
   and (.evidence.live_adapter_path | endswith("/src/hepta_bridge/live_adapter.rs"))
   and (.candidate_endpoint_audit | length) == 6
   and (.candidate_endpoint_audit | all(.authoritative_bridge_snapshot == false))
   and .actual_request.performed == false
   and .actual_request.request_descriptor_sha256 == null
   and .actual_request.response_sha256 == null
+  and .actual_request.fixture_or_mock_absent == null
+  and .actual_request.run_match == null
+  and .actual_request.expected_sequence == null
+  and .actual_request.response_sequence == null
+  and .actual_request.sequence_match == null
   and .capabilities.snapshot == false
   and .capabilities.subscribe == false
   and .capabilities.prepare == false
@@ -44,7 +57,7 @@ jq -e '
   and .capabilities.reject == false
   and .capabilities.cancel == false
   and (.blockers | index("authenticated_http_executor_not_available") != null)
-  and (.blockers | index("snapshot_transport_not_wired_to_product_lifecycle") != null)
+  and (.blockers | index("post_login_product_lifecycle_not_wired") != null)
   and (.blockers | index("snapshot_only_live_adapter_not_implemented") == null)
   and .side_effects.network_request_performed == false
   and .side_effects.matrix_login_performed == false
@@ -126,7 +139,7 @@ jq -e \
   --arg session_id 'session-7' \
   --arg correlation_id 'correlation-11' \
   'include "hepta-native-live-bridge-envelope-v1";
-   hepta_native_live_bridge_envelope_v1_valid($session_id; $correlation_id)' \
+   hepta_native_live_bridge_envelope_v1_transport_valid($session_id; $correlation_id; 4)' \
   "$TEST_ROOT/valid-envelope.json" >/dev/null
 
 jq 'del(.metadata.correlation_id)' \
@@ -136,7 +149,7 @@ if jq -e \
   --arg session_id 'session-7' \
   --arg correlation_id 'correlation-11' \
   'include "hepta-native-live-bridge-envelope-v1";
-   hepta_native_live_bridge_envelope_v1_valid($session_id; $correlation_id)' \
+   hepta_native_live_bridge_envelope_v1_transport_valid($session_id; $correlation_id; 4)' \
   "$TEST_ROOT/missing-correlation.json" >/dev/null
 then
   printf '%s\n' 'envelope without correlation unexpectedly passed' >&2
@@ -150,7 +163,7 @@ if jq -e \
   --arg session_id 'session-7' \
   --arg correlation_id 'correlation-11' \
   'include "hepta-native-live-bridge-envelope-v1";
-   hepta_native_live_bridge_envelope_v1_valid($session_id; $correlation_id)' \
+   hepta_native_live_bridge_envelope_v1_transport_valid($session_id; $correlation_id; 4)' \
   "$TEST_ROOT/unredacted.json" >/dev/null
 then
   printf '%s\n' 'unredacted record unexpectedly passed' >&2
@@ -170,10 +183,22 @@ if jq -e \
   --arg session_id 'session-7' \
   --arg correlation_id 'correlation-11' \
   'include "hepta-native-live-bridge-envelope-v1";
-   hepta_native_live_bridge_envelope_v1_valid($session_id; $correlation_id)' \
+   hepta_native_live_bridge_envelope_v1_transport_valid($session_id; $correlation_id; 4)' \
   "$TEST_ROOT/operator-snapshot-shape.json" >/dev/null
 then
   printf '%s\n' 'aggregate operator snapshot unexpectedly passed as bridge truth' >&2
+  exit 1
+fi
+
+if jq -e \
+  -L "$VALIDATOR_DIR" \
+  --arg session_id 'session-7' \
+  --arg correlation_id 'correlation-11' \
+  'include "hepta-native-live-bridge-envelope-v1";
+   hepta_native_live_bridge_envelope_v1_transport_valid($session_id; $correlation_id; 5)' \
+  "$TEST_ROOT/valid-envelope.json" >/dev/null
+then
+  printf '%s\n' 'envelope with a stale transport sequence unexpectedly passed' >&2
   exit 1
 fi
 

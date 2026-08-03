@@ -110,6 +110,7 @@ def hepta_native_live_bridge_envelope_v1_valid($session_id; $correlation_id):
     and .matrix_room_id == null
     and .mirror_policy == "local_only"
     and (.revision | hepta_nonnegative_integer)
+    and .revision == $envelope.metadata.revision
   )
   and (
     .update
@@ -130,3 +131,15 @@ def hepta_native_live_bridge_envelope_v1_valid($session_id; $correlation_id):
       )
     )
   );
+
+def hepta_native_live_bridge_envelope_v1_transport_valid(
+  $session_id;
+  $correlation_id;
+  $sequence
+):
+  ($sequence | hepta_nonnegative_integer)
+  and $sequence > 0
+  and hepta_native_live_bridge_envelope_v1_valid($session_id; $correlation_id)
+  and .metadata.revision == $sequence
+  and .binding.revision == $sequence
+  and .update.data.snapshot.revision == $sequence;

@@ -1,11 +1,12 @@
 use url::Url;
 
 use super::{
-    adapter::{BridgeAdapterError, BridgeCapabilities, BridgeTransport, GuardedBridgeAdapter},
+    adapter::{BridgeAdapterError, BridgeCapabilities, BridgeTransport},
     contract::{
-        BridgeRequest, BridgeRequestKind, BridgeUpdate, BridgeUpdateKind, CorrelationId, SessionId,
+        BridgeRequest, BridgeRequestKind, BridgeUpdate, BridgeUpdateKind, CorrelationId, Revision,
+        SessionId,
     },
-    live_policy::{LiveBridgeActivationContext, LiveBridgePreflight},
+    live_policy::{LiveBridgeActivationContext, LiveBridgePreflight, is_sha256},
 };
 
 /// Maximum authoritative snapshot envelope accepted by the Native UI.
@@ -24,31 +25,95 @@ const NO_STORE: &str = "no-store";
 /// implementation receives this type only through `execute_get`, which keeps
 /// the UI side of the contract read-only by construction.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct LiveSnapshotGet {
+pub struct LiveSnapshotGet {
     endpoint: Url,
     session_id: SessionId,
     correlation_id: CorrelationId,
+    run_identifier_sha256: String,
+    expected_sequence: u64,
 }
 
 impl LiveSnapshotGet {
-    pub(crate) fn endpoint(&self) -> &Url {
+    pub fn endpoint(&self) -> &Url {
         &self.endpoint
     }
 
-    pub(crate) fn session_id(&self) -> &SessionId {
+    pub fn session_id(&self) -> &SessionId {
         &self.session_id
     }
 
-    pub(crate) fn correlation_id(&self) -> &CorrelationId {
+    pub fn correlation_id(&self) -> &CorrelationId {
         &self.correlation_id
     }
 
-    pub(crate) fn accept(&self) -> &'static str {
+    pub fn run_identifier_sha256(&self) -> &str {
+        &self.run_identifier_sha256
+    }
+
+    pub fn expected_sequence(&self) -> u64 {
+        self.expected_sequence
+    }
+
+    pub fn accept(&self) -> &'static str {
         JSON_CONTENT_TYPE
     }
 
-    pub(crate) fn cache_control(&self) -> &'static str {
+    pub fn cache_control(&self) -> &'static str {
         NO_STORE
+    }
+}
+
+/// Concrete authenticated binding negotiated by the trusted host.
+///
+/// The binding contains no credential material. Authentication remains the
+/// executor's responsibility; Native captures these values at construction
+/// and rejects any session, run, or sequence change before presenting data.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthenticatedLiveBridgeBinding {
+    session_id: SessionId,
+    run_identifier_sha256: String,
+    initial_sequence: u64,
+}
+
+impl AuthenticatedLiveBridgeBinding {
+    pub fn try_new(
+        session_id: SessionId,
+        run_identifier_sha256: impl Into<String>,
+        initial_sequence: u64,
+    ) -> Result<Self, BridgeAdapterError> {
+        let run_identifier_sha256 = run_identifier_sha256.into();
+        if session_id.is_blank() {
+            return Err(BridgeAdapterError::InvalidRequest(
+                "authenticated bridge session id is missing",
+            ));
+        }
+        if !is_sha256(&run_identifier_sha256) {
+            return Err(BridgeAdapterError::InvalidRequest(
+                "authenticated bridge run identifier is invalid",
+            ));
+        }
+        if initial_sequence == 0 {
+            return Err(BridgeAdapterError::InvalidRequest(
+                "authenticated bridge initial sequence is invalid",
+            ));
+        }
+        Ok(Self {
+            session_id,
+            run_identifier_sha256,
+            initial_sequence,
+        })
+    }
+
+    pub fn session_id(&self) -> &SessionId {
+        &self.session_id
+    }
+
+    pub fn run_identifier_sha256(&self) -> &str {
+        &self.run_identifier_sha256
+    }
+
+    pub fn initial_sequence(&self) -> u64 {
+        self.initial_sequence
     }
 }
 
@@ -57,24 +122,28 @@ impl LiveSnapshotGet {
 /// It is not a live receipt. The adapter validates and discards these HTTP
 /// details after extracting a contract-safe `BridgeUpdate`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct LiveSnapshotHttpResponse {
+pub struct LiveSnapshotHttpResponse {
     /// Final URL after transport processing. It must remain equal to the
     /// validated loopback endpoint; redirects are not accepted.
     pub final_endpoint: Url,
     pub status: u16,
     pub content_type: String,
     pub cache_control: String,
+    pub authenticated_session_id: SessionId,
+    pub run_identifier_sha256: String,
+    pub sequence: u64,
     pub body: Vec<u8>,
 }
 
 /// Authenticated host boundary for the snapshot-only adapter.
 ///
-/// No production implementation exists in this crate. The eventual backend
-/// lane must implement this trait only after an authenticated handshake and
-/// return the exact bound session identifier. Tests use an in-memory executor
-/// and never open a socket.
-pub(crate) trait LiveSnapshotHttpExecutor: Send {
-    fn authenticated_session_id(&self) -> &SessionId;
+/// The backend-owned implementation must authenticate before construction,
+/// perform exactly the described GET, bound response buffering, reject
+/// redirects, and return response binding metadata without logging secrets.
+/// The UI crate deliberately does not derive this executor from environment
+/// variables or create a credential itself.
+pub trait LiveSnapshotHttpExecutor: Send {
+    fn authenticated_binding(&self) -> &AuthenticatedLiveBridgeBinding;
 
     fn execute_get(
         &mut self,
@@ -87,6 +156,8 @@ pub(crate) trait LiveSnapshotHttpExecutor: Send {
 /// concrete, non-empty authenticated session binding.
 pub(crate) struct LoopbackSnapshotAdapter<E: LiveSnapshotHttpExecutor> {
     endpoint: Url,
+    binding: AuthenticatedLiveBridgeBinding,
+    next_sequence: u64,
     executor: E,
 }
 
@@ -99,27 +170,34 @@ impl<E: LiveSnapshotHttpExecutor> LoopbackSnapshotAdapter<E> {
         if !preflight.eligible_for_adapter_construction {
             return Err(BridgeAdapterError::LivePreflightBlocked);
         }
-        if executor.authenticated_session_id().is_blank() {
+        let binding = executor.authenticated_binding().clone();
+        if binding.session_id() != &context.authenticated_session_id
+            || binding.run_identifier_sha256() != context.run_identifier_sha256
+            || binding.initial_sequence() != context.initial_sequence
+        {
             return Err(BridgeAdapterError::InvalidRequest(
-                "authenticated bridge session id is missing",
+                "authenticated bridge binding does not match the in-process activation context",
             ));
         }
 
         let endpoint = Url::parse(context.endpoint).map_err(|_| {
             BridgeAdapterError::InvalidRequest("preflight endpoint could not be parsed")
         })?;
-        Ok(Self { endpoint, executor })
-    }
-
-    pub(crate) fn into_guarded(self) -> GuardedBridgeAdapter<Self> {
-        GuardedBridgeAdapter::new(self)
+        let next_sequence = binding.initial_sequence();
+        Ok(Self {
+            endpoint,
+            binding,
+            next_sequence,
+            executor,
+        })
     }
 
     fn validate_response(
         response: LiveSnapshotHttpResponse,
         expected_endpoint: &Url,
-        expected_session: &SessionId,
+        expected_binding: &AuthenticatedLiveBridgeBinding,
         expected_correlation: &CorrelationId,
+        expected_sequence: u64,
     ) -> Result<BridgeUpdate, BridgeAdapterError> {
         if response.final_endpoint != *expected_endpoint {
             return Err(BridgeAdapterError::InvalidSnapshotResponse(
@@ -146,6 +224,14 @@ impl<E: LiveSnapshotHttpExecutor> LoopbackSnapshotAdapter<E> {
                 "response body size is outside the accepted range",
             ));
         }
+        if response.authenticated_session_id != *expected_binding.session_id()
+            || response.run_identifier_sha256 != expected_binding.run_identifier_sha256()
+            || response.sequence != expected_sequence
+        {
+            return Err(BridgeAdapterError::InvalidSnapshotResponse(
+                "response run, session, or sequence binding does not match the request",
+            ));
+        }
 
         let update: BridgeUpdate = serde_json::from_slice(&response.body).map_err(|_| {
             BridgeAdapterError::InvalidSnapshotResponse(
@@ -157,11 +243,26 @@ impl<E: LiveSnapshotHttpExecutor> LoopbackSnapshotAdapter<E> {
                 "response update must be a snapshot",
             ));
         }
-        if &update.metadata.session_id != expected_session
+        if &update.metadata.session_id != expected_binding.session_id()
             || &update.metadata.correlation_id != expected_correlation
+            || update.metadata.revision != Revision(expected_sequence)
+            || update.binding.revision != Revision(expected_sequence)
         {
             return Err(BridgeAdapterError::InvalidSnapshotResponse(
-                "response session or correlation binding does not match the request",
+                "response envelope revision, session, or correlation binding does not match the request",
+            ));
+        }
+        let BridgeUpdateKind::Snapshot { snapshot } = &update.update else {
+            unreachable!("snapshot update checked above");
+        };
+        if snapshot.revision != Revision(expected_sequence) {
+            return Err(BridgeAdapterError::InvalidSnapshotResponse(
+                "snapshot revision does not match the response sequence",
+            ));
+        }
+        if !update.is_contract_valid() || !update.is_presenter_safe() {
+            return Err(BridgeAdapterError::InvalidSnapshotResponse(
+                "response envelope is invalid or not presenter safe",
             ));
         }
         Ok(update)
@@ -185,7 +286,7 @@ impl<E: LiveSnapshotHttpExecutor> BridgeTransport for LoopbackSnapshotAdapter<E>
         if !matches!(request.request, BridgeRequestKind::Snapshot) {
             return Err(BridgeAdapterError::CapabilityDisabled);
         }
-        if &request.metadata.session_id != self.executor.authenticated_session_id() {
+        if &request.metadata.session_id != self.binding.session_id() {
             return Err(BridgeAdapterError::InvalidRequest(
                 "request session does not match the authenticated bridge session",
             ));
@@ -195,30 +296,27 @@ impl<E: LiveSnapshotHttpExecutor> BridgeTransport for LoopbackSnapshotAdapter<E>
             endpoint: self.endpoint.clone(),
             session_id: request.metadata.session_id.clone(),
             correlation_id: request.metadata.correlation_id.clone(),
+            run_identifier_sha256: self.binding.run_identifier_sha256().into(),
+            expected_sequence: self.next_sequence,
         };
         let response = self.executor.execute_get(&descriptor)?;
-        if self.executor.authenticated_session_id() != &descriptor.session_id {
+        if self.executor.authenticated_binding() != &self.binding {
             return Err(BridgeAdapterError::InvalidSnapshotResponse(
-                "authenticated bridge session changed during the request",
+                "authenticated bridge run or session changed during the request",
             ));
         }
         let update = Self::validate_response(
             response,
             &descriptor.endpoint,
-            &descriptor.session_id,
+            &self.binding,
             &descriptor.correlation_id,
+            descriptor.expected_sequence,
+        )?;
+        self.next_sequence = self.next_sequence.checked_add(1).ok_or(
+            BridgeAdapterError::InvalidSnapshotResponse("bridge sequence overflowed"),
         )?;
         Ok(vec![update])
     }
-}
-
-/// Internal construction seam for a future authenticated post-login host.
-/// Product `HeptaBridge::default()` does not call or expose this function.
-pub(crate) fn guarded_loopback_snapshot_adapter<E: LiveSnapshotHttpExecutor>(
-    context: &LiveBridgeActivationContext<'_>,
-    executor: E,
-) -> Result<GuardedBridgeAdapter<LoopbackSnapshotAdapter<E>>, BridgeAdapterError> {
-    LoopbackSnapshotAdapter::try_new(context, executor).map(|adapter| adapter.into_guarded())
 }
 
 #[cfg(test)]
@@ -230,35 +328,53 @@ mod tests {
     };
 
     const ENDPOINT: &str = "http://127.0.0.1:47821/api/hepta-native-bridge/v1/snapshot";
+    const RUN_IDENTIFIER_SHA256: &str =
+        "7777777777777777777777777777777777777777777777777777777777777777";
 
     #[derive(Debug)]
     struct MemoryExecutor {
-        authenticated_session_id: SessionId,
+        binding: AuthenticatedLiveBridgeBinding,
         response: Option<Result<LiveSnapshotHttpResponse, BridgeAdapterError>>,
         observed: Vec<LiveSnapshotGet>,
-        rotate_session_after_request: Option<SessionId>,
+        rotate_binding_after_request: Option<AuthenticatedLiveBridgeBinding>,
     }
 
     impl MemoryExecutor {
         fn returning(update: BridgeUpdate) -> Self {
+            let binding = AuthenticatedLiveBridgeBinding::try_new(
+                "session-7".into(),
+                RUN_IDENTIFIER_SHA256,
+                3,
+            )
+            .unwrap();
             Self {
-                authenticated_session_id: "session-7".into(),
-                response: Some(Ok(LiveSnapshotHttpResponse {
-                    final_endpoint: Url::parse(ENDPOINT).unwrap(),
-                    status: 200,
-                    content_type: JSON_CONTENT_TYPE.into(),
-                    cache_control: NO_STORE.into(),
-                    body: serde_json::to_vec(&update).unwrap(),
-                })),
+                response: Some(Ok(Self::http_response(&binding, update))),
+                binding,
                 observed: Vec::new(),
-                rotate_session_after_request: None,
+                rotate_binding_after_request: None,
+            }
+        }
+
+        fn http_response(
+            binding: &AuthenticatedLiveBridgeBinding,
+            update: BridgeUpdate,
+        ) -> LiveSnapshotHttpResponse {
+            LiveSnapshotHttpResponse {
+                final_endpoint: Url::parse(ENDPOINT).unwrap(),
+                status: 200,
+                content_type: JSON_CONTENT_TYPE.into(),
+                cache_control: NO_STORE.into(),
+                authenticated_session_id: binding.session_id().clone(),
+                run_identifier_sha256: binding.run_identifier_sha256().into(),
+                sequence: binding.initial_sequence(),
+                body: serde_json::to_vec(&update).unwrap(),
             }
         }
     }
 
     impl LiveSnapshotHttpExecutor for MemoryExecutor {
-        fn authenticated_session_id(&self) -> &SessionId {
-            &self.authenticated_session_id
+        fn authenticated_binding(&self) -> &AuthenticatedLiveBridgeBinding {
+            &self.binding
         }
 
         fn execute_get(
@@ -270,8 +386,8 @@ mod tests {
                 .response
                 .take()
                 .unwrap_or(Err(BridgeAdapterError::TransportUnavailable));
-            if let Some(session_id) = self.rotate_session_after_request.take() {
-                self.authenticated_session_id = session_id;
+            if let Some(binding) = self.rotate_binding_after_request.take() {
+                self.binding = binding;
             }
             response
         }
@@ -282,7 +398,9 @@ mod tests {
             matrix_session_authenticated: true,
             explicit_user_opt_in: true,
             endpoint: ENDPOINT,
-            authenticated_session_binding: true,
+            authenticated_session_id: "session-7".into(),
+            run_identifier_sha256: RUN_IDENTIFIER_SHA256,
+            initial_sequence: 3,
             authoritative_snapshot_contract: true,
         }
     }
@@ -300,7 +418,10 @@ mod tests {
             metadata: metadata("snapshot-1", Redaction::not_required()),
             binding: binding(),
             update: BridgeUpdateKind::Snapshot {
-                snapshot: BridgeSnapshot::default(),
+                snapshot: BridgeSnapshot {
+                    revision: Revision(3),
+                    ..BridgeSnapshot::default()
+                },
             },
         }
     }
@@ -337,35 +458,47 @@ mod tests {
         assert_eq!(observed.endpoint().as_str(), ENDPOINT);
         assert_eq!(observed.session_id().as_str(), "session-7");
         assert_eq!(observed.correlation_id().as_str(), "correlation-11");
+        assert_eq!(observed.run_identifier_sha256(), RUN_IDENTIFIER_SHA256);
+        assert_eq!(observed.expected_sequence(), 3);
         assert_eq!(observed.accept(), "application/json");
         assert_eq!(observed.cache_control(), "no-store");
     }
 
     #[test]
-    fn authenticated_session_mismatch_fails_before_transport() {
+    fn authenticated_session_mismatch_fails_during_construction() {
         let mut executor = MemoryExecutor::returning(snapshot_update());
-        executor.authenticated_session_id = "another-session".into();
-        let mut adapter = LoopbackSnapshotAdapter::try_new(&context(), executor).unwrap();
+        executor.binding = AuthenticatedLiveBridgeBinding::try_new(
+            "another-session".into(),
+            RUN_IDENTIFIER_SHA256,
+            3,
+        )
+        .unwrap();
 
-        assert_eq!(
-            adapter.handle(request()),
+        assert!(matches!(
+            LoopbackSnapshotAdapter::try_new(&context(), executor),
             Err(BridgeAdapterError::InvalidRequest(
-                "request session does not match the authenticated bridge session"
+                "authenticated bridge binding does not match the in-process activation context"
             ))
-        );
-        assert!(adapter.executor.observed.is_empty());
+        ));
     }
 
     #[test]
     fn authenticated_session_rotation_during_transport_fails_closed() {
         let mut executor = MemoryExecutor::returning(snapshot_update());
-        executor.rotate_session_after_request = Some("rotated-session".into());
+        executor.rotate_binding_after_request = Some(
+            AuthenticatedLiveBridgeBinding::try_new(
+                "rotated-session".into(),
+                RUN_IDENTIFIER_SHA256,
+                3,
+            )
+            .unwrap(),
+        );
         let mut adapter = LoopbackSnapshotAdapter::try_new(&context(), executor).unwrap();
 
         assert_eq!(
             adapter.handle(request()),
             Err(BridgeAdapterError::InvalidSnapshotResponse(
-                "authenticated bridge session changed during the request"
+                "authenticated bridge run or session changed during the request"
             ))
         );
         assert_eq!(adapter.executor.observed.len(), 1);
@@ -374,43 +507,41 @@ mod tests {
     #[test]
     fn response_must_be_a_no_store_json_snapshot() {
         let update = snapshot_update();
-        let invalid_responses = [
-            LiveSnapshotHttpResponse {
-                final_endpoint: Url::parse(
-                    "http://127.0.0.1:47821/api/hepta-native-bridge/v1/redirected",
-                )
-                .unwrap(),
-                status: 200,
-                content_type: JSON_CONTENT_TYPE.into(),
-                cache_control: NO_STORE.into(),
-                body: serde_json::to_vec(&update).unwrap(),
-            },
-            LiveSnapshotHttpResponse {
-                final_endpoint: Url::parse(ENDPOINT).unwrap(),
-                status: 204,
-                content_type: JSON_CONTENT_TYPE.into(),
-                cache_control: NO_STORE.into(),
-                body: serde_json::to_vec(&update).unwrap(),
-            },
-            LiveSnapshotHttpResponse {
-                final_endpoint: Url::parse(ENDPOINT).unwrap(),
-                status: 200,
-                content_type: "text/plain".into(),
-                cache_control: NO_STORE.into(),
-                body: serde_json::to_vec(&update).unwrap(),
-            },
-            LiveSnapshotHttpResponse {
-                final_endpoint: Url::parse(ENDPOINT).unwrap(),
-                status: 200,
-                content_type: JSON_CONTENT_TYPE.into(),
-                cache_control: "private".into(),
-                body: serde_json::to_vec(&update).unwrap(),
-            },
-        ];
+        let binding = MemoryExecutor::returning(update.clone()).binding;
+        let mut redirected = MemoryExecutor::http_response(&binding, update.clone());
+        redirected.final_endpoint =
+            Url::parse("http://127.0.0.1:47821/api/hepta-native-bridge/v1/redirected").unwrap();
+        let mut wrong_status = MemoryExecutor::http_response(&binding, update.clone());
+        wrong_status.status = 204;
+        let mut wrong_content_type = MemoryExecutor::http_response(&binding, update.clone());
+        wrong_content_type.content_type = "text/plain".into();
+        let mut cacheable = MemoryExecutor::http_response(&binding, update);
+        cacheable.cache_control = "private".into();
+        let invalid_responses = [redirected, wrong_status, wrong_content_type, cacheable];
 
         for response in invalid_responses {
             let mut executor = MemoryExecutor::returning(snapshot_update());
             executor.response = Some(Ok(response));
+            let mut adapter = LoopbackSnapshotAdapter::try_new(&context(), executor).unwrap();
+            assert!(matches!(
+                adapter.handle(request()),
+                Err(BridgeAdapterError::InvalidSnapshotResponse(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn stale_gap_and_cross_run_sequences_fail_closed() {
+        let update = snapshot_update();
+        for mutation in ["stale", "gap", "cross-run"] {
+            let mut executor = MemoryExecutor::returning(update.clone());
+            let response = executor.response.as_mut().unwrap().as_mut().unwrap();
+            match mutation {
+                "stale" => response.sequence = 2,
+                "gap" => response.sequence = 4,
+                "cross-run" => response.run_identifier_sha256 = "8".repeat(64),
+                _ => unreachable!(),
+            }
             let mut adapter = LoopbackSnapshotAdapter::try_new(&context(), executor).unwrap();
             assert!(matches!(
                 adapter.handle(request()),
@@ -441,22 +572,5 @@ mod tests {
                 Err(BridgeAdapterError::InvalidSnapshotResponse(_))
             ));
         }
-    }
-
-    #[test]
-    fn guarded_adapter_exposes_snapshot_capability_only() {
-        let adapter = guarded_loopback_snapshot_adapter(
-            &context(),
-            MemoryExecutor::returning(snapshot_update()),
-        )
-        .unwrap();
-        let capabilities = adapter.capabilities();
-
-        assert!(capabilities.snapshot);
-        assert!(!capabilities.subscribe);
-        assert!(!capabilities.prepare);
-        assert!(!capabilities.confirm);
-        assert!(!capabilities.reject);
-        assert!(!capabilities.cancel);
     }
 }

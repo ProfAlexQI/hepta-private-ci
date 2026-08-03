@@ -16,7 +16,13 @@
     "request_body_allowed": false,
     "redirect_allowed": false,
     "cache_control": "no-store",
-    "mutation_allowed": false
+    "mutation_allowed": false,
+    "required_request_bindings": [
+      "run_identifier_sha256",
+      "session_id",
+      "correlation_id",
+      "expected_sequence"
+    ]
   },
   "response_contract": {
     "content_type": "application/json",
@@ -35,8 +41,10 @@
       "provenance"
     ],
     "request_echo_bindings": [
+      "run_identifier_sha256",
       "session_id",
-      "correlation_id"
+      "correlation_id",
+      "sequence"
     ],
     "required_snapshot_collections": [
       "runtime",
@@ -156,22 +164,32 @@
   ],
   "current_implementation": {
     "native_snapshot_transport_seam_available": true,
+    "authenticated_executor_contract_available": true,
     "authenticated_http_executor_available": false,
     "canonical_endpoint_registered": false,
     "authoritative_envelope_available": false,
     "authenticated_session_binding_available": false,
-    "live_adapter_available": false,
+    "run_session_sequence_binding_enforced": true,
+    "live_adapter_available": true,
+    "production_facade_live_constructor_available": true,
+    "product_lifecycle_wired": false,
     "live_receipt_available": false,
-    "production_default_adapter": "disabled",
+    "production_default_adapter": "disabled_until_explicit_try_live",
     "hepta_live_bridge_ready": false
+  },
+  "first_promotion_target": {
+    "platform": "macos",
+    "surface": "authenticated_post_login",
+    "exact_source_required": true,
+    "real_socket_required": true
   },
   "promotion_requirements": [
     "backend registers the canonical GET endpoint",
     "backend authenticates and binds the Matrix-authenticated Native session without accepting environment flags as proof",
     "response deserializes as the exact BridgeUpdate snapshot contract",
-    "outer and record session/correlation/origin/redaction/provenance checks pass",
+    "outer and record run/session/correlation/sequence/origin/redaction/provenance checks pass",
     "Native performs an actual loopback GET only after login and explicit opt-in",
-    "live receipt records endpoint, HTTP status, request descriptor hash, response hash, session/correlation match, and no mutation",
+    "live receipt records endpoint, HTTP status, request descriptor hash, response hash, non-fixture transport, run/session/correlation/sequence match, and no mutation",
     "logout and login failure tear down transport and binding",
     "prepare, confirm, reject, cancel, and subscribe remain disabled"
   ]
