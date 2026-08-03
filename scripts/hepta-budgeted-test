@@ -132,8 +132,12 @@ self_test() (
   git -C "$temp_repo" config user.name hepta-budget-self-test
   git -C "$temp_repo" config user.email hepta-budget-self-test@invalid
   printf 'baseline\n' >"$temp_repo/baseline"
-  git -C "$temp_repo" add baseline
+  printf '.hepta/\n' >"$temp_repo/.gitignore"
+  git -C "$temp_repo" add baseline .gitignore
   git -C "$temp_repo" commit -qm baseline
+
+  mkdir -p "$temp_repo/.hepta/security/advisory-db"
+  git -C "$temp_repo/.hepta/security/advisory-db" init -q
 
   run_budgeted --name success --max-seconds 2 --workspace "$temp_repo" -- sh -c 'exit 0'
 
@@ -146,7 +150,7 @@ self_test() (
     sh -c 'printf unexpected > unexpected-file' || rc=$?
   [[ "$rc" -eq 90 ]] || { echo "write self-test expected 90, got $rc" >&2; return 1; }
 
-  echo '{"schema":"hepta_budgeted_test_self_test_v1","status":"ready","timeout_enforced":true,"workspace_write_budget_enforced":true}'
+  echo '{"schema":"hepta_budgeted_test_self_test_v1","status":"ready","ignored_nested_cache_supported":true,"timeout_enforced":true,"workspace_write_budget_enforced":true}'
 )
 
 case "${1:-}" in

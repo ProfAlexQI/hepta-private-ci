@@ -44,6 +44,7 @@ AGENTS.override.md
 
 # caches
 .cache/
+.hepta/
 .turbo/
 .parcel-cache/
 .eslintcache
