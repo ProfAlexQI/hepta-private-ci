@@ -29,7 +29,7 @@ trap cleanup_test EXIT
 /usr/bin/ruby -e '
   source = File.binread(ARGV.fetch(0))
   guard = source.index(%q{if [[ "$PREFLIGHT_ONLY" != "1" ]]}) or abort "approval guard missing"
-  blocker = source.index(%q{independent_release_approval_verifier_unavailable: actual release execution is disabled; run --preflight only}) or abort "approval blocker missing"
+  blocker = source.index(%q{signed_release_execution_approval_missing: actual release execution is disabled; run --preflight only}) or abort "approval blocker missing"
   discovery = source.index(%q{[[ "$(uname -s)" == "Darwin" ]}) or abort "platform discovery missing"
   abort "approval blocker is not inside the early guard" unless guard < blocker && blocker < discovery
   abort "actual guard does not use dedicated exit" unless source[guard...discovery].include?("exit 77")
@@ -263,7 +263,7 @@ run_actual_blocked() {
   local status=$?
   set -e
   [[ "$status" -eq 77 ]]
-  grep -Fxq 'independent_release_approval_verifier_unavailable: actual release execution is disabled; run --preflight only' "$case_dir/stderr"
+  grep -Fxq 'signed_release_execution_approval_missing: actual release execution is disabled; run --preflight only' "$case_dir/stderr"
   [[ ! -s "$TOOL_LOG" && ! -s "$HIGH_RISK_LOG" ]]
   [[ ! -e "$STARTUP_HOOK_MARKER" && ! -e "$RUBY_HOOK_MARKER" ]]
   ! /usr/bin/grep -F 'startup-secret-sentinel' "$case_dir/stdout" "$case_dir/stderr" >/dev/null

@@ -36,6 +36,9 @@ OUTPUT_PATH=""
 RECEIPT_PATH="${HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH:-}"
 BOOTSTRAP_TOOLS=0
 PREFLIGHT_ONLY=0
+RELEASE_APPROVAL_PATH=""
+RELEASE_APPROVAL_SIGNATURE_PATH=""
+RELEASE_APPROVAL_PUBLIC_KEY_PATH=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -43,6 +46,9 @@ while [[ $# -gt 0 ]]; do
     --app-receipt) APP_RECEIPT_PATH="${2:-}"; shift 2 ;;
     --output) OUTPUT_PATH="${2:-}"; shift 2 ;;
     --receipt) RECEIPT_PATH="${2:-}"; shift 2 ;;
+    --release-approval) RELEASE_APPROVAL_PATH="${2:-}"; shift 2 ;;
+    --release-approval-signature) RELEASE_APPROVAL_SIGNATURE_PATH="${2:-}"; shift 2 ;;
+    --release-approval-public-key) RELEASE_APPROVAL_PUBLIC_KEY_PATH="${2:-}"; shift 2 ;;
     --bootstrap-tools) BOOTSTRAP_TOOLS=1; shift ;;
     --preflight) PREFLIGHT_ONLY=1; shift ;;
     --help|-h)
@@ -56,6 +62,12 @@ Options:
                         May also be set with HEPTA_NATIVE_UNSIGNED_APP_RECEIPT_PATH.
   --output PATH         Output DMG (default: dist/Hepta_<version>_<arch>.dmg).
   --receipt PATH        JSON release receipt (default: <output>.receipt.json).
+  --release-approval PATH
+                        Signed exact-action approval JSON (absolute path).
+  --release-approval-signature PATH
+                        Detached RSA PKCS#1 SHA-256 signature (absolute path).
+  --release-approval-public-key PATH
+                        Trusted RSA public key only (absolute path).
   --bootstrap-tools     Allow the formal unsigned lane to install pinned tools.
   --preflight           Validate identity, credentials, tools, and inputs only.
 
@@ -63,8 +75,10 @@ Required authority:
   HEPTA_SIGNING_IDENTITY, or package.metadata.packager.macos.signing_identity
   HEPTA_NOTARY_PROFILE (keychain profile only; direct password argv is rejected)
 
-Actual signing/notary execution is disabled until an independent release-
-approval verifier is available. Only --preflight is currently supported.
+Actual signing/notary execution requires all three release-approval inputs and
+an explicit --app-path/--app-receipt pair. The approval verifier is read-only;
+the detached approval must be produced and signed by the independent authority
+pinned in packaging/release-execution-approval-trust-v1.json.
 EOF
       exit 0
       ;;
@@ -73,15 +87,34 @@ EOF
 done
 
 # Signing, notarization submission, stapling, and DMG attachment are release
-# approval-scoped actions.  This lane has no independent verifier that can bind
-# an approval artifact to the exact source/action tuple, so actual execution is
-# deliberately unreachable.  Keep this guard immediately after argument
-# parsing and before tool discovery, output creation, package staging, or any
-# release side effect.  A future implementation must replace this constant
-# guard with independent approval verification, not an environment boolean.
+# approval-scoped actions. Reject missing or partial approval authority before
+# tool discovery, output creation, package staging, or any release side effect.
+# A complete approval is still untrusted here: it is verified against the exact
+# source/app/action tuple after the formal unsigned input is validated and
+# immediately before the first signing operation.
+RELEASE_APPROVAL_ARGUMENT_COUNT=0
+for approval_argument in \
+  "$RELEASE_APPROVAL_PATH" \
+  "$RELEASE_APPROVAL_SIGNATURE_PATH" \
+  "$RELEASE_APPROVAL_PUBLIC_KEY_PATH"; do
+  if [[ -n "$approval_argument" ]]; then
+    RELEASE_APPROVAL_ARGUMENT_COUNT=$((RELEASE_APPROVAL_ARGUMENT_COUNT + 1))
+  fi
+done
+if [[ "$RELEASE_APPROVAL_ARGUMENT_COUNT" != "0" && "$RELEASE_APPROVAL_ARGUMENT_COUNT" != "3" ]]; then
+  printf '%s\n' 'release approval inputs must be supplied as one complete three-file set' >&2
+  exit 64
+fi
 if [[ "$PREFLIGHT_ONLY" != "1" ]]; then
-  printf '%s\n' 'independent_release_approval_verifier_unavailable: actual release execution is disabled; run --preflight only' >&2
-  exit 77
+  if [[ "$RELEASE_APPROVAL_ARGUMENT_COUNT" != "3" ]]; then
+    printf '%s\n' 'signed_release_execution_approval_missing: actual release execution is disabled; run --preflight only' >&2
+    printf '%s\n' 'a complete signed exact-action approval is required for release execution' >&2
+    exit 77
+  fi
+  if [[ -z "$APP_PATH" || -z "$APP_RECEIPT_PATH" ]]; then
+    printf '%s\n' 'signed release execution requires an explicit prebuilt --app-path and --app-receipt so approval can bind the exact input' >&2
+    exit 77
+  fi
 fi
 
 CANONICAL_HOME="$(/usr/bin/env -i PATH="$SYSTEM_PATH" /usr/bin/ruby --disable-gems -retc -e 'print Etc.getpwuid(Process.uid).dir')"
@@ -100,6 +133,8 @@ CARGO_TOML="$PROJECT_DIR/Cargo.toml"
 ENTITLEMENTS="$SCRIPT_DIR/Entitlements.plist"
 APP_BUNDLE_FINGERPRINT="$SCRIPT_DIR/app-bundle-fingerprint-v1.rb"
 FINDER_BOOKMARK_RESOLVER="$SCRIPT_DIR/resolve-finder-bookmark-v1.swift"
+RELEASE_APPROVAL_VERIFIER="$REPO_ROOT/scripts/hepta-ui-release-execution-approval-verifier-v1"
+RELEASE_APPROVAL_TRUST_POLICY="$SCRIPT_DIR/release-execution-approval-trust-v1.json"
 
 [[ "$(uname -s)" == "Darwin" ]] || { echo "macOS release packaging requires Darwin" >&2; exit 2; }
 for command in awk codesign ditto find hdiutil jq mount plutil readlink ruby security shasum spctl swift swiftc xattr xcrun; do
@@ -143,7 +178,12 @@ paths_overlap() {
 }
 assert_release_inputs_disjoint() {
   local input_path target_path
-  for input_path in "$APP_PATH" "$APP_RECEIPT_PATH"; do
+  for input_path in \
+    "$APP_PATH" \
+    "$APP_RECEIPT_PATH" \
+    "$RELEASE_APPROVAL_PATH" \
+    "$RELEASE_APPROVAL_SIGNATURE_PATH" \
+    "$RELEASE_APPROVAL_PUBLIC_KEY_PATH"; do
     [[ -n "$input_path" ]] || continue
     for target_path in "$OUTPUT_PATH" "$RECEIPT_PATH" "$EVIDENCE_DIR"; do
       if paths_overlap "$input_path" "$target_path"; then
@@ -155,6 +195,17 @@ assert_release_inputs_disjoint() {
   if [[ -n "$APP_PATH" && -n "$APP_RECEIPT_PATH" ]] && paths_overlap "$APP_PATH" "$APP_RECEIPT_PATH"; then
     release_fail "release_input_paths_overlap" "formal app and app-receipt paths must not overlap" 64
   fi
+  local -a approval_inputs=("$RELEASE_APPROVAL_PATH" "$RELEASE_APPROVAL_SIGNATURE_PATH" "$RELEASE_APPROVAL_PUBLIC_KEY_PATH")
+  local left_index right_index
+  for ((left_index=0; left_index<${#approval_inputs[@]}; left_index+=1)); do
+    [[ -n "${approval_inputs[$left_index]}" ]] || continue
+    for ((right_index=left_index+1; right_index<${#approval_inputs[@]}; right_index+=1)); do
+      [[ -n "${approval_inputs[$right_index]}" ]] || continue
+      if paths_overlap "${approval_inputs[$left_index]}" "${approval_inputs[$right_index]}"; then
+        release_fail "release_approval_input_paths_overlap" "approval, signature, and public-key inputs must be distinct" 64
+      fi
+    done
+  done
 }
 OUTPUT_PATH="$(normalize_path "$OUTPUT_PATH")"
 RECEIPT_PATH="$(normalize_path "$RECEIPT_PATH")"
@@ -182,7 +233,34 @@ if [[ -n "$APP_RECEIPT_PATH" ]]; then
   APP_RECEIPT_PATH="$(normalize_path "$APP_RECEIPT_PATH")"
   [[ -s "$APP_RECEIPT_PATH" ]] || { echo "formal unsigned app receipt not found: $APP_RECEIPT_PATH" >&2; exit 2; }
 fi
-for early_input_path in "$APP_PATH" "$APP_RECEIPT_PATH"; do
+if [[ "$RELEASE_APPROVAL_ARGUMENT_COUNT" == "3" ]]; then
+  for approval_path_name in \
+    RELEASE_APPROVAL_PATH \
+    RELEASE_APPROVAL_SIGNATURE_PATH \
+    RELEASE_APPROVAL_PUBLIC_KEY_PATH; do
+    approval_input_path="${!approval_path_name}"
+    [[ "$approval_input_path" == /* ]] || {
+      echo "release approval inputs must use explicit absolute paths" >&2
+      exit 64
+    }
+    canonical_approval_input_path="$(normalize_path "$approval_input_path")"
+    [[ "$canonical_approval_input_path" == "$approval_input_path" ]] || {
+      echo "release approval input contains a symlinked or non-canonical component: $approval_input_path" >&2
+      exit 64
+    }
+    [[ -f "$approval_input_path" && ! -L "$approval_input_path" && -s "$approval_input_path" ]] || {
+      echo "release approval input is not a non-empty regular file: $approval_input_path" >&2
+      exit 64
+    }
+    printf -v "$approval_path_name" '%s' "$canonical_approval_input_path"
+  done
+fi
+for early_input_path in \
+  "$APP_PATH" \
+  "$APP_RECEIPT_PATH" \
+  "$RELEASE_APPROVAL_PATH" \
+  "$RELEASE_APPROVAL_SIGNATURE_PATH" \
+  "$RELEASE_APPROVAL_PUBLIC_KEY_PATH"; do
   [[ -n "$early_input_path" ]] || continue
   for early_target_path in "$OUTPUT_PATH" "$RECEIPT_PATH" "$EVIDENCE_DIR"; do
     if paths_overlap "$early_input_path" "$early_target_path"; then
@@ -194,6 +272,17 @@ done
 if [[ -n "$APP_PATH" && -n "$APP_RECEIPT_PATH" ]] && paths_overlap "$APP_PATH" "$APP_RECEIPT_PATH"; then
   echo "formal app and app-receipt paths must not overlap" >&2
   exit 64
+fi
+if [[ "$RELEASE_APPROVAL_ARGUMENT_COUNT" == "3" ]]; then
+  approval_pair_paths=("$RELEASE_APPROVAL_PATH" "$RELEASE_APPROVAL_SIGNATURE_PATH" "$RELEASE_APPROVAL_PUBLIC_KEY_PATH")
+  for ((approval_left=0; approval_left<${#approval_pair_paths[@]}; approval_left+=1)); do
+    for ((approval_right=approval_left+1; approval_right<${#approval_pair_paths[@]}; approval_right+=1)); do
+      if paths_overlap "${approval_pair_paths[$approval_left]}" "${approval_pair_paths[$approval_right]}"; then
+        echo "approval, signature, and public-key inputs must be distinct" >&2
+        exit 64
+      fi
+    done
+  done
 fi
 
 [[ ! -e "$OUTPUT_PATH" && ! -L "$OUTPUT_PATH" ]] || { echo "refusing to replace existing DMG: $OUTPUT_PATH" >&2; exit 1; }
@@ -229,6 +318,7 @@ read -r EVIDENCE_OWNER_TOKEN_DEVICE EVIDENCE_OWNER_TOKEN_INODE < <(/usr/bin/stat
 RELEASE_STAGE="formal_unsigned_input"
 failure_receipt_written=false
 FAILURE_SIGNAL=""
+RELEASE_APPROVAL_VALID=false
 APP_SIGNED=false
 DMG_SIGNED=false
 NOTARY_ATTEMPTED=false
@@ -338,7 +428,8 @@ write_failure_receipt() {
     --arg notarytool_log_path "$NOTARYTOOL_LOG_FINAL" --arg notarytool_log_sha "$NOTARYTOOL_LOG_SHA" --argjson notarytool_log_bytes "$NOTARYTOOL_LOG_BYTES" \
     --argjson notarytool_log_present "$(if [[ -f "$NOTARYTOOL_LOG" ]]; then echo true; else echo false; fi)" \
     --argjson stapled "$STAPLED" --argjson spctl_ready "$SPCTL_READY" --argjson dmg_readback_ready "$DMG_READBACK_READY" \
-    '{artifact_kind:"signed_notarized_stapled_artifact",artifact_version:3,receipt_contract_version:3,status:"not_ready",failure:{stage:$stage,exit_code:$exit_code,blocker:$blocker,signal:(if $signal == "" then null else $signal end)},artifact_evidence:{signed:$app_signed,dmg_signed:$dmg_signed,notarized:$notary_accepted,stapled:$stapled,dmg_stapled:$stapled,app_stapled:false,spctl_ready:$spctl_ready,dmg_readback_ready:$dmg_readback_ready,local_distribution_artifact_written:$output_exists,public_upload_performed:false,signed_artifact_path:$output,notarytool_exit_code:$notary_exit_code,notary_submission_id:(if $notary_submission_id == "" then null else $notary_submission_id end),notary_submission_state:$notary_submission_state,notary_submission_confirmed:$notary_submission_confirmed,notary_submission_may_have_occurred:$notary_submission_may_have_occurred,notarytool_submit_log_path:(if $notarytool_log_present then $notarytool_log_path else null end),notarytool_submit_log_sha256:(if $notarytool_log_present and $notarytool_log_sha != "" then $notarytool_log_sha else null end),notarytool_submit_log_bytes:(if $notarytool_log_present then $notarytool_log_bytes else 0 end),notary_keychain_profile_only:true,direct_apple_id_password_mode_supported:false,credential_environment_scrubbed_before_first_external_command:true},claim_boundary:{release_artifact_claim_ready:false,release_execution_ready:false,public_distribution_claim_ready:false,release_claim_ready:false,live_product_claim_ready:false},side_effects:{network_call_attempted:$notary_attempted,network_call_confirmed:$notary_submitted,network_call_may_have_occurred:$notary_submission_may_have_occurred,notary_submission_attempted:$notary_attempted,notary_submission_confirmed:$notary_submission_confirmed,notary_submission_may_have_occurred:$notary_submission_may_have_occurred,app_signed:$app_signed,app_notarized:$notary_accepted,app_stapled:false,dmg_stapled:$stapled,public_upload_performed:false}}' \
+    --argjson release_approval_valid "$RELEASE_APPROVAL_VALID" \
+    '{artifact_kind:"signed_notarized_stapled_artifact",artifact_version:3,receipt_contract_version:3,status:"not_ready",release_approval_valid:$release_approval_valid,failure:{stage:$stage,exit_code:$exit_code,blocker:$blocker,signal:(if $signal == "" then null else $signal end)},artifact_evidence:{signed:$app_signed,dmg_signed:$dmg_signed,notarized:$notary_accepted,stapled:$stapled,dmg_stapled:$stapled,app_stapled:false,spctl_ready:$spctl_ready,dmg_readback_ready:$dmg_readback_ready,local_distribution_artifact_written:$output_exists,public_upload_performed:false,signed_artifact_path:$output,notarytool_exit_code:$notary_exit_code,notary_submission_id:(if $notary_submission_id == "" then null else $notary_submission_id end),notary_submission_state:$notary_submission_state,notary_submission_confirmed:$notary_submission_confirmed,notary_submission_may_have_occurred:$notary_submission_may_have_occurred,notarytool_submit_log_path:(if $notarytool_log_present then $notarytool_log_path else null end),notarytool_submit_log_sha256:(if $notarytool_log_present and $notarytool_log_sha != "" then $notarytool_log_sha else null end),notarytool_submit_log_bytes:(if $notarytool_log_present then $notarytool_log_bytes else 0 end),notary_keychain_profile_only:true,direct_apple_id_password_mode_supported:false,credential_environment_scrubbed_before_first_external_command:true},claim_boundary:{release_artifact_claim_ready:false,release_execution_ready:false,public_distribution_claim_ready:false,release_claim_ready:false,live_product_claim_ready:false},side_effects:{network_call_attempted:$notary_attempted,network_call_confirmed:$notary_submitted,network_call_may_have_occurred:$notary_submission_may_have_occurred,notary_submission_attempted:$notary_attempted,notary_submission_confirmed:$notary_submission_confirmed,notary_submission_may_have_occurred:$notary_submission_may_have_occurred,app_signed:$app_signed,app_notarized:$notary_accepted,app_stapled:false,dmg_stapled:$stapled,public_upload_performed:false}}' \
     >"$temporary"; then
     rm -f "$temporary"
     return 1
@@ -474,9 +565,16 @@ trap on_release_error ERR
 trap 'on_release_signal INT 130' INT
 trap 'on_release_signal TERM 143' TERM
 
-[[ -f "$ENTITLEMENTS" ]] || release_fail "entitlements_missing" "entitlements file not found: $ENTITLEMENTS" 2
+[[ -f "$ENTITLEMENTS" && ! -L "$ENTITLEMENTS" ]] \
+  || release_fail "entitlements_missing" "entitlements file not found or unsafe: $ENTITLEMENTS" 2
 [[ -s "$APP_BUNDLE_FINGERPRINT" ]] || release_fail "bundle_fingerprint_helper_missing" "app bundle fingerprint helper not found: $APP_BUNDLE_FINGERPRINT" 2
 [[ -s "$FINDER_BOOKMARK_RESOLVER" ]] || release_fail "finder_bookmark_resolver_missing" "Finder bookmark resolver not found: $FINDER_BOOKMARK_RESOLVER" 2
+if [[ "$PREFLIGHT_ONLY" != "1" ]]; then
+  [[ -f "$RELEASE_APPROVAL_TRUST_POLICY" && ! -L "$RELEASE_APPROVAL_TRUST_POLICY" ]] \
+    || release_fail "release_approval_trust_policy_missing" "fixed release approval trust policy is unavailable" 77
+  [[ -x "$RELEASE_APPROVAL_VERIFIER" && ! -L "$RELEASE_APPROVAL_VERIFIER" ]] \
+    || release_fail "release_approval_verifier_missing" "independent release approval verifier is unavailable" 77
+fi
 ruby -c "$APP_BUNDLE_FINGERPRINT" >/dev/null
 swiftc -parse "$FINDER_BOOKMARK_RESOLVER"
 
@@ -508,14 +606,15 @@ fi
 if ! INSTALLED_SIGNING_IDENTITIES="$(/usr/bin/security find-identity -v -p codesigning 2>&1)"; then
   release_fail "developer_id_identity_lookup_failed" "unable to query installed Developer ID signing identities" 2
 fi
-if ! /usr/bin/ruby -e '
+if ! SIGNING_CERTIFICATE_SHA1="$(/usr/bin/ruby -e '
   expected = ARGV.fetch(0)
-  matches = STDIN.each_line.count do |line|
-    match = line.match(/^\s*\d+\)\s+[0-9A-Fa-f]{40}\s+"([^"]+)"\s*$/)
-    match && match[1] == expected
-  end
-  exit(matches == 1 ? 0 : 1)
-' "$SIGNING_IDENTITY" <<<"$INSTALLED_SIGNING_IDENTITIES"; then
+  matches = STDIN.each_line.map do |line|
+    match = line.match(/^\s*\d+\)\s+([0-9A-Fa-f]{40})\s+"([^"]+)"\s*$/)
+    match[1].downcase if match && match[2] == expected
+  end.compact
+  abort "identity must resolve uniquely" unless matches.length == 1
+  print matches.fetch(0)
+' "$SIGNING_IDENTITY" <<<"$INSTALLED_SIGNING_IDENTITIES")"; then
   release_fail "developer_id_identity_not_installed" "configured Developer ID signing identity is not installed: $SIGNING_IDENTITY" 2
 fi
 
@@ -528,14 +627,38 @@ if [[ -z "$NOTARY_PROFILE" ]]; then
 fi
 
 if [[ "$PREFLIGHT_ONLY" == "1" ]]; then
+  RELEASE_APPROVAL_VERIFIER_AVAILABLE=false
+  if [[ -f "$RELEASE_APPROVAL_VERIFIER" && ! -L "$RELEASE_APPROVAL_VERIFIER" && -x "$RELEASE_APPROVAL_VERIFIER" ]]; then
+    RELEASE_APPROVAL_VERIFIER_AVAILABLE=true
+  fi
+  RELEASE_APPROVAL_TRUST_CONFIGURED=false
+  if [[ -f "$RELEASE_APPROVAL_TRUST_POLICY" && ! -L "$RELEASE_APPROVAL_TRUST_POLICY" ]] \
+    && jq -e '
+      keys | sort == ["kind","minimum_rsa_bits","public_key_sha256","schema_version","signature_algorithm","signer_id","status"]
+    ' "$RELEASE_APPROVAL_TRUST_POLICY" >/dev/null 2>&1 \
+    && jq -e '
+      .schema_version == 1
+      and .kind == "hepta-ui-release-execution-approval-trust-v1"
+      and .status == "ready"
+      and (.signer_id | type == "string" and length > 0)
+      and (.public_key_sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+      and .signature_algorithm == "rsa-pkcs1-sha256"
+      and (.minimum_rsa_bits | type == "number" and . >= 3072)
+    ' "$RELEASE_APPROVAL_TRUST_POLICY" >/dev/null 2>&1; then
+    RELEASE_APPROVAL_TRUST_CONFIGURED=true
+  fi
   jq -n \
     --arg identity "$SIGNING_IDENTITY" \
+    --arg signing_certificate_sha1 "$SIGNING_CERTIFICATE_SHA1" \
     --arg expected_team_id "$EXPECTED_TEAM_ID" \
     --arg notary_mode "keychain_profile" \
     --arg app_path "$APP_PATH" \
     --arg app_receipt_path "$APP_RECEIPT_PATH" \
     --arg output "$OUTPUT_PATH" \
-    '{status:"ready",preflight_scope:"tools_credentials_and_path_shape_only",signing_identity:$identity,expected_team_identifier:$expected_team_id,notary_mode:$notary_mode,notary_keychain_profile_only:true,direct_apple_id_password_mode_supported:false,credential_environment_scrubbed_before_first_external_command:true,independent_approval_verifier_ready:false,release_execution_ready:false,actual_release_execution_supported:false,blockers:["independent_release_approval_verifier_unavailable"],app_path:(if $app_path=="" then null else $app_path end),app_receipt_path:(if $app_receipt_path=="" then null else $app_receipt_path end),output:$output,canonical_input_verified:false,consumes_canonical_current_package:false,receipt_json_validated:false,exact_app_source_binding_validated:false,builds_second_app:false,publishes:false}'
+    --argjson approval_inputs_supplied "$(if [[ "$RELEASE_APPROVAL_ARGUMENT_COUNT" == "3" ]]; then echo true; else echo false; fi)" \
+    --argjson verifier_available "$RELEASE_APPROVAL_VERIFIER_AVAILABLE" \
+    --argjson approval_trust_configured "$RELEASE_APPROVAL_TRUST_CONFIGURED" \
+    '{status:"ready",preflight_scope:"tools_credentials_and_path_shape_only",signing_identity:$identity,signing_certificate_sha1:$signing_certificate_sha1,expected_team_identifier:$expected_team_id,notary_mode:$notary_mode,notary_keychain_profile_only:true,direct_apple_id_password_mode_supported:false,credential_environment_scrubbed_before_first_external_command:true,independent_approval_verifier_ready:$verifier_available,release_execution_approval_verifier_available:$verifier_available,release_approval_trust_configured:$approval_trust_configured,release_approval_inputs_supplied:$approval_inputs_supplied,release_approval_verified:false,release_execution_ready:false,actual_release_execution_supported:false,conditional_release_execution_supported:($verifier_available and $approval_trust_configured),blockers:(["signed_release_approval_not_verified_in_preflight"] + (if $verifier_available then [] else ["independent_release_approval_verifier_unavailable"] end) + (if $approval_trust_configured then [] else ["release_approval_trust_not_configured"] end) + (if $approval_inputs_supplied then [] else ["signed_release_approval_inputs_not_supplied"] end)),app_path:(if $app_path=="" then null else $app_path end),app_receipt_path:(if $app_receipt_path=="" then null else $app_receipt_path end),output:$output,canonical_input_verified:false,consumes_canonical_current_package:false,receipt_json_validated:false,exact_app_source_binding_validated:false,builds_second_app:false,publishes:false}'
   exit 0
 fi
 
@@ -622,6 +745,106 @@ UNSIGNED_RECEIPT_SHA="$(shasum -a 256 "$PERSISTED_UNSIGNED_RECEIPT" | awk '{prin
 SOURCE_HEAD="$(jq -r '.source_binding.head' "$PERSISTED_UNSIGNED_RECEIPT")"
 SOURCE_TREE="$(jq -r '.source_binding.head_tree' "$PERSISTED_UNSIGNED_RECEIPT")"
 SOURCE_FINGERPRINT="$(jq -r '.source_binding.source_fingerprint' "$PERSISTED_UNSIGNED_RECEIPT")"
+
+# Independently verify the detached operator approval only after the exact
+# clean source and formal unsigned app have been proven. This remains before
+# ditto/codesign/notarytool/stapler and therefore cannot authorize a different
+# input or retroactively bless a release action that already occurred.
+RELEASE_STAGE="release_approval_verification"
+SOURCE_APP_FINGERPRINT_SHA="$(jq -S -c . <<<"$SOURCE_APP_FINGERPRINT" | shasum -a 256 | awk '{print $1}')"
+PACKAGING_SCRIPT_SHA="$(shasum -a 256 "$SCRIPT_DIR/build-macos-dmg.sh" | awk '{print $1}')"
+RELEASE_APPROVAL_VERIFIER_SHA="$(shasum -a 256 "$RELEASE_APPROVAL_VERIFIER" | awk '{print $1}')"
+RELEASE_APPROVAL_TRUST_POLICY_SHA_BEFORE="$(shasum -a 256 "$RELEASE_APPROVAL_TRUST_POLICY" | awk '{print $1}')"
+ENTITLEMENTS_SHA="$(shasum -a 256 "$ENTITLEMENTS" | awk '{print $1}')"
+SIGNING_ENTITLEMENTS="$WORK_DIR/Entitlements.plist"
+/bin/cp "$ENTITLEMENTS" "$SIGNING_ENTITLEMENTS"
+/bin/chmod 400 "$SIGNING_ENTITLEMENTS"
+[[ "$(shasum -a 256 "$SIGNING_ENTITLEMENTS" | awk '{print $1}')" == "$ENTITLEMENTS_SHA" ]] \
+  || release_fail "release_entitlements_private_copy_mismatch" \
+    "private signing entitlements do not match the exact approved entitlements" 77
+NOTARY_PROFILE_SHA="$(printf '%s' "$NOTARY_PROFILE" | shasum -a 256 | awk '{print $1}')"
+RELEASE_APPROVAL_VERIFICATION_TMP="$WORK_DIR/release-approval-verification.json"
+if ! "$RELEASE_APPROVAL_VERIFIER" \
+  --approval "$RELEASE_APPROVAL_PATH" \
+  --signature "$RELEASE_APPROVAL_SIGNATURE_PATH" \
+  --public-key "$RELEASE_APPROVAL_PUBLIC_KEY_PATH" \
+  --trust-policy "$RELEASE_APPROVAL_TRUST_POLICY" \
+  --source-head "$SOURCE_HEAD" \
+  --source-tree "$SOURCE_TREE" \
+  --source-fingerprint "$SOURCE_FINGERPRINT" \
+  --unsigned-app-path "$SOURCE_APP_PATH" \
+  --unsigned-app-receipt-path "$APP_RECEIPT_PATH" \
+  --unsigned-app-receipt-sha256 "$UNSIGNED_RECEIPT_SHA" \
+  --unsigned-app-bundle-fingerprint-sha256 "$SOURCE_APP_FINGERPRINT_SHA" \
+  --unsigned-app-binary-sha256 "$SOURCE_BINARY_SHA" \
+  --packaging-script-sha256 "$PACKAGING_SCRIPT_SHA" \
+  --approval-verifier-sha256 "$RELEASE_APPROVAL_VERIFIER_SHA" \
+  --product-version "$PRODUCT_VERSION" \
+  --packager-arch "$PACKAGER_ARCH" \
+  --output-path "$OUTPUT_PATH" \
+  --release-receipt-path "$RECEIPT_PATH" \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --signing-identity "$SIGNING_IDENTITY" \
+  --signing-certificate-sha1 "$SIGNING_CERTIFICATE_SHA1" \
+  --team-id "$EXPECTED_TEAM_ID" \
+  --entitlements-sha256 "$ENTITLEMENTS_SHA" \
+  --notary-profile-sha256 "$NOTARY_PROFILE_SHA" \
+  >"$RELEASE_APPROVAL_VERIFICATION_TMP"; then
+  rm -f "$RELEASE_APPROVAL_VERIFICATION_TMP"
+  release_fail "release_execution_approval_rejected" \
+    "signed release execution approval is missing, invalid, stale, untrusted, or bound to a different source/action tuple" 77
+fi
+if ! jq -e \
+  --arg approval "$RELEASE_APPROVAL_PATH" \
+  --arg signature "$RELEASE_APPROVAL_SIGNATURE_PATH" \
+  --arg key "$RELEASE_APPROVAL_PUBLIC_KEY_PATH" \
+  --arg trust_policy "$RELEASE_APPROVAL_TRUST_POLICY" \
+  --arg trust_policy_sha "$RELEASE_APPROVAL_TRUST_POLICY_SHA_BEFORE" \
+  '
+    .schema_version == 1
+    and .kind == "hepta-ui-release-execution-approval-verification-v1"
+    and .producer == "scripts/hepta-ui-release-execution-approval-verifier-v1"
+    and .status == "ready"
+    and .approval_valid == true
+    and .signature_verified == true
+    and .release_execution_approved == true
+    and .public_distribution_authorized == false
+    and .public_upload_authorized == false
+    and .public_upload_performed == false
+    and .approval.path == $approval
+    and .signature.path == $signature
+    and .trust_policy.path == $trust_policy
+    and .trust_policy.sha256 == $trust_policy_sha
+    and .trust_policy.status == "ready"
+    and .approval.signer_id == .trust_policy.signer_id
+    and .trusted_public_key.path == $key
+    and (.trusted_public_key.sha256 | test("^[0-9a-f]{64}$"))
+    and (.verifier_actions | all(. == false))
+  ' "$RELEASE_APPROVAL_VERIFICATION_TMP" >/dev/null; then
+  rm -f "$RELEASE_APPROVAL_VERIFICATION_TMP"
+  release_fail "release_execution_approval_verifier_output_invalid" \
+    "independent release approval verifier did not emit its strict ready receipt" 77
+fi
+CURRENT_SOURCE_BINDING_AFTER_APPROVAL="$($REPO_ROOT/scripts/hepta-ui-source-fingerprint)"
+SOURCE_APP_FINGERPRINT_AFTER_APPROVAL="$(ruby "$APP_BUNDLE_FINGERPRINT" "$SOURCE_APP_PATH")"
+if [[ "$CURRENT_SOURCE_BINDING_AFTER_APPROVAL" != "$CURRENT_SOURCE_BINDING" \
+  || "$(shasum -a 256 "$APP_RECEIPT_PATH" | awk '{print $1}')" != "$UNSIGNED_RECEIPT_SHA" \
+  || "$(shasum -a 256 "$SOURCE_APP_PATH/Contents/MacOS/hepta-native" | awk '{print $1}')" != "$SOURCE_BINARY_SHA" \
+  || "$SOURCE_APP_FINGERPRINT_AFTER_APPROVAL" != "$SOURCE_APP_FINGERPRINT" \
+  || "$(shasum -a 256 "$SCRIPT_DIR/build-macos-dmg.sh" | awk '{print $1}')" != "$PACKAGING_SCRIPT_SHA" \
+  || "$(shasum -a 256 "$RELEASE_APPROVAL_VERIFIER" | awk '{print $1}')" != "$RELEASE_APPROVAL_VERIFIER_SHA" \
+  || "$(shasum -a 256 "$RELEASE_APPROVAL_TRUST_POLICY" | awk '{print $1}')" != "$RELEASE_APPROVAL_TRUST_POLICY_SHA_BEFORE" \
+  || "$(shasum -a 256 "$ENTITLEMENTS" | awk '{print $1}')" != "$ENTITLEMENTS_SHA" ]]; then
+  rm -f "$RELEASE_APPROVAL_VERIFICATION_TMP"
+  release_fail "release_approval_tuple_changed_during_verification" \
+    "source, unsigned input, packaging script, approval verifier, trust policy, or entitlements changed during approval verification" 77
+fi
+RELEASE_APPROVAL_VERIFICATION="$EVIDENCE_STAGE_DIR/release-approval-verification.json"
+cp "$RELEASE_APPROVAL_VERIFICATION_TMP" "$RELEASE_APPROVAL_VERIFICATION"
+RELEASE_APPROVAL_VERIFICATION_SHA="$(shasum -a 256 "$RELEASE_APPROVAL_VERIFICATION" | awk '{print $1}')"
+RELEASE_APPROVAL_VERIFICATION_JSON="$(cat "$RELEASE_APPROVAL_VERIFICATION")"
+RELEASE_APPROVAL_VALID=true
+
 SIGNED_APP="$WORK_DIR/Hepta.app"
 SIGNED_DMG="$WORK_DIR/Hepta.signed.dmg"
 ditto "$SOURCE_APP_PATH" "$SIGNED_APP"
@@ -638,9 +861,12 @@ cmp "$SOURCE_APP_PATH/Contents/MacOS/hepta-native" "$SIGNED_APP/Contents/MacOS/h
 codesign_with_retry() {
   local target="$1"
   local kind="$2"
-  local arguments=(--force --sign "$SIGNING_IDENTITY" --timestamp)
+  # The approval binds the exact installed certificate fingerprint. Selecting
+  # by SHA-1 prevents a same-team/same-label certificate from satisfying an
+  # approval that names a different certificate.
+  local arguments=(--force --sign "$SIGNING_CERTIFICATE_SHA1" --timestamp)
   if [[ "$kind" == app ]]; then
-    arguments+=(--entitlements "$ENTITLEMENTS" --options runtime)
+    arguments+=(--entitlements "$SIGNING_ENTITLEMENTS" --options runtime)
   fi
   local attempt=1 delay=15 log_file="$WORK_DIR/codesign.$(basename "$target").log"
   while (( attempt <= 5 )); do
@@ -656,6 +882,11 @@ codesign_with_retry() {
 }
 
 xattr -cr "$SIGNED_APP"
+if [[ "$(shasum -a 256 "$ENTITLEMENTS" | awk '{print $1}')" != "$ENTITLEMENTS_SHA" \
+  || "$(shasum -a 256 "$SIGNING_ENTITLEMENTS" | awk '{print $1}')" != "$ENTITLEMENTS_SHA" ]]; then
+  release_fail "release_entitlements_changed_before_signing" \
+    "approved entitlements changed before the first signing operation" 77
+fi
 RELEASE_STAGE="codesign_app"
 codesign_with_retry "$SIGNED_APP/Contents/MacOS/hepta-native" app
 codesign_with_retry "$SIGNED_APP" app
@@ -812,10 +1043,8 @@ DMG_ATTACH_SHA="$(shasum -a 256 "$DMG_ATTACH_PLIST" | awk '{print $1}')"
 DMG_MOUNT_SHA="$(shasum -a 256 "$DMG_MOUNT_LOG" | awk '{print $1}')"
 APPLICATIONS_ALIAS_RESOLUTION_SHA="$(shasum -a 256 "$APPLICATIONS_ALIAS_RESOLUTION_PATH" | awk '{print $1}')"
 RELEASE_STAGE="final_artifact_placement"
-# Release approval is a separately bound operator artifact.  An environment
-# boolean is not authorization and therefore cannot promote this receipt.
-RELEASE_APPROVAL_VALID=false
 PERSISTED_UNSIGNED_RECEIPT_FINAL="$EVIDENCE_DIR/formal-unsigned-package-receipt.json"
+RELEASE_APPROVAL_VERIFICATION_FINAL="$EVIDENCE_DIR/release-approval-verification.json"
 APPLICATIONS_ALIAS_RESOLUTION_PATH_FINAL="$EVIDENCE_DIR/applications-alias-resolution.json"
 CODESIGN_APP_LOG_FINAL="$EVIDENCE_DIR/codesign-verify-app.log"
 CODESIGN_DMG_LOG_FINAL="$EVIDENCE_DIR/codesign-verify-dmg.log"
@@ -869,13 +1098,18 @@ jq -n \
   --arg dmg_readonly_attach_path "$DMG_ATTACH_PLIST_FINAL" \
   --arg dmg_readonly_mount_log_path "$DMG_MOUNT_LOG_FINAL" \
   --arg identity "$SIGNING_IDENTITY" \
+  --arg signing_certificate_sha1 "$SIGNING_CERTIFICATE_SHA1" \
   --arg signing_team_identifier "$EXPECTED_TEAM_ID" \
+  --arg entitlements_sha256 "$ENTITLEMENTS_SHA" \
   --arg codesign_app_runtime_version "$SIGNED_APP_RUNTIME_VERSION" \
   --arg codesign_app_flags "$SIGNED_APP_FLAGS" \
   --arg codesign_app_timestamp "$SIGNED_APP_TIMESTAMP" \
   --arg codesign_dmg_timestamp "$SIGNED_DMG_TIMESTAMP" \
   --arg notary_auth_mode "$NOTARY_AUTH_MODE" \
   --argjson release_approval_valid "$RELEASE_APPROVAL_VALID" \
+  --arg release_approval_verification_path "$RELEASE_APPROVAL_VERIFICATION_FINAL" \
+  --arg release_approval_verification_sha256 "$RELEASE_APPROVAL_VERIFICATION_SHA" \
+  --argjson release_approval_verification "$RELEASE_APPROVAL_VERIFICATION_JSON" \
   '{
     artifact_kind:"signed_notarized_stapled_artifact",
     artifact_version:3,
@@ -884,6 +1118,7 @@ jq -n \
     product:"Hepta Native",
     bundle_identifier:"ai.hepta.nativeapp",
     release_approval_valid:$release_approval_valid,
+    release_approval:{verification_path:$release_approval_verification_path,verification_sha256:$release_approval_verification_sha256,verification:$release_approval_verification,public_distribution_authorized:false,public_upload_authorized:false,public_upload_performed:false},
     status:"ready",
     source_evidence:{source_app:$source_app,source_binary_sha256:$source_binary_sha256,signed_binary_sha256:$signed_binary_sha256,source_app_bundle_fingerprint:$source_app_bundle_fingerprint,signed_app_bundle_fingerprint:$signed_app_bundle_fingerprint,unsigned_package_receipt_path:$unsigned_package_receipt_path,unsigned_package_receipt_sha256:$unsigned_package_receipt_sha256,source_head:$source_head,source_tree:$source_tree,source_fingerprint:$source_fingerprint,source_worktree_clean:true,source_stable_during_unsigned_package_run:true,private_copy_recomputed_before_signing:true,consumed_exact_formal_app:true,built_second_product_app:false},
     artifact_evidence:{
@@ -928,7 +1163,9 @@ jq -n \
       dmg_readonly_attach_path:$dmg_readonly_attach_path,
       dmg_readonly_mount_log_path:$dmg_readonly_mount_log_path,
       signing_identity:$identity,
+      signing_certificate_sha1:$signing_certificate_sha1,
       signing_team_identifier:$signing_team_identifier,
+      entitlements_sha256:$entitlements_sha256,
       codesign_app_runtime_version:$codesign_app_runtime_version,
       codesign_app_flags:$codesign_app_flags,
       codesign_app_timestamp:$codesign_app_timestamp,
@@ -938,7 +1175,7 @@ jq -n \
       direct_apple_id_password_mode_supported:false,
       credential_environment_scrubbed_before_first_external_command:true
     },
-    claim_boundary:{release_artifact_claim_ready:false,release_execution_ready:false,public_distribution_claim_ready:false,release_claim_ready:false,live_product_claim_ready:false},
+    claim_boundary:{release_artifact_claim_ready:true,release_execution_ready:true,public_distribution_claim_ready:false,release_claim_ready:false,live_product_claim_ready:false},
     side_effects:{credential_value_captured:false,credential_environment_scrubbed_before_first_external_command:true,keychain_identity_lookup_performed:true,network_call_performed:true,notary_submission_performed:true,app_signed:true,app_notarized:true,app_stapled:false,dmg_stapled:true,local_distribution_artifact_written:true,public_distribution_artifact_written:true,public_upload_performed:false,external_mutation:true}
   }' \
   >"$WORK_DIR/release-success.json"
@@ -999,6 +1236,8 @@ if ! SUCCESS_RECEIPT_INSTALL_IDENTITY="$(ruby -rdigest -rjson -e '
   abort "installed evidence identity changed" unless evidence_stat.directory? && !evidence_stat.symlink? && evidence_stat.dev.to_s == evidence_device && evidence_stat.ino.to_s == evidence_inode
   receipt = JSON.parse(File.binread(temporary))
   abort "invalid success receipt" unless receipt["status"] == "ready" && receipt["artifact_version"] == 3
+  abort "release approval missing from success receipt" unless receipt["release_approval_valid"] == true && receipt.dig("release_approval", "verification", "approval_valid") == true
+  abort "release approval/public upload boundary invalid" unless receipt.dig("release_approval", "public_distribution_authorized") == false && receipt.dig("release_approval", "public_upload_authorized") == false && receipt.dig("release_approval", "public_upload_performed") == false
   abort "receipt/output path mismatch" unless receipt.dig("artifact_evidence", "signed_artifact_path") == output
   abort "receipt/output hash mismatch" unless receipt.dig("artifact_evidence", "signed_artifact_sha256") == output_sha
   temporary_sha = Digest::SHA256.file(temporary).hexdigest

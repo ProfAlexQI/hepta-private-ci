@@ -1,0 +1,303 @@
+#!/bin/bash -p
+set +x
+set -euo pipefail
+
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+unset RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_GEMFILE BUNDLE_PATH
+PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+[[ -x /usr/bin/ruby && ! -L /usr/bin/ruby ]] || {
+  echo "release execution approval verifier: canonical Ruby unavailable" >&2
+  exit 2
+}
+
+exec /usr/bin/ruby --disable-gems - "$@" <<'RUBY'
+require "json"
+require "digest"
+require "openssl"
+require "pathname"
+require "time"
+
+class VerificationError < StandardError; end
+class UsageError < StandardError; end
+class StrictObject < Hash
+  def []=(key, value)
+    raise VerificationError, "duplicate JSON key" if key?(key)
+    super
+  end
+end
+
+def check(condition, message)
+  raise VerificationError, message unless condition
+end
+
+def exact_keys(value, expected, label)
+  check(value.is_a?(Hash) && value.keys.sort == expected.sort, "#{label} field set invalid")
+end
+
+def file_identity(stat)
+  [stat.dev, stat.ino, stat.mode, stat.nlink, stat.size,
+   stat.mtime.to_i, stat.mtime.nsec, stat.ctime.to_i, stat.ctime.nsec]
+end
+
+def read_once(path, label, limit)
+  before = File.lstat(path)
+  check(before.file? && !before.symlink? && before.nlink == 1, "#{label} not a private regular file")
+  check((before.mode & 0o022).zero?, "#{label} is writable by group or others")
+  check(before.size.positive? && before.size <= limit, "#{label} size invalid")
+  data = String.new.b
+  File.open(path, File::RDONLY | File::NOFOLLOW) do |io|
+    check(file_identity(io.stat) == file_identity(before), "#{label} changed before read")
+    while (chunk = io.read(65_536))
+      data << chunk
+      check(data.bytesize <= limit, "#{label} too large")
+    end
+    check(file_identity(io.stat) == file_identity(before), "#{label} changed during read")
+  end
+  check(file_identity(File.lstat(path)) == file_identity(before), "#{label} changed after read")
+  {data: data, sha256: Digest::SHA256.hexdigest(data), identity: [before.dev, before.ino]}
+rescue SystemCallError
+  raise VerificationError, "#{label} unreadable or unsafe"
+end
+
+def snapshot(path, label, limit)
+  check(path.is_a?(String) && path.start_with?("/") && !path.match?(/[[:cntrl:]]/), "#{label} path not explicit absolute")
+  check(Pathname.new(path).cleanpath.to_s == path && File.realpath(path) == path,
+        "#{label} path not canonical or contains symlink")
+  first = read_once(path, label, limit)
+  second = read_once(path, label, limit)
+  check(first.values_at(:sha256, :identity) == second.values_at(:sha256, :identity), "#{label} unstable")
+  second
+rescue SystemCallError
+  raise VerificationError, "#{label} path missing"
+end
+
+def safe_text(value, max = 256)
+  value.is_a?(String) && !value.empty? && value.bytesize <= max && !value.match?(/[[:cntrl:]]/)
+end
+
+def sha256?(value)
+  value.is_a?(String) && value.match?(/\A[0-9a-f]{64}\z/)
+end
+
+def source_sha?(value)
+  value.is_a?(String) && value.match?(/\A[0-9a-f]{40}\z/)
+end
+
+def explicit_path?(value)
+  value.is_a?(String) && value.start_with?("/") && value.bytesize <= 4096 &&
+    !value.match?(/[[:cntrl:]]/) && Pathname.new(value).cleanpath.to_s == value
+end
+
+def utc_time(value, label)
+  check(value.is_a?(String) && value.match?(/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\z/), "#{label} timestamp invalid")
+  Time.iso8601(value).utc
+rescue ArgumentError
+  raise VerificationError, "#{label} timestamp invalid"
+end
+
+begin
+  if ARGV == ["--help"]
+    puts <<~HELP
+      usage: hepta-ui-release-execution-approval-verifier-v1 \\
+        --approval ABS --signature ABS --public-key ABS --trust-policy ABS \\
+        --source-head HEX40 --source-tree HEX40 --source-fingerprint HEX64 \\
+        --unsigned-app-path ABS --unsigned-app-receipt-path ABS \\
+        --unsigned-app-receipt-sha256 HEX64 \\
+        --unsigned-app-bundle-fingerprint-sha256 HEX64 \\
+        --unsigned-app-binary-sha256 HEX64 \\
+        --packaging-script-sha256 HEX64 --approval-verifier-sha256 HEX64 \\
+        --product-version VERSION \\
+        --packager-arch ARCH --output-path ABS --release-receipt-path ABS \\
+        --evidence-dir ABS --signing-identity ID --signing-certificate-sha1 HEX40 \\
+        --team-id TEAMID --entitlements-sha256 HEX64 \\
+        --notary-profile-sha256 HEX64
+
+      Read-only verifier. It verifies a detached RSA PKCS#1 SHA-256 signature
+      and an exact source/input/action tuple. It never signs, uploads, submits
+      notarization, opens a network connection, or reads a private key.
+    HELP
+    exit 0
+  end
+
+  allowed = %w[
+    approval signature public-key trust-policy
+    source-head source-tree source-fingerprint unsigned-app-path
+    unsigned-app-receipt-path unsigned-app-receipt-sha256
+    unsigned-app-bundle-fingerprint-sha256 unsigned-app-binary-sha256
+    packaging-script-sha256 approval-verifier-sha256 product-version packager-arch output-path
+    release-receipt-path evidence-dir signing-identity signing-certificate-sha1
+    team-id entitlements-sha256 notary-profile-sha256
+  ]
+  opts = {}
+  until ARGV.empty?
+    flag = ARGV.shift
+    raise UsageError, "invalid option" unless flag&.start_with?("--")
+    name = flag.delete_prefix("--")
+    raise UsageError, "unknown or duplicate option" unless allowed.include?(name) && !opts.key?(name)
+    value = ARGV.shift
+    raise UsageError, "missing option value" unless value && !value.empty?
+    opts[name] = value
+  end
+  check(opts.keys.sort == allowed.sort, "all inputs must be explicit")
+
+  check(source_sha?(opts["source-head"]) && source_sha?(opts["source-tree"]) && sha256?(opts["source-fingerprint"]), "source tuple invalid")
+  %w[unsigned-app-receipt-sha256 unsigned-app-bundle-fingerprint-sha256 unsigned-app-binary-sha256 packaging-script-sha256 approval-verifier-sha256 entitlements-sha256 notary-profile-sha256].each do |key|
+    check(sha256?(opts[key]), "#{key} invalid")
+  end
+  %w[unsigned-app-path unsigned-app-receipt-path output-path release-receipt-path evidence-dir].each do |key|
+    check(explicit_path?(opts[key]), "#{key} invalid")
+  end
+  check(safe_text(opts["product-version"], 64) && safe_text(opts["packager-arch"], 32), "product tuple invalid")
+  check(safe_text(opts["signing-identity"]), "signing identity invalid")
+  check(source_sha?(opts["signing-certificate-sha1"]), "signing certificate SHA-1 invalid")
+  check(opts["team-id"].match?(/\A[A-Z0-9]{10}\z/), "team ID invalid")
+  check(opts["signing-identity"].end_with?(" (#{opts["team-id"]})"), "signing identity/team mismatch")
+
+  approval_file = snapshot(opts["approval"], "approval", 65_536)
+  signature_file = snapshot(opts["signature"], "signature", 8_192)
+  public_key_file = snapshot(opts["public-key"], "public key", 16_384)
+  trust_policy_file = snapshot(opts["trust-policy"], "trust policy", 16_384)
+  check([approval_file, signature_file, public_key_file, trust_policy_file].map { |item| item[:identity] }.uniq.length == 4,
+        "approval/signature/public key/trust policy identities must be distinct")
+
+  trust_policy = JSON.parse(trust_policy_file[:data], object_class: StrictObject, array_class: Array, create_additions: false)
+  exact_keys(trust_policy, %w[schema_version kind status signer_id public_key_sha256 signature_algorithm minimum_rsa_bits], "trust policy")
+  check(trust_policy["schema_version"] == 1 && trust_policy["kind"] == "hepta-ui-release-execution-approval-trust-v1", "trust policy schema invalid")
+  check(trust_policy["status"] == "ready", "release approval trust is not configured")
+  check(safe_text(trust_policy["signer_id"]), "trusted signer invalid")
+  check(sha256?(trust_policy["public_key_sha256"]), "trusted public key hash invalid")
+  check(trust_policy["signature_algorithm"] == "rsa-pkcs1-sha256", "trusted signature algorithm invalid")
+  check(trust_policy["minimum_rsa_bits"].is_a?(Integer) && trust_policy["minimum_rsa_bits"] >= 3072,
+        "trusted minimum RSA bits invalid")
+  check(public_key_file[:sha256] == trust_policy["public_key_sha256"], "trusted public key hash mismatch")
+
+  public_key = OpenSSL::PKey::RSA.new(public_key_file[:data])
+  check(!public_key.private?, "public key input contains private key material")
+  check(public_key.n.num_bits >= trust_policy["minimum_rsa_bits"], "RSA public key is weaker than trusted policy")
+  check(public_key.verify(OpenSSL::Digest::SHA256.new, signature_file[:data], approval_file[:data]),
+        "approval signature invalid")
+
+  approval = JSON.parse(approval_file[:data], object_class: StrictObject, array_class: Array, create_additions: false)
+  exact_keys(approval, %w[schema_version kind approval_id signer validity source_binding input action], "approval")
+  check(approval["schema_version"] == 1 && approval["kind"] == "hepta-ui-release-execution-approval-v1", "approval schema invalid")
+  check(approval["approval_id"].is_a?(String) && approval["approval_id"].match?(/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i), "approval ID invalid")
+
+  signer = approval["signer"]
+  exact_keys(signer, %w[id public_key_sha256 signature_algorithm], "signer")
+  check(signer["id"] == trust_policy["signer_id"], "trusted signer mismatch")
+  check(signer["public_key_sha256"] == trust_policy["public_key_sha256"], "signed public key hash mismatch")
+  check(signer["signature_algorithm"] == trust_policy["signature_algorithm"], "signature algorithm invalid")
+
+  validity = approval["validity"]
+  exact_keys(validity, %w[issued_at_utc expires_at_utc], "validity")
+  issued_at = utc_time(validity["issued_at_utc"], "issued_at_utc")
+  expires_at = utc_time(validity["expires_at_utc"], "expires_at_utc")
+  now = Time.now.utc
+  check(expires_at > issued_at && (expires_at - issued_at) <= 3600, "approval validity window invalid")
+  check(issued_at <= now + 60 && issued_at >= now - 3600, "approval issuance is stale or in the future")
+  check(expires_at > now, "approval expired")
+
+  source = approval["source_binding"]
+  exact_keys(source, %w[schema_version kind head head_tree source_fingerprint worktree_clean repository_worktree_clean], "source_binding")
+  check(source == {
+    "schema_version" => 1,
+    "kind" => "hepta-ui-source-binding",
+    "head" => opts["source-head"],
+    "head_tree" => opts["source-tree"],
+    "source_fingerprint" => opts["source-fingerprint"],
+    "worktree_clean" => true,
+    "repository_worktree_clean" => true
+  }, "exact source binding mismatch")
+
+  input = approval["input"]
+  exact_keys(input, %w[unsigned_app_path unsigned_app_receipt_path unsigned_app_receipt_sha256 unsigned_app_bundle_fingerprint_sha256 unsigned_app_binary_sha256], "input")
+  check(input == {
+    "unsigned_app_path" => opts["unsigned-app-path"],
+    "unsigned_app_receipt_path" => opts["unsigned-app-receipt-path"],
+    "unsigned_app_receipt_sha256" => opts["unsigned-app-receipt-sha256"],
+    "unsigned_app_bundle_fingerprint_sha256" => opts["unsigned-app-bundle-fingerprint-sha256"],
+    "unsigned_app_binary_sha256" => opts["unsigned-app-binary-sha256"]
+  }, "exact unsigned app input mismatch")
+
+  action = approval["action"]
+  action_keys = %w[
+    kind product bundle_identifier product_version packager_arch
+    packaging_script_sha256 approval_verifier_sha256 trust_policy_sha256 output_path release_receipt_path evidence_dir
+    signing_identity signing_certificate_sha1 team_identifier entitlements_sha256 notary_profile_sha256
+    developer_id_signing notarization_submission stapling
+    local_distribution_artifact_write public_distribution_authorized
+    public_upload_authorized public_upload_performed
+  ]
+  exact_keys(action, action_keys, "action")
+  expected_action = {
+    "kind" => "sign_notarize_staple_local_dmg",
+    "product" => "Hepta Native",
+    "bundle_identifier" => "ai.hepta.nativeapp",
+    "product_version" => opts["product-version"],
+    "packager_arch" => opts["packager-arch"],
+    "packaging_script_sha256" => opts["packaging-script-sha256"],
+    "approval_verifier_sha256" => opts["approval-verifier-sha256"],
+    "trust_policy_sha256" => trust_policy_file[:sha256],
+    "output_path" => opts["output-path"],
+    "release_receipt_path" => opts["release-receipt-path"],
+    "evidence_dir" => opts["evidence-dir"],
+    "signing_identity" => opts["signing-identity"],
+    "signing_certificate_sha1" => opts["signing-certificate-sha1"],
+    "team_identifier" => opts["team-id"],
+    "entitlements_sha256" => opts["entitlements-sha256"],
+    "notary_profile_sha256" => opts["notary-profile-sha256"],
+    "developer_id_signing" => true,
+    "notarization_submission" => true,
+    "stapling" => true,
+    "local_distribution_artifact_write" => true,
+    "public_distribution_authorized" => false,
+    "public_upload_authorized" => false,
+    "public_upload_performed" => false
+  }
+  check(action == expected_action, "exact release action mismatch")
+
+  output = {
+    "schema_version" => 1,
+    "kind" => "hepta-ui-release-execution-approval-verification-v1",
+    "producer" => "scripts/hepta-ui-release-execution-approval-verifier-v1",
+    "status" => "ready",
+    "approval_valid" => true,
+    "signature_verified" => true,
+    "approval" => {
+      "path" => opts["approval"], "sha256" => approval_file[:sha256],
+      "approval_id" => approval["approval_id"], "signer_id" => signer["id"]
+    },
+    "signature" => {"path" => opts["signature"], "sha256" => signature_file[:sha256], "algorithm" => signer["signature_algorithm"]},
+    "trust_policy" => {"path" => opts["trust-policy"], "sha256" => trust_policy_file[:sha256], "status" => trust_policy["status"], "signer_id" => trust_policy["signer_id"]},
+    "trusted_public_key" => {"path" => opts["public-key"], "sha256" => public_key_file[:sha256], "minimum_rsa_bits" => trust_policy["minimum_rsa_bits"]},
+    "validity" => validity,
+    "source_binding" => source,
+    "input" => input,
+    "action" => action,
+    "release_execution_approved" => true,
+    "public_distribution_authorized" => false,
+    "public_upload_authorized" => false,
+    "public_upload_performed" => false,
+    "verifier_actions" => {
+      "signing_performed" => false,
+      "notarization_submission_performed" => false,
+      "stapling_performed" => false,
+      "artifact_upload_performed" => false,
+      "network_connection_performed" => false,
+      "private_key_read" => false
+    }
+  }
+  puts JSON.generate(output)
+rescue UsageError => error
+  warn "release execution approval verifier usage: #{error.message}"
+  exit 64
+rescue VerificationError, JSON::ParserError, OpenSSL::PKey::PKeyError => error
+  warn "release execution approval verifier rejected input: #{error.message}"
+  exit 1
+rescue StandardError
+  warn "release execution approval verifier rejected input: internal fail-closed error"
+  exit 1
+end
+RUBY

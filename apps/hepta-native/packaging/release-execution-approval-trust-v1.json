@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "kind": "hepta-ui-release-execution-approval-trust-v1",
+  "status": "not_configured",
+  "signer_id": null,
+  "public_key_sha256": null,
+  "signature_algorithm": "rsa-pkcs1-sha256",
+  "minimum_rsa_bits": 3072
+}

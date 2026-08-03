@@ -45,6 +45,8 @@ INFO_PLIST="$PACKAGING_DIR/Info.plist"
 ENTITLEMENTS_PLIST="$PACKAGING_DIR/Entitlements.plist"
 BUNDLE_FINGERPRINT_HELPER="$PACKAGING_DIR/app-bundle-fingerprint-v1.rb"
 FINDER_BOOKMARK_RESOLVER="$PACKAGING_DIR/resolve-finder-bookmark-v1.swift"
+RELEASE_APPROVAL_VERIFIER="scripts/hepta-ui-release-execution-approval-verifier-v1"
+RELEASE_APPROVAL_TRUST_POLICY="$PACKAGING_DIR/release-execution-approval-trust-v1.json"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -129,7 +131,8 @@ if hepta_safe_paths_overlap "$REPORT_PATH" "$CAPABILITY_DIR"; then
 fi
 for protected_input in \
   "$CARGO_TOML" "$DMG_SCRIPT" "$INFO_PLIST" "$ENTITLEMENTS_PLIST" \
-  "$BUNDLE_FINGERPRINT_HELPER" "$FINDER_BOOKMARK_RESOLVER"; do
+  "$BUNDLE_FINGERPRINT_HELPER" "$FINDER_BOOKMARK_RESOLVER" \
+  "$RELEASE_APPROVAL_VERIFIER" "$RELEASE_APPROVAL_TRUST_POLICY"; do
   if hepta_safe_paths_overlap "$protected_input" "$CAPABILITY_DIR" \
     || hepta_safe_paths_overlap "$protected_input" "$REPORT_PATH"; then
     printf 'release signing output overlaps protected source: %s\n' "$protected_input" >&2
@@ -137,7 +140,7 @@ for protected_input in \
   fi
 done
 
-for required in "$CARGO_TOML" "$DMG_SCRIPT" "$INFO_PLIST" "$ENTITLEMENTS_PLIST" "$BUNDLE_FINGERPRINT_HELPER" "$FINDER_BOOKMARK_RESOLVER"; do
+for required in "$CARGO_TOML" "$DMG_SCRIPT" "$INFO_PLIST" "$ENTITLEMENTS_PLIST" "$BUNDLE_FINGERPRINT_HELPER" "$FINDER_BOOKMARK_RESOLVER" "$RELEASE_APPROVAL_VERIFIER" "$RELEASE_APPROVAL_TRUST_POLICY"; do
   if [[ ! -s "$required" ]]; then
     echo "missing required release signing capability input: $required" >&2
     exit 1
@@ -145,6 +148,7 @@ for required in "$CARGO_TOML" "$DMG_SCRIPT" "$INFO_PLIST" "$ENTITLEMENTS_PLIST" 
 done
 
 bash -n "$DMG_SCRIPT"
+bash -n "$RELEASE_APPROVAL_VERIFIER"
 ruby -c "$BUNDLE_FINGERPRINT_HELPER" >/dev/null
 swiftc -parse "$FINDER_BOOKMARK_RESOLVER"
 plutil -lint "$INFO_PLIST" "$ENTITLEMENTS_PLIST" >/dev/null
@@ -238,7 +242,24 @@ build_script_recomputes_private_copy="$(grep -Fq 'PRIVATE_COPY_FINGERPRINT' "$DM
 build_script_uses_nonlaunch_release_input="$(grep -Fq -- '--no-launch' "$DMG_SCRIPT" && printf 'true' || printf 'false')"
 build_script_verifies_readonly_dmg_payload="$(grep -Fq 'dmg_mounted_read_only:true' "$DMG_SCRIPT" && grep -Fq 'mounted_app_bundle_fingerprint' "$DMG_SCRIPT" && grep -Fq 'applications_alias_resolved_target' "$DMG_SCRIPT" && grep -Fq 'resolve-finder-bookmark-v1.swift' "$DMG_SCRIPT" && printf 'true' || printf 'false')"
 build_script_v3_notary_truth="$(grep -Fq 'artifact_version:3' "$DMG_SCRIPT" && grep -Fq 'notary_submission_may_have_occurred' "$DMG_SCRIPT" && grep -Fq 'notarytool_submit_log_bytes' "$DMG_SCRIPT" && printf 'true' || printf 'false')"
-build_script_actual_execution_approval_guard="$(grep -Fq 'independent_release_approval_verifier_unavailable: actual release execution is disabled; run --preflight only' "$DMG_SCRIPT" && grep -Fq 'if [[ "$PREFLIGHT_ONLY" != "1" ]]' "$DMG_SCRIPT" && printf 'true' || printf 'false')"
+build_script_actual_execution_approval_guard="$(grep -Fq 'signed_release_execution_approval_missing: actual release execution is disabled; run --preflight only' "$DMG_SCRIPT" && grep -Fq 'if [[ "$PREFLIGHT_ONLY" != "1" ]]' "$DMG_SCRIPT" && printf 'true' || printf 'false')"
+independent_approval_verifier_ready=false
+if [[ -f "$RELEASE_APPROVAL_VERIFIER" && ! -L "$RELEASE_APPROVAL_VERIFIER" && -x "$RELEASE_APPROVAL_VERIFIER" ]] \
+  && grep -Fq 'hepta-ui-release-execution-approval-verification-v1' "$RELEASE_APPROVAL_VERIFIER"; then
+  independent_approval_verifier_ready=true
+fi
+release_approval_trust_configured=false
+if jq -e '
+  .schema_version == 1
+  and .kind == "hepta-ui-release-execution-approval-trust-v1"
+  and .status == "ready"
+  and (.signer_id | type == "string" and length > 0)
+  and (.public_key_sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+  and .signature_algorithm == "rsa-pkcs1-sha256"
+  and (.minimum_rsa_bits | type == "number" and . >= 3072)
+' "$RELEASE_APPROVAL_TRUST_POLICY" >/dev/null 2>&1; then
+  release_approval_trust_configured=true
+fi
 
 notary_profile_keychain_lookup_performed=false
 notary_profile_keychain_item_found=false
@@ -341,6 +362,8 @@ jq -n \
   --argjson build_script_verifies_readonly_dmg_payload "$build_script_verifies_readonly_dmg_payload" \
   --argjson build_script_v3_notary_truth "$build_script_v3_notary_truth" \
   --argjson build_script_actual_execution_approval_guard "$build_script_actual_execution_approval_guard" \
+  --argjson independent_approval_verifier_ready "$independent_approval_verifier_ready" \
+  --argjson release_approval_trust_configured "$release_approval_trust_configured" \
   '
   def sha_ready($sha): ($sha | test("^[0-9a-f]{64}$"));
   def distribution_tools_ready:
@@ -397,9 +420,8 @@ jq -n \
     and sha_ready($identity_output_sha)
     and $identity_output_bytes > 0
   ) as $audit_ready
-  # Identity, credential, and tooling readiness is diagnostic only. Actual
-  # execution remains false until an independent approval verifier exists.
-  | false as $independent_approval_verifier_ready
+  # This audit can prove the verifier/trust capability, but it never consumes
+  # a per-run signed approval and therefore cannot make execution ready.
   | false as $execution_prerequisites_ready
   | {
       product:$product,
@@ -514,10 +536,14 @@ jq -n \
         notary_keychain_profile_ready:notary_profile_ready,
         notary_credentials_ready:notary_credentials_ready,
         independent_approval_verifier_ready:$independent_approval_verifier_ready,
+        release_approval_trust_configured:$release_approval_trust_configured,
+        signed_release_execution_approval_verified:false,
         release_signing_execution_prerequisites_ready:$execution_prerequisites_ready
       },
       blockers:[
-        "independent_release_approval_verifier_unavailable",
+        (if $independent_approval_verifier_ready then empty else "independent_release_approval_verifier_unavailable" end),
+        (if $release_approval_trust_configured then empty else "release_approval_trust_not_configured" end),
+        "signed_release_execution_approval_missing",
         (if keychain_identity_ready then empty else "developer_id_identity_missing_or_not_matching_configured_identity" end),
         (if $direct_apple_credentials_present then "direct_apple_id_password_notary_mode_unsupported" else empty end),
         (if notary_credentials_ready then empty else "apple_notary_keychain_profile_missing_or_unverified" end),
@@ -528,7 +554,9 @@ jq -n \
       next_validation_sequence:[
         "install_or_unlock_configured_developer_id_application_identity",
         "provide_apple_notary_keychain_profile_without_direct_password_environment",
-        "provide_independent_release_approval_verifier_bound_to_exact_source_and_action_tuple",
+        (if $independent_approval_verifier_ready then empty else "provide_independent_release_approval_verifier_bound_to_exact_source_and_action_tuple" end),
+        (if $release_approval_trust_configured then empty else "provision_independent_release_approval_trust_root" end),
+        "provide_signed_release_execution_approval_bound_to_exact_source_input_and_action",
         "rerun_build_macos_dmg_preflight_only",
         "rerun_hepta_ui_product_readiness_gate"
       ],
@@ -737,8 +765,13 @@ jq -e '
   and (.release_execution_prerequisites.notary_keychain_profile_ready | type) == "boolean"
   and (.release_execution_prerequisites.notary_credentials_ready | type) == "boolean"
   and (.release_execution_prerequisites.release_signing_execution_prerequisites_ready | type) == "boolean"
-  and .release_execution_prerequisites.independent_approval_verifier_ready == false
+  and .release_execution_prerequisites.independent_approval_verifier_ready == true
+  and (.release_execution_prerequisites.release_approval_trust_configured | type) == "boolean"
+  and .release_execution_prerequisites.signed_release_execution_approval_verified == false
   and .release_execution_prerequisites.release_signing_execution_prerequisites_ready == false
+  and (.blockers | index("independent_release_approval_verifier_unavailable") == null)
+  and ((.release_execution_prerequisites.release_approval_trust_configured == true) == (.blockers | index("release_approval_trust_not_configured") == null))
+  and (.blockers | index("signed_release_execution_approval_missing") != null)
   and (.notary_credentials.optional_keychain_profile_keychain_lookup_performed | type) == "boolean"
   and (.notary_credentials.optional_keychain_profile_keychain_item_found | type) == "boolean"
   and (.notary_credentials.optional_keychain_profile_lookup_output_sha256 | test("^[0-9a-f]{64}$"))
