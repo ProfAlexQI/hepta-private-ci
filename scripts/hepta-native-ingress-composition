@@ -42,8 +42,8 @@ verify() {
   local runtime="codex-rs/hepta-native-gateway/src/runtime_composition.rs"
   local gateway="codex-rs/hepta-native-gateway/src/native_gateway.rs"
   local manifest_dispatch="codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs"
-  local route_manifest="codex-rs/hepta-native-gateway/src/route_manifest.rs"
-  local routes="codex-rs/hepta-native-gateway/src/route_registry.rs"
+  local route_manifest="codex-rs/hepta-native-gateway/src/route_definition.rs"
+  local routes="codex-rs/hepta-native-gateway/src/route_registry/generated_control_ui_routes.rs"
   local gate_command="codex-rs/hepta-native-gateway/src/gate_command.rs"
   local telegram="codex-rs/hepta-native-gateway/src/native_telegram.rs"
   local telegram_authority="codex-rs/hepta-native-gateway/src/telegram_authority.rs"
@@ -144,7 +144,7 @@ verify() {
     'let Some(manifest_entry) = route_manifest_entry(method, path) else {' \
     "manifest dispatch does not enforce the declared method and path"
   require_literal "$route_manifest" \
-    'declared_runtime_ingress_lifecycle(method, path).map(route_manifest_entry_from_lifecycle)' \
+    'declared_runtime_ingress_lifecycle(method, path).map(route_definition_from_lifecycle)' \
     "route manifest does not derive dispatch from the typed ingress lifecycle"
   require_literal "$registry" \
     'let authority = match runtime.authorize_telegram_receive() {' \
@@ -362,13 +362,16 @@ self_test() {
   trap 'rm -rf "$fixture"' RETURN
   mkdir -p \
     "$fixture/codex-rs/hepta-native-gateway/src/native_gateway" \
+    "$fixture/codex-rs/hepta-native-gateway/src/route_registry" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel"
   cp "$ROOT/codex-rs/hepta-native-gateway/src/"{runtime_ingress.rs,runtime_composition.rs,native_gateway.rs,native_telegram.rs,telegram_authority.rs,runtime_mutation.rs,operator_mutation.rs,sensitive_http.rs,preference_ingress.rs,preference_attachment.rs,effect_reconciliation.rs,durability_anchor.rs,route_registry.rs,gate_command.rs} \
     "$fixture/codex-rs/hepta-native-gateway/src/"
   cp "$ROOT/codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs" \
     "$fixture/codex-rs/hepta-native-gateway/src/native_gateway/"
-  cp "$ROOT/codex-rs/hepta-native-gateway/src/route_manifest.rs" \
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/route_definition.rs" \
     "$fixture/codex-rs/hepta-native-gateway/src/"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/route_registry/generated_control_ui_routes.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/route_registry/"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/"
 
