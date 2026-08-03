@@ -22,6 +22,28 @@ expected_runner() {
   esac
 }
 
+expected_resource_policy() {
+  case "$1" in
+    linux) echo linux-hosted-unused-toolchains-prune-v1 ;;
+    macos) echo macos-hosted-no-prune-v1 ;;
+    *) return 1 ;;
+  esac
+}
+
+validate_resource_context() {
+  local platform="$1"
+  [[ "${CARGO_INCREMENTAL:-}" == "0" ]]
+  [[ "${CARGO_PROFILE_DEV_DEBUG:-}" == "0" ]]
+  [[ "${CARGO_PROFILE_TEST_DEBUG:-}" == "0" ]]
+  [[ -n "${RUNNER_TEMP:-}" ]]
+  [[ "${CARGO_TARGET_DIR:-}" == "$RUNNER_TEMP/"* ]]
+  [[ "${HEPTA_FULL_WORKSPACE_TARGET_CACHE_REUSED:-}" == "false" ]]
+  [[ "${HEPTA_FULL_WORKSPACE_RESOURCE_POLICY:-}" == "$(expected_resource_policy "$platform")" ]]
+  [[ "${HEPTA_FULL_WORKSPACE_MIN_AVAILABLE_BYTES:-}" == "21474836480" ]]
+  [[ "${HEPTA_FULL_WORKSPACE_AVAILABLE_BYTES:-}" =~ ^[0-9]+$ ]]
+  (( HEPTA_FULL_WORKSPACE_AVAILABLE_BYTES >= HEPTA_FULL_WORKSPACE_MIN_AVAILABLE_BYTES ))
+}
+
 validate_context() {
   local platform="$1"
   local runner="$2"
@@ -38,8 +60,9 @@ validate_context() {
   [[ "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]]
   [[ -n "${GITHUB_REPOSITORY:-}" ]]
   [[ -n "${GITHUB_WORKFLOW:-}" ]]
-  [[ "${HEPTA_CI_CACHE_IDENTITY:-}" == "${RUNNER_OS}-hepta-ci-v2-full-workspace-"* ]]
+  [[ "${HEPTA_CI_CACHE_IDENTITY:-}" == "${RUNNER_OS}-hepta-ci-v3-full-workspace-"* ]]
   [[ "$(git -C "$ROOT" rev-parse HEAD)" == "$GITHUB_SHA" ]]
+  validate_resource_context "$platform"
 }
 
 write_receipt() {
@@ -51,7 +74,7 @@ write_receipt() {
   [[ "$exit_code" == "0" ]] && success=true
   mkdir -p "$(dirname "$receipt_path")"
   jq -n \
-    --arg schema hepta_full_workspace_platform_receipt_v1 \
+    --arg schema hepta_full_workspace_platform_receipt_v2 \
     --arg source_sha "$GITHUB_SHA" \
     --arg repository "$GITHUB_REPOSITORY" \
     --arg workflow "$GITHUB_WORKFLOW" \
@@ -69,8 +92,15 @@ write_receipt() {
     --arg native_cargo_lock_sha256 "$(sha256_file "$ROOT/apps/hepta-native/Cargo.lock")" \
     --arg bazel_lock_sha256 "$(sha256_file "$ROOT/MODULE.bazel.lock")" \
     --arg cache_identity "$HEPTA_CI_CACHE_IDENTITY" \
+    --arg resource_policy "$HEPTA_FULL_WORKSPACE_RESOURCE_POLICY" \
+    --arg cargo_incremental "$CARGO_INCREMENTAL" \
+    --arg cargo_profile_dev_debug "$CARGO_PROFILE_DEV_DEBUG" \
+    --arg cargo_profile_test_debug "$CARGO_PROFILE_TEST_DEBUG" \
     --arg command "$COMMAND" \
     --arg confirmation "$CONFIRMATION" \
+    --argjson available_bytes "$HEPTA_FULL_WORKSPACE_AVAILABLE_BYTES" \
+    --argjson min_available_bytes "$HEPTA_FULL_WORKSPACE_MIN_AVAILABLE_BYTES" \
+    --argjson target_cache_reused "$HEPTA_FULL_WORKSPACE_TARGET_CACHE_REUSED" \
     --argjson exit_code "$exit_code" \
     --argjson success "$success" \
     '{
@@ -81,6 +111,7 @@ write_receipt() {
       toolchain:{rustc:$rustc,cargo:$cargo,rust_toolchain_sha256:$rust_toolchain_sha256},
       locks:{cargo_lock_sha256:$cargo_lock_sha256,native_cargo_lock_sha256:$native_cargo_lock_sha256,bazel_lock_sha256:$bazel_lock_sha256},
       cache:{identity:$cache_identity},
+      resources:{policy:$resource_policy,min_available_bytes:$min_available_bytes,available_bytes:$available_bytes,cargo_incremental:$cargo_incremental,cargo_profile_dev_debug:$cargo_profile_dev_debug,cargo_profile_test_debug:$cargo_profile_test_debug,target_dir_scope:"runner_temp",target_cache_reused:$target_cache_reused},
       execution:{command:$command,confirmation:$confirmation,no_live:true,exit_code:$exit_code,success:$success},
       scope:{platform_only:$platform,cross_platform_promotion:false,configured_capability_only:false,promotion_eligible:$success}
     }' >"$receipt_path"
@@ -105,7 +136,8 @@ verify_receipt() {
   [[ "$(git -C "$ROOT" rev-parse HEAD)" == "$GITHUB_SHA" ]]
   [[ "${RUNNER_OS:-}" == "${platform/linux/Linux}" || "$platform" != "linux" ]]
   [[ "${RUNNER_OS:-}" == "${platform/macos/macOS}" || "$platform" != "macos" ]]
-  [[ "${HEPTA_CI_CACHE_IDENTITY:-}" == "${RUNNER_OS}-hepta-ci-v2-full-workspace-"* ]]
+  [[ "${HEPTA_CI_CACHE_IDENTITY:-}" == "${RUNNER_OS}-hepta-ci-v3-full-workspace-"* ]]
+  validate_resource_context "$platform"
   jq -e \
     --arg platform "$platform" \
     --arg runner "$runner" \
@@ -116,6 +148,10 @@ verify_receipt() {
     --arg rustc "$(rustc -Vv)" \
     --arg cargo "$(cargo -V)" \
     --arg cache_identity "$HEPTA_CI_CACHE_IDENTITY" \
+    --arg resource_policy "$HEPTA_FULL_WORKSPACE_RESOURCE_POLICY" \
+    --arg cargo_incremental "$CARGO_INCREMENTAL" \
+    --arg cargo_profile_dev_debug "$CARGO_PROFILE_DEV_DEBUG" \
+    --arg cargo_profile_test_debug "$CARGO_PROFILE_TEST_DEBUG" \
     --arg repository "$GITHUB_REPOSITORY" \
     --arg workflow "$GITHUB_WORKFLOW" \
     --arg run_id "$GITHUB_RUN_ID" \
@@ -124,8 +160,10 @@ verify_receipt() {
     --arg cargo_lock_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.lock")" \
     --arg native_cargo_lock_sha256 "$(sha256_file "$ROOT/apps/hepta-native/Cargo.lock")" \
     --arg bazel_lock_sha256 "$(sha256_file "$ROOT/MODULE.bazel.lock")" \
+    --argjson available_bytes "$HEPTA_FULL_WORKSPACE_AVAILABLE_BYTES" \
+    --argjson min_available_bytes "$HEPTA_FULL_WORKSPACE_MIN_AVAILABLE_BYTES" \
     --argjson require_success "$require_success" '
-      .schema == "hepta_full_workspace_platform_receipt_v1"
+      .schema == "hepta_full_workspace_platform_receipt_v2"
       and .provenance.provider == "github_actions"
       and .provenance.repository == $repository
       and .provenance.workflow == $workflow
@@ -143,7 +181,9 @@ verify_receipt() {
       and .toolchain.rust_toolchain_sha256 == $rust_toolchain_sha256
       and .locks == {cargo_lock_sha256:$cargo_lock_sha256,native_cargo_lock_sha256:$native_cargo_lock_sha256,bazel_lock_sha256:$bazel_lock_sha256}
       and .cache.identity == $cache_identity
-      and (.cache.identity | test("^(Linux|macOS)-hepta-ci-v2-full-workspace-[0-9a-f]{64}$"))
+      and (.cache.identity | test("^(Linux|macOS)-hepta-ci-v3-full-workspace-[0-9a-f]{64}$"))
+      and .resources == {policy:$resource_policy,min_available_bytes:$min_available_bytes,available_bytes:$available_bytes,cargo_incremental:$cargo_incremental,cargo_profile_dev_debug:$cargo_profile_dev_debug,cargo_profile_test_debug:$cargo_profile_test_debug,target_dir_scope:"runner_temp",target_cache_reused:false}
+      and .resources.available_bytes >= .resources.min_available_bytes
       and .execution.command == $command
       and .execution.confirmation == $confirmation
       and .execution.no_live == true

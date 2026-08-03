@@ -87,7 +87,7 @@ assert_test_inventory() {
 run_rust_backend() {
   require_tools cargo cargo-audit cargo-deny git jq perl rg shasum
   assert_lockfiles_clean
-  budgeted_cargo ci-upstream-counted-evidence 1800 \
+  budgeted_cargo ci-upstream-counted-evidence 3600 \
     "$ROOT/scripts/hepta-upstream-truth-gate" verify-counted-evidence
   budgeted_cargo ci-rustfmt 300 \
     cargo fmt --all --manifest-path "$MANIFEST" -- --check

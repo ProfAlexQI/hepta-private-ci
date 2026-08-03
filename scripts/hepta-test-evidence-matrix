@@ -85,6 +85,10 @@ matrix_json() {
     && has_literal "$baseline_workflow" '          - platform: macos' \
     && has_literal "$baseline_workflow" '            runner: macos-15' \
     && ! has_literal "$baseline_workflow" '          - platform: windows' \
+    && has_literal "$baseline_workflow" '      CARGO_PROFILE_DEV_DEBUG: "0"' \
+    && has_literal "$baseline_workflow" '      CARGO_PROFILE_TEST_DEBUG: "0"' \
+    && has_literal "$baseline_workflow" '      HEPTA_FULL_WORKSPACE_MIN_AVAILABLE_BYTES: "21474836480"' \
+    && has_literal "$baseline_workflow" '      HEPTA_FULL_WORKSPACE_TARGET_CACHE_REUSED: "false"' \
     && has_literal "$baseline_workflow" 'HEPTA_CI_CONFIRM_FULL_WORKSPACE: ${{ inputs.confirm_full_workspace }}' \
     && has_literal "$baseline_workflow" 'run: scripts/hepta-full-workspace-evidence run ${{ matrix.platform }} ${{ matrix.runner }}' \
     && has_literal "$baseline_workflow" 'run: scripts/hepta-full-workspace-evidence verify-receipt ${{ matrix.platform }} ${{ matrix.runner }}' \
@@ -95,7 +99,9 @@ matrix_json() {
     && has_literal "$platform_evidence" 'CONFIRMATION="RUN_FULL_WORKSPACE_NO_LIVE"' \
     && has_literal "$platform_evidence" '[[ "${GITHUB_ACTIONS:-}" == "true" ]]' \
     && has_literal "$platform_evidence" '[[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]' \
-    && has_literal "$platform_evidence" 'hepta_full_workspace_platform_receipt_v1' \
+    && has_literal "$platform_evidence" 'hepta_full_workspace_platform_receipt_v2' \
+    && has_literal "$platform_evidence" 'validate_resource_context "$platform"' \
+    && has_literal "$platform_evidence" 'target_dir_scope:"runner_temp"' \
     && has_literal "$platform_evidence" 'cross_platform_promotion:false' \
     && has_literal "$platform_evidence" '(.execution.success == (.execution.exit_code == 0))'; then
     platform_evidence_capability=true
@@ -180,7 +186,7 @@ matrix_json() {
             {id:"macos",runner:"macos-15",status:"configured_not_verified"}
           ],
           unsupported:[{id:"windows",status:"unsupported",reason:"no repository-proven full-workspace toolchain and shell contract"}],
-          receipt:{schema:"hepta_full_workspace_platform_receipt_v1",source_sha_bound:true,runner_bound:true,toolchain_bound:true,lockfiles_bound:true,cache_identity_bound:true,command_bound:true,exit_truth_bound:true}
+          receipt:{schema:"hepta_full_workspace_platform_receipt_v2",source_sha_bound:true,runner_bound:true,toolchain_bound:true,lockfiles_bound:true,cache_identity_bound:true,resource_policy_bound:true,disk_floor_bound:true,build_profile_bound:true,target_cache_denied:true,command_bound:true,exit_truth_bound:true}
         }
       },
       evidence:{
@@ -332,13 +338,13 @@ self_test() {
     --arg native_cargo_lock_sha "$native_cargo_lock_sha" \
     --arg bazel_lock_sha "$bazel_lock_sha" '
       {
-        schema:"hepta_full_workspace_platform_receipt_v1",
+        schema:"hepta_full_workspace_platform_receipt_v2",
         provenance:{provider:"github_actions",repository:"forged/repository",workflow:"forged",run_id:"123",run_attempt:"1",event_name:"workflow_dispatch"},
         source:{sha:$source_sha},
         platform:{id:"linux",runner:"ubuntu-24.04",runner_os:"Linux",runner_arch:"X64"},
         toolchain:{rustc:"forged",cargo:"forged",rust_toolchain_sha256:$rust_toolchain_sha},
         locks:{cargo_lock_sha256:$cargo_lock_sha,native_cargo_lock_sha256:$native_cargo_lock_sha,bazel_lock_sha256:$bazel_lock_sha},
-        cache:{identity:("Linux-hepta-ci-v2-full-workspace-" + ("0" * 64))},
+        cache:{identity:("Linux-hepta-ci-v3-full-workspace-" + ("0" * 64))},
         execution:{command:"scripts/hepta-ci-baseline full-workspace",confirmation:"RUN_FULL_WORKSPACE_NO_LIVE",no_live:true,exit_code:0,success:true},
         scope:{platform_only:"linux",cross_platform_promotion:false,configured_capability_only:false,promotion_eligible:true}
       }

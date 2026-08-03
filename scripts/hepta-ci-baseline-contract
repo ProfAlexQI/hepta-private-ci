@@ -123,11 +123,19 @@ verify_contract() {
       materialize_database:"scripts/hepta-dependency-security materialize-db"
     }
     and .full_workspace_platform_evidence == {
-      capability_version:3,
+      capability_version:4,
       trigger:"workflow_dispatch",
       required_confirmation:"RUN_FULL_WORKSPACE_NO_LIVE",
       command:"scripts/hepta-ci-baseline full-workspace",
-      receipt_schema:"hepta_full_workspace_platform_receipt_v1",
+      receipt_schema:"hepta_full_workspace_platform_receipt_v2",
+      resource_contract:{
+        cargo_incremental:"0",
+        cargo_profile_dev_debug:"0",
+        cargo_profile_test_debug:"0",
+        min_available_bytes:21474836480,
+        target_cache_reused:false,
+        target_dir_scope:"runner_temp"
+      },
       platforms:[
         {id:"linux",runner:"ubuntu-24.04",status:"configured_not_verified"},
         {id:"macos",runner:"macos-15",status:"configured_not_verified"}
@@ -140,6 +148,22 @@ verify_contract() {
         requires_successful_github_actions_receipt:true,
         platform_scoped:true,
         cross_platform_promotion:false
+      }
+    }
+    and .rust_backend_evidence == {
+      capability_version:1,
+      ci_job:"rust-backend",
+      receipt_schema:"hepta_rust_backend_resource_receipt_v1",
+      counted_evidence_max_seconds:3600,
+      job_timeout_minutes:120,
+      resource_contract:{
+        cargo_incremental:"0",
+        cargo_profile_dev_debug:"0",
+        cargo_profile_test_debug:"0",
+        linux_resource_policy:"linux-hosted-unused-toolchains-prune-v1",
+        min_available_bytes:21474836480,
+        target_cache_reused:false,
+        target_dir_scope:"runner_temp"
       }
     }
     and .safe_lint_security_baseline == {
@@ -270,7 +294,7 @@ verify_contract() {
       semantic_absorption_required:true
     }
   ' "$CONTRACT" >/dev/null
-  local baseline_rel full_rel baseline full static_block upstream_truth_block rust_backend_block
+  local baseline_rel full_rel baseline full static_block upstream_truth_block rust_backend_block full_workspace_block
   baseline_rel="$(jq -er '.baseline_workflow.path' "$CONTRACT")"
   full_rel="$(jq -er '.full_workflow.path' "$CONTRACT")"
   baseline="$ROOT/$baseline_rel"
@@ -279,6 +303,7 @@ verify_contract() {
     echo "Hepta CI workflow file missing" >&2
     return 1
   }
+  full_workspace_block="$(workflow_job_block "$baseline" full-workspace)"
   require_exact_literal "$baseline" "  pull_request:" "pull_request trigger"
   require_exact_literal "$baseline" "  push:" "push trigger"
   require_exact_literal "$baseline" "  workflow_dispatch:" "manual trigger"
@@ -357,6 +382,18 @@ verify_contract() {
   require_literal <(printf '%s\n' "$rust_backend_block") \
     "        run: scripts/hepta-ci-materialize-upstream-intake materialize" \
     "rust-backend frozen intake materialization"
+  require_literal <(printf '%s\n' "$rust_backend_block") '    timeout-minutes: 120' "rust-backend cold-build timeout"
+  require_literal <(printf '%s\n' "$rust_backend_block") '      CARGO_INCREMENTAL: "0"' "rust-backend incremental denial"
+  require_literal <(printf '%s\n' "$rust_backend_block") '      CARGO_PROFILE_DEV_DEBUG: "0"' "rust-backend dev debug reduction"
+  require_literal <(printf '%s\n' "$rust_backend_block") '      CARGO_PROFILE_TEST_DEBUG: "0"' "rust-backend test debug reduction"
+  require_literal <(printf '%s\n' "$rust_backend_block") '      HEPTA_RUST_BACKEND_MIN_AVAILABLE_BYTES: "21474836480"' "rust-backend disk floor"
+  require_literal <(printf '%s\n' "$rust_backend_block") '      HEPTA_RUST_BACKEND_TARGET_CACHE_REUSED: "false"' "rust-backend target cache denial"
+  require_literal <(printf '%s\n' "$rust_backend_block") '        run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-rust-backend-target" >>"$GITHUB_ENV"' "runner-temp rust-backend target"
+  require_literal <(printf '%s\n' "$rust_backend_block") 'linux-hosted-unused-toolchains-prune-v1' "rust-backend Linux resource policy"
+  require_literal <(printf '%s\n' "$rust_backend_block") 'hepta_rust_backend_resource_receipt_v1' "rust-backend resource receipt"
+  require_literal <(printf '%s\n' "$rust_backend_block") 'hepta-ci-v3-${{ github.job }}-' "rust-backend cache identity v3"
+  reject_literal <(printf '%s\n' "$rust_backend_block") '            codex-rs/target' "rust-backend target cache"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'budgeted_cargo ci-upstream-counted-evidence 3600' "cold counted-evidence budget"
   require_literal_order \
     <(printf '%s\n' "$rust_backend_block") \
     "        run: sudo apt-get update && sudo apt-get install --yes jq ripgrep" \
@@ -380,6 +417,15 @@ verify_contract() {
   reject_literal "$baseline" '          - platform: windows' "unsupported Windows full-workspace platform"
   require_literal "$baseline" "if: github.event_name == 'workflow_dispatch' && inputs.confirm_full_workspace == 'RUN_FULL_WORKSPACE_NO_LIVE'" "full-workspace dispatch confirmation"
   require_literal "$baseline" 'HEPTA_CI_CONFIRM_FULL_WORKSPACE: ${{ inputs.confirm_full_workspace }}' "receipt confirmation binding"
+  require_literal <(printf '%s\n' "$full_workspace_block") '      CARGO_PROFILE_DEV_DEBUG: "0"' "full-workspace dev debug reduction"
+  require_literal <(printf '%s\n' "$full_workspace_block") '      CARGO_PROFILE_TEST_DEBUG: "0"' "full-workspace test debug reduction"
+  require_literal <(printf '%s\n' "$full_workspace_block") '          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-full-workspace-target" >>"$GITHUB_ENV"' "runner-temp full-workspace target"
+  require_literal <(printf '%s\n' "$full_workspace_block") '      HEPTA_FULL_WORKSPACE_MIN_AVAILABLE_BYTES: "21474836480"' "full-workspace disk floor"
+  require_literal <(printf '%s\n' "$full_workspace_block") '      HEPTA_FULL_WORKSPACE_TARGET_CACHE_REUSED: "false"' "full-workspace target cache denial"
+  require_literal <(printf '%s\n' "$full_workspace_block") 'linux-hosted-unused-toolchains-prune-v1' "Linux resource policy"
+  require_literal <(printf '%s\n' "$full_workspace_block") 'macos-hosted-no-prune-v1' "macOS resource policy"
+  require_literal <(printf '%s\n' "$full_workspace_block") 'hepta-ci-v3-full-workspace-' "full-workspace cache identity v3"
+  reject_literal <(printf '%s\n' "$full_workspace_block") '            codex-rs/target' "full-workspace target cache"
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence run ${{ matrix.platform }} ${{ matrix.runner }}' "platform receipt execution"
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence verify-receipt ${{ matrix.platform }} ${{ matrix.runner }}' "platform receipt verification"
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence verify-success-receipt ${{ matrix.platform }} ${{ matrix.runner }}' "successful platform receipt promotion eligibility"
@@ -437,7 +483,7 @@ verify_contract() {
     --arg status ready \
     --arg baseline_workflow "$baseline_rel" \
     --arg full_workflow "$full_rel" \
-    '{schema:$schema,status:$status,baseline_workflow:$baseline_workflow,full_workflow:$full_workflow,permissions_read_only:true,ordinary_pr_full_preflight_denied:true,deploy_install_sign_publish_denied:true,cache_lock_toolchain_bound:true,frozen_upstream_intake_bound:true,full_workspace_platforms:["linux","macos"],windows_unsupported:true,receipt_promotion_requires_real_run:true,cross_platform_promotion_denied:true}'
+    '{schema:$schema,status:$status,baseline_workflow:$baseline_workflow,full_workflow:$full_workflow,permissions_read_only:true,ordinary_pr_full_preflight_denied:true,deploy_install_sign_publish_denied:true,cache_lock_toolchain_bound:true,frozen_upstream_intake_bound:true,rust_backend_resource_receipt_bound:true,rust_backend_target_cache_denied:true,cold_counted_evidence_budget_bound:true,full_workspace_platforms:["linux","macos"],windows_unsupported:true,receipt_promotion_requires_real_run:true,cross_platform_promotion_denied:true}'
 }
 self_test() (
   local tmp baseline_rel full_rel
@@ -535,6 +581,13 @@ self_test() (
   rm -f "$tmp/$baseline_rel.bak"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted rust-backend without failure log evidence" >&2
+    return 1
+  fi
+  cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
+  sed -i.bak '/HEPTA_RUST_BACKEND_TARGET_CACHE_REUSED: "false"/d' "$tmp/$baseline_rel"
+  rm -f "$tmp/$baseline_rel.bak"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted rust-backend without target-cache denial" >&2
     return 1
   fi
   cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
@@ -817,7 +870,7 @@ self_test() (
   jq -n \
     --arg schema hepta_ci_baseline_contract_self_test_v1 \
     --arg status ready \
-    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,rust_backend_shallow_checkout_denied:true,rust_backend_missing_intake_refs_denied:true,static_missing_failure_evidence_denied:true,upstream_truth_missing_failure_evidence_denied:true,rust_backend_missing_ripgrep_install_denied:true,rust_backend_missing_failure_evidence_denied:true,full_preflight_unpinned_audit_denied:true,full_preflight_missing_pinned_rustsec_db_denied:true,missing_r4_r5_r6_r7_r8_r9_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,misdirected_r7_ref_denied:true,misdirected_r7_ref_not_overwritten:true,misdirected_r8_ref_denied:true,misdirected_r8_ref_not_overwritten:true,misdirected_r9_ref_denied:true,misdirected_r9_ref_not_overwritten:true,clean_checkout_r4_r5_r6_r7_r8_r9_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r8:true,historical_r5_ref_preserved_while_materializing_r8:true,historical_r6_ref_preserved_while_materializing_r8:true,historical_r7_ref_preserved_while_materializing_r8:true,historical_r4_ref_preserved_while_materializing_r9:true,historical_r5_ref_preserved_while_materializing_r9:true,historical_r6_ref_preserved_while_materializing_r9:true,historical_r7_ref_preserved_while_materializing_r9:true,historical_r8_ref_preserved_while_materializing_r9:true,unexpected_predecessor_ref_overwrite_denied:true}'
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,rust_backend_shallow_checkout_denied:true,rust_backend_missing_intake_refs_denied:true,static_missing_failure_evidence_denied:true,upstream_truth_missing_failure_evidence_denied:true,rust_backend_missing_ripgrep_install_denied:true,rust_backend_missing_failure_evidence_denied:true,rust_backend_missing_target_cache_denial_denied:true,full_preflight_unpinned_audit_denied:true,full_preflight_missing_pinned_rustsec_db_denied:true,missing_r4_r5_r6_r7_r8_r9_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,misdirected_r7_ref_denied:true,misdirected_r7_ref_not_overwritten:true,misdirected_r8_ref_denied:true,misdirected_r8_ref_not_overwritten:true,misdirected_r9_ref_denied:true,misdirected_r9_ref_not_overwritten:true,clean_checkout_r4_r5_r6_r7_r8_r9_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r8:true,historical_r5_ref_preserved_while_materializing_r8:true,historical_r6_ref_preserved_while_materializing_r8:true,historical_r7_ref_preserved_while_materializing_r8:true,historical_r4_ref_preserved_while_materializing_r9:true,historical_r5_ref_preserved_while_materializing_r9:true,historical_r6_ref_preserved_while_materializing_r9:true,historical_r7_ref_preserved_while_materializing_r9:true,historical_r8_ref_preserved_while_materializing_r9:true,unexpected_predecessor_ref_overwrite_denied:true}'
 )
 [[ $# -eq 1 ]] || usage
 case "$1" in
