@@ -182,8 +182,7 @@ impl DirtyWorktreeObservation {
                 "cross_lane_or_unowned"
             };
             entries.push(DirtyWorktreeObservationEntry {
-                status_code: String::from_utf8(vec![record[0], record[1]])
-                    .expect("ASCII status bytes are valid UTF-8"),
+                status_code: format!("{index}{worktree}"),
                 index_status: index,
                 worktree_status: worktree,
                 release_boundary_route: format!(

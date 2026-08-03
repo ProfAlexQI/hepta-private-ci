@@ -209,7 +209,7 @@ hepta-kg = { path = "hepta-kg" }
 hepta-memory = { path = "hepta-memory" }
 hepta-paths = { path = "hepta-paths" }
 hepta-plugins = { path = "hepta-plugins" }
-hepta-runtime = { path = "hepta-runtime" }
+hepta-runtime = { path = "hepta-runtime", default-features = false }
 codex-hooks = { path = "hooks" }
 codex-keyring-store = { path = "keyring-store" }
 codex-linux-sandbox = { path = "linux-sandbox" }

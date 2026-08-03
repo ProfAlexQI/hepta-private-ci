@@ -136,7 +136,11 @@ pub fn controlled_live_typed_compat_report(
             NON_SEND_ID => chain.non_send,
             COLLECTION_ID => chain.collection,
             READBACK_ID => chain.readback,
-            _ => unreachable!("dynamic controlled-live id was checked above"),
+            _ => {
+                return Err(format!(
+                    "controlled-live report id escaped the validated dynamic set: {id}"
+                ));
+            }
         });
     }
 

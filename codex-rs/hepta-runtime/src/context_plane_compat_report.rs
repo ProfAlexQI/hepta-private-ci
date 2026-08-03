@@ -907,20 +907,20 @@ fn schema_for(gate: &str) -> Option<&'static str> {
     CONTEXT_PLANE_COMPAT_REPORT_IDS
         .iter()
         .position(|candidate| *candidate == gate)
-        .map(|index| match index {
-            0 => "context_plane_activation_blocker_matrix_typed_v1",
-            1 => "context_plane_operator_approval_packet_typed_v1",
-            2 => "context_plane_operator_approval_packet_canonical_export_digest_typed_v1",
-            3 => "context_plane_operator_approval_packet_freshness_typed_v1",
-            4 => "context_plane_operator_approval_packet_freshness_dependency_chain_typed_v1",
+        .and_then(|index| match index {
+            0 => Some("context_plane_activation_blocker_matrix_typed_v1"),
+            1 => Some("context_plane_operator_approval_packet_typed_v1"),
+            2 => Some("context_plane_operator_approval_packet_canonical_export_digest_typed_v1"),
+            3 => Some("context_plane_operator_approval_packet_freshness_typed_v1"),
+            4 => Some("context_plane_operator_approval_packet_freshness_dependency_chain_typed_v1"),
             5 => {
-                "context_plane_operator_approval_packet_freshness_dependency_chain_canonical_digest_typed_v1"
+                Some("context_plane_operator_approval_packet_freshness_dependency_chain_canonical_digest_typed_v1")
             }
             6 => {
-                "context_plane_operator_approval_packet_freshness_dependency_chain_expiry_drift_typed_v1"
+                Some("context_plane_operator_approval_packet_freshness_dependency_chain_expiry_drift_typed_v1")
             }
-            7 => "context_plane_operator_approval_packet_negative_export_typed_v1",
-            _ => unreachable!("context-plane compatibility report index is bounded"),
+            7 => Some("context_plane_operator_approval_packet_negative_export_typed_v1"),
+            _ => None,
         })
 }
 

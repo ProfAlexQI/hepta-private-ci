@@ -27,7 +27,7 @@ codex-login = { workspace = true }
 codex-protocol = { workspace = true }
 codex-utils-cli = { workspace = true }
 codex-utils-json-to-toml = { workspace = true }
-hepta-runtime = { workspace = true }
+hepta-runtime = { workspace = true, features = ["compat-report"] }
 rmcp = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

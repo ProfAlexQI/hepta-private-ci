@@ -29,7 +29,7 @@ hepta-gateway = { workspace = true }
 hepta-intelligence = { workspace = true }
 hepta-memory = { workspace = true }
 hepta-paths = { workspace = true }
-hepta-runtime = { workspace = true }
+hepta-runtime = { workspace = true, default-features = false }
 hmac = { workspace = true }
 libc = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

@@ -21,7 +21,6 @@ use rmcp::ServiceExt;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::CallToolRequestParams;
 use rmcp::model::CallToolResult;
-use rmcp::model::Content;
 use rmcp::model::ListToolsResult;
 use rmcp::model::PaginatedRequestParams;
 use rmcp::model::ServerCapabilities;
@@ -90,13 +89,8 @@ impl<B: MemoriesBackend> MemoriesMcpServer<B> {
 
 impl<B: MemoriesBackend> ServerHandler for MemoriesMcpServer<B> {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
-                "Use these tools to list, read, and search Hepta memory files.".to_string(),
-            ),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..ServerInfo::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions("Use these tools to list, read, and search Hepta memory files.")
     }
 
     fn list_tools(
@@ -176,12 +170,7 @@ impl<B: MemoriesBackend> ServerHandler for MemoriesMcpServer<B> {
             }
         };
 
-        Ok(CallToolResult {
-            content: vec![Content::text(structured_content.to_string())],
-            structured_content: Some(structured_content),
-            is_error: Some(false),
-            meta: None,
-        })
+        Ok(CallToolResult::structured(structured_content))
     }
 }
 

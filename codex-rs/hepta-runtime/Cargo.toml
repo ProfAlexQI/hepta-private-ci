@@ -4,9 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["compat-report"]
+compat-report = ["dep:codex-core-plugins", "dep:codex-tools"]
+
 [dependencies]
-codex-core-plugins.workspace = true
-codex-tools.workspace = true
+codex-core-plugins = { workspace = true, optional = true }
+codex-tools = { workspace = true, optional = true }
 hepta-contracts.workspace = true
 hepta-core.workspace = true
 hepta-egress.workspace = true

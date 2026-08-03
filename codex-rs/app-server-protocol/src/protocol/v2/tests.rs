@@ -3893,7 +3893,7 @@ fn turn_start_params_reject_relative_environment_cwd() {
 
     assert!(
         err.to_string()
-            .contains("AbsolutePathBuf deserialized without a base path"),
+            .contains("environment cwd must be an absolute POSIX or Windows path"),
         "unexpected error: {err}"
     );
 }

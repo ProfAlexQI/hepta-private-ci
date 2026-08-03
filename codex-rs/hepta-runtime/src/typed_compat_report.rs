@@ -1,3 +1,4 @@
+#[cfg(feature = "compat-report")]
 use std::path::Path;
 
 use serde_json::Value;
@@ -839,9 +840,10 @@ pub fn typed_compat_report_with_controlled_live_worktree_observation(
 }
 
 pub fn is_current_reality_typed_compat_report(id: &str) -> bool {
-    id == crate::CURRENT_REALITY_CAPABILITY_MATRIX_PAIR_ID
+    id == "hepta-systems-current-reality-capability-matrix"
 }
 
+#[cfg(feature = "compat-report")]
 pub fn typed_compat_report_with_current_reality_sources(
     id: &str,
     sources: &crate::CurrentRealityCapabilityMatrixSources,
@@ -860,9 +862,17 @@ pub fn typed_compat_report_with_current_reality_sources(
 }
 
 pub fn is_plugin_typed_compat_report(id: &str) -> bool {
-    crate::plugin_compat_report::PLUGIN_COMPAT_REPORT_IDS.contains(&id)
+    matches!(
+        id,
+        "hepta-systems-plugin-contribution-point-abi"
+            | "hepta-systems-plugin-contribution-point-loader-binding"
+            | "hepta-systems-plugin-lifecycle-state-machine"
+            | "hepta-systems-plugin-tool-contribution-inventory-preview"
+            | "hepta-systems-plugin-tool-manifest-schema-cutover-preflight"
+    )
 }
 
+#[cfg(feature = "compat-report")]
 pub fn typed_compat_report_with_plugin_repo_root(
     id: &str,
     repo_root: &Path,

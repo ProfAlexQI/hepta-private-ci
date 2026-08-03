@@ -160,6 +160,7 @@ mod controlled_live_required_evidence_gap_operator_readback;
 mod controlled_live_required_evidence_gap_summary;
 mod controlled_live_required_evidence_readback_index;
 mod core_fusion;
+#[cfg(feature = "compat-report")]
 mod current_reality_capability_matrix;
 mod current_reality_matrix_compact_cache_boundary_readback;
 mod delivery_queue;
@@ -230,6 +231,7 @@ mod multi_agent;
 mod ndu_h1_runtime;
 mod operator_policy;
 mod output_directives;
+#[cfg(feature = "compat-report")]
 #[allow(dead_code)]
 mod plugin_compat_report;
 mod plugin_keyed_store;
@@ -330,6 +332,7 @@ pub use controlled_live_compat_report::{
     controlled_live_required_evidence_readback_index_report_from_sources,
     controlled_live_typed_compat_report, is_controlled_live_typed_compat_report,
 };
+#[cfg(feature = "compat-report")]
 pub use current_reality_capability_matrix::*;
 pub use dirty_worktree_compat_report::{
     DIRTY_WORKTREE_TYPED_COMPAT_REPORT_IDS, DirtyWorktreeObservation,
@@ -355,8 +358,10 @@ pub use typed_compat_report::is_current_reality_typed_compat_report;
 pub use typed_compat_report::is_plugin_typed_compat_report;
 pub use typed_compat_report::typed_compat_report;
 pub use typed_compat_report::typed_compat_report_with_controlled_live_worktree_observation;
+#[cfg(feature = "compat-report")]
 pub use typed_compat_report::typed_compat_report_with_current_reality_sources;
 pub use typed_compat_report::typed_compat_report_with_dirty_worktree_observation;
+#[cfg(feature = "compat-report")]
 pub use typed_compat_report::typed_compat_report_with_plugin_repo_root;
 
 include!("runtime_kernel/exports.rs");

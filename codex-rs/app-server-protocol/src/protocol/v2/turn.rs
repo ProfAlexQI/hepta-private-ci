@@ -20,6 +20,7 @@ use codex_protocol::user_input::UserInput as CoreUserInput;
 use codex_utils_path_uri::LegacyAppPathString;
 use schemars::JsonSchema;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
@@ -42,7 +43,23 @@ pub enum TurnStatus {
 #[ts(export_to = "v2/")]
 pub struct TurnEnvironmentParams {
     pub environment_id: String,
+    #[serde(deserialize_with = "deserialize_absolute_legacy_app_path")]
     pub cwd: LegacyAppPathString,
+}
+
+fn deserialize_absolute_legacy_app_path<'de, D>(
+    deserializer: D,
+) -> Result<LegacyAppPathString, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let path = LegacyAppPathString::deserialize(deserializer)?;
+    if path.to_inferred_path_uri().is_none() {
+        return Err(serde::de::Error::custom(
+            "environment cwd must be an absolute POSIX or Windows path",
+        ));
+    }
+    Ok(path)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]

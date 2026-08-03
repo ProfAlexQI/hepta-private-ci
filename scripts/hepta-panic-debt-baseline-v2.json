@@ -14,27 +14,27 @@
     },
     "generated_build": {
       "by_kind": {
-        "expect": 14,
+        "expect": 18,
         "panic": 1,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
         "unwrap": 0
       },
-      "fingerprints_sha256": "ad148acce335075a1d5d825dbb6308477e43fcfbca70520309664a8070ecc219",
-      "total": 15
+      "fingerprints_sha256": "d4dadf08c9305d2adf8307b353e0b7aa9f1cc644b4f0bdff29c34e72af060ae5",
+      "total": 19
     },
     "test": {
       "by_kind": {
-        "expect": 4446,
-        "panic": 78,
+        "expect": 4617,
+        "panic": 100,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
-        "unwrap": 320
+        "unwrap": 376
       },
-      "fingerprints_sha256": "b9a4fa445b78ea859a3d8943479705540d10eb6f46032b50d3754e82adf292c7",
-      "total": 4844
+      "fingerprints_sha256": "3bedee36ae3b2a778cf7458a8b9ef0e9de6a425b30c839303d30f817ded2c95a",
+      "total": 5093
     }
   },
   "limitations": [
@@ -44,12 +44,12 @@
   "production_occurrences": [
     {
       "boundary": "trusted_static_invariant",
-      "content_sha256": "1e7bde3762d509c6bafd060c8da9b9b45ce6a26cbef633f618800bd1e505cb81",
+      "content_sha256": "eb5161a2956e25dc787fb992652468f8a904863d85454cffd2e49590e88a81ff",
       "disposition": "accepted_invariant",
       "duplicate_ordinal": 1,
-      "fingerprint": "0bc7e44208605d75df851749914bdee86d24aa7a4ae2c2d87df96fab5fd66fd8",
+      "fingerprint": "0310395c4518699222a132f703d4c9a08c79945fa7a6e3b9cd47aa45c929d0ed",
       "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/terminal_denials.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
       "source_class": "production"
@@ -80,12 +80,12 @@
     },
     {
       "boundary": "trusted_static_invariant",
-      "content_sha256": "cf95f3dcfec95e1af9020675a639ec1e2e8daeeaf8bab5a23ffd41e01ca26108",
+      "content_sha256": "37187e12c307d20dd61810a2f6f912f61df55b472470ecb994958ad3f5f6b0f6",
       "disposition": "accepted_invariant",
       "duplicate_ordinal": 1,
-      "fingerprint": "26848be99e1cb79dce92bf74004d9bb5353a05fdda91363d0584b8f1aa20f3a9",
+      "fingerprint": "20fa4ed197d599f79b5152814064b5ac0208af59f28f385f830c3fa1ee016272",
       "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/dry_run_receipts.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
       "source_class": "production"
@@ -98,6 +98,30 @@
       "fingerprint": "3979a248f1622a3097a42e30c9a8acd84c5250b31833361b687cbdc7275f0b00",
       "kind": "expect",
       "path": "codex-rs/hepta-runtime/src/controlled_live_readiness_audit.rs",
+      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
+      "risk": "accepted",
+      "source_class": "production"
+    },
+    {
+      "boundary": "trusted_static_invariant",
+      "content_sha256": "2d9b6462e39b8bcfe162d4303fec1c51b07a6a29a4b66300d97c5a51af642b0d",
+      "disposition": "accepted_invariant",
+      "duplicate_ordinal": 1,
+      "fingerprint": "4283adb822d2e07463c65eba13bb566fcc3d79b64492564fbe680dcf0c5f3959",
+      "kind": "expect",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/terminal_denials.rs",
+      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
+      "risk": "accepted",
+      "source_class": "production"
+    },
+    {
+      "boundary": "trusted_static_invariant",
+      "content_sha256": "1e7bde3762d509c6bafd060c8da9b9b45ce6a26cbef633f618800bd1e505cb81",
+      "disposition": "accepted_invariant",
+      "duplicate_ordinal": 1,
+      "fingerprint": "4696932f10a3b946b9571f5f946b6ef3afe22046f34b5e73b4b062109e3f5860",
+      "kind": "expect",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/dry_run_receipts.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
       "source_class": "production"
@@ -140,12 +164,36 @@
     },
     {
       "boundary": "trusted_static_invariant",
+      "content_sha256": "0267a95576e397cc18b18ec62abe4612807c6c52ddc454407e2dc42dd2fc0c04",
+      "disposition": "accepted_invariant",
+      "duplicate_ordinal": 1,
+      "fingerprint": "521135ff6a6f4321ba55d181d1e7832668b53b8dbe355344d1537b49999a3292",
+      "kind": "expect",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/terminal_denials.rs",
+      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
+      "risk": "accepted",
+      "source_class": "production"
+    },
+    {
+      "boundary": "trusted_static_invariant",
       "content_sha256": "399d3c34cecd37611138146bab69a0e2cffb4633331428baf983becf4b395f05",
       "disposition": "accepted_invariant",
       "duplicate_ordinal": 1,
       "fingerprint": "564328908807594f79ed9bf641b4117ce672e82990934c97e9c6ee555ce190f7",
       "kind": "expect",
       "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/canary_execution_and_rollback/part_03.rs",
+      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
+      "risk": "accepted",
+      "source_class": "production"
+    },
+    {
+      "boundary": "trusted_static_invariant",
+      "content_sha256": "c3f0d2f9e24cfdc453119b98b25b8944d0db15b616c3ae55cda6fb2d44985afb",
+      "disposition": "accepted_invariant",
+      "duplicate_ordinal": 1,
+      "fingerprint": "6714cc98928577fdb69a606e937333348ebb05b129fd6dea0f9224b7e8dad4cd",
+      "kind": "expect",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/dry_run_receipts.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
       "source_class": "production"
@@ -164,6 +212,42 @@
     },
     {
       "boundary": "trusted_static_invariant",
+      "content_sha256": "b25a0d7ea4e4413bb1d782dbf90811f3f59e071f39fbc921d17477664682e934",
+      "disposition": "accepted_invariant",
+      "duplicate_ordinal": 1,
+      "fingerprint": "6f8d6e2555bafb7e15e808da0f7306f547746e3572cf4e0d847ef7f0bbb402a9",
+      "kind": "expect",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/dry_run_receipts.rs",
+      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
+      "risk": "accepted",
+      "source_class": "production"
+    },
+    {
+      "boundary": "trusted_static_invariant",
+      "content_sha256": "e6b15ecb84b64fe9ad54c17e773a80015fd344401506aa39f4dbca12e5afa4d0",
+      "disposition": "accepted_invariant",
+      "duplicate_ordinal": 1,
+      "fingerprint": "9f60565583889b93116aa21bb28d36a2ce202aef969242a361f7e5f250fcc5a7",
+      "kind": "expect",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/dry_run_receipts.rs",
+      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
+      "risk": "accepted",
+      "source_class": "production"
+    },
+    {
+      "boundary": "trusted_static_invariant",
+      "content_sha256": "d31fcd89d5b562eaf7ea6050e235f4cfad729496be4320a3f3940fc695521df0",
+      "disposition": "accepted_invariant",
+      "duplicate_ordinal": 1,
+      "fingerprint": "a84aa5f1494ebb3e087d4e932db7f254ffc57cd38ed509a6488d1c7c49be9ac5",
+      "kind": "expect",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/dry_run_receipts.rs",
+      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
+      "risk": "accepted",
+      "source_class": "production"
+    },
+    {
+      "boundary": "trusted_static_invariant",
       "content_sha256": "0486c032caa1e68f147cd7aab3344005878b27ff339311ce13e8883a3b77a434",
       "disposition": "accepted_invariant",
       "duplicate_ordinal": 1,
@@ -171,30 +255,6 @@
       "kind": "expect",
       "path": "codex-rs/hepta-runtime/src/controlled_live_readiness_audit.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
-      "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "trusted_static_invariant",
-      "content_sha256": "2d9b6462e39b8bcfe162d4303fec1c51b07a6a29a4b66300d97c5a51af642b0d",
-      "disposition": "accepted_invariant",
-      "duplicate_ordinal": 1,
-      "fingerprint": "c33743aea9e9325a78adcadc2a561b87dcb23c7dc46d56f4aaa475144ff2ef49",
-      "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
-      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
-      "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "trusted_static_invariant",
-      "content_sha256": "7370710e189dd0d9261584bfa67518bc6e3e27389ccaecac9ae6b307433c47bc",
-      "disposition": "accepted_invariant",
-      "duplicate_ordinal": 1,
-      "fingerprint": "c36f344213b5a24366b47a5e3529869e733ededf242aee84850024af3462cc5b",
-      "kind": "expect",
-      "path": "codex-rs/hepta-core/src/current_reality_capability_registry.rs",
-      "rationale": "The generated capability registry is a build-bound authenticated constant validated by generator and contract tests.",
       "risk": "accepted",
       "source_class": "production"
     },
@@ -212,72 +272,12 @@
     },
     {
       "boundary": "trusted_static_invariant",
-      "content_sha256": "37187e12c307d20dd61810a2f6f912f61df55b472470ecb994958ad3f5f6b0f6",
+      "content_sha256": "cf95f3dcfec95e1af9020675a639ec1e2e8daeeaf8bab5a23ffd41e01ca26108",
       "disposition": "accepted_invariant",
       "duplicate_ordinal": 1,
-      "fingerprint": "c92a650d6825d99e01695ffc13036852678ed3f70aeff9c81a4ab43537be0aa1",
+      "fingerprint": "e1068ec36950b3fa769e4d2b3372f62a43c783e4d02aaefa5fd291441264212d",
       "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
-      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
-      "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "trusted_static_invariant",
-      "content_sha256": "0267a95576e397cc18b18ec62abe4612807c6c52ddc454407e2dc42dd2fc0c04",
-      "disposition": "accepted_invariant",
-      "duplicate_ordinal": 1,
-      "fingerprint": "cafb9528788928b5fb3d0171d6c0951fd800d869206b99f1e8fb10ae3b5dd206",
-      "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
-      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
-      "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "trusted_static_invariant",
-      "content_sha256": "b25a0d7ea4e4413bb1d782dbf90811f3f59e071f39fbc921d17477664682e934",
-      "disposition": "accepted_invariant",
-      "duplicate_ordinal": 1,
-      "fingerprint": "d1b874dd19e695ffcb26ede692d3d91693b195f868149c68ee83c4813f7039b7",
-      "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
-      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
-      "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "trusted_static_invariant",
-      "content_sha256": "eb5161a2956e25dc787fb992652468f8a904863d85454cffd2e49590e88a81ff",
-      "disposition": "accepted_invariant",
-      "duplicate_ordinal": 1,
-      "fingerprint": "d8565ab5976fc7f35996c5feb1d9256afdd342a918d61079dd5a336f53c5d42d",
-      "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
-      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
-      "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "trusted_static_invariant",
-      "content_sha256": "d31fcd89d5b562eaf7ea6050e235f4cfad729496be4320a3f3940fc695521df0",
-      "disposition": "accepted_invariant",
-      "duplicate_ordinal": 1,
-      "fingerprint": "e8404543f39f4486b9c4cfaca108722eedb05d10ac1048d1f8e295f431e985dd",
-      "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
-      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
-      "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "trusted_static_invariant",
-      "content_sha256": "c3f0d2f9e24cfdc453119b98b25b8944d0db15b616c3ae55cda6fb2d44985afb",
-      "disposition": "accepted_invariant",
-      "duplicate_ordinal": 1,
-      "fingerprint": "e92353dcc66dacf09bfdad3a16226acc33f08cebd0561769c7bbbe51eae69911",
-      "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
+      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts/terminal_denials.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
       "source_class": "production"
@@ -302,18 +302,6 @@
       "fingerprint": "f513d600ad8b0ac4104c4d75ae193d847bce0cff13b2e4ac83b2da6676c62cb7",
       "kind": "expect",
       "path": "codex-rs/hepta-intelligence/src/memory_kg_write_candidates.rs",
-      "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
-      "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "trusted_static_invariant",
-      "content_sha256": "e6b15ecb84b64fe9ad54c17e773a80015fd344401506aa39f4dbca12e5afa4d0",
-      "disposition": "accepted_invariant",
-      "duplicate_ordinal": 1,
-      "fingerprint": "f683548109f8bccd658e0bd4bb062f7b1328231c45e96746c7c5460aee0edb47",
-      "kind": "expect",
-      "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports/production_dry_run_receipts.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
       "source_class": "production"
@@ -357,35 +345,35 @@
     "test": "tests paths, *_tests.rs/tests.rs/test_support.rs files, and items requiring cfg(test)"
   },
   "source_set": {
-    "file_count": 782,
-    "paths_and_classes_sha256": "0d47b6c9015a514e03ad01cb5586119b84253af83a32ef7ca432c49225baff0d"
+    "file_count": 834,
+    "paths_and_classes_sha256": "c3381c6db0650182da0f2902d4df9c7f2114c32268d343ca4b9128010b79ca7f"
   },
   "summary": {
     "actionable_high_risk_production_fingerprints": [],
     "by_kind": {
-      "expect": 4481,
-      "panic": 79,
+      "expect": 4655,
+      "panic": 101,
       "todo": 0,
       "unimplemented": 0,
       "unreachable": 3,
-      "unwrap": 320
+      "unwrap": 376
     },
     "by_risk": {
-      "accepted": 24,
-      "excluded_nonproduction": 15,
+      "accepted": 23,
+      "excluded_nonproduction": 19,
       "high": 0,
       "low": 0,
       "medium": 0,
-      "test_only": 4844,
+      "test_only": 5093,
       "unclassified": 0
     },
     "by_source_class": {
       "fixture": 0,
-      "generated_build": 15,
-      "production": 24,
-      "test": 4844
+      "generated_build": 19,
+      "production": 23,
+      "test": 5093
     },
-    "classification_sha256": "f03bffaaa25169130bca92b14c7b37887ac5e49b2d3ebb91664d73133be42064",
-    "total": 4883
+    "classification_sha256": "2dae2a479d5a7bc8cd3d17a4dd052e48636a5adac9d651da9a3d0d3dcf911acf",
+    "total": 5135
   }
 }

@@ -549,21 +549,29 @@ def make_network_receipt(registry_path: Path, output: Path) -> dict[str, Any]:
     require(len(rows) == 1 and len(rows[0]) == 2, "network upstream observation is ambiguous")
     remote_head, observed_ref = rows[0]
     require(observed_ref == remote_ref, "network upstream ref mismatch")
-    require(remote_head == expected, f"upstream advanced: expected {expected}, found {remote_head}")
-    require_direct_commit(upstream.get("frozen_ref"), expected, "latest frozen upstream")
-
+    frozen_ref = upstream.get("frozen_ref")
     tracking_ref = upstream.get("tracking_ref")
-    symbolic = git("symbolic-ref", "-q", tracking_ref, check=False)
-    require(symbolic.returncode != 0, f"tracking ref must not be symbolic: {tracking_ref}")
-    old = ref_oid(tracking_ref) or ("0" * 40)
-    updated = git("update-ref", tracking_ref, remote_head, old, check=False)
-    require(updated.returncode == 0, f"tracking ref changed concurrently: {updated.stderr.strip()}")
-    require_direct_commit(tracking_ref, expected, "floating upstream tracking")
+    frozen_head = ref_oid(frozen_ref) if isinstance(frozen_ref, str) else None
+    tracking_head = ref_oid(tracking_ref) if isinstance(tracking_ref, str) else None
+    remote_matches_expected = remote_head == expected
+    frozen_ref_matches_expected = frozen_head == expected
+    tracking_ref_matches_expected = tracking_head == expected
 
+    # Persist the network observation before enforcing freshness. A stale upstream
+    # binding is a denied result, but it is still evidence that CI must retain.
     now = int(time.time())
     generated_at = datetime.fromtimestamp(now, timezone.utc).isoformat().replace("+00:00", "Z")
     receipt = {
         "schema_version": registry["network_receipt"]["schema_version"],
+        # Remain denied until every local and remote binding below has passed.
+        # This receipt is intentionally useful on every failure path without ever
+        # making an observation alone look promotion-ready.
+        "status": "denied",
+        "denial_reason": (
+            "post_observation_validation_incomplete"
+            if remote_matches_expected
+            else "upstream_head_mismatch"
+        ),
         "generated_at": generated_at,
         "generated_at_epoch": now,
         "repository": repository,
@@ -571,20 +579,41 @@ def make_network_receipt(registry_path: Path, output: Path) -> dict[str, Any]:
         "remote_ref": remote_ref,
         "remote_head": remote_head,
         "expected_head": expected,
-        "frozen_ref": upstream.get("frozen_ref"),
-        "frozen_head": expected,
+        "frozen_ref": frozen_ref,
+        "frozen_head": frozen_head,
         "tracking_ref": tracking_ref,
-        "tracking_head": expected,
+        "tracking_head": tracking_head,
         "registry_sha256": digest_file(registry_path),
         "observation_sha256": observation_digest(remote_ref, remote_head),
         "network_freshness_checked": True,
-        "remote_matches_expected": True,
-        "frozen_ref_matches_expected": True,
-        "tracking_ref_matches_expected": True,
+        "remote_matches_expected": remote_matches_expected,
+        "frozen_ref_matches_expected": frozen_ref_matches_expected,
+        "tracking_ref_matches_expected": tracking_ref_matches_expected,
         "merge_performed": False,
         "rebase_performed": False,
         "checkout_performed": False,
     }
+    write_json_atomic(output, receipt)
+
+    require(remote_matches_expected, f"upstream advanced: expected {expected}, found {remote_head}")
+    require_direct_commit(frozen_ref, expected, "latest frozen upstream")
+
+    symbolic = git("symbolic-ref", "-q", tracking_ref, check=False)
+    require(symbolic.returncode != 0, f"tracking ref must not be symbolic: {tracking_ref}")
+    old = ref_oid(tracking_ref) or ("0" * 40)
+    updated = git("update-ref", tracking_ref, remote_head, old, check=False)
+    require(updated.returncode == 0, f"tracking ref changed concurrently: {updated.stderr.strip()}")
+    require_direct_commit(tracking_ref, expected, "floating upstream tracking")
+
+    receipt.update({
+        "status": "ready",
+        "denial_reason": None,
+        "frozen_head": expected,
+        "tracking_head": expected,
+        "remote_matches_expected": True,
+        "frozen_ref_matches_expected": True,
+        "tracking_ref_matches_expected": True,
+    })
     write_json_atomic(output, receipt)
     return receipt
 
@@ -597,6 +626,8 @@ def verify_network_receipt(registry_path: Path, receipt_path: Path) -> dict[str,
     policy = registry.get("network_receipt")
     require(isinstance(upstream, dict) and isinstance(policy, dict), "registry network contract missing")
     require(receipt.get("schema_version") == policy.get("schema_version"), "receipt schema mismatch")
+    require(receipt.get("status") == "ready", "network receipt is not ready")
+    require(receipt.get("denial_reason") is None, "network receipt retains a denial reason")
     expected_fields = {
         "repository": upstream.get("repository"),
         "branch": upstream.get("branch"),
@@ -706,6 +737,8 @@ def self_test(registry_path: Path) -> dict[str, Any]:
         now = int(time.time())
         base = {
             "schema_version": registry["network_receipt"]["schema_version"],
+            "status": "ready",
+            "denial_reason": None,
             "generated_at": datetime.fromtimestamp(now, timezone.utc).isoformat().replace("+00:00", "Z"),
             "generated_at_epoch": now,
             "repository": upstream["repository"],
@@ -737,6 +770,13 @@ def self_test(registry_path: Path) -> dict[str, Any]:
         mismatch_path.write_text(json.dumps(mismatch), encoding="utf-8")
         expect_failure(lambda: verify_network_receipt(registry_path, mismatch_path), "network head mismatch")
 
+        denied = dict(base)
+        denied["status"] = "denied"
+        denied["denial_reason"] = "upstream_head_mismatch"
+        denied_path = directory / "denied-receipt.json"
+        denied_path.write_text(json.dumps(denied), encoding="utf-8")
+        expect_failure(lambda: verify_network_receipt(registry_path, denied_path), "denied network receipt")
+
         stale = dict(base)
         stale_epoch = now - registry["network_receipt"]["maximum_age_seconds"] - 1
         stale["generated_at_epoch"] = stale_epoch
@@ -748,7 +788,7 @@ def self_test(registry_path: Path) -> dict[str, Any]:
         "schema": "hepta_upstream_truth_gate_self_test_v1",
         "status": "ready",
         "positive_fixtures": 3,
-        "negative_fixtures": 10,
+        "negative_fixtures": 11,
     }
 
 

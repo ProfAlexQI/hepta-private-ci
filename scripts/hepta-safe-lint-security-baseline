@@ -107,14 +107,13 @@ verify_contract() {
     ' "$ROOT/scripts/hepta-ci-baseline"
   )"
   expected_v2_ci_clippy_block="$(
-    cat <<'EOF'
-  budgeted_cargo ci-hepta-v2-crates-clippy 1200 \
-    cargo clippy --locked --manifest-path "$MANIFEST" -q \
-      -p hepta-intelligence \
-      -p hepta-memory \
-      -p hepta-runtime \
-      --tests --no-deps -- -D warnings
-EOF
+    printf '%s\n' \
+      '  budgeted_cargo ci-hepta-v2-crates-clippy 1200 \' \
+      '    cargo clippy --locked --manifest-path "$MANIFEST" -q \' \
+      '      -p hepta-intelligence \' \
+      '      -p hepta-memory \' \
+      '      -p hepta-runtime \' \
+      '      --tests --no-deps -- -D warnings'
   )"
   if [[ "$v2_ci_clippy_block" != "$expected_v2_ci_clippy_block" ]]; then
     echo "Hepta Architecture V2 CI Clippy command drifted from its safe-lint freeze" >&2
