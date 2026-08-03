@@ -101,3 +101,28 @@ def hepta_ui_readiness_truth:
     promotion: $promotion_ready,
     local: $local_ready
   };
+
+def hepta_ui_product_promotion_truth($local_ready; $mobile; $matrix; $bridge; $device; $accessibility; $release):
+  (
+    $local_ready
+    and $matrix.ready == true
+    and $bridge.ready == true
+    and $device.ready == true
+    and $device.independent_verifier_ready == true
+    and $accessibility.ready == true
+    and $accessibility.independent_verifier_ready == true
+  ) as $full_ready |
+  (
+    $release.ready == true
+    and $release.source_stable_during_run == true
+    and $release.independent_verifier_ready == true
+    and $release.signed == true
+    and $release.notarized == true
+    and $release.stapled == true
+  ) as $release_ready |
+  {
+    full: $full_ready,
+    mobile_full: ($device.ready == true and $device.independent_verifier_ready == true and $accessibility.ready == true and $accessibility.independent_verifier_ready == true),
+    release_independent: $release_ready,
+    ga: ($full_ready and $release_ready)
+  };

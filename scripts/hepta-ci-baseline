@@ -125,6 +125,12 @@ run_ui_contract() (
     scripts/hepta-native-current-package-gate-self-test.sh
   run_static_gate native-window-verifier-self-test \
     scripts/hepta-ui-native-window-verifier-self-test.sh
+  run_static_gate release-promotion-verifier-self-test \
+    scripts/hepta-ui-release-verifier-self-test.sh
+  run_static_gate device-lab-promotion-verifier-self-test \
+    scripts/hepta-ui-device-lab-verifier-self-test.sh
+  run_static_gate accessibility-promotion-verifier-self-test \
+    scripts/hepta-ui-accessibility-verifier-self-test.sh
   run_static_gate native-macos-release-chain-self-test \
     scripts/hepta-native-macos-release-chain-self-test.sh
   run_static_gate release-artifact-intake-v3-self-test \

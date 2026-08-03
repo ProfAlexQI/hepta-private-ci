@@ -104,7 +104,7 @@
     "self_test_entrypoint": "scripts/hepta-gate-compat-debt self-test"
   },
   "ui_product_contract": {
-    "capability_version": 6,
+    "capability_version": 7,
     "ci_job": "ui-contract",
     "baseline_entrypoint": "scripts/hepta-ci-baseline ui-contract",
     "canonical_readiness_entrypoint": "scripts/hepta-ui-current-readiness.sh --verify-features --verify-browser --require source",
@@ -115,6 +115,13 @@
     "native_android_emulator_smoke_self_test": "scripts/hepta-native-android-emulator-smoke-self-test.sh",
     "native_android_emulator_live_readback_self_test": "scripts/hepta-native-android-emulator-live-readback-self-test.sh",
     "native_window_verifier_self_test": "scripts/hepta-ui-native-window-verifier-self-test.sh",
+    "promotion_verifier_library": "scripts/lib/hepta-ui-promotion-verifier-v1.sh",
+    "release_promotion_verifier": "scripts/hepta-ui-release-verifier-v1",
+    "release_promotion_verifier_self_test": "scripts/hepta-ui-release-verifier-self-test.sh",
+    "device_lab_promotion_verifier": "scripts/hepta-ui-device-lab-verifier-v1",
+    "device_lab_promotion_verifier_self_test": "scripts/hepta-ui-device-lab-verifier-self-test.sh",
+    "accessibility_promotion_verifier": "scripts/hepta-ui-accessibility-verifier-v1",
+    "accessibility_promotion_verifier_self_test": "scripts/hepta-ui-accessibility-verifier-self-test.sh",
     "native_macos_release_chain_self_test": "scripts/hepta-native-macos-release-chain-self-test.sh",
     "release_artifact_intake_v3_self_test": "scripts/hepta-ui-release-artifact-intake-v3-self-test.sh",
     "release_consumer_forged_tuple_self_test": "scripts/hepta-ui-release-consumer-forged-tuple-self-test.sh",

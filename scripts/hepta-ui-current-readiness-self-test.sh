@@ -58,6 +58,24 @@ jq -L scripts/lib -n --slurpfile positive "$TEST_DIR/positive-truth-input.json" 
 ' >"$TEST_DIR/readiness-truth-table.json"
 jq -e 'length == 13 and all(.[]; .actual == .expected)' "$TEST_DIR/readiness-truth-table.json" >/dev/null
 
+jq -L scripts/lib -n '
+  include "hepta-ui-current-readiness-v1";
+  {ready:true} as $live |
+  {ready:true,independent_verifier_ready:true} as $independent |
+  {ready:true,source_stable_during_run:true,independent_verifier_ready:true,signed:true,notarized:true,stapled:true} as $release |
+  [
+    {name:"positive",local:true,matrix:$live,bridge:$live,device:$independent,accessibility:$independent,release:$release,expected:{full:true,mobile_full:true,release_independent:true,ga:true}},
+    {name:"local_false",local:false,matrix:$live,bridge:$live,device:$independent,accessibility:$independent,release:$release,expected:{full:false,mobile_full:true,release_independent:true,ga:false}},
+    {name:"matrix_false",local:true,matrix:{ready:false},bridge:$live,device:$independent,accessibility:$independent,release:$release,expected:{full:false,mobile_full:true,release_independent:true,ga:false}},
+    {name:"device_not_independent",local:true,matrix:$live,bridge:$live,device:{ready:true,independent_verifier_ready:false},accessibility:$independent,release:$release,expected:{full:false,mobile_full:false,release_independent:true,ga:false}},
+    {name:"accessibility_false",local:true,matrix:$live,bridge:$live,device:$independent,accessibility:{ready:false,independent_verifier_ready:true},release:$release,expected:{full:false,mobile_full:false,release_independent:true,ga:false}},
+    {name:"release_unsigned",local:true,matrix:$live,bridge:$live,device:$independent,accessibility:$independent,release:($release | .signed=false),expected:{full:true,mobile_full:true,release_independent:false,ga:false}},
+    {name:"release_unstable",local:true,matrix:$live,bridge:$live,device:$independent,accessibility:$independent,release:($release | .source_stable_during_run=false),expected:{full:true,mobile_full:true,release_independent:false,ga:false}}
+  ]
+  | map(. + {actual:hepta_ui_product_promotion_truth(.local; {}; .matrix; .bridge; .device; .accessibility; .release)} | del(.local,.matrix,.bridge,.device,.accessibility,.release))
+' >"$TEST_DIR/product-promotion-truth-table.json"
+jq -e 'length == 7 and all(.[]; .actual == .expected)' "$TEST_DIR/product-promotion-truth-table.json" >/dev/null
+
 # A reused evidence directory must not preserve a ready feature/browser receipt.
 jq -n '{schema_version:1,kind:"hepta-native-feature-matrix-gate",status:"ready",feature_matrix_ready:true}' >"$TEST_DIR/native-feature-matrix.json"
 jq -n '{schema_version:1,kind:"hepta-control-ui-browser-smoke-current-wrapper",status:"ready",browser_smoke_ready:true}' >"$TEST_DIR/control-browser-smoke.json"
@@ -234,6 +252,10 @@ if rg -n 'HEPTA_UI_NATIVE_WINDOW_RECEIPT' scripts/hepta-ui-current-readiness.sh 
 fi
 if grep -Fq -- 'false as $promotion_independent_verifiers_ready' scripts/hepta-ui-current-readiness.sh; then
   echo "native-window promotion verifier remains hard-coded false" >&2
+  exit 1
+fi
+if rg -n 'false as \$(full_ready|release_independent_verification_ready)' scripts/hepta-ui-current-readiness.sh >/dev/null; then
+  echo "full or GA promotion remains hard-coded false" >&2
   exit 1
 fi
 
