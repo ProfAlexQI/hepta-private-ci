@@ -1,13 +1,21 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
-use codex_keyring_store::{DefaultKeyringStore, KeyringStore};
+#[cfg(not(target_os = "android"))]
+use codex_keyring_store::DefaultKeyringStore;
+use codex_keyring_store::KeyringStore;
 use matrix_sdk::ruma::UserId;
 use zeroize::Zeroizing;
+
+#[cfg(any(target_os = "android", test))]
+mod android_contract;
+#[cfg(target_os = "android")]
+mod android_keystore;
 
 pub(super) const MATRIX_CREDENTIAL_SERVICE: &str = "ai.hepta.native.matrix";
 pub(super) const SYSTEM_CREDENTIAL_STORE_SUPPORTED: bool = cfg!(any(
     target_os = "freebsd",
+    target_os = "android",
     target_os = "ios",
     target_os = "linux",
     target_os = "macos",
@@ -24,6 +32,9 @@ pub(super) fn credential_account(user_id: &UserId, binding_nonce: &str) -> Strin
 }
 
 pub(super) fn default_keyring_store() -> Arc<dyn KeyringStore> {
+    #[cfg(target_os = "android")]
+    return Arc::new(android_keystore::AndroidKeystoreStore);
+    #[cfg(not(target_os = "android"))]
     Arc::new(DefaultKeyringStore)
 }
 

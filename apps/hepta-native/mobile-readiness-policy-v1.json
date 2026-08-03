@@ -10,8 +10,11 @@
     "observed_behavior": "CxOsOp::AccessibilityUpdate(_) => {}"
   },
   "downstream_boundaries": {
-    "android_secure_credential_backend_supported": false,
-    "android_session_behavior": "fail_closed_relogin_required",
+    "android_secure_credential_backend_supported": true,
+    "android_secure_credential_backend": "AndroidKeyStore AES-256-GCM key plus app-private SharedPreferences ciphertext",
+    "android_secure_credential_target_compile_required": true,
+    "android_secure_credential_runtime_receipt_required": true,
+    "android_session_behavior": "secure_backend_source_present_runtime_receipt_required",
     "plaintext_credential_fallback_allowed": false,
     "ios_bundle_identifier": "ai.hepta.nativeapp",
     "ios_product_name": "Hepta",

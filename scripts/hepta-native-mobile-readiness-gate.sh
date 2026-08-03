@@ -35,6 +35,8 @@ SOURCE_BEFORE="$(scripts/hepta-ui-source-fingerprint)"
 POLICY_PATH="apps/hepta-native/mobile-readiness-policy-v1.json"
 MANIFEST_PATH="apps/hepta-native/Cargo.toml"
 CREDENTIAL_PATH="apps/hepta-native/src/persistence/matrix_session_store/credential.rs"
+ANDROID_CREDENTIAL_CONTRACT_PATH="apps/hepta-native/src/persistence/matrix_session_store/credential/android_contract.rs"
+ANDROID_CREDENTIAL_BACKEND_PATH="apps/hepta-native/src/persistence/matrix_session_store/credential/android_keystore.rs"
 TESTFLIGHT_PATH="apps/hepta-native/packaging/build-ios-testflight.sh"
 IOS_SIMULATOR_SMOKE_PATH="scripts/hepta-native-ios-simulator-smoke.sh"
 IOS_SIMULATOR_UI_QUALIFICATION_PATH="scripts/hepta-native-ios-simulator-ui-qualification.sh"
@@ -62,8 +64,11 @@ if jq -e '
     and .known_upstream_boundaries.ios_accessibility_update_consumed == false
     and .known_upstream_boundaries.android_accessibility_update_consumed == false
     and .known_upstream_boundaries.observed_behavior == "CxOsOp::AccessibilityUpdate(_) => {}"
-    and .downstream_boundaries.android_secure_credential_backend_supported == false
-    and .downstream_boundaries.android_session_behavior == "fail_closed_relogin_required"
+    and .downstream_boundaries.android_secure_credential_backend_supported == true
+    and .downstream_boundaries.android_secure_credential_backend == "AndroidKeyStore AES-256-GCM key plus app-private SharedPreferences ciphertext"
+    and .downstream_boundaries.android_secure_credential_target_compile_required == true
+    and .downstream_boundaries.android_secure_credential_runtime_receipt_required == true
+    and .downstream_boundaries.android_session_behavior == "secure_backend_source_present_runtime_receipt_required"
     and .downstream_boundaries.plaintext_credential_fallback_allowed == false
     and .downstream_boundaries.ios_bundle_identifier == "ai.hepta.nativeapp"
     and .downstream_boundaries.ios_product_name == "Hepta"
@@ -82,15 +87,20 @@ if [[ "$(rg -c 'makepad-widgets = .*rev = "c4335cee10b22aca768510c9d072b0ca1bba1
   makepad_pin_ready=true
 fi
 
-android_credential_fail_closed_ready=false
+android_credential_source_contract_ready=false
 if ruby -e '
-    text = File.binread(ARGV.fetch(0))
-    support = text[/pub\(super\) const SYSTEM_CREDENTIAL_STORE_SUPPORTED: bool = cfg!\(any\((.*?)\)\);/m, 1]
+    credential, contract, backend, manifest = ARGV.map { |path| File.binread(path) }
+    support = credential[/pub\(super\) const SYSTEM_CREDENTIAL_STORE_SUPPORTED: bool = cfg!\(any\((.*?)\)\);/m, 1]
     abort "missing support contract" unless support
-    abort "Android unexpectedly declared supported" if support.include?(%q{target_os = "android"})
-    abort "missing fail-closed error" unless text.include?("secure Matrix session persistence is unavailable on this platform; re-login is required")
-  ' "$CREDENTIAL_PATH" >/dev/null 2>&1; then
-  android_credential_fail_closed_ready=true
+    abort "Android secure store not selected" unless support.include?(%q{target_os = "android"}) && credential.include?("android_keystore::AndroidKeystoreStore")
+    abort "missing fail-closed unsupported-platform error" unless credential.include?("secure Matrix session persistence is unavailable on this platform; re-login is required")
+    abort "credential identity not domain bound" unless contract.include?("blake3::derive_key") && contract.include?("validate_blob_parts")
+    required = ["AndroidKeyStore", "AES/GCM/NoPadding", "setRandomizedEncryptionRequired", "updateAAD", "getSharedPreferences", "commit"]
+    abort "AndroidKeyStore contract incomplete" unless required.all? { |needle| backend.include?(needle) }
+    abort "plaintext fallback detected" if backend.include?("DefaultKeyringStore")
+    abort "Android target dependencies missing" unless manifest.include?(%q{jni = "0.21.1"}) && manifest.include?(%q{robius-android-env =})
+  ' "$CREDENTIAL_PATH" "$ANDROID_CREDENTIAL_CONTRACT_PATH" "$ANDROID_CREDENTIAL_BACKEND_PATH" "$MANIFEST_PATH" >/dev/null 2>&1; then
+  android_credential_source_contract_ready=true
 fi
 
 testflight_source_contract_ready=false
@@ -1237,7 +1247,7 @@ source_contract_ready=false
 if [[ "$source_stable" == true \
   && "$policy_ready" == true \
   && "$makepad_pin_ready" == true \
-  && "$android_credential_fail_closed_ready" == true \
+  && "$android_credential_source_contract_ready" == true \
   && "$testflight_source_contract_ready" == true \
   && "$ios_simulator_smoke_source_contract_ready" == true \
   && "$ios_simulator_ui_source_contract_ready" == true \
@@ -1257,7 +1267,7 @@ report="$(jq -n \
   --argjson source_stable "$source_stable" \
   --argjson policy_ready "$policy_ready" \
   --argjson makepad_pin_ready "$makepad_pin_ready" \
-  --argjson credential_ready "$android_credential_fail_closed_ready" \
+  --argjson credential_ready "$android_credential_source_contract_ready" \
   --argjson testflight_ready "$testflight_source_contract_ready" \
   --argjson ios_simulator_smoke_source_ready "$ios_simulator_smoke_source_contract_ready" \
   --argjson ios_simulator_smoke_source_contract "$ios_simulator_smoke_source_contract" \
@@ -1311,7 +1321,7 @@ report="$(jq -n \
         android_emulator_live_readback_source_contract_ready:$android_emulator_live_readback_source_ready,
         android_login_template_contract_ready:$android_login_template_ready,
         ios_opaque_canonical_icon_contract_ready:$icons_ready,
-        android_credential_fail_closed_contract_ready:$credential_ready,
+        android_secure_credential_source_contract_ready:$credential_ready,
         ios_pinned_toolchain_targets_installed:$ios_targets,
         android_pinned_toolchain_target_installed:$android_target
       },
@@ -1352,7 +1362,7 @@ report="$(jq -n \
       },
       local_emulator_side_effects_performed:$android_live_readback_performed,
       external_side_effects_performed:false,
-      blockers:([if $source_stable then empty else "source_changed_during_mobile_gate" end,if $policy_ready then empty else "mobile_policy_contract_not_ready" end,if $makepad_pin_ready then empty else "makepad_revision_not_pinned" end,if $toolchain_ready then empty else "cargo_makepad_exact_toolchain_wrapper_not_ready" end,if $testflight_ready then empty else "testflight_current_source_fail_closed_contract_not_ready" end,if $ios_simulator_smoke_source_ready then empty else "ios_simulator_smoke_source_contract_not_ready" end,if $ios_simulator_ui_source_ready then empty else "ios_simulator_ui_qualification_source_contract_not_ready" end,if $android_emulator_smoke_source_ready then empty else "android_emulator_smoke_source_contract_not_ready" end,if $android_emulator_live_readback_source_ready then empty else "android_emulator_live_readback_source_contract_not_ready" end,if $android_login_template_ready then empty else "android_login_template_contract_not_ready" end,if $icons_ready then empty else "ios_opaque_canonical_icon_contract_not_ready" end,if $credential_ready then empty else "android_credential_fail_closed_contract_not_ready" end,if $ios_targets then empty else "ios_1_95_targets_not_installed" end,if $android_target then empty else "android_1_95_target_not_installed" end,if $identity_available then empty else "apple_distribution_identity_not_available" end,"pinned_makepad_ios_accessibility_update_discarded","pinned_makepad_android_accessibility_update_discarded","android_secure_credential_backend_not_supported",if $ios_simulator_receipt_ready then empty elif $ios_simulator_receipt_supplied then "ios_simulator_receipt_invalid" else "ios_simulator_receipt_missing" end,if $ios_simulator_ui_receipt_ready then empty elif $ios_simulator_ui_receipt_supplied then "ios_simulator_ui_qualification_receipt_invalid" else "ios_simulator_ui_qualification_receipt_missing" end,if $android_emulator_receipt_supplied and $android_live_readback_opt_in != 1 then "android_emulator_live_readback_opt_in_missing" elif $android_emulator_receipt_ready then empty elif $android_emulator_receipt_supplied then "android_emulator_receipt_invalid" else "android_emulator_receipt_missing" end,"ios_real_device_receipt_missing","android_real_device_receipt_missing","voiceover_receipt_missing","talkback_receipt_missing",if $ios_login_keyboard_ready then "software_keyboard_full_product_scope_missing" else "software_keyboard_receipt_missing" end,if $ios_login_safe_area_ready then "safe_area_full_product_scope_missing" else "safe_area_receipt_missing" end,"rtl_receipt_missing","dynamic_type_or_font_scale_receipt_missing"])
+      blockers:([if $source_stable then empty else "source_changed_during_mobile_gate" end,if $policy_ready then empty else "mobile_policy_contract_not_ready" end,if $makepad_pin_ready then empty else "makepad_revision_not_pinned" end,if $toolchain_ready then empty else "cargo_makepad_exact_toolchain_wrapper_not_ready" end,if $testflight_ready then empty else "testflight_current_source_fail_closed_contract_not_ready" end,if $ios_simulator_smoke_source_ready then empty else "ios_simulator_smoke_source_contract_not_ready" end,if $ios_simulator_ui_source_ready then empty else "ios_simulator_ui_qualification_source_contract_not_ready" end,if $android_emulator_smoke_source_ready then empty else "android_emulator_smoke_source_contract_not_ready" end,if $android_emulator_live_readback_source_ready then empty else "android_emulator_live_readback_source_contract_not_ready" end,if $android_login_template_ready then empty else "android_login_template_contract_not_ready" end,if $icons_ready then empty else "ios_opaque_canonical_icon_contract_not_ready" end,if $credential_ready then empty else "android_secure_credential_source_contract_not_ready" end,if $ios_targets then empty else "ios_1_95_targets_not_installed" end,if $android_target then empty else "android_1_95_target_not_installed" end,if $identity_available then empty else "apple_distribution_identity_not_available" end,"pinned_makepad_ios_accessibility_update_discarded","pinned_makepad_android_accessibility_update_discarded","android_secure_credential_runtime_receipt_missing",if $ios_simulator_receipt_ready then empty elif $ios_simulator_receipt_supplied then "ios_simulator_receipt_invalid" else "ios_simulator_receipt_missing" end,if $ios_simulator_ui_receipt_ready then empty elif $ios_simulator_ui_receipt_supplied then "ios_simulator_ui_qualification_receipt_invalid" else "ios_simulator_ui_qualification_receipt_missing" end,if $android_emulator_receipt_supplied and $android_live_readback_opt_in != 1 then "android_emulator_live_readback_opt_in_missing" elif $android_emulator_receipt_ready then empty elif $android_emulator_receipt_supplied then "android_emulator_receipt_invalid" else "android_emulator_receipt_missing" end,"ios_real_device_receipt_missing","android_real_device_receipt_missing","voiceover_receipt_missing","talkback_receipt_missing",if $ios_login_keyboard_ready then "software_keyboard_full_product_scope_missing" else "software_keyboard_receipt_missing" end,if $ios_login_safe_area_ready then "safe_area_full_product_scope_missing" else "safe_area_receipt_missing" end,"rtl_receipt_missing","dynamic_type_or_font_scale_receipt_missing"])
     }
   ')"
 

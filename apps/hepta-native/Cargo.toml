@@ -131,6 +131,9 @@ robius-web-auth-session = { git = "https://github.com/project-robius/robius", re
 ## so we have to do it manually.
 [target.'cfg(target_os = "android")'.dependencies]
 webpki-root-certs = "1"
+jni = "0.21.1"
+keyring = { version = "3.6", default-features = false }
+robius-android-env = { version = "0.2.0", default-features = false, features = ["makepad"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }

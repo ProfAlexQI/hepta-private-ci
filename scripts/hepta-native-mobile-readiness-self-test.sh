@@ -11,6 +11,10 @@ scripts/hepta-native-mobile-readiness-gate.sh --output "$TEST_DIR/report.json" >
 
 jq -e '
   .status == "source_contract_ready"
+  and .checks.android_secure_credential_source_contract_ready == true
+  and .hard_boundaries.android_secure_session_persistence_ready == false
+  and (.blockers | index("android_secure_credential_runtime_receipt_missing") != null)
+  and (.blockers | index("android_secure_credential_backend_not_supported") == null)
   and .checks.ios_simulator_ui_qualification_source_contract_ready == true
   and .checks.android_emulator_smoke_source_contract_ready == true
   and .checks.android_emulator_live_readback_source_contract_ready == true
