@@ -139,11 +139,13 @@ fn schema_complete_candidate_ids(tool_schemas: Option<&JsonValue>) -> Vec<String
 
     tool_schemas
         .iter()
-        .filter_map(|(candidate_tool_id, declaration)| {
-            (object_has_field(declaration, "inputSchema")
-                && object_has_field(declaration, "outputSchema"))
-            .then(|| candidate_tool_id.clone())
+        .filter(|&(_, declaration)| {
+            object_has_field(declaration, "inputSchema")
+                && object_has_field(declaration, "outputSchema")
         })
+        .map(|(candidate_tool_id, _)| candidate_tool_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect()
 }
 
@@ -164,14 +166,16 @@ fn policy_complete_candidate_ids(
 
     tool_policies
         .iter()
-        .filter_map(|(candidate_tool_id, declaration)| {
-            (permission_ids.contains(candidate_tool_id)
+        .filter(|&(candidate_tool_id, declaration)| {
+            permission_ids.contains(candidate_tool_id)
                 && activation_event_ids.contains(candidate_tool_id)
                 && object_has_field(declaration, "approval")
                 && object_has_field(declaration, "ledger")
-                && object_has_field(declaration, "timeoutMs"))
-            .then(|| candidate_tool_id.clone())
+                && object_has_field(declaration, "timeoutMs")
         })
+        .map(|(candidate_tool_id, _)| candidate_tool_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect()
 }
 

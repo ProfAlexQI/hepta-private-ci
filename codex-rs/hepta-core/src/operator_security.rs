@@ -9,6 +9,8 @@ pub const HEPTA_NATIVE_HTTP_TRANSPORT_RS: &str =
     include_str!("../../hepta-native-gateway/src/http_transport.rs");
 pub const HEPTA_NATIVE_POST_RS: &str = include_str!("../../hepta-gateway/src/native_post.rs");
 pub const HEPTA_KERNEL_RS: &str = include_str!("../../hepta-kernel/src/lib.rs");
+pub const HEPTA_KERNEL_NATIVE_POST_RS: &str =
+    include_str!("../../hepta-kernel/src/kernel_parts/native_post.rs");
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OperatorCommandSafetyDecision {
@@ -175,7 +177,9 @@ fn has_explicit_operator_confirmation(command: &str, slash_command: &str) -> boo
 }
 
 fn native_post_contract_source_contains(needle: &str) -> bool {
-    HEPTA_NATIVE_POST_RS.contains(needle) || HEPTA_KERNEL_RS.contains(needle)
+    HEPTA_NATIVE_POST_RS.contains(needle)
+        || HEPTA_KERNEL_RS.contains(needle)
+        || HEPTA_KERNEL_NATIVE_POST_RS.contains(needle)
 }
 
 pub fn operator_security_report() -> OperatorSecurityReport {

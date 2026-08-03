@@ -14,7 +14,7 @@ impl HeptaStateRoot {
     pub fn parse(root: impl Into<PathBuf>) -> io::Result<Self> {
         let root = root.into();
         if !root.is_absolute()
-            || root == Path::new("/")
+            || root.parent().is_none()
             || root
                 .components()
                 .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
@@ -81,13 +81,15 @@ mod tests {
 
     #[test]
     fn state_root_bounds_legacy_and_typed_children() {
-        let root = HeptaStateRoot::parse("/tmp/hepta-state").unwrap();
+        let root_path = env::current_dir().unwrap().join("hepta-state");
+        let root = HeptaStateRoot::parse(&root_path).unwrap();
         assert_eq!(
             root.resolve_legacy_default(".hepta/runtime-v2/outcomes.sqlite3")
                 .unwrap(),
-            Path::new("/tmp/hepta-state/runtime-v2/outcomes.sqlite3")
+            root_path.join("runtime-v2/outcomes.sqlite3")
         );
         assert!(HeptaStateRoot::parse(".hepta").is_err());
+        assert!(HeptaStateRoot::parse(root_path.ancestors().last().unwrap()).is_err());
         assert!(root.join("../escape").is_err());
         assert!(root.resolve_legacy_default("other/file").is_err());
     }

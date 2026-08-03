@@ -340,6 +340,12 @@ mod tests {
                         Err(error) => panic!("proxy listener should accept: {error}"),
                     }
                 };
+                // Windows inherits the listener's nonblocking mode on the accepted socket.
+                // Return the connected socket to blocking mode before applying the bounded
+                // read timeout so the first read cannot spuriously fail with WSAEWOULDBLOCK.
+                stream
+                    .set_nonblocking(false)
+                    .expect("accepted proxy stream should become blocking");
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .expect("proxy stream should get a read timeout");

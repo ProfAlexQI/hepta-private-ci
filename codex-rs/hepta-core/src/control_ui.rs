@@ -1578,8 +1578,9 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         CONTROL_UI_QUALITY_SMOKE_MJS.contains("HEPTA_CHAT_BOUNDARY"),
         CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
         CONTROL_UI_README.contains("Rust/no-JS contract smoke"),
-        CONTROL_UI_RUST_RENDERER_MARKERS.len() < 327_000,
-        CONTROL_UI_STYLES_CSS.len() < CONTROL_UI_UNIFIED_LANE_STYLES_CSS_BUDGET_BYTES,
+        normalized_text_byte_len(CONTROL_UI_RUST_RENDERER_MARKERS) < 327_000,
+        normalized_text_byte_len(CONTROL_UI_STYLES_CSS)
+            < CONTROL_UI_UNIFIED_LANE_STYLES_CSS_BUDGET_BYTES,
         !CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.alert("),
     ];
     let p5_checks = [
@@ -1787,7 +1788,7 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         CONTROL_UI_README.contains("## Safety model"),
         CONTROL_UI_README.contains("## Gates"),
         CONTROL_UI_README.contains("## Architecture notes"),
-        CONTROL_UI_README.len() < 8_000,
+        normalized_text_byte_len(CONTROL_UI_README) < 8_000,
         CONTROL_UI_P0_P21_HARDENING_DOC.contains("P21: README/documentation density cleanup"),
         CONTROL_UI_README.contains("P0-P21 convergence ledger"),
         CONTROL_UI_README.contains("visual diff baseline"),
@@ -4096,6 +4097,15 @@ fn percent(numerator: usize, denominator: usize) -> u8 {
     ((numerator * 100) / denominator) as u8
 }
 
+fn normalized_text_byte_len(text: &str) -> usize {
+    text.len()
+        - text
+            .as_bytes()
+            .windows(2)
+            .filter(|pair| pair[0] == b'\r' && pair[1] == b'\n')
+            .count()
+}
+
 fn control_ui_evidence_coverage(
     static_contract_percent: u8,
     static_contract_verified: bool,
@@ -4214,6 +4224,13 @@ fn screen_title_to_id(title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_budgets_ignore_checkout_line_endings() {
+        assert_eq!(normalized_text_byte_len("alpha\nbeta\n"), 11);
+        assert_eq!(normalized_text_byte_len("alpha\r\nbeta\r\n"), 11);
+        assert_eq!(normalized_text_byte_len("alpha\rbeta"), 10);
+    }
 
     #[test]
     fn control_ui_report_is_complete_and_asset_backed() {
