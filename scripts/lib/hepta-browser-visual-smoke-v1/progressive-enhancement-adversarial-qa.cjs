@@ -523,6 +523,9 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
       const taskSpec = document.querySelector(
         '[data-control-ui-action-control="task-publisher-catalog"]',
       );
+      const routeLinks = [...document.querySelectorAll(
+        "[data-hepta-nav-route], [data-control-ui-safety-route]",
+      )];
       const composer = document.getElementById("chat-message");
       const composerStatus = document.querySelector("[data-chat-send-state]");
       return {
@@ -538,7 +541,8 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
         seeded_conversation_count: conversations.length,
         seeded_conversations_static_read_only: conversations.every(
           (conversation) =>
-            conversation.getAttribute("aria-disabled") === "true" &&
+            !conversation.hasAttribute("aria-disabled") &&
+            conversation.dataset.controlUiConversationReadonly === "true" &&
             conversation.getAttribute("tabindex") === "-1" &&
             conversation.dataset.controlUiConversationMode === "seeded-read-only",
         ),
@@ -546,6 +550,16 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
           taskSpec instanceof HTMLAnchorElement &&
           taskSpec.textContent.trim() === "Task spec" &&
           taskSpec.getAttribute("aria-label")?.includes("read-only") === true,
+        native_route_link_count: routeLinks.length,
+        native_route_links_ready: routeLinks.length === 22 && routeLinks.every((link) => {
+          const screen = link.getAttribute("data-screen") || "";
+          const href = link.getAttribute("href") || "";
+          const expectedHref = screen === "chat" ? "#chat" : `#screen-card-${screen}`;
+          const target = document.getElementById(expectedHref.slice(1));
+          return link instanceof HTMLAnchorElement
+            && href === expectedHref
+            && (screen === "chat" ? target?.id === "chat" : target?.matches(".route-card"));
+        }),
         composer_static_local_draft:
           composer instanceof HTMLTextAreaElement &&
           composer.dataset.controlUiComposerMode === "local-draft-only" &&
@@ -561,6 +575,28 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
       api_request_count: apiRequestCount,
       non_get_request_count: nonGetRequestCount,
     };
+    const noScriptEntryVisible = await page
+      .locator("[data-control-ui-thread-tools-trigger]")
+      .isVisible();
+    await page.locator("[data-control-ui-thread-tools-trigger]").click();
+    await page.locator('[data-control-ui-menu-item="tasks"]').click();
+    const noScriptRoute = await page.evaluate(() => {
+      const target = document.getElementById("screen-card-tasks");
+      const nav = document.querySelector('[data-control-ui-menu-item="tasks"]');
+      return {
+        hash: window.location.hash,
+        body_view: document.body.dataset.view || "",
+        target_visible: Boolean(target?.offsetParent),
+        canonical_href: nav?.getAttribute("href") || "",
+      };
+    });
+    noScriptRoute.entry_visible = noScriptEntryVisible;
+    noScriptProductTruth.route = noScriptRoute;
+    noScriptProductTruth.route_ready = noScriptRoute.hash === "#screen-card-tasks"
+      && noScriptRoute.body_view === "chat"
+      && noScriptRoute.target_visible
+      && noScriptRoute.entry_visible
+      && noScriptRoute.canonical_href === "#screen-card-tasks";
     noScriptProductTruth.ready =
       blockedScriptRequestCount === 1 &&
       apiRequestCount === 0 &&
@@ -571,8 +607,10 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
       staticTruth.seeded_conversation_count === 3 &&
       staticTruth.seeded_conversations_static_read_only &&
       staticTruth.task_spec_static_read_only &&
+      staticTruth.native_route_links_ready &&
       staticTruth.composer_static_local_draft &&
-      staticTruth.status_static_read_only;
+      staticTruth.status_static_read_only &&
+      noScriptProductTruth.route_ready;
     if (!noScriptProductTruth.ready) {
       failures.push("blocked control-ui.js exposed non-truthful live controls");
     }

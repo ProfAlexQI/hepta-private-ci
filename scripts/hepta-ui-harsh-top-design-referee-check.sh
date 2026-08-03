@@ -911,15 +911,15 @@ for source in "$CONTROL_HTML_SOURCE" "$CONTROL_RUST_SOURCE"; do
     echo "Control UI thread tools panel is missing light-glass group semantics: $source" >&2
     exit 1
   fi
-  if ! grep -Eq 'data-control-ui-menu-item="history"([^>]*autofocus)? href="#transcript" aria-label="Open thread history" title="Open thread history"' "$source"; then
+  if ! grep -Eq 'data-control-ui-menu-item="history"([^>]*autofocus)? href="#screen-card-transcript" aria-label="Open thread history" title="Open thread history"' "$source"; then
     echo "Control UI thread tools History item is missing native-link semantics and tooltip parity: $source" >&2
     exit 1
   fi
-  if ! grep -Fq 'data-control-ui-menu-item="tasks" href="#tasks" aria-label="Open thread tasks" title="Open thread tasks"' "$source"; then
+  if ! grep -Fq 'data-control-ui-menu-item="tasks" href="#screen-card-tasks" aria-label="Open thread tasks" title="Open thread tasks"' "$source"; then
     echo "Control UI thread tools Tasks item is missing native-link semantics and tooltip parity: $source" >&2
     exit 1
   fi
-  if ! grep -Fq 'data-control-ui-menu-item="sessions" href="#sessions" aria-label="Open thread sessions" title="Open thread sessions"' "$source"; then
+  if ! grep -Fq 'data-control-ui-menu-item="sessions" href="#screen-card-sessions" aria-label="Open thread sessions" title="Open thread sessions"' "$source"; then
     echo "Control UI thread tools Sessions item is missing native-link semantics and tooltip parity: $source" >&2
     exit 1
   fi

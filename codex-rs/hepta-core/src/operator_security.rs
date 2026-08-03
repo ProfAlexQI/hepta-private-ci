@@ -259,14 +259,14 @@ fn control_ui_readonly_get_registry_is_strict() -> bool {
     let Ok(source) = std::str::from_utf8(CONTROL_UI_JS) else {
         return false;
     };
-    let Some(registry_start) = source.find("const READ_ONLY_ROUTES = Object.freeze({") else {
+    let Some(registry_start) = source.find("const COMMAND_CATALOG = Object.freeze([") else {
         return false;
     };
-    let Some(relative_end) = source[registry_start..].find("\n  });") else {
+    let Some(relative_end) = source[registry_start..].find("].map(") else {
         return false;
     };
     let registry = &source[registry_start..registry_start + relative_end];
-    registry.matches(": \"/api/").count() == PATHS.len()
+    registry.matches(", \"/api/").count() == PATHS.len()
         && PATHS
             .iter()
             .all(|path| registry.matches(&format!("\"{path}\"")).count() == 1)

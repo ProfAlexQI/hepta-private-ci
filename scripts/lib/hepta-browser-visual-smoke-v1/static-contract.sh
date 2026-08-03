@@ -177,7 +177,7 @@ for needle in \
   'id="command-palette"' \
   'data-control-ui-command-palette-surface="light-glass"' \
   'data-control-ui-command-palette-close="light-glass"' \
-  'data-control-ui-command-palette-result="light-glass"' \
+  'data-control-ui-catalog-mount="palette"' \
   'href="./styles.css"' \
   'defer src="./control-ui.js"' \
   'src="./assets/hepta-agent-logo.png"'; do
@@ -222,13 +222,17 @@ if [[ "$served_js_sha" != "$source_js_sha" || "$served_js_etag" != "\"sha256-${s
   echo "control UI JavaScript source, served bytes, and ETag digest are not bound" >&2
   exit 1
 fi
-if [[ "$(grep -o ': \"/api/' "$control_ui_js_file" | wc -l | tr -d ' ')" != "21" ]]; then
+if [[ "$(grep -Eo ', \"/api/[^\"]+\", (true|false)\]' "$control_ui_js_file" | wc -l | tr -d ' ')" != "21" ]]; then
   echo "control UI JavaScript does not expose exactly 21 fixed read-only report routes" >&2
   exit 1
 fi
 for marker in \
   'const SNAPSHOT_PATH = "/api/operator-snapshot"' \
-  'const READ_ONLY_ROUTES = Object.freeze({' \
+  'const COMMAND_CATALOG = Object.freeze([' \
+  'const READ_ONLY_ROUTES = Object.freeze(Object.fromEntries(' \
+  'typed-command-catalog-v1' \
+  'renderCommandCatalog()' \
+  'configureRouteViews()' \
   'const UNAVAILABLE_PREVIEW_CONTROLS = Object.freeze([' \
   'configureUnavailablePreviewControls()' \
   'configureLocalJsonPreview()' \

@@ -70,7 +70,7 @@ report="$(jq -n \
       "data-control-ui-command-palette-surface=\"light-glass\"",
       "data-control-ui-command-palette-input=\"light-glass\"",
       "data-control-ui-command-palette-close=\"light-glass\"",
-      "data-control-ui-command-palette-result=\"light-glass\""
+      "data-control-ui-catalog-mount=\"palette\""
     ],
     control_ui_product_first_ready:true,
     control_ui_primary_path:"telegram-chat-shell",

@@ -775,8 +775,8 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         && progressive_javascript.contains("/api/operator-security");
     let app_has_hepta_runtime_navigation_groups = rust_frontend_html.contains("nav-group--primary")
         && rust_frontend_html.contains("href=\"#chat\"")
-        && rust_frontend_html.contains("href=\"#tasks\"")
-        && rust_frontend_html.contains("href=\"#ops\"");
+        && rust_frontend_html.contains("href=\"#screen-card-tasks\"")
+        && rust_frontend_html.contains("href=\"#screen-card-ops\"");
     let app_has_chat_first_architecture = rust_frontend_html
         .contains("data-chat-first-architecture=\"true\"")
         && rust_frontend_html.contains("data-control-ui-primary-path=\"telegram-chat-shell\"");
@@ -2118,7 +2118,32 @@ fn parse_app_screen_ids() -> Vec<String> {
 }
 
 fn parse_app_command_ids() -> Vec<String> {
-    parse_app_attribute_values("data-command-id")
+    let Some(source) = std::str::from_utf8(CONTROL_UI_JS).ok() else {
+        return Vec::new();
+    };
+    let Some((_, after_start)) = source.split_once("const COMMAND_CATALOG = Object.freeze([")
+    else {
+        return Vec::new();
+    };
+    let Some((catalog, _)) = after_start.split_once("].map(") else {
+        return Vec::new();
+    };
+    let mut ids = catalog
+        .lines()
+        .filter_map(|line| {
+            let entry = line.trim().strip_prefix("[\"")?;
+            let end = entry.find('"')?;
+            let id = &entry[..end];
+            (!id.is_empty()
+                && id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'))
+            .then(|| id.to_string())
+        })
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids.dedup();
+    ids
 }
 
 fn same_unique_ids(left: &[String], right: &[String]) -> bool {

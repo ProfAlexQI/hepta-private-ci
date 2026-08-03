@@ -143,19 +143,6 @@ backdrop-filter:blur(18px) saturate(1.4);
 -webkit-backdrop-filter:blur(18px) saturate(1.4);
 z-index:30;
 }
-.nav-collapse-toggle{
-display:inline-flex;
-align-items:center;
-justify-content:center;
-width:36px;
-height:36px;
-border-radius:var(--radius-md);
-border:1px solid var(--border);
-color:var(--muted);
-background:var(--panel-strong);
-box-shadow:var(--shadow-sm);
-}
-.nav-collapse-toggle__icon{color:var(--accent);font-weight:800}
 .brand,
 .app-brand{
 display:flex;
@@ -1087,60 +1074,6 @@ color:#62584f;
 font-size:11px;
 line-height:1.35;
 }
-.tg-room-evidence-grid{
-display:flex;
-flex-wrap:wrap;
-gap:6px;
-}
-.tg-room-action-grid{
-display:grid;
-grid-template-columns:repeat(auto-fit,minmax(96px,1fr));
-gap:6px;
-}
-.tg-room-action-button{
-min-height:29px;
-border:1px solid #18171614;
-border-radius:10px;
-background:rgba(255,255,255,.66);
-color:#4a433d;
-cursor:pointer;
-font-size:10.5px;
-font-weight:760;
-padding:0 8px;
-}
-.tg-room-action-button:hover,
-.tg-room-action-button:focus-visible{
-border-color:rgba(124,92,255,.24);
-background:#7c5cff14;
-outline:none;
-}
-.tg-room-action-button--risk{
-color:#7c2d12;
-border-color:rgba(234,88,12,.18);
-background:rgba(251,146,60,.10);
-}
-.tg-room-plan-card{
-display:grid;
-gap:7px;
-padding:10px;
-border:1px solid rgba(234,88,12,.18);
-border-radius:14px;
-background:rgba(255,247,237,.72);
-}
-.tg-room-plan-card strong{
-color:#7c2d12;
-font-size:12px;
-}
-.tg-room-plan-card code{
-white-space:normal;
-overflow-wrap:break-word;
-color:#211f1d;
-background:rgba(255,255,255,.66);
-border:1px solid rgba(24,23,22,.07);
-border-radius:10px;
-padding:7px;
-font-size:11px;
-}
 .tg-room-artifact-preview pre,
 .tg-room-artifact-preview code{
 display:block;
@@ -1837,50 +1770,6 @@ gap:6px;
 flex-wrap:wrap;
 margin-bottom:8px;
 }
-.tg-stale-send-guard{
-display:flex;
-align-items:center;
-justify-content:space-between;
-gap:10px;
-margin-bottom:8px;
-padding:10px;
-border-radius:18px;
-border:1px solid rgba(220,38,38,.18);
-background:rgba(255,241,242,.94);
-color:#7f1d1d;
-box-shadow:inset 0 1px 0 rgba(255,255,255,.72);
-}
-.tg-stale-send-guard div{
-display:grid;
-gap:2px;
-min-width:0;
-}
-.tg-stale-send-guard strong{
-font-size:12px;
-font-weight:900;
-}
-.tg-stale-send-guard span{
-overflow:hidden;
-text-overflow:ellipsis;
-white-space:nowrap;
-font-size:11px;
-color:#9f1239;
-}
-.tg-stale-send-guard button{
-border:1px solid rgba(220,38,38,.18);
-border-radius:99px;
-background:rgba(255,255,255,.86);
-color:#991b1b;
-padding:7px 10px;
-font-size:11px;
-font-weight:850;
-cursor:pointer;
-}
-.tg-stale-send-guard button:hover,
-.tg-stale-send-guard button:focus-visible{
-background:#fff;
-outline:none;
-}
 .tg-context-chip-summary{
 display:inline-flex;
 align-items:center;
@@ -2325,8 +2214,7 @@ max-width:100%;
 overflow:auto;
 overflow-wrap:break-word;
 }
-.command-item code,
-.tg-room-plan-card code{
+.command-item code{
 white-space:normal;
 }
 @media(max-width:980px) and(min-width:701px){body[data-view="chat"] .shell--hepta-premium .workspace,body[data-view="chat"] .shell--hepta-premium #hepta-screen-panel,.focus-workspace{height:100dvh;min-height:100dvh}.telegram-chat-shell .focus-main{height:calc(100dvh - 72px - 18px);grid-template-rows:minmax(220px,.38fr) minmax(0,.62fr);overflow:hidden}.tg-conversation-rail,.tg-thread-panel{min-height:0;overflow:hidden}.tg-conversation-list,.tg-thread{min-height:0;overflow-y:auto;overflow-x:hidden}[data-view=chat] .tg-compose-bar:has([data-chat-command-shortcut]){grid-template-columns:44px 44px minmax(0,1fr) 44px}}

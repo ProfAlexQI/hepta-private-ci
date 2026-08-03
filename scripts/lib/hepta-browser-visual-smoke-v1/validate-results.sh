@@ -9,6 +9,10 @@ if [[ "$progressive_qa_status" != "0" ]] || ! jq -e '
   and .copy_interaction_ready == true
   and .chat_search_ready == true
   and .command_palette_search_ready == true
+  and .command_palette_navigation_ready == true
+  and .route_link_navigation_ready == true
+  and .top_nav_navigation_ready == true
+  and .route_history_ready == true
   and .unavailable_controls_ready == true
   and .unavailable_click_noop_ready == true
   and .seeded_conversations_ready == true
@@ -51,6 +55,7 @@ if [[ "$progressive_adversarial_qa_status" != "0" ]] || ! jq -e '
   and .redirect.external_request_count == 0
   and .xss.blocked == true
   and .no_script_product_truth.ready == true
+  and .no_script_product_truth.route_ready == true
   and .no_script_product_truth.unavailable_control_count == 99
   and .no_script_product_truth.disabled_click_count == 0
   and .no_script_product_truth.api_request_count == 0

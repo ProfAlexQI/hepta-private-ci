@@ -5,29 +5,68 @@
   const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
   const SNAPSHOT_PATH = "/api/operator-snapshot";
   const JSON_MEDIA_TYPE = /^application\/[a-z0-9!#$%&'*+.^_`|~-]+\+json$/;
-  const READ_ONLY_ROUTES = Object.freeze({
-    "control-ui": "/api/control-ui",
-    "config-surface": "/api/config",
-    "optional-configs": "/api/optional-configs",
-    "hepta-merge-completion": "/api/hepta-merge-completion",
-    "external-agent-benchmark": "/api/external-agent-benchmark",
-    sessions: "/api/sessions",
-    "session-activity": "/api/session-activity",
-    "operator-console": "/api/operator-console",
-    "subagent-observatory": "/api/subagent-observatory",
-    events: "/api/events",
-    "events-report": "/api/events-report",
-    activity: "/api/activity",
-    transcript: "/api/transcript",
-    approvals: "/api/approvals",
-    policy: "/api/policy",
-    "operator-security": "/api/operator-security",
-    "gateway-runtime": "/api/gateway-runtime",
-    "gateway-dispatch": "/api/gateway-dispatch",
-    "gateway-ledger": "/api/gateway-ledger",
-    "gateway-retry-dead-letter": "/api/gateway-retry-dead-letter",
-    "multi-agent-runtime": "/api/multi-agent-runtime",
-  });
+  const COMMAND_CATALOG = Object.freeze([
+    ["control-ui", "Control Ui", "/control-ui --json", "/api/control-ui", true],
+    ["config-surface", "Config Surface", "/config-surface --json", "/api/config", true],
+    ["local-import", "Local Import", "/local-import --json", null, true],
+    ["providers", "Providers", "/providers --json", null, true],
+    ["image-models", "Image Models", "/image-models --json", null, true],
+    ["optional-configs", "Optional Configs", "/optional-configs --json", "/api/optional-configs", true],
+    ["doctor", "Doctor", "/doctor --json", null, true],
+    ["native-capabilities", "Native Capabilities", "/native-capabilities --json", null, true],
+    ["external-readiness", "External Readiness", "/external-readiness --json", null, true],
+    ["production-surface", "Production Surface", "/production-surface --json", null, true],
+    ["production-parity", "Production Parity", "/production-parity --json", null, true],
+    ["hepta-merge-completion", "Hepta Merge Completion", "/hepta-merge-completion --json", "/api/hepta-merge-completion", true],
+    ["external-agent-benchmark", "External Agent Benchmark", "/external-agent-benchmark --json", "/api/external-agent-benchmark", true],
+    ["sessions", "Sessions", "/sessions --json", "/api/sessions", true],
+    ["session-activity", "Session Activity", "/session-activity --json", "/api/session-activity", true],
+    ["tasks", "Tasks", "/tasks --json", null, true],
+    ["task", "Task", "/task <task_id> --json", null, true],
+    ["spawn-task", "Spawn Task", "/spawn-task <worker_id> <prompt> --json", null, true],
+    ["ui-task-publisher-plan", "Ui Task Publisher Plan", "POST /api/tasks/plan", null, false],
+    ["ui-task-publisher-publish", "Ui Task Publisher Publish", "POST /api/tasks/publish", null, false],
+    ["workers", "Workers", "/workers --json", null, false],
+    ["operator-console", "Operator Console", "/operator-console --json", "/api/operator-console", false],
+    ["subagent-observatory", "Subagent Observatory", "/subagent-observatory --json", "/api/subagent-observatory", false],
+    ["task-supervisor", "Task Supervisor", "/task-supervisor --json", null, false],
+    ["handoff-bundle", "Handoff Bundle", "/handoff-bundle <task_id> --json", null, false],
+    ["task-patches", "Task Patches", "/task-patches <task_id> --json", null, false],
+    ["task-loop", "Task Loop", "/task-loop <task_id> --json", null, false],
+    ["task-evidence", "Task Evidence", "/task-evidence <task_id> --json", null, false],
+    ["task-replay", "Task Replay", "/task-replay <task_id> --json", null, false],
+    ["promotion-ledger", "Promotion Ledger", "/promotion-ledger <task_id> --json", null, false],
+    ["ops-status", "Ops Status", "/ops-status --json", null, false],
+    ["events", "Events", "/events --json", "/api/events", false],
+    ["events-report", "Events Report", "/events-report --json", "/api/events-report", false],
+    ["activity", "Activity", "/activity --json", "/api/activity", false],
+    ["transcript", "Transcript", "/transcript --json", "/api/transcript", false],
+    ["agent-send", "Agent Send", "/agent-send <agent_id> --from <from_agent_id> <message> --json", null, false],
+    ["ui-agent-chat-plan", "Ui Agent Chat Plan", "POST /api/chat/plan", null, false],
+    ["ui-agent-chat-send", "Ui Agent Chat Send", "POST /api/chat", null, false],
+    ["query-transcript", "Query Transcript", "/query-transcript <query> --json", null, false],
+    ["approvals", "Approvals", "/approvals --json", "/api/approvals", false],
+    ["policy", "Policy", "/policy --json", "/api/policy", false],
+    ["exec-approvals-apply", "Exec Approvals Apply", "POST /api/approvals/exec/apply", null, false],
+    ["operator-security", "Operator Security", "/operator-security --json", "/api/operator-security", false],
+    ["gateway-runtime", "Gateway Runtime", "/gateway-runtime --json", "/api/gateway-runtime", false],
+    ["gateway-dispatch", "Gateway Dispatch", "/gateway-dispatch --dry-run --json", "/api/gateway-dispatch", false],
+    ["gateway-ledger", "Gateway Ledger", "/gateway-ledger --json", "/api/gateway-ledger", false],
+    ["gateway-retry-dead-letter", "Gateway Retry Dead Letter", "/gateway-retry-dead-letter --json", "/api/gateway-retry-dead-letter", false],
+    ["multi-agent-runtime", "Multi Agent Runtime", "/multi-agent-runtime --agents 4 --messages 8 --json", "/api/multi-agent-runtime", false],
+    ["apply-task-patches", "Apply Task Patches", "/apply-task-patches <task_id> --json", null, false],
+    ["rollback-task-patches", "Rollback Task Patches", "/rollback-task-patches <task_id> --json", null, false],
+    ["ui-readonly-command-runner", "Ui Readonly Command Runner", "POST /api/commands/<id>", null, false],
+  ].map(([id, label, command, route, palette]) => Object.freeze({
+    id,
+    label,
+    command,
+    route,
+    palette,
+  })));
+  const READ_ONLY_ROUTES = Object.freeze(Object.fromEntries(
+    COMMAND_CATALOG.filter(({ route }) => route !== null).map(({ id, route }) => [id, route]),
+  ));
   const UNAVAILABLE_PREVIEW_CONTROLS = Object.freeze([
     {
       selector: "[data-plan-action]",
@@ -67,9 +106,19 @@
     },
   ]);
   const LOCAL_ROUTE_ACTIONS = Object.freeze({
-    "open-evidence": "#evidence",
-    "open-approvals": "#approvals",
-    "open-sources": "#evidence",
+    "open-evidence": "evidence",
+    "open-approvals": "approvals",
+    "open-sources": "evidence",
+  });
+  const READ_ONLY_VIEW_TARGETS = Object.freeze({
+    tasks: "screen-card-tasks",
+    ops: "screen-card-ops",
+    "external-agent-benchmark": "screen-card-external-agent-benchmark",
+    evidence: "screen-card-evidence",
+    approvals: "screen-card-approvals",
+    sessions: "screen-card-sessions",
+    transcript: "screen-card-transcript",
+    "task-publisher": "screen-card-task-publisher",
   });
   const LOCAL_ARTIFACT_DRAFTS = Object.freeze({
     "evidence-note": "[Evidence note — local draft only]",
@@ -77,6 +126,121 @@
   });
   let commandGeneration = 0;
   let activeCommandRequest = null;
+  let pendingRouteFocusId = "";
+
+  function validateCommandCatalog() {
+    const ids = new Set();
+    const routes = new Set();
+    for (const entry of COMMAND_CATALOG) {
+      if (
+        !/^[a-z0-9][a-z0-9-]*$/.test(entry.id)
+        || typeof entry.label !== "string"
+        || !entry.label.trim()
+        || typeof entry.command !== "string"
+        || !entry.command.trim()
+        || typeof entry.palette !== "boolean"
+        || ids.has(entry.id)
+      ) {
+        throw new Error("Invalid Control UI command catalog entry");
+      }
+      ids.add(entry.id);
+      if (entry.route !== null) {
+        if (
+          typeof entry.route !== "string"
+          || !entry.route.startsWith("/api/")
+          || entry.route.includes("?")
+          || entry.route.includes("#")
+          || routes.has(entry.route)
+        ) {
+          throw new Error("Invalid Control UI read-only route entry");
+        }
+        routes.add(entry.route);
+      }
+    }
+    if (COMMAND_CATALOG.length !== 51 || routes.size !== 21) {
+      throw new Error("Control UI command catalog cardinality changed");
+    }
+    if (COMMAND_CATALOG.filter(({ palette }) => palette).length !== 18) {
+      throw new Error("Control UI command palette cardinality changed");
+    }
+  }
+
+  function textElement(tagName, className, text) {
+    const node = document.createElement(tagName);
+    if (className) {
+      node.className = className;
+    }
+    node.textContent = text;
+    return node;
+  }
+
+  function renderCommandCatalog() {
+    validateCommandCatalog();
+    const commandList = document.getElementById("commands");
+    const paletteResults = document.getElementById("command-palette-results");
+    if (!commandList || !paletteResults) {
+      throw new Error("Control UI command catalog mount is missing");
+    }
+
+    const commandFragment = document.createDocumentFragment();
+    for (const entry of COMMAND_CATALOG) {
+      const article = document.createElement("article");
+      article.className = "command-item";
+      article.dataset.commandId = entry.id;
+      article.append(textElement("strong", "", entry.label));
+      article.append(textElement("code", "", entry.command));
+
+      const actions = document.createElement("div");
+      actions.className = "action-rail";
+      const copyButton = textElement("button", "button small", "Copy");
+      copyButton.type = "button";
+      copyButton.dataset.copy = entry.command;
+      actions.append(copyButton);
+      if (entry.route) {
+        const runButton = textElement("button", "button small", "Run read-only");
+        runButton.type = "button";
+        runButton.dataset.controlUiActionControl = "read-only-command";
+        runButton.dataset.runCommand = "read-only";
+        runButton.setAttribute("aria-label", "Run read-only command");
+        runButton.title = "Run read-only command";
+        actions.append(runButton);
+      } else {
+        actions.append(textElement("span", "chip chip--muted", "copy-only / guarded"));
+      }
+      article.append(actions);
+      commandFragment.append(article);
+    }
+    commandList.replaceChildren(commandFragment);
+    commandList.dataset.controlUiCatalogSource = "typed-command-catalog-v1";
+
+    const paletteFragment = document.createDocumentFragment();
+    for (const [index, entry] of COMMAND_CATALOG.filter(({ palette }) => palette).entries()) {
+      const item = document.createElement("a");
+      item.className = `command-palette__item${index === 0 ? " command-palette__item--audit-hover" : ""}`;
+      item.dataset.controlUiCommandPaletteItem = entry.id;
+      item.dataset.controlUiCommandPaletteResult = "light-glass";
+      item.dataset.paletteKind = "command";
+      item.dataset.paletteId = entry.id;
+      item.href = "#commands";
+      const accessibleLabel = `Open command result: ${entry.command}`;
+      item.setAttribute("aria-label", accessibleLabel);
+      item.title = accessibleLabel;
+      const kind = textElement("span", "command-palette__kind", "command");
+      const copy = document.createElement("span");
+      copy.className = "command-palette__copy";
+      copy.append(textElement("strong", "", entry.label));
+      copy.append(textElement("small", "", entry.command));
+      item.append(kind, copy);
+      paletteFragment.append(item);
+    }
+    paletteResults.replaceChildren(paletteFragment);
+    paletteResults.dataset.controlUiCatalogSource = "typed-command-catalog-v1";
+
+    document.documentElement.dataset.controlUiCommandCatalogCount = String(COMMAND_CATALOG.length);
+    document.documentElement.dataset.controlUiCommandPaletteCount = String(
+      COMMAND_CATALOG.filter(({ palette }) => palette).length,
+    );
+  }
 
   function isEmptyPayload(value) {
     if (value === null || value === undefined) {
@@ -280,9 +444,10 @@
     }
 
     for (const conversation of document.querySelectorAll("[data-chat-conversation]")) {
-      conversation.setAttribute("aria-disabled", "true");
+      conversation.removeAttribute("aria-disabled");
       conversation.setAttribute("title", "Seeded read-only conversation preview");
       conversation.tabIndex = -1;
+      conversation.dataset.controlUiConversationReadonly = "true";
       conversation.dataset.controlUiConversationMode = "seeded-read-only";
     }
 
@@ -342,6 +507,185 @@
     if (popover && typeof popover.hidePopover === "function") {
       popover.hidePopover();
     }
+  }
+
+  function routeStateFromHash() {
+    const key = window.location.hash.replace(/^#/, "");
+    if (!key || ["chat", "chat-list", "chat-thread", "chat-room", "command-palette"].includes(key)) {
+      return { key: "chat", targetId: "chat-thread" };
+    }
+    if (key === "commands" || key === "hepta-command-panel") {
+      return { key: "commands", targetId: "hepta-command-panel" };
+    }
+    if (Object.prototype.hasOwnProperty.call(READ_ONLY_VIEW_TARGETS, key)) {
+      return { key, targetId: READ_ONLY_VIEW_TARGETS[key] };
+    }
+    const target = document.getElementById(key);
+    const routeCard = target?.matches(".route-card") ? target : target?.closest(".route-card");
+    if (routeCard) {
+      return {
+        key: routeCard.dataset.screen || routeCard.id.replace(/^screen-card-/, ""),
+        targetId: routeCard.id,
+      };
+    }
+    if (target?.closest("#hepta-command-panel")) {
+      return { key: "commands", targetId: "hepta-command-panel" };
+    }
+    return { key: "chat", targetId: "chat-thread" };
+  }
+
+  function updateNavigationState(viewKey) {
+    for (const link of document.querySelectorAll("#hepta-nav [data-screen]")) {
+      const active = link.dataset.screen === viewKey;
+      link.classList.toggle("active", active);
+      if (active) {
+        link.setAttribute("aria-current", "page");
+      } else {
+        link.removeAttribute("aria-current");
+      }
+    }
+  }
+
+  function mountPrimaryNavigation(commandPanel, showingCommandCatalog) {
+    const navigation = document.getElementById("hepta-nav");
+    const host = showingCommandCatalog
+      ? commandPanel?.querySelector(".panel-heading")
+      : document.querySelector(".tg-thread-status");
+    if (!navigation || !host) {
+      return;
+    }
+    host.prepend(navigation);
+    navigation.dataset.controlUiNavMount = showingCommandCatalog ? "commands" : "thread";
+  }
+
+  function focusRouteTarget(target) {
+    const requested = pendingRouteFocusId && document.getElementById(pendingRouteFocusId);
+    pendingRouteFocusId = "";
+    const focusTarget = requested && !requested.hidden ? requested : target;
+    if (!(focusTarget instanceof HTMLElement)) {
+      return;
+    }
+    if (!focusTarget.hasAttribute("tabindex")) {
+      focusTarget.tabIndex = -1;
+      focusTarget.dataset.controlUiProgrammaticFocus = "true";
+    }
+    window.requestAnimationFrame(() => {
+      focusTarget.focus({ preventScroll: true });
+      focusTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }
+
+  function syncRouteView({ focus = true } = {}) {
+    const body = document.body;
+    const secondaryMap = document.querySelector(".hepta-secondary-map");
+    const screenContracts = document.querySelector(".hepta-all-screen-contracts");
+    const routeCards = [...document.querySelectorAll(".hepta-all-screen-contracts .route-card")];
+    const screenPanel = document.getElementById("hepta-screen-panel");
+    const commandPanel = document.getElementById("hepta-command-panel");
+    const chatThread = document.getElementById("chat-thread");
+    const chatSidePanels = [
+      document.getElementById("chat-list"),
+      document.getElementById("chat-room"),
+    ].filter(Boolean);
+    const chatThreadChildren = chatThread ? [...chatThread.children] : [];
+    const focusHeader = document.querySelector(".focus-workspace>.focus-header");
+    const focusMain = document.querySelector(".focus-workspace>.focus-main");
+    const entrySurface = document.querySelector(".hepta-secondary-map .hepta-entry-surface");
+    const routeOutlet = screenContracts?.parentElement;
+    const entrySurfaceChildren = entrySurface ? [...entrySurface.children] : [];
+    const routeOutletChildren = routeOutlet ? [...routeOutlet.children] : [];
+    const secondaryPanels = [
+      document.querySelector(".dashboard-hero"),
+      document.getElementById("hepta-metrics"),
+      document.querySelector(".hepta-dashboard-recovery"),
+      document.querySelector(".evidence-panel"),
+    ].filter(Boolean);
+    const route = routeStateFromHash();
+    const target = document.getElementById(route.targetId);
+    const showingCommands = route.targetId === "hepta-command-panel";
+
+    body.dataset.view = route.key === "chat" ? "chat" : showingCommands ? "commands" : "read-only";
+    body.dataset.controlUiActiveView = route.key;
+    mountPrimaryNavigation(commandPanel, showingCommands);
+    updateNavigationState(route.key);
+
+    if (route.key === "chat") {
+      for (const panel of secondaryPanels) {
+        panel.hidden = false;
+      }
+      if (screenPanel) screenPanel.hidden = false;
+      if (commandPanel) commandPanel.hidden = false;
+      if (focusHeader) focusHeader.hidden = false;
+      if (focusMain) focusMain.hidden = false;
+      if (entrySurface) entrySurface.hidden = false;
+      for (const child of entrySurfaceChildren) child.hidden = false;
+      for (const child of routeOutletChildren) child.hidden = false;
+      for (const panel of chatSidePanels) panel.hidden = false;
+      for (const child of chatThreadChildren) child.hidden = false;
+      if (secondaryMap instanceof HTMLDetailsElement) secondaryMap.open = false;
+      if (screenContracts instanceof HTMLDetailsElement) screenContracts.open = false;
+      for (const card of routeCards) {
+        card.hidden = false;
+        delete card.dataset.controlUiActiveView;
+      }
+      if (focus) {
+        focusRouteTarget(target);
+      }
+      return;
+    }
+
+    for (const panel of secondaryPanels) {
+      panel.hidden = true;
+    }
+    if (screenPanel) screenPanel.hidden = showingCommands;
+    if (commandPanel) commandPanel.hidden = !showingCommands;
+    if (focusHeader) focusHeader.hidden = !showingCommands;
+    if (focusMain) focusMain.hidden = showingCommands;
+    if (entrySurface) entrySurface.hidden = false;
+    for (const child of entrySurfaceChildren) {
+      child.hidden = child !== routeOutlet;
+    }
+    for (const child of routeOutletChildren) {
+      child.hidden = child !== screenContracts;
+    }
+    for (const panel of chatSidePanels) panel.hidden = true;
+    for (const child of chatThreadChildren) {
+      child.hidden = showingCommands || !child.matches(".tg-thread-header,.hepta-secondary-map");
+    }
+
+    if (secondaryMap instanceof HTMLDetailsElement) {
+      secondaryMap.open = !showingCommands;
+    }
+    if (screenContracts instanceof HTMLDetailsElement) {
+      screenContracts.open = !showingCommands;
+    }
+    for (const card of routeCards) {
+      const active = !showingCommands && card.id === route.targetId;
+      card.hidden = !active;
+      if (active) {
+        card.dataset.controlUiActiveView = "true";
+      } else {
+        delete card.dataset.controlUiActiveView;
+      }
+    }
+    if (focus) {
+      focusRouteTarget(target);
+    }
+  }
+
+  function navigateToView(viewKey, focusId = "") {
+    pendingRouteFocusId = focusId;
+    const nextHash = viewKey === "commands" ? "#commands" : `#${viewKey}`;
+    if (window.location.hash === nextHash) {
+      syncRouteView();
+      return;
+    }
+    window.location.hash = nextHash;
+  }
+
+  function configureRouteViews() {
+    window.addEventListener("hashchange", () => syncRouteView());
+    syncRouteView({ focus: Boolean(window.location.hash) });
   }
 
   function configureLocalJsonPreview() {
@@ -484,6 +828,15 @@
   function configureLocalInteractions() {
     document.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
+      const localNavigationLink = target?.closest(
+        'a[data-screen][href^="#"], a[data-control-ui-menu-item][href^="#"]',
+      );
+      if (
+        localNavigationLink instanceof HTMLAnchorElement
+        && localNavigationLink.hash === window.location.hash
+      ) {
+        window.requestAnimationFrame(() => syncRouteView());
+      }
       const copyButton = target?.closest("[data-copy]");
       if (copyButton) {
         event.preventDefault();
@@ -494,14 +847,28 @@
         return;
       }
 
+      const paletteItem = target?.closest("[data-control-ui-command-palette-item]");
+      if (paletteItem) {
+        event.preventDefault();
+        const commandId = paletteItem.dataset.controlUiCommandPaletteItem || "";
+        const commandCard = document.querySelector(`[data-command-id="${commandId}"]`);
+        if (commandCard instanceof HTMLElement && !commandCard.id) {
+          commandCard.id = `command-${commandId}`;
+        }
+        closeOwningPopover(paletteItem);
+        navigateToView("commands", commandCard?.id || "");
+        copyStatus("Opened the local read-only command catalog.");
+        return;
+      }
+
       const localRouteButton = target?.closest("[data-chat-row-menu-item]");
       const localRoute = localRouteButton
         ? LOCAL_ROUTE_ACTIONS[localRouteButton.dataset.chatRowMenuItem]
         : "";
       if (localRoute) {
         event.preventDefault();
-        window.location.hash = localRoute;
         closeOwningPopover(localRouteButton);
+        navigateToView(localRoute);
         copyStatus("Opened a local read-only surface.");
         return;
       }
@@ -553,11 +920,13 @@
     });
   }
 
+  renderCommandCatalog();
   configureUnavailablePreviewControls();
   configureReadOnlyButtons();
   configureLocalInteractions();
   configureLocalJsonPreview();
   configureComposerPickerSearch();
+  configureRouteViews();
   document.documentElement.dataset.controlUiProgressiveEnhancement = "ready";
   document.documentElement.dataset.controlUiCapabilityMode = "local-read-only";
   void hydrateOperatorSnapshot();

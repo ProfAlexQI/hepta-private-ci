@@ -304,3 +304,14 @@ max-width:calc(100vw - 28px)!important;
 .v2-control-flow{grid-template-columns:repeat(2,minmax(0,1fr))}
 .v2-readbacks{grid-template-columns:1fr}
 }
+body[data-view=chat]:has(.route-card:target) .hepta-secondary-map{display:block;position:fixed;inset:0;z-index:2000;margin:0;padding:16px;overflow:auto;background:var(--bg)}
+body[data-view=chat]:has(.route-card:target) :is(.hepta-secondary-map__body,.hepta-all-screen-contracts,.hepta-all-screen-contracts>.screen-grid){display:block;padding:0}
+body[data-view=chat]:has(.route-card:target) :is(.hepta-secondary-map>summary,.hepta-entry-surface>header,.hepta-route-index,.hepta-all-screen-contracts>summary,.route-card:not(:target)){display:none}
+body[data-view=chat]:has(.hepta-all-screen-contracts .route-card:target) .route-card:target{max-width:1040px;margin:0 auto}
+body[data-view=read-only]{overflow-x:hidden}
+body[data-view=read-only] .focus-main{display:block;box-sizing:border-box;width:100%;max-width:100%;height:auto;padding:0;overflow:visible}
+body[data-view=read-only] #chat-thread{display:block;height:auto;overflow:visible}
+body[data-view=read-only] :is(.topnav-shell__actions,.tg-mobile-layer-tabs,.tg-thread-header__main,.tg-thread-status>:not(#hepta-nav)){display:none}
+#hepta-nav[data-control-ui-nav-mount]{display:flex;flex-direction:row;gap:4px;padding:0;overflow:auto hidden}
+#hepta-nav[data-control-ui-nav-mount] a{width:auto;min-height:32px;padding:6px;white-space:nowrap}
+@media(max-width:700px){#hepta-nav[data-control-ui-nav-mount] a span:last-child{display:none}}

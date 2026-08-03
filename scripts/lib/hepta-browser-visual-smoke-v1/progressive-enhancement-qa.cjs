@@ -76,19 +76,6 @@ const routes = [
     throw new Error(`operator snapshot did not reach a usable state: ${snapshotState}`);
   }
 
-  await page.locator("#hepta-command-panel").evaluate((panel) => {
-    for (let node = panel; node && node !== document.documentElement; node = node.parentElement) {
-      node.hidden = false;
-      if (node instanceof HTMLDetailsElement) {
-        node.open = true;
-      }
-      node.style.setProperty("display", node === panel ? "block" : "revert", "important");
-      node.style.setProperty("visibility", "visible", "important");
-      node.style.setProperty("opacity", "1", "important");
-      node.style.setProperty("pointer-events", "auto", "important");
-    }
-  });
-
   const chatItemCount = await page.locator(".tg-chat-item").count();
   await page.locator("#chat-search").fill("__hepta_no_matching_chat__");
   const hiddenChatItemCount = await page.locator(".tg-chat-item[hidden]").count();
@@ -97,34 +84,25 @@ const routes = [
     throw new Error("local chat search did not filter every non-matching item");
   }
 
-  await page.locator("#command-palette-input").evaluate((input) => {
-    input.value = "__hepta_no_matching_command__";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await page.locator("[data-open-command-palette]").click();
+  await page.waitForFunction(
+    () => document.getElementById("command-palette")?.matches(":popover-open") === true,
+    null,
+    { timeout: 5000 },
+  );
+  await page.locator("#command-palette-input").fill("__hepta_no_matching_command__");
   const paletteItemCount = await page.locator("#command-palette-results .command-palette__item").count();
   const hiddenPaletteItemCount = await page
     .locator("#command-palette-results .command-palette__item[hidden]")
     .count();
-  await page.locator("#command-palette-input").evaluate((input) => {
-    input.value = "";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await page.locator("#command-palette-input").fill("");
   if (paletteItemCount === 0 || hiddenPaletteItemCount !== paletteItemCount) {
     throw new Error("local command palette search did not filter every non-matching item");
   }
-
-  await page
-    .locator('[data-command-id="control-ui"] [data-copy="/control-ui --json"]')
-    .click({ force: true });
-  await page.waitForFunction(
-    () => document.getElementById("toast")?.textContent === "Copied to clipboard.",
-    null,
-    { timeout: 5000 },
-  );
-  const copiedText = await page.evaluate(() => navigator.clipboard.readText());
-  if (copiedText !== "/control-ui --json") {
-    throw new Error("copy interaction did not preserve the exact command text");
-  }
+  const paletteInitialFocusReady = await page.evaluate(() => (
+    document.activeElement === document.getElementById("command-palette-input")
+  ));
+  await page.locator("[data-control-ui-command-palette-close]").click();
 
   const requestCountBeforeUnavailableAudit = requests.length;
   const productTruthAudit = await page.evaluate(() => {
@@ -166,7 +144,8 @@ const routes = [
     };
     const seededConversationsReady = conversations.length === 3
       && conversations.every((node) => (
-        node.getAttribute("aria-disabled") === "true"
+        !node.hasAttribute("aria-disabled")
+        && node.getAttribute("data-control-ui-conversation-readonly") === "true"
         && node.getAttribute("data-control-ui-conversation-mode") === "seeded-read-only"
         && node.tabIndex === -1
       ));
@@ -222,7 +201,7 @@ const routes = [
   });
   const pickerSearchAudit = [];
   for (const picker of ["artifact", "command"]) {
-    await page.locator(`[data-chat-composer-popover-toggle="${picker}"]`).click({ force: true });
+    await page.locator(`[data-chat-composer-popover-toggle="${picker}"]`).click();
     const search = page.locator(`[data-chat-composer-picker-search="${picker}"]`);
     await search.evaluate((input) => {
       input.value = "__hepta_no_matching_picker_item__";
@@ -242,7 +221,7 @@ const routes = [
     const itemSelector = picker === "artifact"
       ? '[data-chat-artifact-insert="evidence-note"]'
       : '[data-chat-command-insert="/control-ui --json"]';
-    await page.locator(itemSelector).click({ force: true });
+    await page.locator(itemSelector).click();
   }
   const localDraftAudit = await page.evaluate(() => ({
     value: document.getElementById("chat-message")?.value || "",
@@ -256,19 +235,83 @@ const routes = [
     && localDraftAudit.status === "local draft updated · not sent"
     && localDraftAudit.open_composer_popover_count === 0;
 
-  await page.locator('[data-chat-row-menu-toggle="ui-chat-agent"]').click({ force: true });
-  await page.locator('[data-chat-row-menu-item="open-evidence"]').click({ force: true });
+  await page.locator('[data-chat-row-menu-toggle="ui-chat-agent"]').click();
+  await page.locator('[data-chat-row-menu-item="open-evidence"]').click();
+  await page.waitForFunction(
+    () => (
+      document.body.dataset.controlUiActiveView === "evidence"
+      && document.activeElement?.id === "screen-card-evidence"
+    ),
+    null,
+    { timeout: 5000 },
+  );
   const localRouteAudit = await page.evaluate(() => ({
     hash: window.location.hash,
     popover_open: document.getElementById("row-menu-ui-chat-agent")?.matches(":popover-open") || false,
     toast: document.getElementById("toast")?.textContent || "",
+    body_view: document.body.dataset.view || "",
+    active_view: document.body.dataset.controlUiActiveView || "",
+    target_visible: Boolean(document.getElementById("screen-card-evidence")?.offsetParent),
+    target_focused: document.activeElement?.id === "screen-card-evidence",
   }));
   const localRouteNavigationReady = localRouteAudit.hash === "#evidence"
     && localRouteAudit.popover_open === false
-    && localRouteAudit.toast === "Opened a local read-only surface.";
-  await page.evaluate(() => {
-    window.location.hash = "chat";
-  });
+    && localRouteAudit.toast === "Opened a local read-only surface."
+    && localRouteAudit.body_view === "read-only"
+    && localRouteAudit.active_view === "evidence"
+    && localRouteAudit.target_visible
+    && localRouteAudit.target_focused;
+  await page.locator('#hepta-nav [data-screen="chat"]').click();
+  await page.waitForFunction(
+    () => document.body.dataset.controlUiActiveView === "chat",
+    null,
+    { timeout: 5000 },
+  );
+
+  await page.locator("[data-open-command-palette]").click();
+  await page.locator('[data-control-ui-command-palette-item="control-ui"]').click();
+  await page.waitForFunction(
+    () => (
+      document.body.dataset.controlUiActiveView === "commands"
+      && document.activeElement?.closest("[data-command-id]")?.dataset.commandId === "control-ui"
+    ),
+    null,
+    { timeout: 5000 },
+  );
+  const commandPaletteNavigationAudit = await page.evaluate(() => ({
+    hash: window.location.hash,
+    body_view: document.body.dataset.view || "",
+    panel_visible: Boolean(document.getElementById("hepta-command-panel")?.offsetParent),
+    focused_command_id: document.activeElement?.closest("[data-command-id]")?.dataset.commandId || "",
+    palette_open: document.getElementById("command-palette")?.matches(":popover-open") || false,
+    catalog_count: Number(document.documentElement.dataset.controlUiCommandCatalogCount || 0),
+    palette_count: Number(document.documentElement.dataset.controlUiCommandPaletteCount || 0),
+    command_catalog_source: document.getElementById("commands")?.dataset.controlUiCatalogSource || "",
+    palette_catalog_source: document.getElementById("command-palette-results")?.dataset.controlUiCatalogSource || "",
+  }));
+  const commandPaletteNavigationReady = paletteInitialFocusReady
+    && commandPaletteNavigationAudit.hash === "#commands"
+    && commandPaletteNavigationAudit.body_view === "commands"
+    && commandPaletteNavigationAudit.panel_visible
+    && commandPaletteNavigationAudit.focused_command_id === "control-ui"
+    && commandPaletteNavigationAudit.palette_open === false
+    && commandPaletteNavigationAudit.catalog_count === 51
+    && commandPaletteNavigationAudit.palette_count === 18
+    && commandPaletteNavigationAudit.command_catalog_source === "typed-command-catalog-v1"
+    && commandPaletteNavigationAudit.palette_catalog_source === "typed-command-catalog-v1";
+
+  await page
+    .locator('[data-command-id="control-ui"] [data-copy="/control-ui --json"]')
+    .click();
+  await page.waitForFunction(
+    () => document.getElementById("toast")?.textContent === "Copied to clipboard.",
+    null,
+    { timeout: 5000 },
+  );
+  const copiedText = await page.evaluate(() => navigator.clipboard.readText());
+  if (copiedText !== "/control-ui --json") {
+    throw new Error("copy interaction did not preserve the exact command text");
+  }
 
   const results = [];
   for (const [commandId, path] of routes) {
@@ -284,7 +327,7 @@ const routes = [
       (response) => new URL(response.url()).pathname === path && response.request().method() === "GET",
       { timeout: 10000 },
     );
-    await button.click({ force: true });
+    await button.click();
     const response = await responsePromise;
     const contentType = response.headers()["content-type"] || "";
     if (response.status() !== 200 || !contentType.toLowerCase().startsWith("application/json")) {
@@ -326,6 +369,182 @@ const routes = [
     (button) => button.registry !== "allowed" && !button.disabled,
   ).length;
 
+  const routeLinkDescriptors = await page.$$eval(
+    "[data-hepta-nav-route], [data-control-ui-safety-route]",
+    (links) => links.map((link) => ({
+      nav_key: link.getAttribute("data-hepta-nav-key") || "",
+      screen: link.getAttribute("data-screen") || "",
+      href: link.getAttribute("href") || "",
+      safety: link.hasAttribute("data-control-ui-safety-route"),
+    })),
+  );
+  await page.setViewportSize({ width: 500, height: 844 });
+  const routeLinkAudit = [];
+  for (const descriptor of routeLinkDescriptors) {
+    await page.locator('#hepta-nav [data-screen="chat"]').click();
+    await page.waitForFunction(
+      () => document.body.dataset.controlUiActiveView === "chat",
+      null,
+      { timeout: 5000 },
+    );
+    await page.locator('[data-chat-mobile-pane-tab="room"]').click();
+    await page.waitForFunction(
+      () => Boolean(document.getElementById("chat-room")?.offsetParent),
+      null,
+      { timeout: 5000 },
+    );
+    const selector = descriptor.safety
+      ? `[data-control-ui-safety-route][data-screen="${descriptor.screen}"]`
+      : `[data-hepta-nav-key="${descriptor.nav_key}"]`;
+    const link = page.locator(selector);
+    if ((await link.count()) !== 1) {
+      throw new Error(`route link is not unique: ${selector}`);
+    }
+    const owningDetails = link.locator("xpath=ancestor::details[1]");
+    if (
+      (await owningDetails.count()) === 1
+      && !(await owningDetails.evaluate((details) => details.open))
+    ) {
+      await owningDetails.locator(":scope > summary").click();
+    }
+    if (!(await link.isVisible())) {
+      throw new Error(`route link is not user-visible: ${selector}`);
+    }
+    await link.focus();
+    await link.press("Enter");
+    const targetId = descriptor.screen === "chat"
+      ? "chat-thread"
+      : `screen-card-${descriptor.screen}`;
+    try {
+      await page.waitForFunction(
+        ({ expectedScreen, expectedTarget }) => (
+          document.body.dataset.controlUiActiveView === expectedScreen
+          && document.activeElement?.id === expectedTarget
+        ),
+        { expectedScreen: descriptor.screen, expectedTarget: targetId },
+        { timeout: 5000 },
+      );
+    } catch (error) {
+      throw new Error(
+        `route link did not activate ${descriptor.href} (${descriptor.screen}): ${error.message}`,
+      );
+    }
+    routeLinkAudit.push(await page.evaluate(({ expectedScreen, expectedTarget, expectedHref }) => {
+      const target = document.getElementById(expectedTarget);
+      const primaryNav = document.querySelector(`#hepta-nav [data-screen="${expectedScreen}"]`);
+      const visibleRouteCards = [...document.querySelectorAll(".route-card")].filter(
+        (card) => !card.hidden && Boolean(card.offsetParent),
+      );
+      return {
+        screen: expectedScreen,
+        target_id: expectedTarget,
+        expected_href: expectedHref,
+        hash: window.location.hash,
+        body_view: document.body.dataset.view || "",
+        active_view: document.body.dataset.controlUiActiveView || "",
+        target_visible: Boolean(target?.offsetParent),
+        target_focused: document.activeElement === target,
+        visible_route_card_count: visibleRouteCards.length,
+        visible_route_card_ids: visibleRouteCards.map((card) => card.id),
+        primary_nav_current_ready: !primaryNav
+          || primaryNav.getAttribute("aria-current") === "page",
+      };
+    }, {
+      expectedScreen: descriptor.screen,
+      expectedTarget: targetId,
+      expectedHref: descriptor.href,
+    }));
+  }
+  const routeLinkNavigationReady = routeLinkDescriptors.length === 22
+    && routeLinkAudit.length === routeLinkDescriptors.length
+    && routeLinkAudit.every((item) => (
+      item.hash === item.expected_href
+      && item.active_view === item.screen
+      && item.target_visible
+      && item.target_focused
+      && item.primary_nav_current_ready
+      && (item.screen === "chat"
+        ? item.body_view === "chat" && item.visible_route_card_count === 0
+        : item.body_view === "read-only"
+          && item.visible_route_card_count === 1
+          && item.visible_route_card_ids[0] === item.target_id)
+    ));
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const topNavAudit = [];
+  for (const [screen, targetId] of [
+    ["tasks", "screen-card-tasks"],
+    ["ops", "screen-card-ops"],
+    ["external-agent-benchmark", "screen-card-external-agent-benchmark"],
+  ]) {
+    const link = page.locator(`#hepta-nav [data-screen="${screen}"]`);
+    await link.focus();
+    await link.press("Enter");
+    await page.waitForFunction(
+      ({ expectedScreen, expectedTarget }) => (
+        document.body.dataset.controlUiActiveView === expectedScreen
+        && document.activeElement?.id === expectedTarget
+      ),
+      { expectedScreen: screen, expectedTarget: targetId },
+      { timeout: 5000 },
+    );
+    topNavAudit.push(await page.evaluate(({ expectedScreen, expectedTarget }) => {
+      const target = document.getElementById(expectedTarget);
+      const activeLink = document.querySelector(`#hepta-nav [data-screen="${expectedScreen}"]`);
+      return {
+        screen: expectedScreen,
+        target_id: expectedTarget,
+        body_view: document.body.dataset.view || "",
+        active_view: document.body.dataset.controlUiActiveView || "",
+        target_visible: Boolean(target?.offsetParent),
+        target_focused: document.activeElement === target,
+        nav_current: activeLink?.getAttribute("aria-current") || "",
+      };
+    }, { expectedScreen: screen, expectedTarget: targetId }));
+  }
+  const topNavNavigationReady = topNavAudit.length === 3 && topNavAudit.every((item) => (
+    item.body_view === "read-only"
+    && item.active_view === item.screen
+    && item.target_visible
+    && item.target_focused
+    && item.nav_current === "page"
+  ));
+
+  await page.goBack();
+  await page.waitForFunction(
+    () => document.body.dataset.controlUiActiveView === "ops"
+      && document.activeElement?.id === "screen-card-ops",
+    null,
+    { timeout: 5000 },
+  );
+  const backAudit = await page.evaluate(() => ({
+    hash: window.location.hash,
+    active_view: document.body.dataset.controlUiActiveView || "",
+    target_visible: Boolean(document.getElementById("screen-card-ops")?.offsetParent),
+    target_focused: document.activeElement?.id === "screen-card-ops",
+  }));
+  await page.goForward();
+  await page.waitForFunction(
+    () => document.body.dataset.controlUiActiveView === "external-agent-benchmark"
+      && document.activeElement?.id === "screen-card-external-agent-benchmark",
+    null,
+    { timeout: 5000 },
+  );
+  const forwardAudit = await page.evaluate(() => ({
+    hash: window.location.hash,
+    active_view: document.body.dataset.controlUiActiveView || "",
+    target_visible: Boolean(document.getElementById("screen-card-external-agent-benchmark")?.offsetParent),
+    target_focused: document.activeElement?.id === "screen-card-external-agent-benchmark",
+  }));
+  const routeHistoryReady = backAudit.hash === "#screen-card-ops"
+    && backAudit.active_view === "ops"
+    && backAudit.target_visible
+    && backAudit.target_focused
+    && forwardAudit.hash === "#screen-card-external-agent-benchmark"
+    && forwardAudit.active_view === "external-agent-benchmark"
+    && forwardAudit.target_visible
+    && forwardAudit.target_focused;
+
   const crossOriginRequests = requests.filter((request) => new URL(request.url).origin !== origin);
   const nonGetRequests = requests.filter((request) => request.method !== "GET");
   const expectedApiPaths = ["/api/operator-snapshot", ...routes.map((route) => route[1])];
@@ -337,9 +556,35 @@ const routes = [
     (path) => apiRequests.filter((request) => new URL(request.url).pathname === path).length !== 1,
   );
 
+  const failed = results.length !== routes.length
+    || allowedButtonCount !== routes.length
+    || unsafeButtonCount !== 0
+    || crossOriginRequests.length !== 0
+    || nonGetRequests.length !== 0
+    || unexpectedApiRequests.length !== 0
+    || missingOrDuplicateApiPaths.length !== 0
+    || consoleErrors.length !== 0
+    || copiedText !== "/control-ui --json"
+    || hiddenChatItemCount !== chatItemCount
+    || hiddenPaletteItemCount !== paletteItemCount
+    || !commandPaletteNavigationReady
+    || !routeLinkNavigationReady
+    || !topNavNavigationReady
+    || !routeHistoryReady
+    || productTruthAudit.capability_mode !== "local-read-only"
+    || productTruthAudit.live_adapter_bound !== "false"
+    || !productTruthAudit.unavailable_controls_ready
+    || !productTruthAudit.unavailable_click_noop_ready
+    || !productTruthAudit.unavailable_request_noop_ready
+    || !productTruthAudit.seeded_conversations_ready
+    || !localInspectorAudit.ready
+    || !pickerSearchReady
+    || !localDraftInsertionReady
+    || !localRouteNavigationReady;
+
   const report = {
     schema: "hepta_control_ui_progressive_enhancement_browser_v1",
-    status: "ready",
+    status: failed ? "failed" : "ready",
     registry_route_count: routes.length,
     successful_route_count: results.length,
     snapshot_state: snapshotState,
@@ -349,6 +594,14 @@ const routes = [
     copy_interaction_ready: copiedText === "/control-ui --json",
     chat_search_ready: hiddenChatItemCount === chatItemCount,
     command_palette_search_ready: hiddenPaletteItemCount === paletteItemCount,
+    command_palette_navigation_ready: commandPaletteNavigationReady,
+    command_palette_navigation_audit: commandPaletteNavigationAudit,
+    route_link_navigation_ready: routeLinkNavigationReady,
+    route_link_navigation_audit: routeLinkAudit,
+    top_nav_navigation_ready: topNavNavigationReady,
+    top_nav_navigation_audit: topNavAudit,
+    route_history_ready: routeHistoryReady,
+    route_history_audit: { back: backAudit, forward: forwardAudit },
     product_truth_audit: productTruthAudit,
     unavailable_controls_ready: productTruthAudit.unavailable_controls_ready,
     unavailable_click_noop_ready: productTruthAudit.unavailable_click_noop_ready
@@ -377,27 +630,6 @@ const routes = [
   };
 
   await browser.close();
-  const failed = results.length !== routes.length
-    || allowedButtonCount !== routes.length
-    || unsafeButtonCount !== 0
-    || crossOriginRequests.length !== 0
-    || nonGetRequests.length !== 0
-    || unexpectedApiRequests.length !== 0
-    || missingOrDuplicateApiPaths.length !== 0
-    || consoleErrors.length !== 0
-    || copiedText !== "/control-ui --json"
-    || hiddenChatItemCount !== chatItemCount
-    || hiddenPaletteItemCount !== paletteItemCount
-    || productTruthAudit.capability_mode !== "local-read-only"
-    || productTruthAudit.live_adapter_bound !== "false"
-    || !productTruthAudit.unavailable_controls_ready
-    || !productTruthAudit.unavailable_click_noop_ready
-    || !productTruthAudit.unavailable_request_noop_ready
-    || !productTruthAudit.seeded_conversations_ready
-    || !localInspectorAudit.ready
-    || !pickerSearchReady
-    || !localDraftInsertionReady
-    || !localRouteNavigationReady;
   process.stdout.write(`${JSON.stringify(report)}\n`);
   if (failed) {
     process.exit(1);
