@@ -12,8 +12,11 @@ require_relative "hepta-workgraph-readable-token-source-v1"
 ROOT = File.expand_path("..", __dir__)
 SPEC_PATH = File.join(ROOT, "scripts/hepta-gate-pair-specs-v1.json")
 BINDINGS_PATH = File.join(ROOT, "scripts/hepta-gate-typed-report-bindings-v2.json")
-REPORT_SOURCE = File.join(ROOT, "codex-rs/hepta-runtime/src/typed_compat_report.rs")
-REPORT_CLI_SOURCE = File.join(ROOT, "codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs")
+REPORT_SOURCE = File.join(ROOT, "codex-rs/hepta-runtime/src/compatibility_engine.rs")
+REPORT_CLI_SOURCE = File.join(
+  ROOT,
+  "codex-rs/hepta-runtime/src/bin/hepta-gate-pair-engine.rs"
+)
 REPORT_RUNNER = File.join(ROOT, "scripts/hepta-typed-compat-report")
 PAIR_RUNNER = File.join(ROOT, "scripts/hepta-gate-pair-runner")
 BUNDLE_ROOT = File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2")
@@ -1487,13 +1490,13 @@ def rewrite_spec(spec, sources, ids)
            report_implementation_sha256 gate_source_sha256 report_source_sha256].include?(key)
       end.merge(
         "template" => "typed_rust_report_v1",
-        "source_report" => "codex-rs/hepta-runtime/src/typed_compat_report.rs",
+        "source_report" => "codex-rs/hepta-runtime/src/compatibility_engine.rs",
         "typed_report_runner" => "scripts/hepta-typed-compat-report",
         "typed_report_runner_sha256" => runner_sha,
         "typed_report_registry" => "scripts/hepta-gate-typed-report-bindings-v2.json",
         "typed_report_registry_sha256" => registry_sha,
         "typed_report_source_sha256" => source_sha,
-        "typed_report_cli_source" => "codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs",
+        "typed_report_cli_source" => "codex-rs/hepta-runtime/src/bin/hepta-gate-pair-engine.rs",
         "typed_report_cli_source_sha256" => cli_source_sha,
         "side_effect_boundary" => "read-only #{pair.fetch('receipt_state')} typed Rust compatibility report; never mutates, publishes, sends, installs, or restarts",
         "next_migration_step" => "typed_rust_report_semantics_preserved_without_shell_payload",

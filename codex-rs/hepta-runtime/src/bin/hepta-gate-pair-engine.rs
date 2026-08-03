@@ -23,11 +23,11 @@ const INTERNAL_DIRTY_WORKTREE_OWNER_DECISION_SOURCE: &str =
 fn main() -> ExitCode {
     let mut arguments = std::env::args().skip(1);
     let Some(id) = arguments.next() else {
-        eprintln!("usage: hepta-compat-report <--list|report-id>");
+        eprintln!("usage: hepta-gate-pair-engine <--list|report-id>");
         return ExitCode::from(64);
     };
     if arguments.next().is_some() {
-        eprintln!("usage: hepta-compat-report <--list|report-id>");
+        eprintln!("usage: hepta-gate-pair-engine <--list|report-id>");
         return ExitCode::from(64);
     }
 

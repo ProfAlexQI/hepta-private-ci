@@ -87,12 +87,11 @@ use serde_json::json;
 
 mod agent_harness;
 mod approval_broker;
+mod compatibility_engine;
 mod config_store;
-mod context_plane_compat_report;
 mod context_recall_operator_invocation;
 mod context_recall_operator_scheduler;
 mod controlled_canary_readiness_plan;
-mod controlled_live_compat_report;
 mod controlled_live_evidence_receipt_store_acceptance_authority_packet_non_send_readback;
 mod controlled_live_evidence_receipt_store_acceptance_authority_packet_persistence_denial_readback_without_persistence;
 mod controlled_live_evidence_receipt_store_acceptance_authority_packet_readback_without_acceptance;
@@ -164,7 +163,6 @@ mod core_fusion;
 mod current_reality_capability_matrix;
 mod current_reality_matrix_compact_cache_boundary_readback;
 mod delivery_queue;
-mod dirty_worktree_compat_report;
 mod dirty_worktree_release_boundary_actionable_clean_worktree_strategy;
 mod dirty_worktree_release_boundary_clean_worktree_strategy_operator_approval_acceptance_boundary_readback;
 mod dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_checklist;
@@ -231,9 +229,6 @@ mod multi_agent;
 mod ndu_h1_runtime;
 mod operator_policy;
 mod output_directives;
-#[cfg(feature = "compat-report")]
-#[allow(dead_code)]
-mod plugin_compat_report;
 mod plugin_keyed_store;
 mod process_supervisor;
 mod query;
@@ -260,7 +255,6 @@ mod task_board;
 mod telegram_model_runner;
 mod tool_invocation;
 mod topic_neuron;
-mod typed_compat_report;
 include!(concat!(
     env!("OUT_DIR"),
     "/hepta_workgraph_bundle/modules.rs"
@@ -322,24 +316,36 @@ use runtime_kernel::outcome_recorder::OutcomeRecorder;
 use runtime_kernel::safety_gate_client::SafetyGateClient;
 use runtime_preference_context::AttachedPreferenceContextState;
 
-pub use controlled_live_compat_report::{
-    CONTROLLED_LIVE_TYPED_COMPAT_REPORT_IDS, ControlledLiveWorktreeObservation,
-    controlled_live_operator_packet_non_send_readback_report_from_sources,
-    controlled_live_operator_packet_preview_report_from_sources,
-    controlled_live_readiness_audit_report_from_observation,
-    controlled_live_readiness_denial_readback_index_report_from_sources,
-    controlled_live_required_evidence_collection_plan_report_from_sources,
-    controlled_live_required_evidence_readback_index_report_from_sources,
-    controlled_live_typed_compat_report, is_controlled_live_typed_compat_report,
-};
+pub use compatibility_engine::CONTROLLED_LIVE_TYPED_COMPAT_REPORT_IDS;
+pub use compatibility_engine::ControlledLiveWorktreeObservation;
+pub use compatibility_engine::DIRTY_WORKTREE_TYPED_COMPAT_REPORT_IDS;
+pub use compatibility_engine::DirtyWorktreeObservation;
+pub use compatibility_engine::DirtyWorktreeObservationEntry;
+pub use compatibility_engine::RETIRED_DIRTY_WORKTREE_COMPAT_REPORT_ID;
+pub use compatibility_engine::TYPED_COMPAT_REPORT_IDS;
+pub use compatibility_engine::TypedCompatReportError;
+pub use compatibility_engine::controlled_live_operator_packet_non_send_readback_report_from_sources;
+pub use compatibility_engine::controlled_live_operator_packet_preview_report_from_sources;
+pub use compatibility_engine::controlled_live_readiness_audit_report_from_observation;
+pub use compatibility_engine::controlled_live_readiness_denial_readback_index_report_from_sources;
+pub use compatibility_engine::controlled_live_required_evidence_collection_plan_report_from_sources;
+pub use compatibility_engine::controlled_live_required_evidence_readback_index_report_from_sources;
+pub use compatibility_engine::controlled_live_typed_compat_report;
+pub use compatibility_engine::dirty_worktree_typed_compat_report;
+pub use compatibility_engine::is_controlled_live_typed_compat_report;
+pub use compatibility_engine::is_current_reality_typed_compat_report;
+pub use compatibility_engine::is_dirty_worktree_typed_compat_report;
+pub use compatibility_engine::is_plugin_typed_compat_report;
+pub use compatibility_engine::retired_dirty_worktree_owner_decision_source_report;
+pub use compatibility_engine::typed_compat_report;
+pub use compatibility_engine::typed_compat_report_with_controlled_live_worktree_observation;
+#[cfg(feature = "compat-report")]
+pub use compatibility_engine::typed_compat_report_with_current_reality_sources;
+pub use compatibility_engine::typed_compat_report_with_dirty_worktree_observation;
+#[cfg(feature = "compat-report")]
+pub use compatibility_engine::typed_compat_report_with_plugin_repo_root;
 #[cfg(feature = "compat-report")]
 pub use current_reality_capability_matrix::*;
-pub use dirty_worktree_compat_report::{
-    DIRTY_WORKTREE_TYPED_COMPAT_REPORT_IDS, DirtyWorktreeObservation,
-    DirtyWorktreeObservationEntry, RETIRED_DIRTY_WORKTREE_COMPAT_REPORT_ID,
-    dirty_worktree_typed_compat_report, is_dirty_worktree_typed_compat_report,
-    retired_dirty_worktree_owner_decision_source_report,
-};
 pub use execution_admission::EffectBroker;
 pub use execution_admission::EffectPlan;
 pub use execution_admission::ExactExecutionAuthority;
@@ -352,17 +358,6 @@ pub use ndu_h1_runtime::NduH1Runtime;
 pub use ndu_h1_runtime::NduH1RuntimeError;
 pub use ndu_h1_runtime::NduH1RuntimeStatus;
 pub use ndu_h1_runtime::NduH1ShadowEvent;
-pub use typed_compat_report::TYPED_COMPAT_REPORT_IDS;
-pub use typed_compat_report::TypedCompatReportError;
-pub use typed_compat_report::is_current_reality_typed_compat_report;
-pub use typed_compat_report::is_plugin_typed_compat_report;
-pub use typed_compat_report::typed_compat_report;
-pub use typed_compat_report::typed_compat_report_with_controlled_live_worktree_observation;
-#[cfg(feature = "compat-report")]
-pub use typed_compat_report::typed_compat_report_with_current_reality_sources;
-pub use typed_compat_report::typed_compat_report_with_dirty_worktree_observation;
-#[cfg(feature = "compat-report")]
-pub use typed_compat_report::typed_compat_report_with_plugin_repo_root;
 
 include!("runtime_kernel/exports.rs");
 include!("runtime_kernel/exports_workgraph.rs");

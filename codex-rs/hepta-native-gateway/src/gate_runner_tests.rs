@@ -239,7 +239,7 @@ fn migrated_and_promoted_pair_specs_use_the_receipt_state_machine() {
     );
     assert_eq!(
         typed_value["typed_report_cli_source"],
-        "codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs"
+        "codex-rs/hepta-runtime/src/bin/hepta-gate-pair-engine.rs"
     );
 
     let id = "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview";

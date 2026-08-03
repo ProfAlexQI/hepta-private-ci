@@ -4,6 +4,35 @@ use std::path::Path;
 use serde_json::Value;
 use thiserror::Error;
 
+mod context_plane;
+mod controlled_live;
+mod dirty_worktree;
+#[cfg(feature = "compat-report")]
+#[allow(dead_code)]
+mod plugin;
+
+pub use controlled_live::CONTROLLED_LIVE_TYPED_COMPAT_REPORT_IDS;
+pub use controlled_live::ControlledLiveWorktreeObservation;
+pub use controlled_live::controlled_live_operator_packet_non_send_readback_report_from_sources;
+pub use controlled_live::controlled_live_operator_packet_preview_report_from_sources;
+pub use controlled_live::controlled_live_readiness_audit_report_from_observation;
+pub use controlled_live::controlled_live_readiness_denial_readback_index_report_from_sources;
+pub use controlled_live::controlled_live_required_evidence_collection_plan_report_from_sources;
+pub use controlled_live::controlled_live_required_evidence_readback_index_report_from_sources;
+pub use controlled_live::controlled_live_typed_compat_report;
+pub use controlled_live::is_controlled_live_typed_compat_report;
+pub use dirty_worktree::DIRTY_WORKTREE_TYPED_COMPAT_REPORT_IDS;
+pub use dirty_worktree::DirtyWorktreeObservation;
+pub use dirty_worktree::DirtyWorktreeObservationEntry;
+pub use dirty_worktree::RETIRED_DIRTY_WORKTREE_COMPAT_REPORT_ID;
+pub use dirty_worktree::dirty_worktree_typed_compat_report;
+pub use dirty_worktree::is_dirty_worktree_typed_compat_report;
+pub use dirty_worktree::retired_dirty_worktree_owner_decision_source_report;
+#[cfg(feature = "compat-report")]
+pub(crate) use plugin::PluginCompatReportSet;
+#[cfg(feature = "compat-report")]
+pub(crate) use plugin::build_plugin_compat_reports;
+
 pub const TYPED_COMPAT_REPORT_IDS: &[&str] = &[
     "hepta-context-memory-ranked-recall-shadow-eval",
     "hepta-context-memory-shadow-quality-summary",
@@ -819,23 +848,23 @@ fn workflow_durable_store_adapter_compat_report() -> Result<Value, TypedCompatRe
 
 pub fn typed_compat_report_with_dirty_worktree_observation(
     id: &str,
-    observation: &crate::DirtyWorktreeObservation,
+    observation: &dirty_worktree::DirtyWorktreeObservation,
 ) -> Result<Value, TypedCompatReportError> {
-    if !crate::is_dirty_worktree_typed_compat_report(id) {
+    if !dirty_worktree::is_dirty_worktree_typed_compat_report(id) {
         return Err(TypedCompatReportError::UnknownReport(id.to_string()));
     }
-    crate::dirty_worktree_typed_compat_report(id, observation)
+    dirty_worktree::dirty_worktree_typed_compat_report(id, observation)
         .map_err(TypedCompatReportError::ContractViolation)
 }
 
 pub fn typed_compat_report_with_controlled_live_worktree_observation(
     id: &str,
-    observation: &crate::ControlledLiveWorktreeObservation,
+    observation: &controlled_live::ControlledLiveWorktreeObservation,
 ) -> Result<Value, TypedCompatReportError> {
-    if !crate::is_controlled_live_typed_compat_report(id) {
+    if !controlled_live::is_controlled_live_typed_compat_report(id) {
         return Err(TypedCompatReportError::UnknownReport(id.to_string()));
     }
-    crate::controlled_live_typed_compat_report(id, observation)
+    controlled_live::controlled_live_typed_compat_report(id, observation)
         .map_err(TypedCompatReportError::ContractViolation)
 }
 
@@ -886,9 +915,8 @@ pub fn typed_compat_report_with_plugin_repo_root(
             "cannot read validated plugin compatibility manifest: {error}"
         ))
     })?;
-    let reports =
-        crate::plugin_compat_report::build_plugin_compat_reports(repo_root, &manifest_bytes)
-            .map_err(TypedCompatReportError::ContractViolation)?;
+    let reports = plugin::build_plugin_compat_reports(repo_root, &manifest_bytes)
+        .map_err(TypedCompatReportError::ContractViolation)?;
     let report = reports.report(id).ok_or_else(|| {
         TypedCompatReportError::ContractViolation(format!(
             "plugin compatibility report set omitted {id}"
@@ -898,16 +926,16 @@ pub fn typed_compat_report_with_plugin_repo_root(
 }
 
 pub fn typed_compat_report(id: &str) -> Result<Value, TypedCompatReportError> {
-    if crate::context_plane_compat_report::is_context_plane_typed_compat_report(id) {
-        return crate::context_plane_compat_report::context_plane_typed_compat_report(id)
+    if context_plane::is_context_plane_typed_compat_report(id) {
+        return context_plane::context_plane_typed_compat_report(id)
             .map_err(TypedCompatReportError::ContractViolation);
     }
-    if crate::is_controlled_live_typed_compat_report(id) {
+    if controlled_live::is_controlled_live_typed_compat_report(id) {
         return Err(TypedCompatReportError::ContractViolation(format!(
             "controlled-live typed compatibility report requires an explicit repository observation: {id}"
         )));
     }
-    if crate::is_dirty_worktree_typed_compat_report(id) {
+    if dirty_worktree::is_dirty_worktree_typed_compat_report(id) {
         return Err(TypedCompatReportError::ContractViolation(format!(
             "dirty-worktree typed compatibility report requires an explicit repository observation: {id}"
         )));
@@ -1169,7 +1197,7 @@ mod tests {
 
     #[test]
     fn typed_compatibility_report_registry_is_unique() {
-        assert!(TYPED_COMPAT_REPORT_IDS.len() >= 100);
+        assert_eq!(TYPED_COMPAT_REPORT_IDS.len(), 172);
         assert_eq!(
             TYPED_COMPAT_REPORT_IDS
                 .iter()
@@ -1241,7 +1269,7 @@ mod tests {
 
     #[test]
     fn context_plane_reports_are_typed_source_bound_and_read_only() {
-        for id in crate::context_plane_compat_report::CONTEXT_PLANE_COMPAT_REPORT_IDS {
+        for id in context_plane::CONTEXT_PLANE_COMPAT_REPORT_IDS {
             let report = typed_compat_report(id).expect("context-plane report should render");
             let object = report
                 .as_object()

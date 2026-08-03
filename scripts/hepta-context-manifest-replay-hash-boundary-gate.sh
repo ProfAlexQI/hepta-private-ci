@@ -16,7 +16,7 @@ gate_pair_specs="$repo_root/scripts/hepta-gate-pair-specs-v1.json"
 typed_report_bindings="$repo_root/scripts/hepta-gate-typed-report-bindings-v2.json"
 pair_runner="$repo_root/scripts/hepta-gate-pair-runner"
 payload_bundle="$repo_root/scripts/hepta-gate-pair-payload-bundle"
-context_plane_compat_report="$repo_root/codex-rs/hepta-runtime/src/context_plane_compat_report.rs"
+context_plane_compat_report="$repo_root/codex-rs/hepta-runtime/src/compatibility_engine/context_plane.rs"
 scratch_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-context-manifest-replay-hash.XXXXXX")"
 trap 'rm -rf "$scratch_dir"' EXIT
 
@@ -78,7 +78,7 @@ assert_typed_report_binding() {
     .pairs[]
     | select(.id == $pair_id)
     | .template == "typed_rust_report_v1"
-      and .source_report == "codex-rs/hepta-runtime/src/typed_compat_report.rs"
+      and .source_report == "codex-rs/hepta-runtime/src/compatibility_engine.rs"
       and .typed_report_runner == "scripts/hepta-typed-compat-report"
   ' "$gate_pair_specs" >/dev/null ||
     fail "missing typed report binding for $pair_id"

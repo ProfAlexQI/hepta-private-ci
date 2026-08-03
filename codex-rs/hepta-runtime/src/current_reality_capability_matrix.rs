@@ -525,7 +525,7 @@ impl CurrentRealityCapabilityMatrixSources {
             ))
         })?;
         let plugin_reports =
-            crate::plugin_compat_report::build_plugin_compat_reports(repo_root, &manifest_bytes)
+            crate::compatibility_engine::build_plugin_compat_reports(repo_root, &manifest_bytes)
                 .map_err(|_| CurrentRealityCapabilityMatrixError::InvalidPluginFixtureShape)?;
         let plugin_manifest = CurrentRealityPluginManifestObservation::from_manifest_bytes(
             Some(&manifest_bytes),
@@ -581,7 +581,7 @@ struct CurrentCompactSummarySource {
 fn build_capability_observations(
     dirty_worktree: &crate::DirtyWorktreeObservation,
     controlled_worktree: &crate::ControlledLiveWorktreeObservation,
-    plugin_reports: &crate::plugin_compat_report::PluginCompatReportSet,
+    plugin_reports: &crate::compatibility_engine::PluginCompatReportSet,
     work_graph_successors: &CurrentRealityWorkGraphSuccessorObservation,
     worktree_state: CurrentRealityWorktreeState,
 ) -> Result<Vec<CurrentRealityCapabilitySourceObservation>, CurrentRealityCapabilityMatrixError> {
@@ -692,7 +692,7 @@ fn dynamic_report_payload(
     report_id: &str,
     dirty_worktree: &crate::DirtyWorktreeObservation,
     controlled_worktree: &crate::ControlledLiveWorktreeObservation,
-    plugin_reports: &crate::plugin_compat_report::PluginCompatReportSet,
+    plugin_reports: &crate::compatibility_engine::PluginCompatReportSet,
     work_graph_successors: &CurrentRealityWorkGraphSuccessorObservation,
 ) -> Result<Value, CurrentRealityCapabilityMatrixError> {
     let value = match report_id {

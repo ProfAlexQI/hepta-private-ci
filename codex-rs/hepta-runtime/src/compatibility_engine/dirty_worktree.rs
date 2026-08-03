@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::Map;
+use serde_json::Value;
 
 use crate::*;
 
@@ -1666,7 +1667,8 @@ fn add_bucket_entry(counts: &mut BucketCounts, entry: &DirtyWorktreeObservationE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sha2::{Digest, Sha256};
+    use sha2::Digest;
+    use sha2::Sha256;
 
     const LEGACY_ORACLE: &[(&str, usize, &str, usize, &str)] = &[
         (

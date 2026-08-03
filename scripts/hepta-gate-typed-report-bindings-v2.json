@@ -1,7 +1,7 @@
 {
   "schema": "hepta_gate_typed_report_bindings_v2",
   "status": "ready",
-  "source_of_truth": "codex-rs/hepta-runtime/src/typed_compat_report.rs",
+  "source_of_truth": "codex-rs/hepta-runtime/src/compatibility_engine.rs",
   "selection": "runtime_backed_workgraph_workflow_context_memory_context_plane_dirty_worktree_controlled_live_plugin_and_current_reality_reports",
   "report_ids": [
     "hepta-context-memory-ranked-recall-shadow-eval",

@@ -1,7 +1,7 @@
 {
   "schema": "hepta_gate_pair_entrypoints_v2",
   "status": "pruned",
-  "source_registry_sha256": "c94af0131aadb787f30c028dc4e2febbe3e991b1a061c27f5844bed29327a643",
+  "source_registry_sha256": "0956fbbdb031d3849c0a9619c5c724394ca5c988f1db58e8237da5413a56a43f",
   "pair_count": 273,
   "original_entrypoint_count": 546,
   "retained_entrypoint_count": 57,

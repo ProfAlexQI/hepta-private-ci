@@ -214,8 +214,8 @@ codex-rs/hepta-memory/src/tests/snapshot_restore/preview.rs	rust_memory	hepta-co
 codex-rs/hepta-memory/src/tests/snapshot_restore/readiness.rs	rust_memory	hepta-context	required
 codex-rs/hepta-memory/src/tests/snapshot_restore/roundtrip.rs	rust_memory	hepta-context	required
 codex-rs/hepta-memory/src/tests/store.rs	rust_memory	hepta-context	required
-codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs	rust_memory	hepta-context	required
-codex-rs/hepta-runtime/src/typed_compat_report.rs	rust_memory	hepta-context	required
+codex-rs/hepta-runtime/src/bin/hepta-gate-pair-engine.rs	rust_memory	hepta-context	required
+codex-rs/hepta-runtime/src/compatibility_engine.rs	rust_memory	hepta-context	required
 codex-rs/protocol/src/protocol.rs	rust_protocol	hepta-context	required
 codex-rs/response-debug-context/BUILD.bazel	response_debug	hepta-context	required
 codex-rs/response-debug-context/Cargo.toml	response_debug	hepta-context	required

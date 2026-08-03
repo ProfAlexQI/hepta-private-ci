@@ -5,7 +5,7 @@ use anyhow::Result;
 use super::ShellPairMigrationSpec;
 use super::is_sha256;
 
-const REPORT_SOURCE: &str = "codex-rs/hepta-runtime/src/typed_compat_report.rs";
+const REPORT_SOURCE: &str = "codex-rs/hepta-runtime/src/compatibility_engine.rs";
 
 pub(super) fn validate_source_report(spec: &ShellPairMigrationSpec) -> Result<()> {
     let valid = if spec.template == "typed_rust_report_v1" {
@@ -47,7 +47,7 @@ pub(super) fn validate_typed_report_binding(spec: &ShellPairMigrationSpec) -> Re
             .as_deref()
             .is_some_and(is_sha256)
         && spec.typed_report_cli_source.as_deref()
-            == Some("codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs")
+            == Some("codex-rs/hepta-runtime/src/bin/hepta-gate-pair-engine.rs")
         && spec
             .typed_report_cli_source_sha256
             .as_deref()

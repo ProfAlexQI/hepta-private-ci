@@ -466,10 +466,10 @@ execute_typed_rust_report() {
   local runner registry source cli_source expected_gate expected_schema json
   local actual_runner_sha actual_registry_sha actual_source_sha actual_cli_source_sha
 
-  [[ "$source_report_rel" == "codex-rs/hepta-runtime/src/typed_compat_report.rs" \
+  [[ "$source_report_rel" == "codex-rs/hepta-runtime/src/compatibility_engine.rs" \
     && "$typed_report_runner" == scripts/* \
     && "$typed_report_registry" == scripts/*.json \
-    && "$typed_report_cli_source" == "codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs" ]] || {
+    && "$typed_report_cli_source" == "codex-rs/hepta-runtime/src/bin/hepta-gate-pair-engine.rs" ]] || {
     echo "invalid typed Hepta report binding for: $id" >&2
     exit 1
   }

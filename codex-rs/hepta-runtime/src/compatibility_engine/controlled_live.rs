@@ -1,5 +1,6 @@
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::Map;
+use serde_json::Value;
 
 pub const CONTROLLED_LIVE_TYPED_COMPAT_REPORT_IDS: &[&str] = &[
     "hepta-systems-controlled-canary-readiness-plan",

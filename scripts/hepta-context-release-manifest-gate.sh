@@ -329,8 +329,8 @@ codex-rs/hepta-memory/src/tests/snapshot_restore/preview.rs
 codex-rs/hepta-memory/src/tests/snapshot_restore/readiness.rs
 codex-rs/hepta-memory/src/tests/snapshot_restore/roundtrip.rs
 codex-rs/hepta-memory/src/tests/store.rs
-codex-rs/hepta-runtime/src/bin/hepta-compat-report.rs
-codex-rs/hepta-runtime/src/typed_compat_report.rs
+codex-rs/hepta-runtime/src/bin/hepta-gate-pair-engine.rs
+codex-rs/hepta-runtime/src/compatibility_engine.rs
 codex-rs/protocol/src/protocol.rs
 codex-rs/response-debug-context/BUILD.bazel
 codex-rs/response-debug-context/Cargo.toml

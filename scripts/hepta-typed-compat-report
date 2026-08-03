@@ -44,5 +44,5 @@ rustc_bin="$(rustup which --toolchain "$toolchain" rustc)"
 RUSTC="$rustc_bin" exec "$cargo_bin" run --quiet --locked \
   --manifest-path "$ROOT/codex-rs/Cargo.toml" \
   -p hepta-runtime \
-  --bin hepta-compat-report \
+  --bin hepta-gate-pair-engine \
   -- "$@"
