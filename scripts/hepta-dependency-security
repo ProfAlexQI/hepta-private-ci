@@ -347,7 +347,7 @@ verify_contract() {
           manifest_path:"codex-rs/Cargo.toml",
           path:"codex-rs/Cargo.lock",
           deny_config_path:"codex-rs/deny.toml",
-          sha256:"a5dc14d4e5b7a7fe92cb9de47efcdc79e6a10f3a93d104cc00f9a1c076968e0c"
+          sha256:"8b00260bda3007596d8638035b9003a2ae2efdd4a46610eff6a32e8c202af043"
         },
         {
           id:"native-app",
