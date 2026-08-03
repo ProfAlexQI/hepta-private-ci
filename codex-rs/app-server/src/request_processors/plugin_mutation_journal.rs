@@ -1086,6 +1086,15 @@ fn hex_decode(value: &str) -> Result<Vec<u8>, PluginMutationJournalError> {
 mod tests {
     use super::*;
 
+    fn private_root() -> Result<tempfile::TempDir, PluginMutationJournalError> {
+        let root = tempfile::tempdir()
+            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
+        #[cfg(unix)]
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| PluginMutationJournalError::new(format!("secure tempdir: {error}")))?;
+        Ok(root)
+    }
+
     fn envelope_index(index: u64) -> PluginMutationEnvelope {
         PluginMutationEnvelope {
             request_binding: format!("{index:064x}"),
@@ -1119,8 +1128,7 @@ mod tests {
 
     #[test]
     fn replays_terminal_success_and_blocks_in_doubt() -> Result<(), PluginMutationJournalError> {
-        let root = tempfile::tempdir()
-            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
+        let root = private_root()?;
         let journal = PluginMutationJournal::new(root.path().join("journal.json"));
         let envelope = envelope_index(1);
         assert_eq!(
@@ -1148,8 +1156,7 @@ mod tests {
     #[test]
     fn rejects_request_binding_reuse_with_different_payload()
     -> Result<(), PluginMutationJournalError> {
-        let root = tempfile::tempdir()
-            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
+        let root = private_root()?;
         let journal = PluginMutationJournal::new(root.path().join("journal.json"));
         let first = envelope_index(2);
         journal.begin(first.clone())?;
@@ -1162,8 +1169,7 @@ mod tests {
     #[test]
     fn checkpoint_preserves_success_and_failure_replay_after_record_limit()
     -> Result<(), PluginMutationJournalError> {
-        let root = tempfile::tempdir()
-            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
+        let root = private_root()?;
         let path = root.path().join("journal.json");
         let journal = PluginMutationJournal::new(&path);
         journal.begin(envelope_index(1))?;
@@ -1209,8 +1215,7 @@ mod tests {
 
     #[test]
     fn rejects_authenticated_journal_rollback() -> Result<(), PluginMutationJournalError> {
-        let root = tempfile::tempdir()
-            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
+        let root = private_root()?;
         let path = root.path().join("journal.json");
         let journal = PluginMutationJournal::new(&path);
         journal.begin(envelope_index(1))?;
@@ -1226,8 +1231,7 @@ mod tests {
 
     #[test]
     fn migrates_verified_v1_state_and_creates_anchor() -> Result<(), PluginMutationJournalError> {
-        let root = tempfile::tempdir()
-            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
+        let root = private_root()?;
         let path = root.path().join("journal.json");
         let mut legacy = LegacyPluginMutationState {
             version: LEGACY_JOURNAL_VERSION,
@@ -1314,8 +1318,7 @@ mod tests {
 
     #[test]
     fn terminal_payloads_are_bounded() -> Result<(), PluginMutationJournalError> {
-        let root = tempfile::tempdir()
-            .map_err(|error| PluginMutationJournalError::new(format!("create tempdir: {error}")))?;
+        let root = private_root()?;
         let journal = PluginMutationJournal::new(root.path().join("journal.json"));
         let envelope = envelope_index(1);
         journal.begin(envelope.clone())?;
@@ -1330,6 +1333,25 @@ mod tests {
             )
             .expect_err("oversized terminal response must fail closed");
         assert!(error.to_string().contains("terminal response exceeds"));
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_constructor_rejects_non_private_parent() -> Result<(), PluginMutationJournalError> {
+        let root = private_root()?;
+        let public = root.path().join("public");
+        std::fs::create_dir(&public).map_err(|error| {
+            PluginMutationJournalError::new(format!("create public parent: {error}"))
+        })?;
+        std::fs::set_permissions(&public, std::fs::Permissions::from_mode(0o755)).map_err(
+            |error| PluginMutationJournalError::new(format!("set public parent mode: {error}")),
+        )?;
+        let journal = PluginMutationJournal::new(public.join("journal.json"));
+        let error = journal
+            .begin(envelope_index(1))
+            .expect_err("non-private journal parent must fail closed");
+        assert!(error.to_string().contains("owned mode-0700 directory"));
         Ok(())
     }
 }

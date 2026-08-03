@@ -1340,6 +1340,10 @@ fn create_directory_at(parent: &File, component: &std::ffi::OsStr) -> io::Result
 
 #[cfg(unix)]
 fn ensure_directory_tree_no_symlinks(path: &Path) -> io::Result<File> {
+    #[cfg(target_os = "macos")]
+    let normalized_path = normalize_macos_system_root_alias(path);
+    #[cfg(target_os = "macos")]
+    let path = normalized_path.as_path();
     let mut directory = if path.is_absolute() {
         File::open("/")?
     } else {
@@ -1365,6 +1369,20 @@ fn ensure_directory_tree_no_symlinks(path: &Path) -> io::Result<File> {
         };
     }
     Ok(directory)
+}
+
+#[cfg(all(unix, target_os = "macos"))]
+fn normalize_macos_system_root_alias(path: &Path) -> PathBuf {
+    for (alias, canonical) in [
+        ("/etc", "/private/etc"),
+        ("/tmp", "/private/tmp"),
+        ("/var", "/private/var"),
+    ] {
+        if let Ok(remainder) = path.strip_prefix(alias) {
+            return Path::new(canonical).join(remainder);
+        }
+    }
+    path.to_path_buf()
 }
 
 #[cfg(unix)]
@@ -1684,6 +1702,41 @@ mod tests {
         let target = target_root.join("linked/nested/SKILL.md");
         assert!(write_text_if_missing_or_empty_no_symlinks(&target, "blocked").is_err());
         assert!(!outside.join("nested/SKILL.md").exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_system_root_alias_support_keeps_nested_symlinks_fail_closed() {
+        assert_eq!(
+            normalize_macos_system_root_alias(Path::new("/var/tmp/hooks.json")),
+            PathBuf::from("/private/var/tmp/hooks.json")
+        );
+        assert_eq!(
+            normalize_macos_system_root_alias(Path::new("/various/hooks.json")),
+            PathBuf::from("/various/hooks.json")
+        );
+
+        let root = tempfile::Builder::new()
+            .prefix("hepta-external-agent-migration-")
+            .tempdir_in("/var/tmp")
+            .expect("tempdir through macOS system alias");
+        let target = root.path().join("hooks.json");
+        assert!(
+            write_text_if_missing_or_empty_no_symlinks(&target, "migrated\n")
+                .expect("write through macOS system alias")
+        );
+        assert_eq!(
+            fs::read_to_string(&target).expect("read target"),
+            "migrated\n"
+        );
+
+        let outside = root.path().join("outside");
+        let linked = root.path().join("linked");
+        fs::create_dir(&outside).expect("outside");
+        std::os::unix::fs::symlink(&outside, &linked).expect("nested symlink");
+        let redirected = linked.join("hooks.json");
+        assert!(write_text_if_missing_or_empty_no_symlinks(&redirected, "blocked").is_err());
+        assert!(!outside.join("hooks.json").exists());
     }
 
     fn source_path(relative_path: &str) -> PathBuf {

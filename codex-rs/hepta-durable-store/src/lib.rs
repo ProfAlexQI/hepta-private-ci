@@ -313,6 +313,10 @@ mod platform {
     }
 
     fn open_parent(path: &Path, create: bool) -> Result<(File, CString)> {
+        #[cfg(target_os = "macos")]
+        let normalized_path = normalize_macos_system_root_alias(path);
+        #[cfg(target_os = "macos")]
+        let path = normalized_path.as_path();
         let mut components = path.components().peekable();
         let absolute = matches!(components.peek(), Some(Component::RootDir));
         if absolute {
@@ -358,6 +362,20 @@ mod platform {
         }
         validate_private_directory(&directory)?;
         Ok((directory, name))
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn normalize_macos_system_root_alias(path: &Path) -> std::path::PathBuf {
+        for (alias, canonical) in [
+            ("/etc", "/private/etc"),
+            ("/tmp", "/private/tmp"),
+            ("/var", "/private/var"),
+        ] {
+            if let Ok(remainder) = path.strip_prefix(alias) {
+                return Path::new(canonical).join(remainder);
+            }
+        }
+        path.to_path_buf()
     }
 
     fn open_directory_at(parent_fd: libc::c_int, name: &CString) -> io::Result<File> {
@@ -553,7 +571,7 @@ mod tests {
         let failed = store.update::<()>(|_| anyhow::bail!("crash before publication"));
         assert!(failed.is_err());
         assert_eq!(store.read()?.context("preserved journal")?, before);
-        assert!(store.publish(&vec![0; 65]).is_err());
+        assert!(store.publish(&[0; 65]).is_err());
         Ok(())
     }
 
@@ -576,6 +594,44 @@ mod tests {
         let public_store =
             AuthenticatedJournalStore::new(public.join("journal.json"), 64, "journal")?;
         assert!(public_store.publish(b"denied").is_err());
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_system_root_alias_support_keeps_nested_symlinks_fail_closed() -> Result<()> {
+        assert_eq!(
+            platform::normalize_macos_system_root_alias(Path::new("/var/tmp/journal.json")),
+            PathBuf::from("/private/var/tmp/journal.json")
+        );
+        assert_eq!(
+            platform::normalize_macos_system_root_alias(Path::new("/various/journal.json")),
+            PathBuf::from("/various/journal.json")
+        );
+
+        let root = tempfile::Builder::new()
+            .prefix("hepta-durable-store-")
+            .tempdir_in("/var/tmp")?;
+        fs::set_permissions(
+            root.path(),
+            fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE),
+        )?;
+        let store =
+            AuthenticatedJournalStore::new(root.path().join("journal.json"), 64, "journal")?;
+        store.publish(b"through-system-alias")?;
+        assert_eq!(
+            store.read()?.context("published journal")?,
+            b"through-system-alias"
+        );
+
+        let outside = root.path().join("outside");
+        let linked = root.path().join("linked");
+        fs::create_dir(&outside)?;
+        symlink(&outside, &linked)?;
+        let redirected =
+            AuthenticatedJournalStore::new(linked.join("journal.json"), 64, "journal")?;
+        assert!(redirected.publish(b"denied").is_err());
+        assert!(!outside.join("journal.json").exists());
         Ok(())
     }
 }
