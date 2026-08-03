@@ -131,6 +131,132 @@ def intake_entries(intake: dict[str, Any]) -> list[dict[str, Any]]:
     return entries
 
 
+def verify_complete_range_coverage(
+    record_id: str,
+    intake: dict[str, Any],
+    record: dict[str, Any],
+    entries: list[dict[str, Any]],
+    bindings: list[dict[str, Any]],
+) -> dict[str, int] | None:
+    """Verify an opt-in exhaustive intake against the actual frozen Git range."""
+    contract = intake.get("coverage_contract")
+    if contract is None:
+        return None
+    require(isinstance(contract, dict), f"{record_id} coverage contract must be an object")
+    require(
+        contract.get("schema_version") == "hepta_upstream_codex_complete_range_coverage_v1",
+        f"{record_id} coverage contract schema is unsupported",
+    )
+    for claim in (
+        "every_range_commit_in_inventory",
+        "every_inventory_commit_has_disposition",
+        "absorbed_status_requires_absorption_only",
+        "partial_status_requires_absorption_and_deferral",
+        "deferred_status_requires_deferral_only",
+    ):
+        require(contract.get(claim) is True, f"{record_id} exhaustive coverage claim is not true: {claim}")
+    require(contract.get("allow_unclassified_commit") is False, f"{record_id} permits an unclassified commit")
+    require(contract.get("allow_implicit_deferral") is False, f"{record_id} permits an implicit deferral")
+
+    observation = intake.get("observation")
+    require(isinstance(observation, dict), f"{record_id} observation is missing")
+    start = observation.get("range_start_exclusive")
+    end = observation.get("range_end_inclusive")
+    expected_commits = git("rev-list", "--reverse", f"{start}..{end}").stdout.splitlines()
+    exact_count = contract.get("exact_range_commit_count")
+    require(isinstance(exact_count, int) and exact_count > 0, f"{record_id} exact range count is invalid")
+    require(len(expected_commits) == exact_count, f"{record_id} actual range count drifted")
+    require(observation.get("commit_count") == exact_count, f"{record_id} observation range count drifted")
+    require(git("rev-list", "--merges", "--count", f"{start}..{end}").stdout.strip() == "0", f"{record_id} range contains merge commits")
+    require(observation.get("merge_commit_count") == 0, f"{record_id} observed merge count drifted")
+
+    inventory_commits = [entry.get("upstream_commit") for entry in entries]
+    require(len(inventory_commits) == exact_count, f"{record_id} inventory count drifted")
+    require(len(set(inventory_commits)) == exact_count, f"{record_id} inventory contains duplicate commits")
+    require(set(inventory_commits) == set(expected_commits), f"{record_id} inventory does not equal the complete range")
+    by_commit = {entry["upstream_commit"]: entry for entry in entries}
+    previous = start
+    for commit in expected_commits:
+        entry = by_commit[commit]
+        require(entry.get("parent_commit") == previous, f"{record_id} parent chain drifted at {commit}")
+        require(entry.get("source_imported") is False, f"{record_id} falsely claims source import: {commit}")
+        previous = commit
+
+    expected_range_digest = hashlib.sha256(("\n".join(expected_commits) + "\n").encode()).hexdigest()
+    require(
+        observation.get("range_identity")
+        == {"algorithm": "sha256(git_rev_list_reverse_range_lf)", "digest": expected_range_digest},
+        f"{record_id} range identity drifted",
+    )
+    actual_surface = git("diff", "--name-status", f"{start}..{end}").stdout.splitlines()
+    surface_digest = hashlib.sha256(("\n".join(sorted(actual_surface)) + "\n").encode()).hexdigest()
+    require(observation.get("net_changed_file_count") == len(actual_surface), f"{record_id} net file count drifted")
+    require(
+        observation.get("file_surface_identity")
+        == {"algorithm": "sha256(c_locale_sorted_name_status_lf)", "digest": surface_digest},
+        f"{record_id} file-surface identity drifted",
+    )
+    chronological_inventory = [by_commit[commit] for commit in expected_commits]
+    normalized_inventory = json.dumps(
+        chronological_inventory,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode()
+    require(
+        observation.get("normalized_inventory_identity")
+        == {"algorithm": "sha256(canonical_json_inventory)", "digest": hashlib.sha256(normalized_inventory).hexdigest()},
+        f"{record_id} normalized inventory identity drifted",
+    )
+
+    kinds_by_commit: dict[str, set[str]] = {}
+    for binding in bindings:
+        commit = binding.get("upstream_commit")
+        require(commit in by_commit, f"{record_id} binding is outside the complete range: {commit}")
+        kinds_by_commit.setdefault(commit, set()).add(binding.get("kind"))
+    require(set(kinds_by_commit) == set(expected_commits), f"{record_id} contains an undispositioned range commit")
+    unresolved: set[str] = set()
+    absorption_count = 0
+    deferral_count = 0
+    for commit in expected_commits:
+        status = by_commit[commit].get("status")
+        kinds = kinds_by_commit[commit]
+        if status == "absorbed":
+            require(kinds == {"absorption"}, f"{record_id} absorbed status has non-absorption disposition: {commit}")
+        elif status == "partially_absorbed_with_explicit_deferral":
+            require(kinds == {"absorption", "deferral"}, f"{record_id} partial status lacks paired dispositions: {commit}")
+            unresolved.add(commit)
+        elif status == "deferred":
+            require(kinds == {"deferral"}, f"{record_id} deferred status has non-deferral disposition: {commit}")
+            unresolved.add(commit)
+        else:
+            raise GateError(f"{record_id} inventory status is unsupported: {status}")
+        absorption_count += int("absorption" in kinds)
+        deferral_count += int("deferral" in kinds)
+
+    coverage = record.get("coverage_contract")
+    require(isinstance(coverage, dict), f"{record_id} record coverage contract is missing")
+    expected_coverage = {
+        "range_commit_count": exact_count,
+        "dispositioned_unique_commit_count": exact_count,
+        "absorption_entry_count": absorption_count,
+        "deferral_entry_count": deferral_count,
+        "unresolved_unique_commit_count": len(unresolved),
+        "complete_range_coverage": True,
+    }
+    require(coverage == expected_coverage, f"{record_id} record coverage totals drifted")
+    summary = intake.get("classification_summary")
+    require(isinstance(summary, dict), f"{record_id} classification summary is missing")
+    require(summary.get("unresolved_commit_count") == len(unresolved), f"{record_id} unresolved count drifted")
+    require(summary.get("unresolved_commits") == [commit for commit in expected_commits if commit in unresolved], f"{record_id} unresolved commit set drifted")
+    return {
+        "range_commit_count": exact_count,
+        "absorption_entry_count": absorption_count,
+        "deferral_entry_count": deferral_count,
+        "unresolved_unique_commit_count": len(unresolved),
+    }
+
+
 def meaningful_non_claims(value: Any) -> bool:
     if isinstance(value, list):
         return bool(value) and all(isinstance(item, str) and item.strip() for item in value)
@@ -370,6 +496,11 @@ def verify_semantic(
     ids: set[str] = set()
     absorption_total = 0
     deferral_total = 0
+    complete_range_total = 0
+    latest_complete_range_commit_count = 0
+    latest_unresolved_commit_count = 0
+    pending_source_manifest_bindings = 0
+    previous_range_end: str | None = None
 
     for descriptor in records:
         require(isinstance(descriptor, dict), "registry record descriptor must be an object")
@@ -399,6 +530,26 @@ def verify_semantic(
         source_commit = source_record.get("commit")
         require_commit(source_commit, f"{record_id} source-manifest local commit")
         require(is_ancestor(source_commit, head), f"{record_id} source-manifest commit is unreachable")
+        if "source_manifest_introducing_commit_binding_pending" in source_record:
+            require(
+                source_record.get("commit_role") == "local_semantic_classification_base",
+                f"{record_id} source commit role is invalid",
+            )
+            binding_pending = source_record.get("source_manifest_introducing_commit_binding_pending")
+            require(isinstance(binding_pending, bool), f"{record_id} source manifest binding state is invalid")
+            introducing_commit = source_record.get("source_manifest_introducing_commit")
+            if binding_pending:
+                require(introducing_commit is None, f"{record_id} pending source binding must not name a commit")
+                pending_source_manifest_bindings += 1
+            else:
+                require_commit(introducing_commit, f"{record_id} source-manifest introducing commit")
+                require(is_ancestor(introducing_commit, head), f"{record_id} source-manifest introducing commit is unreachable")
+                introduced = git("show", f"{introducing_commit}:{source.get('path')}", check=False)
+                require(introduced.returncode == 0, f"{record_id} source manifest is absent from its introducing commit")
+                require(
+                    hashlib.sha256(introduced.stdout.encode()).hexdigest() == source.get("sha256"),
+                    f"{record_id} introducing commit source manifest hash drifted",
+                )
 
         observation = intake.get("observation")
         require(isinstance(observation, dict), f"{record_id} intake observation is missing")
@@ -409,6 +560,9 @@ def verify_semantic(
         require(observation.get("observed_upstream_head") == end, f"{record_id} observed head mismatch")
         require_archived_commit(source.get("frozen_ref"), end, f"{record_id} frozen upstream")
         require_commit(start, f"{record_id} upstream range start")
+        if previous_range_end is not None:
+            require(start == previous_range_end, f"{record_id} leaves a gap or overlap after the prior registry record")
+        previous_range_end = end
 
         entries = intake_entries(intake)
         by_commit: dict[str, dict[str, Any]] = {}
@@ -478,6 +632,18 @@ def verify_semantic(
                 require(isinstance(item.get("missing_prerequisites"), list) and bool(item["missing_prerequisites"]), f"{record_id} deferral prerequisites are missing")
                 require(item.get("tests_run") is False, f"{record_id} deferred tests_run must be false")
 
+        complete_coverage = verify_complete_range_coverage(
+            record_id,
+            intake,
+            record,
+            entries,
+            bindings,
+        )
+        if complete_coverage is not None:
+            complete_range_total += 1
+            latest_complete_range_commit_count = complete_coverage["range_commit_count"]
+            latest_unresolved_commit_count = complete_coverage["unresolved_unique_commit_count"]
+
         claims = record.get("claims")
         require(isinstance(claims, dict), f"{record_id} record claims are missing")
         absorbed_claim = claims.get("absorbed_commit_count", 0)
@@ -497,13 +663,25 @@ def verify_semantic(
         absorption_total += len(absorptions)
         deferral_total += len(deferrals)
 
+    require(previous_range_end == expected_head, "latest registry record does not end at the expected upstream head")
+
     claims = registry.get("claims")
     require(isinstance(claims, dict), "registry claims are missing")
     require(claims.get("upstream_fully_consumed") is False, "registry must not claim full consumption")
+    if complete_range_total:
+        require(claims.get("latest_range_exhaustively_dispositioned") is True, "registry lacks latest exhaustive-range claim")
+        require(
+            claims.get("latest_range_has_unresolved_deferrals") is (latest_unresolved_commit_count > 0),
+            "registry unresolved-range claim drifted",
+        )
     return {
         "schema": "hepta_upstream_semantic_absorption_gate_v1", "status": "ready",
         "registry_sha256": digest_file(registry_path), "record_count": len(records),
         "absorption_or_equivalence_count": absorption_total, "deferral_count": deferral_total,
+        "complete_range_record_count": complete_range_total,
+        "latest_complete_range_commit_count": latest_complete_range_commit_count,
+        "latest_unresolved_commit_count": latest_unresolved_commit_count,
+        "pending_source_manifest_introducing_commit_bindings": pending_source_manifest_bindings,
         "source_manifest_hashes_verified": True, "upstream_entries_verified": True,
         "local_commits_reachable": True, "behavioral_evidence_verified": True,
         "scope_and_non_claims_verified": True, "upstream_fully_consumed": False,
@@ -733,6 +911,40 @@ def self_test(registry_path: Path) -> dict[str, Any]:
             fixture_path.write_text(json.dumps(fixture), encoding="utf-8")
             expect_failure(lambda path=fixture_path: verify_semantic(path, enforce_ci_binding=False), label)
 
+        r12_descriptor = next((item for item in registry["records"] if item.get("id") == "r12"), None)
+        if r12_descriptor is not None:
+            r12_intake = load_json(repo_path(r12_descriptor["source_intake"]["path"]))
+            r12_record = load_json(repo_path(r12_descriptor["record"]["path"]))
+            r12_entries = intake_entries(r12_intake)
+            r12_bindings = r12_descriptor["disposition_bindings"]
+            verify_complete_range_coverage("r12", r12_intake, r12_record, r12_entries, r12_bindings)
+
+            missing_inventory = json.loads(json.dumps(r12_entries))
+            missing_inventory.pop()
+            expect_failure(
+                lambda: verify_complete_range_coverage(
+                    "r12-missing-inventory", r12_intake, r12_record, missing_inventory, r12_bindings
+                ),
+                "R12 missing inventory commit",
+            )
+            implicit_deferral = json.loads(json.dumps(r12_bindings))
+            implicit_deferral.pop()
+            expect_failure(
+                lambda: verify_complete_range_coverage(
+                    "r12-implicit-deferral", r12_intake, r12_record, r12_entries, implicit_deferral
+                ),
+                "R12 implicit deferral",
+            )
+            status_drift = json.loads(json.dumps(r12_entries))
+            deferred_entry = next(item for item in status_drift if item.get("status") == "deferred")
+            deferred_entry["status"] = "absorbed"
+            expect_failure(
+                lambda: verify_complete_range_coverage(
+                    "r12-status-drift", r12_intake, r12_record, status_drift, r12_bindings
+                ),
+                "R12 status and disposition drift",
+            )
+
         upstream = registry["upstream"]
         now = int(time.time())
         base = {
@@ -787,8 +999,8 @@ def self_test(registry_path: Path) -> dict[str, Any]:
     return {
         "schema": "hepta_upstream_truth_gate_self_test_v1",
         "status": "ready",
-        "positive_fixtures": 3,
-        "negative_fixtures": 11,
+        "positive_fixtures": 4,
+        "negative_fixtures": 14,
     }
 
 

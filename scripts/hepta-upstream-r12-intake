@@ -1,0 +1,1152 @@
+#!/usr/bin/env python3
+"""Generate the exhaustive R12 upstream intake and semantic disposition record.
+
+The generator is deliberately deterministic.  It reads commit and path identity
+from the frozen upstream range, emits category shards, and records an explicit
+absorption or fail-closed deferral for every commit in the range.  It never
+merges, rebases, cherry-picks, checks out, or mutates an upstream source tree.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parent.parent
+DOCS = ROOT / "docs/architecture"
+SHARD_DIR = DOCS / "upstream-r12"
+INTAKE_REL = "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-03_R12.json"
+RECORD_REL = "docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-03.json"
+R13_INTAKE_REL = "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-03_R13.json"
+R13_RECORD_REL = "docs/architecture/HEPTA_UPSTREAM_CODEX_R13_SEMANTIC_ABSORPTION_RECORD_2026-08-03.json"
+REGISTRY_REL = "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json"
+CONTRACT_REL = ".github/hepta-ci-contract-v1.json"
+
+RANGE_START = "61a44880a85d2fd0d8770908dea5733495e571c8"
+RANGE_END = "5157493c23713ac12034cf250ffb0a8ce0670277"
+FROZEN_REF = "refs/remotes/upstream/hepta-intake-20260803-r12"
+LOCAL_CLASSIFICATION_BASE = "1577a50e37c6332ab267dea9d838dab8b8c07536"
+HISTORICAL_HOSTED_DEFAULT = "9c6715924b4ce273248d03107383defc171a9a58"
+R13_END = "bb5054fe47abe73ecbbd454751066a28c89f4bb9"
+R13_FROZEN_REF = "refs/remotes/upstream/hepta-intake-20260803-r13"
+
+
+def run(*args: str) -> str:
+    return subprocess.run(
+        list(args), cwd=ROOT, check=True, text=True, stdout=subprocess.PIPE
+    ).stdout
+
+
+def git(*args: str) -> str:
+    return run("git", *args)
+
+
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    return sha256_bytes(path.read_bytes())
+
+
+def write_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(value, indent=2, sort_keys=False, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+def is_commit(value: str) -> bool:
+    return git("cat-file", "-t", value).strip() == "commit"
+
+
+CATEGORY_ORDER = (
+    "security_sandbox_network",
+    "mcp_plugins_skills",
+    "protocol_app_server",
+    "code_mode_v8_build",
+    "state_thread_persistence",
+    "execution_tools_agents",
+    "tui_product",
+    "release_telemetry_other",
+)
+
+
+def categories_for(paths: list[str], title: str) -> list[str]:
+    text = "\n".join(paths).lower() + "\n" + title.lower()
+    matches: list[str] = []
+    rules = {
+        "security_sandbox_network": (
+            "sandbox", "network", "permission", "approval", "oauth", "auth_",
+            "/auth", "credential", "symlink", "policy", "windows-sandbox",
+        ),
+        "mcp_plugins_skills": (
+            "/mcp", "mcp-", "core-plugins", "/plugin", "skills", "/ext/",
+            "connector",
+        ),
+        "protocol_app_server": (
+            "app-server", "/protocol", "codex-api", "backend-client",
+            "websocket-client", "realtime",
+        ),
+        "code_mode_v8_build": (
+            "code-mode", "rusty_v8", "third_party/v8", "v8_", "module.bazel",
+            "build.bazel", ".github/workflows", "cargo.lock", "cargo.toml",
+        ),
+        "state_thread_persistence": (
+            "thread-store", "/state/", "/rollout", "external-agent-migration",
+            "/memories", "sqlite", "history", "migration",
+        ),
+        "execution_tools_agents": (
+            "/exec", "/tools", "/agent", "cloud-tasks", "environment",
+            "collaboration", "apply_patch",
+        ),
+        "tui_product": ("codex-rs/tui", "ratatui", "crossterm", "onboarding"),
+        "release_telemetry_other": (
+            "/otel", "/analytics", "/feedback", "/login", "/models-manager",
+            "release", "docs/", "readme", "scripts/",
+        ),
+    }
+    for category in CATEGORY_ORDER:
+        if any(token in text for token in rules[category]):
+            matches.append(category)
+    return matches or ["release_telemetry_other"]
+
+
+def priority_for(category: str, title: str) -> str:
+    lowered = title.lower()
+    if category == "security_sandbox_network" or any(
+        token in lowered for token in ("deny", "permission", "corrupt", "malformed")
+    ):
+        return "P0"
+    if category in {
+        "mcp_plugins_skills",
+        "protocol_app_server",
+        "state_thread_persistence",
+        "execution_tools_agents",
+    }:
+        return "P1"
+    if category == "code_mode_v8_build":
+        return "P1"
+    if category == "tui_product":
+        return "P3"
+    return "P2"
+
+
+def net_stats(commit: str) -> tuple[int, int, int]:
+    insertions = 0
+    deletions = 0
+    binaries = 0
+    for line in git("diff-tree", "--no-commit-id", "--numstat", "-r", commit).splitlines():
+        added, removed, _path = line.split("\t", 2)
+        if added == "-" or removed == "-":
+            binaries += 1
+            continue
+        insertions += int(added)
+        deletions += int(removed)
+    return insertions, deletions, binaries
+
+
+def range_net_stats() -> tuple[int, int, int]:
+    insertions = 0
+    deletions = 0
+    binaries = 0
+    for line in git("diff", "--numstat", f"{RANGE_START}..{RANGE_END}").splitlines():
+        added, removed, _path = line.split("\t", 2)
+        if added == "-" or removed == "-":
+            binaries += 1
+            continue
+        insertions += int(added)
+        deletions += int(removed)
+    return insertions, deletions, binaries
+
+
+Absorption = dict[str, Any]
+
+
+def absorption(
+    local_commit: str,
+    scope: str,
+    semantic_mapping: str,
+    files: list[str],
+    evidence_source: str,
+    *,
+    partial: bool = False,
+) -> Absorption:
+    return {
+        "local_commit": local_commit,
+        "scope": scope,
+        "semantic_mapping": semantic_mapping,
+        "files": files,
+        "evidence_source": evidence_source,
+        "partial": partial,
+    }
+
+
+ABSORPTIONS: dict[str, Absorption] = {
+    "5a3808b77d18668f2ec794e64de094112a2e600b": absorption(
+        "8cf29353533dc094d23dec595225d92c96acf6a8",
+        "explicit_in_process_outbound_router_shutdown",
+        "The in-process app-server explicitly shuts down its outbound router without waiting on retained senders.",
+        ["codex-rs/app-server/src/in_process.rs"],
+        "docs/architecture/HEPTA_G_UPSTREAM_TARGETED_SEMANTIC_INTAKE_2026-07-27.json",
+    ),
+    "9ca6df68dafec86880952949b95354ce19e0599b": absorption(
+        "8cf29353533dc094d23dec595225d92c96acf6a8",
+        "terminal_turn_error_history_replay",
+        "Terminal turn errors remain represented in projected and replayed history.",
+        ["codex-rs/app-server-protocol/src/protocol/thread_history.rs"],
+        "docs/architecture/HEPTA_G_UPSTREAM_TARGETED_SEMANTIC_INTAKE_2026-07-27.json",
+    ),
+    "3bbf1fe75701c97fb190e0867002ba2d9dbda5db": absorption(
+        "8cf29353533dc094d23dec595225d92c96acf6a8",
+        "cached_mcp_tools_visible_before_startup_with_live_call_wait",
+        "Cached MCP catalog entries are visible before startup while live calls still await the client startup boundary.",
+        ["codex-rs/codex-mcp/src/connection_manager_tests.rs"],
+        "docs/architecture/HEPTA_G_UPSTREAM_TARGETED_SEMANTIC_INTAKE_2026-07-27.json",
+    ),
+    "fbe65995bbcd4da249cfdafe0300ac3cb2cb3b3c": absorption(
+        "e73689c0269b9bb1ee0587a5d65c1c19fdb19610",
+        "model_owned_token_budget_protocol_and_config_substrate",
+        "Model-owned token budget defaults round-trip through the protocol and config substrate with explicit configuration precedence.",
+        ["codex-rs/protocol/src/openai_models.rs", "codex-rs/core/src/config/mod.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+        partial=True,
+    ),
+    "fea2d8b18f5fade817d0d3a9cf4f278b6210ab01": absorption(
+        "cc1e6cea1c9c0f3644a7245166c7d2da128d605f",
+        "exec_resume_restored_token_usage_replay_suppression",
+        "Exec resume does not replay restored token usage into the resumed accounting path.",
+        ["codex-rs/exec/src/lib.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "0affaf2acb888304f91cadb2c497313e95b715b8": absorption(
+        "cc1e6cea1c9c0f3644a7245166c7d2da128d605f",
+        "opentelemetry_provider_idempotent_shutdown",
+        "OpenTelemetry provider shutdown is idempotent and covered by dedicated shutdown regressions.",
+        ["codex-rs/otel/src/provider.rs", "codex-rs/otel/src/provider_shutdown_tests.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "e8f0f64f2057740ca18d66dbeebe077156d7a2a9": absorption(
+        "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+        "thread_metadata_survives_missing_rollout_files",
+        "Thread metadata remains available from state-backed records when rollout files are absent.",
+        ["codex-rs/rollout/src/state_db.rs", "codex-rs/rollout/src/recorder_tests.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "462ed19a05917b1ec88a015b2cf6342cfe8f7c85": absorption(
+        "d60aa228dfe6730b7e16ae0746fea6b9a3a33821",
+        "remote_network_policy_controller_fail_closed_scope_boundary",
+        "Remote execution obtains an execution-scoped fail-closed network policy controller with cancellation and timeout denial semantics.",
+        ["codex-rs/network-proxy/src/proxy.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+        partial=True,
+    ),
+    "9f82ffed1b2fb63370055dad3f2ad63564eeebbf": absorption(
+        "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+        "multi_agent_worker_developer_instruction_inheritance_regression",
+        "The multi-agent control regression preserves developer instruction inheritance for workers.",
+        ["codex-rs/core/src/agent/control_tests.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "2f19a57704fb7b1db032bc38cf995034254eaebb": absorption(
+        "89df4da4c88c718f663bc06719ad2541b8d6435a",
+        "multi_agent_settings_cross_representation_preservation",
+        "Multi-agent settings survive config merge, override, fingerprint, edit, and app-server representations.",
+        ["codex-rs/config/src/merge.rs", "codex-rs/config/src/merge_tests.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "294d813263de08061cb303e7b601d7ea6a5e72e8": absorption(
+        "9df482fe49edbbd3ee9928c08b4e796a8fcfb6ef",
+        "curated_plugin_catalog_authentication_routing",
+        "Curated plugin catalogs are routed by authentication mode across CLI, app-server, loader, and manager surfaces.",
+        ["codex-rs/core-plugins/src/manager.rs", "codex-rs/core-plugins/src/manager_tests.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "bbeee9a40686975a1bfb5e8a4b6d98dccbb43dab": absorption(
+        "608edf206ddc68b697cc4343075aa1fb905b4354",
+        "concurrent_mcp_and_plugin_recommendation_preparation",
+        "MCP preparation and plugin recommendations execute concurrently without weakening the turn tool boundary.",
+        ["codex-rs/core/src/session/turn.rs", "codex-rs/core/src/session/turn_tests.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "4d1f66bf8199713e4a77ad55458bc6e3dcbef5c5": absorption(
+        "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+        "paginated_thread_metadata_resume_preservation",
+        "Paginated thread metadata is preserved across resume and listing paths.",
+        ["codex-rs/thread-store/src/live_thread.rs", "codex-rs/thread-store/src/thread_metadata_sync.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "8d6a91b1ff926bb6006aff94ef4f9e628863cc09": absorption(
+        "9a6cc34d44e3dcdba066382ada2fec6bb63e8878",
+        "thread_history_item_lifecycle_timestamps",
+        "Thread history projections preserve typed item lifecycle timestamps.",
+        ["codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs", "codex-rs/core/src/turn_timing.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "63682c4e1ad8b4341b93a5e68c666f521806eb98": absorption(
+        "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+        "empty_preview_thread_relationship_listing",
+        "State-backed relationship listings retain threads whose previews are empty.",
+        ["codex-rs/state/src/runtime/threads.rs"],
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json",
+    ),
+    "2494d939cfb33f95cbce61ac7283193861960577": absorption(
+        "105851c47c089f98be2b94cd7369530a55dba64c",
+        "route_aware_streaming_http_request_bodies",
+        "Route-aware HTTP requests support streaming bodies without bypassing the configured transport policy.",
+        ["codex-rs/codex-api/src/files.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "899539c03ac46301c8e860bc0096854f57625b82": absorption(
+        "105851c47c089f98be2b94cd7369530a55dba64c",
+        "route_aware_openai_file_upload_clients",
+        "OpenAI file upload stages reuse route-aware clients and the selected environment filesystem.",
+        ["codex-rs/codex-api/src/files.rs", "codex-rs/core/src/mcp_openai_file.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "84ccb2938bfeee481e9481244f073d27d3c672cf": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "concurrent_mcp_tool_catalog_resolution",
+        "MCP tool catalogs resolve concurrently with a bounded connection-manager ownership boundary.",
+        ["codex-rs/codex-mcp/src/connection_manager.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "cf7e9cfe6a196d14a34a4a2e10265143df336781": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "business_prolite_account_plan_identity",
+        "Business ProLite account identity is represented without broadening provider or release authority.",
+        ["codex-rs/protocol/src/account.rs", "codex-rs/protocol/src/auth.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "paginated_thread_history_requires_state_database",
+        "Paginated thread history fails closed unless backed by the state database.",
+        ["codex-rs/thread-store/src/local/mod.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "9ea975a2dc88d039512313da3e332013e8bd911e": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "mcp_oauth_configured_http_client_routing",
+        "MCP OAuth discovery and exchange use the configured HTTP client route.",
+        ["codex-rs/rmcp-client/src/oauth_http_client.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "709283b432fb5231c9bca720c239b25046968aa2": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "all_mcp_oauth_requests_share_configured_http_client",
+        "Every MCP OAuth request path shares the configured HTTP client rather than direct egress.",
+        ["codex-rs/rmcp-client/src/oauth_http_client.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "1def0a8925cd9df462cbd7cec355458198015473": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "nested_agent_parent_turn_identity_chain",
+        "Nested requests preserve parent-turn identity through protocol and turn metadata.",
+        ["codex-rs/protocol/src/protocol.rs", "codex-rs/core/src/turn_metadata.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "c550cb3e01c921e8d7cd02768a187298ad22ddee": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "cancelled_mcp_elicitation_cleanup",
+        "Cancelled MCP elicitation requests are removed from the pending authority set.",
+        ["codex-rs/codex-mcp/src/elicitation.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "12b961d4c545f4871efba3a9fd4ea1c1f747eaf4": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "plugin_summary_plan_eligibility_metadata",
+        "App-server plugin summaries expose typed plan eligibility metadata.",
+        ["codex-rs/app-server-protocol/src/protocol/v2/plugin.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "03edf16f0bce2c454fc9a8ddb382e9c23c114f7f": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "plaintext_collaboration_message_provenance",
+        "Collaboration messages preserve plaintext versus encrypted provenance and redact plaintext logs.",
+        ["codex-rs/core/src/context/inter_agent_message.rs", "codex-rs/protocol/src/models.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "28f3f1f9ef4e9578a5f023f6b6eba018914a5342": absorption(
+        "670df418387eba8f9cad1292ef80dd6a9bffff45",
+        "plugin_installation_timestamp_summary",
+        "Plugin summaries retain installation timestamps through app-server protocol projection.",
+        ["codex-rs/app-server-protocol/src/protocol/v2/plugin.rs"],
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json",
+    ),
+    "ddf33ea802f787f800e2a3691cc6e7379e6bb695": absorption(
+        "aa4e3edbfd67a608406a67b6bfb1529b0f00dfc4",
+        "bounded_model_facing_mcp_namespace_descriptions",
+        "MCP namespace and tool-search source descriptions are UTF-8-safe and bounded before model exposure.",
+        ["codex-rs/core/src/tools/handlers/mcp.rs", "codex-rs/core/src/tools/handlers/tool_search_spec.rs"],
+        "docs/architecture/HEPTA_L4_UPSTREAM_SELECTIVE_INTAKE_2026-07-29.json",
+    ),
+    "3834c47ccb91adeef82e7d95f7ecdec5cde6dda8": absorption(
+        "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+        "network_allow_amendment_persistence_failure_denies",
+        "A failed network allow amendment denies the request and never caches the host.",
+        ["codex-rs/core/src/tools/network_approval.rs"],
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json",
+    ),
+    "3e3ae088398b4a4ad0833c84f5b1dcaaf5cdabe3": absorption(
+        "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+        "bounded_mcp_catalog_pagination",
+        "MCP catalog traversal enforces page, item, cursor, repeated-cursor, and overall timeout budgets.",
+        ["codex-rs/hepta-mcp-pagination/src/lib.rs"],
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json",
+    ),
+    "7ec480dda5792b8d54286c72f3e36bbdb267d0c3": absorption(
+        "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+        "unknown_mcp_authentication_status",
+        "OAuth discovery failures project as Unknown rather than falsely Unsupported.",
+        ["codex-rs/rmcp-client/src/auth_status.rs"],
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json",
+    ),
+    "b1ccaa0e080f59cfd71a136f6fcc60a4f2d60fba": absorption(
+        "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+        "migration_target_symlink_non_traversal",
+        "Migration target probes use symlink metadata and do not traverse existing or dangling links.",
+        ["codex-rs/external-agent-migration/src/lib.rs"],
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json",
+    ),
+    "406dc9239492aff6d295cca5eebe2a548548d42f": absorption(
+        "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+        "mcp_read_only_hint_untrusted_advisory",
+        "MCP readOnlyHint is retained in history only as an untrusted advisory and never lowers approval.",
+        ["codex-rs/app-server-protocol/src/protocol/v2/mcp.rs", "codex-rs/core/src/mcp_tool_call.rs"],
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json",
+    ),
+    "bf4d3f51ea70ce70ab7fabce7a66f328fef49e57": absorption(
+        "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+        "hosted_mcp_credentials_restricted_to_local_environments",
+        "Host application credentials are never injected into executor-owned MCP environments.",
+        ["codex-rs/rmcp-client/src/oauth.rs"],
+        "docs/architecture/HEPTA_UPSTREAM_ENVIRONMENT_ISOLATION_P1_INTAKE_V1.json",
+    ),
+    "164b3bfeabdbc8e33c7320437e7cd875f93a534e": absorption(
+        "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+        "mcp_oauth_credentials_isolated_by_environment",
+        "MCP OAuth credential names and fallback stores are scoped by execution environment.",
+        ["codex-rs/config/src/mcp_types.rs", "codex-rs/rmcp-client/src/oauth.rs"],
+        "docs/architecture/HEPTA_UPSTREAM_ENVIRONMENT_ISOLATION_P1_INTAKE_V1.json",
+    ),
+    "ef293f7ac9d756f793f3e952a790f9bec16a6eeb": absorption(
+        "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+        "legacy_shell_command_single_local_environment",
+        "The legacy shell_command is exposed only for exactly one local environment and cannot be reclaimed by dynamic tools.",
+        ["codex-rs/core/src/tools/spec_plan.rs", "codex-rs/core/src/tools/spec_plan_tests.rs"],
+        "docs/architecture/HEPTA_UPSTREAM_ENVIRONMENT_ISOLATION_P1_INTAKE_V1.json",
+    ),
+    "003ec63bba93cf994246799f795a6a4f6d67743a": absorption(
+        "e36ed1c5a73ed71931bcca7b9d09745b10b2bb8e",
+        "redundant_filesystem_probe_elision",
+        "Environment, search, path, and TUI startup paths avoid redundant filesystem probes.",
+        ["codex-rs/exec-server/src/environment_toml.rs", "codex-rs/file-search/src/lib.rs"],
+        "local semantic transplant with same upstream subject and bounded file surface",
+    ),
+    "64b2a3008e8760040dd511e983641341df73d875": absorption(
+        "406681f9d0a6cab8f306d437ec225d881113aa1e",
+        "experimental_remote_plugin_search_api_declaration",
+        "The app-server declares a default-off experimental plugin/search API with typed bounded parameters.",
+        ["codex-rs/app-server-protocol/src/protocol/v2/plugin_search.rs"],
+        "local governed remote-search protocol and regression suite",
+    ),
+    "a850875a8eb603d18cb14cb2c5e80c930de9bd48": absorption(
+        "406681f9d0a6cab8f306d437ec225d881113aa1e",
+        "governed_read_only_remote_plugin_search",
+        "Remote plugin search is read-only, bounded, default-off, authenticated, and routed through governed egress without install or activation authority.",
+        ["codex-rs/core-plugins/src/remote/search.rs", "codex-rs/app-server/src/request_processors/plugins/search.rs"],
+        "local governed remote-search tests and app-server protocol fixtures",
+    ),
+    "e2c0837923ca29b54facdb567326db42a0aefd1b": absorption(
+        "f057687313f7f4a53fc1f0a1ec72a3ba6fe27362",
+        "explicit_user_input_blocking_behavior",
+        "User-input requests carry explicit blocking behavior through protocol, core, client, app-server, and TUI projections.",
+        ["codex-rs/app-server-protocol/src/protocol/v2/item.rs", "codex-rs/protocol/src/request_user_input.rs"],
+        "local protocol and focused user-input regression suite",
+    ),
+    "ee0247f95a6fe2b094ba2253d82cae2a2b4c2dff": absorption(
+        "883af1439fd33d37a137530b4084429d3dbfb581",
+        "fail_closed_exec_server_request_dispatcher",
+        "Exec-server request dispatch is isolated behind a bounded fail-closed dispatcher with process regressions.",
+        ["codex-rs/exec-server/src/server/request_dispatcher.rs", "codex-rs/exec-server/src/server/request_dispatcher_tests.rs"],
+        "local dispatcher unit and process regression suite",
+    ),
+    "feee0b07c7564455e253312e62e6dba69dc861d3": absorption(
+        "2f68c75bafd916bb30d482f0f845441f2ecac262",
+        "bounded_larger_remote_plugin_bundles",
+        "Remote plugin bundle byte limits are raised only within the existing bounded decoder and authority path.",
+        ["codex-rs/core-plugins/src/remote_bundle.rs"],
+        "local remote bundle bound regression",
+    ),
+    "582569998181aad08a88bacc151a94b2048a5d1f": absorption(
+        "02c695c03a0ae87e1a68c33a6be3fcc89dac4ef6",
+        "mcp_catalog_item_limit_2048",
+        "The shared MCP pagination boundary permits at most 2,048 catalog items and still fails closed above the limit.",
+        ["codex-rs/hepta-mcp-pagination/src/lib.rs"],
+        "local exact-limit and over-limit pagination regressions",
+    ),
+    "2b5bdcf67547860f2e5c5a605009a70026796b2b": absorption(
+        "93d980ea542d53fa7c257aa635d2ae1d7d622919",
+        "portable_agent_plugin_installation_and_generation_publication",
+        "Portable Agent Plugin installs preserve safe versions, reject unsafe paths and linked manifests, and publish active generations atomically.",
+        ["codex-rs/core-plugins/src/store.rs", "codex-rs/core-plugins/src/store_tests.rs"],
+        "local portable installation, path-safety, version, and generation regressions",
+    ),
+}
+
+
+PARTIAL_DEFERRALS: dict[str, dict[str, Any]] = {
+    "fbe65995bbcd4da249cfdafe0300ac3cb2cb3b3c": {
+        "scope": "model_owned_token_budget_runtime_rollover_and_activation",
+        "reason": "The protocol and config substrate is absorbed, but runtime context rollover remains unimported and the feature remains default-disabled.",
+        "missing_prerequisites": [
+            "runtime context rollover parity",
+            "activation and downgrade evidence",
+            "goal-task budget separation under live compaction",
+        ],
+    },
+    "462ed19a05917b1ec88a015b2cf6342cfe8f7c85": {
+        "scope": "bidirectional_remote_exec_network_policy_transport",
+        "reason": "The controller-side fail-closed scope is absorbed, but the remote bidirectional protocol, process cancellation pairing, and terminal decision receipt transport are not.",
+        "missing_prerequisites": [
+            "bidirectional exec-server callback protocol",
+            "process cancellation and timeout pairing",
+            "terminal remote policy decision receipts",
+        ],
+    },
+}
+
+
+DEFAULT_DEFERRALS: dict[str, tuple[str, list[str]]] = {
+    "security_sandbox_network": (
+        "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+        ["authority mapping", "negative security fixtures", "cross-platform fail-closed evidence"],
+    ),
+    "mcp_plugins_skills": (
+        "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+        ["host/executor ownership mapping", "bounded catalog evidence", "activation non-bypass tests"],
+    ),
+    "protocol_app_server": (
+        "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+        ["typed protocol projection", "schema compatibility fixtures", "caller and replay evidence"],
+    ),
+    "code_mode_v8_build": (
+        "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+        ["cross-platform build contract", "toolchain and artifact binding", "terminal hosted evidence"],
+    ),
+    "state_thread_persistence": (
+        "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+        ["single-writer ownership", "migration and replay parity", "corruption and recovery fixtures"],
+    ),
+    "execution_tools_agents": (
+        "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+        ["execution identity mapping", "permission and cancellation parity", "terminal receipt evidence"],
+    ),
+    "tui_product": (
+        "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+        ["Hepta UI ownership decision", "native product behavior mapping", "visual and interaction regressions"],
+    ),
+    "release_telemetry_other": (
+        "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+        ["bounded semantic mapping", "local regression evidence", "release non-claim review"],
+    ),
+}
+
+
+def special_deferral(commit: str, category: str) -> dict[str, Any] | None:
+    if commit == "97576b1794872e342450ebd577123e052ab57626":
+        return {
+            "scope": "standalone_code_mode_host_and_v8_runtime_separation",
+            "reason": (
+                "This is the actual in-range structural fix that removes V8 from the codex-code-mode "
+                "crate by moving it to a standalone host/runtime.  Hepta still embeds V8 directly in "
+                "codex-code-mode and has no code-mode-host, code-mode-protocol, or code-mode-runtime "
+                "crates.  A three-way applicability audit found missing files plus conflicts across "
+                "Cargo, core, features, config, install-context, and the local code-mode API; claiming "
+                "absorption would be false.  This remains the preferred closure for the Windows "
+                "allocator_shim/UCRT collision rather than linker exclusions or test filtering."
+            ),
+            "missing_prerequisites": [
+                "versioned standalone host protocol preserving nested tool identity",
+                "move the current Hepta V8 runtime behind a separate host without changing permission authority",
+                "immutable install-context host discovery and packaged binary digest binding",
+                "code-mode-only and disabled-fallback fail-closed parity",
+                "Windows MSVC proof that code-mode-unit-tests no longer link V8 plus terminal host/runtime evidence",
+            ],
+            "priority_override": "P0",
+            "non_claim": "No allocator symbol exclusion, CRT heap mixing, test skip, or disabled code-mode claim is accepted as semantic absorption.",
+        }
+    return None
+
+
+def build_inventory() -> list[dict[str, Any]]:
+    commits = git("rev-list", "--reverse", f"{RANGE_START}..{RANGE_END}").splitlines()
+    if len(commits) != 206:
+        raise SystemExit(f"R12 range count drifted: expected 206, found {len(commits)}")
+    inventory: list[dict[str, Any]] = []
+    previous = RANGE_START
+    for commit in commits:
+        parents = git("show", "-s", "--format=%P", commit).strip().split()
+        if parents != [previous]:
+            raise SystemExit(f"R12 history is not a single-parent linear chain at {commit}: {parents}")
+        paths = git("diff-tree", "--no-commit-id", "--name-only", "-r", "-M", commit).splitlines()
+        title = git("show", "-s", "--format=%s", commit).rstrip("\n")
+        touched = categories_for(paths, title)
+        primary = touched[0]
+        special = special_deferral(commit, primary)
+        status = "deferred"
+        if commit in ABSORPTIONS:
+            status = "partially_absorbed_with_explicit_deferral" if ABSORPTIONS[commit]["partial"] else "absorbed"
+        insertions, deletions, binary_files = net_stats(commit)
+        entry: dict[str, Any] = {
+            "upstream_commit": commit,
+            "parent_commit": previous,
+            "authored_at": git("show", "-s", "--format=%aI", commit).strip(),
+            "title": title,
+            "primary_category": primary,
+            "touched_categories": touched,
+            "hepta_v2_priority": special.get("priority_override") if special else priority_for(primary, title),
+            "status": status,
+            "changed_file_count": len(paths),
+            "insertions": insertions,
+            "deletions": deletions,
+            "binary_file_touch_count": binary_files,
+            "changed_files": paths,
+            "source_imported": False,
+            "merge_performed": False,
+            "rebase_performed": False,
+            "cherry_pick_performed": False,
+        }
+        if commit in ABSORPTIONS:
+            entry["absorption_scope"] = ABSORPTIONS[commit]["scope"]
+        if status != "absorbed":
+            detail = PARTIAL_DEFERRALS.get(commit) or special
+            if detail:
+                entry["deferral_scope"] = detail["scope"]
+                entry["deferral_reason"] = detail["reason"]
+                entry["missing_prerequisites"] = detail["missing_prerequisites"]
+            else:
+                reason, prerequisites = DEFAULT_DEFERRALS[primary]
+                entry["deferral_scope"] = f"r12_{primary}_{commit[:12]}"
+                entry["deferral_reason"] = reason
+                entry["missing_prerequisites"] = prerequisites
+        inventory.append(entry)
+        previous = commit
+    if previous != RANGE_END:
+        raise SystemExit("R12 range does not end at the frozen upstream head")
+    return inventory
+
+
+def generate() -> None:
+    for commit in (
+        RANGE_START,
+        RANGE_END,
+        R13_END,
+        LOCAL_CLASSIFICATION_BASE,
+        HISTORICAL_HOSTED_DEFAULT,
+    ):
+        if not is_commit(commit):
+            raise SystemExit(f"required commit object is unavailable: {commit}")
+    frozen = git("rev-parse", "--verify", FROZEN_REF).strip()
+    if frozen != RANGE_END:
+        raise SystemExit(f"R12 frozen ref mismatch: expected {RANGE_END}, found {frozen}")
+    r13_frozen = git("rev-parse", "--verify", R13_FROZEN_REF).strip()
+    if r13_frozen != R13_END:
+        raise SystemExit(f"R13 frozen ref mismatch: expected {R13_END}, found {r13_frozen}")
+
+    inventory = build_inventory()
+    by_category: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for entry in inventory:
+        by_category[entry["primary_category"]].append(entry)
+
+    shard_descriptors: list[dict[str, Any]] = []
+    for category in CATEGORY_ORDER:
+        entries = by_category.get(category, [])
+        if not entries:
+            continue
+        shard_rel = f"docs/architecture/upstream-r12/HEPTA_UPSTREAM_CODEX_R12_INVENTORY_{category.upper()}_2026-08-03.json"
+        shard_path = ROOT / shard_rel
+        write_json(
+            shard_path,
+            {
+                "schema_version": "hepta_upstream_codex_r12_inventory_shard_v1",
+                "category": category,
+                "range_start_exclusive": RANGE_START,
+                "range_end_inclusive": RANGE_END,
+                "commit_count": len(entries),
+                "commit_inventory": entries,
+            },
+        )
+        shard_descriptors.append(
+            {"category": category, "path": shard_rel, "sha256": sha256_file(shard_path), "commit_count": len(entries)}
+        )
+
+    range_lines = ("\n".join(entry["upstream_commit"] for entry in inventory) + "\n").encode()
+    range_digest = sha256_bytes(range_lines)
+    file_surface = git("diff", "--name-status", f"{RANGE_START}..{RANGE_END}").splitlines()
+    sorted_surface = ("\n".join(sorted(file_surface)) + "\n").encode()
+    normalized_inventory = json.dumps(inventory, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    net_insertions, net_deletions, net_binary_files = range_net_stats()
+    status_counts = Counter(entry["status"] for entry in inventory)
+    category_counts = Counter(entry["primary_category"] for entry in inventory)
+    priority_counts = Counter(entry["hepta_v2_priority"] for entry in inventory)
+    unresolved = [entry["upstream_commit"] for entry in inventory if entry["status"] != "absorbed"]
+
+    intake = {
+        "schema_version": "hepta_upstream_codex_current_intake_v12",
+        "intake_id": "upstream-codex-intake-2026-08-03-r12",
+        "predecessor_intake": {
+            "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-26_R11.json",
+            "sha256": sha256_file(ROOT / "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-26_R11.json"),
+            "cutoff_head": RANGE_START,
+            "preserved": True,
+            "modified_by_r12": False,
+        },
+        "observation": {
+            "state": "observed_classified_and_exhaustively_dispositioned",
+            "observed_at": "2026-08-03T00:00:00Z",
+            "upstream_repository": "https://github.com/openai/codex.git",
+            "target_branch": "main",
+            "target_ref": "refs/remotes/upstream/main",
+            "observed_upstream_head": RANGE_END,
+            "range_start_exclusive": RANGE_START,
+            "range_end_inclusive": RANGE_END,
+            "commit_count": len(inventory),
+            "merge_commit_count": 0,
+            "net_changed_file_count": len(file_surface),
+            "net_insertions": net_insertions,
+            "net_deletions": net_deletions,
+            "net_binary_file_count": net_binary_files,
+            "commit_file_touches": sum(entry["changed_file_count"] for entry in inventory),
+            "predecessor_relationship": "linear_ancestor",
+            "ordinary_merge_allowed": False,
+            "ordinary_rebase_allowed": False,
+            "direct_cherry_pick_default": False,
+            "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+            "fetch_command": f"git fetch --no-tags upstream {RANGE_END}:{FROZEN_REF}",
+            "range_identity": {"algorithm": "sha256(git_rev_list_reverse_range_lf)", "digest": range_digest},
+            "file_surface_identity": {"algorithm": "sha256(c_locale_sorted_name_status_lf)", "digest": sha256_bytes(sorted_surface)},
+            "normalized_inventory_identity": {"algorithm": "sha256(canonical_json_inventory)", "digest": sha256_bytes(normalized_inventory)},
+        },
+        "storage_layout": {
+            "inventory_shards": shard_descriptors,
+            "shard_commit_count": sum(shard["commit_count"] for shard in shard_descriptors),
+        },
+        "classification_summary": {
+            "commit_count": len(inventory),
+            "status_counts": dict(sorted(status_counts.items())),
+            "priority_counts": dict(sorted(priority_counts.items())),
+            "category_counts": {category: category_counts.get(category, 0) for category in CATEGORY_ORDER},
+            "absorbed_commit_count": sum(entry["status"] == "absorbed" for entry in inventory),
+            "partially_absorbed_commit_count": sum(entry["status"].startswith("partially_") for entry in inventory),
+            "deferred_only_commit_count": sum(entry["status"] == "deferred" for entry in inventory),
+            "unresolved_commit_count": len(unresolved),
+            "unresolved_commits": unresolved,
+        },
+        "coverage_contract": {
+            "schema_version": "hepta_upstream_codex_complete_range_coverage_v1",
+            "every_range_commit_in_inventory": True,
+            "every_inventory_commit_has_disposition": True,
+            "absorbed_status_requires_absorption_only": True,
+            "partial_status_requires_absorption_and_deferral": True,
+            "deferred_status_requires_deferral_only": True,
+            "exact_range_commit_count": 206,
+            "allow_unclassified_commit": False,
+            "allow_implicit_deferral": False,
+        },
+        "range_exclusions": [
+            {
+                "commit": HISTORICAL_HOSTED_DEFAULT,
+                "relationship": "ancestor_of_r12_range_start",
+                "title": git("show", "-s", "--format=%s", HISTORICAL_HOSTED_DEFAULT).strip(),
+                "counted_in_r12": False,
+                "semantic_note": "This historical commit made hosted mode the default but did not remove V8 from codex-code-mode; the in-range structural split is 97576b1794872e342450ebd577123e052ab57626.",
+            }
+        ],
+        "claims": {
+            "upstream_fully_consumed": False,
+            "source_imported_at_observation": False,
+            "merge_performed": False,
+            "rebase_performed": False,
+            "cherry_pick_performed": False,
+            "deployment_performed": False,
+            "live_enablement_performed": False,
+        },
+    }
+    intake_path = ROOT / INTAKE_REL
+    write_json(intake_path, intake)
+
+    absorptions: list[dict[str, Any]] = []
+    deferrals: list[dict[str, Any]] = []
+    by_commit = {entry["upstream_commit"]: entry for entry in inventory}
+    for commit in (entry["upstream_commit"] for entry in inventory):
+        entry = by_commit[commit]
+        if commit in ABSORPTIONS:
+            spec = ABSORPTIONS[commit]
+            absorptions.append(
+                {
+                    "upstream_commit": commit,
+                    "upstream_title": entry["title"],
+                    "disposition": "semantic_transplant",
+                    "scope": spec["scope"],
+                    "hepta_commit": spec["local_commit"],
+                    "semantic_mapping": spec["semantic_mapping"],
+                    "core_files": spec["files"],
+                    "regression_coverage": [spec["evidence_source"]],
+                    "non_claims": [
+                        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+                    ],
+                }
+            )
+        if entry["status"] != "absorbed":
+            detail = PARTIAL_DEFERRALS.get(commit) or special_deferral(commit, entry["primary_category"])
+            if detail:
+                scope = detail["scope"]
+                reason = detail["reason"]
+                prerequisites = detail["missing_prerequisites"]
+                non_claim = detail.get("non_claim", "No local behavior is claimed equivalent for this deferred scope.")
+            else:
+                reason, prerequisites = DEFAULT_DEFERRALS[entry["primary_category"]]
+                scope = entry["deferral_scope"]
+                non_claim = "No local behavior is claimed equivalent for this deferred scope."
+            deferrals.append(
+                {
+                    "upstream_commit": commit,
+                    "upstream_title": entry["title"],
+                    "disposition": f"deferred_{scope}",
+                    "scope": scope,
+                    "reason": reason,
+                    "missing_prerequisites": prerequisites,
+                    "tests_run": False,
+                    "hepta_commit": None,
+                    "non_claims": [non_claim],
+                }
+            )
+
+    record = {
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+        "record_id": "r12",
+        "source_intake": {
+            "path": INTAKE_REL,
+            "manifest_sha256": sha256_file(intake_path),
+            "commit": LOCAL_CLASSIFICATION_BASE,
+            "commit_role": "local_semantic_classification_base",
+            "source_manifest_introducing_commit": None,
+            "source_manifest_introducing_commit_binding_pending": True,
+            "range_start_exclusive": RANGE_START,
+            "range_end_inclusive": RANGE_END,
+            "ordinary_merge_performed": False,
+            "ordinary_rebase_performed": False,
+            "cherry_pick_performed": False,
+        },
+        "coverage_contract": {
+            "range_commit_count": len(inventory),
+            "dispositioned_unique_commit_count": len({item["upstream_commit"] for item in absorptions + deferrals}),
+            "absorption_entry_count": len(absorptions),
+            "deferral_entry_count": len(deferrals),
+            "unresolved_unique_commit_count": len({item["upstream_commit"] for item in deferrals}),
+            "complete_range_coverage": True,
+        },
+        "absorptions": absorptions,
+        "deferrals": deferrals,
+        "claims": {
+            "absorbed_commit_count": len(absorptions),
+            "existing_semantic_equivalent_count": 0,
+            "deferred_commit_count": len(deferrals),
+            "upstream_fully_consumed": False,
+            "merge_performed": False,
+            "rebase_performed": False,
+            "cherry_pick_performed": False,
+            "live_enablement": False,
+            "deployment": False,
+            "publication": False,
+        },
+    }
+    record_path = ROOT / RECORD_REL
+    write_json(record_path, record)
+
+    r13_commit = R13_END
+    r13_title = git("show", "-s", "--format=%s", r13_commit).strip()
+    r13_paths = git("diff-tree", "--no-commit-id", "--name-only", "-r", "-M", r13_commit).splitlines()
+    r13_insertions, r13_deletions, r13_binary_files = net_stats(r13_commit)
+    r13_entry = {
+        "upstream_commit": r13_commit,
+        "parent_commit": RANGE_END,
+        "authored_at": git("show", "-s", "--format=%aI", r13_commit).strip(),
+        "title": r13_title,
+        "primary_category": "state_thread_persistence",
+        "touched_categories": categories_for(r13_paths, r13_title),
+        "hepta_v2_priority": "P1",
+        "status": "deferred",
+        "changed_file_count": len(r13_paths),
+        "insertions": r13_insertions,
+        "deletions": r13_deletions,
+        "binary_file_touch_count": r13_binary_files,
+        "changed_files": r13_paths,
+        "deferral_scope": "provider_rollout_budget_units_private_usage_propagation",
+        "deferral_reason": (
+            "The provider-only rollout budget unit must be parsed from Responses SSE usage and "
+            "propagated through TokenUsage, session, goal, memory, state, and app-server consumers "
+            "while remaining absent from serialized protocol, JSON Schema, and TypeScript.  The "
+            "R12 classification base has no such field or end-to-end regression, so equivalence is "
+            "not claimed."
+        ),
+        "missing_prerequisites": [
+            "private non-serialized TokenUsage field with serde, schemars, and TypeScript exclusion",
+            "Responses SSE unit and end-to-end fractional-number parsing evidence",
+            "all local TokenUsage constructors and accounting consumers updated without exposing provider metadata",
+        ],
+        "source_imported": False,
+        "merge_performed": False,
+        "rebase_performed": False,
+        "cherry_pick_performed": False,
+    }
+    r13_range_digest = sha256_bytes((r13_commit + "\n").encode())
+    r13_surface = git("diff", "--name-status", f"{RANGE_END}..{R13_END}").splitlines()
+    r13_surface_digest = sha256_bytes(("\n".join(sorted(r13_surface)) + "\n").encode())
+    r13_inventory_digest = sha256_bytes(
+        json.dumps([r13_entry], sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    )
+    r13_intake = {
+        "schema_version": "hepta_upstream_codex_current_intake_v13",
+        "intake_id": "upstream-codex-intake-2026-08-03-r13",
+        "predecessor_intake": {
+            "path": INTAKE_REL,
+            "sha256": sha256_file(intake_path),
+            "cutoff_head": RANGE_END,
+            "preserved": True,
+            "modified_by_r13": False,
+        },
+        "observation": {
+            "state": "observed_classified_and_exhaustively_dispositioned",
+            "observed_at": "2026-08-03T00:30:00Z",
+            "upstream_repository": "https://github.com/openai/codex.git",
+            "target_branch": "main",
+            "target_ref": "refs/remotes/upstream/main",
+            "observed_upstream_head": R13_END,
+            "range_start_exclusive": RANGE_END,
+            "range_end_inclusive": R13_END,
+            "commit_count": 1,
+            "merge_commit_count": 0,
+            "net_changed_file_count": len(r13_surface),
+            "net_insertions": r13_insertions,
+            "net_deletions": r13_deletions,
+            "net_binary_file_count": r13_binary_files,
+            "commit_file_touches": len(r13_paths),
+            "predecessor_relationship": "linear_ancestor",
+            "ordinary_merge_allowed": False,
+            "ordinary_rebase_allowed": False,
+            "direct_cherry_pick_default": False,
+            "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+            "fetch_command": f"git fetch --no-tags upstream {R13_END}:{R13_FROZEN_REF}",
+            "range_identity": {"algorithm": "sha256(git_rev_list_reverse_range_lf)", "digest": r13_range_digest},
+            "file_surface_identity": {"algorithm": "sha256(c_locale_sorted_name_status_lf)", "digest": r13_surface_digest},
+            "normalized_inventory_identity": {"algorithm": "sha256(canonical_json_inventory)", "digest": r13_inventory_digest},
+        },
+        "commit_inventory": [r13_entry],
+        "classification_summary": {
+            "commit_count": 1,
+            "status_counts": {"deferred": 1},
+            "priority_counts": {"P1": 1},
+            "category_counts": {"state_thread_persistence": 1},
+            "absorbed_commit_count": 0,
+            "partially_absorbed_commit_count": 0,
+            "deferred_only_commit_count": 1,
+            "unresolved_commit_count": 1,
+            "unresolved_commits": [R13_END],
+        },
+        "coverage_contract": {
+            "schema_version": "hepta_upstream_codex_complete_range_coverage_v1",
+            "every_range_commit_in_inventory": True,
+            "every_inventory_commit_has_disposition": True,
+            "absorbed_status_requires_absorption_only": True,
+            "partial_status_requires_absorption_and_deferral": True,
+            "deferred_status_requires_deferral_only": True,
+            "exact_range_commit_count": 1,
+            "allow_unclassified_commit": False,
+            "allow_implicit_deferral": False,
+        },
+        "claims": {
+            "upstream_fully_consumed": False,
+            "source_imported_at_observation": False,
+            "merge_performed": False,
+            "rebase_performed": False,
+            "cherry_pick_performed": False,
+            "deployment_performed": False,
+            "live_enablement_performed": False,
+        },
+    }
+    r13_intake_path = ROOT / R13_INTAKE_REL
+    write_json(r13_intake_path, r13_intake)
+    r13_deferral = {
+        "upstream_commit": R13_END,
+        "upstream_title": r13_title,
+        "disposition": "deferred_provider_rollout_budget_units_private_usage_propagation",
+        "scope": "provider_rollout_budget_units_private_usage_propagation",
+        "reason": r13_entry["deferral_reason"],
+        "missing_prerequisites": r13_entry["missing_prerequisites"],
+        "tests_run": False,
+        "hepta_commit": None,
+        "non_claims": [
+            "Existing token counts do not imply capture, propagation, or privacy parity for provider-only rollout budget units."
+        ],
+    }
+    r13_record = {
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+        "record_id": "r13",
+        "source_intake": {
+            "path": R13_INTAKE_REL,
+            "manifest_sha256": sha256_file(r13_intake_path),
+            "commit": LOCAL_CLASSIFICATION_BASE,
+            "commit_role": "local_semantic_classification_base",
+            "source_manifest_introducing_commit": None,
+            "source_manifest_introducing_commit_binding_pending": True,
+            "range_start_exclusive": RANGE_END,
+            "range_end_inclusive": R13_END,
+            "ordinary_merge_performed": False,
+            "ordinary_rebase_performed": False,
+            "cherry_pick_performed": False,
+        },
+        "coverage_contract": {
+            "range_commit_count": 1,
+            "dispositioned_unique_commit_count": 1,
+            "absorption_entry_count": 0,
+            "deferral_entry_count": 1,
+            "unresolved_unique_commit_count": 1,
+            "complete_range_coverage": True,
+        },
+        "absorptions": [],
+        "deferrals": [r13_deferral],
+        "claims": {
+            "absorbed_commit_count": 0,
+            "existing_semantic_equivalent_count": 0,
+            "deferred_commit_count": 1,
+            "upstream_fully_consumed": False,
+            "merge_performed": False,
+            "rebase_performed": False,
+            "cherry_pick_performed": False,
+            "live_enablement": False,
+            "deployment": False,
+            "publication": False,
+        },
+    }
+    r13_record_path = ROOT / R13_RECORD_REL
+    write_json(r13_record_path, r13_record)
+
+    registry_path = ROOT / REGISTRY_REL
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["records"] = [item for item in registry["records"] if item.get("id") not in {"r12", "r13"}]
+    bindings: list[dict[str, Any]] = []
+    for item in absorptions:
+        bindings.append(
+            {
+                "kind": "absorption",
+                "upstream_commit": item["upstream_commit"],
+                "local_commit": item["hepta_commit"],
+                "scope": item["scope"],
+                "non_claims": item["non_claims"],
+            }
+        )
+    for item in deferrals:
+        bindings.append(
+            {
+                "kind": "deferral",
+                "upstream_commit": item["upstream_commit"],
+                "scope": item["scope"],
+                "non_claims": item["non_claims"],
+            }
+        )
+    registry["records"].append(
+        {
+            "id": "r12",
+            "source_intake": {
+                "path": INTAKE_REL,
+                "sha256": sha256_file(intake_path),
+                "range_start_exclusive": RANGE_START,
+                "range_end_inclusive": RANGE_END,
+                "frozen_ref": FROZEN_REF,
+            },
+            "record": {
+                "path": RECORD_REL,
+                "sha256": sha256_file(record_path),
+                "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+            },
+            "disposition_bindings": bindings,
+        }
+    )
+    registry["records"].append(
+        {
+            "id": "r13",
+            "source_intake": {
+                "path": R13_INTAKE_REL,
+                "sha256": sha256_file(r13_intake_path),
+                "range_start_exclusive": RANGE_END,
+                "range_end_inclusive": R13_END,
+                "frozen_ref": R13_FROZEN_REF,
+            },
+            "record": {
+                "path": R13_RECORD_REL,
+                "sha256": sha256_file(r13_record_path),
+                "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+            },
+            "disposition_bindings": [
+                {
+                    "kind": "deferral",
+                    "upstream_commit": R13_END,
+                    "scope": r13_deferral["scope"],
+                    "non_claims": r13_deferral["non_claims"],
+                }
+            ],
+        }
+    )
+    registry["upstream"]["frozen_ref"] = R13_FROZEN_REF
+    registry["upstream"]["expected_head"] = R13_END
+    registry["claims"]["upstream_fully_consumed"] = False
+    registry["claims"]["latest_range_exhaustively_dispositioned"] = True
+    registry["claims"]["latest_range_has_unresolved_deferrals"] = True
+    write_json(registry_path, registry)
+
+    contract_path = ROOT / CONTRACT_REL
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    refs = [
+        item
+        for item in contract["upstream_intake"]["refs"]
+        if item.get("role") not in {"current_r12", "current_r13"}
+    ]
+    refs.append({"role": "current_r12", "ref": FROZEN_REF, "sha": RANGE_END})
+    refs.append({"role": "current_r13", "ref": R13_FROZEN_REF, "sha": R13_END})
+    contract["upstream_intake"]["refs"] = refs
+    contract["upstream_truth"]["registry_sha256"] = sha256_file(registry_path)
+    write_json(contract_path, contract)
+
+    print(
+        json.dumps(
+            {
+                "schema": "hepta_upstream_r12_r13_generation_v1",
+                "status": "ready_with_explicit_deferrals",
+                "range_commit_count": len(inventory),
+                "absorption_entry_count": len(absorptions),
+                "deferral_entry_count": len(deferrals),
+                "unresolved_unique_commit_count": len({item["upstream_commit"] for item in deferrals}),
+                "r13_range_commit_count": 1,
+                "r13_deferral_entry_count": 1,
+                "registry_sha256": sha256_file(registry_path),
+                "merge_performed": False,
+                "rebase_performed": False,
+                "cherry_pick_performed": False,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+
+
+if __name__ == "__main__":
+    generate()

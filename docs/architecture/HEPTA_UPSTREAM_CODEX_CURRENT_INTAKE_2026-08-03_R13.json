@@ -1,0 +1,137 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v13",
+  "intake_id": "upstream-codex-intake-2026-08-03-r13",
+  "predecessor_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-03_R12.json",
+    "sha256": "4ad248be4094747ebc02ceb22dc7e096ff6d04173222b216dc52a904d165e376",
+    "cutoff_head": "5157493c23713ac12034cf250ffb0a8ce0670277",
+    "preserved": true,
+    "modified_by_r13": false
+  },
+  "observation": {
+    "state": "observed_classified_and_exhaustively_dispositioned",
+    "observed_at": "2026-08-03T00:30:00Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "bb5054fe47abe73ecbbd454751066a28c89f4bb9",
+    "range_start_exclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+    "range_end_inclusive": "bb5054fe47abe73ecbbd454751066a28c89f4bb9",
+    "commit_count": 1,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 18,
+    "net_insertions": 63,
+    "net_deletions": 3,
+    "net_binary_file_count": 0,
+    "commit_file_touches": 18,
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags upstream bb5054fe47abe73ecbbd454751066a28c89f4bb9:refs/remotes/upstream/hepta-intake-20260803-r13",
+    "range_identity": {
+      "algorithm": "sha256(git_rev_list_reverse_range_lf)",
+      "digest": "32d9549937153c29275fc12f353caae3d203470c763d931c9c0fcb353a570850"
+    },
+    "file_surface_identity": {
+      "algorithm": "sha256(c_locale_sorted_name_status_lf)",
+      "digest": "a6f287e3fff7ca4d09f35c8cf7b14e14871abc380a378633b9dcbe97d352298d"
+    },
+    "normalized_inventory_identity": {
+      "algorithm": "sha256(canonical_json_inventory)",
+      "digest": "25d37560915bc382a22ed2ab8ca5335c19fd188b8ab86edab7ce2acffcd81488"
+    }
+  },
+  "commit_inventory": [
+    {
+      "upstream_commit": "bb5054fe47abe73ecbbd454751066a28c89f4bb9",
+      "parent_commit": "5157493c23713ac12034cf250ffb0a8ce0670277",
+      "authored_at": "2026-08-03T00:25:52Z",
+      "title": "Capture rollout budget units from response usage (#36641)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "mcp_plugins_skills",
+        "protocol_app_server",
+        "state_thread_persistence",
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 18,
+      "insertions": 63,
+      "deletions": 3,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/analytics/src/analytics_client_tests.rs",
+        "codex-rs/app-server/src/bespoke_event_handling.rs",
+        "codex-rs/app-server/tests/common/rollout.rs",
+        "codex-rs/app-server/tests/suite/v2/thread_resume.rs",
+        "codex-rs/codex-api/src/sse/responses.rs",
+        "codex-rs/codex-api/tests/sse_end_to_end.rs",
+        "codex-rs/core/src/compact_remote_v2.rs",
+        "codex-rs/core/src/guardian/metrics.rs",
+        "codex-rs/core/src/guardian/review_session.rs",
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/tasks/mod.rs",
+        "codex-rs/ext/goal/src/accounting.rs",
+        "codex-rs/ext/goal/tests/accounting.rs",
+        "codex-rs/ext/goal/tests/goal_extension_backend.rs",
+        "codex-rs/memories/write/src/phase1.rs",
+        "codex-rs/protocol/src/protocol.rs",
+        "codex-rs/state/src/runtime/threads.rs"
+      ],
+      "deferral_scope": "provider_rollout_budget_units_private_usage_propagation",
+      "deferral_reason": "The provider-only rollout budget unit must be parsed from Responses SSE usage and propagated through TokenUsage, session, goal, memory, state, and app-server consumers while remaining absent from serialized protocol, JSON Schema, and TypeScript.  The R12 classification base has no such field or end-to-end regression, so equivalence is not claimed.",
+      "missing_prerequisites": [
+        "private non-serialized TokenUsage field with serde, schemars, and TypeScript exclusion",
+        "Responses SSE unit and end-to-end fractional-number parsing evidence",
+        "all local TokenUsage constructors and accounting consumers updated without exposing provider metadata"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false
+    }
+  ],
+  "classification_summary": {
+    "commit_count": 1,
+    "status_counts": {
+      "deferred": 1
+    },
+    "priority_counts": {
+      "P1": 1
+    },
+    "category_counts": {
+      "state_thread_persistence": 1
+    },
+    "absorbed_commit_count": 0,
+    "partially_absorbed_commit_count": 0,
+    "deferred_only_commit_count": 1,
+    "unresolved_commit_count": 1,
+    "unresolved_commits": [
+      "bb5054fe47abe73ecbbd454751066a28c89f4bb9"
+    ]
+  },
+  "coverage_contract": {
+    "schema_version": "hepta_upstream_codex_complete_range_coverage_v1",
+    "every_range_commit_in_inventory": true,
+    "every_inventory_commit_has_disposition": true,
+    "absorbed_status_requires_absorption_only": true,
+    "partial_status_requires_absorption_and_deferral": true,
+    "deferred_status_requires_deferral_only": true,
+    "exact_range_commit_count": 1,
+    "allow_unclassified_commit": false,
+    "allow_implicit_deferral": false
+  },
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}

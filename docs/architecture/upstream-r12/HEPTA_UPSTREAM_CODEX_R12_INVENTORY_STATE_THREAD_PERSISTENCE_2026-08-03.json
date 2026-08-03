@@ -1,0 +1,496 @@
+{
+  "schema_version": "hepta_upstream_codex_r12_inventory_shard_v1",
+  "category": "state_thread_persistence",
+  "range_start_exclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+  "range_end_inclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+  "commit_count": 14,
+  "commit_inventory": [
+    {
+      "upstream_commit": "e8f0f64f2057740ca18d66dbeebe077156d7a2a9",
+      "parent_commit": "0affaf2acb888304f91cadb2c497313e95b715b8",
+      "authored_at": "2026-07-27T16:49:34Z",
+      "title": "Preserve thread metadata when rollout files are missing (#35644)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "absorbed",
+      "changed_file_count": 2,
+      "insertions": 115,
+      "deletions": 55,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/rollout/src/recorder_tests.rs",
+        "codex-rs/rollout/src/state_db.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "thread_metadata_survives_missing_rollout_files"
+    },
+    {
+      "upstream_commit": "63682c4e1ad8b4341b93a5e68c666f521806eb98",
+      "parent_commit": "8d6a91b1ff926bb6006aff94ef4f9e628863cc09",
+      "authored_at": "2026-07-28T00:19:48Z",
+      "title": "Include empty-preview threads in relationship listings (#35691)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "absorbed",
+      "changed_file_count": 1,
+      "insertions": 33,
+      "deletions": 2,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/state/src/runtime/threads.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "empty_preview_thread_relationship_listing"
+    },
+    {
+      "upstream_commit": "fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5",
+      "parent_commit": "cf7e9cfe6a196d14a34a4a2e10265143df336781",
+      "authored_at": "2026-07-28T15:55:13Z",
+      "title": "Gate paginated thread history on the state database (#35787)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "absorbed",
+      "changed_file_count": 6,
+      "insertions": 168,
+      "deletions": 29,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/thread-store/src/local/delete_thread.rs",
+        "codex-rs/thread-store/src/local/mod.rs",
+        "codex-rs/thread-store/src/local/paginated_fork.rs",
+        "codex-rs/thread-store/src/local/thread_history.rs",
+        "codex-rs/thread-store/src/local/thread_history_materialization.rs",
+        "codex-rs/thread-store/src/local/thread_history_materialization_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "paginated_thread_history_requires_state_database"
+    },
+    {
+      "upstream_commit": "1e3c0042eb6613ef3843c45562c5618b1eced071",
+      "parent_commit": "1ae2b9880e8af5d465161a58f24a127aaa4b0040",
+      "authored_at": "2026-07-29T16:17:42Z",
+      "title": "Display title-only reasoning summaries in the TUI (#35989)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence",
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 25,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/history_cell/messages.rs",
+        "codex-rs/tui/src/history_cell/tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_1e3c0042eb66",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "f9b18d04ba78266b1e802ae2f85ff5ebea1e973a",
+      "parent_commit": "1da9f846b30f0a6185c0452d39edd4e0fd55fe1c",
+      "authored_at": "2026-07-29T16:34:20Z",
+      "title": "Group external agent config migration into a module (#35992)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence",
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 18,
+      "insertions": 2631,
+      "deletions": 2629,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/app/app_server_events.rs",
+        "codex-rs/tui/src/app/event_dispatch.rs",
+        "codex-rs/tui/src/external_agent_config_migration/flow.rs",
+        "codex-rs/tui/src/external_agent_config_migration/flow_tests.rs",
+        "codex-rs/tui/src/external_agent_config_migration/mod.rs",
+        "codex-rs/tui/src/external_agent_config_migration/model.rs",
+        "codex-rs/tui/src/external_agent_config_migration/snapshots/codex_tui__external_agent_config_migration__flow__tests__external_agent_config_migration_messages.snap",
+        "codex-rs/tui/src/external_agent_config_migration/snapshots/codex_tui__external_agent_config_migration__source__tests__external_agent_config_source_prompt.snap",
+        "codex-rs/tui/src/external_agent_config_migration/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_customize.snap",
+        "codex-rs/tui/src/external_agent_config_migration/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_customize_action.snap",
+        "codex-rs/tui/src/external_agent_config_migration/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_customize_action_windows.snap",
+        "codex-rs/tui/src/external_agent_config_migration/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_customize_windows.snap",
+        "codex-rs/tui/src/external_agent_config_migration/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_prompt.snap",
+        "codex-rs/tui/src/external_agent_config_migration/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_prompt_windows.snap",
+        "codex-rs/tui/src/external_agent_config_migration/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_secondary_source_customize.snap",
+        "codex-rs/tui/src/external_agent_config_migration/source.rs",
+        "codex-rs/tui/src/external_agent_config_migration/source_tests.rs",
+        "codex-rs/tui/src/lib.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_f9b18d04ba78",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "88ec932e96e4d18c5701664e726b1c8b18454af1",
+      "parent_commit": "7d5253d2b07d48ae7e7bf15c535473b2d2024385",
+      "authored_at": "2026-07-30T04:49:28Z",
+      "title": "Handle fractional rate limits in thread history projection (#36083)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 148,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/thread-store/src/local/thread_history_materialization.rs",
+        "codex-rs/thread-store/src/local/thread_history_materialization_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_88ec932e96e4",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "4f6d06d48581cad8cab7987ee3909c7d9bbd3c82",
+      "parent_commit": "89a0eed93c9b74073ac3c8bdf449fb981b9b3408",
+      "authored_at": "2026-07-30T10:05:29Z",
+      "title": "Preserve delegated tasks across remote compaction (#36128)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence",
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 8,
+      "insertions": 180,
+      "deletions": 23,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/agent/control/spawn.rs",
+        "codex-rs/core/src/agent/control_tests.rs",
+        "codex-rs/core/src/compact.rs",
+        "codex-rs/core/src/compact_remote_v2.rs",
+        "codex-rs/core/src/compact_tests.rs",
+        "codex-rs/core/src/context_manager/history.rs",
+        "codex-rs/core/src/context_manager/history_tests.rs",
+        "codex-rs/core/tests/suite/compact_remote.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_4f6d06d48581",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "5ad367fb95ed3aec95ac4a0357ae7d074b5ca3e9",
+      "parent_commit": "9588f660be876e3d3cab52d7fce80f0cb61d0d70",
+      "authored_at": "2026-07-30T11:48:09Z",
+      "title": "Wait for memory consolidation shutdown before finishing jobs (#36140)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 3,
+      "insertions": 41,
+      "deletions": 38,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/memories/write/src/phase2.rs",
+        "codex-rs/memories/write/src/runtime.rs",
+        "codex-rs/memories/write/src/startup_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_5ad367fb95ed",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "ceb4bc72c41e333bbafee14aa992e49ba2e953ed",
+      "parent_commit": "355d2a802aaad0d5d003b7bba49f25a05bd1db5a",
+      "authored_at": "2026-07-30T16:11:10Z",
+      "title": "Record attempted tool calls in response metadata (#36181)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence",
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 16,
+      "insertions": 570,
+      "deletions": 0,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/config.schema.json",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/src/state/mod.rs",
+        "codex-rs/core/src/state/service.rs",
+        "codex-rs/core/src/tools/code_mode/execute_handler.rs",
+        "codex-rs/core/src/tools/code_mode/wait_handler.rs",
+        "codex-rs/core/src/tools/executed_tool_calls.rs",
+        "codex-rs/core/src/tools/executed_tool_calls_tests.rs",
+        "codex-rs/core/src/tools/mod.rs",
+        "codex-rs/core/src/tools/parallel.rs",
+        "codex-rs/core/tests/suite/code_mode.rs",
+        "codex-rs/core/tests/suite/hooks_mcp.rs",
+        "codex-rs/core/tests/suite/tools.rs",
+        "codex-rs/features/src/lib.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_ceb4bc72c41e",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "6256a7ccc7948231befc33d7d61b369041e6eb16",
+      "parent_commit": "9eeac78b3f0c510ed9c53d329d466cf18e1af8af",
+      "authored_at": "2026-07-30T16:43:56Z",
+      "title": "Make thread history projection resilient to malformed rollouts (#36188)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P0",
+      "status": "deferred",
+      "changed_file_count": 3,
+      "insertions": 463,
+      "deletions": 106,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/thread-store/src/local/thread_history.rs",
+        "codex-rs/thread-store/src/local/thread_history_materialization.rs",
+        "codex-rs/thread-store/src/local/thread_history_materialization_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_6256a7ccc794",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "745603a5a1eb48b6f343633d622eeb72dd549d7b",
+      "parent_commit": "e6cfd40c3f444aadd6017c9eeab01db70f48961a",
+      "authored_at": "2026-07-30T20:53:48Z",
+      "title": "Ignore passthrough metadata when reconciling rollout items (#36221)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 188,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/rollout-trace/src/reducer/conversation/normalize.rs",
+        "codex-rs/rollout-trace/src/reducer/conversation_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_745603a5a1eb",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "35eab50501746159d89fafd8cf1f048b00cf5174",
+      "parent_commit": "2c005abb0765bfe3ef42a23fe88d5b806184fa83",
+      "authored_at": "2026-07-31T15:59:04Z",
+      "title": "Pass sessions directly to session tasks (#36354)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 8,
+      "insertions": 36,
+      "deletions": 106,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/src/state/turn.rs",
+        "codex-rs/core/src/tasks/compact.rs",
+        "codex-rs/core/src/tasks/mod.rs",
+        "codex-rs/core/src/tasks/regular.rs",
+        "codex-rs/core/src/tasks/review.rs",
+        "codex-rs/core/src/tasks/user_shell.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_35eab5050174",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "332eac4b858a40575a55f21026ecf8cb662e539c",
+      "parent_commit": "c42ea41ee0b836539a2a5d24f3faff96cc48db40",
+      "authored_at": "2026-07-31T20:05:42Z",
+      "title": "Load turn summaries with paginated queries (#36384)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 225,
+      "deletions": 49,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/thread-store/src/local/thread_history/read.rs",
+        "codex-rs/thread-store/src/local/thread_history/segment_paging.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_332eac4b858a",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    },
+    {
+      "upstream_commit": "7dc1856685d58374e46ee61eb63f084bcbaddc52",
+      "parent_commit": "ee0247f95a6fe2b094ba2253d82cae2a2b4c2dff",
+      "authored_at": "2026-08-01T14:27:07Z",
+      "title": "Avoid querying terminal size on every TUI redraw (#36482)",
+      "primary_category": "state_thread_persistence",
+      "touched_categories": [
+        "state_thread_persistence",
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 21,
+      "insertions": 398,
+      "deletions": 97,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/app.rs",
+        "codex-rs/tui/src/app/event_dispatch.rs",
+        "codex-rs/tui/src/app/input.rs",
+        "codex-rs/tui/src/app/resize_reflow.rs",
+        "codex-rs/tui/src/app/tests.rs",
+        "codex-rs/tui/src/app_backtrack.rs",
+        "codex-rs/tui/src/custom_terminal.rs",
+        "codex-rs/tui/src/cwd_prompt.rs",
+        "codex-rs/tui/src/external_agent_config_migration/mod.rs",
+        "codex-rs/tui/src/external_agent_config_migration/source.rs",
+        "codex-rs/tui/src/model_migration.rs",
+        "codex-rs/tui/src/onboarding/onboarding_screen.rs",
+        "codex-rs/tui/src/pager_overlay.rs",
+        "codex-rs/tui/src/resume_picker.rs",
+        "codex-rs/tui/src/startup_hooks_review.rs",
+        "codex-rs/tui/src/tui.rs",
+        "codex-rs/tui/src/tui/event_stream.rs",
+        "codex-rs/tui/src/tui/job_control.rs",
+        "codex-rs/tui/src/tui/screen_size.rs",
+        "codex-rs/tui/src/tui/screen_size_tests.rs",
+        "codex-rs/tui/src/update_prompt.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_state_thread_persistence_7dc1856685d5",
+      "deferral_reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ]
+    }
+  ]
+}

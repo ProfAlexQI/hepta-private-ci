@@ -1,0 +1,703 @@
+{
+  "schema_version": "hepta_upstream_codex_r12_inventory_shard_v1",
+  "category": "release_telemetry_other",
+  "range_start_exclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+  "range_end_inclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+  "commit_count": 23,
+  "commit_inventory": [
+    {
+      "upstream_commit": "18f50c9e628af083a52d9240de09fc2db24d79ce",
+      "parent_commit": "0896bf6fc05ead454888b90044e1a08f99b6d778",
+      "authored_at": "2026-07-26T23:30:37Z",
+      "title": "Track model and personality in world state (#35530)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 13,
+      "insertions": 421,
+      "deletions": 148,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/context-fragments/src/fragment.rs",
+        "codex-rs/core/src/context/model_switch_instructions.rs",
+        "codex-rs/core/src/context/personality_spec_instructions.rs",
+        "codex-rs/core/src/context/world_state/mod.rs",
+        "codex-rs/core/src/context/world_state/model.rs",
+        "codex-rs/core/src/context/world_state/model_tests.rs",
+        "codex-rs/core/src/context/world_state/personality.rs",
+        "codex-rs/core/src/context/world_state/personality_tests.rs",
+        "codex-rs/core/src/context_manager/updates.rs",
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/session/world_state.rs",
+        "codex-rs/core/tests/suite/model_switching.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_18f50c9e628a",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "0affaf2acb888304f91cadb2c497313e95b715b8",
+      "parent_commit": "bd2de422aa287b97b06ca6425a10935bcf1b3731",
+      "authored_at": "2026-07-27T16:29:21Z",
+      "title": "Make OpenTelemetry provider shutdown idempotent (#35642)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "absorbed",
+      "changed_file_count": 2,
+      "insertions": 99,
+      "deletions": 11,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/otel/src/provider.rs",
+        "codex-rs/otel/src/provider_shutdown_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "opentelemetry_provider_idempotent_shutdown"
+    },
+    {
+      "upstream_commit": "c21c8a5e215bc7b9215fc727cfe17f60ab170333",
+      "parent_commit": "b672b3c409324ac3ae53982734f0ee555c27202e",
+      "authored_at": "2026-07-27T19:52:26Z",
+      "title": "Fix the async watcher test harness on Windows (#35665)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 2,
+      "deletions": 0,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/unified_exec/async_watcher_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_c21c8a5e215b",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "bbeee9a40686975a1bfb5e8a4b6d98dccbb43dab",
+      "parent_commit": "294d813263de08061cb303e7b601d7ea6a5e72e8",
+      "authored_at": "2026-07-27T21:38:38Z",
+      "title": "Prepare MCP and plugin recommendations concurrently (#35675)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "absorbed",
+      "changed_file_count": 3,
+      "insertions": 281,
+      "deletions": 30,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/tests/suite/request_plugin_install.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "concurrent_mcp_and_plugin_recommendation_preparation"
+    },
+    {
+      "upstream_commit": "2494d939cfb33f95cbce61ac7283193861960577",
+      "parent_commit": "49025589b0216b876b1a6a20977536c7d55cdb8b",
+      "authored_at": "2026-07-28T04:16:49Z",
+      "title": "Support streaming bodies in route-aware HTTP requests (#35715)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "absorbed",
+      "changed_file_count": 2,
+      "insertions": 76,
+      "deletions": 0,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/http-client/src/route_aware_client_pool.rs",
+        "codex-rs/http-client/src/route_aware_client_pool_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "route_aware_streaming_http_request_bodies"
+    },
+    {
+      "upstream_commit": "9291a123fb96ca7d11eae27bcdecec06dcbe0d14",
+      "parent_commit": "61de0d8fe812137cec943d58309b26df1dd227b5",
+      "authored_at": "2026-07-28T05:13:06Z",
+      "title": "Honor disabled code mode fallback without a process host (#35721)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 47,
+      "deletions": 0,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/thread_manager.rs",
+        "codex-rs/core/tests/suite/code_mode.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_9291a123fb96",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "7cde2323f3712999e9ab98b16287e08b7735d52f",
+      "parent_commit": "f6160ca5b3da580616883e9039f0e76ad359d515",
+      "authored_at": "2026-07-28T13:26:08Z",
+      "title": "Throttle models cache TTL renewals (#35772)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 119,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/tests/suite/models_cache_ttl.rs",
+        "codex-rs/models-manager/src/cache.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_7cde2323f371",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "84ccb2938bfeee481e9481244f073d27d3c672cf",
+      "parent_commit": "03748ad5e18a3c9c1f0828561dcf1f3f0d7b2f77",
+      "authored_at": "2026-07-28T14:08:13Z",
+      "title": "Resolve MCP tool catalogs concurrently (#35777)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "absorbed",
+      "changed_file_count": 2,
+      "insertions": 246,
+      "deletions": 43,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs",
+        "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "concurrent_mcp_tool_catalog_resolution"
+    },
+    {
+      "upstream_commit": "bb1af235ea2822d7a40f75ef52e4d6a2cde84da2",
+      "parent_commit": "84ccb2938bfeee481e9481244f073d27d3c672cf",
+      "authored_at": "2026-07-28T14:29:15Z",
+      "title": "Load thread titles concurrently during session startup (#35779)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 8,
+      "deletions": 8,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/session/session.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_bb1af235ea28",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "c550cb3e01c921e8d7cd02768a187298ad22ddee",
+      "parent_commit": "1def0a8925cd9df462cbd7cec355458198015473",
+      "authored_at": "2026-07-28T22:12:09Z",
+      "title": "Clean up cancelled MCP elicitation requests (#35836)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "absorbed",
+      "changed_file_count": 2,
+      "insertions": 121,
+      "deletions": 9,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/codex-mcp/src/connection_manager_tests.rs",
+        "codex-rs/codex-mcp/src/elicitation.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "cancelled_mcp_elicitation_cleanup"
+    },
+    {
+      "upstream_commit": "8707a35113501a9988f06162ca5c2b27d4f90a58",
+      "parent_commit": "101d6b8cb214ecc04d45c3bcd2ca380116d07193",
+      "authored_at": "2026-07-29T00:01:19Z",
+      "title": "Normalize Windows namespace paths in path URIs (#35851)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 3,
+      "insertions": 88,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/utils/absolute-path/src/lib.rs",
+        "codex-rs/utils/path-uri/src/lib.rs",
+        "codex-rs/utils/path-uri/src/tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_8707a3511350",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "b9b7c21821025b0c3835e2ff703eba25e29bde4d",
+      "parent_commit": "fcd2273de7d1dc593a9696c935502851ca954d8a",
+      "authored_at": "2026-07-29T00:55:22Z",
+      "title": "Add Bazel unit test targets for Rust binaries (#35857)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 41,
+      "deletions": 0,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "defs.bzl"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_b9b7c2182102",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "85c082ccccf6b5ac4d6c31d14f960057348b78f4",
+      "parent_commit": "09cf6092183325916892b2e34dac37e6614a7c4b",
+      "authored_at": "2026-07-29T18:48:00Z",
+      "title": "Share optional MCP startup grace across connection sets (#36011)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 3,
+      "insertions": 142,
+      "deletions": 6,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs",
+        "codex-rs/codex-mcp/src/connection_manager_tests.rs",
+        "codex-rs/codex-mcp/src/tool_catalog_cache.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_85c082ccccf6",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "649341715044a16db66623505742d5bd51cf436a",
+      "parent_commit": "3e3ae088398b4a4ad0833c84f5b1dcaaf5cdabe3",
+      "authored_at": "2026-07-29T22:56:36Z",
+      "title": "Document the Responses API proxy reqwest exception (#36043)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 3,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/deny.toml"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_649341715044",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "7b93b3bf9c04fea878f6132be229ed34ebc19e82",
+      "parent_commit": "410c22b30e71265cb5a0cfe69f5e80391393b946",
+      "authored_at": "2026-07-29T23:52:58Z",
+      "title": "Keep tool-call metrics out of Statsig exports (#36049)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 4,
+      "insertions": 75,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/otel/src/metrics/client.rs",
+        "codex-rs/otel/src/metrics/config.rs",
+        "codex-rs/otel/src/provider.rs",
+        "codex-rs/otel/tests/suite/otlp_http_loopback.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_7b93b3bf9c04",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "9588f660be876e3d3cab52d7fce80f0cb61d0d70",
+      "parent_commit": "aa064463458adbef10400c74174107fc4b3550f0",
+      "authored_at": "2026-07-30T11:36:21Z",
+      "title": "Bound the code mode output termination test (#36139)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 12,
+      "deletions": 12,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/tests/suite/code_mode.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_9588f660be87",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "13ddc7aa5743ad37b003b8c2891805a2d2028fff",
+      "parent_commit": "856bf5a33af84317b99ff5e3b8abfe4fcc5465e7",
+      "authored_at": "2026-07-30T14:11:02Z",
+      "title": "Harden the auto-review model override test (#36167)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 30,
+      "deletions": 12,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/tests/suite/auto_review.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_13ddc7aa5743",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "578c1b2230288104041e880a86d0f7f3a5ca6e47",
+      "parent_commit": "b445967cc0c3082376fc4c95c8101358213ccd7a",
+      "authored_at": "2026-07-30T14:26:24Z",
+      "title": "Test workspace-root patch protection for metadata (#36171)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 91,
+      "deletions": 0,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/tests/suite/workspace_roots.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_578c1b223028",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "53d06e24ea318a963812030fa8fed1bd0fc42d42",
+      "parent_commit": "4642370542739d5dd080b0c87a9de06a6435d3db",
+      "authored_at": "2026-07-31T04:15:56Z",
+      "title": "Prefer the bundled resource for the code mode host (#36264)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 102,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/install-context/src/lib.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_53d06e24ea31",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "385fe95ce18caa9cbaae4a5a0036f73fff26c40b",
+      "parent_commit": "d97cb0dcad1df443462ade6c32b57e1c64a8a068",
+      "authored_at": "2026-07-31T16:20:20Z",
+      "title": "Use MCP bindings as the step tool catalog (#36360)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 5,
+      "insertions": 11,
+      "deletions": 19,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/step_context.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/src/session/world_state.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_385fe95ce18c",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "bf7804c25418a71f3dacf43c3a13d8778f1757e4",
+      "parent_commit": "332eac4b858a40575a55f21026ecf8cb662e539c",
+      "authored_at": "2026-07-31T20:06:24Z",
+      "title": "Add acknowledged user message submission to core (#36385)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 10,
+      "insertions": 500,
+      "deletions": 10,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core-api/src/lib.rs",
+        "codex-rs/core/src/codex_thread.rs",
+        "codex-rs/core/src/lib.rs",
+        "codex-rs/core/src/session/handlers.rs",
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/user_message_admission.rs",
+        "codex-rs/core/tests/suite/mod.rs",
+        "codex-rs/core/tests/suite/user_message_admission.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_bf7804c25418",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "4c219fdb1a5195c11a3b059489491f5242253c68",
+      "parent_commit": "e2c0837923ca29b54facdb567326db42a0aefd1b",
+      "authored_at": "2026-08-01T00:58:29Z",
+      "title": "Use Git repositories as pre-tool hook test markers (#36411)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 21,
+      "deletions": 38,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/tests/suite/hooks.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_release_telemetry_other_4c219fdb1a51",
+      "deferral_reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ]
+    },
+    {
+      "upstream_commit": "582569998181aad08a88bacc151a94b2048a5d1f",
+      "parent_commit": "1e85ca099e4265bf89f4016772d299816e231bb3",
+      "authored_at": "2026-08-01T23:31:54Z",
+      "title": "Raise the MCP catalog item limit to 2,048 (#36534)",
+      "primary_category": "release_telemetry_other",
+      "touched_categories": [
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P2",
+      "status": "absorbed",
+      "changed_file_count": 1,
+      "insertions": 1,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/codex-mcp/src/pagination.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "mcp_catalog_item_limit_2048"
+    }
+  ]
+}

@@ -1,0 +1,3600 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "record_id": "r12",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-03_R12.json",
+    "manifest_sha256": "4ad248be4094747ebc02ceb22dc7e096ff6d04173222b216dc52a904d165e376",
+    "commit": "1577a50e37c6332ab267dea9d838dab8b8c07536",
+    "commit_role": "local_semantic_classification_base",
+    "source_manifest_introducing_commit": null,
+    "source_manifest_introducing_commit_binding_pending": true,
+    "range_start_exclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+    "range_end_inclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "coverage_contract": {
+    "range_commit_count": 206,
+    "dispositioned_unique_commit_count": 206,
+    "absorption_entry_count": 44,
+    "deferral_entry_count": 164,
+    "unresolved_unique_commit_count": 164,
+    "complete_range_coverage": true
+  },
+  "absorptions": [
+    {
+      "upstream_commit": "5a3808b77d18668f2ec794e64de094112a2e600b",
+      "upstream_title": "Shut down the in-process outbound router explicitly (#35523)",
+      "disposition": "semantic_transplant",
+      "scope": "explicit_in_process_outbound_router_shutdown",
+      "hepta_commit": "8cf29353533dc094d23dec595225d92c96acf6a8",
+      "semantic_mapping": "The in-process app-server explicitly shuts down its outbound router without waiting on retained senders.",
+      "core_files": [
+        "codex-rs/app-server/src/in_process.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_G_UPSTREAM_TARGETED_SEMANTIC_INTAKE_2026-07-27.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "9ca6df68dafec86880952949b95354ce19e0599b",
+      "upstream_title": "Preserve terminal turn errors in replayed history (#35524)",
+      "disposition": "semantic_transplant",
+      "scope": "terminal_turn_error_history_replay",
+      "hepta_commit": "8cf29353533dc094d23dec595225d92c96acf6a8",
+      "semantic_mapping": "Terminal turn errors remain represented in projected and replayed history.",
+      "core_files": [
+        "codex-rs/app-server-protocol/src/protocol/thread_history.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_G_UPSTREAM_TARGETED_SEMANTIC_INTAKE_2026-07-27.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "3bbf1fe75701c97fb190e0867002ba2d9dbda5db",
+      "upstream_title": "Expose cached MCP tools before server startup (#35590)",
+      "disposition": "semantic_transplant",
+      "scope": "cached_mcp_tools_visible_before_startup_with_live_call_wait",
+      "hepta_commit": "8cf29353533dc094d23dec595225d92c96acf6a8",
+      "semantic_mapping": "Cached MCP catalog entries are visible before startup while live calls still await the client startup boundary.",
+      "core_files": [
+        "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_G_UPSTREAM_TARGETED_SEMANTIC_INTAKE_2026-07-27.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "fbe65995bbcd4da249cfdafe0300ac3cb2cb3b3c",
+      "upstream_title": "Support model-owned token budget defaults (#35608)",
+      "disposition": "semantic_transplant",
+      "scope": "model_owned_token_budget_protocol_and_config_substrate",
+      "hepta_commit": "e73689c0269b9bb1ee0587a5d65c1c19fdb19610",
+      "semantic_mapping": "Model-owned token budget defaults round-trip through the protocol and config substrate with explicit configuration precedence.",
+      "core_files": [
+        "codex-rs/protocol/src/openai_models.rs",
+        "codex-rs/core/src/config/mod.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "fea2d8b18f5fade817d0d3a9cf4f278b6210ab01",
+      "upstream_title": "Skip restored token usage replay for exec resumes (#35621)",
+      "disposition": "semantic_transplant",
+      "scope": "exec_resume_restored_token_usage_replay_suppression",
+      "hepta_commit": "cc1e6cea1c9c0f3644a7245166c7d2da128d605f",
+      "semantic_mapping": "Exec resume does not replay restored token usage into the resumed accounting path.",
+      "core_files": [
+        "codex-rs/exec/src/lib.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "0affaf2acb888304f91cadb2c497313e95b715b8",
+      "upstream_title": "Make OpenTelemetry provider shutdown idempotent (#35642)",
+      "disposition": "semantic_transplant",
+      "scope": "opentelemetry_provider_idempotent_shutdown",
+      "hepta_commit": "cc1e6cea1c9c0f3644a7245166c7d2da128d605f",
+      "semantic_mapping": "OpenTelemetry provider shutdown is idempotent and covered by dedicated shutdown regressions.",
+      "core_files": [
+        "codex-rs/otel/src/provider.rs",
+        "codex-rs/otel/src/provider_shutdown_tests.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "e8f0f64f2057740ca18d66dbeebe077156d7a2a9",
+      "upstream_title": "Preserve thread metadata when rollout files are missing (#35644)",
+      "disposition": "semantic_transplant",
+      "scope": "thread_metadata_survives_missing_rollout_files",
+      "hepta_commit": "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+      "semantic_mapping": "Thread metadata remains available from state-backed records when rollout files are absent.",
+      "core_files": [
+        "codex-rs/rollout/src/state_db.rs",
+        "codex-rs/rollout/src/recorder_tests.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "462ed19a05917b1ec88a015b2cf6342cfe8f7c85",
+      "upstream_title": "Enable network policy callbacks for remote exec (#35652)",
+      "disposition": "semantic_transplant",
+      "scope": "remote_network_policy_controller_fail_closed_scope_boundary",
+      "hepta_commit": "d60aa228dfe6730b7e16ae0746fea6b9a3a33821",
+      "semantic_mapping": "Remote execution obtains an execution-scoped fail-closed network policy controller with cancellation and timeout denial semantics.",
+      "core_files": [
+        "codex-rs/network-proxy/src/proxy.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "9f82ffed1b2fb63370055dad3f2ad63564eeebbf",
+      "upstream_title": "Test developer instruction inheritance for multi-agent workers (#35653)",
+      "disposition": "semantic_transplant",
+      "scope": "multi_agent_worker_developer_instruction_inheritance_regression",
+      "hepta_commit": "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+      "semantic_mapping": "The multi-agent control regression preserves developer instruction inheritance for workers.",
+      "core_files": [
+        "codex-rs/core/src/agent/control_tests.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "2f19a57704fb7b1db032bc38cf995034254eaebb",
+      "upstream_title": "Preserve multi-agent settings across config representations (#35656)",
+      "disposition": "semantic_transplant",
+      "scope": "multi_agent_settings_cross_representation_preservation",
+      "hepta_commit": "89df4da4c88c718f663bc06719ad2541b8d6435a",
+      "semantic_mapping": "Multi-agent settings survive config merge, override, fingerprint, edit, and app-server representations.",
+      "core_files": [
+        "codex-rs/config/src/merge.rs",
+        "codex-rs/config/src/merge_tests.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "294d813263de08061cb303e7b601d7ea6a5e72e8",
+      "upstream_title": "Route curated plugins by authentication mode (#35671)",
+      "disposition": "semantic_transplant",
+      "scope": "curated_plugin_catalog_authentication_routing",
+      "hepta_commit": "9df482fe49edbbd3ee9928c08b4e796a8fcfb6ef",
+      "semantic_mapping": "Curated plugin catalogs are routed by authentication mode across CLI, app-server, loader, and manager surfaces.",
+      "core_files": [
+        "codex-rs/core-plugins/src/manager.rs",
+        "codex-rs/core-plugins/src/manager_tests.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "bbeee9a40686975a1bfb5e8a4b6d98dccbb43dab",
+      "upstream_title": "Prepare MCP and plugin recommendations concurrently (#35675)",
+      "disposition": "semantic_transplant",
+      "scope": "concurrent_mcp_and_plugin_recommendation_preparation",
+      "hepta_commit": "608edf206ddc68b697cc4343075aa1fb905b4354",
+      "semantic_mapping": "MCP preparation and plugin recommendations execute concurrently without weakening the turn tool boundary.",
+      "core_files": [
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/src/session/turn_tests.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "4d1f66bf8199713e4a77ad55458bc6e3dcbef5c5",
+      "upstream_title": "Preserve paginated thread metadata across resumes (#35678)",
+      "disposition": "semantic_transplant",
+      "scope": "paginated_thread_metadata_resume_preservation",
+      "hepta_commit": "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+      "semantic_mapping": "Paginated thread metadata is preserved across resume and listing paths.",
+      "core_files": [
+        "codex-rs/thread-store/src/live_thread.rs",
+        "codex-rs/thread-store/src/thread_metadata_sync.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "8d6a91b1ff926bb6006aff94ef4f9e628863cc09",
+      "upstream_title": "Preserve item timestamps in thread history projections (#35689)",
+      "disposition": "semantic_transplant",
+      "scope": "thread_history_item_lifecycle_timestamps",
+      "hepta_commit": "9a6cc34d44e3dcdba066382ada2fec6bb63e8878",
+      "semantic_mapping": "Thread history projections preserve typed item lifecycle timestamps.",
+      "core_files": [
+        "codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs",
+        "codex-rs/core/src/turn_timing.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "63682c4e1ad8b4341b93a5e68c666f521806eb98",
+      "upstream_title": "Include empty-preview threads in relationship listings (#35691)",
+      "disposition": "semantic_transplant",
+      "scope": "empty_preview_thread_relationship_listing",
+      "hepta_commit": "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+      "semantic_mapping": "State-backed relationship listings retain threads whose previews are empty.",
+      "core_files": [
+        "codex-rs/state/src/runtime/threads.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_I4_UPSTREAM_GOVERNED_MUTATION_E2E_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "2494d939cfb33f95cbce61ac7283193861960577",
+      "upstream_title": "Support streaming bodies in route-aware HTTP requests (#35715)",
+      "disposition": "semantic_transplant",
+      "scope": "route_aware_streaming_http_request_bodies",
+      "hepta_commit": "105851c47c089f98be2b94cd7369530a55dba64c",
+      "semantic_mapping": "Route-aware HTTP requests support streaming bodies without bypassing the configured transport policy.",
+      "core_files": [
+        "codex-rs/codex-api/src/files.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "899539c03ac46301c8e860bc0096854f57625b82",
+      "upstream_title": "Reuse route-aware clients for OpenAI file uploads (#35717)",
+      "disposition": "semantic_transplant",
+      "scope": "route_aware_openai_file_upload_clients",
+      "hepta_commit": "105851c47c089f98be2b94cd7369530a55dba64c",
+      "semantic_mapping": "OpenAI file upload stages reuse route-aware clients and the selected environment filesystem.",
+      "core_files": [
+        "codex-rs/codex-api/src/files.rs",
+        "codex-rs/core/src/mcp_openai_file.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "84ccb2938bfeee481e9481244f073d27d3c672cf",
+      "upstream_title": "Resolve MCP tool catalogs concurrently (#35777)",
+      "disposition": "semantic_transplant",
+      "scope": "concurrent_mcp_tool_catalog_resolution",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "MCP tool catalogs resolve concurrently with a bounded connection-manager ownership boundary.",
+      "core_files": [
+        "codex-rs/codex-mcp/src/connection_manager.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "cf7e9cfe6a196d14a34a4a2e10265143df336781",
+      "upstream_title": "Support self-serve Business ProLite accounts (#35785)",
+      "disposition": "semantic_transplant",
+      "scope": "business_prolite_account_plan_identity",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "Business ProLite account identity is represented without broadening provider or release authority.",
+      "core_files": [
+        "codex-rs/protocol/src/account.rs",
+        "codex-rs/protocol/src/auth.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5",
+      "upstream_title": "Gate paginated thread history on the state database (#35787)",
+      "disposition": "semantic_transplant",
+      "scope": "paginated_thread_history_requires_state_database",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "Paginated thread history fails closed unless backed by the state database.",
+      "core_files": [
+        "codex-rs/thread-store/src/local/mod.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "9ea975a2dc88d039512313da3e332013e8bd911e",
+      "upstream_title": "Route MCP OAuth through configured HTTP clients (#35806)",
+      "disposition": "semantic_transplant",
+      "scope": "mcp_oauth_configured_http_client_routing",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "MCP OAuth discovery and exchange use the configured HTTP client route.",
+      "core_files": [
+        "codex-rs/rmcp-client/src/oauth_http_client.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "709283b432fb5231c9bca720c239b25046968aa2",
+      "upstream_title": "Use configured HTTP clients for all MCP OAuth requests (#35814)",
+      "disposition": "semantic_transplant",
+      "scope": "all_mcp_oauth_requests_share_configured_http_client",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "Every MCP OAuth request path shares the configured HTTP client rather than direct egress.",
+      "core_files": [
+        "codex-rs/rmcp-client/src/oauth_http_client.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "1def0a8925cd9df462cbd7cec355458198015473",
+      "upstream_title": "Track parent turns for nested Codex requests (#35835)",
+      "disposition": "semantic_transplant",
+      "scope": "nested_agent_parent_turn_identity_chain",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "Nested requests preserve parent-turn identity through protocol and turn metadata.",
+      "core_files": [
+        "codex-rs/protocol/src/protocol.rs",
+        "codex-rs/core/src/turn_metadata.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "c550cb3e01c921e8d7cd02768a187298ad22ddee",
+      "upstream_title": "Clean up cancelled MCP elicitation requests (#35836)",
+      "disposition": "semantic_transplant",
+      "scope": "cancelled_mcp_elicitation_cleanup",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "Cancelled MCP elicitation requests are removed from the pending authority set.",
+      "core_files": [
+        "codex-rs/codex-mcp/src/elicitation.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "12b961d4c545f4871efba3a9fd4ea1c1f747eaf4",
+      "upstream_title": "Expose plugin eligibility metadata in app-server summaries (#35837)",
+      "disposition": "semantic_transplant",
+      "scope": "plugin_summary_plan_eligibility_metadata",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "App-server plugin summaries expose typed plan eligibility metadata.",
+      "core_files": [
+        "codex-rs/app-server-protocol/src/protocol/v2/plugin.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "03edf16f0bce2c454fc9a8ddb382e9c23c114f7f",
+      "upstream_title": "Support plaintext collaboration tool messages (#35845)",
+      "disposition": "semantic_transplant",
+      "scope": "plaintext_collaboration_message_provenance",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "Collaboration messages preserve plaintext versus encrypted provenance and redact plaintext logs.",
+      "core_files": [
+        "codex-rs/core/src/context/inter_agent_message.rs",
+        "codex-rs/protocol/src/models.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "28f3f1f9ef4e9578a5f023f6b6eba018914a5342",
+      "upstream_title": "Expose plugin installation timestamps in app-server summaries (#35859)",
+      "disposition": "semantic_transplant",
+      "scope": "plugin_installation_timestamp_summary",
+      "hepta_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+      "semantic_mapping": "Plugin summaries retain installation timestamps through app-server protocol projection.",
+      "core_files": [
+        "codex-rs/app-server-protocol/src/protocol/v2/plugin.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_J3_UPSTREAM_PROTOCOL_INTAKE_2026-07-28.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "ddf33ea802f787f800e2a3691cc6e7379e6bb695",
+      "upstream_title": "Bound MCP namespace descriptions (#35941)",
+      "disposition": "semantic_transplant",
+      "scope": "bounded_model_facing_mcp_namespace_descriptions",
+      "hepta_commit": "aa4e3edbfd67a608406a67b6bfb1529b0f00dfc4",
+      "semantic_mapping": "MCP namespace and tool-search source descriptions are UTF-8-safe and bounded before model exposure.",
+      "core_files": [
+        "codex-rs/core/src/tools/handlers/mcp.rs",
+        "codex-rs/core/src/tools/handlers/tool_search_spec.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_L4_UPSTREAM_SELECTIVE_INTAKE_2026-07-29.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "3834c47ccb91adeef82e7d95f7ecdec5cde6dda8",
+      "upstream_title": "Deny network access when an allow amendment fails (#36037)",
+      "disposition": "semantic_transplant",
+      "scope": "network_allow_amendment_persistence_failure_denies",
+      "hepta_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+      "semantic_mapping": "A failed network allow amendment denies the request and never caches the host.",
+      "core_files": [
+        "codex-rs/core/src/tools/network_approval.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "3e3ae088398b4a4ad0833c84f5b1dcaaf5cdabe3",
+      "upstream_title": "Limit MCP catalog pagination (#36039)",
+      "disposition": "semantic_transplant",
+      "scope": "bounded_mcp_catalog_pagination",
+      "hepta_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+      "semantic_mapping": "MCP catalog traversal enforces page, item, cursor, repeated-cursor, and overall timeout budgets.",
+      "core_files": [
+        "codex-rs/hepta-mcp-pagination/src/lib.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "7ec480dda5792b8d54286c72f3e36bbdb267d0c3",
+      "upstream_title": "Distinguish unknown MCP authentication status (#36045)",
+      "disposition": "semantic_transplant",
+      "scope": "unknown_mcp_authentication_status",
+      "hepta_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+      "semantic_mapping": "OAuth discovery failures project as Unknown rather than falsely Unsupported.",
+      "core_files": [
+        "codex-rs/rmcp-client/src/auth_status.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "b1ccaa0e080f59cfd71a136f6fcc60a4f2d60fba",
+      "upstream_title": "Avoid overwriting symlinked migration targets (#36051)",
+      "disposition": "semantic_transplant",
+      "scope": "migration_target_symlink_non_traversal",
+      "hepta_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+      "semantic_mapping": "Migration target probes use symlink metadata and do not traverse existing or dangling links.",
+      "core_files": [
+        "codex-rs/external-agent-migration/src/lib.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "406dc9239492aff6d295cca5eebe2a548548d42f",
+      "upstream_title": "Expose MCP read-only hints in tool call items (#36055)",
+      "disposition": "semantic_transplant",
+      "scope": "mcp_read_only_hint_untrusted_advisory",
+      "hepta_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+      "semantic_mapping": "MCP readOnlyHint is retained in history only as an untrusted advisory and never lowers approval.",
+      "core_files": [
+        "codex-rs/app-server-protocol/src/protocol/v2/mcp.rs",
+        "codex-rs/core/src/mcp_tool_call.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_M4_UPSTREAM_INTAKE_2026-07-30.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "bf4d3f51ea70ce70ab7fabce7a66f328fef49e57",
+      "upstream_title": "Restrict hosted MCP credentials to local environments (#36306)",
+      "disposition": "semantic_transplant",
+      "scope": "hosted_mcp_credentials_restricted_to_local_environments",
+      "hepta_commit": "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+      "semantic_mapping": "Host application credentials are never injected into executor-owned MCP environments.",
+      "core_files": [
+        "codex-rs/rmcp-client/src/oauth.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_UPSTREAM_ENVIRONMENT_ISOLATION_P1_INTAKE_V1.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "164b3bfeabdbc8e33c7320437e7cd875f93a534e",
+      "upstream_title": "Isolate MCP OAuth credentials by environment (#36310)",
+      "disposition": "semantic_transplant",
+      "scope": "mcp_oauth_credentials_isolated_by_environment",
+      "hepta_commit": "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+      "semantic_mapping": "MCP OAuth credential names and fallback stores are scoped by execution environment.",
+      "core_files": [
+        "codex-rs/config/src/mcp_types.rs",
+        "codex-rs/rmcp-client/src/oauth.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_UPSTREAM_ENVIRONMENT_ISOLATION_P1_INTAKE_V1.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "ef293f7ac9d756f793f3e952a790f9bec16a6eeb",
+      "upstream_title": "Restrict `shell_command` to a single local environment (#36329)",
+      "disposition": "semantic_transplant",
+      "scope": "legacy_shell_command_single_local_environment",
+      "hepta_commit": "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+      "semantic_mapping": "The legacy shell_command is exposed only for exactly one local environment and cannot be reclaimed by dynamic tools.",
+      "core_files": [
+        "codex-rs/core/src/tools/spec_plan.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs"
+      ],
+      "regression_coverage": [
+        "docs/architecture/HEPTA_UPSTREAM_ENVIRONMENT_ISOLATION_P1_INTAKE_V1.json"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "003ec63bba93cf994246799f795a6a4f6d67743a",
+      "upstream_title": "Avoid redundant filesystem probes (#36393)",
+      "disposition": "semantic_transplant",
+      "scope": "redundant_filesystem_probe_elision",
+      "hepta_commit": "e36ed1c5a73ed71931bcca7b9d09745b10b2bb8e",
+      "semantic_mapping": "Environment, search, path, and TUI startup paths avoid redundant filesystem probes.",
+      "core_files": [
+        "codex-rs/exec-server/src/environment_toml.rs",
+        "codex-rs/file-search/src/lib.rs"
+      ],
+      "regression_coverage": [
+        "local semantic transplant with same upstream subject and bounded file surface"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "64b2a3008e8760040dd511e983641341df73d875",
+      "upstream_title": "Declare the experimental plugin search API (#36402)",
+      "disposition": "semantic_transplant",
+      "scope": "experimental_remote_plugin_search_api_declaration",
+      "hepta_commit": "406681f9d0a6cab8f306d437ec225d881113aa1e",
+      "semantic_mapping": "The app-server declares a default-off experimental plugin/search API with typed bounded parameters.",
+      "core_files": [
+        "codex-rs/app-server-protocol/src/protocol/v2/plugin_search.rs"
+      ],
+      "regression_coverage": [
+        "local governed remote-search protocol and regression suite"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "a850875a8eb603d18cb14cb2c5e80c930de9bd48",
+      "upstream_title": "Implement remote plugin search (#36409)",
+      "disposition": "semantic_transplant",
+      "scope": "governed_read_only_remote_plugin_search",
+      "hepta_commit": "406681f9d0a6cab8f306d437ec225d881113aa1e",
+      "semantic_mapping": "Remote plugin search is read-only, bounded, default-off, authenticated, and routed through governed egress without install or activation authority.",
+      "core_files": [
+        "codex-rs/core-plugins/src/remote/search.rs",
+        "codex-rs/app-server/src/request_processors/plugins/search.rs"
+      ],
+      "regression_coverage": [
+        "local governed remote-search tests and app-server protocol fixtures"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "e2c0837923ca29b54facdb567326db42a0aefd1b",
+      "upstream_title": "Make user input blocking behavior explicit (#36410)",
+      "disposition": "semantic_transplant",
+      "scope": "explicit_user_input_blocking_behavior",
+      "hepta_commit": "f057687313f7f4a53fc1f0a1ec72a3ba6fe27362",
+      "semantic_mapping": "User-input requests carry explicit blocking behavior through protocol, core, client, app-server, and TUI projections.",
+      "core_files": [
+        "codex-rs/app-server-protocol/src/protocol/v2/item.rs",
+        "codex-rs/protocol/src/request_user_input.rs"
+      ],
+      "regression_coverage": [
+        "local protocol and focused user-input regression suite"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "ee0247f95a6fe2b094ba2253d82cae2a2b4c2dff",
+      "upstream_title": "Extract exec-server request dispatching (#36440)",
+      "disposition": "semantic_transplant",
+      "scope": "fail_closed_exec_server_request_dispatcher",
+      "hepta_commit": "883af1439fd33d37a137530b4084429d3dbfb581",
+      "semantic_mapping": "Exec-server request dispatch is isolated behind a bounded fail-closed dispatcher with process regressions.",
+      "core_files": [
+        "codex-rs/exec-server/src/server/request_dispatcher.rs",
+        "codex-rs/exec-server/src/server/request_dispatcher_tests.rs"
+      ],
+      "regression_coverage": [
+        "local dispatcher unit and process regression suite"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "feee0b07c7564455e253312e62e6dba69dc861d3",
+      "upstream_title": "Increase remote plugin bundle size limits (#36485)",
+      "disposition": "semantic_transplant",
+      "scope": "bounded_larger_remote_plugin_bundles",
+      "hepta_commit": "2f68c75bafd916bb30d482f0f845441f2ecac262",
+      "semantic_mapping": "Remote plugin bundle byte limits are raised only within the existing bounded decoder and authority path.",
+      "core_files": [
+        "codex-rs/core-plugins/src/remote_bundle.rs"
+      ],
+      "regression_coverage": [
+        "local remote bundle bound regression"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "582569998181aad08a88bacc151a94b2048a5d1f",
+      "upstream_title": "Raise the MCP catalog item limit to 2,048 (#36534)",
+      "disposition": "semantic_transplant",
+      "scope": "mcp_catalog_item_limit_2048",
+      "hepta_commit": "02c695c03a0ae87e1a68c33a6be3fcc89dac4ef6",
+      "semantic_mapping": "The shared MCP pagination boundary permits at most 2,048 catalog items and still fails closed above the limit.",
+      "core_files": [
+        "codex-rs/hepta-mcp-pagination/src/lib.rs"
+      ],
+      "regression_coverage": [
+        "local exact-limit and over-limit pagination regressions"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    },
+    {
+      "upstream_commit": "2b5bdcf67547860f2e5c5a605009a70026796b2b",
+      "upstream_title": "Support portable Agent Plugins throughout installation (#36544)",
+      "disposition": "semantic_transplant",
+      "scope": "portable_agent_plugin_installation_and_generation_publication",
+      "hepta_commit": "93d980ea542d53fa7c257aa635d2ae1d7d622919",
+      "semantic_mapping": "Portable Agent Plugin installs preserve safe versions, reject unsafe paths and linked manifests, and publish active generations atomically.",
+      "core_files": [
+        "codex-rs/core-plugins/src/store.rs",
+        "codex-rs/core-plugins/src/store_tests.rs"
+      ],
+      "regression_coverage": [
+        "local portable installation, path-safety, version, and generation regressions"
+      ],
+      "non_claims": [
+        "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+      ]
+    }
+  ],
+  "deferrals": [
+    {
+      "upstream_commit": "0896bf6fc05ead454888b90044e1a08f99b6d778",
+      "upstream_title": "Skip inactive TUI threads without pending user interaction (#35525)",
+      "disposition": "deferred_r12_tui_product_0896bf6fc05e",
+      "scope": "r12_tui_product_0896bf6fc05e",
+      "reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "18f50c9e628af083a52d9240de09fc2db24d79ce",
+      "upstream_title": "Track model and personality in world state (#35530)",
+      "disposition": "deferred_r12_release_telemetry_other_18f50c9e628a",
+      "scope": "r12_release_telemetry_other_18f50c9e628a",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "95637f7056835fea66bdd0044414af480fc0fd74",
+      "upstream_title": "Add managed policy for in-app updates (#35537)",
+      "disposition": "deferred_r12_security_sandbox_network_95637f705683",
+      "scope": "r12_security_sandbox_network_95637f705683",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "8a1c9414399bd8c52cd11d89f420767c41f4ae99",
+      "upstream_title": "Recommend longer waits in the v2 wait_agent schema (#35594)",
+      "disposition": "deferred_r12_execution_tools_agents_8a1c9414399b",
+      "scope": "r12_execution_tools_agents_8a1c9414399b",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "3d519bf63a1ca9b319b1aefc3062558af0c06273",
+      "upstream_title": "Allow alpha hotfix versions in R2 releases (#35595)",
+      "disposition": "deferred_r12_code_mode_v8_build_3d519bf63a1c",
+      "scope": "r12_code_mode_v8_build_3d519bf63a1c",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "d6ea5991e7f91eec5bad1fb4cb36f6be638878bc",
+      "upstream_title": "Add metrics for extension-rendered skill catalogs (#35597)",
+      "disposition": "deferred_r12_mcp_plugins_skills_d6ea5991e7f9",
+      "scope": "r12_mcp_plugins_skills_d6ea5991e7f9",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "16d7daad7c5dc73da8558102a65bb7d7709807e1",
+      "upstream_title": "Record metrics for empty skill catalogs (#35607)",
+      "disposition": "deferred_r12_mcp_plugins_skills_16d7daad7c5d",
+      "scope": "r12_mcp_plugins_skills_16d7daad7c5d",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "fbe65995bbcd4da249cfdafe0300ac3cb2cb3b3c",
+      "upstream_title": "Support model-owned token budget defaults (#35608)",
+      "disposition": "deferred_model_owned_token_budget_runtime_rollover_and_activation",
+      "scope": "model_owned_token_budget_runtime_rollover_and_activation",
+      "reason": "The protocol and config substrate is absorbed, but runtime context rollover remains unimported and the feature remains default-disabled.",
+      "missing_prerequisites": [
+        "runtime context rollover parity",
+        "activation and downgrade evidence",
+        "goal-task budget separation under live compaction"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "bd2de422aa287b97b06ca6425a10935bcf1b3731",
+      "upstream_title": "Parse Claude and Cursor session records separately (#35623)",
+      "disposition": "deferred_r12_protocol_app_server_bd2de422aa28",
+      "scope": "r12_protocol_app_server_bd2de422aa28",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "976129f0973b3323e2200016df43e83f88270543",
+      "upstream_title": "Preserve TUI input when terminal focus returns (#35649)",
+      "disposition": "deferred_r12_tui_product_976129f0973b",
+      "scope": "r12_tui_product_976129f0973b",
+      "reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "462ed19a05917b1ec88a015b2cf6342cfe8f7c85",
+      "upstream_title": "Enable network policy callbacks for remote exec (#35652)",
+      "disposition": "deferred_bidirectional_remote_exec_network_policy_transport",
+      "scope": "bidirectional_remote_exec_network_policy_transport",
+      "reason": "The controller-side fail-closed scope is absorbed, but the remote bidirectional protocol, process cancellation pairing, and terminal decision receipt transport are not.",
+      "missing_prerequisites": [
+        "bidirectional exec-server callback protocol",
+        "process cancellation and timeout pairing",
+        "terminal remote policy decision receipts"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "6b23635a7e8d92862940702a2ec65c1226402cdb",
+      "upstream_title": "Terminate Windows non-TTY processes on interrupt (#35655)",
+      "disposition": "deferred_r12_security_sandbox_network_6b23635a7e8d",
+      "scope": "r12_security_sandbox_network_6b23635a7e8d",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "8495963ac6d15a3ac891517d979f5509d55605c0",
+      "upstream_title": "Place host skills before permission instructions (#35661)",
+      "disposition": "deferred_r12_security_sandbox_network_8495963ac6d1",
+      "scope": "r12_security_sandbox_network_8495963ac6d1",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "b672b3c409324ac3ae53982734f0ee555c27202e",
+      "upstream_title": "Evaluate character matching over skill routing metadata (#35663)",
+      "disposition": "deferred_r12_mcp_plugins_skills_b672b3c40932",
+      "scope": "r12_mcp_plugins_skills_b672b3c40932",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "c21c8a5e215bc7b9215fc727cfe17f60ab170333",
+      "upstream_title": "Fix the async watcher test harness on Windows (#35665)",
+      "disposition": "deferred_r12_release_telemetry_other_c21c8a5e215b",
+      "scope": "r12_release_telemetry_other_c21c8a5e215b",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "bbb92457b04fe7e7c27d450f9221014f8abf09ca",
+      "upstream_title": "Expose the network proxy spec constructor (#35668)",
+      "disposition": "deferred_r12_security_sandbox_network_bbb92457b04f",
+      "scope": "r12_security_sandbox_network_bbb92457b04f",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "fd41e813cb5939029acab29cb5f2fb8ac8d8286d",
+      "upstream_title": "Raise the Windows exec yield floor to 10 seconds (#35670)",
+      "disposition": "deferred_r12_execution_tools_agents_fd41e813cb59",
+      "scope": "r12_execution_tools_agents_fd41e813cb59",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "fb6aad9ae34116128e537696c24e35fe6548e1c2",
+      "upstream_title": "Load cloud-managed profiles for `codex sandbox` (#35685)",
+      "disposition": "deferred_r12_security_sandbox_network_fb6aad9ae341",
+      "scope": "r12_security_sandbox_network_fb6aad9ae341",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "8c72d61727de81ea6354ae55969612629a36c11d",
+      "upstream_title": "Point crossterm patch to the OpenAI OSS fork (#35688)",
+      "disposition": "deferred_r12_code_mode_v8_build_8c72d61727de",
+      "scope": "r12_code_mode_v8_build_8c72d61727de",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "f029bb795ccbbd8471511f5a8b93e56d8f2b6d31",
+      "upstream_title": "Refresh the subagent picker in the background (#35693)",
+      "disposition": "deferred_r12_execution_tools_agents_f029bb795ccb",
+      "scope": "r12_execution_tools_agents_f029bb795ccb",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "3418498f01422f5f650ea645d4bd19e05c3a9616",
+      "upstream_title": "Honor the configured SQLite home in the logs client (#35695)",
+      "disposition": "deferred_r12_code_mode_v8_build_3418498f0142",
+      "scope": "r12_code_mode_v8_build_3418498f0142",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "49025589b0216b876b1a6a20977536c7d55cdb8b",
+      "upstream_title": "Add configurable developer instructions for v2 subagents (#35708)",
+      "disposition": "deferred_r12_protocol_app_server_49025589b021",
+      "scope": "r12_protocol_app_server_49025589b021",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "61de0d8fe812137cec943d58309b26df1dd227b5",
+      "upstream_title": "Upgrade rmcp to 3.0.0-beta.3 (#35720)",
+      "disposition": "deferred_r12_security_sandbox_network_61de0d8fe812",
+      "scope": "r12_security_sandbox_network_61de0d8fe812",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "9291a123fb96ca7d11eae27bcdecec06dcbe0d14",
+      "upstream_title": "Honor disabled code mode fallback without a process host (#35721)",
+      "disposition": "deferred_r12_release_telemetry_other_9291a123fb96",
+      "scope": "r12_release_telemetry_other_9291a123fb96",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "85c6da1c7931310a99e3dbc4e2e0de8f17e34f13",
+      "upstream_title": "Add persisted sections for organizing threads (#35722)",
+      "disposition": "deferred_r12_protocol_app_server_85c6da1c7931",
+      "scope": "r12_protocol_app_server_85c6da1c7931",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "be2e4afcd7392339d6adbaf0d31b26316bcaa2ab",
+      "upstream_title": "Add MCP 2026-07-28 discovery support (#35724)",
+      "disposition": "deferred_r12_mcp_plugins_skills_be2e4afcd739",
+      "scope": "r12_mcp_plugins_skills_be2e4afcd739",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "f2bee854a73666e1c3e922a853dda591b1a25fcf",
+      "upstream_title": "Complete MCP 2026 client support (#35725)",
+      "disposition": "deferred_r12_mcp_plugins_skills_f2bee854a736",
+      "scope": "r12_mcp_plugins_skills_f2bee854a736",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "8e271dc02b23d42827875019924be0f5005642b0",
+      "upstream_title": "Add bounded metadata for executed tool calls (#35738)",
+      "disposition": "deferred_r12_protocol_app_server_8e271dc02b23",
+      "scope": "r12_protocol_app_server_8e271dc02b23",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "d9e1c9cd5590e9b151e4cb5a82fd208f234b7422",
+      "upstream_title": "Avoid blocking turns on optional MCP startup (#35742)",
+      "disposition": "deferred_r12_mcp_plugins_skills_d9e1c9cd5590",
+      "scope": "r12_mcp_plugins_skills_d9e1c9cd5590",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "e597169e9a783156e50ae9765d891a3dd74df064",
+      "upstream_title": "Keep agent registry identities consistent (#35744)",
+      "disposition": "deferred_r12_execution_tools_agents_e597169e9a78",
+      "scope": "r12_execution_tools_agents_e597169e9a78",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "a68d0a74bd38ddc01361ce42262da689b788afce",
+      "upstream_title": "Emit host skill budget warnings from world state (#35766)",
+      "disposition": "deferred_r12_mcp_plugins_skills_a68d0a74bd38",
+      "scope": "r12_mcp_plugins_skills_a68d0a74bd38",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "f6160ca5b3da580616883e9039f0e76ad359d515",
+      "upstream_title": "Share the skills budget across host and executor catalogs (#35769)",
+      "disposition": "deferred_r12_mcp_plugins_skills_f6160ca5b3da",
+      "scope": "r12_mcp_plugins_skills_f6160ca5b3da",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "7cde2323f3712999e9ab98b16287e08b7735d52f",
+      "upstream_title": "Throttle models cache TTL renewals (#35772)",
+      "disposition": "deferred_r12_release_telemetry_other_7cde2323f371",
+      "scope": "r12_release_telemetry_other_7cde2323f371",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "03748ad5e18a3c9c1f0828561dcf1f3f0d7b2f77",
+      "upstream_title": "Scale skill metadata budgets with context windows (#35773)",
+      "disposition": "deferred_r12_mcp_plugins_skills_03748ad5e18a",
+      "scope": "r12_mcp_plugins_skills_03748ad5e18a",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "bb1af235ea2822d7a40f75ef52e4d6a2cde84da2",
+      "upstream_title": "Load thread titles concurrently during session startup (#35779)",
+      "disposition": "deferred_r12_release_telemetry_other_bb1af235ea28",
+      "scope": "r12_release_telemetry_other_bb1af235ea28",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "4f6eaf7af9d975b822d1d658ba1893d6d5a87646",
+      "upstream_title": "Wait for MCP readiness in the curated sync test (#35794)",
+      "disposition": "deferred_r12_protocol_app_server_4f6eaf7af9d9",
+      "scope": "r12_protocol_app_server_4f6eaf7af9d9",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "8f00b9a04cb542ad19a79f9f6c32348421741602",
+      "upstream_title": "Tag reports with the selected turn's model and effort (#35802)",
+      "disposition": "deferred_r12_protocol_app_server_8f00b9a04cb5",
+      "scope": "r12_protocol_app_server_8f00b9a04cb5",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "dd6b8803538ce80eccaef4804c5ecf574457dbef",
+      "upstream_title": "Advance latest-alpha-cli after release publishing completes (#35818)",
+      "disposition": "deferred_r12_code_mode_v8_build_dd6b8803538c",
+      "scope": "r12_code_mode_v8_build_dd6b8803538c",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "8bbdf6c8f9ecf4833479c64a4794c9ed6c2dab9b",
+      "upstream_title": "Use the shared HTTP client for TUI network checks (#35821)",
+      "disposition": "deferred_r12_security_sandbox_network_8bbdf6c8f9ec",
+      "scope": "r12_security_sandbox_network_8bbdf6c8f9ec",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "155c3e299c3ad6a033eba8837e7b3b57901271f8",
+      "upstream_title": "Use the shared HTTP client for announcement tips (#35825)",
+      "disposition": "deferred_r12_tui_product_155c3e299c3a",
+      "scope": "r12_tui_product_155c3e299c3a",
+      "reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "50a7328f50faab7d3a4be125580dc1bf7ae070d7",
+      "upstream_title": "Enforce centralized SQLite connection creation (#35828)",
+      "disposition": "deferred_r12_code_mode_v8_build_50a7328f50fa",
+      "scope": "r12_code_mode_v8_build_50a7328f50fa",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "438c9e98db71273e4f0b63dc4a86c2db58c44706",
+      "upstream_title": "Route WebRTC sideband joins to the Realtime API (#35830)",
+      "disposition": "deferred_r12_protocol_app_server_438c9e98db71",
+      "scope": "r12_protocol_app_server_438c9e98db71",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "12b3e88028b983051913fb6bb95d7a11218bdceb",
+      "upstream_title": "Update rusty_v8 to 150.4.0 (#35831)",
+      "disposition": "deferred_r12_code_mode_v8_build_12b3e88028b9",
+      "scope": "r12_code_mode_v8_build_12b3e88028b9",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "3a797496f1fd56308a73c1d1a068e71d44f34a32",
+      "upstream_title": "Decouple recommended plugins from tool suggestions (#35839)",
+      "disposition": "deferred_r12_protocol_app_server_3a797496f1fd",
+      "scope": "r12_protocol_app_server_3a797496f1fd",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "9f4c20aadc062dbc6a14843802a25eb0fbb8c004",
+      "upstream_title": "Handle legacy MCP discovery prevalidation errors (#35840)",
+      "disposition": "deferred_r12_mcp_plugins_skills_9f4c20aadc06",
+      "scope": "r12_mcp_plugins_skills_9f4c20aadc06",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "166658a34a0ef2ad02c30ad272fa40018e787a33",
+      "upstream_title": "Tie remote exec servers to their parent stdin (#35843)",
+      "disposition": "deferred_r12_code_mode_v8_build_166658a34a0e",
+      "scope": "r12_code_mode_v8_build_166658a34a0e",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "101d6b8cb214ecc04d45c3bcd2ca380116d07193",
+      "upstream_title": "Preserve foreign paths in background terminal listings (#35850)",
+      "disposition": "deferred_r12_protocol_app_server_101d6b8cb214",
+      "scope": "r12_protocol_app_server_101d6b8cb214",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "8707a35113501a9988f06162ca5c2b27d4f90a58",
+      "upstream_title": "Normalize Windows namespace paths in path URIs (#35851)",
+      "disposition": "deferred_r12_release_telemetry_other_8707a3511350",
+      "scope": "r12_release_telemetry_other_8707a3511350",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "07490c75234ed3c63291a8eb7629f04f647038fa",
+      "upstream_title": "Box app-server event payloads (#35854)",
+      "disposition": "deferred_r12_protocol_app_server_07490c75234e",
+      "scope": "r12_protocol_app_server_07490c75234e",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "fcd2273de7d1dc593a9696c935502851ca954d8a",
+      "upstream_title": "Resolve imported connectors by MCP server name (#35856)",
+      "disposition": "deferred_r12_mcp_plugins_skills_fcd2273de7d1",
+      "scope": "r12_mcp_plugins_skills_fcd2273de7d1",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "b9b7c21821025b0c3835e2ff703eba25e29bde4d",
+      "upstream_title": "Add Bazel unit test targets for Rust binaries (#35857)",
+      "disposition": "deferred_r12_release_telemetry_other_b9b7c2182102",
+      "scope": "r12_release_telemetry_other_b9b7c2182102",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "9f23e9779757b41ae38e3ff23a6d8b05513baf42",
+      "upstream_title": "Include session titles in external agent import history (#35870)",
+      "disposition": "deferred_r12_protocol_app_server_9f23e9779757",
+      "scope": "r12_protocol_app_server_9f23e9779757",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "0a6616f4cf30d94e3198b90e980f141d10e19f80",
+      "upstream_title": "Mark the primary environment in model context (#35874)",
+      "disposition": "deferred_r12_execution_tools_agents_0a6616f4cf30",
+      "scope": "r12_execution_tools_agents_0a6616f4cf30",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "6c13b113a3d28b16ce6d00cdbd18ede5bbc1f283",
+      "upstream_title": "Allow environment readiness updates in place (#35875)",
+      "disposition": "deferred_r12_mcp_plugins_skills_6c13b113a3d2",
+      "scope": "r12_mcp_plugins_skills_6c13b113a3d2",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "250de82bfb51a210325e88bfe1f7c30b0fa514f0",
+      "upstream_title": "Use step environments for MCP file uploads (#35878)",
+      "disposition": "deferred_r12_mcp_plugins_skills_250de82bfb51",
+      "scope": "r12_mcp_plugins_skills_250de82bfb51",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "b96ebfb31286187e950a4e2a60da941b5fed2afa",
+      "upstream_title": "Show blocked goals as stalled in the TUI (#35886)",
+      "disposition": "deferred_r12_tui_product_b96ebfb31286",
+      "scope": "r12_tui_product_b96ebfb31286",
+      "reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "d06c7ac055920c7cb140c25ebda3f3db20197b45",
+      "upstream_title": "Clean up side conversations in the background (#35887)",
+      "disposition": "deferred_r12_tui_product_d06c7ac05592",
+      "scope": "r12_tui_product_d06c7ac05592",
+      "reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "fe01054a28fa4bd04716d9ceadb410f2443a50ce",
+      "upstream_title": "Inherit ready step environments when spawning agents (#35895)",
+      "disposition": "deferred_r12_execution_tools_agents_fe01054a28fa",
+      "scope": "r12_execution_tools_agents_fe01054a28fa",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "fbf666fa9875d0157816be3b7a20c63161d77ec5",
+      "upstream_title": "Let unrelated tools run while MCP servers start (#35937)",
+      "disposition": "deferred_r12_mcp_plugins_skills_fbf666fa9875",
+      "scope": "r12_mcp_plugins_skills_fbf666fa9875",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "a4d2f3102249a94835e96910a3649a830182813e",
+      "upstream_title": "Update tests for current tool call and app-server event types (#35942)",
+      "disposition": "deferred_r12_protocol_app_server_a4d2f3102249",
+      "scope": "r12_protocol_app_server_a4d2f3102249",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "9a6668f674d74b35418fa534b3b6285a315d0765",
+      "upstream_title": "Report direct input capability for listed subagents (#35944)",
+      "disposition": "deferred_r12_protocol_app_server_9a6668f674d7",
+      "scope": "r12_protocol_app_server_9a6668f674d7",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "e1895710addb863acf335ef18b4c43b128439567",
+      "upstream_title": "Fix TUI input queue handling during MCP startup (#35957)",
+      "disposition": "deferred_r12_mcp_plugins_skills_e1895710addb",
+      "scope": "r12_mcp_plugins_skills_e1895710addb",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "00cb5c465b1ea9efaf9018f853482c42f6948fe5",
+      "upstream_title": "Upgrade Ratatui to 0.30.2 (#35959)",
+      "disposition": "deferred_r12_security_sandbox_network_00cb5c465b1e",
+      "scope": "r12_security_sandbox_network_00cb5c465b1e",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "cef3910ea4d09617e50a94e40bf25a6cb2e4e765",
+      "upstream_title": "Preserve hyperlink cell widths during terminal diffing (#35960)",
+      "disposition": "deferred_r12_tui_product_cef3910ea4d0",
+      "scope": "r12_tui_product_cef3910ea4d0",
+      "reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "3725f02cf38d856bc82bb46dd68ab61bb96ec6fc",
+      "upstream_title": "Fix TUI layout for halfwidth Japanese sound marks (#35962)",
+      "disposition": "deferred_r12_code_mode_v8_build_3725f02cf38d",
+      "scope": "r12_code_mode_v8_build_3725f02cf38d",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "1ae2b9880e8af5d465161a58f24a127aaa4b0040",
+      "upstream_title": "Avoid cloning rollout history when truncating forks (#35982)",
+      "disposition": "deferred_r12_protocol_app_server_1ae2b9880e8a",
+      "scope": "r12_protocol_app_server_1ae2b9880e8a",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "1e3c0042eb6613ef3843c45562c5618b1eced071",
+      "upstream_title": "Display title-only reasoning summaries in the TUI (#35989)",
+      "disposition": "deferred_r12_state_thread_persistence_1e3c0042eb66",
+      "scope": "r12_state_thread_persistence_1e3c0042eb66",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "1da9f846b30f0a6185c0452d39edd4e0fd55fe1c",
+      "upstream_title": "Test exec-server compatibility across Codex versions (#35990)",
+      "disposition": "deferred_r12_execution_tools_agents_1da9f846b30f",
+      "scope": "r12_execution_tools_agents_1da9f846b30f",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "f9b18d04ba78266b1e802ae2f85ff5ebea1e973a",
+      "upstream_title": "Group external agent config migration into a module (#35992)",
+      "disposition": "deferred_r12_state_thread_persistence_f9b18d04ba78",
+      "scope": "r12_state_thread_persistence_f9b18d04ba78",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "df326d31cda41a84f0641ec6519db08020248281",
+      "upstream_title": "Remove obsolete rusty_v8 146.4.0 Bazel targets (#35997)",
+      "disposition": "deferred_r12_code_mode_v8_build_df326d31cda4",
+      "scope": "r12_code_mode_v8_build_df326d31cda4",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "a05bcda3dbd68729caa2f11027b7f43974fda298",
+      "upstream_title": "Upgrade rmcp to 3.0.0 (#36001)",
+      "disposition": "deferred_r12_security_sandbox_network_a05bcda3dbd6",
+      "scope": "r12_security_sandbox_network_a05bcda3dbd6",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "7579a2b41353470efaef93c08b4a21068a366b7f",
+      "upstream_title": "Resolve MCP file uploads with environment-native paths (#36002)",
+      "disposition": "deferred_r12_mcp_plugins_skills_7579a2b41353",
+      "scope": "r12_mcp_plugins_skills_7579a2b41353",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "c41a38dd104ebd8574710929da619fa6423d5e36",
+      "upstream_title": "Reduce response serialization and rollout scan overhead (#36006)",
+      "disposition": "deferred_r12_protocol_app_server_c41a38dd104e",
+      "scope": "r12_protocol_app_server_c41a38dd104e",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "ad6fc66b6dad21a474e43486c9839631ac4f882c",
+      "upstream_title": "Add persisted manual ordering for thread sections (#36007)",
+      "disposition": "deferred_r12_protocol_app_server_ad6fc66b6dad",
+      "scope": "r12_protocol_app_server_ad6fc66b6dad",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "09cf6092183325916892b2e34dac37e6614a7c4b",
+      "upstream_title": "Route pet asset downloads through the shared HTTP client (#36008)",
+      "disposition": "deferred_r12_code_mode_v8_build_09cf60921833",
+      "scope": "r12_code_mode_v8_build_09cf60921833",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "85c082ccccf6b5ac4d6c31d14f960057348b78f4",
+      "upstream_title": "Share optional MCP startup grace across connection sets (#36011)",
+      "disposition": "deferred_r12_release_telemetry_other_85c082ccccf6",
+      "scope": "r12_release_telemetry_other_85c082ccccf6",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "a5082373f18119dc5d3eb993267c97f37880935d",
+      "upstream_title": "Refine OpenAI docs skill source routing (#36014)",
+      "disposition": "deferred_r12_mcp_plugins_skills_a5082373f181",
+      "scope": "r12_mcp_plugins_skills_a5082373f181",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "88d6c2b2b41b0790fa10c232f2a6be0e128cedd6",
+      "upstream_title": "Avoid cloning ignored analytics notifications (#36020)",
+      "disposition": "deferred_r12_protocol_app_server_88d6c2b2b41b",
+      "scope": "r12_protocol_app_server_88d6c2b2b41b",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "1dad11f818177f2744df929aadff22e12e7aa968",
+      "upstream_title": "Increase the app-server tracing test stack size (#36030)",
+      "disposition": "deferred_r12_protocol_app_server_1dad11f81817",
+      "scope": "r12_protocol_app_server_1dad11f81817",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "78a61de904699beffcb033fe2b59a10c11f31caa",
+      "upstream_title": "Load cloud-managed servers in MCP CLI commands (#36031)",
+      "disposition": "deferred_r12_mcp_plugins_skills_78a61de90469",
+      "scope": "r12_mcp_plugins_skills_78a61de90469",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "5989dcc470695fc3f25a7eb3e90c014ef56d7d2a",
+      "upstream_title": "Use the shared HTTP client in codex-protocol (#36033)",
+      "disposition": "deferred_r12_protocol_app_server_5989dcc47069",
+      "scope": "r12_protocol_app_server_5989dcc47069",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "9cf6b3905c102cf38b4f93ec2533261a99764d4d",
+      "upstream_title": "Exit the stdio app-server when its connection closes (#36035)",
+      "disposition": "deferred_r12_protocol_app_server_9cf6b3905c10",
+      "scope": "r12_protocol_app_server_9cf6b3905c10",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "a1286d12a2a80fccd8e270c12ec32f48431b5722",
+      "upstream_title": "Allow naming forked chats from the TUI (#36036)",
+      "disposition": "deferred_r12_tui_product_a1286d12a2a8",
+      "scope": "r12_tui_product_a1286d12a2a8",
+      "reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "649341715044a16db66623505742d5bd51cf436a",
+      "upstream_title": "Document the Responses API proxy reqwest exception (#36043)",
+      "disposition": "deferred_r12_release_telemetry_other_649341715044",
+      "scope": "r12_release_telemetry_other_649341715044",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "410c22b30e71265cb5a0cfe69f5e80391393b946",
+      "upstream_title": "Extract MCP environment headers into a local variable (#36047)",
+      "disposition": "deferred_r12_mcp_plugins_skills_410c22b30e71",
+      "scope": "r12_mcp_plugins_skills_410c22b30e71",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "7b93b3bf9c04fea878f6132be229ed34ebc19e82",
+      "upstream_title": "Keep tool-call metrics out of Statsig exports (#36049)",
+      "disposition": "deferred_r12_release_telemetry_other_7b93b3bf9c04",
+      "scope": "r12_release_telemetry_other_7b93b3bf9c04",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "1c5f336c4057f1724fc0dc1cb27f971a9fc887bc",
+      "upstream_title": "Remove legacy `--full-auto` handling from `codex exec` (#36054)",
+      "disposition": "deferred_r12_security_sandbox_network_1c5f336c4057",
+      "scope": "r12_security_sandbox_network_1c5f336c4057",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "ff352fab6209dc0f9d13fc0036ed3f9404682b2c",
+      "upstream_title": "Remove codex-core's direct reqwest dependency (#36076)",
+      "disposition": "deferred_r12_code_mode_v8_build_ff352fab6209",
+      "scope": "r12_code_mode_v8_build_ff352fab6209",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "7d5253d2b07d48ae7e7bf15c535473b2d2024385",
+      "upstream_title": "Route Ollama through the shared HTTP client (#36078)",
+      "disposition": "deferred_r12_code_mode_v8_build_7d5253d2b07d",
+      "scope": "r12_code_mode_v8_build_7d5253d2b07d",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "88ec932e96e4d18c5701664e726b1c8b18454af1",
+      "upstream_title": "Handle fractional rate limits in thread history projection (#36083)",
+      "disposition": "deferred_r12_state_thread_persistence_88ec932e96e4",
+      "scope": "r12_state_thread_persistence_88ec932e96e4",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "6219b7c40fc9c702c0aef9964e72b492558f60e4",
+      "upstream_title": "Correlate image requests and explicit interrupts with turns (#36092)",
+      "disposition": "deferred_r12_mcp_plugins_skills_6219b7c40fc9",
+      "scope": "r12_mcp_plugins_skills_6219b7c40fc9",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "b293412c2434f4351c1c50a946fb0d4964ce0eef",
+      "upstream_title": "Unify tool runtime assembly before router construction (#36119)",
+      "disposition": "deferred_r12_execution_tools_agents_b293412c2434",
+      "scope": "r12_execution_tools_agents_b293412c2434",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "9a46fd33a0ac62e7d700f2667e1b643c50c4970a",
+      "upstream_title": "Delegate readiness waits to tool runtimes (#36120)",
+      "disposition": "deferred_r12_mcp_plugins_skills_9a46fd33a0ac",
+      "scope": "r12_mcp_plugins_skills_9a46fd33a0ac",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "3d805abdf09093bfa806f359a5adc6514766c420",
+      "upstream_title": "Sandbox executor skill resource reads (#36121)",
+      "disposition": "deferred_r12_security_sandbox_network_3d805abdf090",
+      "scope": "r12_security_sandbox_network_3d805abdf090",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "5decb399aed13261c3c173cb2198a567eb1b22ba",
+      "upstream_title": "Respect filesystem permissions during capability discovery (#36124)",
+      "disposition": "deferred_r12_security_sandbox_network_5decb399aed1",
+      "scope": "r12_security_sandbox_network_5decb399aed1",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "89a0eed93c9b74073ac3c8bdf449fb981b9b3408",
+      "upstream_title": "Centralize tool registration and protect host tools (#36127)",
+      "disposition": "deferred_r12_mcp_plugins_skills_89a0eed93c9b",
+      "scope": "r12_mcp_plugins_skills_89a0eed93c9b",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "4f6d06d48581cad8cab7987ee3909c7d9bbd3c82",
+      "upstream_title": "Preserve delegated tasks across remote compaction (#36128)",
+      "disposition": "deferred_r12_state_thread_persistence_4f6d06d48581",
+      "scope": "r12_state_thread_persistence_4f6d06d48581",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "c126f206dafb9b7fe8e1d6b990e67f0535de79f4",
+      "upstream_title": "Resolve normalized tool name collisions in code mode (#36129)",
+      "disposition": "deferred_r12_execution_tools_agents_c126f206dafb",
+      "scope": "r12_execution_tools_agents_c126f206dafb",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "bdda5da56cae0a9fedf3428ac6d308767b4518f9",
+      "upstream_title": "Preserve executor workspace permissions for apply_patch (#36133)",
+      "disposition": "deferred_r12_security_sandbox_network_bdda5da56cae",
+      "scope": "r12_security_sandbox_network_bdda5da56cae",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "aa064463458adbef10400c74174107fc4b3550f0",
+      "upstream_title": "Isolate apply-patch permission test variants (#36138)",
+      "disposition": "deferred_r12_security_sandbox_network_aa064463458a",
+      "scope": "r12_security_sandbox_network_aa064463458a",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "9588f660be876e3d3cab52d7fce80f0cb61d0d70",
+      "upstream_title": "Bound the code mode output termination test (#36139)",
+      "disposition": "deferred_r12_release_telemetry_other_9588f660be87",
+      "scope": "r12_release_telemetry_other_9588f660be87",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "5ad367fb95ed3aec95ac4a0357ae7d074b5ca3e9",
+      "upstream_title": "Wait for memory consolidation shutdown before finishing jobs (#36140)",
+      "disposition": "deferred_r12_state_thread_persistence_5ad367fb95ed",
+      "scope": "r12_state_thread_persistence_5ad367fb95ed",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "5a1097ed269815f94a6174a335c6deb7952baf77",
+      "upstream_title": "Stabilize approval scenario tests (#36146)",
+      "disposition": "deferred_r12_security_sandbox_network_5a1097ed2698",
+      "scope": "r12_security_sandbox_network_5a1097ed2698",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "25eecb071e7f551516d63fe41c922678d51889c2",
+      "upstream_title": "Harden the file change approval integration test (#36148)",
+      "disposition": "deferred_r12_security_sandbox_network_25eecb071e7f",
+      "scope": "r12_security_sandbox_network_25eecb071e7f",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "b545c94041017d000e2c8b2f6272705d21b85dfb",
+      "upstream_title": "Strengthen session file change approval coverage (#36149)",
+      "disposition": "deferred_r12_security_sandbox_network_b545c9404101",
+      "scope": "r12_security_sandbox_network_b545c9404101",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "2fbbb1a11a0f7c0a0f67ecff9993176dfd5aabbd",
+      "upstream_title": "Stabilize file approval replay test (#36165)",
+      "disposition": "deferred_r12_security_sandbox_network_2fbbb1a11a0f",
+      "scope": "r12_security_sandbox_network_2fbbb1a11a0f",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "856bf5a33af84317b99ff5e3b8abfe4fcc5465e7",
+      "upstream_title": "Make pending realtime sideband test deterministic (#36166)",
+      "disposition": "deferred_r12_protocol_app_server_856bf5a33af8",
+      "scope": "r12_protocol_app_server_856bf5a33af8",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "13ddc7aa5743ad37b003b8c2891805a2d2028fff",
+      "upstream_title": "Harden the auto-review model override test (#36167)",
+      "disposition": "deferred_r12_release_telemetry_other_13ddc7aa5743",
+      "scope": "r12_release_telemetry_other_13ddc7aa5743",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "b445967cc0c3082376fc4c95c8101358213ccd7a",
+      "upstream_title": "Make tool telemetry tag collection synchronous (#36168)",
+      "disposition": "deferred_r12_mcp_plugins_skills_b445967cc0c3",
+      "scope": "r12_mcp_plugins_skills_b445967cc0c3",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "578c1b2230288104041e880a86d0f7f3a5ca6e47",
+      "upstream_title": "Test workspace-root patch protection for metadata (#36171)",
+      "disposition": "deferred_r12_release_telemetry_other_578c1b223028",
+      "scope": "r12_release_telemetry_other_578c1b223028",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "355d2a802aaad0d5d003b7bba49f25a05bd1db5a",
+      "upstream_title": "Test remote Guardian network approval scoping (#36177)",
+      "disposition": "deferred_r12_security_sandbox_network_355d2a802aaa",
+      "scope": "r12_security_sandbox_network_355d2a802aaa",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "ceb4bc72c41e333bbafee14aa992e49ba2e953ed",
+      "upstream_title": "Record attempted tool calls in response metadata (#36181)",
+      "disposition": "deferred_r12_state_thread_persistence_ceb4bc72c41e",
+      "scope": "r12_state_thread_persistence_ceb4bc72c41e",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "0dcad0c97217df0ef9511ff1efec9e82720a0fa9",
+      "upstream_title": "Use permission profiles throughout sandbox execution (#36183)",
+      "disposition": "deferred_r12_security_sandbox_network_0dcad0c97217",
+      "scope": "r12_security_sandbox_network_0dcad0c97217",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "483559cc758353c83733b2b34629dbf885a99207",
+      "upstream_title": "Coalesce concurrent remote metadata requests (#36184)",
+      "disposition": "deferred_r12_execution_tools_agents_483559cc7583",
+      "scope": "r12_execution_tools_agents_483559cc7583",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "9eeac78b3f0c510ed9c53d329d466cf18e1af8af",
+      "upstream_title": "Refresh environment dates from the configured clock (#36187)",
+      "disposition": "deferred_r12_protocol_app_server_9eeac78b3f0c",
+      "scope": "r12_protocol_app_server_9eeac78b3f0c",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "6256a7ccc7948231befc33d7d61b369041e6eb16",
+      "upstream_title": "Make thread history projection resilient to malformed rollouts (#36188)",
+      "disposition": "deferred_r12_state_thread_persistence_6256a7ccc794",
+      "scope": "r12_state_thread_persistence_6256a7ccc794",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "ba42e6866cef4baed7ad92c73e6be8cd42e49d8b",
+      "upstream_title": "Label explicit skill injection metrics (#36191)",
+      "disposition": "deferred_r12_mcp_plugins_skills_ba42e6866cef",
+      "scope": "r12_mcp_plugins_skills_ba42e6866cef",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "789c72dcf62d7439863d4d2846454f05b3d51db6",
+      "upstream_title": "Avoid shifting bytes in streaming output buffers (#36194)",
+      "disposition": "deferred_r12_execution_tools_agents_789c72dcf62d",
+      "scope": "r12_execution_tools_agents_789c72dcf62d",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "0042b00986b9cc73c82c93f94e93d747818228be",
+      "upstream_title": "Record normalized sandbox violation events (#36207)",
+      "disposition": "deferred_r12_security_sandbox_network_0042b00986b9",
+      "scope": "r12_security_sandbox_network_0042b00986b9",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "acd540f1581bf30f963fccbcce43ac494102242c",
+      "upstream_title": "Precompute app-server protocol exports (#36212)",
+      "disposition": "deferred_r12_security_sandbox_network_acd540f1581b",
+      "scope": "r12_security_sandbox_network_acd540f1581b",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "97576b1794872e342450ebd577123e052ab57626",
+      "upstream_title": "Run code mode exclusively through the standalone host (#36217)",
+      "disposition": "deferred_standalone_code_mode_host_and_v8_runtime_separation",
+      "scope": "standalone_code_mode_host_and_v8_runtime_separation",
+      "reason": "This is the actual in-range structural fix that removes V8 from the codex-code-mode crate by moving it to a standalone host/runtime.  Hepta still embeds V8 directly in codex-code-mode and has no code-mode-host, code-mode-protocol, or code-mode-runtime crates.  A three-way applicability audit found missing files plus conflicts across Cargo, core, features, config, install-context, and the local code-mode API; claiming absorption would be false.  This remains the preferred closure for the Windows allocator_shim/UCRT collision rather than linker exclusions or test filtering.",
+      "missing_prerequisites": [
+        "versioned standalone host protocol preserving nested tool identity",
+        "move the current Hepta V8 runtime behind a separate host without changing permission authority",
+        "immutable install-context host discovery and packaged binary digest binding",
+        "code-mode-only and disabled-fallback fail-closed parity",
+        "Windows MSVC proof that code-mode-unit-tests no longer link V8 plus terminal host/runtime evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No allocator symbol exclusion, CRT heap mixing, test skip, or disabled code-mode claim is accepted as semantic absorption."
+      ]
+    },
+    {
+      "upstream_commit": "e6cfd40c3f444aadd6017c9eeab01db70f48961a",
+      "upstream_title": "Expose connector candidates in external agent detection (#36218)",
+      "disposition": "deferred_r12_mcp_plugins_skills_e6cfd40c3f44",
+      "scope": "r12_mcp_plugins_skills_e6cfd40c3f44",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "745603a5a1eb48b6f343633d622eeb72dd549d7b",
+      "upstream_title": "Ignore passthrough metadata when reconciling rollout items (#36221)",
+      "disposition": "deferred_r12_state_thread_persistence_745603a5a1eb",
+      "scope": "r12_state_thread_persistence_745603a5a1eb",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "a01a2d91461a57809e944de7758477b92617ab01",
+      "upstream_title": "Preserve executor paths in read command actions (#36223)",
+      "disposition": "deferred_r12_security_sandbox_network_a01a2d91461a",
+      "scope": "r12_security_sandbox_network_a01a2d91461a",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "3016671bb077c43448b8fa88f3edfa9772e17058",
+      "upstream_title": "Support Enterprise automation account plans (#36228)",
+      "disposition": "deferred_r12_security_sandbox_network_3016671bb077",
+      "scope": "r12_security_sandbox_network_3016671bb077",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "413492cd6c3a4d4f8dff6f406247ccda5a9d88aa",
+      "upstream_title": "Ignore symbolic slash-tmp permissions on Windows (#36237)",
+      "disposition": "deferred_r12_security_sandbox_network_413492cd6c3a",
+      "scope": "r12_security_sandbox_network_413492cd6c3a",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "4642370542739d5dd080b0c87a9de06a6435d3db",
+      "upstream_title": "Refresh precomputed app-server protocol exports (#36239)",
+      "disposition": "deferred_r12_protocol_app_server_464237054273",
+      "scope": "r12_protocol_app_server_464237054273",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "53d06e24ea318a963812030fa8fed1bd0fc42d42",
+      "upstream_title": "Prefer the bundled resource for the code mode host (#36264)",
+      "disposition": "deferred_r12_release_telemetry_other_53d06e24ea31",
+      "scope": "r12_release_telemetry_other_53d06e24ea31",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "f0c30e528a54bdf0fa9a4d52ff74b34383434811",
+      "upstream_title": "Derive report prompt hashes from persisted rollouts (#36271)",
+      "disposition": "deferred_r12_protocol_app_server_f0c30e528a54",
+      "scope": "r12_protocol_app_server_f0c30e528a54",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "5e8b22488f224a1c426f3bdcd41c8715894ef3b4",
+      "upstream_title": "Use the host skill provider catalog in world state (#36309)",
+      "disposition": "deferred_r12_mcp_plugins_skills_5e8b22488f22",
+      "scope": "r12_mcp_plugins_skills_5e8b22488f22",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "aea26afaee177d3fe40721ef261a29f89879d505",
+      "upstream_title": "Include skills in debug prompt input output (#36311)",
+      "disposition": "deferred_r12_mcp_plugins_skills_aea26afaee17",
+      "scope": "r12_mcp_plugins_skills_aea26afaee17",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "66d63afd18a0e7e0b77f075ca7b9f3c30d503d63",
+      "upstream_title": "Preserve discovery order for host skill path aliases (#36327)",
+      "disposition": "deferred_r12_mcp_plugins_skills_66d63afd18a0",
+      "scope": "r12_mcp_plugins_skills_66d63afd18a0",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "448118f544abb7e2c67c8bc57bcb26e9e75a9b21",
+      "upstream_title": "Detect connectors used in external agent sessions (#36336)",
+      "disposition": "deferred_r12_mcp_plugins_skills_448118f544ab",
+      "scope": "r12_mcp_plugins_skills_448118f544ab",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "5548c95d66e29aeb994a982db8a378d9453694b0",
+      "upstream_title": "Enable skills in the MCP server (#36339)",
+      "disposition": "deferred_r12_security_sandbox_network_5548c95d66e2",
+      "scope": "r12_security_sandbox_network_5548c95d66e2",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "3d1d26915a303c3b4765828f973f5464f8c28c5c",
+      "upstream_title": "Stop publishing legacy Linux bundle archives (#36342)",
+      "disposition": "deferred_r12_code_mode_v8_build_3d1d26915a30",
+      "scope": "r12_code_mode_v8_build_3d1d26915a30",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "7b38c48da930445eaafee166ed86d9240f490c8d",
+      "upstream_title": "Require explicit sandbox permissions with shell justifications (#36350)",
+      "disposition": "deferred_r12_security_sandbox_network_7b38c48da930",
+      "scope": "r12_security_sandbox_network_7b38c48da930",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "2c005abb0765bfe3ef42a23fe88d5b806184fa83",
+      "upstream_title": "Use model catalog collaboration mode messages (#36351)",
+      "disposition": "deferred_r12_security_sandbox_network_2c005abb0765",
+      "scope": "r12_security_sandbox_network_2c005abb0765",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "35eab50501746159d89fafd8cf1f048b00cf5174",
+      "upstream_title": "Pass sessions directly to session tasks (#36354)",
+      "disposition": "deferred_r12_state_thread_persistence_35eab5050174",
+      "scope": "r12_state_thread_persistence_35eab5050174",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "c4f2746c43a3ab87c2978657d7f2c274546e97fe",
+      "upstream_title": "Keep MCP tool calls bound to their thread (#36355)",
+      "disposition": "deferred_r12_mcp_plugins_skills_c4f2746c43a3",
+      "scope": "r12_mcp_plugins_skills_c4f2746c43a3",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "bbbf396839b3bab872291354878980ba82ad4aee",
+      "upstream_title": "Sync updates to imported external agent sessions (#36356)",
+      "disposition": "deferred_r12_protocol_app_server_bbbf396839b3",
+      "scope": "r12_protocol_app_server_bbbf396839b3",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "66ebeb703710ae9e298b62d88d709b67777c91b4",
+      "upstream_title": "Use the step-scoped router for tool execution (#36357)",
+      "disposition": "deferred_r12_execution_tools_agents_66ebeb703710",
+      "scope": "r12_execution_tools_agents_66ebeb703710",
+      "reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "d97cb0dcad1df443462ade6c32b57e1c64a8a068",
+      "upstream_title": "Consolidate MCP config editing in codex-core (#36359)",
+      "disposition": "deferred_r12_mcp_plugins_skills_d97cb0dcad1d",
+      "scope": "r12_mcp_plugins_skills_d97cb0dcad1d",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "385fe95ce18caa9cbaae4a5a0036f73fff26c40b",
+      "upstream_title": "Use MCP bindings as the step tool catalog (#36360)",
+      "disposition": "deferred_r12_release_telemetry_other_385fe95ce18c",
+      "scope": "r12_release_telemetry_other_385fe95ce18c",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "da2c7ca8d16a25f00e09a199524d4f8554ee3977",
+      "upstream_title": "Migrate Cursor-managed skills into Codex (#36361)",
+      "disposition": "deferred_r12_mcp_plugins_skills_da2c7ca8d16a",
+      "scope": "r12_mcp_plugins_skills_da2c7ca8d16a",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "0d109f097c7f8d2d70d6990176bce401c81ebbbc",
+      "upstream_title": "Move skill catalog rendering out of core (#36364)",
+      "disposition": "deferred_r12_mcp_plugins_skills_0d109f097c7f",
+      "scope": "r12_mcp_plugins_skills_0d109f097c7f",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "287e1020aefdd0988ba2d74923216b2e25ded3e8",
+      "upstream_title": "Add strict automatic review for MCP elicitations (#36365)",
+      "disposition": "deferred_r12_security_sandbox_network_287e1020aefd",
+      "scope": "r12_security_sandbox_network_287e1020aefd",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "775fb21d2af9b9936618fe22dd62e6f0cb3ba4a3",
+      "upstream_title": "Keep effective tool exposure in the registry (#36367)",
+      "disposition": "deferred_r12_mcp_plugins_skills_775fb21d2af9",
+      "scope": "r12_mcp_plugins_skills_775fb21d2af9",
+      "reason": "The MCP, plugin, connector, or skill behavior is not yet bound to Hepta's host/executor authority and immutable catalog model.",
+      "missing_prerequisites": [
+        "host/executor ownership mapping",
+        "bounded catalog evidence",
+        "activation non-bypass tests"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "845497f483bfd88e9d3471827d67bd67ebcc98d8",
+      "upstream_title": "Run native Windows Bazel tests with MSVC (#36372)",
+      "disposition": "deferred_r12_code_mode_v8_build_845497f483bf",
+      "scope": "r12_code_mode_v8_build_845497f483bf",
+      "reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "b7a61066081644e0d8b2c0b4dbfd7408ac1514df",
+      "upstream_title": "Add an `--approve-for-me` CLI flag (#36373)",
+      "disposition": "deferred_r12_security_sandbox_network_b7a610660816",
+      "scope": "r12_security_sandbox_network_b7a610660816",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "2e32d958949792e0747bd9b24293778fec431012",
+      "upstream_title": "Enable sandboxed V8 for code mode (#36374)",
+      "disposition": "deferred_r12_security_sandbox_network_2e32d9589497",
+      "scope": "r12_security_sandbox_network_2e32d9589497",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "d62353a3127335172479112e8a775f9fbb36a44c",
+      "upstream_title": "Load local session pickers from the state DB first (#36378)",
+      "disposition": "deferred_r12_tui_product_d62353a31273",
+      "scope": "r12_tui_product_d62353a31273",
+      "reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "c42ea41ee0b836539a2a5d24f3faff96cc48db40",
+      "upstream_title": "Add thread section management APIs (#36380)",
+      "disposition": "deferred_r12_protocol_app_server_c42ea41ee0b8",
+      "scope": "r12_protocol_app_server_c42ea41ee0b8",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "332eac4b858a40575a55f21026ecf8cb662e539c",
+      "upstream_title": "Load turn summaries with paginated queries (#36384)",
+      "disposition": "deferred_r12_state_thread_persistence_332eac4b858a",
+      "scope": "r12_state_thread_persistence_332eac4b858a",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "bf7804c25418a71f3dacf43c3a13d8778f1757e4",
+      "upstream_title": "Add acknowledged user message submission to core (#36385)",
+      "disposition": "deferred_r12_release_telemetry_other_bf7804c25418",
+      "scope": "r12_release_telemetry_other_bf7804c25418",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "1bef1689769b63ef7bb8c2e4118ec90b7afd475c",
+      "upstream_title": "Track image preparation details in turn analytics (#36388)",
+      "disposition": "deferred_r12_protocol_app_server_1bef1689769b",
+      "scope": "r12_protocol_app_server_1bef1689769b",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "dc60dadce6b5911b9b5852365f6eb9829ec14442",
+      "upstream_title": "Enforce single-writer ownership for all thread histories (#36389)",
+      "disposition": "deferred_r12_security_sandbox_network_dc60dadce6b5",
+      "scope": "r12_security_sandbox_network_dc60dadce6b5",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "670f69416bf91c5dfd8b58669e78050b584ff053",
+      "upstream_title": "Allow custom Codex instructions for realtime transitions (#36408)",
+      "disposition": "deferred_r12_protocol_app_server_670f69416bf9",
+      "scope": "r12_protocol_app_server_670f69416bf9",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "4c219fdb1a5195c11a3b059489491f5242253c68",
+      "upstream_title": "Use Git repositories as pre-tool hook test markers (#36411)",
+      "disposition": "deferred_r12_release_telemetry_other_4c219fdb1a51",
+      "scope": "r12_release_telemetry_other_4c219fdb1a51",
+      "reason": "The release, telemetry, documentation, account, or residual runtime behavior lacks a bounded local equivalence record and release-safe evidence.",
+      "missing_prerequisites": [
+        "bounded semantic mapping",
+        "local regression evidence",
+        "release non-claim review"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "6751b54cae32b23786001e2414d749a9916201e1",
+      "upstream_title": "Add a realtime delegation acknowledgement control (#36413)",
+      "disposition": "deferred_r12_protocol_app_server_6751b54cae32",
+      "scope": "r12_protocol_app_server_6751b54cae32",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "7dc1856685d58374e46ee61eb63f084bcbaddc52",
+      "upstream_title": "Avoid querying terminal size on every TUI redraw (#36482)",
+      "disposition": "deferred_r12_state_thread_persistence_7dc1856685d5",
+      "scope": "r12_state_thread_persistence_7dc1856685d5",
+      "reason": "The state, thread, rollout, migration, or persistence behavior lacks an append-only ownership and replay proof in the Hepta tree.",
+      "missing_prerequisites": [
+        "single-writer ownership",
+        "migration and replay parity",
+        "corruption and recovery fixtures"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "a1dd74b53548ac48af59841ea9b8eac06b78d546",
+      "upstream_title": "Retain attempted tool metadata across prompts (#36507)",
+      "disposition": "deferred_r12_protocol_app_server_a1dd74b53548",
+      "scope": "r12_protocol_app_server_a1dd74b53548",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "1e85ca099e4265bf89f4016772d299816e231bb3",
+      "upstream_title": "Support two-stroke TUI key chords (#36511)",
+      "disposition": "deferred_r12_security_sandbox_network_1e85ca099e42",
+      "scope": "r12_security_sandbox_network_1e85ca099e42",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "9949245d1d2b4a39a6f1841922322f767fa146ad",
+      "upstream_title": "Preserve SQLite thread metadata during goal mutations (#36632)",
+      "disposition": "deferred_r12_protocol_app_server_9949245d1d2b",
+      "scope": "r12_protocol_app_server_9949245d1d2b",
+      "reason": "The protocol or app-server change lacks an end-to-end compatibility mapping through persistence, replay, generated schemas, and caller evidence.",
+      "missing_prerequisites": [
+        "typed protocol projection",
+        "schema compatibility fixtures",
+        "caller and replay evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    },
+    {
+      "upstream_commit": "5157493c23713ac12034cf250ffb0a8ce0670277",
+      "upstream_title": "Expose onboarding hints in login completion notifications (#36635)",
+      "disposition": "deferred_r12_security_sandbox_network_5157493c2371",
+      "scope": "r12_security_sandbox_network_5157493c2371",
+      "reason": "The change affects security, sandbox, network, credential, or approval authority and lacks a bounded Hepta semantic transplant with adversarial evidence.",
+      "missing_prerequisites": [
+        "authority mapping",
+        "negative security fixtures",
+        "cross-platform fail-closed evidence"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "No local behavior is claimed equivalent for this deferred scope."
+      ]
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 44,
+    "existing_semantic_equivalent_count": 0,
+    "deferred_commit_count": 164,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}

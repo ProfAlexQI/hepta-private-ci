@@ -1,0 +1,531 @@
+{
+  "schema_version": "hepta_upstream_codex_r12_inventory_shard_v1",
+  "category": "code_mode_v8_build",
+  "range_start_exclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+  "range_end_inclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+  "commit_count": 14,
+  "commit_inventory": [
+    {
+      "upstream_commit": "3d519bf63a1ca9b319b1aefc3062558af0c06273",
+      "parent_commit": "8a1c9414399bd8c52cd11d89f420767c41f4ae99",
+      "authored_at": "2026-07-27T10:46:58Z",
+      "title": "Allow alpha hotfix versions in R2 releases (#35595)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 8,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        ".github/scripts/publish_r2_release.py",
+        ".github/workflows/rust-release.yml"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_3d519bf63a1c",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "8c72d61727de81ea6354ae55969612629a36c11d",
+      "parent_commit": "fb6aad9ae34116128e537696c24e35fe6548e1c2",
+      "authored_at": "2026-07-27T23:51:54Z",
+      "title": "Point crossterm patch to the OpenAI OSS fork (#35688)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 4,
+      "insertions": 4,
+      "deletions": 4,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "MODULE.bazel.lock",
+        "codex-rs/Cargo.lock",
+        "codex-rs/Cargo.toml",
+        "codex-rs/deny.toml"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_8c72d61727de",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "3418498f01422f5f650ea645d4bd19e05c3a9616",
+      "parent_commit": "f029bb795ccbbd8471511f5a8b93e56d8f2b6d31",
+      "authored_at": "2026-07-28T01:11:56Z",
+      "title": "Honor the configured SQLite home in the logs client (#35695)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 5,
+      "insertions": 476,
+      "deletions": 431,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/Cargo.lock",
+        "codex-rs/cli/Cargo.toml",
+        "codex-rs/cli/src/bin/logs_client.rs",
+        "codex-rs/state/Cargo.toml",
+        "justfile"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_3418498f0142",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "dd6b8803538ce80eccaef4804c5ecf574457dbef",
+      "parent_commit": "709283b432fb5231c9bca720c239b25046968aa2",
+      "authored_at": "2026-07-28T19:21:33Z",
+      "title": "Advance latest-alpha-cli after release publishing completes (#35818)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 11,
+      "deletions": 2,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        ".github/workflows/rust-release.yml"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_dd6b8803538c",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "50a7328f50faab7d3a4be125580dc1bf7ae070d7",
+      "parent_commit": "155c3e299c3ad6a033eba8837e7b3b57901271f8",
+      "authored_at": "2026-07-28T20:43:55Z",
+      "title": "Enforce centralized SQLite connection creation (#35828)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "state_thread_persistence"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 4,
+      "insertions": 22,
+      "deletions": 0,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        ".bazelrc",
+        "codex-rs/Cargo.toml",
+        "codex-rs/clippy.toml",
+        "codex-rs/state/src/sqlite.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_50a7328f50fa",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "12b3e88028b983051913fb6bb95d7a11218bdceb",
+      "parent_commit": "438c9e98db71273e4f0b63dc4a86c2db58c44706",
+      "authored_at": "2026-07-28T21:12:46Z",
+      "title": "Update rusty_v8 to 150.4.0 (#35831)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 13,
+      "insertions": 210,
+      "deletions": 202,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "MODULE.bazel",
+        "MODULE.bazel.lock",
+        "codex-rs/Cargo.lock",
+        "codex-rs/Cargo.toml",
+        "patches/v8_bazel_rules.patch",
+        "patches/v8_module_deps.patch",
+        "patches/v8_source_portability.patch",
+        "third_party/v8/BUILD.bazel",
+        "third_party/v8/README.md",
+        "third_party/v8/libcxx.BUILD.bazel",
+        "third_party/v8/llvm_libc.BUILD.bazel",
+        "third_party/v8/rusty_v8_149_2_0.sha256",
+        "third_party/v8/rusty_v8_150_4_0.sha256"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_12b3e88028b9",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "166658a34a0ef2ad02c30ad272fa40018e787a33",
+      "parent_commit": "9f4c20aadc062dbc6a14843802a25eb0fbb8c004",
+      "authored_at": "2026-07-28T23:19:21Z",
+      "title": "Tie remote exec servers to their parent stdin (#35843)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 9,
+      "insertions": 475,
+      "deletions": 27,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/Cargo.lock",
+        "codex-rs/cli/Cargo.toml",
+        "codex-rs/cli/src/exec_server_telemetry.rs",
+        "codex-rs/cli/src/exec_server_telemetry_tests.rs",
+        "codex-rs/cli/src/main.rs",
+        "codex-rs/cli/tests/exec_server.rs",
+        "codex-rs/exec-server/src/lib.rs",
+        "codex-rs/exec-server/src/local_process.rs",
+        "codex-rs/exec-server/src/remote.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_166658a34a0e",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "3725f02cf38d856bc82bb46dd68ab61bb96ec6fc",
+      "parent_commit": "cef3910ea4d09617e50a94e40bf25a6cb2e4e765",
+      "authored_at": "2026-07-29T13:46:52Z",
+      "title": "Fix TUI layout for halfwidth Japanese sound marks (#35962)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "state_thread_persistence",
+        "execution_tools_agents",
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 38,
+      "insertions": 1335,
+      "deletions": 245,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/Cargo.lock",
+        "codex-rs/cloud-tasks/Cargo.toml",
+        "codex-rs/cloud-tasks/src/scrollable_diff.rs",
+        "codex-rs/cloud-tasks/src/scrollable_diff_tests.rs",
+        "codex-rs/tui/src/bottom_pane/list_selection_view.rs",
+        "codex-rs/tui/src/bottom_pane/request_user_input/render.rs",
+        "codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs",
+        "codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap",
+        "codex-rs/tui/src/bottom_pane/selection_popup_common.rs",
+        "codex-rs/tui/src/bottom_pane/selection_row_layout.rs",
+        "codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__list_selection_view__tests__list_selection_halfwidth_sound_marks_narrow.snap",
+        "codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__selection_popup_common__tests__popup_fuzzy_matched_emoji_graphemes.snap",
+        "codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__textarea__tests__textarea_halfwidth_sound_marks_wrap_and_align_with_cursor.snap",
+        "codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__textarea__tests__textarea_masked_graphemes_align_with_cursor.snap",
+        "codex-rs/tui/src/bottom_pane/textarea.rs",
+        "codex-rs/tui/src/history_cell/exec.rs",
+        "codex-rs/tui/src/history_cell/mod.rs",
+        "codex-rs/tui/src/history_cell/session.rs",
+        "codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap",
+        "codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap",
+        "codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap",
+        "codex-rs/tui/src/history_cell/tests.rs",
+        "codex-rs/tui/src/line_truncation.rs",
+        "codex-rs/tui/src/line_truncation_tests.rs",
+        "codex-rs/tui/src/live_wrap.rs",
+        "codex-rs/tui/src/markdown_render.rs",
+        "codex-rs/tui/src/markdown_render/table_key_value.rs",
+        "codex-rs/tui/src/markdown_render_tests.rs",
+        "codex-rs/tui/src/snapshots/codex_tui__markdown_render__markdown_render_tests__table_renders_halfwidth_sound_marks_at_constrained_width_snapshot.snap",
+        "codex-rs/tui/src/status/card.rs",
+        "codex-rs/tui/src/status/format.rs",
+        "codex-rs/tui/src/status/helpers.rs",
+        "codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_halfwidth_kana_in_narrow_terminal.snap",
+        "codex-rs/tui/src/status/tests.rs",
+        "codex-rs/tui/src/terminal_hyperlinks.rs",
+        "codex-rs/tui/src/text_formatting.rs",
+        "codex-rs/tui/src/width.rs",
+        "codex-rs/tui/src/wrapping.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_3725f02cf38d",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "df326d31cda41a84f0641ec6519db08020248281",
+      "parent_commit": "f9b18d04ba78266b1e802ae2f85ff5ebea1e973a",
+      "authored_at": "2026-07-29T17:12:49Z",
+      "title": "Remove obsolete rusty_v8 146.4.0 Bazel targets (#35997)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 0,
+      "deletions": 151,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "MODULE.bazel",
+        "third_party/v8/BUILD.bazel"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_df326d31cda4",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "09cf6092183325916892b2e34dac37e6614a7c4b",
+      "parent_commit": "ad6fc66b6dad21a474e43486c9839631ac4f882c",
+      "authored_at": "2026-07-29T18:34:20Z",
+      "title": "Route pet asset downloads through the shared HTTP client (#36008)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "state_thread_persistence",
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 11,
+      "insertions": 294,
+      "deletions": 96,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/Cargo.lock",
+        "codex-rs/deny.toml",
+        "codex-rs/tui/Cargo.toml",
+        "codex-rs/tui/src/app/pets.rs",
+        "codex-rs/tui/src/chatwidget.rs",
+        "codex-rs/tui/src/chatwidget/constructor.rs",
+        "codex-rs/tui/src/chatwidget/pets.rs",
+        "codex-rs/tui/src/chatwidget/pets_tests.rs",
+        "codex-rs/tui/src/history_cell/tests.rs",
+        "codex-rs/tui/src/pets/asset_pack.rs",
+        "codex-rs/tui/src/pets/mod.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_09cf60921833",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "ff352fab6209dc0f9d13fc0036ed3f9404682b2c",
+      "parent_commit": "406dc9239492aff6d295cca5eebe2a548548d42f",
+      "authored_at": "2026-07-30T03:55:05Z",
+      "title": "Remove codex-core's direct reqwest dependency (#36076)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 6,
+      "insertions": 9,
+      "deletions": 13,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/Cargo.lock",
+        "codex-rs/core/Cargo.toml",
+        "codex-rs/core/src/client.rs",
+        "codex-rs/core/tests/suite/external_auth.rs",
+        "codex-rs/core/tests/suite/rmcp_client.rs",
+        "codex-rs/deny.toml"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_ff352fab6209",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "7d5253d2b07d48ae7e7bf15c535473b2d2024385",
+      "parent_commit": "ff352fab6209dc0f9d13fc0036ed3f9404682b2c",
+      "authored_at": "2026-07-30T04:21:12Z",
+      "title": "Route Ollama through the shared HTTP client (#36078)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 6,
+      "insertions": 248,
+      "deletions": 32,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/Cargo.lock",
+        "codex-rs/deny.toml",
+        "codex-rs/ollama/Cargo.toml",
+        "codex-rs/ollama/src/client.rs",
+        "codex-rs/ollama/src/lib.rs",
+        "codex-rs/utils/oss/src/lib.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_7d5253d2b07d",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "3d1d26915a303c3b4765828f973f5464f8c28c5c",
+      "parent_commit": "5548c95d66e29aeb994a982db8a378d9453694b0",
+      "authored_at": "2026-07-31T14:49:47Z",
+      "title": "Stop publishing legacy Linux bundle archives (#36342)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build",
+        "release_telemetry_other"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 0,
+      "deletions": 15,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        ".github/workflows/rust-release.yml"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_3d1d26915a30",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    },
+    {
+      "upstream_commit": "845497f483bfd88e9d3471827d67bd67ebcc98d8",
+      "parent_commit": "775fb21d2af9b9936618fe22dd62e6f0cb3ba4a3",
+      "authored_at": "2026-07-31T18:15:07Z",
+      "title": "Run native Windows Bazel tests with MSVC (#36372)",
+      "primary_category": "code_mode_v8_build",
+      "touched_categories": [
+        "code_mode_v8_build"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 1,
+      "insertions": 5,
+      "deletions": 3,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        ".github/workflows/bazel.yml"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_code_mode_v8_build_845497f483bf",
+      "deferral_reason": "The build, V8, code-mode, or hosted CI change is not yet represented by a cross-platform semantic transplant and terminal hosted evidence.",
+      "missing_prerequisites": [
+        "cross-platform build contract",
+        "toolchain and artifact binding",
+        "terminal hosted evidence"
+      ]
+    }
+  ]
+}

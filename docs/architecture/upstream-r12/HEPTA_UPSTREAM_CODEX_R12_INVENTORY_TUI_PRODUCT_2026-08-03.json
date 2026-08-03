@@ -1,0 +1,274 @@
+{
+  "schema_version": "hepta_upstream_codex_r12_inventory_shard_v1",
+  "category": "tui_product",
+  "range_start_exclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+  "range_end_inclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+  "commit_count": 8,
+  "commit_inventory": [
+    {
+      "upstream_commit": "0896bf6fc05ead454888b90044e1a08f99b6d778",
+      "parent_commit": "9ca6df68dafec86880952949b95354ce19e0599b",
+      "authored_at": "2026-07-26T22:13:59Z",
+      "title": "Skip inactive TUI threads without pending user interaction (#35525)",
+      "primary_category": "tui_product",
+      "touched_categories": [
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P3",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 29,
+      "deletions": 7,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/app/tests.rs",
+        "codex-rs/tui/src/app/thread_routing.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_tui_product_0896bf6fc05e",
+      "deferral_reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ]
+    },
+    {
+      "upstream_commit": "976129f0973b3323e2200016df43e83f88270543",
+      "parent_commit": "e8f0f64f2057740ca18d66dbeebe077156d7a2a9",
+      "authored_at": "2026-07-27T17:54:28Z",
+      "title": "Preserve TUI input when terminal focus returns (#35649)",
+      "primary_category": "tui_product",
+      "touched_categories": [
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P3",
+      "status": "deferred",
+      "changed_file_count": 4,
+      "insertions": 295,
+      "deletions": 42,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/terminal_palette.rs",
+        "codex-rs/tui/src/tui/event_stream.rs",
+        "codex-rs/tui/tests/suite/focus_palette.rs",
+        "codex-rs/tui/tests/suite/mod.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_tui_product_976129f0973b",
+      "deferral_reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ]
+    },
+    {
+      "upstream_commit": "155c3e299c3ad6a033eba8837e7b3b57901271f8",
+      "parent_commit": "8bbdf6c8f9ecf4833479c64a4794c9ed6c2dab9b",
+      "authored_at": "2026-07-28T20:04:40Z",
+      "title": "Use the shared HTTP client for announcement tips (#35825)",
+      "primary_category": "tui_product",
+      "touched_categories": [
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P3",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 16,
+      "deletions": 18,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/lib.rs",
+        "codex-rs/tui/src/tooltips.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_tui_product_155c3e299c3a",
+      "deferral_reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ]
+    },
+    {
+      "upstream_commit": "b96ebfb31286187e950a4e2a60da941b5fed2afa",
+      "parent_commit": "250de82bfb51a210325e88bfe1f7c30b0fa514f0",
+      "authored_at": "2026-07-29T03:43:20Z",
+      "title": "Show blocked goals as stalled in the TUI (#35886)",
+      "primary_category": "tui_product",
+      "touched_categories": [
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P3",
+      "status": "deferred",
+      "changed_file_count": 5,
+      "insertions": 5,
+      "deletions": 5,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/bottom_pane/footer.rs",
+        "codex-rs/tui/src/chatwidget/goal_menu.rs",
+        "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__goal_menu_blocked.snap",
+        "codex-rs/tui/src/chatwidget/tests/status_and_layout.rs",
+        "codex-rs/tui/src/goal_display.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_tui_product_b96ebfb31286",
+      "deferral_reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ]
+    },
+    {
+      "upstream_commit": "d06c7ac055920c7cb140c25ebda3f3db20197b45",
+      "parent_commit": "b96ebfb31286187e950a4e2a60da941b5fed2afa",
+      "authored_at": "2026-07-29T03:44:51Z",
+      "title": "Clean up side conversations in the background (#35887)",
+      "primary_category": "tui_product",
+      "touched_categories": [
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P3",
+      "status": "deferred",
+      "changed_file_count": 6,
+      "insertions": 148,
+      "deletions": 11,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/app.rs",
+        "codex-rs/tui/src/app/app_server_events.rs",
+        "codex-rs/tui/src/app/side.rs",
+        "codex-rs/tui/src/app/test_support.rs",
+        "codex-rs/tui/src/app/tests.rs",
+        "codex-rs/tui/src/app/thread_routing.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_tui_product_d06c7ac05592",
+      "deferral_reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ]
+    },
+    {
+      "upstream_commit": "cef3910ea4d09617e50a94e40bf25a6cb2e4e765",
+      "parent_commit": "00cb5c465b1ea9efaf9018f853482c42f6948fe5",
+      "authored_at": "2026-07-29T13:46:52Z",
+      "title": "Preserve hyperlink cell widths during terminal diffing (#35960)",
+      "primary_category": "tui_product",
+      "touched_categories": [
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P3",
+      "status": "deferred",
+      "changed_file_count": 3,
+      "insertions": 214,
+      "deletions": 67,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/custom_terminal.rs",
+        "codex-rs/tui/src/snapshots/codex_tui__terminal_hyperlinks__tests__forced_width_hyperlinks_render_wide_and_halfwidth_cells.snap",
+        "codex-rs/tui/src/terminal_hyperlinks.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_tui_product_cef3910ea4d0",
+      "deferral_reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ]
+    },
+    {
+      "upstream_commit": "a1286d12a2a80fccd8e270c12ec32f48431b5722",
+      "parent_commit": "9cf6b3905c102cf38b4f93ec2533261a99764d4d",
+      "authored_at": "2026-07-29T22:20:03Z",
+      "title": "Allow naming forked chats from the TUI (#36036)",
+      "primary_category": "tui_product",
+      "touched_categories": [
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P3",
+      "status": "deferred",
+      "changed_file_count": 8,
+      "insertions": 143,
+      "deletions": 22,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/app/event_dispatch.rs",
+        "codex-rs/tui/src/app/tests.rs",
+        "codex-rs/tui/src/app/tests/advanced_reasoning_tests.rs",
+        "codex-rs/tui/src/app/tests/session_lifecycle_requests.rs",
+        "codex-rs/tui/src/app_event.rs",
+        "codex-rs/tui/src/chatwidget/slash_dispatch.rs",
+        "codex-rs/tui/src/chatwidget/tests/slash_commands.rs",
+        "codex-rs/tui/src/slash_command.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_tui_product_a1286d12a2a8",
+      "deferral_reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ]
+    },
+    {
+      "upstream_commit": "d62353a3127335172479112e8a775f9fbb36a44c",
+      "parent_commit": "2e32d958949792e0747bd9b24293778fec431012",
+      "authored_at": "2026-07-31T18:53:04Z",
+      "title": "Load local session pickers from the state DB first (#36378)",
+      "primary_category": "tui_product",
+      "touched_categories": [
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P3",
+      "status": "deferred",
+      "changed_file_count": 3,
+      "insertions": 393,
+      "deletions": 84,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/resume_picker.rs",
+        "codex-rs/tui/src/resume_picker/page_loading.rs",
+        "codex-rs/tui/src/snapshots/codex_tui__resume_picker__tests__resume_picker_db_fallback_transition.snap"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_tui_product_d62353a31273",
+      "deferral_reason": "The change is upstream TUI or product behavior and has no approved Hepta native-UI ownership mapping or product regression evidence.",
+      "missing_prerequisites": [
+        "Hepta UI ownership decision",
+        "native product behavior mapping",
+        "visual and interaction regressions"
+      ]
+    }
+  ]
+}

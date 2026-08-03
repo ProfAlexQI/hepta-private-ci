@@ -1,0 +1,57 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "record_id": "r13",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-03_R13.json",
+    "manifest_sha256": "4423a073cba40b0d8e98d5f714ce7ced94c69fd39649a41c3c292b7137d1365f",
+    "commit": "1577a50e37c6332ab267dea9d838dab8b8c07536",
+    "commit_role": "local_semantic_classification_base",
+    "source_manifest_introducing_commit": null,
+    "source_manifest_introducing_commit_binding_pending": true,
+    "range_start_exclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+    "range_end_inclusive": "bb5054fe47abe73ecbbd454751066a28c89f4bb9",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "coverage_contract": {
+    "range_commit_count": 1,
+    "dispositioned_unique_commit_count": 1,
+    "absorption_entry_count": 0,
+    "deferral_entry_count": 1,
+    "unresolved_unique_commit_count": 1,
+    "complete_range_coverage": true
+  },
+  "absorptions": [],
+  "deferrals": [
+    {
+      "upstream_commit": "bb5054fe47abe73ecbbd454751066a28c89f4bb9",
+      "upstream_title": "Capture rollout budget units from response usage (#36641)",
+      "disposition": "deferred_provider_rollout_budget_units_private_usage_propagation",
+      "scope": "provider_rollout_budget_units_private_usage_propagation",
+      "reason": "The provider-only rollout budget unit must be parsed from Responses SSE usage and propagated through TokenUsage, session, goal, memory, state, and app-server consumers while remaining absent from serialized protocol, JSON Schema, and TypeScript.  The R12 classification base has no such field or end-to-end regression, so equivalence is not claimed.",
+      "missing_prerequisites": [
+        "private non-serialized TokenUsage field with serde, schemars, and TypeScript exclusion",
+        "Responses SSE unit and end-to-end fractional-number parsing evidence",
+        "all local TokenUsage constructors and accounting consumers updated without exposing provider metadata"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "Existing token counts do not imply capture, propagation, or privacy parity for provider-only rollout budget units."
+      ]
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 0,
+    "existing_semantic_equivalent_count": 0,
+    "deferred_commit_count": 1,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}

@@ -1,0 +1,523 @@
+{
+  "schema_version": "hepta_upstream_codex_r12_inventory_shard_v1",
+  "category": "execution_tools_agents",
+  "range_start_exclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+  "range_end_inclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+  "commit_count": 16,
+  "commit_inventory": [
+    {
+      "upstream_commit": "8a1c9414399bd8c52cd11d89f420767c41f4ae99",
+      "parent_commit": "3bbf1fe75701c97fb190e0867002ba2d9dbda5db",
+      "authored_at": "2026-07-27T10:46:05Z",
+      "title": "Recommend longer waits in the v2 wait_agent schema (#35594)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 4,
+      "deletions": 2,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/tools/handlers/multi_agents_spec.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_8a1c9414399b",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "fea2d8b18f5fade817d0d3a9cf4f278b6210ab01",
+      "parent_commit": "fbe65995bbcd4da249cfdafe0300ac3cb2cb3b3c",
+      "authored_at": "2026-07-27T14:08:07Z",
+      "title": "Skip restored token usage replay for exec resumes (#35621)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "absorbed",
+      "changed_file_count": 2,
+      "insertions": 27,
+      "deletions": 4,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/exec/src/lib.rs",
+        "codex-rs/exec/tests/suite/resume.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "exec_resume_restored_token_usage_replay_suppression"
+    },
+    {
+      "upstream_commit": "fd41e813cb5939029acab29cb5f2fb8ac8d8286d",
+      "parent_commit": "bbb92457b04fe7e7c27d450f9221014f8abf09ca",
+      "authored_at": "2026-07-27T21:06:17Z",
+      "title": "Raise the Windows exec yield floor to 10 seconds (#35670)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 5,
+      "insertions": 16,
+      "deletions": 6,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/tools/handlers/shell_spec.rs",
+        "codex-rs/core/src/tools/handlers/shell_spec_tests.rs",
+        "codex-rs/core/src/unified_exec/mod.rs",
+        "codex-rs/core/src/unified_exec/process_manager_tests.rs",
+        "codex-rs/core/tests/suite/unified_exec.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_fd41e813cb59",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "f029bb795ccbbd8471511f5a8b93e56d8f2b6d31",
+      "parent_commit": "63682c4e1ad8b4341b93a5e68c666f521806eb98",
+      "authored_at": "2026-07-28T00:33:42Z",
+      "title": "Refresh the subagent picker in the background (#35693)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents",
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 10,
+      "insertions": 415,
+      "deletions": 37,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/tui/src/app.rs",
+        "codex-rs/tui/src/app/agent_navigation.rs",
+        "codex-rs/tui/src/app/agent_picker.rs",
+        "codex-rs/tui/src/app/event_dispatch.rs",
+        "codex-rs/tui/src/app/session_lifecycle.rs",
+        "codex-rs/tui/src/app/tests/session_lifecycle_requests.rs",
+        "codex-rs/tui/src/app_event.rs",
+        "codex-rs/tui/src/bottom_pane/list_selection_view.rs",
+        "codex-rs/tui/src/bottom_pane/mod.rs",
+        "codex-rs/tui/src/chatwidget/interaction.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_f029bb795ccb",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "e597169e9a783156e50ae9765d891a3dd74df064",
+      "parent_commit": "d9e1c9cd5590e9b151e4cb5a82fd208f234b7422",
+      "authored_at": "2026-07-28T09:36:31Z",
+      "title": "Keep agent registry identities consistent (#35744)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 4,
+      "insertions": 469,
+      "deletions": 23,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/agent/control_tests.rs",
+        "codex-rs/core/src/agent/registry.rs",
+        "codex-rs/core/src/agent/registry_tests.rs",
+        "codex-rs/core/tests/suite/multi_agent_resume.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_e597169e9a78",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "0a6616f4cf30d94e3198b90e980f141d10e19f80",
+      "parent_commit": "9f23e9779757b41ae38e3ff23a6d8b05513baf42",
+      "authored_at": "2026-07-29T02:54:11Z",
+      "title": "Mark the primary environment in model context (#35874)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 5,
+      "insertions": 370,
+      "deletions": 23,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/context/world_state/environment.rs",
+        "codex-rs/core/src/context/world_state/environment_render_tests.rs",
+        "codex-rs/core/src/context/world_state/environment_tests.rs",
+        "codex-rs/core/src/context/world_state/snapshots/codex_core__context__world_state__environment__tests__snapshots.snap",
+        "codex-rs/core/tests/suite/remote_env.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_0a6616f4cf30",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "fe01054a28fa4bd04716d9ceadb410f2443a50ce",
+      "parent_commit": "d06c7ac055920c7cb140c25ebda3f3db20197b45",
+      "authored_at": "2026-07-29T05:30:53Z",
+      "title": "Inherit ready step environments when spawning agents (#35895)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 3,
+      "insertions": 159,
+      "deletions": 7,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/tools/handlers/multi_agents/spawn.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs",
+        "codex-rs/core/tests/suite/remote_env.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_fe01054a28fa",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "1da9f846b30f0a6185c0452d39edd4e0fd55fe1c",
+      "parent_commit": "1e3c0042eb6613ef3843c45562c5618b1eced071",
+      "authored_at": "2026-07-29T16:24:49Z",
+      "title": "Test exec-server compatibility across Codex versions (#35990)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 4,
+      "insertions": 455,
+      "deletions": 1,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/exec-server-protocol/src/lib.rs",
+        "codex-rs/exec-server/testing/run_version_skew.sh",
+        "codex-rs/exec-server/tests/relay.rs",
+        "codex-rs/exec-server/tests/relay/version_skew.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_1da9f846b30f",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "b293412c2434f4351c1c50a946fb0d4964ce0eef",
+      "parent_commit": "6219b7c40fc9c702c0aef9964e72b492558f60e4",
+      "authored_at": "2026-07-30T09:14:05Z",
+      "title": "Unify tool runtime assembly before router construction (#36119)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 8,
+      "insertions": 415,
+      "deletions": 332,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/src/stream_events_utils_tests.rs",
+        "codex-rs/core/src/tools/router.rs",
+        "codex-rs/core/src/tools/router_tests.rs",
+        "codex-rs/core/src/tools/spec_plan.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs",
+        "codex-rs/tools/src/tool_executor.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_b293412c2434",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "c126f206dafb9b7fe8e1d6b990e67f0535de79f4",
+      "parent_commit": "4f6d06d48581cad8cab7987ee3909c7d9bbd3c82",
+      "authored_at": "2026-07-30T10:23:20Z",
+      "title": "Resolve normalized tool name collisions in code mode (#36129)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 3,
+      "insertions": 365,
+      "deletions": 16,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/tools/spec_plan.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs",
+        "codex-rs/core/tests/suite/code_mode.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_c126f206dafb",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "483559cc758353c83733b2b34629dbf885a99207",
+      "parent_commit": "0dcad0c97217df0ef9511ff1efec9e82720a0fa9",
+      "authored_at": "2026-07-30T16:28:10Z",
+      "title": "Coalesce concurrent remote metadata requests (#36184)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 2,
+      "insertions": 505,
+      "deletions": 13,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/exec-server/src/remote_file_system.rs",
+        "codex-rs/exec-server/src/remote_file_system_path_uri_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_483559cc7583",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "789c72dcf62d7439863d4d2846454f05b3d51db6",
+      "parent_commit": "ba42e6866cef4baed7ad92c73e6be8cd42e49d8b",
+      "authored_at": "2026-07-30T17:58:41Z",
+      "title": "Avoid shifting bytes in streaming output buffers (#36194)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 4,
+      "insertions": 82,
+      "deletions": 32,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/unified_exec/async_watcher.rs",
+        "codex-rs/core/src/unified_exec/async_watcher_tests.rs",
+        "codex-rs/exec-server/src/noise_relay/message_framing.rs",
+        "codex-rs/exec-server/src/noise_relay/message_framing_tests.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_789c72dcf62d",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "ef293f7ac9d756f793f3e952a790f9bec16a6eeb",
+      "parent_commit": "66d63afd18a0e7e0b77f075ca7b9f3c30d503d63",
+      "authored_at": "2026-07-31T13:54:11Z",
+      "title": "Restrict `shell_command` to a single local environment (#36329)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "absorbed",
+      "changed_file_count": 5,
+      "insertions": 137,
+      "deletions": 11,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/tools/registry.rs",
+        "codex-rs/core/src/tools/registry_tests.rs",
+        "codex-rs/core/src/tools/spec_plan.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs",
+        "codex-rs/core/tests/suite/remote_env.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "legacy_shell_command_single_local_environment"
+    },
+    {
+      "upstream_commit": "66ebeb703710ae9e298b62d88d709b67777c91b4",
+      "parent_commit": "bbbf396839b3bab872291354878980ba82ad4aee",
+      "authored_at": "2026-07-31T16:11:16Z",
+      "title": "Use the step-scoped router for tool execution (#36357)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "deferred",
+      "changed_file_count": 6,
+      "insertions": 31,
+      "deletions": 23,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/src/stream_events_utils_tests.rs",
+        "codex-rs/core/src/tools/code_mode/delegate.rs",
+        "codex-rs/core/src/tools/code_mode/mod.rs",
+        "codex-rs/core/src/tools/parallel.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "deferral_scope": "r12_execution_tools_agents_66ebeb703710",
+      "deferral_reason": "The execution, tool, environment, or agent behavior is not yet mapped through Hepta permission, cancellation, and receipt authority.",
+      "missing_prerequisites": [
+        "execution identity mapping",
+        "permission and cancellation parity",
+        "terminal receipt evidence"
+      ]
+    },
+    {
+      "upstream_commit": "003ec63bba93cf994246799f795a6a4f6d67743a",
+      "parent_commit": "dc60dadce6b5911b9b5852365f6eb9829ec14442",
+      "authored_at": "2026-07-31T21:29:46Z",
+      "title": "Avoid redundant filesystem probes (#36393)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents",
+        "tui_product"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "absorbed",
+      "changed_file_count": 4,
+      "insertions": 74,
+      "deletions": 40,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/exec-server/src/environment_toml.rs",
+        "codex-rs/file-search/src/lib.rs",
+        "codex-rs/tui/src/lib.rs",
+        "codex-rs/utils/path-utils/src/lib.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "redundant_filesystem_probe_elision"
+    },
+    {
+      "upstream_commit": "ee0247f95a6fe2b094ba2253d82cae2a2b4c2dff",
+      "parent_commit": "6751b54cae32b23786001e2414d749a9916201e1",
+      "authored_at": "2026-08-01T05:57:45Z",
+      "title": "Extract exec-server request dispatching (#36440)",
+      "primary_category": "execution_tools_agents",
+      "touched_categories": [
+        "execution_tools_agents"
+      ],
+      "hepta_v2_priority": "P1",
+      "status": "absorbed",
+      "changed_file_count": 5,
+      "insertions": 413,
+      "deletions": 208,
+      "binary_file_touch_count": 0,
+      "changed_files": [
+        "codex-rs/exec-server/src/server.rs",
+        "codex-rs/exec-server/src/server/processor.rs",
+        "codex-rs/exec-server/src/server/request_dispatcher.rs",
+        "codex-rs/exec-server/src/server/request_dispatcher_tests.rs",
+        "codex-rs/exec-server/tests/process.rs"
+      ],
+      "source_imported": false,
+      "merge_performed": false,
+      "rebase_performed": false,
+      "cherry_pick_performed": false,
+      "absorption_scope": "fail_closed_exec_server_request_dispatcher"
+    }
+  ]
+}

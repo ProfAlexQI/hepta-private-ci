@@ -6,8 +6,8 @@
     "branch": "main",
     "remote_ref": "refs/heads/main",
     "tracking_ref": "refs/remotes/upstream/main",
-    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260726-r11",
-    "expected_head": "61a44880a85d2fd0d8770908dea5733495e571c8"
+    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260803-r13",
+    "expected_head": "bb5054fe47abe73ecbbd454751066a28c89f4bb9"
   },
   "network_receipt": {
     "schema_version": "hepta_upstream_network_freshness_receipt_v1",
@@ -374,22 +374,139 @@
         "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
       },
       "disposition_bindings": [
-        {"kind":"absorption","upstream_commit":"a177013eb055f16fcc9cd07308877ca36c88ede1","local_commit":"7d166521d93ac4524ebd0dbeed55b99794559dc9","scope":"managed_mcp_requirements_active_thread_refresh","non_claims":["Thread-start invalidation remains deferred."]},
-        {"kind":"absorption","upstream_commit":"58b427722857117ac3e702b9eb406d47616022e2","local_commit":"7d166521d93ac4524ebd0dbeed55b99794559dc9","scope":"independent_best_effort_mcp_refresh_per_loaded_thread","non_claims":["Failed or unloaded threads are not durably queued."]},
-        {"kind":"absorption","upstream_commit":"89a3b89c4c1d1afaaa93b6669c9e4e03247f8a99","local_commit":"66d703e0a7c71e7cdfcdaa47be938a17463bb0f9","scope":"mcp_auth_discovery_runtime_http_client_snapshot_parity","non_claims":["Existing runtime secret custody is unchanged."]},
-        {"kind":"absorption","upstream_commit":"63fe5a6b71d45dfff24a6a1e5da0699e054f145d","local_commit":"01638884a369bff157c2d2c5993f7df7e67dd80c","scope":"network_approval_execution_ownership_cancellation_and_cache_serialization","non_claims":["No identity beyond turn and execution is claimed."]},
-        {"kind":"absorption","upstream_commit":"4c43465133428898aa84f0bfc02c306ed65fb66a","local_commit":"4b4553b788f994ce29ab0bb19046ec06c149d5bf","scope":"plugin_mcp_filter_preserves_servers_without_allowlists","non_claims":["Explicit empty allowlists still deny all."]},
-        {"kind":"deferral","upstream_commit":"05f000263b2b2528cc9ca2a100270da9c6bf2fed","scope":"paginated_thread_fork_history_and_cursor_consistency","non_claims":["No paginated fork behavior is absorbed."]},
-        {"kind":"deferral","upstream_commit":"99744cfe04806ebaa1e5d08e3e790070f852472b","scope":"non_local_hook_transcript_ephemerality","non_claims":["Non-local transcripts are not claimed persistence-free."]},
-        {"kind":"deferral","upstream_commit":"544007d006d869b4af03a205f6a94a9f2b022051","scope":"ent26_enterprise_plan_identity","non_claims":["Hepta does not advertise ent26 support."]},
-        {"kind":"deferral","upstream_commit":"1811b67a84952b8ebbd0605a0388e02a18453eb8","scope":"ephemeral_paginated_thread_fork_ownership","non_claims":["No ephemeral paginated fork is exposed."]},
-        {"kind":"deferral","upstream_commit":"32329b289d05eb6a3f8e35c267ceb25ba46716a2","scope":"workspace_plugin_publish_capability","non_claims":["No workspace publication capability is advertised."]},
-        {"kind":"deferral","upstream_commit":"07fd04abb199fa4c3a1530873ec69e938061a615","scope":"remote_plugin_identity_in_skill_metadata","non_claims":["Remote plugin IDs are not propagated into skill metadata."]},
-        {"kind":"deferral","upstream_commit":"0d2a0aa76ba8cabb468501a04d050834ec2ef80d","scope":"remote_plugin_identity_in_skill_invocation_analytics","non_claims":["Analytics do not claim remote plugin attribution."]},
-        {"kind":"deferral","upstream_commit":"a4535884169be8da2f81b8a4debecbd4dc11aa97","scope":"bundled_macos_helper_signing","non_claims":["No helper binary was signed or published."]},
-        {"kind":"deferral","upstream_commit":"cba0e2701c9e3e67a877a16dbbd7a577d477a630","scope":"code_mode_in_process_fallback_disablement","non_claims":["Upstream fallback policy parity is not claimed."]},
-        {"kind":"deferral","upstream_commit":"25b6fc9bbc49bbec12e8d38ceee550fc07cbc60d","scope":"responses_lite_code_mode_tool_name_metadata","non_claims":["Responses Lite metadata parity is not claimed."]},
-        {"kind":"deferral","upstream_commit":"c3e926e61cb234fc180d8896bdb9655b58c3e735","scope":"remote_exec_server_connection_tracing","non_claims":["Remote connection trace parity is not claimed."]}
+        {
+          "kind": "absorption",
+          "upstream_commit": "a177013eb055f16fcc9cd07308877ca36c88ede1",
+          "local_commit": "7d166521d93ac4524ebd0dbeed55b99794559dc9",
+          "scope": "managed_mcp_requirements_active_thread_refresh",
+          "non_claims": [
+            "Thread-start invalidation remains deferred."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "58b427722857117ac3e702b9eb406d47616022e2",
+          "local_commit": "7d166521d93ac4524ebd0dbeed55b99794559dc9",
+          "scope": "independent_best_effort_mcp_refresh_per_loaded_thread",
+          "non_claims": [
+            "Failed or unloaded threads are not durably queued."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "89a3b89c4c1d1afaaa93b6669c9e4e03247f8a99",
+          "local_commit": "66d703e0a7c71e7cdfcdaa47be938a17463bb0f9",
+          "scope": "mcp_auth_discovery_runtime_http_client_snapshot_parity",
+          "non_claims": [
+            "Existing runtime secret custody is unchanged."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "63fe5a6b71d45dfff24a6a1e5da0699e054f145d",
+          "local_commit": "01638884a369bff157c2d2c5993f7df7e67dd80c",
+          "scope": "network_approval_execution_ownership_cancellation_and_cache_serialization",
+          "non_claims": [
+            "No identity beyond turn and execution is claimed."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "4c43465133428898aa84f0bfc02c306ed65fb66a",
+          "local_commit": "4b4553b788f994ce29ab0bb19046ec06c149d5bf",
+          "scope": "plugin_mcp_filter_preserves_servers_without_allowlists",
+          "non_claims": [
+            "Explicit empty allowlists still deny all."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "05f000263b2b2528cc9ca2a100270da9c6bf2fed",
+          "scope": "paginated_thread_fork_history_and_cursor_consistency",
+          "non_claims": [
+            "No paginated fork behavior is absorbed."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "99744cfe04806ebaa1e5d08e3e790070f852472b",
+          "scope": "non_local_hook_transcript_ephemerality",
+          "non_claims": [
+            "Non-local transcripts are not claimed persistence-free."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "544007d006d869b4af03a205f6a94a9f2b022051",
+          "scope": "ent26_enterprise_plan_identity",
+          "non_claims": [
+            "Hepta does not advertise ent26 support."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "1811b67a84952b8ebbd0605a0388e02a18453eb8",
+          "scope": "ephemeral_paginated_thread_fork_ownership",
+          "non_claims": [
+            "No ephemeral paginated fork is exposed."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "32329b289d05eb6a3f8e35c267ceb25ba46716a2",
+          "scope": "workspace_plugin_publish_capability",
+          "non_claims": [
+            "No workspace publication capability is advertised."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "07fd04abb199fa4c3a1530873ec69e938061a615",
+          "scope": "remote_plugin_identity_in_skill_metadata",
+          "non_claims": [
+            "Remote plugin IDs are not propagated into skill metadata."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "0d2a0aa76ba8cabb468501a04d050834ec2ef80d",
+          "scope": "remote_plugin_identity_in_skill_invocation_analytics",
+          "non_claims": [
+            "Analytics do not claim remote plugin attribution."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "a4535884169be8da2f81b8a4debecbd4dc11aa97",
+          "scope": "bundled_macos_helper_signing",
+          "non_claims": [
+            "No helper binary was signed or published."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "cba0e2701c9e3e67a877a16dbbd7a577d477a630",
+          "scope": "code_mode_in_process_fallback_disablement",
+          "non_claims": [
+            "Upstream fallback policy parity is not claimed."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "25b6fc9bbc49bbec12e8d38ceee550fc07cbc60d",
+          "scope": "responses_lite_code_mode_tool_name_metadata",
+          "non_claims": [
+            "Responses Lite metadata parity is not claimed."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "c3e926e61cb234fc180d8896bdb9655b58c3e735",
+          "scope": "remote_exec_server_connection_tracing",
+          "non_claims": [
+            "Remote connection trace parity is not claimed."
+          ]
+        }
       ]
     },
     {
@@ -407,13 +524,1815 @@
         "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
       },
       "disposition_bindings": [
-        {"kind":"absorption","upstream_commit":"5c36e869c1a7bdc5ec4c1325d02e60dfbadcc9b8","local_commit":"6a81515e0964999fe292e7ac37f3dffda82eb862","scope":"bounded_code_mode_metadata_compatibility_headers","non_claims":["Responses Lite capability parity and Code Mode host fallback policy remain deferred."]},
-        {"kind":"absorption","upstream_commit":"62fd410384cca008446c2d64a4f2b3f915f4906e","local_commit":"7ca3de730b3af2101f0cb20f0fe2c58c281a806d","scope":"generated_system_skill_watcher_filtering","non_claims":["No broader skill discovery or extension replacement is claimed."]},
-        {"kind":"absorption","upstream_commit":"61a44880a85d2fd0d8770908dea5733495e571c8","local_commit":"351909f7dd9898bd4e8eaeec297b08463b8a7bb4","scope":"mcp_server_recursion_limit_256","non_claims":["No MCP runtime or publication-model replacement is claimed."]},
-        {"kind":"deferral","upstream_commit":"3a08af44b2a4450bab0a9393f9d36ae621dde6bb","scope":"per_process_network_policy_reverse_rpc_and_recovery","non_claims":["Network approval serialization is not exec-server reverse-RPC parity."]},
-        {"kind":"deferral","upstream_commit":"af7f6f4d346a71e78869f4c0e507160f921fffed","scope":"item_started_at_ms_protocol_and_replay","non_claims":["Completion timestamps do not imply first-start timing parity."]},
-        {"kind":"deferral","upstream_commit":"322d5b96cfa5c8fd52bd83ecfdb79cd9b330205f","scope":"tui_unified_mention_result_freshness","non_claims":["Hepta native UI does not claim upstream TUI mention behavior."]},
-        {"kind":"deferral","upstream_commit":"20dafe201d91d4405eef05ecd1db0257f13a9ac8","scope":"tui_keymap_action_menu_responsive_layout","non_claims":["Hepta native UI does not claim upstream TUI keymap layout parity."]}
+        {
+          "kind": "absorption",
+          "upstream_commit": "5c36e869c1a7bdc5ec4c1325d02e60dfbadcc9b8",
+          "local_commit": "6a81515e0964999fe292e7ac37f3dffda82eb862",
+          "scope": "bounded_code_mode_metadata_compatibility_headers",
+          "non_claims": [
+            "Responses Lite capability parity and Code Mode host fallback policy remain deferred."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "62fd410384cca008446c2d64a4f2b3f915f4906e",
+          "local_commit": "7ca3de730b3af2101f0cb20f0fe2c58c281a806d",
+          "scope": "generated_system_skill_watcher_filtering",
+          "non_claims": [
+            "No broader skill discovery or extension replacement is claimed."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "61a44880a85d2fd0d8770908dea5733495e571c8",
+          "local_commit": "351909f7dd9898bd4e8eaeec297b08463b8a7bb4",
+          "scope": "mcp_server_recursion_limit_256",
+          "non_claims": [
+            "No MCP runtime or publication-model replacement is claimed."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "3a08af44b2a4450bab0a9393f9d36ae621dde6bb",
+          "scope": "per_process_network_policy_reverse_rpc_and_recovery",
+          "non_claims": [
+            "Network approval serialization is not exec-server reverse-RPC parity."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "af7f6f4d346a71e78869f4c0e507160f921fffed",
+          "scope": "item_started_at_ms_protocol_and_replay",
+          "non_claims": [
+            "Completion timestamps do not imply first-start timing parity."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "322d5b96cfa5c8fd52bd83ecfdb79cd9b330205f",
+          "scope": "tui_unified_mention_result_freshness",
+          "non_claims": [
+            "Hepta native UI does not claim upstream TUI mention behavior."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "20dafe201d91d4405eef05ecd1db0257f13a9ac8",
+          "scope": "tui_keymap_action_menu_responsive_layout",
+          "non_claims": [
+            "Hepta native UI does not claim upstream TUI keymap layout parity."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r12",
+      "source_intake": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-03_R12.json",
+        "sha256": "4ad248be4094747ebc02ceb22dc7e096ff6d04173222b216dc52a904d165e376",
+        "range_start_exclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+        "range_end_inclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+        "frozen_ref": "refs/remotes/upstream/hepta-intake-20260803-r12"
+      },
+      "record": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-03.json",
+        "sha256": "5ef6c311ce56648ea7152b78a18fd7d2e61c0f0d4ff43ed3257a75e59ddc85cf",
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+      },
+      "disposition_bindings": [
+        {
+          "kind": "absorption",
+          "upstream_commit": "5a3808b77d18668f2ec794e64de094112a2e600b",
+          "local_commit": "8cf29353533dc094d23dec595225d92c96acf6a8",
+          "scope": "explicit_in_process_outbound_router_shutdown",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "9ca6df68dafec86880952949b95354ce19e0599b",
+          "local_commit": "8cf29353533dc094d23dec595225d92c96acf6a8",
+          "scope": "terminal_turn_error_history_replay",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "3bbf1fe75701c97fb190e0867002ba2d9dbda5db",
+          "local_commit": "8cf29353533dc094d23dec595225d92c96acf6a8",
+          "scope": "cached_mcp_tools_visible_before_startup_with_live_call_wait",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "fbe65995bbcd4da249cfdafe0300ac3cb2cb3b3c",
+          "local_commit": "e73689c0269b9bb1ee0587a5d65c1c19fdb19610",
+          "scope": "model_owned_token_budget_protocol_and_config_substrate",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "fea2d8b18f5fade817d0d3a9cf4f278b6210ab01",
+          "local_commit": "cc1e6cea1c9c0f3644a7245166c7d2da128d605f",
+          "scope": "exec_resume_restored_token_usage_replay_suppression",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "0affaf2acb888304f91cadb2c497313e95b715b8",
+          "local_commit": "cc1e6cea1c9c0f3644a7245166c7d2da128d605f",
+          "scope": "opentelemetry_provider_idempotent_shutdown",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "e8f0f64f2057740ca18d66dbeebe077156d7a2a9",
+          "local_commit": "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+          "scope": "thread_metadata_survives_missing_rollout_files",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "462ed19a05917b1ec88a015b2cf6342cfe8f7c85",
+          "local_commit": "d60aa228dfe6730b7e16ae0746fea6b9a3a33821",
+          "scope": "remote_network_policy_controller_fail_closed_scope_boundary",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "9f82ffed1b2fb63370055dad3f2ad63564eeebbf",
+          "local_commit": "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+          "scope": "multi_agent_worker_developer_instruction_inheritance_regression",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "2f19a57704fb7b1db032bc38cf995034254eaebb",
+          "local_commit": "89df4da4c88c718f663bc06719ad2541b8d6435a",
+          "scope": "multi_agent_settings_cross_representation_preservation",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "294d813263de08061cb303e7b601d7ea6a5e72e8",
+          "local_commit": "9df482fe49edbbd3ee9928c08b4e796a8fcfb6ef",
+          "scope": "curated_plugin_catalog_authentication_routing",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "bbeee9a40686975a1bfb5e8a4b6d98dccbb43dab",
+          "local_commit": "608edf206ddc68b697cc4343075aa1fb905b4354",
+          "scope": "concurrent_mcp_and_plugin_recommendation_preparation",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "4d1f66bf8199713e4a77ad55458bc6e3dcbef5c5",
+          "local_commit": "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+          "scope": "paginated_thread_metadata_resume_preservation",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "8d6a91b1ff926bb6006aff94ef4f9e628863cc09",
+          "local_commit": "9a6cc34d44e3dcdba066382ada2fec6bb63e8878",
+          "scope": "thread_history_item_lifecycle_timestamps",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "63682c4e1ad8b4341b93a5e68c666f521806eb98",
+          "local_commit": "7051e24b397522f0074f8e5063ecc5ba4a50e583",
+          "scope": "empty_preview_thread_relationship_listing",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "2494d939cfb33f95cbce61ac7283193861960577",
+          "local_commit": "105851c47c089f98be2b94cd7369530a55dba64c",
+          "scope": "route_aware_streaming_http_request_bodies",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "899539c03ac46301c8e860bc0096854f57625b82",
+          "local_commit": "105851c47c089f98be2b94cd7369530a55dba64c",
+          "scope": "route_aware_openai_file_upload_clients",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "84ccb2938bfeee481e9481244f073d27d3c672cf",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "concurrent_mcp_tool_catalog_resolution",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "cf7e9cfe6a196d14a34a4a2e10265143df336781",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "business_prolite_account_plan_identity",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "paginated_thread_history_requires_state_database",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "9ea975a2dc88d039512313da3e332013e8bd911e",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "mcp_oauth_configured_http_client_routing",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "709283b432fb5231c9bca720c239b25046968aa2",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "all_mcp_oauth_requests_share_configured_http_client",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "1def0a8925cd9df462cbd7cec355458198015473",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "nested_agent_parent_turn_identity_chain",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "c550cb3e01c921e8d7cd02768a187298ad22ddee",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "cancelled_mcp_elicitation_cleanup",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "12b961d4c545f4871efba3a9fd4ea1c1f747eaf4",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "plugin_summary_plan_eligibility_metadata",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "03edf16f0bce2c454fc9a8ddb382e9c23c114f7f",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "plaintext_collaboration_message_provenance",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "28f3f1f9ef4e9578a5f023f6b6eba018914a5342",
+          "local_commit": "670df418387eba8f9cad1292ef80dd6a9bffff45",
+          "scope": "plugin_installation_timestamp_summary",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "ddf33ea802f787f800e2a3691cc6e7379e6bb695",
+          "local_commit": "aa4e3edbfd67a608406a67b6bfb1529b0f00dfc4",
+          "scope": "bounded_model_facing_mcp_namespace_descriptions",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "3834c47ccb91adeef82e7d95f7ecdec5cde6dda8",
+          "local_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+          "scope": "network_allow_amendment_persistence_failure_denies",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "3e3ae088398b4a4ad0833c84f5b1dcaaf5cdabe3",
+          "local_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+          "scope": "bounded_mcp_catalog_pagination",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "7ec480dda5792b8d54286c72f3e36bbdb267d0c3",
+          "local_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+          "scope": "unknown_mcp_authentication_status",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "b1ccaa0e080f59cfd71a136f6fcc60a4f2d60fba",
+          "local_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+          "scope": "migration_target_symlink_non_traversal",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "406dc9239492aff6d295cca5eebe2a548548d42f",
+          "local_commit": "9f8294ed5035c9af54f93ddd2de2209b589ef27a",
+          "scope": "mcp_read_only_hint_untrusted_advisory",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "bf4d3f51ea70ce70ab7fabce7a66f328fef49e57",
+          "local_commit": "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+          "scope": "hosted_mcp_credentials_restricted_to_local_environments",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "164b3bfeabdbc8e33c7320437e7cd875f93a534e",
+          "local_commit": "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+          "scope": "mcp_oauth_credentials_isolated_by_environment",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "ef293f7ac9d756f793f3e952a790f9bec16a6eeb",
+          "local_commit": "96d497b20751b3be02cd58bf36d1bccb6b69af53",
+          "scope": "legacy_shell_command_single_local_environment",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "003ec63bba93cf994246799f795a6a4f6d67743a",
+          "local_commit": "e36ed1c5a73ed71931bcca7b9d09745b10b2bb8e",
+          "scope": "redundant_filesystem_probe_elision",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "64b2a3008e8760040dd511e983641341df73d875",
+          "local_commit": "406681f9d0a6cab8f306d437ec225d881113aa1e",
+          "scope": "experimental_remote_plugin_search_api_declaration",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "a850875a8eb603d18cb14cb2c5e80c930de9bd48",
+          "local_commit": "406681f9d0a6cab8f306d437ec225d881113aa1e",
+          "scope": "governed_read_only_remote_plugin_search",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "e2c0837923ca29b54facdb567326db42a0aefd1b",
+          "local_commit": "f057687313f7f4a53fc1f0a1ec72a3ba6fe27362",
+          "scope": "explicit_user_input_blocking_behavior",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "ee0247f95a6fe2b094ba2253d82cae2a2b4c2dff",
+          "local_commit": "883af1439fd33d37a137530b4084429d3dbfb581",
+          "scope": "fail_closed_exec_server_request_dispatcher",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "feee0b07c7564455e253312e62e6dba69dc861d3",
+          "local_commit": "2f68c75bafd916bb30d482f0f845441f2ecac262",
+          "scope": "bounded_larger_remote_plugin_bundles",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "582569998181aad08a88bacc151a94b2048a5d1f",
+          "local_commit": "02c695c03a0ae87e1a68c33a6be3fcc89dac4ef6",
+          "scope": "mcp_catalog_item_limit_2048",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "2b5bdcf67547860f2e5c5a605009a70026796b2b",
+          "local_commit": "93d980ea542d53fa7c257aa635d2ae1d7d622919",
+          "scope": "portable_agent_plugin_installation_and_generation_publication",
+          "non_claims": [
+            "This bounded mapping does not claim byte-for-byte source identity, whole-tree import, or full upstream parity."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "0896bf6fc05ead454888b90044e1a08f99b6d778",
+          "scope": "r12_tui_product_0896bf6fc05e",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "18f50c9e628af083a52d9240de09fc2db24d79ce",
+          "scope": "r12_release_telemetry_other_18f50c9e628a",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "95637f7056835fea66bdd0044414af480fc0fd74",
+          "scope": "r12_security_sandbox_network_95637f705683",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "8a1c9414399bd8c52cd11d89f420767c41f4ae99",
+          "scope": "r12_execution_tools_agents_8a1c9414399b",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "3d519bf63a1ca9b319b1aefc3062558af0c06273",
+          "scope": "r12_code_mode_v8_build_3d519bf63a1c",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "d6ea5991e7f91eec5bad1fb4cb36f6be638878bc",
+          "scope": "r12_mcp_plugins_skills_d6ea5991e7f9",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "16d7daad7c5dc73da8558102a65bb7d7709807e1",
+          "scope": "r12_mcp_plugins_skills_16d7daad7c5d",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "fbe65995bbcd4da249cfdafe0300ac3cb2cb3b3c",
+          "scope": "model_owned_token_budget_runtime_rollover_and_activation",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "bd2de422aa287b97b06ca6425a10935bcf1b3731",
+          "scope": "r12_protocol_app_server_bd2de422aa28",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "976129f0973b3323e2200016df43e83f88270543",
+          "scope": "r12_tui_product_976129f0973b",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "462ed19a05917b1ec88a015b2cf6342cfe8f7c85",
+          "scope": "bidirectional_remote_exec_network_policy_transport",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "6b23635a7e8d92862940702a2ec65c1226402cdb",
+          "scope": "r12_security_sandbox_network_6b23635a7e8d",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "8495963ac6d15a3ac891517d979f5509d55605c0",
+          "scope": "r12_security_sandbox_network_8495963ac6d1",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "b672b3c409324ac3ae53982734f0ee555c27202e",
+          "scope": "r12_mcp_plugins_skills_b672b3c40932",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "c21c8a5e215bc7b9215fc727cfe17f60ab170333",
+          "scope": "r12_release_telemetry_other_c21c8a5e215b",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "bbb92457b04fe7e7c27d450f9221014f8abf09ca",
+          "scope": "r12_security_sandbox_network_bbb92457b04f",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "fd41e813cb5939029acab29cb5f2fb8ac8d8286d",
+          "scope": "r12_execution_tools_agents_fd41e813cb59",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "fb6aad9ae34116128e537696c24e35fe6548e1c2",
+          "scope": "r12_security_sandbox_network_fb6aad9ae341",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "8c72d61727de81ea6354ae55969612629a36c11d",
+          "scope": "r12_code_mode_v8_build_8c72d61727de",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "f029bb795ccbbd8471511f5a8b93e56d8f2b6d31",
+          "scope": "r12_execution_tools_agents_f029bb795ccb",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "3418498f01422f5f650ea645d4bd19e05c3a9616",
+          "scope": "r12_code_mode_v8_build_3418498f0142",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "49025589b0216b876b1a6a20977536c7d55cdb8b",
+          "scope": "r12_protocol_app_server_49025589b021",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "61de0d8fe812137cec943d58309b26df1dd227b5",
+          "scope": "r12_security_sandbox_network_61de0d8fe812",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "9291a123fb96ca7d11eae27bcdecec06dcbe0d14",
+          "scope": "r12_release_telemetry_other_9291a123fb96",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "85c6da1c7931310a99e3dbc4e2e0de8f17e34f13",
+          "scope": "r12_protocol_app_server_85c6da1c7931",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "be2e4afcd7392339d6adbaf0d31b26316bcaa2ab",
+          "scope": "r12_mcp_plugins_skills_be2e4afcd739",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "f2bee854a73666e1c3e922a853dda591b1a25fcf",
+          "scope": "r12_mcp_plugins_skills_f2bee854a736",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "8e271dc02b23d42827875019924be0f5005642b0",
+          "scope": "r12_protocol_app_server_8e271dc02b23",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "d9e1c9cd5590e9b151e4cb5a82fd208f234b7422",
+          "scope": "r12_mcp_plugins_skills_d9e1c9cd5590",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "e597169e9a783156e50ae9765d891a3dd74df064",
+          "scope": "r12_execution_tools_agents_e597169e9a78",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "a68d0a74bd38ddc01361ce42262da689b788afce",
+          "scope": "r12_mcp_plugins_skills_a68d0a74bd38",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "f6160ca5b3da580616883e9039f0e76ad359d515",
+          "scope": "r12_mcp_plugins_skills_f6160ca5b3da",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "7cde2323f3712999e9ab98b16287e08b7735d52f",
+          "scope": "r12_release_telemetry_other_7cde2323f371",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "03748ad5e18a3c9c1f0828561dcf1f3f0d7b2f77",
+          "scope": "r12_mcp_plugins_skills_03748ad5e18a",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "bb1af235ea2822d7a40f75ef52e4d6a2cde84da2",
+          "scope": "r12_release_telemetry_other_bb1af235ea28",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "4f6eaf7af9d975b822d1d658ba1893d6d5a87646",
+          "scope": "r12_protocol_app_server_4f6eaf7af9d9",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "8f00b9a04cb542ad19a79f9f6c32348421741602",
+          "scope": "r12_protocol_app_server_8f00b9a04cb5",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "dd6b8803538ce80eccaef4804c5ecf574457dbef",
+          "scope": "r12_code_mode_v8_build_dd6b8803538c",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "8bbdf6c8f9ecf4833479c64a4794c9ed6c2dab9b",
+          "scope": "r12_security_sandbox_network_8bbdf6c8f9ec",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "155c3e299c3ad6a033eba8837e7b3b57901271f8",
+          "scope": "r12_tui_product_155c3e299c3a",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "50a7328f50faab7d3a4be125580dc1bf7ae070d7",
+          "scope": "r12_code_mode_v8_build_50a7328f50fa",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "438c9e98db71273e4f0b63dc4a86c2db58c44706",
+          "scope": "r12_protocol_app_server_438c9e98db71",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "12b3e88028b983051913fb6bb95d7a11218bdceb",
+          "scope": "r12_code_mode_v8_build_12b3e88028b9",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "3a797496f1fd56308a73c1d1a068e71d44f34a32",
+          "scope": "r12_protocol_app_server_3a797496f1fd",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "9f4c20aadc062dbc6a14843802a25eb0fbb8c004",
+          "scope": "r12_mcp_plugins_skills_9f4c20aadc06",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "166658a34a0ef2ad02c30ad272fa40018e787a33",
+          "scope": "r12_code_mode_v8_build_166658a34a0e",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "101d6b8cb214ecc04d45c3bcd2ca380116d07193",
+          "scope": "r12_protocol_app_server_101d6b8cb214",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "8707a35113501a9988f06162ca5c2b27d4f90a58",
+          "scope": "r12_release_telemetry_other_8707a3511350",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "07490c75234ed3c63291a8eb7629f04f647038fa",
+          "scope": "r12_protocol_app_server_07490c75234e",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "fcd2273de7d1dc593a9696c935502851ca954d8a",
+          "scope": "r12_mcp_plugins_skills_fcd2273de7d1",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "b9b7c21821025b0c3835e2ff703eba25e29bde4d",
+          "scope": "r12_release_telemetry_other_b9b7c2182102",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "9f23e9779757b41ae38e3ff23a6d8b05513baf42",
+          "scope": "r12_protocol_app_server_9f23e9779757",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "0a6616f4cf30d94e3198b90e980f141d10e19f80",
+          "scope": "r12_execution_tools_agents_0a6616f4cf30",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "6c13b113a3d28b16ce6d00cdbd18ede5bbc1f283",
+          "scope": "r12_mcp_plugins_skills_6c13b113a3d2",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "250de82bfb51a210325e88bfe1f7c30b0fa514f0",
+          "scope": "r12_mcp_plugins_skills_250de82bfb51",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "b96ebfb31286187e950a4e2a60da941b5fed2afa",
+          "scope": "r12_tui_product_b96ebfb31286",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "d06c7ac055920c7cb140c25ebda3f3db20197b45",
+          "scope": "r12_tui_product_d06c7ac05592",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "fe01054a28fa4bd04716d9ceadb410f2443a50ce",
+          "scope": "r12_execution_tools_agents_fe01054a28fa",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "fbf666fa9875d0157816be3b7a20c63161d77ec5",
+          "scope": "r12_mcp_plugins_skills_fbf666fa9875",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "a4d2f3102249a94835e96910a3649a830182813e",
+          "scope": "r12_protocol_app_server_a4d2f3102249",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "9a6668f674d74b35418fa534b3b6285a315d0765",
+          "scope": "r12_protocol_app_server_9a6668f674d7",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "e1895710addb863acf335ef18b4c43b128439567",
+          "scope": "r12_mcp_plugins_skills_e1895710addb",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "00cb5c465b1ea9efaf9018f853482c42f6948fe5",
+          "scope": "r12_security_sandbox_network_00cb5c465b1e",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "cef3910ea4d09617e50a94e40bf25a6cb2e4e765",
+          "scope": "r12_tui_product_cef3910ea4d0",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "3725f02cf38d856bc82bb46dd68ab61bb96ec6fc",
+          "scope": "r12_code_mode_v8_build_3725f02cf38d",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "1ae2b9880e8af5d465161a58f24a127aaa4b0040",
+          "scope": "r12_protocol_app_server_1ae2b9880e8a",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "1e3c0042eb6613ef3843c45562c5618b1eced071",
+          "scope": "r12_state_thread_persistence_1e3c0042eb66",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "1da9f846b30f0a6185c0452d39edd4e0fd55fe1c",
+          "scope": "r12_execution_tools_agents_1da9f846b30f",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "f9b18d04ba78266b1e802ae2f85ff5ebea1e973a",
+          "scope": "r12_state_thread_persistence_f9b18d04ba78",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "df326d31cda41a84f0641ec6519db08020248281",
+          "scope": "r12_code_mode_v8_build_df326d31cda4",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "a05bcda3dbd68729caa2f11027b7f43974fda298",
+          "scope": "r12_security_sandbox_network_a05bcda3dbd6",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "7579a2b41353470efaef93c08b4a21068a366b7f",
+          "scope": "r12_mcp_plugins_skills_7579a2b41353",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "c41a38dd104ebd8574710929da619fa6423d5e36",
+          "scope": "r12_protocol_app_server_c41a38dd104e",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "ad6fc66b6dad21a474e43486c9839631ac4f882c",
+          "scope": "r12_protocol_app_server_ad6fc66b6dad",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "09cf6092183325916892b2e34dac37e6614a7c4b",
+          "scope": "r12_code_mode_v8_build_09cf60921833",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "85c082ccccf6b5ac4d6c31d14f960057348b78f4",
+          "scope": "r12_release_telemetry_other_85c082ccccf6",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "a5082373f18119dc5d3eb993267c97f37880935d",
+          "scope": "r12_mcp_plugins_skills_a5082373f181",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "88d6c2b2b41b0790fa10c232f2a6be0e128cedd6",
+          "scope": "r12_protocol_app_server_88d6c2b2b41b",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "1dad11f818177f2744df929aadff22e12e7aa968",
+          "scope": "r12_protocol_app_server_1dad11f81817",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "78a61de904699beffcb033fe2b59a10c11f31caa",
+          "scope": "r12_mcp_plugins_skills_78a61de90469",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "5989dcc470695fc3f25a7eb3e90c014ef56d7d2a",
+          "scope": "r12_protocol_app_server_5989dcc47069",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "9cf6b3905c102cf38b4f93ec2533261a99764d4d",
+          "scope": "r12_protocol_app_server_9cf6b3905c10",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "a1286d12a2a80fccd8e270c12ec32f48431b5722",
+          "scope": "r12_tui_product_a1286d12a2a8",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "649341715044a16db66623505742d5bd51cf436a",
+          "scope": "r12_release_telemetry_other_649341715044",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "410c22b30e71265cb5a0cfe69f5e80391393b946",
+          "scope": "r12_mcp_plugins_skills_410c22b30e71",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "7b93b3bf9c04fea878f6132be229ed34ebc19e82",
+          "scope": "r12_release_telemetry_other_7b93b3bf9c04",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "1c5f336c4057f1724fc0dc1cb27f971a9fc887bc",
+          "scope": "r12_security_sandbox_network_1c5f336c4057",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "ff352fab6209dc0f9d13fc0036ed3f9404682b2c",
+          "scope": "r12_code_mode_v8_build_ff352fab6209",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "7d5253d2b07d48ae7e7bf15c535473b2d2024385",
+          "scope": "r12_code_mode_v8_build_7d5253d2b07d",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "88ec932e96e4d18c5701664e726b1c8b18454af1",
+          "scope": "r12_state_thread_persistence_88ec932e96e4",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "6219b7c40fc9c702c0aef9964e72b492558f60e4",
+          "scope": "r12_mcp_plugins_skills_6219b7c40fc9",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "b293412c2434f4351c1c50a946fb0d4964ce0eef",
+          "scope": "r12_execution_tools_agents_b293412c2434",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "9a46fd33a0ac62e7d700f2667e1b643c50c4970a",
+          "scope": "r12_mcp_plugins_skills_9a46fd33a0ac",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "3d805abdf09093bfa806f359a5adc6514766c420",
+          "scope": "r12_security_sandbox_network_3d805abdf090",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "5decb399aed13261c3c173cb2198a567eb1b22ba",
+          "scope": "r12_security_sandbox_network_5decb399aed1",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "89a0eed93c9b74073ac3c8bdf449fb981b9b3408",
+          "scope": "r12_mcp_plugins_skills_89a0eed93c9b",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "4f6d06d48581cad8cab7987ee3909c7d9bbd3c82",
+          "scope": "r12_state_thread_persistence_4f6d06d48581",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "c126f206dafb9b7fe8e1d6b990e67f0535de79f4",
+          "scope": "r12_execution_tools_agents_c126f206dafb",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "bdda5da56cae0a9fedf3428ac6d308767b4518f9",
+          "scope": "r12_security_sandbox_network_bdda5da56cae",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "aa064463458adbef10400c74174107fc4b3550f0",
+          "scope": "r12_security_sandbox_network_aa064463458a",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "9588f660be876e3d3cab52d7fce80f0cb61d0d70",
+          "scope": "r12_release_telemetry_other_9588f660be87",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "5ad367fb95ed3aec95ac4a0357ae7d074b5ca3e9",
+          "scope": "r12_state_thread_persistence_5ad367fb95ed",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "5a1097ed269815f94a6174a335c6deb7952baf77",
+          "scope": "r12_security_sandbox_network_5a1097ed2698",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "25eecb071e7f551516d63fe41c922678d51889c2",
+          "scope": "r12_security_sandbox_network_25eecb071e7f",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "b545c94041017d000e2c8b2f6272705d21b85dfb",
+          "scope": "r12_security_sandbox_network_b545c9404101",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "2fbbb1a11a0f7c0a0f67ecff9993176dfd5aabbd",
+          "scope": "r12_security_sandbox_network_2fbbb1a11a0f",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "856bf5a33af84317b99ff5e3b8abfe4fcc5465e7",
+          "scope": "r12_protocol_app_server_856bf5a33af8",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "13ddc7aa5743ad37b003b8c2891805a2d2028fff",
+          "scope": "r12_release_telemetry_other_13ddc7aa5743",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "b445967cc0c3082376fc4c95c8101358213ccd7a",
+          "scope": "r12_mcp_plugins_skills_b445967cc0c3",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "578c1b2230288104041e880a86d0f7f3a5ca6e47",
+          "scope": "r12_release_telemetry_other_578c1b223028",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "355d2a802aaad0d5d003b7bba49f25a05bd1db5a",
+          "scope": "r12_security_sandbox_network_355d2a802aaa",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "ceb4bc72c41e333bbafee14aa992e49ba2e953ed",
+          "scope": "r12_state_thread_persistence_ceb4bc72c41e",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "0dcad0c97217df0ef9511ff1efec9e82720a0fa9",
+          "scope": "r12_security_sandbox_network_0dcad0c97217",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "483559cc758353c83733b2b34629dbf885a99207",
+          "scope": "r12_execution_tools_agents_483559cc7583",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "9eeac78b3f0c510ed9c53d329d466cf18e1af8af",
+          "scope": "r12_protocol_app_server_9eeac78b3f0c",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "6256a7ccc7948231befc33d7d61b369041e6eb16",
+          "scope": "r12_state_thread_persistence_6256a7ccc794",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "ba42e6866cef4baed7ad92c73e6be8cd42e49d8b",
+          "scope": "r12_mcp_plugins_skills_ba42e6866cef",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "789c72dcf62d7439863d4d2846454f05b3d51db6",
+          "scope": "r12_execution_tools_agents_789c72dcf62d",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "0042b00986b9cc73c82c93f94e93d747818228be",
+          "scope": "r12_security_sandbox_network_0042b00986b9",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "acd540f1581bf30f963fccbcce43ac494102242c",
+          "scope": "r12_security_sandbox_network_acd540f1581b",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "97576b1794872e342450ebd577123e052ab57626",
+          "scope": "standalone_code_mode_host_and_v8_runtime_separation",
+          "non_claims": [
+            "No allocator symbol exclusion, CRT heap mixing, test skip, or disabled code-mode claim is accepted as semantic absorption."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "e6cfd40c3f444aadd6017c9eeab01db70f48961a",
+          "scope": "r12_mcp_plugins_skills_e6cfd40c3f44",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "745603a5a1eb48b6f343633d622eeb72dd549d7b",
+          "scope": "r12_state_thread_persistence_745603a5a1eb",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "a01a2d91461a57809e944de7758477b92617ab01",
+          "scope": "r12_security_sandbox_network_a01a2d91461a",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "3016671bb077c43448b8fa88f3edfa9772e17058",
+          "scope": "r12_security_sandbox_network_3016671bb077",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "413492cd6c3a4d4f8dff6f406247ccda5a9d88aa",
+          "scope": "r12_security_sandbox_network_413492cd6c3a",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "4642370542739d5dd080b0c87a9de06a6435d3db",
+          "scope": "r12_protocol_app_server_464237054273",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "53d06e24ea318a963812030fa8fed1bd0fc42d42",
+          "scope": "r12_release_telemetry_other_53d06e24ea31",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "f0c30e528a54bdf0fa9a4d52ff74b34383434811",
+          "scope": "r12_protocol_app_server_f0c30e528a54",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "5e8b22488f224a1c426f3bdcd41c8715894ef3b4",
+          "scope": "r12_mcp_plugins_skills_5e8b22488f22",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "aea26afaee177d3fe40721ef261a29f89879d505",
+          "scope": "r12_mcp_plugins_skills_aea26afaee17",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "66d63afd18a0e7e0b77f075ca7b9f3c30d503d63",
+          "scope": "r12_mcp_plugins_skills_66d63afd18a0",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "448118f544abb7e2c67c8bc57bcb26e9e75a9b21",
+          "scope": "r12_mcp_plugins_skills_448118f544ab",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "5548c95d66e29aeb994a982db8a378d9453694b0",
+          "scope": "r12_security_sandbox_network_5548c95d66e2",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "3d1d26915a303c3b4765828f973f5464f8c28c5c",
+          "scope": "r12_code_mode_v8_build_3d1d26915a30",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "7b38c48da930445eaafee166ed86d9240f490c8d",
+          "scope": "r12_security_sandbox_network_7b38c48da930",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "2c005abb0765bfe3ef42a23fe88d5b806184fa83",
+          "scope": "r12_security_sandbox_network_2c005abb0765",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "35eab50501746159d89fafd8cf1f048b00cf5174",
+          "scope": "r12_state_thread_persistence_35eab5050174",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "c4f2746c43a3ab87c2978657d7f2c274546e97fe",
+          "scope": "r12_mcp_plugins_skills_c4f2746c43a3",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "bbbf396839b3bab872291354878980ba82ad4aee",
+          "scope": "r12_protocol_app_server_bbbf396839b3",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "66ebeb703710ae9e298b62d88d709b67777c91b4",
+          "scope": "r12_execution_tools_agents_66ebeb703710",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "d97cb0dcad1df443462ade6c32b57e1c64a8a068",
+          "scope": "r12_mcp_plugins_skills_d97cb0dcad1d",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "385fe95ce18caa9cbaae4a5a0036f73fff26c40b",
+          "scope": "r12_release_telemetry_other_385fe95ce18c",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "da2c7ca8d16a25f00e09a199524d4f8554ee3977",
+          "scope": "r12_mcp_plugins_skills_da2c7ca8d16a",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "0d109f097c7f8d2d70d6990176bce401c81ebbbc",
+          "scope": "r12_mcp_plugins_skills_0d109f097c7f",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "287e1020aefdd0988ba2d74923216b2e25ded3e8",
+          "scope": "r12_security_sandbox_network_287e1020aefd",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "775fb21d2af9b9936618fe22dd62e6f0cb3ba4a3",
+          "scope": "r12_mcp_plugins_skills_775fb21d2af9",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "845497f483bfd88e9d3471827d67bd67ebcc98d8",
+          "scope": "r12_code_mode_v8_build_845497f483bf",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "b7a61066081644e0d8b2c0b4dbfd7408ac1514df",
+          "scope": "r12_security_sandbox_network_b7a610660816",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "2e32d958949792e0747bd9b24293778fec431012",
+          "scope": "r12_security_sandbox_network_2e32d9589497",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "d62353a3127335172479112e8a775f9fbb36a44c",
+          "scope": "r12_tui_product_d62353a31273",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "c42ea41ee0b836539a2a5d24f3faff96cc48db40",
+          "scope": "r12_protocol_app_server_c42ea41ee0b8",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "332eac4b858a40575a55f21026ecf8cb662e539c",
+          "scope": "r12_state_thread_persistence_332eac4b858a",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "bf7804c25418a71f3dacf43c3a13d8778f1757e4",
+          "scope": "r12_release_telemetry_other_bf7804c25418",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "1bef1689769b63ef7bb8c2e4118ec90b7afd475c",
+          "scope": "r12_protocol_app_server_1bef1689769b",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "dc60dadce6b5911b9b5852365f6eb9829ec14442",
+          "scope": "r12_security_sandbox_network_dc60dadce6b5",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "670f69416bf91c5dfd8b58669e78050b584ff053",
+          "scope": "r12_protocol_app_server_670f69416bf9",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "4c219fdb1a5195c11a3b059489491f5242253c68",
+          "scope": "r12_release_telemetry_other_4c219fdb1a51",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "6751b54cae32b23786001e2414d749a9916201e1",
+          "scope": "r12_protocol_app_server_6751b54cae32",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "7dc1856685d58374e46ee61eb63f084bcbaddc52",
+          "scope": "r12_state_thread_persistence_7dc1856685d5",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "a1dd74b53548ac48af59841ea9b8eac06b78d546",
+          "scope": "r12_protocol_app_server_a1dd74b53548",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "1e85ca099e4265bf89f4016772d299816e231bb3",
+          "scope": "r12_security_sandbox_network_1e85ca099e42",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "9949245d1d2b4a39a6f1841922322f767fa146ad",
+          "scope": "r12_protocol_app_server_9949245d1d2b",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "5157493c23713ac12034cf250ffb0a8ce0670277",
+          "scope": "r12_security_sandbox_network_5157493c2371",
+          "non_claims": [
+            "No local behavior is claimed equivalent for this deferred scope."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r13",
+      "source_intake": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-03_R13.json",
+        "sha256": "4423a073cba40b0d8e98d5f714ce7ced94c69fd39649a41c3c292b7137d1365f",
+        "range_start_exclusive": "5157493c23713ac12034cf250ffb0a8ce0670277",
+        "range_end_inclusive": "bb5054fe47abe73ecbbd454751066a28c89f4bb9",
+        "frozen_ref": "refs/remotes/upstream/hepta-intake-20260803-r13"
+      },
+      "record": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R13_SEMANTIC_ABSORPTION_RECORD_2026-08-03.json",
+        "sha256": "6de71607985170a134a9ae5956487844f02cae4e6615b8b36bda56f155dd2544",
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+      },
+      "disposition_bindings": [
+        {
+          "kind": "deferral",
+          "upstream_commit": "bb5054fe47abe73ecbbd454751066a28c89f4bb9",
+          "scope": "provider_rollout_budget_units_private_usage_propagation",
+          "non_claims": [
+            "Existing token counts do not imply capture, propagation, or privacy parity for provider-only rollout budget units."
+          ]
+        }
       ]
     }
   ],
@@ -422,6 +2341,8 @@
     "registry_is_semantic_equivalence_not_source_import": true,
     "ordinary_merge_allowed": false,
     "ordinary_rebase_allowed": false,
-    "upstream_fully_consumed": false
+    "upstream_fully_consumed": false,
+    "latest_range_exhaustively_dispositioned": true,
+    "latest_range_has_unresolved_deferrals": true
   }
 }
