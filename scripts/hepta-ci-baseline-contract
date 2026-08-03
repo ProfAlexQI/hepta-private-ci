@@ -404,6 +404,15 @@ verify_contract() {
     "        run: scripts/hepta-ci-materialize-upstream-intake materialize" \
     "        run: scripts/hepta-ci-baseline rust-backend" \
     "rust-backend frozen intake materialization before counted evidence"
+  nightly_static_block="$(workflow_job_block "$baseline" "nightly-static")"
+  require_literal <(printf '%s\n' "$nightly_static_block") \
+    "        run: sudo apt-get update && sudo apt-get install --yes jq ripgrep" \
+    "nightly-static gate tool installation"
+  require_literal_order \
+    <(printf '%s\n' "$nightly_static_block") \
+    "        run: sudo apt-get update && sudo apt-get install --yes jq ripgrep" \
+    "        run: scripts/hepta-ci-baseline nightly-static" \
+    "nightly-static gate tools before execution"
   require_literal "$baseline" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned Cargo cache action"
   require_literal_count "$baseline" "          persist-credentials: false" 6 "checkout credential isolation"
   require_literal "$baseline" '${{ github.job }}' "job-bound Cargo cache key"
@@ -573,6 +582,14 @@ self_test() (
     "$tmp/$baseline_rel"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted rust-backend without ripgrep installation" >&2
+    return 1
+  fi
+  cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
+  perl -0pi -e \
+    's/(  nightly-static:\n.*?)(      - name: Install nightly static tools\n        run: sudo apt-get update && sudo apt-get install --yes jq ripgrep\n)/$1/s' \
+    "$tmp/$baseline_rel"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted nightly-static without ripgrep installation" >&2
     return 1
   fi
   cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
@@ -870,7 +887,7 @@ self_test() (
   jq -n \
     --arg schema hepta_ci_baseline_contract_self_test_v1 \
     --arg status ready \
-    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,rust_backend_shallow_checkout_denied:true,rust_backend_missing_intake_refs_denied:true,static_missing_failure_evidence_denied:true,upstream_truth_missing_failure_evidence_denied:true,rust_backend_missing_ripgrep_install_denied:true,rust_backend_missing_failure_evidence_denied:true,rust_backend_missing_target_cache_denial_denied:true,full_preflight_unpinned_audit_denied:true,full_preflight_missing_pinned_rustsec_db_denied:true,missing_r4_r5_r6_r7_r8_r9_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,misdirected_r7_ref_denied:true,misdirected_r7_ref_not_overwritten:true,misdirected_r8_ref_denied:true,misdirected_r8_ref_not_overwritten:true,misdirected_r9_ref_denied:true,misdirected_r9_ref_not_overwritten:true,clean_checkout_r4_r5_r6_r7_r8_r9_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r8:true,historical_r5_ref_preserved_while_materializing_r8:true,historical_r6_ref_preserved_while_materializing_r8:true,historical_r7_ref_preserved_while_materializing_r8:true,historical_r4_ref_preserved_while_materializing_r9:true,historical_r5_ref_preserved_while_materializing_r9:true,historical_r6_ref_preserved_while_materializing_r9:true,historical_r7_ref_preserved_while_materializing_r9:true,historical_r8_ref_preserved_while_materializing_r9:true,unexpected_predecessor_ref_overwrite_denied:true}'
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,rust_backend_shallow_checkout_denied:true,rust_backend_missing_intake_refs_denied:true,static_missing_failure_evidence_denied:true,upstream_truth_missing_failure_evidence_denied:true,rust_backend_missing_ripgrep_install_denied:true,nightly_static_missing_ripgrep_install_denied:true,rust_backend_missing_failure_evidence_denied:true,rust_backend_missing_target_cache_denial_denied:true,full_preflight_unpinned_audit_denied:true,full_preflight_missing_pinned_rustsec_db_denied:true,missing_r4_r5_r6_r7_r8_r9_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,misdirected_r7_ref_denied:true,misdirected_r7_ref_not_overwritten:true,misdirected_r8_ref_denied:true,misdirected_r8_ref_not_overwritten:true,misdirected_r9_ref_denied:true,misdirected_r9_ref_not_overwritten:true,clean_checkout_r4_r5_r6_r7_r8_r9_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r8:true,historical_r5_ref_preserved_while_materializing_r8:true,historical_r6_ref_preserved_while_materializing_r8:true,historical_r7_ref_preserved_while_materializing_r8:true,historical_r4_ref_preserved_while_materializing_r9:true,historical_r5_ref_preserved_while_materializing_r9:true,historical_r6_ref_preserved_while_materializing_r9:true,historical_r7_ref_preserved_while_materializing_r9:true,historical_r8_ref_preserved_while_materializing_r9:true,unexpected_predecessor_ref_overwrite_denied:true}'
 )
 [[ $# -eq 1 ]] || usage
 case "$1" in
