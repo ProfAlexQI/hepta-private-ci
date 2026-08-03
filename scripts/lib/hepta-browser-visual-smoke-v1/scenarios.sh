@@ -10,7 +10,7 @@ hepta_browser_run_scenarios() {
   printf '%s\n' "$density_qa_json" >"$OUT_DIR/density-qa.json"
 
   progressive_qa_status=0
-  progressive_qa_json="$(node "$HEPTA_BROWSER_SMOKE_LIB_DIR/progressive-enhancement-qa.cjs" "$CHROME_BIN" "$BASE_URL")" \
+  progressive_qa_json="$(node "$HEPTA_BROWSER_SMOKE_LIB_DIR/progressive-enhancement-qa.cjs" "$CHROME_BIN" "$BASE_URL" "$OUT_DIR")" \
     || progressive_qa_status="$?"
   printf '%s\n' "$progressive_qa_json" >"$OUT_DIR/progressive-enhancement-qa.json"
 }

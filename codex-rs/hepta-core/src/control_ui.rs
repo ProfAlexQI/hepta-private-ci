@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Canonical Control UI document. Rust embeds and serves this exact snapshot;
 /// there is no second renderer-owned HTML body. A bounded same-origin script
@@ -315,10 +315,16 @@ pub struct ControlUiAsset {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ControlUiCommandBinding {
-    pub id: &'static str,
-    pub command: &'static str,
+    pub id: String,
+    pub label: String,
+    pub command: String,
+    pub route: Option<String>,
+    pub palette: bool,
     pub used_by: &'static [&'static str],
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ControlUiCommandCatalogEntry(String, String, String, Option<String>, bool);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ControlUiInteractionCapability {
@@ -1703,211 +1709,70 @@ fn control_ui_screen_interactions(id: &str) -> &'static [&'static str] {
 }
 
 pub fn control_ui_command_bindings() -> Vec<ControlUiCommandBinding> {
-    vec![
-        binding(
-            "control-ui",
-            "/control-ui --json",
-            &["dashboard", "commands"],
-        ),
-        binding(
-            "config-surface",
-            "/config-surface --json",
-            &["dashboard", "config"],
-        ),
-        binding("local-import", "/local-import --json", &["config"]),
-        binding("providers", "/providers --json", &["config"]),
-        binding("image-models", "/image-models --json", &["config"]),
-        binding(
-            "optional-configs",
-            "/optional-configs --json",
-            &["config", "commands"],
-        ),
-        binding("doctor", "/doctor --json", &["dashboard"]),
-        binding(
-            "native-capabilities",
-            "/native-capabilities --json",
-            &["dashboard"],
-        ),
-        binding(
-            "external-readiness",
-            "/external-readiness --json",
-            &["dashboard", "readiness", "evidence"],
-        ),
-        binding(
-            "production-surface",
-            "/production-surface --json",
-            &["readiness", "runbook"],
-        ),
-        binding(
-            "production-parity",
-            "/production-parity --json",
-            &["dashboard", "parity", "runbook"],
-        ),
-        binding(
-            "hepta-merge-completion",
-            "/hepta-merge-completion --json",
-            &["ops", "readiness", "parity", "commands"],
-        ),
-        binding(
-            "external-agent-benchmark",
-            "/external-agent-benchmark --json",
-            &["external-agent-benchmark", "parity", "evidence"],
-        ),
-        binding("sessions", "/sessions --json", &["sessions"]),
-        binding(
-            "session-activity",
-            "/session-activity --json",
-            &["sessions", "transcript"],
-        ),
-        binding("tasks", "/tasks --json", &["tasks", "task-publisher"]),
-        binding("task", "/task <task_id> --json", &["tasks"]),
-        binding(
-            "spawn-task",
-            "/spawn-task <worker_id> <prompt> --json",
-            &["tasks", "task-publisher"],
-        ),
-        binding(
-            "ui-task-publisher-plan",
-            "POST /api/tasks/plan",
-            &["tasks", "task-publisher"],
-        ),
-        binding(
-            "ui-task-publisher-publish",
-            "POST /api/tasks/publish",
-            &["tasks", "task-publisher"],
-        ),
-        binding("workers", "/workers --json", &["workers"]),
-        binding(
-            "operator-console",
-            "/operator-console --json",
-            &["operator", "workers", "tasks"],
-        ),
-        binding(
-            "subagent-observatory",
-            "/subagent-observatory --json",
-            &["operator", "workers"],
-        ),
-        binding(
-            "task-supervisor",
-            "/task-supervisor --json",
-            &["tasks", "workers", "operator"],
-        ),
-        binding(
-            "handoff-bundle",
-            "/handoff-bundle <task_id> --json",
-            &["tasks", "workers", "handoff"],
-        ),
-        binding(
-            "task-patches",
-            "/task-patches <task_id> --json",
-            &["tasks", "diff", "handoff"],
-        ),
-        binding(
-            "task-loop",
-            "/task-loop <task_id> --json",
-            &["tasks", "operator"],
-        ),
-        binding(
-            "task-evidence",
-            "/task-evidence <task_id> --json",
-            &["tasks", "evidence"],
-        ),
-        binding(
-            "task-replay",
-            "/task-replay <task_id> --json",
-            &["tasks", "diff", "evidence"],
-        ),
-        binding(
-            "promotion-ledger",
-            "/promotion-ledger <task_id> --json",
-            &["tasks", "handoff", "evidence"],
-        ),
-        binding(
-            "ops-status",
-            "/ops-status --json",
-            &["dashboard", "ops", "runbook"],
-        ),
-        binding(
-            "events",
-            "/events --json",
-            &["dashboard", "operator", "live", "runbook"],
-        ),
-        binding(
-            "events-report",
-            "/events-report --json",
-            &["live", "operator"],
-        ),
-        binding("activity", "/activity --json", &["live", "sessions"]),
-        binding("transcript", "/transcript --json", &["transcript"]),
-        binding(
-            "agent-send",
-            "/agent-send <agent_id> --from <from_agent_id> <message> --json",
-            &["chat", "multi-agent"],
-        ),
-        binding(
-            "ui-agent-chat-plan",
-            "POST /api/chat/plan",
-            &["chat", "multi-agent"],
-        ),
-        binding(
-            "ui-agent-chat-send",
-            "POST /api/chat",
-            &["chat", "multi-agent"],
-        ),
-        binding(
-            "query-transcript",
-            "/query-transcript <query> --json",
-            &["transcript", "developer"],
-        ),
-        binding("approvals", "/approvals --json", &["approvals", "operator"]),
-        binding("policy", "/policy --json", &["approvals", "developer"]),
-        binding(
-            "exec-approvals-apply",
-            "POST /api/approvals/exec/apply",
-            &["approvals", "security", "operator"],
-        ),
-        binding(
-            "operator-security",
-            "/operator-security --json",
-            &["security", "operator", "developer"],
-        ),
-        binding(
-            "gateway-runtime",
-            "/gateway-runtime --json",
-            &["gateway", "ops"],
-        ),
-        binding(
-            "gateway-dispatch",
-            "/gateway-dispatch --dry-run --json",
-            &["gateway", "developer"],
-        ),
-        binding("gateway-ledger", "/gateway-ledger --json", &["gateway"]),
-        binding(
-            "gateway-retry-dead-letter",
-            "/gateway-retry-dead-letter --json",
-            &["gateway"],
-        ),
-        binding(
-            "multi-agent-runtime",
-            "/multi-agent-runtime --agents 4 --messages 8 --json",
-            &["multi-agent", "operator"],
-        ),
-        binding(
-            "apply-task-patches",
-            "/apply-task-patches <task_id> --json",
-            &["diff", "handoff"],
-        ),
-        binding(
-            "rollback-task-patches",
-            "/rollback-task-patches <task_id> --json",
-            &["diff", "handoff"],
-        ),
-        binding(
-            "ui-readonly-command-runner",
-            "POST /api/commands/<id>",
-            &["developer", "commands", "operator"],
-        ),
-    ]
+    parse_app_command_catalog()
+        .into_iter()
+        .map(|entry| {
+            let ControlUiCommandCatalogEntry(id, label, command, route, palette) = entry;
+            let used_by = command_used_by(&id);
+            ControlUiCommandBinding {
+                id,
+                label,
+                command,
+                route,
+                palette,
+                used_by,
+            }
+        })
+        .collect()
+}
+
+fn command_used_by(id: &str) -> &'static [&'static str] {
+    match id {
+        "control-ui" => &["dashboard", "commands"],
+        "config-surface" => &["dashboard", "config"],
+        "local-import" | "providers" | "image-models" => &["config"],
+        "optional-configs" => &["config", "commands"],
+        "doctor" | "native-capabilities" => &["dashboard"],
+        "external-readiness" => &["dashboard", "readiness", "evidence"],
+        "production-surface" => &["readiness", "runbook"],
+        "production-parity" => &["dashboard", "parity", "runbook"],
+        "hepta-merge-completion" => &["ops", "readiness", "parity", "commands"],
+        "external-agent-benchmark" => &["external-agent-benchmark", "parity", "evidence"],
+        "sessions" => &["sessions"],
+        "session-activity" => &["sessions", "transcript"],
+        "tasks" => &["tasks", "task-publisher"],
+        "task" => &["tasks"],
+        "spawn-task" => &["tasks", "task-publisher"],
+        "ui-task-publisher-plan" | "ui-task-publisher-publish" => &["tasks", "task-publisher"],
+        "workers" => &["workers"],
+        "operator-console" => &["operator", "workers", "tasks"],
+        "subagent-observatory" => &["operator", "workers"],
+        "task-supervisor" => &["tasks", "workers", "operator"],
+        "handoff-bundle" => &["tasks", "workers", "handoff"],
+        "task-patches" => &["tasks", "diff", "handoff"],
+        "task-loop" => &["tasks", "operator"],
+        "task-evidence" => &["tasks", "evidence"],
+        "task-replay" => &["tasks", "diff", "evidence"],
+        "promotion-ledger" => &["tasks", "handoff", "evidence"],
+        "ops-status" => &["dashboard", "ops", "runbook"],
+        "events" => &["dashboard", "operator", "live", "runbook"],
+        "events-report" => &["live", "operator"],
+        "activity" => &["live", "sessions"],
+        "transcript" => &["transcript"],
+        "agent-send" | "ui-agent-chat-plan" | "ui-agent-chat-send" => &["chat", "multi-agent"],
+        "query-transcript" => &["transcript", "developer"],
+        "approvals" => &["approvals", "operator"],
+        "policy" => &["approvals", "developer"],
+        "exec-approvals-apply" => &["approvals", "security", "operator"],
+        "operator-security" => &["security", "operator", "developer"],
+        "gateway-runtime" => &["gateway", "ops"],
+        "gateway-dispatch" => &["gateway", "developer"],
+        "gateway-ledger" | "gateway-retry-dead-letter" => &["gateway"],
+        "multi-agent-runtime" => &["multi-agent", "operator"],
+        "apply-task-patches" | "rollback-task-patches" => &["diff", "handoff"],
+        "ui-readonly-command-runner" => &["developer", "commands", "operator"],
+        _ => &[],
+    }
 }
 
 pub fn control_ui_interaction_capabilities() -> Vec<ControlUiInteractionCapability> {
@@ -1994,18 +1859,6 @@ fn local_interaction(
         requires_live_adapter: false,
         evidence_kind,
         evidence,
-    }
-}
-
-fn binding(
-    id: &'static str,
-    command: &'static str,
-    used_by: &'static [&'static str],
-) -> ControlUiCommandBinding {
-    ControlUiCommandBinding {
-        id,
-        command,
-        used_by,
     }
 }
 
@@ -2117,10 +1970,14 @@ fn parse_app_screen_ids() -> Vec<String> {
     parse_app_attribute_values("data-screen")
 }
 
-fn parse_app_command_ids() -> Vec<String> {
+fn parse_app_command_catalog() -> Vec<ControlUiCommandCatalogEntry> {
     let Some(source) = std::str::from_utf8(CONTROL_UI_JS).ok() else {
         return Vec::new();
     };
+    parse_command_catalog_source(source)
+}
+
+fn parse_command_catalog_source(source: &str) -> Vec<ControlUiCommandCatalogEntry> {
     let Some((_, after_start)) = source.split_once("const COMMAND_CATALOG = Object.freeze([")
     else {
         return Vec::new();
@@ -2128,21 +1985,53 @@ fn parse_app_command_ids() -> Vec<String> {
     let Some((catalog, _)) = after_start.split_once("].map(") else {
         return Vec::new();
     };
-    let mut ids = catalog
-        .lines()
-        .filter_map(|line| {
-            let entry = line.trim().strip_prefix("[\"")?;
-            let end = entry.find('"')?;
-            let id = &entry[..end];
-            (!id.is_empty()
-                && id
+    let mut entries = Vec::new();
+    for line in catalog.lines() {
+        let line = line.trim().trim_end_matches(',');
+        if !line.starts_with("[\"") {
+            continue;
+        }
+        let Ok(entry) = serde_json::from_str::<ControlUiCommandCatalogEntry>(line) else {
+            return Vec::new();
+        };
+        entries.push(entry);
+    }
+    let mut ids = std::collections::BTreeSet::new();
+    let mut routes = std::collections::BTreeSet::new();
+    let valid = entries.len() == 51
+        && entries.iter().filter(|entry| entry.4).count() == 18
+        && entries
+            .iter()
+            .filter_map(|entry| entry.3.as_deref())
+            .count()
+            == 21
+        && entries.iter().all(|entry| {
+            !entry.0.is_empty()
+                && entry
+                    .0
                     .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'))
-            .then(|| id.to_string())
-        })
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                && ids.insert(entry.0.as_str())
+                && !entry.1.trim().is_empty()
+                && !entry.2.trim().is_empty()
+                && entry.3.as_deref().is_none_or(|route| {
+                    route.starts_with("/api/")
+                        && !route.contains(['?', '#'])
+                        && routes.insert(route)
+                })
+        });
+    if !valid || routes.len() != 21 {
+        return Vec::new();
+    }
+    entries
+}
+
+fn parse_app_command_ids() -> Vec<String> {
+    let mut ids = parse_app_command_catalog()
+        .into_iter()
+        .map(|entry| entry.0)
         .collect::<Vec<_>>();
     ids.sort();
-    ids.dedup();
     ids
 }
 
@@ -2214,6 +2103,32 @@ mod tests {
         assert_eq!(report.asset_count, 5);
         assert_eq!(report.asset_coverage_percent, 100);
         assert_eq!(report.command_binding_count, 51);
+        assert_eq!(
+            report
+                .command_bindings
+                .iter()
+                .filter(|binding| binding.palette)
+                .count(),
+            18
+        );
+        assert_eq!(
+            report
+                .command_bindings
+                .iter()
+                .filter(|binding| binding.route.is_some())
+                .count(),
+            21
+        );
+        assert!(report.command_bindings.iter().all(|binding| {
+            !binding.id.is_empty()
+                && !binding.label.is_empty()
+                && !binding.command.is_empty()
+                && !binding.used_by.is_empty()
+                && binding
+                    .route
+                    .as_deref()
+                    .is_none_or(|route| route.starts_with("/api/"))
+        }));
         assert!(same_unique_ids(
             &control_ui_screens()
                 .iter()
@@ -2228,6 +2143,13 @@ mod tests {
                 .collect::<Vec<_>>(),
             &parse_app_command_ids(),
         ));
+        assert!(
+            parse_command_catalog_source("const COMMAND_CATALOG = Object.freeze([])").is_empty()
+        );
+        assert!(parse_command_catalog_source(
+            "const COMMAND_CATALOG = Object.freeze([[\"duplicate\",\"A\",\"/a\",null,false],[\"duplicate\",\"B\",\"/b\",null,false]].map("
+        )
+        .is_empty());
 
         assert_eq!(report.interaction_capability_count, 10);
         assert_eq!(report.implemented_interaction_capability_count, 10);

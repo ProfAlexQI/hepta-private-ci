@@ -586,7 +586,7 @@ background:linear-gradient(to bottom,transparent,var(--bg) 18%),color-mix(in srg
 .chat-compose textarea{min-height:72px;border-radius:18px;font-size:14px}
 .command-palette-backdrop{position:fixed;inset:0;z-index:200;display: none;place-items:start center;padding-top:11vh;background:#e6fbff66;background-image:repeating-linear-gradient(64deg,#fff3 0 1px,#0000 0 28px);backdrop-filter:blur(10px)}
 .command-palette-backdrop:target{display:grid}
-.command-palette-backdrop[hidden]{display:none}
+[hidden][hidden][hidden]{display:none}
 .command-palette{width:min(720px,calc(100vw - 28px));max-height:min(720px,78vh);overflow:hidden;border:1px solid var(--border-strong);border-radius:var(--radius-xl);background:var(--chrome-strong);box-shadow:var(--shadow-xl);backdrop-filter:blur(20px)}
 .command-palette__input-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px;border-bottom:1px solid var(--border);color:var(--accent)}
 .command-palette__input-row .button.small{width:44px;height:44px;padding:0;display:grid;place-items:center;border-radius:99px}
@@ -941,20 +941,6 @@ body[data-view="chat"] .shell--hepta-premium .command-palette-backdrop,.command-
 .hepta-route-surface .row{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px}
 .hepta-route-surface .page-title{color:#201d19;font-size:22px;font-weight:820;letter-spacing:0}
 .hepta-route-surface .page-sub{margin-top:4px;color:#5d5148;font-size:13px;line-height:1.5}
-.hepta-route-surface .filters{display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:10px;border:1px solid rgba(34,30,25,.07);border-radius:16px;background:rgba(247,242,235,.72)}
-.hepta-route-surface .field-inline{display:flex;align-items:center;gap:8px;flex:1 1 260;min-width:min(260px,100%)}
-.hepta-route-surface .field-inline span{color:#62584f;font-size:11px;font-weight:820;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap}
-.hepta-route-surface input{width:100%;min-width:0;height:34px;padding:0 11px;border:1px solid rgba(34,30,25,.12);border-radius:12px;background:#fff;color:#332d28;font:inherit;font-size:13px}
-.hepta-route-surface .data-table-wrapper{overflow:hidden;border:1px solid rgba(34,30,25,.09);border-radius:18px;background:rgba(255,255,255,.78)}
-.hepta-route-surface .data-table-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-bottom:1px solid rgba(34,30,25,.08);background:rgba(250,247,241,.78)}
-.hepta-route-surface .data-table-container{overflow:auto;min-height:360px;max-height:50vh}
-.hepta-route-surface .data-table{width:100%;border-collapse:collapse;font-size:12.5px}
-.hepta-route-surface th,.hepta-route-surface td{padding:11px 12px;text-align:left;vertical-align:middle;border-bottom:1px solid rgba(34,30,25,.06)}
-.hepta-route-surface th{position:sticky;top:0;z-index:1;color:#62584f;background:#fbf7f0;font-size:10.5px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
-.hepta-route-surface tbody tr+tr td{border-top:1px solid rgba(34,30,25,.035)}
-.hepta-route-surface .session-link{color:#241f1a;font-weight:760;overflow-wrap:break-word}
-.hepta-route-surface .data-table-badge{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border:1px solid rgba(34,30,25,.10);border-radius:99px;background:rgba(247,242,235,.82);color:#4d433b;font-size:11px;font-weight:780}
-.hepta-route-surface .muted{color:#62584f;overflow-wrap:break-word}
 .hepta-secondary-map{margin:8px 14px 0;border:1px solid rgba(34,30,25,.08);border-radius:16px;background:rgba(255,255,255,.58);overflow:hidden}.hepta-secondary-map>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;cursor:pointer;list-style:none;font-size:12px;font-weight:780}.hepta-secondary-map>summary::-webkit-details-marker{display:none}.hepta-secondary-map__body{padding:0 10px 10px}.hepta-secondary-map:not([open]) .hepta-secondary-map__body{display:none}.hepta-secondary-map .hepta-entry-surface{margin:0;padding:12px;background:transparent}
 .hepta-native-chat-surface{display:none}
 .tg-room-onboarding-card{

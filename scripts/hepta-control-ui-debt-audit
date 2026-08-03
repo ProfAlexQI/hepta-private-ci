@@ -70,9 +70,9 @@ RETIRED_SECOND_BATCH_LEGACY_CLASSES = %w[
   tg-room-plan-card
 ].freeze
 LIMITS = {
-  "runtime_css_bytes_max" => 219_364,
-  "legacy_css_bytes_max" => 191_419,
-  "legacy_css_lines_max" => 3_392,
+  "runtime_css_bytes_max" => 218_137,
+  "legacy_css_bytes_max" => 189_444,
+  "legacy_css_lines_max" => 3_378,
   "runtime_important_count_max" => 1_383,
   "legacy_important_count_max" => 1_102,
   "route_count_max" => 284,

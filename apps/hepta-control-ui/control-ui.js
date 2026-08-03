@@ -187,6 +187,10 @@
       const article = document.createElement("article");
       article.className = "command-item";
       article.dataset.commandId = entry.id;
+      article.dataset.commandLabel = entry.label;
+      article.dataset.commandText = entry.command;
+      article.dataset.commandRoute = entry.route || "";
+      article.dataset.commandPalette = String(entry.palette);
       article.append(textElement("strong", "", entry.label));
       article.append(textElement("code", "", entry.command));
 

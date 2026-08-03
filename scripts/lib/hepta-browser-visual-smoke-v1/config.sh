@@ -20,7 +20,7 @@ hepta_browser_configure() {
   if [[ -n "$REPORT_PATH" ]]; then
     hepta_safe_output_resolve_file "$caller_dir" "HEPTA_BROWSER_SMOKE_REPORT_PATH" "$REPORT_PATH" || return $?
     REPORT_PATH="$HEPTA_SAFE_OUTPUT_PATH"
-    for reserved_output in desktop.png narrow.png mobile.png phone320.png hepta-agent-logo.png; do
+    for reserved_output in desktop.png narrow.png mobile.png phone320.png route-view-desktop.png route-view-phone320.png hepta-agent-logo.png; do
       if [[ "$REPORT_PATH" == "$OUT_DIR/$reserved_output" ]]; then
         hepta_safe_output_error "browser receipt collides with producer output: $REPORT_PATH"
         return 64

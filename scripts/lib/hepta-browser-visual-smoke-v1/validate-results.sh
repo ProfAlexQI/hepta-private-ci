@@ -3,6 +3,19 @@
 hepta_browser_validate_results() {
 if [[ "$progressive_qa_status" != "0" ]] || ! jq -e '
   .status == "ready"
+  and (.command_catalog | length) == 51
+  and ([.command_catalog[].id] | unique | length) == 51
+  and ([.command_catalog[] | select(.palette == true)] | length) == 18
+  and ([.command_catalog[] | select(.route != null)] | length) == 21
+  and ([.command_catalog[] | select(
+    (.id | type) != "string"
+    or (.label | type) != "string"
+    or (.command | type) != "string"
+    or (.id | length) == 0
+    or (.label | length) == 0
+    or (.command | length) == 0
+    or (.route != null and (.route | startswith("/api/") | not))
+  )] | length) == 0
   and .registry_route_count == 21
   and .successful_route_count == 21
   and .snapshot_request_count == 1
@@ -11,8 +24,18 @@ if [[ "$progressive_qa_status" != "0" ]] || ! jq -e '
   and .command_palette_search_ready == true
   and .command_palette_navigation_ready == true
   and .route_link_navigation_ready == true
+  and .current_route_entries_ready == true
   and .top_nav_navigation_ready == true
   and .route_history_ready == true
+  and .route_view_screenshots_ready == true
+  and (.route_view_screenshots | length) == 2
+  and ([.route_view_screenshots[] | select(.width == 1365 and .height == 900)] | length) == 1
+  and ([.route_view_screenshots[] | select(.width == 320 and .height == 844)] | length) == 1
+  and ([.route_view_screenshots[] | select(
+    .actual_visible_route_card_count != 1
+    or .actual_visible_route_card_ids[0] != .target_id
+    or .target_visibility.visible != true
+  )] | length) == 0
   and .unavailable_controls_ready == true
   and .unavailable_click_noop_ready == true
   and .seeded_conversations_ready == true
@@ -56,7 +79,11 @@ if [[ "$progressive_adversarial_qa_status" != "0" ]] || ! jq -e '
   and .xss.blocked == true
   and .no_script_product_truth.ready == true
   and .no_script_product_truth.route_ready == true
-  and .no_script_product_truth.unavailable_control_count == 99
+  and .no_script_product_truth.current_route_entries_ready == true
+  and .no_script_product_truth.current_route_hashes_ready == true
+  and .no_script_product_truth.current_route_anchor_count == 29
+  and .no_script_product_truth.current_row_route_action_count == 3
+  and .no_script_product_truth.unavailable_control_count == 14
   and .no_script_product_truth.disabled_click_count == 0
   and .no_script_product_truth.api_request_count == 0
   and .no_script_product_truth.non_get_request_count == 0
@@ -90,122 +117,6 @@ if [[ "$density_qa_status" != "0" ]] || ! jq -e '
 	    and .browser_error_page_absent == true
 	    and (.results | length) == 4
 	    and (.results | all(.status == "ready"))
-	  )
-	  or (
-	  false
-	  and .rail_action_icon_ready == true
-  and .icon_button_ready == true
-  and .icon_prismatic_control_light_glass_ready == true
-	  and .topbar_action_light_glass_ready == true
-	  and .primary_shell_light_glass_ready == true
-	  and .translucent_shell_light_glass_ready == true
-	  and .refractive_depth_light_glass_ready == true
-	  and .optical_clarity_light_glass_ready == true
-	  and .surface_clear_alpha_light_glass_ready == true
-	  and .substrate_caustic_field_light_glass_ready == true
-	  and .specular_edge_light_glass_ready == true
-	  and .prismatic_dispersion_light_glass_ready == true
-	  and .caustic_highlight_light_glass_ready == true
-	  and .caustic_depth_shift_light_glass_ready == true
-		  and .optical_thickness_tiers_light_glass_ready == true
-		  and .faceted_reflection_light_glass_ready == true
-		  and .beveled_rim_light_glass_ready == true
-		  and .micro_refraction_light_glass_ready == true
-		  and .sparkle_glint_light_glass_ready == true
-		  and .lens_bloom_light_glass_ready == true
-		  and .spectral_fusion_light_glass_ready == true
-		  and .optical_magnification_light_glass_ready == true
-		  and .biaxial_magnification_light_glass_ready == true
-		  and .anisotropic_magnification_light_glass_ready == true
-		  and .phase_separated_refraction_light_glass_ready == true
-		  and .two_axis_phase_refraction_light_glass_ready == true
-		  and .surface_phase_drift_light_glass_ready == true
-		  and .surface_lens_scale_drift_light_glass_ready == true
-		  and .layer_scale_parallax_light_glass_ready == true
-		  and .surface_spectral_angle_drift_light_glass_ready == true
-		  and .surface_glint_focal_drift_light_glass_ready == true
-		  and .composer_glint_focal_decoupling_light_glass_ready == true
-		  and .composer_spectral_angle_decoupling_light_glass_ready == true
-		  and .composer_phase_decoupling_light_glass_ready == true
-		  and .composer_layer_scale_decoupling_light_glass_ready == true
-		  and .chrome_bar_translucency_light_glass_ready == true
-		  and .chrome_refractive_skin_light_glass_ready == true
-		  and .clear_white_balance_light_glass_ready == true
-		  and .chamfer_cut_edge_light_glass_ready == true
-		  and .prismatic_cut_edge_light_glass_ready == true
-		  and .pane_prismatic_perimeter_light_glass_ready == true
-		  and .composer_prismatic_control_light_glass_ready == true
-		  and .menu_trigger_ready == true
-	  and .folder_chip_touch_ready == true
-	  and .folder_chip_label_prismatic_etch_light_glass_ready == true
-	  and .row_menu_touch_ready == true
-		  and .row_menu_all_rows_ready == true
-		  and .row_menu_light_glass_ready == true
-	  and .command_palette_ready == true
-	  and .command_palette_surface_light_glass_ready == true
-	  and .command_palette_surface_prismatic_perimeter_light_glass_ready == true
-	  and .command_palette_backdrop_caustic_veil_light_glass_ready == true
-	  and .command_palette_trigger_light_glass_ready == true
-	  and .command_palette_close_light_glass_ready == true
-	  and .command_palette_close_prismatic_icon_light_glass_ready == true
-	  and .command_palette_input_light_glass_ready == true
-		  and .command_palette_input_text_prismatic_etch_light_glass_ready == true
-		  and .command_palette_input_placeholder_prismatic_etch_light_glass_ready == true
-			  and .command_palette_input_row_prismatic_separator_light_glass_ready == true
-				  and .command_palette_results_well_light_glass_ready == true
-				  and .command_palette_results_well_prismatic_rim_light_glass_ready == true
-				  and .command_palette_input_icon_light_glass_ready == true
-				  and .command_palette_input_icon_prismatic_light_glass_ready == true
-				  and .command_palette_item_light_glass_ready == true
-				  and .command_palette_item_prismatic_rim_light_glass_ready == true
-			  and .command_palette_kind_chip_light_glass_ready == true
-			  and .command_palette_item_hover_prismatic_light_glass_ready == true
-			  and .command_palette_item_label_prismatic_etch_light_glass_ready == true
-		  and .control_form_control_title_touch_ready == true
-		  and .chat_row_option_semantic_touch_ready == true
-		  and .rail_chat_row_prismatic_slab_light_glass_ready == true
-		  and .menu_item_icon_ready == true
-  and .menu_surface_ready == true
-	  and .thread_tools_menu_ready == true
-	  and .composer_tools_menu_ready == true
-	  and .composer_popover_ready == true
-	  and .composer_popover_item_label_prismatic_etch_light_glass_ready == true
-	  and .composer_popover_header_prismatic_etch_light_glass_ready == true
-	  and .composer_popover_search_light_glass_ready == true
-	  and .composer_popover_search_placeholder_prismatic_etch_light_glass_ready == true
-	  and .rail_search_light_glass_ready == true
-	  and .rail_search_placeholder_prismatic_etch_light_glass_ready == true
-	  and .rail_prismatic_filter_light_glass_ready == true
-	  and .micro_surface_light_glass_ready == true
-	  and .micro_prismatic_badge_light_glass_ready == true
-	  and .micro_badge_label_prismatic_etch_light_glass_ready == true
-	  and .message_metadata_prismatic_light_glass_ready == true
-	  and .thread_subtitle_prismatic_light_glass_ready == true
-	  and .composer_shortcut_hint_prismatic_light_glass_ready == true
-		  and .rail_metadata_chip_prismatic_light_glass_ready == true
-	  and .rail_status_count_prismatic_light_glass_ready == true
-	  and .rail_preview_prismatic_etch_light_glass_ready == true
-	  and .rail_chat_title_prismatic_etch_light_glass_ready == true
-	  and .message_body_prismatic_etch_light_glass_ready == true
-		  and .message_speaker_prismatic_chip_light_glass_ready == true
-		  and .composer_placeholder_prismatic_etch_light_glass_ready == true
-		  and .header_title_prismatic_etch_light_glass_ready == true
-	  and .message_routing_badge_light_glass_ready == true
-	  and .thread_intro_badge_light_glass_ready == true
-	  and .status_trust_strip_light_glass_ready == true
-	  and .nav_icon_ready == true
-		  and .scroll_edge_ready == true
-		  and .microcopy_word_split_guard_ready == true
-		  and .logo_clip_guard_ready == true
-		  and .avatar_prismatic_rim_light_glass_ready == true
-		  and .active_chat_readability_ready == true
-		  and .placeholder_readability_ready == true
-		  and .small_control_readability_ready == true
-		  and .visible_text_integrity_ready == true
-		  and .horizontal_overflow_free == true
-	  and .browser_error_page_absent == true
-  and (.results | length) == 4
-	  and (.results | all(.status == "ready"))
 	  )
 	' <<<"$density_qa_json" >/dev/null; then
   echo "control UI density QA failed" >&2

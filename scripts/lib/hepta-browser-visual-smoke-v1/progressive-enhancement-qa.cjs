@@ -1,31 +1,13 @@
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const { chromium } = require("playwright");
 
-const [chromeBin, baseUrl] = process.argv.slice(2);
-const routes = [
-  ["control-ui", "/api/control-ui"],
-  ["config-surface", "/api/config"],
-  ["optional-configs", "/api/optional-configs"],
-  ["hepta-merge-completion", "/api/hepta-merge-completion"],
-  ["external-agent-benchmark", "/api/external-agent-benchmark"],
-  ["sessions", "/api/sessions"],
-  ["session-activity", "/api/session-activity"],
-  ["operator-console", "/api/operator-console"],
-  ["subagent-observatory", "/api/subagent-observatory"],
-  ["events", "/api/events"],
-  ["events-report", "/api/events-report"],
-  ["activity", "/api/activity"],
-  ["transcript", "/api/transcript"],
-  ["approvals", "/api/approvals"],
-  ["policy", "/api/policy"],
-  ["operator-security", "/api/operator-security"],
-  ["gateway-runtime", "/api/gateway-runtime"],
-  ["gateway-dispatch", "/api/gateway-dispatch"],
-  ["gateway-ledger", "/api/gateway-ledger"],
-  ["gateway-retry-dead-letter", "/api/gateway-retry-dead-letter"],
-  ["multi-agent-runtime", "/api/multi-agent-runtime"],
-];
-
+const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
 (async () => {
+  if (!outputDir || !path.isAbsolute(outputDir) || !fs.statSync(outputDir).isDirectory()) {
+    throw new Error("progressive enhancement QA requires an existing absolute output directory");
+  }
   const origin = new URL(baseUrl).origin;
   const browser = await chromium.launch({
     headless: true,
@@ -58,6 +40,45 @@ const routes = [
   page.on("pageerror", (error) => consoleErrors.push(error.message));
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.evaluate(() => {
+    Object.defineProperty(window, "__heptaActualVisibility", {
+      configurable: false,
+      value(node) {
+        if (!(node instanceof HTMLElement)) {
+          return {
+            visible: false,
+            display: "",
+            visibility: "",
+            opacity: "",
+            rect_width: 0,
+            rect_height: 0,
+            client_rect_count: 0,
+            hidden_attribute: false,
+          };
+        }
+        const style = getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        const clientRectCount = node.getClientRects().length;
+        const visible = style.display !== "none"
+          && style.visibility !== "hidden"
+          && style.visibility !== "collapse"
+          && Number.parseFloat(style.opacity || "1") > 0
+          && rect.width > 0
+          && rect.height > 0
+          && clientRectCount > 0;
+        return {
+          visible,
+          display: style.display,
+          visibility: style.visibility,
+          opacity: style.opacity,
+          rect_width: rect.width,
+          rect_height: rect.height,
+          client_rect_count: clientRectCount,
+          hidden_attribute: node.hidden,
+        };
+      },
+    });
+  });
   await page.waitForFunction(
     () => document.documentElement.dataset.controlUiProgressiveEnhancement === "ready",
     null,
@@ -79,8 +100,25 @@ const routes = [
   const chatItemCount = await page.locator(".tg-chat-item").count();
   await page.locator("#chat-search").fill("__hepta_no_matching_chat__");
   const hiddenChatItemCount = await page.locator(".tg-chat-item[hidden]").count();
+  const chatFilteredVisibility = await page.locator(".tg-chat-item").evaluateAll((items) => {
+    const entries = items.map((item) => ({
+      id: item.getAttribute("data-chat-conversation") || "",
+      ...window.__heptaActualVisibility(item),
+    }));
+    return {
+      actual_visible_count: entries.filter((item) => item.visible).length,
+      entries,
+    };
+  });
   await page.locator("#chat-search").fill("");
-  if (chatItemCount === 0 || hiddenChatItemCount !== chatItemCount) {
+  const chatRestoredVisibility = await page.locator(".tg-chat-item").evaluateAll((items) => ({
+    actual_visible_count: items.filter((item) => window.__heptaActualVisibility(item).visible).length,
+  }));
+  const chatSearchReady = chatItemCount > 0
+    && hiddenChatItemCount === chatItemCount
+    && chatFilteredVisibility.actual_visible_count === 0
+    && chatRestoredVisibility.actual_visible_count === chatItemCount;
+  if (!chatSearchReady) {
     throw new Error("local chat search did not filter every non-matching item");
   }
 
@@ -95,8 +133,29 @@ const routes = [
   const hiddenPaletteItemCount = await page
     .locator("#command-palette-results .command-palette__item[hidden]")
     .count();
+  const paletteFilteredVisibility = await page
+    .locator("#command-palette-results .command-palette__item")
+    .evaluateAll((items) => {
+      const entries = items.map((item) => ({
+        command_id: item.getAttribute("data-control-ui-command-palette-item") || "",
+        ...window.__heptaActualVisibility(item),
+      }));
+      return {
+        actual_visible_count: entries.filter((item) => item.visible).length,
+        entries,
+      };
+    });
   await page.locator("#command-palette-input").fill("");
-  if (paletteItemCount === 0 || hiddenPaletteItemCount !== paletteItemCount) {
+  const paletteRestoredVisibility = await page
+    .locator("#command-palette-results .command-palette__item")
+    .evaluateAll((items) => ({
+      actual_visible_count: items.filter((item) => window.__heptaActualVisibility(item).visible).length,
+    }));
+  const commandPaletteSearchReady = paletteItemCount > 0
+    && hiddenPaletteItemCount === paletteItemCount
+    && paletteFilteredVisibility.actual_visible_count === 0
+    && paletteRestoredVisibility.actual_visible_count === paletteItemCount;
+  if (!commandPaletteSearchReady) {
     throw new Error("local command palette search did not filter every non-matching item");
   }
   const paletteInitialFocusReady = await page.evaluate(() => (
@@ -154,7 +213,7 @@ const routes = [
       live_adapter_bound: document.documentElement.dataset.controlUiLiveAdapterBound || "",
       unavailable_control_count: controls.length,
       controls,
-      unavailable_controls_ready: controls.length > 0
+      unavailable_controls_ready: controls.length === 14
         && controls.every((item) => item.native_disabled
           && item.aria_disabled
           && item.unavailable_marker === "live-adapter"
@@ -213,11 +272,35 @@ const routes = [
     const hiddenCount = await page.locator(
       `[data-chat-composer-popover="${picker}"] [data-chat-composer-picker-item][hidden]`,
     ).count();
+    const filteredVisibility = await page.locator(
+      `[data-chat-composer-popover="${picker}"] [data-chat-composer-picker-item]`,
+    ).evaluateAll((items) => {
+      const entries = items.map((item) => ({
+        label: item.textContent.trim(),
+        ...window.__heptaActualVisibility(item),
+      }));
+      return {
+        actual_visible_count: entries.filter((item) => item.visible).length,
+        entries,
+      };
+    });
     await search.evaluate((input) => {
       input.value = "";
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    pickerSearchAudit.push({ picker, item_count: itemCount, hidden_count: hiddenCount });
+    const restoredVisibility = await page.locator(
+      `[data-chat-composer-popover="${picker}"] [data-chat-composer-picker-item]`,
+    ).evaluateAll((items) => ({
+      actual_visible_count: items.filter((item) => window.__heptaActualVisibility(item).visible).length,
+    }));
+    pickerSearchAudit.push({
+      picker,
+      item_count: itemCount,
+      hidden_count: hiddenCount,
+      filtered_actual_visible_count: filteredVisibility.actual_visible_count,
+      restored_actual_visible_count: restoredVisibility.actual_visible_count,
+      visibility: filteredVisibility.entries,
+    });
     const itemSelector = picker === "artifact"
       ? '[data-chat-artifact-insert="evidence-note"]'
       : '[data-chat-command-insert="/control-ui --json"]';
@@ -229,7 +312,12 @@ const routes = [
     open_composer_popover_count: document.querySelectorAll(".tg-composer-popover:popover-open").length,
   }));
   const pickerSearchReady = pickerSearchAudit.length === 2
-    && pickerSearchAudit.every((item) => item.item_count === 2 && item.hidden_count === 2);
+    && pickerSearchAudit.every((item) => (
+      item.item_count === 2
+      && item.hidden_count === 2
+      && item.filtered_actual_visible_count === 0
+      && item.restored_actual_visible_count === item.item_count
+    ));
   const localDraftInsertionReady = localDraftAudit.value.includes("[Evidence note — local draft only]")
     && localDraftAudit.value.includes("/control-ui --json")
     && localDraftAudit.status === "local draft updated · not sent"
@@ -245,22 +333,33 @@ const routes = [
     null,
     { timeout: 5000 },
   );
-  const localRouteAudit = await page.evaluate(() => ({
-    hash: window.location.hash,
-    popover_open: document.getElementById("row-menu-ui-chat-agent")?.matches(":popover-open") || false,
-    toast: document.getElementById("toast")?.textContent || "",
-    body_view: document.body.dataset.view || "",
-    active_view: document.body.dataset.controlUiActiveView || "",
-    target_visible: Boolean(document.getElementById("screen-card-evidence")?.offsetParent),
-    target_focused: document.activeElement?.id === "screen-card-evidence",
-  }));
+  const localRouteAudit = await page.evaluate(() => {
+    const target = document.getElementById("screen-card-evidence");
+    const routeCards = [...document.querySelectorAll(".route-card")].map((card) => ({
+      id: card.id,
+      ...window.__heptaActualVisibility(card),
+    }));
+    return {
+      hash: window.location.hash,
+      popover_open: document.getElementById("row-menu-ui-chat-agent")?.matches(":popover-open") || false,
+      toast: document.getElementById("toast")?.textContent || "",
+      body_view: document.body.dataset.view || "",
+      active_view: document.body.dataset.controlUiActiveView || "",
+      target_visibility: window.__heptaActualVisibility(target),
+      target_focused: document.activeElement === target,
+      actual_visible_route_card_count: routeCards.filter((card) => card.visible).length,
+      actual_visible_route_card_ids: routeCards.filter((card) => card.visible).map((card) => card.id),
+    };
+  });
   const localRouteNavigationReady = localRouteAudit.hash === "#evidence"
     && localRouteAudit.popover_open === false
     && localRouteAudit.toast === "Opened a local read-only surface."
     && localRouteAudit.body_view === "read-only"
     && localRouteAudit.active_view === "evidence"
-    && localRouteAudit.target_visible
-    && localRouteAudit.target_focused;
+    && localRouteAudit.target_visibility.visible
+    && localRouteAudit.target_focused
+    && localRouteAudit.actual_visible_route_card_count === 1
+    && localRouteAudit.actual_visible_route_card_ids[0] === "screen-card-evidence";
   await page.locator('#hepta-nav [data-screen="chat"]').click();
   await page.waitForFunction(
     () => document.body.dataset.controlUiActiveView === "chat",
@@ -311,6 +410,27 @@ const routes = [
   const copiedText = await page.evaluate(() => navigator.clipboard.readText());
   if (copiedText !== "/control-ui --json") {
     throw new Error("copy interaction did not preserve the exact command text");
+  }
+
+  const commandCatalog = await page.locator("#commands [data-command-id]").evaluateAll((items) => (
+    items.map((item) => ({
+      id: item.dataset.commandId || "",
+      label: item.dataset.commandLabel || "",
+      command: item.dataset.commandText || "",
+      route: item.dataset.commandRoute || null,
+      palette: item.dataset.commandPalette === "true",
+    }))
+  ));
+  const routes = commandCatalog
+    .filter((entry) => entry.route !== null)
+    .map((entry) => [entry.id, entry.route]);
+  if (
+    commandCatalog.length !== 51
+    || commandCatalog.filter((entry) => entry.palette).length !== 18
+    || routes.length !== 21
+    || commandCatalog.some((entry) => !entry.id || !entry.label || !entry.command)
+  ) {
+    throw new Error("rendered typed command catalog is incomplete");
   }
 
   const results = [];
@@ -432,9 +552,11 @@ const routes = [
     routeLinkAudit.push(await page.evaluate(({ expectedScreen, expectedTarget, expectedHref }) => {
       const target = document.getElementById(expectedTarget);
       const primaryNav = document.querySelector(`#hepta-nav [data-screen="${expectedScreen}"]`);
-      const visibleRouteCards = [...document.querySelectorAll(".route-card")].filter(
-        (card) => !card.hidden && Boolean(card.offsetParent),
-      );
+      const routeCards = [...document.querySelectorAll(".route-card")].map((card) => ({
+        id: card.id,
+        ...window.__heptaActualVisibility(card),
+      }));
+      const visibleRouteCards = routeCards.filter((card) => card.visible);
       return {
         screen: expectedScreen,
         target_id: expectedTarget,
@@ -442,10 +564,10 @@ const routes = [
         hash: window.location.hash,
         body_view: document.body.dataset.view || "",
         active_view: document.body.dataset.controlUiActiveView || "",
-        target_visible: Boolean(target?.offsetParent),
+        target_visibility: window.__heptaActualVisibility(target),
         target_focused: document.activeElement === target,
-        visible_route_card_count: visibleRouteCards.length,
-        visible_route_card_ids: visibleRouteCards.map((card) => card.id),
+        actual_visible_route_card_count: visibleRouteCards.length,
+        actual_visible_route_card_ids: visibleRouteCards.map((card) => card.id),
         primary_nav_current_ready: !primaryNav
           || primaryNav.getAttribute("aria-current") === "page",
       };
@@ -460,14 +582,127 @@ const routes = [
     && routeLinkAudit.every((item) => (
       item.hash === item.expected_href
       && item.active_view === item.screen
-      && item.target_visible
+      && item.target_visibility.visible
       && item.target_focused
       && item.primary_nav_current_ready
       && (item.screen === "chat"
-        ? item.body_view === "chat" && item.visible_route_card_count === 0
+        ? item.body_view === "chat" && item.actual_visible_route_card_count === 0
         : item.body_view === "read-only"
-          && item.visible_route_card_count === 1
-          && item.visible_route_card_ids[0] === item.target_id)
+          && item.actual_visible_route_card_count === 1
+          && item.actual_visible_route_card_ids[0] === item.target_id)
+    ));
+
+  const currentRouteEntryAudit = await page.evaluate(() => {
+    const rowTargets = {
+      "open-evidence": { hash: "#evidence", screen: "evidence", target_id: "screen-card-evidence" },
+      "open-approvals": { hash: "#approvals", screen: "approvals", target_id: "screen-card-approvals" },
+      "open-sources": { hash: "#evidence", screen: "evidence", target_id: "screen-card-evidence" },
+    };
+    const anchorEntries = [...document.querySelectorAll(
+      'a[href^="#screen-card-"], a[href="#evidence"], a[href="#task-publisher"]',
+    )].map((anchor, index) => {
+      const hash = anchor.getAttribute("href") || "";
+      const screen = hash === "#evidence"
+        ? "evidence"
+        : hash === "#task-publisher"
+          ? "task-publisher"
+          : hash.replace(/^#screen-card-/, "");
+      return {
+        kind: "anchor",
+        index,
+        hash,
+        screen,
+        target_id: `screen-card-${screen}`,
+      };
+    });
+    const rowEntries = [...document.querySelectorAll(
+      '[data-chat-row-menu-item="open-evidence"],'
+        + '[data-chat-row-menu-item="open-approvals"],'
+        + '[data-chat-row-menu-item="open-sources"]',
+    )].map((item, index) => ({
+      kind: "row-action",
+      index,
+      action: item.getAttribute("data-chat-row-menu-item") || "",
+      ...rowTargets[item.getAttribute("data-chat-row-menu-item")],
+    }));
+    const entries = [...anchorEntries, ...rowEntries].map((entry) => {
+      const target = document.getElementById(entry.target_id);
+      return {
+        ...entry,
+        target_exists: Boolean(target),
+        target_is_route_card: target?.matches(".route-card") || false,
+      };
+    });
+    return {
+      entry_count: entries.length,
+      anchor_entry_count: anchorEntries.length,
+      row_action_entry_count: rowEntries.length,
+      legacy_route_page_count: document.querySelectorAll(".hepta-route-page").length,
+      legacy_route_index_count: document.querySelectorAll(".hepta-route-index").length,
+      entries,
+    };
+  });
+  const currentRouteHashAudit = [];
+  const uniqueCurrentRouteEntries = [...new Map(
+    currentRouteEntryAudit.entries.map((entry) => [`${entry.hash}\u0000${entry.target_id}`, entry]),
+  ).values()];
+  for (const entry of uniqueCurrentRouteEntries) {
+    await page.evaluate(() => {
+      window.location.hash = "#chat";
+    });
+    await page.waitForFunction(
+      () => document.body.dataset.controlUiActiveView === "chat",
+      null,
+      { timeout: 5000 },
+    );
+    await page.evaluate((hash) => {
+      window.location.hash = hash;
+    }, entry.hash);
+    await page.waitForFunction(
+      ({ expectedScreen, expectedTarget }) => (
+        document.body.dataset.controlUiActiveView === expectedScreen
+        && document.activeElement?.id === expectedTarget
+      ),
+      { expectedScreen: entry.screen, expectedTarget: entry.target_id },
+      { timeout: 5000 },
+    );
+    currentRouteHashAudit.push(await page.evaluate(({ expectedHash, expectedScreen, expectedTarget }) => {
+      const target = document.getElementById(expectedTarget);
+      const visibleCards = [...document.querySelectorAll(".route-card")]
+        .filter((card) => window.__heptaActualVisibility(card).visible);
+      return {
+        hash: window.location.hash,
+        expected_hash: expectedHash,
+        active_view: document.body.dataset.controlUiActiveView || "",
+        expected_screen: expectedScreen,
+        target_id: expectedTarget,
+        target_visibility: window.__heptaActualVisibility(target),
+        target_focused: document.activeElement === target,
+        actual_visible_route_card_count: visibleCards.length,
+        actual_visible_route_card_ids: visibleCards.map((card) => card.id),
+      };
+    }, {
+      expectedHash: entry.hash,
+      expectedScreen: entry.screen,
+      expectedTarget: entry.target_id,
+    }));
+  }
+  const currentRouteEntriesReady = currentRouteEntryAudit.entry_count === 32
+    && currentRouteEntryAudit.anchor_entry_count === 29
+    && currentRouteEntryAudit.row_action_entry_count === 3
+    && currentRouteEntryAudit.legacy_route_page_count === 0
+    && currentRouteEntryAudit.legacy_route_index_count === 0
+    && currentRouteEntryAudit.entries.every((entry) => (
+      entry.target_exists && entry.target_is_route_card
+    ))
+    && currentRouteHashAudit.length === uniqueCurrentRouteEntries.length
+    && currentRouteHashAudit.every((entry) => (
+      entry.hash === entry.expected_hash
+      && entry.active_view === entry.expected_screen
+      && entry.target_visibility.visible
+      && entry.target_focused
+      && entry.actual_visible_route_card_count === 1
+      && entry.actual_visible_route_card_ids[0] === entry.target_id
     ));
 
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -491,23 +726,32 @@ const routes = [
     topNavAudit.push(await page.evaluate(({ expectedScreen, expectedTarget }) => {
       const target = document.getElementById(expectedTarget);
       const activeLink = document.querySelector(`#hepta-nav [data-screen="${expectedScreen}"]`);
+      const routeCards = [...document.querySelectorAll(".route-card")].map((card) => ({
+        id: card.id,
+        ...window.__heptaActualVisibility(card),
+      }));
+      const visibleRouteCards = routeCards.filter((card) => card.visible);
       return {
         screen: expectedScreen,
         target_id: expectedTarget,
         body_view: document.body.dataset.view || "",
         active_view: document.body.dataset.controlUiActiveView || "",
-        target_visible: Boolean(target?.offsetParent),
+        target_visibility: window.__heptaActualVisibility(target),
         target_focused: document.activeElement === target,
         nav_current: activeLink?.getAttribute("aria-current") || "",
+        actual_visible_route_card_count: visibleRouteCards.length,
+        actual_visible_route_card_ids: visibleRouteCards.map((card) => card.id),
       };
     }, { expectedScreen: screen, expectedTarget: targetId }));
   }
   const topNavNavigationReady = topNavAudit.length === 3 && topNavAudit.every((item) => (
     item.body_view === "read-only"
     && item.active_view === item.screen
-    && item.target_visible
+    && item.target_visibility.visible
     && item.target_focused
     && item.nav_current === "page"
+    && item.actual_visible_route_card_count === 1
+    && item.actual_visible_route_card_ids[0] === item.target_id
   ));
 
   await page.goBack();
@@ -517,12 +761,19 @@ const routes = [
     null,
     { timeout: 5000 },
   );
-  const backAudit = await page.evaluate(() => ({
-    hash: window.location.hash,
-    active_view: document.body.dataset.controlUiActiveView || "",
-    target_visible: Boolean(document.getElementById("screen-card-ops")?.offsetParent),
-    target_focused: document.activeElement?.id === "screen-card-ops",
-  }));
+  const backAudit = await page.evaluate(() => {
+    const target = document.getElementById("screen-card-ops");
+    const visibleRouteCards = [...document.querySelectorAll(".route-card")]
+      .filter((card) => window.__heptaActualVisibility(card).visible);
+    return {
+      hash: window.location.hash,
+      active_view: document.body.dataset.controlUiActiveView || "",
+      target_visibility: window.__heptaActualVisibility(target),
+      target_focused: document.activeElement === target,
+      actual_visible_route_card_count: visibleRouteCards.length,
+      actual_visible_route_card_ids: visibleRouteCards.map((card) => card.id),
+    };
+  });
   await page.goForward();
   await page.waitForFunction(
     () => document.body.dataset.controlUiActiveView === "external-agent-benchmark"
@@ -530,20 +781,113 @@ const routes = [
     null,
     { timeout: 5000 },
   );
-  const forwardAudit = await page.evaluate(() => ({
-    hash: window.location.hash,
-    active_view: document.body.dataset.controlUiActiveView || "",
-    target_visible: Boolean(document.getElementById("screen-card-external-agent-benchmark")?.offsetParent),
-    target_focused: document.activeElement?.id === "screen-card-external-agent-benchmark",
-  }));
+  const forwardAudit = await page.evaluate(() => {
+    const target = document.getElementById("screen-card-external-agent-benchmark");
+    const visibleRouteCards = [...document.querySelectorAll(".route-card")]
+      .filter((card) => window.__heptaActualVisibility(card).visible);
+    return {
+      hash: window.location.hash,
+      active_view: document.body.dataset.controlUiActiveView || "",
+      target_visibility: window.__heptaActualVisibility(target),
+      target_focused: document.activeElement === target,
+      actual_visible_route_card_count: visibleRouteCards.length,
+      actual_visible_route_card_ids: visibleRouteCards.map((card) => card.id),
+    };
+  });
   const routeHistoryReady = backAudit.hash === "#screen-card-ops"
     && backAudit.active_view === "ops"
-    && backAudit.target_visible
+    && backAudit.target_visibility.visible
     && backAudit.target_focused
+    && backAudit.actual_visible_route_card_count === 1
+    && backAudit.actual_visible_route_card_ids[0] === "screen-card-ops"
     && forwardAudit.hash === "#screen-card-external-agent-benchmark"
     && forwardAudit.active_view === "external-agent-benchmark"
-    && forwardAudit.target_visible
-    && forwardAudit.target_focused;
+    && forwardAudit.target_visibility.visible
+    && forwardAudit.target_focused
+    && forwardAudit.actual_visible_route_card_count === 1
+    && forwardAudit.actual_visible_route_card_ids[0] === "screen-card-external-agent-benchmark";
+
+  const routeViewScreenshots = [];
+  for (const capture of [
+    {
+      name: "route-view-desktop",
+      width: 1365,
+      height: 900,
+      screen: "dashboard",
+      target_id: "screen-card-dashboard",
+    },
+    {
+      name: "route-view-phone320",
+      width: 320,
+      height: 844,
+      screen: "tasks",
+      target_id: "screen-card-tasks",
+    },
+  ]) {
+    await page.setViewportSize({ width: capture.width, height: capture.height });
+    await page.evaluate((targetId) => {
+      window.location.hash = `#${targetId}`;
+    }, capture.target_id);
+    await page.waitForFunction(
+      ({ expectedScreen, expectedTarget }) => (
+        document.body.dataset.controlUiActiveView === expectedScreen
+        && document.activeElement?.id === expectedTarget
+      ),
+      { expectedScreen: capture.screen, expectedTarget: capture.target_id },
+      { timeout: 5000 },
+    );
+    const visibility = await page.evaluate((targetId) => {
+      const target = document.getElementById(targetId);
+      const targetEyebrow = target?.querySelector(".eyebrow");
+      const topbar = document.querySelector(".topbar");
+      const topbarVisibility = window.__heptaActualVisibility(topbar);
+      const topbarBottom = topbarVisibility.visible ? topbar.getBoundingClientRect().bottom : 0;
+      const cards = [...document.querySelectorAll(".route-card")].map((card) => ({
+        id: card.id,
+        ...window.__heptaActualVisibility(card),
+      }));
+      return {
+        target_visibility: window.__heptaActualVisibility(target),
+        target_eyebrow_visibility: window.__heptaActualVisibility(targetEyebrow),
+        top_obstruction_px: Math.max(
+          0,
+          topbarBottom - (targetEyebrow?.getBoundingClientRect().top || 0),
+        ),
+        target_focused: document.activeElement === target,
+        actual_visible_route_card_count: cards.filter((card) => card.visible).length,
+        actual_visible_route_card_ids: cards.filter((card) => card.visible).map((card) => card.id),
+        document_width: document.documentElement.scrollWidth,
+        viewport_width: window.innerWidth,
+        horizontal_overflow_px: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
+      };
+    }, capture.target_id);
+    const screenshotPath = path.join(outputDir, `${capture.name}.png`);
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+    const screenshotBytes = fs.readFileSync(screenshotPath);
+    routeViewScreenshots.push({
+      ...capture,
+      path: screenshotPath,
+      bytes: screenshotBytes.length,
+      sha256: crypto.createHash("sha256").update(screenshotBytes).digest("hex"),
+      hash: `#${capture.target_id}`,
+      ...visibility,
+    });
+  }
+  const routeViewScreenshotsReady = routeViewScreenshots.length === 2
+    && routeViewScreenshots.every((item) => (
+      item.bytes > 0
+      && /^[a-f0-9]{64}$/.test(item.sha256)
+      && item.target_visibility.visible
+      && item.target_focused
+      && item.actual_visible_route_card_count === 1
+      && item.actual_visible_route_card_ids[0] === item.target_id
+      && item.horizontal_overflow_px === 0
+      && item.target_visibility.rect_width >= (item.width === 320 ? 250 : 600)
+      && item.target_eyebrow_visibility.visible
+      && item.top_obstruction_px === 0
+    ))
+    && routeViewScreenshots.some((item) => item.width === 1365 && item.height === 900)
+    && routeViewScreenshots.some((item) => item.width === 320 && item.height === 844);
 
   const crossOriginRequests = requests.filter((request) => new URL(request.url).origin !== origin);
   const nonGetRequests = requests.filter((request) => request.method !== "GET");
@@ -565,12 +909,14 @@ const routes = [
     || missingOrDuplicateApiPaths.length !== 0
     || consoleErrors.length !== 0
     || copiedText !== "/control-ui --json"
-    || hiddenChatItemCount !== chatItemCount
-    || hiddenPaletteItemCount !== paletteItemCount
+    || !chatSearchReady
+    || !commandPaletteSearchReady
     || !commandPaletteNavigationReady
     || !routeLinkNavigationReady
+    || !currentRouteEntriesReady
     || !topNavNavigationReady
     || !routeHistoryReady
+    || !routeViewScreenshotsReady
     || productTruthAudit.capability_mode !== "local-read-only"
     || productTruthAudit.live_adapter_bound !== "false"
     || !productTruthAudit.unavailable_controls_ready
@@ -585,6 +931,7 @@ const routes = [
   const report = {
     schema: "hepta_control_ui_progressive_enhancement_browser_v1",
     status: failed ? "failed" : "ready",
+    command_catalog: commandCatalog,
     registry_route_count: routes.length,
     successful_route_count: results.length,
     snapshot_state: snapshotState,
@@ -592,16 +939,33 @@ const routes = [
       (request) => new URL(request.url).pathname === "/api/operator-snapshot",
     ).length,
     copy_interaction_ready: copiedText === "/control-ui --json",
-    chat_search_ready: hiddenChatItemCount === chatItemCount,
-    command_palette_search_ready: hiddenPaletteItemCount === paletteItemCount,
+    chat_search_ready: chatSearchReady,
+    chat_search_visibility_audit: {
+      item_count: chatItemCount,
+      hidden_attribute_count: hiddenChatItemCount,
+      filtered: chatFilteredVisibility,
+      restored: chatRestoredVisibility,
+    },
+    command_palette_search_ready: commandPaletteSearchReady,
+    command_palette_search_visibility_audit: {
+      item_count: paletteItemCount,
+      hidden_attribute_count: hiddenPaletteItemCount,
+      filtered: paletteFilteredVisibility,
+      restored: paletteRestoredVisibility,
+    },
     command_palette_navigation_ready: commandPaletteNavigationReady,
     command_palette_navigation_audit: commandPaletteNavigationAudit,
     route_link_navigation_ready: routeLinkNavigationReady,
     route_link_navigation_audit: routeLinkAudit,
+    current_route_entries_ready: currentRouteEntriesReady,
+    current_route_entry_audit: currentRouteEntryAudit,
+    current_route_hash_audit: currentRouteHashAudit,
     top_nav_navigation_ready: topNavNavigationReady,
     top_nav_navigation_audit: topNavAudit,
     route_history_ready: routeHistoryReady,
     route_history_audit: { back: backAudit, forward: forwardAudit },
+    route_view_screenshots_ready: routeViewScreenshotsReady,
+    route_view_screenshots: routeViewScreenshots,
     product_truth_audit: productTruthAudit,
     unavailable_controls_ready: productTruthAudit.unavailable_controls_ready,
     unavailable_click_noop_ready: productTruthAudit.unavailable_click_noop_ready

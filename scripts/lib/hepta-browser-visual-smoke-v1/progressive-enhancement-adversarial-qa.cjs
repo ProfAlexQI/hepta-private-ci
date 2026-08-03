@@ -526,6 +526,12 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
       const routeLinks = [...document.querySelectorAll(
         "[data-hepta-nav-route], [data-control-ui-safety-route]",
       )];
+      const currentRouteAnchors = [...document.querySelectorAll('a[href^="#screen-card-"]')];
+      const currentRowRouteActions = [...document.querySelectorAll(
+        '[data-chat-row-menu-item="open-evidence"],'
+          + '[data-chat-row-menu-item="open-approvals"],'
+          + '[data-chat-row-menu-item="open-sources"]',
+      )];
       const composer = document.getElementById("chat-message");
       const composerStatus = document.querySelector("[data-chat-send-state]");
       return {
@@ -560,6 +566,17 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
             && href === expectedHref
             && (screen === "chat" ? target?.id === "chat" : target?.matches(".route-card"));
         }),
+        current_route_anchor_count: currentRouteAnchors.length,
+        current_row_route_action_count: currentRowRouteActions.length,
+        current_route_hashes: [...new Set(
+          currentRouteAnchors.map((anchor) => anchor.getAttribute("href") || ""),
+        )],
+        current_route_entries_ready: currentRouteAnchors.length === 29
+          && currentRowRouteActions.length === 3
+          && currentRouteAnchors.every((anchor) => {
+            const href = anchor.getAttribute("href") || "";
+            return document.getElementById(href.slice(1))?.matches(".route-card") === true;
+          }),
         composer_static_local_draft:
           composer instanceof HTMLTextAreaElement &&
           composer.dataset.controlUiComposerMode === "local-draft-only" &&
@@ -575,6 +592,47 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
       api_request_count: apiRequestCount,
       non_get_request_count: nonGetRequestCount,
     };
+    const noScriptHashAudit = [];
+    for (const hash of staticTruth.current_route_hashes) {
+      await page.evaluate((nextHash) => {
+        window.location.hash = nextHash;
+      }, hash);
+      noScriptHashAudit.push(await page.evaluate((expectedHash) => {
+        const visibility = (node) => {
+          if (!(node instanceof HTMLElement)) return false;
+          const style = getComputedStyle(node);
+          const rect = node.getBoundingClientRect();
+          return style.display !== "none"
+            && style.visibility !== "hidden"
+            && style.visibility !== "collapse"
+            && Number.parseFloat(style.opacity || "1") > 0
+            && rect.width > 0
+            && rect.height > 0
+            && node.getClientRects().length > 0;
+        };
+        const target = document.getElementById(expectedHash.slice(1));
+        const visibleCards = [...document.querySelectorAll(".route-card")].filter(visibility);
+        return {
+          hash: window.location.hash,
+          target_id: target?.id || "",
+          target_visible: visibility(target),
+          actual_visible_route_card_count: visibleCards.length,
+          actual_visible_route_card_ids: visibleCards.map((card) => card.id),
+        };
+      }, hash));
+    }
+    noScriptProductTruth.current_route_hash_audit = noScriptHashAudit;
+    noScriptProductTruth.current_route_hashes_ready = noScriptHashAudit.length > 0
+      && noScriptHashAudit.length === staticTruth.current_route_hashes.length
+      && noScriptHashAudit.every((entry) => (
+        entry.hash === `#${entry.target_id}`
+        && entry.target_visible
+        && entry.actual_visible_route_card_count === 1
+        && entry.actual_visible_route_card_ids[0] === entry.target_id
+      ));
+    await page.evaluate(() => {
+      window.location.hash = "#chat";
+    });
     const noScriptEntryVisible = await page
       .locator("[data-control-ui-thread-tools-trigger]")
       .isVisible();
@@ -583,10 +641,25 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
     const noScriptRoute = await page.evaluate(() => {
       const target = document.getElementById("screen-card-tasks");
       const nav = document.querySelector('[data-control-ui-menu-item="tasks"]');
+      const visibility = (node) => {
+        if (!(node instanceof HTMLElement)) return false;
+        const style = getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return style.display !== "none"
+          && style.visibility !== "hidden"
+          && style.visibility !== "collapse"
+          && Number.parseFloat(style.opacity || "1") > 0
+          && rect.width > 0
+          && rect.height > 0
+          && node.getClientRects().length > 0;
+      };
+      const visibleCards = [...document.querySelectorAll(".route-card")].filter(visibility);
       return {
         hash: window.location.hash,
         body_view: document.body.dataset.view || "",
-        target_visible: Boolean(target?.offsetParent),
+        target_visible: visibility(target),
+        actual_visible_route_card_count: visibleCards.length,
+        actual_visible_route_card_ids: visibleCards.map((card) => card.id),
         canonical_href: nav?.getAttribute("href") || "",
       };
     });
@@ -595,19 +668,23 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
     noScriptProductTruth.route_ready = noScriptRoute.hash === "#screen-card-tasks"
       && noScriptRoute.body_view === "chat"
       && noScriptRoute.target_visible
+      && noScriptRoute.actual_visible_route_card_count === 1
+      && noScriptRoute.actual_visible_route_card_ids[0] === "screen-card-tasks"
       && noScriptRoute.entry_visible
       && noScriptRoute.canonical_href === "#screen-card-tasks";
     noScriptProductTruth.ready =
       blockedScriptRequestCount === 1 &&
       apiRequestCount === 0 &&
       nonGetRequestCount === 0 &&
-      staticTruth.unavailable_control_count === 99 &&
+      staticTruth.unavailable_control_count === 14 &&
       staticTruth.all_controls_natively_disabled &&
       staticTruth.disabled_click_count === 0 &&
       staticTruth.seeded_conversation_count === 3 &&
       staticTruth.seeded_conversations_static_read_only &&
       staticTruth.task_spec_static_read_only &&
       staticTruth.native_route_links_ready &&
+      staticTruth.current_route_entries_ready &&
+      noScriptProductTruth.current_route_hashes_ready &&
       staticTruth.composer_static_local_draft &&
       staticTruth.status_static_read_only &&
       noScriptProductTruth.route_ready;
