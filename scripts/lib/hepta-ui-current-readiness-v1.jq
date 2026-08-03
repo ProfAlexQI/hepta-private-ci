@@ -102,11 +102,33 @@ def hepta_ui_readiness_truth:
     local: $local_ready
   };
 
+def hepta_ui_live_chain_bound($matrix; $bridge):
+  (
+    $matrix.ready == true
+    and $bridge.ready == true
+    and ($matrix.live_chain_binding.sequence_verified // false) == true
+    and ($bridge.live_chain_binding.parent_signature_verified // false) == true
+    and ($bridge.live_chain_binding.session_match_verified // false) == true
+    and ($bridge.live_chain_binding.run_match_verified // false) == true
+    and ($bridge.live_chain_binding.sequence_verified // false) == true
+    and ($matrix.live_chain_binding.run_identifier_sha256 // "") != ""
+    and ($matrix.live_chain_binding.run_identifier_sha256 // "") == ($bridge.live_chain_binding.run_identifier_sha256 // "")
+    and ($matrix.live_chain_binding.session_identifier_sha256 // "") != ""
+    and ($matrix.live_chain_binding.session_identifier_sha256 // "") == ($bridge.live_chain_binding.session_identifier_sha256 // "")
+    and ($matrix.input_receipt.sha256 // "") == ($bridge.live_chain_binding.matrix_attestation_sha256 // "")
+    and ($matrix.attestation_signature.sha256 // "") == ($bridge.live_chain_binding.matrix_signature_sha256 // "")
+    and ($matrix.attestation_signature.trusted_public_key_sha256 // "") == ($bridge.live_chain_binding.matrix_trusted_public_key_sha256 // "")
+    and ($matrix.artifact.expected_sha256 // "") == ($bridge.live_chain_binding.matrix_evidence_manifest_sha256 // "")
+    and ($matrix.attestation_signature.expected_producer // "") == ($bridge.live_chain_binding.matrix_producer // "")
+  );
+
 def hepta_ui_product_promotion_truth($local_ready; $mobile; $matrix; $bridge; $device; $accessibility; $release):
   (
     $local_ready
-    and $matrix.ready == true
-    and $bridge.ready == true
+    and ($mobile.hard_boundaries.ios_accessibility_update_consumed // false) == true
+    and ($mobile.hard_boundaries.android_accessibility_update_consumed // false) == true
+    and ($mobile.hard_boundaries.android_secure_session_persistence_ready // false) == true
+    and hepta_ui_live_chain_bound($matrix; $bridge)
     and $device.ready == true
     and $device.independent_verifier_ready == true
     and $accessibility.ready == true
@@ -122,7 +144,45 @@ def hepta_ui_product_promotion_truth($local_ready; $mobile; $matrix; $bridge; $d
   ) as $release_ready |
   {
     full: $full_ready,
-    mobile_full: ($device.ready == true and $device.independent_verifier_ready == true and $accessibility.ready == true and $accessibility.independent_verifier_ready == true),
+    mobile_full: (
+      ($mobile.hard_boundaries.ios_accessibility_update_consumed // false) == true
+      and ($mobile.hard_boundaries.android_accessibility_update_consumed // false) == true
+      and ($mobile.hard_boundaries.android_secure_session_persistence_ready // false) == true
+      and $device.ready == true
+      and $device.independent_verifier_ready == true
+      and $accessibility.ready == true
+      and $accessibility.independent_verifier_ready == true
+    ),
     release_independent: $release_ready,
     ga: ($full_ready and $release_ready)
   };
+
+def hepta_ui_invalidate_claim_tree:
+  walk(
+    if type == "boolean" then false
+    elif type == "object" then
+      (if has("status") then .status = "not_ready" else . end)
+      | (if has("reported_status") then .reported_status = "not_ready" else . end)
+    else .
+    end
+  );
+
+def hepta_ui_invalidate_derived_claims($reason):
+  .source_stable_during_run = false
+  | .current_head_active_truth_ready = false
+  | .readiness = {source:false, local_demo:false, full_product:false, public_ga:false}
+  | .promotion_trust_policy |= (
+      .loaded_from_exact_head_blob = false
+      | .worktree_matches_head = false
+      | .index_flags_clear = false
+      | .contract_ready = false
+      | .configured_profiles = []
+    )
+  | .promotion_receipts |= map(
+      hepta_ui_invalidate_claim_tree
+      | .reason = $reason
+    )
+  | .gates |= hepta_ui_invalidate_claim_tree
+  | .hard_boundaries |= hepta_ui_invalidate_claim_tree
+  | .status = (if .report_only then "report_complete" else "not_ready" end)
+  | .blockers = ((.blockers + [$reason]) | unique);

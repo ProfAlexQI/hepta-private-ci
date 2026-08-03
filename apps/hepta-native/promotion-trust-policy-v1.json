@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "kind": "hepta-ui-promotion-trust-policy-v1",
+  "profiles": {
+    "matrix_live": {
+      "configured": false,
+      "expected_producer": null,
+      "trusted_public_key_sha256": null
+    },
+    "bridge_live": {
+      "configured": false,
+      "expected_producer": null,
+      "trusted_public_key_sha256": null
+    },
+    "device_lab": {
+      "configured": false,
+      "expected_producer": null,
+      "trusted_public_key_sha256": null
+    },
+    "accessibility": {
+      "configured": false,
+      "expected_producer": null,
+      "trusted_public_key_sha256": null
+    },
+    "release": {
+      "configured": false,
+      "expected_producer": null,
+      "trusted_public_key_sha256": null,
+      "expected_signing_identity": null,
+      "expected_team_id": null
+    }
+  },
+  "activation_rule": "A trust profile may become configured only in a reviewed source commit that pins the independent attestor identity and RSA public-key SHA-256. Runtime environment variables cannot select trust anchors.",
+  "external_actions_performed": false
+}
