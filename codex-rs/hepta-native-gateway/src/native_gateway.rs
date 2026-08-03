@@ -404,6 +404,7 @@ fn handle_native_gateway_connection(
             b"method not allowed; supported POST endpoints are /api/actions/<action> and native POST route specs",
         );
     }
+    legacy_route_usage::begin_request(&request, method, path);
     if method == "POST"
         && crate::sensitive_http::requires_admission(path)
         && !crate::sensitive_http::admit(&request, &options.bind_addr)
@@ -419,7 +420,12 @@ fn handle_native_gateway_connection(
     let request_query = request_query(&request);
     let preflight = match runtime.preflight_request(method, path, request_body) {
         Ok(preflight) => preflight,
-        Err(error) => return http_rejections::runtime_ingress(stream, method, path, &error),
+        Err(error) => {
+            legacy_route_usage::record_preflight(legacy_route_usage::PreflightResult::Rejected);
+            let result = http_rejections::runtime_ingress(stream, method, path, &error);
+            legacy_route_usage::finish_request(&result);
+            return result;
+        }
     };
     if !runtime_preflight_matches(method, path, &preflight)
         || preflight.mutation_authorized
@@ -427,14 +433,18 @@ fn handle_native_gateway_connection(
         || preflight.provider_effect_ack_recorded
         || preflight.terminal_receipt_recorded
     {
-        return http_rejections::response(
+        legacy_route_usage::record_preflight(legacy_route_usage::PreflightResult::Invalid);
+        let result = http_rejections::response(
             stream,
             "503 Service Unavailable",
             "application/json; charset=utf-8",
             br#"{"error":"runtime request preflight invalid"}"#,
         );
+        legacy_route_usage::finish_request(&result);
+        return result;
     }
-    manifest_dispatch::dispatch_manifest_route(
+    legacy_route_usage::record_preflight(legacy_route_usage::PreflightResult::Accepted);
+    let result = manifest_dispatch::dispatch_manifest_route(
         stream,
         method,
         path,
@@ -443,7 +453,40 @@ fn handle_native_gateway_connection(
         request_body,
         request_query,
         &preflight,
-    )
+    );
+    legacy_route_usage::finish_request(&result);
+    result
+}
+
+fn write_http_response(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    body: &[u8],
+) -> Result<()> {
+    let result = crate::http_transport::write_http_response(stream, status, content_type, body);
+    legacy_route_usage::record_response_write(status, &result);
+    result
+}
+
+fn write_http_asset_response(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    cache_control: &str,
+    etag: &str,
+    body: &[u8],
+) -> Result<()> {
+    let result = crate::http_transport::write_http_asset_response(
+        stream,
+        status,
+        content_type,
+        cache_control,
+        etag,
+        body,
+    );
+    legacy_route_usage::record_response_write(status, &result);
+    result
 }
 
 #[cfg(test)]

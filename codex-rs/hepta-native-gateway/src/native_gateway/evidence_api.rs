@@ -21,6 +21,7 @@ pub(super) struct EvidenceIndex {
     legacy_compatibility_route_count: usize,
     retired_direct_route_count: usize,
     legacy_direct_call_count_since_start: u64,
+    legacy_route_telemetry: super::legacy_route_usage::LegacyRouteTelemetryHealth,
     entries: Vec<EvidenceEntry>,
 }
 
@@ -93,6 +94,7 @@ pub(super) fn evidence_index_report() -> EvidenceIndex {
             })
             .count(),
         legacy_direct_call_count_since_start: super::legacy_route_usage::total_direct_call_count(),
+        legacy_route_telemetry: super::legacy_route_usage::telemetry_health(),
         entries,
     }
 }
@@ -237,6 +239,21 @@ mod tests {
                 .sum::<u64>()
         );
         assert!(report.entry_count > 100);
+        let telemetry = serde_json::to_value(&report.legacy_route_telemetry)
+            .expect("legacy route telemetry health JSON");
+        assert_eq!(
+            telemetry["schema"],
+            "hepta_legacy_route_telemetry_health_v1"
+        );
+        assert_eq!(
+            telemetry["enable_env"],
+            "HEPTA_CONTROL_UI_LEGACY_ROUTE_TELEMETRY"
+        );
+        assert_eq!(telemetry["observation_window_complete"], false);
+        assert_eq!(telemetry["file_contents_fully_validated"], false);
+        assert_eq!(telemetry["summary_producer_available"], false);
+        assert_eq!(telemetry["zero_usage_claim_allowed"], false);
+        assert_eq!(telemetry["retirement_evidence_ready"], false);
         assert!(
             report
                 .entries

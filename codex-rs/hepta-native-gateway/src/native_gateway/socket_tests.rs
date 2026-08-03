@@ -20,16 +20,40 @@ fn route_over_real_socket(
     method: &str,
     path: &str,
 ) -> String {
+    route_over_real_socket_with_telemetry(
+        runtime,
+        options,
+        method,
+        path,
+        "",
+        None,
+    )
+}
+
+fn route_over_real_socket_with_telemetry(
+    runtime: Arc<NativeGatewayRuntime>,
+    options: NativeGatewayOptions,
+    method: &str,
+    path: &str,
+    request_headers: &str,
+    telemetry_root: Option<PathBuf>,
+) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("socket parity listener");
     let address = listener.local_addr().expect("socket parity address");
     let server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().expect("socket parity accept");
-        handle_native_gateway_connection(
-            &mut stream,
-            Instant::now() + Duration::from_secs(30),
-            &options,
-            &runtime,
-        )
+        let mut handle = || {
+            handle_native_gateway_connection(
+                &mut stream,
+                Instant::now() + Duration::from_secs(30),
+                &options,
+                &runtime,
+            )
+        };
+        match telemetry_root {
+            Some(root) => legacy_route_usage::with_test_state_root(&root, handle),
+            None => handle(),
+        }
         .expect("socket parity handler");
     });
     let mut client = TcpStream::connect(address).expect("socket parity client");
@@ -38,7 +62,7 @@ fn route_over_real_socket(
         .expect("socket parity read timeout");
     write!(
         client,
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{request_headers}Connection: close\r\n\r\n"
     )
     .expect("socket parity request");
     client
@@ -50,6 +74,182 @@ fn route_over_real_socket(
         .expect("socket parity response");
     server.join().expect("socket parity server");
     response
+}
+
+#[test]
+fn legacy_route_telemetry_covers_all_states_without_request_identifiers() {
+    let runtime_root = tempfile::tempdir().expect("runtime root");
+    let telemetry_root = tempfile::tempdir().expect("telemetry root");
+    let runtime = Arc::new(
+        NativeGatewayRuntime::bootstrap_with_anchor_for_test(runtime_root.path())
+            .expect("keyed runtime"),
+    );
+    let options = test_gateway_options(false);
+    let definitions = crate::route_definition::route_definition_registry();
+    let legacy_200 = definitions
+        .iter()
+        .find(|definition| {
+            definition.legacy_compatibility_route
+                && definition.dispatch_handler == RouteDispatchHandler::NativeGateway
+                && definition.lifecycle.source != "control_ui_transitive_effect_quarantine"
+        })
+        .expect("legacy 200 route");
+    let canonical_only = definitions
+        .iter()
+        .find(|definition| {
+            definition.legacy_compatibility_route
+                && definition.dispatch_handler == RouteDispatchHandler::RetiredCompatibility
+                && definition.lifecycle.source != "control_ui_transitive_effect_quarantine"
+        })
+        .expect("canonical-only route");
+    let quarantine = definitions
+        .iter()
+        .find(|definition| {
+            definition.legacy_compatibility_route
+                && definition.lifecycle.source == "control_ui_transitive_effect_quarantine"
+        })
+        .expect("quarantine route");
+    let cases = [
+        (
+            legacy_200,
+            "Sec-Fetch-Mode: cors\r\nUser-Agent: secret-browser-agent\r\n",
+            "HTTP/1.1 200 OK",
+            "legacy_200",
+            "accepted",
+            "browser",
+        ),
+        (
+            canonical_only,
+            "Accept: application/json\r\nX-Secret: secret-query-body-ip-ua\r\n",
+            "HTTP/1.1 410 Gone",
+            "canonical_only_gone_410",
+            "accepted",
+            "json_client",
+        ),
+        (
+            quarantine,
+            "User-Agent: secret-quarantine-agent\r\n",
+            "HTTP/1.1 410 Gone",
+            "quarantine_preflight_410",
+            "rejected",
+            "unclassified",
+        ),
+    ];
+
+    for (definition, headers, expected_status, _, _, _) in cases {
+        let response = route_over_real_socket_with_telemetry(
+            Arc::clone(&runtime),
+            options.clone(),
+            definition.lifecycle.method,
+            &control_ui_sample_path(definition.lifecycle.path_pattern),
+            headers,
+            Some(telemetry_root.path().to_path_buf()),
+        );
+        assert!(response.starts_with(expected_status), "{response:?}");
+    }
+
+    let telemetry_path = telemetry_root
+        .path()
+        .join(legacy_route_usage::telemetry_relative_path());
+    let events = fs::read_to_string(telemetry_path)
+        .expect("legacy route telemetry JSONL")
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("telemetry event"))
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), cases.len());
+    for (event, (definition, _, _, route_state, preflight, consumer_class)) in
+        events.iter().zip(cases)
+    {
+        assert_eq!(event["route_key"], definition.lifecycle.path_pattern);
+        assert_eq!(event["route_state"], route_state);
+        assert_eq!(event["consumer_class"], consumer_class);
+        assert_eq!(event["preflight"], preflight);
+        assert_eq!(event["write_result"], "ok");
+        assert_eq!(event["schema"], "hepta_legacy_route_usage_event_v1");
+        assert_eq!(event["observation_complete"], true);
+        assert!(event["sequence"].as_u64().is_some());
+        assert_eq!(
+            event["process_run_identifier_sha256"]
+                .as_str()
+                .map(str::len),
+            Some(64)
+        );
+        assert!(event["time_unix_ms"].as_u64().is_some());
+        assert_eq!(event["process_class"], "hepta_native_gateway");
+        assert_eq!(event["run_class"], "test");
+        assert!(!event["head_sha"].as_str().unwrap_or_default().is_empty());
+        assert_eq!(event["catalog_sha"].as_str().map(str::len), Some(64));
+    }
+    assert_eq!(events[0]["http_status"], 200);
+    assert_eq!(events[1]["http_status"], 410);
+    assert_eq!(events[2]["http_status"], 410);
+    let jsonl = serde_json::to_string(&events).expect("telemetry events");
+    for forbidden in [
+        "secret-browser-agent",
+        "secret-query-body-ip-ua",
+        "secret-quarantine-agent",
+        "user-agent",
+        "127.0.0.1",
+    ] {
+        assert!(!jsonl.contains(forbidden), "persisted forbidden value {forbidden}");
+    }
+}
+
+#[test]
+fn rejection_writer_records_actual_503_without_route_state_fallback() {
+    let telemetry_root = tempfile::tempdir().expect("telemetry root");
+    let definition = crate::route_definition::route_definition_registry()
+        .into_iter()
+        .find(|definition| {
+            definition.legacy_compatibility_route
+                && definition.lifecycle.method == "GET"
+                && definition.dispatch_handler == RouteDispatchHandler::NativeGateway
+        })
+        .expect("legacy route");
+    let path = control_ui_sample_path(definition.lifecycle.path_pattern);
+    let request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("rejection listener");
+    let address = listener.local_addr().expect("rejection address");
+    let root = telemetry_root.path().to_path_buf();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("rejection accept");
+        legacy_route_usage::with_test_state_root(&root, || {
+            legacy_route_usage::begin_request(&request, "GET", &path);
+            legacy_route_usage::record_preflight(legacy_route_usage::PreflightResult::Invalid);
+            let result = http_rejections::response(
+                &mut stream,
+                "503 Service Unavailable",
+                "application/json; charset=utf-8",
+                br#"{"error":"runtime request preflight invalid"}"#,
+            );
+            legacy_route_usage::finish_request(&result);
+            result
+        })
+        .expect("write rejection response");
+    });
+    let mut client = TcpStream::connect(address).expect("rejection client");
+    client
+        .shutdown(Shutdown::Write)
+        .expect("rejection request shutdown");
+    let mut response = String::new();
+    client
+        .read_to_string(&mut response)
+        .expect("rejection response");
+    server.join().expect("rejection server");
+    assert!(response.starts_with("HTTP/1.1 503 Service Unavailable"));
+
+    let telemetry_path = telemetry_root
+        .path()
+        .join(legacy_route_usage::telemetry_relative_path());
+    let event: serde_json::Value = serde_json::from_str(
+        fs::read_to_string(telemetry_path)
+            .expect("rejection telemetry")
+            .trim(),
+    )
+    .expect("rejection telemetry JSON");
+    assert_eq!(event["http_status"], 503);
+    assert_eq!(event["write_result"], "ok");
+    assert_eq!(event["observation_complete"], true);
 }
 
 #[test]

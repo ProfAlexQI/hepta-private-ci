@@ -4,8 +4,9 @@ use anyhow::Context;
 use anyhow::Result;
 
 use crate::http_transport::HttpRequestError;
-use crate::http_transport::write_http_response;
 use crate::runtime_ingress::runtime_ingress_rejection_response;
+
+use super::write_http_response;
 
 pub(super) fn request_error(stream: &mut TcpStream, error: HttpRequestError) -> Result<()> {
     write_http_response(
