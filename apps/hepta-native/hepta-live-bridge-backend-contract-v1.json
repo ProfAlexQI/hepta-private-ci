@@ -13,6 +13,8 @@
     "explicit_opt_in_required": true,
     "matrix_login_required": true,
     "authenticated_session_binding_required": true,
+    "request_body_allowed": false,
+    "redirect_allowed": false,
     "cache_control": "no-store",
     "mutation_allowed": false
   },
@@ -153,6 +155,8 @@
     }
   ],
   "current_implementation": {
+    "native_snapshot_transport_seam_available": true,
+    "authenticated_http_executor_available": false,
     "canonical_endpoint_registered": false,
     "authoritative_envelope_available": false,
     "authenticated_session_binding_available": false,

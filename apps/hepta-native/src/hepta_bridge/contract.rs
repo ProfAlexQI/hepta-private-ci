@@ -99,7 +99,9 @@ pub enum Origin {
 
 impl Origin {
     /// Only the product UI may originate declarative requests.
-    pub fn is_request_origin(&self) -> bool { matches!(self, Self::HeptaUi) }
+    pub fn is_request_origin(&self) -> bool {
+        matches!(self, Self::HeptaUi)
+    }
 
     /// Only the trusted runtime boundary may produce authoritative updates.
     /// Matrix events and local fixtures are inputs, never Hepta receipts.
@@ -129,7 +131,9 @@ impl Provenance {
         }
     }
 
-    pub fn is_valid(&self) -> bool { !self.source.trim().is_empty() }
+    pub fn is_valid(&self) -> bool {
+        !self.source.trim().is_empty()
+    }
 }
 
 /// Whether human-readable fields have passed the bridge's disclosure boundary.
@@ -374,19 +378,13 @@ impl BridgeRequestKind {
                 payload_hash,
                 idempotency_key,
                 ..
-            } => {
-                !prepared_id.is_blank()
-                    && !payload_hash.is_blank()
-                    && !idempotency_key.is_blank()
-            }
+            } => !prepared_id.is_blank() && !payload_hash.is_blank() && !idempotency_key.is_blank(),
             Self::Reject {
                 approval_id,
                 reason,
             } => {
                 !approval_id.is_blank()
-                    && reason
-                        .as_ref()
-                        .is_none_or(|value| !value.trim().is_empty())
+                    && reason.as_ref().is_none_or(|value| !value.trim().is_empty())
             }
             Self::Cancel { entity_id } => !entity_id.is_blank(),
         }

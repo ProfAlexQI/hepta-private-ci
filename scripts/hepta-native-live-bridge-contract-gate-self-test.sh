@@ -24,6 +24,14 @@ jq -e '
   and .canonical_endpoint.explicit_opt_in_required == true
   and .canonical_endpoint.matrix_login_required == true
   and .canonical_endpoint.authenticated_session_binding_available == false
+  and .transport_seam.snapshot_get_only == true
+  and .transport_seam.request_body_allowed == false
+  and .transport_seam.redirect_allowed == false
+  and .transport_seam.response_size_bounded == true
+  and .transport_seam.session_and_correlation_binding_required == true
+  and .transport_seam.authenticated_http_executor_available == false
+  and .transport_seam.wired_to_product_lifecycle == false
+  and (.evidence.live_adapter_path | endswith("/src/hepta_bridge/live_adapter.rs"))
   and (.candidate_endpoint_audit | length) == 6
   and (.candidate_endpoint_audit | all(.authoritative_bridge_snapshot == false))
   and .actual_request.performed == false
@@ -35,6 +43,9 @@ jq -e '
   and .capabilities.confirm == false
   and .capabilities.reject == false
   and .capabilities.cancel == false
+  and (.blockers | index("authenticated_http_executor_not_available") != null)
+  and (.blockers | index("snapshot_transport_not_wired_to_product_lifecycle") != null)
+  and (.blockers | index("snapshot_only_live_adapter_not_implemented") == null)
   and .side_effects.network_request_performed == false
   and .side_effects.matrix_login_performed == false
   and .side_effects.provider_invoked == false
@@ -193,6 +204,32 @@ dishonest_contract_exit=$?
 set -e
 if [[ "$dishonest_contract_exit" -eq 0 ]]; then
   printf '%s\n' 'gate accepted a source-unverified canonical endpoint claim' >&2
+  exit 1
+fi
+
+jq '.current_implementation.native_snapshot_transport_seam_available = false' \
+  apps/hepta-native/hepta-live-bridge-backend-contract-v1.json \
+  > "$TEST_ROOT/missing-seam-contract.json"
+set +e
+HEPTA_NATIVE_LIVE_BRIDGE_CONTRACT_PATH="$TEST_ROOT/missing-seam-contract.json" \
+  "$GATE" --output "$TEST_ROOT/missing-seam-receipt.json" >/dev/null 2>&1
+missing_seam_exit=$?
+set -e
+if [[ "$missing_seam_exit" -eq 0 ]]; then
+  printf '%s\n' 'gate accepted a contract that denied the compiled snapshot seam' >&2
+  exit 1
+fi
+
+jq '.current_implementation.authenticated_http_executor_available = true' \
+  apps/hepta-native/hepta-live-bridge-backend-contract-v1.json \
+  > "$TEST_ROOT/dishonest-executor-contract.json"
+set +e
+HEPTA_NATIVE_LIVE_BRIDGE_CONTRACT_PATH="$TEST_ROOT/dishonest-executor-contract.json" \
+  "$GATE" --output "$TEST_ROOT/dishonest-executor-receipt.json" >/dev/null 2>&1
+dishonest_executor_exit=$?
+set -e
+if [[ "$dishonest_executor_exit" -eq 0 ]]; then
+  printf '%s\n' 'gate accepted a source-unverified authenticated HTTP executor claim' >&2
   exit 1
 fi
 

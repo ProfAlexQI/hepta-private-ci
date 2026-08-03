@@ -61,7 +61,9 @@ pub struct BridgePresenter {
 }
 
 impl Default for BridgePresenter {
-    fn default() -> Self { Self::new(DEFAULT_PRESENTATION_PAYLOAD_CAP_BYTES) }
+    fn default() -> Self {
+        Self::new(DEFAULT_PRESENTATION_PAYLOAD_CAP_BYTES)
+    }
 }
 
 impl BridgePresenter {
@@ -71,7 +73,9 @@ impl BridgePresenter {
         }
     }
 
-    pub fn payload_cap_bytes(&self) -> usize { self.payload_cap_bytes }
+    pub fn payload_cap_bytes(&self) -> usize {
+        self.payload_cap_bytes
+    }
 
     /// Untrusted JSON is inspected only far enough to choose a safe fallback.
     /// It can never self-assert that it is redacted and become displayable.

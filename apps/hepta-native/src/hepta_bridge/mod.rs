@@ -7,6 +7,10 @@
 
 mod adapter;
 mod contract;
+// This producer seam is deliberately compiled but not wired into the product
+// facade until an authenticated backend executor exists.
+#[allow(dead_code)]
+mod live_adapter;
 mod live_policy;
 mod presenter;
 

@@ -32,6 +32,10 @@ pub enum BridgeAdapterError {
     UnsafeUpdate,
     #[error("bridge transport is unavailable")]
     TransportUnavailable,
+    #[error("live bridge activation preflight did not pass")]
+    LivePreflightBlocked,
+    #[error("live bridge HTTP response violated the snapshot contract: {0}")]
+    InvalidSnapshotResponse(&'static str),
     #[error("bridge adapter rejected the request: {0}")]
     Rejected(String),
 }
@@ -91,8 +95,10 @@ impl GuardedBridgeAdapter<DisabledBridgeAdapter> {
 }
 
 impl<T: BridgeTransport> GuardedBridgeAdapter<T> {
-    #[cfg(test)]
-    fn new(transport: T) -> Self { Self { transport } }
+    // The only non-test caller is the intentionally unwired live producer
+    // seam; keep the constructor internal until a backend host lands.
+    #[allow(dead_code)]
+    pub(super) fn new(transport: T) -> Self { Self { transport } }
 
     pub fn capabilities(&self) -> BridgeCapabilities { self.transport.capabilities() }
 

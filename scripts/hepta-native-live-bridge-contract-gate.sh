@@ -9,6 +9,7 @@ CONTRACT_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_CONTRACT_PATH:-$APP_DIR/hepta-live-bri
 DOC_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_HANDOFF_PATH:-docs/architecture/HEPTA_NATIVE_LIVE_BRIDGE_BACKEND_HANDOFF_2026-08-02.md}"
 BRIDGE_MOD_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_MOD_PATH:-$APP_DIR/src/hepta_bridge/mod.rs}"
 BRIDGE_ADAPTER_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_ADAPTER_PATH:-$APP_DIR/src/hepta_bridge/adapter.rs}"
+LIVE_ADAPTER_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_LIVE_ADAPTER_PATH:-$APP_DIR/src/hepta_bridge/live_adapter.rs}"
 LIVE_POLICY_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_POLICY_PATH:-$APP_DIR/src/hepta_bridge/live_policy.rs}"
 VALIDATOR_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_VALIDATOR_PATH:-scripts/lib/hepta-native-live-bridge-envelope-v1.jq}"
 GATEWAY_SOURCE_ROOT="${HEPTA_NATIVE_LIVE_BRIDGE_GATEWAY_SOURCE_ROOT:-codex-rs/hepta-native-gateway/src}"
@@ -65,6 +66,7 @@ for path in \
   "$DOC_PATH" \
   "$BRIDGE_MOD_PATH" \
   "$BRIDGE_ADAPTER_PATH" \
+  "$LIVE_ADAPTER_PATH" \
   "$LIVE_POLICY_PATH" \
   "$VALIDATOR_PATH"
 do
@@ -88,6 +90,8 @@ jq -e '
   and .canonical_endpoint.explicit_opt_in_required == true
   and .canonical_endpoint.matrix_login_required == true
   and .canonical_endpoint.authenticated_session_binding_required == true
+  and .canonical_endpoint.request_body_allowed == false
+  and .canonical_endpoint.redirect_allowed == false
   and .canonical_endpoint.mutation_allowed == false
   and .response_contract.rust_type == "hepta_native::hepta_bridge::BridgeUpdate"
   and .response_contract.update_type == "snapshot"
@@ -112,6 +116,8 @@ jq -e '
   and .current_implementation.canonical_endpoint_registered == false
   and .current_implementation.authoritative_envelope_available == false
   and .current_implementation.authenticated_session_binding_available == false
+  and .current_implementation.native_snapshot_transport_seam_available == true
+  and .current_implementation.authenticated_http_executor_available == false
   and .current_implementation.live_adapter_available == false
   and .current_implementation.live_receipt_available == false
   and .current_implementation.production_default_adapter == "disabled"
@@ -142,6 +148,16 @@ done
 
 require_marker "$BRIDGE_ADAPTER_PATH" 'pub(crate) struct DisabledBridgeAdapter'
 require_marker "$BRIDGE_ADAPTER_PATH" 'BridgeCapabilities::default()'
+
+for marker in \
+  'pub(crate) trait LiveSnapshotHttpExecutor' \
+  'fn execute_get(' \
+  'MAX_LIVE_SNAPSHOT_RESPONSE_BYTES' \
+  'redirects or endpoint changes are not allowed' \
+  'authenticated bridge session changed during the request'
+do
+  require_marker "$LIVE_ADAPTER_PATH" "$marker"
+done
 
 for marker in \
   'HEPTA_LIVE_BRIDGE_SNAPSHOT_PATH' \
@@ -212,6 +228,7 @@ receipt="$(jq -n \
   --arg contract_path "$CONTRACT_PATH" \
   --arg handoff_path "$DOC_PATH" \
   --arg live_policy_path "$LIVE_POLICY_PATH" \
+  --arg live_adapter_path "$LIVE_ADAPTER_PATH" \
   --arg envelope_validator_path "$VALIDATOR_PATH" \
   --arg canonical_endpoint "$canonical_endpoint" \
   --argjson worktree_dirty "$worktree_dirty" \
@@ -233,6 +250,7 @@ receipt="$(jq -n \
       contract_path:$contract_path,
       handoff_path:$handoff_path,
       live_policy_path:$live_policy_path,
+      live_adapter_path:$live_adapter_path,
       envelope_validator_path:$envelope_validator_path
     },
     canonical_endpoint:{
@@ -243,6 +261,15 @@ receipt="$(jq -n \
       explicit_opt_in_required:true,
       matrix_login_required:true,
       authenticated_session_binding_available:false
+    },
+    transport_seam:{
+      snapshot_get_only:true,
+      request_body_allowed:false,
+      redirect_allowed:false,
+      response_size_bounded:true,
+      session_and_correlation_binding_required:true,
+      authenticated_http_executor_available:false,
+      wired_to_product_lifecycle:false
     },
     capabilities:{
       snapshot:false,
@@ -268,7 +295,8 @@ receipt="$(jq -n \
       "canonical_snapshot_endpoint_not_registered",
       "authoritative_bridge_update_envelope_not_available",
       "authenticated_native_session_binding_not_available",
-      "snapshot_only_live_adapter_not_implemented",
+      "authenticated_http_executor_not_available",
+      "snapshot_transport_not_wired_to_product_lifecycle",
       "actual_live_request_not_performed",
       "actual_live_receipt_not_available"
     ],

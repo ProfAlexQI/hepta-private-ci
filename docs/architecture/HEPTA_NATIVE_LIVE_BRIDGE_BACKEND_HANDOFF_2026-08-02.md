@@ -23,9 +23,13 @@ No catalog, fixture, aggregate readiness report, Matrix event, or transcript
 search result may be promoted as task/tool/approval truth.
 
 The UI lane has landed the strict preflight policy, a machine-readable backend
-contract, an envelope validator, and a fail-closed blocker receipt. The backend
-lane must provide the canonical envelope and authentication binding before the
-UI lane can construct a read-only transport.
+contract, an envelope validator, and a fail-closed blocker receipt. It also
+contains an internal snapshot-only transport seam whose executor accepts only a
+body-free GET descriptor and must return a concrete authenticated session id.
+There is deliberately no production HTTP executor, so no socket is opened and
+the product facade remains disabled. The backend lane must provide the
+canonical envelope and authentication binding before that seam can be wired to
+the post-login product lifecycle.
 
 ## Existing Endpoint Audit
 
@@ -83,8 +87,12 @@ The exact machine-readable fields and promotion checklist live in
 2. After login, the bridge is still ineligible until the user explicitly opts
    in, the endpoint is canonical loopback, the host authenticates and binds the
    Hepta session, and the authoritative snapshot contract is negotiated.
-3. Passing the policy only permits construction of a snapshot-only adapter. It
-   does not perform a request and does not grant write authority.
+3. Passing the policy only permits construction of the internal snapshot-only
+   adapter around a separately authenticated host executor. The executor seam
+   has no caller-controlled method or request body, rejects redirects, and
+   binds each descriptor and response to the exact session and correlation.
+   No production executor exists yet, so policy success alone performs no
+   request and grants no write authority.
 4. `LoginFailure` and logout must drop the transport and session binding before
    returning to the login screen.
 
