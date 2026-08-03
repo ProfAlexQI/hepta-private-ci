@@ -305,7 +305,37 @@ hepta_process_terminate_identity_safe \
   echo "identity-safe cleanup signalled a command-mismatched PID" >&2
   exit 1
 }
-unset HEPTA_PROCESS_PS_BIN HEPTA_PROCESS_KILL_BIN FAKE_SIGNAL_LOG
+
+# The child may exit between kill -0 and the identity read. The helper must
+# confirm that it is now gone without signalling the PID, while continuing to
+# reject an identity read failure for a still-live process.
+fake_alive="$TEST_DIR/fake-race-alive"
+: >"$fake_alive"
+: >"$fake_signal_log"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'rm -f "$FAKE_ALIVE_FILE"' \
+  'exit 1' >"$fake_ps"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'if [[ "${1:-}" == "-0" ]]; then [[ -e "$FAKE_ALIVE_FILE" ]]; exit; fi' \
+  'printf "%s\\n" "$*" >>"$FAKE_SIGNAL_LOG"' \
+  'exit 0' >"$fake_kill"
+chmod 700 "$fake_ps" "$fake_kill"
+export FAKE_ALIVE_FILE="$fake_alive"
+identity_exit_race_rc=0
+hepta_process_terminate_identity_safe \
+  4242 "Tue Jan  2 03:04:05 2024" "/expected/product --serve" 1 0 1 \
+  || identity_exit_race_rc=$?
+[[ "$identity_exit_race_rc" == "0" \
+  && "$HEPTA_PROCESS_STOP_CONFIRMED" == true \
+  && "$HEPTA_PROCESS_TERM_SENT" == false \
+  && "$HEPTA_PROCESS_KILL_SENT" == false \
+  && ! -s "$fake_signal_log" ]] || {
+  echo "identity-safe cleanup mishandled the exit-before-identity race" >&2
+  exit 1
+}
+unset HEPTA_PROCESS_PS_BIN HEPTA_PROCESS_KILL_BIN FAKE_SIGNAL_LOG FAKE_ALIVE_FILE
 
 # Browser log and receipt paths are validated before compilation/capture. A
 # symlink target or producer screenshot must remain untouched on rejection.

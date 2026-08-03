@@ -42,6 +42,18 @@ hepta_process_identity_matches() {
     && "$HEPTA_PROCESS_ACTUAL_COMMAND" == "$expected_command" ]]
 }
 
+# A child can exit after the initial kill -0 probe but before ps returns its
+# identity. Confirm that race with a second liveness probe; never turn an
+# identity read failure for a still-live PID into success.
+hepta_process_confirm_stopped_after_identity_read_failure() {
+  local pid="$1"
+  if ! hepta_process_is_alive "$pid"; then
+    HEPTA_PROCESS_STOP_CONFIRMED=true
+    return 0
+  fi
+  return 1
+}
+
 # Return 0 only when the original process is confirmed stopped (or the PID is
 # now owned by a different start token). Return 75 for a same-start command
 # mismatch and 76 when a matching process survives KILL. No TERM/KILL is ever
@@ -66,6 +78,9 @@ hepta_process_terminate_identity_safe() {
     return 0
   fi
   if ! hepta_process_read_identity "$pid"; then
+    if hepta_process_confirm_stopped_after_identity_read_failure "$pid"; then
+      return 0
+    fi
     return 74
   fi
   if [[ "$HEPTA_PROCESS_ACTUAL_START_TOKEN" != "$expected_start_token" ]]; then
@@ -92,6 +107,9 @@ hepta_process_terminate_identity_safe() {
       return 0
     fi
     if ! hepta_process_read_identity "$pid"; then
+      if hepta_process_confirm_stopped_after_identity_read_failure "$pid"; then
+        return 0
+      fi
       return 74
     fi
     if [[ "$HEPTA_PROCESS_ACTUAL_START_TOKEN" != "$expected_start_token" ]]; then
@@ -109,6 +127,9 @@ hepta_process_terminate_identity_safe() {
     return 0
   fi
   if ! hepta_process_read_identity "$pid"; then
+    if hepta_process_confirm_stopped_after_identity_read_failure "$pid"; then
+      return 0
+    fi
     return 74
   fi
   if [[ "$HEPTA_PROCESS_ACTUAL_START_TOKEN" != "$expected_start_token" ]]; then
@@ -167,6 +188,9 @@ hepta_process_terminate_start_safe() {
       return 0
     fi
     if ! hepta_process_read_identity "$pid"; then
+      if hepta_process_confirm_stopped_after_identity_read_failure "$pid"; then
+        return 0
+      fi
       return 74
     fi
     if [[ "$HEPTA_PROCESS_ACTUAL_START_TOKEN" != "$expected_start_token" ]]; then
