@@ -212,6 +212,22 @@ SOURCE_STABLE=false
 ORIGINAL_HOME="${HOME:-}"
 SANDBOX_ROOT=""
 ISOLATED_HOME=""
+DISPLAY_WAKE_BACKEND="/usr/bin/caffeinate"
+DISPLAY_WAKE_ACTIVE=false
+DISPLAY_WAKE_PID=""
+DISPLAY_WAKE_PARENT_PID="$$"
+DISPLAY_WAKE_PROCESS_START_CONFIRMED=false
+DISPLAY_WAKE_PARENT_BOUND_FAIL_SAFE=true
+DISPLAY_WAKE_STDOUT_LOG="$COMMAND_LOG_DIR/display-wake.stdout"
+DISPLAY_WAKE_STDERR_LOG="$COMMAND_LOG_DIR/display-wake.stderr"
+
+refresh_display_wake_active() {
+  DISPLAY_WAKE_ACTIVE=false
+  if [[ "$DISPLAY_WAKE_PROCESS_START_CONFIRMED" == true && -n "$DISPLAY_WAKE_PID" ]] \
+    && kill -0 "$DISPLAY_WAKE_PID" >/dev/null 2>&1; then
+    DISPLAY_WAKE_ACTIVE=true
+  fi
+}
 
 cleanup() {
   local cleanup_rc=0
@@ -263,7 +279,11 @@ write_failure_receipt() {
     --arg evidence_dir "$EVIDENCE_DIR" --arg stdout_log "$VERIFIER_STDOUT_LOG" \
     --arg stderr_log "$VERIFIER_STDERR_LOG" --arg app_log "$APP_LOG" \
     --arg command_log_dir "$COMMAND_LOG_DIR" --arg original_home "$ORIGINAL_HOME" \
-    --arg isolated_home "$ISOLATED_HOME" '
+    --arg isolated_home "$ISOLATED_HOME" --arg display_wake_backend "$DISPLAY_WAKE_BACKEND" \
+    --arg display_wake_pid "$DISPLAY_WAKE_PID" --argjson display_wake_active "$DISPLAY_WAKE_ACTIVE" \
+    --argjson display_wake_parent_pid "$DISPLAY_WAKE_PARENT_PID" \
+    --argjson display_wake_process_start_confirmed "$DISPLAY_WAKE_PROCESS_START_CONFIRMED" \
+    --argjson display_wake_parent_bound_fail_safe "$DISPLAY_WAKE_PARENT_BOUND_FAIL_SAFE" '
       {
         schema_version:1,
         kind:"hepta-ui-native-window-receipt-v1",
@@ -278,6 +298,7 @@ write_failure_receipt() {
         native_window_ready:false,
         package:{report_path:$package_report},
         isolation:{original_home:$original_home,isolated_home:$isolated_home,home_isolated:(($isolated_home | length) > 0 and $isolated_home != $original_home)},
+        display_wake:{backend:$display_wake_backend,active:$display_wake_active,pid:($display_wake_pid | if length > 0 then tonumber else null end),process_start_confirmed:$display_wake_process_start_confirmed,flags:["-d","-i","-m","-s","-u"],wait_for_pid:$display_wake_parent_pid,parent_bound_fail_safe:$display_wake_parent_bound_fail_safe},
         logs:{verifier_stdout:$stdout_log,verifier_stderr:$stderr_log,application:$app_log,command_directory:$command_log_dir},
         failure:{stage:$stage,exit_code:$exit_code,detail:$detail},
         artifact:null,
@@ -298,6 +319,7 @@ on_exit() {
   trap - EXIT
   cleanup || true
   if [[ "$exit_code" != "0" && "$VERIFIER_SUCCEEDED" != true ]]; then
+    refresh_display_wake_active
     write_failure_receipt "$exit_code" || true
   fi
   exit "$exit_code"
@@ -309,6 +331,31 @@ fail() {
   local exit_code="${2:-1}"
   printf '%s\n' "$FAILURE_DETAIL" >&2
   exit "$exit_code"
+}
+
+start_display_wake() {
+  local startup_rc=0
+  : >"$DISPLAY_WAKE_STDOUT_LOG"
+  : >"$DISPLAY_WAKE_STDERR_LOG"
+  "$DISPLAY_WAKE_BACKEND" -dimsu -w "$DISPLAY_WAKE_PARENT_PID" \
+    >"$DISPLAY_WAKE_STDOUT_LOG" 2>"$DISPLAY_WAKE_STDERR_LOG" &
+  DISPLAY_WAKE_PID="$!"
+  sleep 0.1
+  if ! kill -0 "$DISPLAY_WAKE_PID" >/dev/null 2>&1; then
+    wait "$DISPLAY_WAKE_PID" || startup_rc=$?
+    cat "$DISPLAY_WAKE_STDERR_LOG" >&2 || true
+    fail "display wake backend failed to remain active after startup (exit code $startup_rc)" 2
+  fi
+  DISPLAY_WAKE_PROCESS_START_CONFIRMED=true
+  DISPLAY_WAKE_ACTIVE=true
+}
+
+require_display_wake_active() {
+  refresh_display_wake_active
+  if [[ "$DISPLAY_WAKE_ACTIVE" != true ]]; then
+    cat "$DISPLAY_WAKE_STDERR_LOG" >&2 || true
+    fail "display wake backend is not active"
+  fi
 }
 
 [[ "$STARTUP_TIMEOUT_SEC" =~ ^[1-9][0-9]*$ ]] || fail "invalid --startup-timeout" 64
@@ -327,6 +374,7 @@ CURRENT_STAGE="dependency_check"
 for command in git jq shasum strings sips tar ruby peekaboo sandbox-exec tee; do
   command -v "$command" >/dev/null 2>&1 || fail "$command is required" 2
 done
+[[ -x "$DISPLAY_WAKE_BACKEND" ]] || fail "$DISPLAY_WAKE_BACKEND is required" 2
 
 [[ -n "$ORIGINAL_HOME" && "$ORIGINAL_HOME" == /* ]] || fail "HOME must be an absolute path"
 SANDBOX_ROOT="$(mktemp -d "$EVIDENCE_DIR/sandbox.XXXXXX")"
@@ -428,8 +476,12 @@ scripts/hepta-ui-native-window-sandbox-profile \
   --scratch-dir "$SANDBOX_ROOT" \
   --output "$SANDBOX_PROFILE"
 
+CURRENT_STAGE="display_wake"
+start_display_wake
+
 export PEEKABOO_BRIDGE_SOCKET="$BRIDGE_SOCKET"
 CURRENT_STAGE="peekaboo_permissions"
+require_display_wake_active
 if ! run_logged_command peekaboo-permissions peekaboo permissions status --no-remote --json; then
   fail "Peekaboo permission query failed with exit code $CAPTURE_RC"
 fi
@@ -485,6 +537,7 @@ WINDOW_MATCH_COUNT=0
 WINDOW_LIST='{}'
 WINDOW_LIST_ATTEMPT=0
 CURRENT_STAGE="window_discovery"
+require_display_wake_active
 deadline=$((SECONDS + STARTUP_TIMEOUT_SEC))
 while (( SECONDS < deadline )); do
   kill -0 "$APP_PID" >/dev/null 2>&1 || {
@@ -524,6 +577,7 @@ BOUNDS_DELTA_WIDTH=""
 BOUNDS_DELTA_HEIGHT=""
 BOUNDS_WITHIN_TOLERANCE=false
 CURRENT_STAGE="window_position_and_focus"
+require_display_wake_active
 for attempt in {1..4}; do
   if ! run_logged_command "peekaboo-set-bounds-$attempt" peekaboo window set-bounds \
       --no-remote --app "PID:$APP_PID" --window-id "$WINDOW_ID" \
@@ -573,6 +627,7 @@ WINDOW_MATCH_COUNT="$(jq '[.data.windows[]? | select(.title == "Hepta")] | lengt
 }
 
 CURRENT_STAGE="window_capture"
+require_display_wake_active
 WINDOW_CAPTURE_READY=false
 WINDOW_CAPTURE_ATTEMPT=0
 for attempt in {1..4}; do
@@ -590,6 +645,7 @@ done
 [[ "$WINDOW_CAPTURE_READY" == true ]] \
   || fail "Peekaboo native-window capture failed after ${WINDOW_CAPTURE_ATTEMPT} attempts (last exit code $CAPTURE_RC)"
 kill -0 "$APP_PID" >/dev/null 2>&1 || fail "Hepta was not alive after capture"
+require_display_wake_active
 
 CURRENT_STAGE="capture_validation"
 scripts/hepta-image-content-probe --image "$HOST_SCREENSHOT" --output "$HOST_PROBE" >/dev/null
@@ -617,6 +673,9 @@ if jq -e --argjson before "$SOURCE_BEFORE" '
 fi
 [[ "$SOURCE_STABLE" == true ]] || fail "source changed during native-window verification"
 
+CURRENT_STAGE="display_wake_post_capture"
+require_display_wake_active
+
 if ! cleanup; then
   fail "could not confirm identity-safe Hepta process termination"
 fi
@@ -641,7 +700,11 @@ jq -n \
   --arg verifier_stdout "$VERIFIER_STDOUT_LOG" --arg verifier_stderr "$VERIFIER_STDERR_LOG" \
   --arg command_log_dir "$COMMAND_LOG_DIR" --arg original_home "$ORIGINAL_HOME" --arg isolated_home "$ISOLATED_HOME" \
   --arg app_start_token "$APP_START_TOKEN" --arg app_command "$APP_COMMAND" \
-  --argjson app_termination_confirmed "$APP_TERMINATION_CONFIRMED" '
+  --argjson app_termination_confirmed "$APP_TERMINATION_CONFIRMED" \
+  --arg display_wake_backend "$DISPLAY_WAKE_BACKEND" --arg display_wake_pid "$DISPLAY_WAKE_PID" \
+  --argjson display_wake_active "$DISPLAY_WAKE_ACTIVE" --argjson display_wake_parent_pid "$DISPLAY_WAKE_PARENT_PID" \
+  --argjson display_wake_process_start_confirmed "$DISPLAY_WAKE_PROCESS_START_CONFIRMED" \
+  --argjson display_wake_parent_bound_fail_safe "$DISPLAY_WAKE_PARENT_BOUND_FAIL_SAFE" '
   {
     schema_version:1,
     kind:"hepta-ui-native-window-evidence-manifest-v1",
@@ -650,6 +713,7 @@ jq -n \
     scope:"unauthenticated_local_macos_product_shell",
     package:{report_path:$package_report,report_sha256:$package_report_sha,app_path:$package_app,binary_path:$package_binary,binary_sha256:$package_binary_sha,bundle_fingerprint_sha256:$package_bundle_sha,current_source_local_package_ready:true,visual_capture_binary_is_exact_packaged_executable:true},
     window:{requested_bounds:$bounds,actual_bounds:$actual_bounds,bounds_tolerance_pixels:$bounds_tolerance,bounds_within_tolerance:$bounds_within_tolerance,bounds_delta:{x:$bounds_delta_x,y:$bounds_delta_y,width:$bounds_delta_width,height:$bounds_delta_height},minimum_capture_size_ready:true,title:"Hepta",exact_title_match_count:$window_match_count,host_capture:{path:$host_path,sha256:$host_sha,dimensions:$host_dimensions,content_probe:$host_probe,capture_attempt:$window_capture_attempt}},
+    display_wake:{backend:$display_wake_backend,active:$display_wake_active,pid:($display_wake_pid | tonumber),process_start_confirmed:$display_wake_process_start_confirmed,flags:["-d","-i","-m","-s","-u"],wait_for_pid:$display_wake_parent_pid,parent_bound_fail_safe:$display_wake_parent_bound_fail_safe},
     logs:{application:$app_log,verifier_stdout:$verifier_stdout,verifier_stderr:$verifier_stderr,command_directory:$command_log_dir},
     process:{start_token:$app_start_token,command:$app_command,identity_safe_termination_confirmed:$app_termination_confirmed},
     isolation:{macos_sandbox_profile:$sandbox_profile,original_home:$original_home,isolated_home:$isolated_home,home_isolated:($isolated_home != $original_home),real_product_data_path_denied:true,real_product_cache_path_denied:true,keychain_services_denied:true,network_denied_by_sandbox:true,force_login_argument:true,user_input_performed:false,matrix_login_performed:false}
@@ -665,6 +729,7 @@ ARCHIVE_SHA="$(shasum -a 256 "$EVIDENCE_ARCHIVE" | awk '{print $1}')"
 ARCHIVE_BYTES="$(stat -f %z "$EVIDENCE_ARCHIVE")"
 
 CURRENT_STAGE="ready_receipt"
+require_display_wake_active
 READY_RECEIPT_TMP="$(mktemp "${REPORT_PATH%/*}/.native-window-ready-receipt.XXXXXX")" || fail "could not create atomic ready receipt"
 if ! jq -n \
   --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -687,7 +752,11 @@ if ! jq -n \
   --arg verifier_stdout "$VERIFIER_STDOUT_LOG" --arg verifier_stderr "$VERIFIER_STDERR_LOG" \
   --arg app_log "$APP_LOG" --arg command_log_dir "$COMMAND_LOG_DIR" \
   --arg app_start_token "$APP_START_TOKEN" --arg app_command "$APP_COMMAND" \
-  --argjson app_termination_confirmed "$APP_TERMINATION_CONFIRMED" '
+  --argjson app_termination_confirmed "$APP_TERMINATION_CONFIRMED" \
+  --arg display_wake_backend "$DISPLAY_WAKE_BACKEND" --arg display_wake_pid "$DISPLAY_WAKE_PID" \
+  --argjson display_wake_active "$DISPLAY_WAKE_ACTIVE" --argjson display_wake_parent_pid "$DISPLAY_WAKE_PARENT_PID" \
+  --argjson display_wake_process_start_confirmed "$DISPLAY_WAKE_PROCESS_START_CONFIRMED" \
+  --argjson display_wake_parent_bound_fail_safe "$DISPLAY_WAKE_PARENT_BOUND_FAIL_SAFE" '
   {
     schema_version:1,
     kind:"hepta-ui-native-window-receipt-v1",
@@ -705,6 +774,7 @@ if ! jq -n \
     current_head_embedded_in_binary:true,
     package:{report_path:$package_report,report_sha256:$package_report_sha,app_path:$package_app,binary_path:$package_binary,binary_sha256:$package_binary_sha,bundle_fingerprint_sha256:$package_bundle_sha,current_source_local_package_ready:true,visual_capture_binary_is_exact_packaged_executable:true,visual_capture_binary_is_separate_developer_diagnostics_build:false},
     host_window:{title:"Hepta",exact_title_match_count:$window_match_count,requested_bounds:$requested_bounds,actual_bounds:$actual_bounds,bounds_tolerance_pixels:$bounds_tolerance,bounds_within_tolerance:$bounds_within_tolerance,bounds_delta:{x:$bounds_delta_x,y:$bounds_delta_y,width:$bounds_delta_width,height:$bounds_delta_height},minimum_capture_size_ready:true,screenshot:{path:$host_screenshot,sha256:$host_sha,dimensions:$host_dimensions,capture_attempt:$window_capture_attempt}},
+    display_wake:{backend:$display_wake_backend,active:$display_wake_active,pid:($display_wake_pid | tonumber),process_start_confirmed:$display_wake_process_start_confirmed,flags:["-d","-i","-m","-s","-u"],wait_for_pid:$display_wake_parent_pid,parent_bound_fail_safe:$display_wake_parent_bound_fail_safe},
     evidence_manifest:{path:$manifest,sha256:$manifest_sha},
     artifact:{path:$archive,sha256:$archive_sha,bytes:$archive_bytes,format:"tar.gz"},
     logs:{verifier_stdout:$verifier_stdout,verifier_stderr:$verifier_stderr,application:$app_log,command_directory:$command_log_dir},

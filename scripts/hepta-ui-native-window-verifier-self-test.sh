@@ -184,6 +184,13 @@ jq -e '
   and .failure.stage == "argument_validation"
   and .failure.exit_code == 1
   and (.failure.detail | contains("package report is not a regular file"))
+  and .display_wake.backend == "/usr/bin/caffeinate"
+  and .display_wake.active == false
+  and .display_wake.pid == null
+  and .display_wake.process_start_confirmed == false
+  and .display_wake.flags == ["-d", "-i", "-m", "-s", "-u"]
+  and (.display_wake.wait_for_pid | type == "number" and . > 0)
+  and .display_wake.parent_bound_fail_safe == true
   and .remote_side_effects_performed == false
 ' "$TEST_DIR/receipt.json" >/dev/null
 [[ -f "$TEST_DIR/evidence/native-window-verifier.stdout.log" ]] || {
@@ -226,6 +233,21 @@ grep -Fq -- 'VERIFIER_STDERR_LOG="$EVIDENCE_DIR/native-window-verifier.stderr.lo
 grep -Fq -- 'source scripts/lib/hepta-process-identity-v1.sh' scripts/hepta-ui-native-window-verifier-v1
 grep -Fq -- 'hepta_process_terminate_identity_safe' scripts/hepta-ui-native-window-verifier-v1
 grep -Fq -- 'hepta_process_terminate_start_safe' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'DISPLAY_WAKE_BACKEND="/usr/bin/caffeinate"' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- '"$DISPLAY_WAKE_BACKEND" -dimsu -w "$DISPLAY_WAKE_PARENT_PID" \' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'DISPLAY_WAKE_PID="$!"' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'if ! kill -0 "$DISPLAY_WAKE_PID" >/dev/null 2>&1; then' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'fail "display wake backend failed to remain active after startup (exit code $startup_rc)" 2' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'CURRENT_STAGE="peekaboo_permissions"' scripts/hepta-ui-native-window-verifier-v1
+grep -Fq -- 'CURRENT_STAGE="window_capture"' scripts/hepta-ui-native-window-verifier-v1
+[[ "$(grep -Fc -- 'display_wake:{backend:$display_wake_backend' scripts/hepta-ui-native-window-verifier-v1)" == "3" ]] || {
+  echo "native-window verifier does not audit display wake in every receipt and manifest" >&2
+  exit 1
+}
+[[ "$(grep -Fc -- 'require_display_wake_active' scripts/hepta-ui-native-window-verifier-v1)" -ge 7 ]] || {
+  echo "native-window verifier does not fail closed around permission/window capture" >&2
+  exit 1
+}
 grep -Fq -- 'source scripts/lib/hepta-process-identity-v1.sh' scripts/hepta-control-ui-browser-smoke.sh
 grep -Fq -- 'hepta_process_terminate_identity_safe' scripts/hepta-control-ui-browser-smoke.sh
 grep -Fq -- 'hepta_process_terminate_start_safe' scripts/hepta-control-ui-browser-smoke.sh
