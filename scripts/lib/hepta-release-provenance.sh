@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-HEPTA_BUILD_PROVENANCE_SCHEMA="hepta_build_provenance_v1"
+HEPTA_BUILD_PROVENANCE_SCHEMA_V1="hepta_build_provenance_v1"
+HEPTA_BUILD_PROVENANCE_SCHEMA="hepta_build_provenance_v2"
 HEPTA_BOUND_GATE_RECEIPTS_SCHEMA="hepta_preflight_bound_gate_receipts_v1"
 HEPTA_LEGACY_L_SOURCE_COMMIT="1b3958e929b82a327abcd74c7293cdf5da806a5e"
 HEPTA_LEGACY_L_CODEX_CARGO_LOCK_SHA="2c30a9364d77bf41b43bf66bc69019acb15707e07f4c681f713fc432fc848a45"
@@ -35,6 +36,23 @@ hepta_release_canonical_preflight_artifact_path() {
     return 1
   }
   printf '%s/release/hepta\n' "${target_dir%/}"
+}
+hepta_release_canonical_code_mode_host_artifact_path() {
+  local target_dir="$1"
+  local override="$2"
+  [[ -n "$target_dir" && "$target_dir" == /* && "$target_dir" != *$'\n'* ]] || {
+    echo "release preflight cargo target directory must be an absolute single-line path" >&2
+    return 1
+  }
+  [[ -z "$override" ]] || {
+    echo "release preflight code-mode host override is forbidden; the canonical cargo target artifact is mandatory" >&2
+    return 1
+  }
+  if [[ "${OS:-}" == "Windows_NT" ]]; then
+    printf '%s/release/codex-code-mode-host.exe\n' "${target_dir%/}"
+  else
+    printf '%s/release/codex-code-mode-host\n' "${target_dir%/}"
+  fi
 }
 hepta_release_canonical_json() {
   jq -cS .
@@ -95,6 +113,7 @@ hepta_release_build_provenance_json() {
   local root="$1"
   local source_commit="$2"
   local artifact="$3"
+  local code_mode_host_artifact="$4"
   [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || {
     echo "release provenance source commit must be a full Git SHA" >&2
     return 1
@@ -103,9 +122,21 @@ hepta_release_build_provenance_json() {
     echo "missing release provenance artifact: $artifact" >&2
     return 1
   }
+  [[ -f "$code_mode_host_artifact" ]] || {
+    echo "missing release provenance code-mode host artifact: $code_mode_host_artifact" >&2
+    return 1
+  }
+  local code_mode_host_name
+  code_mode_host_name="$(basename "$code_mode_host_artifact")"
+  [[ "$code_mode_host_name" == "codex-code-mode-host" \
+    || "$code_mode_host_name" == "codex-code-mode-host.exe" ]] || {
+    echo "release provenance code-mode host has an invalid executable name: $code_mode_host_name" >&2
+    return 1
+  }
   local toolchain_inputs dependency_inputs rustc_records
   local toolchain_inputs_sha dependency_inputs_sha rustc_records_sha
   local toolchain_aggregate_sha dependency_aggregate_sha artifact_sha
+  local code_mode_host_sha runtime_companions runtime_companions_sha
   toolchain_inputs="$(
     hepta_release_file_records_json \
       "$root" \
@@ -136,23 +167,56 @@ hepta_release_build_provenance_json() {
   )"
   dependency_aggregate_sha="$dependency_inputs_sha"
   artifact_sha="$(hepta_release_sha256_file "$artifact")"
+  code_mode_host_sha="$(hepta_release_sha256_file "$code_mode_host_artifact")"
+  runtime_companions="$(
+    jq -cn \
+      --arg id "code-mode-host" \
+      --arg name "$code_mode_host_name" \
+      --arg sha256 "$code_mode_host_sha" \
+      '[{id:$id,name:$name,sha256:$sha256}]'
+  )"
+  runtime_companions_sha="$(
+    jq -r '.[] | [.id, .name, .sha256] | @tsv' <<<"$runtime_companions" \
+      | hepta_release_sha256_text
+  )"
   jq -cn --arg schema_version "$HEPTA_BUILD_PROVENANCE_SCHEMA" \
     --arg source_commit "$source_commit" --arg toolchain_aggregate_sha256 "$toolchain_aggregate_sha" \
     --arg dependency_aggregate_sha256 "$dependency_aggregate_sha" --arg artifact_sha256 "$artifact_sha" \
+    --arg runtime_companions_sha256 "$runtime_companions_sha" \
     --argjson toolchain_inputs "$toolchain_inputs" --argjson rustc_records "$rustc_records" \
-    --argjson dependency_inputs "$dependency_inputs" \
-    '{schema_version:$schema_version,source:{commit:$source_commit,commit_bound:true},toolchain:{bound:true,aggregate_sha256:$toolchain_aggregate_sha256,manifest_inputs:$toolchain_inputs,rustc_verbose_inputs:$rustc_records},dependencies:{bound:true,aggregate_sha256:$dependency_aggregate_sha256,lock_inputs:$dependency_inputs},artifact:{bound:true,sha256:$artifact_sha256}}'
+    --argjson dependency_inputs "$dependency_inputs" --argjson runtime_companions "$runtime_companions" \
+    '{schema_version:$schema_version,source:{commit:$source_commit,commit_bound:true},toolchain:{bound:true,aggregate_sha256:$toolchain_aggregate_sha256,manifest_inputs:$toolchain_inputs,rustc_verbose_inputs:$rustc_records},dependencies:{bound:true,aggregate_sha256:$dependency_aggregate_sha256,lock_inputs:$dependency_inputs},artifact:{bound:true,sha256:$artifact_sha256},runtime_companions:{bound:true,aggregate_sha256:$runtime_companions_sha256,artifacts:$runtime_companions}}'
 }
 hepta_release_validate_build_provenance_json() {
   local provenance_json="$1"
   local source_commit="$2"
   local artifact_sha="$3"
+  local code_mode_host_sha="${4:-}"
+  local schema
+  schema="$(jq -r '.schema_version // empty' <<<"$provenance_json")"
+  if [[ "$schema" == "$HEPTA_BUILD_PROVENANCE_SCHEMA_V1" ]]; then
+    [[ -z "$code_mode_host_sha" ]] || {
+      echo "legacy build provenance cannot bind the required code-mode host" >&2
+      return 1
+    }
+  elif [[ "$schema" == "$HEPTA_BUILD_PROVENANCE_SCHEMA" ]]; then
+    [[ "$code_mode_host_sha" =~ ^[0-9a-f]{64}$ ]] || {
+      echo "build provenance requires a canonical code-mode host SHA-256" >&2
+      return 1
+    }
+  else
+    echo "unsupported build provenance schema: $schema" >&2
+    return 1
+  fi
   jq -e \
-    --arg schema "$HEPTA_BUILD_PROVENANCE_SCHEMA" \
+    --arg schema "$schema" \
+    --arg schema_v1 "$HEPTA_BUILD_PROVENANCE_SCHEMA_V1" \
+    --arg schema_v2 "$HEPTA_BUILD_PROVENANCE_SCHEMA" \
     --arg source_commit "$source_commit" \
     --arg artifact_sha "$artifact_sha" \
+    --arg code_mode_host_sha "$code_mode_host_sha" \
     '
-      ((keys - ["artifact","bound_gate_receipts","dependencies","deployment_consistency","preflight_profiles","schema_version","source","toolchain","watchdog_gate_mode"]) | length) == 0
+      ((keys - (["artifact","bound_gate_receipts","dependencies","deployment_consistency","preflight_profiles","schema_version","source","toolchain","watchdog_gate_mode"] + (if $schema == $schema_v2 then ["runtime_companions"] else [] end))) | length) == 0
       and .schema_version == $schema
       and .source == {commit:$source_commit,commit_bound:true}
       and (.toolchain | keys | sort) == ["aggregate_sha256","bound","manifest_inputs","rustc_verbose_inputs"]
@@ -168,12 +232,23 @@ hepta_release_validate_build_provenance_json() {
       and (.dependencies.lock_inputs | map(.path)) == ["codex-rs/Cargo.lock","apps/hepta-native/Cargo.lock"]
       and (.dependencies.lock_inputs | all((keys | sort) == ["path","sha256"] and (.sha256 | test("^[0-9a-f]{64}$"))))
       and .artifact == {bound:true,sha256:$artifact_sha}
+      and (if $schema == $schema_v2 then
+        (.runtime_companions | keys | sort) == ["aggregate_sha256","artifacts","bound"]
+        and .runtime_companions.bound == true
+        and (.runtime_companions.aggregate_sha256 | test("^[0-9a-f]{64}$"))
+        and (.runtime_companions.artifacts | length) == 1
+        and .runtime_companions.artifacts[0].id == "code-mode-host"
+        and (.runtime_companions.artifacts[0].name == "codex-code-mode-host" or .runtime_companions.artifacts[0].name == "codex-code-mode-host.exe")
+        and .runtime_companions.artifacts[0].sha256 == $code_mode_host_sha
+        and (.runtime_companions.artifacts[0] | keys | sort) == ["id","name","sha256"]
+      else .runtime_companions == null end)
     ' <<<"$provenance_json" >/dev/null || {
       echo "build provenance shape or exact input set is invalid" >&2
       return 1
     }
   local manifest_inputs_sha rustc_inputs_sha expected_toolchain_sha
   local expected_dependency_sha actual_toolchain_sha actual_dependency_sha
+  local expected_runtime_companions_sha actual_runtime_companions_sha
   manifest_inputs_sha="$(
     jq -c '.toolchain.manifest_inputs' <<<"$provenance_json" \
       | hepta_release_records_aggregate_sha256
@@ -201,6 +276,20 @@ hepta_release_validate_build_provenance_json() {
     echo "build provenance dependency aggregate SHA-256 mismatch" >&2
     return 1
   }
+  if [[ "$schema" == "$HEPTA_BUILD_PROVENANCE_SCHEMA" ]]; then
+    expected_runtime_companions_sha="$(
+      jq -r '.runtime_companions.artifacts[] | [.id, .name, .sha256] | @tsv' \
+        <<<"$provenance_json" \
+        | hepta_release_sha256_text
+    )"
+    actual_runtime_companions_sha="$(
+      jq -r '.runtime_companions.aggregate_sha256' <<<"$provenance_json"
+    )"
+    [[ "$actual_runtime_companions_sha" == "$expected_runtime_companions_sha" ]] || {
+      echo "build provenance runtime companion aggregate SHA-256 mismatch" >&2
+      return 1
+    }
+  fi
 }
 hepta_release_validate_bound_gate_receipts_json() {
   local receipts_json="$1"
@@ -414,8 +503,12 @@ hepta_release_fixture_complete_provenance_json() {
   local root="$1"
   local source_commit="$2"
   local artifact="$3"
+  local code_mode_host_artifact="$4"
   local provenance receipts
-  provenance="$(hepta_release_build_provenance_json "$root" "$source_commit" "$artifact")"
+  provenance="$(
+    hepta_release_build_provenance_json \
+      "$root" "$source_commit" "$artifact" "$code_mode_host_artifact"
+  )"
   receipts="$(hepta_release_fixture_bound_gate_receipts_json "$root" "$provenance" "$source_commit")"
   jq -cS --argjson receipts "$receipts" \
     '. + {preflight_profiles:{backend:true,native:true,release:true},watchdog_gate_mode:"fixture",bound_gate_receipts:$receipts,deployment_consistency:{checked_during_candidate_preflight:false,required_before_activation:true}}' <<<"$provenance"
@@ -424,14 +517,18 @@ hepta_release_write_fixture_preflight_log() {
   local target="$1"
   local source_commit="$2"
   local provenance_json="$3"
-  local canonical_provenance provenance_sha artifact_sha final_receipt
+  local canonical_provenance provenance_sha artifact_sha runtime_companions_sha final_receipt
   canonical_provenance="$(jq -cS . <<<"$provenance_json")"
   provenance_sha="$(printf '%s' "$canonical_provenance" | hepta_release_sha256_text)"
   artifact_sha="$(jq -r '.artifact.sha256' <<<"$canonical_provenance")"
+  runtime_companions_sha="$(
+    jq -r '.runtime_companions.aggregate_sha256' <<<"$canonical_provenance"
+  )"
   final_receipt="$(
     jq -cSn --arg source_commit "$source_commit" --arg artifact_sha256 "$artifact_sha" \
+      --arg runtime_companions_sha256 "$runtime_companions_sha" \
       --arg build_provenance_sha256 "$provenance_sha" \
-      '{schema:"hepta_preflight_final_receipt_v1",status:"passed",source_commit:$source_commit,artifact_sha256:$artifact_sha256,build_provenance_sha256:$build_provenance_sha256}'
+      '{schema:"hepta_preflight_final_receipt_v2",status:"passed",source_commit:$source_commit,artifact_sha256:$artifact_sha256,runtime_companions_sha256:$runtime_companions_sha256,build_provenance_sha256:$build_provenance_sha256}'
   )"
   printf '%s\n' \
     "[hepta-preflight-resume] head=${source_commit:0:10} attempt=1 start_line=1 marker=<start> log=$target" \

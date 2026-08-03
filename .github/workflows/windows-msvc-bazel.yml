@@ -107,6 +107,55 @@ jobs:
               }
           }
 
+          $releaseBazelArguments = @(
+              "build",
+              "--config=ci-windows",
+              "--platforms=//:windows_x86_64_msvc",
+              "--host_platform=//:windows_x86_64_msvc",
+              "--extra_execution_platforms=//:windows_x86_64_msvc",
+              "--extra_toolchains=//:windows_msvc_tests_on_msvc_host_toolchain",
+              "--jobs=8",
+              "--build_event_json_file=$executionLogDirectory/release-build-events.json",
+              "--execution_log_compact_file=$executionLogDirectory/release-execution-log.zst",
+              "--profile=$executionLogDirectory/release-profile.gz",
+              "--repo_contents_cache=$env:RUNNER_TEMP/bazel-repo-contents-cache"
+          )
+          $releaseTargets = @(
+              "//codex-rs/cli:codex",
+              "//codex-rs/code-mode-host:codex-code-mode-host"
+          )
+          & bazelisk @releaseBazelArguments @environmentArguments "--" @releaseTargets
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+          $releaseBin = Join-Path $env:RUNNER_TEMP "code-mode-release/bin"
+          New-Item -ItemType Directory -Force -Path $releaseBin | Out-Null
+          $cliSource = Join-Path $env:GITHUB_WORKSPACE "bazel-bin/codex-rs/cli/codex.exe"
+          $hostSource = Join-Path $env:GITHUB_WORKSPACE "bazel-bin/codex-rs/code-mode-host/codex-code-mode-host.exe"
+          if (!(Test-Path -LiteralPath $cliSource -PathType Leaf) -or !(Test-Path -LiteralPath $hostSource -PathType Leaf)) {
+              throw "Bazel release runtime pair is incomplete"
+          }
+          Copy-Item -LiteralPath $cliSource -Destination (Join-Path $releaseBin "codex.exe")
+          Copy-Item -LiteralPath $hostSource -Destination (Join-Path $releaseBin "codex-code-mode-host.exe")
+          $stagedCli = Join-Path $releaseBin "codex.exe"
+          $stagedHost = Join-Path $releaseBin "codex-code-mode-host.exe"
+          [ordered]@{
+              schema = "hepta_code_mode_host_windows_packaging_v1"
+              status = "ready"
+              target = "x86_64-pc-windows-msvc"
+              cli = [ordered]@{
+                  name = "codex.exe"
+                  sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $stagedCli).Hash.ToLowerInvariant()
+              }
+              runtime_companion = [ordered]@{
+                  id = "code-mode-host"
+                  name = "codex-code-mode-host.exe"
+                  sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $stagedHost).Hash.ToLowerInvariant()
+                  adjacent_to_cli = ((Split-Path -Parent $stagedCli) -eq (Split-Path -Parent $stagedHost))
+              }
+          } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $executionLogDirectory "code-mode-host-packaging.json")
+
           $bazelArguments = @(
               "test",
               "--config=ci-windows",

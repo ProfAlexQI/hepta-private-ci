@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 action="${1:-}"
 shift || true
@@ -29,7 +30,7 @@ case "$action" in
     ;;
 esac
 
-ruby - "$action" "$@" <<'RUBY'
+ruby - "$action" "$ROOT/scripts/lib/hepta-preflight-runtime-companion.rb" "$@" <<'RUBY'
 # frozen_string_literal: true
 
 require "digest"
@@ -38,6 +39,7 @@ require "json"
 require "stringio"
 require "tmpdir"
 require "zlib"
+require ARGV.delete_at(1)
 
 SCHEMA = "hepta_preflight_evidence_summary_v1"
 ARCHIVE_NAME = "preflight.log.gz"
@@ -85,10 +87,7 @@ def analyze(log, gzip)
   final_text = extract_single(lines, "[hepta-preflight-final] ", "final receipt")
   provenance = JSON.parse(provenance_text)
   final_receipt = JSON.parse(final_text)
-  raise "invalid preflight provenance schema" unless provenance["schema_version"] ==
-    "hepta_build_provenance_v1"
-  raise "invalid preflight final receipt schema" unless final_receipt["schema"] ==
-    "hepta_preflight_final_receipt_v1"
+  runtime_companions_sha256 = HeptaPreflightRuntimeCompanion.validate!(provenance, final_receipt)
   raise "preflight final receipt did not pass" unless final_receipt["status"] == "passed"
   raise "preflight final receipt/provenance source drifted" unless final_receipt["source_commit"] ==
     provenance.dig("source", "commit")
@@ -114,7 +113,7 @@ def analyze(log, gzip)
       "final_receipt_sha256" => sha256(final_text),
       "source_commit" => final_receipt.fetch("source_commit"),
       "artifact_sha256" => final_receipt.fetch("artifact_sha256")
-    },
+    }.merge(HeptaPreflightRuntimeCompanion.source_binding(runtime_companions_sha256)),
     "archive" => {
       "relative_path" => ARCHIVE_NAME,
       "sha256" => sha256(gzip),
@@ -217,6 +216,11 @@ def self_test
       File.binread(File.join(second, ARCHIVE_NAME))
     verify(File.join(first, SUMMARY_NAME))
 
+    HeptaPreflightRuntimeCompanion.self_test!(
+      root: root, provenance: provenance, final_receipt: final_receipt,
+      pack: method(:pack), verify: method(:verify)
+    )
+
     tampered = File.binread(File.join(first, ARCHIVE_NAME))
     tampered.setbyte(tampered.bytesize / 2, tampered.getbyte(tampered.bytesize / 2) ^ 1)
     File.chmod(0o600, File.join(first, ARCHIVE_NAME))
@@ -234,6 +238,8 @@ def self_test
       "status" => "ready",
       "deterministic_repack" => true,
       "exact_roundtrip" => true,
+      "runtime_companion_receipt_bound" => true,
+      "runtime_companion_drift_rejected" => true,
       "tamper_rejected" => true,
       "phase_count" => first_summary.dig("source", "phase_count")
     }

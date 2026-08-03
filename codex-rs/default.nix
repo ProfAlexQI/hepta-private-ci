@@ -27,6 +27,10 @@ rustPlatform.buildRustPackage (_: {
   postPatch = ''
     sed -i 's/^version = "0\.0\.0"$/version = "${version}"/' Cargo.toml
   '';
+  postInstall = ''
+    test -x "$out/bin/hepta"
+    test -x "$out/bin/codex-code-mode-host"
+  '';
   nativeBuildInputs = [
     cmake
     llvmPackages.clang

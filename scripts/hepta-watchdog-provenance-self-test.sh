@@ -19,11 +19,13 @@ cp \
   "$ROOT/scripts/hepta-log-rotate" \
   "$ROOT/scripts/hepta-final-evidence-index" \
   "$ROOT/scripts/hepta-stage-identity-chain" \
+  "$ROOT/scripts/hepta-release-evidence-finalize" \
   "$ROOT/scripts/hepta-preflight-evidence-pack" \
   "$ROOT/scripts/hepta-install-live-watchdog" \
   "$ROOT/scripts/hepta-install-live-gateway" \
   "$fixture_root/scripts/"
 cp \
+  "$ROOT/scripts/lib/hepta-preflight-runtime-companion.rb" \
   "$ROOT/scripts/lib/hepta-release-provenance.sh" \
   "$ROOT/scripts/lib/hepta-watchdog-release-evidence-v1.sh" \
   "$ROOT/scripts/lib/hepta-watchdog-product-boundary-v1.sh" \
@@ -55,17 +57,21 @@ make_artifact() {
   printf '%s\n' '#!/usr/bin/env bash' "printf '%s\\n' '$label'" >"$destination"
   chmod 0755 "$destination"
 }
+code_mode_host="$tmp/codex-code-mode-host"
+make_artifact "$code_mode_host" "code-mode-host"
 materialize_bound_release() {
   local artifact="$1"
   local release_root="$2"
   local preflight_log="$3"
   local provenance
   provenance="$(
-    hepta_release_fixture_complete_provenance_json "$fixture_root" "$source_commit" "$artifact"
+    hepta_release_fixture_complete_provenance_json \
+      "$fixture_root" "$source_commit" "$artifact" "$code_mode_host"
   )"
   hepta_release_write_fixture_preflight_log "$preflight_log" "$source_commit" "$provenance"
   "$RELEASE_TOOL" materialize \
     --artifact "$artifact" \
+    --code-mode-host-artifact "$code_mode_host" \
     --source-commit "$source_commit" \
     --preflight-log "$preflight_log" \
     --release-root "$release_root"
@@ -153,6 +159,7 @@ jq -e '
 legacy_manifest="$(
   "$RELEASE_TOOL" materialize \
     --artifact "$artifact_a" \
+    --code-mode-host-artifact "$code_mode_host" \
     --source-commit unknown \
     --release-root "$tmp/releases-legacy"
 )"

@@ -1054,6 +1054,9 @@ if [[ "$RUN_RELEASE" == "1" ]]; then
   hepta_cargo build --release --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta-codex-compat
   echo "[hepta-preflight] release build active hepta-cli"
   hepta_cargo build --release --offline --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
+  echo "[hepta-preflight] release build required code-mode host"
+  hepta_cargo build --release --offline --manifest-path "$MANIFEST" -q \
+    -p codex-code-mode-host --bin codex-code-mode-host
 else
   echo "[hepta-preflight] release build skipped (set HEPTA_PREFLIGHT_RELEASE=1)"
 fi
@@ -1079,11 +1082,21 @@ if [[ "$RUN_RELEASE" == "1" ]]; then
     echo "release preflight artifact is missing or not executable: $release_artifact" >&2
     exit 1
   }
+  release_code_mode_host_artifact="$(
+    hepta_release_canonical_code_mode_host_artifact_path \
+      "$PREFLIGHT_RELEASE_TARGET_DIR" \
+      "${HEPTA_PREFLIGHT_CODE_MODE_HOST_ARTIFACT:-}"
+  )" || exit 1
+  [[ -f "$release_code_mode_host_artifact" && -x "$release_code_mode_host_artifact" ]] || {
+    echo "release preflight code-mode host is missing or not executable: $release_code_mode_host_artifact" >&2
+    exit 1
+  }
   release_build_provenance="$(
     hepta_release_build_provenance_json \
       "$REPO_ROOT" \
       "$PREFLIGHT_SOURCE_COMMIT" \
-      "$release_artifact"
+      "$release_artifact" \
+      "$release_code_mode_host_artifact"
   )"
   release_cargo_lock_sha="$(
     jq -r '
@@ -1162,12 +1175,14 @@ if [[ "$RUN_RELEASE" == "1" ]]; then
     jq -cSn \
       --arg source_commit "$PREFLIGHT_SOURCE_COMMIT" \
       --arg artifact_sha256 "$(hepta_release_sha256_file "$release_artifact")" \
+      --arg runtime_companions_sha256 "$(jq -r '.runtime_companions.aggregate_sha256' <<<"$release_build_provenance")" \
       --arg build_provenance_sha256 "$release_build_provenance_sha" \
       '{
-        schema:"hepta_preflight_final_receipt_v1",
+        schema:"hepta_preflight_final_receipt_v2",
         status:"passed",
         source_commit:$source_commit,
         artifact_sha256:$artifact_sha256,
+        runtime_companions_sha256:$runtime_companions_sha256,
         build_provenance_sha256:$build_provenance_sha256
       }'
   )"

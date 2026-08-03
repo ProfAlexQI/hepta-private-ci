@@ -37,6 +37,7 @@ cp \
   "$ROOT/scripts/hepta-install-live-gateway" \
   "$fixture_root/scripts/"
 cp \
+  "$ROOT/scripts/lib/hepta-preflight-runtime-companion.rb" \
   "$ROOT/scripts/lib/hepta-release-provenance.sh" \
   "$ROOT/scripts/lib/hepta-watchdog-release-evidence-v1.sh" \
   "$ROOT/scripts/lib/hepta-watchdog-product-boundary-v1.sh" \
@@ -69,14 +70,18 @@ int main(void) {
 }
 EOF
 cc "$tmp/fixture.c" -o "$artifact"
+code_mode_host="$tmp/codex-code-mode-host"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "code-mode host fixture\n"' >"$code_mode_host"
+chmod 0755 "$code_mode_host"
 source_commit="$(git -C "$fixture_root" rev-parse HEAD)"
 source "$fixture_root/scripts/lib/hepta-release-provenance.sh"
 provenance="$(
-  hepta_release_fixture_complete_provenance_json "$fixture_root" "$source_commit" "$artifact"
+  hepta_release_fixture_complete_provenance_json \
+    "$fixture_root" "$source_commit" "$artifact" "$code_mode_host"
 )"
 preflight="$tmp/preflight.log"
 hepta_release_write_fixture_preflight_log "$preflight" "$source_commit" "$provenance"
-manifest="$($release_tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$preflight" --release-root "$tmp/releases")"
+manifest="$($release_tool materialize --artifact "$artifact" --code-mode-host-artifact "$code_mode_host" --source-commit "$source_commit" --preflight-log "$preflight" --release-root "$tmp/releases")"
 installed_bin="$(dirname "$manifest")/bin/hepta"
 "$installed_bin" 30 &
 fixture_pid=$!
@@ -204,7 +209,7 @@ assert_current_reality_not_ready \
   true \
   HEPTA_CURRENT_REALITY_OBSERVED_AT_EPOCH=2000000000 \
   HEPTA_CURRENT_REALITY_MANIFEST_SHA256=0000000000000000000000000000000000000000000000000000000000000000
-legacy_manifest="$($release_tool materialize --artifact "$artifact" --source-commit unknown --release-root "$tmp/legacy-releases")"
+legacy_manifest="$($release_tool materialize --artifact "$artifact" --code-mode-host-artifact "$code_mode_host" --source-commit unknown --release-root "$tmp/legacy-releases")"
 legacy_report=""
 if legacy_report="$($consistency_gate --pid "$fixture_pid" --installed-bin "$installed_bin" --manifest "$legacy_manifest" --expected-source-commit "$source_commit" 2>/dev/null)"; then
   echo "active binary gate accepted a legacy-unbound manifest" >&2

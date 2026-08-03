@@ -55,7 +55,24 @@ hepta_watchdog_validate_release_evidence() {
       and .preflight.bound == true
       and .preflight.passed == true
       and (.preflight.log_sha256 | test("^[0-9a-f]{64}$"))
-      and .build_provenance.schema_version == "hepta_build_provenance_v1"
+      and (if .policy.release_contract_version == 4 then
+        .policy.runtime_companions_required == true
+        and .build_provenance.schema_version == "hepta_build_provenance_v2"
+        and .build_provenance.runtime_companions.bound == true
+        and (.build_provenance.runtime_companions.aggregate_sha256 | test("^[0-9a-f]{64}$"))
+        and (.build_provenance.runtime_companions.artifacts | length) == 1
+        and .build_provenance.runtime_companions.artifacts[0].id == "code-mode-host"
+        and (.build_provenance.runtime_companions.artifacts[0].name == "codex-code-mode-host"
+          or .build_provenance.runtime_companions.artifacts[0].name == "codex-code-mode-host.exe")
+        and (.runtime_companions | length) == 1
+        and .runtime_companions[0].id == "code-mode-host"
+        and .runtime_companions[0].sha256 ==
+          .build_provenance.runtime_companions.artifacts[0].sha256
+        and (.runtime_companions[0].relative_path | split("/")[-1]) ==
+          .build_provenance.runtime_companions.artifacts[0].name
+      else
+        .build_provenance.schema_version == "hepta_build_provenance_v1"
+      end)
       and .build_provenance.source.commit_bound == true
       and .build_provenance.source.commit == .source.commit
       and .build_provenance.toolchain.bound == true

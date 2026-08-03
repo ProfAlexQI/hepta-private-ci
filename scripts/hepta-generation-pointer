@@ -204,7 +204,8 @@ rollback_generation() {
 }
 
 self_test() {
-  local root install_root verifier release_a release_b sha_a sha_b cutover_receipt
+  local root install_root verifier release_a release_b sha_a sha_b host_sha_a host_sha_b
+  local cutover_receipt
   root="$(mktemp -d /tmp/hepta-generation-pointer-self-test.XXXXXX)"
   trap "chmod -R u+w '$root' 2>/dev/null || true; rm -R '$root'" EXIT
   install_root="$root/install"
@@ -213,11 +214,23 @@ self_test() {
   mkdir -p "$install_root/bin" "$release_a/bin" "$release_b/bin"
   printf 'release-a\n' >"$release_a/bin/hepta"
   printf 'release-b\n' >"$release_b/bin/hepta"
-  chmod 0555 "$release_a/bin/hepta" "$release_b/bin/hepta"
+  printf 'host-a\n' >"$release_a/bin/codex-code-mode-host"
+  printf 'host-b\n' >"$release_b/bin/codex-code-mode-host"
+  chmod 0555 \
+    "$release_a/bin/hepta" \
+    "$release_b/bin/hepta" \
+    "$release_a/bin/codex-code-mode-host" \
+    "$release_b/bin/codex-code-mode-host"
   sha_a="$(sha256_file "$release_a/bin/hepta")"
   sha_b="$(sha256_file "$release_b/bin/hepta")"
-  jq -n --arg sha "$sha_a" '{artifact:{relative_path:"bin/hepta",sha256:$sha}}' >"$release_a/manifest.json"
-  jq -n --arg sha "$sha_b" '{artifact:{relative_path:"bin/hepta",sha256:$sha}}' >"$release_b/manifest.json"
+  host_sha_a="$(sha256_file "$release_a/bin/codex-code-mode-host")"
+  host_sha_b="$(sha256_file "$release_b/bin/codex-code-mode-host")"
+  jq -n --arg sha "$sha_a" --arg host_sha "$host_sha_a" \
+    '{artifact:{relative_path:"bin/hepta",sha256:$sha},runtime_companions:[{id:"code-mode-host",relative_path:"bin/codex-code-mode-host",sha256:$host_sha}]}' \
+    >"$release_a/manifest.json"
+  jq -n --arg sha "$sha_b" --arg host_sha "$host_sha_b" \
+    '{artifact:{relative_path:"bin/hepta",sha256:$sha},runtime_companions:[{id:"code-mode-host",relative_path:"bin/codex-code-mode-host",sha256:$host_sha}]}' \
+    >"$release_b/manifest.json"
   chmod 0444 "$release_a/manifest.json" "$release_b/manifest.json"
   chmod 0555 "$release_a" "$release_b"
   verifier="$root/verifier"
@@ -233,22 +246,42 @@ PY
 )"
 artifact="$(dirname "$manifest")/$(jq -r '.artifact.relative_path' "$manifest")"
 [[ "$(shasum -a 256 "$artifact" | awk '{print $1}')" == "$(jq -r '.artifact.sha256' "$manifest")" ]]
+host="$(dirname "$manifest")/$(jq -r '.runtime_companions[0].relative_path' "$manifest")"
+[[ -f "$host" && -x "$host" ]]
+[[ "$(shasum -a 256 "$host" | awk '{print $1}')" == "$(jq -r '.runtime_companions[0].sha256' "$manifest")" ]]
 EOF
   chmod 0555 "$verifier"
   ln -s "$release_a/bin/hepta" "$install_root/bin/hepta"
   ln -s "$release_a/manifest.json" "$install_root/bin/hepta.manifest"
   migrate_layout "$install_root/bin/hepta" "$verifier" >/dev/null
   verify_layout "$install_root/bin/hepta" "$verifier" >/dev/null
+  [[ "$(sha256_file "$install_root/active/bin/codex-code-mode-host")" == "$host_sha_a" ]]
+  chmod u+w "$release_b/bin/codex-code-mode-host"
+  printf 'tampered\n' >>"$release_b/bin/codex-code-mode-host"
+  chmod 0555 "$release_b/bin/codex-code-mode-host"
+  if "$0" cutover \
+    --active-program "$install_root/bin/hepta" \
+    --manifest "$release_b/manifest.json" \
+    --expected-current-sha256 "$sha_a" \
+    --verifier "$verifier" >/dev/null 2>&1; then
+    echo "generation cutover accepted a tampered code-mode host" >&2
+    exit 1
+  fi
+  chmod u+w "$release_b/bin/codex-code-mode-host"
+  printf 'host-b\n' >"$release_b/bin/codex-code-mode-host"
+  chmod 0555 "$release_b/bin/codex-code-mode-host"
   cutover_receipt="$root/cutover.json"
   cutover_generation "$install_root/bin/hepta" "$verifier" "$release_b/manifest.json" "$sha_a" >"$cutover_receipt"
   [[ "$(sha256_file "$install_root/bin/hepta")" == "$sha_b" ]]
+  [[ "$(sha256_file "$install_root/active/bin/codex-code-mode-host")" == "$host_sha_b" ]]
   if (cutover_generation "$install_root/bin/hepta" "$verifier" "$release_a/manifest.json" "$sha_a") >/dev/null 2>&1; then
     echo "generation cutover accepted stale CAS" >&2
     exit 1
   fi
   rollback_generation "$cutover_receipt" "$verifier" "$sha_b" >/dev/null
   [[ "$(sha256_file "$install_root/bin/hepta")" == "$sha_a" ]]
-  jq -cn '{schema:"hepta_generation_pointer_self_test_v1",status:"ready",migration_preserved_bytes:true,cutover_single_pointer:true,rollback_single_pointer:true,stale_cas_denied:true,crash_consistent_pair:true}'
+  [[ "$(sha256_file "$install_root/active/bin/codex-code-mode-host")" == "$host_sha_a" ]]
+  jq -cn '{schema:"hepta_generation_pointer_self_test_v1",status:"ready",migration_preserved_bytes:true,runtime_companion_preserved:true,runtime_companion_tamper_denied:true,cutover_single_pointer:true,rollback_single_pointer:true,stale_cas_denied:true,crash_consistent_pair:true}'
 }
 
 command="${1:-}"

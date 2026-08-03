@@ -49,11 +49,11 @@ architecture_sha256_file() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
 
-RUNTIME_WHOLE_TREE_MAX_LINES=413411
-HEPTA_OWNED_RUST_WHOLE_TREE_MAX_LINES=927294
-HEPTA_FIRST_PARTY_RUST_COMPLETE_MAX_LINES=946184
+RUNTIME_WHOLE_TREE_MAX_LINES=254658
+HEPTA_OWNED_RUST_WHOLE_TREE_MAX_LINES=768240
+HEPTA_FIRST_PARTY_RUST_COMPLETE_MAX_LINES=787426
 SCRIPTS_PHYSICAL_MAX_LINES=408307
-SCRIPTS_WHOLE_TREE_MAX_LINES=568857
+SCRIPTS_WHOLE_TREE_MAX_LINES=470817
 WORK_GRAPH_MAX_FILES=1
 WORK_GRAPH_MAX_EFFECTIVE_LINES="$(jq -er '.ceilings.work_graph_effective_lines' "$ARCHITECTURE_RATCHET")"
 GATE_COMPAT_MAX_PAIRS="$(jq -er '.ceilings.gate_compat_pairs' "$ARCHITECTURE_RATCHET")"
@@ -307,6 +307,7 @@ verify_k2_split_budgets() {
   verify_split_family 4 3000 \
     codex-rs/core/src/config/config_tests/contract_part_*.rs
   verify_file_max scripts/hepta-preflight-evidence-pack 270
+  verify_file_max scripts/lib/hepta-preflight-runtime-companion.rb 130
   [[ -x scripts/hepta-preflight-evidence-pack ]] || {
     echo "preflight evidence packer is not executable" >&2
     return 1
@@ -317,6 +318,8 @@ verify_k2_split_budgets() {
       and .status == "ready"
       and .deterministic_repack == true
       and .exact_roundtrip == true
+      and .runtime_companion_receipt_bound == true
+      and .runtime_companion_drift_rejected == true
       and .tamper_rejected == true
     ' >/dev/null
   verify_file_max scripts/hepta-architecture-release-ratchet 380

@@ -7,7 +7,7 @@ source "$REPO_ROOT/scripts/lib/hepta-immutable-watchdog-closure-v1.sh"
 usage() {
   cat >&2 <<'EOF'
 usage:
-  scripts/hepta-immutable-release-tree materialize --artifact PATH --source-commit SHA|unknown --release-root DIR [--preflight-log PATH]
+  scripts/hepta-immutable-release-tree materialize --artifact PATH --code-mode-host-artifact PATH --source-commit SHA|unknown --release-root DIR [--preflight-log PATH]
   scripts/hepta-immutable-release-tree verify --manifest PATH
   scripts/hepta-immutable-release-tree activate --manifest PATH --active-link PATH --expected-current-sha256 SHA
   scripts/hepta-immutable-release-tree cutover --manifest PATH --active-link PATH --expected-current-sha256 SHA
@@ -299,15 +299,28 @@ for index, line in enumerate(lines):
         provenance, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     )
     provenance_sha = hashlib.sha256(canonical_provenance.encode("utf-8")).hexdigest()
-    if set(final) != {
+    schema = final.get("schema")
+    v1_fields = {
         "schema",
         "status",
         "source_commit",
         "artifact_sha256",
         "build_provenance_sha256",
-    }:
-        raise SystemExit("final preflight receipt has an invalid field set")
-    if final.get("schema") != "hepta_preflight_final_receipt_v1":
+    }
+    v2_fields = v1_fields | {"runtime_companions_sha256"}
+    if schema == "hepta_preflight_final_receipt_v1":
+        if set(final) != v1_fields or provenance.get("schema_version") != "hepta_build_provenance_v1":
+            raise SystemExit("legacy final preflight receipt has an invalid field set or provenance schema")
+    elif schema == "hepta_preflight_final_receipt_v2":
+        runtime_companions = provenance.get("runtime_companions", {})
+        if (
+            set(final) != v2_fields
+            or provenance.get("schema_version") != "hepta_build_provenance_v2"
+            or final.get("runtime_companions_sha256")
+            != runtime_companions.get("aggregate_sha256")
+        ):
+            raise SystemExit("final preflight receipt does not bind its runtime companions")
+    else:
         raise SystemExit("final preflight receipt schema is invalid")
     if final.get("status") != "passed":
         raise SystemExit("final preflight receipt is not passed")
@@ -387,10 +400,11 @@ resolve_preflight_source_commit() {
   printf '%s\n' "$source_head"
 }
 materialize() {
-  local artifact="" source_commit="" release_root="" preflight_log=""
+  local artifact="" code_mode_host_artifact="" source_commit="" release_root="" preflight_log=""
   while (( $# > 0 )); do
     case "$1" in
       --artifact) shift; [[ $# -gt 0 ]] || usage; artifact="$1" ;;
+      --code-mode-host-artifact) shift; [[ $# -gt 0 ]] || usage; code_mode_host_artifact="$1" ;;
       --source-commit) shift; [[ $# -gt 0 ]] || usage; source_commit="$1" ;;
       --release-root) shift; [[ $# -gt 0 ]] || usage; release_root="$1" ;;
       --preflight-log) shift; [[ $# -gt 0 ]] || usage; preflight_log="$1" ;;
@@ -400,6 +414,17 @@ materialize() {
   done
   [[ -f "$artifact" && -x "$artifact" ]] || {
     echo "artifact must be an executable file: $artifact" >&2
+    exit 1
+  }
+  [[ -f "$code_mode_host_artifact" && -x "$code_mode_host_artifact" ]] || {
+    echo "code-mode host artifact must be an executable file: $code_mode_host_artifact" >&2
+    exit 1
+  }
+  local code_mode_host_name
+  code_mode_host_name="$(basename "$code_mode_host_artifact")"
+  [[ "$code_mode_host_name" == "codex-code-mode-host" \
+    || "$code_mode_host_name" == "codex-code-mode-host.exe" ]] || {
+    echo "code-mode host artifact has an invalid executable name: $code_mode_host_name" >&2
     exit 1
   }
   [[ -n "$release_root" ]] || usage
@@ -416,12 +441,22 @@ materialize() {
     exit 1
   fi
   artifact="$(canonical_file "$artifact")"
+  code_mode_host_artifact="$(canonical_file "$code_mode_host_artifact")"
   mkdir -p "$release_root"
   release_root="$(cd "$release_root" && pwd -P)"
-  local artifact_sha artifact_size release_id release_dir manifest_path
+  local artifact_sha artifact_size code_mode_host_sha code_mode_host_size
+  local runtime_companions_sha release_id release_dir manifest_path
   artifact_sha="$(sha256_file "$artifact")"
   require_sha256 "$artifact_sha"
   artifact_size="$(stat -f '%z' "$artifact")"
+  code_mode_host_sha="$(sha256_file "$code_mode_host_artifact")"
+  require_sha256 "$code_mode_host_sha"
+  code_mode_host_size="$(stat -f '%z' "$code_mode_host_artifact")"
+  runtime_companions_sha="$(
+    printf '%s\t%s\t%s\n' \
+      "code-mode-host" "$code_mode_host_name" "$code_mode_host_sha" \
+      | hepta_release_sha256_text
+  )"
   local status source_commit_bound preflight_bound preflight_sha preflight_size preflight_head
   local preflight_summary_sha preflight_summary_size preflight_archive_sha preflight_archive_size
   local build_provenance_json codex_cargo_lock_sha native_cargo_lock_sha
@@ -484,17 +519,20 @@ materialize() {
     jq -e \
       --arg source_commit "$source_commit" \
       --arg artifact_sha "$artifact_sha" \
+      --arg runtime_companions_sha "$runtime_companions_sha" \
       '
         .source_commit == $source_commit
         and .artifact_sha256 == $artifact_sha
+        and .runtime_companions_sha256 == $runtime_companions_sha
       ' <<<"$final_receipt_json" >/dev/null || {
-      echo "final preflight receipt does not bind the reviewed source and artifact" >&2
+      echo "final preflight receipt does not bind the reviewed source, artifact, and runtime companions" >&2
       exit 1
     }
     hepta_release_validate_build_provenance_json \
       "$build_provenance_json" \
       "$source_commit" \
-      "$artifact_sha" || {
+      "$artifact_sha" \
+      "$code_mode_host_sha" || {
       echo "preflight build provenance receipt is incomplete or does not bind the artifact" >&2
       exit 1
     }
@@ -505,6 +543,7 @@ materialize() {
         "dependencies",
         "deployment_consistency",
         "preflight_profiles",
+        "runtime_companions",
         "schema_version",
         "source",
         "toolchain",
@@ -542,7 +581,8 @@ materialize() {
     }
     local current_build_provenance
     current_build_provenance="$(
-      hepta_release_build_provenance_json "$REPO_ROOT" "$source_commit" "$artifact"
+      hepta_release_build_provenance_json \
+        "$REPO_ROOT" "$source_commit" "$artifact" "$code_mode_host_artifact"
     )"
     jq -e \
       --argjson current "$current_build_provenance" \
@@ -556,9 +596,9 @@ materialize() {
     preflight_size="$(stat -f '%z' "$preflight_log")"
   fi
   if [[ "$status" == "ready" ]]; then
-    release_id="${source_commit}-${artifact_sha}-${preflight_sha}"
+    release_id="${source_commit}-${artifact_sha}-${code_mode_host_sha}-${preflight_sha}"
   else
-    release_id="${source_commit}-${artifact_sha}"
+    release_id="${source_commit}-${artifact_sha}-${code_mode_host_sha}"
   fi
   release_dir="$release_root/$release_id"
   manifest_path="$release_dir/manifest.json"
@@ -572,12 +612,23 @@ materialize() {
       --arg release_id "$release_id" \
       --arg source_commit "$source_commit" \
       --arg artifact_sha "$artifact_sha" \
+      --arg code_mode_host_sha "$code_mode_host_sha" \
+      --arg code_mode_host_name "$code_mode_host_name" \
       --arg preflight_sha "$preflight_sha" \
       --argjson preflight_size "$preflight_size" \
+      --argjson code_mode_host_size "$code_mode_host_size" \
       --argjson build_provenance "$build_provenance_json" '
         .release_id == $release_id
         and .source.commit == $source_commit
         and .artifact.sha256 == $artifact_sha
+        and .runtime_companions == [{
+          id:"code-mode-host",
+          relative_path:("bin/" + $code_mode_host_name),
+          sha256:$code_mode_host_sha,
+          size_bytes:$code_mode_host_size,
+          executable:true,
+          same_directory_as_artifact:true
+        }]
         and .preflight.log_sha256 == (
           if .status == "ready" then $preflight_sha else null end
         )
@@ -602,7 +653,7 @@ materialize() {
         )
         and .preflight.full_log_default == false
         and .build_provenance == $build_provenance
-        and .policy.release_contract_version == 3
+        and .policy.release_contract_version == 4
         and .watchdog.immutable_release_bound == true
         and .watchdog.source.commit_bound == .source.commit_bound
         and .watchdog.source.commit == (
@@ -623,7 +674,8 @@ materialize() {
   trap 'chmod -R u+w "$staging" 2>/dev/null || true; rm -rf "$staging"' RETURN
   mkdir -p "$staging/bin"
   cp -p "$artifact" "$staging/bin/hepta"
-  chmod 0555 "$staging/bin/hepta"
+  cp -p "$code_mode_host_artifact" "$staging/bin/$code_mode_host_name"
+  chmod 0555 "$staging/bin/hepta" "$staging/bin/$code_mode_host_name"
   watchdog_json="$(
     hepta_immutable_watchdog_materialize \
       "$REPO_ROOT" \
@@ -653,6 +705,9 @@ materialize() {
     --argjson source_commit_bound "$source_commit_bound" \
     --arg artifact_sha256 "$artifact_sha" \
     --argjson artifact_size_bytes "$artifact_size" \
+    --arg code_mode_host_name "$code_mode_host_name" \
+    --arg code_mode_host_sha256 "$code_mode_host_sha" \
+    --argjson code_mode_host_size_bytes "$code_mode_host_size" \
     --argjson preflight_bound "$preflight_bound" \
     --arg preflight_sha256 "$preflight_sha" \
     --arg preflight_source_head "$preflight_head" \
@@ -670,6 +725,7 @@ materialize() {
       release_id:$release_id,
       source:{commit:$source_commit,commit_bound:$source_commit_bound},
       artifact:{relative_path:"bin/hepta",sha256:$artifact_sha256,size_bytes:$artifact_size_bytes,executable:true},
+      runtime_companions:[{id:"code-mode-host",relative_path:("bin/" + $code_mode_host_name),sha256:$code_mode_host_sha256,size_bytes:$code_mode_host_size_bytes,executable:true,same_directory_as_artifact:true}],
       build_provenance:$build_provenance,
       watchdog:$watchdog,
       gateway_launch_agent:$gateway_launch_agent,
@@ -693,7 +749,7 @@ materialize() {
         full_log_default:false,
         passed:$preflight_bound
       },
-      policy:{release_contract_version:3,immutable_tree:true,dirty_worktree_source_forbidden:true,activation_byte_change_forbidden:true,restart_performed:false},
+      policy:{release_contract_version:4,immutable_tree:true,dirty_worktree_source_forbidden:true,activation_byte_change_forbidden:true,runtime_companions_required:true,restart_performed:false},
       side_effects:{service_restarted:false,active_process_mutated:false,provider_invoked:false,credentials_read:false,memory_or_kg_written:false,channel_message_sent:false}
     }' >"$staging/manifest.json"
   chmod 0444 "$staging/manifest.json"
@@ -723,6 +779,8 @@ verify_manifest() {
   local dependency_contract_sha bound_gate_receipts_json expected_release_id
   local immutable_preflight immutable_preflight_summary immutable_preflight_archive
   local unpacked_preflight final_evidence evidence_provenance final_receipt_json
+  local code_mode_host_relative code_mode_host code_mode_host_sha code_mode_host_size
+  local runtime_companions_sha
   release_dir="$(dirname "$manifest")"
   jq -e --arg schema "$SCHEMA_VERSION" '
     .schema_version == $schema
@@ -735,6 +793,17 @@ verify_manifest() {
     and .policy.immutable_tree == true
     and .policy.activation_byte_change_forbidden == true
     and .policy.restart_performed == false
+    and (if .policy.release_contract_version == 4 then
+      .policy.runtime_companions_required == true
+      and (.runtime_companions | type == "array" and length == 1)
+      and (.runtime_companions[0] | keys | sort) == ["executable","id","relative_path","same_directory_as_artifact","sha256","size_bytes"]
+      and .runtime_companions[0].id == "code-mode-host"
+      and (.runtime_companions[0].relative_path == "bin/codex-code-mode-host" or .runtime_companions[0].relative_path == "bin/codex-code-mode-host.exe")
+      and (.runtime_companions[0].sha256 | test("^[0-9a-f]{64}$"))
+      and (.runtime_companions[0].size_bytes | type == "number" and . > 0)
+      and .runtime_companions[0].executable == true
+      and .runtime_companions[0].same_directory_as_artifact == true
+    else true end)
     and (
       (.status == "ready"
         and .source.commit_bound == true
@@ -747,7 +816,12 @@ verify_manifest() {
         and .preflight.candidate_artifact_sha256 == .artifact.sha256
         and (.preflight.log_sha256 | test("^[0-9a-f]{64}$"))
         and (.preflight.log_size_bytes | type == "number" and . > 0)
-        and .build_provenance.schema_version == "hepta_build_provenance_v1"
+        and .build_provenance.schema_version == (
+          if .policy.release_contract_version == 4
+          then "hepta_build_provenance_v2"
+          else "hepta_build_provenance_v1"
+          end
+        )
         and .build_provenance.source.commit_bound == true
         and .build_provenance.source.commit == .source.commit
         and .build_provenance.toolchain.bound == true
@@ -783,28 +857,47 @@ verify_manifest() {
     artifact_sha="$(jq -r '.artifact.sha256' "$manifest")"
     preflight_sha="$(jq -r '.preflight.log_sha256' "$manifest")"
     build_provenance_json="$(jq -ce '.build_provenance' "$manifest")"
-    hepta_release_validate_build_provenance_json \
-      "$build_provenance_json" \
-      "$source_commit" \
-      "$artifact_sha" || {
-      echo "immutable release build provenance is invalid" >&2
-      exit 1
-    }
-    if [[ "$release_contract_version" == "2" || "$release_contract_version" == "3" ]]; then
+    if [[ "$release_contract_version" == "4" ]]; then
+      code_mode_host_sha="$(jq -r '.runtime_companions[0].sha256' "$manifest")"
+      hepta_release_validate_build_provenance_json \
+        "$build_provenance_json" \
+        "$source_commit" \
+        "$artifact_sha" \
+        "$code_mode_host_sha" || {
+        echo "immutable release build provenance is invalid" >&2
+        exit 1
+      }
+    else
+      hepta_release_validate_build_provenance_json \
+        "$build_provenance_json" \
+        "$source_commit" \
+        "$artifact_sha" || {
+        echo "immutable release build provenance is invalid" >&2
+        exit 1
+      }
+    fi
+    if [[ "$release_contract_version" == "2" \
+      || "$release_contract_version" == "3" \
+      || "$release_contract_version" == "4" ]]; then
       jq -e '
-        (.policy.release_contract_version == 2 or .policy.release_contract_version == 3)
+        (.policy.release_contract_version == 2
+          or .policy.release_contract_version == 3
+          or .policy.release_contract_version == 4)
         and .policy.dirty_worktree_source_forbidden == true
-        and (.build_provenance | keys | sort) == [
-          "artifact",
-          "bound_gate_receipts",
-          "dependencies",
-          "deployment_consistency",
-          "preflight_profiles",
-          "schema_version",
-          "source",
-          "toolchain",
-          "watchdog_gate_mode"
-        ]
+        and (.build_provenance | keys | sort) == (
+          [
+            "artifact",
+            "bound_gate_receipts",
+            "dependencies",
+            "deployment_consistency",
+            "preflight_profiles",
+            "schema_version",
+            "source",
+            "toolchain",
+            "watchdog_gate_mode"
+          ] + (if .policy.release_contract_version == 4 then ["runtime_companions"] else [] end)
+          | sort
+        )
         and .build_provenance.preflight_profiles == {
           backend:true,
           native:true,
@@ -815,7 +908,7 @@ verify_manifest() {
           required_before_activation:true
         }
       ' "$manifest" >/dev/null || {
-        echo "immutable release v2/v3 policy or preflight path is invalid" >&2
+        echo "immutable release v2-v4 policy or preflight path is invalid" >&2
         exit 1
       }
       codex_cargo_lock_sha="$(
@@ -859,7 +952,7 @@ verify_manifest() {
         }
       else
         jq -e '
-          .policy.release_contract_version == 3
+          (.policy.release_contract_version == 3 or .policy.release_contract_version == 4)
           and .preflight.delivery == "summary_and_deterministic_gzip"
           and .preflight.relative_path == "evidence/preflight-summary.json"
           and .preflight.summary_relative_path == .preflight.relative_path
@@ -872,14 +965,15 @@ verify_manifest() {
           and (.preflight.archive_size_bytes | type == "number" and . > 0)
           and .preflight.full_log_default == false
         ' "$manifest" >/dev/null || {
-          echo "immutable release v3 packed preflight contract is invalid" >&2
+          echo "immutable release packed preflight contract is invalid" >&2
           exit 1
         }
         hepta_immutable_watchdog_verify \
           "$release_dir" \
           "$source_commit" \
           true \
-          "$(jq -ce '.watchdog' "$manifest")" || {
+          "$(jq -ce '.watchdog' "$manifest")" \
+          "$release_contract_version" || {
           echo "immutable release watchdog closure is invalid" >&2
           exit 1
         }
@@ -893,29 +987,29 @@ verify_manifest() {
         immutable_preflight_archive="$release_dir/evidence/preflight.log.gz"
         [[ -f "$immutable_preflight_summary" && ! -L "$immutable_preflight_summary" \
           && -f "$immutable_preflight_archive" && ! -L "$immutable_preflight_archive" ]] || {
-          echo "immutable release v3 packed preflight evidence is missing or not regular" >&2
+          echo "immutable release packed preflight evidence is missing or not regular" >&2
           exit 1
         }
         [[ "$(stat -f '%Lp' "$immutable_preflight_summary")" == "444" \
           && "$(stat -f '%Lp' "$immutable_preflight_archive")" == "444" ]] || {
-          echo "immutable release v3 packed preflight evidence mode must be 0444" >&2
+          echo "immutable release packed preflight evidence mode must be 0444" >&2
           exit 1
         }
         [[ ! -e "$release_dir/evidence/preflight.log" \
           && ! -L "$release_dir/evidence/preflight.log" ]] || {
-          echo "immutable release v3 must not materialize the full preflight log by default" >&2
+          echo "immutable release must not materialize the full preflight log by default" >&2
           exit 1
         }
         [[ "$(sha256_file "$immutable_preflight_summary")" == "$(jq -r '.preflight.summary_sha256' "$manifest")" \
           && "$(stat -f '%z' "$immutable_preflight_summary")" == "$(jq -r '.preflight.summary_size_bytes' "$manifest")" \
           && "$(sha256_file "$immutable_preflight_archive")" == "$(jq -r '.preflight.archive_sha256' "$manifest")" \
           && "$(stat -f '%z' "$immutable_preflight_archive")" == "$(jq -r '.preflight.archive_size_bytes' "$manifest")" ]] || {
-          echo "immutable release v3 packed preflight bytes do not match the manifest" >&2
+          echo "immutable release packed preflight bytes do not match the manifest" >&2
           exit 1
         }
         "$release_dir/scripts/hepta-preflight-evidence-pack" verify \
           --summary "$immutable_preflight_summary" >/dev/null || {
-          echo "immutable release v3 packed preflight evidence is invalid" >&2
+          echo "immutable release packed preflight evidence is invalid" >&2
           exit 1
         }
         jq -e --slurpfile release "$manifest" '
@@ -926,6 +1020,9 @@ verify_manifest() {
           and .source.log_size_bytes == $manifest.preflight.source_log_size_bytes
           and .source.source_commit == $manifest.source.commit
           and .source.artifact_sha256 == $manifest.artifact.sha256
+          and (if $manifest.policy.release_contract_version == 4 then
+            .source.runtime_companions_sha256 == $manifest.build_provenance.runtime_companions.aggregate_sha256
+          else true end)
           and .archive.relative_path == "preflight.log.gz"
           and .archive.sha256 == $manifest.preflight.archive_sha256
           and .archive.size_bytes == $manifest.preflight.archive_size_bytes
@@ -935,19 +1032,19 @@ verify_manifest() {
           and .archive.contains_exact_source_bytes == true
           and .full_detail_default == false
         ' "$immutable_preflight_summary" >/dev/null || {
-          echo "immutable release v3 preflight summary differs from its manifest" >&2
+          echo "immutable release preflight summary differs from its manifest" >&2
           exit 1
         }
         unpacked_preflight="$(mktemp "${TMPDIR:-/tmp}/hepta-immutable-preflight.XXXXXX")"
         if ! gzip -dc "$immutable_preflight_archive" >"$unpacked_preflight"; then
           rm -f "$unpacked_preflight"
-          echo "immutable release v3 preflight archive could not be decompressed" >&2
+          echo "immutable release preflight archive could not be decompressed" >&2
           exit 1
         fi
         [[ "$(sha256_file "$unpacked_preflight")" == "$preflight_sha" \
           && "$(stat -f '%z' "$unpacked_preflight")" == "$(jq -r '.preflight.source_log_size_bytes' "$manifest")" ]] || {
           rm -f "$unpacked_preflight"
-          echo "immutable release v3 archive does not contain the exact source preflight bytes" >&2
+          echo "immutable release archive does not contain the exact source preflight bytes" >&2
           exit 1
         }
         immutable_preflight="$unpacked_preflight"
@@ -967,9 +1064,14 @@ verify_manifest() {
       jq -e \
         --arg source_commit "$source_commit" \
         --arg artifact_sha "$artifact_sha" \
+        --arg runtime_companions_sha "$(jq -r '.runtime_companions.aggregate_sha256 // empty' <<<"$build_provenance_json")" \
+        --argjson release_contract_version "$release_contract_version" \
         '
           .source_commit == $source_commit
           and .artifact_sha256 == $artifact_sha
+          and (if $release_contract_version == 4 then
+            .runtime_companions_sha256 == $runtime_companions_sha
+          else true end)
         ' <<<"$final_receipt_json" >/dev/null || {
         echo "immutable release final receipt differs from its manifest" >&2
         exit 1
@@ -978,7 +1080,9 @@ verify_manifest() {
       echo "unsupported immutable release contract version: $release_contract_version" >&2
       exit 1
     fi
-    if [[ "$release_contract_version" == "2" || "$release_contract_version" == "3" ]]; then
+    if [[ "$release_contract_version" == "4" ]]; then
+      expected_release_id="${source_commit}-${artifact_sha}-${code_mode_host_sha}-${preflight_sha}"
+    elif [[ "$release_contract_version" == "2" || "$release_contract_version" == "3" ]]; then
       expected_release_id="${source_commit}-${artifact_sha}-${preflight_sha}"
     else
       expected_release_id="${source_commit}-${artifact_sha}"
@@ -986,17 +1090,18 @@ verify_manifest() {
   else
     [[ "$release_contract_version" == "1" \
       || "$release_contract_version" == "2" \
-      || "$release_contract_version" == "3" ]] || {
+      || "$release_contract_version" == "3" \
+      || "$release_contract_version" == "4" ]] || {
       echo "unsupported immutable release contract version: $release_contract_version" >&2
       exit 1
     }
     jq -e '.preflight.relative_path == null' "$manifest" >/dev/null 2>&1 || {
       [[ "$release_contract_version" == "1" ]] || {
-        echo "legacy-unbound v2/v3 release must have a null preflight path" >&2
+        echo "legacy-unbound release must have a null preflight path" >&2
         exit 1
       }
     }
-    if [[ "$release_contract_version" == "3" ]]; then
+    if [[ "$release_contract_version" == "3" || "$release_contract_version" == "4" ]]; then
       jq -e '
         .preflight.delivery == null
         and .preflight.relative_path == null
@@ -1010,14 +1115,15 @@ verify_manifest() {
         and .preflight.archive_size_bytes == 0
         and .preflight.full_log_default == false
       ' "$manifest" >/dev/null || {
-        echo "legacy-unbound v3 release has invalid packed preflight placeholders" >&2
+        echo "legacy-unbound release has invalid packed preflight placeholders" >&2
         exit 1
       }
       hepta_immutable_watchdog_verify \
         "$release_dir" \
         unknown \
         false \
-        "$(jq -ce '.watchdog' "$manifest")" || {
+        "$(jq -ce '.watchdog' "$manifest")" \
+        "$release_contract_version" || {
         echo "legacy immutable release watchdog closure is invalid" >&2
         exit 1
       }
@@ -1028,12 +1134,47 @@ verify_manifest() {
         exit 1
       }
     fi
-    expected_release_id="unknown-$(jq -r '.artifact.sha256' "$manifest")"
+    if [[ "$release_contract_version" == "4" ]]; then
+      code_mode_host_sha="$(jq -r '.runtime_companions[0].sha256' "$manifest")"
+      expected_release_id="unknown-$(jq -r '.artifact.sha256' "$manifest")-${code_mode_host_sha}"
+    else
+      expected_release_id="unknown-$(jq -r '.artifact.sha256' "$manifest")"
+    fi
   fi
   [[ "$(jq -r '.release_id' "$manifest")" == "$expected_release_id" ]] || {
     echo "immutable release ID does not bind its source, artifact, and evidence" >&2
     exit 1
   }
+  if [[ "$release_contract_version" == "4" ]]; then
+    code_mode_host_relative="$(jq -r '.runtime_companions[0].relative_path' "$manifest")"
+    code_mode_host="$release_dir/$code_mode_host_relative"
+    [[ -f "$code_mode_host" && -x "$code_mode_host" && ! -L "$code_mode_host" ]] || {
+      echo "missing immutable code-mode host runtime companion: $code_mode_host" >&2
+      exit 1
+    }
+    code_mode_host_sha="$(sha256_file "$code_mode_host")"
+    [[ "$code_mode_host_sha" == "$(jq -r '.runtime_companions[0].sha256' "$manifest")" ]] || {
+      echo "immutable code-mode host SHA-256 mismatch" >&2
+      exit 1
+    }
+    code_mode_host_size="$(stat -f '%z' "$code_mode_host")"
+    [[ "$code_mode_host_size" == "$(jq -r '.runtime_companions[0].size_bytes' "$manifest")" ]] || {
+      echo "immutable code-mode host size mismatch" >&2
+      exit 1
+    }
+    [[ "$(stat -f '%Lp' "$code_mode_host")" == "555" ]] || {
+      echo "immutable code-mode host mode must be 0555" >&2
+      exit 1
+    }
+    if [[ "$manifest_status" == "ready" ]]; then
+      [[ "$(basename "$code_mode_host_relative")" == "$(
+        jq -r '.build_provenance.runtime_companions.artifacts[0].name' "$manifest"
+      )" ]] || {
+        echo "immutable code-mode host name differs from build provenance" >&2
+        exit 1
+      }
+    fi
+  fi
   artifact="$release_dir/$(jq -r '.artifact.relative_path' "$manifest")"
   [[ -f "$artifact" && -x "$artifact" ]] || {
     echo "missing immutable release artifact: $artifact" >&2
@@ -1064,6 +1205,7 @@ verify_manifest() {
     release_id,
     source,
     artifact,
+    runtime_companions,
     build_provenance,
     watchdog,
     gateway_launch_agent,
@@ -1091,6 +1233,7 @@ activate() {
     and (
       .policy.release_contract_version == 2
       or .policy.release_contract_version == 3
+      or .policy.release_contract_version == 4
     )
     and .source.commit_bound == true
     and .preflight.bound == true
@@ -1328,6 +1471,7 @@ cutover() {
     and (
       .policy.release_contract_version == 2
       or .policy.release_contract_version == 3
+      or .policy.release_contract_version == 4
     )
     and .source.commit_bound == true
     and .preflight.bound == true
@@ -1369,6 +1513,7 @@ cutover() {
   local current_preflight_summary_relative current_preflight_archive_relative
   local current_watchdog_relative current_watchdog_mode
   local current_gateway_relative
+  local current_runtime_relative
   current_sha="$(sha256_file "$active_link")"
   current_manifest_sha="$(jq -r '.artifact.sha256' "$manifest_link")"
   current_manifest_file_sha="$(sha256_file "$manifest_link")"
@@ -1416,7 +1561,9 @@ cutover() {
     current_preflight_relative="$(
       jq -r '.preflight.relative_path // empty' "$backup_staging/manifest.json"
     )"
-    if [[ "$current_release_contract_version" == "3" && -n "$current_preflight_relative" ]]; then
+    if [[ ("$current_release_contract_version" == "3" \
+      || "$current_release_contract_version" == "4") \
+      && -n "$current_preflight_relative" ]]; then
       current_preflight_summary_relative="$(
         jq -r '.preflight.summary_relative_path // empty' "$backup_staging/manifest.json"
       )"
@@ -1428,7 +1575,7 @@ cutover() {
         && "$current_preflight_relative" == "evidence/preflight-summary.json" \
         && "$current_preflight_summary_relative" == "$current_preflight_relative" \
         && "$current_preflight_archive_relative" == "evidence/preflight.log.gz" ]] || {
-        echo "current v3 release has an unexpected packed preflight evidence contract" >&2
+        echo "current release has an unexpected packed preflight evidence contract" >&2
         exit 1
       }
       mkdir -p "$backup_staging/evidence"
@@ -1454,7 +1601,8 @@ cutover() {
       chmod 0444 "$backup_staging/evidence/preflight.log"
       chmod 0555 "$backup_staging/evidence"
     fi
-    if [[ "$current_release_contract_version" == "3" ]]; then
+    if [[ "$current_release_contract_version" == "3" \
+      || "$current_release_contract_version" == "4" ]]; then
       while IFS=$'\t' read -r current_watchdog_relative current_watchdog_mode; do
         mkdir -p "$(dirname "$backup_staging/$current_watchdog_relative")"
         cp -p \
@@ -1480,6 +1628,15 @@ cutover() {
         "$backup_staging/$current_gateway_relative"
       chmod 0444 "$backup_staging/$current_gateway_relative"
       chmod 0555 "$backup_staging/launchd"
+    fi
+    if [[ "$current_release_contract_version" == "4" ]]; then
+      while IFS= read -r current_runtime_relative; do
+        mkdir -p "$(dirname "$backup_staging/$current_runtime_relative")"
+        cp -p \
+          "$(dirname "$current_manifest_target")/$current_runtime_relative" \
+          "$backup_staging/$current_runtime_relative"
+        chmod 0555 "$backup_staging/$current_runtime_relative"
+      done < <(jq -r '.runtime_companions[].relative_path' "$backup_staging/manifest.json")
     fi
     chmod 0555 "$backup_staging/bin/hepta" "$backup_staging/bin"
     chmod 0444 "$backup_staging/manifest.json"
@@ -1720,6 +1877,7 @@ self_test_expect_materialize_denied() {
   self_test_write_fixture_preflight_log "$preflight" "$source_commit" "$provenance_json"
   if "$tool" materialize \
     --artifact "$artifact" \
+    --code-mode-host-artifact "$code_mode_host_artifact" \
     --source-commit "$source_commit" \
     --preflight-log "$preflight" \
     --release-root "$fixture_root/releases" >/dev/null 2>&1; then
@@ -1741,7 +1899,7 @@ self_test_write_fixture_preflight_log() {
 }
 self_test() {
   [[ $# -eq 0 ]] || usage
-  local source_root root tool tmp artifact source_commit preflight bound_manifest legacy_manifest
+  local source_root root tool tmp artifact code_mode_host_artifact source_commit preflight bound_manifest legacy_manifest
   local fixture_sha activation different different_manifest provenance invalid_manifest short_head
   local missing_preflight_rc legacy_activation_rc tampered_manifest conflicting_preflight missing_source_preflight wrong_banner_preflight
   local different_preflight different_provenance different_sha cutover_receipt cutover_rc rollback_rc rollback_active
@@ -1751,7 +1909,10 @@ self_test() {
   local missing_receipts_verify_dir missing_receipts_manifest
   local dirty_source_fixture tampered_evidence_manifest tampered_evidence_archive
   local tampered_evidence_summary tampered_summary_manifest
-  local canonical_preflight_artifact artifact_override_rc
+  local canonical_preflight_artifact canonical_code_mode_host_artifact
+  local canonical_windows_code_mode_host_artifact artifact_override_rc host_override_rc
+  local invalid_code_mode_host missing_host_rc
+  local tampered_code_mode_host
   local immutable_watchdog immutable_watchdog_sha immutable_live_soak immutable_live_soak_sha
   local zero_sample_soak_output zero_sample_soak_rc
   local packed_summary packed_archive rollback_release_dir
@@ -1779,7 +1940,10 @@ self_test() {
     "$source_root/scripts/hepta-install-live-watchdog" \
     "$source_root/scripts/hepta-install-live-gateway" \
     "$root/scripts/"
-  cp "$source_root/scripts/lib/hepta-release-provenance.sh" "$root/scripts/lib/"
+  cp \
+    "$source_root/scripts/lib/hepta-preflight-runtime-companion.rb" \
+    "$source_root/scripts/lib/hepta-release-provenance.sh" \
+    "$root/scripts/lib/"
   cp \
     "$source_root/scripts/lib/hepta-watchdog-release-evidence-v1.sh" \
     "$source_root/scripts/lib/hepta-watchdog-product-boundary-v1.sh" \
@@ -1805,16 +1969,36 @@ self_test() {
   artifact="$tmp/hepta"
   printf '%s\n' '#!/usr/bin/env bash' 'printf "hepta fixture\n"' >"$artifact"
   chmod 0755 "$artifact"
+  code_mode_host_artifact="$tmp/codex-code-mode-host"
+  printf '%s\n' '#!/usr/bin/env bash' 'printf "code-mode host fixture\n"' \
+    >"$code_mode_host_artifact"
+  chmod 0755 "$code_mode_host_artifact"
   source_commit="$(git -C "$root" rev-parse HEAD)"
   short_head="${source_commit:0:10}"
   preflight="$tmp/preflight.log"
-  provenance="$(hepta_release_fixture_complete_provenance_json "$root" "$source_commit" "$artifact")"
+  provenance="$(
+    hepta_release_fixture_complete_provenance_json \
+      "$root" "$source_commit" "$artifact" "$code_mode_host_artifact"
+  )"
   self_test_write_fixture_preflight_log "$preflight" "$source_commit" "$provenance"
   canonical_preflight_artifact="$(
     hepta_release_canonical_preflight_artifact_path "$tmp/cargo-target" ""
   )"
   [[ "$canonical_preflight_artifact" == "$tmp/cargo-target/release/hepta" ]] || {
     echo "canonical release artifact resolver did not select the Cargo target artifact" >&2
+    exit 1
+  }
+  canonical_code_mode_host_artifact="$(
+    OS="" hepta_release_canonical_code_mode_host_artifact_path "$tmp/cargo-target" ""
+  )"
+  canonical_windows_code_mode_host_artifact="$(
+    OS=Windows_NT hepta_release_canonical_code_mode_host_artifact_path "$tmp/cargo-target" ""
+  )"
+  [[ "$canonical_code_mode_host_artifact" \
+      == "$tmp/cargo-target/release/codex-code-mode-host" \
+    && "$canonical_windows_code_mode_host_artifact" \
+      == "$tmp/cargo-target/release/codex-code-mode-host.exe" ]] || {
+    echo "canonical code-mode host resolver is not platform-correct" >&2
     exit 1
   }
   artifact_override_rc=0
@@ -1825,13 +2009,53 @@ self_test() {
     echo "canonical release artifact resolver accepted an override" >&2
     exit 1
   }
-  bound_manifest="$($tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$preflight" --release-root "$tmp/releases")"
+  host_override_rc=0
+  hepta_release_canonical_code_mode_host_artifact_path \
+    "$tmp/cargo-target" "$tmp/unreviewed-host" >/dev/null 2>&1 \
+    || host_override_rc=$?
+  [[ "$host_override_rc" == "1" ]] || {
+    echo "canonical code-mode host resolver accepted an override" >&2
+    exit 1
+  }
+  missing_host_rc=0
+  $tool materialize \
+    --artifact "$artifact" \
+    --source-commit unknown \
+    --release-root "$tmp/missing-host" >/dev/null 2>&1 || missing_host_rc=$?
+  [[ "$missing_host_rc" == "1" ]] || {
+    echo "immutable release materialization accepted a missing code-mode host" >&2
+    exit 1
+  }
+  invalid_code_mode_host="$tmp/not-the-code-mode-host"
+  cp "$code_mode_host_artifact" "$invalid_code_mode_host"
+  chmod 0755 "$invalid_code_mode_host"
+  if $tool materialize \
+    --artifact "$artifact" \
+    --code-mode-host-artifact "$invalid_code_mode_host" \
+    --source-commit unknown \
+    --release-root "$tmp/invalid-host-name" >/dev/null 2>&1; then
+    echo "immutable release materialization accepted an invalid code-mode host name" >&2
+    exit 1
+  fi
+  bound_manifest="$(
+    $tool materialize \
+      --artifact "$artifact" \
+      --code-mode-host-artifact "$code_mode_host_artifact" \
+      --source-commit "$source_commit" \
+      --preflight-log "$preflight" \
+      --release-root "$tmp/releases"
+  )"
   $tool verify --manifest "$bound_manifest" | jq -e '
     .status == "ready"
     and .source.commit_bound == true
     and .build_provenance.toolchain.bound == true
     and .build_provenance.dependencies.bound == true
     and .build_provenance.artifact.bound == true
+    and .build_provenance.runtime_companions.bound == true
+    and .build_provenance.runtime_companions.artifacts[0].id == "code-mode-host"
+    and .runtime_companions[0].id == "code-mode-host"
+    and .runtime_companions[0].relative_path == "bin/codex-code-mode-host"
+    and .runtime_companions[0].sha256 == .build_provenance.runtime_companions.artifacts[0].sha256
     and .preflight.bound == true
     and .preflight.source_head == .source.commit
     and .preflight.candidate_source_commit == .source.commit
@@ -1843,13 +2067,14 @@ self_test() {
     and .preflight.source_log_sha256 == .preflight.log_sha256
     and .preflight.source_log_size_bytes == .preflight.log_size_bytes
     and .preflight.full_log_default == false
-    and .policy.release_contract_version == 3
+    and .policy.release_contract_version == 4
+    and .policy.runtime_companions_required == true
     and .policy.immutable_tree == true
     and .watchdog.immutable_release_bound == true
     and .watchdog.source.commit_bound == true
     and .watchdog.source.commit == .source.commit
     and .watchdog.entrypoint == "scripts/hepta-watchdog.sh"
-    and .watchdog.file_count == 19
+    and .watchdog.file_count == 20
     and (.watchdog.files | any(
       .relative_path == "scripts/hepta-live-soak.sh"
       and .mode == "0555"
@@ -1859,6 +2084,11 @@ self_test() {
       .relative_path == "scripts/hepta-preflight-evidence-pack"
       and .mode == "0555"
       and .executable == true
+    ))
+    and (.watchdog.files | any(
+      .relative_path == "scripts/lib/hepta-preflight-runtime-companion.rb"
+      and .mode == "0444"
+      and .executable == false
     ))
     and (.watchdog.files | any(
       .relative_path == "scripts/hepta-stage-identity-chain"
@@ -1884,9 +2114,33 @@ self_test() {
     && "$(sha256_file "$preflight")" == "$(jq -r '.preflight.source_log_sha256' "$bound_manifest")" \
     && "$(stat -f '%z' "$preflight")" == "$(jq -r '.preflight.source_log_size_bytes' "$bound_manifest")" \
     && ! -e "$(dirname "$bound_manifest")/evidence/preflight.log" ]] || {
-    echo "immutable v3 release did not default to summary plus deterministic gzip evidence" >&2
+    echo "immutable release did not default to summary plus deterministic gzip evidence" >&2
     exit 1
   }
+  tampered_code_mode_host="$(dirname "$bound_manifest")/bin/codex-code-mode-host"
+  chmod u+w \
+    "$(dirname "$bound_manifest")" \
+    "$(dirname "$tampered_code_mode_host")" \
+    "$tampered_code_mode_host"
+  printf '\n# tampered after materialize\n' >>"$tampered_code_mode_host"
+  chmod 0555 \
+    "$tampered_code_mode_host" \
+    "$(dirname "$tampered_code_mode_host")" \
+    "$(dirname "$bound_manifest")"
+  if $tool verify --manifest "$bound_manifest" >/dev/null 2>&1; then
+    echo "immutable release verification accepted code-mode host tampering" >&2
+    exit 1
+  fi
+  chmod u+w \
+    "$(dirname "$bound_manifest")" \
+    "$(dirname "$tampered_code_mode_host")" \
+    "$tampered_code_mode_host"
+  cp "$code_mode_host_artifact" "$tampered_code_mode_host"
+  chmod 0555 \
+    "$tampered_code_mode_host" \
+    "$(dirname "$tampered_code_mode_host")" \
+    "$(dirname "$bound_manifest")"
+  $tool verify --manifest "$bound_manifest" >/dev/null
   gateway_installer="$root/scripts/hepta-install-live-gateway"
   gateway_install_receipt="$(
     "$gateway_installer" \
@@ -2007,6 +2261,7 @@ self_test() {
   : >"$dirty_source_fixture"
   if $tool materialize \
     --artifact "$artifact" \
+    --code-mode-host-artifact "$code_mode_host_artifact" \
     --source-commit "$source_commit" \
     --preflight-log "$preflight" \
     --release-root "$tmp/dirty-source-releases" >/dev/null 2>&1; then
@@ -2017,6 +2272,7 @@ self_test() {
   tampered_evidence_manifest="$(
     $tool materialize \
       --artifact "$artifact" \
+      --code-mode-host-artifact "$code_mode_host_artifact" \
       --source-commit "$source_commit" \
       --preflight-log "$preflight" \
       --release-root "$tmp/tampered-evidence-releases"
@@ -2034,6 +2290,7 @@ self_test() {
   tampered_summary_manifest="$(
     $tool materialize \
       --artifact "$artifact" \
+      --code-mode-host-artifact "$code_mode_host_artifact" \
       --source-commit "$source_commit" \
       --preflight-log "$preflight" \
       --release-root "$tmp/tampered-summary-releases"
@@ -2240,6 +2497,7 @@ EOF
   tampered_manifest="$(
     $tool materialize \
       --artifact "$artifact" \
+      --code-mode-host-artifact "$code_mode_host_artifact" \
       --source-commit "$source_commit" \
       --preflight-log "$preflight" \
       --release-root "$tampered_release_dir"
@@ -2262,6 +2520,7 @@ EOF
   tampered_manifest="$(
     $tool materialize \
       --artifact "$artifact" \
+      --code-mode-host-artifact "$code_mode_host_artifact" \
       --source-commit "$source_commit" \
       --preflight-log "$preflight" \
       --release-root "$tampered_release_dir"
@@ -2275,6 +2534,7 @@ EOF
   chmod 0555 "$(dirname "$tampered_manifest")"
   if $tool materialize \
     --artifact "$artifact" \
+    --code-mode-host-artifact "$code_mode_host_artifact" \
     --source-commit "$source_commit" \
     --preflight-log "$preflight" \
     --release-root "$tampered_release_dir" >/dev/null 2>&1; then
@@ -2292,6 +2552,7 @@ EOF
   evidence_variant_manifest="$(
     $tool materialize \
       --artifact "$artifact" \
+      --code-mode-host-artifact "$code_mode_host_artifact" \
       --source-commit "$source_commit" \
       --preflight-log "$evidence_variant_preflight" \
       --release-root "$tmp/releases"
@@ -2310,7 +2571,7 @@ EOF
     '{"hepta_repo_head": "0000000000000000000000000000000000000000"}' \
     "[hepta-preflight-provenance] $provenance" \
     'Hepta preflight passed' >"$conflicting_preflight"
-  if $tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$conflicting_preflight" --release-root "$tmp/conflicting-releases" >/dev/null 2>&1; then
+  if $tool materialize --artifact "$artifact" --code-mode-host-artifact "$code_mode_host_artifact" --source-commit "$source_commit" --preflight-log "$conflicting_preflight" --release-root "$tmp/conflicting-releases" >/dev/null 2>&1; then
     echo "immutable release materialization accepted conflicting full source truths" >&2
     exit 1
   fi
@@ -2320,7 +2581,7 @@ EOF
     "{\"hepta_repo_head\":\"$source_commit\"}" \
     "[hepta-preflight-provenance] $provenance" \
     'Hepta preflight passed' >"$wrong_banner_preflight"
-  if $tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$wrong_banner_preflight" --release-root "$tmp/wrong-banner-releases" >/dev/null 2>&1; then
+  if $tool materialize --artifact "$artifact" --code-mode-host-artifact "$code_mode_host_artifact" --source-commit "$source_commit" --preflight-log "$wrong_banner_preflight" --release-root "$tmp/wrong-banner-releases" >/dev/null 2>&1; then
     echo "immutable release materialization accepted a conflicting resume banner" >&2
     exit 1
   fi
@@ -2329,12 +2590,12 @@ EOF
     "[hepta-preflight-resume] head=$short_head attempt=1 start_line=1 marker=<start> log=$missing_source_preflight" \
     "[hepta-preflight-provenance] $(jq -c 'del(.source.commit)' <<<"$provenance")" \
     'Hepta preflight passed' >"$missing_source_preflight"
-  if $tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$missing_source_preflight" --release-root "$tmp/missing-source-releases" >/dev/null 2>&1; then
+  if $tool materialize --artifact "$artifact" --code-mode-host-artifact "$code_mode_host_artifact" --source-commit "$source_commit" --preflight-log "$missing_source_preflight" --release-root "$tmp/missing-source-releases" >/dev/null 2>&1; then
     echo "immutable release materialization accepted missing full source truth" >&2
     exit 1
   fi
   missing_preflight_rc=0
-  $tool materialize --artifact "$artifact" --source-commit "$source_commit" --release-root "$tmp/missing-preflight" >/dev/null 2>&1 || missing_preflight_rc=$?
+  $tool materialize --artifact "$artifact" --code-mode-host-artifact "$code_mode_host_artifact" --source-commit "$source_commit" --release-root "$tmp/missing-preflight" >/dev/null 2>&1 || missing_preflight_rc=$?
   if [[ "$missing_preflight_rc" != "1" ]]; then
     echo "source-bound materialization without preflight did not fail closed" >&2
     exit 1
@@ -2349,16 +2610,23 @@ EOF
   missing_receipts_verify_dir="$tmp/missing-receipts-verify"
   mkdir -p "$missing_receipts_verify_dir/bin"
   cp -p "$(dirname "$bound_manifest")/bin/hepta" "$missing_receipts_verify_dir/bin/hepta"
+  cp -p \
+    "$(dirname "$bound_manifest")/bin/codex-code-mode-host" \
+    "$missing_receipts_verify_dir/bin/codex-code-mode-host"
   missing_receipts_manifest="$missing_receipts_verify_dir/manifest.json"
   jq 'del(.build_provenance.bound_gate_receipts)' \
     "$bound_manifest" >"$missing_receipts_manifest"
-  chmod 0555 "$missing_receipts_verify_dir/bin/hepta" "$missing_receipts_verify_dir/bin" "$missing_receipts_verify_dir"
+  chmod 0555 \
+    "$missing_receipts_verify_dir/bin/hepta" \
+    "$missing_receipts_verify_dir/bin/codex-code-mode-host" \
+    "$missing_receipts_verify_dir/bin" \
+    "$missing_receipts_verify_dir"
   chmod 0444 "$missing_receipts_manifest"
   if $tool verify --manifest "$missing_receipts_manifest" >/dev/null 2>&1; then
     echo "immutable release verification accepted a ready manifest without bound gate receipts" >&2
     exit 1
   fi
-  legacy_manifest="$($tool materialize --artifact "$artifact" --source-commit unknown --release-root "$tmp/releases")"
+  legacy_manifest="$($tool materialize --artifact "$artifact" --code-mode-host-artifact "$code_mode_host_artifact" --source-commit unknown --release-root "$tmp/releases")"
   $tool verify --manifest "$legacy_manifest" | jq -e '.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .preflight.bound == false' >/dev/null
   legacy_activation_rc=0
   mkdir -p "$tmp/legacy-active"
@@ -2394,9 +2662,9 @@ EOF
   chmod 0755 "$different"
   different_sha="$(sha256_file "$different")"
   different_preflight="$tmp/different-preflight.log"
-  different_provenance="$(hepta_release_fixture_complete_provenance_json "$root" "$source_commit" "$different")"
+  different_provenance="$(hepta_release_fixture_complete_provenance_json "$root" "$source_commit" "$different" "$code_mode_host_artifact")"
   self_test_write_fixture_preflight_log "$different_preflight" "$source_commit" "$different_provenance"
-  different_manifest="$($tool materialize --artifact "$different" --source-commit "$source_commit" --preflight-log "$different_preflight" --release-root "$tmp/releases")"
+  different_manifest="$($tool materialize --artifact "$different" --code-mode-host-artifact "$code_mode_host_artifact" --source-commit "$source_commit" --preflight-log "$different_preflight" --release-root "$tmp/releases")"
   if $tool activate --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha" >/dev/null 2>&1; then
     echo "immutable activation accepted different binary bytes" >&2
     exit 1
@@ -2429,6 +2697,8 @@ EOF
   if [[ "$(sha256_file "$tmp/active/hepta")" != "$different_sha" \
     || "$(readlink "$tmp/active/hepta.manifest")" != "$different_manifest" \
     || "$(sha256_file "$(jq -r '.backup.artifact' <<<"$cutover_receipt")")" != "$fixture_sha" \
+    || "$(sha256_file "$(jq -r '.backup.bundle' <<<"$cutover_receipt")/bin/codex-code-mode-host")" \
+      != "$(sha256_file "$code_mode_host_artifact")" \
     || "$(sha256_file "$rollback_manifest")" != "$(jq -r '.backup.manifest_sha256' <<<"$cutover_receipt")" \
     || ! -f "$rollback_record" || "$(stat -f '%Lp' "$rollback_record")" != "444" ]]; then
     echo "successful immutable cutover did not preserve its durable rollback bundle" >&2
@@ -2443,6 +2713,8 @@ EOF
   ' >/dev/null <<<"$rollback_receipt"
   if [[ "$(sha256_file "$tmp/active/hepta")" != "$fixture_sha" \
     || "$(readlink "$tmp/active/hepta")" != "$(dirname "$rollback_record")/bin/hepta" \
+    || "$(sha256_file "$(dirname "$rollback_record")/bin/codex-code-mode-host")" \
+      != "$(sha256_file "$code_mode_host_artifact")" \
     || "$(readlink "$tmp/active/hepta.manifest")" != "$(dirname "$rollback_record")/manifest.json" ]]; then
     echo "durable rollback did not restore the prior release pair" >&2
     exit 1
@@ -2482,6 +2754,9 @@ EOF
       || ! -f "$rollback_release_dir/evidence/preflight-summary.json" \
       || ! -f "$rollback_release_dir/evidence/preflight.log.gz" \
       || -e "$rollback_release_dir/evidence/preflight.log" \
+      || ! -x "$rollback_release_dir/bin/codex-code-mode-host" \
+      || "$(sha256_file "$rollback_release_dir/bin/codex-code-mode-host")" \
+        != "$(sha256_file "$code_mode_host_artifact")" \
       || ! -x "$rollback_release_dir/scripts/hepta-live-soak.sh" \
       || -e "$rollback_active/.hepta-immutable-release-cutover.lock" ]]; then
       echo "injected $failure_point cutover did not restore and preserve the reviewed release pair" >&2
@@ -2494,7 +2769,7 @@ EOF
     fi
   done
   jq -n --arg status ready --arg schema_version "$SCHEMA_VERSION" --arg source_commit "$source_commit" --arg artifact_sha256 "$fixture_sha" \
-    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,real_short_banner_full_source_truth_ready:true,conflicting_resume_banner_denied:true,conflicting_full_source_truth_denied:true,missing_full_source_truth_denied:true,missing_preflight_denied:true,canonical_cargo_target_artifact_selected:true,artifact_override_denied:true,bound_gate_receipts_required_during_materialize:true,bound_gate_receipts_required_during_verify:true,bound_gate_source_and_lock_bound:true,legacy_l_bound_gate_profile_valid:true,legacy_i_bound_gate_profile_valid:true,legacy_h_bound_gate_profile_valid:true,mixed_bound_gate_profiles_denied:true,duplicate_missing_and_unknown_gate_ids_denied:true,blocked_receipt_and_self_test_denied:true,dependency_nonzero_findings_and_exceptions_denied:true,raw_configured_zero_new_exception_missing_modified_and_reordered_findings_denied:true,wrong_receipt_schema_hash_and_lock_denied:true,manifest_gate_receipt_tamper_denied:true,immutable_watchdog_closure_bound:true,immutable_watchdog_tamper_denied:true,immutable_live_soak_bound:true,zero_sample_soak_denied:true,immutable_live_soak_tamper_denied:true,packed_preflight_summary_archive_bound:true,packed_preflight_archive_tamper_denied:true,packed_preflight_summary_tamper_denied:true,packed_preflight_full_log_default_false:true,immutable_watchdog_plist_release_path_bound:true,dirty_source_watchdog_ignored_after_materialization:true,existing_release_evidence_drift_denied:true,same_source_artifact_different_evidence_gets_distinct_identity:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,stale_cutover_cas_denied:true,identical_bytes_cutover_denied:true,legacy_to_bound_byte_changing_cutover_ready:true,cutover_backup_verified:true,v3_rollback_evidence_complete:true,manifest_link_cutover_verified:true,durable_post_cutover_rollback_verified:true,rollback_bundle_reuse_verified:true,after_active_swap_rollback_verified:true,after_manifest_swap_rollback_verified:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}'
+    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,real_short_banner_full_source_truth_ready:true,conflicting_resume_banner_denied:true,conflicting_full_source_truth_denied:true,missing_full_source_truth_denied:true,missing_preflight_denied:true,canonical_cargo_target_artifact_selected:true,canonical_unix_and_windows_code_mode_host_paths_selected:true,artifact_override_denied:true,code_mode_host_override_denied:true,missing_code_mode_host_denied:true,invalid_code_mode_host_name_denied:true,code_mode_host_provenance_bound:true,code_mode_host_tamper_denied:true,bound_gate_receipts_required_during_materialize:true,bound_gate_receipts_required_during_verify:true,bound_gate_source_and_lock_bound:true,legacy_l_bound_gate_profile_valid:true,legacy_i_bound_gate_profile_valid:true,legacy_h_bound_gate_profile_valid:true,mixed_bound_gate_profiles_denied:true,duplicate_missing_and_unknown_gate_ids_denied:true,blocked_receipt_and_self_test_denied:true,dependency_nonzero_findings_and_exceptions_denied:true,raw_configured_zero_new_exception_missing_modified_and_reordered_findings_denied:true,wrong_receipt_schema_hash_and_lock_denied:true,manifest_gate_receipt_tamper_denied:true,immutable_watchdog_closure_bound:true,immutable_watchdog_tamper_denied:true,immutable_live_soak_bound:true,zero_sample_soak_denied:true,immutable_live_soak_tamper_denied:true,packed_preflight_summary_archive_bound:true,packed_preflight_archive_tamper_denied:true,packed_preflight_summary_tamper_denied:true,packed_preflight_full_log_default_false:true,immutable_watchdog_plist_release_path_bound:true,dirty_source_watchdog_ignored_after_materialization:true,existing_release_evidence_drift_denied:true,same_source_artifact_different_evidence_gets_distinct_identity:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,stale_cutover_cas_denied:true,identical_bytes_cutover_denied:true,legacy_to_bound_byte_changing_cutover_ready:true,cutover_backup_verified:true,v4_rollback_evidence_and_runtime_companion_complete:true,manifest_link_cutover_verified:true,durable_post_cutover_rollback_verified:true,rollback_bundle_reuse_verified:true,after_active_swap_rollback_verified:true,after_manifest_swap_rollback_verified:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}'
   echo "hepta immutable release tree self-test passed"
 }
 [[ $# -gt 0 ]] || usage

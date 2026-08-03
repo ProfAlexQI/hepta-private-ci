@@ -66,12 +66,12 @@ verify_tool="$release_dir/$(jq -r '.watchdog.verify_tool // empty' "$manifest")"
 
 jq -e '
   .status == "ready"
-  and .policy.release_contract_version == 3
+  and (.policy.release_contract_version == 3 or .policy.release_contract_version == 4)
   and .watchdog.immutable_release_bound == true
   and .watchdog.source.commit_bound == true
   and .watchdog.source.commit == .source.commit
 ' "$manifest" >/dev/null || {
-  echo "watchdog installation requires a source-bound immutable release v3 manifest" >&2
+  echo "watchdog installation requires a source-bound immutable release v3/v4 manifest" >&2
   exit 1
 }
 

@@ -227,7 +227,8 @@ verify_action() {
   expected_log_sha="$(jq -r '.preflight.log_sha256' "$manifest")"
   delivery="$(jq -r '.preflight.delivery // "raw"' "$manifest")"
   archive_sha=""
-  if [[ "$release_contract_version" == "3" \
+  if [[ ("$release_contract_version" == "3" \
+    || "$release_contract_version" == "4") \
     && "$delivery" == "summary_and_deterministic_gzip" ]]; then
     previous_log="$release_dir/$(jq -er '.preflight.archive_relative_path' "$manifest")"
     archive_sha="$(jq -r '.preflight.archive_sha256' "$manifest")"

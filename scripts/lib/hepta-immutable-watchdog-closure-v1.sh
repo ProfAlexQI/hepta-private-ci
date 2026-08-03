@@ -21,6 +21,7 @@ scripts/hepta-release-evidence-finalize	0555	true
 scripts/hepta-preflight-evidence-pack	0555	true
 scripts/hepta-install-live-watchdog	0555	true
 scripts/hepta-install-live-gateway	0555	true
+scripts/lib/hepta-preflight-runtime-companion.rb	0444	false
 scripts/lib/hepta-watchdog-release-evidence-v1.sh	0444	false
 scripts/lib/hepta-watchdog-product-boundary-v1.sh	0444	false
 scripts/lib/hepta-release-provenance.sh	0444	false
@@ -41,8 +42,21 @@ hepta_immutable_watchdog_sha256_text() {
 
 hepta_immutable_watchdog_expected_paths_json() {
   local source_commit="${1:-}"
+  local release_contract_version="${2:-4}"
+  [[ "$release_contract_version" == "1" \
+    || "$release_contract_version" == "2" \
+    || "$release_contract_version" == "3" \
+    || "$release_contract_version" == "4" ]] || {
+    echo "unsupported immutable watchdog release contract: $release_contract_version" >&2
+    return 1
+  }
   hepta_immutable_watchdog_closure_spec \
     | cut -f1 \
+    | if [[ "$release_contract_version" == "4" ]]; then
+        cat
+      else
+        grep -v -F 'scripts/lib/hepta-preflight-runtime-companion.rb'
+      fi \
     | if [[ "$source_commit" == "$HEPTA_IMMUTABLE_WATCHDOG_LEGACY_L_SOURCE_COMMIT" ]]; then
         grep -v -E '^scripts/hepta-(stage-identity-chain|release-evidence-finalize)$'
       elif [[ "$source_commit" == "$HEPTA_IMMUTABLE_WATCHDOG_LEGACY_K_SOURCE_COMMIT" ]]; then
@@ -135,8 +149,13 @@ hepta_immutable_watchdog_verify() {
   local source_commit="$2"
   local source_bound="$3"
   local closure_json="$4"
+  local release_contract_version="${5:-4}"
   local expected_paths
-  expected_paths="$(hepta_immutable_watchdog_expected_paths_json "$source_commit")"
+  expected_paths="$(
+    hepta_immutable_watchdog_expected_paths_json \
+      "$source_commit" \
+      "$release_contract_version"
+  )"
 
   jq -e \
     --arg schema "$HEPTA_IMMUTABLE_WATCHDOG_CLOSURE_SCHEMA" \

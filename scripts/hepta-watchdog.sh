@@ -87,6 +87,7 @@ watchdog_closure_required=false
 watchdog_closure_bound=false
 watchdog_closure_aggregate_sha256=""
 watchdog_closure_source_commit=""
+watchdog_closure_release_contract_version=""
 if [[ -n "$EXPECTED_WATCHDOG_AGGREGATE_SHA256" ]]; then
   watchdog_closure_required=true
   [[ "$EXPECTED_WATCHDOG_AGGREGATE_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
@@ -103,12 +104,16 @@ if [[ -n "$EXPECTED_WATCHDOG_AGGREGATE_SHA256" ]]; then
     exit 1
   }
   watchdog_closure_source_commit="$(jq -r '.source.commit' "$CANDIDATE_MANIFEST")"
+  watchdog_closure_release_contract_version="$(
+    jq -r '.policy.release_contract_version // 1' "$CANDIDATE_MANIFEST"
+  )"
   watchdog_closure_aggregate_sha256="$(jq -r '.aggregate_sha256' <<<"$watchdog_closure_json")"
   hepta_immutable_watchdog_verify \
     "$watchdog_release_root" \
     "$watchdog_closure_source_commit" \
     true \
-    "$watchdog_closure_json" || {
+    "$watchdog_closure_json" \
+    "$watchdog_closure_release_contract_version" || {
     echo "immutable watchdog closure verification failed" >&2
     exit 1
   }

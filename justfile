@@ -102,7 +102,7 @@ bazel-remote-test:
     bazel test --test_tag_filters=-argument-comment-lint //... --config=remote --platforms=//:rbe --keep_going
 
 build-for-release:
-    bazel build //codex-rs/cli:release_binaries --config=remote
+    bazel build //codex-rs/cli:release_runtime_binaries --config=remote
 
 # Run the MCP server
 mcp-server-run *args:
