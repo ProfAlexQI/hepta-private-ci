@@ -2,16 +2,16 @@
   "schema_version": "hepta_native_dependency_source_policy_v1",
   "cargo_lock": {
     "path": "Cargo.lock",
-    "sha256": "9ef7a327cb828068e6c307bdd352d384b8efc52a6ade3c1f1def33b3ce7eb8ad"
+    "sha256": "f1b34f1e1a238ff432d15c9ddfb427b2e0053e2c977e7872b75fd02a37d850b2"
   },
   "root_manifest": {
     "path": "Cargo.toml",
-    "sha256": "75dae7d840458aa433b8ba5d5038589733e622ee6c43a1bc4ba50555ceea5919"
+    "sha256": "275f2b6779cedbf4c05192a6ca698bd0ce9cbdf25581e77efd45a1e0fe56df5b"
   },
   "cargo_deny": {
     "version": "0.20.2",
     "config_path": "deny.toml",
-    "config_sha256": "854f5aec04140f06f15eba9604e16e0d245eba41cbe29335203c1065f78d80ad",
+    "config_sha256": "c40b7398c75c8e1736946f6d61a2bccf14f43c828de9991a0f4ae6af6d5f4199",
     "checks": [
       "bans",
       "licenses",
@@ -72,6 +72,18 @@
       "package_count": 69
     },
     {
+      "url": "https://github.com/openai-oss-forks/tokio-tungstenite",
+      "commit": "132f5b39c862e3a970f731d709608b3e6276d5f6",
+      "cargo_lock_source": "git+https://github.com/openai-oss-forks/tokio-tungstenite?rev=132f5b39c862e3a970f731d709608b3e6276d5f6#132f5b39c862e3a970f731d709608b3e6276d5f6",
+      "package_count": 1
+    },
+    {
+      "url": "https://github.com/openai-oss-forks/tungstenite-rs",
+      "commit": "9200079d3b54a1ff51072e24d81fd354f085156f",
+      "cargo_lock_source": "git+https://github.com/openai-oss-forks/tungstenite-rs?rev=9200079d3b54a1ff51072e24d81fd354f085156f#9200079d3b54a1ff51072e24d81fd354f085156f",
+      "package_count": 1
+    },
+    {
       "url": "https://github.com/openwallet-foundation-labs/tsp.git",
       "commit": "e9d5445489b74f3e052360ee4da1e7c27b9c80b3",
       "cargo_lock_source": "git+https://github.com/openwallet-foundation-labs/tsp.git?rev=e9d5445489b74f3e052360ee4da1e7c27b9c80b3#e9d5445489b74f3e052360ee4da1e7c27b9c80b3",
@@ -108,8 +120,8 @@
       "package_count": 2
     }
   ],
-  "resolved_git_source_count": 7,
-  "resolved_git_package_count": 93,
+  "resolved_git_source_count": 9,
+  "resolved_git_package_count": 95,
   "license_clarifications": [
     {
       "package": "makepad-latex-math",

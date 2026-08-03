@@ -31,7 +31,7 @@ robius-location = { git = "https://github.com/project-robius/robius", rev = "9fc
 anyhow = "1.0"
 codex-keyring-store = { path = "../../codex-rs/keyring-store" }
 hepta-core = { path = "../../codex-rs/hepta-core" }
-hepta-runtime = { path = "../../codex-rs/hepta-runtime" }
+hepta-runtime = { path = "../../codex-rs/hepta-runtime", default-features = false }
 bitflags = "2.6.0"
 blurhash = { version = "0.2.3", default-features = false }
 bytesize = "2.0"

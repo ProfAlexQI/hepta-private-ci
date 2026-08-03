@@ -62,8 +62,8 @@ jq -e '
   )
   and ([.resolved_git_sources[].package_count] | add)
       == .resolved_git_package_count
-  and .resolved_git_source_count == 7
-  and .resolved_git_package_count == 93
+  and .resolved_git_source_count == 9
+  and .resolved_git_package_count == 95
   and (.license_clarifications | length) == 2
   and ([.license_clarifications[].package] | sort)
       == ["makepad-latex-math", "makepad-regex"]

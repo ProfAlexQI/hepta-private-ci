@@ -64,6 +64,8 @@ unused-allowed-org = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
     "https://github.com/kevinaboos/makepad",
+    "https://github.com/openai-oss-forks/tokio-tungstenite",
+    "https://github.com/openai-oss-forks/tungstenite-rs",
     "https://github.com/openwallet-foundation-labs/tsp.git",
     "https://github.com/openwallet-foundation/askar.git",
     "https://github.com/project-robius/matrix-rust-sdk",
