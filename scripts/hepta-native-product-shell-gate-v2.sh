@@ -353,9 +353,10 @@ source_contract_requirements = {
     "src/persistence/matrix_state.rs" => %w[save_session_material load_session_material clear_session_material],
   },
   "password_safe_accessibility_tree" => {
-    "src/accessibility.rs" => %w[TreeUpdate Role::PasswordInput password_nodes_never_expose_a_value semantic_tree_rejects_orphans_and_cycles],
+    "src/accessibility.rs" => %w[TreeUpdate Role::PasswordInput password_nodes_never_expose_a_value semantic_tree_rejects_orphans_and_cycles publish_home_tree post_login_tree_is_never_a_single_root_node],
     "src/login/login_screen.rs" => %w[publish_login_tree],
-    "src/app.rs" => %w[accessibility::clear accessibility::reset_cache],
+    "src/home/home_screen.rs" => %w[accessibility::publish_home_tree AccessibilityAction::Click],
+    "src/app.rs" => %w[accessibility::reset_cache],
   },
   "promotion_trust_policy" => {
     "promotion-trust-policy-v1.json" => ["hepta-ui-promotion-trust-policy-v1", "Runtime environment variables cannot select trust anchors"],

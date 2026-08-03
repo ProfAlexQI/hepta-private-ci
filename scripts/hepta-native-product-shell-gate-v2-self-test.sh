@@ -65,6 +65,34 @@ ruby -rjson -e '
   end
 ' "$TEST_ROOT/product.json"
 
+# The post-login semantic tree is authoritative. A login-only tree must not
+# satisfy the product-shell source contract.
+ruby -e '
+  path = ARGV.fetch(0)
+  source = File.binread(path)
+  needle = "crate::accessibility::publish_home_tree("
+  abort "missing post-login accessibility fixture target" unless source.scan(needle).length == 1
+  File.binwrite(path, source.sub(needle, "crate::accessibility::disabled_home_tree_for_test("))
+' "$TEST_ROOT/app/src/home/home_screen.rs"
+set +e
+HEPTA_NATIVE_V2_APP_DIR="$TEST_ROOT/app" \
+HEPTA_NATIVE_V2_ALLOW_TEST_ROOT=1 \
+  "$PRODUCT_GATE" --output "$TEST_ROOT/post-login-accessibility-negative.json"
+post_login_accessibility_exit=$?
+set -e
+if [[ "$post_login_accessibility_exit" -eq 0 ]]; then
+  echo "missing post-login accessibility publication unexpectedly passed" >&2
+  exit 1
+fi
+ruby -rjson -e '
+  report = JSON.parse(File.binread(ARGV.fetch(0)))
+  contract = report.dig("product_shell", "source_contract_checks", "password_safe_accessibility_tree")
+  abort "missing post-login accessibility publication was not detected" unless contract.dig("paths", "src/home/home_screen.rs", "ready") == false
+  abort "broken post-login accessibility contract remained ready" unless contract["ready"] == false
+  abort "broken post-login accessibility contract promoted Native UI" unless report["native_ui_ready"] == false
+' "$TEST_ROOT/post-login-accessibility-negative.json"
+cp "$APP_DIR/src/home/home_screen.rs" "$TEST_ROOT/app/src/home/home_screen.rs"
+
 printf '\nfn retired_rooms_header_panic() { todo!("Handle other header categories") }\n' \
   >> "$TEST_ROOT/app/src/home/rooms_list.rs"
 set +e
