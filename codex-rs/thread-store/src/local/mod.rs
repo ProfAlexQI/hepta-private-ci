@@ -786,10 +786,7 @@ mod tests {
                 .path()
                 .join("thread-writer-locks")
                 .join(format!("{thread_id}.lock"));
-            assert_eq!(
-                lock_path.exists(),
-                matches!(history_mode, ThreadHistoryMode::Paginated)
-            );
+            assert!(lock_path.exists());
             store
                 .discard_thread(thread_id)
                 .await
@@ -811,6 +808,40 @@ mod tests {
             assert!(
                 matches!(err, ThreadStoreError::ThreadNotFound { thread_id: missing } if missing == thread_id)
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn discard_thread_closes_materialized_live_writer() {
+        let home = TempDir::new().expect("temp dir");
+        let store = LocalThreadStore::new(test_config(home.path()), /*state_db*/ None);
+        for history_mode in [ThreadHistoryMode::Legacy, ThreadHistoryMode::Paginated] {
+            let thread_id = ThreadId::default();
+            let mut params = create_thread_params(thread_id);
+            params.history_mode = history_mode;
+
+            store
+                .create_thread(params)
+                .await
+                .expect("create live thread");
+            store
+                .persist_thread(thread_id)
+                .await
+                .expect("materialize live thread");
+            let rollout_path = store
+                .live_rollout_path(thread_id)
+                .await
+                .expect("load rollout path");
+
+            store
+                .discard_thread(thread_id)
+                .await
+                .expect("discard live thread");
+
+            assert!(rollout_path.exists());
+            tokio::fs::remove_file(rollout_path.as_path())
+                .await
+                .expect("remove rollout after writer closes");
         }
     }
 

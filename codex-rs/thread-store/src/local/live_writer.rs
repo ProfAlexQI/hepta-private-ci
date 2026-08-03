@@ -166,13 +166,19 @@ pub(super) async fn discard_thread(
     thread_id: ThreadId,
 ) -> ThreadStoreResult<()> {
     let _live_writer_guard = store.live_writer_locks.lock(thread_id).await;
-    store
+    let live_recorder = store
         .live_recorders
         .lock()
         .await
         .remove(&thread_id)
-        .map(|_| ())
-        .ok_or(ThreadStoreError::ThreadNotFound { thread_id })
+        .ok_or(ThreadStoreError::ThreadNotFound { thread_id })?;
+    live_recorder
+        .recorder
+        .discard()
+        .await
+        .map_err(thread_store_io_error)?;
+    drop(live_recorder);
+    Ok(())
 }
 
 pub(super) async fn rollout_path(

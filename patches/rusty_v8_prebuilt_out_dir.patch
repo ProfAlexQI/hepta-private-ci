@@ -1,5 +1,5 @@
-# What: make `rusty_v8` accept Bazel-provided archives and bindings for the
-# windows-gnullvm experiment.
+# What: make `rusty_v8` accept Bazel-provided archives and bindings, and keep
+# its Windows C++ runtime aligned with the prebuilt archive's static CRT.
 # Scope: `rusty_v8` build.rs only; no V8 source or Bazel rule changes.
 
 --- a/build.rs
@@ -46,7 +46,7 @@
    build_dir().join("gn_out").join("obj")
  }
  
-@@ -794,22 +810,23 @@
+@@ -794,23 +810,24 @@
  }
  
  fn print_link_flags() {
@@ -72,3 +72,21 @@
        if target.contains("msvc") {
          // nothing to link to
        } else if target.contains("apple")
+@@ -840,9 +862,14 @@
+   if target_env == "msvc" {
+     // On Windows, including libcpmt[d]/msvcprt[d] explicitly links the C++
+     // standard library, which libc++ needs for exception_ptr internals.
+-    let crt_static = env::var("CARGO_CFG_TARGET_FEATURE")
+-      .unwrap_or_default()
+-      .contains("crt-static");
++    // rules_rust derives CARGO_CFG_TARGET_FEATURE separately from target flags,
++    // so the Bazel-provided MSVC archive must explicitly follow its static CRT.
++    let crt_static =
++      env::var("CARGO_CFG_TARGET_FEATURE")
++        .unwrap_or_default()
++        .contains("crt-static")
++        || (env::var_os("RULES_RUST_BAZEL_BUILD_SCRIPT_RUNNER").is_some()
++          && env::var_os("RUSTY_V8_ARCHIVE").is_some());
+     if crt_static {
+       println!("cargo:rustc-link-lib=libcpmt");
+     } else {

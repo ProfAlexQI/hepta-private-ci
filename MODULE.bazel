@@ -155,6 +155,14 @@ use_repo(nightly_rust, "rust_toolchains")
 toolchains = use_extension("@rules_rs//rs/experimental/toolchains:module_extension.bzl", "toolchains")
 toolchains.toolchain(
     edition = "2024",
+    extra_exec_rustc_flags = {
+        "aarch64-pc-windows-msvc": ["-Clink-arg=ucrt.lib"],
+        "x86_64-pc-windows-msvc": ["-Clink-arg=ucrt.lib"],
+    },
+    extra_rustc_flags = {
+        "aarch64-pc-windows-msvc": ["-Ctarget-feature=+crt-static"],
+        "x86_64-pc-windows-msvc": ["-Ctarget-feature=+crt-static"],
+    },
     version = "1.95.0",
 )
 use_repo(toolchains, "default_rust_toolchains")

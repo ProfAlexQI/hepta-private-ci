@@ -349,9 +349,27 @@ mod tests {
     use codex_exec_server::LOCAL_FS;
     use codex_utils_absolute_path::test_support::PathBufExt;
     use std::fs;
+    #[cfg(windows)]
+    use std::path::Path;
+    #[cfg(windows)]
+    use std::process::Command;
     use tempfile::tempdir;
 
     const ALTERNATE_PLUGIN_MANIFEST_RELATIVE_PATH: &str = ".claude-plugin/plugin.json";
+
+    #[cfg(windows)]
+    fn create_directory_junction(junction: &Path, target: &Path) -> std::process::Output {
+        let command = format!(
+            r#"mklink /J "{}" "{}""#,
+            junction.display(),
+            target.display()
+        );
+        Command::new("cmd")
+            .arg("/C")
+            .arg(command)
+            .output()
+            .expect("create directory junction")
+    }
 
     #[tokio::test]
     async fn uses_manifest_name() {
@@ -576,10 +594,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn junctioned_legacy_manifest_directory_fails_closed() {
-        use std::process::Command;
-
         let tmp = tempdir().expect("tempdir");
-        let plugin_root = tmp.path().join("plugins/sample");
+        let plugin_root = tmp.path().join("plugins").join("sample");
         let junction_target = tmp.path().join("junction-codex-plugin");
         fs::create_dir_all(&plugin_root).expect("plugin root");
         fs::create_dir_all(&junction_target).expect("junction target");
@@ -588,14 +604,8 @@ mod tests {
             r#"{"name":"junction"}"#,
         )
         .expect("write junction manifest");
-        let output = Command::new("cmd")
-            .arg("/C")
-            .arg("mklink")
-            .arg("/J")
-            .arg(plugin_root.join(".codex-plugin"))
-            .arg(&junction_target)
-            .output()
-            .expect("create manifest junction");
+        let output =
+            create_directory_junction(&plugin_root.join(".codex-plugin"), &junction_target);
         assert!(
             output.status.success(),
             "mklink /J failed: {}",
@@ -612,8 +622,6 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn junctioned_plugin_root_fails_closed() {
-        use std::process::Command;
-
         let tmp = tempdir().expect("tempdir");
         let real_plugin_root = tmp.path().join("real-plugin");
         let junction_plugin_root = tmp.path().join("junction-plugin");
@@ -623,14 +631,7 @@ mod tests {
             r#"{"name":"junction"}"#,
         )
         .expect("write manifest");
-        let output = Command::new("cmd")
-            .arg("/C")
-            .arg("mklink")
-            .arg("/J")
-            .arg(&junction_plugin_root)
-            .arg(&real_plugin_root)
-            .output()
-            .expect("create plugin root junction");
+        let output = create_directory_junction(&junction_plugin_root, &real_plugin_root);
         assert!(
             output.status.success(),
             "mklink /J failed: {}",

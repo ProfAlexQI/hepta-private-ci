@@ -111,6 +111,9 @@ enum RolloutCmd {
     Shutdown {
         ack: oneshot::Sender<std::io::Result<()>>,
     },
+    Discard {
+        ack: oneshot::Sender<()>,
+    },
 }
 
 /// Observable state for the background rollout writer task.
@@ -951,6 +954,25 @@ impl RolloutRecorder {
         };
         Ok(())
     }
+
+    /// Close the writer without persisting pending in-memory items.
+    pub async fn discard(&self) -> std::io::Result<()> {
+        let (tx_done, rx_done) = oneshot::channel();
+        self.tx
+            .send(RolloutCmd::Discard { ack: tx_done })
+            .await
+            .map_err(|e| {
+                self.writer_task.terminal_failure().unwrap_or_else(|| {
+                    IoError::other(format!("failed to send rollout discard command: {e}"))
+                })
+            })?;
+        rx_done.await.map_err(|e| {
+            self.writer_task.terminal_failure().unwrap_or_else(|| {
+                IoError::other(format!("failed waiting for rollout discard: {e}"))
+            })
+        })?;
+        Ok(())
+    }
 }
 
 pub(crate) fn reject_unknown_thread_history_mode(value: &Value) -> std::io::Result<()> {
@@ -1645,6 +1667,11 @@ async fn rollout_writer(
                     let _ = ack.send(Err(err));
                 }
             },
+            RolloutCmd::Discard { ack } => {
+                state.writer = None;
+                let _ = ack.send(());
+                break;
+            }
         }
     }
 

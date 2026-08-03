@@ -114,7 +114,12 @@ pub(super) async fn read_thread_by_rollout_path(
     }
     if let Some(mut metadata) = read_sqlite_metadata(store, thread.thread_id).await {
         if thread.history_mode == ThreadHistoryMode::Paginated {
-            metadata.rollout_path = path;
+            if !codex_utils_path::paths_match_after_normalization(
+                metadata.rollout_path.as_path(),
+                path.as_path(),
+            ) {
+                metadata.rollout_path = path;
+            }
             metadata.archived_at = thread.archived_at;
             thread = stored_thread_from_sqlite_metadata(store, metadata).await;
         } else {
