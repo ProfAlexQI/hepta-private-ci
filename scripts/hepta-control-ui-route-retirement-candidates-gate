@@ -208,12 +208,13 @@ fail!("legacy route telemetry trust contract drifted") unless
     telemetry_trust["environment_run_class_has_promotion_authority"] == false &&
     telemetry_trust["trusted_launcher_identity_configured"] == false &&
     telemetry_trust["deployment_identity_configured"] == false &&
+    telemetry_trust["event_authentication_plumbing_ready"] == true &&
     telemetry_trust["event_signature_or_mac_configured"] == false &&
     telemetry_trust["event_epoch_binding_configured"] == false &&
     telemetry_trust["promotion_trust_root_configured"] == false &&
-    telemetry_trust["exact_source_epoch_rotation_ready"] == false &&
-    telemetry_trust["crashed_segment_quarantine_ready"] == false &&
-    telemetry_trust["telemetry_parent_directory_fsync_verified"] == false &&
+    telemetry_trust["exact_source_epoch_rotation_ready"] == true &&
+    telemetry_trust["crashed_segment_quarantine_ready"] == true &&
+    telemetry_trust["telemetry_parent_directory_fsync_verified"] == true &&
     telemetry_trust["local_development_may_mint_trust"] == false &&
     telemetry_trust.dig("decision", "promotion_authoritative") == false &&
     telemetry_trust.dig("decision", "route_retirement_allowed") == false &&
@@ -312,9 +313,15 @@ else
   eligible = summary.dig("decision", "eligible")
   blockers = summary.dig("decision", "blockers")
   fail!("legacy HTTP observation window schema or source binding drifted") unless
-    summary["schema"] == "hepta_control_ui_legacy_http_window_v2" &&
+    summary["schema"] == "hepta_control_ui_legacy_http_window_v3" &&
       summary["producer"] == "hepta-native-gateway/hepta-legacy-route-window" &&
       summary["promotion_authoritative"] == false &&
+      summary["event_hash_chain_verified"] == true &&
+      summary["source_epoch_sha256"].is_a?(String) &&
+      summary["source_epoch_sha256"].match?(/\A[0-9a-f]{64}\z/) &&
+      summary["last_event_body_sha256"].is_a?(String) &&
+      summary["last_event_body_sha256"].match?(/\A[0-9a-f]{64}\z/) &&
+      [true, false].include?(summary["event_authentication_verified"]) &&
       [true, false].include?(summary["process_stop_marker_observed"]) &&
       summary["durable_process_stop_observed"] == false &&
       [true, false].include?(summary["continuous_coverage_declared"]) &&
@@ -323,6 +330,9 @@ else
       summary["event_file_sha256"].match?(/\A[0-9a-f]{64}\z/) &&
       summary["event_file_sha256"] == event_file_sha256 &&
       summary["source_head_sha"] == compiled_head &&
+      summary["source_epoch_sha256"] == Digest::SHA256.hexdigest(
+        "hepta.control-ui.legacy-http.source-epoch.v1\0#{compiled_head}\0#{Digest::SHA256.file(CATALOG).hexdigest}\0hepta_control_ui_legacy_http_event_v3"
+      ) &&
       summary["route_catalog_sha256"] == Digest::SHA256.file(CATALOG).hexdigest &&
       (eligible.instance_of?(TrueClass) || eligible.instance_of?(FalseClass))
   trusted_summary = trusted_window_replay(event_path, compiled_head)
@@ -350,8 +360,7 @@ else
   fail!("legacy HTTP observation window decision is internally inconsistent") unless
     blockers.is_a?(Array) && blockers.all? { |blocker| blocker.is_a?(String) && !blocker.empty? } &&
       !eligible && summary["status"] == "blocked" && !blockers.empty? &&
-      blockers.include?("independent_shutdown_durability_receipt_missing") &&
-      blockers.include?("telemetry_parent_directory_fsync_unproven")
+      blockers.include?("independent_shutdown_durability_receipt_missing")
   {
     "configured" => true,
     "summary_sha256" => Digest::SHA256.file(summary_path).hexdigest,
@@ -493,6 +502,7 @@ receipt = {
     "environment_run_class_has_promotion_authority" => telemetry_trust.fetch("environment_run_class_has_promotion_authority"),
     "trusted_launcher_identity_configured" => telemetry_trust.fetch("trusted_launcher_identity_configured"),
     "event_signature_or_mac_configured" => telemetry_trust.fetch("event_signature_or_mac_configured"),
+    "event_authentication_plumbing_ready" => telemetry_trust.fetch("event_authentication_plumbing_ready"),
     "event_epoch_binding_configured" => telemetry_trust.fetch("event_epoch_binding_configured"),
     "promotion_trust_root_configured" => telemetry_trust.fetch("promotion_trust_root_configured"),
     "promotion_authoritative" => telemetry_trust.dig("decision", "promotion_authoritative"),
@@ -500,13 +510,15 @@ receipt = {
   },
   "runtime_window" => window,
   "observation_epoch" => {
-    "event_schema" => "hepta_control_ui_legacy_http_event_v2",
-    "event_relative_path" => "control-ui/legacy-http-events-v2.jsonl",
+    "event_schema" => "hepta_control_ui_legacy_http_event_v3",
+    "event_relative_path" => "control-ui/legacy-http-events-v3.jsonl",
     "predecessor_event_path_accepted" => false,
     "window_reset_required" => true,
     "authoritative_window_start_allowed" => false,
-    "exact_source_epoch_rotation_ready" => false,
-    "crashed_segment_quarantine_ready" => false,
+    "exact_source_epoch_rotation_ready" => true,
+    "crashed_segment_quarantine_ready" => true,
+    "telemetry_parent_directory_fsync_verified" => true,
+    "event_authentication_plumbing_ready" => true,
     "summary_producer" => "cargo run -p hepta-native-gateway --bin hepta-legacy-route-window --",
   },
   "catalog_metrics" => metrics,
@@ -526,7 +538,7 @@ receipt = {
   "candidates" => candidate_receipts,
   "http_behavior_changed" => false,
   "route_count_reduced" => false,
-  "next_required_action" => "provision independently approved telemetry identity, authenticated event and epoch trust, crash rotation and parent-fsync receipts before starting a 30-day window; keep all routes and renderers",
+  "next_required_action" => "provision independently approved telemetry identity, authenticated event/epoch trust and an independent shutdown-durability receipt before starting a 30-day window; keep all routes and renderers",
 }
 
 serialized = JSON.pretty_generate(receipt) + "\n"

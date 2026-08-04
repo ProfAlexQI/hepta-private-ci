@@ -162,7 +162,7 @@ fn legacy_route_telemetry_covers_all_states_without_request_identifiers() {
         assert_eq!(event["consumer_class"], consumer_class);
         assert_eq!(event["preflight"], preflight);
         assert_eq!(event["write_result"], "ok");
-        assert_eq!(event["schema"], "hepta_control_ui_legacy_http_event_v2");
+        assert_eq!(event["schema"], "hepta_control_ui_legacy_http_event_v3");
         assert_eq!(event["observation_complete"], true);
         assert!(event["sequence"].as_u64().is_some());
         assert_eq!(
@@ -179,6 +179,17 @@ fn legacy_route_telemetry_covers_all_states_without_request_identifiers() {
         ));
         assert!(!event["head_sha"].as_str().unwrap_or_default().is_empty());
         assert_eq!(event["catalog_sha"].as_str().map(str::len), Some(64));
+        assert_eq!(
+            event["source_epoch_sha256"].as_str().map(str::len),
+            Some(64)
+        );
+        assert_eq!(
+            event["previous_event_sha256"].as_str().map(str::len),
+            Some(64)
+        );
+        assert_eq!(event["event_body_sha256"].as_str().map(str::len), Some(64));
+        assert!(event["authentication_key_id_sha256"].is_null());
+        assert!(event["event_hmac_sha256"].is_null());
     }
     assert_eq!(events[0]["http_status"], 200);
     assert_eq!(events[1]["http_status"], 410);

@@ -6,6 +6,9 @@ use std::ffi::CString;
 use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -37,14 +40,16 @@ use sha2::Sha256;
 use crate::route_definition::RouteDefinition;
 use crate::route_definition::RouteDispatchHandler;
 
-const TELEMETRY_RELATIVE_PATH: &str = "control-ui/legacy-http-events-v2.jsonl";
+const TELEMETRY_RELATIVE_PATH: &str = "control-ui/legacy-http-events-v3.jsonl";
 const TELEMETRY_ENABLED_ENV: &str = "HEPTA_CONTROL_UI_LEGACY_ROUTE_TELEMETRY";
 const TELEMETRY_RUN_CLASS_ENV: &str = "HEPTA_CONTROL_UI_LEGACY_ROUTE_RUN_CLASS";
-const TELEMETRY_SCHEMA: &str = "hepta_control_ui_legacy_http_event_v2";
-const TELEMETRY_HEALTH_SCHEMA: &str = "hepta_legacy_route_telemetry_health_v2";
+const TELEMETRY_SCHEMA: &str = "hepta_control_ui_legacy_http_event_v3";
+const TELEMETRY_HEALTH_SCHEMA: &str = "hepta_legacy_route_telemetry_health_v3";
 const TELEMETRY_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const TELEMETRY_MAX_EVENT_BYTES: usize = 16 * 1024;
 const TELEMETRY_QUEUE_CAPACITY: usize = 256;
+const EMPTY_EVENT_CHAIN_SHA256: &str =
+    "0000000000000000000000000000000000000000000000000000000000000000";
 
 static DIRECT_CALL_COUNTS: OnceLock<Mutex<BTreeMap<&'static str, u64>>> = OnceLock::new();
 static TELEMETRY_WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -65,7 +70,10 @@ static LAST_HEARTBEAT_DAY: AtomicU64 = AtomicU64::new(u64::MAX);
 static TEST_LIFECYCLE_STATE: OnceLock<Mutex<BTreeMap<PathBuf, (bool, u64)>>> = OnceLock::new();
 static ROUTE_CATALOG_SHA: OnceLock<String> = OnceLock::new();
 static PROCESS_RUN_IDENTIFIER_SHA: OnceLock<String> = OnceLock::new();
+static SOURCE_EPOCH_SHA: OnceLock<String> = OnceLock::new();
 static TELEMETRY_EMIT_LOCK: Mutex<()> = Mutex::new(());
+static EVENT_CHAIN_CONTEXTS: OnceLock<Mutex<BTreeMap<PathBuf, EventChainContext>>> =
+    OnceLock::new();
 #[cfg(not(test))]
 static TELEMETRY_SENDER: OnceLock<std::result::Result<SyncSender<TelemetryCommand>, String>> =
     OnceLock::new();
@@ -119,6 +127,29 @@ enum TelemetryEventType {
     LegacyRequest,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum PredecessorDisposition {
+    Fresh,
+    ContinuedGracefulEpoch,
+    QuarantinedCrashedSegment,
+    RotatedSourceEpoch,
+    QuarantinedInvalidSegment,
+}
+
+#[derive(Debug, Clone)]
+struct EventChainContext {
+    previous_event_sha256: String,
+    predecessor_segment_sha256: Option<String>,
+    predecessor_disposition: PredecessorDisposition,
+    next_sequence: u64,
+}
+
+struct SecureTelemetryFile {
+    file: File,
+    parent_dir: File,
+}
+
 #[derive(Debug)]
 struct PendingObservation {
     route_key: &'static str,
@@ -169,8 +200,15 @@ struct LegacyRouteUsageEvent<'a> {
     run_class: &'static str,
     head_sha: &'a str,
     catalog_sha: &'a str,
+    source_epoch_sha256: &'a str,
     source_binding_valid: bool,
     catalog_binding_valid: bool,
+    previous_event_sha256: String,
+    event_body_sha256: String,
+    authentication_key_id_sha256: Option<String>,
+    event_hmac_sha256: Option<String>,
+    predecessor_segment_sha256: Option<String>,
+    predecessor_disposition: Option<PredecessorDisposition>,
     route_key: Option<&'a str>,
     route_state: Option<LegacyRouteState>,
     consumer_class: Option<AnonymousConsumerClass>,
@@ -201,6 +239,12 @@ pub(super) struct LegacyRouteTelemetryHealth {
     source_binding_valid: bool,
     route_catalog_sha256: &'static str,
     catalog_binding_valid: bool,
+    source_epoch_sha256: &'static str,
+    exact_source_epoch_rotation_ready: bool,
+    crashed_segment_quarantine_ready: bool,
+    telemetry_parent_directory_fsync_verified: bool,
+    event_authentication_plumbing_ready: bool,
+    event_signature_or_mac_configured: bool,
     max_file_bytes: u64,
     queue_capacity: usize,
     emitted_sequence_count: u64,
@@ -307,6 +351,10 @@ fn record_process_lifecycle() {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     if !process_start_recorded(&path) {
+        if let Err(error) = prepare_event_epoch(&path) {
+            record_persist_error(&error);
+            return;
+        }
         match emit_event_locked(
             path.clone(),
             TelemetryEventType::ProcessStart,
@@ -502,6 +550,7 @@ fn emit_event_locked(
     observation_complete: bool,
 ) -> Result<()> {
     let event = build_event(
+        &path,
         event_type,
         route_key,
         route_state,
@@ -511,7 +560,12 @@ fn emit_event_locked(
         write_result,
         observation_complete,
     )?;
-    record_event(path, &event)
+    // Advance the chain only after the bounded queue accepts this append. A
+    // later writer failure deliberately poisons health counters, so a stream
+    // with a post-accept persistence gap can never pass trusted replay.
+    record_event(path.clone(), &event)?;
+    commit_event_chain(&path, &event);
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -527,6 +581,7 @@ fn emit_event_locked_with_ack(
     observation_complete: bool,
 ) -> Result<()> {
     let event = build_event(
+        &path,
         event_type,
         route_key,
         route_state,
@@ -536,11 +591,14 @@ fn emit_event_locked_with_ack(
         write_result,
         observation_complete,
     )?;
-    record_event_with_ack(path, &event)
+    record_event_with_ack(path.clone(), &event)?;
+    commit_event_chain(&path, &event);
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
 fn build_event<'a>(
+    path: &Path,
     event_type: TelemetryEventType,
     route_key: Option<&'a str>,
     route_state: Option<LegacyRouteState>,
@@ -552,20 +610,43 @@ fn build_event<'a>(
 ) -> Result<LegacyRouteUsageEvent<'a>> {
     let head_sha = hepta_core::production_surface_report().source_git_head;
     let catalog_sha = route_catalog_sha();
-    Ok(LegacyRouteUsageEvent {
+    let source_epoch_sha256 = source_epoch_sha();
+    let (sequence, previous_event_sha256, predecessor_segment_sha256, predecessor_disposition) = {
+        let mut contexts = event_chain_contexts()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let context = contexts
+            .entry(path.to_path_buf())
+            .or_insert_with(fresh_event_chain_context);
+        (
+            context.next_sequence,
+            context.previous_event_sha256.clone(),
+            (event_type == TelemetryEventType::ProcessStart)
+                .then(|| context.predecessor_segment_sha256.clone())
+                .flatten(),
+            (event_type == TelemetryEventType::ProcessStart)
+                .then_some(context.predecessor_disposition),
+        )
+    };
+    let mut event = LegacyRouteUsageEvent {
         schema: TELEMETRY_SCHEMA,
         event_type,
         process_run_identifier_sha256: process_run_identifier_sha(),
-        sequence: EVENT_SEQUENCE
-            .fetch_add(1, Ordering::Relaxed)
-            .saturating_add(1),
+        sequence,
         time_unix_ms: unix_time_ms(),
         process_class: "hepta_native_gateway",
         run_class: process_run_class()?,
         head_sha,
         catalog_sha,
+        source_epoch_sha256,
         source_binding_valid: valid_source_head(head_sha),
         catalog_binding_valid: valid_sha256(catalog_sha),
+        previous_event_sha256,
+        event_body_sha256: String::new(),
+        authentication_key_id_sha256: None,
+        event_hmac_sha256: None,
+        predecessor_segment_sha256,
+        predecessor_disposition,
         route_key,
         route_state,
         consumer_class,
@@ -577,7 +658,23 @@ fn build_event<'a>(
         persist_error_count: PERSIST_ERROR_COUNT.load(Ordering::Relaxed),
         incomplete_observation_count: INCOMPLETE_OBSERVATION_COUNT.load(Ordering::Relaxed),
         capacity_reached: CAPACITY_REACHED.load(Ordering::Relaxed),
-    })
+    };
+    event.event_body_sha256 = event_body_sha256(&event)?;
+    Ok(event)
+}
+
+fn commit_event_chain(path: &Path, event: &LegacyRouteUsageEvent<'_>) {
+    let mut contexts = event_chain_contexts()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let context = contexts
+        .entry(path.to_path_buf())
+        .or_insert_with(fresh_event_chain_context);
+    context.next_sequence = context.next_sequence.saturating_add(1);
+    context
+        .previous_event_sha256
+        .clone_from(&event.event_body_sha256);
+    EVENT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
 }
 
 fn process_run_class_value() -> &'static str {
@@ -646,6 +743,12 @@ pub(super) fn telemetry_health() -> LegacyRouteTelemetryHealth {
         source_binding_valid,
         route_catalog_sha256,
         catalog_binding_valid,
+        source_epoch_sha256: source_epoch_sha(),
+        exact_source_epoch_rotation_ready: true,
+        crashed_segment_quarantine_ready: true,
+        telemetry_parent_directory_fsync_verified: true,
+        event_authentication_plumbing_ready: true,
+        event_signature_or_mac_configured: false,
         max_file_bytes: TELEMETRY_MAX_BYTES,
         queue_capacity: TELEMETRY_QUEUE_CAPACITY,
         emitted_sequence_count: EVENT_SEQUENCE.load(Ordering::Relaxed),
@@ -758,6 +861,128 @@ fn route_catalog_sha() -> &'static str {
             )
         })
         .as_str()
+}
+
+fn source_epoch_sha() -> &'static str {
+    SOURCE_EPOCH_SHA
+        .get_or_init(|| {
+            crate::legacy_route_window::canonical_source_epoch_sha256(
+                hepta_core::production_surface_report().source_git_head,
+                route_catalog_sha(),
+            )
+        })
+        .as_str()
+}
+
+fn event_body_sha256(event: &LegacyRouteUsageEvent<'_>) -> Result<String> {
+    crate::legacy_route_window::canonical_event_body_sha256(event)
+}
+
+fn fresh_event_chain_context() -> EventChainContext {
+    EventChainContext {
+        previous_event_sha256: EMPTY_EVENT_CHAIN_SHA256.to_string(),
+        predecessor_segment_sha256: None,
+        predecessor_disposition: PredecessorDisposition::Fresh,
+        next_sequence: 1,
+    }
+}
+
+fn event_chain_contexts() -> &'static Mutex<BTreeMap<PathBuf, EventChainContext>> {
+    EVENT_CHAIN_CONTEXTS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn prepare_event_epoch(path: &Path) -> Result<()> {
+    let _write_guard = TELEMETRY_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut secure = open_secure_telemetry_file(path)?;
+    lock_telemetry_file(&secure.file)?;
+    validate_telemetry_file(&secure.file)?;
+    let length = secure
+        .file
+        .metadata()
+        .context("stat telemetry event epoch")?
+        .len();
+    if length == 0 {
+        secure
+            .parent_dir
+            .sync_all()
+            .context("sync fresh telemetry parent directory")?;
+        event_chain_contexts()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(path.to_path_buf(), fresh_event_chain_context());
+        return Ok(());
+    }
+
+    let mut bytes = Vec::with_capacity(length.min(TELEMETRY_MAX_BYTES) as usize);
+    secure
+        .file
+        .seek(SeekFrom::Start(0))
+        .context("rewind telemetry event epoch")?;
+    Read::by_ref(&mut secure.file)
+        .take(TELEMETRY_MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .context("read telemetry event epoch")?;
+    let file_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    let expected_epoch = source_epoch_sha();
+    let first_epoch = first_event_source_epoch(&bytes);
+    let inspection = crate::legacy_route_window::inspect_append_stream(
+        &bytes,
+        hepta_core::production_surface_report().source_git_head,
+        unix_time_ms(),
+    );
+    let disposition = match &inspection {
+        Ok(inspection) if inspection.process_stop_marker_observed => {
+            event_chain_contexts()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(
+                    path.to_path_buf(),
+                    EventChainContext {
+                        previous_event_sha256: inspection.last_event_body_sha256.clone(),
+                        predecessor_segment_sha256: Some(file_sha256),
+                        predecessor_disposition: PredecessorDisposition::ContinuedGracefulEpoch,
+                        next_sequence: 1,
+                    },
+                );
+            return Ok(());
+        }
+        Ok(_) => PredecessorDisposition::QuarantinedCrashedSegment,
+        Err(_)
+            if first_epoch
+                .as_deref()
+                .is_some_and(|epoch| epoch != expected_epoch) =>
+        {
+            PredecessorDisposition::RotatedSourceEpoch
+        }
+        Err(_) => PredecessorDisposition::QuarantinedInvalidSegment,
+    };
+    quarantine_locked_telemetry_file(path, &secure, disposition, &file_sha256)?;
+    event_chain_contexts()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(
+            path.to_path_buf(),
+            EventChainContext {
+                previous_event_sha256: EMPTY_EVENT_CHAIN_SHA256.to_string(),
+                predecessor_segment_sha256: Some(file_sha256),
+                predecessor_disposition: disposition,
+                next_sequence: 1,
+            },
+        );
+    Ok(())
+}
+
+fn first_event_source_epoch(bytes: &[u8]) -> Option<String> {
+    let first = bytes
+        .split(|byte| *byte == b'\n')
+        .find(|line| !line.is_empty())?;
+    serde_json::from_slice::<serde_json::Value>(first)
+        .ok()?
+        .get("source_epoch_sha256")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 fn process_run_identifier_sha() -> &'static str {
@@ -1060,10 +1285,11 @@ fn persist_encoded_with_limit(path: &Path, encoded: &[u8], max_bytes: u64) -> Re
         encoded.len() <= TELEMETRY_MAX_EVENT_BYTES,
         "legacy route telemetry event exceeds bounded event size"
     );
-    let mut file = open_secure_telemetry_file(path)?;
-    lock_telemetry_file(&file)?;
-    validate_telemetry_file(&file)?;
-    let current_bytes = file
+    let mut secure = open_secure_telemetry_file(path)?;
+    lock_telemetry_file(&secure.file)?;
+    validate_telemetry_file(&secure.file)?;
+    let current_bytes = secure
+        .file
         .metadata()
         .context("read legacy route telemetry metadata")?
         .len();
@@ -1074,15 +1300,23 @@ fn persist_encoded_with_limit(path: &Path, encoded: &[u8], max_bytes: u64) -> Re
         CAPACITY_REACHED.store(true, Ordering::Relaxed);
         anyhow::bail!("legacy route telemetry capacity reached: {next_bytes} > {max_bytes} bytes");
     }
-    file.write_all(encoded)
+    secure
+        .file
+        .write_all(encoded)
         .context("append bounded legacy route telemetry event")?;
-    file.sync_data()
+    secure
+        .file
+        .sync_data()
         .context("sync legacy route telemetry event")?;
+    secure
+        .parent_dir
+        .sync_all()
+        .context("sync legacy route telemetry parent directory")?;
     Ok(())
 }
 
 #[cfg(unix)]
-fn open_secure_telemetry_file(path: &Path) -> Result<File> {
+fn open_secure_telemetry_file(path: &Path) -> Result<SecureTelemetryFile> {
     use std::os::fd::AsRawFd;
     use std::os::fd::FromRawFd;
     use std::os::unix::ffi::OsStrExt;
@@ -1126,6 +1360,10 @@ fn open_secure_telemetry_file(path: &Path) -> Result<File> {
                 )
             });
         }
+    } else {
+        root_dir
+            .sync_all()
+            .context("sync telemetry state root after directory creation")?;
     }
     let parent_fd = unsafe {
         libc::openat(
@@ -1157,12 +1395,84 @@ fn open_secure_telemetry_file(path: &Path) -> Result<File> {
         return Err(std::io::Error::last_os_error())
             .with_context(|| format!("open non-symlink telemetry file {}", path.display()));
     }
-    Ok(unsafe { File::from_raw_fd(file_fd) })
+    parent_dir
+        .sync_all()
+        .context("sync telemetry parent after file open/create")?;
+    Ok(SecureTelemetryFile {
+        file: unsafe { File::from_raw_fd(file_fd) },
+        parent_dir,
+    })
 }
 
 #[cfg(not(unix))]
-fn open_secure_telemetry_file(_path: &Path) -> Result<File> {
+fn open_secure_telemetry_file(_path: &Path) -> Result<SecureTelemetryFile> {
     anyhow::bail!("legacy route telemetry persistence requires secure Unix openat semantics")
+}
+
+#[cfg(unix)]
+fn quarantine_locked_telemetry_file(
+    path: &Path,
+    secure: &SecureTelemetryFile,
+    disposition: PredecessorDisposition,
+    file_sha256: &str,
+) -> Result<()> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::ffi::OsStrExt;
+
+    let file_name = path
+        .file_name()
+        .context("telemetry quarantine source has no file name")?;
+    let source_name =
+        CString::new(file_name.as_bytes()).context("telemetry quarantine source contains NUL")?;
+    let reason = match disposition {
+        PredecessorDisposition::QuarantinedCrashedSegment => "crashed",
+        PredecessorDisposition::RotatedSourceEpoch => "source-epoch",
+        PredecessorDisposition::QuarantinedInvalidSegment => "invalid",
+        PredecessorDisposition::Fresh | PredecessorDisposition::ContinuedGracefulEpoch => {
+            anyhow::bail!("invalid telemetry quarantine disposition")
+        }
+    };
+    let quarantine_name = format!(
+        "{}.quarantine-{reason}-{}-{}-{}.jsonl",
+        file_name.to_string_lossy(),
+        &file_sha256[..16],
+        process::id(),
+        unix_time_ms(),
+    );
+    let quarantine_name =
+        CString::new(quarantine_name).context("telemetry quarantine name contains NUL")?;
+    // Move the single-link source in one namespace operation. A link+unlink
+    // sequence has a crash window where both names are durable; the next
+    // startup then rejects the source forever because its link count is two.
+    // renameat leaves either the source name or the quarantine name after a
+    // crash, never a deliberately-created hard-link alias.
+    let rename_result = unsafe {
+        libc::renameat(
+            secure.parent_dir.as_raw_fd(),
+            source_name.as_ptr(),
+            secure.parent_dir.as_raw_fd(),
+            quarantine_name.as_ptr(),
+        )
+    };
+    if rename_result != 0 {
+        return Err(std::io::Error::last_os_error())
+            .context("atomically rename telemetry segment into quarantine");
+    }
+    secure
+        .parent_dir
+        .sync_all()
+        .context("sync atomic telemetry quarantine rename")?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn quarantine_locked_telemetry_file(
+    _path: &Path,
+    _secure: &SecureTelemetryFile,
+    _disposition: PredecessorDisposition,
+    _file_sha256: &str,
+) -> Result<()> {
+    anyhow::bail!("telemetry segment quarantine requires Unix renameat semantics")
 }
 
 #[cfg(unix)]
@@ -1297,7 +1607,7 @@ mod tests {
     use super::*;
 
     fn test_event() -> LegacyRouteUsageEvent<'static> {
-        LegacyRouteUsageEvent {
+        let mut event = LegacyRouteUsageEvent {
             schema: TELEMETRY_SCHEMA,
             event_type: TelemetryEventType::LegacyRequest,
             process_run_identifier_sha256: "1111111111111111111111111111111111111111111111111111111111111111",
@@ -1307,8 +1617,15 @@ mod tests {
             run_class: "ci_test",
             head_sha: "0e52c78003b6",
             catalog_sha: "2222222222222222222222222222222222222222222222222222222222222222",
+            source_epoch_sha256: "3333333333333333333333333333333333333333333333333333333333333333",
             source_binding_valid: true,
             catalog_binding_valid: true,
+            previous_event_sha256: EMPTY_EVENT_CHAIN_SHA256.to_string(),
+            event_body_sha256: String::new(),
+            authentication_key_id_sha256: None,
+            event_hmac_sha256: None,
+            predecessor_segment_sha256: None,
+            predecessor_disposition: None,
             route_key: Some("/api/example/<anonymous>"),
             route_state: Some(LegacyRouteState::Legacy200),
             consumer_class: Some(AnonymousConsumerClass::Browser),
@@ -1320,7 +1637,141 @@ mod tests {
             persist_error_count: 0,
             incomplete_observation_count: 0,
             capacity_reached: false,
-        }
+        };
+        event.event_body_sha256 = event_body_sha256(&event).expect("event body digest");
+        event
+    }
+
+    fn test_lifecycle_event(path: &Path) -> LegacyRouteUsageEvent<'static> {
+        build_event(
+            path,
+            TelemetryEventType::Heartbeat,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            true,
+        )
+        .expect("test lifecycle event")
+    }
+
+    #[test]
+    fn event_chain_advances_only_after_enqueue_or_persist_acceptance() {
+        let root = tempfile::tempdir().expect("telemetry root");
+        let path = root.path().join(TELEMETRY_RELATIVE_PATH);
+        event_chain_contexts()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(path.clone(), fresh_event_chain_context());
+
+        let rejected = test_lifecycle_event(&path);
+        let retry = test_lifecycle_event(&path);
+        assert_eq!(rejected.sequence, 1);
+        assert_eq!(retry.sequence, 1);
+        assert_eq!(rejected.previous_event_sha256, EMPTY_EVENT_CHAIN_SHA256);
+        assert_eq!(retry.previous_event_sha256, EMPTY_EVENT_CHAIN_SHA256);
+
+        commit_event_chain(&path, &retry);
+        let accepted_successor = test_lifecycle_event(&path);
+        assert_eq!(accepted_successor.sequence, 2);
+        assert_eq!(
+            accepted_successor.previous_event_sha256,
+            retry.event_body_sha256
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn crashed_segment_is_atomically_quarantined_before_a_fresh_epoch() {
+        use std::os::unix::fs::MetadataExt;
+
+        let root = tempfile::tempdir().expect("telemetry root");
+        let path = root.path().join(TELEMETRY_RELATIVE_PATH);
+        // Construct an otherwise healthy, incomplete segment directly. Other
+        // tests intentionally poison process-global health counters, so using
+        // the production lifecycle helper here would make the quarantine
+        // classification depend on test scheduling.
+        let mut start = build_event(
+            &path,
+            TelemetryEventType::ProcessStart,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            true,
+        )
+        .expect("crashed process-start event");
+        start.dropped_event_count = 0;
+        start.persist_error_count = 0;
+        start.incomplete_observation_count = 0;
+        start.capacity_reached = false;
+        start.event_body_sha256 = event_body_sha256(&start).expect("healthy event digest");
+        persist_event(&path, &start).expect("persist crashed process-start segment");
+        assert!(path.is_file());
+
+        prepare_event_epoch(&path).expect("quarantine crashed segment");
+
+        assert!(!path.exists());
+        let parent = path.parent().expect("telemetry parent");
+        let quarantine = fs::read_dir(parent)
+            .expect("read telemetry parent")
+            .map(|entry| entry.expect("telemetry entry").file_name())
+            .find(|name| name.to_string_lossy().contains(".quarantine-crashed-"))
+            .expect("crashed segment quarantine");
+        let quarantine_path = parent.join(quarantine);
+        assert!(quarantine_path.is_file());
+        assert_eq!(
+            fs::metadata(quarantine_path)
+                .expect("quarantine metadata")
+                .nlink(),
+            1
+        );
+        let contexts = event_chain_contexts()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let context = contexts.get(&path).expect("fresh epoch context");
+        assert_eq!(
+            context.predecessor_disposition,
+            PredecessorDisposition::QuarantinedCrashedSegment
+        );
+        assert_eq!(context.previous_event_sha256, EMPTY_EVENT_CHAIN_SHA256);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mismatched_source_epoch_is_rotated_without_becoming_current_evidence() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().expect("telemetry root");
+        let path = root.path().join(TELEMETRY_RELATIVE_PATH);
+        let parent = path.parent().expect("telemetry parent");
+        fs::create_dir(parent).expect("create telemetry parent");
+        fs::set_permissions(parent, PermissionsExt::from_mode(0o700))
+            .expect("private telemetry parent");
+        fs::write(
+            &path,
+            format!("{{\"source_epoch_sha256\":\"{}\"}}\n", "f".repeat(64)),
+        )
+        .expect("write stale source epoch");
+        fs::set_permissions(&path, PermissionsExt::from_mode(0o600))
+            .expect("private telemetry file");
+
+        prepare_event_epoch(&path).expect("rotate stale source epoch");
+
+        assert!(!path.exists());
+        assert!(
+            fs::read_dir(parent)
+                .expect("read telemetry parent")
+                .any(|entry| entry
+                    .expect("telemetry entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .contains(".quarantine-source-epoch-"))
+        );
     }
 
     #[test]
@@ -1374,18 +1825,24 @@ mod tests {
                 .keys()
                 .collect::<Vec<_>>(),
             vec![
+                "authentication_key_id_sha256",
                 "capacity_reached",
                 "catalog_binding_valid",
                 "catalog_sha",
                 "consumer_class",
                 "dropped_event_count",
+                "event_body_sha256",
+                "event_hmac_sha256",
                 "event_type",
                 "head_sha",
                 "http_status",
                 "incomplete_observation_count",
                 "observation_complete",
                 "persist_error_count",
+                "predecessor_disposition",
+                "predecessor_segment_sha256",
                 "preflight",
+                "previous_event_sha256",
                 "process_class",
                 "process_run_identifier_sha256",
                 "route_key",
@@ -1394,6 +1851,7 @@ mod tests {
                 "schema",
                 "sequence",
                 "source_binding_valid",
+                "source_epoch_sha256",
                 "time_unix_ms",
                 "write_result",
             ]
@@ -1447,10 +1905,12 @@ mod tests {
                         let _write_guard = TELEMETRY_WRITE_LOCK
                             .lock()
                             .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        let mut file = open_secure_telemetry_file(&write.path)?;
-                        lock_telemetry_file(&file)?;
-                        validate_telemetry_file(&file)?;
-                        file.write_all(&write.encoded)
+                        let mut secure = open_secure_telemetry_file(&write.path)?;
+                        lock_telemetry_file(&secure.file)?;
+                        validate_telemetry_file(&secure.file)?;
+                        secure
+                            .file
+                            .write_all(&write.encoded)
                             .context("inject complete stop write before sync failure")?;
                         anyhow::bail!("injected sync_data failure after complete terminal write")
                     }
@@ -1728,7 +2188,7 @@ mod tests {
         let root = tempfile::tempdir().expect("telemetry root");
         let path = root.path().join(TELEMETRY_RELATIVE_PATH);
         let locked = open_secure_telemetry_file(&path).expect("secure telemetry file");
-        lock_telemetry_file(&locked).expect("hold writer lock");
+        lock_telemetry_file(&locked.file).expect("hold writer lock");
         let error = persist_event(&path, &test_event()).expect_err("contended writer must fail");
         assert!(
             format!("{error:#}").contains("cross-process telemetry writer lock"),

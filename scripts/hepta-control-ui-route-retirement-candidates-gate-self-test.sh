@@ -52,6 +52,10 @@ jq -e '
   and .telemetry_trust.status == "blocked"
   and .telemetry_trust.environment_run_class_has_promotion_authority == false
   and .telemetry_trust.promotion_authoritative == false
+  and .observation_epoch.exact_source_epoch_rotation_ready == true
+  and .observation_epoch.crashed_segment_quarantine_ready == true
+  and .observation_epoch.telemetry_parent_directory_fsync_verified == true
+  and .observation_epoch.event_authentication_plumbing_ready == true
   and .observation_epoch.window_reset_required == true
   and .observation_epoch.predecessor_event_path_accepted == false
   and .observation_epoch.authoritative_window_start_allowed == false
@@ -114,17 +118,23 @@ fi
 
 events="$TMP_ROOT/events.jsonl"
 now_ms=$(( $(date +%s) * 1000 ))
-ruby -rjson - "$events" "$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD)" \
+ruby -rjson -rdigest - "$events" "$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD)" \
   "$(shasum -a 256 "$REPO_ROOT/codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl" | awk '{print $1}')" \
   "$now_ms" <<'RUBY'
 destination, head, catalog, now = ARGV
 now = Integer(now, 10)
 base = {
-  "schema" => "hepta_control_ui_legacy_http_event_v2",
+  "schema" => "hepta_control_ui_legacy_http_event_v3",
   "process_run_identifier_sha256" => "1" * 64,
   "process_class" => "hepta_native_gateway", "run_class" => "operator",
   "head_sha" => head, "catalog_sha" => catalog,
+  "source_epoch_sha256" => Digest::SHA256.hexdigest(
+    "hepta.control-ui.legacy-http.source-epoch.v1\0#{head}\0#{catalog}\0hepta_control_ui_legacy_http_event_v3"
+  ),
   "source_binding_valid" => true, "catalog_binding_valid" => true,
+  "previous_event_sha256" => "0" * 64, "event_body_sha256" => "",
+  "authentication_key_id_sha256" => nil, "event_hmac_sha256" => nil,
+  "predecessor_segment_sha256" => nil, "predecessor_disposition" => nil,
   "route_key" => nil, "route_state" => nil, "consumer_class" => nil,
   "preflight" => nil, "http_status" => nil, "write_result" => nil,
   "observation_complete" => true, "dropped_event_count" => 0,
@@ -136,6 +146,16 @@ events = [
   base.merge("event_type" => "heartbeat", "sequence" => 2, "time_unix_ms" => now - 500),
   base.merge("event_type" => "process_stop", "sequence" => 3, "time_unix_ms" => now),
 ]
+previous = "0" * 64
+events.each_with_index do |event, index|
+  event["previous_event_sha256"] = previous
+  event["predecessor_disposition"] = "fresh" if index.zero?
+  body = event.reject do |key, _value|
+    %w[event_body_sha256 event_hmac_sha256].include?(key)
+  end.sort.to_h
+  event["event_body_sha256"] = Digest::SHA256.hexdigest(JSON.generate(body))
+  previous = event["event_body_sha256"]
+end
 File.write(destination, events.map { |event| JSON.generate(event) }.join("\n") + "\n")
 File.chmod(0o600, destination)
 RUBY

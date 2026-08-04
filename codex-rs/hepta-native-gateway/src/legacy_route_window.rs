@@ -4,11 +4,13 @@ use std::io::Read;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use hmac::Hmac;
+use hmac::Mac;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const EVENT_SCHEMA: &str = "hepta_control_ui_legacy_http_event_v2";
-pub const WINDOW_SCHEMA: &str = "hepta_control_ui_legacy_http_window_v2";
+pub const EVENT_SCHEMA: &str = "hepta_control_ui_legacy_http_event_v3";
+pub const WINDOW_SCHEMA: &str = "hepta_control_ui_legacy_http_window_v3";
 pub const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_EVENT_BYTES: usize = 16 * 1024;
 const DAY_MS: u64 = 86_400_000;
@@ -16,8 +18,15 @@ const MIN_WINDOW_MS: u64 = 30 * DAY_MS;
 const MIN_ACTIVE_DAYS: usize = 14;
 const MIN_ZERO_USE_MS: u64 = 14 * DAY_MS;
 const MAX_WINDOW_STALENESS_MS: u64 = 2 * DAY_MS;
+const EMPTY_EVENT_CHAIN_SHA256: &str =
+    "0000000000000000000000000000000000000000000000000000000000000000";
+const SOURCE_EPOCH_DOMAIN: &[u8] = b"hepta.control-ui.legacy-http.source-epoch.v1\0";
+const EVENT_AUTHENTICATION_DOMAIN: &[u8] =
+    b"hepta.control-ui.legacy-http.event-authentication.v1\0";
 
-#[derive(Debug, Deserialize)]
+type HmacSha256 = Hmac<Sha256>;
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Event {
     schema: String,
@@ -29,8 +38,15 @@ struct Event {
     run_class: String,
     head_sha: String,
     catalog_sha: String,
+    source_epoch_sha256: String,
     source_binding_valid: bool,
     catalog_binding_valid: bool,
+    previous_event_sha256: String,
+    event_body_sha256: String,
+    authentication_key_id_sha256: Option<String>,
+    event_hmac_sha256: Option<String>,
+    predecessor_segment_sha256: Option<String>,
+    predecessor_disposition: Option<String>,
     route_key: Option<String>,
     route_state: Option<String>,
     consumer_class: Option<String>,
@@ -65,6 +81,12 @@ pub struct LegacyRouteWindowSummary {
     pub status: &'static str,
     producer: &'static str,
     event_file_sha256: String,
+    source_epoch_sha256: String,
+    last_event_body_sha256: String,
+    event_hash_chain_verified: bool,
+    authenticated_operator_event_count: usize,
+    unauthenticated_operator_event_count: usize,
+    event_authentication_verified: bool,
     promotion_authoritative: bool,
     process_stop_marker_observed: bool,
     durable_process_stop_observed: bool,
@@ -91,6 +113,12 @@ pub struct WindowDecision {
     pub blockers: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct AppendStreamInspection {
+    pub last_event_body_sha256: String,
+    pub process_stop_marker_observed: bool,
+}
+
 pub fn canonical_catalog_sha256() -> String {
     format!(
         "{:x}",
@@ -100,10 +128,52 @@ pub fn canonical_catalog_sha256() -> String {
     )
 }
 
+pub fn canonical_source_epoch_sha256(head: &str, catalog_sha256: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(SOURCE_EPOCH_DOMAIN);
+    hasher.update(head.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(catalog_sha256.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(EVENT_SCHEMA.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+pub fn canonical_event_body_sha256(event: &impl Serialize) -> Result<String> {
+    let value = serde_json::to_value(event).context("serialize telemetry event body")?;
+    let object = value
+        .as_object()
+        .context("telemetry event body is not an object")?;
+    let canonical = object
+        .iter()
+        // The digest cannot contain itself or its HMAC tag, but it must bind
+        // the authentication key identifier. Otherwise a historical event
+        // body can be reauthenticated under a different future key without
+        // changing any successor in the hash chain.
+        .filter(|(key, _)| !matches!(key.as_str(), "event_body_sha256" | "event_hmac_sha256"))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<BTreeMap<_, _>>();
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(
+            serde_json::to_vec(&canonical).context("encode canonical telemetry event body")?
+        )
+    ))
+}
+
 pub fn summarize_path(
     path: &Path,
     expected_head: &str,
     now_unix_ms: u64,
+) -> Result<LegacyRouteWindowSummary> {
+    summarize_path_with_authentication_key(path, expected_head, now_unix_ms, None)
+}
+
+pub fn summarize_path_with_authentication_key(
+    path: &Path,
+    expected_head: &str,
+    now_unix_ms: u64,
+    authentication_key: Option<&[u8]>,
 ) -> Result<LegacyRouteWindowSummary> {
     let mut file = open_bounded_file(path)?;
     let metadata = file.metadata().context("stat legacy HTTP event file")?;
@@ -120,13 +190,36 @@ pub fn summarize_path(
         bytes.len() as u64 <= MAX_FILE_BYTES,
         "event file grew past bounded size"
     );
-    summarize_bytes(&bytes, expected_head, now_unix_ms)
+    summarize_bytes_with_authentication_key(&bytes, expected_head, now_unix_ms, authentication_key)
+}
+
+pub fn summarize_path_with_authentication_key_file(
+    path: &Path,
+    expected_head: &str,
+    now_unix_ms: u64,
+    authentication_key_path: &Path,
+) -> Result<LegacyRouteWindowSummary> {
+    let key = crate::secure_key_file::read_private_key(
+        authentication_key_path,
+        "--authentication-key-file",
+        "legacy route telemetry authentication",
+    )?;
+    summarize_path_with_authentication_key(path, expected_head, now_unix_ms, Some(key.as_ref()))
 }
 
 pub fn summarize_bytes(
     bytes: &[u8],
     expected_head: &str,
     now_unix_ms: u64,
+) -> Result<LegacyRouteWindowSummary> {
+    summarize_bytes_with_authentication_key(bytes, expected_head, now_unix_ms, None)
+}
+
+fn summarize_bytes_with_authentication_key(
+    bytes: &[u8],
+    expected_head: &str,
+    now_unix_ms: u64,
+    authentication_key: Option<&[u8]>,
 ) -> Result<LegacyRouteWindowSummary> {
     anyhow::ensure!(
         valid_hex(expected_head, 7, 64),
@@ -143,6 +236,7 @@ pub fn summarize_bytes(
     );
     anyhow::ensure!(!bytes.contains(&0), "event file contains NUL bytes");
     let catalog_sha = canonical_catalog_sha256();
+    let source_epoch_sha = canonical_source_epoch_sha256(expected_head, &catalog_sha);
     let route_states = canonical_legacy_route_states()?;
     let mut segments = BTreeMap::<String, Segment>::new();
     let mut active_days = BTreeSet::new();
@@ -154,6 +248,10 @@ pub fn summarize_bytes(
     let mut total_requests = 0_u64;
     let mut non_ci_requests = 0_u64;
     let mut event_count = 0_usize;
+    let mut previous_event_sha256 = EMPTY_EVENT_CHAIN_SHA256.to_string();
+    let mut authenticated_operator_event_count = 0_usize;
+    let mut unauthenticated_operator_event_count = 0_usize;
+    let mut prefix_hasher = Sha256::new();
 
     for (index, line) in bytes
         .split(|byte| *byte == b'\n')
@@ -167,10 +265,27 @@ pub fn summarize_bytes(
         );
         let event: Event =
             serde_json::from_slice(line).with_context(|| format!("parse event {}", index + 1))?;
-        validate_binding(&event, expected_head, &catalog_sha, now_unix_ms)
-            .with_context(|| format!("validate event {}", index + 1))?;
+        validate_binding(
+            &event,
+            expected_head,
+            &catalog_sha,
+            &source_epoch_sha,
+            &previous_event_sha256,
+            now_unix_ms,
+        )
+        .with_context(|| format!("validate event {}", index + 1))?;
+        let authenticated = verify_event_authentication(&event, authentication_key)
+            .with_context(|| format!("authenticate event {}", index + 1))?;
+        if event.run_class == "operator" {
+            if authenticated {
+                authenticated_operator_event_count += 1;
+            } else {
+                unauthenticated_operator_event_count += 1;
+            }
+        }
         let process_id = event.process_run_identifier_sha256.clone();
         if event.event_type == "process_start" {
+            validate_process_start_predecessor(&event, event_count, &prefix_hasher)?;
             anyhow::ensure!(
                 !segments.contains_key(&process_id),
                 "duplicate process-start segment"
@@ -187,6 +302,11 @@ pub fn summarize_bytes(
                 },
             );
         } else {
+            anyhow::ensure!(
+                event.predecessor_segment_sha256.is_none()
+                    && event.predecessor_disposition.is_none(),
+                "non-start event contains predecessor disposition"
+            );
             let segment = segments
                 .get_mut(&process_id)
                 .context("event has no process-start segment")?;
@@ -240,6 +360,9 @@ pub fn summarize_bytes(
             window_end =
                 Some(window_end.map_or(event.time_unix_ms, |value| value.max(event.time_unix_ms)));
         }
+        previous_event_sha256.clone_from(&event.event_body_sha256);
+        prefix_hasher.update(line);
+        prefix_hasher.update(b"\n");
         event_count += 1;
     }
     let span_ms = window_end
@@ -264,6 +387,9 @@ pub fn summarize_bytes(
     if non_ci_requests != 0 {
         blockers.push("non_ci_legacy_usage_nonzero".into());
     }
+    if unauthenticated_operator_event_count != 0 {
+        blockers.push("operator_event_authentication_unverified".into());
+    }
     if segments.is_empty() {
         blockers.push("process_segments_missing".into());
     }
@@ -282,12 +408,9 @@ pub fn summarize_bytes(
     if !continuous_coverage_declared {
         blockers.push("continuous_operator_coverage_unproven".into());
     }
-    // The exact-source writer now acknowledges each append and sync_data call,
-    // but creating the telemetry directory or its first file is not yet bound
-    // to a parent-directory fsync receipt. A terminal marker alone therefore
-    // cannot promote this stream as crash-durable evidence.
+    // The exact-source writer syncs both the file and captured parent directory,
+    // but a self-produced terminal marker is not an independent shutdown receipt.
     let shutdown_flush_verified = false;
-    blockers.push("telemetry_parent_directory_fsync_unproven".into());
     Ok(LegacyRouteWindowSummary {
         schema: WINDOW_SCHEMA,
         status: if blockers.is_empty() {
@@ -297,6 +420,13 @@ pub fn summarize_bytes(
         },
         producer: "hepta-native-gateway/hepta-legacy-route-window",
         event_file_sha256: format!("{:x}", Sha256::digest(bytes)),
+        source_epoch_sha256: source_epoch_sha,
+        last_event_body_sha256: previous_event_sha256,
+        event_hash_chain_verified: true,
+        authenticated_operator_event_count,
+        unauthenticated_operator_event_count,
+        event_authentication_verified: unauthenticated_operator_event_count == 0
+            && authenticated_operator_event_count > 0,
         promotion_authoritative: false,
         process_stop_marker_observed,
         durable_process_stop_observed,
@@ -321,7 +451,26 @@ pub fn summarize_bytes(
     })
 }
 
-fn validate_binding(event: &Event, head: &str, catalog: &str, now: u64) -> Result<()> {
+pub(crate) fn inspect_append_stream(
+    bytes: &[u8],
+    expected_head: &str,
+    now_unix_ms: u64,
+) -> Result<AppendStreamInspection> {
+    let summary = summarize_bytes(bytes, expected_head, now_unix_ms)?;
+    Ok(AppendStreamInspection {
+        last_event_body_sha256: summary.last_event_body_sha256,
+        process_stop_marker_observed: summary.process_stop_marker_observed,
+    })
+}
+
+fn validate_binding(
+    event: &Event,
+    head: &str,
+    catalog: &str,
+    source_epoch_sha256: &str,
+    previous_event_sha256: &str,
+    now: u64,
+) -> Result<()> {
     anyhow::ensure!(event.schema == EVENT_SCHEMA, "event schema mismatch");
     anyhow::ensure!(
         event.process_class == "hepta_native_gateway",
@@ -344,6 +493,19 @@ fn validate_binding(event: &Event, head: &str, catalog: &str, now: u64) -> Resul
         "catalog binding mismatch"
     );
     anyhow::ensure!(
+        event.source_epoch_sha256 == source_epoch_sha256,
+        "source epoch binding mismatch"
+    );
+    anyhow::ensure!(
+        event.previous_event_sha256 == previous_event_sha256,
+        "event hash chain predecessor mismatch"
+    );
+    anyhow::ensure!(
+        valid_hex(&event.event_body_sha256, 64, 64)
+            && canonical_event_body_sha256(event)? == event.event_body_sha256,
+        "event body digest mismatch"
+    );
+    anyhow::ensure!(
         event.time_unix_ms > 0 && event.time_unix_ms <= now.saturating_add(300_000),
         "invalid or future timestamp"
     );
@@ -363,6 +525,46 @@ fn validate_binding(event: &Event, head: &str, catalog: &str, now: u64) -> Resul
     Ok(())
 }
 
+fn verify_event_authentication(event: &Event, key: Option<&[u8]>) -> Result<bool> {
+    let (Some(key_id), Some(tag), Some(key)) = (
+        event.authentication_key_id_sha256.as_deref(),
+        event.event_hmac_sha256.as_deref(),
+        key,
+    ) else {
+        anyhow::ensure!(
+            event.authentication_key_id_sha256.is_none() && event.event_hmac_sha256.is_none(),
+            "partial event authentication envelope"
+        );
+        return Ok(false);
+    };
+    anyhow::ensure!(
+        key.len() == 32,
+        "telemetry event authentication key must be 32 bytes"
+    );
+    anyhow::ensure!(
+        key_id == format!("{:x}", Sha256::digest(key)),
+        "event authentication key id mismatch"
+    );
+    anyhow::ensure!(valid_hex(tag, 64, 64), "invalid event authentication tag");
+    let tag_bytes = decode_sha256_hex(tag)?;
+    let mut mac = HmacSha256::new_from_slice(key).context("initialize telemetry event HMAC")?;
+    mac.update(EVENT_AUTHENTICATION_DOMAIN);
+    mac.update(event.event_body_sha256.as_bytes());
+    mac.verify_slice(&tag_bytes)
+        .map_err(|_| anyhow::anyhow!("event authentication tag mismatch"))?;
+    Ok(true)
+}
+
+fn decode_sha256_hex(value: &str) -> Result<[u8; 32]> {
+    anyhow::ensure!(valid_hex(value, 64, 64), "invalid SHA-256 hex");
+    let mut decoded = [0_u8; 32];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        let pair = std::str::from_utf8(pair).context("decode SHA-256 hex pair")?;
+        decoded[index] = u8::from_str_radix(pair, 16).context("parse SHA-256 hex pair")?;
+    }
+    Ok(decoded)
+}
+
 fn validate_lifecycle(event: &Event) -> Result<()> {
     anyhow::ensure!(
         event.route_key.is_none() && event.route_state.is_none() && event.consumer_class.is_none(),
@@ -373,6 +575,54 @@ fn validate_lifecycle(event: &Event) -> Result<()> {
         "lifecycle event contains outcome data"
     );
     anyhow::ensure!(event.observation_complete, "lifecycle event is incomplete");
+    Ok(())
+}
+
+fn validate_process_start_predecessor(
+    event: &Event,
+    event_count: usize,
+    prefix_hasher: &Sha256,
+) -> Result<()> {
+    let disposition = event
+        .predecessor_disposition
+        .as_deref()
+        .context("process-start predecessor disposition missing")?;
+    if event_count == 0 {
+        anyhow::ensure!(
+            matches!(
+                disposition,
+                "fresh"
+                    | "quarantined_crashed_segment"
+                    | "rotated_source_epoch"
+                    | "quarantined_invalid_segment"
+            ),
+            "first process-start predecessor disposition invalid"
+        );
+        if disposition == "fresh" {
+            anyhow::ensure!(
+                event.predecessor_segment_sha256.is_none(),
+                "fresh epoch unexpectedly names a predecessor segment"
+            );
+        } else {
+            anyhow::ensure!(
+                event
+                    .predecessor_segment_sha256
+                    .as_deref()
+                    .is_some_and(|value| valid_hex(value, 64, 64)),
+                "rotated/quarantined epoch predecessor digest missing"
+            );
+        }
+    } else {
+        anyhow::ensure!(
+            disposition == "continued_graceful_epoch",
+            "continued process-start disposition invalid"
+        );
+        let expected_prefix = format!("{:x}", prefix_hasher.clone().finalize());
+        anyhow::ensure!(
+            event.predecessor_segment_sha256.as_deref() == Some(expected_prefix.as_str()),
+            "continued process-start predecessor digest mismatch"
+        );
+    }
     Ok(())
 }
 
@@ -487,7 +737,12 @@ mod tests {
             "process_run_identifier_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
             "sequence": sequence, "time_unix_ms": time, "process_class": "hepta_native_gateway",
             "run_class": run_class, "head_sha": "abcdef123456", "catalog_sha": canonical_catalog_sha256(),
+            "source_epoch_sha256": canonical_source_epoch_sha256("abcdef123456", &canonical_catalog_sha256()),
             "source_binding_valid": true, "catalog_binding_valid": true,
+            "previous_event_sha256": EMPTY_EVENT_CHAIN_SHA256,
+            "event_body_sha256": "", "authentication_key_id_sha256": null,
+            "event_hmac_sha256": null, "predecessor_segment_sha256": null,
+            "predecessor_disposition": null,
             "route_key": null, "route_state": null, "consumer_class": null, "preflight": null,
             "http_status": null, "write_result": null, "observation_complete": true,
             "dropped_event_count": 0, "persist_error_count": 0,
@@ -496,14 +751,49 @@ mod tests {
     }
 
     fn encode(events: &[serde_json::Value]) -> Vec<u8> {
-        events
-            .iter()
-            .flat_map(|event| {
-                let mut line = serde_json::to_vec(event).expect("event JSON");
-                line.push(b'\n');
-                line
-            })
-            .collect()
+        encode_with_key(events, None)
+    }
+
+    fn encode_with_key(events: &[serde_json::Value], key: Option<&[u8]>) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut previous = EMPTY_EVENT_CHAIN_SHA256.to_string();
+        for (index, source) in events.iter().enumerate() {
+            let mut event = source.clone();
+            event["previous_event_sha256"] = json!(previous);
+            if event["event_type"] == "process_start" {
+                if index == 0 {
+                    event["predecessor_disposition"] = json!("fresh");
+                } else {
+                    event["predecessor_disposition"] = json!("continued_graceful_epoch");
+                    event["predecessor_segment_sha256"] =
+                        json!(format!("{:x}", Sha256::digest(&bytes)));
+                }
+            }
+            if let Some(key) = key {
+                event["authentication_key_id_sha256"] = json!(format!("{:x}", Sha256::digest(key)));
+            }
+            event["event_body_sha256"] =
+                json!(canonical_event_body_sha256(&event).expect("canonical event body digest"));
+            if let Some(key) = key {
+                let mut mac = HmacSha256::new_from_slice(key).expect("test event HMAC");
+                mac.update(EVENT_AUTHENTICATION_DOMAIN);
+                mac.update(
+                    event["event_body_sha256"]
+                        .as_str()
+                        .expect("event body digest")
+                        .as_bytes(),
+                );
+                event["event_hmac_sha256"] = json!(format!("{:x}", mac.finalize().into_bytes()));
+            }
+            previous = event["event_body_sha256"]
+                .as_str()
+                .expect("event body digest")
+                .to_string();
+            let mut line = serde_json::to_vec(&event).expect("event JSON");
+            line.push(b'\n');
+            bytes.extend(line);
+        }
+        bytes
     }
 
     #[test]
@@ -532,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_zero_use_window_stays_blocked_without_parent_fsync_receipt() {
+    fn complete_zero_use_window_stays_blocked_without_independent_shutdown_and_authentication() {
         let now = 2_000_000_000_000_u64;
         let start = now - 31 * DAY_MS;
         let mut events = vec![event("process_start", 1, start, "operator")];
@@ -558,9 +848,119 @@ mod tests {
         assert_eq!(
             summary.decision.blockers,
             vec![
+                "operator_event_authentication_unverified",
                 "independent_shutdown_durability_receipt_missing",
-                "telemetry_parent_directory_fsync_unproven",
             ]
+        );
+    }
+
+    #[test]
+    fn authenticated_event_chain_verifies_but_does_not_mint_promotion_authority() {
+        let now = 2_000_000_000_000_u64;
+        let start = now - 31 * DAY_MS;
+        let key = [0x5a_u8; 32];
+        let mut events = vec![event("process_start", 1, start, "operator")];
+        for day in 1..=30 {
+            events.push(event(
+                "heartbeat",
+                day + 1,
+                start + day * DAY_MS,
+                "operator",
+            ));
+        }
+        events.push(event("process_stop", 32, now, "operator"));
+        let bytes = encode_with_key(&events, Some(&key));
+        let summary =
+            summarize_bytes_with_authentication_key(&bytes, "abcdef123456", now, Some(&key))
+                .expect("authenticated summary");
+        assert!(summary.event_hash_chain_verified);
+        assert!(summary.event_authentication_verified);
+        assert_eq!(summary.unauthenticated_operator_event_count, 0);
+        assert_eq!(summary.authenticated_operator_event_count, 32);
+        assert!(!summary.promotion_authoritative);
+        assert!(!summary.decision.eligible);
+        assert_eq!(
+            summary.decision.blockers,
+            vec!["independent_shutdown_durability_receipt_missing"]
+        );
+
+        let mut tampered = bytes;
+        let offset = tampered
+            .windows(b"\"event_hmac_sha256\":\"".len())
+            .position(|window| window == b"\"event_hmac_sha256\":\"")
+            .expect("event HMAC field")
+            + b"\"event_hmac_sha256\":\"".len();
+        tampered[offset] = if tampered[offset] == b'a' { b'b' } else { b'a' };
+        assert!(
+            summarize_bytes_with_authentication_key(&tampered, "abcdef123456", now, Some(&key))
+                .is_err()
+        );
+
+        let short_key = [0x5a_u8; 31];
+        let weak_bytes = encode_with_key(&events, Some(&short_key));
+        assert!(
+            summarize_bytes_with_authentication_key(
+                &weak_bytes,
+                "abcdef123456",
+                now,
+                Some(&short_key),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn event_hash_chain_binds_authentication_key_identifier() {
+        let mut unsigned = event("process_start", 1, 2_000_000_000_000, "operator");
+        let unsigned_digest = canonical_event_body_sha256(&unsigned).expect("unsigned digest");
+        unsigned["authentication_key_id_sha256"] = json!("a".repeat(64));
+        let keyed_digest = canonical_event_body_sha256(&unsigned).expect("key-bound digest");
+        assert_ne!(unsigned_digest, keyed_digest);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn authenticated_replay_accepts_only_a_private_canonical_key_file() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+
+        let now = 2_000_000_000_000_u64;
+        let key = [0x5a_u8; 32];
+        let events = [
+            event("process_start", 1, now - DAY_MS, "operator"),
+            event("process_stop", 2, now, "operator"),
+        ];
+        let mut input = tempfile::NamedTempFile::new().expect("event input");
+        input
+            .write_all(&encode_with_key(&events, Some(&key)))
+            .expect("write authenticated events");
+        let mut key_file = tempfile::NamedTempFile::new().expect("authentication key file");
+        key_file
+            .write_all("5a".repeat(32).as_bytes())
+            .expect("write canonical authentication key");
+
+        let summary = summarize_path_with_authentication_key_file(
+            input.path(),
+            "abcdef123456",
+            now,
+            key_file.path(),
+        )
+        .expect("authenticated replay");
+        assert!(summary.event_authentication_verified);
+
+        std::fs::set_permissions(
+            key_file.path(),
+            PermissionsExt::from_mode(0o644),
+        )
+        .expect("widen key file");
+        assert!(
+            summarize_path_with_authentication_key_file(
+                input.path(),
+                "abcdef123456",
+                now,
+                key_file.path(),
+            )
+            .is_err()
         );
     }
 

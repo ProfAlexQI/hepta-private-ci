@@ -221,7 +221,7 @@ mod tests {
             .expect("legacy route telemetry health JSON");
         assert_eq!(
             telemetry["schema"],
-            "hepta_legacy_route_telemetry_health_v2"
+            "hepta_legacy_route_telemetry_health_v3"
         );
         assert_eq!(
             telemetry["enable_env"],
@@ -232,6 +232,11 @@ mod tests {
         assert_eq!(telemetry["summary_producer_available"], true);
         assert_eq!(telemetry["zero_usage_claim_allowed"], false);
         assert_eq!(telemetry["retirement_evidence_ready"], false);
+        assert_eq!(telemetry["exact_source_epoch_rotation_ready"], true);
+        assert_eq!(telemetry["crashed_segment_quarantine_ready"], true);
+        assert_eq!(telemetry["telemetry_parent_directory_fsync_verified"], true);
+        assert_eq!(telemetry["event_authentication_plumbing_ready"], true);
+        assert_eq!(telemetry["event_signature_or_mac_configured"], false);
         assert!(
             report
                 .entries
