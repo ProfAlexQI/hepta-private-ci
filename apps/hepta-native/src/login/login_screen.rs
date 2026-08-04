@@ -573,6 +573,17 @@ impl Widget for LoginScreen {
 
 impl MatchEvent for LoginScreen {
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
+        // The Window widget republishes resize/rotation as a WindowAction.
+        // Mobile descendants do not consistently receive the raw platform
+        // WindowGeomChange event, so consume the widget action as well.
+        for action in actions {
+            if let WindowAction::WindowGeomChange(change) = action.as_widget_action().cast() {
+                self.window_size = change.new_geom.inner_size;
+                self.apply_responsive_layout(cx, true);
+                break;
+            }
+        }
+
         let login_button = self.view.button(cx, ids!(login_button));
         let signup_button = self.view.button(cx, ids!(signup_button));
         let user_id_input = self.view.text_input(cx, ids!(user_id_input));

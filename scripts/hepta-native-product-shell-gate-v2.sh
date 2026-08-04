@@ -424,6 +424,9 @@ login_compact_touch_contract = {
   "ime_compaction" => login_provider_mark_geometry.include?("VirtualKeyboardEvent::WillShow") &&
     login_provider_mark_geometry.include?("marketing_title") &&
     login_provider_mark_geometry.include?("privacy_panel"),
+  "window_action_compaction" =>
+    login_provider_mark_geometry.include?("WindowAction::WindowGeomChange") &&
+    login_provider_mark_geometry.scan(/apply_responsive_layout\(cx, true\)/).length >= 2,
   "safe_area_edges" => login_provider_mark_geometry.include?("SAFE_INSET_PAD_BOTTOM") &&
     login_provider_mark_geometry.include?("SAFE_INSET_PAD_LEFT") &&
     login_provider_mark_geometry.include?("SAFE_INSET_PAD_RIGHT"),
