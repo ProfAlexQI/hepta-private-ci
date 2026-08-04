@@ -400,7 +400,7 @@ normalize_child_report() {
 }
 normalize_child_report "$SYNC_REPORT" 3 hepta-native-robrix-upstream-sync-check upstream_sync_report_invalid
 normalize_child_report "$PRODUCT_REPORT" 3 hepta-native-upstream-first-product-shell-gate native_product_report_invalid
-normalize_child_report "$TOKEN_REPORT" 2 hepta-ui-light-glass-token-sync token_sync_report_invalid
+normalize_child_report "$TOKEN_REPORT" 3 hepta-ui-light-glass-token-sync token_sync_report_invalid
 normalize_child_report "$FEATURE_REPORT" 1 hepta-native-feature-matrix-gate native_feature_report_invalid
 normalize_child_report "$PACKAGE_REPORT" 1 hepta-native-current-package-gate native_package_report_invalid
 normalize_child_report "$BROWSER_REPORT" 1 hepta-control-ui-browser-smoke-current-wrapper control_browser_report_invalid
@@ -577,7 +577,7 @@ gate_bound() {
 
 sync_bound=false; gate_bound "$SYNC_REPORT" 3 hepta-native-robrix-upstream-sync-check && sync_bound=true
 product_bound=false; gate_bound "$PRODUCT_REPORT" 3 hepta-native-upstream-first-product-shell-gate && product_bound=true
-token_bound=false; gate_bound "$TOKEN_REPORT" 2 hepta-ui-light-glass-token-sync && token_bound=true
+token_bound=false; gate_bound "$TOKEN_REPORT" 3 hepta-ui-light-glass-token-sync && token_bound=true
 feature_bound=false; gate_bound "$FEATURE_REPORT" 1 hepta-native-feature-matrix-gate && feature_bound=true
 package_bound=false; gate_bound "$PACKAGE_REPORT" 1 hepta-native-current-package-gate && package_bound=true
 mobile_bound=false; gate_bound "$MOBILE_REPORT" 1 hepta-native-mobile-readiness-gate && mobile_bound=true
