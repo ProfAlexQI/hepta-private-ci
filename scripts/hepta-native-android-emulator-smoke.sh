@@ -99,6 +99,7 @@ if [[ "$CONTRACT_ONLY" == true ]]; then
           portrait_landscape_ime_png_sha256:true,
           dumpsys_window_rotation_and_logical_geometry_ready:true,
           image_content_probe_ready:true,
+          settled_full_surface_capture:true,
           system_bar_contrast_probe_ready:true,
           system_bar_contrast_top_and_bottom_ready:true,
           system_bar_contrast_replayable_evidence_ready:true,
@@ -561,7 +562,7 @@ capture_png() {
     "$ADB" -s "$ADB_SERIAL" exec-out screencap -p >"$path"
     if [[ -s "$path" ]] \
       && probe="$($ROOT_DIR/scripts/hepta-image-content-probe --image "$path" 2>/dev/null)" \
-      && jq -e '.ready == true' >/dev/null <<<"$probe"; then
+      && jq -e '.ready == true and .sample.non_black_ratio >= 0.9' >/dev/null <<<"$probe"; then
       width="$(sips -g pixelWidth "$path" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
       height="$(sips -g pixelHeight "$path" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
       if [[ "$wanted" == portrait && "$width" -lt "$height" ]] || [[ "$wanted" == landscape && "$width" -gt "$height" ]]; then

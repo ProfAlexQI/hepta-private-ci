@@ -198,12 +198,15 @@ jq -e '
   and .requirements.exit_cleanup_preserves_original_status == true
   and .requirements.interrupt_cleanup_restore_and_readback == true
   and .requirements.cleanup_failure_receipt == true
+  and .requirements.settled_full_surface_capture == true
   and .requirements.system_bar_contrast_probe_ready == true
   and .requirements.emulator_only_power_simulation_never_real_device_claim == true
   and (.hard_boundaries | to_entries | all(.value == false))
   and (.forbidden_actions | to_entries | all(.value == false))
   and .external_side_effects_performed == false
 ' >/dev/null <<<"$contract"
+
+grep -Fq ".sample.non_black_ratio >= 0.9" "$PRODUCER"
 
 template_manifest_predicate() {
   jq -L "$ROOT_DIR/scripts/lib" -e '
