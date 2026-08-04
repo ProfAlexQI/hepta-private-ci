@@ -19,7 +19,7 @@ make_fixture() {
         system_bar = y < 10 || y >= height - 10
         icon = (y.between?(2, 7) && x.between?(88, 111)) ||
           (bottom_icon && y.between?(393, 396) && x.between?(68, 131))
-        value = icon ? 245 : (system_bar ? 20 : 230)
+        value = icon ? 24 : (system_bar ? 238 : 230)
         pixels << value.chr << value.chr << value.chr
       end
     end
@@ -64,7 +64,7 @@ mv -f "$TEST_DIR/evidence-original.json" "$TEST_DIR/evidence.json"
 
 make_fixture "$TEST_DIR/bad-bottom.ppm" "$TEST_DIR/bad-bottom.png" false
 if "$PROBE" --image "$TEST_DIR/bad-bottom.png" --output "$TEST_DIR/bad-bottom.json" >/dev/null 2>&1; then
-  echo 'contrast probe accepted a navigation bar without light icon pixels' >&2
+  echo 'contrast probe accepted a navigation bar without dark icon pixels' >&2
   exit 1
 fi
 jq -e '.ready == false and .regions.status_bar.ready == true and .regions.navigation_bar.ready == false' \

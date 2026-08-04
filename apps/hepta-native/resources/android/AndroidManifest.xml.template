@@ -41,7 +41,7 @@
     <application
         android:label="{label}"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@style/MakepadAppTheme"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:usesCleartextTraffic="false"
@@ -60,7 +60,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustNothing|stateUnchanged"
-            android:theme="@style/MakepadLaunchTheme">
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -49,10 +49,10 @@ REPORT="$(ruby -rjson -rdigest -e '
   x1 = (width * (1.0 - ((1.0 - horizontal_fraction) / 2.0))).ceil
   step = [1, (width / 720.0).floor].max
   thresholds = {
-    max_background_median_luma: 80,
-    min_light_icon_luma: 160,
-    min_luma_span: 96,
-    min_light_pixel_ratio: 0.001
+    min_background_median_luma: 176,
+    max_dark_icon_luma: 112,
+    min_luma_span: 72,
+    min_dark_pixel_ratio: 0.001
   }
 
   sample_region = lambda do |name, edge|
@@ -71,14 +71,14 @@ REPORT="$(ruby -rjson -rdigest -e '
     luma_min = lumas.first
     luma_max = lumas.last
     span = luma_max - luma_min
-    light_ratio = lumas.count { |value| value >= thresholds[:min_light_icon_luma] }.fdiv(lumas.length)
-    ready = median <= thresholds[:max_background_median_luma] &&
-      luma_max >= thresholds[:min_light_icon_luma] &&
+    dark_ratio = lumas.count { |value| value <= thresholds[:max_dark_icon_luma] }.fdiv(lumas.length)
+    ready = median >= thresholds[:min_background_median_luma] &&
+      luma_min <= thresholds[:max_dark_icon_luma] &&
       span >= thresholds[:min_luma_span] &&
-      light_ratio >= thresholds[:min_light_pixel_ratio]
+      dark_ratio >= thresholds[:min_dark_pixel_ratio]
     {
       edge: edge,
-      requested_icon_tint: "light",
+      requested_icon_tint: "dark",
       ready: ready,
       sample: {
         vertical_fraction: vertical_fraction,
@@ -89,7 +89,7 @@ REPORT="$(ruby -rjson -rdigest -e '
         luma_min: luma_min,
         luma_max: luma_max,
         luma_span: span,
-        light_pixel_ratio: light_ratio
+        dark_pixel_ratio: dark_ratio
       },
       thresholds: thresholds
     }
@@ -103,7 +103,7 @@ REPORT="$(ruby -rjson -rdigest -e '
     kind: "hepta-android-system-bar-contrast-probe",
     status: ready ? "ready" : "not_ready",
     ready: ready,
-    requested_icon_tint: "light",
+    requested_icon_tint: "dark",
     image: {
       path: File.expand_path(image_path),
       sha256: Digest::SHA256.file(image_path).hexdigest,

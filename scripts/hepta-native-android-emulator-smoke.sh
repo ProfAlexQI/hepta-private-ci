@@ -585,7 +585,7 @@ PORTRAIT_PROBE_PATH="$EVIDENCE_DIR/screenshot-portrait.content-probe.json"
 capture_png portrait portrait "$PORTRAIT_PATH" "$PORTRAIT_PROBE_PATH"
 STATUS_BAR_CONTRAST_PATH="$EVIDENCE_DIR/screenshot-portrait.system-bar-contrast.json"
 "$SYSTEM_BAR_CONTRAST_PROBE" --image "$PORTRAIT_PATH" --output "$STATUS_BAR_CONTRAST_PATH" \
-  || { echo "error: Android top/bottom system-bar light-icon contrast probe failed" >&2; exit 1; }
+  || { echo "error: Android top/bottom light-surface dark-icon contrast probe failed" >&2; exit 1; }
 PORTRAIT_TEMPLATE_PATH="$LOGIN_TEMPLATE_DIR/portrait.png"
 PORTRAIT_TEMPLATE_REPORT_PATH="$EVIDENCE_DIR/screenshot-portrait.login-template-probe.json"
 "$ROOT_DIR/scripts/hepta-android-login-template-probe" \

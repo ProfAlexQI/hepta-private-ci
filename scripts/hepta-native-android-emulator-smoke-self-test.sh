@@ -359,11 +359,11 @@ jq -n \
     login_surface_template:{manifest_path:$manifest,manifest_sha256:$manifest_sha,all_states_ready:true},
     visual_inspection:{
       system_bar_contrast:{
-        schema_version:2,kind:"hepta-android-system-bar-contrast-probe",status:"ready",ready:true,requested_icon_tint:"light",
+        schema_version:2,kind:"hepta-android-system-bar-contrast-probe",status:"ready",ready:true,requested_icon_tint:"dark",
         evidence_path:"/tmp/status-bar.json",evidence_sha256:$sha,image:{path:"/tmp/portrait.png",sha256:$sha,width:1080,height:2400},
         regions:{
-          status_bar:{edge:"top",requested_icon_tint:"light",ready:true,sample:{vertical_fraction:0.025,horizontal_fraction:0.96,pixels:51840,step:1,background_median_luma:27,luma_min:11,luma_max:242,luma_span:231,light_pixel_ratio:0.01},thresholds:{max_background_median_luma:80,min_light_icon_luma:160,min_luma_span:96,min_light_pixel_ratio:0.001}},
-          navigation_bar:{edge:"bottom",requested_icon_tint:"light",ready:true,sample:{vertical_fraction:0.025,horizontal_fraction:0.96,pixels:51840,step:1,background_median_luma:24,luma_min:9,luma_max:240,luma_span:231,light_pixel_ratio:0.02},thresholds:{max_background_median_luma:80,min_light_icon_luma:160,min_luma_span:96,min_light_pixel_ratio:0.001}}
+          status_bar:{edge:"top",requested_icon_tint:"dark",ready:true,sample:{vertical_fraction:0.025,horizontal_fraction:0.96,pixels:51840,step:1,background_median_luma:238,luma_min:18,luma_max:248,luma_span:230,dark_pixel_ratio:0.01},thresholds:{min_background_median_luma:176,max_dark_icon_luma:112,min_luma_span:72,min_dark_pixel_ratio:0.001}},
+          navigation_bar:{edge:"bottom",requested_icon_tint:"dark",ready:true,sample:{vertical_fraction:0.025,horizontal_fraction:0.96,pixels:51840,step:1,background_median_luma:238,luma_min:16,luma_max:248,luma_span:232,dark_pixel_ratio:0.02},thresholds:{min_background_median_luma:176,max_dark_icon_luma:112,min_luma_span:72,min_dark_pixel_ratio:0.001}}
         }
       },
       portrait:{path:"/tmp/portrait.png",sha256:$sha,width:1080,height:2400,content_probe:{ready:true},login_template_probe:{ready:true},login_surface_template_ready:true},
@@ -473,7 +473,7 @@ grep -Fq 'FINAL_QEMU_AVD_NAME' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'process_start_time_ticks' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq -- '--extended-lab' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'hepta-android-system-bar-contrast-probe' scripts/hepta-native-android-emulator-smoke.sh
-grep -Fq 'SystemBarAppearance::LightIcons' apps/hepta-native/src/app.rs
+grep -Fq 'SystemBarAppearance::DarkIcons' apps/hepta-native/src/app.rs
 grep -Fq 'restore_emulator_state || LAB_RESTORE_COMMAND_READY=false' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'cmd battery reset' "$STATE_HELPER"
 grep -Fq 'frozen battery state is not exactly restorable' "$STATE_HELPER"
