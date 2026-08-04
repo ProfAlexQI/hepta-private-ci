@@ -474,6 +474,7 @@ SESSION_PROBE_READBACK="$($ADB -s "$ADB_SERIAL" exec-out cat "$SESSION_PROBE_PAT
 source "$ROOT_DIR/scripts/hepta-native-android-emulator-lab-state-v1.sh"
 ORIGINAL_ACCELEROMETER="$($ADB -s "$ADB_SERIAL" shell settings get system accelerometer_rotation | tr -d '\r')"
 ORIGINAL_ROTATION="$($ADB -s "$ADB_SERIAL" shell settings get system user_rotation | tr -d '\r')"
+ORIGINAL_SHOW_IME_WITH_HARD_KEYBOARD="$($ADB -s "$ADB_SERIAL" shell settings get secure show_ime_with_hard_keyboard | tr -d '\r')"
 EMULATOR_STATE_SNAPSHOT=""
 if [[ "$EXTENDED_LAB" == true ]]; then
   EMULATOR_STATE_SNAPSHOT="$(hepta_android_emulator_lab_state_snapshot "$ADB" "$ADB_SERIAL")"
@@ -489,6 +490,7 @@ fi
 restore_emulator_state() {
   local failed=false
   "$ADB" -s "$ADB_SERIAL" shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || failed=true
+  hepta_android_restore_setting "$ADB" "$ADB_SERIAL" secure show_ime_with_hard_keyboard "$ORIGINAL_SHOW_IME_WITH_HARD_KEYBOARD" >/dev/null 2>&1 || failed=true
   if [[ "$EXTENDED_LAB" == true ]]; then
     hepta_android_emulator_lab_state_restore "$ADB" "$ADB_SERIAL" "$EMULATOR_STATE_SNAPSHOT" >/dev/null 2>&1 || failed=true
   else
@@ -498,6 +500,7 @@ restore_emulator_state() {
   [[ "$failed" == false ]]
 }
 android_emulator_state_readback_ready() {
+  [[ "$($ADB -s "$ADB_SERIAL" shell settings get secure show_ime_with_hard_keyboard | tr -d '\r')" == "$ORIGINAL_SHOW_IME_WITH_HARD_KEYBOARD" ]] || return 1
   if [[ "$EXTENDED_LAB" == true ]]; then
     [[ "$(hepta_android_emulator_lab_state_snapshot "$ADB" "$ADB_SERIAL" | jq -Sc .)" == "$(jq -Sc . <<<"$EMULATOR_STATE_SNAPSHOT")" ]]
   else
@@ -625,6 +628,9 @@ LANDSCAPE_TEMPLATE_REPORT_PATH="$EVIDENCE_DIR/screenshot-landscape.login-templat
 
 "$ADB" -s "$ADB_SERIAL" shell settings put system user_rotation 0
 wait_for_orientation portrait "$EVIDENCE_DIR/dumpsys-window-displays-ime.txt"
+"$ADB" -s "$ADB_SERIAL" shell settings put secure show_ime_with_hard_keyboard 1
+[[ "$($ADB -s "$ADB_SERIAL" shell settings get secure show_ime_with_hard_keyboard | tr -d '\r')" == 1 ]] \
+  || { echo "error: Android emulator could not enable the software IME with a host keyboard" >&2; exit 1; }
 PORTRAIT_WIDTH="$(sips -g pixelWidth "$PORTRAIT_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
 PORTRAIT_HEIGHT="$(sips -g pixelHeight "$PORTRAIT_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
 TAP_X=$((PORTRAIT_WIDTH / 2))
