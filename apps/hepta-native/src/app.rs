@@ -22,6 +22,11 @@ use crate::{
     }
 };
 use crate::shared::file_upload_modal::{FileUploadModalWidgetRefExt, FileUploadModalAction};
+#[cfg(feature = "hepta-bridge")]
+use crate::hepta_bridge::{
+    BackendAuthenticatedBridgeActivation, BridgeAdapterError, HeptaBridge,
+    HeptaBridgeLifecycleEvent, LiveSnapshotHttpExecutor,
+};
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -161,6 +166,11 @@ pub struct App {
     /// The top-level app state, shared across various parts of the app.
     #[rust] app_state: AppState,
     #[rust] lifecycle: AppLifecycle,
+    /// Disabled-by-default Hepta facade owned by the real App lifecycle. It is
+    /// never activated from a Matrix action or process environment.
+    #[cfg(feature = "hepta-bridge")]
+    #[rust]
+    hepta_bridge: HeptaBridge,
     #[cfg(feature = "developer-diagnostics")]
     #[rust]
     diagnostic_capture_timer: Timer,
@@ -171,6 +181,176 @@ pub struct App {
     /// This can be either a room we're waiting to join, or one we're waiting to be invited to.
     /// Also includes an optional room ID to be closed once the awaited room has been loaded.
     #[rust] waiting_to_navigate_to_room: Option<(BasicRoomDetails, Option<OwnedRoomId>)>,
+}
+
+#[cfg(feature = "hepta-bridge")]
+impl App {
+    /// Reserved in-process entry for a future authenticated backend
+    /// integration. Current Matrix `LoginSuccess` actions have no such
+    /// activation material and therefore cannot call this method.
+    #[allow(dead_code)] // Intentionally unreachable until the backend proof issuer lands.
+    pub(crate) fn activate_hepta_bridge_from_authenticated_backend<E>(
+        &mut self,
+        activation: BackendAuthenticatedBridgeActivation<E>,
+    ) -> Result<(), BridgeAdapterError>
+    where
+        E: LiveSnapshotHttpExecutor + 'static,
+    {
+        let matrix_user_id = current_user_id();
+        activate_hepta_bridge_for_app_session(
+            &mut self.hepta_bridge,
+            self.app_state.logged_in,
+            matrix_user_id.as_ref().map(|user_id| user_id.as_str()),
+            activation,
+        )
+    }
+}
+
+#[cfg(feature = "hepta-bridge")]
+fn activate_hepta_bridge_for_app_session<E>(
+    bridge: &mut HeptaBridge,
+    app_logged_in: bool,
+    current_matrix_user_id: Option<&str>,
+    activation: BackendAuthenticatedBridgeActivation<E>,
+) -> Result<(), BridgeAdapterError>
+where
+    E: LiveSnapshotHttpExecutor + 'static,
+{
+    // A failed rebind may never leave an executor from an older session live.
+    bridge.disable();
+    if !app_logged_in {
+        return Err(BridgeAdapterError::AppSessionNotAuthenticated);
+    }
+    let current_matrix_user_id = current_matrix_user_id
+        .filter(|user_id| !user_id.trim().is_empty())
+        .ok_or(BridgeAdapterError::AppSessionIdentityUnavailable)?;
+    if activation.matrix_user_id() != current_matrix_user_id {
+        return Err(BridgeAdapterError::AppSessionIdentityMismatch);
+    }
+    bridge.activate_from_authenticated_backend(activation)
+}
+
+#[cfg(all(test, feature = "hepta-bridge"))]
+mod hepta_bridge_app_activation_tests {
+    use super::*;
+    use crate::hepta_bridge::{
+        AuthenticatedLiveBridgeBinding, BridgeCapabilities, LiveSnapshotGet,
+        LiveSnapshotHttpResponse,
+    };
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    const MATRIX_USER_ID: &str = "@alex:example.test";
+    const ENDPOINT: &str = "http://127.0.0.1:47821/api/hepta-native-bridge/v1/snapshot";
+    const RUN_IDENTIFIER_SHA256: &str =
+        "7777777777777777777777777777777777777777777777777777777777777777";
+
+    struct DropProbeExecutor {
+        binding: AuthenticatedLiveBridgeBinding,
+        drops: Arc<AtomicUsize>,
+    }
+
+    impl Drop for DropProbeExecutor {
+        fn drop(&mut self) {
+            self.drops.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    impl LiveSnapshotHttpExecutor for DropProbeExecutor {
+        fn authenticated_binding(&self) -> &AuthenticatedLiveBridgeBinding {
+            &self.binding
+        }
+
+        fn execute_get(
+            &mut self,
+            _request: &LiveSnapshotGet,
+        ) -> Result<LiveSnapshotHttpResponse, BridgeAdapterError> {
+            Err(BridgeAdapterError::TransportUnavailable)
+        }
+    }
+
+    fn activation(
+        matrix_user_id: &str,
+        drops: Arc<AtomicUsize>,
+    ) -> BackendAuthenticatedBridgeActivation<DropProbeExecutor> {
+        let binding = AuthenticatedLiveBridgeBinding::try_new(
+            "session-7".into(),
+            RUN_IDENTIFIER_SHA256,
+            3,
+        )
+        .unwrap();
+        BackendAuthenticatedBridgeActivation::for_test(
+            matrix_user_id,
+            ENDPOINT,
+            true,
+            true,
+            DropProbeExecutor { binding, drops },
+        )
+    }
+
+    #[test]
+    fn app_activation_requires_logged_in_state_and_current_identity() {
+        for (logged_in, current_user_id, expected) in [
+            (
+                false,
+                Some(MATRIX_USER_ID),
+                BridgeAdapterError::AppSessionNotAuthenticated,
+            ),
+            (
+                true,
+                None,
+                BridgeAdapterError::AppSessionIdentityUnavailable,
+            ),
+            (
+                true,
+                Some("@other:example.test"),
+                BridgeAdapterError::AppSessionIdentityMismatch,
+            ),
+        ] {
+            let drops = Arc::new(AtomicUsize::new(0));
+            let mut bridge = HeptaBridge::default();
+
+            let result = activate_hepta_bridge_for_app_session(
+                &mut bridge,
+                logged_in,
+                current_user_id,
+                activation(MATRIX_USER_ID, Arc::clone(&drops)),
+            );
+
+            assert_eq!(result, Err(expected));
+            assert_eq!(bridge.capabilities(), BridgeCapabilities::default());
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[test]
+    fn failed_app_rebind_drops_old_and_attempted_executors() {
+        let old_drops = Arc::new(AtomicUsize::new(0));
+        let attempted_drops = Arc::new(AtomicUsize::new(0));
+        let mut bridge = HeptaBridge::default();
+        activate_hepta_bridge_for_app_session(
+            &mut bridge,
+            true,
+            Some(MATRIX_USER_ID),
+            activation(MATRIX_USER_ID, Arc::clone(&old_drops)),
+        )
+        .unwrap();
+        assert!(bridge.capabilities().snapshot);
+
+        let result = activate_hepta_bridge_for_app_session(
+            &mut bridge,
+            true,
+            Some(MATRIX_USER_ID),
+            activation("@other:example.test", Arc::clone(&attempted_drops)),
+        );
+
+        assert_eq!(result, Err(BridgeAdapterError::AppSessionIdentityMismatch));
+        assert_eq!(bridge.capabilities(), BridgeCapabilities::default());
+        assert_eq!(old_drops.load(Ordering::SeqCst), 1);
+        assert_eq!(attempted_drops.load(Ordering::SeqCst), 1);
+    }
 }
 
 impl ScriptHook for App {
@@ -192,6 +372,12 @@ impl ScriptHook for App {
 
 impl MatchEvent for App {
     fn handle_startup(&mut self, cx: &mut Cx) {
+        // Android draws a dark native status/navigation strip around the light
+        // Hepta render pass. Keep the platform chrome legible instead of
+        // relying on `Auto`, which only sees the light pass clear color.
+        #[cfg(target_os = "android")]
+        cx.set_system_bar_appearance(SystemBarAppearance::LightIcons);
+
         // only init logging/tracing once.
         // `matrix_sdk::latest_events` emits a noisy per-room "Timer ... finished"
         // INFO line on every load; silence it by default. RUST_LOG still wins
@@ -291,6 +477,10 @@ impl MatchEvent for App {
 
             match action.downcast_ref() {
                 Some(LogoutAction::LogoutSuccess) => {
+                    #[cfg(feature = "hepta-bridge")]
+                    self.hepta_bridge.handle_app_lifecycle_event(
+                        HeptaBridgeLifecycleEvent::LogoutSuccess,
+                    );
                     self.app_state.logged_in = false;
                     self.ui.modal(cx, ids!(logout_confirm_modal)).close(cx);
                     self.update_login_visibility(cx);
@@ -298,6 +488,10 @@ impl MatchEvent for App {
                     continue;
                 }
                 Some(LogoutAction::ClearAppState { on_clear_appstate }) =>  {
+                    #[cfg(feature = "hepta-bridge")]
+                    self.hepta_bridge.handle_app_lifecycle_event(
+                        HeptaBridgeLifecycleEvent::ClearAppState,
+                    );
                     // Clear user profile cache, invited_rooms timeline states
                     clear_all_app_state(cx);
                     // Reset all app state to its default.
@@ -310,6 +504,13 @@ impl MatchEvent for App {
 
             if let Some(LoginAction::LoginSuccess) = action.downcast_ref() {
                 log!("Received LoginAction::LoginSuccess, hiding login view.");
+                // Matrix login carries no authoritative Hepta executor/session
+                // binding. Keep the bridge disabled until the explicit
+                // in-process backend activation entry receives one.
+                #[cfg(feature = "hepta-bridge")]
+                self.hepta_bridge.handle_app_lifecycle_event(
+                    HeptaBridgeLifecycleEvent::MatrixLoginSuccessWithoutBackendBinding,
+                );
                 self.app_state.logged_in = true;
                 self.update_login_visibility(cx);
                 self.ui.redraw(cx);
@@ -320,6 +521,10 @@ impl MatchEvent for App {
             // by `handle_session_changes`), navigate back to the login screen.
             // When not yet logged in, the login_screen widget handles displaying the failure modal.
             if let Some(LoginAction::LoginFailure(_)) = action.downcast_ref() {
+                #[cfg(feature = "hepta-bridge")]
+                self.hepta_bridge.handle_app_lifecycle_event(
+                    HeptaBridgeLifecycleEvent::LoginFailure,
+                );
                 if self.app_state.logged_in {
                     log!("Received LoginAction::LoginFailure while logged in; showing login screen.");
                     self.app_state.logged_in = false;

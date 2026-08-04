@@ -118,6 +118,7 @@ grep -Fq -- 'HEPTA_NATIVE_ANDROID_EMULATOR_LIVE_READBACK' scripts/hepta-native-m
 grep -Fq -- 'independently_verified_claims.unauthenticated_login_surface_rotation == false' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin "$ANDROID_EMULATOR_LIVE_READBACK_PATH"' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'reason:"trusted_live_readback_failed"' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- '"$ANDROID_SYSTEM_BAR_CONTRAST_REPLAY_VERIFY_PATH" --receipt "$ANDROID_EMULATOR_RECEIPT"' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'android_emulator_login_visual_ready=true' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'android_emulator_login_rotation_ready=true' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'android_emulator_login_ime_ready=true' scripts/hepta-native-mobile-readiness-gate.sh

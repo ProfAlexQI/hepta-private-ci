@@ -282,8 +282,9 @@ mobile_widget_tree_markers = [
 mobile_runtime_markers = [
   "RoomsListAction::Selected(selected_room) if !effective_is_desktop(cx) => {",
   "self.push_selected_screen_view(cx, app_state, selected_room);",
-  "stack_navigation.create_view_from_template(cx, id!(RoomScreenStackNavigationView))",
-  ".room_screen(cx, ids!(room_screen)) .set_displayed_room(cx, room_name_id, thread_root);",
+  ".create_view_from_template(cx, id!(RoomScreenStackNavigationView))",
+  ".room_screen(cx, ids!(room_screen))",
+  ".set_displayed_room(cx, room_name_id, thread_root);",
   "stack_navigation.push(cx, view_id);",
 ].freeze
 
@@ -331,6 +332,58 @@ retired_ghost_modules = {
 end
 retired_ghost_modules_ready = retired_ghost_modules.values.all? { |check| check["ready"] }
 
+runtime_asset_reference_source = Dir.glob(app_dir.join("src/**/*.rs").to_s)
+  .sort
+  .map { |source_path| File.binread(source_path) }
+  .join("\n")
+retired_raster_assets = [
+  "packaging/Robrix macOS dmg background.png",
+  "resources/robrix_logo_alpha.png",
+  "resources/img/apple.png",
+  "resources/img/facebook.png",
+  "resources/img/github.png",
+  "resources/img/gitlab.png",
+  "resources/img/google.png",
+  "resources/img/x.png",
+].to_h do |relative_path|
+  basename = File.basename(relative_path)
+  path_absent = !app_dir.join(relative_path).file?
+  runtime_reference_absent = !runtime_asset_reference_source.include?(basename)
+  [relative_path, {
+    "path_absent" => path_absent,
+    "runtime_reference_absent" => runtime_reference_absent,
+    "ready" => path_absent && runtime_reference_absent,
+  }]
+end
+retired_raster_assets_ready = retired_raster_assets.values.all? { |check| check["ready"] }
+
+login_provider_mark_geometry_source = app_dir.join("src/login/login_screen.rs")
+login_provider_mark_attribution_source = app_dir.join("licenses/ATTRIBUTIONS.md")
+debian_copyright_source = app_dir.join("packaging/debian-copyright")
+login_provider_mark_geometry = login_provider_mark_geometry_source.file? ? login_provider_mark_geometry_source.binread : ""
+login_provider_mark_attribution = login_provider_mark_attribution_source.file? ? login_provider_mark_attribution_source.binread : ""
+debian_copyright = debian_copyright_source.file? ? debian_copyright_source.binread : ""
+inline_provider_marks_attribution = {
+  "login_source_declares_exact_provenance" =>
+    login_provider_mark_geometry.include?("Simple Icons") &&
+    login_provider_mark_geometry.include?("14.15.0 (CC0-1.0)"),
+  "source_attribution_names_all_inline_marks" =>
+    login_provider_mark_attribution.include?("Apple, Facebook, GitHub, GitLab, Google, and X") &&
+    login_provider_mark_attribution.include?("Simple Icons 14.15.0") &&
+    login_provider_mark_attribution.include?("CC0-1.0") &&
+    login_provider_mark_attribution.include?("trademarks of their respective owners"),
+  "debian_binary_stanza_declares_dual_license" =>
+    debian_copyright.include?("Files: usr/bin/hepta-native") &&
+    debian_copyright.include?("Simple Icons contributors") &&
+    debian_copyright.include?("License: MIT and CC0-1.0") &&
+    debian_copyright.include?("Simple Icons 14.15.0 under\n CC0-1.0") &&
+    debian_copyright.include?("this notice grants no trademark rights"),
+  "debian_cc0_license_text_present" =>
+    debian_copyright.include?("License: CC0-1.0") &&
+    debian_copyright.include?("creativecommons.org/publicdomain/zero/1.0/legalcode"),
+}
+inline_provider_marks_attribution_ready = inline_provider_marks_attribution.values.all?
+
 shell_relationships = {
   "desktop_owns_room_screen" => contains_marker.call("src/home/main_desktop_ui.rs", "RoomScreen"),
   "mobile_owns_room_screen" => mobile_widget_tree_ready,
@@ -353,10 +406,16 @@ source_contract_requirements = {
     "src/persistence/matrix_state.rs" => %w[save_session_material load_session_material clear_session_material],
   },
   "password_safe_accessibility_tree" => {
-    "src/accessibility.rs" => %w[TreeUpdate Role::PasswordInput password_nodes_never_expose_a_value semantic_tree_rejects_orphans_and_cycles publish_home_tree post_login_tree_is_never_a_single_root_node],
+    "src/accessibility.rs" => [
+      "TreeUpdate", "Role::PasswordInput", "password_nodes_never_expose_a_value",
+      "semantic_tree_rejects_orphans_and_cycles", "publish_home_tree",
+      "post_login_tree_is_never_a_single_root_node",
+      "post_login_tree_is_a_hierarchical_container_skeleton", "HOME_COMPOSER_ID",
+      "visible PortalList rows are not yet enumerated",
+    ],
     "src/login/login_screen.rs" => %w[publish_login_tree],
-    "src/home/home_screen.rs" => %w[accessibility::publish_home_tree AccessibilityAction::Click],
-    "src/app.rs" => %w[accessibility::reset_cache],
+    "src/home/home_screen.rs" => %w[accessibility::publish_home_tree AccessibilityAction::Click AccessibilityAction::SetValue ActionData::Value HOME_COMPOSER_ID],
+    "src/app.rs" => %w[accessibility::reset_cache SystemBarAppearance::LightIcons],
   },
   "promotion_trust_policy" => {
     "promotion-trust-policy-v1.json" => ["hepta-ui-promotion-trust-policy-v1", "Runtime environment variables cannot select trust anchors"],
@@ -405,7 +464,7 @@ source_stable = binding_equal?(binding_before, binding_after)
 sync_bound_to_source = sync_report["source_stable_during_run"] == true &&
   binding_equal?(sync_report.fetch("source_binding", {}), binding_after)
 
-native_ui_ready = source_stable && sync_bound_to_source && provenance_ready && downstream_overlay_accounted && real_robrix_modules_ready && real_shell_relationships_ready && rooms_header_toggle_contract_ready && retired_ghost_modules_ready && no_cockpit_default && downstream_source_contracts_ready
+native_ui_ready = source_stable && sync_bound_to_source && provenance_ready && downstream_overlay_accounted && real_robrix_modules_ready && real_shell_relationships_ready && rooms_header_toggle_contract_ready && retired_ghost_modules_ready && retired_raster_assets_ready && inline_provider_marks_attribution_ready && no_cockpit_default && downstream_source_contracts_ready
 
 # These are intentionally not inferred from source presence or a successful build.
 # Each requires a separate, current-source evidence-producing gate or real device run.
@@ -463,6 +522,10 @@ report = {
     "rooms_header_toggle_contract" => rooms_header_toggle_contract,
     "retired_ghost_modules_ready" => retired_ghost_modules_ready,
     "retired_ghost_modules" => retired_ghost_modules,
+    "retired_raster_assets_ready" => retired_raster_assets_ready,
+    "retired_raster_assets" => retired_raster_assets,
+    "inline_provider_marks_attribution_ready" => inline_provider_marks_attribution_ready,
+    "inline_provider_marks_attribution" => inline_provider_marks_attribution,
     "source_contract_checks" => source_contract_checks,
     "forbidden_default_marker_hits" => default_marker_hits,
   },

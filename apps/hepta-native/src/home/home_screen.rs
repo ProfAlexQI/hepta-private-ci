@@ -1,4 +1,4 @@
-use accesskit::{Action as AccessibilityAction, ActionRequest, TreeId};
+use accesskit::{Action as AccessibilityAction, ActionData, ActionRequest, TreeId};
 use makepad_widgets::*;
 
 use crate::{
@@ -16,6 +16,7 @@ use crate::{
     },
     shared::room_filter_input_bar::{MainFilterAction, RoomFilterInputBarWidgetExt},
     shared::mention_popup::MentionablePopupRef,
+    shared::mentionable_text_input::MentionableTextInputWidgetExt,
 };
 
 script_mod! {
@@ -392,13 +393,15 @@ script_mod! {
     }
 }
 
-
 /// A simple wrapper around the SpacesBar that allows us to animate showing or hiding it.
 #[derive(Script, Widget, Animator)]
 pub struct SpacesBarWrapper {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
-    #[apply_default] animator: Animator,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
+    #[apply_default]
+    animator: Animator,
 }
 
 impl ScriptHook for SpacesBarWrapper {
@@ -444,7 +447,9 @@ impl Widget for SpacesBarWrapper {
 impl SpacesBarWrapperRef {
     /// Shows or hides the spaces bar by animating it in or out.
     fn show_or_hide(&self, cx: &mut Cx, show: bool) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         if show {
             inner.animator_play(cx, ids!(spaces_bar_animator.show));
         } else {
@@ -454,31 +459,36 @@ impl SpacesBarWrapperRef {
     }
 }
 
-
 #[derive(Script, ScriptHook, Widget)]
 pub struct HomeScreen {
-    #[deref] view: View,
+    #[deref]
+    view: View,
 
     /// The previously-selected navigation tab, used to determine which tab
     /// and top-level view we return to after closing the settings screen.
     ///
     /// Note that the current selected tap is stored in `AppState` so that
     /// other widgets can easily access it.
-    #[rust] previous_selection: SelectedTab,
-    #[rust] is_spaces_bar_shown: bool,
+    #[rust]
+    previous_selection: SelectedTab,
+    #[rust]
+    is_spaces_bar_shown: bool,
 
     /// A history of previously-selected screens for mobile stack navigation.
     /// When a view is popped off the stack, the previous `selected_room` is restored.
-    #[rust] mobile_screen_history: Vec<SelectedRoom>,
+    #[rust]
+    mobile_screen_history: Vec<SelectedRoom>,
 
     /// The most recently applied view-mode override, used to short-circuit
     /// redundant `AdaptiveView` selector reinstalls when an
     /// [`AppPreferencesAction::ViewModeChanged`] action repeats the current
     /// value (e.g., the unconditional broadcast on app-state restore).
-    #[rust] applied_view_mode: ViewModeOverride,
+    #[rust]
+    applied_view_mode: ViewModeOverride,
 
     /// The last effective AdaptiveView mode we observed. `Some(true)` means desktop mode.
-    #[rust] last_effective_is_desktop: Option<bool>,
+    #[rust]
+    last_effective_is_desktop: Option<bool>,
 }
 
 impl Widget for HomeScreen {
@@ -493,7 +503,7 @@ impl Widget for HomeScreen {
                 let target = u64::from(request.target_node);
                 match request.action {
                     AccessibilityAction::Focus => {
-                        let target_path = match target {
+                        let target_path: Option<&[LiveId]> = match target {
                             crate::accessibility::HOME_ALL_ROOMS_ID => {
                                 Some(ids!(navigation_tab_bar.home_button))
                             }
@@ -506,10 +516,17 @@ impl Widget for HomeScreen {
                             crate::accessibility::HOME_TOGGLE_SPACES_ID if !is_desktop => {
                                 Some(ids!(navigation_tab_bar.toggle_spaces_bar_button))
                             }
+                            crate::accessibility::HOME_COMPOSER_ID => Some(ids!(
+                                room_screen
+                                    .room_input_bar
+                                    .input_bar
+                                    .mentionable_text_input
+                                    .text_input
+                            )),
                             _ => None,
                         };
                         if let Some(target_path) = target_path {
-                            self.view.view(cx, target_path).set_key_focus(cx);
+                            self.view.widget(cx, target_path).set_key_focus(cx);
                             self.view.redraw(cx);
                         }
                     }
@@ -528,6 +545,22 @@ impl Widget for HomeScreen {
                         }
                         _ => {}
                     },
+                    AccessibilityAction::SetValue
+                        if target == crate::accessibility::HOME_COMPOSER_ID =>
+                    {
+                        let Some(ActionData::Value(value)) = request.data.as_ref() else {
+                            continue;
+                        };
+                        let composer = self.view.mentionable_text_input(
+                            cx,
+                            ids!(room_screen.room_input_bar.input_bar.mentionable_text_input),
+                        );
+                        composer.set_text(cx, value);
+                        // A wholesale accessibility replacement cannot retain
+                        // mention candidates from the previous draft.
+                        composer.clear_mentions();
+                        self.view.redraw(cx);
+                    }
                     _ => {}
                 }
             }
@@ -536,7 +569,11 @@ impl Widget for HomeScreen {
             // Check if it changed and re-emit as a MainFilterAction so that
             // RoomsList and SpacesBar can respond without cross-talk from
             // other RoomFilterInputBar instances (e.g., SpaceLobbyScreen's).
-            if let Some(keywords) = self.view.room_filter_input_bar(cx, ids!(room_filter_input_bar)).changed(actions) {
+            if let Some(keywords) = self
+                .view
+                .room_filter_input_bar(cx, ids!(room_filter_input_bar))
+                .changed(actions)
+            {
                 cx.action(MainFilterAction::Changed(keywords));
             }
 
@@ -545,25 +582,38 @@ impl Widget for HomeScreen {
                 match action.downcast_ref() {
                     Some(NavigationBarAction::GoToHome) => {
                         if !matches!(app_state.selected_tab, SelectedTab::Home) {
-                            self.previous_selection = std::mem::replace(&mut app_state.selected_tab, SelectedTab::Home);
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
+                            self.previous_selection =
+                                std::mem::replace(&mut app_state.selected_tab, SelectedTab::Home);
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
                             self.update_active_page_from_selection(cx, app_state);
                             self.view.redraw(cx);
                         }
                     }
                     Some(NavigationBarAction::GoToAddRoom) => {
                         if !matches!(app_state.selected_tab, SelectedTab::AddRoom) {
-                            self.previous_selection = std::mem::replace(&mut app_state.selected_tab, SelectedTab::AddRoom);
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
+                            self.previous_selection = std::mem::replace(
+                                &mut app_state.selected_tab,
+                                SelectedTab::AddRoom,
+                            );
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
                             self.update_active_page_from_selection(cx, app_state);
                             self.view.redraw(cx);
                         }
                     }
                     Some(NavigationBarAction::GoToSpace { space_name_id }) => {
-                        let new_space_selection = SelectedTab::Space { space_name_id: space_name_id.clone() };
+                        let new_space_selection = SelectedTab::Space {
+                            space_name_id: space_name_id.clone(),
+                        };
                         if app_state.selected_tab != new_space_selection {
-                            self.previous_selection = std::mem::replace(&mut app_state.selected_tab, new_space_selection);
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
+                            self.previous_selection =
+                                std::mem::replace(&mut app_state.selected_tab, new_space_selection);
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
                             self.update_active_page_from_selection(cx, app_state);
                             self.view.redraw(cx);
                         }
@@ -571,9 +621,16 @@ impl Widget for HomeScreen {
                     // Only open the settings screen if it is not currently open.
                     Some(NavigationBarAction::OpenSettings) => {
                         if !matches!(app_state.selected_tab, SelectedTab::Settings) {
-                            self.previous_selection = std::mem::replace(&mut app_state.selected_tab, SelectedTab::Settings);
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
-                            if let Some(settings_page) = self.update_active_page_from_selection(cx, app_state) {
+                            self.previous_selection = std::mem::replace(
+                                &mut app_state.selected_tab,
+                                SelectedTab::Settings,
+                            );
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
+                            if let Some(settings_page) =
+                                self.update_active_page_from_selection(cx, app_state)
+                            {
                                 settings_page
                                     .settings_screen(cx, ids!(settings_screen))
                                     .populate(cx, None, app_state);
@@ -586,23 +643,26 @@ impl Widget for HomeScreen {
                     Some(NavigationBarAction::CloseSettings) => {
                         if matches!(app_state.selected_tab, SelectedTab::Settings) {
                             app_state.selected_tab = self.previous_selection.clone();
-                            cx.action(NavigationBarAction::TabSelected(app_state.selected_tab.clone()));
+                            cx.action(NavigationBarAction::TabSelected(
+                                app_state.selected_tab.clone(),
+                            ));
                             self.update_active_page_from_selection(cx, app_state);
                             self.view.redraw(cx);
                         }
                     }
                     Some(NavigationBarAction::ToggleSpacesBar) => {
                         self.is_spaces_bar_shown = !self.is_spaces_bar_shown;
-                        self.view.spaces_bar_wrapper(cx, ids!(spaces_bar_wrapper))
+                        self.view
+                            .spaces_bar_wrapper(cx, ids!(spaces_bar_wrapper))
                             .show_or_hide(cx, self.is_spaces_bar_shown);
                     }
                     // We're the ones who emitted this action, so we don't need to handle it again.
-                    Some(NavigationBarAction::TabSelected(_))
-                    | None => { }
+                    Some(NavigationBarAction::TabSelected(_)) | None => {}
                 }
 
                 // React to App Settings changes that affect the HomeScreen layout.
-                if let Some(AppPreferencesAction::ViewModeChanged(new_mode)) = action.downcast_ref() {
+                if let Some(AppPreferencesAction::ViewModeChanged(new_mode)) = action.downcast_ref()
+                {
                     if *new_mode != self.applied_view_mode {
                         self.apply_view_mode(cx, *new_mode);
                         self.view.redraw(cx);
@@ -663,15 +723,11 @@ impl Widget for HomeScreen {
                     .map(SelectedRoom::display_name)
                     .unwrap_or_else(|| "All rooms".to_owned()),
             ),
-            SelectedTab::AddRoom => (
-                "Add or join room".to_owned(),
-                "Add or join room".to_owned(),
-            ),
+            SelectedTab::AddRoom => ("Add or join room".to_owned(), "Add or join room".to_owned()),
             SelectedTab::Settings => ("Settings".to_owned(), "Settings".to_owned()),
-            SelectedTab::Space { space_name_id } => (
-                "Space".to_owned(),
-                format!("Space: {space_name_id}"),
-            ),
+            SelectedTab::Space { space_name_id } => {
+                ("Space".to_owned(), format!("Space: {space_name_id}"))
+            }
         };
         let include_toggle_spaces = !effective_is_desktop(cx);
         let step = self.view.draw_walk(cx, scope, walk);
@@ -741,8 +797,7 @@ impl HomeScreen {
             .set_active_page(
                 cx,
                 match app_state.selected_tab {
-                    SelectedTab::Space { .. }
-                    | SelectedTab::Home => id!(home_page),
+                    SelectedTab::Space { .. } | SelectedTab::Home => id!(home_page),
                     SelectedTab::Settings => id!(settings_page),
                     SelectedTab::AddRoom => id!(add_room_page),
                 },
@@ -762,14 +817,18 @@ impl HomeScreen {
         let view_id = match selected_screen {
             SelectedRoom::JoinedRoom { room_name_id }
             | SelectedRoom::Thread { room_name_id, .. } => {
-                let Some((view_id, stack_navigation_view)) =
-                    stack_navigation.create_view_from_template(cx, id!(RoomScreenStackNavigationView))
+                let Some((view_id, stack_navigation_view)) = stack_navigation
+                    .create_view_from_template(cx, id!(RoomScreenStackNavigationView))
                 else {
                     error!("BUG: failed to create mobile RoomScreen StackNavigationView");
                     return None;
                 };
                 Self::hide_displayed_stack_screen(cx, &stack_navigation_view);
-                let thread_root = if let SelectedRoom::Thread { thread_root_event_id, .. } = selected_screen {
+                let thread_root = if let SelectedRoom::Thread {
+                    thread_root_event_id,
+                    ..
+                } = selected_screen
+                {
                     Some(thread_root_event_id.clone())
                 } else {
                     None
@@ -780,8 +839,8 @@ impl HomeScreen {
                 view_id
             }
             SelectedRoom::InvitedRoom { room_name_id } => {
-                let Some((view_id, stack_navigation_view)) =
-                    stack_navigation.create_view_from_template(cx, id!(InviteScreenStackNavigationView))
+                let Some((view_id, stack_navigation_view)) = stack_navigation
+                    .create_view_from_template(cx, id!(InviteScreenStackNavigationView))
                 else {
                     error!("BUG: failed to create mobile InviteScreen StackNavigationView");
                     return None;
@@ -793,8 +852,8 @@ impl HomeScreen {
                 view_id
             }
             SelectedRoom::Space { space_name_id } => {
-                let Some((view_id, stack_navigation_view)) =
-                    stack_navigation.create_view_from_template(cx, id!(SpaceLobbyScreenStackNavigationView))
+                let Some((view_id, stack_navigation_view)) = stack_navigation
+                    .create_view_from_template(cx, id!(SpaceLobbyScreenStackNavigationView))
                 else {
                     error!("BUG: failed to create mobile SpaceLobbyScreen StackNavigationView");
                     return None;
@@ -904,7 +963,8 @@ impl HomeScreen {
         };
         match self.mobile_screen_history.pop() {
             Some(previous) => {
-                let Some(view_id) = self.populate_mobile_stack_view(cx, &stack_nav, &previous) else {
+                let Some(view_id) = self.populate_mobile_stack_view(cx, &stack_nav, &previous)
+                else {
                     // Nav failed; current_screen is restored, so don't free it.
                     app_state.selected_room = Some(current_screen);
                     self.mobile_screen_history.push(previous);

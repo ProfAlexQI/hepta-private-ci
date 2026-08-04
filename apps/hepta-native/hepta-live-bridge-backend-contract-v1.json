@@ -72,11 +72,15 @@
     "cancel": false
   },
   "post_login_lifecycle": {
-    "login_success": "evaluate_in_process_preflight_then_construct_snapshot_only_adapter_if_all_checks_pass",
+    "app_owns_bridge_facade": true,
+    "login_success": "matrix_login_success_without_backend_activation_material_keeps_bridge_disabled",
     "login_failure": "drop_transport_and_session_binding",
-    "logout": "drop_transport_and_session_binding",
+    "logout_success": "drop_transport_and_session_binding",
+    "clear_app_state": "drop_transport_and_session_binding",
+    "backend_activation": "explicit_in_process_backend_owned_executor_and_binding_only",
     "environment_variable_is_login_proof": false,
-    "matrix_event_is_hepta_receipt": false
+    "matrix_event_is_hepta_receipt": false,
+    "matrix_access_token_read_or_logged_by_bridge": false
   },
   "candidate_endpoint_audit": [
     {
@@ -172,6 +176,12 @@
     "run_session_sequence_binding_enforced": true,
     "live_adapter_available": true,
     "production_facade_live_constructor_available": true,
+    "backend_owned_activation_entry_available": true,
+    "backend_authentication_proof_issuer_implemented": false,
+    "app_login_state_and_matrix_identity_match_enforced": true,
+    "lifecycle_teardown_wired": true,
+    "authenticated_executor_implemented": false,
+    "production_activation_ready": false,
     "product_lifecycle_wired": false,
     "live_receipt_available": false,
     "production_default_adapter": "disabled_until_explicit_try_live",

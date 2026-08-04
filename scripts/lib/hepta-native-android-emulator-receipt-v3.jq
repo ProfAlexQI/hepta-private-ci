@@ -76,6 +76,37 @@ def hepta_android_emulator_receipt_v3_ready($head; $tree; $fingerprint; $manifes
     and ($receipt.visual_inspection[$key].login_template_probe.ready == true)
     and ($receipt.visual_inspection[$key].login_surface_template_ready == true)
   ))
+  and .visual_inspection.system_bar_contrast.kind == "hepta-android-system-bar-contrast-probe"
+  and .visual_inspection.system_bar_contrast.schema_version == 2
+  and .visual_inspection.system_bar_contrast.kind == "hepta-android-system-bar-contrast-probe"
+  and .visual_inspection.system_bar_contrast.status == "ready"
+  and .visual_inspection.system_bar_contrast.ready == true
+  and .visual_inspection.system_bar_contrast.requested_icon_tint == "light"
+  and (.visual_inspection.system_bar_contrast.evidence_path | absolute_evidence_path)
+  and (.visual_inspection.system_bar_contrast.evidence_sha256 | sha)
+  and .visual_inspection.system_bar_contrast.image.path == .visual_inspection.portrait.path
+  and .visual_inspection.system_bar_contrast.image.sha256 == .visual_inspection.portrait.sha256
+  and .visual_inspection.system_bar_contrast.image.width == .visual_inspection.portrait.width
+  and .visual_inspection.system_bar_contrast.image.height == .visual_inspection.portrait.height
+  and (.visual_inspection.system_bar_contrast.regions | keys | sort) == ["navigation_bar","status_bar"]
+  and (.visual_inspection.system_bar_contrast.regions | to_entries | all(
+    .value.requested_icon_tint == "light"
+    and .value.ready == true
+    and .value.sample.vertical_fraction == 0.025
+    and .value.sample.horizontal_fraction == 0.96
+    and .value.sample.pixels > 0
+    and .value.sample.step >= 1
+    and .value.sample.background_median_luma <= .value.thresholds.max_background_median_luma
+    and .value.sample.luma_max >= .value.thresholds.min_light_icon_luma
+    and .value.sample.luma_span >= .value.thresholds.min_luma_span
+    and .value.sample.light_pixel_ratio >= .value.thresholds.min_light_pixel_ratio
+    and .value.thresholds.max_background_median_luma == 80
+    and .value.thresholds.min_light_icon_luma == 160
+    and .value.thresholds.min_luma_span == 96
+    and .value.thresholds.min_light_pixel_ratio == 0.001
+  ))
+  and .visual_inspection.system_bar_contrast.regions.status_bar.edge == "top"
+  and .visual_inspection.system_bar_contrast.regions.navigation_bar.edge == "bottom"
   and (.uiautomator.path | absolute_evidence_path)
   and (.uiautomator.sha256 | sha)
   and .uiautomator.xml_ready == true
@@ -103,9 +134,26 @@ def hepta_android_emulator_receipt_v3_ready($head; $tree; $fingerprint; $manifes
       and $lab.state_restore_verified == true
       and $lab.modes.rtl.executed == true
       and $lab.modes.rtl.force_rtl_readback == true
+      and ($lab.modes.rtl.matched_control.path | absolute_evidence_path)
+      and ($lab.modes.rtl.matched_control.sha256 | sha)
+      and $lab.modes.rtl.matched_control.force_rtl == 0
+      and $lab.modes.rtl.matched_control.writing_direction == "left_to_right"
+      and ($lab.modes.rtl.capture.path | absolute_evidence_path)
+      and ($lab.modes.rtl.capture.sha256 | sha)
+      and $lab.modes.rtl.mode_attributable_raster_change == $lab.modes.rtl.raster_changed
+      and $lab.modes.rtl.geometry_comparison.same_canvas == true
+      and $lab.modes.rtl.geometry_comparison.semantic_layout_verified == false
       and $lab.modes.rtl.ready == false
       and $lab.modes.font_scale.executed == true
       and $lab.modes.font_scale.setting_readback_ready == true
+      and ($lab.modes.font_scale.matched_control.path | absolute_evidence_path)
+      and ($lab.modes.font_scale.matched_control.sha256 | sha)
+      and $lab.modes.font_scale.matched_control.font_scale == 1.0
+      and ($lab.modes.font_scale.capture.path | absolute_evidence_path)
+      and ($lab.modes.font_scale.capture.sha256 | sha)
+      and $lab.modes.font_scale.mode_attributable_raster_change == $lab.modes.font_scale.raster_changed
+      and $lab.modes.font_scale.geometry_comparison.same_canvas == true
+      and $lab.modes.font_scale.geometry_comparison.semantic_text_reflow_verified == false
       and $lab.modes.font_scale.ready == false
       and $lab.modes.rotation_ime.executed == true
       and $lab.modes.rotation_ime.scope == "unauthenticated_login_surface"
@@ -116,7 +164,11 @@ def hepta_android_emulator_receipt_v3_ready($head; $tree; $fingerprint; $manifes
       and $lab.modes.low_power.emulator_only == true
       and $lab.modes.low_power.real_low_power_qualification == false
       and $lab.modes.low_power.ready == false
+      and $lab.promotion.eligible == false
+      and $lab.promotion.canonical_leaf_artifacts_rehashed == false
+      and $lab.promotion.matched_control_leaf_artifacts_rehashed == false
       and ($lab.claims | to_entries | length > 0 and all(.value == false))
+      and ($lab.blockers | map(.code) | index("android_extended_lab_leaf_artifact_rehash_missing") != null)
       and ($lab.blockers | map(.code) | index("android_real_device_low_power_performance_receipt_missing") != null)
       and ($lab.blockers | map(.code) | index("android_real_device_receipt_missing") != null)
       and ($lab.blockers | map(.code) | index("talkback_receipt_missing") != null)

@@ -123,16 +123,6 @@ impl JoinLeaveModalKind {
         }
     }
 
-    #[allow(unused)] // remove when we use it in navigate_to_room
-    pub fn basic_room_details(&self) -> &BasicRoomDetails {
-        match self {
-            JoinLeaveModalKind::AcceptInvite(invite)
-            | JoinLeaveModalKind::RejectInvite(invite) => &invite.room_info,
-            JoinLeaveModalKind::JoinRoom { details, .. }
-            | JoinLeaveModalKind::LeaveRoom(details)
-            | JoinLeaveModalKind::LeaveSpace { details, .. } => details,
-        }
-    }
 }
 
 /// Actions handled by the parent widget of the [`JoinLeaveRoomModal`].

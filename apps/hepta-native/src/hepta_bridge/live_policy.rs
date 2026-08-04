@@ -26,13 +26,15 @@ pub enum LiveBridgeBlocker {
     AuthoritativeSnapshotContractMissing,
 }
 
-/// Inputs owned by the post-login UI flow and a future trusted host adapter.
+/// Low-level inputs evaluated while installing a future trusted host adapter.
 ///
 /// These inputs are deliberately not read from environment variables here.
-/// Product code must derive them from the in-process login state and from a
-/// successfully authenticated bridge handshake. This prevents process
-/// environment injection from turning a fixture or report endpoint into live
-/// product truth.
+/// `matrix_session_authenticated` is a necessary policy condition, not an
+/// activation credential: Matrix login success alone cannot construct or
+/// preserve a bridge. The App activation path derives the session/run/sequence
+/// fields from a backend-owned authenticated executor after its in-process
+/// handshake. This prevents process environment injection, Matrix actions, or
+/// fixture data from turning a report endpoint into live product truth.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LiveBridgeActivationContext<'a> {
     pub matrix_session_authenticated: bool,

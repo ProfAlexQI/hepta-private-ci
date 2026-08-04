@@ -34,6 +34,12 @@ pub enum BridgeAdapterError {
     TransportUnavailable,
     #[error("live bridge activation preflight did not pass")]
     LivePreflightBlocked,
+    #[error("live bridge activation requires the App to be logged in")]
+    AppSessionNotAuthenticated,
+    #[error("live bridge activation requires an authoritative current Matrix user identity")]
+    AppSessionIdentityUnavailable,
+    #[error("live bridge backend identity does not match the current Matrix user")]
+    AppSessionIdentityMismatch,
     #[error("live bridge HTTP response violated the snapshot contract: {0}")]
     InvalidSnapshotResponse(&'static str),
     #[error("bridge adapter rejected the request: {0}")]

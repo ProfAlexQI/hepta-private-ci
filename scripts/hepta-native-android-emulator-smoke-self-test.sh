@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
 
+scripts/hepta-android-system-bar-contrast-probe-self-test.sh
+
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-android-emulator-smoke-self-test.XXXXXX")"
 trap 'rm -rf "$TEST_DIR"' EXIT
 
@@ -189,11 +191,14 @@ jq -e '
   and (.requirements | to_entries | all(.value == true))
   and .requirements.extended_lab_opt_in == true
   and .requirements.extended_lab_state_snapshot_restore_readback == true
+  and .requirements.extended_lab_mode_matched_controls == true
+  and .requirements.extended_lab_leaf_rehash_before_promotion == true
   and .requirements.extended_lab_raw_setting_absence_restore == true
   and .requirements.extended_lab_unrestorable_frozen_battery_rejected_before_mutation == true
   and .requirements.exit_cleanup_preserves_original_status == true
   and .requirements.interrupt_cleanup_restore_and_readback == true
   and .requirements.cleanup_failure_receipt == true
+  and .requirements.system_bar_contrast_probe_ready == true
   and .requirements.emulator_only_power_simulation_never_real_device_claim == true
   and (.hard_boundaries | to_entries | all(.value == false))
   and (.forbidden_actions | to_entries | all(.value == false))
@@ -353,7 +358,15 @@ jq -n \
     session_probe:{path:"/data/local/tmp/hepta-native-smoke-0123456789abcdef01234567",nonce:$session_nonce,sha256:$sha,boot_id:$boot_id,created_by_producer:true,readback_matched:true,no_credentials_supplied:true},
     login_surface_template:{manifest_path:$manifest,manifest_sha256:$manifest_sha,all_states_ready:true},
     visual_inspection:{
-      portrait:{path:"/tmp/portrait.png",sha256:$sha,content_probe:{ready:true},login_template_probe:{ready:true},login_surface_template_ready:true},
+      system_bar_contrast:{
+        schema_version:2,kind:"hepta-android-system-bar-contrast-probe",status:"ready",ready:true,requested_icon_tint:"light",
+        evidence_path:"/tmp/status-bar.json",evidence_sha256:$sha,image:{path:"/tmp/portrait.png",sha256:$sha,width:1080,height:2400},
+        regions:{
+          status_bar:{edge:"top",requested_icon_tint:"light",ready:true,sample:{vertical_fraction:0.025,horizontal_fraction:0.96,pixels:51840,step:1,background_median_luma:27,luma_min:11,luma_max:242,luma_span:231,light_pixel_ratio:0.01},thresholds:{max_background_median_luma:80,min_light_icon_luma:160,min_luma_span:96,min_light_pixel_ratio:0.001}},
+          navigation_bar:{edge:"bottom",requested_icon_tint:"light",ready:true,sample:{vertical_fraction:0.025,horizontal_fraction:0.96,pixels:51840,step:1,background_median_luma:24,luma_min:9,luma_max:240,luma_span:231,light_pixel_ratio:0.02},thresholds:{max_background_median_luma:80,min_light_icon_luma:160,min_luma_span:96,min_light_pixel_ratio:0.001}}
+        }
+      },
+      portrait:{path:"/tmp/portrait.png",sha256:$sha,width:1080,height:2400,content_probe:{ready:true},login_template_probe:{ready:true},login_surface_template_ready:true},
       landscape:{path:"/tmp/landscape.png",sha256:$sha,content_probe:{ready:true},login_template_probe:{ready:true},login_surface_template_ready:true},
       ime:{path:"/tmp/ime.png",sha256:$sha,content_probe:{ready:true},login_template_probe:{ready:true},login_surface_template_ready:true}
     },
@@ -382,14 +395,16 @@ receipt_predicate "$TEST_DIR/receipt-valid.json"
 jq '.extended_lab = {
   requested:true,status:"executed_with_product_claim_blockers",execution_ready:true,ready:false,state_restore_verified:true,
   modes:{
-    rtl:{executed:true,force_rtl_readback:true,ready:false},
-    font_scale:{executed:true,setting_readback_ready:true,ready:false},
+    rtl:{executed:true,force_rtl_readback:true,matched_control:{path:"/tmp/rtl-control.png",sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",force_rtl:0,writing_direction:"left_to_right"},capture:{path:"/tmp/rtl.png",sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},raster_changed:false,mode_attributable_raster_change:false,geometry_comparison:{same_canvas:true,semantic_layout_verified:false},ready:false},
+    font_scale:{executed:true,setting_readback_ready:true,matched_control:{path:"/tmp/font-control.png",sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",font_scale:1.0},capture:{path:"/tmp/font.png",sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},raster_changed:false,mode_attributable_raster_change:false,geometry_comparison:{same_canvas:true,semantic_text_reflow_verified:false},ready:false},
     rotation_ime:{executed:true,scope:"unauthenticated_login_surface",generic_app_wide_ready:false},
     startup_performance:{executed:true,ready:true},
     low_power:{executed:true,emulator_only:true,real_low_power_qualification:false,ready:false}
   },
+  promotion:{eligible:false,canonical_leaf_artifacts_rehashed:false,matched_control_leaf_artifacts_rehashed:false},
   claims:{android_rtl_ready:false,android_dynamic_type_ready:false,android_safe_area_ready:false,android_rotation_ready:false,android_ime_ready:false,android_low_power_performance_ready:false,android_real_device_ready:false,talkback_ready:false},
   blockers:[
+    {code:"android_extended_lab_leaf_artifact_rehash_missing"},
     {code:"android_real_device_low_power_performance_receipt_missing"},
     {code:"android_real_device_receipt_missing"},
     {code:"talkback_receipt_missing"}
@@ -399,7 +414,12 @@ jq '.extended_lab = {
 receipt_predicate "$TEST_DIR/receipt-extended-valid.json"
 for filter in \
   '.extended_lab.state_restore_verified = false' \
+  '.extended_lab.modes.rtl.geometry_comparison.same_canvas = false' \
+  '.extended_lab.modes.font_scale.mode_attributable_raster_change = true' \
   '.extended_lab.modes.low_power.real_low_power_qualification = true' \
+  '.extended_lab.promotion.eligible = true' \
+  '.extended_lab.promotion.canonical_leaf_artifacts_rehashed = true' \
+  '.extended_lab.promotion.matched_control_leaf_artifacts_rehashed = true' \
   '.extended_lab.claims.android_low_power_performance_ready = true' \
   '.extended_lab.blockers = []'; do
   jq "$filter" "$TEST_DIR/receipt-extended-valid.json" >"$TEST_DIR/receipt-extended-invalid.json"
@@ -420,6 +440,7 @@ expect_receipt_failure() {
 expect_receipt_failure artifact_hash '.artifact.sha256 = "bad"'
 expect_receipt_failure screenshot_hash '.visual_inspection.portrait.sha256 = "bad"'
 expect_receipt_failure screenshot_path '.visual_inspection.landscape.path = "../landscape.png"'
+expect_receipt_failure status_bar_contrast '.visual_inspection.system_bar_contrast.regions.navigation_bar.sample.luma_max = 27'
 expect_receipt_failure template_claim '.visual_inspection.ime.login_template_probe.ready = false'
 expect_receipt_failure uiautomator_hash '.uiautomator.sha256 = "bad"'
 expect_receipt_failure host_tool_hash '.host_toolchain.emulator_binary_sha256 = "bad"'
@@ -451,6 +472,8 @@ grep -Fq 'FINAL_BOOT_ID' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'FINAL_QEMU_AVD_NAME' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'process_start_time_ticks' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq -- '--extended-lab' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'hepta-android-system-bar-contrast-probe' scripts/hepta-native-android-emulator-smoke.sh
+grep -Fq 'SystemBarAppearance::LightIcons' apps/hepta-native/src/app.rs
 grep -Fq 'restore_emulator_state || LAB_RESTORE_COMMAND_READY=false' scripts/hepta-native-android-emulator-smoke.sh
 grep -Fq 'cmd battery reset' "$STATE_HELPER"
 grep -Fq 'frozen battery state is not exactly restorable' "$STATE_HELPER"

@@ -17,6 +17,32 @@ the explicit `developer-diagnostics` feature. Signing, notarization, public
 distribution, live Hepta adapters, and real-device validation are separate
 gates.
 
+### Live Hepta bridge truth
+
+The real App lifecycle now owns the disabled-by-default `HeptaBridge` facade.
+`LoginFailure`, `LogoutSuccess`, and `ClearAppState` synchronously drop any
+transport plus its captured run/session/sequence binding. A plain Matrix
+`LoginSuccess` also keeps the facade disabled because that action carries no
+authoritative Hepta backend binding.
+
+The three distinct implementation facts are:
+
+- `lifecycle_teardown_wired=true`: the real App action paths own and clear the
+  facade.
+- `authenticated_executor_implemented=false`: Native defines the strict,
+  backend-owned executor interface and a sealed in-process activation entry,
+  but no production HTTP executor or authentication-proof issuer exists. The
+  sealed activation type has no production constructor today.
+- `production_activation_ready=false`: no canonical endpoint, authoritative
+  envelope, live socket receipt, or backend session binding exists yet.
+
+The App entry also requires its actual logged-in state and current Matrix user
+identity to match the backend-bound identity; missing or mismatched identity
+drops the attempted executor and fails closed. The bridge does not accept
+environment variables, Matrix events, fixtures, or an access token as
+activation proof, and it does not read or log Matrix access tokens. These
+source-level lifecycle changes are not a live product receipt.
+
 ## Formal unsigned macOS package
 
 The local macOS package gate uses the upstream Robius resource collector and
@@ -57,10 +83,15 @@ targets still require their own host/device build and runtime evidence; this
 repository does not infer cross-platform readiness from the macOS result.
 
 Secure Matrix session persistence uses the platform keyring on Apple,
-Linux/BSD, and Windows targets. Android and OpenHarmony currently fail closed
-and require re-login instead of writing credentials to plaintext. Mobile
-keyring, safe-area, software-keyboard, screen-reader, RTL, Dynamic Type/font
-scale, and low-power performance remain real-device gates.
+Linux/BSD, and Windows targets. Android now has a source-level
+`AndroidKeyStore`/AES-GCM backend with opaque aliases, authenticated metadata,
+atomic persistence, and fail-closed rollback tests. It is not product-qualified
+until a physical-device receipt proves save → process death/reboot → restore →
+logout deletion, key invalidation, upgrade migration, and the effective
+hardware security level. OpenHarmony still fails closed and requires re-login
+instead of writing credentials to plaintext. Mobile keyring, safe-area,
+software-keyboard, screen-reader, RTL, Dynamic Type/font scale, and low-power
+performance remain real-device gates.
 
 ### Reproducible mobile build boundary
 
@@ -141,13 +172,21 @@ HEPTA_NATIVE_ANDROID_EMULATOR_RECEIPT=/absolute/path/android-report.json \
 This path independently reopens the APK, rejects unsafe ZIP members, verifies
 the sole `arm64-v8a` Makepad library embeds the full current HEAD, re-reads the
 package/activity/Hepta label with Android build tools, and verifies the debug
-signer. It also rehashes and content-probes distinct portrait, landscape-top,
-landscape-scrolled, and IME PNGs. A valid receipt may promote only local
+signer. It also rehashes and content-probes distinct portrait, landscape, and
+IME PNGs, then independently replays the portrait probe against both the top
+status bar and bottom navigation bar and compares the persisted evidence
+byte-for-byte. A valid receipt may promote only local
 emulator runtime plus unauthenticated login-surface visual, rotation, and IME
 evidence. Generic Android product visual/rotation/IME claims remain hard-false,
 as do authenticated rooms and timelines. Missing or invalid
 evidence never promotes a real device, TalkBack, secure credentials, release
 signing, full-product readiness, or GA readiness.
+
+The optional Android extended lab records matched-control RTL/font-scale
+captures, but its leaf capture bytes are not yet rehashed by the canonical
+consumer. Its receipt therefore carries `promotion.eligible=false`, all
+product claims remain false, and merely running or waiting on the lab cannot
+promote RTL, font scaling, low-power, real-device, or TalkBack readiness.
 
 Run the report-only mobile source gate with:
 
@@ -156,11 +195,20 @@ scripts/hepta-native-mobile-readiness-gate.sh --output /tmp/hepta-mobile.json
 ```
 
 That report deliberately keeps full mobile readiness false. At the pinned
-Makepad revision, iOS and Android discard `AccessibilityUpdate`; Android also
-has no approved secure credential backend in this downstream. A valid optional
-receipt can verify only its local simulator/emulator lane. Real-device,
-VoiceOver/TalkBack, safe-area, cross-device keyboard, RTL, font scaling, and
-power receipts remain required rather than being inferred from it.
+Makepad revision, the default iOS and Android platform backends still discard
+`AccessibilityUpdate`; the application-side login tree and post-login
+container skeleton therefore do not constitute a native provider/action
+roundtrip. The post-login skeleton exposes real navigation and composer
+focus/SetValue paths plus room-list/timeline containers, but it does not yet
+enumerate visible PortalList room rows or timeline messages with stable IDs,
+real labels, hierarchy, and actions. The
+macOS adapter overlay remains an isolated fork prototype rather than the
+formal application dependency graph. Android secure-credential source exists,
+but no physical-device persistence receipt currently qualifies it. A valid
+optional receipt can verify only its local simulator/emulator lane.
+Real-device VoiceOver/TalkBack, safe-area, cross-device keyboard, RTL, font
+scaling, credential persistence, and power receipts remain required rather
+than being inferred from source or emulator evidence.
 
 ## Frozen upstream documentation (reference only)
 

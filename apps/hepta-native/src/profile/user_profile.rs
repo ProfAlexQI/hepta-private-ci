@@ -30,15 +30,6 @@ impl UserProfile {
         self.user_id.as_str()
     }
 
-    /// Returns the first "letter" (Unicode grapheme) of the user's name or user ID,
-    /// skipping any leading "@" characters.
-    #[allow(unused)]
-    pub fn first_letter(&self) -> &str {
-        self.username.as_deref()
-            .and_then(|un| utils::user_name_first_letter(un))
-            .or_else(|| utils::user_name_first_letter(self.user_id.as_str()))
-            .unwrap_or_default()
-    }
 }
 
 

@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE_PATH=""
+OUTPUT_PATH=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --image) IMAGE_PATH="${2:-}"; shift 2 ;;
+    --output) OUTPUT_PATH="${2:-}"; shift 2 ;;
+    --help|-h)
+      printf '%s\n' 'usage: scripts/hepta-android-system-bar-contrast-probe --image screenshot.png [--output report.json]'
+      exit 0
+      ;;
+    *) printf 'error: unknown argument: %s\n' "$1" >&2; exit 64 ;;
+  esac
+done
+
+[[ -n "$IMAGE_PATH" && -s "$IMAGE_PATH" ]] || { echo 'error: --image must be a non-empty image' >&2; exit 64; }
+for command in mktemp ruby shasum sips; do
+  command -v "$command" >/dev/null 2>&1 || { echo "error: $command is required" >&2; exit 2; }
+done
+
+TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-android-system-bar-contrast.XXXXXX")"
+trap 'rm -rf "$TEMP_DIR"' EXIT
+BMP_PATH="$TEMP_DIR/image.bmp"
+sips -s format bmp "$IMAGE_PATH" --out "$BMP_PATH" >/dev/null
+
+REPORT="$(ruby -rjson -rdigest -e '
+  image_path, bmp_path = ARGV
+  data = File.binread(bmp_path)
+  abort "invalid BMP signature" unless data.byteslice(0, 2) == "BM".b
+  pixel_offset = data.byteslice(10, 4).unpack1("V")
+  width = data.byteslice(18, 4).unpack1("l<")
+  raw_height = data.byteslice(22, 4).unpack1("l<")
+  bits_per_pixel = data.byteslice(28, 2).unpack1("v")
+  compression = data.byteslice(30, 4).unpack1("V")
+  abort "invalid BMP dimensions" unless width.positive? && !raw_height.zero?
+  abort "unsupported BMP" unless [24, 32].include?(bits_per_pixel) && [0, 3].include?(compression)
+
+  height = raw_height.abs
+  top_down = raw_height.negative?
+  bytes_per_pixel = bits_per_pixel / 8
+  row_stride = ((width * bits_per_pixel + 31) / 32) * 4
+  vertical_fraction = 0.025
+  horizontal_fraction = 0.96
+  sampled_rows = [(height * vertical_fraction).ceil, 1].max
+  x0 = (width * ((1.0 - horizontal_fraction) / 2.0)).floor
+  x1 = (width * (1.0 - ((1.0 - horizontal_fraction) / 2.0))).ceil
+  step = [1, (width / 720.0).floor].max
+  thresholds = {
+    max_background_median_luma: 80,
+    min_light_icon_luma: 160,
+    min_luma_span: 96,
+    min_light_pixel_ratio: 0.001
+  }
+
+  sample_region = lambda do |name, edge|
+    lumas = []
+    (0...sampled_rows).step(step) do |edge_offset|
+      logical_y = edge == "top" ? edge_offset : height - 1 - edge_offset
+      stored_y = top_down ? logical_y : height - 1 - logical_y
+      (x0...x1).step(step) do |x|
+        offset = pixel_offset + stored_y * row_stride + x * bytes_per_pixel
+        lumas << (data.getbyte(offset) + data.getbyte(offset + 1) + data.getbyte(offset + 2)) / 3
+      end
+    end
+    abort "no #{name} pixels sampled" if lumas.empty?
+    lumas.sort!
+    median = lumas[lumas.length / 2]
+    luma_min = lumas.first
+    luma_max = lumas.last
+    span = luma_max - luma_min
+    light_ratio = lumas.count { |value| value >= thresholds[:min_light_icon_luma] }.fdiv(lumas.length)
+    ready = median <= thresholds[:max_background_median_luma] &&
+      luma_max >= thresholds[:min_light_icon_luma] &&
+      span >= thresholds[:min_luma_span] &&
+      light_ratio >= thresholds[:min_light_pixel_ratio]
+    {
+      edge: edge,
+      requested_icon_tint: "light",
+      ready: ready,
+      sample: {
+        vertical_fraction: vertical_fraction,
+        horizontal_fraction: horizontal_fraction,
+        pixels: lumas.length,
+        step: step,
+        background_median_luma: median,
+        luma_min: luma_min,
+        luma_max: luma_max,
+        luma_span: span,
+        light_pixel_ratio: light_ratio
+      },
+      thresholds: thresholds
+    }
+  end
+
+  status_bar = sample_region.call("status-bar", "top")
+  navigation_bar = sample_region.call("navigation-bar", "bottom")
+  ready = status_bar[:ready] && navigation_bar[:ready]
+  puts JSON.pretty_generate(
+    schema_version: 2,
+    kind: "hepta-android-system-bar-contrast-probe",
+    status: ready ? "ready" : "not_ready",
+    ready: ready,
+    requested_icon_tint: "light",
+    image: {
+      path: File.expand_path(image_path),
+      sha256: Digest::SHA256.file(image_path).hexdigest,
+      width: width,
+      height: height
+    },
+    regions: {
+      status_bar: status_bar,
+      navigation_bar: navigation_bar
+    }
+  )
+' "$IMAGE_PATH" "$BMP_PATH")"
+
+if [[ -n "$OUTPUT_PATH" ]]; then
+  OUTPUT_TEMP="$(mktemp "${OUTPUT_PATH}.tmp.XXXXXX")"
+  printf '%s\n' "$REPORT" >"$OUTPUT_TEMP"
+  mv -f -- "$OUTPUT_TEMP" "$OUTPUT_PATH"
+else
+  printf '%s\n' "$REPORT"
+fi
+
+jq_ready="$(ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("ready")' <<<"$REPORT")"
+[[ "$jq_ready" == true ]] || exit 1

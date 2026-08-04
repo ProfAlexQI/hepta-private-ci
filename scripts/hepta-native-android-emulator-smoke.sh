@@ -12,6 +12,7 @@ CARGO_PACKAGE="hepta-native"
 LOGIN_TEMPLATE_DIR="$APP_DIR/packaging/android-emulator-login-template-v1"
 LOGIN_TEMPLATE_MANIFEST="$LOGIN_TEMPLATE_DIR/manifest.json"
 ORIENTATION_PROBE="$ROOT_DIR/scripts/hepta-android-window-orientation-probe"
+SYSTEM_BAR_CONTRAST_PROBE="$ROOT_DIR/scripts/hepta-android-system-bar-contrast-probe"
 HEADLESS_AVD_PROCESS_PROBE="$ROOT_DIR/scripts/hepta-android-headless-avd-process-probe"
 NDK_DIRECTORY_VERSION="28.2.13676358"
 NDK_RELEASE_NAME="r28b"
@@ -98,12 +99,17 @@ if [[ "$CONTRACT_ONLY" == true ]]; then
           portrait_landscape_ime_png_sha256:true,
           dumpsys_window_rotation_and_logical_geometry_ready:true,
           image_content_probe_ready:true,
+          system_bar_contrast_probe_ready:true,
+          system_bar_contrast_top_and_bottom_ready:true,
+          system_bar_contrast_replayable_evidence_ready:true,
           versioned_login_template_probe_ready:true,
           uiautomator_xml_ready:true,
           app_foreground_and_focused:true,
           structured_current_source_receipt:true,
           extended_lab_opt_in:true,
           extended_lab_state_snapshot_restore_readback:true,
+          extended_lab_mode_matched_controls:true,
+          extended_lab_leaf_rehash_before_promotion:true,
           extended_lab_raw_setting_absence_restore:true,
           extended_lab_unrestorable_frozen_battery_rejected_before_mutation:true,
           exit_cleanup_preserves_original_status:true,
@@ -577,6 +583,9 @@ app_foreground "$EVIDENCE_DIR/dumpsys-activity-portrait.txt" || { echo "error: a
 PORTRAIT_PATH="$EVIDENCE_DIR/screenshot-portrait.png"
 PORTRAIT_PROBE_PATH="$EVIDENCE_DIR/screenshot-portrait.content-probe.json"
 capture_png portrait portrait "$PORTRAIT_PATH" "$PORTRAIT_PROBE_PATH"
+STATUS_BAR_CONTRAST_PATH="$EVIDENCE_DIR/screenshot-portrait.system-bar-contrast.json"
+"$SYSTEM_BAR_CONTRAST_PROBE" --image "$PORTRAIT_PATH" --output "$STATUS_BAR_CONTRAST_PATH" \
+  || { echo "error: Android top/bottom system-bar light-icon contrast probe failed" >&2; exit 1; }
 PORTRAIT_TEMPLATE_PATH="$LOGIN_TEMPLATE_DIR/portrait.png"
 PORTRAIT_TEMPLATE_REPORT_PATH="$EVIDENCE_DIR/screenshot-portrait.login-template-probe.json"
 "$ROOT_DIR/scripts/hepta-android-login-template-probe" \
@@ -667,7 +676,18 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   "$ADB" -s "$ADB_SERIAL" shell input keyevent KEYCODE_BACK
   "$ADB" -s "$ADB_SERIAL" shell settings put system user_rotation 0
   wait_for_orientation portrait "$EVIDENCE_DIR/lab-dumpsys-window-portrait.txt"
-  BASE_LAB_SHA="$(shasum -a 256 "$PORTRAIT_PATH" | awk '{print $1}')"
+
+  "$ADB" -s "$ADB_SERIAL" shell settings put global debug.force_rtl 0
+  [[ "$($ADB -s "$ADB_SERIAL" shell settings get global debug.force_rtl | tr -d '\r')" == 0 ]] \
+    || { echo "error: Android matched-control LTR setting did not apply" >&2; exit 1; }
+  "$ADB" -s "$ADB_SERIAL" shell am force-stop "$PACKAGE_NAME"
+  "$ADB" -s "$ADB_SERIAL" shell am start -W -S -n "$ACTIVITY" >"$EVIDENCE_DIR/lab-rtl-control-start.txt"
+  grep -Fxq 'Status: ok' "$EVIDENCE_DIR/lab-rtl-control-start.txt"
+  RTL_CONTROL_PATH="$EVIDENCE_DIR/lab-rtl-control-ltr.png"
+  capture_png lab-rtl-control portrait "$RTL_CONTROL_PATH" "$EVIDENCE_DIR/lab-rtl-control.content-probe.json"
+  RTL_CONTROL_SHA="$(shasum -a 256 "$RTL_CONTROL_PATH" | awk '{print $1}')"
+  RTL_CONTROL_WIDTH="$(sips -g pixelWidth "$RTL_CONTROL_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  RTL_CONTROL_HEIGHT="$(sips -g pixelHeight "$RTL_CONTROL_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
 
   "$ADB" -s "$ADB_SERIAL" shell settings put global debug.force_rtl 1
   [[ "$($ADB -s "$ADB_SERIAL" shell settings get global debug.force_rtl | tr -d '\r')" == 1 ]] \
@@ -678,10 +698,26 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   RTL_PATH="$EVIDENCE_DIR/lab-rtl.png"
   capture_png lab-rtl portrait "$RTL_PATH" "$EVIDENCE_DIR/lab-rtl.content-probe.json"
   RTL_SHA="$(shasum -a 256 "$RTL_PATH" | awk '{print $1}')"
-  [[ "$RTL_SHA" != "$BASE_LAB_SHA" ]] && RTL_RASTER_CHANGED=true || RTL_RASTER_CHANGED=false
+  RTL_WIDTH="$(sips -g pixelWidth "$RTL_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  RTL_HEIGHT="$(sips -g pixelHeight "$RTL_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+  [[ "$RTL_SHA" != "$RTL_CONTROL_SHA" ]] && RTL_RASTER_CHANGED=true || RTL_RASTER_CHANGED=false
+  [[ "$RTL_WIDTH" == "$RTL_CONTROL_WIDTH" && "$RTL_HEIGHT" == "$RTL_CONTROL_HEIGHT" ]] \
+    && RTL_SAME_CANVAS=true || RTL_SAME_CANVAS=false
   hepta_android_restore_setting "$ADB" "$ADB_SERIAL" global debug.force_rtl "$ORIGINAL_FORCE_RTL"
   [[ "$($ADB -s "$ADB_SERIAL" shell settings get global debug.force_rtl | tr -d '\r')" == "$ORIGINAL_FORCE_RTL" ]] \
     || { echo "error: Android force-RTL setting did not restore" >&2; exit 1; }
+
+  "$ADB" -s "$ADB_SERIAL" shell settings put system font_scale 1.0
+  [[ "$($ADB -s "$ADB_SERIAL" shell settings get system font_scale | tr -d '\r')" == 1.0 ]] \
+    || { echo "error: Android matched-control font scale did not apply" >&2; exit 1; }
+  "$ADB" -s "$ADB_SERIAL" shell am force-stop "$PACKAGE_NAME"
+  "$ADB" -s "$ADB_SERIAL" shell am start -W -S -n "$ACTIVITY" >"$EVIDENCE_DIR/lab-font-scale-control-start.txt"
+  grep -Fxq 'Status: ok' "$EVIDENCE_DIR/lab-font-scale-control-start.txt"
+  FONT_SCALE_CONTROL_PATH="$EVIDENCE_DIR/lab-font-scale-control.png"
+  capture_png lab-font-scale-control portrait "$FONT_SCALE_CONTROL_PATH" "$EVIDENCE_DIR/lab-font-scale-control.content-probe.json"
+  FONT_SCALE_CONTROL_SHA="$(shasum -a 256 "$FONT_SCALE_CONTROL_PATH" | awk '{print $1}')"
+  FONT_SCALE_CONTROL_WIDTH="$(sips -g pixelWidth "$FONT_SCALE_CONTROL_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  FONT_SCALE_CONTROL_HEIGHT="$(sips -g pixelHeight "$FONT_SCALE_CONTROL_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
 
   FONT_SCALE="1.5"
   "$ADB" -s "$ADB_SERIAL" shell settings put system font_scale "$FONT_SCALE"
@@ -693,7 +729,11 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   FONT_SCALE_PATH="$EVIDENCE_DIR/lab-font-scale-1.5.png"
   capture_png lab-font-scale portrait "$FONT_SCALE_PATH" "$EVIDENCE_DIR/lab-font-scale.content-probe.json"
   FONT_SCALE_SHA="$(shasum -a 256 "$FONT_SCALE_PATH" | awk '{print $1}')"
-  [[ "$FONT_SCALE_SHA" != "$BASE_LAB_SHA" ]] && FONT_SCALE_RASTER_CHANGED=true || FONT_SCALE_RASTER_CHANGED=false
+  FONT_SCALE_WIDTH="$(sips -g pixelWidth "$FONT_SCALE_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  FONT_SCALE_HEIGHT="$(sips -g pixelHeight "$FONT_SCALE_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+  [[ "$FONT_SCALE_SHA" != "$FONT_SCALE_CONTROL_SHA" ]] && FONT_SCALE_RASTER_CHANGED=true || FONT_SCALE_RASTER_CHANGED=false
+  [[ "$FONT_SCALE_WIDTH" == "$FONT_SCALE_CONTROL_WIDTH" && "$FONT_SCALE_HEIGHT" == "$FONT_SCALE_CONTROL_HEIGHT" ]] \
+    && FONT_SCALE_SAME_CANVAS=true || FONT_SCALE_SAME_CANVAS=false
   hepta_android_restore_setting "$ADB" "$ADB_SERIAL" system font_scale "$ORIGINAL_FONT_SCALE"
   [[ "$($ADB -s "$ADB_SERIAL" shell settings get system font_scale | tr -d '\r')" == "$ORIGINAL_FONT_SCALE" ]] \
     || { echo "error: Android font-scale setting did not restore" >&2; exit 1; }
@@ -739,27 +779,37 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   app_foreground "$EVIDENCE_DIR/lab-restored-final.activity.txt"
 
   LAB_RESULT="$(jq -n \
-    --arg rtl_path "$RTL_PATH" --arg rtl_sha "$RTL_SHA" --arg font_path "$FONT_SCALE_PATH" --arg font_sha "$FONT_SCALE_SHA" \
+    --arg rtl_control_path "$RTL_CONTROL_PATH" --arg rtl_control_sha "$RTL_CONTROL_SHA" \
+    --arg rtl_path "$RTL_PATH" --arg rtl_sha "$RTL_SHA" \
+    --arg font_control_path "$FONT_SCALE_CONTROL_PATH" --arg font_control_sha "$FONT_SCALE_CONTROL_SHA" \
+    --arg font_path "$FONT_SCALE_PATH" --arg font_sha "$FONT_SCALE_SHA" \
     --arg low_power_path "$LOW_POWER_PATH" --arg font_scale "$FONT_SCALE" \
     --arg original_rtl_raw "$ORIGINAL_FORCE_RTL" --arg original_rtl_effective "$EFFECTIVE_ORIGINAL_FORCE_RTL" \
     --arg original_font_raw "$ORIGINAL_FONT_SCALE" --arg original_font_effective "$EFFECTIVE_ORIGINAL_FONT_SCALE" \
-    --argjson rtl_changed "$RTL_RASTER_CHANGED" --argjson font_changed "$FONT_SCALE_RASTER_CHANGED" \
+    --argjson rtl_changed "$RTL_RASTER_CHANGED" --argjson rtl_same_canvas "$RTL_SAME_CANVAS" \
+    --argjson font_changed "$FONT_SCALE_RASTER_CHANGED" --argjson font_same_canvas "$FONT_SCALE_SAME_CANVAS" \
     --argjson normal_samples "$NORMAL_STARTUP_SAMPLES" --argjson normal_stats "$(startup_stats "$NORMAL_STARTUP_SAMPLES")" \
     --argjson low_samples "$LOW_POWER_STARTUP_SAMPLES" --argjson low_stats "$(startup_stats "$LOW_POWER_STARTUP_SAMPLES")" \
     --argjson simulated_battery "$SIMULATED_BATTERY_STATE" '
       {
         requested:true,status:"executed_with_product_claim_blockers",execution_ready:true,ready:false,state_restore_verified:true,
         modes:{
-          rtl:{executed:true,original_setting:{raw:$original_rtl_raw,effective:$original_rtl_effective},force_rtl_readback:true,capture:{path:$rtl_path,sha256:$rtl_sha},raster_changed:$rtl_changed,ready:false},
-          font_scale:{executed:true,original_setting:{raw:$original_font_raw,effective:$original_font_effective},requested_scale:($font_scale|tonumber),setting_readback_ready:true,capture:{path:$font_path,sha256:$font_sha},raster_changed:$font_changed,ready:false},
+          rtl:{executed:true,original_setting:{raw:$original_rtl_raw,effective:$original_rtl_effective},force_rtl_readback:true,matched_control:{path:$rtl_control_path,sha256:$rtl_control_sha,force_rtl:0,writing_direction:"left_to_right"},capture:{path:$rtl_path,sha256:$rtl_sha},raster_changed:$rtl_changed,mode_attributable_raster_change:$rtl_changed,geometry_comparison:{same_canvas:$rtl_same_canvas,semantic_layout_verified:false},ready:false},
+          font_scale:{executed:true,original_setting:{raw:$original_font_raw,effective:$original_font_effective},requested_scale:($font_scale|tonumber),setting_readback_ready:true,matched_control:{path:$font_control_path,sha256:$font_control_sha,font_scale:1.0},capture:{path:$font_path,sha256:$font_sha},raster_changed:$font_changed,mode_attributable_raster_change:$font_changed,geometry_comparison:{same_canvas:$font_same_canvas,semantic_text_reflow_verified:false},ready:false},
           rotation_ime:{executed:true,scope:"unauthenticated_login_surface",portrait_landscape_portrait:true,ime_targeted_at_hepta:true,ready:true,generic_app_wide_ready:false},
           startup_performance:{executed:true,scope:"am_start_total_time_on_unauthenticated_emulator",normal:{samples:$normal_samples,statistics:$normal_stats},ready:true},
           low_power:{executed:true,simulation_backend:"adb_cmd_battery_plus_cmd_power",emulator_only:true,real_low_power_qualification:false,battery_state:$simulated_battery,artifact:$low_power_path,startup:{samples:$low_samples,statistics:$low_stats},ready:false}
         },
+        promotion:{
+          eligible:false,
+          canonical_leaf_artifacts_rehashed:false,
+          matched_control_leaf_artifacts_rehashed:false
+        },
         claims:{android_rtl_ready:false,android_dynamic_type_ready:false,android_safe_area_ready:false,android_rotation_ready:false,android_ime_ready:false,android_low_power_performance_ready:false,android_real_device_ready:false,talkback_ready:false},
         blockers:[
-          {code:"android_rtl_semantic_layout_verification_missing",requires:"semantic mirrored layout and interaction evidence",observed:{force_rtl:true,raster_changed:$rtl_changed}},
-          {code:"android_font_scale_semantic_response_verification_missing",requires:"accessible text reflow and interaction evidence",observed:{font_scale:($font_scale|tonumber),raster_changed:$font_changed}},
+          {code:"android_extended_lab_leaf_artifact_rehash_missing",requires:"canonical consumer rehashes every mode capture and matched-control artifact before promotion",observed:false},
+          {code:"android_rtl_semantic_layout_verification_missing",requires:"semantic mirrored layout and interaction evidence",observed:{force_rtl:true,matched_control:true,mode_attributable_raster_change:$rtl_changed,same_canvas:$rtl_same_canvas}},
+          {code:"android_font_scale_semantic_response_verification_missing",requires:"accessible text reflow and interaction evidence",observed:{font_scale:($font_scale|tonumber),matched_control:true,mode_attributable_raster_change:$font_changed,same_canvas:$font_same_canvas}},
           {code:"android_generic_safe_area_rotation_ime_scope_missing",requires:"authenticated app-wide coverage",observed:{unauthenticated_login_rotation_ime:true}},
           {code:"android_real_device_low_power_performance_receipt_missing",requires:"physical-device effective low-power evidence",observed:{emulator_power_simulation_only:true}},
           {code:"android_real_device_receipt_missing",requires:"explicit physical-device lab receipt",observed:false},
@@ -854,6 +904,8 @@ jq -e --arg head "$SOURCE_HEAD" --arg tree "$SOURCE_TREE" --arg fingerprint "$SO
 ' >/dev/null <<<"$SOURCE_FINAL" || { echo "error: source changed during Android emulator smoke" >&2; exit 1; }
 
 PORTRAIT_PROBE="$(jq '{path:$path,status,ready,non_black_ratio:.sample.non_black_ratio,luma_span:.sample.luma_span,luma_bucket_count:.sample.luma_bucket_count}' --arg path "$PORTRAIT_PROBE_PATH" "$PORTRAIT_PROBE_PATH")"
+STATUS_BAR_CONTRAST_SHA256="$(shasum -a 256 "$STATUS_BAR_CONTRAST_PATH" | awk '{print $1}')"
+STATUS_BAR_CONTRAST="$(jq --arg path "$STATUS_BAR_CONTRAST_PATH" --arg sha "$STATUS_BAR_CONTRAST_SHA256" '. + {evidence_path:$path,evidence_sha256:$sha}' "$STATUS_BAR_CONTRAST_PATH")"
 LANDSCAPE_PROBE="$(jq '{path:$path,status,ready,non_black_ratio:.sample.non_black_ratio,luma_span:.sample.luma_span,luma_bucket_count:.sample.luma_bucket_count}' --arg path "$LANDSCAPE_PROBE_PATH" "$LANDSCAPE_PROBE_PATH")"
 IME_PROBE="$(jq '{path:$path,status,ready,non_black_ratio:.sample.non_black_ratio,luma_span:.sample.luma_span,luma_bucket_count:.sample.luma_bucket_count}' --arg path "$IME_PROBE_PATH" "$IME_PROBE_PATH")"
 PORTRAIT_TEMPLATE_PROBE="$(jq --arg path "$PORTRAIT_TEMPLATE_REPORT_PATH" '. + {evidence_path:$path}' "$PORTRAIT_TEMPLATE_REPORT_PATH")"
@@ -936,6 +988,7 @@ jq -n \
   --argjson portrait_height "$PORTRAIT_HEIGHT" \
   --argjson portrait_attempts "$PORTRAIT_ATTEMPTS" \
   --argjson portrait_probe "$PORTRAIT_PROBE" \
+  --argjson status_bar_contrast "$STATUS_BAR_CONTRAST" \
   --argjson portrait_template_probe "$PORTRAIT_TEMPLATE_PROBE" \
   --arg landscape_path "$LANDSCAPE_PATH" \
   --arg landscape_sha "$LANDSCAPE_SHA256" \
@@ -1023,6 +1076,7 @@ jq -n \
       login_surface_template:{manifest_path:$login_template_manifest,manifest_sha256:$login_template_manifest_sha256,version:1,all_states_ready:true},
       visual_inspection:{
         machine_verified_original_dimensions:true,
+        system_bar_contrast:$status_bar_contrast,
         portrait:{format:"png",path:$portrait_path,sha256:$portrait_sha,width:$portrait_width,height:$portrait_height,capture_attempts:$portrait_attempts,content_probe:$portrait_probe,login_template_probe:$portrait_template_probe,app_remains_foreground:true,login_surface_template_ready:true},
         landscape:{format:"png",path:$landscape_path,sha256:$landscape_sha,width:$landscape_width,height:$landscape_height,capture_attempts:$landscape_attempts,content_probe:$landscape_probe,login_template_probe:$landscape_template_probe,app_remains_foreground:true,login_surface_template_ready:true},
         ime:{format:"png",path:$ime_path,sha256:$ime_sha,width:$ime_width,height:$ime_height,capture_attempts:$ime_attempts,content_probe:$ime_probe,login_template_probe:$ime_template_probe,app_remains_foreground:true,input_shown:true,input_view_shown:true,focused_surface:"homeserver_input_template_anchor",focused_surface_visible:true,manifest_soft_input_mode:"STATE_UNCHANGED|ADJUST_NOTHING",manifest_soft_input_contract_ready:true,login_surface_template_ready:true}

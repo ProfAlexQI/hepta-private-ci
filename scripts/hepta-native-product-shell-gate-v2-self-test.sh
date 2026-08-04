@@ -24,6 +24,9 @@ trap cleanup EXIT
 
 mkdir -p "$TEST_ROOT/app"
 cp -R "$APP_DIR/src" "$TEST_ROOT/app/src"
+mkdir -p "$TEST_ROOT/app/licenses" "$TEST_ROOT/app/packaging"
+cp "$APP_DIR/licenses/ATTRIBUTIONS.md" "$TEST_ROOT/app/licenses/ATTRIBUTIONS.md"
+cp "$APP_DIR/packaging/debian-copyright" "$TEST_ROOT/app/packaging/debian-copyright"
 
 "$SYNC_CHECK" --strict --json > "$TEST_ROOT/sync.json"
 ruby -rjson -e '
@@ -44,6 +47,8 @@ ruby -rjson -e '
   abort "real mobile widget tree was not ready" unless report.dig("product_shell", "mobile_widget_tree_contract", "ready") == true
   abort "rooms header toggle contract was not ready" unless report.dig("product_shell", "rooms_header_toggle_contract_ready") == true
   abort "retired ghost modules were not absent" unless report.dig("product_shell", "retired_ghost_modules_ready") == true
+  abort "retired raster assets were not absent" unless report.dig("product_shell", "retired_raster_assets_ready") == true
+  abort "inline provider marks were not attributed" unless report.dig("product_shell", "inline_provider_marks_attribution_ready") == true
   abort "mobile gate did not bind HomeScreen" unless report.dig("product_shell", "mobile_widget_tree_contract", "path") == "src/home/home_screen.rs"
   abort "cockpit was present on the default route" unless report.dig("product_shell", "no_cockpit_default") == true
   abort "downstream source contracts were incomplete" unless report.dig("product_shell", "downstream_source_contracts_ready") == true
@@ -64,6 +69,53 @@ ruby -rjson -e '
     abort "#{field} was dishonestly promoted" unless report[field] == false
   end
 ' "$TEST_ROOT/product.json"
+
+mkdir -p "$TEST_ROOT/app/resources/img"
+printf 'retired raster fixture\n' >"$TEST_ROOT/app/resources/img/apple.png"
+set +e
+HEPTA_NATIVE_V2_APP_DIR="$TEST_ROOT/app" \
+HEPTA_NATIVE_V2_ALLOW_TEST_ROOT=1 \
+  "$PRODUCT_GATE" --output "$TEST_ROOT/retired-raster-negative.json"
+retired_raster_exit=$?
+set -e
+if [[ "$retired_raster_exit" -eq 0 ]]; then
+  echo "reintroduced retired raster asset unexpectedly passed" >&2
+  exit 1
+fi
+ruby -rjson -e '
+  report = JSON.parse(File.binread(ARGV.fetch(0)))
+  check = report.dig("product_shell", "retired_raster_assets", "resources/img/apple.png")
+  abort "reintroduced raster path was not detected" unless check["path_absent"] == false
+  abort "retired raster contract remained ready" unless report.dig("product_shell", "retired_raster_assets_ready") == false
+  abort "reintroduced raster promoted Native UI" unless report["native_ui_ready"] == false
+' "$TEST_ROOT/retired-raster-negative.json"
+rm -f "$TEST_ROOT/app/resources/img/apple.png"
+
+ruby -e '
+  path = ARGV.fetch(0)
+  source = File.binread(path)
+  needle = "License: MIT and CC0-1.0"
+  abort "missing Debian Simple Icons fixture target" unless source.scan(needle).length == 1
+  File.binwrite(path, source.sub(needle, "License: MIT"))
+' "$TEST_ROOT/app/packaging/debian-copyright"
+set +e
+HEPTA_NATIVE_V2_APP_DIR="$TEST_ROOT/app" \
+HEPTA_NATIVE_V2_ALLOW_TEST_ROOT=1 \
+  "$PRODUCT_GATE" --output "$TEST_ROOT/provider-attribution-negative.json"
+provider_attribution_exit=$?
+set -e
+if [[ "$provider_attribution_exit" -eq 0 ]]; then
+  echo "missing Debian Simple Icons attribution unexpectedly passed" >&2
+  exit 1
+fi
+ruby -rjson -e '
+  report = JSON.parse(File.binread(ARGV.fetch(0)))
+  checks = report.dig("product_shell", "inline_provider_marks_attribution")
+  abort "missing Debian dual-license stanza was not detected" unless checks["debian_binary_stanza_declares_dual_license"] == false
+  abort "provider attribution contract remained ready" unless report.dig("product_shell", "inline_provider_marks_attribution_ready") == false
+  abort "broken provider attribution promoted Native UI" unless report["native_ui_ready"] == false
+' "$TEST_ROOT/provider-attribution-negative.json"
+cp "$APP_DIR/packaging/debian-copyright" "$TEST_ROOT/app/packaging/debian-copyright"
 
 # The post-login semantic tree is authoritative. A login-only tree must not
 # satisfy the product-shell source contract.

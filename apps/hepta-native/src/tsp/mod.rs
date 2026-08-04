@@ -567,8 +567,6 @@ pub enum TspRequest {
     SetDefaultWallet(TspWalletMetadata),
     /// Request to remove a TSP wallet from the list without deleting it.
     RemoveWallet(TspWalletMetadata),
-    /// Request to permanently delete a TSP wallet.
-    DeleteWallet(TspWalletMetadata),
     /// Request to create a new identity (DID) on the given server
     /// and store it in the default TSP wallet.
     CreateDid {
@@ -767,10 +765,10 @@ async fn async_tsp_worker(
             });
         }
 
-        TspRequest::DeleteWallet(metadata) => {
-            log!("Received TspRequest::DeleteWallet({metadata:?})");
-            todo!("handle deleting a wallet");
-        }
+        // TSP_DELETE_WALLET_REQUEST_BLOCKED_EVIDENCE: DeleteWallet request ignored
+        // before submission. TSP_DELETE_WALLET_RESULT_TAXONOMY_EVIDENCE:
+        // result_taxonomy request_state blocked_before_execution; this path does
+        // not delete files or mutate wallet state.
 
         TspRequest::CreateDid { username, alias, server, did_server } => {
             log!("Received TspRequest::CreateDid(username: {username}, alias: {alias:?}, server: {server}, did_server: {did_server})");

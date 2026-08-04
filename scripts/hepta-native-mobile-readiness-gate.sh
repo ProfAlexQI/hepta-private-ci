@@ -46,6 +46,8 @@ ANDROID_EMULATOR_LIVE_READBACK_PATH="scripts/hepta-native-android-emulator-live-
 ANDROID_TRUSTED_ADB_PATH="scripts/hepta-android-trusted-adb"
 ANDROID_LOGIN_TEMPLATE_PROBE_PATH="scripts/hepta-android-login-template-probe"
 ANDROID_ORIENTATION_PROBE_PATH="scripts/hepta-android-window-orientation-probe"
+ANDROID_SYSTEM_BAR_CONTRAST_PROBE_PATH="scripts/hepta-android-system-bar-contrast-probe"
+ANDROID_SYSTEM_BAR_CONTRAST_REPLAY_VERIFY_PATH="scripts/hepta-android-system-bar-contrast-replay-verify"
 ANDROID_LOGIN_TEMPLATE_MANIFEST_PATH="apps/hepta-native/packaging/android-emulator-login-template-v1/manifest.json"
 IOS_SIMULATOR_RECEIPT="${HEPTA_NATIVE_IOS_SIMULATOR_RECEIPT:-}"
 IOS_SIMULATOR_UI_RECEIPT="${HEPTA_NATIVE_IOS_SIMULATOR_UI_RECEIPT:-}"
@@ -245,6 +247,7 @@ if ruby -e '
       %q{scripts/hepta-image-content-probe},
       %q{scripts/hepta-android-login-template-probe},
       %q{scripts/hepta-android-window-orientation-probe},
+      %q{scripts/hepta-android-system-bar-contrast-probe},
       %q{android-emulator-login-template-v1},
       %q{/proc/sys/kernel/random/boot_id},
       %q{ro.boot.qemu.avd_name},
@@ -269,7 +272,20 @@ if ruby -e '
       /^\s*security\b/m,
     ]
     abort "Android producer contains a forbidden mutation command" if forbidden_commands.any? { |pattern| text.match?(pattern) }
-  ' "$ANDROID_EMULATOR_SMOKE_PATH" >/dev/null 2>&1; then
+  ' "$ANDROID_EMULATOR_SMOKE_PATH" >/dev/null 2>&1 \
+  && bash -n "$ANDROID_SYSTEM_BAR_CONTRAST_PROBE_PATH" \
+  && ruby -e '
+    text = File.binread(ARGV.fetch(0))
+    required = [
+      %q{schema_version: 2},
+      %q{status_bar: status_bar},
+      %q{navigation_bar: navigation_bar},
+      %q{edge == "top"},
+      %q{height - 1 - edge_offset},
+      %q{Digest::SHA256.file(image_path).hexdigest},
+    ]
+    abort "system-bar contrast probe is not independently replayable for both edges" unless required.all? { |needle| text.include?(needle) }
+  ' "$ANDROID_SYSTEM_BAR_CONTRAST_PROBE_PATH" >/dev/null 2>&1; then
   android_emulator_smoke_source_shape_ready=true
 fi
 
@@ -1152,6 +1168,7 @@ if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
       && verify_android_emulator_artifact "$ANDROID_EMULATOR_RECEIPT" "$android_receipt_apk_path" \
       && verify_android_emulator_host_tools "$ANDROID_EMULATOR_RECEIPT" \
       && verify_android_emulator_screenshot "$ANDROID_EMULATOR_RECEIPT" portrait \
+      && "$ANDROID_SYSTEM_BAR_CONTRAST_REPLAY_VERIFY_PATH" --receipt "$ANDROID_EMULATOR_RECEIPT" >/dev/null \
       && verify_android_emulator_screenshot "$ANDROID_EMULATOR_RECEIPT" landscape \
       && verify_android_emulator_screenshot "$ANDROID_EMULATOR_RECEIPT" ime \
       && verify_android_login_template "$ANDROID_EMULATOR_RECEIPT" portrait portrait \

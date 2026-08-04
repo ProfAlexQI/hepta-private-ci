@@ -69,7 +69,7 @@ if [[ "$LAB_CONTRACT_ONLY" == true ]]; then
       ready:true,
       opt_in:true,
       modes:{rtl:true,dynamic_type:true,rotation_keyboard:true,startup_performance:true,low_power:true},
-      state_contract:{snapshot_before_mutation:true,raw_orientation_snapshot:true,orientation_snapshot_backend:"simulator_ax_menu_mark",restore_to_raw_orientation:true,exact_orientation_readback:true,snapshot_failure_rejected_before_mutation:true,restore_and_readback_before_receipt:true,restore_failure_fails_closed:true,exit_cleanup_preserves_original_status:true,interrupt_cleanup_restore_and_readback:true,cleanup_failure_receipt:true},
+      state_contract:{snapshot_before_mutation:true,raw_orientation_snapshot:true,orientation_snapshot_backend:"simulator_ax_menu_mark",rtl_matched_control_before_mode:true,dynamic_type_matched_control_before_mode:true,mode_specific_raster_attribution:true,semantic_layout_claims_remain_false:true,restore_to_raw_orientation:true,exact_orientation_readback:true,snapshot_failure_rejected_before_mutation:true,restore_and_readback_before_receipt:true,restore_failure_fails_closed:true,exit_cleanup_preserves_original_status:true,interrupt_cleanup_restore_and_readback:true,cleanup_failure_receipt:true},
       claim_boundaries:{simulator_only:true,generic_app_wide:false,real_device:false,voiceover:false,effective_low_power:false},
       forbidden_actions:{credential_supply:false,real_device_contact:false,account_connection:false,code_sign:false,upload:false,publish:false},
       external_side_effects_performed:false
@@ -378,7 +378,16 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   [[ "$BASELINE_LAB_WIDTH" =~ ^[1-9][0-9]*$ && "$BASELINE_LAB_HEIGHT" =~ ^[1-9][0-9]*$ ]] \
     || { echo "error: Simulator orientation baseline dimensions are unreadable" >&2; exit 1; }
   LAB_STATE_MUTATED=true
-  BASELINE_LAB_SHA="$(shasum -a 256 "$BASELINE_SCREENSHOT" | awk '{print $1}')"
+
+  SIMCTL_CHILD_APPLE_LANGUAGES='(en)' SIMCTL_CHILD_APPLE_LOCALE='en_US' \
+    SIMCTL_CHILD_NSForceRightToLeftWritingDirection='NO' SIMCTL_CHILD_AppleTextDirection='NO' \
+    lab_launch >/dev/null
+  sleep 2
+  RTL_CONTROL_PATH="$LAB_EVIDENCE_DIR/rtl-control-ltr.png"
+  lab_capture "$RTL_CONTROL_PATH" "$LAB_EVIDENCE_DIR/rtl-control.content-probe.json"
+  RTL_CONTROL_SHA="$(shasum -a 256 "$RTL_CONTROL_PATH" | awk '{print $1}')"
+  RTL_CONTROL_WIDTH="$(sips -g pixelWidth "$RTL_CONTROL_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  RTL_CONTROL_HEIGHT="$(sips -g pixelHeight "$RTL_CONTROL_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
 
   RTL_PATH="$LAB_EVIDENCE_DIR/rtl-ar-SA.png"
   SIMCTL_CHILD_APPLE_LANGUAGES='(ar)' SIMCTL_CHILD_APPLE_LOCALE='ar_SA' \
@@ -387,7 +396,19 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   sleep 2
   lab_capture "$RTL_PATH" "$LAB_EVIDENCE_DIR/rtl.content-probe.json"
   RTL_SHA="$(shasum -a 256 "$RTL_PATH" | awk '{print $1}')"
-  [[ "$RTL_SHA" != "$BASELINE_LAB_SHA" ]] && RTL_RASTER_CHANGED=true || RTL_RASTER_CHANGED=false
+  RTL_WIDTH="$(sips -g pixelWidth "$RTL_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  RTL_HEIGHT="$(sips -g pixelHeight "$RTL_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+  [[ "$RTL_SHA" != "$RTL_CONTROL_SHA" ]] && RTL_RASTER_CHANGED=true || RTL_RASTER_CHANGED=false
+  [[ "$RTL_WIDTH" == "$RTL_CONTROL_WIDTH" && "$RTL_HEIGHT" == "$RTL_CONTROL_HEIGHT" ]] \
+    && RTL_SAME_CANVAS=true || RTL_SAME_CANVAS=false
+
+  lab_launch >/dev/null
+  sleep 2
+  DYNAMIC_CONTROL_PATH="$LAB_EVIDENCE_DIR/dynamic-type-control-$ORIGINAL_CONTENT_SIZE.png"
+  lab_capture "$DYNAMIC_CONTROL_PATH" "$LAB_EVIDENCE_DIR/dynamic-type-control.content-probe.json"
+  DYNAMIC_CONTROL_SHA="$(shasum -a 256 "$DYNAMIC_CONTROL_PATH" | awk '{print $1}')"
+  DYNAMIC_CONTROL_WIDTH="$(sips -g pixelWidth "$DYNAMIC_CONTROL_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  DYNAMIC_CONTROL_HEIGHT="$(sips -g pixelHeight "$DYNAMIC_CONTROL_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
 
   DYNAMIC_TYPE_SIZE="accessibility-extra-extra-extra-large"
   xcrun simctl ui "$UDID" content_size "$DYNAMIC_TYPE_SIZE" >/dev/null
@@ -398,7 +419,11 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   DYNAMIC_PATH="$LAB_EVIDENCE_DIR/dynamic-type-axxxl.png"
   lab_capture "$DYNAMIC_PATH" "$LAB_EVIDENCE_DIR/dynamic-type.content-probe.json"
   DYNAMIC_SHA="$(shasum -a 256 "$DYNAMIC_PATH" | awk '{print $1}')"
-  [[ "$DYNAMIC_SHA" != "$BASELINE_LAB_SHA" ]] && DYNAMIC_RASTER_CHANGED=true || DYNAMIC_RASTER_CHANGED=false
+  DYNAMIC_WIDTH="$(sips -g pixelWidth "$DYNAMIC_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  DYNAMIC_HEIGHT="$(sips -g pixelHeight "$DYNAMIC_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+  [[ "$DYNAMIC_SHA" != "$DYNAMIC_CONTROL_SHA" ]] && DYNAMIC_RASTER_CHANGED=true || DYNAMIC_RASTER_CHANGED=false
+  [[ "$DYNAMIC_WIDTH" == "$DYNAMIC_CONTROL_WIDTH" && "$DYNAMIC_HEIGHT" == "$DYNAMIC_CONTROL_HEIGHT" ]] \
+    && DYNAMIC_SAME_CANVAS=true || DYNAMIC_SAME_CANVAS=false
   xcrun simctl ui "$UDID" content_size "$ORIGINAL_CONTENT_SIZE" >/dev/null
   [[ "$(xcrun simctl ui "$UDID" content_size | tail -1 | tr -d '\r')" == "$ORIGINAL_CONTENT_SIZE" ]] \
     || { echo "error: Simulator content size did not restore" >&2; exit 1; }
@@ -493,27 +518,29 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   LAB_RESULT="$(jq -n \
     --arg evidence_root "$LAB_EVIDENCE_DIR" --arg original_size "$ORIGINAL_CONTENT_SIZE" \
     --arg original_orientation "$ORIGINAL_ORIENTATION" --arg restored_orientation "$RESTORED_ORIENTATION" \
-    --arg dynamic_size "$DYNAMIC_TYPE_SIZE" --arg rtl_path "$RTL_PATH" --arg rtl_sha "$RTL_SHA" \
+    --arg dynamic_size "$DYNAMIC_TYPE_SIZE" --arg rtl_control_path "$RTL_CONTROL_PATH" --arg rtl_control_sha "$RTL_CONTROL_SHA" \
+    --arg rtl_path "$RTL_PATH" --arg rtl_sha "$RTL_SHA" \
+    --arg dynamic_control_path "$DYNAMIC_CONTROL_PATH" --arg dynamic_control_sha "$DYNAMIC_CONTROL_SHA" \
     --arg dynamic_path "$DYNAMIC_PATH" --arg dynamic_sha "$DYNAMIC_SHA" \
     --arg landscape_path "$LANDSCAPE_PATH" --arg landscape_keyboard_path "$LANDSCAPE_KEYBOARD_PATH" \
-    --arg startup_path "$STARTUP_PATH" --argjson rtl_changed "$RTL_RASTER_CHANGED" \
-    --argjson dynamic_changed "$DYNAMIC_RASTER_CHANGED" --argjson rotation "$ROTATION_TRANSITION_READY" \
+    --arg startup_path "$STARTUP_PATH" --argjson rtl_changed "$RTL_RASTER_CHANGED" --argjson rtl_same_canvas "$RTL_SAME_CANVAS" \
+    --argjson dynamic_changed "$DYNAMIC_RASTER_CHANGED" --argjson dynamic_same_canvas "$DYNAMIC_SAME_CANVAS" --argjson rotation "$ROTATION_TRANSITION_READY" \
     --argjson landscape_keyboard "$LANDSCAPE_KEYBOARD_CAPTURE_READY" --argjson startup_ready "$STARTUP_MODE_READY" \
     --argjson startup_samples "$STARTUP_SAMPLES" --argjson startup_stats "$STARTUP_STATS" '
       {
         requested:true,status:"not_ready",ready:false,evidence_root:$evidence_root,state_restore_verified:true,
         state_snapshot:{content_size:$original_size,raw_orientation:$original_orientation,restored_orientation:$restored_orientation,exact_orientation_readback:true},
         modes:{
-          rtl:{executed:true,environment:{languages:["ar"],locale:"ar_SA",forced_writing_direction:"right_to_left"},capture:{path:$rtl_path,sha256:$rtl_sha},raster_changed:$rtl_changed,ready:false},
-          dynamic_type:{executed:true,requested_content_size:$dynamic_size,original_content_size:$original_size,setting_readback_ready:true,capture:{path:$dynamic_path,sha256:$dynamic_sha},raster_changed:$dynamic_changed,ready:false},
+          rtl:{executed:true,environment:{languages:["ar"],locale:"ar_SA",forced_writing_direction:"right_to_left"},matched_control:{path:$rtl_control_path,sha256:$rtl_control_sha,languages:["en"],locale:"en_US",writing_direction:"left_to_right"},capture:{path:$rtl_path,sha256:$rtl_sha},raster_changed:$rtl_changed,mode_attributable_raster_change:$rtl_changed,geometry_comparison:{same_canvas:$rtl_same_canvas,semantic_layout_verified:false},ready:false},
+          dynamic_type:{executed:true,requested_content_size:$dynamic_size,original_content_size:$original_size,setting_readback_ready:true,matched_control:{path:$dynamic_control_path,sha256:$dynamic_control_sha,content_size:$original_size},capture:{path:$dynamic_path,sha256:$dynamic_sha},raster_changed:$dynamic_changed,mode_attributable_raster_change:$dynamic_changed,geometry_comparison:{same_canvas:$dynamic_same_canvas,semantic_text_reflow_verified:false},ready:false},
           rotation_keyboard:{executed:true,landscape_transition_observed:$rotation,landscape_capture:$landscape_path,landscape_keyboard_capture:$landscape_keyboard_path,keyboard_raster_change_observed:$landscape_keyboard,ready:false},
           startup_performance:{executed:true,scope:"simctl_launch_command_to_pid_on_unauthenticated_simulator",samples:$startup_samples,statistics:$startup_stats,ready:$startup_ready},
           low_power:{executed:false,supported_by_ios_simulator:false,effective_low_power_mode:false,ready:false}
         },
         claims:{rtl_ready:false,dynamic_type_ready:false,generic_safe_area_ready:false,generic_software_keyboard_ready:false,rotation_ready:false,effective_low_power_performance_ready:false,ios_real_device_ready:false,voiceover_ready:false},
         blockers:[
-          {code:"ios_rtl_semantic_layout_verification_missing",requires:"semantic mirrored layout and interaction evidence",observed:{simulator_launch_environment:true,raster_changed:$rtl_changed}},
-          {code:"ios_dynamic_type_semantic_response_verification_missing",requires:"accessible text reflow and interaction evidence",observed:{content_size_setting_applied:true,raster_changed:$dynamic_changed}},
+          {code:"ios_rtl_semantic_layout_verification_missing",requires:"semantic mirrored layout and interaction evidence",observed:{simulator_launch_environment:true,matched_control:true,mode_attributable_raster_change:$rtl_changed,same_canvas:$rtl_same_canvas}},
+          {code:"ios_dynamic_type_semantic_response_verification_missing",requires:"accessible text reflow and interaction evidence",observed:{content_size_setting_applied:true,matched_control:true,mode_attributable_raster_change:$dynamic_changed,same_canvas:$dynamic_same_canvas}},
           {code:"ios_generic_safe_area_keyboard_scope_missing",requires:"authenticated app-wide portrait and landscape coverage",observed:{login_landscape_transition:$rotation,login_landscape_keyboard_capture:$landscape_keyboard}},
           {code:"ios_simulator_effective_low_power_mode_unsupported",requires:"real-device effective Low Power Mode",observed:{simulator_support:false}},
           {code:"ios_real_device_receipt_missing",requires:"explicit physical-device lab receipt",observed:false},

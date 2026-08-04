@@ -14,12 +14,28 @@ pub(crate) const HOME_SETTINGS_ID: u64 = 203;
 pub(crate) const HOME_TOGGLE_SPACES_ID: u64 = 204;
 const HOME_MAIN_ID: u64 = 210;
 const HOME_CONTEXT_ID: u64 = 211;
+const HOME_ROOM_LIST_ID: u64 = 220;
+const HOME_TIMELINE_ID: u64 = 222;
+pub(crate) const HOME_COMPOSER_ID: u64 = 224;
 
 #[derive(Clone, Copy)]
 struct HomeControl {
     id: u64,
     bounds: Rect,
     label: &'static str,
+}
+
+#[derive(Clone)]
+struct HomeSemanticNode {
+    id: u64,
+    parent_id: u64,
+    bounds: Rect,
+    role: Role,
+    label: &'static str,
+    description: &'static str,
+    value: Option<String>,
+    actions: &'static [Action],
+    focused: bool,
 }
 
 fn set_safe_value(node: &mut Node, role: Role, value: Option<String>) {
@@ -461,6 +477,7 @@ pub(crate) fn publish_login_tree(
 fn build_home_tree(
     bounds: Rect,
     controls: &[HomeControl],
+    semantic_nodes: &[HomeSemanticNode],
     focused_control: Option<u64>,
     page_label: &str,
     context_label: &str,
@@ -489,6 +506,45 @@ fn build_home_tree(
         );
     }
 
+    let mut detached_semantic_ids = Vec::new();
+    let mut semantic_children = BTreeMap::<u64, Vec<NodeId>>::new();
+    for semantic_node in semantic_nodes {
+        push_bounded_node(
+            &mut nodes,
+            &mut detached_semantic_ids,
+            &mut focus,
+            semantic_node.bounds,
+            semantic_node.id,
+            semantic_node.role,
+            semantic_node.label,
+            semantic_node.description,
+            semantic_node.value.clone(),
+            true,
+            semantic_node.actions,
+            semantic_node.focused,
+        );
+        semantic_children
+            .entry(semantic_node.parent_id)
+            .or_default()
+            .push(NodeId(semantic_node.id));
+    }
+
+    let mut main_children = Vec::new();
+    push_bounded_node(
+        &mut nodes,
+        &mut main_children,
+        &mut focus,
+        bounds,
+        HOME_CONTEXT_ID,
+        Role::Heading,
+        context_label,
+        "Current view",
+        None,
+        true,
+        &[],
+        false,
+    );
+    main_children.extend(semantic_children.remove(&HOME_MAIN_ID).unwrap_or_default());
     push_bounded_node(
         &mut nodes,
         &mut children,
@@ -503,20 +559,19 @@ fn build_home_tree(
         &[],
         false,
     );
-    push_bounded_node(
-        &mut nodes,
-        &mut children,
-        &mut focus,
-        bounds,
-        HOME_CONTEXT_ID,
-        Role::Heading,
-        context_label,
-        "Current view",
-        None,
-        true,
-        &[],
-        false,
-    );
+    let main = nodes
+        .iter_mut()
+        .find_map(|(id, node)| (*id == NodeId(HOME_MAIN_ID)).then_some(node))
+        .expect("home main node was just inserted");
+    main.set_children(main_children);
+    for (parent_id, child_ids) in semantic_children {
+        if let Some(parent) = nodes
+            .iter_mut()
+            .find_map(|(id, node)| (*id == NodeId(parent_id)).then_some(node))
+        {
+            parent.set_children(child_ids);
+        }
+    }
 
     finish_tree(root, children, nodes, focus)
 }
@@ -567,11 +622,79 @@ pub(crate) fn publish_home_tree(
             Some(HomeControl { id, bounds, label })
         })
         .collect::<Vec<_>>();
+
+    let composer = view.widget(
+        cx,
+        ids!(room_screen.room_input_bar.input_bar.mentionable_text_input),
+    );
+    let composer_value = composer.text();
+    let semantic_candidates = [
+        (
+            HOME_ROOM_LIST_ID,
+            HOME_MAIN_ID,
+            view.view(cx, ids!(rooms_list)).area(),
+            Role::List,
+            "Rooms",
+            "Room-list semantic container; visible PortalList rows are not yet enumerated",
+            None,
+            &[][..],
+        ),
+        (
+            HOME_TIMELINE_ID,
+            HOME_MAIN_ID,
+            view.view(cx, ids!(room_screen.timeline)).area(),
+            Role::Feed,
+            "Messages",
+            "Timeline semantic container; visible message widgets are not yet enumerated",
+            None,
+            &[][..],
+        ),
+        (
+            HOME_COMPOSER_ID,
+            HOME_MAIN_ID,
+            view.widget(
+                cx,
+                ids!(
+                    room_screen
+                        .room_input_bar
+                        .input_bar
+                        .mentionable_text_input
+                        .text_input
+                ),
+            )
+            .area(),
+            Role::MultilineTextInput,
+            "Message composer",
+            "Compose a message in the current room",
+            Some(composer_value),
+            &[Action::Focus, Action::SetValue][..],
+        ),
+    ];
+    let semantic_nodes = semantic_candidates
+        .into_iter()
+        .filter_map(
+            |(id, parent_id, area, role, label, description, value, actions)| {
+                let bounds = area_bounds(cx, area)?;
+                Some(HomeSemanticNode {
+                    id,
+                    parent_id,
+                    bounds,
+                    role,
+                    label,
+                    description,
+                    value,
+                    actions,
+                    focused: cx.has_key_focus(area),
+                })
+            },
+        )
+        .collect::<Vec<_>>();
     publish(
         cx,
         build_home_tree(
             bounds,
             &controls,
+            &semantic_nodes,
             focused_control,
             page_label,
             context_label,
@@ -682,7 +805,7 @@ mod tests {
             bounds,
             label: "All rooms",
         }];
-        let update = build_home_tree(bounds, &controls, None, "Rooms", "General");
+        let update = build_home_tree(bounds, &controls, &[], None, "Rooms", "General");
         assert!(valid(&update));
         assert_eq!(update.nodes.len(), 4);
         assert!(update.nodes.iter().any(|(id, node)| {
@@ -718,11 +841,105 @@ mod tests {
         let update = build_home_tree(
             bounds,
             &controls,
+            &[],
             Some(HOME_SETTINGS_ID),
             "Settings",
             "Settings",
         );
         assert!(valid(&update));
         assert_eq!(update.focus, NodeId(HOME_SETTINGS_ID));
+    }
+
+    #[test]
+    fn post_login_tree_is_a_hierarchical_container_skeleton() {
+        let bounds = Rect {
+            x0: 0.0,
+            y0: 0.0,
+            x1: 1280.0,
+            y1: 800.0,
+        };
+        let semantic_nodes = [
+            HomeSemanticNode {
+                id: HOME_ROOM_LIST_ID,
+                parent_id: HOME_MAIN_ID,
+                bounds,
+                role: Role::List,
+                label: "Rooms",
+                description: "Room-list semantic container",
+                value: None,
+                actions: &[],
+                focused: false,
+            },
+            HomeSemanticNode {
+                id: HOME_TIMELINE_ID,
+                parent_id: HOME_MAIN_ID,
+                bounds,
+                role: Role::Feed,
+                label: "Messages",
+                description: "Timeline semantic container",
+                value: None,
+                actions: &[],
+                focused: false,
+            },
+            HomeSemanticNode {
+                id: HOME_COMPOSER_ID,
+                parent_id: HOME_MAIN_ID,
+                bounds,
+                role: Role::MultilineTextInput,
+                label: "Message composer",
+                description: "Compose a message in the current room",
+                value: Some("Draft message".into()),
+                actions: &[Action::Focus, Action::SetValue],
+                focused: true,
+            },
+        ];
+        let update = build_home_tree(bounds, &[], &semantic_nodes, None, "Room", "General");
+        assert!(valid(&update));
+        assert_eq!(update.focus, NodeId(HOME_COMPOSER_ID));
+        for (id, role) in [
+            (HOME_ROOM_LIST_ID, Role::List),
+            (HOME_TIMELINE_ID, Role::Feed),
+            (HOME_COMPOSER_ID, Role::MultilineTextInput),
+        ] {
+            assert!(
+                update
+                    .nodes
+                    .iter()
+                    .any(|(node_id, node)| *node_id == NodeId(id) && node.role() == role)
+            );
+        }
+        let root = update
+            .nodes
+            .iter()
+            .find_map(|(id, node)| (*id == ROOT_ID).then_some(node))
+            .unwrap();
+        let main = update
+            .nodes
+            .iter()
+            .find_map(|(id, node)| (*id == NodeId(HOME_MAIN_ID)).then_some(node))
+            .unwrap();
+        assert_eq!(root.children(), &[NodeId(HOME_MAIN_ID)]);
+        assert_eq!(
+            main.children(),
+            &[
+                NodeId(HOME_CONTEXT_ID),
+                NodeId(HOME_ROOM_LIST_ID),
+                NodeId(HOME_TIMELINE_ID),
+                NodeId(HOME_COMPOSER_ID),
+            ]
+        );
+        assert!(
+            update
+                .nodes
+                .iter()
+                .all(|(_, node)| { !matches!(node.role(), Role::ListItem | Role::Article) })
+        );
+        let composer = update
+            .nodes
+            .iter()
+            .find_map(|(id, node)| (*id == NodeId(HOME_COMPOSER_ID)).then_some(node))
+            .unwrap();
+        assert_eq!(composer.value(), Some("Draft message"));
+        assert!(composer.supports_action(Action::SetValue));
     }
 }

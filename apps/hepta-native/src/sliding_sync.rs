@@ -3237,22 +3237,6 @@ async fn add_new_room(
     Ok(())
 }
 
-#[allow(unused)]
-async fn current_ignore_user_list(client: &Client) -> Option<HashSet<OwnedUserId>> {
-    use matrix_sdk::ruma::events::ignored_user_list::IgnoredUserListEventContent;
-    let ignored_users = client.account()
-        .account_data::<IgnoredUserListEventContent>()
-        .await
-        .ok()??
-        .deserialize()
-        .ok()?
-        .ignored_users
-        .into_keys()
-        .collect();
-
-    Some(ignored_users)
-}
-
 /// This function spawns a task that captures a strong `Client` ref,
 /// so the caller should abort+await it upon logout to ensure the Client gets dropped.
 fn handle_ignore_user_list_subscriber(client: Client) -> JoinHandle<()> {

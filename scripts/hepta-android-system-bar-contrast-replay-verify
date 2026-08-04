@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PROBE="$ROOT_DIR/scripts/hepta-android-system-bar-contrast-probe"
+RECEIPT=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --receipt) RECEIPT="${2:-}"; shift 2 ;;
+    --help|-h)
+      printf '%s\n' 'usage: scripts/hepta-android-system-bar-contrast-replay-verify --receipt android-receipt.json'
+      exit 0
+      ;;
+    *) printf 'error: unknown argument: %s\n' "$1" >&2; exit 64 ;;
+  esac
+done
+
+[[ -n "$RECEIPT" && -s "$RECEIPT" && ! -L "$RECEIPT" ]] \
+  || { echo 'error: --receipt must be a non-empty regular JSON file' >&2; exit 64; }
+for command in jq ruby shasum; do
+  command -v "$command" >/dev/null 2>&1 || { echo "error: $command is required" >&2; exit 2; }
+done
+
+safe_absolute_regular_file() {
+  ruby -rpathname -e '
+    path = ARGV.fetch(0)
+    abort unless path.start_with?("/")
+    abort unless path.bytes.none? { |byte| byte < 0x20 || byte == 0x7f }
+    abort if path.include?("\\")
+    abort unless Pathname.new(path).cleanpath.to_s == path
+    stat = File.lstat(path)
+    abort unless stat.file? && !stat.symlink?
+    abort unless File.realpath(path) == path
+  ' "$1" >/dev/null 2>&1
+}
+
+IMAGE="$(jq -er '.visual_inspection.portrait.path' "$RECEIPT")"
+IMAGE_SHA="$(jq -er '.visual_inspection.portrait.sha256 | select(test("^[0-9a-f]{64}$"))' "$RECEIPT")"
+EVIDENCE_PATH="$(jq -er '.visual_inspection.system_bar_contrast.evidence_path' "$RECEIPT")"
+EVIDENCE_SHA="$(jq -er '.visual_inspection.system_bar_contrast.evidence_sha256 | select(test("^[0-9a-f]{64}$"))' "$RECEIPT")"
+
+safe_absolute_regular_file "$IMAGE"
+[[ "$(shasum -a 256 "$IMAGE" | awk '{print $1}')" == "$IMAGE_SHA" ]]
+safe_absolute_regular_file "$EVIDENCE_PATH"
+[[ "$(shasum -a 256 "$EVIDENCE_PATH" | awk '{print $1}')" == "$EVIDENCE_SHA" ]]
+
+EMBEDDED="$(jq -S -c '.visual_inspection.system_bar_contrast | del(.evidence_path,.evidence_sha256)' "$RECEIPT")"
+PERSISTED="$(jq -S -c . "$EVIDENCE_PATH")"
+[[ "$EMBEDDED" == "$PERSISTED" ]]
+REPLAY="$("$PROBE" --image "$IMAGE" 2>/dev/null)"
+[[ "$(jq -S -c . <<<"$REPLAY")" == "$PERSISTED" ]]
+jq -e '
+  .schema_version == 2
+  and .kind == "hepta-android-system-bar-contrast-probe"
+  and .status == "ready"
+  and .ready == true
+  and .regions.status_bar.edge == "top"
+  and .regions.status_bar.ready == true
+  and .regions.navigation_bar.edge == "bottom"
+  and .regions.navigation_bar.ready == true
+' >/dev/null <<<"$REPLAY"
+
+jq -n \
+  --arg image "$IMAGE" --arg image_sha256 "$IMAGE_SHA" \
+  --arg evidence "$EVIDENCE_PATH" --arg evidence_sha256 "$EVIDENCE_SHA" \
+  '{schema_version:1,kind:"hepta-android-system-bar-contrast-replay-verification",status:"ready",ready:true,image:{path:$image,sha256:$image_sha256,bytes_rehashed:true},evidence:{path:$evidence,sha256:$evidence_sha256,bytes_rehashed:true,embedded_fields_match:true,replay_fields_match:true},regions:{status_bar:true,navigation_bar:true}}'

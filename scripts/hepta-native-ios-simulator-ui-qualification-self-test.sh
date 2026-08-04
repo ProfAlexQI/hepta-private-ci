@@ -20,6 +20,10 @@ jq -e '
   and .state_contract.snapshot_before_mutation == true
   and .state_contract.raw_orientation_snapshot == true
   and .state_contract.orientation_snapshot_backend == "simulator_ax_menu_mark"
+  and .state_contract.rtl_matched_control_before_mode == true
+  and .state_contract.dynamic_type_matched_control_before_mode == true
+  and .state_contract.mode_specific_raster_attribution == true
+  and .state_contract.semantic_layout_claims_remain_false == true
   and .state_contract.restore_to_raw_orientation == true
   and .state_contract.exact_orientation_readback == true
   and .state_contract.snapshot_failure_rejected_before_mutation == true
@@ -148,6 +152,12 @@ for needle in \
   '--extended-lab' \
   "--path 'Device > Orientation > Landscape Right'" \
   'xcrun simctl ui "$UDID" content_size "$DYNAMIC_TYPE_SIZE"' \
+  'RTL_CONTROL_PATH="$LAB_EVIDENCE_DIR/rtl-control-ltr.png"' \
+  'DYNAMIC_CONTROL_PATH="$LAB_EVIDENCE_DIR/dynamic-type-control-$ORIGINAL_CONTENT_SIZE.png"' \
+  'mode_attributable_raster_change:$rtl_changed' \
+  'mode_attributable_raster_change:$dynamic_changed' \
+  'semantic_layout_verified:false' \
+  'semantic_text_reflow_verified:false' \
   'restore_ios_lab_state' \
   'AXMenuItemMarkChar' \
   'ORIGINAL_ORIENTATION="$(simulator_orientation)"' \
