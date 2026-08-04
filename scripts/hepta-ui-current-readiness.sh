@@ -539,7 +539,10 @@ if [[ "$VERIFY_BROWSER" == "1" && -s "$BROWSER_REPORT" ]]; then
       and .control_ui_browser_error_page_absent == true
       and .control_ui_horizontal_overflow_free == true
       and .control_ui_320_reflow_ready == true
-      and .control_ui_native_popover_interaction_ready == true
+      and .control_ui_tempered_surface_budget_ready == true
+      and .control_ui_visible_text_floor_ready == true
+      and .control_ui_mobile_single_topbar_ready == true
+      and .control_ui_mobile_single_bottom_action_layer_ready == true
     ' "$BROWSER_REPORT" >/dev/null 2>&1; then
     browser_original_valid=true
   fi

@@ -416,14 +416,14 @@ source_contract_requirements = {
     "src/login/login_screen.rs" => [
       "publish_login_tree",
       "Private by default",
-      "Credentials stay on this device. Live access activates only after the server verifies the session.",
+      "Credentials stay on this device. Live access starts after server verification.",
       "ScrollYView",
       "flow: Flow.Right{wrap: true}",
       "align: Align{x: 0.5, y: 0.0}",
       "drag_scrolling: true",
     ],
     "src/home/home_screen.rs" => %w[accessibility::publish_home_tree AccessibilityAction::Click AccessibilityAction::SetValue ActionData::Value HOME_COMPOSER_ID],
-    "src/app.rs" => %w[accessibility::reset_cache SystemBarAppearance::LightIcons],
+    "src/app.rs" => %w[accessibility::reset_cache SystemBarAppearance::DarkIcons],
   },
   "promotion_trust_policy" => {
     "promotion-trust-policy-v1.json" => ["hepta-ui-promotion-trust-policy-v1", "Runtime environment variables cannot select trust anchors"],
