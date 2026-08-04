@@ -269,6 +269,7 @@ printf '%s\n' \
   '#!/usr/bin/env bash' \
   'case "$*" in' \
   '  *"lstart="*) printf "%s\\n" "Tue Jan  2 03:04:05 2024" ;;' \
+  '  *"state="*) printf "%s\\n" "S" ;;' \
   '  *"command="*) printf "%s\\n" "/usr/bin/unrelated --serve" ;;' \
   '  *) exit 1 ;;' \
   'esac' >"$fake_ps"
@@ -303,6 +304,34 @@ hepta_process_terminate_identity_safe \
   && "$HEPTA_PROCESS_KILL_SENT" == false \
   && ! -s "$fake_signal_log" ]] || {
   echo "identity-safe cleanup signalled a command-mismatched PID" >&2
+  exit 1
+}
+
+# A same-start child that has already exited can remain observable as a zombie
+# until this parent calls wait. Its command may have changed to <defunct>, but
+# it cannot execute and must not receive TERM/KILL or be mistaken for a live
+# command-mismatched/recycled process.
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'case "$*" in' \
+  '  *"lstart="*) printf "%s\\n" "Tue Jan  2 03:04:05 2024" ;;' \
+  '  *"state="*) printf "%s\\n" "ZN" ;;' \
+  '  *"command="*) printf "%s\\n" "<defunct>" ;;' \
+  '  *) exit 1 ;;' \
+  'esac' >"$fake_ps"
+chmod 700 "$fake_ps"
+: >"$fake_signal_log"
+zombie_exit_race_rc=0
+hepta_process_terminate_identity_safe \
+  4242 "Tue Jan  2 03:04:05 2024" "/expected/product --serve" 1 0 1 \
+  || zombie_exit_race_rc=$?
+[[ "$zombie_exit_race_rc" == "0" \
+  && "$HEPTA_PROCESS_STOP_CONFIRMED" == true \
+  && "$HEPTA_PROCESS_PID_REUSED" == false \
+  && "$HEPTA_PROCESS_TERM_SENT" == false \
+  && "$HEPTA_PROCESS_KILL_SENT" == false \
+  && ! -s "$fake_signal_log" ]] || {
+  echo "identity-safe cleanup mishandled the same-start zombie exit race" >&2
   exit 1
 }
 

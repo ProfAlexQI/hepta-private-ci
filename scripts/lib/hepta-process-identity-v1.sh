@@ -3,6 +3,7 @@
 
 hepta_process_reset_termination_result() {
   HEPTA_PROCESS_ACTUAL_START_TOKEN=""
+  HEPTA_PROCESS_ACTUAL_STATE=""
   HEPTA_PROCESS_ACTUAL_COMMAND=""
   HEPTA_PROCESS_TERM_IDENTITY_VERIFIED=false
   HEPTA_PROCESS_KILL_IDENTITY_VERIFIED=false
@@ -22,13 +23,16 @@ hepta_process_read_identity() {
   local pid="$1"
   local ps_bin="${HEPTA_PROCESS_PS_BIN:-/bin/ps}"
   local start_token=""
+  local state=""
   local command=""
 
   [[ "$pid" =~ ^[0-9]+$ ]] || return 64
   start_token="$("$ps_bin" -p "$pid" -o lstart= 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  state="$("$ps_bin" -p "$pid" -o state= 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   command="$("$ps_bin" -p "$pid" -o command= 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  [[ -n "$start_token" && -n "$command" ]] || return 1
+  [[ -n "$start_token" && -n "$state" && -n "$command" ]] || return 1
   HEPTA_PROCESS_ACTUAL_START_TOKEN="$start_token"
+  HEPTA_PROCESS_ACTUAL_STATE="$state"
   HEPTA_PROCESS_ACTUAL_COMMAND="$command"
 }
 
@@ -48,6 +52,35 @@ hepta_process_identity_matches() {
 hepta_process_confirm_stopped_after_identity_read_failure() {
   local pid="$1"
   if ! hepta_process_is_alive "$pid"; then
+    HEPTA_PROCESS_STOP_CONFIRMED=true
+    return 0
+  fi
+  return 1
+}
+
+# A terminated child can remain visible to kill -0 until its parent reaps it.
+# ps reports that non-executable state as Z and commonly replaces its command
+# with <defunct>. Re-read the full identity before accepting that transition:
+# a same-start zombie is stopped, a different start token is a recycled PID,
+# and a live same-start command mismatch remains a hard failure.
+hepta_process_confirm_stopped_after_command_mismatch() {
+  local pid="$1"
+  local expected_start_token="$2"
+
+  if ! hepta_process_is_alive "$pid"; then
+    HEPTA_PROCESS_STOP_CONFIRMED=true
+    return 0
+  fi
+  if ! hepta_process_read_identity "$pid"; then
+    hepta_process_confirm_stopped_after_identity_read_failure "$pid"
+    return $?
+  fi
+  if [[ "$HEPTA_PROCESS_ACTUAL_START_TOKEN" != "$expected_start_token" ]]; then
+    HEPTA_PROCESS_PID_REUSED=true
+    HEPTA_PROCESS_STOP_CONFIRMED=true
+    return 0
+  fi
+  if [[ "$HEPTA_PROCESS_ACTUAL_STATE" == Z* ]]; then
     HEPTA_PROCESS_STOP_CONFIRMED=true
     return 0
   fi
@@ -88,7 +121,16 @@ hepta_process_terminate_identity_safe() {
     HEPTA_PROCESS_STOP_CONFIRMED=true
     return 0
   fi
-  [[ "$HEPTA_PROCESS_ACTUAL_COMMAND" == "$expected_command" ]] || return 75
+  if [[ "$HEPTA_PROCESS_ACTUAL_STATE" == Z* ]]; then
+    HEPTA_PROCESS_STOP_CONFIRMED=true
+    return 0
+  fi
+  if [[ "$HEPTA_PROCESS_ACTUAL_COMMAND" != "$expected_command" ]]; then
+    if hepta_process_confirm_stopped_after_command_mismatch "$pid" "$expected_start_token"; then
+      return 0
+    fi
+    return 75
+  fi
 
   HEPTA_PROCESS_TERM_IDENTITY_VERIFIED=true
   if ! "$kill_bin" -TERM "$pid" >/dev/null 2>&1; then
@@ -117,7 +159,16 @@ hepta_process_terminate_identity_safe() {
       HEPTA_PROCESS_STOP_CONFIRMED=true
       return 0
     fi
-    [[ "$HEPTA_PROCESS_ACTUAL_COMMAND" == "$expected_command" ]] || return 75
+    if [[ "$HEPTA_PROCESS_ACTUAL_STATE" == Z* ]]; then
+      HEPTA_PROCESS_STOP_CONFIRMED=true
+      return 0
+    fi
+    if [[ "$HEPTA_PROCESS_ACTUAL_COMMAND" != "$expected_command" ]]; then
+      if hepta_process_confirm_stopped_after_command_mismatch "$pid" "$expected_start_token"; then
+        return 0
+      fi
+      return 75
+    fi
     "$sleep_bin" "$grace_delay"
     attempt=$((attempt + 1))
   done
@@ -137,7 +188,16 @@ hepta_process_terminate_identity_safe() {
     HEPTA_PROCESS_STOP_CONFIRMED=true
     return 0
   fi
-  [[ "$HEPTA_PROCESS_ACTUAL_COMMAND" == "$expected_command" ]] || return 75
+  if [[ "$HEPTA_PROCESS_ACTUAL_STATE" == Z* ]]; then
+    HEPTA_PROCESS_STOP_CONFIRMED=true
+    return 0
+  fi
+  if [[ "$HEPTA_PROCESS_ACTUAL_COMMAND" != "$expected_command" ]]; then
+    if hepta_process_confirm_stopped_after_command_mismatch "$pid" "$expected_start_token"; then
+      return 0
+    fi
+    return 75
+  fi
 
   HEPTA_PROCESS_KILL_IDENTITY_VERIFIED=true
   if ! "$kill_bin" -KILL "$pid" >/dev/null 2>&1; then
@@ -155,11 +215,16 @@ hepta_process_terminate_identity_safe() {
       HEPTA_PROCESS_STOP_CONFIRMED=true
       return 0
     fi
-    if hepta_process_read_identity "$pid" \
-      && [[ "$HEPTA_PROCESS_ACTUAL_START_TOKEN" != "$expected_start_token" ]]; then
-      HEPTA_PROCESS_PID_REUSED=true
-      HEPTA_PROCESS_STOP_CONFIRMED=true
-      return 0
+    if hepta_process_read_identity "$pid"; then
+      if [[ "$HEPTA_PROCESS_ACTUAL_START_TOKEN" != "$expected_start_token" ]]; then
+        HEPTA_PROCESS_PID_REUSED=true
+        HEPTA_PROCESS_STOP_CONFIRMED=true
+        return 0
+      fi
+      if [[ "$HEPTA_PROCESS_ACTUAL_STATE" == Z* ]]; then
+        HEPTA_PROCESS_STOP_CONFIRMED=true
+        return 0
+      fi
     fi
     "$sleep_bin" "$grace_delay"
     attempt=$((attempt + 1))

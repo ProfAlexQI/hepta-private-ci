@@ -173,6 +173,7 @@ printf '%s\n' \
   '#!/usr/bin/env bash' \
   'case "$*" in' \
   '  *"lstart="*) printf "%s\\n" "Wed Jan  3 04:05:06 2024" ;;' \
+  '  *"state="*) printf "%s\\n" "S" ;;' \
   '  *"command="*) printf "%s\\n" "/usr/bin/sandbox-exec -f probe.sb /product/hepta-native --force-login" ;;' \
   '  *) exit 1 ;;' \
   'esac' >"$fake_ps"
