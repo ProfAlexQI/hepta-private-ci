@@ -69,29 +69,9 @@ for protected_input in \
   fi
 done
 
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s is required for the Hepta UI blocker closure gate\n' "$1" >&2
-    exit 2
-  fi
-}
-
-require_report() {
-  local path="$1"
-  if [[ ! -s "$path" ]]; then
-    printf 'Missing required blocker closure input: %s\n' "$path" >&2
-    exit 1
-  fi
-  jq empty "$path" >/dev/null
-}
-
-file_sha256() {
-  shasum -a 256 "$1" | awk '{print $1}'
-}
-
-file_bytes() {
-  wc -c <"$1" | tr -d ' '
-}
+HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI blocker closure gate"
+HEPTA_UI_REPORT_INPUT_LABEL="blocker closure"
+source scripts/lib/hepta-ui-gate-common-v1.sh
 
 require_command jq
 require_command shasum
@@ -260,7 +240,11 @@ jq -n \
       and ($release_approval.approval_blockers | index("independent_release_approval_verifier_unavailable")) != null
       and $release_approval.claim_boundary.release_approval_claim_ready == false
       and $release_approval.claim_boundary.release_execution_ready == false
+      and $release_signing.audit_status == "ready"
+      and $release_signing.capability_status == "blocked"
+      and $release_signing.capability_version == 2
       and $release_signing.release_signing_capability_gate_ready == true
+      and $release_signing.release_execution_prerequisites.bundle_and_release_script_contract_ready == true
       and ($release_signing.release_execution_prerequisites.keychain_identity_ready | type) == "boolean"
       and ($release_signing.release_execution_prerequisites.notary_credentials_ready | type) == "boolean"
       and ($release_signing.release_execution_prerequisites.release_signing_execution_prerequisites_ready | type) == "boolean"

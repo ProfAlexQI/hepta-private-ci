@@ -12,25 +12,9 @@ PRODUCTIZATION_ROLLUP_REPORT_PATH="$READINESS_DIR/native-productization-blocker-
 PLAN_BOUNDARY_REPORT_PATH="$READINESS_DIR/ui-plan-boundary-gate.json"
 OPERATOR_BRIEFING_REPORT_PATH="$READINESS_DIR/ui-operator-briefing-gate.json"
 
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s is required for the Hepta UI backend promotion packet gate\n' "$1" >&2
-    exit 2
-  fi
-}
-
-require_report() {
-  local path="$1"
-  if [[ ! -s "$path" ]]; then
-    printf 'Missing required backend-promotion input: %s\n' "$path" >&2
-    exit 1
-  fi
-  jq empty "$path" >/dev/null
-}
-
-file_sha256() {
-  shasum -a 256 "$1" | awk '{print $1}'
-}
+HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI backend promotion packet gate"
+HEPTA_UI_REPORT_INPUT_LABEL="backend-promotion"
+source scripts/lib/hepta-ui-gate-common-v1.sh
 
 require_command jq
 require_command shasum

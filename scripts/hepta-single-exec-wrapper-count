@@ -2,11 +2,28 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "json"
 require "open3"
+require "set"
 require "tmpdir"
 
 ROOT = File.expand_path("..", __dir__)
+RETIREMENT_MANIFEST = "scripts/archive/hepta-ui-top-design-v1/manifest.json"
 
+def retired_executable_paths(root)
+  manifest_path = File.join(root, RETIREMENT_MANIFEST)
+  return Set.new unless File.file?(manifest_path)
+  manifest = JSON.parse(File.binread(manifest_path))
+  retirement = manifest.fetch("retired_root_report_generators")
+  raise "invalid retired root report generator status" unless retirement.fetch("status") ==
+    "retired_no_runtime_consumers"
+  retirement.fetch("paths").each_with_object(Set.new) do |relative, paths|
+    absolute = File.join(root, relative)
+    raise "retired executable path still exists: #{relative}" if File.exist?(absolute) ||
+      File.symlink?(absolute)
+    paths << relative
+  end
+end
 def indexed_executable_paths(root)
   output, status = Open3.capture2("git", "-C", root, "ls-files", "--stage", "-z", "scripts")
   raise "git ls-files failed" unless status.success?
@@ -16,7 +33,6 @@ def indexed_executable_paths(root)
     match && match[1] == "100755" ? match[2] : nil
   end.compact
 end
-
 def single_exec_wrapper?(root, relative)
   source = File.binread(File.join(root, relative))
   lines = source.lines.reject { |line| line.match?(/\A\s*(?:#|$)/) }
@@ -24,7 +40,10 @@ def single_exec_wrapper?(root, relative)
 end
 
 def count(root)
-  indexed_executable_paths(root).count { |relative| single_exec_wrapper?(root, relative) }
+  retired = retired_executable_paths(root)
+  indexed_executable_paths(root).count do |relative|
+    !retired.include?(relative) && single_exec_wrapper?(root, relative)
+  end
 end
 
 def self_test
@@ -44,6 +63,28 @@ def self_test
 
     system("git", "-C", root, "update-index", "--chmod=-x", "scripts/wrapper", exception: true)
     raise "non-executable index entry was counted" unless count(root).zero?
+
+    system("git", "-C", root, "update-index", "--chmod=+x", "scripts/wrapper", exception: true)
+    archive = File.join(root, File.dirname(RETIREMENT_MANIFEST))
+    FileUtils.mkdir_p(archive)
+    FileUtils.rm_f(wrapper)
+    File.binwrite(
+      File.join(root, RETIREMENT_MANIFEST),
+      JSON.generate(
+        "retired_root_report_generators" => {
+          "status" => "retired_no_runtime_consumers",
+          "paths" => ["scripts/wrapper"]
+        }
+      )
+    )
+    raise "declared retired executable was counted" unless count(root).zero?
+    File.binwrite(wrapper, "#!/bin/sh\nexec true\n")
+    begin
+      count(root)
+      raise "present retired executable was accepted"
+    rescue RuntimeError => error
+      raise unless error.message == "retired executable path still exists: scripts/wrapper"
+    end
   end
   puts "hepta-single-exec-wrapper-count: self-test passed"
 end

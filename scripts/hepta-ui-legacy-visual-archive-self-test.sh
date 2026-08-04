@@ -33,6 +33,15 @@ jq -e '
   and .historical_gates.fixture_execution_stages == [12]
   and .historical_gates.compatibility_strategy == "relative_symlink"
   and .native_fixture.compatibility_strategy == "relative_symlink"
+  and .retired_root_report_generators.status == "retired_no_runtime_consumers"
+  and .retired_root_report_generators.paths == [
+    "scripts/hepta-ui-demo-evidence-gate.sh",
+    "scripts/hepta-ui-top-design-referee-refresh-gate.sh"
+  ]
+  and .retired_root_report_generators.replacement == "scripts/hepta-ui-current-readiness.sh"
+  and .retired_root_report_generators.historical_catalog_identifiers_preserved == true
+  and .retired_root_report_generators.current_readiness_or_ci_consumers_removed == 0
+  and (.retired_root_report_generators.preserved_receipt_consumers | length) == 8
   and .receipt_compatibility.implementation_storage_paths_changed == true
   and .receipt_compatibility.compatibility_entrypoint_paths_changed == false
   and .receipt_compatibility.receipt_paths_changed == false
@@ -50,6 +59,8 @@ fixture_refs_actual="$tmp_dir/fixture-refs.actual"
 fixture_refs_expected="$tmp_dir/fixture-refs.expected"
 receipt_refs_actual="$tmp_dir/receipt-refs.actual"
 receipt_refs_expected="$tmp_dir/receipt-refs.expected"
+retired_receipt_consumers_actual="$tmp_dir/retired-receipt-consumers.actual"
+retired_receipt_consumers_expected="$tmp_dir/retired-receipt-consumers.expected"
 cleanup() {
   rm -f \
     "$stage_actual" \
@@ -59,7 +70,9 @@ cleanup() {
     "$fixture_refs_actual" \
     "$fixture_refs_expected" \
     "$receipt_refs_actual" \
-    "$receipt_refs_expected"
+    "$receipt_refs_expected" \
+    "$retired_receipt_consumers_actual" \
+    "$retired_receipt_consumers_expected"
   rmdir "$tmp_dir" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -99,6 +112,31 @@ for implementation in "$ARCHIVE_GATE_DIR"/hepta-ui-harsh-top-design-referee-v*-g
   printf '%s\n' "$stage" >>"$stage_actual"
   gate_count=$((gate_count + 1))
 done
+
+while IFS= read -r retired_generator; do
+  if [[ -e "$retired_generator" || -L "$retired_generator" ]]; then
+    printf 'retired historical root report generator reappeared: %s\n' "$retired_generator" >&2
+    exit 1
+  fi
+done < <(jq -r '.retired_root_report_generators.paths[]' "$MANIFEST")
+
+jq -e '
+  [.entries[] | select(
+    .gate_path == "scripts/hepta-ui-demo-evidence-gate.sh"
+    or .gate_path == "scripts/hepta-ui-top-design-referee-refresh-gate.sh"
+  )] | length == 2
+' docs/architecture/HEPTA_SHELL_GATE_MIGRATION_INPUT_V1.json >/dev/null
+
+rg -l 'ui-demo-evidence-gate\.json|ui-top-design-referee-refresh-gate\.json' \
+  scripts --glob '*.sh' \
+  | rg -v 'scripts/hepta-ui-legacy-visual-archive-self-test\.sh$' \
+  | sort >"$retired_receipt_consumers_actual"
+jq -r '.retired_root_report_generators.preserved_receipt_consumers[]' "$MANIFEST" \
+  | sort >"$retired_receipt_consumers_expected"
+if ! diff -u "$retired_receipt_consumers_expected" "$retired_receipt_consumers_actual"; then
+  printf 'retired root report receipt-consumer inventory is stale\n' >&2
+  exit 1
+fi
 
 seq 2 41 >"$stage_expected"
 sort -n "$stage_actual" -o "$stage_actual"
@@ -264,6 +302,15 @@ if rg -n 'scripts/hepta-ui-harsh-top-design-referee-v[0-9].*\.sh|scripts/hepta-n
   .github \
   codex-rs --glob '*.rs' --glob '*.yml' --glob '*.yaml' >/dev/null; then
   printf 'current readiness, CI, or Rust directly invokes an archived UI gate\n' >&2
+  exit 1
+fi
+
+if rg -n 'scripts/hepta-ui-(demo-evidence|top-design-referee-refresh)-gate\.sh' \
+  scripts/hepta-ui-current-readiness.sh \
+  scripts/hepta-ui-current-readiness-self-test.sh \
+  .github \
+  codex-rs --glob '*.rs' --glob '*.yml' --glob '*.yaml' >/dev/null; then
+  printf 'current readiness, CI, or Rust references a retired UI root report generator\n' >&2
   exit 1
 fi
 

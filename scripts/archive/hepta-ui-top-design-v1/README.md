@@ -37,13 +37,29 @@ The complete direct-reference scan covered `scripts/`, `.github/`, `codex-rs/`,
 | Rust runtime | No direct script execution | Historical migration-input test remains catalog-only |
 | Historical v4-v41 chain | Each stage calls its predecessor through `scripts/`; v12 also runs the fixture | Keep all old paths as symlinks |
 | Active static source checks | Spaces membership and backend-alignment gates grep fixture markers | Fixture old path must transparently expose archived content |
-| Historical report readers | Refresh, demo, replay, and referee checks read old receipt names | Receipt names and behavior remain unchanged |
+| Historical report readers | Replay and referee checks still read old receipt names | Receipt names and behavior remain unchanged |
 | Docs and evidence assets | Preserve old paths as evidence-era identifiers | Do not rewrite immutable evidence |
 
 Stages v2 and v3 are independent roots. Stages v4-v41 form the predecessor
 chain `vN -> v(N-1)`. Stage v12 is the only historical stage that executes the
 Native fixture script. The exact non-chain consumers and evidence documents are
 listed in `manifest.json`.
+
+## Retired root report generators
+
+`scripts/hepta-ui-demo-evidence-gate.sh` and
+`scripts/hepta-ui-top-design-referee-refresh-gate.sh` were retired on
+2026-08-04 after the dependency scan proved that neither current readiness nor
+CI invoked them. Their local-fixture reports were superseded by
+`scripts/hepta-ui-current-readiness.sh`. The frozen migration catalog and dated
+audit documents retain the old names as historical identifiers; they are not
+runtime consumers and must not be rewritten as current evidence.
+
+Eight compatibility/replay gates still consume the frozen demo or top-design
+receipt names. They remain intentionally available for historical replay and
+negative release-chain tests, but do not make either retired generator part of
+current readiness. Their exact inventory is ratcheted in `manifest.json` and
+the archive self-test.
 
 ## Verification
 
@@ -54,5 +70,6 @@ scripts/hepta-ui-legacy-visual-archive-self-test.sh
 ```
 
 The self-test checks the manifest, exact stage set, symlink targets, script
-syntax, recursive dependency closure, fixture marker transparency, and the
-absence of direct legacy execution from current readiness, CI, and Rust.
+syntax, recursive dependency closure, fixture marker transparency, the absence
+of retired root generators, and the absence of direct legacy execution from
+current readiness, CI, and Rust.

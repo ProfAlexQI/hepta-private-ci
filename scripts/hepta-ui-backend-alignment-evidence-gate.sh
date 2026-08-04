@@ -27,21 +27,9 @@ ALIGNMENT_IDS=(
   room_settings
 )
 
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s is required for the Hepta UI backend alignment evidence gate\n' "$1" >&2
-    exit 2
-  fi
-}
-
-require_report() {
-  local path="$1"
-  if [[ ! -s "$path" ]]; then
-    printf 'Missing required backend-alignment input: %s\n' "$path" >&2
-    exit 1
-  fi
-  jq empty "$path" >/dev/null
-}
+HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI backend alignment evidence gate"
+HEPTA_UI_REPORT_INPUT_LABEL="backend-alignment"
+source scripts/lib/hepta-ui-gate-common-v1.sh
 
 require_marker() {
   local path="$1"
@@ -50,10 +38,6 @@ require_marker() {
     printf 'Missing backend-alignment marker in %s: %s\n' "$path" "$marker" >&2
     exit 1
   fi
-}
-
-file_sha256() {
-  shasum -a 256 "$1" | awk '{print $1}'
 }
 
 require_command jq

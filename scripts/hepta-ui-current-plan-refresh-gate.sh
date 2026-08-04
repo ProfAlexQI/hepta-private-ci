@@ -67,29 +67,9 @@ for protected_input in \
   fi
 done
 
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s is required for the Hepta UI current-plan refresh gate\n' "$1" >&2
-    exit 2
-  fi
-}
-
-require_report() {
-  local path="$1"
-  if [[ ! -s "$path" ]]; then
-    printf 'Missing required current-plan refresh input: %s\n' "$path" >&2
-    exit 1
-  fi
-  jq empty "$path" >/dev/null
-}
-
-file_sha256() {
-  shasum -a 256 "$1" | awk '{print $1}'
-}
-
-file_bytes() {
-  wc -c <"$1" | tr -d ' '
-}
+HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI current-plan refresh gate"
+HEPTA_UI_REPORT_INPUT_LABEL="current-plan refresh"
+source scripts/lib/hepta-ui-gate-common-v1.sh
 
 require_command jq
 require_command shasum

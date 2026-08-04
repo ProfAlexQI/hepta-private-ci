@@ -14,25 +14,9 @@ BASE_GAP_BACKEND_HANDOFF_PATH="$READINESS_DIR/native-base-gap-backend-handoff.js
 DISTRIBUTION_PREFLIGHT_REPORT_PATH="$READINESS_DIR/native-distribution-preflight-gate.json"
 PRODUCTIZATION_ROLLUP_REPORT_PATH="$READINESS_DIR/native-productization-blocker-rollup.json"
 
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s is required for the Hepta UI operator briefing gate\n' "$1" >&2
-    exit 2
-  fi
-}
-
-require_report() {
-  local path="$1"
-  if [[ ! -s "$path" ]]; then
-    printf 'Missing required operator-briefing input: %s\n' "$path" >&2
-    exit 1
-  fi
-  jq empty "$path" >/dev/null
-}
-
-file_sha256() {
-  shasum -a 256 "$1" | awk '{print $1}'
-}
+HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI operator briefing gate"
+HEPTA_UI_REPORT_INPUT_LABEL="operator-briefing"
+source scripts/lib/hepta-ui-gate-common-v1.sh
 
 require_command jq
 require_command shasum

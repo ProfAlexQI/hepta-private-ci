@@ -379,7 +379,7 @@ jq -n \
     and $mount_available
     and $ruby_available
     and $swift_available;
-  def configured_identity_ready:
+  def bundle_and_release_script_contract_ready:
     $bundle_identifier == "ai.hepta.nativeapp"
     and $bundle_executable == "hepta-native"
     and $bundle_name == "Hepta"
@@ -410,7 +410,7 @@ jq -n \
     notary_profile_ready;
   (
     distribution_tools_ready
-    and configured_identity_ready
+    and bundle_and_release_script_contract_ready
     and sha_ready($cargo_sha)
     and sha_ready($dmg_script_sha)
     and sha_ready($info_sha)
@@ -428,9 +428,11 @@ jq -n \
       runtime:$runtime,
       gate:$gate,
       status:(if $audit_ready then "ready" else "failed" end),
+      audit_status:(if $audit_ready then "ready" else "failed" end),
+      capability_status:(if $execution_prerequisites_ready then "ready" else "blocked" end),
       release_signing_capability_gate_ready:$audit_ready,
       capability_kind:"local_release_signing_notary_prerequisite_audit",
-      capability_version:1,
+      capability_version:2,
       readiness_dir:$readiness_dir,
       report_path:$report_path,
       capability_dir:$capability_dir,
@@ -530,7 +532,7 @@ jq -n \
         builds_second_product_app:false
       },
       release_execution_prerequisites:{
-        configured_identity_ready:configured_identity_ready,
+        bundle_and_release_script_contract_ready:bundle_and_release_script_contract_ready,
         keychain_identity_ready:keychain_identity_ready,
         notary_env_ready:notary_env_ready,
         notary_keychain_profile_ready:notary_profile_ready,
@@ -699,7 +701,8 @@ jq -n \
 jq -r '
   "# Hepta UI Release Signing Capability\n\n"
   + "- Gate: `\(.gate)`\n"
-  + "- Status: `\(.status)`\n"
+  + "- Audit status: `\(.audit_status)`\n"
+  + "- Execution capability status: `\(.capability_status)`\n"
   + "- Configured identity: `\(.package_metadata.signing_identity)`\n"
   + "- Configured identity Team ID: `\(.package_metadata.configured_team_id)`\n"
   + "- Trusted Team ID source: `\(.package_metadata.trusted_team_id_source)`\n"
@@ -744,8 +747,11 @@ mv "$REPORT_TMP.with-markdown" "$REPORT_TMP"
 
 jq -e '
   .status == "ready"
+  and .audit_status == "ready"
+  and .capability_status == "blocked"
   and .release_signing_capability_gate_ready == true
   and .capability_kind == "local_release_signing_notary_prerequisite_audit"
+  and .capability_version == 2
   and (.package_metadata.signing_identity_configured | type) == "boolean"
   and .package_metadata.trusted_team_id_source == "HEPTA_EXPECTED_TEAM_ID"
   and (.package_metadata.trusted_team_id_valid | type) == "boolean"
@@ -759,6 +765,7 @@ jq -e '
   and .keychain_identity_lookup.performed == true
   and (.keychain_identity_lookup.output_sha256 | test("^[0-9a-f]{64}$"))
   and .keychain_identity_lookup.output_bytes > 0
+  and .release_execution_prerequisites.bundle_and_release_script_contract_ready == true
   and (.release_execution_prerequisites.keychain_identity_ready | type) == "boolean"
   and (.release_execution_prerequisites.notary_env_ready | type) == "boolean"
   and .release_execution_prerequisites.notary_env_ready == false

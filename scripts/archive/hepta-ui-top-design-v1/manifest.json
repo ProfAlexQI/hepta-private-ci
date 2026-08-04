@@ -37,10 +37,29 @@
       "scripts/hepta-ui-backend-promotion-packet-gate.sh"
     ],
     "historical_report_consumers": [
-      "scripts/hepta-ui-demo-evidence-gate.sh",
       "scripts/hepta-ui-harsh-top-design-referee-check.sh",
-      "scripts/hepta-ui-root-report-replay-gate.sh",
+      "scripts/hepta-ui-root-report-replay-gate.sh"
+    ]
+  },
+  "retired_root_report_generators": {
+    "status": "retired_no_runtime_consumers",
+    "retired_on": "2026-08-04",
+    "paths": [
+      "scripts/hepta-ui-demo-evidence-gate.sh",
       "scripts/hepta-ui-top-design-referee-refresh-gate.sh"
+    ],
+    "replacement": "scripts/hepta-ui-current-readiness.sh",
+    "historical_catalog_identifiers_preserved": true,
+    "current_readiness_or_ci_consumers_removed": 0,
+    "preserved_receipt_consumers": [
+      "scripts/hepta-ui-backend-alignment-evidence-gate.sh",
+      "scripts/hepta-ui-blocker-closure-gate.sh",
+      "scripts/hepta-ui-current-plan-refresh-gate.sh",
+      "scripts/hepta-ui-harsh-top-design-referee-check.sh",
+      "scripts/hepta-ui-operator-briefing-gate.sh",
+      "scripts/hepta-ui-release-artifact-boundary-gate.sh",
+      "scripts/hepta-ui-risk-future-plan-gate.sh",
+      "scripts/hepta-ui-root-report-replay-gate.sh"
     ]
   },
   "external_dependency_inventory": {
@@ -81,10 +100,8 @@
       "docs/architecture/assets/hepta-ui-2026-08-01/current-source-readiness.json",
       "docs/architecture/assets/hepta-ui-2026-08-01/screenshot-manifest.json",
       "scripts/hepta-ui-backend-alignment-evidence-gate.sh",
-      "scripts/hepta-ui-demo-evidence-gate.sh",
       "scripts/hepta-ui-harsh-top-design-referee-check.sh",
-      "scripts/hepta-ui-root-report-replay-gate.sh",
-      "scripts/hepta-ui-top-design-referee-refresh-gate.sh"
+      "scripts/hepta-ui-root-report-replay-gate.sh"
     ]
   },
   "receipt_compatibility": {

@@ -16,21 +16,9 @@ BACKEND_DISPATCH_PACKET_DIR="${HEPTA_UI_BACKEND_DISPATCH_PACKET_DIR:-$READINESS_
 BACKEND_DISPATCH_PACKET_MANIFEST_PATH="$BACKEND_DISPATCH_PACKET_DIR/backend-dispatch-packet-manifest.json"
 BACKEND_DISPATCH_PACKET_ARCHIVE_PATH="$BACKEND_DISPATCH_PACKET_DIR/backend-dispatch-packet.tar.gz"
 
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s is required for the Hepta UI backend receipt intake gate\n' "$1" >&2
-    exit 2
-  fi
-}
-
-require_report() {
-  local path="$1"
-  if [[ ! -s "$path" ]]; then
-    printf 'Missing required backend receipt intake input: %s\n' "$path" >&2
-    exit 1
-  fi
-  jq empty "$path" >/dev/null
-}
+HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI backend receipt intake gate"
+HEPTA_UI_REPORT_INPUT_LABEL="backend receipt intake"
+source scripts/lib/hepta-ui-gate-common-v1.sh
 
 require_file() {
   local path="$1"
@@ -38,14 +26,6 @@ require_file() {
     printf 'Missing required backend receipt intake file: %s\n' "$path" >&2
     exit 1
   fi
-}
-
-file_sha256() {
-  shasum -a 256 "$1" | awk '{print $1}'
-}
-
-file_bytes() {
-  wc -c <"$1" | tr -d ' '
 }
 
 require_command jq
