@@ -36,7 +36,7 @@ The complete direct-reference scan covered `scripts/`, `.github/`, `codex-rs/`,
 | CI workflows | No direct v2-v41 or HTML-fixture execution | No CI workflow change |
 | Rust runtime | No direct script execution | Historical migration-input test remains catalog-only |
 | Historical v4-v41 chain | Each stage calls its predecessor through `scripts/`; v12 also runs the fixture | Keep all old paths as symlinks |
-| Active static source checks | Spaces membership and backend-alignment gates grep fixture markers | Fixture old path must transparently expose archived content |
+| Active static source checks | Migrated to `apps/hepta-native/packaging/native-fixture-contract-v1.json` | Archive no longer supplies current static gates |
 | Historical report readers | Replay and referee checks still read old receipt names | Receipt names and behavior remain unchanged |
 | Docs and evidence assets | Preserve old paths as evidence-era identifiers | Do not rewrite immutable evidence |
 

@@ -41,6 +41,14 @@ transform:none!important;
 }
 }
 @media(max-width:700px){
+body[data-view="chat"] .tg-thread-status-summary,
+body[data-view="chat"] .tg-compose-bar [data-chat-composer-picker="command"],
+body[data-view="chat"] .tg-compose-footer>:not([data-control-ui-composer-more]){display:none!important}
+body[data-view="chat"] [data-mobile-compact-composer="true"] .tg-compose-wrap{position:relative!important;min-height:72px!important;max-height:72px!important;padding:8px!important}
+body[data-view="chat"] [data-mobile-compact-composer="true"] .tg-compose-bar{grid-template-columns:44px minmax(0,1fr) 44px!important;min-height:56px!important;height:56px!important}
+html[data-control-ui-mobile-more-consolidated="ready"] body[data-view="chat"] .tg-compose-footer{display:none!important}
+html[data-control-ui-mobile-more-consolidated="ready"] body[data-view="chat"] [data-control-ui-composer-more]{display:none!important}
+body[data-view="chat"] .tg-thread-header{display:none!important}
 body[data-view="chat"] .telegram-chat-shell .focus-main{
 display:grid!important;
 grid-template-columns:minmax(0,1fr)!important;
@@ -53,14 +61,19 @@ overflow:hidden!important;
 body[data-view="chat"] .tg-mobile-layer-tabs{
 display:grid!important;
 grid-column:1/-1;
-grid-template-columns:repeat(3,minmax(0,1fr));
+grid-template-columns:repeat(3,minmax(0,1fr)) 44px;
 gap:4px;
 padding:4px;
 border:1px solid var(--hepta-glass-hairline);
 border-radius:var(--hepta-glass-control-radius);
-background:rgba(244,249,250,.97);
-box-shadow:inset 0 1px rgba(255,255,255,.86),0 4px 10px var(--hepta-glass-shadow);
+background:rgba(244,249,250,.95);
+box-shadow:0 4px 10px var(--hepta-glass-shadow);
 }
+body[data-view="chat"] .tg-mobile-layer-tabs>.tg-thread-status{display:grid!important;grid-template-columns:44px;align-items:center;min-width:44px}
+body[data-view="chat"] .tg-mobile-layer-tabs .tg-thread-status-summary,
+body[data-view="chat"] .tg-mobile-layer-tabs .tg-command-palette-trigger{display:none!important}
+body[data-view="chat"] .tg-mobile-layer-tabs .tg-thread-command-menu,
+body[data-view="chat"] .tg-mobile-layer-tabs [data-control-ui-thread-tools-trigger]{display:grid!important;width:44px;height:44px;place-items:center;margin:0}
 body[data-view="chat"] .tg-mobile-layer-tabs a{
 display:grid;
 place-items:center;
@@ -77,7 +90,7 @@ body[data-view="chat"]:has(#chat-list:target) .tg-mobile-layer-tabs a[href="#cha
 body[data-view="chat"]:has(#chat-room:target) .tg-mobile-layer-tabs a[href="#chat-room"]{
 background:var(--hepta-glass-active-surface);
 color:var(--hepta-glass-text);
-box-shadow:inset 0 1px rgba(255,255,255,.82),0 3px 8px var(--hepta-glass-shadow);
+box-shadow:0 3px 8px var(--hepta-glass-shadow);
 }
 body[data-view="chat"]:has(#chat-list:target) .tg-mobile-layer-tabs a[href="#chat-thread"],
 body[data-view="chat"]:has(#chat-room:target) .tg-mobile-layer-tabs a[href="#chat-thread"]{
@@ -153,5 +166,21 @@ right:auto!important;
 bottom:auto!important;
 transform:translateX(-100%)!important;
 position-try-fallbacks:flip-block,flip-inline!important;
+}
+}
+
+@media(max-width:700px){
+body[data-view="chat"] .tg-mobile-layer-tabs{
+  background:color-mix(in srgb,var(--hepta-glass-panel) 94%,white)!important;
+  background-image:none!important;
+  border:1px solid var(--hepta-glass-hairline)!important;
+  box-shadow:0 8px 24px var(--hepta-glass-shadow)!important;
+  backdrop-filter:blur(var(--hepta-layer-chrome-blur)) saturate(1.06)!important;
+  -webkit-backdrop-filter:blur(var(--hepta-layer-chrome-blur)) saturate(1.06)!important;
+}
+body[data-view="chat"] .tg-thread-header{
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
 }
 }

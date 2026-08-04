@@ -88,7 +88,7 @@ jq -n \
           "cargo test --manifest-path apps/hepta-native/Cargo.toml hepta_telegram_base_ -- --nocapture",
           "bash -n for touched scripts/gates",
           "git diff --check",
-          "scripts/hepta-native-fixture-visual-smoke.sh",
+          "jq -e .status==\\\"ready\\\" apps/hepta-native/packaging/native-fixture-contract-v1.json",
           "scripts/hepta-ui-product-readiness-gate.sh",
           "refresh native-base-gap-backend-handoff.json and ui-backend-promotion-packet-gate.json"
         ],

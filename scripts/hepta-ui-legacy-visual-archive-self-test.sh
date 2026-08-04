@@ -7,6 +7,7 @@ MANIFEST="scripts/archive/hepta-ui-top-design-v1/manifest.json"
 ARCHIVE_GATE_DIR="scripts/archive/hepta-ui-top-design-v1/gates"
 ARCHIVE_FIXTURE="scripts/archive/hepta-ui-top-design-v1/native-fixture/hepta-native-fixture-visual-smoke.sh"
 COMPAT_FIXTURE="scripts/hepta-native-fixture-visual-smoke.sh"
+CURRENT_FIXTURE_CONTRACT="apps/hepta-native/packaging/native-fixture-contract-v1.json"
 
 for command_name in jq rg readlink sed sort diff mktemp find cmp seq wc; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
@@ -33,6 +34,11 @@ jq -e '
   and .historical_gates.fixture_execution_stages == [12]
   and .historical_gates.compatibility_strategy == "relative_symlink"
   and .native_fixture.compatibility_strategy == "relative_symlink"
+  and .native_fixture.current_contract_path == "apps/hepta-native/packaging/native-fixture-contract-v1.json"
+  and .native_fixture.active_static_source_consumers == []
+  and .native_fixture.active_metadata_only_consumers == []
+  and (.native_fixture.migrated_static_contract_consumers | length) == 2
+  and (.native_fixture.migrated_metadata_contract_consumers | length) == 2
   and .retired_root_report_generators.status == "retired_no_runtime_consumers"
   and .retired_root_report_generators.paths == [
     "scripts/hepta-ui-demo-evidence-gate.sh",
@@ -212,6 +218,14 @@ cmp -s "$COMPAT_FIXTURE" "$ARCHIVE_FIXTURE"
 bash -n "$ARCHIVE_FIXTURE"
 bash -n "$COMPAT_FIXTURE"
 
+jq -e '
+  .schema == "hepta_native_fixture_contract_v1"
+  and .status == "ready"
+  and .grants_product_claims == false
+  and (.backend_alignment_markers | length) == 21
+  and (.spaces_room_membership_edge_markers | length) == 6
+' "$CURRENT_FIXTURE_CONTRACT" >/dev/null
+
 for marker in \
   'native_telegram_static_fixture_smoke_only:true' \
   'data-native-telegram-rooms-list-load-more-pagination-packet="loaded-counts-cursor-result-slots-local"' \
@@ -225,6 +239,8 @@ done
 for manifest_path in $(jq -r '
   .native_fixture.active_static_source_consumers[],
   .native_fixture.active_metadata_only_consumers[],
+  .native_fixture.migrated_static_contract_consumers[],
+  .native_fixture.migrated_metadata_contract_consumers[],
   .native_fixture.historical_report_consumers[],
   .external_dependency_inventory.rust_catalog_only_consumers[],
   .external_dependency_inventory.historical_catalogs[],

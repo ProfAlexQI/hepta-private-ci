@@ -13,26 +13,32 @@ content-bearing chat surfaces than on navigation, controls, and popovers.
 
 ## Material hierarchy
 
-1. Environment texture is atmospheric only: 20–30% visual opacity.
-2. Content-bearing panels use 85–94% light-surface opacity.
-3. Inputs and menus use 90–96% opacity so text remains stable over texture.
-4. Navigation, controls, and floating menus may retain blur, cyan edge light,
-   and a restrained inner highlight.
+1. Environment is a fully opaque atmospheric substrate; texture remains a
+   restrained 20–30% visual modulation inside that substrate.
+2. Stable Content is 98% opaque, never blurred, and owns messages, lists, and
+   ordinary information cards.
+3. Glass Chrome is 88% opaque with a 14 px blur and is reserved for rails,
+   headers, and the composer.
+4. Floating Glass is 94% opaque with a 20 px blur and is reserved for popovers
+   and transient controls.
 5. Content cards must not repeat a full-strength water or prismatic texture.
 6. Cyan glow is a focus/edge cue, not a fill. Mobile glow and pill density
    should remain 20–30% below the July 2026 audit baseline.
-7. At most one glass surface in a local group should be visually dominant;
+7. At most two backdrop-filter layers may be simultaneously visible, and
+   Stable Content contributes zero backdrop layers. At most one glass surface
+   in a local group should be visually dominant;
    message content, chrome, composer, and status badges must not all compete.
 
 ## Shared semantic tokens
 
-`design-tokens/hepta-light-glass.tokens.json` schema v2 is the single source.
+`design-tokens/hepta-light-glass.tokens.json` schema v3 is the single source.
 The default command, `scripts/hepta-ui-light-glass-token-sync.rb`, is read-only
 and equivalent to `--check`. Regeneration is an explicit
 `scripts/hepta-ui-light-glass-token-sync.rb --write`; generated CSS and Rust
 files must not be edited by hand.
 
-Schema v2 separates genuinely shared roles from renderer-specific roles. Text,
+Schema v3 adds the normative Environment / Stable Content / Glass Chrome /
+Floating Glass material contract to the shared color roles. Text,
 focus, and the secondary accent are shared. Native and Control retain separate
 surface roles because their Makepad and browser compositors have different
 opacity and layering requirements. A renderer-specific value is therefore not

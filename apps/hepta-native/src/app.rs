@@ -372,11 +372,10 @@ impl ScriptHook for App {
 
 impl MatchEvent for App {
     fn handle_startup(&mut self, cx: &mut Cx) {
-        // Android draws a dark native status/navigation strip around the light
-        // Hepta render pass. Keep the platform chrome legible instead of
-        // relying on `Auto`, which only sees the light pass clear color.
+        // Hepta uses a light environment, so native system chrome must use dark
+        // icons rather than creating a disconnected black frame around it.
         #[cfg(target_os = "android")]
-        cx.set_system_bar_appearance(SystemBarAppearance::LightIcons);
+        cx.set_system_bar_appearance(SystemBarAppearance::DarkIcons);
 
         // only init logging/tracing once.
         // `matrix_sdk::latest_events` emits a noisy per-room "Timer ... finished"

@@ -17,7 +17,7 @@ DEMO_EVIDENCE_REPORT_PATH="$READINESS_DIR/ui-demo-evidence-gate.json"
 EVIDENCE_ARCHIVE_REPORT_PATH="$READINESS_DIR/ui-evidence-archive-gate.json"
 OPERATOR_BRIEFING_REPORT_PATH="$READINESS_DIR/ui-operator-briefing-gate.json"
 BACKEND_PROMOTION_PACKET_REPORT_PATH="$READINESS_DIR/ui-backend-promotion-packet-gate.json"
-FIXTURE_SOURCE_PATH="scripts/hepta-native-fixture-visual-smoke.sh"
+FIXTURE_SOURCE_PATH="apps/hepta-native/packaging/native-fixture-contract-v1.json"
 
 ALIGNMENT_IDS=(
   message_search
@@ -30,15 +30,6 @@ ALIGNMENT_IDS=(
 HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI backend alignment evidence gate"
 HEPTA_UI_REPORT_INPUT_LABEL="backend-alignment"
 source scripts/lib/hepta-ui-gate-common-v1.sh
-
-require_marker() {
-  local path="$1"
-  local marker="$2"
-  if ! grep -Fq "$marker" "$path"; then
-    printf 'Missing backend-alignment marker in %s: %s\n' "$path" "$marker" >&2
-    exit 1
-  fi
-}
 
 require_command jq
 require_command shasum
@@ -55,45 +46,23 @@ require_report "$EVIDENCE_ARCHIVE_REPORT_PATH"
 require_report "$OPERATOR_BRIEFING_REPORT_PATH"
 require_report "$BACKEND_PROMOTION_PACKET_REPORT_PATH"
 
-if [[ ! -s "$FIXTURE_SOURCE_PATH" ]]; then
-  printf 'Missing fixture source for backend-alignment evidence: %s\n' "$FIXTURE_SOURCE_PATH" >&2
-  exit 1
-fi
-
-SOURCE_MARKERS=(
-  'native_telegram_message_search_server_packet_clipboard_ready:true'
-  'native_telegram_message_search_matrix_contract_packet_ready:true'
-  'native_telegram_message_search_remote_result_taxonomy_packet_ready:true'
-  'native_telegram_message_search_server_pagination_live_ready:true'
-  'native_telegram_message_search_loaded_scope_filters_live_ready:true'
-  'native_telegram_attachment_accepted_queue_timeline_cancel_bridge_ready:true'
-  'native_telegram_attachment_sdk_queue_contract_packet_ready:true'
-  'native_telegram_attachment_queue_progress_result_taxonomy_packet_ready:true'
-  'native_telegram_attachment_timeline_cancel_local_send_ready:true'
-  'native_telegram_media_operation_packet_drilldown_ready:true'
-  'native_telegram_media_playback_queue_contract_packet_ready:true'
-  'native_telegram_media_playback_result_taxonomy_packet_ready:true'
-  'native_telegram_media_inline_playback_queue_boundary_ready:true'
-  'native_telegram_notifications_rule_packet_drilldown_ready:true'
-  'native_telegram_notifications_rule_contract_packet_ready:true'
-  'native_telegram_notifications_result_taxonomy_packet_ready:true'
-  'native_telegram_notifications_retry_confirmation_ready:true'
-  'native_telegram_room_settings_field_mutation_packet_drilldown_ready:true'
-  'native_telegram_room_settings_field_mutation_contract_packet_ready:true'
-  'native_telegram_room_settings_power_member_result_taxonomy_packet_ready:true'
-  'native_telegram_room_settings_field_edit_intent_controls_ready:true'
-)
-
-for marker in "${SOURCE_MARKERS[@]}"; do
-  require_marker "$FIXTURE_SOURCE_PATH" "$marker"
-done
+require_report "$FIXTURE_SOURCE_PATH"
+jq -e '
+  .schema == "hepta_native_fixture_contract_v1"
+  and .status == "ready"
+  and .scope == "declarative_contract_for_current_static_gates"
+  and .source_fixture_kind == "historical_html_simulation"
+  and .grants_product_claims == false
+  and (.backend_alignment_markers | length) == 21
+  and (.backend_alignment_markers | unique | length) == 21
+' "$FIXTURE_SOURCE_PATH" >/dev/null
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ui-backend-alignment-evidence.XXXXXX")"
 REPORT_TMP="$TMP_DIR/backend-alignment-evidence-report.json"
 SOURCE_MARKERS_JSON="$TMP_DIR/source-markers.json"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-printf '%s\n' "${SOURCE_MARKERS[@]}" | jq -R . | jq -s . >"$SOURCE_MARKERS_JSON"
+jq '.backend_alignment_markers' "$FIXTURE_SOURCE_PATH" >"$SOURCE_MARKERS_JSON"
 
 static_sha="$(file_sha256 "$STATIC_CONTRACT_PATH")"
 native_fixture_sha="$(file_sha256 "$NATIVE_FIXTURE_REPORT_PATH")"

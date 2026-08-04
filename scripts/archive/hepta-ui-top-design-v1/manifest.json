@@ -25,17 +25,20 @@
     "compatibility_path": "scripts/hepta-native-fixture-visual-smoke.sh",
     "compatibility_strategy": "relative_symlink",
     "current_readiness_consumer": false,
+    "current_contract_path": "apps/hepta-native/packaging/native-fixture-contract-v1.json",
     "historical_runtime_consumers": [
       "scripts/hepta-ui-harsh-top-design-referee-v12-interaction-state-crop-gate.sh"
     ],
-    "active_static_source_consumers": [
+    "migrated_static_contract_consumers": [
       "scripts/hepta-native-spaces-room-membership-edge-contract-gate.sh",
       "scripts/hepta-ui-backend-alignment-evidence-gate.sh"
     ],
-    "active_metadata_only_consumers": [
+    "migrated_metadata_contract_consumers": [
       "scripts/hepta-native-window-smoke.sh",
       "scripts/hepta-ui-backend-promotion-packet-gate.sh"
     ],
+    "active_static_source_consumers": [],
+    "active_metadata_only_consumers": [],
     "historical_report_consumers": [
       "scripts/hepta-ui-harsh-top-design-referee-check.sh",
       "scripts/hepta-ui-root-report-replay-gate.sh"
@@ -90,11 +93,7 @@
     "native_fixture_script_reference_files": [
       "docs/architecture/HEPTA_DESKTOP_MOBILE_DESIGN_REFEREE_AUDIT_2026-06-17.md",
       "docs/architecture/HEPTA_NATIVE_NON_BASE_EDGE_RISK_PLAN_2026-06-15.md",
-      "scripts/archive/hepta-ui-top-design-v1/gates/hepta-ui-harsh-top-design-referee-v12-interaction-state-crop-gate.sh",
-      "scripts/hepta-native-spaces-room-membership-edge-contract-gate.sh",
-      "scripts/hepta-native-window-smoke.sh",
-      "scripts/hepta-ui-backend-alignment-evidence-gate.sh",
-      "scripts/hepta-ui-backend-promotion-packet-gate.sh"
+      "scripts/archive/hepta-ui-top-design-v1/gates/hepta-ui-harsh-top-design-referee-v12-interaction-state-crop-gate.sh"
     ],
     "historical_receipt_reference_files": [
       "docs/architecture/assets/hepta-ui-2026-08-01/current-source-readiness.json",

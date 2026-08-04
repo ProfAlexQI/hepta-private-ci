@@ -287,7 +287,7 @@ margin:0;
 padding-top:7px;
 border-top:1px solid rgba(150,205,218,.34);
 color:#465f68!important;
-font-size:10px!important;
+font-size:12px!important;
 font-weight:700;
 line-height:1.35!important;
 }
@@ -334,7 +334,7 @@ border:1px solid rgba(101,155,169,.26);
 border-radius:10px;
 background:rgba(243,252,253,.72);
 color:#26454f;
-font-size:10.5px;
+font-size:12px;
 font-weight:720;
 text-decoration:none;
 text-overflow:ellipsis;
@@ -373,7 +373,95 @@ body[data-view=read-only] #chat-thread{display:block;height:auto;overflow:visibl
 body[data-view=read-only] :is(.topnav-shell__actions,.tg-mobile-layer-tabs,.tg-thread-header__main,.tg-thread-status>:not(#hepta-nav)){display:none}
 body[data-view=read-only] :is(.hepta-secondary-map>summary,.hepta-entry-surface>header,.hepta-all-screen-contracts>summary){display:none}
 body[data-view=read-only] .hepta-all-screen-contracts>.screen-grid{grid-template-columns:minmax(0,1fr)}
-body[data-view=read-only] .route-card{box-sizing:border-box;width:min(100%,1040px);margin-inline:auto;scroll-margin-block-start:48px}
+body[data-view=read-only] .route-card{box-sizing:border-box;width:min(100%,1180px);min-height:min(620px,calc(100dvh - 112px));margin-inline:auto;padding:clamp(18px,2.6vw,34px);scroll-margin-block-start:48px;background:linear-gradient(145deg,rgba(255,255,255,.92),rgba(239,250,252,.8));border-color:rgba(88,147,162,.22);box-shadow:0 24px 70px rgba(47,85,96,.12)}
+body[data-view=read-only] .route-card>header{display:grid;gap:10px;max-width:760px;padding:clamp(18px,2.2vw,28px);border:1px solid rgba(88,147,162,.18);border-radius:20px;background:rgba(255,255,255,.74)}
+body[data-view=read-only] .route-card>header h3{font-size:clamp(24px,3vw,40px);letter-spacing:0}
+body[data-view=read-only] .route-card>header>p:last-child{max-width:68ch;color:#516a73;font-size:14px;line-height:1.65}
+body[data-view=read-only] .route-card__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
+body[data-view=read-only] .route-card__grid>section{min-height:164px;padding:18px;border:1px solid rgba(88,147,162,.18);border-radius:18px;background:rgba(247,253,254,.78)}
+body[data-view=read-only] .route-card__grid h4{margin-bottom:10px;color:#284751;font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+body[data-view=read-only] .route-card__grid ul{display:grid;gap:8px;margin:0;padding-left:18px;color:#4b626a;font-size:13px;line-height:1.5}
+.route-card__toolbar{display:none}
+body[data-view=read-only] .route-card__toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;margin:-10px 0 18px;padding-bottom:14px;border-bottom:1px solid rgba(88,147,162,.18)}
+body[data-view=read-only] .route-card__toolbar a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:8px 12px;border:1px solid rgba(88,147,162,.24);border-radius:12px;background:rgba(255,255,255,.82);color:#244751;font-size:12px;font-weight:760;text-decoration:none}
+body[data-view=read-only] .route-card__toolbar a:hover,body[data-view=read-only] .route-card__toolbar a:focus-visible{border-color:rgba(56,148,170,.52);background:#effbfc;outline:2px solid rgba(56,148,170,.2);outline-offset:2px}
+body[data-view=read-only] .route-card__back{justify-self:start}
+body[data-view=read-only] .route-card__position{color:#688089;font-size:11px;font-weight:760;letter-spacing:.08em;text-transform:uppercase}
+body[data-view=read-only] .route-card__pager{display:flex;justify-self:end;gap:8px}
+.route-card__nav-spacer{display:block;width:1px}
 #hepta-nav[data-control-ui-nav-mount]{display:flex;flex-direction:row;gap:4px;padding:0;overflow:auto hidden}
 #hepta-nav[data-control-ui-nav-mount] a{width:auto;min-height:32px;padding:6px;white-space:nowrap}
-@media(max-width:700px){body[data-view=read-only] .topbar-status{display:none}body[data-view=read-only] .shell--hepta-premium .content,body[data-view=read-only] #hepta-screen-panel{padding:8px}body[data-view=read-only] :is(.hepta-secondary-map,.hepta-secondary-map__body,.hepta-secondary-map .hepta-entry-surface){margin:0;padding:0;border-radius:0}body[data-view=read-only] .hepta-route-surface .card{padding:14px}#hepta-nav[data-control-ui-nav-mount] a span:last-child{display:none}}
+
+/* 2026 tempered-glass contract: content is stable, chrome may refract. */
+body[data-view="chat"] :is(.tg-bubble,.tg-chat-item,.tg-room-section,.hepta-sidebar-block,.v2-diagnostic,.v2-control-flow li,.v2-readbacks a),
+body[data-view="read-only"] :is(.route-card,.route-card>header,.route-card__grid>section){
+background:rgb(252 253 254/var(--hepta-layer-stable-alpha))!important;
+background-image:none!important;
+border-color:rgb(88 147 162/calc(var(--hepta-layer-stable-hairline-alpha) * .62))!important;
+box-shadow:0 1px 4px rgb(23 48 71/calc(var(--hepta-layer-stable-shadow-alpha) * .55))!important;
+backdrop-filter:none!important;
+-webkit-backdrop-filter:none!important;
+filter:none!important;
+clip-path:none!important;
+}
+body[data-view="chat"] :is(.tg-conversation-rail,.tg-thread-header,.tg-compose-wrap),
+body[data-view="chat"] .tg-mobile-layer-tabs{
+background:rgb(232 239 241/var(--hepta-layer-chrome-alpha))!important;
+background-image:linear-gradient(145deg,rgba(255,255,255,.46),rgba(255,255,255,.08))!important;
+border-color:rgb(88 147 162/var(--hepta-layer-chrome-hairline-alpha))!important;
+border-radius:var(--hepta-layer-chrome-radius)!important;
+box-shadow:0 8px 24px rgb(23 48 71/var(--hepta-layer-chrome-shadow-alpha))!important;
+backdrop-filter:blur(var(--hepta-layer-chrome-blur)) saturate(1.08)!important;
+-webkit-backdrop-filter:blur(var(--hepta-layer-chrome-blur)) saturate(1.08)!important;
+filter:none!important;
+}
+body[data-view="chat"] :is(.tg-thread-command-menu__panel,.tg-composer-popover),
+#command-palette{
+background:rgb(247 250 251/var(--hepta-layer-floating-alpha))!important;
+border-color:rgb(88 147 162/var(--hepta-layer-floating-hairline-alpha))!important;
+border-radius:var(--hepta-layer-floating-radius)!important;
+box-shadow:0 16px 44px rgb(23 48 71/var(--hepta-layer-floating-shadow-alpha))!important;
+backdrop-filter:blur(var(--hepta-layer-floating-blur)) saturate(1.1)!important;
+-webkit-backdrop-filter:blur(var(--hepta-layer-floating-blur)) saturate(1.1)!important;
+}
+body[data-view="chat"] .tg-bubble p{font-size:14px!important;line-height:1.5!important}
+body[data-view="chat"] .tg-chat-item p{font-size:13px!important;line-height:1.4!important}
+body[data-view="chat"] :is(.tg-message small,.tg-bubble>span,.tg-routing-badges .badge){font-size:12px!important}
+body[data-view="chat"] :is(.badge,.tg-chat-item__unread,.tg-date-divider,.tg-date-divider span,.v2-diagnostic summary em,.v2-diagnostic__intro,.v2-diagnostic__boundary,.v2-control-flow strong,.v2-control-flow small,.v2-readbacks strong,.v2-readbacks small){font-size:12px!important}
+html[data-control-ui-progressive-enhancement="ready"] body[data-view="chat"] .hepta-route-directory{display:none}
+body[data-view="chat"] :is(.tg-thread-header p,.tg-compose-status,.tg-compose-footer,[data-chat-shortcut-hint]){font-size:12px!important}
+body[data-view="chat"] [data-chat-composer-input]{font-size:14px!important;line-height:1.45!important}
+body[data-view="chat"] .tg-thread-status-summary [data-control-ui-status-trust-badge="safe-review"]{display:none!important}
+body[data-view="chat"] .tg-thread-intro .badge:nth-child(n+3){display:none!important}
+@media(max-width:700px){body[data-view=read-only] .topbar-status{display:none}body[data-view=read-only] .shell--hepta-premium .content,body[data-view=read-only] #hepta-screen-panel{padding:8px}body[data-view=read-only] :is(.hepta-secondary-map,.hepta-secondary-map__body,.hepta-secondary-map .hepta-entry-surface){margin:0;padding:0;border-radius:0}body[data-view=read-only] .route-card{min-height:0}body[data-view=read-only] .hepta-route-surface .card{padding:14px}body[data-view=read-only] .route-card__toolbar{grid-template-columns:1fr auto;margin:0 0 14px}body[data-view=read-only] .route-card__position{grid-column:1/-1;grid-row:1;text-align:center}body[data-view=read-only] .route-card__back{grid-column:1;grid-row:2}body[data-view=read-only] .route-card__pager{grid-column:2;grid-row:2}body[data-view=read-only] .route-card__pager a{padding-inline:10px}body[data-view=read-only] .route-card__grid{grid-template-columns:1fr}body[data-view=read-only] .route-card__grid>section{min-height:0}#hepta-nav[data-control-ui-nav-mount] a span:last-child{display:none}}
+
+/* 2026 tempered-glass source-of-truth: glass belongs to structural chrome,
+   never to content containers or individual controls. */
+body[data-view="chat"] :is(
+  #hepta-screen-panel,
+  #chat-thread,
+  .tg-compose-bar,
+  button,
+  input,
+  textarea,
+  .tg-folder-chip,
+  .tg-row-menu-toggle,
+  .tg-icon-action,
+  .tg-compose-icon,
+  .tg-send-button,
+  .tg-compose-plan
+) {
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+}
+body[data-view="chat"] :is(#chat-list, .tg-thread-header, .tg-compose-wrap) {
+  background: color-mix(in srgb, var(--hepta-glass-panel) 94%, white) !important;
+  background-image: none !important;
+  border: 1px solid var(--hepta-glass-hairline) !important;
+  box-shadow: 0 8px 24px var(--hepta-glass-shadow) !important;
+  backdrop-filter: blur(var(--hepta-layer-chrome-blur)) saturate(1.06) !important;
+  -webkit-backdrop-filter: blur(var(--hepta-layer-chrome-blur)) saturate(1.06) !important;
+}

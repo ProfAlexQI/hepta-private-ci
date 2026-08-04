@@ -562,6 +562,70 @@
     navigation.dataset.controlUiNavMount = showingCommandCatalog ? "commands" : "thread";
   }
 
+  function mountScreenDirectoryAction() {
+    const panel = document.getElementById("composer-tools-popover");
+    if (!panel || panel.querySelector("[data-control-ui-screen-directory-action]")) {
+      return;
+    }
+    const link = document.createElement("a");
+    link.className = "tg-menu-item";
+    link.href = "#dashboard";
+    link.dataset.controlUiScreenDirectoryAction = "true";
+    link.setAttribute("aria-label", "Open screen directory");
+    link.title = "Open screen directory";
+
+    const icon = document.createElement("span");
+    icon.className = "tg-menu-item__icon";
+    icon.setAttribute("aria-hidden", "true");
+    const svg = document.querySelector('use[href="#hepta-icon-panels"]')?.closest("svg")?.cloneNode(true);
+    if (svg) {
+      icon.append(svg);
+    }
+
+    const label = document.createElement("span");
+    label.className = "tg-menu-item__label";
+    label.textContent = "Screens";
+    link.append(icon, label);
+    panel.append(link);
+  }
+
+  function configureMobileMoreSheet() {
+    const composerPanel = document.getElementById("composer-tools-popover");
+    const threadPanel = document.getElementById("thread-tools-popover");
+    const mobileTopbar = document.querySelector("[data-mobile-primary-topbar]");
+    const threadHeader = document.querySelector(".tg-thread-header");
+    const threadStatus = document.querySelector(".tg-thread-status");
+    const primaryNavigation = document.getElementById("hepta-nav");
+    if (!composerPanel || !threadPanel || !mobileTopbar || !threadHeader || !threadStatus || !primaryNavigation) {
+      return;
+    }
+    const media = window.matchMedia("(max-width: 700px)");
+    const sync = () => {
+      if (media.matches) {
+        for (const item of Array.from(composerPanel.children)) {
+          item.dataset.controlUiMobileComposerTool = "true";
+          item.querySelector("[autofocus]")?.removeAttribute("autofocus");
+          threadPanel.append(item);
+        }
+        threadPanel.prepend(primaryNavigation);
+        mobileTopbar.append(threadStatus);
+        threadStatus.dataset.controlUiMobileTopbarActions = "true";
+        document.documentElement.dataset.controlUiMobileMoreConsolidated = "ready";
+        return;
+      }
+      for (const item of threadPanel.querySelectorAll("[data-control-ui-mobile-composer-tool]")) {
+        composerPanel.append(item);
+        delete item.dataset.controlUiMobileComposerTool;
+      }
+      threadStatus.prepend(primaryNavigation);
+      threadHeader.append(threadStatus);
+      delete threadStatus.dataset.controlUiMobileTopbarActions;
+      delete document.documentElement.dataset.controlUiMobileMoreConsolidated;
+    };
+    sync();
+    media.addEventListener("change", sync);
+  }
+
   function focusRouteTarget(target) {
     const requested = pendingRouteFocusId && document.getElementById(pendingRouteFocusId);
     pendingRouteFocusId = "";
@@ -577,6 +641,51 @@
       focusTarget.focus({ preventScroll: true });
       focusTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
     });
+  }
+
+  function mountRouteToolbar(card, routeCards) {
+    if (!(card instanceof HTMLElement)) {
+      return;
+    }
+    const routeIndex = routeCards.indexOf(card);
+    if (routeIndex < 0) {
+      return;
+    }
+    let toolbar = card.querySelector(":scope > .route-card__toolbar");
+    if (!toolbar) {
+      toolbar = document.createElement("nav");
+      toolbar.className = "route-card__toolbar";
+      toolbar.setAttribute("aria-label", "Screen navigation");
+      card.prepend(toolbar);
+    }
+    const adjacentLink = (label, adjacentCard) => {
+      if (!adjacentCard) {
+        const spacer = document.createElement("span");
+        spacer.className = "route-card__nav-spacer";
+        spacer.setAttribute("aria-hidden", "true");
+        return spacer;
+      }
+      const link = document.createElement("a");
+      const title = adjacentCard.querySelector("h3")?.textContent?.trim() || adjacentCard.dataset.screen;
+      link.href = `#${adjacentCard.dataset.screen}`;
+      link.textContent = label;
+      link.setAttribute("aria-label", `${label}: ${title}`);
+      return link;
+    };
+    const backLink = document.createElement("a");
+    backLink.href = "#chat";
+    backLink.className = "route-card__back";
+    backLink.textContent = "Back to workspace";
+    const position = document.createElement("span");
+    position.className = "route-card__position";
+    position.textContent = `${routeIndex + 1} of ${routeCards.length}`;
+    const pager = document.createElement("span");
+    pager.className = "route-card__pager";
+    pager.append(
+      adjacentLink("Previous", routeCards[routeIndex - 1]),
+      adjacentLink("Next", routeCards[routeIndex + 1]),
+    );
+    toolbar.replaceChildren(backLink, position, pager);
   }
 
   function syncRouteView({ focus = true } = {}) {
@@ -670,6 +779,7 @@
       card.hidden = !active;
       if (active) {
         card.dataset.controlUiActiveView = "true";
+        mountRouteToolbar(card, routeCards);
       } else {
         delete card.dataset.controlUiActiveView;
       }
@@ -933,6 +1043,8 @@
   configureLocalJsonPreview();
   configureComposerPickerSearch();
   configureRouteViews();
+  mountScreenDirectoryAction();
+  configureMobileMoreSheet();
   document.documentElement.dataset.controlUiProgressiveEnhancement = "ready";
   document.documentElement.dataset.controlUiCapabilityMode = "local-read-only";
   void hydrateOperatorSnapshot();

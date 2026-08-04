@@ -50,7 +50,7 @@ json_bool_for_flag() {
 platform_assurance_json() {
   jq -n '{
     evidence_scope:"macos_makepad_window",
-    html_fixture_companion_gate:"scripts/hepta-native-fixture-visual-smoke.sh",
+    html_fixture_contract:"apps/hepta-native/packaging/native-fixture-contract-v1.json",
     safe_area:{
       status:"not_run",
       proven:false,

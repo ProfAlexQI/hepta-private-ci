@@ -18,6 +18,21 @@
   --hepta-glass-floating-radius: 18px;
   --hepta-glass-motion-fast: 100ms;
   --hepta-glass-motion-normal: 180ms;
+  --hepta-layer-stable-alpha: 0.98;
+  --hepta-layer-stable-hairline-alpha: 0.18;
+  --hepta-layer-stable-shadow-alpha: 0.03;
+  --hepta-layer-stable-radius: 16px;
+  --hepta-layer-chrome-alpha: 0.88;
+  --hepta-layer-chrome-hairline-alpha: 0.32;
+  --hepta-layer-chrome-shadow-alpha: 0.07;
+  --hepta-layer-chrome-radius: 16px;
+  --hepta-layer-chrome-blur: 14px;
+  --hepta-layer-floating-alpha: 0.94;
+  --hepta-layer-floating-hairline-alpha: 0.42;
+  --hepta-layer-floating-shadow-alpha: 0.11;
+  --hepta-layer-floating-radius: 18px;
+  --hepta-layer-floating-blur: 20px;
+  --hepta-max-visible-backdrop-layers: 2;
 }
 
 html[data-theme-mode="light"] {

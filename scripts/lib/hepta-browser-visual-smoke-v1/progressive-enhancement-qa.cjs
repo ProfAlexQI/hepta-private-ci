@@ -464,7 +464,9 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
   await page.setViewportSize({ width: 500, height: 844 });
   const routeLinkAudit = [];
   for (const descriptor of routeLinkDescriptors) {
-    await page.locator('#hepta-nav [data-screen="chat"]').click();
+    await page.evaluate(() => {
+      location.hash = "#chat";
+    });
     await page.waitForFunction(
       () => document.body.dataset.controlUiActiveView === "chat",
       null,
@@ -476,6 +478,7 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
       null,
       { timeout: 5000 },
     );
+    await page.locator("[data-control-ui-thread-tools-trigger]").click();
     const selector = descriptor.safety
       ? `[data-control-ui-safety-route][data-screen="${descriptor.screen}"]`
       : `[data-hepta-nav-key="${descriptor.nav_key}"]`;
@@ -520,6 +523,10 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
         ...window.__heptaActualVisibility(card),
       }));
       const visibleRouteCards = routeCards.filter((card) => card.visible);
+      const routeToolbar = target?.querySelector(":scope > .route-card__toolbar");
+      const routeBackLink = routeToolbar?.querySelector('.route-card__back[href="#chat"]');
+      const routePosition = routeToolbar?.querySelector(".route-card__position")?.textContent?.trim() || "";
+      const routePagerLinkCount = routeToolbar?.querySelectorAll('.route-card__pager a[href^="#"]').length || 0;
       return {
         screen: expectedScreen,
         target_id: expectedTarget,
@@ -531,6 +538,10 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
         target_focused: document.activeElement === target,
         actual_visible_route_card_count: visibleRouteCards.length,
         actual_visible_route_card_ids: visibleRouteCards.map((card) => card.id),
+        route_toolbar_visibility: window.__heptaActualVisibility(routeToolbar),
+        route_toolbar_back_ready: Boolean(routeBackLink),
+        route_toolbar_position_ready: /^\d+ of 26$/.test(routePosition),
+        route_toolbar_pager_link_count: routePagerLinkCount,
         primary_nav_current_ready: !primaryNav
           || primaryNav.getAttribute("aria-current") === "page",
       };
@@ -552,7 +563,11 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
         ? item.body_view === "chat" && item.actual_visible_route_card_count === 0
         : item.body_view === "read-only"
           && item.actual_visible_route_card_count === 1
-          && item.actual_visible_route_card_ids[0] === item.target_id)
+          && item.actual_visible_route_card_ids[0] === item.target_id
+          && item.route_toolbar_visibility.visible
+          && item.route_toolbar_back_ready
+          && item.route_toolbar_position_ready
+          && item.route_toolbar_pager_link_count >= 1)
     ));
 
   const currentRouteEntryAudit = await page.evaluate(() => {
@@ -563,7 +578,7 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     };
     const anchorEntries = [...document.querySelectorAll(
       'a[href^="#screen-card-"], a[href="#evidence"], a[href="#task-publisher"]',
-    )].map((anchor, index) => {
+    )].filter((anchor) => !anchor.closest(".route-card__toolbar")).map((anchor, index) => {
       const hash = anchor.getAttribute("href") || "";
       const screen = hash === "#evidence"
         ? "evidence"
@@ -914,6 +929,16 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     || !localDraftInsertionReady
     || !localRouteNavigationReady;
 
+  const detailAttachmentPath = path.join(outputDir, "progressive-enhancement-qa.details.json");
+  const detailAttachment = {
+    schema: "hepta_control_ui_progressive_enhancement_browser_details_v1",
+    route_link_navigation_audit: routeLinkAudit,
+    current_route_entry_audit: currentRouteEntryAudit,
+    current_route_hash_audit: currentRouteHashAudit,
+  };
+  const detailAttachmentBytes = Buffer.from(`${JSON.stringify(detailAttachment)}\n`);
+  fs.writeFileSync(detailAttachmentPath, detailAttachmentBytes);
+
   const report = {
     schema: "hepta_control_ui_progressive_enhancement_browser_v1",
     status: failed ? "failed" : "ready",
@@ -942,11 +967,31 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     command_palette_navigation_ready: commandPaletteNavigationReady,
     command_palette_navigation_audit: commandPaletteNavigationAudit,
     route_link_navigation_ready: routeLinkNavigationReady,
-    route_link_navigation_audit: routeLinkAudit,
+    route_link_navigation_audit: {
+      entry_count: routeLinkAudit.length,
+      ready: routeLinkNavigationReady,
+    },
     current_route_entries_ready: currentRouteEntriesReady,
     route_directory_ready: currentRouteEntryAudit.directory_ready,
-    current_route_entry_audit: currentRouteEntryAudit,
-    current_route_hash_audit: currentRouteHashAudit,
+    current_route_entry_audit: {
+      entry_count: currentRouteEntryAudit.entry_count,
+      anchor_entry_count: currentRouteEntryAudit.anchor_entry_count,
+      row_action_entry_count: currentRouteEntryAudit.row_action_entry_count,
+      directory_entry_count: currentRouteEntryAudit.directory_entry_count,
+      directory_ready: currentRouteEntryAudit.directory_ready,
+      legacy_route_page_count: currentRouteEntryAudit.legacy_route_page_count,
+      legacy_route_index_count: currentRouteEntryAudit.legacy_route_index_count,
+    },
+    current_route_hash_audit: {
+      entry_count: currentRouteHashAudit.length,
+      ready: currentRouteEntriesReady,
+    },
+    detail_attachment: {
+      schema: detailAttachment.schema,
+      path: detailAttachmentPath,
+      bytes: detailAttachmentBytes.length,
+      sha256: crypto.createHash("sha256").update(detailAttachmentBytes).digest("hex"),
+    },
     top_nav_navigation_ready: topNavNavigationReady,
     top_nav_navigation_audit: topNavAudit,
     route_history_ready: routeHistoryReady,

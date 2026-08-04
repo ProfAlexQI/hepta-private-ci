@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "name": "Hepta semantic light glass",
-  "version": 2,
+  "version": 3,
   "description": "Canonical semantic roles for Native and Control. Shared roles intentionally have identical values; surface-specific roles preserve each renderer's independently validated composition.",
   "color": {
     "shared": {
@@ -13,13 +13,13 @@
       "environment": "#eef3f5ff",
       "content": "#fcfdfeff",
       "surface": "#f7fafbfa",
-      "glass": "#eaf1f3ec",
-      "glassStrong": "#f3f7f8f5",
+      "glass": "#eaf1f3e8",
+      "glassStrong": "#f5f8f9ee",
       "input": "#f8fafbf8",
       "muted": "#566a78ff",
       "dim": "#5c6e79ff",
-      "hairline": "#a7c5cf99",
-      "hairlineStrong": "#79aab8b8",
+      "hairline": "#8fb4bf66",
+      "hairlineStrong": "#6f9eaa8f",
       "focusHover": "#0b5d78ff",
       "focusSurface": "#dceff4e8",
       "focusSurfaceHover": "#d0e8eef2",
@@ -31,7 +31,7 @@
       "warning": "#9a6500ff",
       "disabled": "#b9c4c9ff",
       "disabledSurface": "#e6eceeff",
-      "shadow": "#1730471a"
+      "shadow": "#17304714"
     },
     "control": {
       "environment": "#eef5f7ff",
@@ -66,6 +66,40 @@
     "control": {
       "fastMs": 100,
       "normalMs": 180
+    }
+  },
+  "materialLayers": {
+    "environment": {
+      "surfaceAlpha": 1.0,
+      "hairlineAlpha": 0.0,
+      "shadowAlpha": 0.0,
+      "radiusPx": 0,
+      "blurPx": 0
+    },
+    "stableContent": {
+      "surfaceAlpha": 0.98,
+      "hairlineAlpha": 0.18,
+      "shadowAlpha": 0.03,
+      "radiusPx": 16,
+      "blurPx": 0
+    },
+    "glassChrome": {
+      "surfaceAlpha": 0.88,
+      "hairlineAlpha": 0.32,
+      "shadowAlpha": 0.07,
+      "radiusPx": 16,
+      "blurPx": 14
+    },
+    "floatingGlass": {
+      "surfaceAlpha": 0.94,
+      "hairlineAlpha": 0.42,
+      "shadowAlpha": 0.11,
+      "radiusPx": 18,
+      "blurPx": 20
+    },
+    "limits": {
+      "maxVisibleBackdropLayers": 2,
+      "maxStableContentBackdropLayers": 0
     }
   },
   "rendererPolicy": {

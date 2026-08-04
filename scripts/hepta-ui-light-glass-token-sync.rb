@@ -33,7 +33,7 @@ mode = ARGV.empty? ? :check : case ARGV
 binding_before = source_binding
 
 tokens = JSON.parse(SOURCE.read)
-abort("unsupported token schema: expected schemaVersion=2") unless tokens["schemaVersion"] == 2
+abort("unsupported token schema: expected schemaVersion=3") unless tokens["schemaVersion"] == 3
 
 colors = tokens.fetch("color")
 shared = colors.fetch("shared")
@@ -44,6 +44,12 @@ shared_radii = radii.fetch("shared")
 native_radii = radii.fetch("native")
 control_radii = radii.fetch("control")
 control_motion = tokens.fetch("motion").fetch("control")
+material_layers = tokens.fetch("materialLayers")
+environment_layer = material_layers.fetch("environment")
+stable_content_layer = material_layers.fetch("stableContent")
+glass_chrome_layer = material_layers.fetch("glassChrome")
+floating_glass_layer = material_layers.fetch("floatingGlass")
+material_limits = material_layers.fetch("limits")
 policy = tokens.fetch("rendererPolicy")
 
 expected_policy = {
@@ -72,6 +78,11 @@ required = {
   "radius.native" => [native_radii, %w[panel]],
   "radius.control" => [control_radii, %w[panel]],
   "motion.control" => [control_motion, %w[fastMs normalMs]],
+  "materialLayers.environment" => [environment_layer, %w[surfaceAlpha hairlineAlpha shadowAlpha radiusPx blurPx]],
+  "materialLayers.stableContent" => [stable_content_layer, %w[surfaceAlpha hairlineAlpha shadowAlpha radiusPx blurPx]],
+  "materialLayers.glassChrome" => [glass_chrome_layer, %w[surfaceAlpha hairlineAlpha shadowAlpha radiusPx blurPx]],
+  "materialLayers.floatingGlass" => [floating_glass_layer, %w[surfaceAlpha hairlineAlpha shadowAlpha radiusPx blurPx]],
+  "materialLayers.limits" => [material_limits, %w[maxVisibleBackdropLayers maxStableContentBackdropLayers]],
 }
 required.each do |group, (values, keys)|
   missing = keys.reject { |key| values.key?(key) }
@@ -87,6 +98,14 @@ end
 all_color_groups = { "shared" => shared, "native" => native, "control" => control }
 all_color_groups.each do |group, values|
   values.each { |name, value| rgba!(value, "color.#{group}.#{name}") }
+end
+
+[environment_layer, stable_content_layer, glass_chrome_layer, floating_glass_layer].each do |layer|
+  %w[surfaceAlpha hairlineAlpha shadowAlpha].each do |key|
+    value = Float(layer.fetch(key))
+    abort("invalid material alpha #{key}=#{value}") unless value.between?(0.0, 1.0)
+  end
+  %w[radiusPx blurPx].each { |key| abort("invalid material metric #{key}") if Integer(layer.fetch(key)).negative? }
 end
 
 def makepad_color(value)
@@ -132,6 +151,21 @@ css = <<~CSS
     --hepta-glass-floating-radius: #{Integer(shared_radii.fetch('floating'))}px;
     --hepta-glass-motion-fast: #{Integer(control_motion.fetch('fastMs'))}ms;
     --hepta-glass-motion-normal: #{Integer(control_motion.fetch('normalMs'))}ms;
+    --hepta-layer-stable-alpha: #{stable_content_layer.fetch('surfaceAlpha')};
+    --hepta-layer-stable-hairline-alpha: #{stable_content_layer.fetch('hairlineAlpha')};
+    --hepta-layer-stable-shadow-alpha: #{stable_content_layer.fetch('shadowAlpha')};
+    --hepta-layer-stable-radius: #{Integer(stable_content_layer.fetch('radiusPx'))}px;
+    --hepta-layer-chrome-alpha: #{glass_chrome_layer.fetch('surfaceAlpha')};
+    --hepta-layer-chrome-hairline-alpha: #{glass_chrome_layer.fetch('hairlineAlpha')};
+    --hepta-layer-chrome-shadow-alpha: #{glass_chrome_layer.fetch('shadowAlpha')};
+    --hepta-layer-chrome-radius: #{Integer(glass_chrome_layer.fetch('radiusPx'))}px;
+    --hepta-layer-chrome-blur: #{Integer(glass_chrome_layer.fetch('blurPx'))}px;
+    --hepta-layer-floating-alpha: #{floating_glass_layer.fetch('surfaceAlpha')};
+    --hepta-layer-floating-hairline-alpha: #{floating_glass_layer.fetch('hairlineAlpha')};
+    --hepta-layer-floating-shadow-alpha: #{floating_glass_layer.fetch('shadowAlpha')};
+    --hepta-layer-floating-radius: #{Integer(floating_glass_layer.fetch('radiusPx'))}px;
+    --hepta-layer-floating-blur: #{Integer(floating_glass_layer.fetch('blurPx'))}px;
+    --hepta-max-visible-backdrop-layers: #{Integer(material_limits.fetch('maxVisibleBackdropLayers'))};
   }
 
   html[data-theme-mode="light"] {
@@ -231,6 +265,12 @@ native_rust = <<~RUST
       mod.widgets.HEPTA_RADIUS_CONTROL = #{Integer(shared_radii.fetch('control'))}.0
       mod.widgets.HEPTA_RADIUS_PANEL = #{Integer(native_radii.fetch('panel'))}.0
       mod.widgets.HEPTA_RADIUS_FLOATING = #{Integer(shared_radii.fetch('floating'))}.0
+      mod.widgets.HEPTA_LAYER_STABLE_ALPHA = #{stable_content_layer.fetch('surfaceAlpha')}
+      mod.widgets.HEPTA_LAYER_STABLE_BLUR = #{Integer(stable_content_layer.fetch('blurPx'))}.0
+      mod.widgets.HEPTA_LAYER_CHROME_ALPHA = #{glass_chrome_layer.fetch('surfaceAlpha')}
+      mod.widgets.HEPTA_LAYER_CHROME_BLUR = #{Integer(glass_chrome_layer.fetch('blurPx'))}.0
+      mod.widgets.HEPTA_LAYER_FLOATING_ALPHA = #{floating_glass_layer.fetch('surfaceAlpha')}
+      mod.widgets.HEPTA_LAYER_FLOATING_BLUR = #{Integer(floating_glass_layer.fetch('blurPx'))}.0
   }
 
   pub const COLOR_HEPTA_CONTENT: Vec4 = #{vec4_color(native.fetch('content'))};
@@ -255,7 +295,7 @@ if mode == :check
     exit 1
   end
   binding_after = source_binding
-  puts JSON.generate({ kind: "hepta-ui-light-glass-token-sync", status: "ready", mode: "check", schema_version: 2,
+  puts JSON.generate({ kind: "hepta-ui-light-glass-token-sync", status: "ready", mode: "check", schema_version: 3,
                        source_binding_before: binding_before, source_binding: binding_after,
                        source_stable_during_run: binding_equal?(binding_before, binding_after),
                        outputs: outputs.keys.map { |path| path.relative_path_from(ROOT).to_s } })
@@ -265,7 +305,7 @@ else
     path.binwrite(content)
   end
   binding_after = source_binding
-  puts JSON.generate({ kind: "hepta-ui-light-glass-token-sync", status: "ready", mode: "write", schema_version: 2,
+  puts JSON.generate({ kind: "hepta-ui-light-glass-token-sync", status: "ready", mode: "write", schema_version: 3,
                        source_binding_before: binding_before, source_binding: binding_after,
                        source_stable_during_run: binding_equal?(binding_before, binding_after),
                        outputs: outputs.keys.map { |path| path.relative_path_from(ROOT).to_s } })

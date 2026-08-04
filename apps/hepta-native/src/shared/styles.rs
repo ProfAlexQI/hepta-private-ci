@@ -88,8 +88,8 @@ script_mod! {
     mod.widgets.TYPING_NOTICE_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_FOCUS)
 
 
-    mod.widgets.MESSAGE_FONT_SIZE = 11
-    mod.widgets.REDACTED_MESSAGE_FONT_SIZE = 10
+    mod.widgets.MESSAGE_FONT_SIZE = 13
+    mod.widgets.REDACTED_MESSAGE_FONT_SIZE = 12
 
     mod.widgets.MESSAGE_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_TEXT)
     // notices (automated messages from bots) use a lighter color
@@ -102,11 +102,11 @@ script_mod! {
         line_spacing: (mod.widgets.MESSAGE_TEXT_LINE_SPACING),
     }
 
-    mod.widgets.MESSAGE_REPLY_PREVIEW_FONT_SIZE = 9.5
+    mod.widgets.MESSAGE_REPLY_PREVIEW_FONT_SIZE = 11.5
 
 
 
-    mod.widgets.SMALL_STATE_FONT_SIZE = 10.0
+    mod.widgets.SMALL_STATE_FONT_SIZE = 11.5
 
 
     mod.widgets.SMALL_STATE_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_MUTED)
@@ -114,7 +114,7 @@ script_mod! {
         font_size: (mod.widgets.SMALL_STATE_FONT_SIZE),
     }
 
-    mod.widgets.TIMESTAMP_FONT_SIZE = 9.5
+    mod.widgets.TIMESTAMP_FONT_SIZE = 11.0
 
     mod.widgets.TIMESTAMP_TEXT_COLOR = (mod.widgets.COLOR_HEPTA_DIM)
     mod.widgets.TIMESTAMP_TEXT_STYLE = theme.font_regular {

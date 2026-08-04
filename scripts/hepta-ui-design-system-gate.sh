@@ -32,7 +32,7 @@ for required in "$TOKEN_SOURCE" "$NATIVE_THEME" "apps/hepta-native/src/shared/mo
 done
 
 jq -e '
-  .schemaVersion == 2
+  .schemaVersion == 3
   and .rendererPolicy.nativeOutput == "apps/hepta-native/src/shared/hepta_theme.rs"
   and .rendererPolicy.controlOutput == "apps/hepta-control-ui/light-glass-tokens.generated.css"
   and .rendererPolicy.defaultMode == "check"
@@ -40,10 +40,13 @@ jq -e '
   and (.color.shared | has("text") and has("focus") and has("secondaryAccent"))
   and (.color.native | has("environment") and has("content") and has("glass") and has("input") and has("dim"))
   and (.color.control | has("environment") and has("panel") and has("input") and has("dim"))
+  and (.materialLayers | has("environment") and has("stableContent") and has("glassChrome") and has("floatingGlass") and has("limits"))
+  and .materialLayers.stableContent.blurPx == 0
+  and .materialLayers.limits.maxVisibleBackdropLayers == 2
 ' "$TOKEN_SOURCE" >/dev/null
 
 token_report="$(scripts/hepta-ui-light-glass-token-sync.rb --check)"
-jq -e '.status == "ready" and .mode == "check" and .schema_version == 2' <<<"$token_report" >/dev/null
+jq -e '.status == "ready" and .mode == "check" and .schema_version == 3' <<<"$token_report" >/dev/null
 
 rg -Fq 'pub mod hepta_theme;' apps/hepta-native/src/shared/mod.rs
 if rg -Fq 'light_glass_tokens' apps/hepta-native/src/shared/mod.rs apps/hepta-native/src/lib.rs; then
@@ -53,6 +56,8 @@ fi
 rg -Fq 'COLOR_HEPTA_CONTENT' "$NATIVE_THEME"
 rg -Fq 'COLOR_HEPTA_GLASS' "$NATIVE_THEME"
 rg -Fq 'HEPTA_RADIUS_PANEL' "$NATIVE_THEME"
+rg -Fq 'HEPTA_LAYER_STABLE_BLUR = 0.0' "$NATIVE_THEME"
+rg -Fq -- '--hepta-max-visible-backdrop-layers: 2' "$CONTROL_TOKENS"
 
 runtime_css_bytes="$(wc -c "${CONTROL_CSS_FILES[@]}" | awk 'END {print $1}')"
 runtime_css_join_separator_bytes="$(( ${#CONTROL_CSS_FILES[@]} - 1 ))"
@@ -119,7 +124,7 @@ jq -n \
     status:"ready",
     source_binding:$source_binding,
     token_source:"design-tokens/hepta-light-glass.tokens.json",
-    token_schema_version:2,
+    token_schema_version:3,
     generated_token_sync_ready:true,
     token_report:$token_report,
     dim_text_contrast:$contrast,

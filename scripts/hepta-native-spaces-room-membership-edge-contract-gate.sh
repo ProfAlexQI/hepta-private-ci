@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 CONTRACT_PATH="docs/architecture/HEPTA_NATIVE_SPACES_ROOM_MEMBERSHIP_EDGE_BACKEND_CONTRACT_2026-06-15.md"
+FIXTURE_CONTRACT_PATH="apps/hepta-native/packaging/native-fixture-contract-v1.json"
 READINESS_DIR="${HEPTA_NATIVE_SPACES_ROOM_EDGE_CONTRACT_READINESS_DIR:-${HEPTA_UI_PRODUCT_READINESS_DIR:-}}"
 REPORT_PATH="${HEPTA_NATIVE_SPACES_ROOM_EDGE_CONTRACT_REPORT:-}"
 
@@ -26,6 +27,7 @@ require_contains() {
 }
 
 require_file "$CONTRACT_PATH"
+require_file "$FIXTURE_CONTRACT_PATH"
 require_file "apps/hepta-native/src/home/rooms_list.rs"
 require_file "apps/hepta-native/src/home/space_lobby.rs"
 require_file "apps/hepta-native/src/home/add_room.rs"
@@ -77,20 +79,20 @@ require_contains "apps/hepta-native/src/space_service_sync.rs" "TODO: handle Kno
 
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "hepta_telegram_rooms_list_pagination_adapter_local_ready"
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "hepta_telegram_rooms_list_load_more_pagination_packet_ready"
-require_contains "scripts/hepta-native-fixture-visual-smoke.sh" 'data-native-telegram-rooms-list-load-more-pagination-packet="loaded-counts-cursor-result-slots-local"'
+require_contains "$FIXTURE_CONTRACT_PATH" 'data-native-telegram-rooms-list-load-more-pagination-packet=loaded-counts-cursor-result-slots-local'
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "hepta_telegram_rooms_list_removed_room_selected_state_local_ready"
-require_contains "scripts/hepta-native-fixture-visual-smoke.sh" 'data-native-telegram-rooms-list-selected-room-removed-rejoin-packet="focus-rejoin-slots-local"'
+require_contains "$FIXTURE_CONTRACT_PATH" 'data-native-telegram-rooms-list-selected-room-removed-rejoin-packet=focus-rejoin-slots-local'
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "hepta_telegram_space_unread_filter_local_zero_ready"
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "rooms_list_section_unread_aggregate_packet_preview"
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "space_unread_filter_aggregate_packet_preview"
-require_contains "scripts/hepta-native-fixture-visual-smoke.sh" 'data-native-telegram-rooms-list-unread-aggregate-packet="loaded-row-totals-local-zero-header"'
-require_contains "scripts/hepta-native-fixture-visual-smoke.sh" 'data-native-telegram-space-unread-filter-aggregate-packet="joined-space-zero-source-local"'
+require_contains "$FIXTURE_CONTRACT_PATH" 'data-native-telegram-rooms-list-unread-aggregate-packet=loaded-row-totals-local-zero-header'
+require_contains "$FIXTURE_CONTRACT_PATH" 'data-native-telegram-space-unread-filter-aggregate-packet=joined-space-zero-source-local'
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "hepta_telegram_space_lobby_membership_edge_local_ready"
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "hepta_telegram_add_room_membership_edge_local_ready"
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "space_lobby_reknock_cancel_prior_packet_preview"
 require_contains "apps/hepta-native/src/home/hepta_telegram_base_contract.rs" "add_room_reknock_cancel_prior_packet_preview"
-require_contains "scripts/hepta-native-fixture-visual-smoke.sh" 'data-native-telegram-space-lobby-reknock-cancel-prior-packet="tree-action-cancel-slot-local"'
-require_contains "scripts/hepta-native-fixture-visual-smoke.sh" 'data-native-telegram-add-room-reknock-cancel-prior-packet="confirmed-reknock-cancel-slot-local"'
+require_contains "$FIXTURE_CONTRACT_PATH" 'data-native-telegram-space-lobby-reknock-cancel-prior-packet=tree-action-cancel-slot-local'
+require_contains "$FIXTURE_CONTRACT_PATH" 'data-native-telegram-add-room-reknock-cancel-prior-packet=confirmed-reknock-cancel-slot-local'
 
 readiness_status="not_provided"
 readiness_path=""

@@ -48,12 +48,9 @@ FINDER_BOOKMARK_RESOLVER="$PACKAGING_DIR/resolve-finder-bookmark-v1.swift"
 RELEASE_APPROVAL_VERIFIER="scripts/hepta-ui-release-execution-approval-verifier-v1"
 RELEASE_APPROVAL_TRUST_POLICY="$PACKAGING_DIR/release-execution-approval-trust-v1.json"
 
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s is required for the Hepta UI release signing capability gate\n' "$1" >&2
-    exit 2
-  fi
-}
+HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI release signing capability gate"
+HEPTA_UI_REPORT_INPUT_LABEL="release signing capability"
+source scripts/lib/hepta-ui-gate-common-v1.sh
 
 bool_command() {
   if command -v "$1" >/dev/null 2>&1; then
@@ -84,14 +81,6 @@ plist_value() {
   local path="$1"
   local key="$2"
   /usr/libexec/PlistBuddy -c "Print :$key" "$path" 2>/dev/null || true
-}
-
-file_sha256() {
-  shasum -a 256 "$1" | awk '{print $1}'
-}
-
-file_bytes() {
-  wc -c <"$1" | tr -d ' '
 }
 
 require_command awk

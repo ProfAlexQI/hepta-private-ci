@@ -1,0 +1,38 @@
+{
+  "schema": "hepta_native_fixture_contract_v1",
+  "status": "ready",
+  "scope": "declarative_contract_for_current_static_gates",
+  "source_fixture_kind": "historical_html_simulation",
+  "grants_product_claims": false,
+  "backend_alignment_markers": [
+    "native_telegram_message_search_server_packet_clipboard_ready:true",
+    "native_telegram_message_search_matrix_contract_packet_ready:true",
+    "native_telegram_message_search_remote_result_taxonomy_packet_ready:true",
+    "native_telegram_message_search_server_pagination_live_ready:true",
+    "native_telegram_message_search_loaded_scope_filters_live_ready:true",
+    "native_telegram_attachment_accepted_queue_timeline_cancel_bridge_ready:true",
+    "native_telegram_attachment_sdk_queue_contract_packet_ready:true",
+    "native_telegram_attachment_queue_progress_result_taxonomy_packet_ready:true",
+    "native_telegram_attachment_timeline_cancel_local_send_ready:true",
+    "native_telegram_media_operation_packet_drilldown_ready:true",
+    "native_telegram_media_playback_queue_contract_packet_ready:true",
+    "native_telegram_media_playback_result_taxonomy_packet_ready:true",
+    "native_telegram_media_inline_playback_queue_boundary_ready:true",
+    "native_telegram_notifications_rule_packet_drilldown_ready:true",
+    "native_telegram_notifications_rule_contract_packet_ready:true",
+    "native_telegram_notifications_result_taxonomy_packet_ready:true",
+    "native_telegram_notifications_retry_confirmation_ready:true",
+    "native_telegram_room_settings_field_mutation_packet_drilldown_ready:true",
+    "native_telegram_room_settings_field_mutation_contract_packet_ready:true",
+    "native_telegram_room_settings_power_member_result_taxonomy_packet_ready:true",
+    "native_telegram_room_settings_field_edit_intent_controls_ready:true"
+  ],
+  "spaces_room_membership_edge_markers": [
+    "data-native-telegram-rooms-list-load-more-pagination-packet=loaded-counts-cursor-result-slots-local",
+    "data-native-telegram-rooms-list-selected-room-removed-rejoin-packet=focus-rejoin-slots-local",
+    "data-native-telegram-rooms-list-unread-aggregate-packet=loaded-row-totals-local-zero-header",
+    "data-native-telegram-space-unread-filter-aggregate-packet=joined-space-zero-source-local",
+    "data-native-telegram-space-lobby-reknock-cancel-prior-packet=tree-action-cancel-slot-local",
+    "data-native-telegram-add-room-reknock-cancel-prior-packet=confirmed-reknock-cancel-slot-local"
+  ]
+}

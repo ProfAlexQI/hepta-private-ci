@@ -70,29 +70,9 @@ RELEASE_APPROVAL_INTAKE_REPORT_PATH="$READINESS_DIR/ui-release-approval-intake-g
 RELEASE_ARTIFACT_BOUNDARY_REPORT_PATH="$READINESS_DIR/ui-release-artifact-boundary-gate.json"
 EVIDENCE_ARCHIVE_REPORT_PATH="$READINESS_DIR/ui-evidence-archive-gate.json"
 
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s is required for the Hepta UI release artifact intake gate\n' "$1" >&2
-    exit 2
-  fi
-}
-
-require_report() {
-  local path="$1"
-  if [[ ! -s "$path" ]]; then
-    printf 'Missing required release artifact intake input: %s\n' "$path" >&2
-    exit 1
-  fi
-  jq empty "$path" >/dev/null
-}
-
-file_sha256() {
-  "$SYSTEM_SHASUM" -a 256 "$1" | /usr/bin/awk '{print $1}'
-}
-
-file_bytes() {
-  /usr/bin/wc -c <"$1" | /usr/bin/tr -d ' '
-}
+HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI release artifact intake gate"
+HEPTA_UI_REPORT_INPUT_LABEL="release artifact intake"
+source scripts/lib/hepta-ui-gate-common-v1.sh
 
 absolute_path() {
   "$SYSTEM_ENV" -i PATH="$SYSTEM_PATH" HOME="/var/empty" TMPDIR="${TMPDIR:-/tmp}" \

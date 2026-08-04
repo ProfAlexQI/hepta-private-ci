@@ -13,8 +13,8 @@ script_mod! {
     mod.widgets.COLOR_HEPTA_ENVIRONMENT = #xEEF3F5FF
     mod.widgets.COLOR_HEPTA_CONTENT = #xFCFDFEFF
     mod.widgets.COLOR_HEPTA_SURFACE = #xF7FAFBFA
-    mod.widgets.COLOR_HEPTA_GLASS = #xEAF1F3EC
-    mod.widgets.COLOR_HEPTA_GLASS_STRONG = #xF3F7F8F5
+    mod.widgets.COLOR_HEPTA_GLASS = #xEAF1F3E8
+    mod.widgets.COLOR_HEPTA_GLASS_STRONG = #xF5F8F9EE
     mod.widgets.COLOR_HEPTA_INPUT = #xF8FAFBF8
 
     mod.widgets.COLOR_HEPTA_TEXT = #x142A32FF
@@ -23,8 +23,8 @@ script_mod! {
     // against the lightest Hepta surfaces instead of treating it as decoration.
     mod.widgets.COLOR_HEPTA_DIM = #x5C6E79FF
 
-    mod.widgets.COLOR_HEPTA_HAIRLINE = #xA7C5CF99
-    mod.widgets.COLOR_HEPTA_HAIRLINE_STRONG = #x79AAB8B8
+    mod.widgets.COLOR_HEPTA_HAIRLINE = #x8FB4BF66
+    mod.widgets.COLOR_HEPTA_HAIRLINE_STRONG = #x6F9EAA8F
     mod.widgets.COLOR_HEPTA_FOCUS = #x0F7290FF
     mod.widgets.COLOR_HEPTA_FOCUS_HOVER = #x0B5D78FF
     mod.widgets.COLOR_HEPTA_FOCUS_SURFACE = #xDCEFF4E8
@@ -38,11 +38,17 @@ script_mod! {
     mod.widgets.COLOR_HEPTA_WARNING = #x9A6500FF
     mod.widgets.COLOR_HEPTA_DISABLED = #xB9C4C9FF
     mod.widgets.COLOR_HEPTA_DISABLED_SURFACE = #xE6ECEEFF
-    mod.widgets.COLOR_HEPTA_SHADOW = #x1730471A
+    mod.widgets.COLOR_HEPTA_SHADOW = #x17304714
 
     mod.widgets.HEPTA_RADIUS_CONTROL = 10.0
     mod.widgets.HEPTA_RADIUS_PANEL = 14.0
     mod.widgets.HEPTA_RADIUS_FLOATING = 18.0
+    mod.widgets.HEPTA_LAYER_STABLE_ALPHA = 0.98
+    mod.widgets.HEPTA_LAYER_STABLE_BLUR = 0.0
+    mod.widgets.HEPTA_LAYER_CHROME_ALPHA = 0.88
+    mod.widgets.HEPTA_LAYER_CHROME_BLUR = 14.0
+    mod.widgets.HEPTA_LAYER_FLOATING_ALPHA = 0.94
+    mod.widgets.HEPTA_LAYER_FLOATING_BLUR = 20.0
 }
 
 pub const COLOR_HEPTA_CONTENT: Vec4 = vec4(0.988, 0.992, 0.996, 1.0);

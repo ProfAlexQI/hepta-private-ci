@@ -28,7 +28,7 @@ script_mod! {
         draw_bg +: {
             color: (COLOR_HEPTA_FOCUS)
             border_radius: 13.0
-            border_size: 1.0
+            border_size: 0.75
             border_color: (COLOR_HEPTA_HAIRLINE_STRONG)
         }
 
@@ -54,7 +54,7 @@ script_mod! {
         margin: 0,
         align: Align{x: 0.5, y: 0.5},
         draw_bg +: {
-            border_size: 1.0
+            border_size: 0.75
             border_radius: (HEPTA_RADIUS_CONTROL)
             border_color: (COLOR_HEPTA_HAIRLINE)
             color: (COLOR_HEPTA_GLASS_STRONG)
@@ -91,9 +91,9 @@ script_mod! {
             }
 
             RoundedShadowView {
-                margin: Inset{top: 8, bottom: 8, left: 8, right: 8}
-                padding: 12
-                width: Fill{max: 594.}
+                margin: Inset{top: 18, bottom: 18, left: 8, right: 8}
+                padding: 14
+                width: Fill{max: 636.}
                 height: Fit
                 align: Align{x: 0.5, y: 0.0}
                 flow: Overlay,
@@ -102,11 +102,11 @@ script_mod! {
                 draw_bg +: {
                     color: (COLOR_HEPTA_GLASS_STRONG)
                     border_radius: (HEPTA_RADIUS_FLOATING)
-                    border_size: 1.0
+                    border_size: 0.75
                     border_color: (COLOR_HEPTA_HAIRLINE)
                     shadow_color: (COLOR_HEPTA_SHADOW)
-                    shadow_radius: 12.0
-                    shadow_offset: vec2(0.0, 4.0)
+                    shadow_radius: 8.0
+                    shadow_offset: vec2(0.0, 2.0)
                 }
 
                 View {
@@ -114,14 +114,14 @@ script_mod! {
                     height: Fit
                     flow: Flow.Right{wrap: true}
                     align: Align{x: 0.5, y: 0.0}
-                    spacing: 4.0
+                    spacing: 14.0
 
                     credentials_column := View {
                         width: 260
                         height: Fit
                         flow: Down
                         align: Align{x: 0.5, y: 0.0}
-                        spacing: 5.0
+                        spacing: 8.0
 
                         mod.widgets.HeptaBrandMark {}
 
@@ -217,7 +217,7 @@ script_mod! {
                                 content_type: Url,
                                 input_mode: Url,
                                 draw_text +: {
-                                    text_style: TITLE_TEXT {font_size: 10.0}
+                                    text_style: TITLE_TEXT {font_size: 14.0}
                                 }
                             }
 
@@ -236,7 +236,7 @@ script_mod! {
                                     padding: 0
                                     draw_text +: {
                                         color: (COLOR_HEPTA_MUTED)
-                                        text_style: REGULAR_TEXT {font_size: 10}
+                                        text_style: REGULAR_TEXT {font_size: 12}
                                     }
                                     text: "Homeserver URL (optional)"
                                 }
@@ -260,7 +260,58 @@ script_mod! {
                         height: Fit
                         flow: Down
                         align: Align{x: 0.5, y: 0.0}
-                        spacing: 7.0
+                        spacing: 10.0
+
+                        Label {
+                            width: Fill, height: Fit
+                            draw_text +: {
+                                color: (COLOR_HEPTA_TEXT)
+                                text_style: theme.font_bold {font_size: 18.0}
+                            }
+                            text: "Calm work, clearly reviewed"
+                        }
+
+                        Label {
+                            width: Fill, height: Fit
+                            draw_text +: {
+                                color: (COLOR_HEPTA_MUTED)
+                                text_style: REGULAR_TEXT {font_size: 12.0}
+                            }
+                            text: "Rooms, evidence, and reviewed work in one calm surface."
+                        }
+
+                        RoundedView {
+                            width: 275
+                            height: Fit
+                            padding: 12
+                            flow: Down
+                            spacing: 5
+                            show_bg: true
+                            draw_bg +: {
+                                color: (COLOR_HEPTA_CONTENT)
+                                border_radius: (HEPTA_RADIUS_PANEL)
+                                border_size: 0.75
+                                border_color: (COLOR_HEPTA_HAIRLINE)
+                            }
+
+                            Label {
+                                width: Fit, height: Fit
+                                draw_text +: {
+                                    color: (COLOR_HEPTA_TEXT)
+                                    text_style: theme.font_bold {font_size: 13.0}
+                                }
+                                text: "Private by default"
+                            }
+
+                            Label {
+                                width: Fill, height: Fit
+                                draw_text +: {
+                                    color: (COLOR_HEPTA_MUTED)
+                                    text_style: REGULAR_TEXT {font_size: 12.0}
+                                }
+                                text: "Credentials stay on this device. Live access starts after server verification."
+                            }
+                        }
 
                         LineH {
                             width: 275
@@ -272,9 +323,9 @@ script_mod! {
                             padding: 0,
                             draw_text +: {
                                 color: (COLOR_TEXT)
-                                text_style: TITLE_TEXT {font_size: 11.0}
+                                text_style: TITLE_TEXT {font_size: 12.0}
                             }
-                            text: "Or, login with an SSO provider:"
+                            text: "Continue with SSO:"
                         }
 
                         sso_view := View {

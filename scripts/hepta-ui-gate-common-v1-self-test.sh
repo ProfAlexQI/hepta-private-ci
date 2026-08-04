@@ -105,6 +105,11 @@ consumer_specs=(
   'scripts/hepta-ui-cross-agent-visibility-gate.sh|the Hepta UI cross-agent visibility gate|cross-agent visibility'
   'scripts/hepta-ui-current-plan-refresh-gate.sh|the Hepta UI current-plan refresh gate|current-plan refresh'
   'scripts/hepta-ui-operator-briefing-gate.sh|the Hepta UI operator briefing gate|operator-briefing'
+  'scripts/hepta-ui-release-approval-intake-gate.sh|the Hepta UI release approval intake gate|release approval intake'
+  'scripts/hepta-ui-release-artifact-boundary-gate.sh|the Hepta UI release artifact boundary gate|release artifact boundary'
+  'scripts/hepta-ui-release-artifact-intake-gate.sh|the Hepta UI release artifact intake gate|release artifact intake'
+  'scripts/hepta-ui-release-artifact-roundtrip-gate.sh|the Hepta UI release artifact roundtrip gate|release artifact roundtrip'
+  'scripts/hepta-ui-release-signing-capability-gate.sh|the Hepta UI release signing capability gate|release signing capability'
   'scripts/hepta-ui-risk-future-plan-gate.sh|the Hepta UI risk/future-plan gate|risk/future-plan'
   'scripts/hepta-ui-root-report-replay-gate.sh|the Hepta UI root-report replay gate|root-report replay'
 )
@@ -120,4 +125,4 @@ for consumer_spec in "${consumer_specs[@]}"; do
   fi
 done
 
-printf '{"schema":"hepta_ui_gate_common_v1_self_test","status":"ready","negative_cases":4,"consumer_count":12}\n'
+printf '{"schema":"hepta_ui_gate_common_v1_self_test","status":"ready","negative_cases":4,"consumer_count":17}\n'

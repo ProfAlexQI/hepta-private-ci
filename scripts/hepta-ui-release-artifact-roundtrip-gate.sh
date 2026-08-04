@@ -25,21 +25,9 @@ RELEASE_ARTIFACT_INTAKE_REPORT_PATH="$READINESS_DIR/ui-release-artifact-intake-g
 RELEASE_ARTIFACT_TEMPLATE_PATH="$READINESS_DIR/release-artifact-intake/release-artifact-template.json"
 RELEASE_ARTIFACT_MARKDOWN_PATH="$READINESS_DIR/release-artifact-intake/release-artifact-intake.md"
 
-require_command() {
-  command -v "$1" >/dev/null 2>&1 || {
-    printf '%s is required for the Hepta UI release artifact roundtrip gate\n' "$1" >&2
-    exit 2
-  }
-}
-
-require_report() {
-  local path="$1"
-  [[ -s "$path" ]] || {
-    printf 'Missing required release artifact roundtrip input: %s\n' "$path" >&2
-    exit 1
-  }
-  jq empty "$path" >/dev/null
-}
+HEPTA_UI_GATE_REQUIREMENT_CONTEXT="the Hepta UI release artifact roundtrip gate"
+HEPTA_UI_REPORT_INPUT_LABEL="release artifact roundtrip"
+source scripts/lib/hepta-ui-gate-common-v1.sh
 
 require_file() {
   local path="$1"
@@ -47,14 +35,6 @@ require_file() {
     printf 'Missing required release artifact roundtrip file: %s\n' "$path" >&2
     exit 1
   }
-}
-
-file_sha256() {
-  shasum -a 256 "$1" | awk '{print $1}'
-}
-
-file_bytes() {
-  wc -c <"$1" | tr -d ' '
 }
 
 require_command jq

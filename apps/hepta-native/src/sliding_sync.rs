@@ -2338,26 +2338,10 @@ async fn start_matrix_client_login_and_sync(rt: Handle) {
     // which causes the loop to wait for the user to submit a new manual login request.
     let mut initial_client_opt = new_login_opt;
 
-    // Only pre-build `DEFAULT_SSO_CLIENT` if we'll actually show the login
-    // screen. Building it eagerly during session restore just leaves an
-    // orphaned sqlite db every cold start. If we skip the build, still
-    // notify so a later SSO attempt doesn't deadlock on the notifier.
-    // The SSO handler builds a fresh client itself if it's still `None`.
-    if initial_client_opt.is_none() {
-        rt.spawn(async move {
-            match build_client(&Cli::default(), app_data_dir()).await {
-                Ok(client_and_session) => {
-                    DEFAULT_SSO_CLIENT.lock().unwrap()
-                        .get_or_insert(client_and_session);
-                }
-                Err(e) => error!("Error: could not create DEFAULT_SSO_CLIENT object: {e}"),
-            };
-            DEFAULT_SSO_CLIENT_NOTIFIER.notify_one();
-            Cx::post_action(LoginAction::SsoPending(false));
-        });
-    } else {
-        DEFAULT_SSO_CLIENT_NOTIFIER.notify_one();
-    }
+    // Do not build or probe a homeserver until the user initiates login.
+    // The SSO handler consumes this permit, observes the empty cached client,
+    // and builds one for the user-selected homeserver on demand.
+    DEFAULT_SSO_CLIENT_NOTIFIER.notify_one();
 
     'login_loop: loop {
         let (client, _sync_token) = match initial_client_opt.take() {
