@@ -9,14 +9,38 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PATCH_PATH="$ROOT_DIR/patches/makepad_macos_accessibility_c4335cee.patch"
 PINNED_REVISION="c4335cee10b22aca768510c9d072b0ca1bba15c8"
 PINNED_TREE="7506472e89525580cf41bb7e2b891e00275c10b2"
-PATCH_SHA256="52b335c8a03aed695f24ed54c9cddd1bbba5a490f6fe6f6855c87e0ed763731a"
+PATCH_SHA256="24a5fdeeb47369f345b6393c4c68e8b66f83c1c90c9ef6494933cbb58383ee92"
 
 SOURCE_PATH=""
 OUTPUT_PATH=""
 VERIFY_PLATFORM_COMPILE=false
+VERIFY_PLATFORM_TESTS=false
+VERIFY_HEPTA_APP_COMPILE=false
 COMPILE_TARGET_DIR=""
+HEPTA_REPO_PATH=""
 MACOS_MATERIALIZED=false
 MACOS_COMPILE_VERIFIED=false
+MACOS_TESTS_VERIFIED=false
+HEPTA_APP_GRAPH_VERIFIED=false
+HEPTA_APP_COMPILE_VERIFIED=false
+HEPTA_APP_LOCK_SHA256=""
+HEPTA_APP_SOURCE_SNAPSHOT_SHA256=""
+HEPTA_APP_STAGED_SOURCE_PRE_CARGO_SHA256=""
+HEPTA_APP_STAGED_SOURCE_PRE_COMPILE_SHA256=""
+HEPTA_APP_STAGED_SOURCE_POST_COMPILE_SHA256=""
+HEPTA_APP_SOURCE_COPY_VERIFIED=false
+HEPTA_APP_STAGED_SOURCE_STABLE=false
+HEPTA_REPO_SOURCE_BINDING_JSON=null
+HEPTA_REPO_SOURCE_BINDING_STABLE=false
+HEPTA_APP_EXACT_SOURCE_BINDING=false
+APP_STAGING_PATH=""
+
+cleanup() {
+  if [[ -n "$APP_STAGING_PATH" && -d "$APP_STAGING_PATH" ]]; then
+    rm -rf -- "$APP_STAGING_PATH"
+  fi
+}
+trap cleanup EXIT
 
 usage() {
   cat <<'EOF'
@@ -25,13 +49,18 @@ Usage:
     --source /absolute/path/to/makepad-c4335cee \
     --output /absolute/path/to/new-overlay \
     [--verify-platform-compile] \
+    [--verify-platform-tests] \
+    [--verify-hepta-app-compile --hepta-repo /absolute/path/to/Hepta-ui] \
     [--compile-target-dir /absolute/path/to/cargo-target]
 
 Materializes an isolated clone of the exact pinned Makepad revision and applies
 the repository-owned macOS-only AccessKit backend patch. The optional compile
-check builds the patched makepad-platform crate in isolation; it does not claim
-that the Hepta app consumed the overlay. The source checkout and repository
-Cargo.lock are never mutated. iOS and Android remain unpatched.
+check builds the patched makepad-platform crate in isolation. Platform tests
+exercise update scaling, activation, and ActionRequest forwarding. The optional
+Hepta app check stages the current app source in a private temporary directory,
+resolves both top-level Makepad crates to this one overlay source graph, and
+performs an offline locked lib check without mutating the repository Cargo.lock.
+iOS and Android remain unpatched and VoiceOver is never claimed by these checks.
 EOF
 }
 
@@ -42,8 +71,20 @@ emit_failure() {
     --arg source_path "$SOURCE_PATH" \
     --arg output_path "$OUTPUT_PATH" \
     --arg pinned_revision "$PINNED_REVISION" \
+    --arg active_source_sha256 "$HEPTA_APP_SOURCE_SNAPSHOT_SHA256" \
+    --arg staged_pre_cargo_sha256 "$HEPTA_APP_STAGED_SOURCE_PRE_CARGO_SHA256" \
+    --arg staged_pre_compile_sha256 "$HEPTA_APP_STAGED_SOURCE_PRE_COMPILE_SHA256" \
+    --arg staged_post_compile_sha256 "$HEPTA_APP_STAGED_SOURCE_POST_COMPILE_SHA256" \
     --argjson macos_materialized "$MACOS_MATERIALIZED" \
     --argjson macos_compile_verified "$MACOS_COMPILE_VERIFIED" \
+    --argjson macos_tests_verified "$MACOS_TESTS_VERIFIED" \
+    --argjson app_graph_verified "$HEPTA_APP_GRAPH_VERIFIED" \
+    --argjson app_compile_verified "$HEPTA_APP_COMPILE_VERIFIED" \
+    --argjson app_source_copy_verified "$HEPTA_APP_SOURCE_COPY_VERIFIED" \
+    --argjson app_source_stable "$HEPTA_APP_STAGED_SOURCE_STABLE" \
+    --argjson repo_source_binding "$HEPTA_REPO_SOURCE_BINDING_JSON" \
+    --argjson repo_source_binding_stable "$HEPTA_REPO_SOURCE_BINDING_STABLE" \
+    --argjson exact_source_binding "$HEPTA_APP_EXACT_SOURCE_BINDING" \
     '{
       schema:"hepta.makepad-accessibility-overlay-receipt.v1",
       status:"not_ready",
@@ -51,9 +92,28 @@ emit_failure() {
       source_path:$source_path,
       output_path:$output_path,
       pinned_revision:$pinned_revision,
+      app_compile_evidence:{
+        active_source_snapshot_sha256:(if $active_source_sha256 == "" then null else $active_source_sha256 end),
+        staged_source_pre_cargo_sha256:(if $staged_pre_cargo_sha256 == "" then null else $staged_pre_cargo_sha256 end),
+        staged_source_pre_compile_sha256:(if $staged_pre_compile_sha256 == "" then null else $staged_pre_compile_sha256 end),
+        staged_source_post_compile_sha256:(if $staged_post_compile_sha256 == "" then null else $staged_post_compile_sha256 end),
+        source_copy_verified:$app_source_copy_verified,
+        staged_source_stable_during_compile:$app_source_stable,
+        repository_source_binding:(if $repo_source_binding == null then null else ($repo_source_binding + {
+          stable_during_compile:$repo_source_binding_stable,
+          exact_committed_source:$exact_source_binding
+        }) end),
+        exact_source_compile_verified:false,
+        production_dependency_adopted:false
+      },
       readiness:{
         macos_backend_materialized:$macos_materialized,
         macos_compile_verified:$macos_compile_verified,
+        macos_tests_verified:$macos_tests_verified,
+        macos_hepta_app_graph_verified:$app_graph_verified,
+        macos_hepta_app_compile_verified:$app_compile_verified,
+        macos_hepta_app_exact_source_compile_verified:false,
+        macos_hepta_app_production_dependency_adopted:false,
         ios_backend_materialized:false,
         android_backend_materialized:false,
         full_accessibility_ready:false
@@ -64,6 +124,62 @@ emit_failure() {
 
 sha256_file() {
   shasum -a 256 "$1" | awk '{print $1}'
+}
+
+hepta_app_source_snapshot_sha256() {
+  local repo_root="$1"
+  (
+    cd "$repo_root"
+    find apps/hepta-native codex-rs/keyring-store \
+      -type f ! -path '*/target/*' -print \
+      | LC_ALL=C sort \
+      | while IFS= read -r relative_path; do
+          printf '%s  %s\n' "$(sha256_file "$relative_path")" "$relative_path"
+        done
+  ) | shasum -a 256 | awk '{print $1}'
+}
+
+hepta_app_source_without_lock_snapshot_sha256() {
+  local repo_root="$1"
+  (
+    cd "$repo_root"
+    find apps/hepta-native codex-rs/keyring-store \
+      -type f ! -path '*/target/*' \
+      ! -path 'apps/hepta-native/Cargo.lock' -print \
+      | LC_ALL=C sort \
+      | while IFS= read -r relative_path; do
+          printf '%s  %s\n' "$(sha256_file "$relative_path")" "$relative_path"
+        done
+  ) | shasum -a 256 | awk '{print $1}'
+}
+
+hepta_repo_source_binding_json() {
+  local repo_root="$1"
+  local binding
+  binding="$("$repo_root/scripts/hepta-ui-source-fingerprint")" || return 1
+  printf '%s\n' "$binding" | jq -ce '
+    if .kind == "hepta-ui-source-binding"
+      and (.head | type) == "string"
+      and (.head_tree | type) == "string"
+      and (.source_fingerprint | type) == "string"
+      and (.worktree_clean | type) == "boolean"
+      and (.repository_worktree_clean | type) == "boolean"
+    then {
+      branch,
+      head,
+      tree:.head_tree,
+      source_fingerprint,
+      source_file_count,
+      worktree_clean,
+      repository_worktree_clean,
+      dirty_path_count,
+      dirty_paths,
+      repository_dirty_path_count,
+      repository_dirty_paths
+    }
+    else error("invalid Hepta UI source binding")
+    end
+  '
 }
 
 while (($#)); do
@@ -81,6 +197,19 @@ while (($#)); do
     --verify-platform-compile)
       VERIFY_PLATFORM_COMPILE=true
       shift
+      ;;
+    --verify-platform-tests)
+      VERIFY_PLATFORM_TESTS=true
+      shift
+      ;;
+    --verify-hepta-app-compile)
+      VERIFY_HEPTA_APP_COMPILE=true
+      shift
+      ;;
+    --hepta-repo)
+      (($# >= 2)) || emit_failure "missing_hepta_repo_value"
+      HEPTA_REPO_PATH="$2"
+      shift 2
       ;;
     --compile-target-dir)
       (($# >= 2)) || emit_failure "missing_compile_target_dir_value"
@@ -106,6 +235,19 @@ done
 if [[ -n "$COMPILE_TARGET_DIR" ]]; then
   [[ "$COMPILE_TARGET_DIR" == /* ]] || emit_failure "compile_target_dir_not_absolute"
   [[ "$COMPILE_TARGET_DIR" != *$'\n'* ]] || emit_failure "compile_target_dir_not_safe"
+fi
+if [[ "$VERIFY_HEPTA_APP_COMPILE" == true ]]; then
+  [[ -n "$HEPTA_REPO_PATH" ]] || emit_failure "hepta_repo_path_missing"
+  [[ "$HEPTA_REPO_PATH" == /* ]] || emit_failure "hepta_repo_path_not_absolute"
+  [[ -f "$HEPTA_REPO_PATH/apps/hepta-native/Cargo.toml" ]] \
+    || emit_failure "hepta_app_manifest_missing"
+  [[ -f "$HEPTA_REPO_PATH/apps/hepta-native/Cargo.lock" ]] \
+    || emit_failure "hepta_app_lock_missing"
+  [[ -f "$HEPTA_REPO_PATH/codex-rs/keyring-store/Cargo.toml" ]] \
+    || emit_failure "hepta_keyring_path_dependency_missing"
+  [[ -x "$HEPTA_REPO_PATH/scripts/hepta-ui-source-fingerprint" ]] \
+    || emit_failure "hepta_source_fingerprint_missing_or_not_executable"
+  HEPTA_REPO_PATH="$(cd "$HEPTA_REPO_PATH" && pwd -P)"
 fi
 [[ -f "$PATCH_PATH" && ! -L "$PATCH_PATH" ]] || emit_failure "patch_missing_or_symlinked"
 [[ "$(sha256_file "$PATCH_PATH")" == "$PATCH_SHA256" ]] \
@@ -172,7 +314,7 @@ verify_image "$OUTPUT_PATH" patched_postimage \
   "a3ac4456bdc78ce02d2ad187c02085fd4b8a2542731201221ba0eac4c352697c"
 verify_image "$OUTPUT_PATH" patched_postimage \
   "platform/src/os/apple/macos/macos.rs" \
-  "85c23ef0fd3224659a282823fa38897823813171f4832cac431554133754b8f3"
+  "6f68c91ab8b2f27b3df96b6804c6f76baf9a85e0f03ef9f573ac5d695501da52"
 verify_image "$OUTPUT_PATH" patched_postimage \
   "platform/src/os/apple/macos/macos_window.rs" \
   "d36fc35b2dc74b7a28e5cf7afcbda3742f99cdf737136796508fbb2d54f2b387"
@@ -204,14 +346,23 @@ verify_image "$SOURCE_PATH" source_postimage \
   "platform/src/os/apple/macos/macos_window.rs" \
   "7c60e2cc50d9914c3faa5d98e3b7b21245e2550e0a6dcbcfeb9971914c924df2"
 
+if [[ "$VERIFY_PLATFORM_TESTS" == true ]]; then
+  VERIFY_PLATFORM_COMPILE=true
+fi
+
 overlay_lockfile_mutated_by_compile=false
+if [[ "$VERIFY_PLATFORM_COMPILE" == true || "$VERIFY_HEPTA_APP_COMPILE" == true ]]; then
+  command -v rustup >/dev/null 2>&1 || emit_failure "rustup_missing_for_compile"
+  rustup run 1.95.0 cargo --version >/dev/null 2>&1 \
+    || emit_failure "rust_1_95_toolchain_missing"
+fi
 if [[ "$VERIFY_PLATFORM_COMPILE" == true ]]; then
-  command -v cargo >/dev/null 2>&1 || emit_failure "cargo_missing_for_platform_compile"
   if [[ -z "$COMPILE_TARGET_DIR" ]]; then
     COMPILE_TARGET_DIR="$OUTPUT_PATH/.hepta-accessibility-target"
   fi
   mkdir -p "$COMPILE_TARGET_DIR" || emit_failure "compile_target_dir_create_failed"
-  cargo check \
+  CARGO_INCREMENTAL=0 rustup run 1.95.0 cargo check \
+    --offline \
     --manifest-path "$OUTPUT_PATH/platform/Cargo.toml" \
     --lib \
     --target-dir "$COMPILE_TARGET_DIR" \
@@ -222,8 +373,178 @@ if [[ "$VERIFY_PLATFORM_COMPILE" == true ]]; then
   fi
 fi
 
+if [[ "$VERIFY_PLATFORM_TESTS" == true ]]; then
+  CARGO_INCREMENTAL=0 rustup run 1.95.0 cargo test \
+    --offline \
+    --locked \
+    --manifest-path "$OUTPUT_PATH/platform/Cargo.toml" \
+    --lib \
+    --target-dir "$COMPILE_TARGET_DIR" \
+    accessibility_tests \
+    -- --nocapture \
+    >&2 || emit_failure "patched_makepad_platform_accessibility_tests_failed"
+  MACOS_TESTS_VERIFIED=true
+fi
+
 OUTPUT_PATH="$(cd "$OUTPUT_PATH" && pwd -P)"
-cargo_config="patch.\"https://github.com/kevinaboos/makepad\".makepad-platform.path=\"$OUTPUT_PATH/platform\""
+platform_only_cargo_config="patch.\"https://github.com/kevinaboos/makepad\".makepad-platform.path=\"$OUTPUT_PATH/platform\""
+full_graph_cargo_config="patch.\"https://github.com/kevinaboos/makepad\".makepad-widgets.path=\"$OUTPUT_PATH/widgets\";patch.\"https://github.com/kevinaboos/makepad\".makepad-code-editor.path=\"$OUTPUT_PATH/code_editor\""
+
+repository_app_lock_before=""
+repository_app_lock_after=""
+if [[ "$VERIFY_HEPTA_APP_COMPILE" == true ]]; then
+  command -v rsync >/dev/null 2>&1 || emit_failure "rsync_missing_for_app_staging"
+  HEPTA_REPO_SOURCE_BINDING_JSON="$(hepta_repo_source_binding_json "$HEPTA_REPO_PATH")" \
+    || emit_failure "hepta_repo_source_binding_unavailable"
+  [[ "$(printf '%s\n' "$HEPTA_REPO_SOURCE_BINDING_JSON" | jq -r '.head')" \
+      == "$(git -C "$HEPTA_REPO_PATH" rev-parse HEAD)" ]] \
+    || emit_failure "hepta_repo_source_binding_head_mismatch"
+  [[ "$(printf '%s\n' "$HEPTA_REPO_SOURCE_BINDING_JSON" | jq -r '.tree')" \
+      == "$(git -C "$HEPTA_REPO_PATH" rev-parse 'HEAD^{tree}')" ]] \
+    || emit_failure "hepta_repo_source_binding_tree_mismatch"
+  HEPTA_APP_EXACT_SOURCE_BINDING="$(
+    printf '%s\n' "$HEPTA_REPO_SOURCE_BINDING_JSON" \
+      | jq -r '.repository_worktree_clean'
+  )"
+  repository_app_lock_before="$(sha256_file "$HEPTA_REPO_PATH/apps/hepta-native/Cargo.lock")"
+  HEPTA_APP_SOURCE_SNAPSHOT_SHA256="$(hepta_app_source_snapshot_sha256 "$HEPTA_REPO_PATH")"
+  hepta_app_source_without_lock_before="$(
+    hepta_app_source_without_lock_snapshot_sha256 "$HEPTA_REPO_PATH"
+  )"
+  APP_STAGING_PATH="$(mktemp -d "${TMPDIR:-/tmp}/hepta-accessibility-app-overlay.XXXXXX")" \
+    || emit_failure "hepta_app_staging_create_failed"
+  mkdir -p "$APP_STAGING_PATH/apps" "$APP_STAGING_PATH/codex-rs" \
+    || emit_failure "hepta_app_staging_layout_failed"
+  rsync -a --exclude '/target/' \
+    "$HEPTA_REPO_PATH/apps/hepta-native/" \
+    "$APP_STAGING_PATH/apps/hepta-native/" \
+    || emit_failure "hepta_app_staging_copy_failed"
+  rsync -a \
+    "$HEPTA_REPO_PATH/codex-rs/keyring-store/" \
+    "$APP_STAGING_PATH/codex-rs/keyring-store/" \
+    || emit_failure "hepta_keyring_staging_copy_failed"
+  HEPTA_APP_STAGED_SOURCE_PRE_CARGO_SHA256="$(
+    hepta_app_source_snapshot_sha256 "$APP_STAGING_PATH"
+  )"
+  hepta_app_source_after_copy="$(hepta_app_source_snapshot_sha256 "$HEPTA_REPO_PATH")"
+  [[ "$hepta_app_source_after_copy" == "$HEPTA_APP_SOURCE_SNAPSHOT_SHA256" ]] \
+    || emit_failure "hepta_app_source_changed_during_staging"
+  [[ "$HEPTA_APP_STAGED_SOURCE_PRE_CARGO_SHA256" == "$HEPTA_APP_SOURCE_SNAPSHOT_SHA256" ]] \
+    || emit_failure "hepta_app_staged_source_snapshot_mismatch"
+  hepta_app_staged_without_lock_pre_cargo="$(
+    hepta_app_source_without_lock_snapshot_sha256 "$APP_STAGING_PATH"
+  )"
+  [[ "$hepta_app_staged_without_lock_pre_cargo" == "$hepta_app_source_without_lock_before" ]] \
+    || emit_failure "hepta_app_staged_source_without_lock_mismatch"
+  hepta_repo_source_binding_after_copy="$(hepta_repo_source_binding_json "$HEPTA_REPO_PATH")" \
+    || emit_failure "hepta_repo_source_binding_after_staging_unavailable"
+  [[ "$hepta_repo_source_binding_after_copy" == "$HEPTA_REPO_SOURCE_BINDING_JSON" ]] \
+    || emit_failure "hepta_repo_source_binding_changed_during_staging"
+  HEPTA_APP_SOURCE_COPY_VERIFIED=true
+  printf '%s\n' \
+    '[workspace]' \
+    'members = ["keyring-store"]' \
+    'resolver = "2"' \
+    '' \
+    '[workspace.package]' \
+    'version = "0.0.0"' \
+    'edition = "2024"' \
+    'license = "Apache-2.0"' \
+    '' \
+    '[workspace.dependencies]' \
+    'keyring = { version = "3.6", default-features = false }' \
+    'tracing = "0.1.44"' \
+    '' \
+    '[workspace.lints]' \
+    >"$APP_STAGING_PATH/codex-rs/Cargo.toml" \
+    || emit_failure "hepta_keyring_staging_workspace_write_failed"
+  app_config_path="$APP_STAGING_PATH/makepad-overlay-config.toml"
+  printf '[patch."https://github.com/kevinaboos/makepad"]\nmakepad-widgets = { path = "%s/widgets" }\nmakepad-code-editor = { path = "%s/code_editor" }\n' \
+    "$OUTPUT_PATH" "$OUTPUT_PATH" >"$app_config_path" \
+    || emit_failure "hepta_app_overlay_config_write_failed"
+  app_metadata_path="$APP_STAGING_PATH/metadata.json"
+  app_target_dir="$COMPILE_TARGET_DIR"
+  if [[ -z "$app_target_dir" ]]; then
+    app_target_dir="$APP_STAGING_PATH/target"
+  fi
+  mkdir -p "$app_target_dir" || emit_failure "hepta_app_target_create_failed"
+
+  CARGO_INCREMENTAL=0 rustup run 1.95.0 cargo metadata \
+    --offline \
+    --manifest-path "$APP_STAGING_PATH/apps/hepta-native/Cargo.toml" \
+    --config "$app_config_path" \
+    --format-version 1 \
+    >"$app_metadata_path" \
+    || emit_failure "hepta_app_overlay_graph_resolution_failed"
+  [[ "$(hepta_app_source_without_lock_snapshot_sha256 "$APP_STAGING_PATH")" \
+      == "$hepta_app_staged_without_lock_pre_cargo" ]] \
+    || emit_failure "hepta_app_staged_source_changed_during_graph_resolution"
+  HEPTA_APP_STAGED_SOURCE_PRE_COMPILE_SHA256="$(
+    hepta_app_source_snapshot_sha256 "$APP_STAGING_PATH"
+  )"
+  HEPTA_APP_LOCK_SHA256="$(sha256_file "$APP_STAGING_PATH/apps/hepta-native/Cargo.lock")"
+  CARGO_INCREMENTAL=0 rustup run 1.95.0 cargo metadata \
+    --offline \
+    --locked \
+    --manifest-path "$APP_STAGING_PATH/apps/hepta-native/Cargo.toml" \
+    --config "$app_config_path" \
+    --format-version 1 \
+    >"$app_metadata_path" \
+    || emit_failure "hepta_app_overlay_locked_graph_replay_failed"
+  jq -e \
+    --arg platform "$OUTPUT_PATH/platform/Cargo.toml" \
+    --arg widgets "$OUTPUT_PATH/widgets/Cargo.toml" \
+    --arg editor "$OUTPUT_PATH/code_editor/Cargo.toml" '
+      ([.packages[] | select(.name == "makepad-platform")] | length) == 1
+      and ([.packages[] | select(.name == "makepad-widgets")] | length) == 1
+      and ([.packages[] | select(.name == "makepad-code-editor")] | length) == 1
+      and ([.packages[] | select(.name == "makepad-platform")][0].manifest_path == $platform)
+      and ([.packages[] | select(.name == "makepad-widgets")][0].manifest_path == $widgets)
+      and ([.packages[] | select(.name == "makepad-code-editor")][0].manifest_path == $editor)
+      and ([.packages[]
+        | select((.name | startswith("makepad-"))
+          and ((.source // "") | contains("github.com/kevinaboos/makepad")))]
+        | length) == 0
+    ' "$app_metadata_path" >/dev/null \
+    || emit_failure "hepta_app_overlay_duplicate_makepad_source_graph"
+  HEPTA_APP_GRAPH_VERIFIED=true
+
+  CARGO_INCREMENTAL=0 rustup run 1.95.0 cargo check \
+    --offline \
+    --locked \
+    --manifest-path "$APP_STAGING_PATH/apps/hepta-native/Cargo.toml" \
+    --config "$app_config_path" \
+    --lib \
+    --target-dir "$app_target_dir" \
+    >&2 || emit_failure "hepta_app_overlay_compile_failed"
+  HEPTA_APP_STAGED_SOURCE_POST_COMPILE_SHA256="$(
+    hepta_app_source_snapshot_sha256 "$APP_STAGING_PATH"
+  )"
+  [[ "$HEPTA_APP_STAGED_SOURCE_POST_COMPILE_SHA256" \
+      == "$HEPTA_APP_STAGED_SOURCE_PRE_COMPILE_SHA256" ]] \
+    || emit_failure "hepta_app_staged_source_changed_during_compile"
+  HEPTA_APP_STAGED_SOURCE_STABLE=true
+  repository_app_lock_after="$(sha256_file "$HEPTA_REPO_PATH/apps/hepta-native/Cargo.lock")"
+  [[ "$repository_app_lock_after" == "$repository_app_lock_before" ]] \
+    || emit_failure "repository_app_lock_mutated"
+  [[ "$(hepta_app_source_snapshot_sha256 "$HEPTA_REPO_PATH")" == "$HEPTA_APP_SOURCE_SNAPSHOT_SHA256" ]] \
+    || emit_failure "hepta_app_source_changed_during_compile"
+  hepta_repo_source_binding_after_compile="$(hepta_repo_source_binding_json "$HEPTA_REPO_PATH")" \
+    || emit_failure "hepta_repo_source_binding_after_compile_unavailable"
+  [[ "$hepta_repo_source_binding_after_compile" == "$HEPTA_REPO_SOURCE_BINDING_JSON" ]] \
+    || emit_failure "hepta_repo_source_binding_changed_during_compile"
+  HEPTA_REPO_SOURCE_BINDING_STABLE=true
+  HEPTA_APP_COMPILE_VERIFIED=true
+fi
+
+cargo_invoked=false
+if [[ "$VERIFY_PLATFORM_COMPILE" == true || "$VERIFY_HEPTA_APP_COMPILE" == true ]]; then
+  cargo_invoked=true
+fi
+app_compile_blocker="not_requested"
+if [[ "$HEPTA_APP_COMPILE_VERIFIED" == true ]]; then
+  app_compile_blocker=""
+fi
 
 jq -n \
   --arg source_path "$SOURCE_PATH" \
@@ -232,9 +553,27 @@ jq -n \
   --arg pinned_tree "$PINNED_TREE" \
   --arg patch_path "$PATCH_PATH" \
   --arg patch_sha256 "$PATCH_SHA256" \
-  --arg cargo_config "$cargo_config" \
+  --arg platform_only_cargo_config "$platform_only_cargo_config" \
+  --arg full_graph_cargo_config "$full_graph_cargo_config" \
+  --arg app_compile_blocker "$app_compile_blocker" \
+  --arg hepta_app_lock_sha256 "$HEPTA_APP_LOCK_SHA256" \
+  --arg hepta_app_source_snapshot_sha256 "$HEPTA_APP_SOURCE_SNAPSHOT_SHA256" \
+  --arg hepta_app_staged_source_pre_cargo_sha256 "$HEPTA_APP_STAGED_SOURCE_PRE_CARGO_SHA256" \
+  --arg hepta_app_staged_source_pre_compile_sha256 "$HEPTA_APP_STAGED_SOURCE_PRE_COMPILE_SHA256" \
+  --arg hepta_app_staged_source_post_compile_sha256 "$HEPTA_APP_STAGED_SOURCE_POST_COMPILE_SHA256" \
+  --argjson hepta_repo_source_binding "$HEPTA_REPO_SOURCE_BINDING_JSON" \
   --argjson compile_requested "$VERIFY_PLATFORM_COMPILE" \
+  --argjson tests_requested "$VERIFY_PLATFORM_TESTS" \
+  --argjson macos_tests_verified "$MACOS_TESTS_VERIFIED" \
   --argjson macos_compile_verified "$MACOS_COMPILE_VERIFIED" \
+  --argjson app_compile_requested "$VERIFY_HEPTA_APP_COMPILE" \
+  --argjson app_graph_verified "$HEPTA_APP_GRAPH_VERIFIED" \
+  --argjson app_compile_verified "$HEPTA_APP_COMPILE_VERIFIED" \
+  --argjson app_source_copy_verified "$HEPTA_APP_SOURCE_COPY_VERIFIED" \
+  --argjson app_staged_source_stable "$HEPTA_APP_STAGED_SOURCE_STABLE" \
+  --argjson repo_source_binding_stable "$HEPTA_REPO_SOURCE_BINDING_STABLE" \
+  --argjson app_exact_source_binding "$HEPTA_APP_EXACT_SOURCE_BINDING" \
+  --argjson cargo_invoked "$cargo_invoked" \
   --argjson overlay_lockfile_mutated_by_compile "$overlay_lockfile_mutated_by_compile" \
   '{
     schema:"hepta.makepad-accessibility-overlay-receipt.v1",
@@ -243,14 +582,40 @@ jq -n \
     patch:{path:$patch_path,sha256:$patch_sha256},
     output:{path:$output_path,platform_path:($output_path + "/platform")},
     cargo:{
-      config_override:$cargo_config,
-      config_override_known_full_app_source_graph_safe:false,
+      config_override:$full_graph_cargo_config,
+      platform_only_config_override:$platform_only_cargo_config,
+      config_override_known_full_app_source_graph_safe:$app_graph_verified,
       repository_manifest_and_lock_mutated:false,
       isolated_overlay_lockfile_mutated_by_compile:$overlay_lockfile_mutated_by_compile,
       makepad_platform_compile_requested:$compile_requested,
       makepad_platform_compile_verified:$macos_compile_verified,
-      app_overlay_compile_verified:false,
-      app_overlay_compile_blocker:"path-only makepad-platform override creates duplicate path/git Makepad source graphs"
+      makepad_platform_tests_requested:$tests_requested,
+      makepad_platform_tests_verified:$macos_tests_verified,
+      app_overlay_compile_requested:$app_compile_requested,
+      app_overlay_source_graph_verified:$app_graph_verified,
+      app_overlay_compile_verified:$app_compile_verified,
+      app_overlay_generated_lock_sha256:(if $hepta_app_lock_sha256 == "" then null else $hepta_app_lock_sha256 end),
+      app_overlay_source_snapshot_sha256:(if $hepta_app_source_snapshot_sha256 == "" then null else $hepta_app_source_snapshot_sha256 end),
+      app_overlay_staged_source_pre_cargo_sha256:(if $hepta_app_staged_source_pre_cargo_sha256 == "" then null else $hepta_app_staged_source_pre_cargo_sha256 end),
+      app_overlay_staged_source_pre_compile_sha256:(if $hepta_app_staged_source_pre_compile_sha256 == "" then null else $hepta_app_staged_source_pre_compile_sha256 end),
+      app_overlay_staged_source_post_compile_sha256:(if $hepta_app_staged_source_post_compile_sha256 == "" then null else $hepta_app_staged_source_post_compile_sha256 end),
+      app_overlay_source_copy_verified:$app_source_copy_verified,
+      app_overlay_staged_source_stable_during_compile:$app_staged_source_stable,
+      app_overlay_repository_source_stable_during_compile:$repo_source_binding_stable,
+      app_overlay_repo_source_binding:(if $app_compile_requested then ($hepta_repo_source_binding + {
+        stable_during_compile:$repo_source_binding_stable,
+        exact_committed_source:$app_exact_source_binding
+      }) else null end),
+      app_overlay_source_binding_kind:(
+        if ($app_compile_requested | not) then "not_requested"
+        elif $app_compile_verified and $repo_source_binding_stable and $app_exact_source_binding
+          then "exact_clean_head"
+        else "observer_bound_dirty_worktree"
+        end
+      ),
+      app_overlay_exact_source_compile_verified:($app_compile_verified and $repo_source_binding_stable and $app_exact_source_binding),
+      app_overlay_production_dependency_adopted:false,
+      app_overlay_compile_blocker:(if $app_compile_blocker == "" then null else $app_compile_blocker end)
     },
     checks:{
       source_revision_exact:true,
@@ -262,17 +627,23 @@ jq -n \
       source_postimages_exact:true,
       macos_update_consumer_present:true,
       macos_action_feedback_present:true,
+      macos_action_forwarding_test_present:true,
       macos_focus_feedback_present:true,
       macos_dpi_conversion_present:true,
       ios_update_consumer_present:false,
       android_update_consumer_present:false,
       source_checkout_mutated:false,
-      materializer_invoked_cargo:$compile_requested,
+      materializer_invoked_cargo:$cargo_invoked,
       global_cargo_cache_mutated:null
     },
     readiness:{
       macos_backend_materialized:true,
       macos_compile_verified:$macos_compile_verified,
+      macos_tests_verified:$macos_tests_verified,
+      macos_hepta_app_graph_verified:$app_graph_verified,
+      macos_hepta_app_compile_verified:$app_compile_verified,
+      macos_hepta_app_exact_source_compile_verified:($app_compile_verified and $repo_source_binding_stable and $app_exact_source_binding),
+      macos_hepta_app_production_dependency_adopted:false,
       macos_voiceover_runtime_verified:false,
       ios_backend_materialized:false,
       android_backend_materialized:false,

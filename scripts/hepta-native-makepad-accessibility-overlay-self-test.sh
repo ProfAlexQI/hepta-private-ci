@@ -41,16 +41,41 @@ jq -e '
   and .checks.patched_paths_exact == true
   and .checks.patched_postimages_exact == true
   and .checks.macos_update_consumer_present == true
+  and .checks.macos_action_forwarding_test_present == true
   and .checks.ios_update_consumer_present == false
   and .checks.android_update_consumer_present == false
   and .cargo.config_override_known_full_app_source_graph_safe == false
+  and (.cargo.config_override | contains("makepad-widgets"))
+  and (.cargo.config_override | contains("makepad-code-editor"))
+  and (.cargo.platform_only_config_override | contains("makepad-platform"))
   and .cargo.makepad_platform_compile_requested == false
   and .cargo.makepad_platform_compile_verified == false
+  and .cargo.makepad_platform_tests_requested == false
+  and .cargo.makepad_platform_tests_verified == false
+  and .cargo.app_overlay_compile_requested == false
+  and .cargo.app_overlay_source_graph_verified == false
   and .cargo.app_overlay_compile_verified == false
-  and (.cargo.app_overlay_compile_blocker | contains("duplicate path/git Makepad source graphs"))
+  and .cargo.app_overlay_generated_lock_sha256 == null
+  and .cargo.app_overlay_source_snapshot_sha256 == null
+  and .cargo.app_overlay_staged_source_pre_cargo_sha256 == null
+  and .cargo.app_overlay_staged_source_pre_compile_sha256 == null
+  and .cargo.app_overlay_staged_source_post_compile_sha256 == null
+  and .cargo.app_overlay_source_copy_verified == false
+  and .cargo.app_overlay_staged_source_stable_during_compile == false
+  and .cargo.app_overlay_repository_source_stable_during_compile == false
+  and .cargo.app_overlay_repo_source_binding == null
+  and .cargo.app_overlay_source_binding_kind == "not_requested"
+  and .cargo.app_overlay_exact_source_compile_verified == false
+  and .cargo.app_overlay_production_dependency_adopted == false
+  and .cargo.app_overlay_compile_blocker == "not_requested"
   and .checks.global_cargo_cache_mutated == null
   and .readiness.macos_backend_materialized == true
   and .readiness.macos_compile_verified == false
+  and .readiness.macos_tests_verified == false
+  and .readiness.macos_hepta_app_graph_verified == false
+  and .readiness.macos_hepta_app_compile_verified == false
+  and .readiness.macos_hepta_app_exact_source_compile_verified == false
+  and .readiness.macos_hepta_app_production_dependency_adopted == false
   and .readiness.macos_voiceover_runtime_verified == false
   and .readiness.ios_backend_materialized == false
   and .readiness.android_backend_materialized == false
@@ -111,6 +136,8 @@ jq -n \
     negative_cases:$negative_cases,
     macos_backend_materialization_ready:true,
     macos_platform_compile_verification_available:true,
+    macos_platform_action_test_verification_available:true,
+    macos_hepta_app_compile_verification_available:true,
     macos_compile_verified:false,
     hepta_app_overlay_compile_verified:false,
     macos_voiceover_runtime_verified:false,

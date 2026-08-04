@@ -17,7 +17,7 @@ index 4a323891..29ed4c42 100644
  [target.x86_64-apple-ios.dependencies]
  makepad-objc-sys = { path = "../libs/objc-sys", version = "1.0.0" }
 diff --git a/platform/src/os/apple/macos/macos.rs b/platform/src/os/apple/macos/macos.rs
-index 09224a22..796ed5b3 100644
+index 09224a22..d020be27 100644
 --- a/platform/src/os/apple/macos/macos.rs
 +++ b/platform/src/os/apple/macos/macos.rs
 @@ -1,4 +1,9 @@
@@ -30,7 +30,7 @@ index 09224a22..796ed5b3 100644
      crate::{
          cx::{Cx, OsType},
          cx_api::{CxOsApi, CxOsOp, OpenUrlInPlace},
-@@ -50,7 +55,97 @@
+@@ -50,7 +55,124 @@
      },
  };
  
@@ -45,11 +45,19 @@ index 09224a22..796ed5b3 100644
 +    }
 +}
 +
-+struct MacosAccessibilityActions;
++struct MacosAccessibilityActions<F> {
++    sink: F,
++}
 +
-+impl AccessibilityActionHandler for MacosAccessibilityActions {
++impl<F> MacosAccessibilityActions<F> {
++    fn new(sink: F) -> Self {
++        Self { sink }
++    }
++}
++
++impl<F: FnMut(ActionRequest)> AccessibilityActionHandler for MacosAccessibilityActions<F> {
 +    fn do_action(&mut self, request: ActionRequest) {
-+        Cx::post_action(request);
++        (self.sink)(request);
 +    }
 +}
 +
@@ -72,7 +80,7 @@ index 09224a22..796ed5b3 100644
 +#[cfg(test)]
 +mod accessibility_tests {
 +    use super::*;
-+    use accesskit::{Node, NodeId, Role, Tree, TreeId};
++    use accesskit::{Action, Node, NodeId, Role, Tree, TreeId};
 +
 +    fn update_with_bounds(bounds: AccessibilityRect) -> TreeUpdate {
 +        let root = NodeId(1);
@@ -124,12 +132,31 @@ index 09224a22..796ed5b3 100644
 +        let mut handler = MacosAccessibilityActivation { latest_update };
 +        assert_eq!(handler.request_initial_tree(), Some(expected));
 +    }
++
++    #[test]
++    fn accessibility_action_requests_are_forwarded_to_the_makepad_sink() {
++        let expected = ActionRequest {
++            action: Action::Focus,
++            target_tree: TreeId::ROOT,
++            target_node: NodeId(7),
++            data: None,
++        };
++        let received = Rc::new(RefCell::new(None));
++        let received_for_sink = received.clone();
++        let mut handler = MacosAccessibilityActions::new(move |request| {
++            *received_for_sink.borrow_mut() = Some(request);
++        });
++
++        handler.do_action(expected.clone());
++
++        assert_eq!(*received.borrow(), Some(expected));
++    }
 +}
 +
  pub struct MetalWindow {
      pub window_id: WindowId,
      pub window_geom: WindowGeom,
-@@ -63,6 +158,8 @@ pub struct MetalWindow {
+@@ -63,6 +185,8 @@ pub struct MetalWindow {
      /// when the compositor consumes frames unevenly (mirrored/scaled
      /// displays throttle in 10-25ms phases).
      pub in_flight_presents: std::sync::Arc<std::sync::atomic::AtomicU32>,
@@ -138,7 +165,7 @@ index 09224a22..796ed5b3 100644
  }
  
  impl MetalWindow {
-@@ -74,12 +171,34 @@ pub(crate) fn new(
+@@ -74,12 +198,34 @@ pub(crate) fn new(
          title: &str,
          is_fullscreen: bool,
          macos_config: MacosWindowConfig,
@@ -166,7 +193,7 @@ index 09224a22..796ed5b3 100644
 +                        MacosAccessibilityActivation {
 +                            latest_update: accessibility_update.clone(),
 +                        },
-+                        MacosAccessibilityActions,
++                        MacosAccessibilityActions::new(Cx::post_action),
 +                    )
 +                });
 +            },
@@ -174,7 +201,7 @@ index 09224a22..796ed5b3 100644
          unsafe {
              let () = msg_send![ca_layer, setDevice: metal_cx.device];
              let () = msg_send![ca_layer, setPixelFormat: MTLPixelFormat::BGRA8Unorm];
-@@ -112,6 +231,8 @@ pub(crate) fn new(
+@@ -112,6 +258,8 @@ pub(crate) fn new(
              window_geom: cocoa_window.get_window_geom(),
              cocoa_window,
              in_flight_presents: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
@@ -183,7 +210,7 @@ index 09224a22..796ed5b3 100644
          }
      }
  
-@@ -159,6 +280,8 @@ pub(crate) fn new_popup(
+@@ -159,6 +307,8 @@ pub(crate) fn new_popup(
              window_geom: cocoa_window.get_window_geom(),
              cocoa_window,
              in_flight_presents: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
@@ -192,7 +219,7 @@ index 09224a22..796ed5b3 100644
          }
      }
  
-@@ -729,9 +852,23 @@ fn cocoa_event_callback(
+@@ -729,9 +879,23 @@ fn cocoa_event_callback(
                          self.repaint_pass(main_pass_id);
                      }
                  }
@@ -216,7 +243,7 @@ index 09224a22..796ed5b3 100644
                  self.call_event_handler(&Event::WindowLostFocus(window_id));
              }
              MacosEvent::PopupDismissed(event) => {
-@@ -1029,6 +1166,7 @@ fn handle_platform_ops(
+@@ -1029,6 +1193,7 @@ fn handle_platform_ops(
                          &window.create_title,
                          window.is_fullscreen,
                          window.macos,
@@ -224,7 +251,7 @@ index 09224a22..796ed5b3 100644
                      );
                      let visuals = window.window_visuals();
                      metal_window.cocoa_window.set_window_visuals(visuals);
-@@ -1247,7 +1385,29 @@ fn handle_platform_ops(
+@@ -1247,7 +1412,29 @@ fn handle_platform_ops(
                  CxOsOp::ShowSelectionHandles { .. } => {}
                  CxOsOp::UpdateSelectionHandles { .. } => {}
                  CxOsOp::HideSelectionHandles => {}
@@ -255,7 +282,7 @@ index 09224a22..796ed5b3 100644
                  CxOsOp::AttachCameraNativePreview { video_id, area } => {
                      let Some(draw_list_id) = area.draw_list_id() else {
                          continue;
-@@ -1848,4 +2008,5 @@ pub struct CxOs {
+@@ -1848,4 +2035,5 @@ pub struct CxOs {
      pub(crate) native_camera_previews: HashMap<LiveId, MacosNativeCameraPreview>,
      pub(crate) system_browsers: HashMap<LiveId, MacosSystemBrowser>,
      pub(crate) internal_drag_items: Option<Arc<Vec<DragItem>>>,
