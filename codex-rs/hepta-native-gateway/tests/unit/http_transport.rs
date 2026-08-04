@@ -173,6 +173,70 @@ fn response_csp_allows_only_same_origin_external_scripts() {
 
 #[cfg(unix)]
 #[test]
+fn large_response_survives_transient_would_block_with_a_fast_reader() {
+    use std::os::fd::AsRawFd;
+
+    fn set_socket_buffer(stream: &TcpStream, option: libc::c_int) {
+        let bytes: libc::c_int = 4 * 1024;
+        // SAFETY: the socket descriptor and pointer/length pair are valid for
+        // the duration of this setsockopt call.
+        let result = unsafe {
+            libc::setsockopt(
+                stream.as_raw_fd(),
+                libc::SOL_SOCKET,
+                option,
+                std::ptr::from_ref(&bytes).cast(),
+                std::mem::size_of_val(&bytes) as libc::socklen_t,
+            )
+        };
+        assert_eq!(result, 0, "set bounded test socket buffer");
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+    let mut client = TcpStream::connect(listener.local_addr().expect("address")).expect("client");
+    let (mut server, _) = listener.accept().expect("server");
+    set_socket_buffer(&server, libc::SO_SNDBUF);
+    server
+        .set_nonblocking(true)
+        .expect("make transient WouldBlock deterministic");
+
+    let reader = thread::spawn(move || {
+        // Let the writer fill the deliberately small send buffer once, then
+        // drain at full speed. The response must not be truncated merely
+        // because the first nonblocking write reports WouldBlock.
+        thread::sleep(Duration::from_millis(20));
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).expect("read response");
+        response
+    });
+
+    let body = vec![b'x'; 548_218];
+    write_http_response_before_deadline(
+        &mut server,
+        "200 OK",
+        "text/html; charset=utf-8",
+        &body,
+        Instant::now() + Duration::from_secs(2),
+    )
+    .expect("write complete large response");
+    drop(server);
+
+    let response = reader.join().expect("fast reader");
+    let header_end = response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .expect("response header terminator")
+        + 4;
+    assert!(
+        response[..header_end]
+            .windows(b"content-length: 548218".len())
+            .any(|window| window == b"content-length: 548218")
+    );
+    assert_eq!(&response[header_end..], body.as_slice());
+}
+
+#[cfg(unix)]
+#[test]
 fn absolute_response_deadline_stops_a_slow_reader_that_keeps_making_progress() {
     use std::os::fd::AsRawFd;
     use std::sync::Arc;

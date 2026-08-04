@@ -4,6 +4,7 @@ use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
 use std::str;
+use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -372,11 +373,15 @@ fn write_http_bytes_before_deadline(
     mut bytes: &[u8],
     deadline: Instant,
 ) -> Result<()> {
+    let mut idle_deadline = next_http_write_idle_deadline(deadline)?;
     while !bytes.is_empty() {
-        apply_http_write_deadline(stream, deadline)?;
+        apply_http_write_deadlines(stream, deadline, idle_deadline)?;
         match stream.write(bytes) {
             Ok(0) => return Err(io::Error::from(io::ErrorKind::WriteZero).into()),
-            Ok(written) => bytes = &bytes[written..],
+            Ok(written) => {
+                bytes = &bytes[written..];
+                idle_deadline = next_http_write_idle_deadline(deadline)?;
+            }
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error)
                 if matches!(
@@ -384,7 +389,14 @@ fn write_http_bytes_before_deadline(
                     io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
                 ) =>
             {
-                anyhow::bail!("native gateway HTTP response timed out")
+                // A loopback socket can report a transient WouldBlock before
+                // its configured SO_SNDTIMEO elapses, especially when the
+                // writer fills the send buffer before the reader is
+                // scheduled. Preserve both deadlines and let the reader make
+                // progress instead of truncating an otherwise healthy large
+                // response.
+                thread::yield_now();
+                continue;
             }
             Err(error) => return Err(error.into()),
         }
@@ -393,8 +405,9 @@ fn write_http_bytes_before_deadline(
 }
 
 fn flush_http_stream_before_deadline(stream: &mut TcpStream, deadline: Instant) -> Result<()> {
+    let idle_deadline = next_http_write_idle_deadline(deadline)?;
     loop {
-        apply_http_write_deadline(stream, deadline)?;
+        apply_http_write_deadlines(stream, deadline, idle_deadline)?;
         match stream.flush() {
             Ok(()) => return Ok(()),
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
@@ -404,20 +417,40 @@ fn flush_http_stream_before_deadline(stream: &mut TcpStream, deadline: Instant) 
                     io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
                 ) =>
             {
-                anyhow::bail!("native gateway HTTP response timed out")
+                thread::yield_now();
+                continue;
             }
             Err(error) => return Err(error.into()),
         }
     }
 }
 
-fn apply_http_write_deadline(stream: &TcpStream, deadline: Instant) -> Result<()> {
-    let remaining = deadline
-        .checked_duration_since(Instant::now())
+fn next_http_write_idle_deadline(absolute_deadline: Instant) -> Result<Instant> {
+    let now = Instant::now();
+    let absolute_remaining = absolute_deadline
+        .checked_duration_since(now)
         .filter(|remaining| !remaining.is_zero())
         .context("native gateway HTTP response absolute deadline exceeded")?;
+    now.checked_add(absolute_remaining.min(HTTP_WRITE_TIMEOUT))
+        .context("native gateway HTTP response idle deadline overflow")
+}
+
+fn apply_http_write_deadlines(
+    stream: &TcpStream,
+    absolute_deadline: Instant,
+    idle_deadline: Instant,
+) -> Result<()> {
+    let now = Instant::now();
+    let absolute_remaining = absolute_deadline
+        .checked_duration_since(now)
+        .filter(|remaining| !remaining.is_zero())
+        .context("native gateway HTTP response absolute deadline exceeded")?;
+    let idle_remaining = idle_deadline
+        .checked_duration_since(now)
+        .filter(|remaining| !remaining.is_zero())
+        .context("native gateway HTTP response idle deadline exceeded")?;
     stream
-        .set_write_timeout(Some(remaining.min(HTTP_WRITE_TIMEOUT)))
+        .set_write_timeout(Some(absolute_remaining.min(idle_remaining)))
         .context("apply native gateway HTTP response deadline")
 }
 
