@@ -367,6 +367,11 @@ for needle in \
   'grep -F "https://github.com/ProfAlexQI/Hepta/commit/$SOURCE_HEAD"' \
   '/usr/bin/caffeinate -dimsu -w "$$"' \
   'peekaboo window focus --no-remote --app Simulator' \
+  'peekaboo see --no-remote --app Simulator --window-id "$SIMULATOR_WINDOW_ID"' \
+  'DEVICE_CANVAS_FRAME_JSON="$(jq -cer' \
+  'peekaboo_ax_unique_device_aspect_frame' \
+  '"$DEVICE_CANVAS_X" "$DEVICE_CANVAS_WIDTH" "$TARGET_X_RATIO"' \
+  '"$DEVICE_CANVAS_Y" "$DEVICE_CANVAS_HEIGHT" "$TARGET_Y_RATIO"' \
   'peekaboo click --no-remote --coords "$CLICK_X,$CLICK_Y" --no-auto-focus' \
   "--keys 'cmd,k'" \
   'scripts/hepta-ios-login-ui-probe --baseline "$BASELINE_SCREENSHOT"' \

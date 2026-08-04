@@ -314,6 +314,42 @@ done
 (( WINDOW_WIDTH >= 300 && WINDOW_HEIGHT >= 600 )) \
   || { echo "error: Simulator device window is too small for qualification" >&2; exit 1; }
 
+# The Simulator window includes its toolbar and the rendered device bezel. A
+# device-screenshot coordinate therefore cannot be scaled against the outer
+# window bounds. Read the Simulator accessibility snapshot and require exactly
+# one unique device-canvas frame with the selected SE geometry before mapping
+# the Vision anchor into host-screen coordinates.
+SIMULATOR_SEE_REPORT="$TMP_DIR/simulator-see.json"
+peekaboo see --no-remote --app Simulator --window-id "$SIMULATOR_WINDOW_ID" \
+  --mode window --capture-engine cg --json >"$SIMULATOR_SEE_REPORT"
+SIMULATOR_UI_MAP="$(jq -er '.data.ui_map' "$SIMULATOR_SEE_REPORT")"
+[[ "$SIMULATOR_UI_MAP" == /* && -s "$SIMULATOR_UI_MAP" && ! -L "$SIMULATOR_UI_MAP" ]] \
+  || { echo "error: Simulator accessibility snapshot is unavailable" >&2; exit 1; }
+DEVICE_CANVAS_FRAME_JSON="$(jq -cer \
+  --argjson window_x "$WINDOW_X" --argjson window_y "$WINDOW_Y" \
+  --argjson window_width "$WINDOW_WIDTH" --argjson window_height "$WINDOW_HEIGHT" '
+    [
+      .uiMap[]
+      | select(.frame? != null)
+      | .frame
+      | select(length == 2 and (.[0] | length) == 2 and (.[1] | length) == 2)
+      | select([.[0][0], .[0][1], .[1][0], .[1][1]] | all(type == "number"))
+      | select(.[1][0] >= 250 and .[1][1] >= 450)
+      | select((.[1][0] / .[1][1]) >= 0.55 and (.[1][0] / .[1][1]) <= 0.575)
+      | select(.[0][0] >= $window_x and .[0][1] >= $window_y)
+      | select((.[0][0] + .[1][0]) <= ($window_x + $window_width))
+      | select((.[0][1] + .[1][1]) <= ($window_y + $window_height))
+    ]
+    | unique
+    | select(length == 1)
+    | .[0]
+  ' "$SIMULATOR_UI_MAP")" \
+  || { echo "error: unique Simulator device canvas was not found" >&2; exit 1; }
+DEVICE_CANVAS_X="$(jq -r '.[0][0]' <<<"$DEVICE_CANVAS_FRAME_JSON")"
+DEVICE_CANVAS_Y="$(jq -r '.[0][1]' <<<"$DEVICE_CANVAS_FRAME_JSON")"
+DEVICE_CANVAS_WIDTH="$(jq -r '.[1][0]' <<<"$DEVICE_CANVAS_FRAME_JSON")"
+DEVICE_CANVAS_HEIGHT="$(jq -r '.[1][1]' <<<"$DEVICE_CANVAS_FRAME_JSON")"
+
 xcrun simctl io "$UDID" screenshot --type=png "$BASELINE_SCREENSHOT" >/dev/null
 BASELINE_PROBE="$TMP_DIR/baseline-content.json"
 scripts/hepta-image-content-probe --image "$BASELINE_SCREENSHOT" --output "$BASELINE_PROBE" >/dev/null
@@ -334,8 +370,8 @@ jq -e '
   || { echo "error: unique baseline homeserver anchor was not located" >&2; exit 1; }
 TARGET_X_RATIO="$(jq -r '.locator.normalized_device_coordinate.x' "$BASELINE_HOMESERVER_LOCATOR")"
 TARGET_Y_RATIO="$(jq -r '.locator.normalized_device_coordinate.y_from_top' "$BASELINE_HOMESERVER_LOCATOR")"
-CLICK_X="$(ruby -e 'puts(ARGV[0].to_i + (ARGV[1].to_i * ARGV[2].to_f).round)' "$WINDOW_X" "$WINDOW_WIDTH" "$TARGET_X_RATIO")"
-CLICK_Y="$(ruby -e 'puts(ARGV[0].to_i + (ARGV[1].to_i * ARGV[2].to_f).round)' "$WINDOW_Y" "$WINDOW_HEIGHT" "$TARGET_Y_RATIO")"
+CLICK_X="$(ruby -e 'puts((ARGV[0].to_f + (ARGV[1].to_f * ARGV[2].to_f)).round)' "$DEVICE_CANVAS_X" "$DEVICE_CANVAS_WIDTH" "$TARGET_X_RATIO")"
+CLICK_Y="$(ruby -e 'puts((ARGV[0].to_f + (ARGV[1].to_f * ARGV[2].to_f)).round)' "$DEVICE_CANVAS_Y" "$DEVICE_CANVAS_HEIGHT" "$TARGET_Y_RATIO")"
 KEYBOARD_TRIGGER_MODE="direct_after_vision_homeserver_anchor_click"
 peekaboo click --no-remote --coords "$CLICK_X,$CLICK_Y" --no-auto-focus --json >/dev/null
 sleep 1
@@ -599,6 +635,8 @@ REPORT="$(jq -n \
   --arg runtime "$RUNTIME_IDENTIFIER" --argjson device "$DEVICE_REPORT" \
   --arg launch_output "$LAUNCH_OUTPUT" --argjson launch_pid "$LAUNCH_PID" \
   --argjson window_id "$SIMULATOR_WINDOW_ID" --arg window_bounds "$WINDOW_X,$WINDOW_Y,$WINDOW_WIDTH,$WINDOW_HEIGHT" \
+  --argjson device_canvas_x "$DEVICE_CANVAS_X" --argjson device_canvas_y "$DEVICE_CANVAS_Y" \
+  --argjson device_canvas_width "$DEVICE_CANVAS_WIDTH" --argjson device_canvas_height "$DEVICE_CANVAS_HEIGHT" \
   --argjson click_x "$CLICK_X" --argjson click_y "$CLICK_Y" \
   --argjson target_x_ratio "$TARGET_X_RATIO" --argjson target_y_ratio "$TARGET_Y_RATIO" \
   --arg keyboard_capture_mode "$KEYBOARD_CAPTURE_MODE" \
@@ -625,7 +663,7 @@ REPORT="$(jq -n \
       input_receipt:{path:$ios_receipt,sha256:$ios_receipt_sha,artifact:{path:$artifact,sha256:$artifact_sha}},
       device:{udid:$udid,name:$device_name,runtime_identifier:$runtime,state:$device.state,is_available:$device.isAvailable,real_device:false},
       launch:{fresh_uninstall_install:true,ready:true,pid:$launch_pid,output:$launch_output,credentials_supplied:false},
-      simulator_window:{app:"Simulator",window_id:$window_id,exact_device_title_match_count:1,bounds:$window_bounds,coordinate_targeting:{ready:$coordinate_targeted_keyboard_ready,requested_target:"baseline_homeserver_text_anchor_center",locator:$homeserver_locator,click_coordinate:{x:$click_x,y:$click_y,normalized_to_device:{x:$target_x_ratio,y_from_top:$target_y_ratio}},keyboard_trigger_mode:$keyboard_capture_mode,keyboard_toggle_fallback_used:false,platform_focus_readback_performed:false,actual_focused_element:null,focus_confirmed:false},display_wake_backend:"/usr/bin/caffeinate"},
+      simulator_window:{app:"Simulator",window_id:$window_id,exact_device_title_match_count:1,bounds:$window_bounds,device_canvas:{ready:true,detection_method:"peekaboo_ax_unique_device_aspect_frame",bounds:{x:$device_canvas_x,y:$device_canvas_y,width:$device_canvas_width,height:$device_canvas_height}},coordinate_targeting:{ready:$coordinate_targeted_keyboard_ready,requested_target:"baseline_homeserver_text_anchor_center",locator:$homeserver_locator,click_coordinate:{x:$click_x,y:$click_y,normalized_to_device:{x:$target_x_ratio,y_from_top:$target_y_ratio}},keyboard_trigger_mode:$keyboard_capture_mode,keyboard_toggle_fallback_used:false,platform_focus_readback_performed:false,actual_focused_element:null,focus_confirmed:false},display_wake_backend:"/usr/bin/caffeinate"},
       captures:{baseline:{path:$baseline,sha256:$baseline_sha},software_keyboard:{path:$keyboard,sha256:$keyboard_sha,capture_mode:$keyboard_capture_mode},landscape:$ui_probe.captures.landscape},
       ui_probe:$ui_probe,
       extended_lab:$extended_lab,
