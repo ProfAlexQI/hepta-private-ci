@@ -54,73 +54,202 @@ jq -e '
   and (.blockers | map(.code) | index("ios_simulator_state_restore_readback_mismatch") != null)
 ' >/dev/null <<<"$IOS_CLEANUP_FAILURE"
 
-ruby -e '
-  width = 640
-  height = 1280
-  background = [244, 249, 251]
-  accent = [20, 132, 160]
-  dark = [20, 42, 50]
-  pixels = Array.new(width * height) { background.dup }
-  draw = lambda do |x0, y0, x1, y1, color|
-    (y0...y1).each do |y|
-      (x0...x1).each { |x| pixels[y * width + x] = color }
-    end
-  end
-  draw.call(280, 130, 360, 220, accent)
-  draw.call(150, 300, 490, 320, dark)
-  draw.call(120, 500, 520, 610, accent)
-  draw.call(180, 650, 460, 670, dark)
-  draw.call(240, 700, 400, 780, accent)
-  File.open(ARGV.fetch(0), "wb") do |file|
-    file.write("P6\n#{width} #{height}\n255\n")
-    pixels.each { |pixel| file.write(pixel.pack("C3")) }
-  end
-  keyboard = pixels.map(&:dup)
-  draw_keyboard = lambda do |x0, y0, x1, y1, color|
-    (y0...y1).each do |y|
-      (x0...x1).each { |x| keyboard[y * width + x] = color }
-    end
-  end
-  draw_keyboard.call(0, 800, width, height, [190, 198, 210])
-  4.times do |row|
-    10.times do |column|
-      x0 = 8 + column * 63
-      y0 = 820 + row * 105
-      draw_keyboard.call(x0, y0, [x0 + 54, width].min, [y0 + 82, height].min, [248, 249, 251])
-      draw_keyboard.call(x0 + 23, y0 + 26, [x0 + 31, width].min, [y0 + 58, height].min, [40, 44, 50])
-    end
-  end
-  File.open(ARGV.fetch(1), "wb") do |file|
-    file.write("P6\n#{width} #{height}\n255\n")
-    keyboard.each { |pixel| file.write(pixel.pack("C3")) }
-  end
-' "$TEST_DIR/baseline.ppm" "$TEST_DIR/keyboard.ppm"
-sips -s format png "$TEST_DIR/baseline.ppm" --out "$TEST_DIR/baseline.png" >/dev/null
-sips -s format png "$TEST_DIR/keyboard.ppm" --out "$TEST_DIR/keyboard.png" >/dev/null
+swift -e '
+  import AppKit
+  import Foundation
+
+  let background = NSColor(calibratedRed: 244/255, green: 249/255, blue: 251/255, alpha: 1)
+  let accent = NSColor(calibratedRed: 20/255, green: 132/255, blue: 160/255, alpha: 1)
+  let dark = NSColor(calibratedRed: 20/255, green: 42/255, blue: 50/255, alpha: 1)
+  let muted = NSColor(calibratedRed: 85/255, green: 105/255, blue: 118/255, alpha: 1)
+
+  func text(_ value: String, x: CGFloat, y: CGFloat, size: CGFloat, color: NSColor, bold: Bool = false) {
+    value.draw(at: NSPoint(x: x, y: y), withAttributes: [
+      .font: bold ? NSFont.boldSystemFont(ofSize: size) : NSFont.systemFont(ofSize: size),
+      .foregroundColor: color
+    ])
+  }
+  func rounded(_ rect: NSRect, radius: CGFloat, fill: NSColor? = nil, stroke: NSColor? = nil, line: CGFloat = 3) {
+    let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+    if let fill { fill.setFill(); path.fill() }
+    if let stroke { stroke.setStroke(); path.lineWidth = line; path.stroke() }
+  }
+  func render(width: Int, height: Int, keyboard: Bool, landscape: Bool, clipLoginBehindKeyboard: Bool, partiallyCoverLoginWithKeyboard: Bool, output: String) {
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    background.setFill(); NSRect(x: 0, y: 0, width: width, height: height).fill()
+    if landscape {
+      rounded(NSRect(x: 40, y: 36, width: 1254, height: 678), radius: 44, fill: .white, stroke: NSColor(calibratedWhite: 0.75, alpha: 1))
+      rounded(NSRect(x: 80, y: 560, width: 72, height: 72), radius: 36, fill: accent)
+      text("H", x: 103, y: 570, size: 44, color: .white, bold: true)
+      text("Sign in to Hepta", x: 180, y: 568, size: 48, color: dark, bold: true)
+      rounded(NSRect(x: 120, y: 390, width: 520, height: 92), radius: 32, fill: .white, stroke: NSColor(calibratedWhite: 0.72, alpha: 1))
+      text("User ID", x: 155, y: 412, size: 34, color: muted)
+      rounded(NSRect(x: 120, y: 270, width: 520, height: 92), radius: 32, fill: .white, stroke: NSColor(calibratedWhite: 0.72, alpha: 1))
+      text("Password", x: 155, y: 292, size: 34, color: muted)
+      rounded(NSRect(x: 690, y: 390, width: 520, height: 92), radius: 32, fill: .white, stroke: NSColor(calibratedWhite: 0.72, alpha: 1))
+      text("matrix.org", x: 725, y: 412, size: 34, color: muted)
+      text("Homeserver URL (optional)", x: 725, y: 340, size: 28, color: muted)
+      rounded(NSRect(x: 690, y: 104, width: 520, height: 100), radius: 38, fill: accent)
+      text("Login", x: 905, y: 132, size: 34, color: .white)
+    } else {
+      // The keyboard fixture deliberately uses a compact-height reflow. This
+      // proves the probe accepts bounded, visible movement instead of requiring
+      // the unauthenticated surface to remain pixel-identical under the IME.
+      let compactShift: CGFloat = keyboard ? 52 : 0
+      rounded(NSRect(x: 18, y: 30, width: 714, height: 1226), radius: 60, fill: .white, stroke: NSColor(calibratedWhite: 0.78, alpha: 1))
+      rounded(NSRect(x: 330, y: 1135 + compactShift, width: 90, height: 90), radius: 45, fill: accent)
+      text("H", x: 354, y: 1148 + compactShift, size: 54, color: .white, bold: true)
+      text("Sign in to Hepta", x: 195, y: 1045 + compactShift, size: 52, color: dark, bold: true)
+      rounded(NSRect(x: 116, y: 900 + compactShift, width: 518, height: 84), radius: 35, fill: .white, stroke: NSColor(calibratedWhite: 0.72, alpha: 1))
+      text("User ID", x: 138, y: 920 + compactShift, size: 38, color: muted)
+      rounded(NSRect(x: 116, y: 790 + compactShift, width: 518, height: 84), radius: 35, fill: .white, stroke: NSColor(calibratedWhite: 0.72, alpha: 1))
+      text("Password", x: 138, y: 810 + compactShift, size: 38, color: muted)
+      rounded(NSRect(x: 116, y: 680 + compactShift, width: 518, height: 84), radius: 35, fill: .white, stroke: NSColor(calibratedWhite: 0.72, alpha: 1))
+      text("matrix.org", x: 138, y: 700 + compactShift, size: 38, color: muted)
+      text("Homeserver URL (optional)", x: 176, y: 642 + compactShift, size: 30, color: muted)
+      let loginY: CGFloat = clipLoginBehindKeyboard ? 360 : (partiallyCoverLoginWithKeyboard ? 470 : 530 + compactShift)
+      rounded(NSRect(x: 120, y: loginY, width: 510, height: 96), radius: 36, fill: accent)
+      text("Login", x: 326, y: loginY + 27, size: 34, color: .white)
+      if keyboard {
+        NSColor(calibratedRed: 190/255, green: 198/255, blue: 210/255, alpha: 1).setFill()
+        NSRect(x: 0, y: 0, width: width, height: 480).fill()
+        for row in 0..<4 {
+          for column in 0..<10 {
+            let x = 8 + column * 74
+            let y = 18 + row * 112
+            rounded(NSRect(x: x, y: y, width: 62, height: 86), radius: 8, fill: .white)
+            text("I", x: CGFloat(x + 27), y: CGFloat(y + 26), size: 28, color: dark)
+          }
+        }
+      }
+    }
+    NSGraphicsContext.restoreGraphicsState()
+    let data = rep.representation(using: .png, properties: [:])!
+    try! data.write(to: URL(fileURLWithPath: output), options: .atomic)
+  }
+  render(width: 750, height: 1334, keyboard: false, landscape: false, clipLoginBehindKeyboard: false, partiallyCoverLoginWithKeyboard: false, output: CommandLine.arguments[1])
+  render(width: 750, height: 1334, keyboard: true, landscape: false, clipLoginBehindKeyboard: false, partiallyCoverLoginWithKeyboard: false, output: CommandLine.arguments[2])
+  render(width: 1334, height: 750, keyboard: false, landscape: true, clipLoginBehindKeyboard: false, partiallyCoverLoginWithKeyboard: false, output: CommandLine.arguments[3])
+  render(width: 750, height: 1334, keyboard: true, landscape: false, clipLoginBehindKeyboard: true, partiallyCoverLoginWithKeyboard: false, output: CommandLine.arguments[4])
+  render(width: 750, height: 1334, keyboard: true, landscape: false, clipLoginBehindKeyboard: false, partiallyCoverLoginWithKeyboard: true, output: CommandLine.arguments[5])
+' "$TEST_DIR/baseline.png" "$TEST_DIR/keyboard.png" "$TEST_DIR/landscape.png" "$TEST_DIR/keyboard-clipped.png" "$TEST_DIR/keyboard-partially-covered.png"
+
+scripts/hepta-ios-login-ui-probe --locate-homeserver \
+  --baseline "$TEST_DIR/baseline.png" \
+  --device-name 'iPhone SE (3rd generation)' \
+  --output "$TEST_DIR/homeserver-locator.json" >/dev/null
+jq -e '
+  .kind == "hepta-ios-homeserver-anchor-locator"
+  and .status == "ready" and .ready == true
+  and .source_capture.width == 750 and .source_capture.height == 1334
+  and .locator.engine == "apple_vision_recognize_text"
+  and .locator.match_count == 1
+  and .locator.anchor.normalized_text == "matrix.org"
+  and .locator.normalized_device_coordinate.x > 0.2
+  and .locator.normalized_device_coordinate.x < 0.4
+  and .locator.normalized_device_coordinate.y_from_top > 0.4
+  and .locator.normalized_device_coordinate.y_from_top < 0.5
+  and .locator.tight_hitbox_expansion_normalized == {x:0.012,y:0.012}
+  and .claims.baseline_vision_homeserver_anchor_center_ready == true
+  and .claims.generic_focus_ready == false
+  and .claims.real_device_ready == false
+' "$TEST_DIR/homeserver-locator.json" >/dev/null
+LOCATOR_X="$(jq -r '.locator.normalized_device_coordinate.x' "$TEST_DIR/homeserver-locator.json")"
+LOCATOR_Y="$(jq -r '.locator.normalized_device_coordinate.y_from_top' "$TEST_DIR/homeserver-locator.json")"
 
 scripts/hepta-ios-login-ui-probe \
   --baseline "$TEST_DIR/baseline.png" \
   --keyboard "$TEST_DIR/keyboard.png" \
+  --landscape "$TEST_DIR/landscape.png" \
+  --device-name 'iPhone SE (3rd generation)' \
+  --target-x-ratio "$LOCATOR_X" \
+  --target-y-ratio "$LOCATOR_Y" \
+  --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click \
   --output "$TEST_DIR/ready.json" >/dev/null
 jq -e '
-  .schema_version == 1
+  .schema_version == 2
   and .kind == "hepta-ios-login-ui-probe"
   and .producer == "scripts/hepta-ios-login-ui-probe"
   and .status == "ready"
   and .ready == true
   and .metrics.checks.keyboard_geometry_present == true
-  and .metrics.checks.upper_login_surface_stable == true
-  and .metrics.checks.login_interactives_inside_safe_area == true
+  and .metrics.checks.upper_login_surface_stable == false
+  and .metrics.checks.accent_geometry_stable == false
+  and .metrics.checks.keyboard_anchor_reflow_ready == true
+  and .metrics.checks.keyboard_estimated_login_control_clearance_ready == true
+  and .metrics.checks.baseline_accent_region_inside_conservative_portrait_insets == true
+  and .metrics.checks.small_screen_identity_ready == true
+  and .metrics.checks.title_homeserver_login_visible == true
+  and .metrics.checks.coordinate_targeted_keyboard_evidence_ready == true
+  and .metrics.checks.portrait_visible_anchor_safe_area_geometry_ready == true
+  and .metrics.checks.landscape_estimated_login_control_bottom_clearance_ready == true
+  and .keyboard_reflow_geometry.vertical_order_preserved == true
+  and .keyboard_reflow_geometry.minimum_spacing_preserved == true
+  and .keyboard_reflow_geometry.bounded_directional_shift == true
+  and .keyboard_reflow_geometry.visible_text_anchors_inside_portrait_safe_area == true
+  and .keyboard_reflow_geometry.ready == true
+  and .device_geometry.class == "small_phone"
+  and .device_geometry.identity_ready == true
+  and .coordinate_targeting_evidence.requested_coordinate_target == "baseline_homeserver_text_anchor_center"
+  and .coordinate_targeting_evidence.locator == "baseline_vision_homeserver_anchor_center"
+  and .coordinate_targeting_evidence.maximum_center_delta_normalized == 0.006
+  and .coordinate_targeting_evidence.click_matches_anchor_center == true
+  and .coordinate_targeting_evidence.keyboard_trigger_mode == "direct_after_vision_homeserver_anchor_click"
+  and .coordinate_targeting_evidence.direct_keyboard_trigger_ready == true
+  and .coordinate_targeting_evidence.fallback_keyboard_toggle_used == false
+  and .coordinate_targeting_evidence.platform_focus_readback_performed == false
+  and .coordinate_targeting_evidence.actual_focused_element == null
+  and .coordinate_targeting_evidence.focus_confirmed == false
+  and .coordinate_targeting_evidence.ready == true
+  and .safe_area_geometry.landscape_login_control_frame_estimation.method == "ocr_text_bbox_expanded_toward_each_edge"
+  and .safe_area_geometry.keyboard_login_control_frame_estimation.method == "ocr_text_bbox_expanded_toward_each_edge"
+  and .safe_area_geometry.keyboard_login_control_frame_estimation.minimum_expansion_points_per_edge == 24
+  and .safe_area_geometry.keyboard_login_control_frame_estimation.minimum_estimated_control_height_points == 48
+  and .safe_area_geometry.keyboard_top_estimation.method == "contiguous_bottom_mid_luma_rows"
+  and .safe_area_geometry.keyboard_top_estimation.normalized_y_from_top > 0.5
+  and .safe_area_geometry.keyboard_estimated_login_control_clearance_points >= 8
+  and .safe_area_geometry.required_keyboard_estimated_login_control_clearance_points == 8
+  and .safe_area_geometry.keyboard_estimated_login_control_clearance_ready == true
+  and .safe_area_geometry.landscape_login_control_frame_estimation.minimum_expansion_points_per_edge == 24
+  and .safe_area_geometry.landscape_login_control_frame_estimation.minimum_estimated_control_height_points == 48
+  and .safe_area_geometry.landscape_estimated_login_control_bottom_clearance_points >= 24
+  and .safe_area_geometry.required_landscape_estimated_login_control_bottom_clearance_points == 24
+  and .safe_area_geometry.landscape_estimated_login_control_bottom_clearance_ready == true
   and .claims.ios_simulator_login_software_keyboard_ready == true
-  and .claims.ios_simulator_login_safe_area_ready == true
+  and .claims.ios_simulator_login_visible_anchor_safe_area_ready == true
+  and .claims.ios_simulator_login_small_screen_ready == true
+  and .claims.ios_simulator_login_required_controls_visible == true
+  and .claims.ios_simulator_login_coordinate_targeted_keyboard_ready == true
+  and .claims.ios_simulator_login_homeserver_focus_ready == false
+  and .claims.ios_simulator_login_keyboard_control_clearance_ready == true
+  and .claims.ios_simulator_login_landscape_control_clearance_ready == true
   and .claims.generic_software_keyboard_ready == false
   and .claims.generic_safe_area_ready == false
 ' "$TEST_DIR/ready.json" >/dev/null
+scripts/hepta-ios-login-ui-probe \
+  --baseline "$TEST_DIR/baseline.png" \
+  --keyboard "$TEST_DIR/keyboard.png" \
+  --landscape "$TEST_DIR/landscape.png" \
+  --device-name 'iPhone SE (3rd generation)' \
+  --target-x-ratio "$LOCATOR_X" \
+  --target-y-ratio "$LOCATOR_Y" \
+  --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click >"$TEST_DIR/replay.json"
+[[ "$(jq -S -c . "$TEST_DIR/replay.json")" == "$(jq -S -c . "$TEST_DIR/ready.json")" ]] \
+  || { echo "iOS login UI probe replay is not deterministic" >&2; exit 1; }
 
 cp "$TEST_DIR/baseline.png" "$TEST_DIR/no-keyboard.png"
+cp "$TEST_DIR/baseline.png" "$TEST_DIR/portrait-as-landscape.png"
 if scripts/hepta-ios-login-ui-probe \
   --baseline "$TEST_DIR/baseline.png" \
   --keyboard "$TEST_DIR/no-keyboard.png" \
+  --device-name 'iPhone SE (3rd generation)' \
+  --target-x-ratio "$LOCATOR_X" \
+  --target-y-ratio "$LOCATOR_Y" \
+  --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click \
   --output "$TEST_DIR/not-ready.json" >/dev/null 2>&1; then
   echo "iOS login UI probe accepted a capture without a software keyboard" >&2
   exit 1
@@ -131,6 +260,102 @@ jq -e '
   and (.blockers | index("captures_not_distinct") != null)
   and (.blockers | index("software_keyboard_geometry_missing") != null)
 ' "$TEST_DIR/not-ready.json" >/dev/null
+
+if scripts/hepta-ios-login-ui-probe \
+    --baseline "$TEST_DIR/baseline.png" \
+    --keyboard "$TEST_DIR/keyboard-clipped.png" \
+    --landscape "$TEST_DIR/landscape.png" \
+    --device-name 'iPhone SE (3rd generation)' \
+    --target-x-ratio "$LOCATOR_X" \
+    --target-y-ratio "$LOCATOR_Y" \
+    --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click \
+    --output "$TEST_DIR/clipped-anchor.json" >/dev/null 2>&1; then
+  echo "iOS login UI probe accepted a Login anchor swallowed by the software keyboard" >&2
+  exit 1
+fi
+jq -e '
+  .ready == false
+  and .metrics.checks.keyboard_geometry_present == true
+  and .metrics.checks.title_homeserver_login_visible == false
+  and .metrics.checks.keyboard_anchor_reflow_ready == false
+  and (.blockers | index("required_login_text_anchor_missing") != null)
+  and (.blockers | index("keyboard_anchor_reflow_invalid") != null)
+' "$TEST_DIR/clipped-anchor.json" >/dev/null
+
+if scripts/hepta-ios-login-ui-probe \
+    --baseline "$TEST_DIR/baseline.png" \
+    --keyboard "$TEST_DIR/keyboard-partially-covered.png" \
+    --landscape "$TEST_DIR/landscape.png" \
+    --device-name 'iPhone SE (3rd generation)' \
+    --target-x-ratio "$LOCATOR_X" \
+    --target-y-ratio "$LOCATOR_Y" \
+    --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click \
+    --output "$TEST_DIR/partially-covered-control.json" >/dev/null 2>&1; then
+  echo "iOS login UI probe accepted a Login action frame partially covered by the software keyboard" >&2
+  exit 1
+fi
+jq -e '
+  .ready == false
+  and .metrics.checks.keyboard_geometry_present == true
+  and .metrics.checks.title_homeserver_login_visible == true
+  and .metrics.checks.keyboard_estimated_login_control_clearance_ready == false
+  and .safe_area_geometry.keyboard_estimated_login_control_clearance_points < 8
+  and (.blockers | index("required_login_text_anchor_missing") == null)
+  and (.blockers | index("keyboard_login_control_clearance_insufficient") != null)
+' "$TEST_DIR/partially-covered-control.json" >/dev/null
+
+if scripts/hepta-ios-login-ui-probe \
+    --baseline "$TEST_DIR/baseline.png" \
+    --keyboard "$TEST_DIR/keyboard.png" \
+    --landscape "$TEST_DIR/landscape.png" \
+    --device-name 'iPhone 15 Pro' \
+    --target-x-ratio "$LOCATOR_X" \
+    --target-y-ratio "$LOCATOR_Y" \
+    --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click \
+    --output "$TEST_DIR/wrong-device.json" >/dev/null 2>&1; then
+  echo "iOS login UI probe accepted a non-small-screen device identity" >&2
+  exit 1
+fi
+jq -e '
+  .ready == false
+  and .device_geometry.identity_ready == false
+  and (.blockers | index("small_screen_device_identity_invalid") != null)
+' "$TEST_DIR/wrong-device.json" >/dev/null
+
+if scripts/hepta-ios-login-ui-probe \
+    --baseline "$TEST_DIR/baseline.png" \
+    --keyboard "$TEST_DIR/keyboard.png" \
+    --landscape "$TEST_DIR/portrait-as-landscape.png" \
+    --device-name 'iPhone SE (3rd generation)' \
+    --target-x-ratio "$LOCATOR_X" \
+    --target-y-ratio "$LOCATOR_Y" \
+    --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click \
+    --output "$TEST_DIR/wrong-landscape.json" >/dev/null 2>&1; then
+  echo "iOS login UI probe accepted portrait pixels as landscape evidence" >&2
+  exit 1
+fi
+jq -e '
+  .ready == false
+  and .safe_area_geometry.landscape_estimated_login_control_bottom_clearance_ready == false
+  and (.blockers | index("landscape_canvas_invalid") != null)
+' "$TEST_DIR/wrong-landscape.json" >/dev/null
+
+if scripts/hepta-ios-login-ui-probe \
+    --baseline "$TEST_DIR/baseline.png" \
+    --keyboard "$TEST_DIR/keyboard.png" \
+    --device-name 'iPhone SE (3rd generation)' \
+    --target-x-ratio "$LOCATOR_X" \
+    --target-y-ratio 0.1 \
+    --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click \
+    --output "$TEST_DIR/wrong-focus.json" >/dev/null 2>&1; then
+  echo "iOS login UI probe accepted a target coordinate outside the homeserver anchor band" >&2
+  exit 1
+fi
+jq -e '
+  .ready == false
+  and .coordinate_targeting_evidence.ready == false
+  and (.blockers | index("coordinate_targeted_keyboard_evidence_missing") != null)
+' "$TEST_DIR/wrong-focus.json" >/dev/null
 
 for needle in \
   'scripts/hepta-ui-source-fingerprint' \
@@ -145,10 +370,20 @@ for needle in \
   'peekaboo click --no-remote --coords "$CLICK_X,$CLICK_Y" --no-auto-focus' \
   "--keys 'cmd,k'" \
   'scripts/hepta-ios-login-ui-probe --baseline "$BASELINE_SCREENSHOT"' \
+  '--device-name "$DEVICE_NAME"' \
+  '--target-x-ratio "$TARGET_X_RATIO"' \
+  '--landscape "$LANDSCAPE_PATH"' \
   'ios_simulator_login_software_keyboard_ready:true' \
-  'ios_simulator_login_safe_area_ready:true' \
+  'ios_simulator_login_visible_anchor_safe_area_ready:$visible_anchor_safe_area_ready' \
+  'ios_simulator_login_small_screen_ready:$small_screen_ready' \
+  'ios_simulator_login_required_controls_visible:$required_controls_ready' \
+  'ios_simulator_login_coordinate_targeted_keyboard_ready:$coordinate_targeted_keyboard_ready' \
+  'ios_simulator_login_homeserver_focus_ready:false' \
+  'ios_simulator_login_keyboard_control_clearance_ready:$keyboard_control_clearance_ready' \
+  'ios_simulator_login_landscape_control_clearance_ready:$landscape_control_clearance_ready' \
   'generic_software_keyboard_ready:false' \
   'generic_safe_area_ready:false' \
+  'generic_rotation_ready:false' \
   '--extended-lab' \
   "--path 'Device > Orientation > Landscape Right'" \
   'xcrun simctl ui "$UDID" content_size "$DYNAMIC_TYPE_SIZE"' \

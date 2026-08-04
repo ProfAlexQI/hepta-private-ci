@@ -23,6 +23,7 @@ if [[ "$progressive_qa_status" != "0" ]] || ! jq -e '
   and .chat_search_ready == true
   and .command_palette_search_ready == true
   and .command_palette_navigation_ready == true
+  and .mobile_pane_transition_ready == true
   and .route_link_navigation_ready == true
   and .current_route_entries_ready == true
   and .route_directory_ready == true
@@ -30,6 +31,7 @@ if [[ "$progressive_qa_status" != "0" ]] || ! jq -e '
   and .top_nav_navigation_ready == true
   and .route_history_ready == true
   and .route_view_screenshots_ready == true
+  and .route_page_context_complete_ready == true
   and (.route_view_screenshots | length) == 2
   and ([.route_view_screenshots[] | select(.width == 1365 and .height == 900)] | length) == 1
   and ([.route_view_screenshots[] | select(.width == 320 and .height == 844)] | length) == 1
@@ -37,6 +39,7 @@ if [[ "$progressive_qa_status" != "0" ]] || ! jq -e '
     .actual_visible_route_card_count != 1
     or .actual_visible_route_card_ids[0] != .target_id
     or .target_visibility.visible != true
+    or .route_page_context_ready != true
   )] | length) == 0
   and .unavailable_controls_ready == true
   and .unavailable_click_noop_ready == true
@@ -113,8 +116,11 @@ if [[ "$density_qa_status" != "0" ]] || ! jq -e '
   and .visible_text_floor_ready == true
   and .key_touch_controls_ready == true
   and .mobile_single_topbar_ready == true
+  and .mobile_topbar_semantics_ready == true
   and .mobile_single_bottom_action_layer_ready == true
   and .mobile_primary_actions_ready == true
+  and .narrow_shell_density_ready == true
+  and .narrow_single_action_row_ready == true
   and .maximum_visible_glass_surface_count <= 4
   and .maximum_shadow_layer_count <= 1
   and .maximum_gradient_layer_count <= 1
@@ -138,8 +144,11 @@ if [[ "$density_qa_status" != "0" ]] || ! jq -e '
     visible_text_floor_ready,
     key_touch_controls_ready,
     mobile_single_topbar_ready,
+    mobile_topbar_semantics_ready,
     mobile_single_bottom_action_layer_ready,
     mobile_primary_actions_ready,
+    narrow_shell_density_ready,
+    narrow_single_action_row_ready,
     maximum_visible_glass_surface_count,
     maximum_shadow_layer_count,
     maximum_gradient_layer_count,

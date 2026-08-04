@@ -94,9 +94,66 @@ module.exports = String.raw`
     return [{ selector, width: rect.width, height: rect.height, ready: rect.width >= 40 && rect.height >= 40 }];
   });
   const isMobile = viewportName === "mobile" || viewportName === "phone320";
+  const isNarrow = viewportName === "narrow";
   const visibleTopbars = visibleElements.filter((element) => element.matches("[data-mobile-primary-topbar], .tg-mobile-top-tabs"));
   const visibleBottomLayers = visibleElements.filter((element) => element.matches("[data-mobile-bottom-action-layer], .tg-compose-wrap"));
   const mobilePrimaryActions = touchSelectors.map((selector) => visible(document.querySelector(selector)));
+  const mobileTopbar = visibleTopbars[0];
+  const mobileTopbarBack = mobileTopbar?.querySelector("[data-mobile-topbar-back]");
+  const mobileTopbarTitle = mobileTopbar?.querySelector("[data-mobile-topbar-title]");
+  const mobileTopbarActions = mobileTopbar?.querySelector("[data-mobile-topbar-actions]");
+  const mobileTopbarActionControls = mobileTopbarActions
+    ? Array.from(mobileTopbarActions.querySelectorAll("a,button")).filter(visible)
+    : [];
+  const mobileTopbarControlReady = (element) => {
+    if (!visible(element)) return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width >= 44 && rect.height >= 44;
+  };
+  const mobileTopbarSemanticsReady = !isMobile || (
+    visibleTopbars.length === 1
+    && mobileTopbar?.getAttribute("data-chat-mobile-pane-tabs") === "contextual"
+    && mobileTopbarControlReady(mobileTopbarBack)
+    && visible(mobileTopbarTitle)
+    && (mobileTopbarTitle.textContent || "").trim().length > 0
+    && mobileTopbarActions
+    && mobileTopbarActionControls.length >= 1
+    && mobileTopbarActionControls.length <= 2
+    && mobileTopbarActionControls.every(mobileTopbarControlReady)
+    && mobileTopbar.getBoundingClientRect().height <= 56
+  );
+
+  const focusHeader = document.querySelector(".focus-header");
+  const narrowRail = document.querySelector(".tg-conversation-rail");
+  const narrowThreadHeader = document.querySelector(".tg-thread-header");
+  const narrowComposer = document.querySelector(".tg-compose-wrap");
+  const narrowComposerFooter = document.querySelector(".tg-compose-footer");
+  const narrowComposerMore = document.querySelector("[data-control-ui-composer-more]");
+  const narrowMessageViewport = document.querySelector(".tg-thread");
+  const rectOrZero = (element) => visible(element) ? element.getBoundingClientRect() : { width: 0, height: 0, top: 0, bottom: 0 };
+  const narrowRailRect = rectOrZero(narrowRail);
+  const narrowHeaderRect = rectOrZero(narrowThreadHeader);
+  const narrowComposerRect = rectOrZero(narrowComposer);
+  const narrowMessageRect = rectOrZero(narrowMessageViewport);
+  const narrowChromeHeight = narrowRailRect.height + narrowHeaderRect.height + narrowComposerRect.height;
+  const narrowChromeRatio = narrowChromeHeight / Math.max(1, window.innerHeight);
+  const narrowMessageRatio = narrowMessageRect.height / Math.max(1, window.innerHeight);
+  const narrowSingleActionRowReady = !isNarrow || (
+    !visible(narrowComposerFooter)
+    && visible(narrowComposerMore)
+    && narrowComposerMore.closest(".tg-compose-bar") !== null
+  );
+  const narrowShellDensityReady = !isNarrow || (
+    !visible(focusHeader)
+    && narrowRailRect.height <= 190
+    && narrowHeaderRect.height <= 72
+    && narrowComposerRect.height <= 80
+    && narrowChromeRatio <= 0.38
+    && narrowMessageRect.height >= 360
+    && narrowMessageRatio >= 0.40
+    && narrowComposerRect.bottom <= window.innerHeight + 1
+    && narrowSingleActionRowReady
+  );
 
   const maximumShadowLayerCount = Math.max(0, ...glassSurfaceDetails.map((detail) => detail.shadow_layer_count));
   const maximumGradientLayerCount = Math.max(0, ...glassSurfaceDetails.map((detail) => detail.gradient_layer_count));
@@ -119,8 +176,11 @@ module.exports = String.raw`
   if (under12Details.length > 0) errors.push("visible_text_below_12px");
   if (!touchDetails.every((detail) => detail.ready)) errors.push("key_touch_target_too_small");
   if (isMobile && visibleTopbars.length !== 1) errors.push("mobile_topbar_count_mismatch");
+  if (!mobileTopbarSemanticsReady) errors.push("mobile_topbar_semantics_failed");
   if (isMobile && visibleBottomLayers.length !== 1) errors.push("mobile_bottom_action_layer_count_mismatch");
   if (isMobile && !mobilePrimaryActions.every(Boolean)) errors.push("mobile_primary_action_missing");
+  if (!narrowShellDensityReady) errors.push("narrow_shell_density_failed");
+  if (!narrowSingleActionRowReady) errors.push("narrow_composer_action_rows_failed");
 
   return {
     expected_visibility_ready: expectedVisibilityReady,
@@ -142,9 +202,26 @@ module.exports = String.raw`
     key_touch_control_details: touchDetails,
     mobile_single_topbar_ready: !isMobile || visibleTopbars.length === 1,
     mobile_visible_topbar_count: visibleTopbars.length,
+    mobile_topbar_semantics_ready: mobileTopbarSemanticsReady,
+    mobile_topbar_action_count: mobileTopbarActionControls.length,
     mobile_single_bottom_action_layer_ready: !isMobile || visibleBottomLayers.length === 1,
     mobile_visible_bottom_action_layer_count: visibleBottomLayers.length,
     mobile_primary_actions_ready: !isMobile || mobilePrimaryActions.every(Boolean),
+    narrow_shell_density_ready: narrowShellDensityReady,
+    narrow_single_action_row_ready: narrowSingleActionRowReady,
+    narrow_chrome_height_px: Math.round(narrowChromeHeight),
+    narrow_chrome_ratio: Number(narrowChromeRatio.toFixed(4)),
+    narrow_message_viewport_height_px: Math.round(narrowMessageRect.height),
+    narrow_message_viewport_ratio: Number(narrowMessageRatio.toFixed(4)),
+    narrow_layout_details: {
+      focus_header_visible: visible(focusHeader),
+      rail_height: Math.round(narrowRailRect.height),
+      thread_header_height: Math.round(narrowHeaderRect.height),
+      composer_height: Math.round(narrowComposerRect.height),
+      composer_bottom: Math.round(narrowComposerRect.bottom),
+      composer_footer_visible: visible(narrowComposerFooter),
+      composer_more_in_bar: narrowComposerMore?.closest(".tg-compose-bar") !== null,
+    },
     errors,
   };
 `;

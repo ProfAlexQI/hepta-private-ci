@@ -323,7 +323,7 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     && localRouteAudit.target_focused
     && localRouteAudit.actual_visible_route_card_count === 1
     && localRouteAudit.actual_visible_route_card_ids[0] === "screen-card-evidence";
-  await page.locator('#hepta-nav [data-screen="chat"]').click();
+  await page.locator('#screen-card-evidence .route-card__back[href="#chat"]').click();
   await page.waitForFunction(
     () => document.body.dataset.controlUiActiveView === "chat",
     null,
@@ -462,6 +462,70 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     })),
   );
   await page.setViewportSize({ width: 500, height: 844 });
+  const mobilePaneTransitionAudit = [];
+  for (const step of [
+    { hash: "#chat-list", pane: "chats", target_id: "chat-list", expected_title: "Chats", expected_back_href: "#chat-thread", expected_detail_hidden: false },
+    { hash: "#chat-room", pane: "room", target_id: "chat-room", expected_title: "Room info", expected_back_href: "#chat-thread", expected_detail_hidden: true },
+    { hash: "#chat-thread", pane: "thread", target_id: "chat-thread", expected_title: "Hepta", expected_back_href: "#chat-list", expected_detail_hidden: false },
+  ]) {
+    await page.evaluate((hash) => {
+      window.location.hash = hash;
+    }, step.hash);
+    await page.waitForFunction(
+      ({ expectedPane, expectedTarget }) => (
+        document.body.dataset.controlUiActiveView === "chat"
+        && document.querySelector("[data-mobile-layered-chat]")?.dataset.chatMobileActivePane === expectedPane
+        && document.activeElement?.id === expectedTarget
+        && document.getElementById("hepta-nav")?.parentElement?.id === "thread-tools-popover"
+      ),
+      { expectedPane: step.pane, expectedTarget: step.target_id },
+      { timeout: 10000 },
+    );
+    mobilePaneTransitionAudit.push(await page.evaluate((expected) => {
+      const workspace = document.querySelector("[data-mobile-layered-chat]");
+      const topbar = document.querySelector("[data-mobile-primary-topbar]");
+      const topbarRect = topbar?.getBoundingClientRect();
+      const primaryNavigation = document.getElementById("hepta-nav");
+      const actions = document.querySelector("[data-mobile-topbar-actions]");
+      const back = document.querySelector("[data-mobile-topbar-back]");
+      const detail = document.querySelector("[data-mobile-topbar-detail]");
+      const visiblePaneIds = [...document.querySelectorAll("[data-chat-mobile-pane]")]
+        .filter((pane) => window.__heptaActualVisibility(pane).visible)
+        .map((pane) => pane.id);
+      return {
+        ...expected,
+        active_view: document.body.dataset.controlUiActiveView || "",
+        active_pane: workspace?.dataset.chatMobileActivePane || "",
+        active_element_id: document.activeElement?.id || "",
+        visible_pane_ids: visiblePaneIds,
+        observed_title: document.querySelector("[data-mobile-topbar-title-label]")?.textContent?.trim() || "",
+        observed_back_href: back?.getAttribute("href") || "",
+        observed_detail_hidden: Boolean(detail?.hidden),
+        navigation_parent_id: primaryNavigation?.parentElement?.id || "",
+        navigation_directly_inside_actions: primaryNavigation?.parentElement === actions,
+        topbar_inside_viewport: Boolean(topbarRect)
+          && topbarRect.left >= -1
+          && topbarRect.right <= window.innerWidth + 1
+          && topbarRect.top >= -1,
+        mobile_more_consolidated: document.documentElement.dataset.controlUiMobileMoreConsolidated || "",
+      };
+    }, step));
+  }
+  const mobilePaneTransitionReady = mobilePaneTransitionAudit.length === 3
+    && mobilePaneTransitionAudit.every((item) => (
+      item.active_view === "chat"
+      && item.active_pane === item.pane
+      && item.active_element_id === item.target_id
+      && item.visible_pane_ids.length === 1
+      && item.visible_pane_ids[0] === item.target_id
+      && item.observed_title === item.expected_title
+      && item.observed_back_href === item.expected_back_href
+      && item.observed_detail_hidden === item.expected_detail_hidden
+      && item.navigation_parent_id === "thread-tools-popover"
+      && item.navigation_directly_inside_actions === false
+      && item.topbar_inside_viewport === true
+      && item.mobile_more_consolidated === "ready"
+    ));
   const routeLinkAudit = [];
   for (const descriptor of routeLinkDescriptors) {
     await page.evaluate(() => {
@@ -707,12 +771,31 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     ));
 
   await page.setViewportSize({ width: 1280, height: 720 });
+  await page.evaluate(() => {
+    window.location.hash = "#chat";
+  });
+  await page.waitForFunction(() => {
+    const navigation = document.querySelector('#hepta-nav[data-control-ui-nav-mount="thread"]');
+    return document.body.dataset.controlUiActiveView === "chat"
+      && document.activeElement?.id === "chat-thread"
+      && window.__heptaActualVisibility(navigation).visible;
+  }, undefined, { timeout: 10000 });
   const topNavAudit = [];
   for (const [screen, targetId] of [
     ["tasks", "screen-card-tasks"],
     ["ops", "screen-card-ops"],
     ["external-agent-benchmark", "screen-card-external-agent-benchmark"],
   ]) {
+    await page.evaluate(() => {
+      window.location.hash = "#chat";
+    });
+    await page.waitForFunction(() => (
+      document.body.dataset.controlUiActiveView === "chat"
+      && document.activeElement?.id === "chat-thread"
+      && window.__heptaActualVisibility(
+        document.querySelector('#hepta-nav[data-control-ui-nav-mount="thread"]'),
+      ).visible
+    ), undefined, { timeout: 10000 });
     const link = page.locator(`#hepta-nav [data-screen="${screen}"]`);
     await link.focus();
     await link.press("Enter");
@@ -722,7 +805,7 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
         && document.activeElement?.id === expectedTarget
       ),
       { expectedScreen: screen, expectedTarget: targetId },
-      { timeout: 5000 },
+      { timeout: 10000 },
     );
     topNavAudit.push(await page.evaluate(({ expectedScreen, expectedTarget }) => {
       const target = document.getElementById(expectedTarget);
@@ -755,6 +838,22 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     && item.actual_visible_route_card_ids[0] === item.target_id
   ));
 
+  for (const [hash, expectedScreen, expectedTarget] of [
+    ["#screen-card-ops", "ops", "screen-card-ops"],
+    ["#screen-card-external-agent-benchmark", "external-agent-benchmark", "screen-card-external-agent-benchmark"],
+  ]) {
+    await page.evaluate((nextHash) => {
+      window.location.hash = nextHash;
+    }, hash);
+    await page.waitForFunction(
+      ({ screen, target }) => (
+        document.body.dataset.controlUiActiveView === screen
+        && document.activeElement?.id === target
+      ),
+      { screen: expectedScreen, target: expectedTarget },
+      { timeout: 10000 },
+    );
+  }
   await page.goBack();
   await page.waitForFunction(
     () => document.body.dataset.controlUiActiveView === "ops"
@@ -840,16 +939,82 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     const visibility = await page.evaluate((targetId) => {
       const target = document.getElementById(targetId);
       const targetEyebrow = target?.querySelector(".eyebrow");
+      const targetTitle = target?.querySelector("h3");
+      const routeToolbar = target?.querySelector(":scope > .route-card__toolbar");
+      const routeBack = routeToolbar?.querySelector('.route-card__back[href="#chat"]');
+      const routePosition = routeToolbar?.querySelector(".route-card__position");
+      const routeDirectory = document.querySelector(".hepta-route-directory");
+      const shellSidebar = document.querySelector(".shell--hepta-premium > .shell-nav");
+      const breadcrumb = document.querySelector(".dashboard-header__breadcrumb-current");
       const topbar = document.querySelector(".topbar");
       const topbarVisibility = window.__heptaActualVisibility(topbar);
       const topbarBottom = topbarVisibility.visible ? topbar.getBoundingClientRect().bottom : 0;
+      const targetRect = target?.getBoundingClientRect();
+      const titleRect = targetTitle?.getBoundingClientRect();
+      const toolbarRect = routeToolbar?.getBoundingClientRect();
+      const backRect = routeBack?.getBoundingClientRect();
+      const positionText = routePosition?.textContent?.trim() || "";
+      const titleText = targetTitle?.textContent?.trim() || "";
+      const isPhone = window.innerWidth <= 320;
       const cards = [...document.querySelectorAll(".route-card")].map((card) => ({
         id: card.id,
         ...window.__heptaActualVisibility(card),
       }));
+      const routeToolbarVisible = window.__heptaActualVisibility(routeToolbar).visible;
+      const routeBackVisible = window.__heptaActualVisibility(routeBack).visible;
+      const routeTitleVisible = window.__heptaActualVisibility(targetTitle).visible;
+      const routeDirectoryVisible = window.__heptaActualVisibility(routeDirectory).visible;
+      const sidebarVisible = window.__heptaActualVisibility(shellSidebar).visible;
+      const routeUnder12Text = [...(target?.querySelectorAll("*") || [])]
+        .filter((element) => (
+          window.__heptaActualVisibility(element).visible
+          && [...element.childNodes].some((node) => (
+            node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0
+          ))
+          && Number.parseFloat(getComputedStyle(element).fontSize) < 12
+        ))
+        .map((element) => ({
+          tag: element.tagName.toLowerCase(),
+          class_name: element.getAttribute("class") || "",
+          text: element.textContent.trim().slice(0, 80),
+          font_size_px: Number.parseFloat(getComputedStyle(element).fontSize),
+        }));
+      const routePageContextReady = document.body.dataset.view === "read-only"
+        && document.body.dataset.controlUiRouteContext === "toolbar-title"
+        && routeToolbarVisible
+        && routeBackVisible
+        && routeTitleVisible
+        && !routeDirectoryVisible
+        && Boolean(titleText)
+        && /^\d+ of 26$/.test(positionText)
+        && (backRect?.width || 0) >= 44
+        && (backRect?.height || 0) >= 44
+        && (toolbarRect?.top || 0) >= 0
+        && (toolbarRect?.bottom || 0) <= (titleRect?.top || 0)
+        && (targetRect?.top || 0) >= 0
+        && (titleRect?.bottom || 0) <= window.innerHeight
+        && routeUnder12Text.length === 0
+        && (isPhone
+          ? !topbarVisibility.visible && !sidebarVisible && (toolbarRect?.top || 0) <= 40
+          : (breadcrumb?.textContent?.trim() || "") === titleText);
       return {
         target_visibility: window.__heptaActualVisibility(target),
         target_eyebrow_visibility: window.__heptaActualVisibility(targetEyebrow),
+        target_title_visibility: window.__heptaActualVisibility(targetTitle),
+        route_toolbar_visibility: window.__heptaActualVisibility(routeToolbar),
+        route_back_visibility: window.__heptaActualVisibility(routeBack),
+        route_position: positionText,
+        route_title: titleText,
+        breadcrumb_title: breadcrumb?.textContent?.trim() || "",
+        route_directory_visible: routeDirectoryVisible,
+        shell_sidebar_visible: sidebarVisible,
+        outer_topbar_visible: topbarVisibility.visible,
+        route_toolbar_top_px: Math.round(toolbarRect?.top || 0),
+        route_toolbar_bottom_px: Math.round(toolbarRect?.bottom || 0),
+        route_title_top_px: Math.round(titleRect?.top || 0),
+        route_page_context_ready: routePageContextReady,
+        visible_under_12px_count: routeUnder12Text.length,
+        visible_under_12px_details: routeUnder12Text,
         top_obstruction_px: Math.max(
           0,
           topbarBottom - (targetEyebrow?.getBoundingClientRect().top || 0),
@@ -885,10 +1050,13 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
       && item.horizontal_overflow_px === 0
       && item.target_visibility.rect_width >= (item.width === 320 ? 250 : 600)
       && item.target_eyebrow_visibility.visible
+      && item.visible_under_12px_count === 0
       && item.top_obstruction_px === 0
     ))
     && routeViewScreenshots.some((item) => item.width === 1365 && item.height === 900)
     && routeViewScreenshots.some((item) => item.width === 320 && item.height === 844);
+  const routePageContextCompleteReady = routeViewScreenshots.length === 2
+    && routeViewScreenshots.every((item) => item.route_page_context_ready === true);
 
   const crossOriginRequests = requests.filter((request) => new URL(request.url).origin !== origin);
   const nonGetRequests = requests.filter((request) => request.method !== "GET");
@@ -913,11 +1081,13 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     || !chatSearchReady
     || !commandPaletteSearchReady
     || !commandPaletteNavigationReady
+    || !mobilePaneTransitionReady
     || !routeLinkNavigationReady
     || !currentRouteEntriesReady
     || !topNavNavigationReady
     || !routeHistoryReady
     || !routeViewScreenshotsReady
+    || !routePageContextCompleteReady
     || productTruthAudit.capability_mode !== "local-read-only"
     || productTruthAudit.live_adapter_bound !== "false"
     || !productTruthAudit.unavailable_controls_ready
@@ -966,6 +1136,8 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     },
     command_palette_navigation_ready: commandPaletteNavigationReady,
     command_palette_navigation_audit: commandPaletteNavigationAudit,
+    mobile_pane_transition_ready: mobilePaneTransitionReady,
+    mobile_pane_transition_audit: mobilePaneTransitionAudit,
     route_link_navigation_ready: routeLinkNavigationReady,
     route_link_navigation_audit: {
       entry_count: routeLinkAudit.length,
@@ -997,6 +1169,7 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     route_history_ready: routeHistoryReady,
     route_history_audit: { back: backAudit, forward: forwardAudit },
     route_view_screenshots_ready: routeViewScreenshotsReady,
+    route_page_context_complete_ready: routePageContextCompleteReady,
     route_view_screenshots: routeViewScreenshots,
     product_truth_audit: productTruthAudit,
     unavailable_controls_ready: productTruthAudit.unavailable_controls_ready,

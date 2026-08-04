@@ -44,6 +44,7 @@ shared_radii = radii.fetch("shared")
 native_radii = radii.fetch("native")
 control_radii = radii.fetch("control")
 control_motion = tokens.fetch("motion").fetch("control")
+native_interaction = tokens.fetch("interaction").fetch("native")
 material_layers = tokens.fetch("materialLayers")
 environment_layer = material_layers.fetch("environment")
 stable_content_layer = material_layers.fetch("stableContent")
@@ -78,6 +79,7 @@ required = {
   "radius.native" => [native_radii, %w[panel]],
   "radius.control" => [control_radii, %w[panel]],
   "motion.control" => [control_motion, %w[fastMs normalMs]],
+  "interaction.native" => [native_interaction, %w[minimumTouchTarget]],
   "materialLayers.environment" => [environment_layer, %w[surfaceAlpha hairlineAlpha shadowAlpha radiusPx blurPx]],
   "materialLayers.stableContent" => [stable_content_layer, %w[surfaceAlpha hairlineAlpha shadowAlpha radiusPx blurPx]],
   "materialLayers.glassChrome" => [glass_chrome_layer, %w[surfaceAlpha hairlineAlpha shadowAlpha radiusPx blurPx]],
@@ -88,6 +90,9 @@ required.each do |group, (values, keys)|
   missing = keys.reject { |key| values.key?(key) }
   abort("missing #{group} tokens: #{missing.join(', ')}") unless missing.empty?
 end
+
+native_minimum_touch_target = Integer(native_interaction.fetch("minimumTouchTarget"))
+abort("invalid interaction.native.minimumTouchTarget=#{native_minimum_touch_target}") unless native_minimum_touch_target == 48
 
 def rgba!(value, name)
   normalized = String(value).downcase
@@ -265,6 +270,9 @@ native_rust = <<~RUST
       mod.widgets.HEPTA_RADIUS_CONTROL = #{Integer(shared_radii.fetch('control'))}.0
       mod.widgets.HEPTA_RADIUS_PANEL = #{Integer(native_radii.fetch('panel'))}.0
       mod.widgets.HEPTA_RADIUS_FLOATING = #{Integer(shared_radii.fetch('floating'))}.0
+      // Login controls use the stricter Android target on every platform so the
+      // shared tree never drops below 48 logical points.
+      mod.widgets.HEPTA_TOUCH_TARGET = #{native_minimum_touch_target}.0
       mod.widgets.HEPTA_LAYER_STABLE_ALPHA = #{stable_content_layer.fetch('surfaceAlpha')}
       mod.widgets.HEPTA_LAYER_STABLE_BLUR = #{Integer(stable_content_layer.fetch('blurPx'))}.0
       mod.widgets.HEPTA_LAYER_CHROME_ALPHA = #{glass_chrome_layer.fetch('surfaceAlpha')}
@@ -274,6 +282,7 @@ native_rust = <<~RUST
   }
 
   pub const COLOR_HEPTA_CONTENT: Vec4 = #{vec4_color(native.fetch('content'))};
+  pub const HEPTA_TOUCH_TARGET: f64 = #{native_minimum_touch_target}.0;
   pub const COLOR_HEPTA_FOCUS: Vec4 = #{vec4_color(native_focus)};
   pub const COLOR_HEPTA_FOCUS_HOVER: Vec4 = #{vec4_color(native.fetch('focusHover'))};
   pub const COLOR_HEPTA_SUCCESS: Vec4 = #{vec4_color(native.fetch('success'))};

@@ -370,23 +370,24 @@ body[data-view=read-only]{overflow-x:hidden}
 body[data-view=read-only] .workspace.dashboard-grid{grid-template-columns:minmax(0,1fr)}
 body[data-view=read-only] .focus-main{display:block;box-sizing:border-box;width:100%;max-width:100%;height:auto;padding:0;overflow:visible}
 body[data-view=read-only] #chat-thread{display:block;height:auto;overflow:visible}
-body[data-view=read-only] :is(.topnav-shell__actions,.tg-mobile-layer-tabs,.tg-thread-header__main,.tg-thread-status>:not(#hepta-nav)){display:none}
+body[data-view=read-only] :is(.topnav-shell__actions,.tg-mobile-layer-tabs,.tg-thread-header,.hepta-route-directory){display:none}
 body[data-view=read-only] :is(.hepta-secondary-map>summary,.hepta-entry-surface>header,.hepta-all-screen-contracts>summary){display:none}
 body[data-view=read-only] .hepta-all-screen-contracts>.screen-grid{grid-template-columns:minmax(0,1fr)}
-body[data-view=read-only] .route-card{box-sizing:border-box;width:min(100%,1180px);min-height:min(620px,calc(100dvh - 112px));margin-inline:auto;padding:clamp(18px,2.6vw,34px);scroll-margin-block-start:48px;background:linear-gradient(145deg,rgba(255,255,255,.92),rgba(239,250,252,.8));border-color:rgba(88,147,162,.22);box-shadow:0 24px 70px rgba(47,85,96,.12)}
-body[data-view=read-only] .route-card>header{display:grid;gap:10px;max-width:760px;padding:clamp(18px,2.2vw,28px);border:1px solid rgba(88,147,162,.18);border-radius:20px;background:rgba(255,255,255,.74)}
-body[data-view=read-only] .route-card>header h3{font-size:clamp(24px,3vw,40px);letter-spacing:0}
+body[data-view=read-only] .route-card{box-sizing:border-box;width:min(100%,1040px);min-height:min(600px,calc(100dvh - 112px));margin-inline:auto;padding:clamp(18px,2.4vw,30px);scroll-margin-block-start:16px;background:rgb(252 253 254/var(--hepta-layer-stable-alpha));border:1px solid rgba(88,147,162,.1);border-radius:18px;box-shadow:0 6px 20px rgba(47,85,96,.055)}
+body[data-view=read-only] .route-card:focus-visible{outline:2px solid rgba(56,148,170,.34);outline-offset:4px}
+body[data-view=read-only] .route-card>header{display:grid;gap:8px;max-width:760px;padding:2px 2px 14px;border:0;border-radius:0;background:transparent;box-shadow:none}
+body[data-view=read-only] .route-card>header h3{font-size:clamp(24px,3vw,36px);letter-spacing:0}
 body[data-view=read-only] .route-card>header>p:last-child{max-width:68ch;color:#516a73;font-size:14px;line-height:1.65}
 body[data-view=read-only] .route-card__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
-body[data-view=read-only] .route-card__grid>section{min-height:164px;padding:18px;border:1px solid rgba(88,147,162,.18);border-radius:18px;background:rgba(247,253,254,.78)}
+body[data-view=read-only] .route-card__grid>section{min-height:154px;padding:18px;border:1px solid rgba(88,147,162,.1);border-radius:12px;background:rgba(248,251,252,.72);box-shadow:none}
 body[data-view=read-only] .route-card__grid h4{margin-bottom:10px;color:#284751;font-size:12px;letter-spacing:.08em;text-transform:uppercase}
 body[data-view=read-only] .route-card__grid ul{display:grid;gap:8px;margin:0;padding-left:18px;color:#4b626a;font-size:13px;line-height:1.5}
 .route-card__toolbar{display:none}
-body[data-view=read-only] .route-card__toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;margin:-10px 0 18px;padding-bottom:14px;border-bottom:1px solid rgba(88,147,162,.18)}
-body[data-view=read-only] .route-card__toolbar a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:8px 12px;border:1px solid rgba(88,147,162,.24);border-radius:12px;background:rgba(255,255,255,.82);color:#244751;font-size:12px;font-weight:760;text-decoration:none}
+body[data-view=read-only] .route-card__toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;margin:-8px 0 20px;padding:8px;border:1px solid rgba(88,147,162,.13);border-radius:14px;background:rgba(239,246,248,.88);box-shadow:0 4px 14px rgba(47,85,96,.07);backdrop-filter:blur(14px) saturate(1.04);-webkit-backdrop-filter:blur(14px) saturate(1.04)}
+body[data-view=read-only] .route-card__toolbar a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 12px;border:1px solid rgba(88,147,162,.14);border-radius:10px;background:rgba(255,255,255,.68);color:#244751;font-size:12px;font-weight:760;text-decoration:none}
 body[data-view=read-only] .route-card__toolbar a:hover,body[data-view=read-only] .route-card__toolbar a:focus-visible{border-color:rgba(56,148,170,.52);background:#effbfc;outline:2px solid rgba(56,148,170,.2);outline-offset:2px}
 body[data-view=read-only] .route-card__back{justify-self:start}
-body[data-view=read-only] .route-card__position{color:#688089;font-size:11px;font-weight:760;letter-spacing:.08em;text-transform:uppercase}
+body[data-view=read-only] .route-card__position{color:#688089;font-size:12px;font-weight:760;letter-spacing:.08em;text-transform:uppercase}
 body[data-view=read-only] .route-card__pager{display:flex;justify-self:end;gap:8px}
 .route-card__nav-spacer{display:block;width:1px}
 #hepta-nav[data-control-ui-nav-mount]{display:flex;flex-direction:row;gap:4px;padding:0;overflow:auto hidden}
@@ -397,8 +398,8 @@ body[data-view="chat"] :is(.tg-bubble,.tg-chat-item,.tg-room-section,.hepta-side
 body[data-view="read-only"] :is(.route-card,.route-card>header,.route-card__grid>section){
 background:rgb(252 253 254/var(--hepta-layer-stable-alpha))!important;
 background-image:none!important;
-border-color:rgb(88 147 162/calc(var(--hepta-layer-stable-hairline-alpha) * .62))!important;
-box-shadow:0 1px 4px rgb(23 48 71/calc(var(--hepta-layer-stable-shadow-alpha) * .55))!important;
+border-color:rgb(88 147 162/calc(var(--hepta-layer-stable-hairline-alpha) * .42))!important;
+box-shadow:0 1px 3px rgb(23 48 71/calc(var(--hepta-layer-stable-shadow-alpha) * .32))!important;
 backdrop-filter:none!important;
 -webkit-backdrop-filter:none!important;
 filter:none!important;
@@ -432,8 +433,10 @@ html[data-control-ui-progressive-enhancement="ready"] body[data-view="chat"] .he
 body[data-view="chat"] :is(.tg-thread-header p,.tg-compose-status,.tg-compose-footer,[data-chat-shortcut-hint]){font-size:12px!important}
 body[data-view="chat"] [data-chat-composer-input]{font-size:14px!important;line-height:1.45!important}
 body[data-view="chat"] .tg-thread-status-summary [data-control-ui-status-trust-badge="safe-review"]{display:none!important}
+.topbar-status--quiet>.pill:not(:first-child){display:none}
+body[data-view="chat"] .tg-thread-status-summary{display:none!important}
 body[data-view="chat"] .tg-thread-intro .badge:nth-child(n+3){display:none!important}
-@media(max-width:700px){body[data-view=read-only] .topbar-status{display:none}body[data-view=read-only] .shell--hepta-premium .content,body[data-view=read-only] #hepta-screen-panel{padding:8px}body[data-view=read-only] :is(.hepta-secondary-map,.hepta-secondary-map__body,.hepta-secondary-map .hepta-entry-surface){margin:0;padding:0;border-radius:0}body[data-view=read-only] .route-card{min-height:0}body[data-view=read-only] .hepta-route-surface .card{padding:14px}body[data-view=read-only] .route-card__toolbar{grid-template-columns:1fr auto;margin:0 0 14px}body[data-view=read-only] .route-card__position{grid-column:1/-1;grid-row:1;text-align:center}body[data-view=read-only] .route-card__back{grid-column:1;grid-row:2}body[data-view=read-only] .route-card__pager{grid-column:2;grid-row:2}body[data-view=read-only] .route-card__pager a{padding-inline:10px}body[data-view=read-only] .route-card__grid{grid-template-columns:1fr}body[data-view=read-only] .route-card__grid>section{min-height:0}#hepta-nav[data-control-ui-nav-mount] a span:last-child{display:none}}
+@media(max-width:700px){body[data-view=read-only] :is(.shell--hepta-premium>.shell-nav,.topbar){display:none}body[data-view=read-only] .shell--hepta-premium{display:block}body[data-view=read-only] .shell--hepta-premium .content,body[data-view=read-only] #hepta-screen-panel{margin:0;padding:0}body[data-view=read-only] :is(.workspace,.focus-workspace,.focus-main,#chat-thread,.hepta-route-surface,.hepta-secondary-map,.hepta-secondary-map__body,.hepta-secondary-map .hepta-entry-surface){margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}body[data-view=read-only] .route-card{width:100%;min-height:100dvh;padding:8px;border:0;border-radius:0;box-shadow:none}body[data-view=read-only] .hepta-route-surface .card{padding:8px}body[data-view=read-only] .route-card__toolbar{position:sticky;top:0;z-index:4;grid-template-columns:1fr auto;margin:0 0 16px}body[data-view=read-only] .route-card__position{grid-column:1/-1;grid-row:1;text-align:center}body[data-view=read-only] .route-card__back{grid-column:1;grid-row:2}body[data-view=read-only] .route-card__pager{grid-column:2;grid-row:2}body[data-view=read-only] .route-card__pager a{padding-inline:10px}body[data-view=read-only] .route-card>header{padding-inline:6px}body[data-view=read-only] .route-card__grid{grid-template-columns:1fr}body[data-view=read-only] .route-card__grid>section{min-height:0;border-radius:10px}#hepta-nav[data-control-ui-nav-mount] a span:last-child{display:none}}
 
 /* 2026 tempered-glass source-of-truth: glass belongs to structural chrome,
    never to content containers or individual controls. */
@@ -460,8 +463,14 @@ body[data-view="chat"] :is(
 body[data-view="chat"] :is(#chat-list, .tg-thread-header, .tg-compose-wrap) {
   background: color-mix(in srgb, var(--hepta-glass-panel) 94%, white) !important;
   background-image: none !important;
-  border: 1px solid var(--hepta-glass-hairline) !important;
-  box-shadow: 0 8px 24px var(--hepta-glass-shadow) !important;
+  border: 1px solid color-mix(in srgb, var(--hepta-glass-hairline) 64%, transparent) !important;
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--hepta-glass-shadow) 62%, transparent) !important;
   backdrop-filter: blur(var(--hepta-layer-chrome-blur)) saturate(1.06) !important;
   -webkit-backdrop-filter: blur(var(--hepta-layer-chrome-blur)) saturate(1.06) !important;
+}
+body[data-view="chat"] #chat-thread{
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }

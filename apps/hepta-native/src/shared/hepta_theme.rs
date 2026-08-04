@@ -43,6 +43,9 @@ script_mod! {
     mod.widgets.HEPTA_RADIUS_CONTROL = 10.0
     mod.widgets.HEPTA_RADIUS_PANEL = 14.0
     mod.widgets.HEPTA_RADIUS_FLOATING = 18.0
+    // Login controls use the stricter Android target on every platform so the
+    // shared tree never drops below 48 logical points.
+    mod.widgets.HEPTA_TOUCH_TARGET = 48.0
     mod.widgets.HEPTA_LAYER_STABLE_ALPHA = 0.98
     mod.widgets.HEPTA_LAYER_STABLE_BLUR = 0.0
     mod.widgets.HEPTA_LAYER_CHROME_ALPHA = 0.88
@@ -52,6 +55,7 @@ script_mod! {
 }
 
 pub const COLOR_HEPTA_CONTENT: Vec4 = vec4(0.988, 0.992, 0.996, 1.0);
+pub const HEPTA_TOUCH_TARGET: f64 = 48.0;
 pub const COLOR_HEPTA_FOCUS: Vec4 = vec4(0.059, 0.447, 0.565, 1.0);
 pub const COLOR_HEPTA_FOCUS_HOVER: Vec4 = vec4(0.043, 0.365, 0.471, 1.0);
 pub const COLOR_HEPTA_SUCCESS: Vec4 = vec4(0.075, 0.478, 0.353, 1.0);

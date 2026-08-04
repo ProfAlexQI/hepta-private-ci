@@ -25,9 +25,16 @@ jq -e '
   and .ios_simulator_ui_runtime_evidence.supplied == false
   and .ios_simulator_ui_runtime_evidence.ready == false
   and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_software_keyboard == false
-  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_safe_area == false
+  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_visible_anchor_safe_area == false
+  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_small_screen == false
+  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_required_controls_visible == false
+  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_coordinate_targeted_keyboard == false
+  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_homeserver_focus == false
+  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_keyboard_control_clearance == false
+  and .ios_simulator_ui_runtime_evidence.claims.unauthenticated_login_surface_landscape_control_clearance == false
   and .ios_simulator_ui_runtime_evidence.claims.software_keyboard == false
   and .ios_simulator_ui_runtime_evidence.claims.safe_area == false
+  and .ios_simulator_ui_runtime_evidence.claims.rotation == false
   and .ios_simulator_ui_runtime_evidence.generic_claims_hard_false == true
   and .android_emulator_runtime_evidence.scope == null
   and .android_emulator_runtime_evidence.live_readback.opt_in == false
@@ -49,7 +56,13 @@ jq -e '
   and .hard_boundaries.android_emulator_ime_verified == false
   and .hard_boundaries.deprecated_generic_android_emulator_claims_hard_false == true
   and .hard_boundaries.ios_simulator_unauthenticated_login_surface_software_keyboard_verified == false
-  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_safe_area_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_visible_anchor_safe_area_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_small_screen_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_required_controls_visible == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_coordinate_targeted_keyboard_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_homeserver_focus_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_keyboard_control_clearance_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_landscape_control_clearance_verified == false
   and .hard_boundaries.software_keyboard_verified == false
   and .hard_boundaries.safe_area_verified == false
   and .hard_boundaries.mobile_full_product_ready == false
@@ -104,14 +117,27 @@ jq -e '
   and .ios_simulator_ui_runtime_evidence.status == "invalid"
   and .ios_simulator_ui_runtime_evidence.ready == false
   and .hard_boundaries.ios_simulator_unauthenticated_login_surface_software_keyboard_verified == false
-  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_safe_area_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_visible_anchor_safe_area_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_small_screen_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_required_controls_visible == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_coordinate_targeted_keyboard_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_homeserver_focus_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_keyboard_control_clearance_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_landscape_control_clearance_verified == false
 ' "$TEST_DIR/invalid-ios-ui-report.json" >/dev/null
 
 grep -Fq -- 'HEPTA_NATIVE_IOS_SIMULATOR_UI_RECEIPT' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'ios_simulator_unauthenticated_login_surface_software_keyboard_verified:$ios_login_keyboard_ready' scripts/hepta-native-mobile-readiness-gate.sh
-grep -Fq -- 'ios_simulator_unauthenticated_login_surface_safe_area_verified:$ios_login_safe_area_ready' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_visible_anchor_safe_area_verified:$ios_login_visible_anchor_safe_area_ready' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_small_screen_verified:$ios_login_small_screen_ready' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_required_controls_visible:$ios_login_required_controls_ready' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_coordinate_targeted_keyboard_verified:$ios_login_coordinate_targeted_keyboard_ready' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_homeserver_focus_verified:false' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_keyboard_control_clearance_verified:$ios_login_keyboard_control_clearance_ready' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_landscape_control_clearance_verified:$ios_login_landscape_control_clearance_ready' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'generic_software_keyboard_ready == false' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'generic_safe_area_ready == false' scripts/hepta-native-mobile-readiness-gate.sh
+grep -Fq -- 'generic_rotation_ready == false' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- '.scope == "unauthenticated_android_login_surface_on_arm64_emulator"' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'android_emulator_unauthenticated_login_surface_rotation_verified:$android_login_rotation_ready' scripts/hepta-native-mobile-readiness-gate.sh
 grep -Fq -- 'HEPTA_NATIVE_ANDROID_EMULATOR_LIVE_READBACK' scripts/hepta-native-mobile-readiness-gate.sh

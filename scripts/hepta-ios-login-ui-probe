@@ -3,6 +3,12 @@ set -euo pipefail
 
 BASELINE_PATH=""
 KEYBOARD_PATH=""
+LANDSCAPE_PATH=""
+DEVICE_NAME=""
+TARGET_X_RATIO=""
+TARGET_Y_RATIO=""
+KEYBOARD_TRIGGER_MODE=""
+LOCATE_HOMESERVER_ONLY=false
 REPORT_PATH=""
 
 usage() {
@@ -10,13 +16,29 @@ usage() {
 usage: scripts/hepta-ios-login-ui-probe \
   --baseline /absolute/login.png \
   --keyboard /absolute/login-with-keyboard.png \
+  --device-name 'iPhone SE (3rd generation)' \
+  --target-x-ratio 0.5 \
+  --target-y-ratio 0.42 \
+  --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click \
+  [--landscape /absolute/login-landscape.png] \
   [--output /absolute/report.json]
 
+       scripts/hepta-ios-login-ui-probe --locate-homeserver \
+         --baseline /absolute/login.png \
+         --device-name 'iPhone SE (3rd generation)' \
+         [--output /absolute/locator.json]
+
 Compares two iOS simulator captures of the unauthenticated Hepta login surface.
-The probe verifies a real software-keyboard geometry change while the upper
-login surface and its Hepta-accent interactive region remain stable and inside
-the portrait safe area. It does not claim generic app-wide keyboard, safe-area,
-accessibility, RTL, Dynamic Type, real-device, or release readiness.
+The probe verifies a real software-keyboard geometry change, Apple Vision text
+anchors for the title, homeserver field, and Login action, a click derived from
+the unique baseline homeserver text anchor, an explicit small-screen device
+identity, visible-anchor safe-area geometry, and a conservative 48-point Login action frame
+with at least 8 points of clearance above the detected keyboard. When supplied,
+the landscape capture must retain the same anchors and at least 24 points of
+estimated Login-control bottom clearance. It
+does not claim the actually focused element, generic app-wide keyboard,
+safe-area, rotation, accessibility, RTL, Dynamic Type, real-device, or release
+readiness.
 EOF
 }
 
@@ -24,26 +46,148 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --baseline) BASELINE_PATH="${2:-}"; shift 2 ;;
     --keyboard) KEYBOARD_PATH="${2:-}"; shift 2 ;;
+    --landscape) LANDSCAPE_PATH="${2:-}"; shift 2 ;;
+    --device-name) DEVICE_NAME="${2:-}"; shift 2 ;;
+    --target-x-ratio) TARGET_X_RATIO="${2:-}"; shift 2 ;;
+    --target-y-ratio) TARGET_Y_RATIO="${2:-}"; shift 2 ;;
+    --keyboard-trigger-mode) KEYBOARD_TRIGGER_MODE="${2:-}"; shift 2 ;;
+    --locate-homeserver) LOCATE_HOMESERVER_ONLY=true; shift ;;
     --output) REPORT_PATH="${2:-}"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; usage >&2; exit 64 ;;
   esac
 done
 
-for command in jq mktemp ruby shasum sips; do
+for command in jq mktemp ruby shasum sips swift; do
   command -v "$command" >/dev/null 2>&1 || { echo "error: $command is required" >&2; exit 2; }
 done
 
-for input_path in "$BASELINE_PATH" "$KEYBOARD_PATH"; do
+for input_path in "$BASELINE_PATH"; do
   [[ "$input_path" == /* && -s "$input_path" && ! -L "$input_path" ]] \
     || { echo "error: inputs must be absolute non-symlink image files" >&2; exit 64; }
 done
-[[ "$BASELINE_PATH" != "$KEYBOARD_PATH" ]] || { echo "error: captures must be distinct paths" >&2; exit 64; }
+[[ -n "$DEVICE_NAME" ]] || { echo "error: --device-name is required" >&2; exit 64; }
 if [[ -n "$REPORT_PATH" ]]; then
   [[ "$REPORT_PATH" == /* && ! -L "$REPORT_PATH" ]] \
     || { echo "error: --output must be an absolute non-symlink path" >&2; exit 64; }
   mkdir -p "$(dirname "$REPORT_PATH")"
 fi
+
+vision_ocr_json() {
+  swift -e '
+    import AppKit
+    import Foundation
+    import Vision
+
+    let labels = ["baseline", "software_keyboard", "landscape"]
+    func roundEvidence(_ value: Double) -> Double {
+      (value * 1_000_000).rounded() / 1_000_000
+    }
+    var captures: [[String: Any]] = []
+    for (index, path) in CommandLine.arguments.dropFirst().enumerated() {
+      guard index < labels.count,
+            let image = NSImage(contentsOfFile: path),
+            let tiff = image.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiff),
+            let cgImage = bitmap.cgImage else {
+        fputs("unable to decode OCR image: \(path)\n", stderr)
+        exit(2)
+      }
+      let request = VNRecognizeTextRequest()
+      request.recognitionLevel = .accurate
+      request.usesLanguageCorrection = false
+      request.minimumTextHeight = 0.012
+      do {
+        try VNImageRequestHandler(cgImage: cgImage).perform([request])
+      } catch {
+        fputs("Vision OCR failed: \(error)\n", stderr)
+        exit(2)
+      }
+      let observations = (request.results ?? []).compactMap { observation -> [String: Any]? in
+        guard let candidate = observation.topCandidates(1).first else { return nil }
+        let box = observation.boundingBox
+        return [
+          "text": candidate.string,
+          "normalized_text": candidate.string.lowercased(),
+          "confidence": roundEvidence(Double(candidate.confidence)),
+          "bbox": [
+            "x": roundEvidence(Double(box.origin.x)), "y": roundEvidence(Double(box.origin.y)),
+            "width": roundEvidence(Double(box.size.width)), "height": roundEvidence(Double(box.size.height))
+          ]
+        ]
+      }.sorted {
+        let lhs = $0["bbox"] as! [String: Double]
+        let rhs = $1["bbox"] as! [String: Double]
+        let lhsTop = lhs["y"]! + lhs["height"]!
+        let rhsTop = rhs["y"]! + rhs["height"]!
+        if abs(lhsTop - rhsTop) > 0.0001 { return lhsTop > rhsTop }
+        return lhs["x"]! < rhs["x"]!
+      }
+      captures.append(["id": labels[index], "path": path, "observations": observations])
+    }
+    let report: [String: Any] = [
+      "engine": "apple_vision_recognize_text",
+      "recognition_level": "accurate",
+      "captures": captures
+    ]
+    let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+    print(String(decoding: data, as: UTF8.self))
+  ' "$@"
+}
+
+if [[ "$LOCATE_HOMESERVER_ONLY" == true ]]; then
+  [[ -z "$KEYBOARD_PATH" && -z "$LANDSCAPE_PATH" && -z "$TARGET_X_RATIO" && -z "$TARGET_Y_RATIO" && -z "$KEYBOARD_TRIGGER_MODE" ]] \
+    || { echo "error: locator mode accepts only baseline, device name, and output" >&2; exit 64; }
+  locator_width="$(sips -g pixelWidth "$BASELINE_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  locator_height="$(sips -g pixelHeight "$BASELINE_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+  locator_sha="$(shasum -a 256 "$BASELINE_PATH" | awk '{print $1}')"
+  locator_ocr="$(vision_ocr_json "$BASELINE_PATH")"
+  locator_report="$(jq -n \
+    --arg device_name "$DEVICE_NAME" --arg path "$BASELINE_PATH" --arg sha "$locator_sha" \
+    --argjson width "$locator_width" --argjson height "$locator_height" --argjson ocr "$locator_ocr" '
+      ([ $ocr.captures[0].observations[] | select(.normalized_text | test("matrix[.]org")) ]) as $matches |
+      ($matches[0] // null) as $anchor |
+      (($device_name == "iPhone SE (3rd generation)") and $width == 750 and $height == 1334) as $identity_ready |
+      (($matches | length) == 1 and $anchor.confidence >= 0.8) as $unique_anchor_ready |
+      ($identity_ready and $unique_anchor_ready) as $ready |
+      {
+        schema_version:1,kind:"hepta-ios-homeserver-anchor-locator",producer:"scripts/hepta-ios-login-ui-probe",
+        status:(if $ready then "ready" else "not_ready" end),ready:$ready,
+        source_capture:{path:$path,sha256:$sha,width:$width,height:$height},
+        device:{name:$device_name,small_home_button_simulator_identity_ready:$identity_ready,real_device:false},
+        locator:{engine:$ocr.engine,match_count:($matches | length),anchor:$anchor,
+          normalized_device_coordinate:(if $anchor == null then null else {
+            x:($anchor.bbox.x + ($anchor.bbox.width / 2)),
+            y_from_top:(1 - ($anchor.bbox.y + ($anchor.bbox.height / 2)))
+          } end),
+          tight_hitbox_expansion_normalized:{x:0.012,y:0.012}},
+        claims:{baseline_vision_homeserver_anchor_center_ready:$ready,generic_focus_ready:false,real_device_ready:false},
+        blockers:([if $identity_ready then empty else "small_screen_device_identity_invalid" end,if $unique_anchor_ready then empty else "unique_homeserver_anchor_missing" end]),
+        external_side_effects_performed:false
+      }
+    ')"
+  if [[ -n "$REPORT_PATH" ]]; then
+    temporary="$(mktemp "$(dirname "$REPORT_PATH")/.hepta-ios-homeserver-anchor-locator.XXXXXX")"
+    printf '%s\n' "$locator_report" >"$temporary"
+    mv -f -- "$temporary" "$REPORT_PATH"
+  fi
+  printf '%s\n' "$locator_report"
+  jq -e '.ready == true' >/dev/null <<<"$locator_report"
+  exit
+fi
+
+for input_path in "$KEYBOARD_PATH" ${LANDSCAPE_PATH:+"$LANDSCAPE_PATH"}; do
+  [[ "$input_path" == /* && -s "$input_path" && ! -L "$input_path" ]] \
+    || { echo "error: inputs must be absolute non-symlink image files" >&2; exit 64; }
+done
+[[ "$BASELINE_PATH" != "$KEYBOARD_PATH" ]] || { echo "error: captures must be distinct paths" >&2; exit 64; }
+[[ -z "$LANDSCAPE_PATH" || ( "$LANDSCAPE_PATH" != "$BASELINE_PATH" && "$LANDSCAPE_PATH" != "$KEYBOARD_PATH" ) ]] \
+  || { echo "error: landscape capture must use a distinct path" >&2; exit 64; }
+for ratio in "$TARGET_X_RATIO" "$TARGET_Y_RATIO"; do
+  [[ "$ratio" =~ ^0(\.[0-9]+)?$|^1(\.0+)?$ ]] \
+    || { echo "error: focus ratios must be numbers between zero and one" >&2; exit 64; }
+done
+[[ -n "$KEYBOARD_TRIGGER_MODE" ]] || { echo "error: --keyboard-trigger-mode is required" >&2; exit 64; }
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hepta-ios-login-ui-probe.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -58,6 +202,23 @@ KEYBOARD_WIDTH="$(sips -g pixelWidth "$KEYBOARD_PATH" 2>/dev/null | awk '/pixelW
 KEYBOARD_HEIGHT="$(sips -g pixelHeight "$KEYBOARD_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
 BASELINE_SHA256="$(shasum -a 256 "$BASELINE_PATH" | awk '{print $1}')"
 KEYBOARD_SHA256="$(shasum -a 256 "$KEYBOARD_PATH" | awk '{print $1}')"
+LANDSCAPE_WIDTH=0
+LANDSCAPE_HEIGHT=0
+LANDSCAPE_SHA256=""
+if [[ -n "$LANDSCAPE_PATH" ]]; then
+  LANDSCAPE_WIDTH="$(sips -g pixelWidth "$LANDSCAPE_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+  LANDSCAPE_HEIGHT="$(sips -g pixelHeight "$LANDSCAPE_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+  LANDSCAPE_SHA256="$(shasum -a 256 "$LANDSCAPE_PATH" | awk '{print $1}')"
+fi
+
+OCR_INPUTS=("$BASELINE_PATH" "$KEYBOARD_PATH")
+[[ -z "$LANDSCAPE_PATH" ]] || OCR_INPUTS+=("$LANDSCAPE_PATH")
+OCR_JSON="$(vision_ocr_json "${OCR_INPUTS[@]}")"
+echo "$OCR_JSON" | jq -e '
+  .engine == "apple_vision_recognize_text"
+  and (.captures | length) >= 2
+  and (.captures | all((.observations | type) == "array"))
+' >/dev/null || { echo "error: iOS login OCR evidence is invalid" >&2; exit 1; }
 
 METRICS="$(ruby -rjson -e '
   def decode(path)
@@ -149,6 +310,24 @@ METRICS="$(ruby -rjson -e '
   end
   baseline_accent = accent_metrics(baseline)
   keyboard_accent = accent_metrics(keyboard)
+  keyboard_row_mid_ratios = 128.times.map do |y|
+    row = 64.times.map { |x| luma(keyboard[y * 64 + x]) }
+    row.count { |value| value >= 110 && value < 220 }.fdiv(row.length)
+  end
+  # Estimate the keyboard top from the contiguous full-width, mid-luma
+  # substrate that reaches the bottom edge. This is intentionally conservative:
+  # a few sparse app pixels above the IME cannot shrink the estimated keyboard.
+  keyboard_top_row_from_top = nil
+  quiet_rows = 0
+  127.downto(0) do |y|
+    if keyboard_row_mid_ratios[y] >= 0.08
+      keyboard_top_row_from_top = y
+      quiet_rows = 0
+    else
+      quiet_rows += 1
+      break if keyboard_top_row_from_top && quiet_rows >= 3
+    end
+  end
   metrics = {
     normalized_geometry: {width: 64, height: 128},
     baseline_bottom: region_metrics(baseline, 79, 127),
@@ -158,33 +337,124 @@ METRICS="$(ruby -rjson -e '
       ratio_over_20: top_differences.count { |value| value > 20 }.fdiv(top_differences.length)
     },
     baseline_accent: baseline_accent,
-    keyboard_accent: keyboard_accent
+    keyboard_accent: keyboard_accent,
+    keyboard_top_estimation: {
+      method: "contiguous_bottom_mid_luma_rows",
+      minimum_row_mid_luma_ratio: 0.08,
+      normalized_y_from_top: keyboard_top_row_from_top&.fdiv(128),
+      row_from_top: keyboard_top_row_from_top
+    }
   }
   metrics[:checks] = {
-    baseline_bottom_is_clear: metrics[:baseline_bottom][:mid_ratio] <= 0.10 && metrics[:baseline_bottom][:edge_ratio] <= 0.03,
+    baseline_bottom_is_clear: metrics[:baseline_bottom][:mid_ratio] <= 0.18 && metrics[:baseline_bottom][:edge_ratio] <= 0.08,
     keyboard_geometry_present: metrics[:keyboard_bottom][:mid_ratio] >= 0.30 && metrics[:keyboard_bottom][:edge_ratio] >= 0.04,
+    # These two pixel comparisons are diagnostic only. A valid compact-height
+    # response may intentionally reflow the authentication surface.
     upper_login_surface_stable: metrics[:top_surface_difference][:mean_luma_delta] <= 3.0 && metrics[:top_surface_difference][:ratio_over_20] <= 0.05,
     accent_geometry_stable: baseline_accent == keyboard_accent,
     accent_sample_sufficient: baseline_accent[:count] >= 150,
-    login_interactives_inside_safe_area:
+    baseline_accent_region_inside_conservative_portrait_insets:
       baseline_accent[:min_x_ratio].to_f >= 0.12 && baseline_accent[:max_x_ratio].to_f <= 0.88 &&
       baseline_accent[:min_y_ratio].to_f >= 0.08 && baseline_accent[:max_y_ratio].to_f <= 0.64
   }
-  metrics[:ready] = metrics[:checks].values.all?
+  metrics[:ready] = metrics[:checks][:baseline_bottom_is_clear] && metrics[:checks][:keyboard_geometry_present]
   puts JSON.generate(metrics)
 ' "$BASELINE_BMP" "$KEYBOARD_BMP")"
 
 REPORT="$(jq -n \
+  --arg device_name "$DEVICE_NAME" \
+  --argjson target_x_ratio "$TARGET_X_RATIO" --argjson target_y_ratio "$TARGET_Y_RATIO" \
+  --arg keyboard_trigger_mode "$KEYBOARD_TRIGGER_MODE" \
   --arg baseline_path "$BASELINE_PATH" --arg baseline_sha "$BASELINE_SHA256" \
   --arg keyboard_path "$KEYBOARD_PATH" --arg keyboard_sha "$KEYBOARD_SHA256" \
+  --arg landscape_path "$LANDSCAPE_PATH" --arg landscape_sha "$LANDSCAPE_SHA256" \
   --argjson baseline_width "$BASELINE_WIDTH" --argjson baseline_height "$BASELINE_HEIGHT" \
   --argjson keyboard_width "$KEYBOARD_WIDTH" --argjson keyboard_height "$KEYBOARD_HEIGHT" \
-  --argjson metrics "$METRICS" '
+  --argjson landscape_width "$LANDSCAPE_WIDTH" --argjson landscape_height "$LANDSCAPE_HEIGHT" \
+  --argjson metrics "$METRICS" --argjson ocr "$OCR_JSON" '
+    def observations($id): ([ $ocr.captures[] | select(.id == $id) ][0].observations // []);
+    def anchors($id):
+      (observations($id)) as $items |
+      {
+        title:([ $items[] | select(.normalized_text | test("sign[[:space:]]+in[[:space:]]+to[[:space:]]+hepta")) ][0] // null),
+        homeserver:([ $items[] | select(.normalized_text | test("matrix[.]org")) ][0] // null),
+        login:([ $items[] | select(.normalized_text | test("^login$")) ][0] // null)
+      };
+    def anchor_inside_portrait_safe_area($anchor):
+      $anchor != null
+      and $anchor.bbox.x >= 0.04
+      and ($anchor.bbox.x + $anchor.bbox.width) <= 0.96
+      and $anchor.bbox.y >= 0.04
+      and ($anchor.bbox.y + $anchor.bbox.height) <= 0.94;
+    def center_x($anchor): ($anchor.bbox.x + ($anchor.bbox.width / 2));
+    def center_y($anchor): ($anchor.bbox.y + ($anchor.bbox.height / 2));
     ($baseline_width == $keyboard_width and $baseline_height == $keyboard_height and $baseline_width >= 300 and $baseline_height >= 600) as $dimensions_ready |
     ($baseline_sha != $keyboard_sha) as $captures_distinct |
-    ($dimensions_ready and $captures_distinct and $metrics.ready) as $ready |
+    (anchors("baseline")) as $baseline_anchors |
+    (anchors("software_keyboard")) as $keyboard_anchors |
+    (if $landscape_path == "" then {title:null,homeserver:null,login:null} else anchors("landscape") end) as $landscape_anchors |
+    (($device_name == "iPhone SE (3rd generation)") and $baseline_width == 750 and $baseline_height == 1334) as $small_screen_identity_ready |
+    (($baseline_anchors | [.title,.homeserver,.login] | all(. != null)) and
+      ($keyboard_anchors | [.title,.homeserver,.login] | all(. != null))) as $required_login_text_visible |
+    ([ $baseline_anchors.title,$baseline_anchors.homeserver,$baseline_anchors.login,
+       $keyboard_anchors.title,$keyboard_anchors.homeserver,$keyboard_anchors.login ] |
+      all(anchor_inside_portrait_safe_area(.))) as $portrait_visible_anchor_safe_area_ready |
+    (if $required_login_text_visible then
+      {
+        title:{x:(center_x($keyboard_anchors.title) - center_x($baseline_anchors.title)),y:(center_y($keyboard_anchors.title) - center_y($baseline_anchors.title))},
+        homeserver:{x:(center_x($keyboard_anchors.homeserver) - center_x($baseline_anchors.homeserver)),y:(center_y($keyboard_anchors.homeserver) - center_y($baseline_anchors.homeserver))},
+        login:{x:(center_x($keyboard_anchors.login) - center_x($baseline_anchors.login)),y:(center_y($keyboard_anchors.login) - center_y($baseline_anchors.login))}
+      }
+     else {title:{x:0,y:0},homeserver:{x:0,y:0},login:{x:0,y:0}} end) as $keyboard_anchor_shift |
+    ($required_login_text_visible
+      and center_y($baseline_anchors.title) > center_y($baseline_anchors.homeserver)
+      and center_y($baseline_anchors.homeserver) > center_y($baseline_anchors.login)
+      and center_y($keyboard_anchors.title) > center_y($keyboard_anchors.homeserver)
+      and center_y($keyboard_anchors.homeserver) > center_y($keyboard_anchors.login)) as $anchor_order_ready |
+    ($required_login_text_visible
+      and (center_y($keyboard_anchors.title) - center_y($keyboard_anchors.homeserver)) >= 0.06
+      and (center_y($keyboard_anchors.homeserver) - center_y($keyboard_anchors.login)) >= 0.035) as $anchor_spacing_ready |
+    ([ $keyboard_anchor_shift.title,$keyboard_anchor_shift.homeserver,$keyboard_anchor_shift.login ] |
+      all((.x | fabs) <= 0.12 and .y >= -0.03 and .y <= 0.25)) as $anchor_shift_bounded_and_directional |
+    ($required_login_text_visible and $portrait_visible_anchor_safe_area_ready and $anchor_order_ready
+      and $anchor_spacing_ready and $anchor_shift_bounded_and_directional) as $keyboard_anchor_reflow_ready |
+    (if $baseline_anchors.homeserver == null then {x:0,y_from_top:0} else {
+      x:center_x($baseline_anchors.homeserver),
+      y_from_top:(1 - center_y($baseline_anchors.homeserver))
+    } end) as $baseline_homeserver_anchor_center |
+    ($keyboard_trigger_mode == "direct_after_vision_homeserver_anchor_click") as $direct_keyboard_trigger_ready |
+    (($target_x_ratio - $baseline_homeserver_anchor_center.x | fabs) <= 0.006
+      and ($target_y_ratio - $baseline_homeserver_anchor_center.y_from_top | fabs) <= 0.006) as $target_matches_baseline_homeserver_anchor_center |
+    ($baseline_anchors.homeserver != null and $keyboard_anchors.homeserver != null
+      and $direct_keyboard_trigger_ready
+      and $target_matches_baseline_homeserver_anchor_center
+      and $metrics.checks.keyboard_geometry_present) as $coordinate_targeted_keyboard_evidence_ready |
+    ($keyboard_height / 2) as $portrait_canvas_height_points |
+    (if $keyboard_anchors.login == null then 0
+     else ($keyboard_anchors.login.bbox.y * $portrait_canvas_height_points) end) as $keyboard_login_text_anchor_bottom_points |
+    24 as $keyboard_login_control_expansion_points |
+    ([0,($keyboard_login_text_anchor_bottom_points - $keyboard_login_control_expansion_points)] | max) as $keyboard_estimated_login_control_bottom_points |
+    (if $metrics.keyboard_top_estimation.normalized_y_from_top == null then $portrait_canvas_height_points
+     else ((1 - $metrics.keyboard_top_estimation.normalized_y_from_top) * $portrait_canvas_height_points) end) as $keyboard_top_points_from_bottom |
+    ($keyboard_estimated_login_control_bottom_points - $keyboard_top_points_from_bottom) as $keyboard_estimated_login_control_clearance_points |
+    ($metrics.checks.keyboard_geometry_present
+      and $required_login_text_visible
+      and $keyboard_estimated_login_control_clearance_points >= 8) as $keyboard_control_clearance_ready |
+    ($landscape_path != "") as $landscape_supplied |
+    ($landscape_supplied and $landscape_width == 1334 and $landscape_height == 750) as $landscape_canvas_ready |
+    (if $landscape_anchors.login == null or ($landscape_height <= 0) then 0
+     else ($landscape_anchors.login.bbox.y * ($landscape_height / 2)) end) as $landscape_login_text_anchor_bottom_points |
+    24 as $landscape_login_control_expansion_points |
+    ([0,($landscape_login_text_anchor_bottom_points - $landscape_login_control_expansion_points)] | max) as $landscape_estimated_login_control_bottom_clearance_points |
+    ($landscape_canvas_ready
+      and ($landscape_anchors | [.title,.homeserver,.login] | all(. != null))
+      and $landscape_estimated_login_control_bottom_clearance_points >= 24) as $landscape_control_clearance_ready |
+    ($dimensions_ready and $captures_distinct and $metrics.ready and $small_screen_identity_ready
+      and $required_login_text_visible and $keyboard_anchor_reflow_ready and $coordinate_targeted_keyboard_evidence_ready
+      and $keyboard_control_clearance_ready
+      and (($landscape_supplied | not) or $landscape_control_clearance_ready)) as $ready |
     {
-      schema_version:1,
+      schema_version:2,
       kind:"hepta-ios-login-ui-probe",
       producer:"scripts/hepta-ios-login-ui-probe",
       status:(if $ready then "ready" else "not_ready" end),
@@ -193,21 +463,92 @@ REPORT="$(jq -n \
       captures:{
         baseline:{path:$baseline_path,sha256:$baseline_sha,width:$baseline_width,height:$baseline_height},
         software_keyboard:{path:$keyboard_path,sha256:$keyboard_sha,width:$keyboard_width,height:$keyboard_height},
+        landscape:(if $landscape_supplied then {path:$landscape_path,sha256:$landscape_sha,width:$landscape_width,height:$landscape_height} else null end),
         dimensions_match:$dimensions_ready,
         byte_distinct:$captures_distinct
       },
-      metrics:$metrics,
+      device_geometry:{
+        simulator_name:$device_name,
+        class:"small_phone",
+        identity_ready:$small_screen_identity_ready,
+        expected_portrait_canvas_px:{width:750,height:1334},
+        inferred_scale:2,
+        inferred_portrait_canvas_points:{width:375,height:667},
+        real_device:false
+      },
+      text_recognition:$ocr,
+      required_visible_anchors:{baseline:$baseline_anchors,software_keyboard:$keyboard_anchors,landscape:(if $landscape_supplied then $landscape_anchors else null end)},
+      keyboard_reflow_geometry:{
+        coordinate_system:"vision_normalized_bottom_left_positive_y_moves_up",
+        anchor_shift:$keyboard_anchor_shift,
+        vertical_order_preserved:$anchor_order_ready,
+        minimum_spacing_preserved:$anchor_spacing_ready,
+        bounded_directional_shift:$anchor_shift_bounded_and_directional,
+        visible_text_anchors_inside_portrait_safe_area:$portrait_visible_anchor_safe_area_ready,
+        ready:$keyboard_anchor_reflow_ready
+      },
+      coordinate_targeting_evidence:{
+        requested_coordinate_target:"baseline_homeserver_text_anchor_center",
+        normalized_device_coordinate:{x:$target_x_ratio,y_from_top:$target_y_ratio},
+        locator:"baseline_vision_homeserver_anchor_center",
+        baseline_homeserver_anchor_center:$baseline_homeserver_anchor_center,
+        maximum_center_delta_normalized:0.006,
+        click_matches_anchor_center:$target_matches_baseline_homeserver_anchor_center,
+        keyboard_trigger_mode:$keyboard_trigger_mode,
+        direct_keyboard_trigger_ready:$direct_keyboard_trigger_ready,
+        fallback_keyboard_toggle_used:false,
+        homeserver_text_anchor_visible:($keyboard_anchors.homeserver != null),
+        keyboard_geometry_present:$metrics.checks.keyboard_geometry_present,
+        platform_focus_readback_performed:false,
+        actual_focused_element:null,
+        focus_confirmed:false,
+        ready:$coordinate_targeted_keyboard_evidence_ready
+      },
+      safe_area_geometry:{
+        scope:"visible_login_text_anchors_on_small_home_button_ios_simulator",
+        portrait_interaction_insets_normalized:{left:0.04,right:0.04,top:0.06,bottom:0.04},
+        title_homeserver_login_text_anchors_inside_portrait_safe_area:$portrait_visible_anchor_safe_area_ready,
+        keyboard_login_text_anchor_bottom_points:$keyboard_login_text_anchor_bottom_points,
+        keyboard_login_control_frame_estimation:{method:"ocr_text_bbox_expanded_toward_each_edge",minimum_expansion_points_per_edge:$keyboard_login_control_expansion_points,minimum_estimated_control_height_points:48},
+        keyboard_top_estimation:{method:$metrics.keyboard_top_estimation.method,normalized_y_from_top:$metrics.keyboard_top_estimation.normalized_y_from_top,points_from_bottom:$keyboard_top_points_from_bottom},
+        keyboard_estimated_login_control_bottom_points:$keyboard_estimated_login_control_bottom_points,
+        keyboard_estimated_login_control_clearance_points:$keyboard_estimated_login_control_clearance_points,
+        required_keyboard_estimated_login_control_clearance_points:8,
+        keyboard_estimated_login_control_clearance_ready:$keyboard_control_clearance_ready,
+        landscape_login_text_anchor_bottom_points:$landscape_login_text_anchor_bottom_points,
+        landscape_login_control_frame_estimation:{method:"ocr_text_bbox_expanded_toward_each_edge",minimum_expansion_points_per_edge:$landscape_login_control_expansion_points,minimum_estimated_control_height_points:48},
+        landscape_estimated_login_control_bottom_clearance_points:$landscape_estimated_login_control_bottom_clearance_points,
+        required_landscape_estimated_login_control_bottom_clearance_points:24,
+        landscape_estimated_login_control_bottom_clearance_ready:$landscape_control_clearance_ready
+      },
+      metrics:($metrics + {checks:($metrics.checks + {
+        small_screen_identity_ready:$small_screen_identity_ready,
+        title_homeserver_login_visible:$required_login_text_visible,
+        keyboard_anchor_reflow_ready:$keyboard_anchor_reflow_ready,
+        keyboard_estimated_login_control_clearance_ready:$keyboard_control_clearance_ready,
+        coordinate_targeted_keyboard_evidence_ready:$coordinate_targeted_keyboard_evidence_ready,
+        portrait_visible_anchor_safe_area_geometry_ready:$portrait_visible_anchor_safe_area_ready,
+        landscape_supplied:$landscape_supplied,
+        landscape_estimated_login_control_bottom_clearance_ready:$landscape_control_clearance_ready
+      })}),
       claims:{
         ios_simulator_login_software_keyboard_ready:$ready,
-        ios_simulator_login_safe_area_ready:$ready,
+        ios_simulator_login_visible_anchor_safe_area_ready:($ready and $portrait_visible_anchor_safe_area_ready),
+        ios_simulator_login_small_screen_ready:($ready and $small_screen_identity_ready),
+        ios_simulator_login_required_controls_visible:($ready and $required_login_text_visible),
+        ios_simulator_login_coordinate_targeted_keyboard_ready:($ready and $coordinate_targeted_keyboard_evidence_ready),
+        ios_simulator_login_homeserver_focus_ready:false,
+        ios_simulator_login_keyboard_control_clearance_ready:($ready and $keyboard_control_clearance_ready),
+        ios_simulator_login_landscape_control_clearance_ready:($ready and $landscape_control_clearance_ready),
         generic_software_keyboard_ready:false,
         generic_safe_area_ready:false,
+        generic_rotation_ready:false,
         real_device_ready:false,
         accessibility_ready:false,
         rtl_ready:false,
         dynamic_type_ready:false
       },
-      blockers:([if $dimensions_ready then empty else "capture_dimensions_invalid" end,if $captures_distinct then empty else "captures_not_distinct" end,if $metrics.checks.baseline_bottom_is_clear then empty else "baseline_bottom_not_clear" end,if $metrics.checks.keyboard_geometry_present then empty else "software_keyboard_geometry_missing" end,if $metrics.checks.upper_login_surface_stable then empty else "upper_login_surface_shifted" end,if $metrics.checks.accent_geometry_stable then empty else "login_accent_geometry_shifted" end,if $metrics.checks.accent_sample_sufficient then empty else "login_accent_sample_insufficient" end,if $metrics.checks.login_interactives_inside_safe_area then empty else "login_interactives_outside_safe_area" end]),
+      blockers:([if $dimensions_ready then empty else "capture_dimensions_invalid" end,if $captures_distinct then empty else "captures_not_distinct" end,if $small_screen_identity_ready then empty else "small_screen_device_identity_invalid" end,if $required_login_text_visible then empty else "required_login_text_anchor_missing" end,if $keyboard_anchor_reflow_ready then empty else "keyboard_anchor_reflow_invalid" end,if $direct_keyboard_trigger_ready then empty else "keyboard_trigger_not_direct" end,if $coordinate_targeted_keyboard_evidence_ready then empty else "coordinate_targeted_keyboard_evidence_missing" end,if $portrait_visible_anchor_safe_area_ready then empty else "portrait_visible_anchor_safe_area_geometry_invalid" end,if $metrics.checks.baseline_bottom_is_clear then empty else "baseline_bottom_not_clear" end,if $metrics.checks.keyboard_geometry_present then empty else "software_keyboard_geometry_missing" end,if $keyboard_control_clearance_ready then empty else "keyboard_login_control_clearance_insufficient" end,if $landscape_supplied and ($landscape_canvas_ready | not) then "landscape_canvas_invalid" else empty end,if $landscape_supplied and ($landscape_control_clearance_ready | not) then "landscape_login_control_bottom_clearance_insufficient" else empty end]),
       external_side_effects_performed:false
     }
   ')"

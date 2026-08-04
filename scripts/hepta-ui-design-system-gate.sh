@@ -40,6 +40,7 @@ jq -e '
   and (.color.shared | has("text") and has("focus") and has("secondaryAccent"))
   and (.color.native | has("environment") and has("content") and has("glass") and has("input") and has("dim"))
   and (.color.control | has("environment") and has("panel") and has("input") and has("dim"))
+  and .interaction.native.minimumTouchTarget == 48
   and (.materialLayers | has("environment") and has("stableContent") and has("glassChrome") and has("floatingGlass") and has("limits"))
   and .materialLayers.stableContent.blurPx == 0
   and .materialLayers.limits.maxVisibleBackdropLayers == 2
@@ -56,6 +57,8 @@ fi
 rg -Fq 'COLOR_HEPTA_CONTENT' "$NATIVE_THEME"
 rg -Fq 'COLOR_HEPTA_GLASS' "$NATIVE_THEME"
 rg -Fq 'HEPTA_RADIUS_PANEL' "$NATIVE_THEME"
+rg -Fq 'mod.widgets.HEPTA_TOUCH_TARGET = 48.0' "$NATIVE_THEME"
+rg -Fq 'pub const HEPTA_TOUCH_TARGET: f64 = 48.0;' "$NATIVE_THEME"
 rg -Fq 'HEPTA_LAYER_STABLE_BLUR = 0.0' "$NATIVE_THEME"
 rg -Fq -- '--hepta-max-visible-backdrop-layers: 2' "$CONTROL_TOKENS"
 

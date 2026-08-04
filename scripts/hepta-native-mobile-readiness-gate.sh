@@ -207,9 +207,16 @@ if bash -n "$IOS_SIMULATOR_UI_QUALIFICATION_PATH" "$IOS_LOGIN_UI_PROBE_PATH" \
       %q{peekaboo click --no-remote --coords "$CLICK_X,$CLICK_Y" --no-auto-focus},
       %q{scripts/hepta-ios-login-ui-probe --baseline "$BASELINE_SCREENSHOT"},
       %q{ios_simulator_login_software_keyboard_ready:true},
-      %q{ios_simulator_login_safe_area_ready:true},
+      %q{ios_simulator_login_visible_anchor_safe_area_ready:$visible_anchor_safe_area_ready},
+      %q{ios_simulator_login_small_screen_ready:$small_screen_ready},
+      %q{ios_simulator_login_required_controls_visible:$required_controls_ready},
+      %q{ios_simulator_login_coordinate_targeted_keyboard_ready:$coordinate_targeted_keyboard_ready},
+      %q{ios_simulator_login_homeserver_focus_ready:false},
+      %q{ios_simulator_login_keyboard_control_clearance_ready:$keyboard_control_clearance_ready},
+      %q{ios_simulator_login_landscape_control_clearance_ready:$landscape_control_clearance_ready},
       %q{generic_software_keyboard_ready:false},
       %q{generic_safe_area_ready:false},
+      %q{generic_rotation_ready:false},
       %q{credential_supply:false},
       %q{real_device_contact:false},
       %q{code_sign:false},
@@ -217,9 +224,17 @@ if bash -n "$IOS_SIMULATOR_UI_QUALIFICATION_PATH" "$IOS_LOGIN_UI_PROBE_PATH" \
     ]
     probe_required = [
       %q{kind:"hepta-ios-login-ui-probe"},
+      %q{schema_version:2},
+      %q{apple_vision_recognize_text},
+      %q{small_screen_identity_ready},
+      %q{title_homeserver_login_visible},
+      %q{coordinate_targeted_keyboard_evidence_ready},
+      %q{keyboard_anchor_reflow_ready},
+      %q{bounded_directional_shift},
+      %q{keyboard_estimated_login_control_clearance_ready},
+      %q{landscape_estimated_login_control_bottom_clearance_ready},
       %q{keyboard_geometry_present},
-      %q{upper_login_surface_stable},
-      %q{login_interactives_inside_safe_area},
+      %q{title_homeserver_login_text_anchors_inside_portrait_safe_area},
       %q{generic_software_keyboard_ready:false},
       %q{generic_safe_area_ready:false},
     ]
@@ -445,10 +460,15 @@ ios_simulator_ui_receipt_supplied=false
 ios_simulator_ui_receipt_ready=false
 ios_simulator_ui_receipt_status="missing"
 ios_simulator_login_keyboard_ready=false
-ios_simulator_login_safe_area_ready=false
+ios_simulator_login_visible_anchor_safe_area_ready=false
+ios_simulator_login_small_screen_ready=false
+ios_simulator_login_required_controls_ready=false
+ios_simulator_login_coordinate_targeted_keyboard_ready=false
+ios_simulator_login_keyboard_control_clearance_ready=false
+ios_simulator_login_landscape_control_clearance_ready=false
 ios_simulator_ui_receipt_summary="$(jq -n \
   --arg path "$IOS_SIMULATOR_UI_RECEIPT" \
-  '{supplied:false,path:$path,status:"missing",ready:false,scope:null,claims:{unauthenticated_login_surface_software_keyboard:false,unauthenticated_login_surface_safe_area:false,software_keyboard:false,safe_area:false},generic_claims_hard_false:true}')"
+  '{supplied:false,path:$path,status:"missing",ready:false,scope:null,claims:{unauthenticated_login_surface_software_keyboard:false,unauthenticated_login_surface_visible_anchor_safe_area:false,unauthenticated_login_surface_small_screen:false,unauthenticated_login_surface_required_controls_visible:false,unauthenticated_login_surface_coordinate_targeted_keyboard:false,unauthenticated_login_surface_homeserver_focus:false,unauthenticated_login_surface_keyboard_control_clearance:false,unauthenticated_login_surface_landscape_control_clearance:false,software_keyboard:false,safe_area:false,rotation:false},generic_claims_hard_false:true}')"
 android_emulator_receipt_supplied=false
 android_emulator_receipt_ready=false
 android_emulator_receipt_status="missing"
@@ -917,25 +937,85 @@ if [[ -n "$IOS_SIMULATOR_UI_RECEIPT" ]]; then
         and .launch.credentials_supplied == false
         and .simulator_window.app == "Simulator"
         and .simulator_window.exact_device_title_match_count == 1
-        and .simulator_window.focus_ready == true
+        and .simulator_window.coordinate_targeting.ready == true
+        and .simulator_window.coordinate_targeting.requested_target == "baseline_homeserver_text_anchor_center"
+        and (.simulator_window.coordinate_targeting.click_coordinate.normalized_to_device.x >= 0.12 and .simulator_window.coordinate_targeting.click_coordinate.normalized_to_device.x <= 0.88)
+        and (.simulator_window.coordinate_targeting.click_coordinate.normalized_to_device.y_from_top >= 0.30 and .simulator_window.coordinate_targeting.click_coordinate.normalized_to_device.y_from_top <= 0.58)
+        and .simulator_window.coordinate_targeting.keyboard_trigger_mode == "direct_after_vision_homeserver_anchor_click"
+        and .simulator_window.coordinate_targeting.keyboard_toggle_fallback_used == false
+        and .simulator_window.coordinate_targeting.platform_focus_readback_performed == false
+        and .simulator_window.coordinate_targeting.actual_focused_element == null
+        and .simulator_window.coordinate_targeting.focus_confirmed == false
         and .simulator_window.display_wake_backend == "/usr/bin/caffeinate"
         and (.captures.baseline.path | type == "string" and startswith("/"))
         and (.captures.baseline.sha256 | test("^[0-9a-f]{64}$"))
         and (.captures.software_keyboard.path | type == "string" and startswith("/"))
         and (.captures.software_keyboard.sha256 | test("^[0-9a-f]{64}$"))
-        and .ui_probe.schema_version == 1
+        and .ui_probe.schema_version == 2
         and .ui_probe.kind == "hepta-ios-login-ui-probe"
         and .ui_probe.producer == "scripts/hepta-ios-login-ui-probe"
         and .ui_probe.status == "ready"
         and .ui_probe.ready == true
+        and .ui_probe.device_geometry.simulator_name == .device.name
+        and .ui_probe.device_geometry.class == "small_phone"
+        and .ui_probe.device_geometry.identity_ready == true
+        and .ui_probe.device_geometry.expected_portrait_canvas_px == {width:750,height:1334}
+        and .ui_probe.device_geometry.inferred_scale == 2
+        and .ui_probe.device_geometry.inferred_portrait_canvas_points == {width:375,height:667}
+        and .ui_probe.device_geometry.real_device == false
+        and .ui_probe.text_recognition.engine == "apple_vision_recognize_text"
+        and .ui_probe.metrics.checks.small_screen_identity_ready == true
+        and .ui_probe.metrics.checks.title_homeserver_login_visible == true
+        and .ui_probe.metrics.checks.coordinate_targeted_keyboard_evidence_ready == true
+        and .ui_probe.metrics.checks.portrait_visible_anchor_safe_area_geometry_ready == true
+        and .ui_probe.metrics.checks.landscape_supplied == true
+        and .ui_probe.metrics.checks.keyboard_anchor_reflow_ready == true
+        and .ui_probe.keyboard_reflow_geometry.ready == true
+        and .ui_probe.metrics.checks.keyboard_estimated_login_control_clearance_ready == true
+        and .ui_probe.metrics.checks.landscape_estimated_login_control_bottom_clearance_ready == true
+        and .ui_probe.coordinate_targeting_evidence.requested_coordinate_target == "baseline_homeserver_text_anchor_center"
+        and .ui_probe.coordinate_targeting_evidence.homeserver_text_anchor_visible == true
+        and .ui_probe.coordinate_targeting_evidence.keyboard_geometry_present == true
+        and .ui_probe.coordinate_targeting_evidence.platform_focus_readback_performed == false
+        and .ui_probe.coordinate_targeting_evidence.actual_focused_element == null
+        and .ui_probe.coordinate_targeting_evidence.focus_confirmed == false
+        and .ui_probe.coordinate_targeting_evidence.ready == true
+        and .ui_probe.safe_area_geometry.title_homeserver_login_text_anchors_inside_portrait_safe_area == true
+        and .ui_probe.safe_area_geometry.keyboard_login_control_frame_estimation.method == "ocr_text_bbox_expanded_toward_each_edge"
+        and .ui_probe.safe_area_geometry.keyboard_login_control_frame_estimation.minimum_expansion_points_per_edge == 24
+        and .ui_probe.safe_area_geometry.keyboard_login_control_frame_estimation.minimum_estimated_control_height_points == 48
+        and .ui_probe.safe_area_geometry.keyboard_top_estimation.method == "contiguous_bottom_mid_luma_rows"
+        and .ui_probe.safe_area_geometry.keyboard_estimated_login_control_clearance_points >= 8
+        and .ui_probe.safe_area_geometry.required_keyboard_estimated_login_control_clearance_points == 8
+        and .ui_probe.safe_area_geometry.keyboard_estimated_login_control_clearance_ready == true
+        and .ui_probe.safe_area_geometry.landscape_login_control_frame_estimation.method == "ocr_text_bbox_expanded_toward_each_edge"
+        and .ui_probe.safe_area_geometry.landscape_login_control_frame_estimation.minimum_expansion_points_per_edge == 24
+        and .ui_probe.safe_area_geometry.landscape_login_control_frame_estimation.minimum_estimated_control_height_points == 48
+        and .ui_probe.safe_area_geometry.landscape_estimated_login_control_bottom_clearance_points >= 24
+        and .ui_probe.safe_area_geometry.required_landscape_estimated_login_control_bottom_clearance_points == 24
+        and .ui_probe.safe_area_geometry.landscape_estimated_login_control_bottom_clearance_ready == true
         and .ui_probe.claims.ios_simulator_login_software_keyboard_ready == true
-        and .ui_probe.claims.ios_simulator_login_safe_area_ready == true
+        and .ui_probe.claims.ios_simulator_login_visible_anchor_safe_area_ready == true
+        and .ui_probe.claims.ios_simulator_login_small_screen_ready == true
+        and .ui_probe.claims.ios_simulator_login_required_controls_visible == true
+        and .ui_probe.claims.ios_simulator_login_coordinate_targeted_keyboard_ready == true
+        and .ui_probe.claims.ios_simulator_login_homeserver_focus_ready == false
+        and .ui_probe.claims.ios_simulator_login_keyboard_control_clearance_ready == true
+        and .ui_probe.claims.ios_simulator_login_landscape_control_clearance_ready == true
         and .ui_probe.claims.generic_software_keyboard_ready == false
         and .ui_probe.claims.generic_safe_area_ready == false
+        and .ui_probe.claims.generic_rotation_ready == false
         and .claims.ios_simulator_login_software_keyboard_ready == true
-        and .claims.ios_simulator_login_safe_area_ready == true
+        and .claims.ios_simulator_login_visible_anchor_safe_area_ready == true
+        and .claims.ios_simulator_login_small_screen_ready == true
+        and .claims.ios_simulator_login_required_controls_visible == true
+        and .claims.ios_simulator_login_coordinate_targeted_keyboard_ready == true
+        and .claims.ios_simulator_login_homeserver_focus_ready == false
+        and .claims.ios_simulator_login_keyboard_control_clearance_ready == true
+        and .claims.ios_simulator_login_landscape_control_clearance_ready == true
         and .claims.generic_software_keyboard_ready == false
         and .claims.generic_safe_area_ready == false
+        and .claims.generic_rotation_ready == false
         and .claims.ios_real_device_ready == false
         and .claims.voiceover_ready == false
         and .claims.rtl_ready == false
@@ -948,17 +1028,31 @@ if [[ -n "$IOS_SIMULATOR_UI_RECEIPT" ]]; then
     ui_baseline_sha="$(jq -r '.captures.baseline.sha256' "$IOS_SIMULATOR_UI_RECEIPT")"
     ui_keyboard_path="$(jq -r '.captures.software_keyboard.path' "$IOS_SIMULATOR_UI_RECEIPT")"
     ui_keyboard_sha="$(jq -r '.captures.software_keyboard.sha256' "$IOS_SIMULATOR_UI_RECEIPT")"
+    ui_landscape_path="$(jq -r '.captures.landscape.path' "$IOS_SIMULATOR_UI_RECEIPT")"
+    ui_landscape_sha="$(jq -r '.captures.landscape.sha256' "$IOS_SIMULATOR_UI_RECEIPT")"
+    ui_device_name="$(jq -r '.device.name' "$IOS_SIMULATOR_UI_RECEIPT")"
+    ui_target_x_ratio="$(jq -r '.simulator_window.coordinate_targeting.click_coordinate.normalized_to_device.x' "$IOS_SIMULATOR_UI_RECEIPT")"
+    ui_target_y_ratio="$(jq -r '.simulator_window.coordinate_targeting.click_coordinate.normalized_to_device.y_from_top' "$IOS_SIMULATOR_UI_RECEIPT")"
     replay_ui_probe="$($IOS_LOGIN_UI_PROBE_PATH \
-      --baseline "$ui_baseline_path" --keyboard "$ui_keyboard_path" 2>/dev/null || true)"
-    if [[ -s "$ui_baseline_path" && -s "$ui_keyboard_path" ]] \
+      --baseline "$ui_baseline_path" --keyboard "$ui_keyboard_path" --landscape "$ui_landscape_path" \
+      --device-name "$ui_device_name" --target-x-ratio "$ui_target_x_ratio" \
+      --target-y-ratio "$ui_target_y_ratio" \
+      --keyboard-trigger-mode direct_after_vision_homeserver_anchor_click 2>/dev/null || true)"
+    if [[ -s "$ui_baseline_path" && -s "$ui_keyboard_path" && -s "$ui_landscape_path" ]] \
       && [[ "$(shasum -a 256 "$ui_baseline_path" | awk '{print $1}')" == "$ui_baseline_sha" ]] \
       && [[ "$(shasum -a 256 "$ui_keyboard_path" | awk '{print $1}')" == "$ui_keyboard_sha" ]] \
+      && [[ "$(shasum -a 256 "$ui_landscape_path" | awk '{print $1}')" == "$ui_landscape_sha" ]] \
       && jq -e '.status == "ready" and .ready == true' >/dev/null <<<"$replay_ui_probe" \
       && [[ "$(jq -S -c . <<<"$replay_ui_probe")" == "$(jq -S -c '.ui_probe' "$IOS_SIMULATOR_UI_RECEIPT")" ]]; then
       ios_simulator_ui_receipt_ready=true
       ios_simulator_ui_receipt_status="ready"
       ios_simulator_login_keyboard_ready=true
-      ios_simulator_login_safe_area_ready=true
+      ios_simulator_login_visible_anchor_safe_area_ready=true
+      ios_simulator_login_small_screen_ready=true
+      ios_simulator_login_required_controls_ready=true
+      ios_simulator_login_coordinate_targeted_keyboard_ready=true
+      ios_simulator_login_keyboard_control_clearance_ready=true
+      ios_simulator_login_landscape_control_clearance_ready=true
     fi
   fi
   ios_simulator_ui_receipt_summary="$(jq -n \
@@ -966,8 +1060,13 @@ if [[ -n "$IOS_SIMULATOR_UI_RECEIPT" ]]; then
     --arg status "$ios_simulator_ui_receipt_status" \
     --argjson ready "$ios_simulator_ui_receipt_ready" \
     --argjson keyboard "$ios_simulator_login_keyboard_ready" \
-    --argjson safe_area "$ios_simulator_login_safe_area_ready" \
-    '{supplied:true,path:$path,status:$status,ready:$ready,scope:"unauthenticated_ios_simulator_login_surface",claims:{unauthenticated_login_surface_software_keyboard:$keyboard,unauthenticated_login_surface_safe_area:$safe_area,software_keyboard:false,safe_area:false},generic_claims_hard_false:true}')"
+    --argjson visible_anchor_safe_area "$ios_simulator_login_visible_anchor_safe_area_ready" \
+    --argjson small_screen "$ios_simulator_login_small_screen_ready" \
+    --argjson required_controls "$ios_simulator_login_required_controls_ready" \
+    --argjson coordinate_targeted_keyboard "$ios_simulator_login_coordinate_targeted_keyboard_ready" \
+    --argjson keyboard_control_clearance "$ios_simulator_login_keyboard_control_clearance_ready" \
+    --argjson landscape_control_clearance "$ios_simulator_login_landscape_control_clearance_ready" \
+    '{supplied:true,path:$path,status:$status,ready:$ready,scope:"unauthenticated_ios_simulator_login_surface",claims:{unauthenticated_login_surface_software_keyboard:$keyboard,unauthenticated_login_surface_visible_anchor_safe_area:$visible_anchor_safe_area,unauthenticated_login_surface_small_screen:$small_screen,unauthenticated_login_surface_required_controls_visible:$required_controls,unauthenticated_login_surface_coordinate_targeted_keyboard:$coordinate_targeted_keyboard,unauthenticated_login_surface_homeserver_focus:false,unauthenticated_login_surface_keyboard_control_clearance:$keyboard_control_clearance,unauthenticated_login_surface_landscape_control_clearance:$landscape_control_clearance,software_keyboard:false,safe_area:false,rotation:false},generic_claims_hard_false:true}')"
 fi
 
 if [[ -n "$ANDROID_EMULATOR_RECEIPT" ]]; then
@@ -1300,7 +1399,12 @@ report="$(jq -n \
   --argjson ios_simulator_ui_receipt_ready "$ios_simulator_ui_receipt_ready" \
   --argjson ios_simulator_ui_receipt_summary "$ios_simulator_ui_receipt_summary" \
   --argjson ios_login_keyboard_ready "$ios_simulator_login_keyboard_ready" \
-  --argjson ios_login_safe_area_ready "$ios_simulator_login_safe_area_ready" \
+  --argjson ios_login_visible_anchor_safe_area_ready "$ios_simulator_login_visible_anchor_safe_area_ready" \
+  --argjson ios_login_small_screen_ready "$ios_simulator_login_small_screen_ready" \
+  --argjson ios_login_required_controls_ready "$ios_simulator_login_required_controls_ready" \
+  --argjson ios_login_coordinate_targeted_keyboard_ready "$ios_simulator_login_coordinate_targeted_keyboard_ready" \
+  --argjson ios_login_keyboard_control_clearance_ready "$ios_simulator_login_keyboard_control_clearance_ready" \
+  --argjson ios_login_landscape_control_clearance_ready "$ios_simulator_login_landscape_control_clearance_ready" \
   --argjson android_emulator_receipt_supplied "$android_emulator_receipt_supplied" \
   --argjson android_emulator_receipt_ready "$android_emulator_receipt_ready" \
   --argjson android_emulator_receipt_summary "$android_emulator_receipt_summary" \
@@ -1357,7 +1461,13 @@ report="$(jq -n \
         plaintext_credential_fallback_allowed:false,
         ios_simulator_runtime_verified:$ios_simulator_receipt_ready,
         ios_simulator_unauthenticated_login_surface_software_keyboard_verified:$ios_login_keyboard_ready,
-        ios_simulator_unauthenticated_login_surface_safe_area_verified:$ios_login_safe_area_ready,
+        ios_simulator_unauthenticated_login_surface_visible_anchor_safe_area_verified:$ios_login_visible_anchor_safe_area_ready,
+        ios_simulator_unauthenticated_login_surface_small_screen_verified:$ios_login_small_screen_ready,
+        ios_simulator_unauthenticated_login_surface_required_controls_visible:$ios_login_required_controls_ready,
+        ios_simulator_unauthenticated_login_surface_coordinate_targeted_keyboard_verified:$ios_login_coordinate_targeted_keyboard_ready,
+        ios_simulator_unauthenticated_login_surface_homeserver_focus_verified:false,
+        ios_simulator_unauthenticated_login_surface_keyboard_control_clearance_verified:$ios_login_keyboard_control_clearance_ready,
+        ios_simulator_unauthenticated_login_surface_landscape_control_clearance_verified:$ios_login_landscape_control_clearance_ready,
         android_emulator_runtime_verified:$android_emulator_receipt_ready,
         android_emulator_unauthenticated_login_surface_visual_verified:$android_login_visual_ready,
         android_emulator_unauthenticated_login_surface_rotation_verified:$android_login_rotation_ready,
@@ -1379,7 +1489,7 @@ report="$(jq -n \
       },
       local_emulator_side_effects_performed:$android_live_readback_performed,
       external_side_effects_performed:false,
-      blockers:([if $source_stable then empty else "source_changed_during_mobile_gate" end,if $policy_ready then empty else "mobile_policy_contract_not_ready" end,if $makepad_pin_ready then empty else "makepad_revision_not_pinned" end,if $toolchain_ready then empty else "cargo_makepad_exact_toolchain_wrapper_not_ready" end,if $testflight_ready then empty else "testflight_current_source_fail_closed_contract_not_ready" end,if $ios_simulator_smoke_source_ready then empty else "ios_simulator_smoke_source_contract_not_ready" end,if $ios_simulator_ui_source_ready then empty else "ios_simulator_ui_qualification_source_contract_not_ready" end,if $android_emulator_smoke_source_ready then empty else "android_emulator_smoke_source_contract_not_ready" end,if $android_emulator_live_readback_source_ready then empty else "android_emulator_live_readback_source_contract_not_ready" end,if $android_login_template_ready then empty else "android_login_template_contract_not_ready" end,if $icons_ready then empty else "ios_opaque_canonical_icon_contract_not_ready" end,if $credential_ready then empty else "android_secure_credential_source_contract_not_ready" end,if $ios_targets then empty else "ios_1_95_targets_not_installed" end,if $android_target then empty else "android_1_95_target_not_installed" end,if $identity_available then empty else "apple_distribution_identity_not_available" end,"pinned_makepad_ios_accessibility_update_discarded","pinned_makepad_android_accessibility_update_discarded","android_secure_credential_runtime_receipt_missing",if $ios_simulator_receipt_ready then empty elif $ios_simulator_receipt_supplied then "ios_simulator_receipt_invalid" else "ios_simulator_receipt_missing" end,if $ios_simulator_ui_receipt_ready then empty elif $ios_simulator_ui_receipt_supplied then "ios_simulator_ui_qualification_receipt_invalid" else "ios_simulator_ui_qualification_receipt_missing" end,if $android_emulator_receipt_supplied and $android_live_readback_opt_in != 1 then "android_emulator_live_readback_opt_in_missing" elif $android_emulator_receipt_ready then empty elif $android_emulator_receipt_supplied then "android_emulator_receipt_invalid" else "android_emulator_receipt_missing" end,"ios_real_device_receipt_missing","android_real_device_receipt_missing","voiceover_receipt_missing","talkback_receipt_missing",if $ios_login_keyboard_ready then "software_keyboard_full_product_scope_missing" else "software_keyboard_receipt_missing" end,if $ios_login_safe_area_ready then "safe_area_full_product_scope_missing" else "safe_area_receipt_missing" end,"rtl_receipt_missing","dynamic_type_or_font_scale_receipt_missing"])
+      blockers:([if $source_stable then empty else "source_changed_during_mobile_gate" end,if $policy_ready then empty else "mobile_policy_contract_not_ready" end,if $makepad_pin_ready then empty else "makepad_revision_not_pinned" end,if $toolchain_ready then empty else "cargo_makepad_exact_toolchain_wrapper_not_ready" end,if $testflight_ready then empty else "testflight_current_source_fail_closed_contract_not_ready" end,if $ios_simulator_smoke_source_ready then empty else "ios_simulator_smoke_source_contract_not_ready" end,if $ios_simulator_ui_source_ready then empty else "ios_simulator_ui_qualification_source_contract_not_ready" end,if $android_emulator_smoke_source_ready then empty else "android_emulator_smoke_source_contract_not_ready" end,if $android_emulator_live_readback_source_ready then empty else "android_emulator_live_readback_source_contract_not_ready" end,if $android_login_template_ready then empty else "android_login_template_contract_not_ready" end,if $icons_ready then empty else "ios_opaque_canonical_icon_contract_not_ready" end,if $credential_ready then empty else "android_secure_credential_source_contract_not_ready" end,if $ios_targets then empty else "ios_1_95_targets_not_installed" end,if $android_target then empty else "android_1_95_target_not_installed" end,if $identity_available then empty else "apple_distribution_identity_not_available" end,"pinned_makepad_ios_accessibility_update_discarded","pinned_makepad_android_accessibility_update_discarded","android_secure_credential_runtime_receipt_missing",if $ios_simulator_receipt_ready then empty elif $ios_simulator_receipt_supplied then "ios_simulator_receipt_invalid" else "ios_simulator_receipt_missing" end,if $ios_simulator_ui_receipt_ready then empty elif $ios_simulator_ui_receipt_supplied then "ios_simulator_ui_qualification_receipt_invalid" else "ios_simulator_ui_qualification_receipt_missing" end,if $android_emulator_receipt_supplied and $android_live_readback_opt_in != 1 then "android_emulator_live_readback_opt_in_missing" elif $android_emulator_receipt_ready then empty elif $android_emulator_receipt_supplied then "android_emulator_receipt_invalid" else "android_emulator_receipt_missing" end,"ios_real_device_receipt_missing","android_real_device_receipt_missing","voiceover_receipt_missing","talkback_receipt_missing",if $ios_login_keyboard_ready then "software_keyboard_full_product_scope_missing" else "software_keyboard_receipt_missing" end,if $ios_login_visible_anchor_safe_area_ready then "visible_anchor_safe_area_full_product_scope_missing" else "visible_anchor_safe_area_receipt_missing" end,"rtl_receipt_missing","dynamic_type_or_font_scale_receipt_missing"])
     }
   ')"
 

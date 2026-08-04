@@ -49,6 +49,7 @@ ruby -rjson -e '
   abort "retired ghost modules were not absent" unless report.dig("product_shell", "retired_ghost_modules_ready") == true
   abort "retired raster assets were not absent" unless report.dig("product_shell", "retired_raster_assets_ready") == true
   abort "inline provider marks were not attributed" unless report.dig("product_shell", "inline_provider_marks_attribution_ready") == true
+  abort "compact 48-point login contract was not ready" unless report.dig("product_shell", "login_compact_touch_contract_ready") == true
   abort "mobile gate did not bind HomeScreen" unless report.dig("product_shell", "mobile_widget_tree_contract", "path") == "src/home/home_screen.rs"
   abort "cockpit was present on the default route" unless report.dig("product_shell", "no_cockpit_default") == true
   abort "downstream source contracts were incomplete" unless report.dig("product_shell", "downstream_source_contracts_ready") == true
@@ -69,6 +70,84 @@ ruby -rjson -e '
     abort "#{field} was dishonestly promoted" unless report[field] == false
   end
 ' "$TEST_ROOT/product.json"
+
+ruby -e '
+  path = ARGV.fetch(0)
+  source = File.binread(path)
+  needle = "mod.widgets.HEPTA_TOUCH_TARGET = 48.0"
+  abort "missing touch-target fixture target" unless source.scan(needle).length == 1
+  File.binwrite(path, source.sub(needle, "mod.widgets.HEPTA_TOUCH_TARGET = 32.0"))
+' "$TEST_ROOT/app/src/shared/hepta_theme.rs"
+set +e
+HEPTA_NATIVE_V2_APP_DIR="$TEST_ROOT/app" \
+HEPTA_NATIVE_V2_ALLOW_TEST_ROOT=1 \
+  "$PRODUCT_GATE" --output "$TEST_ROOT/touch-target-negative.json"
+touch_target_exit=$?
+set -e
+if [[ "$touch_target_exit" -eq 0 ]]; then
+  echo "undersized login touch-target constant unexpectedly passed" >&2
+  exit 1
+fi
+ruby -rjson -e '
+  report = JSON.parse(File.binread(ARGV.fetch(0)))
+  contract = report.dig("product_shell", "login_compact_touch_contract")
+  abort "undersized constant was not detected" unless contract["touch_target_constants_exact"] == false
+  abort "undersized touch contract remained ready" unless report.dig("product_shell", "login_compact_touch_contract_ready") == false
+  abort "undersized target promoted Native UI" unless report["native_ui_ready"] == false
+' "$TEST_ROOT/touch-target-negative.json"
+cp "$APP_DIR/src/shared/hepta_theme.rs" "$TEST_ROOT/app/src/shared/hepta_theme.rs"
+
+ruby -e '
+  path = ARGV.fetch(0)
+  source = File.binread(path)
+  pattern = /(login_button := RobrixIconButton \{.{0,500}?height:\s*)\(HEPTA_TOUCH_TARGET\)/m
+  abort "missing named Login target fixture" unless source.match?(pattern)
+  File.binwrite(path, source.sub(pattern) { "#{$1}36" })
+' "$TEST_ROOT/app/src/login/login_screen.rs"
+set +e
+HEPTA_NATIVE_V2_APP_DIR="$TEST_ROOT/app" \
+HEPTA_NATIVE_V2_ALLOW_TEST_ROOT=1 \
+  "$PRODUCT_GATE" --output "$TEST_ROOT/login-button-target-negative.json"
+login_button_target_exit=$?
+set -e
+if [[ "$login_button_target_exit" -eq 0 ]]; then
+  echo "detached undersized Login action unexpectedly passed" >&2
+  exit 1
+fi
+ruby -rjson -e '
+  report = JSON.parse(File.binread(ARGV.fetch(0)))
+  contract = report.dig("product_shell", "login_compact_touch_contract")
+  abort "detached Login action was not detected" unless contract["named_action_target_bindings"] == false
+  abort "detached Login target contract remained ready" unless report.dig("product_shell", "login_compact_touch_contract_ready") == false
+  abort "detached Login target promoted Native UI" unless report["native_ui_ready"] == false
+' "$TEST_ROOT/login-button-target-negative.json"
+cp "$APP_DIR/src/login/login_screen.rs" "$TEST_ROOT/app/src/login/login_screen.rs"
+
+ruby -e '
+  path = ARGV.fetch(0)
+  source = File.binread(path)
+  pattern = /(sso_view := View \{[^\{\}]{0,240}?height:\s*)\(HEPTA_TOUCH_TARGET\)/m
+  abort "missing SSO action-row target fixture" unless source.match?(pattern)
+  File.binwrite(path, source.sub(pattern) { "#{$1}36" })
+' "$TEST_ROOT/app/src/login/login_screen.rs"
+set +e
+HEPTA_NATIVE_V2_APP_DIR="$TEST_ROOT/app" \
+HEPTA_NATIVE_V2_ALLOW_TEST_ROOT=1 \
+  "$PRODUCT_GATE" --output "$TEST_ROOT/sso-row-target-negative.json"
+sso_row_target_exit=$?
+set -e
+if [[ "$sso_row_target_exit" -eq 0 ]]; then
+  echo "detached undersized SSO action row unexpectedly passed" >&2
+  exit 1
+fi
+ruby -rjson -e '
+  report = JSON.parse(File.binread(ARGV.fetch(0)))
+  contract = report.dig("product_shell", "login_compact_touch_contract")
+  abort "detached SSO row was not detected" unless contract["named_action_target_bindings"] == false
+  abort "detached SSO row contract remained ready" unless report.dig("product_shell", "login_compact_touch_contract_ready") == false
+  abort "detached SSO row promoted Native UI" unless report["native_ui_ready"] == false
+' "$TEST_ROOT/sso-row-target-negative.json"
+cp "$APP_DIR/src/login/login_screen.rs" "$TEST_ROOT/app/src/login/login_screen.rs"
 
 mkdir -p "$TEST_ROOT/app/resources/img"
 printf 'retired raster fixture\n' >"$TEST_ROOT/app/resources/img/apple.png"

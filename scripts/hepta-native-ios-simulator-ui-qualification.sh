@@ -28,7 +28,8 @@ Reinstalls the exact app artifact from a current-source iOS simulator receipt
 onto that same already-booted simulator, launches the fresh unauthenticated app,
 focuses the homeserver field through the real Simulator window, captures the
 software keyboard, and emits source-bound login-surface safe-area/keyboard
-evidence. No credentials, real device, signing, upload, or publication is used.
+evidence scoped to visible text anchors and conservative Login-frame clearance.
+No credentials, real device, signing, upload, or publication is used.
 
   --extended-lab       additionally exercise reversible Simulator-only RTL,
                        Dynamic Type, rotation/keyboard, and repeated startup
@@ -318,25 +319,37 @@ BASELINE_PROBE="$TMP_DIR/baseline-content.json"
 scripts/hepta-image-content-probe --image "$BASELINE_SCREENSHOT" --output "$BASELINE_PROBE" >/dev/null
 jq -e '.ready == true' "$BASELINE_PROBE" >/dev/null || { echo "error: baseline screenshot content is not ready" >&2; exit 1; }
 
-CLICK_X=$((WINDOW_X + WINDOW_WIDTH / 2))
-CLICK_Y=$((WINDOW_Y + WINDOW_HEIGHT * 42 / 100))
+BASELINE_HOMESERVER_LOCATOR="$TMP_DIR/baseline-homeserver-locator.json"
+scripts/hepta-ios-login-ui-probe --locate-homeserver \
+  --baseline "$BASELINE_SCREENSHOT" --device-name "$DEVICE_NAME" \
+  --output "$BASELINE_HOMESERVER_LOCATOR" >/dev/null
+jq -e '
+  .kind == "hepta-ios-homeserver-anchor-locator"
+  and .ready == true
+  and .locator.engine == "apple_vision_recognize_text"
+  and .locator.match_count == 1
+  and .claims.baseline_vision_homeserver_anchor_center_ready == true
+  and .claims.generic_focus_ready == false
+' "$BASELINE_HOMESERVER_LOCATOR" >/dev/null \
+  || { echo "error: unique baseline homeserver anchor was not located" >&2; exit 1; }
+TARGET_X_RATIO="$(jq -r '.locator.normalized_device_coordinate.x' "$BASELINE_HOMESERVER_LOCATOR")"
+TARGET_Y_RATIO="$(jq -r '.locator.normalized_device_coordinate.y_from_top' "$BASELINE_HOMESERVER_LOCATOR")"
+CLICK_X="$(ruby -e 'puts(ARGV[0].to_i + (ARGV[1].to_i * ARGV[2].to_f).round)' "$WINDOW_X" "$WINDOW_WIDTH" "$TARGET_X_RATIO")"
+CLICK_Y="$(ruby -e 'puts(ARGV[0].to_i + (ARGV[1].to_i * ARGV[2].to_f).round)' "$WINDOW_Y" "$WINDOW_HEIGHT" "$TARGET_Y_RATIO")"
+KEYBOARD_TRIGGER_MODE="direct_after_vision_homeserver_anchor_click"
 peekaboo click --no-remote --coords "$CLICK_X,$CLICK_Y" --no-auto-focus --json >/dev/null
 sleep 1
 CANDIDATE_SCREENSHOT="$TMP_DIR/keyboard-candidate.png"
 CANDIDATE_PROBE="$TMP_DIR/keyboard-candidate-probe.json"
 xcrun simctl io "$UDID" screenshot --type=png "$CANDIDATE_SCREENSHOT" >/dev/null
-if scripts/hepta-ios-login-ui-probe --baseline "$BASELINE_SCREENSHOT" \
-    --keyboard "$CANDIDATE_SCREENSHOT" --output "$CANDIDATE_PROBE" >/dev/null 2>&1; then
-  cp "$CANDIDATE_SCREENSHOT" "$KEYBOARD_SCREENSHOT"
-  KEYBOARD_CAPTURE_MODE="already_visible_after_field_focus"
-else
-  peekaboo hotkey --no-remote --app Simulator --window-id "$SIMULATOR_WINDOW_ID" \
-    --keys 'cmd,k' --json >/dev/null
-  KEYBOARD_TOGGLED=true
-  sleep 2
-  xcrun simctl io "$UDID" screenshot --type=png "$KEYBOARD_SCREENSHOT" >/dev/null
-  KEYBOARD_CAPTURE_MODE="simulator_software_keyboard_toggle"
-fi
+scripts/hepta-ios-login-ui-probe --baseline "$BASELINE_SCREENSHOT" \
+  --keyboard "$CANDIDATE_SCREENSHOT" --device-name "$DEVICE_NAME" \
+  --target-x-ratio "$TARGET_X_RATIO" --target-y-ratio "$TARGET_Y_RATIO" \
+  --keyboard-trigger-mode "$KEYBOARD_TRIGGER_MODE" \
+  --output "$CANDIDATE_PROBE" >/dev/null \
+  || { echo "error: OCR-located homeserver click did not directly produce qualified keyboard evidence" >&2; exit 1; }
+cp "$CANDIDATE_SCREENSHOT" "$KEYBOARD_SCREENSHOT"
+KEYBOARD_CAPTURE_MODE="$KEYBOARD_TRIGGER_MODE"
 
 KEYBOARD_CONTENT_PROBE="$TMP_DIR/keyboard-content.json"
 UI_PROBE="$TMP_DIR/ios-login-ui-probe.json"
@@ -344,7 +357,10 @@ scripts/hepta-image-content-probe --image "$KEYBOARD_SCREENSHOT" --output "$KEYB
 jq -e '.ready == true' "$KEYBOARD_CONTENT_PROBE" >/dev/null \
   || { echo "error: keyboard screenshot content is not ready" >&2; exit 1; }
 scripts/hepta-ios-login-ui-probe --baseline "$BASELINE_SCREENSHOT" \
-  --keyboard "$KEYBOARD_SCREENSHOT" --output "$UI_PROBE" >/dev/null
+  --keyboard "$KEYBOARD_SCREENSHOT" --device-name "$DEVICE_NAME" \
+  --target-x-ratio "$TARGET_X_RATIO" --target-y-ratio "$TARGET_Y_RATIO" \
+  --keyboard-trigger-mode "$KEYBOARD_TRIGGER_MODE" \
+  --output "$UI_PROBE" >/dev/null
 
 LAB_RESULT='{"requested":false,"status":"not_requested","ready":false}'
 if [[ "$EXTENDED_LAB" == true ]]; then
@@ -515,6 +531,12 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   LAB_ORIENTATION_MUTATED=false
   LAB_STATE_MUTATED=false
 
+  scripts/hepta-ios-login-ui-probe --baseline "$BASELINE_SCREENSHOT" \
+    --keyboard "$KEYBOARD_SCREENSHOT" --landscape "$LANDSCAPE_PATH" \
+    --device-name "$DEVICE_NAME" --target-x-ratio "$TARGET_X_RATIO" \
+    --target-y-ratio "$TARGET_Y_RATIO" --keyboard-trigger-mode "$KEYBOARD_TRIGGER_MODE" \
+    --output "$UI_PROBE" >/dev/null
+
   LAB_RESULT="$(jq -n \
     --arg evidence_root "$LAB_EVIDENCE_DIR" --arg original_size "$ORIGINAL_CONTENT_SIZE" \
     --arg original_orientation "$ORIGINAL_ORIENTATION" --arg restored_orientation "$RESTORED_ORIENTATION" \
@@ -562,6 +584,13 @@ IOS_RECEIPT_SHA256="$(shasum -a 256 "$IOS_RECEIPT" | awk '{print $1}')"
 BASELINE_SHA256="$(shasum -a 256 "$BASELINE_SCREENSHOT" | awk '{print $1}')"
 KEYBOARD_SHA256="$(shasum -a 256 "$KEYBOARD_SCREENSHOT" | awk '{print $1}')"
 UI_PROBE_JSON="$(cat "$UI_PROBE")"
+BASELINE_HOMESERVER_LOCATOR_JSON="$(cat "$BASELINE_HOMESERVER_LOCATOR")"
+UI_SMALL_SCREEN_READY="$(jq -r '.claims.ios_simulator_login_small_screen_ready' "$UI_PROBE")"
+UI_REQUIRED_CONTROLS_READY="$(jq -r '.claims.ios_simulator_login_required_controls_visible' "$UI_PROBE")"
+UI_COORDINATE_TARGETED_KEYBOARD_READY="$(jq -r '.claims.ios_simulator_login_coordinate_targeted_keyboard_ready' "$UI_PROBE")"
+UI_VISIBLE_ANCHOR_SAFE_AREA_READY="$(jq -r '.claims.ios_simulator_login_visible_anchor_safe_area_ready' "$UI_PROBE")"
+UI_KEYBOARD_CONTROL_CLEARANCE_READY="$(jq -r '.claims.ios_simulator_login_keyboard_control_clearance_ready' "$UI_PROBE")"
+UI_LANDSCAPE_CONTROL_CLEARANCE_READY="$(jq -r '.claims.ios_simulator_login_landscape_control_clearance_ready' "$UI_PROBE")"
 REPORT="$(jq -n \
   --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg producer "$PRODUCER" \
   --argjson source_binding "$SOURCE_FINAL" --arg ios_receipt "$IOS_RECEIPT" \
@@ -570,10 +599,19 @@ REPORT="$(jq -n \
   --arg runtime "$RUNTIME_IDENTIFIER" --argjson device "$DEVICE_REPORT" \
   --arg launch_output "$LAUNCH_OUTPUT" --argjson launch_pid "$LAUNCH_PID" \
   --argjson window_id "$SIMULATOR_WINDOW_ID" --arg window_bounds "$WINDOW_X,$WINDOW_Y,$WINDOW_WIDTH,$WINDOW_HEIGHT" \
-  --argjson click_x "$CLICK_X" --argjson click_y "$CLICK_Y" --arg keyboard_capture_mode "$KEYBOARD_CAPTURE_MODE" \
+  --argjson click_x "$CLICK_X" --argjson click_y "$CLICK_Y" \
+  --argjson target_x_ratio "$TARGET_X_RATIO" --argjson target_y_ratio "$TARGET_Y_RATIO" \
+  --arg keyboard_capture_mode "$KEYBOARD_CAPTURE_MODE" \
   --arg baseline "$BASELINE_SCREENSHOT" --arg baseline_sha "$BASELINE_SHA256" \
   --arg keyboard "$KEYBOARD_SCREENSHOT" --arg keyboard_sha "$KEYBOARD_SHA256" \
-  --argjson ui_probe "$UI_PROBE_JSON" --argjson extended_lab "$LAB_RESULT" '
+  --argjson homeserver_locator "$BASELINE_HOMESERVER_LOCATOR_JSON" \
+  --argjson ui_probe "$UI_PROBE_JSON" --argjson extended_lab "$LAB_RESULT" \
+  --argjson small_screen_ready "$UI_SMALL_SCREEN_READY" \
+  --argjson required_controls_ready "$UI_REQUIRED_CONTROLS_READY" \
+  --argjson coordinate_targeted_keyboard_ready "$UI_COORDINATE_TARGETED_KEYBOARD_READY" \
+  --argjson visible_anchor_safe_area_ready "$UI_VISIBLE_ANCHOR_SAFE_AREA_READY" \
+  --argjson keyboard_control_clearance_ready "$UI_KEYBOARD_CONTROL_CLEARANCE_READY" \
+  --argjson landscape_control_clearance_ready "$UI_LANDSCAPE_CONTROL_CLEARANCE_READY" '
     {
       schema_version:1,
       kind:"hepta-native-ios-simulator-ui-qualification",
@@ -587,15 +625,22 @@ REPORT="$(jq -n \
       input_receipt:{path:$ios_receipt,sha256:$ios_receipt_sha,artifact:{path:$artifact,sha256:$artifact_sha}},
       device:{udid:$udid,name:$device_name,runtime_identifier:$runtime,state:$device.state,is_available:$device.isAvailable,real_device:false},
       launch:{fresh_uninstall_install:true,ready:true,pid:$launch_pid,output:$launch_output,credentials_supplied:false},
-      simulator_window:{app:"Simulator",window_id:$window_id,exact_device_title_match_count:1,bounds:$window_bounds,focus_ready:true,field_focus_coordinate:{x:$click_x,y:$click_y},display_wake_backend:"/usr/bin/caffeinate"},
-      captures:{baseline:{path:$baseline,sha256:$baseline_sha},software_keyboard:{path:$keyboard,sha256:$keyboard_sha,capture_mode:$keyboard_capture_mode}},
+      simulator_window:{app:"Simulator",window_id:$window_id,exact_device_title_match_count:1,bounds:$window_bounds,coordinate_targeting:{ready:$coordinate_targeted_keyboard_ready,requested_target:"baseline_homeserver_text_anchor_center",locator:$homeserver_locator,click_coordinate:{x:$click_x,y:$click_y,normalized_to_device:{x:$target_x_ratio,y_from_top:$target_y_ratio}},keyboard_trigger_mode:$keyboard_capture_mode,keyboard_toggle_fallback_used:false,platform_focus_readback_performed:false,actual_focused_element:null,focus_confirmed:false},display_wake_backend:"/usr/bin/caffeinate"},
+      captures:{baseline:{path:$baseline,sha256:$baseline_sha},software_keyboard:{path:$keyboard,sha256:$keyboard_sha,capture_mode:$keyboard_capture_mode},landscape:$ui_probe.captures.landscape},
       ui_probe:$ui_probe,
       extended_lab:$extended_lab,
       claims:{
         ios_simulator_login_software_keyboard_ready:true,
-        ios_simulator_login_safe_area_ready:true,
+        ios_simulator_login_visible_anchor_safe_area_ready:$visible_anchor_safe_area_ready,
+        ios_simulator_login_small_screen_ready:$small_screen_ready,
+        ios_simulator_login_required_controls_visible:$required_controls_ready,
+        ios_simulator_login_coordinate_targeted_keyboard_ready:$coordinate_targeted_keyboard_ready,
+        ios_simulator_login_homeserver_focus_ready:false,
+        ios_simulator_login_keyboard_control_clearance_ready:$keyboard_control_clearance_ready,
+        ios_simulator_login_landscape_control_clearance_ready:$landscape_control_clearance_ready,
         generic_software_keyboard_ready:false,
         generic_safe_area_ready:false,
+        generic_rotation_ready:false,
         ios_real_device_ready:false,
         voiceover_ready:false,
         rtl_ready:false,
@@ -610,7 +655,7 @@ REPORT="$(jq -n \
           {code:"voiceover_receipt_missing",claim:"voiceover_ready",observed:false}
         ]
       },
-      local_simulator_side_effects:{fresh_app_install:true,app_launch:true,field_focus:true,software_keyboard_toggle:($keyboard_capture_mode == "simulator_software_keyboard_toggle"),screenshot_capture:true,extended_lab_requested:$extended_lab.requested},
+      local_simulator_side_effects:{fresh_app_install:true,app_launch:true,coordinate_targeted_click:true,platform_focus_readback:false,software_keyboard_toggle:false,screenshot_capture:true,extended_lab_requested:$extended_lab.requested},
       forbidden_actions_performed:{credential_supply:false,real_device_contact:false,account_connection:false,code_sign:false,upload:false,publish:false},
       external_side_effects_performed:false
     }

@@ -246,7 +246,9 @@ jq -e --argjson policy_ready "$expected_policy_ready" --arg policy_sha "$expecte
   and .gates.native_feature_matrix.ready == false
   and .gates.control_browser.status == (if .source_publish_boundary_stable then "not_run" else "not_ready" end)
   and .gates.native_mobile.ios_unauthenticated_login_surface.software_keyboard_verified == false
-  and .gates.native_mobile.ios_unauthenticated_login_surface.safe_area_verified == false
+  and .gates.native_mobile.ios_unauthenticated_login_surface.coordinate_targeted_keyboard_verified == false
+  and .gates.native_mobile.ios_unauthenticated_login_surface.visible_anchor_safe_area_verified == false
+  and .gates.native_mobile.ios_unauthenticated_login_surface.homeserver_focus_verified == false
   and .gates.native_mobile.generic_android_visual_rotation_ime_claims_hard_false == .source_publish_boundary_stable
   and ([.promotion_receipts[] | select(.name == "matrix_live") | .ready] == [false])
   and ([.promotion_receipts[] | select(.name == "native_window") | .ready] == [false])
@@ -329,7 +331,9 @@ jq -e '
   and .readiness.public_ga == false
   and .hard_boundaries.promotion_independent_verifiers_ready == false
   and .hard_boundaries.ios_simulator_unauthenticated_login_surface_software_keyboard_verified == false
-  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_safe_area_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_coordinate_targeted_keyboard_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_visible_anchor_safe_area_verified == false
+  and .hard_boundaries.ios_simulator_unauthenticated_login_surface_homeserver_focus_verified == false
   and .hard_boundaries.android_emulator_visual_verified == false
   and .hard_boundaries.android_emulator_rotation_verified == false
   and .hard_boundaries.android_emulator_ime_verified == false
@@ -378,7 +382,9 @@ grep -Fq -- 'rehash "$profile" --receipt "$receipt"' scripts/hepta-ui-current-re
 grep -Fq -- 'package_args+=(--build --bootstrap-tools --stage-dir "$EVIDENCE_DIR/native-current-package")' scripts/hepta-ui-current-readiness.sh
 grep -Fq -- 'ios_unauthenticated_login_surface:{software_keyboard_verified:' scripts/hepta-ui-current-readiness.sh
 grep -Fq -- 'ios_simulator_unauthenticated_login_surface_software_keyboard_verified:' scripts/hepta-ui-current-readiness.sh
-grep -Fq -- 'ios_simulator_unauthenticated_login_surface_safe_area_verified:' scripts/hepta-ui-current-readiness.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_coordinate_targeted_keyboard_verified:' scripts/hepta-ui-current-readiness.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_visible_anchor_safe_area_verified:' scripts/hepta-ui-current-readiness.sh
+grep -Fq -- 'ios_simulator_unauthenticated_login_surface_homeserver_focus_verified:false' scripts/hepta-ui-current-readiness.sh
 if grep -Fq -- ': >"$current_run_report"' scripts/hepta-ui-current-readiness.sh; then
   echo "current readiness still truncates reusable child receipt paths in place" >&2
   exit 1

@@ -46,8 +46,8 @@ script_mod! {
     }
 
     mod.widgets.SsoButton = RoundedView {
-        width: 44,
-        height: 44,
+        width: (HEPTA_TOUCH_TARGET),
+        height: (HEPTA_TOUCH_TARGET),
         cursor: MouseCursor.Hand,
         visible: true,
         padding: 0,
@@ -90,9 +90,14 @@ script_mod! {
                 }
             }
 
-            RoundedShadowView {
-                margin: Inset{top: 18, bottom: 18, left: 8, right: 8}
-                padding: 14
+            login_panel := RoundedShadowView {
+                margin: Inset{
+                    top: 12,
+                    bottom: (24.0 + mod.widgets.SAFE_INSET_PAD_BOTTOM),
+                    left: (8.0 + mod.widgets.SAFE_INSET_PAD_LEFT),
+                    right: (8.0 + mod.widgets.SAFE_INSET_PAD_RIGHT)
+                }
+                padding: 12
                 width: Fill{max: 636.}
                 height: Fit
                 align: Align{x: 0.5, y: 0.0}
@@ -109,19 +114,19 @@ script_mod! {
                     shadow_offset: vec2(0.0, 2.0)
                 }
 
-                View {
+                login_columns := View {
                     width: Fill
                     height: Fit
                     flow: Flow.Right{wrap: true}
                     align: Align{x: 0.5, y: 0.0}
-                    spacing: 14.0
+                    spacing: 12.0
 
                     credentials_column := View {
                         width: 260
                         height: Fit
                         flow: Down
                         align: Align{x: 0.5, y: 0.0}
-                        spacing: 8.0
+                        spacing: 7.0
 
                         mod.widgets.HeptaBrandMark {}
 
@@ -137,7 +142,7 @@ script_mod! {
                         }
 
                         user_id_input := RobrixTextInput {
-                            width: 260, height: Fit{min: FitBound.Abs(44)}
+                            width: 260, height: Fit{min: FitBound.Abs(48)}
                             flow: Right, // do not wrap
                             padding: 10,
                             empty_text: "User ID"
@@ -147,12 +152,12 @@ script_mod! {
                         }
 
                         View {
-                            width: 260, height: Fit{min: FitBound.Abs(44)}
+                            width: 260, height: Fit{min: FitBound.Abs(48)}
                             flow: Overlay
                             align: Align{x: 1.0, y: 0.5}
 
                             password_input := RobrixTextInput {
-                                width: Fill, height: Fit{min: FitBound.Abs(44)}
+                                width: Fill, height: Fit{min: FitBound.Abs(48)}
                                 flow: Right, // do not wrap
                                 padding: Inset{top: 10, bottom: 10, left: 10, right: 38}
                                 empty_text: "Password"
@@ -163,11 +168,11 @@ script_mod! {
                             }
 
                             View {
-                                width: 44, height: Fill
+                                width: (HEPTA_TOUCH_TARGET), height: Fill
                                 align: Align{x: 0.5, y: 0.5}
 
                                 show_password_button := RobrixNeutralIconButton {
-                                    width: 44, height: 44,
+                                    width: (HEPTA_TOUCH_TARGET), height: (HEPTA_TOUCH_TARGET),
                                     align: Align{x: 0.5, y: 0.5}
                                     padding: 5
                                     spacing: 0
@@ -185,8 +190,8 @@ script_mod! {
 
                                 hide_password_button := RobrixNeutralIconButton {
                                     visible: false,
+                                    width: (HEPTA_TOUCH_TARGET), height: (HEPTA_TOUCH_TARGET),
                                     align: Align{x: 0.5, y: 0.5}
-                                    width: 44, height: 44,
                                     padding: 5
                                     spacing: 0
                                     margin: 0
@@ -208,7 +213,7 @@ script_mod! {
                             flow: Down,
 
                             homeserver_input := RobrixTextInput {
-                                width: 260, height: Fit{min: FitBound.Abs(44)},
+                                width: 260, height: Fit{min: FitBound.Abs(48)},
                                 flow: Right, // do not wrap
                                 padding: Inset{top: 5, bottom: 5, left: 10, right: 10}
                                 empty_text: "matrix.org"
@@ -221,7 +226,7 @@ script_mod! {
                                 }
                             }
 
-                            View {
+                            homeserver_helper := View {
                                 width: 260,
                                 height: Fit,
                                 flow: Right,
@@ -247,7 +252,7 @@ script_mod! {
 
                         login_button := RobrixIconButton {
                             width: 260,
-                            height: 44
+                            height: (HEPTA_TOUCH_TARGET)
                             padding: 10
                             margin: Inset{top: 2, bottom: 2}
                             align: Align{x: 0.5, y: 0.5}
@@ -260,9 +265,9 @@ script_mod! {
                         height: Fit
                         flow: Down
                         align: Align{x: 0.5, y: 0.0}
-                        spacing: 10.0
+                        spacing: 8.0
 
-                        Label {
+                        marketing_title := Label {
                             width: Fill, height: Fit
                             draw_text +: {
                                 color: (COLOR_HEPTA_TEXT)
@@ -271,7 +276,7 @@ script_mod! {
                             text: "Calm work, clearly reviewed"
                         }
 
-                        Label {
+                        marketing_copy := Label {
                             width: Fill, height: Fit
                             draw_text +: {
                                 color: (COLOR_HEPTA_MUTED)
@@ -280,7 +285,7 @@ script_mod! {
                             text: "Rooms, evidence, and reviewed work in one calm surface."
                         }
 
-                        RoundedView {
+                        privacy_panel := RoundedView {
                             width: 275
                             height: Fit
                             padding: 12
@@ -313,7 +318,7 @@ script_mod! {
                             }
                         }
 
-                        LineH {
+                        marketing_separator := LineH {
                             width: 275
                             draw_bg.color: (COLOR_HEPTA_HAIRLINE)
                         }
@@ -329,7 +334,7 @@ script_mod! {
                         }
 
                         sso_view := View {
-                            width: 275, height: 44,
+                            width: 275, height: (HEPTA_TOUCH_TARGET),
                             flow: Right,
                             spacing: 2.0,
                             align: Align{x: 0.5, y: 0.5}
@@ -419,7 +424,7 @@ script_mod! {
                         }
 
                         signup_button := RobrixIconButton {
-                            width: Fit, height: 44
+                            width: Fit, height: (HEPTA_TOUCH_TARGET)
                             padding: Inset{left: 15, right: 15, top: 10, bottom: 10}
                             margin: 0
                             align: Align{x: 0.5, y: 0.5}
@@ -453,12 +458,98 @@ pub struct LoginScreen {
     #[rust] sso_redirect_url: Option<String>,
     /// Mirrors the modal button's product state for the semantic tree.
     #[rust] modal_button_enabled: bool,
+    /// True while the platform software keyboard is occluding the login view.
+    #[rust] ime_visible: bool,
+    /// Compact mode keeps the credential path primary on short mobile windows.
+    #[rust] compact_layout: bool,
+    /// Last logical window size, used to retain compact landscape state after IME hide.
+    #[rust] window_size: Vec2d,
+}
+
+impl LoginScreen {
+    fn should_use_compact_layout(&self) -> bool {
+        if !cfg!(any(target_os = "android", target_os = "ios")) {
+            return false;
+        }
+        let short_window = self.window_size.y > 0.0 && self.window_size.y <= 520.0;
+        let landscape = self.window_size.x > 0.0
+            && self.window_size.y > 0.0
+            && self.window_size.x > self.window_size.y;
+        self.ime_visible || short_window || landscape
+    }
+
+    fn apply_responsive_layout(&mut self, cx: &mut Cx, force: bool) {
+        let compact = self.should_use_compact_layout();
+        if !force && compact == self.compact_layout {
+            return;
+        }
+        self.compact_layout = compact;
+
+        for path in [
+            ids!(marketing_title),
+            ids!(marketing_copy),
+            ids!(privacy_panel),
+            ids!(marketing_separator),
+        ] {
+            self.view.widget(cx, path).set_visible(cx, !compact);
+        }
+        self.view
+            .widget(cx, ids!(homeserver_helper))
+            .set_visible(cx, !compact);
+
+        let insets = cx.display_context.safe_area_insets;
+        let edge = if compact { 6.0 } else { 8.0 };
+        let panel_margin = Inset {
+            top: if compact { 8.0 } else { 12.0 },
+            bottom: (if compact { 28.0 } else { 24.0 }) + insets.bottom,
+            left: edge + insets.left,
+            right: edge + insets.right,
+        };
+        let pad = if compact { 10.0 } else { 12.0 };
+        let panel_padding = Inset {
+            top: pad,
+            bottom: pad,
+            left: pad,
+            right: pad,
+        };
+        let column_spacing = if compact { 8.0 } else { 12.0 };
+        let credentials_spacing = if compact { 5.0 } else { 7.0 };
+        let alternatives_spacing = if compact { 6.0 } else { 8.0 };
+        let mut panel = self.view.view(cx, ids!(login_panel));
+        let mut columns = self.view.view(cx, ids!(login_columns));
+        let mut credentials = self.view.view(cx, ids!(credentials_column));
+        let mut alternatives = self.view.view(cx, ids!(alternatives_column));
+        script_apply_eval!(cx, panel, {
+            margin: #(panel_margin)
+            padding: #(panel_padding)
+        });
+        script_apply_eval!(cx, columns, { spacing: #(column_spacing) });
+        script_apply_eval!(cx, credentials, { spacing: #(credentials_spacing) });
+        script_apply_eval!(cx, alternatives, { spacing: #(alternatives_spacing) });
+        self.redraw(cx);
+    }
 }
 
 
 impl Widget for LoginScreen {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         self.view.handle_event(cx, event, scope);
+        match event {
+            Event::VirtualKeyboard(VirtualKeyboardEvent::WillShow { height, .. })
+            | Event::VirtualKeyboard(VirtualKeyboardEvent::DidShow { height, .. }) => {
+                self.ime_visible = *height > 0.0;
+                self.apply_responsive_layout(cx, false);
+            }
+            Event::VirtualKeyboard(VirtualKeyboardEvent::DidHide { .. }) => {
+                self.ime_visible = false;
+                self.apply_responsive_layout(cx, false);
+            }
+            Event::WindowGeomChange(change) => {
+                self.window_size = change.new_geom.inner_size;
+                self.apply_responsive_layout(cx, true);
+            }
+            _ => {}
+        }
         self.match_event(cx, event);
     }
 

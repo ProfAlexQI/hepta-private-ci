@@ -552,14 +552,22 @@
 
   function mountPrimaryNavigation(commandPanel, showingCommandCatalog) {
     const navigation = document.getElementById("hepta-nav");
+    const mobileMorePanel = document.getElementById("thread-tools-popover");
+    const mobileTopbarActive = window.matchMedia("(max-width: 700px)").matches;
     const host = showingCommandCatalog
       ? commandPanel?.querySelector(".panel-heading")
-      : document.querySelector(".tg-thread-status");
+      : mobileTopbarActive && mobileMorePanel
+        ? mobileMorePanel
+        : document.querySelector(".tg-thread-status");
     if (!navigation || !host) {
       return;
     }
     host.prepend(navigation);
-    navigation.dataset.controlUiNavMount = showingCommandCatalog ? "commands" : "thread";
+    navigation.dataset.controlUiNavMount = showingCommandCatalog
+      ? "commands"
+      : mobileTopbarActive
+        ? "mobile-more"
+        : "thread";
   }
 
   function mountScreenDirectoryAction() {
@@ -589,14 +597,43 @@
     panel.append(link);
   }
 
+  function syncMobileTopbarContext() {
+    const workspace = document.querySelector("[data-mobile-layered-chat]");
+    const back = document.querySelector("[data-mobile-topbar-back]");
+    const title = document.querySelector("[data-mobile-topbar-title]");
+    const titleLabel = document.querySelector("[data-mobile-topbar-title-label]");
+    const detail = document.querySelector("[data-mobile-topbar-detail]");
+    if (!workspace || !(back instanceof HTMLAnchorElement) || !(title instanceof HTMLAnchorElement) || !titleLabel || !(detail instanceof HTMLAnchorElement)) {
+      return;
+    }
+    const pane = window.location.hash === "#chat-list"
+      ? "chats"
+      : window.location.hash === "#chat-room"
+        ? "room"
+        : "thread";
+    workspace.dataset.chatMobileActivePane = pane;
+    const titleText = pane === "chats" ? "Chats" : pane === "room" ? "Room info" : "Hepta";
+    titleLabel.textContent = titleText;
+    title.setAttribute("aria-label", pane === "thread" ? "Current Hepta thread" : `Back to Hepta from ${titleText}`);
+    back.href = pane === "thread" ? "#chat-list" : "#chat-thread";
+    const backLabel = pane === "thread" ? "Back to chats" : "Back to Hepta";
+    back.setAttribute("aria-label", backLabel);
+    back.title = backLabel;
+    const backText = back.querySelector(".sr-only");
+    if (backText) backText.textContent = backLabel;
+    detail.hidden = pane === "room";
+    document.documentElement.dataset.controlUiMobileTopbar = "back-title-actions";
+  }
+
   function configureMobileMoreSheet() {
     const composerPanel = document.getElementById("composer-tools-popover");
     const threadPanel = document.getElementById("thread-tools-popover");
     const mobileTopbar = document.querySelector("[data-mobile-primary-topbar]");
+    const mobileActions = document.querySelector("[data-mobile-topbar-actions]");
     const threadHeader = document.querySelector(".tg-thread-header");
     const threadStatus = document.querySelector(".tg-thread-status");
     const primaryNavigation = document.getElementById("hepta-nav");
-    if (!composerPanel || !threadPanel || !mobileTopbar || !threadHeader || !threadStatus || !primaryNavigation) {
+    if (!composerPanel || !threadPanel || !mobileTopbar || !mobileActions || !threadHeader || !threadStatus || !primaryNavigation) {
       return;
     }
     const media = window.matchMedia("(max-width: 700px)");
@@ -608,9 +645,11 @@
           threadPanel.append(item);
         }
         threadPanel.prepend(primaryNavigation);
-        mobileTopbar.append(threadStatus);
+        primaryNavigation.dataset.controlUiNavMount = "mobile-more";
+        mobileActions.append(threadStatus);
         threadStatus.dataset.controlUiMobileTopbarActions = "true";
         document.documentElement.dataset.controlUiMobileMoreConsolidated = "ready";
+        syncMobileTopbarContext();
         return;
       }
       for (const item of threadPanel.querySelectorAll("[data-control-ui-mobile-composer-tool]")) {
@@ -618,12 +657,71 @@
         delete item.dataset.controlUiMobileComposerTool;
       }
       threadStatus.prepend(primaryNavigation);
+      primaryNavigation.dataset.controlUiNavMount = "thread";
       threadHeader.append(threadStatus);
       delete threadStatus.dataset.controlUiMobileTopbarActions;
       delete document.documentElement.dataset.controlUiMobileMoreConsolidated;
     };
     sync();
     media.addEventListener("change", sync);
+  }
+
+  function configureResponsiveComposerMore() {
+    const composeBar = document.querySelector(".tg-compose-bar");
+    const composeFooter = document.querySelector(".tg-compose-footer");
+    const composerMore = document.querySelector("[data-control-ui-composer-more]");
+    if (!composeBar || !composeFooter || !composerMore) {
+      return;
+    }
+    const media = window.matchMedia("(min-width: 701px) and (max-width: 980px)");
+    const sync = () => {
+      if (media.matches) {
+        composeBar.append(composerMore);
+        composerMore.dataset.controlUiNarrowComposerAction = "same-row";
+        document.documentElement.dataset.controlUiNarrowComposer = "single-row";
+        return;
+      }
+      composeFooter.append(composerMore);
+      delete composerMore.dataset.controlUiNarrowComposerAction;
+      delete document.documentElement.dataset.controlUiNarrowComposer;
+    };
+    sync();
+    media.addEventListener("change", sync);
+  }
+
+  function resetRouteScrollPosition(target) {
+    const scrollContainers = [
+      document.scrollingElement,
+      document.querySelector(".content"),
+      document.querySelector(".focus-main"),
+      document.getElementById("chat-thread"),
+      document.querySelector(".hepta-secondary-map"),
+      target?.closest(".hepta-route-surface"),
+    ];
+    for (const container of scrollContainers) {
+      if (container instanceof Element) {
+        container.scrollTop = 0;
+        container.scrollLeft = 0;
+      }
+    }
+  }
+
+  function syncRouteContext(target, showingChat, showingCommands) {
+    const breadcrumb = document.querySelector(".dashboard-header__breadcrumb-current");
+    const title = target?.querySelector("h3");
+    const titleText = showingChat
+      ? "Workspace"
+      : showingCommands
+        ? "Commands"
+        : title?.textContent?.trim() || "Screen";
+    if (breadcrumb) breadcrumb.textContent = titleText;
+    if (!showingChat && !showingCommands && target instanceof HTMLElement && title instanceof HTMLElement) {
+      if (!title.id) title.id = `${target.id}-title`;
+      target.setAttribute("aria-labelledby", title.id);
+      document.body.dataset.controlUiRouteContext = "toolbar-title";
+      return;
+    }
+    delete document.body.dataset.controlUiRouteContext;
   }
 
   function focusRouteTarget(target) {
@@ -639,8 +737,22 @@
     }
     window.requestAnimationFrame(() => {
       focusTarget.focus({ preventScroll: true });
-      focusTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (document.body.dataset.view === "read-only") {
+        resetRouteScrollPosition(focusTarget);
+      } else {
+        focusTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
     });
+  }
+
+  function chatPaneFocusTarget() {
+    if (window.location.hash === "#chat-list") {
+      return document.getElementById("chat-list");
+    }
+    if (window.location.hash === "#chat-room") {
+      return document.getElementById("chat-room");
+    }
+    return document.getElementById("chat-thread");
   }
 
   function mountRouteToolbar(card, routeCards) {
@@ -720,6 +832,8 @@
 
     body.dataset.view = showingChat ? "chat" : showingCommands ? "commands" : "read-only";
     body.dataset.controlUiActiveView = route.key;
+    syncMobileTopbarContext();
+    syncRouteContext(target, showingChat, showingCommands);
     mountPrimaryNavigation(commandPanel, showingCommands);
     updateNavigationState(route.key);
 
@@ -743,7 +857,7 @@
         delete card.dataset.controlUiActiveView;
       }
       if (focus) {
-        focusRouteTarget(target);
+        focusRouteTarget(chatPaneFocusTarget() || target);
       }
       return;
     }
@@ -765,7 +879,7 @@
     for (const panel of chatSidePanels) panel.hidden = true;
     for (const child of chatThreadChildren) {
       child.hidden = showingCommands
-        || !child.matches(".tg-thread-header,.hepta-route-directory,.hepta-secondary-map");
+        || !child.matches(".hepta-route-directory,.hepta-secondary-map");
     }
 
     if (secondaryMap instanceof HTMLDetailsElement) {
@@ -784,6 +898,7 @@
         delete card.dataset.controlUiActiveView;
       }
     }
+    resetRouteScrollPosition(target);
     if (focus) {
       focusRouteTarget(target);
     }
@@ -1045,6 +1160,7 @@
   configureRouteViews();
   mountScreenDirectoryAction();
   configureMobileMoreSheet();
+  configureResponsiveComposerMore();
   document.documentElement.dataset.controlUiProgressiveEnhancement = "ready";
   document.documentElement.dataset.controlUiCapabilityMode = "local-read-only";
   void hydrateOperatorSnapshot();

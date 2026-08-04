@@ -68,6 +68,11 @@
       "normalMs": 180
     }
   },
+  "interaction": {
+    "native": {
+      "minimumTouchTarget": 48
+    }
+  },
   "materialLayers": {
     "environment": {
       "surfaceAlpha": 1.0,

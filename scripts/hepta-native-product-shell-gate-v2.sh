@@ -358,9 +358,11 @@ end
 retired_raster_assets_ready = retired_raster_assets.values.all? { |check| check["ready"] }
 
 login_provider_mark_geometry_source = app_dir.join("src/login/login_screen.rs")
+hepta_theme_source = app_dir.join("src/shared/hepta_theme.rs")
 login_provider_mark_attribution_source = app_dir.join("licenses/ATTRIBUTIONS.md")
 debian_copyright_source = app_dir.join("packaging/debian-copyright")
 login_provider_mark_geometry = login_provider_mark_geometry_source.file? ? login_provider_mark_geometry_source.binread : ""
+hepta_theme = hepta_theme_source.file? ? hepta_theme_source.binread : ""
 login_provider_mark_attribution = login_provider_mark_attribution_source.file? ? login_provider_mark_attribution_source.binread : ""
 debian_copyright = debian_copyright_source.file? ? debian_copyright_source.binread : ""
 inline_provider_marks_attribution = {
@@ -383,6 +385,51 @@ inline_provider_marks_attribution = {
     debian_copyright.include?("creativecommons.org/publicdomain/zero/1.0/legalcode"),
 }
 inline_provider_marks_attribution_ready = inline_provider_marks_attribution.values.all?
+touch_target_bound = lambda do |marker|
+  login_provider_mark_geometry.match?(
+    /#{Regexp.escape(marker)}[^\{]*\{[^\{\}]{0,350}?\bheight:\s*\(HEPTA_TOUCH_TARGET\)/m,
+  )
+end
+input_target_bound = lambda do |marker|
+  login_provider_mark_geometry.match?(
+    /#{Regexp.escape(marker)}[^\{]*\{[^\{\}]{0,240}?\bheight:\s*Fit\{min:\s*FitBound\.Abs\(48\)\}/m,
+  )
+end
+login_compact_touch_contract = {
+  "touch_target_constants_exact" =>
+    hepta_theme.match?(/mod\.widgets\.HEPTA_TOUCH_TARGET\s*=\s*48\.0/) &&
+    hepta_theme.match?(/pub const HEPTA_TOUCH_TARGET:\s*f64\s*=\s*48\.0;/),
+  "named_touch_target_usage_count" => login_provider_mark_geometry.scan(/HEPTA_TOUCH_TARGET/).length >= 10,
+  "minimum_input_target_count" => login_provider_mark_geometry.scan(/FitBound\.Abs\(48\)/).length >= 4,
+  "named_login_actions_present" => %w[
+    show_password_button
+    hide_password_button
+    login_button
+    sso_view
+    signup_button
+  ].all? { |marker| login_provider_mark_geometry.include?(marker) },
+  "named_action_target_bindings" => [
+    "mod.widgets.SsoButton = RoundedView",
+    "show_password_button := RobrixNeutralIconButton",
+    "hide_password_button := RobrixNeutralIconButton",
+    "login_button := RobrixIconButton",
+    "sso_view := View",
+    "signup_button := RobrixIconButton",
+  ].all? { |marker| touch_target_bound.call(marker) },
+  "named_input_target_bindings" => [
+    "user_id_input := RobrixTextInput",
+    "password_input := RobrixTextInput",
+    "homeserver_input := RobrixTextInput",
+  ].all? { |marker| input_target_bound.call(marker) },
+  "ime_compaction" => login_provider_mark_geometry.include?("VirtualKeyboardEvent::WillShow") &&
+    login_provider_mark_geometry.include?("marketing_title") &&
+    login_provider_mark_geometry.include?("privacy_panel"),
+  "safe_area_edges" => login_provider_mark_geometry.include?("SAFE_INSET_PAD_BOTTOM") &&
+    login_provider_mark_geometry.include?("SAFE_INSET_PAD_LEFT") &&
+    login_provider_mark_geometry.include?("SAFE_INSET_PAD_RIGHT"),
+  "legacy_44_point_control_absent" => login_provider_mark_geometry.scan(/(?:FitBound\.Abs\(44\)|\b(?:width|height):\s*44\b)/).empty?,
+}
+login_compact_touch_contract_ready = login_compact_touch_contract.values.all?
 
 shell_relationships = {
   "desktop_owns_room_screen" => contains_marker.call("src/home/main_desktop_ui.rs", "RoomScreen"),
@@ -397,7 +444,7 @@ source_contract_requirements = {
     "src/app.rs" => ["Hepta"],
   },
   "hepta_theme" => {
-    "src/shared/hepta_theme.rs" => %w[HEPTA_GLASS HEPTA_CONTENT HEPTA_FOCUS],
+    "src/shared/hepta_theme.rs" => %w[HEPTA_GLASS HEPTA_CONTENT HEPTA_FOCUS HEPTA_TOUCH_TARGET],
     "src/shared/styles.rs" => %w[HEPTA_GLASS HEPTA_CONTENT],
   },
   "secure_matrix_session" => {
@@ -415,6 +462,11 @@ source_contract_requirements = {
     ],
     "src/login/login_screen.rs" => [
       "publish_login_tree",
+      "HEPTA_TOUCH_TARGET",
+      "VirtualKeyboardEvent::WillShow",
+      "marketing_title",
+      "privacy_panel",
+      "SAFE_INSET_PAD_BOTTOM",
       "Private by default",
       "Credentials stay on this device. Live access starts after server verification.",
       "ScrollYView",
@@ -472,7 +524,7 @@ source_stable = binding_equal?(binding_before, binding_after)
 sync_bound_to_source = sync_report["source_stable_during_run"] == true &&
   binding_equal?(sync_report.fetch("source_binding", {}), binding_after)
 
-native_ui_ready = source_stable && sync_bound_to_source && provenance_ready && downstream_overlay_accounted && real_robrix_modules_ready && real_shell_relationships_ready && rooms_header_toggle_contract_ready && retired_ghost_modules_ready && retired_raster_assets_ready && inline_provider_marks_attribution_ready && no_cockpit_default && downstream_source_contracts_ready
+native_ui_ready = source_stable && sync_bound_to_source && provenance_ready && downstream_overlay_accounted && real_robrix_modules_ready && real_shell_relationships_ready && rooms_header_toggle_contract_ready && retired_ghost_modules_ready && retired_raster_assets_ready && inline_provider_marks_attribution_ready && login_compact_touch_contract_ready && no_cockpit_default && downstream_source_contracts_ready
 
 # These are intentionally not inferred from source presence or a successful build.
 # Each requires a separate, current-source evidence-producing gate or real device run.
@@ -534,6 +586,8 @@ report = {
     "retired_raster_assets" => retired_raster_assets,
     "inline_provider_marks_attribution_ready" => inline_provider_marks_attribution_ready,
     "inline_provider_marks_attribution" => inline_provider_marks_attribution,
+    "login_compact_touch_contract_ready" => login_compact_touch_contract_ready,
+    "login_compact_touch_contract" => login_compact_touch_contract,
     "source_contract_checks" => source_contract_checks,
     "forbidden_default_marker_hits" => default_marker_hits,
   },
