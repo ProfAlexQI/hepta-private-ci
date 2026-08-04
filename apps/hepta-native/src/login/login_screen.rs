@@ -500,20 +500,23 @@ impl LoginScreen {
         let insets = cx.display_context.safe_area_insets;
         let edge = if compact { 6.0 } else { 8.0 };
         let panel_margin = Inset {
-            top: if compact { 8.0 } else { 12.0 },
+            // Short landscape and IME layouts need the credential action to
+            // clear the bottom edge without shrinking any 48pt control.
+            top: if compact { 4.0 } else { 12.0 },
             bottom: (if compact { 28.0 } else { 24.0 }) + insets.bottom,
             left: edge + insets.left,
             right: edge + insets.right,
         };
-        let pad = if compact { 10.0 } else { 12.0 };
+        let pad_x = if compact { 10.0 } else { 12.0 };
+        let pad_y = if compact { 6.0 } else { 12.0 };
         let panel_padding = Inset {
-            top: pad,
-            bottom: pad,
-            left: pad,
-            right: pad,
+            top: pad_y,
+            bottom: pad_y,
+            left: pad_x,
+            right: pad_x,
         };
         let column_spacing = if compact { 8.0 } else { 12.0 };
-        let credentials_spacing = if compact { 5.0 } else { 7.0 };
+        let credentials_spacing = if compact { 3.0 } else { 7.0 };
         let alternatives_spacing = if compact { 6.0 } else { 8.0 };
         let mut panel = self.view.view(cx, ids!(login_panel));
         let mut columns = self.view.view(cx, ids!(login_columns));

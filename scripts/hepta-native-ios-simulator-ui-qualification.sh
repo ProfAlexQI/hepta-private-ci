@@ -406,6 +406,23 @@ if [[ "$EXTENDED_LAB" == true ]]; then
     scripts/hepta-image-content-probe --image "$path" --output "$probe" >/dev/null
     jq -e '.ready == true' "$probe" >/dev/null
   }
+  normalize_landscape_capture() {
+    local path="$1" probe="$2" width height
+    width="$(sips -g pixelWidth "$path" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
+    height="$(sips -g pixelHeight "$path" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
+    [[ "$width" =~ ^[1-9][0-9]*$ && "$height" =~ ^[1-9][0-9]*$ ]]
+    if (( width < height )); then
+      # Current simctl emits Landscape Right pixels in a portrait canvas.
+      # Normalize the evidence itself before any geometry assertion rather
+      # than teaching the probe to accept sideways portrait screenshots.
+      sips -r 90 "$path" >/dev/null
+      scripts/hepta-image-content-probe --image "$path" --output "$probe" >/dev/null
+      jq -e '.ready == true' "$probe" >/dev/null
+      printf 'simctl_portrait_canvas_rotated_clockwise_90\n'
+    else
+      printf 'native_landscape_canvas\n'
+    fi
+  }
   lab_launch() {
     local output pid
     output="$(xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID")"
@@ -488,6 +505,8 @@ if [[ "$EXTENDED_LAB" == true ]]; then
   sleep 3
   LANDSCAPE_PATH="$LAB_EVIDENCE_DIR/landscape.png"
   lab_capture "$LANDSCAPE_PATH" "$LAB_EVIDENCE_DIR/landscape.content-probe.json"
+  LANDSCAPE_CAPTURE_NORMALIZATION="$(normalize_landscape_capture \
+    "$LANDSCAPE_PATH" "$LAB_EVIDENCE_DIR/landscape.content-probe.json")"
   LANDSCAPE_WIDTH="$(sips -g pixelWidth "$LANDSCAPE_PATH" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
   LANDSCAPE_HEIGHT="$(sips -g pixelHeight "$LANDSCAPE_PATH" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
   if (( LANDSCAPE_WIDTH > LANDSCAPE_HEIGHT )); then
@@ -503,11 +522,15 @@ if [[ "$EXTENDED_LAB" == true ]]; then
     sleep 2
     LANDSCAPE_KEYBOARD_PATH="$LAB_EVIDENCE_DIR/landscape-keyboard.png"
     lab_capture "$LANDSCAPE_KEYBOARD_PATH" "$LAB_EVIDENCE_DIR/landscape-keyboard.content-probe.json"
+    LANDSCAPE_KEYBOARD_CAPTURE_NORMALIZATION="$(normalize_landscape_capture \
+      "$LANDSCAPE_KEYBOARD_PATH" "$LAB_EVIDENCE_DIR/landscape-keyboard.content-probe.json")"
     if [[ "$(shasum -a 256 "$LANDSCAPE_KEYBOARD_PATH" | awk '{print $1}')" == "$(shasum -a 256 "$LANDSCAPE_PATH" | awk '{print $1}')" ]]; then
       peekaboo hotkey --no-remote --app Simulator --window-id "$SIMULATOR_WINDOW_ID" --keys 'cmd,k' --json >/dev/null
       KEYBOARD_TOGGLED=true
       sleep 2
       lab_capture "$LANDSCAPE_KEYBOARD_PATH" "$LAB_EVIDENCE_DIR/landscape-keyboard.content-probe.json"
+      LANDSCAPE_KEYBOARD_CAPTURE_NORMALIZATION="$(normalize_landscape_capture \
+        "$LANDSCAPE_KEYBOARD_PATH" "$LAB_EVIDENCE_DIR/landscape-keyboard.content-probe.json")"
     fi
     [[ "$(shasum -a 256 "$LANDSCAPE_KEYBOARD_PATH" | awk '{print $1}')" != "$(shasum -a 256 "$LANDSCAPE_PATH" | awk '{print $1}')" ]] \
       && LANDSCAPE_KEYBOARD_CAPTURE_READY=true || LANDSCAPE_KEYBOARD_CAPTURE_READY=false
@@ -581,6 +604,8 @@ if [[ "$EXTENDED_LAB" == true ]]; then
     --arg dynamic_control_path "$DYNAMIC_CONTROL_PATH" --arg dynamic_control_sha "$DYNAMIC_CONTROL_SHA" \
     --arg dynamic_path "$DYNAMIC_PATH" --arg dynamic_sha "$DYNAMIC_SHA" \
     --arg landscape_path "$LANDSCAPE_PATH" --arg landscape_keyboard_path "$LANDSCAPE_KEYBOARD_PATH" \
+    --arg landscape_capture_normalization "$LANDSCAPE_CAPTURE_NORMALIZATION" \
+    --arg landscape_keyboard_capture_normalization "$LANDSCAPE_KEYBOARD_CAPTURE_NORMALIZATION" \
     --arg startup_path "$STARTUP_PATH" --argjson rtl_changed "$RTL_RASTER_CHANGED" --argjson rtl_same_canvas "$RTL_SAME_CANVAS" \
     --argjson dynamic_changed "$DYNAMIC_RASTER_CHANGED" --argjson dynamic_same_canvas "$DYNAMIC_SAME_CANVAS" --argjson rotation "$ROTATION_TRANSITION_READY" \
     --argjson landscape_keyboard "$LANDSCAPE_KEYBOARD_CAPTURE_READY" --argjson startup_ready "$STARTUP_MODE_READY" \
@@ -591,7 +616,7 @@ if [[ "$EXTENDED_LAB" == true ]]; then
         modes:{
           rtl:{executed:true,environment:{languages:["ar"],locale:"ar_SA",forced_writing_direction:"right_to_left"},matched_control:{path:$rtl_control_path,sha256:$rtl_control_sha,languages:["en"],locale:"en_US",writing_direction:"left_to_right"},capture:{path:$rtl_path,sha256:$rtl_sha},raster_changed:$rtl_changed,mode_attributable_raster_change:$rtl_changed,geometry_comparison:{same_canvas:$rtl_same_canvas,semantic_layout_verified:false},ready:false},
           dynamic_type:{executed:true,requested_content_size:$dynamic_size,original_content_size:$original_size,setting_readback_ready:true,matched_control:{path:$dynamic_control_path,sha256:$dynamic_control_sha,content_size:$original_size},capture:{path:$dynamic_path,sha256:$dynamic_sha},raster_changed:$dynamic_changed,mode_attributable_raster_change:$dynamic_changed,geometry_comparison:{same_canvas:$dynamic_same_canvas,semantic_text_reflow_verified:false},ready:false},
-          rotation_keyboard:{executed:true,landscape_transition_observed:$rotation,landscape_capture:$landscape_path,landscape_keyboard_capture:$landscape_keyboard_path,keyboard_raster_change_observed:$landscape_keyboard,ready:false},
+          rotation_keyboard:{executed:true,landscape_transition_observed:$rotation,landscape_capture:$landscape_path,landscape_capture_normalization:$landscape_capture_normalization,landscape_keyboard_capture:$landscape_keyboard_path,landscape_keyboard_capture_normalization:$landscape_keyboard_capture_normalization,keyboard_raster_change_observed:$landscape_keyboard,ready:false},
           startup_performance:{executed:true,scope:"simctl_launch_command_to_pid_on_unauthenticated_simulator",samples:$startup_samples,statistics:$startup_stats,ready:$startup_ready},
           low_power:{executed:false,supported_by_ios_simulator:false,effective_low_power_mode:false,ready:false}
         },

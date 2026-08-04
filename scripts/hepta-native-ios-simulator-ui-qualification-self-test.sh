@@ -378,6 +378,9 @@ for needle in \
   '--device-name "$DEVICE_NAME"' \
   '--target-x-ratio "$TARGET_X_RATIO"' \
   '--landscape "$LANDSCAPE_PATH"' \
+  'normalize_landscape_capture' \
+  'simctl_portrait_canvas_rotated_clockwise_90' \
+  'landscape_capture_normalization:$landscape_capture_normalization' \
   'ios_simulator_login_software_keyboard_ready:true' \
   'ios_simulator_login_visible_anchor_safe_area_ready:$visible_anchor_safe_area_ready' \
   'ios_simulator_login_small_screen_ready:$small_screen_ready' \
