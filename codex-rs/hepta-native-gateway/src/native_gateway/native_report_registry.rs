@@ -822,6 +822,20 @@ pub(super) fn render_registered_native_report(
     }))
 }
 
+pub(super) fn render_registered_evidence_report(
+    renderer_key: &str,
+    options: &NativeGatewayOptions,
+    telegram_plugin: NativeTelegramPluginStatus,
+) -> Option<NativeReportResponse> {
+    let definition = NATIVE_REPORT_DEFINITIONS
+        .iter()
+        .find(|definition| definition.key == renderer_key)?;
+    Some((definition.renderer)(NativeReportContext {
+        options,
+        telegram_plugin,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;

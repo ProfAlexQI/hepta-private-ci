@@ -5,7 +5,6 @@ pub(super) fn dispatch_evidence_route(
     path: &str,
     options: &NativeGatewayOptions,
     request_query: Option<&str>,
-    preflight: &RuntimeRequestPreflightReceipt,
     manifest_entry: crate::route_manifest::RouteDefinition,
 ) -> Result<()> {
     let body = match evidence_api::requested_evidence_selector(request_query) {
@@ -14,11 +13,9 @@ pub(super) fn dispatch_evidence_route(
             let Some(definition) =
                 evidence_api::evidence_definition(selector).filter(|definition| {
                     definition.legacy_compatibility_route
-                        && matches!(
-                            definition.dispatch_handler,
-                            RouteDispatchHandler::NativeGateway
-                                | RouteDispatchHandler::RetiredCompatibility
-                        )
+                        && definition.method == "GET"
+                        && !definition.route_selector.contains('<')
+                        && definition.renderer_key.is_some()
                 })
             else {
                 return write_http_response(
@@ -28,14 +25,26 @@ pub(super) fn dispatch_evidence_route(
                     br#"{"error":"evidence route not found"}"#,
                 );
             };
-            let (source_status, source_content_type, source_body) =
-                route_native_gateway_request_after_preflight(
-                    "GET",
-                    definition.lifecycle.path_pattern,
+            let telegram_plugin = native_telegram::telegram_plugin_status(
+                options.with_telegram_plugin,
+                options.telegram_plugin_poll_ms,
+            );
+            let Some((source_status, source_content_type, source_body)) =
+                native_report_registry::render_registered_evidence_report(
+                    definition
+                        .renderer_key
+                        .expect("checked evidence renderer key"),
                     options,
-                    None,
-                    preflight,
+                    telegram_plugin,
+                )
+            else {
+                return write_http_response(
+                    stream,
+                    "502 Bad Gateway",
+                    "application/json; charset=utf-8",
+                    br#"{"error":"evidence renderer not found"}"#,
                 );
+            };
             match evidence_api::evidence_document_report(
                 definition,
                 source_status,

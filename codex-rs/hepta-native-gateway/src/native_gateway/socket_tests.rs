@@ -20,14 +20,7 @@ fn route_over_real_socket(
     method: &str,
     path: &str,
 ) -> String {
-    route_over_real_socket_with_telemetry(
-        runtime,
-        options,
-        method,
-        path,
-        "",
-        None,
-    )
+    route_over_real_socket_with_telemetry(runtime, options, method, path, "", None)
 }
 
 fn route_over_real_socket_with_telemetry(
@@ -169,7 +162,7 @@ fn legacy_route_telemetry_covers_all_states_without_request_identifiers() {
         assert_eq!(event["consumer_class"], consumer_class);
         assert_eq!(event["preflight"], preflight);
         assert_eq!(event["write_result"], "ok");
-        assert_eq!(event["schema"], "hepta_control_ui_legacy_http_event_v1");
+        assert_eq!(event["schema"], "hepta_control_ui_legacy_http_event_v2");
         assert_eq!(event["observation_complete"], true);
         assert!(event["sequence"].as_u64().is_some());
         assert_eq!(
@@ -180,7 +173,10 @@ fn legacy_route_telemetry_covers_all_states_without_request_identifiers() {
         );
         assert!(event["time_unix_ms"].as_u64().is_some());
         assert_eq!(event["process_class"], "hepta_native_gateway");
-        assert!(matches!(event["run_class"].as_str(), Some("operator" | "ci_test")));
+        assert!(matches!(
+            event["run_class"].as_str(),
+            Some("operator" | "ci_test")
+        ));
         assert!(!event["head_sha"].as_str().unwrap_or_default().is_empty());
         assert_eq!(event["catalog_sha"].as_str().map(str::len), Some(64));
     }
@@ -195,7 +191,10 @@ fn legacy_route_telemetry_covers_all_states_without_request_identifiers() {
         "user-agent",
         "127.0.0.1",
     ] {
-        assert!(!jsonl.contains(forbidden), "persisted forbidden value {forbidden}");
+        assert!(
+            !jsonl.contains(forbidden),
+            "persisted forbidden value {forbidden}"
+        );
     }
 }
 
@@ -270,9 +269,9 @@ fn all_registered_get_routes_return_structured_http_over_real_sockets() {
         let path = control_ui_sample_path(route.pattern);
         let response =
             route_over_real_socket(Arc::clone(&runtime), options.clone(), route.method, &path);
-        let expected_status = if route_manifest_entry(route.method, &path)
-            .is_some_and(|entry| entry.dispatch_handler == RouteDispatchHandler::RetiredCompatibility)
-        {
+        let expected_status = if route_manifest_entry(route.method, &path).is_some_and(|entry| {
+            entry.dispatch_handler == RouteDispatchHandler::RetiredCompatibility
+        }) {
             "HTTP/1.1 410 Gone"
         } else {
             "HTTP/1.1 200 OK"
@@ -382,9 +381,7 @@ fn telegram_live_soak_aliases_share_real_socket_behavior() {
     let options = test_gateway_options(false);
     let responses = TELEGRAM_LIVE_SOAK_ROUTE
         .paths()
-        .map(|path| {
-            route_over_real_socket(Arc::clone(&runtime), options.clone(), "GET", path)
-        })
+        .map(|path| route_over_real_socket(Arc::clone(&runtime), options.clone(), "GET", path))
         .collect::<Vec<_>>();
     for response in &responses {
         assert!(response.starts_with("HTTP/1.1 200 OK"));
@@ -399,7 +396,10 @@ fn telegram_live_soak_aliases_share_real_socket_behavior() {
             .map(|response| response.split_once("\r\n\r\n").expect("response body").1)
             .collect::<Vec<_>>(),
         vec![
-            responses[0].split_once("\r\n\r\n").expect("canonical body").1;
+            responses[0]
+                .split_once("\r\n\r\n")
+                .expect("canonical body")
+                .1;
             TELEGRAM_LIVE_SOAK_ROUTE.paths().count()
         ]
     );
@@ -458,18 +458,12 @@ fn typed_report_pagination_is_digest_bound_over_real_sockets() {
         Arc::clone(&runtime),
         options.clone(),
         "GET",
-        &format!(
-            "/api/operator-security?detail=full&cursor=0&snapshot={snapshot}"
-        ),
+        &format!("/api/operator-security?detail=full&cursor=0&snapshot={snapshot}"),
     );
     assert!(page_response.starts_with("HTTP/1.1 200 OK"));
-    let page: serde_json::Value = serde_json::from_str(
-        page_response
-            .split_once("\r\n\r\n")
-            .expect("page body")
-            .1,
-    )
-    .expect("report page JSON");
+    let page: serde_json::Value =
+        serde_json::from_str(page_response.split_once("\r\n\r\n").expect("page body").1)
+            .expect("report page JSON");
     assert_eq!(page["schema"], "hepta_report_page_v2");
     assert_eq!(page["status"], "attention");
     assert_eq!(page["content_sha256"], snapshot);
@@ -518,8 +512,8 @@ fn canonical_evidence_route_serves_legacy_reports_over_real_sockets() {
     assert_eq!(value["evidence"]["legacy_compatibility_route"], true);
     assert_eq!(value["source_http_status"], "200 OK");
 
-    let index = serde_json::to_value(evidence_api::evidence_index_report())
-        .expect("evidence index JSON");
+    let index =
+        serde_json::to_value(evidence_api::evidence_index_report()).expect("evidence index JSON");
     let evidence_id = index["entries"]
         .as_array()
         .expect("evidence entries")

@@ -164,7 +164,6 @@ pub(super) fn dispatch_manifest_route(
             path,
             options,
             request_query,
-            preflight,
             manifest_entry,
         ),
         RouteDispatchHandler::NativeGateway => {

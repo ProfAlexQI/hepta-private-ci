@@ -105,7 +105,10 @@ fn full_connection_queue_returns_503_under_the_short_overload_write_budget() {
     use std::time::Instant;
 
     let (sender, _receiver) = mpsc::sync_channel(0);
-    let pool = NativeGatewayConnectionPool { sender };
+    let pool = NativeGatewayConnectionPool {
+        sender,
+        workers: Vec::new(),
+    };
     let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
     let mut client =
         TcpStream::connect(listener.local_addr().expect("address")).expect("overload client");
@@ -129,7 +132,10 @@ fn overload_response_write_failure_is_connection_local() {
     use std::net::Shutdown;
 
     let (sender, _receiver) = mpsc::sync_channel(0);
-    let pool = NativeGatewayConnectionPool { sender };
+    let pool = NativeGatewayConnectionPool {
+        sender,
+        workers: Vec::new(),
+    };
     let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
     let client = TcpStream::connect(listener.local_addr().expect("address")).expect("client");
     let (server, _) = listener.accept().expect("server");
@@ -146,7 +152,10 @@ fn overload_response_write_failure_is_connection_local() {
 fn disconnected_worker_pool_remains_gateway_fatal() {
     let (sender, receiver) = mpsc::sync_channel(1);
     drop(receiver);
-    let pool = NativeGatewayConnectionPool { sender };
+    let pool = NativeGatewayConnectionPool {
+        sender,
+        workers: Vec::new(),
+    };
     let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
     let client = TcpStream::connect(listener.local_addr().expect("address")).expect("client");
     let (server, _) = listener.accept().expect("server");
@@ -2294,7 +2303,9 @@ fn hepta_offline_route_parity_fixtures_match_native_reports() -> anyhow::Result<
 
 #[test]
 fn hepta_memory_intelligence_kg_full_enablement_runtime_readiness_endpoint_is_route_count_aware() {
-    let body = route_contract_body(HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_READINESS_ENDPOINT);
+    let body = route_contract_body(
+        HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_READINESS_ENDPOINT,
+    );
 
     let value: serde_json::Value =
         serde_json::from_str(&body).expect("full enablement runtime readiness json");

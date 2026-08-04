@@ -1,12 +1,18 @@
 {
   "schema": "hepta_control_ui_http_evidence_registry_separation_v1",
-  "status": "blocked",
+  "status": "ready",
   "catalog_route_count": 284,
   "legacy_http_route_count": 206,
+  "evidence_definition_count": 207,
   "canonical_evidence_selector_count": 206,
   "active_legacy_renderer_count": 206,
-  "http_registry_independent": false,
-  "evidence_registry_independent": false,
+  "http_registry_independent": true,
+  "evidence_registry_independent": true,
+  "independent_typed_sources": true,
+  "shared_typed_catalog_source": false,
+  "stable_evidence_id_preserved": true,
+  "stable_route_selector_preserved": true,
+  "stable_renderer_key_preserved": true,
   "renderer_id_reordering_allowed": false,
   "retirement_may_delete_renderer": false,
   "retirement_may_change_canonical_evidence": false,
@@ -16,13 +22,24 @@
     "stable_selector_preserved": true,
     "renderer_and_downstream_chain_preserved": true
   },
-  "blockers": [
-    "catalog_record_still_generates_http_lifecycle_dispatch_and_native_report_binding",
-    "canonical_evidence_still_resolves_through_route_definition_registry",
-    "no_generated_independent_evidence_definition_registry"
-  ],
+  "proof": {
+    "typed_evidence_source": "codex-rs/hepta-native-gateway/routes/control_ui_evidence_definition_registry_v1.jsonl",
+    "typed_http_source": "codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl",
+    "generated_registry": "codex-rs/hepta-native-gateway/src/native_gateway/generated_evidence_registry.rs",
+    "generator": "scripts/hepta-native-route-catalog",
+    "runtime_selector": "codex-rs/hepta-native-gateway/src/native_gateway/evidence_api.rs",
+    "renderer_key_dispatch": "codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs",
+    "runtime_negative_test": "native_gateway::evidence_api::tests::evidence_selector_and_renderer_survive_simulated_http_path_removal",
+    "source_lifecycle_negative_test": "scripts/hepta-native-route-catalog-evidence-separation-self-test.sh",
+    "route_definition_registry_runtime_dependency_count": 0,
+    "http_path_to_report_binding_runtime_dependency_count": 0
+  },
+  "blockers": [],
   "decision": {
+    "separation_precondition_satisfied": true,
     "route_retirement_allowed": false,
-    "next_action": "generate and test an independent EvidenceDefinition registry before removing any legacy HTTP path"
+    "renderer_retirement_allowed": false,
+    "authoritative_runtime_window_still_required": true,
+    "next_action": "collect and independently verify a new exact-source 30-day operator window before retiring any legacy HTTP path"
   }
 }

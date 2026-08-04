@@ -5,6 +5,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::path::Path;
@@ -12,10 +13,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
+#[cfg(unix)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::TrySendError;
 use std::thread;
+use std::thread::JoinHandle;
+use std::time::Duration;
 use std::time::Instant;
 use std::time::UNIX_EPOCH;
 
@@ -121,6 +126,7 @@ use crate::ui_domain::route_native_gateway_binary_asset;
 
 mod evidence_api;
 mod evidence_dispatch;
+mod generated_evidence_registry;
 mod http_rejections;
 mod legacy_route_usage;
 mod manifest_dispatch;
@@ -165,6 +171,10 @@ const MAX_NATIVE_EVENT_FILES: usize = 20;
 const MAX_NATIVE_EVENT_PREVIEWS: usize = 80;
 const NATIVE_GATEWAY_WORKER_COUNT: usize = 8;
 const NATIVE_GATEWAY_CONNECTION_QUEUE_CAPACITY: usize = 64;
+const NATIVE_GATEWAY_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+#[cfg(unix)]
+static NATIVE_GATEWAY_SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     NativeTaskArtifactRouteSpec {
         prefix: "/api/task/",
@@ -203,6 +213,73 @@ const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
         compatibility_mode: "native_handoff_bundle_redacted",
     },
 ];
+
+#[cfg(unix)]
+struct NativeGatewayShutdownSignalGuard {
+    previous_sigint: libc::sighandler_t,
+    previous_sigterm: libc::sighandler_t,
+}
+
+#[cfg(unix)]
+extern "C" fn native_gateway_shutdown_signal(_signal: libc::c_int) {
+    NATIVE_GATEWAY_SHUTDOWN_REQUESTED.store(true, Ordering::Release);
+}
+
+#[cfg(unix)]
+impl NativeGatewayShutdownSignalGuard {
+    fn install() -> Result<Self> {
+        NATIVE_GATEWAY_SHUTDOWN_REQUESTED.store(false, Ordering::Release);
+        let handler = native_gateway_shutdown_signal as *const () as libc::sighandler_t;
+        let previous_sigint = unsafe { libc::signal(libc::SIGINT, handler) };
+        if previous_sigint == libc::SIG_ERR {
+            return Err(std::io::Error::last_os_error())
+                .context("install native gateway SIGINT handler");
+        }
+        let previous_sigterm = unsafe { libc::signal(libc::SIGTERM, handler) };
+        if previous_sigterm == libc::SIG_ERR {
+            unsafe {
+                libc::signal(libc::SIGINT, previous_sigint);
+            }
+            return Err(std::io::Error::last_os_error())
+                .context("install native gateway SIGTERM handler");
+        }
+        Ok(Self {
+            previous_sigint,
+            previous_sigterm,
+        })
+    }
+}
+
+#[cfg(unix)]
+impl Drop for NativeGatewayShutdownSignalGuard {
+    fn drop(&mut self) {
+        unsafe {
+            libc::signal(libc::SIGINT, self.previous_sigint);
+            libc::signal(libc::SIGTERM, self.previous_sigterm);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+struct NativeGatewayShutdownSignalGuard;
+
+#[cfg(not(unix))]
+impl NativeGatewayShutdownSignalGuard {
+    fn install() -> Result<Self> {
+        Ok(Self)
+    }
+}
+
+fn native_gateway_shutdown_requested() -> bool {
+    #[cfg(unix)]
+    {
+        NATIVE_GATEWAY_SHUTDOWN_REQUESTED.load(Ordering::Acquire)
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
 
 pub async fn run_native_gateway(
     options: NativeGatewayOptions,
@@ -250,6 +327,10 @@ pub async fn run_native_gateway(
 
     let listener = TcpListener::bind(&options.bind_addr)
         .with_context(|| format!("failed to bind {}", options.bind_addr))?;
+    listener
+        .set_nonblocking(true)
+        .context("configure interruptible native gateway listener")?;
+    let _shutdown_signal_guard = NativeGatewayShutdownSignalGuard::install()?;
     println!(
         "Hepta native gateway listening on http://{}/",
         options.bind_addr
@@ -273,20 +354,28 @@ pub async fn run_native_gateway(
     );
     println!("Press Ctrl-C to stop.");
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => connection_pool.dispatch(stream)?,
+    while !native_gateway_shutdown_requested() {
+        match listener.accept() {
+            Ok((stream, _peer_addr)) => connection_pool.dispatch(stream)?,
+            Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                thread::sleep(NATIVE_GATEWAY_SHUTDOWN_POLL_INTERVAL);
+            }
             Err(error) => {
                 eprintln!("native gateway connection accept failed: {error}");
             }
         }
     }
 
+    connection_pool.shutdown()?;
+    legacy_route_usage::record_process_stop_and_flush()
+        .context("persist final legacy route observation marker")?;
+
     Ok(())
 }
 
 struct NativeGatewayConnectionPool {
     sender: SyncSender<NativeGatewayConnection>,
+    workers: Vec<JoinHandle<()>>,
 }
 
 struct NativeGatewayConnection {
@@ -306,16 +395,18 @@ impl NativeGatewayConnectionPool {
         }
         let (sender, receiver) = mpsc::sync_channel::<NativeGatewayConnection>(queue_capacity);
         let receiver = Arc::new(Mutex::new(receiver));
+        let mut workers = Vec::with_capacity(worker_count);
         for index in 0..worker_count {
             let receiver = Arc::clone(&receiver);
             let runtime = Arc::clone(&runtime);
             let options = options.clone();
-            thread::Builder::new()
+            let worker = thread::Builder::new()
                 .name(format!("hepta-native-http-{index}"))
                 .spawn(move || native_gateway_worker_loop(receiver, options, runtime))
                 .with_context(|| format!("spawn native gateway HTTP worker {index}"))?;
+            workers.push(worker);
         }
-        Ok(Self { sender })
+        Ok(Self { sender, workers })
     }
 
     fn dispatch(&self, stream: TcpStream) -> Result<()> {
@@ -347,6 +438,17 @@ impl NativeGatewayConnectionPool {
                 anyhow::bail!("native gateway HTTP worker pool disconnected")
             }
         }
+    }
+
+    fn shutdown(self) -> Result<()> {
+        let Self { sender, workers } = self;
+        drop(sender);
+        for worker in workers {
+            worker.join().map_err(|_| {
+                anyhow::anyhow!("native gateway HTTP worker panicked during shutdown")
+            })?;
+        }
+        Ok(())
     }
 }
 

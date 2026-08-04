@@ -28,13 +28,31 @@ SEPARATION = Pathname.new(
     ROOT.join("codex-rs/hepta-native-gateway/routes/control_ui_http_evidence_registry_separation_v1.json").to_s,
   ),
 ).expand_path
+EVIDENCE_SOURCE = ROOT.join(
+  "codex-rs/hepta-native-gateway/routes/control_ui_evidence_definition_registry_v1.jsonl",
+)
+TELEMETRY_TRUST = ROOT.join(
+  "codex-rs/hepta-native-gateway/routes/control_ui_legacy_route_telemetry_trust_v1.json",
+)
+RUST_MANIFEST = ROOT.join("codex-rs/Cargo.toml")
+RUST_TOOLCHAIN_MANIFEST = ROOT.join("codex-rs/rust-toolchain.toml")
 WINDOW_SUMMARY = ENV["HEPTA_CONTROL_UI_ROUTE_RETIREMENT_WINDOW_SUMMARY"]
+WINDOW_EVENTS = ENV["HEPTA_CONTROL_UI_ROUTE_RETIREMENT_WINDOW_EVENTS"]
+EVIDENCE_REGISTRY = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/native_gateway/generated_evidence_registry.rs",
+)
+EVIDENCE_API = ROOT.join("codex-rs/hepta-native-gateway/src/native_gateway/evidence_api.rs")
+EVIDENCE_DISPATCH = ROOT.join("codex-rs/hepta-native-gateway/src/native_gateway/evidence_dispatch.rs")
+NATIVE_REPORT_REGISTRY = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs",
+)
 
 GENERATED_PATHS = %w[
   codex-rs/hepta-native-gateway/src/route_registry/generated_control_ui_routes.rs
   codex-rs/hepta-native-gateway/src/route_registry/native_report_bindings.rs
   codex-rs/hepta-native-gateway/src/runtime_ingress/generated_control_ui_routes.rs
   codex-rs/hepta-native-gateway/src/route_definition/generated_control_ui_routes.rs
+  codex-rs/hepta-native-gateway/src/native_gateway/generated_evidence_registry.rs
 ].freeze
 ROUTE_CONSTANT_SOURCE = "codex-rs/hepta-native-gateway/src/route_registry.rs"
 NON_SOURCE_PREFIXES = %w[
@@ -114,6 +132,38 @@ def consumer_scope(path)
   end
 end
 
+def trusted_window_replay(event_path, expected_head)
+  toolchain = RUST_TOOLCHAIN_MANIFEST.binread[/^channel = "([^"]+)"$/, 1]
+  fail!("pinned Rust toolchain is missing") if toolchain.nil? || toolchain.empty?
+  rustc, rustc_stderr, rustc_status = Open3.capture3(
+    "rustup", "which", "--toolchain", toolchain, "rustc",
+  )
+  fail!("resolve pinned rustc failed: #{rustc_stderr.strip}") unless rustc_status.success?
+  rustdoc, rustdoc_stderr, rustdoc_status = Open3.capture3(
+    "rustup", "which", "--toolchain", toolchain, "rustdoc",
+  )
+  fail!("resolve pinned rustdoc failed: #{rustdoc_stderr.strip}") unless rustdoc_status.success?
+  toolchain_bin = Pathname.new(rustc.strip).dirname.to_s
+  environment = {
+    "RUSTUP_TOOLCHAIN" => toolchain,
+    "RUSTC" => rustc.strip,
+    "RUSTDOC" => rustdoc.strip,
+    "PATH" => "#{toolchain_bin}:#{ENV.fetch('PATH', '')}",
+  }
+  stdout, stderr, status = Open3.capture3(
+    environment,
+    "rustup", "run", toolchain, "cargo", "run", "--offline", "--quiet",
+    "--manifest-path", RUST_MANIFEST.to_s,
+    "-p", "hepta-native-gateway", "--bin", "hepta-legacy-route-window", "--",
+    "--events", event_path.to_s, "--expected-head", expected_head, "--allow-blocked",
+    chdir: ROOT.to_s,
+  )
+  fail!("trusted legacy-window replay failed: #{stderr.strip}") unless status.success?
+  JSON.parse(stdout)
+rescue JSON::ParserError => error
+  fail!("trusted legacy-window replay returned invalid JSON: #{error.message}")
+end
+
 output_path = nil
 until ARGV.empty?
   argument = ARGV.shift
@@ -130,18 +180,56 @@ until ARGV.empty?
 end
 
 records = read_jsonl(CATALOG)
+evidence_source_records = read_jsonl(EVIDENCE_SOURCE)
 manifest = read_json(MANIFEST, "retirement candidate manifest")
 separation = read_json(SEPARATION, "HTTP/evidence separation contract")
+telemetry_trust = read_json(TELEMETRY_TRUST, "legacy route telemetry trust contract")
 fail!("retirement candidate schema drifted") unless
   manifest["schema"] == "hepta_control_ui_route_retirement_candidates_v1"
 fail!("HTTP/evidence separation contract drifted") unless
   separation["schema"] == "hepta_control_ui_http_evidence_registry_separation_v1" &&
-    separation["status"] == "blocked" &&
-    separation["http_registry_independent"] == false &&
-    separation["evidence_registry_independent"] == false &&
+    separation["status"] == "ready" &&
+    separation["http_registry_independent"] == true &&
+    separation["evidence_registry_independent"] == true &&
+    separation["independent_typed_sources"] == true &&
+    separation["shared_typed_catalog_source"] == false &&
+    separation["stable_evidence_id_preserved"] == true &&
+    separation["stable_route_selector_preserved"] == true &&
+    separation["stable_renderer_key_preserved"] == true &&
+    separation.dig("proof", "typed_evidence_source") == EVIDENCE_SOURCE.relative_path_from(ROOT).to_s &&
+    separation.dig("proof", "typed_http_source") == CATALOG.relative_path_from(ROOT).to_s &&
+    separation["blockers"] == [] &&
+    separation.dig("decision", "separation_precondition_satisfied") == true &&
     separation.dig("decision", "route_retirement_allowed") == false
+fail!("legacy route telemetry trust contract drifted") unless
+  telemetry_trust["schema"] == "hepta_control_ui_legacy_route_telemetry_trust_v1" &&
+    telemetry_trust["status"] == "blocked" &&
+    telemetry_trust["trusted_replay_required"] == true &&
+    telemetry_trust["environment_run_class_has_promotion_authority"] == false &&
+    telemetry_trust["trusted_launcher_identity_configured"] == false &&
+    telemetry_trust["deployment_identity_configured"] == false &&
+    telemetry_trust["event_signature_or_mac_configured"] == false &&
+    telemetry_trust["event_epoch_binding_configured"] == false &&
+    telemetry_trust["promotion_trust_root_configured"] == false &&
+    telemetry_trust["exact_source_epoch_rotation_ready"] == false &&
+    telemetry_trust["crashed_segment_quarantine_ready"] == false &&
+    telemetry_trust["telemetry_parent_directory_fsync_verified"] == false &&
+    telemetry_trust["local_development_may_mint_trust"] == false &&
+    telemetry_trust.dig("decision", "promotion_authoritative") == false &&
+    telemetry_trust.dig("decision", "route_retirement_allowed") == false &&
+    telemetry_trust.dig("decision", "blockers").is_a?(Array) &&
+    !telemetry_trust.dig("decision", "blockers").empty?
 
 routes = records.select { |record| record["kind"] == "control_ui_route" }
+evidence_source_metadata = evidence_source_records.first
+evidence_definitions = evidence_source_records.select do |record|
+  record["kind"] == "evidence_definition"
+end
+fail!("independent evidence source schema or count drifted") unless
+  evidence_source_metadata["schema"] == "hepta_control_ui_evidence_definition_registry_v1" &&
+    evidence_source_metadata["evidence_definition_count"] == evidence_definitions.length &&
+    evidence_source_metadata["renderable_evidence_definition_count"] ==
+      evidence_definitions.count { |definition| !definition["renderer_key"].nil? }
 special = records.select { |record| record["kind"] == "special_native_report" }
 renderers = records.select { |record| record["kind"] == "renderer" }
 legacy_routes = routes.select { |route| route["legacy_compatibility_route"] == true }
@@ -160,37 +248,91 @@ metrics = {
 fail!("catalog metrics drifted from candidate manifest") unless
   metrics == manifest.fetch("expected_catalog_metrics")
 fail!("separation contract metrics drifted") unless
-  separation.values_at("catalog_route_count", "legacy_http_route_count") ==
-    [metrics.fetch("route_count"), metrics.fetch("legacy_compatibility_route_count")]
+  separation.values_at(
+    "catalog_route_count", "legacy_http_route_count", "evidence_definition_count",
+  ) == [
+    metrics.fetch("route_count"), metrics.fetch("legacy_compatibility_route_count"),
+    evidence_definitions.length,
+  ]
 
+evidence_registry_source = EVIDENCE_REGISTRY.binread
+evidence_api_source = EVIDENCE_API.binread
+evidence_dispatch_source = EVIDENCE_DISPATCH.binread
+native_report_registry_source = NATIVE_REPORT_REGISTRY.binread
+evidence_renderer = native_report_registry_source[/pub\(super\) fn render_registered_evidence_report\(.*?\n\}/m]
+fail!("generated EvidenceDefinition registry count drifted") unless
+  evidence_registry_source.scan(/^\s+EvidenceDefinition \{/).length == evidence_definitions.length
+fail!("evidence API still depends on the HTTP route-definition registry") if
+  evidence_api_source.include?("route_definition_registry")
+fail!("evidence dispatch still re-enters HTTP path routing") if
+  evidence_dispatch_source.include?("route_native_gateway_request_after_preflight")
+fail!("independent renderer-key dispatch is missing or still path-bound") if
+  evidence_renderer.nil? || evidence_renderer.include?("route_registry::")
+fail!("separation proof counters drifted") unless
+  separation.dig("proof", "route_definition_registry_runtime_dependency_count") == 0 &&
+    separation.dig("proof", "http_path_to_report_binding_runtime_dependency_count") == 0
+
+current_full_head, full_head_stderr, full_head_status = Open3.capture3(
+  "git", "-C", ROOT.to_s, "rev-parse", "HEAD",
+)
+fail!("unable to resolve exact full source HEAD: #{full_head_stderr.strip}") unless
+  full_head_status.success?
+compiled_head, compiled_head_stderr, compiled_head_status = Open3.capture3(
+  "git", "-C", ROOT.to_s, "rev-parse", "--short=12", "HEAD",
+)
+fail!("unable to resolve compiled source HEAD: #{compiled_head_stderr.strip}") unless
+  compiled_head_status.success?
+current_full_head = current_full_head.strip
+compiled_head = compiled_head.strip
+fail!("compiled source HEAD does not prefix the full HEAD") unless
+  compiled_head.length == 12 && current_full_head.start_with?(compiled_head)
+
+trust_blockers = telemetry_trust.dig("decision", "blockers")
 window = if WINDOW_SUMMARY.nil? || WINDOW_SUMMARY.empty?
   {
     "configured" => false,
+    "trusted_replay_match" => false,
+    "producer_eligible" => false,
     "eligible" => false,
     "event_file_rehashed_by_gate" => false,
+    "source_full_head" => current_full_head,
+    "compiled_source_head" => compiled_head,
+    "event_source_resolution_verified" => false,
     "promotion_authoritative" => false,
-    "blockers" => ["runtime_window_summary_missing"],
+    "blockers" => (["runtime_window_summary_missing"] + trust_blockers).uniq,
   }
 else
   summary_path = Pathname.new(WINDOW_SUMMARY).expand_path
   summary = read_json(summary_path, "legacy HTTP observation window")
-  current_head, stderr, status = Open3.capture3("git", "-C", ROOT.to_s, "rev-parse", "HEAD")
-  fail!("unable to resolve exact source HEAD: #{stderr.strip}") unless status.success?
+  fail!("legacy HTTP event file is required with a window summary") if
+    WINDOW_EVENTS.nil? || WINDOW_EVENTS.empty?
+  event_path = Pathname.new(WINDOW_EVENTS).expand_path
+  fail!("legacy HTTP event file is missing: #{event_path}") unless event_path.file?
+  event_file_sha256 = Digest::SHA256.file(event_path).hexdigest
   eligible = summary.dig("decision", "eligible")
   blockers = summary.dig("decision", "blockers")
   fail!("legacy HTTP observation window schema or source binding drifted") unless
-    summary["schema"] == "hepta_control_ui_legacy_http_window_v1" &&
+    summary["schema"] == "hepta_control_ui_legacy_http_window_v2" &&
       summary["producer"] == "hepta-native-gateway/hepta-legacy-route-window" &&
       summary["promotion_authoritative"] == false &&
+      [true, false].include?(summary["process_stop_marker_observed"]) &&
       summary["durable_process_stop_observed"] == false &&
-      summary["continuous_coverage_declared"] == false &&
+      [true, false].include?(summary["continuous_coverage_declared"]) &&
       summary["shutdown_flush_verified"] == false &&
       summary["event_file_sha256"].is_a?(String) &&
       summary["event_file_sha256"].match?(/\A[0-9a-f]{64}\z/) &&
-      summary["source_head_sha"] == current_head.strip &&
+      summary["event_file_sha256"] == event_file_sha256 &&
+      summary["source_head_sha"] == compiled_head &&
       summary["route_catalog_sha256"] == Digest::SHA256.file(CATALOG).hexdigest &&
       (eligible.instance_of?(TrueClass) || eligible.instance_of?(FalseClass))
-  fail!("legacy HTTP observation window attempted unsupported promotion") if eligible
+  trusted_summary = trusted_window_replay(event_path, compiled_head)
+  fail!("legacy HTTP observation window differs from exact-source trusted replay") unless
+    trusted_summary == summary
+  resolved_event_head, resolve_stderr, resolve_status = Open3.capture3(
+    "git", "-C", ROOT.to_s, "rev-parse", "#{summary.fetch('source_head_sha')}^{commit}",
+  )
+  fail!("compiled event HEAD does not resolve uniquely: #{resolve_stderr.strip}") unless
+    resolve_status.success? && resolved_event_head.strip == current_full_head
   numeric_fields = %w[
     event_count process_segment_count operator_active_day_count window_start_unix_ms
     window_end_unix_ms window_span_days trailing_zero_use_days total_legacy_requests
@@ -207,21 +349,22 @@ else
       summary["routes"].is_a?(Hash)
   fail!("legacy HTTP observation window decision is internally inconsistent") unless
     blockers.is_a?(Array) && blockers.all? { |blocker| blocker.is_a?(String) && !blocker.empty? } &&
-      ((eligible && summary["status"] == "ready" && blockers.empty? &&
-        summary["window_span_days"].to_i >= 30 &&
-        summary["operator_active_day_count"].to_i >= 14 &&
-        summary["trailing_zero_use_days"].to_i >= 14 &&
-        summary["window_end_unix_ms"] >= Time.now.to_i * 1000 - 2 * 86_400_000 &&
-        summary["non_ci_legacy_requests"] == 0) ||
-       (!eligible && summary["status"] == "blocked" && !blockers.empty?))
+      !eligible && summary["status"] == "blocked" && !blockers.empty? &&
+      blockers.include?("independent_shutdown_durability_receipt_missing") &&
+      blockers.include?("telemetry_parent_directory_fsync_unproven")
   {
     "configured" => true,
     "summary_sha256" => Digest::SHA256.file(summary_path).hexdigest,
-    "event_file_sha256" => summary.fetch("event_file_sha256"),
-    "event_file_rehashed_by_gate" => false,
+    "event_file_sha256" => event_file_sha256,
+    "event_file_rehashed_by_gate" => true,
+    "source_full_head" => current_full_head,
+    "compiled_source_head" => compiled_head,
+    "event_source_resolution_verified" => true,
+    "trusted_replay_match" => true,
+    "producer_eligible" => eligible,
     "promotion_authoritative" => false,
-    "eligible" => eligible,
-    "blockers" => blockers,
+    "eligible" => false,
+    "blockers" => (blockers + trust_blockers).uniq,
   }
 end
 
@@ -240,9 +383,17 @@ end
 legacy_get_with_active_renderer = legacy_get_routes.count do |route|
   renderer_by_id.fetch(route["native_report_id"], {})["status"] == "active"
 end
+legacy_evidence_definitions = evidence_definitions.select do |definition|
+  definition["legacy_compatibility_route"] == true
+end
+legacy_evidence_with_active_renderer = legacy_evidence_definitions.count do |definition|
+  renderer = renderers.find { |candidate| candidate["key"] == definition["renderer_key"] }
+  renderer && renderer["status"] == "active"
+end
 fail!("separation evidence/renderer counts drifted") unless
-  separation.values_at("canonical_evidence_selector_count", "active_legacy_renderer_count") ==
-    [legacy_get_routes.length, legacy_get_with_active_renderer]
+  separation.values_at(
+    "canonical_evidence_selector_count", "active_legacy_renderer_count",
+  ) == [legacy_evidence_definitions.length, legacy_evidence_with_active_renderer]
 structurally_unbound_legacy_get = legacy_get_routes.count do |route|
   route["native_report_id"].nil? && route.fetch("aliases").empty? && !route.fetch("watchdog_probe")
 end
@@ -319,6 +470,8 @@ receipt = {
   "retirement_status" => "blocked",
   "catalog" => CATALOG.relative_path_from(ROOT).to_s,
   "catalog_sha256" => Digest::SHA256.file(CATALOG).hexdigest,
+  "evidence_definition_registry" => EVIDENCE_SOURCE.relative_path_from(ROOT).to_s,
+  "evidence_definition_registry_sha256" => Digest::SHA256.file(EVIDENCE_SOURCE).hexdigest,
   "manifest" => MANIFEST.relative_path_from(ROOT).to_s,
   "manifest_sha256" => Digest::SHA256.file(MANIFEST).hexdigest,
   "http_evidence_separation_contract" => SEPARATION.relative_path_from(ROOT).to_s,
@@ -328,15 +481,32 @@ receipt = {
     "http_registry_independent" => separation.fetch("http_registry_independent"),
     "evidence_registry_independent" => separation.fetch("evidence_registry_independent"),
     "canonical_evidence_selector_count" => separation.fetch("canonical_evidence_selector_count"),
+    "evidence_definition_count" => separation.fetch("evidence_definition_count"),
+    "separation_precondition_satisfied" => separation.dig("decision", "separation_precondition_satisfied"),
     "route_retirement_allowed" => separation.dig("decision", "route_retirement_allowed"),
     "blockers" => separation.fetch("blockers"),
   },
+  "telemetry_trust_contract" => TELEMETRY_TRUST.relative_path_from(ROOT).to_s,
+  "telemetry_trust_contract_sha256" => Digest::SHA256.file(TELEMETRY_TRUST).hexdigest,
+  "telemetry_trust" => {
+    "status" => telemetry_trust.fetch("status"),
+    "environment_run_class_has_promotion_authority" => telemetry_trust.fetch("environment_run_class_has_promotion_authority"),
+    "trusted_launcher_identity_configured" => telemetry_trust.fetch("trusted_launcher_identity_configured"),
+    "event_signature_or_mac_configured" => telemetry_trust.fetch("event_signature_or_mac_configured"),
+    "event_epoch_binding_configured" => telemetry_trust.fetch("event_epoch_binding_configured"),
+    "promotion_trust_root_configured" => telemetry_trust.fetch("promotion_trust_root_configured"),
+    "promotion_authoritative" => telemetry_trust.dig("decision", "promotion_authoritative"),
+    "blockers" => trust_blockers,
+  },
   "runtime_window" => window,
   "observation_epoch" => {
-    "event_schema" => "hepta_control_ui_legacy_http_event_v1",
-    "event_relative_path" => "control-ui/legacy-http-events-v1.jsonl",
+    "event_schema" => "hepta_control_ui_legacy_http_event_v2",
+    "event_relative_path" => "control-ui/legacy-http-events-v2.jsonl",
     "predecessor_event_path_accepted" => false,
     "window_reset_required" => true,
+    "authoritative_window_start_allowed" => false,
+    "exact_source_epoch_rotation_ready" => false,
+    "crashed_segment_quarantine_ready" => false,
     "summary_producer" => "cargo run -p hepta-native-gateway --bin hepta-legacy-route-window --",
   },
   "catalog_metrics" => metrics,
@@ -356,7 +526,7 @@ receipt = {
   "candidates" => candidate_receipts,
   "http_behavior_changed" => false,
   "route_count_reduced" => false,
-  "next_required_action" => "collect a new exact-source 30-day operator window and generate an independent EvidenceDefinition registry; do not delete routes or renderers before both gates pass",
+  "next_required_action" => "provision independently approved telemetry identity, authenticated event and epoch trust, crash rotation and parent-fsync receipts before starting a 30-day window; keep all routes and renderers",
 }
 
 serialized = JSON.pretty_generate(receipt) + "\n"

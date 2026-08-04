@@ -10,7 +10,18 @@ ROUTE_REGISTRY = ROOT.join("codex-rs/hepta-native-gateway/src/route_registry.rs"
 LEGACY_BINDINGS = ROOT.join(
   "codex-rs/hepta-native-gateway/src/route_registry/native_report_bindings.rs"
 )
-CATALOG = ROOT.join("codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl")
+CATALOG = Pathname.new(
+  ENV.fetch(
+    "HEPTA_NATIVE_ROUTE_CATALOG",
+    ROOT.join("codex-rs/hepta-native-gateway/routes/control_ui_route_catalog_v1.jsonl").to_s,
+  ),
+).expand_path
+EVIDENCE_DEFINITION_REGISTRY = Pathname.new(
+  ENV.fetch(
+    "HEPTA_EVIDENCE_DEFINITION_REGISTRY",
+    ROOT.join("codex-rs/hepta-native-gateway/routes/control_ui_evidence_definition_registry_v1.jsonl").to_s,
+  ),
+).expand_path
 GENERATED_ROUTES = ROOT.join(
   "codex-rs/hepta-native-gateway/src/route_registry/generated_control_ui_routes.rs"
 )
@@ -30,12 +41,16 @@ GENERATED_GATEWAY_STATIC_ASSETS = ROOT.join(
 GENERATED_WATCHDOG = ROOT.join(
   "codex-rs/hepta-native-gateway/src/route_definition/watchdog.rs"
 )
+GENERATED_EVIDENCE_DEFINITIONS = ROOT.join(
+  "codex-rs/hepta-native-gateway/src/native_gateway/generated_evidence_registry.rs"
+)
 REPORT_REGISTRY = ROOT.join(
   "codex-rs/hepta-native-gateway/src/native_gateway/native_report_registry.rs"
 )
 ROUTE_MARKER = "pub(crate) const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &["
 GENERATED_INCLUDE = "include!(\"route_registry/generated_control_ui_routes.rs\");"
 CATALOG_SCHEMA = "hepta_native_route_catalog_v2"
+EVIDENCE_REGISTRY_SCHEMA = "hepta_control_ui_evidence_definition_registry_v1"
 RENDERER_COUNT = 278
 PERMISSION_PROFILES = {
   "control_ui_metadata_read" => {
@@ -262,6 +277,24 @@ def catalog_records
   records
 end
 
+def raw_evidence_definition_records
+  fail!("evidence definition registry is missing: #{EVIDENCE_DEFINITION_REGISTRY}") unless
+    EVIDENCE_DEFINITION_REGISTRY.file?
+  EVIDENCE_DEFINITION_REGISTRY.each_line.each_with_object([]) do |line, parsed|
+    stripped = line.strip
+    next if stripped.empty?
+    parsed << JSON.parse(stripped)
+  rescue JSON::ParserError => error
+    fail!("invalid evidence definition registry JSONL: #{error.message}")
+  end
+end
+
+def evidence_definition_records
+  records = raw_evidence_definition_records
+  validate_evidence_registry!(records)
+  records.select { |record| record["kind"] == "evidence_definition" }
+end
+
 def route_records(records)
   records.select { |record| record["kind"] == "control_ui_route" }
 end
@@ -437,6 +470,91 @@ def route_policy(route, index)
   }
 end
 
+def evidence_id(method, route_selector, capability, evidence_state)
+  "ev_#{Digest::SHA256.hexdigest([method, route_selector, capability, evidence_state].join("\0"))}"
+end
+
+def evidence_definition_from_route(route, index)
+  method = route.fetch("method")
+  route_selector = route.fetch("path")
+  capability = expression_value(route.fetch("capability_expr"))
+  evidence_state = route.fetch("receipt_state").downcase
+  {
+    "kind" => "evidence_definition",
+    "definition_key" => format("evidence_%03d", index),
+    "evidence_id" => evidence_id(method, route_selector, capability, evidence_state),
+    "method" => method,
+    "route_selector" => route_selector,
+    "source_command" => expression_value(route.fetch("source_command_expr")),
+    "capability" => capability,
+    "evidence_state" => evidence_state,
+    "effect_class" => route.fetch("evidence_effect_class"),
+    "side_effect_boundary" => expression_value(route.fetch("side_effect_boundary_expr")),
+    "legacy_compatibility_route" => route.fetch("legacy_compatibility_route"),
+    "retired_direct_route" => route.fetch("dispatch_handler") == "RetiredCompatibility",
+    "renderer_key" => route["renderer_key"],
+  }
+end
+
+def validate_evidence_registry!(records)
+  metadata = records.first
+  fail!("evidence registry metadata is missing") unless metadata&.fetch("kind", nil) == "metadata"
+  fail!("evidence registry schema mismatch") unless
+    metadata.fetch("schema", nil) == EVIDENCE_REGISTRY_SCHEMA
+  definitions = records.drop(1)
+  fail!("evidence registry contains unknown record kinds") unless
+    definitions.all? { |record| record["kind"] == "evidence_definition" }
+  fail!("evidence definition count drifted") unless
+    metadata.fetch("evidence_definition_count", nil) == definitions.length
+  renderable_count = definitions.count { |definition| !definition["renderer_key"].nil? }
+  legacy_count = definitions.count { |definition| definition["legacy_compatibility_route"] == true }
+  fail!("renderable evidence definition count drifted") unless
+    metadata.fetch("renderable_evidence_definition_count", nil) == renderable_count
+  fail!("legacy evidence definition count drifted") unless
+    metadata.fetch("legacy_evidence_definition_count", nil) == legacy_count
+  migration_sha = metadata.fetch("source_migration_route_catalog_sha256", nil)
+  fail!("evidence registry migration SHA-256 is invalid") unless
+    migration_sha.is_a?(String) && migration_sha.match?(/\A[0-9a-f]{64}\z/)
+
+  required_fields = %w[
+    kind definition_key evidence_id method route_selector source_command capability evidence_state
+    effect_class side_effect_boundary legacy_compatibility_route retired_direct_route renderer_key
+  ]
+  renderer_keys = renderer_keys_from_table(REPORT_REGISTRY.read)
+  definitions.each_with_index do |definition, index|
+    fail!("evidence definition #{index} fields drifted") unless
+      definition.keys.sort == required_fields.sort
+    fail!("evidence definition #{index} key drifted") unless
+      definition.fetch("definition_key") == format("evidence_%03d", index)
+    method = definition.fetch("method")
+    route_selector = definition.fetch("route_selector")
+    capability = definition.fetch("capability")
+    state = definition.fetch("evidence_state")
+    fail!("evidence definition #{index} method is invalid") unless method == "GET"
+    fail!("evidence definition #{index} selector is invalid") unless
+      route_selector.start_with?("/api/") && !route_selector.include?("<")
+    fail!("evidence definition #{index} state is invalid") unless
+      %w[precondition denial receipt persistence retention terminal].include?(state)
+    fail!("evidence definition #{index} id drifted") unless
+      definition.fetch("evidence_id") == evidence_id(method, route_selector, capability, state)
+    fail!("evidence definition #{index} effect class is invalid") unless
+      %w[read_only dry_run confirmation_required declared_no_effect].include?(definition.fetch("effect_class"))
+    fail!("evidence definition #{index} legacy flag is invalid") unless
+      [true, false].include?(definition["legacy_compatibility_route"])
+    fail!("evidence definition #{index} retired flag is invalid") unless
+      [true, false].include?(definition["retired_direct_route"])
+    renderer_key = definition["renderer_key"]
+    fail!("evidence definition #{index} renderer key is unknown") unless
+      renderer_key.nil? || renderer_keys.include?(renderer_key)
+    fail!("legacy evidence definition #{index} lost its renderer key") if
+      definition["legacy_compatibility_route"] && renderer_key.nil?
+  end
+  %w[definition_key evidence_id route_selector].each do |field|
+    values = definitions.map { |definition| definition.fetch(field) }
+    fail!("evidence registry #{field} values are not unique") unless values.uniq.length == values.length
+  end
+end
+
 def native_report_table_items(source)
   marker = "const NATIVE_REPORT_DEFINITIONS: &[NativeReportDefinition] = &["
   table_index = source.index(marker)
@@ -592,9 +710,9 @@ def validate_catalog!(records)
     fail!("special route #{index} watchdog flag drifted") unless route.fetch("watchdog_probe") == WATCHDOG_PATHS.include?(path)
   end
   report_ids.concat(special.map { |route| route.fetch("report_id") })
-  dense_ids = (0..report_ids.max).to_a
-  fail!("native report ids are not dense") unless report_ids.uniq.sort == dense_ids
-  fail!("renderer implementation count drifted") unless dense_ids.length == RENDERER_COUNT
+  unknown_report_ids = report_ids.uniq - renderer_ids
+  fail!("route bindings reference unknown native report ids") unless unknown_report_ids.empty?
+  fail!("renderer implementation count drifted") unless renderer_ids.length == RENDERER_COUNT
   fail!("renderer table identity drifted") unless renderer_keys_from_table(REPORT_REGISTRY.read) == renderer_keys
 end
 
@@ -684,8 +802,6 @@ def generated_bindings(records)
     "    #{slice.map { |renderer| JSON.generate(renderer.fetch('key')) }.join(', ')},"
   end.join("\n")
   <<~RUST
-    use super::*;
-
     #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
     #[serde(transparent)]
     pub(crate) struct NativeReportId(pub(crate) u16);
@@ -764,6 +880,48 @@ def generated_watchdog(records)
   fail!("watchdog paths are absent from route catalog: #{missing.join(',')}") unless missing.empty?
   lines = WATCHDOG_PATHS.map { |path| "    #{JSON.generate(path)}," }.join("\n")
   "pub(crate) const WATCHDOG_PROBE_PATHS: &[&str] = &[\n#{lines}\n];\n"
+end
+
+def generated_evidence_definitions(definitions)
+  body = definitions.map do |definition|
+    renderer_key = definition["renderer_key"].nil? ? "None" : "Some(#{JSON.generate(definition.fetch('renderer_key'))})"
+    "    EvidenceDefinition { evidence_id: #{JSON.generate(definition.fetch('evidence_id'))}, method: #{JSON.generate(definition.fetch('method'))}, route_selector: #{JSON.generate(definition.fetch('route_selector'))}, source_command: #{JSON.generate(definition.fetch('source_command'))}, capability: #{JSON.generate(definition.fetch('capability'))}, evidence_state: #{JSON.generate(definition.fetch('evidence_state'))}, effect_class: #{JSON.generate(definition.fetch('effect_class'))}, side_effect_boundary: #{JSON.generate(definition.fetch('side_effect_boundary'))}, legacy_compatibility_route: #{definition.fetch('legacy_compatibility_route')}, retired_direct_route: #{definition.fetch('retired_direct_route')}, renderer_key: #{renderer_key} },"
+  end.join("\n")
+  <<~RUST
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) struct EvidenceDefinition {
+        pub(super) evidence_id: &'static str,
+        pub(super) method: &'static str,
+        pub(super) route_selector: &'static str,
+        pub(super) source_command: &'static str,
+        pub(super) capability: &'static str,
+        pub(super) evidence_state: &'static str,
+        pub(super) effect_class: &'static str,
+        pub(super) side_effect_boundary: &'static str,
+        pub(super) legacy_compatibility_route: bool,
+        pub(super) retired_direct_route: bool,
+        pub(super) renderer_key: Option<&'static str>,
+    }
+
+    #[rustfmt::skip]
+    pub(super) const EVIDENCE_DEFINITIONS: &[EvidenceDefinition] = &[
+    #{body}
+    ];
+
+    pub(super) fn evidence_definition_by_id(evidence_id: &str) -> Option<EvidenceDefinition> {
+        EVIDENCE_DEFINITIONS
+            .iter()
+            .copied()
+            .find(|definition| definition.evidence_id == evidence_id)
+    }
+
+    pub(super) fn evidence_definition_by_route(route: &str) -> Option<EvidenceDefinition> {
+        EVIDENCE_DEFINITIONS
+            .iter()
+            .copied()
+            .find(|definition| definition.route_selector == route)
+    }
+  RUST
 end
 
 def indent_item(item)
@@ -983,8 +1141,73 @@ def bootstrap!
   upgrade!
 end
 
+def bootstrap_evidence_registry!
+  fail!("evidence definition registry already exists") if EVIDENCE_DEFINITION_REGISTRY.exist?
+  evidence_routes = route_records(catalog_records).select { |route| !route["receipt_state"].nil? }
+  definitions = evidence_routes.each_with_index.map do |route, index|
+    evidence_definition_from_route(route, index)
+  end
+  records = [
+    {
+      "kind" => "metadata",
+      "schema" => EVIDENCE_REGISTRY_SCHEMA,
+      "evidence_definition_count" => definitions.length,
+      "renderable_evidence_definition_count" => definitions.count { |definition| !definition["renderer_key"].nil? },
+      "legacy_evidence_definition_count" => definitions.count { |definition| definition["legacy_compatibility_route"] },
+      "source_migration_route_catalog_sha256" => Digest::SHA256.file(CATALOG).hexdigest,
+    },
+  ] + definitions
+  atomic_write(
+    EVIDENCE_DEFINITION_REGISTRY,
+    records.map { |record| JSON.generate(record) }.join("\n") + "\n",
+  )
+  validate_evidence_registry!(records)
+end
+
+def verify_evidence_migration_parity!
+  evidence_routes = route_records(catalog_records).select { |route| !route["receipt_state"].nil? }
+  expected = evidence_routes.each_with_index.map do |route, index|
+    evidence_definition_from_route(route, index)
+  end
+  actual = evidence_definition_records
+  fail!("evidence registry drifted from its current migration source") unless actual == expected
+  puts JSON.generate(
+    schema: "hepta_evidence_definition_migration_parity_v1",
+    status: "ready",
+    evidence_definition_count: actual.length,
+    route_catalog_sha256: Digest::SHA256.file(CATALOG).hexdigest,
+    evidence_registry_sha256: Digest::SHA256.file(EVIDENCE_DEFINITION_REGISTRY).hexdigest,
+  )
+end
+
+def verify_evidence_independence!
+  missing_http_route = ENV.fetch("HEPTA_EVIDENCE_EXPECT_MISSING_HTTP_ROUTE", "")
+  fail!("HEPTA_EVIDENCE_EXPECT_MISSING_HTTP_ROUTE is required") if missing_http_route.empty?
+  routes = route_records(catalog_records)
+  fail!("HTTP route fixture still contains the expected missing path") if
+    routes.any? { |route| route["path"] == missing_http_route }
+  definitions = evidence_definition_records
+  definition = definitions.find { |candidate| candidate["route_selector"] == missing_http_route }
+  fail!("independent evidence selector disappeared with the HTTP route") unless definition
+  renderer_key = definition["renderer_key"]
+  fail!("independent evidence renderer key disappeared with the HTTP route") unless
+    renderer_key && renderer_keys_from_table(REPORT_REGISTRY.read).include?(renderer_key)
+  generated = generated_evidence_definitions(definitions)
+  fail!("independent generated registry lost the removed HTTP selector") unless
+    generated.include?(JSON.generate(missing_http_route)) && generated.include?(JSON.generate(renderer_key))
+  puts JSON.generate(
+    schema: "hepta_evidence_definition_registry_independence_v1",
+    status: "ready",
+    http_route_count: routes.length,
+    evidence_definition_count: definitions.length,
+    removed_http_selector_preserved: true,
+    stable_renderer_key_preserved: true,
+  )
+end
+
 def apply!
   records = catalog_records
+  evidence_definitions = evidence_definition_records
   atomic_write(GENERATED_ROUTES, generated_routes(records))
   atomic_write(GENERATED_BINDINGS, generated_bindings(records))
   atomic_write(GENERATED_LIFECYCLES, generated_lifecycles(records))
@@ -992,10 +1215,12 @@ def apply!
   atomic_write(GENERATED_WATCHDOG, generated_watchdog(records))
   atomic_write(GENERATED_CORE_STATIC_ASSETS, generated_core_static_assets(records))
   atomic_write(GENERATED_GATEWAY_STATIC_ASSETS, generated_gateway_static_assets(records))
+  atomic_write(GENERATED_EVIDENCE_DEFINITIONS, generated_evidence_definitions(evidence_definitions))
 end
 
 def verify!
   records = catalog_records
+  evidence_definitions = evidence_definition_records
   fail!("route registry does not include generated routes") unless ROUTE_REGISTRY.read.include?(GENERATED_INCLUDE)
   expected_routes = generated_routes(records)
   expected_bindings = generated_bindings(records)
@@ -1004,6 +1229,7 @@ def verify!
   expected_watchdog = generated_watchdog(records)
   expected_core_static_assets = generated_core_static_assets(records)
   expected_gateway_static_assets = generated_gateway_static_assets(records)
+  expected_evidence_definitions = generated_evidence_definitions(evidence_definitions)
   fail!("generated route specs drifted; run apply") unless GENERATED_ROUTES.binread == expected_routes
   fail!("generated report bindings drifted; run apply") unless GENERATED_BINDINGS.binread == expected_bindings
   fail!("generated route lifecycles drifted; run apply") unless GENERATED_LIFECYCLES.binread == expected_lifecycles
@@ -1011,6 +1237,7 @@ def verify!
   fail!("generated watchdog routes drifted; run apply") unless GENERATED_WATCHDOG.binread == expected_watchdog
   fail!("generated core static assets drifted; run apply") unless GENERATED_CORE_STATIC_ASSETS.binread == expected_core_static_assets
   fail!("generated gateway static assets drifted; run apply") unless GENERATED_GATEWAY_STATIC_ASSETS.binread == expected_gateway_static_assets
+  fail!("generated evidence definitions drifted; run apply") unless GENERATED_EVIDENCE_DEFINITIONS.binread == expected_evidence_definitions
   digest = Digest::SHA256.hexdigest(CATALOG.binread)
   puts JSON.generate(
     schema: "hepta_native_route_catalog_verify_v2",
@@ -1022,6 +1249,9 @@ def verify!
     static_asset_count: static_asset_records(records).length,
     renderer_count: renderer_records(records).length,
     permission_profile_count: permission_records(records).length,
+    evidence_definition_count: evidence_definitions.length,
+    renderable_evidence_definition_count: evidence_definitions.count { |definition| !definition["renderer_key"].nil? },
+    evidence_registry_sha256: Digest::SHA256.file(EVIDENCE_DEFINITION_REGISTRY).hexdigest,
     catalog_sha256: digest,
   )
 end
@@ -1030,6 +1260,8 @@ command = ARGV.fetch(0, "verify")
 case command
 when "bootstrap"
   bootstrap!
+when "bootstrap-evidence-registry"
+  bootstrap_evidence_registry!
 when "upgrade"
   upgrade!
 when "materialize-paths"
@@ -1038,6 +1270,10 @@ when "apply"
   apply!
 when "verify"
   verify!
+when "verify-evidence-migration-parity"
+  verify_evidence_migration_parity!
+when "verify-evidence-independence"
+  verify_evidence_independence!
 else
-  fail!("usage: scripts/hepta-native-route-catalog [bootstrap|upgrade|materialize-paths|apply|verify]")
+  fail!("usage: scripts/hepta-native-route-catalog [bootstrap|bootstrap-evidence-registry|upgrade|materialize-paths|apply|verify|verify-evidence-migration-parity|verify-evidence-independence]")
 end

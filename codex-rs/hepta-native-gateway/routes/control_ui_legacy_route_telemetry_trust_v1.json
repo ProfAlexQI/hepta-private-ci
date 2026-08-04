@@ -1,0 +1,31 @@
+{
+  "schema": "hepta_control_ui_legacy_route_telemetry_trust_v1",
+  "status": "blocked",
+  "collection_schema_ready": true,
+  "trusted_replay_required": true,
+  "environment_run_class_has_promotion_authority": false,
+  "trusted_launcher_identity_configured": false,
+  "deployment_identity_configured": false,
+  "event_signature_or_mac_configured": false,
+  "event_epoch_binding_configured": false,
+  "promotion_trust_root_configured": false,
+  "exact_source_epoch_rotation_ready": false,
+  "crashed_segment_quarantine_ready": false,
+  "telemetry_parent_directory_fsync_verified": false,
+  "local_development_may_mint_trust": false,
+  "decision": {
+    "promotion_authoritative": false,
+    "route_retirement_allowed": false,
+    "blockers": [
+      "trusted_launcher_identity_not_configured",
+      "deployment_identity_not_configured",
+      "event_signature_or_mac_not_configured",
+      "event_epoch_binding_not_configured",
+      "promotion_trust_root_not_configured",
+      "exact_source_epoch_rotation_not_ready",
+      "crashed_segment_quarantine_not_ready",
+      "telemetry_parent_directory_fsync_unproven"
+    ],
+    "next_action": "provision an independently approved launcher/deployment identity, authenticated event chain, exact-source epoch rotation and parent-fsync receipts before starting an authoritative 30-day window"
+  }
+}

@@ -15,16 +15,18 @@ use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc::Sender;
 #[cfg(not(test))]
 use std::sync::mpsc::SyncSender;
 #[cfg(not(test))]
 use std::sync::mpsc::TrySendError;
-#[cfg(not(test))]
+use std::sync::mpsc::channel;
 use std::sync::mpsc::sync_channel;
-#[cfg(not(test))]
 use std::thread;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+#[cfg(not(test))]
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use anyhow::Result;
@@ -35,11 +37,11 @@ use sha2::Sha256;
 use crate::route_definition::RouteDefinition;
 use crate::route_definition::RouteDispatchHandler;
 
-const TELEMETRY_RELATIVE_PATH: &str = "control-ui/legacy-http-events-v1.jsonl";
+const TELEMETRY_RELATIVE_PATH: &str = "control-ui/legacy-http-events-v2.jsonl";
 const TELEMETRY_ENABLED_ENV: &str = "HEPTA_CONTROL_UI_LEGACY_ROUTE_TELEMETRY";
 const TELEMETRY_RUN_CLASS_ENV: &str = "HEPTA_CONTROL_UI_LEGACY_ROUTE_RUN_CLASS";
-const TELEMETRY_SCHEMA: &str = "hepta_control_ui_legacy_http_event_v1";
-const TELEMETRY_HEALTH_SCHEMA: &str = "hepta_legacy_route_telemetry_health_v1";
+const TELEMETRY_SCHEMA: &str = "hepta_control_ui_legacy_http_event_v2";
+const TELEMETRY_HEALTH_SCHEMA: &str = "hepta_legacy_route_telemetry_health_v2";
 const TELEMETRY_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const TELEMETRY_MAX_EVENT_BYTES: usize = 16 * 1024;
 const TELEMETRY_QUEUE_CAPACITY: usize = 256;
@@ -63,10 +65,9 @@ static LAST_HEARTBEAT_DAY: AtomicU64 = AtomicU64::new(u64::MAX);
 static TEST_LIFECYCLE_STATE: OnceLock<Mutex<BTreeMap<PathBuf, (bool, u64)>>> = OnceLock::new();
 static ROUTE_CATALOG_SHA: OnceLock<String> = OnceLock::new();
 static PROCESS_RUN_IDENTIFIER_SHA: OnceLock<String> = OnceLock::new();
-static PROCESS_RUN_CLASS: OnceLock<String> = OnceLock::new();
 static TELEMETRY_EMIT_LOCK: Mutex<()> = Mutex::new(());
 #[cfg(not(test))]
-static TELEMETRY_SENDER: OnceLock<std::result::Result<SyncSender<TelemetryWrite>, String>> =
+static TELEMETRY_SENDER: OnceLock<std::result::Result<SyncSender<TelemetryCommand>, String>> =
     OnceLock::new();
 
 thread_local! {
@@ -113,6 +114,7 @@ enum ResponseWriteResult {
 #[serde(rename_all = "snake_case")]
 enum TelemetryEventType {
     ProcessStart,
+    ProcessStop,
     Heartbeat,
     LegacyRequest,
 }
@@ -127,10 +129,33 @@ struct PendingObservation {
     write_result: Option<ResponseWriteResult>,
 }
 
-#[cfg(not(test))]
 struct TelemetryWrite {
     path: PathBuf,
     encoded: Vec<u8>,
+}
+
+enum TelemetryCommand {
+    Append {
+        write: TelemetryWrite,
+        acknowledge: Option<Sender<std::result::Result<(), String>>>,
+    },
+    Flush(Sender<WriterBarrierReceipt>),
+}
+
+#[derive(Debug, Clone)]
+struct WriterBarrierReceipt {
+    append_error_count: u64,
+    last_append_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ShutdownHealthSnapshot {
+    pending_event_count: u64,
+    dropped_event_count: u64,
+    persist_error_count: u64,
+    incomplete_observation_count: u64,
+    corrupt_file_count: u64,
+    capacity_reached: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -320,6 +345,59 @@ fn record_process_lifecycle() {
     }
 }
 
+/// Establishes a durable barrier for all prior observations, refuses to emit a
+/// terminal marker if any writer/observation health counter is nonzero, then
+/// waits for the marker's own append and `sync_data` result before establishing
+/// a second barrier. A clean gateway shutdown must call this after the HTTP
+/// worker pool drains; abrupt or degraded termination intentionally leaves the
+/// segment incomplete and therefore ineligible for route retirement.
+pub(super) fn record_process_stop_and_flush() -> Result<()> {
+    let Some(path) = telemetry_path()? else {
+        return Ok(());
+    };
+    let _guard = TELEMETRY_EMIT_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !process_start_recorded(&path) {
+        return Ok(());
+    }
+    let prior = flush_telemetry_writer().context("drain prior telemetry before process stop")?;
+    ensure_shutdown_health(prior, "before process stop")?;
+    emit_event_locked_with_ack(
+        path,
+        TelemetryEventType::ProcessStop,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        true,
+    )
+    .context("durably append process stop")?;
+    let terminal = flush_telemetry_writer().context("flush terminal process stop")?;
+    ensure_shutdown_health(terminal, "after process stop")
+}
+
+fn ensure_shutdown_health(snapshot: ShutdownHealthSnapshot, phase: &str) -> Result<()> {
+    anyhow::ensure!(
+        snapshot.pending_event_count == 0
+            && snapshot.dropped_event_count == 0
+            && snapshot.persist_error_count == 0
+            && snapshot.incomplete_observation_count == 0
+            && snapshot.corrupt_file_count == 0
+            && !snapshot.capacity_reached,
+        "legacy route telemetry is not shutdown-durable {phase}: pending={} dropped={} persist_errors={} incomplete={} corrupt={} capacity_reached={}",
+        snapshot.pending_event_count,
+        snapshot.dropped_event_count,
+        snapshot.persist_error_count,
+        snapshot.incomplete_observation_count,
+        snapshot.corrupt_file_count,
+        snapshot.capacity_reached,
+    );
+    Ok(())
+}
+
 #[cfg(not(test))]
 fn process_start_recorded(_path: &Path) -> bool {
     PROCESS_START_RECORDED.load(Ordering::Acquire)
@@ -423,9 +501,58 @@ fn emit_event_locked(
     write_result: Option<ResponseWriteResult>,
     observation_complete: bool,
 ) -> Result<()> {
+    let event = build_event(
+        event_type,
+        route_key,
+        route_state,
+        consumer_class,
+        preflight,
+        http_status,
+        write_result,
+        observation_complete,
+    )?;
+    record_event(path, &event)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_event_locked_with_ack(
+    path: PathBuf,
+    event_type: TelemetryEventType,
+    route_key: Option<&str>,
+    route_state: Option<LegacyRouteState>,
+    consumer_class: Option<AnonymousConsumerClass>,
+    preflight: Option<PreflightResult>,
+    http_status: Option<u16>,
+    write_result: Option<ResponseWriteResult>,
+    observation_complete: bool,
+) -> Result<()> {
+    let event = build_event(
+        event_type,
+        route_key,
+        route_state,
+        consumer_class,
+        preflight,
+        http_status,
+        write_result,
+        observation_complete,
+    )?;
+    record_event_with_ack(path, &event)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_event<'a>(
+    event_type: TelemetryEventType,
+    route_key: Option<&'a str>,
+    route_state: Option<LegacyRouteState>,
+    consumer_class: Option<AnonymousConsumerClass>,
+    preflight: Option<PreflightResult>,
+    http_status: Option<u16>,
+    write_result: Option<ResponseWriteResult>,
+    observation_complete: bool,
+) -> Result<LegacyRouteUsageEvent<'a>> {
     let head_sha = hepta_core::production_surface_report().source_git_head;
     let catalog_sha = route_catalog_sha();
-    let event = LegacyRouteUsageEvent {
+    Ok(LegacyRouteUsageEvent {
         schema: TELEMETRY_SCHEMA,
         event_type,
         process_run_identifier_sha256: process_run_identifier_sha(),
@@ -450,14 +577,14 @@ fn emit_event_locked(
         persist_error_count: PERSIST_ERROR_COUNT.load(Ordering::Relaxed),
         incomplete_observation_count: INCOMPLETE_OBSERVATION_COUNT.load(Ordering::Relaxed),
         capacity_reached: CAPACITY_REACHED.load(Ordering::Relaxed),
-    };
-    record_event(path, &event)
+    })
 }
 
 fn process_run_class_value() -> &'static str {
-    PROCESS_RUN_CLASS
-        .get_or_init(|| env::var(TELEMETRY_RUN_CLASS_ENV).unwrap_or_else(|_| "operator".into()))
-        .as_str()
+    // Ordinary process environment is not a trusted deployment identity. Until
+    // a sealed launcher proof is independently configured and verified, every
+    // producer run is non-promotable test/observer traffic regardless of env.
+    "ci_test"
 }
 
 fn process_run_class() -> Result<&'static str> {
@@ -707,6 +834,11 @@ fn record_event(path: PathBuf, event: &LegacyRouteUsageEvent<'_>) -> Result<()> 
     Ok(())
 }
 
+#[cfg(test)]
+fn record_event_with_ack(path: PathBuf, event: &LegacyRouteUsageEvent<'_>) -> Result<()> {
+    record_event(path, event)
+}
+
 #[cfg(not(test))]
 fn record_event(path: PathBuf, event: &LegacyRouteUsageEvent<'_>) -> Result<()> {
     let encoded = encode_event(event)?;
@@ -715,7 +847,10 @@ fn record_event(path: PathBuf, event: &LegacyRouteUsageEvent<'_>) -> Result<()> 
         .as_ref()
         .map_err(|error| anyhow::anyhow!(error.clone()))?;
     PENDING_EVENT_COUNT.fetch_add(1, Ordering::Relaxed);
-    match sender.try_send(TelemetryWrite { path, encoded }) {
+    match sender.try_send(TelemetryCommand::Append {
+        write: TelemetryWrite { path, encoded },
+        acknowledge: None,
+    }) {
         Ok(()) => Ok(()),
         Err(TrySendError::Full(_)) => {
             PENDING_EVENT_COUNT.fetch_sub(1, Ordering::Relaxed);
@@ -729,25 +864,171 @@ fn record_event(path: PathBuf, event: &LegacyRouteUsageEvent<'_>) -> Result<()> 
 }
 
 #[cfg(not(test))]
-fn start_telemetry_writer() -> std::result::Result<SyncSender<TelemetryWrite>, String> {
-    let (sender, receiver) = sync_channel::<TelemetryWrite>(TELEMETRY_QUEUE_CAPACITY);
+fn record_event_with_ack(path: PathBuf, event: &LegacyRouteUsageEvent<'_>) -> Result<()> {
+    const APPEND_TIMEOUT: Duration = Duration::from_secs(5);
+
+    let encoded = encode_event(event)?;
+    let sender = TELEMETRY_SENDER
+        .get_or_init(start_telemetry_writer)
+        .as_ref()
+        .map_err(|error| anyhow::anyhow!(error.clone()))?;
+    let (acknowledge, completed) = channel();
+    PENDING_EVENT_COUNT.fetch_add(1, Ordering::Relaxed);
+    let command = TelemetryCommand::Append {
+        write: TelemetryWrite { path, encoded },
+        acknowledge: Some(acknowledge),
+    };
+    if let Err(error) = enqueue_writer_command(sender, command, APPEND_TIMEOUT, "append") {
+        PENDING_EVENT_COUNT.fetch_sub(1, Ordering::Relaxed);
+        return Err(error);
+    }
+    completed
+        .recv_timeout(APPEND_TIMEOUT)
+        .context("legacy route telemetry append acknowledgement timed out")?
+        .map_err(anyhow::Error::msg)
+}
+
+#[cfg(not(test))]
+fn start_telemetry_writer() -> std::result::Result<SyncSender<TelemetryCommand>, String> {
+    let (sender, receiver) = sync_channel::<TelemetryCommand>(TELEMETRY_QUEUE_CAPACITY);
     thread::Builder::new()
         .name("hepta-legacy-route-telemetry".to_string())
         .spawn(move || {
-            for write in receiver {
-                let result =
-                    persist_encoded_with_limit(&write.path, &write.encoded, TELEMETRY_MAX_BYTES);
-                PENDING_EVENT_COUNT.fetch_sub(1, Ordering::Relaxed);
-                match result {
-                    Ok(()) => {
-                        PERSISTED_EVENT_COUNT.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(error) => record_persist_error(&error),
-                }
-            }
+            run_telemetry_writer(
+                receiver,
+                |write| {
+                    persist_encoded_with_limit(&write.path, &write.encoded, TELEMETRY_MAX_BYTES)
+                },
+                true,
+            );
         })
         .map_err(|error| format!("spawn legacy route telemetry writer: {error}"))?;
     Ok(sender)
+}
+
+fn run_telemetry_writer(
+    receiver: std::sync::mpsc::Receiver<TelemetryCommand>,
+    mut persist: impl FnMut(&TelemetryWrite) -> Result<()>,
+    update_global_counters: bool,
+) {
+    let mut barrier = WriterBarrierReceipt {
+        append_error_count: 0,
+        last_append_error: None,
+    };
+    for command in receiver {
+        match command {
+            TelemetryCommand::Append { write, acknowledge } => {
+                let result = persist(&write).map_err(|error| format!("{error:#}"));
+                if update_global_counters {
+                    PENDING_EVENT_COUNT.fetch_sub(1, Ordering::Relaxed);
+                    match &result {
+                        Ok(()) => {
+                            PERSISTED_EVENT_COUNT.fetch_add(1, Ordering::Relaxed);
+                        }
+                        Err(message) => record_persist_error(&anyhow::anyhow!(message.clone())),
+                    }
+                }
+                if let Err(message) = &result {
+                    barrier.append_error_count = barrier.append_error_count.saturating_add(1);
+                    barrier.last_append_error = Some(message.clone());
+                }
+                if let Some(acknowledge) = acknowledge {
+                    let _ = acknowledge.send(result);
+                }
+            }
+            TelemetryCommand::Flush(acknowledge) => {
+                let _ = acknowledge.send(barrier.clone());
+            }
+        }
+    }
+}
+
+#[cfg(not(test))]
+fn enqueue_writer_command(
+    sender: &SyncSender<TelemetryCommand>,
+    mut command: TelemetryCommand,
+    timeout: Duration,
+    label: &str,
+) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match sender.try_send(command) {
+            Ok(()) => return Ok(()),
+            Err(TrySendError::Full(returned)) if Instant::now() < deadline => {
+                command = returned;
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(TrySendError::Full(_)) => {
+                anyhow::bail!("legacy route telemetry {label} enqueue timed out")
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                anyhow::bail!("legacy route telemetry writer disconnected before {label}")
+            }
+        }
+    }
+}
+
+#[cfg(not(test))]
+fn flush_telemetry_writer() -> Result<ShutdownHealthSnapshot> {
+    const FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
+
+    let sender = TELEMETRY_SENDER
+        .get_or_init(start_telemetry_writer)
+        .as_ref()
+        .map_err(|error| anyhow::anyhow!(error.clone()))?;
+    let (acknowledge, completed) = channel();
+    enqueue_writer_command(
+        sender,
+        TelemetryCommand::Flush(acknowledge),
+        FLUSH_TIMEOUT,
+        "flush",
+    )?;
+    let barrier = completed
+        .recv_timeout(FLUSH_TIMEOUT)
+        .context("legacy route telemetry flush acknowledgement timed out")?;
+    anyhow::ensure!(
+        barrier.append_error_count == 0,
+        "legacy route telemetry barrier observed {} append errors; last error: {}",
+        barrier.append_error_count,
+        barrier
+            .last_append_error
+            .as_deref()
+            .unwrap_or("unavailable"),
+    );
+    anyhow::ensure!(
+        PENDING_EVENT_COUNT.load(Ordering::Acquire) == 0,
+        "legacy route telemetry flush left pending events"
+    );
+    Ok(shutdown_health_snapshot())
+}
+
+#[cfg(test)]
+fn flush_telemetry_writer() -> Result<ShutdownHealthSnapshot> {
+    Ok(shutdown_health_snapshot())
+}
+
+#[cfg(not(test))]
+fn shutdown_health_snapshot() -> ShutdownHealthSnapshot {
+    ShutdownHealthSnapshot {
+        pending_event_count: PENDING_EVENT_COUNT.load(Ordering::Acquire),
+        dropped_event_count: DROPPED_EVENT_COUNT.load(Ordering::Acquire),
+        persist_error_count: PERSIST_ERROR_COUNT.load(Ordering::Acquire),
+        incomplete_observation_count: INCOMPLETE_OBSERVATION_COUNT.load(Ordering::Acquire),
+        corrupt_file_count: CORRUPT_FILE_COUNT.load(Ordering::Acquire),
+        capacity_reached: CAPACITY_REACHED.load(Ordering::Acquire),
+    }
+}
+
+#[cfg(test)]
+fn shutdown_health_snapshot() -> ShutdownHealthSnapshot {
+    ShutdownHealthSnapshot {
+        pending_event_count: 0,
+        dropped_event_count: 0,
+        persist_error_count: 0,
+        incomplete_observation_count: 0,
+        corrupt_file_count: 0,
+        capacity_reached: false,
+    }
 }
 
 #[cfg(test)]
@@ -1124,6 +1405,160 @@ mod tests {
     }
 
     #[test]
+    fn graceful_shutdown_persists_process_stop_after_lifecycle_events() {
+        let root = tempfile::tempdir().expect("telemetry root");
+        let path = root.path().join(TELEMETRY_RELATIVE_PATH);
+
+        with_test_state_root(root.path(), || {
+            record_process_lifecycle();
+            record_process_stop_and_flush().expect("flush graceful process stop");
+        });
+
+        let events = fs::read_to_string(path)
+            .expect("read lifecycle events")
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("event JSON"))
+            .collect::<Vec<_>>();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0]["event_type"], "process_start");
+        assert_eq!(events[1]["event_type"], "heartbeat");
+        assert_eq!(events[2]["event_type"], "process_stop");
+        assert!(
+            events
+                .iter()
+                .all(|event| event["observation_complete"] == true)
+        );
+    }
+
+    #[test]
+    fn production_writer_reports_post_write_sync_failure_without_durability_claim() {
+        let root = tempfile::tempdir().expect("telemetry root");
+        let path = root.path().join(TELEMETRY_RELATIVE_PATH);
+        let (sender, receiver) = sync_channel::<TelemetryCommand>(4);
+        let writer = thread::spawn(move || {
+            run_telemetry_writer(
+                receiver,
+                |write| {
+                    if write
+                        .encoded
+                        .windows(b"\"event_type\":\"process_stop\"".len())
+                        .any(|window| window == b"\"event_type\":\"process_stop\"")
+                    {
+                        let _write_guard = TELEMETRY_WRITE_LOCK
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        let mut file = open_secure_telemetry_file(&write.path)?;
+                        lock_telemetry_file(&file)?;
+                        validate_telemetry_file(&file)?;
+                        file.write_all(&write.encoded)
+                            .context("inject complete stop write before sync failure")?;
+                        anyhow::bail!("injected sync_data failure after complete terminal write")
+                    }
+                    persist_encoded_with_limit(&write.path, &write.encoded, TELEMETRY_MAX_BYTES)
+                },
+                false,
+            );
+        });
+
+        let mut start = test_event();
+        start.event_type = TelemetryEventType::ProcessStart;
+        start.sequence = 1;
+        let (start_ack, start_done) = channel();
+        sender
+            .send(TelemetryCommand::Append {
+                write: TelemetryWrite {
+                    path: path.clone(),
+                    encoded: encode_event(&start).expect("start event"),
+                },
+                acknowledge: Some(start_ack),
+            })
+            .expect("queue process start");
+        assert_eq!(start_done.recv().expect("start ack"), Ok(()));
+
+        let (prior_ack, prior_done) = channel();
+        sender
+            .send(TelemetryCommand::Flush(prior_ack))
+            .expect("queue prior barrier");
+        assert_eq!(
+            prior_done.recv().expect("prior barrier").append_error_count,
+            0
+        );
+
+        let mut stop = test_event();
+        stop.event_type = TelemetryEventType::ProcessStop;
+        stop.sequence = 2;
+        let (stop_ack, stop_done) = channel();
+        sender
+            .send(TelemetryCommand::Append {
+                write: TelemetryWrite {
+                    path: path.clone(),
+                    encoded: encode_event(&stop).expect("stop event"),
+                },
+                acknowledge: Some(stop_ack),
+            })
+            .expect("queue process stop");
+        assert!(stop_done.recv().expect("stop ack").is_err());
+
+        let (terminal_ack, terminal_done) = channel();
+        sender
+            .send(TelemetryCommand::Flush(terminal_ack))
+            .expect("queue terminal barrier");
+        let terminal = terminal_done.recv().expect("terminal barrier");
+        assert_eq!(terminal.append_error_count, 1);
+        assert!(terminal.last_append_error.is_some());
+        drop(sender);
+        writer.join().expect("join telemetry writer");
+
+        let contents = fs::read_to_string(path).expect("read telemetry stream");
+        assert!(contents.contains("\"event_type\":\"process_start\""));
+        assert!(contents.contains("\"event_type\":\"process_stop\""));
+        // The raw marker can remain after a failed sync. The window producer
+        // therefore keeps durable_process_stop_observed and
+        // shutdown_flush_verified false until an independent receipt exists.
+    }
+
+    #[test]
+    fn shutdown_health_rejects_every_degraded_counter() {
+        let healthy = ShutdownHealthSnapshot {
+            pending_event_count: 0,
+            dropped_event_count: 0,
+            persist_error_count: 0,
+            incomplete_observation_count: 0,
+            corrupt_file_count: 0,
+            capacity_reached: false,
+        };
+        ensure_shutdown_health(healthy, "test").expect("healthy snapshot");
+        for degraded in [
+            ShutdownHealthSnapshot {
+                pending_event_count: 1,
+                ..healthy
+            },
+            ShutdownHealthSnapshot {
+                dropped_event_count: 1,
+                ..healthy
+            },
+            ShutdownHealthSnapshot {
+                persist_error_count: 1,
+                ..healthy
+            },
+            ShutdownHealthSnapshot {
+                incomplete_observation_count: 1,
+                ..healthy
+            },
+            ShutdownHealthSnapshot {
+                corrupt_file_count: 1,
+                ..healthy
+            },
+            ShutdownHealthSnapshot {
+                capacity_reached: true,
+                ..healthy
+            },
+        ] {
+            assert!(ensure_shutdown_health(degraded, "test").is_err());
+        }
+    }
+
+    #[test]
     fn persistence_failure_increments_drop_and_error_counters() {
         let root = tempfile::tempdir().expect("telemetry root");
         let blocked_root = root.path().join("not-a-directory");
@@ -1280,6 +1715,7 @@ mod tests {
         assert!(valid_run_class("ci_test"));
         assert!(valid_run_class("operator"));
         assert!(!valid_run_class("operator_from_header"));
+        assert_eq!(process_run_class_value(), "ci_test");
         assert_eq!(
             anonymous_consumer_class(forged),
             AnonymousConsumerClass::Unclassified

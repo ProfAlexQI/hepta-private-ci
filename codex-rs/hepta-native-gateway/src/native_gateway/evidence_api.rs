@@ -3,13 +3,14 @@ use serde_json::Value;
 use sha2::Digest;
 use sha2::Sha256;
 
-use crate::route_manifest::RouteDefinition;
-use crate::route_manifest::route_definition_registry;
 #[cfg(test)]
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
 use crate::route_registry::EVIDENCE_INDEX_ENDPOINT;
-#[cfg(test)]
-use crate::route_registry::TELEGRAM_LIVE_SOAK_ROUTE;
+
+use super::generated_evidence_registry::EVIDENCE_DEFINITIONS;
+use super::generated_evidence_registry::EvidenceDefinition;
+use super::generated_evidence_registry::evidence_definition_by_id;
+use super::generated_evidence_registry::evidence_definition_by_route;
 
 #[derive(Debug, Serialize)]
 pub(super) struct EvidenceIndex {
@@ -67,9 +68,10 @@ pub(super) enum EvidenceSelector<'a> {
 }
 
 pub(super) fn evidence_index_report() -> EvidenceIndex {
-    let entries = route_definition_registry()
-        .into_iter()
-        .filter_map(evidence_entry)
+    let entries = EVIDENCE_DEFINITIONS
+        .iter()
+        .copied()
+        .map(evidence_entry)
         .collect::<Vec<_>>();
     EvidenceIndex {
         schema: "hepta_evidence_index_v1",
@@ -85,13 +87,9 @@ pub(super) fn evidence_index_report() -> EvidenceIndex {
             .iter()
             .filter(|entry| entry.legacy_compatibility_route)
             .count(),
-        retired_direct_route_count: route_definition_registry()
-            .into_iter()
-            .filter(|definition| {
-                definition.legacy_compatibility_route
-                    && definition.dispatch_handler
-                        == crate::route_definition::RouteDispatchHandler::RetiredCompatibility
-            })
+        retired_direct_route_count: EVIDENCE_DEFINITIONS
+            .iter()
+            .filter(|definition| definition.retired_direct_route)
             .count(),
         legacy_direct_call_count_since_start: super::legacy_route_usage::total_direct_call_count(),
         legacy_route_telemetry: super::legacy_route_usage::telemetry_health(),
@@ -135,27 +133,23 @@ pub(super) fn requested_evidence_selector(
     Ok(selector)
 }
 
-pub(super) fn evidence_definition(selector: EvidenceSelector<'_>) -> Option<RouteDefinition> {
-    route_definition_registry().into_iter().find(|definition| {
-        let Some(entry) = evidence_entry(*definition) else {
-            return false;
-        };
-        match selector {
-            EvidenceSelector::Id(evidence_id) => entry.evidence_id == evidence_id,
-            EvidenceSelector::Route(route) => entry.route == route,
-        }
-    })
+pub(super) fn evidence_definition(selector: EvidenceSelector<'_>) -> Option<EvidenceDefinition> {
+    match selector {
+        EvidenceSelector::Id(evidence_id) => evidence_definition_by_id(evidence_id),
+        EvidenceSelector::Route(route) => evidence_definition_by_route(route),
+    }
 }
 
 pub(super) fn evidence_document_report(
-    definition: RouteDefinition,
+    definition: EvidenceDefinition,
     source_http_status: &'static str,
     source_content_type: &'static str,
     source_body: String,
 ) -> Result<EvidenceDocument, &'static str> {
     if !definition.legacy_compatibility_route
-        || definition.lifecycle.method != "GET"
-        || definition.lifecycle.path_pattern.contains('<')
+        || definition.method != "GET"
+        || definition.route_selector.contains('<')
+        || definition.renderer_key.is_none()
     {
         return Err("selected route is not a canonical legacy evidence report");
     }
@@ -164,14 +158,13 @@ pub(super) fn evidence_document_report(
     }
     let payload = serde_json::from_str(&source_body)
         .map_err(|_| "selected evidence report returned invalid JSON")?;
-    let evidence = evidence_entry(definition)
-        .ok_or("selected route does not expose receipt-state evidence")?;
+    let evidence = evidence_entry(definition);
     Ok(EvidenceDocument {
         schema: "hepta_evidence_document_v1",
         status: "ready",
         canonical_endpoint: EVIDENCE_INDEX_ENDPOINT,
         selected_evidence_id: evidence.evidence_id.clone(),
-        selected_route: definition.lifecycle.path_pattern,
+        selected_route: definition.route_selector,
         source_http_status,
         source_content_sha256: format!("{:x}", Sha256::digest(source_body.as_bytes())),
         evidence,
@@ -179,44 +172,29 @@ pub(super) fn evidence_document_report(
     })
 }
 
-fn evidence_entry(definition: RouteDefinition) -> Option<EvidenceEntry> {
-    let evidence_state = definition.receipt_state?.as_str();
-    let capability = definition.capability?;
-    let evidence_id = format!(
-        "ev_{:x}",
-        Sha256::digest(
-            format!(
-                "{}\0{}\0{}\0{}",
-                definition.lifecycle.method,
-                definition.lifecycle.path_pattern,
-                capability,
-                evidence_state
-            )
-            .as_bytes()
-        )
-    );
-    Some(EvidenceEntry {
-        evidence_id,
-        route: definition.lifecycle.path_pattern,
-        source_command: definition.source_command?,
-        capability,
-        evidence_state,
-        effect_class: definition.evidence_effect_class?,
-        side_effect_boundary: definition.side_effect_boundary?,
+fn evidence_entry(definition: EvidenceDefinition) -> EvidenceEntry {
+    EvidenceEntry {
+        evidence_id: definition.evidence_id.to_string(),
+        route: definition.route_selector,
+        source_command: definition.source_command,
+        capability: definition.capability,
+        evidence_state: definition.evidence_state,
+        effect_class: definition.effect_class,
+        side_effect_boundary: definition.side_effect_boundary,
         legacy_compatibility_route: definition.legacy_compatibility_route,
         canonical_selector: format!(
             "{EVIDENCE_INDEX_ENDPOINT}?route={}",
-            definition.lifecycle.path_pattern
+            definition.route_selector
         ),
         direct_call_count_since_start: super::legacy_route_usage::direct_call_count(
-            definition.lifecycle.path_pattern,
+            definition.route_selector,
         ),
         migration_state: if definition.legacy_compatibility_route {
             "observing_direct_calls"
         } else {
             "canonical"
         },
-    })
+    }
 }
 
 #[cfg(test)]
@@ -243,7 +221,7 @@ mod tests {
             .expect("legacy route telemetry health JSON");
         assert_eq!(
             telemetry["schema"],
-            "hepta_legacy_route_telemetry_health_v1"
+            "hepta_legacy_route_telemetry_health_v2"
         );
         assert_eq!(
             telemetry["enable_env"],
@@ -251,7 +229,7 @@ mod tests {
         );
         assert_eq!(telemetry["observation_window_complete"], false);
         assert_eq!(telemetry["file_contents_fully_validated"], false);
-        assert_eq!(telemetry["summary_producer_available"], false);
+        assert_eq!(telemetry["summary_producer_available"], true);
         assert_eq!(telemetry["zero_usage_claim_allowed"], false);
         assert_eq!(telemetry["retirement_evidence_ready"], false);
         assert!(
@@ -273,36 +251,35 @@ mod tests {
     }
 
     #[test]
-    fn route_definitions_bind_evidence_permissions_and_aliases_once() {
-        let definitions = route_definition_registry();
-        assert!(definitions.len() > CONTROL_UI_ROUTE_SPECS.len());
+    fn generated_evidence_registry_matches_typed_catalog_receipt_states() {
+        let mut expected_evidence_count = 0;
         for spec in CONTROL_UI_ROUTE_SPECS {
-            let definition = crate::route_manifest::route_definition(spec.method, spec.pattern)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "missing route definition for {} {}",
-                        spec.method, spec.pattern
-                    )
-                });
-            assert_eq!(definition.source_command, Some(spec.source_command));
-            assert_eq!(definition.capability, Some(spec.capability));
-            assert_eq!(
-                definition.side_effect_boundary,
-                Some(spec.side_effect_boundary)
-            );
-            assert_eq!(definition.receipt_state, spec.receipt_state());
+            let definition = evidence_definition_by_route(spec.pattern);
+            match spec.receipt_state() {
+                Some(evidence_state) => {
+                    expected_evidence_count += 1;
+                    let definition = definition.unwrap_or_else(|| {
+                        panic!("missing generated evidence definition for {}", spec.pattern)
+                    });
+                    assert_eq!(definition.method, spec.method);
+                    assert_eq!(definition.source_command, spec.source_command);
+                    assert_eq!(definition.capability, spec.capability);
+                    assert_eq!(definition.side_effect_boundary, spec.side_effect_boundary);
+                    assert_eq!(definition.evidence_state, evidence_state.as_str());
+                }
+                None => assert!(definition.is_none(), "unexpected evidence definition"),
+            }
         }
+        assert_eq!(expected_evidence_count, EVIDENCE_DEFINITIONS.len());
+        assert_eq!(expected_evidence_count, evidence_index_report().entry_count);
+        assert_eq!(EVIDENCE_DEFINITIONS.len(), 207);
         assert_eq!(
-            definitions
+            EVIDENCE_DEFINITIONS
                 .iter()
-                .filter(|definition| definition.receipt_state.is_some())
+                .filter(|definition| definition.renderer_key.is_some())
                 .count(),
-            evidence_index_report().entry_count
+            206
         );
-        assert!(definitions.iter().all(|definition| {
-            definition.lifecycle.path_pattern != TELEGRAM_LIVE_SOAK_ROUTE.canonical
-                || definition.aliases == TELEGRAM_LIVE_SOAK_ROUTE.aliases
-        }));
     }
 
     #[test]
@@ -336,7 +313,62 @@ mod tests {
         for entry in &report.entries {
             let definition = evidence_definition(EvidenceSelector::Id(&entry.evidence_id))
                 .expect("evidence id must resolve");
-            assert_eq!(definition.lifecycle.path_pattern, entry.route);
+            assert_eq!(definition.route_selector, entry.route);
+            let expected_id = format!(
+                "ev_{:x}",
+                Sha256::digest(
+                    format!(
+                        "{}\0{}\0{}\0{}",
+                        definition.method,
+                        definition.route_selector,
+                        definition.capability,
+                        definition.evidence_state
+                    )
+                    .as_bytes()
+                )
+            );
+            assert_eq!(definition.evidence_id, expected_id);
         }
+    }
+
+    #[test]
+    fn evidence_selector_and_renderer_survive_simulated_http_path_removal() {
+        let definition = EVIDENCE_DEFINITIONS
+            .iter()
+            .copied()
+            .find(|definition| {
+                definition.legacy_compatibility_route
+                    && definition.renderer_key == Some("native_report_024")
+            })
+            .expect("stable renderable evidence definition");
+        let simulated_http_registry = crate::route_registry::registered_native_report_paths()
+            .filter(|path| *path != definition.route_selector)
+            .collect::<Vec<_>>();
+        assert!(!simulated_http_registry.contains(&definition.route_selector));
+
+        let resolved = evidence_definition(EvidenceSelector::Id(definition.evidence_id))
+            .expect("evidence id must resolve without an HTTP path lookup");
+        assert_eq!(resolved, definition);
+        assert_eq!(
+            evidence_definition(EvidenceSelector::Route(definition.route_selector)),
+            Some(definition)
+        );
+
+        let options = crate::NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: false,
+            telegram_plugin_poll_ms: 1_500,
+        };
+        let plugin = crate::native_telegram::telegram_plugin_status(false, 1_500);
+        let (status, content_type, body) =
+            super::super::native_report_registry::render_registered_evidence_report(
+                definition.renderer_key.expect("generated renderer key"),
+                &options,
+                plugin,
+            )
+            .expect("renderer key must resolve independently of the HTTP registry");
+        assert_eq!(status, "200 OK");
+        assert!(content_type.starts_with("application/json"));
+        assert!(serde_json::from_str::<Value>(&body).is_ok());
     }
 }

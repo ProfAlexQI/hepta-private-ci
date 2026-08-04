@@ -16,6 +16,7 @@ fn run() -> Result<()> {
     let mut events = None::<PathBuf>;
     let mut expected_head = None::<String>;
     let mut output = None::<PathBuf>;
+    let mut allow_blocked = false;
     let mut args = env::args().skip(1);
     while let Some(argument) = args.next() {
         match argument.as_str() {
@@ -32,9 +33,10 @@ fn run() -> Result<()> {
                     args.next().context("--output requires a path")?,
                 ))
             }
+            "--allow-blocked" => allow_blocked = true,
             "--help" => {
                 println!(
-                    "Usage: hepta-legacy-route-window --events PATH --expected-head SHA [--output PATH]"
+                    "Usage: hepta-legacy-route-window --events PATH --expected-head SHA [--output PATH] [--allow-blocked]"
                 );
                 return Ok(());
             }
@@ -60,7 +62,7 @@ fn run() -> Result<()> {
         fs::write(path, &serialized).context("write legacy route window summary")?;
     }
     println!("{}", String::from_utf8(serialized).expect("JSON is UTF-8"));
-    if !summary.decision.eligible {
+    if !allow_blocked && !summary.decision.eligible {
         anyhow::bail!("observation window is not retirement-eligible");
     }
     Ok(())

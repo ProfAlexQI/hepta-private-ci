@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const EVENT_SCHEMA: &str = "hepta_control_ui_legacy_http_event_v1";
-pub const WINDOW_SCHEMA: &str = "hepta_control_ui_legacy_http_window_v1";
+pub const EVENT_SCHEMA: &str = "hepta_control_ui_legacy_http_event_v2";
+pub const WINDOW_SCHEMA: &str = "hepta_control_ui_legacy_http_window_v2";
 pub const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_EVENT_BYTES: usize = 16 * 1024;
 const DAY_MS: u64 = 86_400_000;
@@ -49,6 +49,7 @@ struct Segment {
     next_sequence: u64,
     last_time_unix_ms: u64,
     run_class: String,
+    stopped: bool,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -65,6 +66,7 @@ pub struct LegacyRouteWindowSummary {
     producer: &'static str,
     event_file_sha256: String,
     promotion_authoritative: bool,
+    process_stop_marker_observed: bool,
     durable_process_stop_observed: bool,
     continuous_coverage_declared: bool,
     shutdown_flush_verified: bool,
@@ -144,6 +146,7 @@ pub fn summarize_bytes(
     let route_states = canonical_legacy_route_states()?;
     let mut segments = BTreeMap::<String, Segment>::new();
     let mut active_days = BTreeSet::new();
+    let mut operator_event_times = Vec::new();
     let mut window_start = None::<u64>;
     let mut window_end = None::<u64>;
     let mut last_operator_request = None::<u64>;
@@ -180,6 +183,7 @@ pub fn summarize_bytes(
                     next_sequence: 2,
                     last_time_unix_ms: event.time_unix_ms,
                     run_class: event.run_class.clone(),
+                    stopped: false,
                 },
             );
         } else {
@@ -198,10 +202,15 @@ pub fn summarize_bytes(
                 event.run_class == segment.run_class,
                 "run class changed within process"
             );
+            anyhow::ensure!(!segment.stopped, "event followed process-stop marker");
             segment.next_sequence = segment.next_sequence.saturating_add(1);
             segment.last_time_unix_ms = event.time_unix_ms;
             match event.event_type.as_str() {
                 "heartbeat" => validate_lifecycle(&event)?,
+                "process_stop" => {
+                    validate_lifecycle(&event)?;
+                    segment.stopped = true;
+                }
                 "legacy_request" => {
                     validate_request(&event, &route_states)?;
                     total_requests = total_requests.saturating_add(1);
@@ -223,6 +232,7 @@ pub fn summarize_bytes(
             }
         }
         if event.run_class == "operator" {
+            operator_event_times.push(event.time_unix_ms);
             active_days.insert(event.time_unix_ms / DAY_MS);
             window_start = Some(
                 window_start.map_or(event.time_unix_ms, |value| value.min(event.time_unix_ms)),
@@ -257,7 +267,27 @@ pub fn summarize_bytes(
     if segments.is_empty() {
         blockers.push("process_segments_missing".into());
     }
-    blockers.push("durable_observation_completeness_unproven".into());
+    let process_stop_marker_observed =
+        !segments.is_empty() && segments.values().all(|segment| segment.stopped);
+    if !process_stop_marker_observed {
+        blockers.push("process_stop_marker_missing".into());
+    }
+    let durable_process_stop_observed = false;
+    blockers.push("independent_shutdown_durability_receipt_missing".into());
+    operator_event_times.sort_unstable();
+    let continuous_coverage_declared = operator_event_times.len() >= 2
+        && operator_event_times
+            .windows(2)
+            .all(|pair| pair[1].saturating_sub(pair[0]) <= MAX_WINDOW_STALENESS_MS);
+    if !continuous_coverage_declared {
+        blockers.push("continuous_operator_coverage_unproven".into());
+    }
+    // The exact-source writer now acknowledges each append and sync_data call,
+    // but creating the telemetry directory or its first file is not yet bound
+    // to a parent-directory fsync receipt. A terminal marker alone therefore
+    // cannot promote this stream as crash-durable evidence.
+    let shutdown_flush_verified = false;
+    blockers.push("telemetry_parent_directory_fsync_unproven".into());
     Ok(LegacyRouteWindowSummary {
         schema: WINDOW_SCHEMA,
         status: if blockers.is_empty() {
@@ -268,9 +298,10 @@ pub fn summarize_bytes(
         producer: "hepta-native-gateway/hepta-legacy-route-window",
         event_file_sha256: format!("{:x}", Sha256::digest(bytes)),
         promotion_authoritative: false,
-        durable_process_stop_observed: false,
-        continuous_coverage_declared: false,
-        shutdown_flush_verified: false,
+        process_stop_marker_observed,
+        durable_process_stop_observed,
+        continuous_coverage_declared,
+        shutdown_flush_verified,
         source_head_sha: expected_head.to_string(),
         route_catalog_sha256: catalog_sha,
         event_count,
@@ -476,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_synthetic_window_stays_non_authoritative() {
+    fn complete_synthetic_window_without_process_stop_stays_blocked() {
         let now = 2_000_000_000_000_u64;
         let start = now - 31 * DAY_MS;
         let mut events = vec![event("process_start", 1, start, "operator")];
@@ -495,9 +526,42 @@ mod tests {
             summary
                 .decision
                 .blockers
-                .contains(&"durable_observation_completeness_unproven".to_string())
+                .contains(&"process_stop_marker_missing".to_string())
         );
         assert_eq!(summary.operator_active_day_count, 32);
+    }
+
+    #[test]
+    fn complete_zero_use_window_stays_blocked_without_parent_fsync_receipt() {
+        let now = 2_000_000_000_000_u64;
+        let start = now - 31 * DAY_MS;
+        let mut events = vec![event("process_start", 1, start, "operator")];
+        for day in 1..=30 {
+            events.push(event(
+                "heartbeat",
+                day + 1,
+                start + day * DAY_MS,
+                "operator",
+            ));
+        }
+        events.push(event("process_stop", 32, now, "operator"));
+
+        let summary = summarize_bytes(&encode(&events), "abcdef123456", now)
+            .expect("durable complete summary");
+
+        assert!(!summary.decision.eligible);
+        assert_eq!(summary.status, "blocked");
+        assert!(summary.process_stop_marker_observed);
+        assert!(!summary.durable_process_stop_observed);
+        assert!(summary.continuous_coverage_declared);
+        assert!(!summary.shutdown_flush_verified);
+        assert_eq!(
+            summary.decision.blockers,
+            vec![
+                "independent_shutdown_durability_receipt_missing",
+                "telemetry_parent_directory_fsync_unproven",
+            ]
+        );
     }
 
     #[test]

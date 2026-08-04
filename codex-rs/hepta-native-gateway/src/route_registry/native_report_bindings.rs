@@ -1,5 +1,3 @@
-use super::*;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(transparent)]
 pub(crate) struct NativeReportId(pub(crate) u16);
