@@ -34,6 +34,31 @@ pub struct LiveSnapshotGet {
 }
 
 impl LiveSnapshotGet {
+    pub(super) fn try_new(
+        endpoint: Url,
+        session_id: SessionId,
+        correlation_id: CorrelationId,
+        run_identifier_sha256: impl Into<String>,
+        expected_sequence: u64,
+    ) -> Result<Self, BridgeAdapterError> {
+        let run_identifier_sha256 = run_identifier_sha256.into();
+        if !session_id.is_live_transport_safe()
+            || !correlation_id.is_live_transport_safe()
+            || !is_sha256(&run_identifier_sha256)
+        {
+            return Err(BridgeAdapterError::InvalidRequest(
+                "live snapshot request binding is not bounded and HTTP-header safe",
+            ));
+        }
+        Ok(Self {
+            endpoint,
+            session_id,
+            correlation_id,
+            run_identifier_sha256,
+            expected_sequence,
+        })
+    }
+
     pub fn endpoint(&self) -> &Url {
         &self.endpoint
     }
@@ -82,9 +107,9 @@ impl AuthenticatedLiveBridgeBinding {
         initial_sequence: u64,
     ) -> Result<Self, BridgeAdapterError> {
         let run_identifier_sha256 = run_identifier_sha256.into();
-        if session_id.is_blank() {
+        if !session_id.is_live_transport_safe() {
             return Err(BridgeAdapterError::InvalidRequest(
-                "authenticated bridge session id is missing",
+                "authenticated bridge session id is missing, oversized, or not HTTP-header safe",
             ));
         }
         if !is_sha256(&run_identifier_sha256) {
@@ -130,6 +155,7 @@ pub struct LiveSnapshotHttpResponse {
     pub content_type: String,
     pub cache_control: String,
     pub authenticated_session_id: SessionId,
+    pub authenticated_correlation_id: CorrelationId,
     pub run_identifier_sha256: String,
     pub sequence: u64,
     pub body: Vec<u8>,
@@ -225,11 +251,12 @@ impl<E: LiveSnapshotHttpExecutor> LoopbackSnapshotAdapter<E> {
             ));
         }
         if response.authenticated_session_id != *expected_binding.session_id()
+            || response.authenticated_correlation_id != *expected_correlation
             || response.run_identifier_sha256 != expected_binding.run_identifier_sha256()
             || response.sequence != expected_sequence
         {
             return Err(BridgeAdapterError::InvalidSnapshotResponse(
-                "response run, session, or sequence binding does not match the request",
+                "response run, session, correlation, or sequence binding does not match the request",
             ));
         }
 
@@ -292,13 +319,13 @@ impl<E: LiveSnapshotHttpExecutor> BridgeTransport for LoopbackSnapshotAdapter<E>
             ));
         }
 
-        let descriptor = LiveSnapshotGet {
-            endpoint: self.endpoint.clone(),
-            session_id: request.metadata.session_id.clone(),
-            correlation_id: request.metadata.correlation_id.clone(),
-            run_identifier_sha256: self.binding.run_identifier_sha256().into(),
-            expected_sequence: self.next_sequence,
-        };
+        let descriptor = LiveSnapshotGet::try_new(
+            self.endpoint.clone(),
+            request.metadata.session_id.clone(),
+            request.metadata.correlation_id.clone(),
+            self.binding.run_identifier_sha256(),
+            self.next_sequence,
+        )?;
         let response = self.executor.execute_get(&descriptor)?;
         if self.executor.authenticated_binding() != &self.binding {
             return Err(BridgeAdapterError::InvalidSnapshotResponse(
@@ -324,6 +351,7 @@ mod tests {
     use super::*;
     use crate::hepta_bridge::contract::{
         BridgeSnapshot, BridgeUpdateKind, Redaction,
+        MAX_BRIDGE_CORRELATION_ID_BYTES,
         tests_support::{binding, metadata, request_metadata},
     };
 
@@ -365,6 +393,7 @@ mod tests {
                 content_type: JSON_CONTENT_TYPE.into(),
                 cache_control: NO_STORE.into(),
                 authenticated_session_id: binding.session_id().clone(),
+                authenticated_correlation_id: update.metadata.correlation_id.clone(),
                 run_identifier_sha256: binding.run_identifier_sha256().into(),
                 sequence: binding.initial_sequence(),
                 body: serde_json::to_vec(&update).unwrap(),
@@ -462,6 +491,26 @@ mod tests {
         assert_eq!(observed.expected_sequence(), 3);
         assert_eq!(observed.accept(), "application/json");
         assert_eq!(observed.cache_control(), "no-store");
+    }
+
+    #[test]
+    fn oversized_binding_never_reaches_a_custom_executor() {
+        let mut adapter = LoopbackSnapshotAdapter::try_new(
+            &context(),
+            MemoryExecutor::returning(snapshot_update()),
+        )
+        .unwrap();
+        let mut oversized = request();
+        oversized.metadata.correlation_id =
+            CorrelationId::from("c".repeat(MAX_BRIDGE_CORRELATION_ID_BYTES + 1));
+
+        assert_eq!(
+            adapter.handle(oversized),
+            Err(BridgeAdapterError::InvalidRequest(
+                "snapshot request does not satisfy the bridge contract"
+            ))
+        );
+        assert!(adapter.executor.observed.is_empty());
     }
 
     #[test]
@@ -572,5 +621,19 @@ mod tests {
                 Err(BridgeAdapterError::InvalidSnapshotResponse(_))
             ));
         }
+
+        let mut executor = MemoryExecutor::returning(snapshot_update());
+        executor
+            .response
+            .as_mut()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .authenticated_correlation_id = "other-correlation".into();
+        let mut adapter = LoopbackSnapshotAdapter::try_new(&context(), executor).unwrap();
+        assert!(matches!(
+            adapter.handle(request()),
+            Err(BridgeAdapterError::InvalidSnapshotResponse(_))
+        ));
     }
 }

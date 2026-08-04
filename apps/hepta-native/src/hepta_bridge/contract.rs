@@ -5,6 +5,8 @@ use serde_json::Value;
 
 /// The only schema version accepted by this build of the product shell.
 pub const HEPTA_BRIDGE_SCHEMA_VERSION: u16 = 1;
+pub const MAX_BRIDGE_SESSION_ID_BYTES: usize = 1024;
+pub const MAX_BRIDGE_CORRELATION_ID_BYTES: usize = 1024;
 
 macro_rules! string_identifier {
     ($(#[$meta:meta])* $name:ident) => {
@@ -51,6 +53,25 @@ string_identifier!(
     /// Identifier used to correlate UI intent, adapter work, and resulting updates.
     CorrelationId
 );
+
+impl SessionId {
+    pub fn is_live_transport_safe(&self) -> bool {
+        valid_bounded_live_identifier(self.as_str(), MAX_BRIDGE_SESSION_ID_BYTES)
+    }
+}
+
+impl CorrelationId {
+    pub fn is_live_transport_safe(&self) -> bool {
+        valid_bounded_live_identifier(self.as_str(), MAX_BRIDGE_CORRELATION_ID_BYTES)
+    }
+}
+
+fn valid_bounded_live_identifier(value: &str, max_bytes: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= max_bytes
+        && value == value.trim()
+        && value.bytes().all(|byte| matches!(byte, 0x20..=0x7e))
+}
 string_identifier!(
     /// Opaque subscription position. The UI must not interpret its contents.
     Cursor
@@ -234,8 +255,8 @@ impl BridgeMetadata {
 
     pub fn has_required_ids(&self) -> bool {
         !self.stable_id.is_blank()
-            && !self.session_id.is_blank()
-            && !self.correlation_id.is_blank()
+            && self.session_id.is_live_transport_safe()
+            && self.correlation_id.is_live_transport_safe()
             && self.provenance.is_valid()
     }
 }

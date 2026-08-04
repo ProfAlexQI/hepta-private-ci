@@ -20,8 +20,10 @@ gates.
 ### Live Hepta bridge truth
 
 The real App lifecycle now owns the disabled-by-default `HeptaBridge` facade.
-`LoginFailure`, `LogoutSuccess`, and `ClearAppState` synchronously drop any
-transport plus its captured run/session/sequence binding. A plain Matrix
+`LoginFailure`, logout start, `LogoutSuccess`, `ClearAppState`, and every
+unrecoverable/restart-required path synchronously drop any transport plus its
+captured run/session/sequence binding. A recoverable logout failure cannot
+restore it; only a fresh backend proof can reactivate the bridge. A plain Matrix
 `LoginSuccess` also keeps the facade disabled because that action carries no
 authoritative Hepta backend binding.
 
@@ -29,10 +31,24 @@ The three distinct implementation facts are:
 
 - `lifecycle_teardown_wired=true`: the real App action paths own and clear the
   facade.
-- `authenticated_executor_implemented=false`: Native defines the strict,
-  backend-owned executor interface and a sealed in-process activation entry,
-  but no production HTTP executor or authentication-proof issuer exists. The
-  sealed activation type has no production constructor today.
+- `authorization_bearing_executor_implemented=true`: Native includes a bounded,
+  body-free HTTP/1.1 loopback executor. It binds every request and response to
+  run/session/correlation/sequence headers, rejects redirects, duplicate
+  security headers and non-loopback resolution, applies a total wall-clock
+  deadline, reads exactly `Content-Length` without waiting for EOF, and
+  zeroizes its opaque authorization material. A separate, never-on-wire
+  32-byte key verifies a domain-separated HMAC-SHA256 over the response status,
+  bindings, content type, cache policy, and body.
+- `mutually_authenticated_transport_available=false`: request authorization
+  and response integrity verification are implemented client-side, but no
+  backend proof/key issuer or mutually authenticated production transport
+  exists today.
+- `background_worker_transport_wired=false` and
+  `ui_thread_network_execution_qualified=false`: the synchronous executor is a
+  bounded transport primitive, not permission to call it on the Makepad UI
+  thread. Production activation still requires a cancellable worker or async
+  channel plus responsiveness evidence for timeout, cancellation, logout, and
+  app shutdown.
 - `production_activation_ready=false`: no canonical endpoint, authoritative
   envelope, live socket receipt, or backend session binding exists yet.
 
@@ -203,7 +219,13 @@ focus/SetValue paths plus room-list/timeline containers, but it does not yet
 enumerate visible PortalList room rows or timeline messages with stable IDs,
 real labels, hierarchy, and actions. The
 macOS adapter overlay remains an isolated fork prototype rather than the
-formal application dependency graph. Android secure-credential source exists,
+formal application dependency graph. Its optional app compile receipt copies
+the app into a private staging tree, binds the copied bytes and generated lock
+before the locked compile, and rehashes them afterward. It records the active
+repository HEAD/tree/source fingerprint, but deliberately marks the compile as
+non-exact whenever that repository is dirty; even a clean isolated compile does
+not claim production dependency adoption or VoiceOver runtime qualification.
+Android secure-credential source exists,
 but no physical-device persistence receipt currently qualifies it. A valid
 optional receipt can verify only its local simulator/emulator lane.
 Real-device VoiceOver/TalkBack, safe-area, cross-device keyboard, RTL, font

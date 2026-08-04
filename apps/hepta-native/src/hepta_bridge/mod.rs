@@ -8,6 +8,7 @@
 mod adapter;
 mod backend_activation;
 mod contract;
+mod http_executor;
 mod live_adapter;
 mod live_policy;
 mod presenter;
@@ -19,6 +20,7 @@ pub use contract::{
     BridgeUpdateKind, ConversationBinding, CorrelationId, Cursor, HEPTA_BRIDGE_SCHEMA_VERSION,
     IdempotencyKey, MirrorPolicy, OpaquePayloadHash, Origin, PreparedActionId, Provenance,
     Redaction, RedactionStatus, Revision, SessionId, TimestampMillis,
+    MAX_BRIDGE_CORRELATION_ID_BYTES, MAX_BRIDGE_SESSION_ID_BYTES,
 };
 pub use live_policy::{
     HEPTA_LIVE_BRIDGE_SNAPSHOT_PATH, LiveBridgeActivationContext, LiveBridgeBlocker,
@@ -28,6 +30,7 @@ pub use live_adapter::{
     AuthenticatedLiveBridgeBinding, LiveSnapshotGet, LiveSnapshotHttpExecutor,
     LiveSnapshotHttpResponse, MAX_LIVE_SNAPSHOT_RESPONSE_BYTES,
 };
+pub use http_executor::AuthenticatedLoopbackHttpExecutor;
 pub use presenter::{
     BridgePresenter, DEFAULT_PRESENTATION_PAYLOAD_CAP_BYTES, MAX_PRESENTATION_PAYLOAD_CAP_BYTES,
     PresentationDisposition, PresentationFallback, PresentedBridgeUpdate,
@@ -47,8 +50,10 @@ use live_adapter::LoopbackSnapshotAdapter;
 pub(crate) enum HeptaBridgeLifecycleEvent {
     MatrixLoginSuccessWithoutBackendBinding,
     LoginFailure,
+    LogoutStarted,
     LogoutSuccess,
     ClearAppState,
+    UnrecoverableSessionFailure,
 }
 
 /// Product bridge facade. It is side-effect-free and disabled by default.
@@ -140,16 +145,21 @@ impl HeptaBridge {
         self.adapter = GuardedBridgeAdapter::new(Box::new(DisabledBridgeAdapter));
     }
 
-    pub fn capabilities(&self) -> BridgeCapabilities { self.adapter.capabilities() }
+    pub fn capabilities(&self) -> BridgeCapabilities {
+        self.adapter.capabilities()
+    }
 
     pub fn submit(
         &mut self,
         request: BridgeRequest,
     ) -> Result<Vec<PresentedBridgeUpdate>, BridgeAdapterError> {
         let presenter = BridgePresenter::default();
-        self.adapter
-            .handle(request)
-            .map(|updates| updates.iter().map(|update| presenter.present(update)).collect())
+        self.adapter.handle(request).map(|updates| {
+            updates
+                .iter()
+                .map(|update| presenter.present(update))
+                .collect()
+        })
     }
 }
 
@@ -261,8 +271,10 @@ mod production_tests {
     fn app_lifecycle_transitions_drop_executor_and_binding() {
         for event in [
             HeptaBridgeLifecycleEvent::LoginFailure,
+            HeptaBridgeLifecycleEvent::LogoutStarted,
             HeptaBridgeLifecycleEvent::LogoutSuccess,
             HeptaBridgeLifecycleEvent::ClearAppState,
+            HeptaBridgeLifecycleEvent::UnrecoverableSessionFailure,
         ] {
             let drops = Arc::new(AtomicUsize::new(0));
             let binding = AuthenticatedLiveBridgeBinding::try_new(
@@ -307,12 +319,9 @@ mod production_tests {
     #[test]
     fn rejected_backend_activation_drops_executor_and_leaves_bridge_disabled() {
         let drops = Arc::new(AtomicUsize::new(0));
-        let binding = AuthenticatedLiveBridgeBinding::try_new(
-            "session-7".into(),
-            RUN_IDENTIFIER_SHA256,
-            3,
-        )
-        .unwrap();
+        let binding =
+            AuthenticatedLiveBridgeBinding::try_new("session-7".into(), RUN_IDENTIFIER_SHA256, 3)
+                .unwrap();
         let activation = BackendAuthenticatedBridgeActivation::for_test(
             "@alex:example.test",
             "https://example.invalid/api/hepta-native-bridge/v1/snapshot",

@@ -78,7 +78,7 @@ impl LiveBridgePreflight {
             Err(blocker) => blockers.push(blocker),
         }
 
-        if context.authenticated_session_id.is_blank() {
+        if !context.authenticated_session_id.is_live_transport_safe() {
             blockers.push(LiveBridgeBlocker::AuthenticatedSessionBindingMissing);
         }
         if !is_sha256(context.run_identifier_sha256) {
@@ -128,7 +128,11 @@ pub(super) fn is_sha256(value: &str) -> bool {
 
 fn validate_loopback_snapshot_endpoint(endpoint: &str) -> Result<(), LiveBridgeBlocker> {
     let parsed = Url::parse(endpoint).map_err(|_| LiveBridgeBlocker::EndpointInvalid)?;
-    if !matches!(parsed.scheme(), "http" | "https")
+    // The concrete executor in this build deliberately implements only
+    // body-free HTTP/1.1 over a loopback TCP socket. Accepting HTTPS here
+    // would let an activation pass preflight and adapter construction only to
+    // fail on its first request because no TLS transport exists.
+    if parsed.scheme() != "http"
         || !parsed.username().is_empty()
         || parsed.password().is_some()
         || parsed.query().is_some()
@@ -260,6 +264,10 @@ mod tests {
             ),
             (
                 "file:///api/hepta-native-bridge/v1/snapshot",
+                LiveBridgeBlocker::EndpointInvalid,
+            ),
+            (
+                "https://127.0.0.1:47821/api/hepta-native-bridge/v1/snapshot",
                 LiveBridgeBlocker::EndpointInvalid,
             ),
         ] {

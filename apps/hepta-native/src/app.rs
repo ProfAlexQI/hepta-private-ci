@@ -16,7 +16,7 @@ use crate::{
         event_source_modal::{EventSourceModalAction, EventSourceModalWidgetRefExt}, invite_modal::{InviteModalAction, InviteModalWidgetRefExt}, main_desktop_ui::MainDesktopUiAction, navigation_tab_bar::{NavigationBarAction, SelectedTab}, new_message_context_menu::NewMessageContextMenuWidgetRefExt, room_context_menu::RoomContextMenuWidgetRefExt, room_screen::{InviteAction, MessageAction, clear_timeline_states, invalidate_timeline_state}, rooms_list::{RoomsListAction, RoomsListRef, RoomsListUpdate, clear_all_invited_rooms, enqueue_rooms_list_update}
     }, join_leave_room_modal::{
         JoinLeaveModalKind, JoinLeaveRoomModalAction, JoinLeaveRoomModalWidgetRefExt
-    }, login::login_screen::LoginAction, logout::logout_confirm_modal::{LogoutAction, LogoutConfirmModalAction, LogoutConfirmModalWidgetRefExt}, persistence, profile::user_profile_cache::clear_user_profile_cache, room::BasicRoomDetails, settings::app_preferences::{AppPreferences, UiZoom}, shared::{confirmation_modal::{ConfirmationModalContent, ConfirmationModalWidgetRefExt}, image_viewer::{ImageViewerAction, LoadState}, popup_list::{PopupKind, enqueue_popup_notification}}, sliding_sync::{DirectMessageRoomAction, MatrixRequest, TimelineKind, current_user_id, submit_async_request}, utils::RoomNameId, verification::VerificationAction, verification_modal::{
+    }, login::login_screen::LoginAction, logout::{logout_confirm_modal::{LogoutAction, LogoutConfirmModalAction, LogoutConfirmModalWidgetRefExt}, logout_state_machine::is_logout_past_point_of_no_return}, persistence, profile::user_profile_cache::clear_user_profile_cache, room::BasicRoomDetails, settings::app_preferences::{AppPreferences, UiZoom}, shared::{confirmation_modal::{ConfirmationModalContent, ConfirmationModalWidgetRefExt}, image_viewer::{ImageViewerAction, LoadState}, popup_list::{PopupKind, enqueue_popup_notification}}, sliding_sync::{DirectMessageRoomAction, MatrixRequest, TimelineKind, current_user_id, submit_async_request}, utils::RoomNameId, verification::VerificationAction, verification_modal::{
         VerificationModalAction,
         VerificationModalWidgetRefExt,
     }
@@ -476,6 +476,30 @@ impl MatchEvent for App {
             }
 
             match action.downcast_ref() {
+                Some(LogoutAction::InProgress(true)) => {
+                    // Invalidate authenticated Hepta state at the beginning of
+                    // logout, before any fallible Matrix or cleanup operation.
+                    // A recoverable Matrix logout failure never restores this
+                    // executor; only a fresh backend proof may reactivate it.
+                    #[cfg(feature = "hepta-bridge")]
+                    self.hepta_bridge.handle_app_lifecycle_event(
+                        HeptaBridgeLifecycleEvent::LogoutStarted,
+                    );
+                }
+                Some(LogoutAction::ApplicationRequiresRestart { .. }) => {
+                    #[cfg(feature = "hepta-bridge")]
+                    self.hepta_bridge.handle_app_lifecycle_event(
+                        HeptaBridgeLifecycleEvent::UnrecoverableSessionFailure,
+                    );
+                }
+                Some(LogoutAction::LogoutFailure(_))
+                    if is_logout_past_point_of_no_return() =>
+                {
+                    #[cfg(feature = "hepta-bridge")]
+                    self.hepta_bridge.handle_app_lifecycle_event(
+                        HeptaBridgeLifecycleEvent::UnrecoverableSessionFailure,
+                    );
+                }
                 Some(LogoutAction::LogoutSuccess) => {
                     #[cfg(feature = "hepta-bridge")]
                     self.hepta_bridge.handle_app_lifecycle_event(

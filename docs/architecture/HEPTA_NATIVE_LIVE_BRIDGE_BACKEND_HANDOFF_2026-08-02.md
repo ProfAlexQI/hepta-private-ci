@@ -30,9 +30,18 @@ GET descriptor. `HeptaBridge::try_live` captures a concrete authenticated
 run/session/initial-sequence binding, and every request and response must match
 that binding plus the request correlation. Stale, duplicate, skipped, rotated,
 or cross-run responses fail closed. `HeptaBridge::default()` is still disabled,
-and `disable()` drops the executor and binding on login failure or logout.
-There is deliberately no backend-owned production HTTP executor or registered
-endpoint in this repository, so no socket is opened by source readiness alone.
+and `disable()` drops the executor and binding on login failure, logout start,
+or an unrecoverable/restart-required transition. Recoverable logout failure
+does not restore it; a new backend proof is required. Native now contains the
+concrete, bounded HTTP/1.1 loopback authorization-bearing client. It applies a
+total wall-clock deadline, stops after the exact `Content-Length`, and verifies
+a domain-separated response HMAC with an independent, never-on-wire 32-byte
+key. There is deliberately no backend proof/key issuer or registered endpoint
+in this repository, so no socket is opened by source readiness alone.
+The executor is synchronous and bounded, but it is not UI-thread-qualified.
+Production wiring must place it behind a cancellable worker or async channel
+and prove that timeout, cancellation, logout, and shutdown cannot stall the
+Makepad event loop.
 
 ## Existing Endpoint Audit
 
@@ -70,15 +79,24 @@ Requirements:
    identifiers through a backend contract that does not leak credentials into
    URLs or logs, and echo every binding in the authoritative response and
    `BridgeUpdate` metadata.
-4. Return exactly one schema-v1 `BridgeUpdate` whose update type is `snapshot`.
+4. Issue the Native client an independent 32-byte response-integrity key out of
+   band. Never send that key in the request. Return a lowercase-hex
+   `X-Hepta-Bridge-Response-Hmac-Sha256` computed using the documented
+   `hepta-native-live-bridge-response-v1` domain and length-prefixed fields over
+   status, session, run, correlation, sequence, content type, cache control,
+   and the exact body.
+5. Return exactly one schema-v1 `BridgeUpdate` whose update type is `snapshot`.
    Every record must have a stable id, revision, timestamp, authoritative
    origin, presenter-safe redaction status, non-empty provenance, matching
    session, and matching correlation.
-5. Set `Cache-Control: no-store`; never return raw source payloads or secrets.
-6. The route is GET/read-only. It must not invoke a provider, send a channel
+6. Set `Cache-Control: no-store`; never return raw source payloads or secrets.
+7. The route is GET/read-only. It must not invoke a provider, send a channel
    message, write a cursor, approve/reject/cancel work, or mutate gateway state.
-7. V1 capabilities are snapshot-only. Subscribe, prepare, confirm, reject and
+8. V1 capabilities are snapshot-only. Subscribe, prepare, confirm, reject and
    cancel stay false even after login and opt-in.
+9. Execute socket work only on a cancellable background worker or async
+   channel. Logout and shutdown must cancel/drop pending work, and promotion
+   requires UI-thread responsiveness evidence across timeout and cancellation.
 
 The exact machine-readable fields and promotion checklist live in
 `apps/hepta-native/hepta-live-bridge-backend-contract-v1.json`.
@@ -96,10 +114,12 @@ The exact machine-readable fields and promotion checklist live in
    has no caller-controlled method or request body, rejects redirects, and
    binds each descriptor and response to the exact run, session, correlation,
    and monotonically expected sequence. The product facade now exposes this
-   explicit construction path, but no backend-owned production executor exists
-   yet, so policy success alone performs no request and grants no authority.
-4. `LoginFailure` and logout must drop the transport and session binding before
-   returning to the login screen.
+   explicit construction path and a concrete loopback HTTP executor. No
+   backend proof issuer or endpoint exists yet, so policy success alone
+   performs no request and grants no authority.
+4. `LoginFailure`, logout start, and unrecoverable/restart-required paths drop
+   the transport and session binding immediately. Recoverable logout failure
+   leaves the bridge disabled until a fresh backend proof reactivates it.
 
 The production `HeptaBridge` remains backed by `DisabledBridgeAdapter` unless
 post-login orchestration explicitly supplies the authenticated executor. That

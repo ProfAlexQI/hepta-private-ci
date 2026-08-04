@@ -8,8 +8,10 @@ APP_DIR="${HEPTA_NATIVE_LIVE_BRIDGE_APP_DIR:-apps/hepta-native}"
 CONTRACT_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_CONTRACT_PATH:-$APP_DIR/hepta-live-bridge-backend-contract-v1.json}"
 DOC_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_HANDOFF_PATH:-docs/architecture/HEPTA_NATIVE_LIVE_BRIDGE_BACKEND_HANDOFF_2026-08-02.md}"
 BRIDGE_MOD_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_MOD_PATH:-$APP_DIR/src/hepta_bridge/mod.rs}"
+APP_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_APP_PATH:-$APP_DIR/src/app.rs}"
 BRIDGE_ADAPTER_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_ADAPTER_PATH:-$APP_DIR/src/hepta_bridge/adapter.rs}"
 LIVE_ADAPTER_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_LIVE_ADAPTER_PATH:-$APP_DIR/src/hepta_bridge/live_adapter.rs}"
+HTTP_EXECUTOR_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_HTTP_EXECUTOR_PATH:-$APP_DIR/src/hepta_bridge/http_executor.rs}"
 LIVE_POLICY_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_POLICY_PATH:-$APP_DIR/src/hepta_bridge/live_policy.rs}"
 VALIDATOR_PATH="${HEPTA_NATIVE_LIVE_BRIDGE_VALIDATOR_PATH:-scripts/lib/hepta-native-live-bridge-envelope-v1.jq}"
 GATEWAY_SOURCE_ROOT="${HEPTA_NATIVE_LIVE_BRIDGE_GATEWAY_SOURCE_ROOT:-codex-rs/hepta-native-gateway/src}"
@@ -65,8 +67,10 @@ for path in \
   "$CONTRACT_PATH" \
   "$DOC_PATH" \
   "$BRIDGE_MOD_PATH" \
+  "$APP_PATH" \
   "$BRIDGE_ADAPTER_PATH" \
   "$LIVE_ADAPTER_PATH" \
+  "$HTTP_EXECUTOR_PATH" \
   "$LIVE_POLICY_PATH" \
   "$VALIDATOR_PATH"
 do
@@ -124,7 +128,12 @@ jq -e '
   and .current_implementation.authenticated_session_binding_available == false
   and .current_implementation.native_snapshot_transport_seam_available == true
   and .current_implementation.authenticated_executor_contract_available == true
-  and .current_implementation.authenticated_http_executor_available == false
+  and .current_implementation.authorization_bearing_http_client_available == true
+  and .current_implementation.response_integrity_verification_implemented == true
+  and .current_implementation.response_integrity_key_issuer_implemented == false
+  and .current_implementation.mutually_authenticated_transport_available == false
+  and .current_implementation.background_worker_transport_wired == false
+  and .current_implementation.ui_thread_network_execution_qualified == false
   and .current_implementation.run_session_sequence_binding_enforced == true
   and .current_implementation.live_adapter_available == true
   and .current_implementation.production_facade_live_constructor_available == true
@@ -155,12 +164,39 @@ do
 done
 
 for marker in \
+  'pub struct AuthenticatedLoopbackHttpExecutor' \
+  'impl LiveSnapshotHttpExecutor for AuthenticatedLoopbackHttpExecutor' \
+  'Authorization: Hepta-Bridge' \
+  'RESPONSE_INTEGRITY_DOMAIN' \
+  'x-hepta-bridge-response-hmac-sha256' \
+  'DEFAULT_ABSOLUTE_TIMEOUT' \
+  'framed_response_len' \
+  'Zeroizing<[u8; 32]>' \
+  'MAX_HTTP_RESPONSE_HEADER_BYTES' \
+  'authenticated bridge executor resolved a non-loopback endpoint' \
+  'HTTP response contains a duplicate security-relevant header' \
+  'CORRELATION_HEADER' \
+  'Zeroizing<String>'
+do
+  require_marker "$HTTP_EXECUTOR_PATH" "$marker"
+done
+
+for marker in \
   'DisabledBridgeAdapter' \
   'Box<dyn BridgeTransport>' \
   'pub fn try_live<E>(' \
   'pub fn disable(&mut self)'
 do
   require_marker "$BRIDGE_MOD_PATH" "$marker"
+done
+
+for marker in \
+  'Some(LogoutAction::InProgress(true))' \
+  'HeptaBridgeLifecycleEvent::LogoutStarted' \
+  'HeptaBridgeLifecycleEvent::UnrecoverableSessionFailure' \
+  'is_logout_past_point_of_no_return()'
+do
+  require_marker "$APP_PATH" "$marker"
 done
 
 require_marker "$BRIDGE_ADAPTER_PATH" 'pub(crate) struct DisabledBridgeAdapter'
@@ -172,8 +208,9 @@ for marker in \
   'fn execute_get(' \
   'MAX_LIVE_SNAPSHOT_RESPONSE_BYTES' \
   'run_identifier_sha256' \
+  'authenticated_correlation_id' \
   'expected_sequence' \
-  'response run, session, or sequence binding does not match the request' \
+  'response run, session, correlation, or sequence binding does not match the request' \
   'redirects or endpoint changes are not allowed' \
   'authenticated bridge run or session changed during the request'
 do
@@ -182,6 +219,7 @@ done
 
 for marker in \
   'HEPTA_LIVE_BRIDGE_SNAPSHOT_PATH' \
+  'parsed.scheme() != "http"' \
   'MatrixSessionNotAuthenticated' \
   'ExplicitOptInMissing' \
   'EndpointNotLoopback' \
@@ -250,8 +288,10 @@ receipt="$(jq -n \
   --arg source_commit "$source_commit" \
   --arg contract_path "$CONTRACT_PATH" \
   --arg handoff_path "$DOC_PATH" \
+  --arg app_path "$APP_PATH" \
   --arg live_policy_path "$LIVE_POLICY_PATH" \
   --arg live_adapter_path "$LIVE_ADAPTER_PATH" \
+  --arg http_executor_path "$HTTP_EXECUTOR_PATH" \
   --arg envelope_validator_path "$VALIDATOR_PATH" \
   --arg canonical_endpoint "$canonical_endpoint" \
   --argjson worktree_dirty "$worktree_dirty" \
@@ -272,8 +312,10 @@ receipt="$(jq -n \
     evidence:{
       contract_path:$contract_path,
       handoff_path:$handoff_path,
+      app_path:$app_path,
       live_policy_path:$live_policy_path,
       live_adapter_path:$live_adapter_path,
+      http_executor_path:$http_executor_path,
       envelope_validator_path:$envelope_validator_path
     },
     canonical_endpoint:{
@@ -293,7 +335,12 @@ receipt="$(jq -n \
       fixture_or_mock_absence_required:true,
       run_session_correlation_sequence_binding_required:true,
       authenticated_executor_contract_available:true,
-      authenticated_http_executor_available:false,
+      authorization_bearing_http_client_available:true,
+      response_integrity_verification_implemented:true,
+      response_integrity_key_issuer_implemented:false,
+      mutually_authenticated_transport_available:false,
+      background_worker_transport_wired:false,
+      ui_thread_network_execution_qualified:false,
       live_adapter_available:true,
       production_facade_live_constructor_available:true,
       wired_to_product_lifecycle:false
@@ -333,7 +380,10 @@ receipt="$(jq -n \
       "canonical_snapshot_endpoint_not_registered",
       "authoritative_bridge_update_envelope_not_available",
       "authenticated_native_session_binding_not_available",
-      "authenticated_http_executor_not_available",
+      "backend_authentication_proof_issuer_not_available",
+      "backend_response_integrity_key_issuer_not_available",
+      "background_worker_transport_not_wired",
+      "ui_thread_network_execution_not_qualified",
       "post_login_product_lifecycle_not_wired",
       "actual_live_request_not_performed",
       "actual_live_receipt_not_available"

@@ -31,7 +31,12 @@ jq -e '
   and .transport_seam.fixture_or_mock_absence_required == true
   and .transport_seam.run_session_correlation_sequence_binding_required == true
   and .transport_seam.authenticated_executor_contract_available == true
-  and .transport_seam.authenticated_http_executor_available == false
+  and .transport_seam.authorization_bearing_http_client_available == true
+  and .transport_seam.response_integrity_verification_implemented == true
+  and .transport_seam.response_integrity_key_issuer_implemented == false
+  and .transport_seam.mutually_authenticated_transport_available == false
+  and .transport_seam.background_worker_transport_wired == false
+  and .transport_seam.ui_thread_network_execution_qualified == false
   and .transport_seam.live_adapter_available == true
   and .transport_seam.production_facade_live_constructor_available == true
   and .transport_seam.wired_to_product_lifecycle == false
@@ -40,6 +45,7 @@ jq -e '
   and .first_promotion_target.exact_source_required == true
   and .first_promotion_target.real_socket_required == true
   and (.evidence.live_adapter_path | endswith("/src/hepta_bridge/live_adapter.rs"))
+  and (.evidence.http_executor_path | endswith("/src/hepta_bridge/http_executor.rs"))
   and (.candidate_endpoint_audit | length) == 6
   and (.candidate_endpoint_audit | all(.authoritative_bridge_snapshot == false))
   and .actual_request.performed == false
@@ -56,7 +62,10 @@ jq -e '
   and .capabilities.confirm == false
   and .capabilities.reject == false
   and .capabilities.cancel == false
-  and (.blockers | index("authenticated_http_executor_not_available") != null)
+  and (.blockers | index("backend_authentication_proof_issuer_not_available") != null)
+  and (.blockers | index("backend_response_integrity_key_issuer_not_available") != null)
+  and (.blockers | index("background_worker_transport_not_wired") != null)
+  and (.blockers | index("ui_thread_network_execution_not_qualified") != null)
   and (.blockers | index("post_login_product_lifecycle_not_wired") != null)
   and (.blockers | index("snapshot_only_live_adapter_not_implemented") == null)
   and .side_effects.network_request_performed == false
@@ -245,7 +254,7 @@ if [[ "$missing_seam_exit" -eq 0 ]]; then
   exit 1
 fi
 
-jq '.current_implementation.authenticated_http_executor_available = true' \
+jq '.current_implementation.authorization_bearing_http_client_available = false' \
   apps/hepta-native/hepta-live-bridge-backend-contract-v1.json \
   > "$TEST_ROOT/dishonest-executor-contract.json"
 set +e
@@ -254,7 +263,20 @@ HEPTA_NATIVE_LIVE_BRIDGE_CONTRACT_PATH="$TEST_ROOT/dishonest-executor-contract.j
 dishonest_executor_exit=$?
 set -e
 if [[ "$dishonest_executor_exit" -eq 0 ]]; then
-  printf '%s\n' 'gate accepted a source-unverified authenticated HTTP executor claim' >&2
+  printf '%s\n' 'gate accepted a contract that denied the compiled authorization-bearing HTTP client' >&2
+  exit 1
+fi
+
+jq '.current_implementation.background_worker_transport_wired = true' \
+  apps/hepta-native/hepta-live-bridge-backend-contract-v1.json \
+  > "$TEST_ROOT/dishonest-worker-contract.json"
+set +e
+HEPTA_NATIVE_LIVE_BRIDGE_CONTRACT_PATH="$TEST_ROOT/dishonest-worker-contract.json" \
+  "$GATE" --output "$TEST_ROOT/dishonest-worker-receipt.json" >/dev/null 2>&1
+dishonest_worker_exit=$?
+set -e
+if [[ "$dishonest_worker_exit" -eq 0 ]]; then
+  printf '%s\n' 'gate accepted a false background-worker transport claim' >&2
   exit 1
 fi
 
