@@ -606,14 +606,15 @@
     ].filter(Boolean);
     const route = routeStateFromHash();
     const target = document.getElementById(route.targetId);
+    const showingChat = route.targetId === "chat-thread";
     const showingCommands = route.targetId === "hepta-command-panel";
 
-    body.dataset.view = route.key === "chat" ? "chat" : showingCommands ? "commands" : "read-only";
+    body.dataset.view = showingChat ? "chat" : showingCommands ? "commands" : "read-only";
     body.dataset.controlUiActiveView = route.key;
     mountPrimaryNavigation(commandPanel, showingCommands);
     updateNavigationState(route.key);
 
-    if (route.key === "chat") {
+    if (showingChat) {
       for (const panel of secondaryPanels) {
         panel.hidden = false;
       }
@@ -654,7 +655,8 @@
     }
     for (const panel of chatSidePanels) panel.hidden = true;
     for (const child of chatThreadChildren) {
-      child.hidden = showingCommands || !child.matches(".tg-thread-header,.hepta-secondary-map");
+      child.hidden = showingCommands
+        || !child.matches(".tg-thread-header,.hepta-route-directory,.hepta-secondary-map");
     }
 
     if (secondaryMap instanceof HTMLDetailsElement) {

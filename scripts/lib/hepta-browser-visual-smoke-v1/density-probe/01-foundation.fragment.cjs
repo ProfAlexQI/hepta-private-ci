@@ -6,11 +6,8 @@ module.exports = `
     }
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    const visible = style.display !== "none"
-      && style.visibility !== "hidden"
-      && Number(style.opacity || 1) > 0
-      && rect.width > 1
-      && rect.height > 1;
+    const visibility = actualVisibility(element);
+    const visible = visibility.visible && rect.width > 1 && rect.height > 1;
     return {
       selector,
       exists: true,
@@ -49,16 +46,10 @@ module.exports = `
   const errors = [];
   const marker = document.querySelector('[data-control-ui-telegram-shell="true"]') !== null;
   const defaultVisible = (element) => {
-    if (!element) {
-      return false;
-    }
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return style.display !== "none"
-      && style.visibility !== "hidden"
-      && Number(style.opacity || 1) > 0
-      && rect.width > 1
-      && rect.height > 1;
+    const visibility = actualVisibility(element);
+    return visibility.visible
+      && visibility.rect_width > 1
+      && visibility.rect_height > 1;
   };
   const defaultSubmenuDetails = Array.from(document.querySelectorAll(
     ".tg-composer-popover,.tg-row-action-popover,.tg-thread-command-menu__panel,.command-palette-backdrop,.command-palette",
@@ -189,10 +180,11 @@ module.exports = `
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     const backdrop = style.backdropFilter || style.webkitBackdropFilter || "";
+    const visibility = actualVisibility(element);
     return {
       selector,
       exists: true,
-      visible: style.display !== "none" && style.visibility !== "hidden" && rect.width > 1 && rect.height > 1,
+      visible: visibility.visible && rect.width > 1 && rect.height > 1,
       width: Math.round(rect.width),
       height: Math.round(rect.height),
       border_radius: Number.parseFloat(style.borderTopLeftRadius || "0"),
@@ -221,16 +213,10 @@ module.exports = `
     errors.push("control_glass_action_contract_not_ready");
   }
   const elementVisible = (element) => {
-    if (!element) {
-      return false;
-    }
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return style.display !== "none"
-      && style.visibility !== "hidden"
-      && Number(style.opacity || 1) > 0
-      && rect.width > 1
-      && rect.height > 1;
+    const visibility = actualVisibility(element);
+    return visibility.visible
+      && visibility.rect_width > 1
+      && visibility.rect_height > 1;
   };
   const richRect = (element) => {
     const rect = element.getBoundingClientRect();

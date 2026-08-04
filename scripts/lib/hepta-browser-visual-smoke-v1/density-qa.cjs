@@ -4,6 +4,7 @@
   const fsPromises = require("node:fs/promises");
   const os = require("node:os");
   const path = require("node:path");
+  const { actualVisibilityFunctionSource } = require("./actual-visibility.cjs");
 
   const [chromeBin, baseUrl] = process.argv.slice(2);
   const viewports = [
@@ -178,6 +179,7 @@
   const viewportName = ${JSON.stringify(viewport.name)};
   const expectedVisible = ${JSON.stringify(viewport.expectedVisible)};
   const expectedHidden = ${JSON.stringify(viewport.expectedHidden)};
+  const actualVisibility = ${actualVisibilityFunctionSource};
 ${densityProbeSource}
       `;
 

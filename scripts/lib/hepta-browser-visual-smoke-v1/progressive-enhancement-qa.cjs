@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
+const { installActualVisibilitySource } = require("./actual-visibility.cjs");
 
 const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
 (async () => {
@@ -23,6 +24,7 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     ],
   });
   const context = await browser.newContext();
+  await context.addInitScript({ content: installActualVisibilitySource });
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
   const page = await context.newPage();
   const requests = [];
@@ -40,45 +42,6 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
   page.on("pageerror", (error) => consoleErrors.push(error.message));
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
-  await page.evaluate(() => {
-    Object.defineProperty(window, "__heptaActualVisibility", {
-      configurable: false,
-      value(node) {
-        if (!(node instanceof HTMLElement)) {
-          return {
-            visible: false,
-            display: "",
-            visibility: "",
-            opacity: "",
-            rect_width: 0,
-            rect_height: 0,
-            client_rect_count: 0,
-            hidden_attribute: false,
-          };
-        }
-        const style = getComputedStyle(node);
-        const rect = node.getBoundingClientRect();
-        const clientRectCount = node.getClientRects().length;
-        const visible = style.display !== "none"
-          && style.visibility !== "hidden"
-          && style.visibility !== "collapse"
-          && Number.parseFloat(style.opacity || "1") > 0
-          && rect.width > 0
-          && rect.height > 0
-          && clientRectCount > 0;
-        return {
-          visible,
-          display: style.display,
-          visibility: style.visibility,
-          opacity: style.opacity,
-          rect_width: rect.width,
-          rect_height: rect.height,
-          client_rect_count: clientRectCount,
-          hidden_attribute: node.hidden,
-        };
-      },
-    });
-  });
   await page.waitForFunction(
     () => document.documentElement.dataset.controlUiProgressiveEnhancement === "ready",
     null,
@@ -615,6 +578,24 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
         target_id: `screen-card-${screen}`,
       };
     });
+    const directory = document.querySelector('[data-control-ui-route-directory="26-of-26"]');
+    const directoryEntries = [...document.querySelectorAll("[data-control-ui-route-entry]")]
+      .map((anchor) => ({
+        screen: anchor.getAttribute("data-control-ui-route-entry") || "",
+        hash: anchor.getAttribute("href") || "",
+      }));
+    const routeCardScreens = [...document.querySelectorAll(".route-card")]
+      .map((card) => card.getAttribute("data-screen") || "");
+    const directoryScreens = directoryEntries.map((entry) => entry.screen);
+    const directoryReady = directory instanceof HTMLDetailsElement
+      && directoryEntries.length === 26
+      && new Set(directoryScreens).size === 26
+      && routeCardScreens.length === 26
+      && [...directoryScreens].sort().join("\u0000") === [...routeCardScreens].sort().join("\u0000")
+      && directoryEntries.every((entry) => (
+        entry.hash === `#screen-card-${entry.screen}`
+        && document.getElementById(entry.hash.slice(1))?.dataset.screen === entry.screen
+      ));
     const rowEntries = [...document.querySelectorAll(
       '[data-chat-row-menu-item="open-evidence"],'
         + '[data-chat-row-menu-item="open-approvals"],'
@@ -637,6 +618,9 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
       entry_count: entries.length,
       anchor_entry_count: anchorEntries.length,
       row_action_entry_count: rowEntries.length,
+      directory_entry_count: directoryEntries.length,
+      directory_ready: directoryReady,
+      directory_entries: directoryEntries,
       legacy_route_page_count: document.querySelectorAll(".hepta-route-page").length,
       legacy_route_index_count: document.querySelectorAll(".hepta-route-index").length,
       entries,
@@ -687,9 +671,11 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
       expectedTarget: entry.target_id,
     }));
   }
-  const currentRouteEntriesReady = currentRouteEntryAudit.entry_count === 32
-    && currentRouteEntryAudit.anchor_entry_count === 29
+  const currentRouteEntriesReady = currentRouteEntryAudit.entry_count === 58
+    && currentRouteEntryAudit.anchor_entry_count === 55
     && currentRouteEntryAudit.row_action_entry_count === 3
+    && currentRouteEntryAudit.directory_entry_count === 26
+    && currentRouteEntryAudit.directory_ready
     && currentRouteEntryAudit.legacy_route_page_count === 0
     && currentRouteEntryAudit.legacy_route_index_count === 0
     && currentRouteEntryAudit.entries.every((entry) => (
@@ -958,6 +944,7 @@ const [chromeBin, baseUrl, outputDir] = process.argv.slice(2);
     route_link_navigation_ready: routeLinkNavigationReady,
     route_link_navigation_audit: routeLinkAudit,
     current_route_entries_ready: currentRouteEntriesReady,
+    route_directory_ready: currentRouteEntryAudit.directory_ready,
     current_route_entry_audit: currentRouteEntryAudit,
     current_route_hash_audit: currentRouteHashAudit,
     top_nav_navigation_ready: topNavNavigationReady,

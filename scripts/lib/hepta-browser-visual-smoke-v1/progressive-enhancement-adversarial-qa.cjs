@@ -1,4 +1,5 @@
 const { chromium } = require("playwright");
+const { installActualVisibilitySource } = require("./actual-visibility.cjs");
 
 const [chromeBin, baseUrl] = process.argv.slice(2);
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -21,6 +22,7 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
 
   async function openCase(configure, initScript) {
     const context = await browser.newContext();
+    await context.addInitScript({ content: installActualVisibilitySource });
     if (initScript) {
       await context.addInitScript(initScript);
     }
@@ -481,6 +483,7 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
   let noScriptProductTruth;
   {
     const context = await browser.newContext();
+    await context.addInitScript({ content: installActualVisibilitySource });
     const page = await context.newPage();
     let blockedScriptRequestCount = 0;
     let apiRequestCount = 0;
@@ -527,6 +530,12 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
         "[data-hepta-nav-route], [data-control-ui-safety-route]",
       )];
       const currentRouteAnchors = [...document.querySelectorAll('a[href^="#screen-card-"]')];
+      const routeDirectory = document.querySelector('[data-control-ui-route-directory="26-of-26"]');
+      const routeDirectoryEntries = [...document.querySelectorAll("[data-control-ui-route-entry]")];
+      const routeCardScreens = [...document.querySelectorAll(".route-card")]
+        .map((card) => card.getAttribute("data-screen") || "");
+      const routeDirectoryScreens = routeDirectoryEntries
+        .map((anchor) => anchor.getAttribute("data-control-ui-route-entry") || "");
       const currentRowRouteActions = [...document.querySelectorAll(
         '[data-chat-row-menu-item="open-evidence"],'
           + '[data-chat-row-menu-item="open-approvals"],'
@@ -568,10 +577,22 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
         }),
         current_route_anchor_count: currentRouteAnchors.length,
         current_row_route_action_count: currentRowRouteActions.length,
+        route_directory_entry_count: routeDirectoryEntries.length,
+        route_directory_ready: routeDirectory instanceof HTMLDetailsElement
+          && routeDirectoryEntries.length === 26
+          && new Set(routeDirectoryScreens).size === 26
+          && [...routeDirectoryScreens].sort().join("\u0000")
+            === [...routeCardScreens].sort().join("\u0000")
+          && routeDirectoryEntries.every((anchor) => {
+            const screen = anchor.getAttribute("data-control-ui-route-entry") || "";
+            const href = anchor.getAttribute("href") || "";
+            return href === `#screen-card-${screen}`
+              && document.getElementById(href.slice(1))?.dataset.screen === screen;
+          }),
         current_route_hashes: [...new Set(
           currentRouteAnchors.map((anchor) => anchor.getAttribute("href") || ""),
         )],
-        current_route_entries_ready: currentRouteAnchors.length === 29
+        current_route_entries_ready: currentRouteAnchors.length === 55
           && currentRowRouteActions.length === 3
           && currentRouteAnchors.every((anchor) => {
             const href = anchor.getAttribute("href") || "";
@@ -588,6 +609,9 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
     });
     noScriptProductTruth = {
       ...staticTruth,
+      route_directory_summary_visible: await page
+        .locator(".hepta-route-directory > summary")
+        .isVisible(),
       blocked_script_request_count: blockedScriptRequestCount,
       api_request_count: apiRequestCount,
       non_get_request_count: nonGetRequestCount,
@@ -598,24 +622,13 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
         window.location.hash = nextHash;
       }, hash);
       noScriptHashAudit.push(await page.evaluate((expectedHash) => {
-        const visibility = (node) => {
-          if (!(node instanceof HTMLElement)) return false;
-          const style = getComputedStyle(node);
-          const rect = node.getBoundingClientRect();
-          return style.display !== "none"
-            && style.visibility !== "hidden"
-            && style.visibility !== "collapse"
-            && Number.parseFloat(style.opacity || "1") > 0
-            && rect.width > 0
-            && rect.height > 0
-            && node.getClientRects().length > 0;
-        };
         const target = document.getElementById(expectedHash.slice(1));
-        const visibleCards = [...document.querySelectorAll(".route-card")].filter(visibility);
+        const visibleCards = [...document.querySelectorAll(".route-card")]
+          .filter((card) => window.__heptaActualVisibility(card).visible);
         return {
           hash: window.location.hash,
           target_id: target?.id || "",
-          target_visible: visibility(target),
+          target_visible: window.__heptaActualVisibility(target).visible,
           actual_visible_route_card_count: visibleCards.length,
           actual_visible_route_card_ids: visibleCards.map((card) => card.id),
         };
@@ -641,23 +654,12 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
     const noScriptRoute = await page.evaluate(() => {
       const target = document.getElementById("screen-card-tasks");
       const nav = document.querySelector('[data-control-ui-menu-item="tasks"]');
-      const visibility = (node) => {
-        if (!(node instanceof HTMLElement)) return false;
-        const style = getComputedStyle(node);
-        const rect = node.getBoundingClientRect();
-        return style.display !== "none"
-          && style.visibility !== "hidden"
-          && style.visibility !== "collapse"
-          && Number.parseFloat(style.opacity || "1") > 0
-          && rect.width > 0
-          && rect.height > 0
-          && node.getClientRects().length > 0;
-      };
-      const visibleCards = [...document.querySelectorAll(".route-card")].filter(visibility);
+      const visibleCards = [...document.querySelectorAll(".route-card")]
+        .filter((card) => window.__heptaActualVisibility(card).visible);
       return {
         hash: window.location.hash,
         body_view: document.body.dataset.view || "",
-        target_visible: visibility(target),
+        target_visible: window.__heptaActualVisibility(target).visible,
         actual_visible_route_card_count: visibleCards.length,
         actual_visible_route_card_ids: visibleCards.map((card) => card.id),
         canonical_href: nav?.getAttribute("href") || "",
@@ -683,6 +685,8 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
       staticTruth.seeded_conversations_static_read_only &&
       staticTruth.task_spec_static_read_only &&
       staticTruth.native_route_links_ready &&
+      staticTruth.route_directory_ready &&
+      noScriptProductTruth.route_directory_summary_visible &&
       staticTruth.current_route_entries_ready &&
       noScriptProductTruth.current_route_hashes_ready &&
       staticTruth.composer_static_local_draft &&

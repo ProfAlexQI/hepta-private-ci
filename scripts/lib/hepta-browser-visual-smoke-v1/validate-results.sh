@@ -25,6 +25,8 @@ if [[ "$progressive_qa_status" != "0" ]] || ! jq -e '
   and .command_palette_navigation_ready == true
   and .route_link_navigation_ready == true
   and .current_route_entries_ready == true
+  and .route_directory_ready == true
+  and .current_route_entry_audit.directory_entry_count == 26
   and .top_nav_navigation_ready == true
   and .route_history_ready == true
   and .route_view_screenshots_ready == true
@@ -81,8 +83,11 @@ if [[ "$progressive_adversarial_qa_status" != "0" ]] || ! jq -e '
   and .no_script_product_truth.route_ready == true
   and .no_script_product_truth.current_route_entries_ready == true
   and .no_script_product_truth.current_route_hashes_ready == true
-  and .no_script_product_truth.current_route_anchor_count == 29
+  and .no_script_product_truth.current_route_anchor_count == 55
   and .no_script_product_truth.current_row_route_action_count == 3
+  and .no_script_product_truth.route_directory_entry_count == 26
+  and .no_script_product_truth.route_directory_ready == true
+  and .no_script_product_truth.route_directory_summary_visible == true
   and .no_script_product_truth.unavailable_control_count == 14
   and .no_script_product_truth.disabled_click_count == 0
   and .no_script_product_truth.api_request_count == 0

@@ -291,6 +291,62 @@ font-size:10px!important;
 font-weight:700;
 line-height:1.35!important;
 }
+.hepta-route-directory{
+flex:0 0 auto;
+margin:0 14px;
+border:1px solid rgba(34,30,25,.09);
+border-radius:14px;
+background:rgba(255,255,255,.64);
+box-shadow:inset 0 1px rgba(255,255,255,.84);
+}
+.hepta-route-directory>summary{
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:12px;
+min-height:40px;
+padding:0 12px;
+cursor:pointer;
+list-style:none;
+color:#514941;
+font-size:11px;
+font-weight:760;
+}
+.hepta-route-directory>summary::-webkit-details-marker{display:none}
+.hepta-route-directory>summary strong{
+color:#31505a;
+font-size:10px;
+letter-spacing:.04em;
+text-transform:uppercase;
+}
+.hepta-route-directory__links{
+display:grid;
+grid-template-columns:repeat(4,minmax(0,1fr));
+gap:6px;
+max-height:176px;
+padding:0 10px 10px;
+overflow:auto;
+}
+.hepta-route-directory__links a{
+overflow:hidden;
+padding:7px 9px;
+border:1px solid rgba(101,155,169,.26);
+border-radius:10px;
+background:rgba(243,252,253,.72);
+color:#26454f;
+font-size:10.5px;
+font-weight:720;
+text-decoration:none;
+text-overflow:ellipsis;
+white-space:nowrap;
+}
+.hepta-route-directory__links a:hover,
+.hepta-route-directory__links a:focus-visible{
+border-color:rgba(56,148,170,.48);
+background:#effbfc;
+outline:2px solid rgba(56,148,170,.2);
+outline-offset:1px;
+}
 @media(max-width:700px){
 body[data-view=chat] .tg-message--v2-diagnostic{
 width:100%;
@@ -303,12 +359,15 @@ max-width:calc(100vw - 28px)!important;
 .v2-diagnostic summary{align-items:flex-start;flex-wrap:wrap}
 .v2-control-flow{grid-template-columns:repeat(2,minmax(0,1fr))}
 .v2-readbacks{grid-template-columns:1fr}
+.hepta-route-directory{margin-inline:8px}
+.hepta-route-directory__links{grid-template-columns:repeat(2,minmax(0,1fr));max-height:196px}
 }
 body[data-view=chat]:has(.route-card:target) .hepta-secondary-map{display:block;position:fixed;inset:0;z-index:2000;margin:0;padding:16px;overflow:auto;background:var(--bg)}
 body[data-view=chat]:has(.route-card:target) :is(.hepta-secondary-map__body,.hepta-all-screen-contracts,.hepta-all-screen-contracts>.screen-grid){display:block;padding:0}
 body[data-view=chat]:has(.route-card:target) :is(.hepta-secondary-map>summary,.hepta-entry-surface>header,.hepta-all-screen-contracts>summary,.route-card:not(:target)){display:none}
 body[data-view=chat]:has(.hepta-all-screen-contracts .route-card:target) .route-card:target{max-width:1040px;margin:0 auto}
 body[data-view=read-only]{overflow-x:hidden}
+body[data-view=read-only] .workspace.dashboard-grid{grid-template-columns:minmax(0,1fr)}
 body[data-view=read-only] .focus-main{display:block;box-sizing:border-box;width:100%;max-width:100%;height:auto;padding:0;overflow:visible}
 body[data-view=read-only] #chat-thread{display:block;height:auto;overflow:visible}
 body[data-view=read-only] :is(.topnav-shell__actions,.tg-mobile-layer-tabs,.tg-thread-header__main,.tg-thread-status>:not(#hepta-nav)){display:none}
