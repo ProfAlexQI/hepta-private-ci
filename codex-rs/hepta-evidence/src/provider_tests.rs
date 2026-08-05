@@ -13,6 +13,8 @@ use tempfile::TempDir;
 use crate::AppendDisposition;
 use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
+use crate::ProviderBindingState;
+use crate::ProviderIntentClaimDisposition;
 
 fn sqlite_config(temp: &TempDir) -> SqliteConfig {
     SqliteConfig::new_for_testing(
@@ -25,6 +27,7 @@ fn binding(thread_id: &str, logical: &[u8], wire: &[u8]) -> ProviderRequestBindi
         schema_version: PROVIDER_EVIDENCE_SCHEMA_VERSION,
         thread_id: thread_id.to_string(),
         turn_id: "turn-1".to_string(),
+        host_request_binding_id_sha256: Sha256Digest::for_bytes(b"host-request-binding-1"),
         request_kind: ProviderRequestKind::Turn,
         provider_id: "provider-fixture".to_string(),
         provider_config_sha256: Sha256Digest::for_bytes(b"provider-config"),
@@ -49,7 +52,7 @@ fn completed(intent: ProviderInvocationIntent, output: &[u8]) -> ProviderInvocat
             response_id_sha256: Sha256Digest::for_bytes(b"response-id"),
             response_items_sha256: Sha256Digest::for_bytes(output),
             token_usage_sha256: Sha256Digest::for_bytes(b"token-usage"),
-            end_turn: true,
+            end_turn: Some(true),
         },
     )
 }
@@ -182,6 +185,106 @@ async fn concurrent_provider_intent_replay_inserts_exactly_once() {
             .await
             .expect("pending count"),
         1
+    );
+}
+
+#[tokio::test]
+async fn concurrent_enforced_claims_for_one_request_binding_have_one_owner() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let first = HeptaEvidenceStore::open(&sqlite).await.expect("first pool");
+    let second = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("second pool");
+    let left_intent = intent(31);
+    let right_intent = intent(32);
+    assert_eq!(
+        left_intent.request_binding_id,
+        right_intent.request_binding_id
+    );
+
+    let (left, right) = tokio::join!(
+        first.claim_provider_intent(&left_intent),
+        second.claim_provider_intent(&right_intent)
+    );
+    let dispositions = [left.expect("left claim"), right.expect("right claim")];
+    assert_eq!(
+        dispositions
+            .iter()
+            .filter(|disposition| { **disposition == ProviderIntentClaimDisposition::Inserted })
+            .count(),
+        1
+    );
+    assert_eq!(
+        dispositions
+            .iter()
+            .filter(|disposition| {
+                **disposition
+                    == ProviderIntentClaimDisposition::BlockedByBinding(
+                        ProviderBindingState::Pending,
+                    )
+            })
+            .count(),
+        1
+    );
+    assert_eq!(
+        first
+            .pending_provider_attempt_count()
+            .await
+            .expect("pending count"),
+        1
+    );
+}
+
+#[tokio::test]
+async fn enforced_claim_blocks_same_host_request_across_transport_encoding_changes() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let first = intent(41);
+    let mut retry_binding = binding("thread-1", b"logical", b"incremental-wire");
+    retry_binding.transport = ProviderTransport::WebSocket;
+    retry_binding.previous_response_id_sha256 = Some(Sha256Digest::for_bytes(b"previous-response"));
+    let retry = ProviderInvocationIntent::new([42; 16], retry_binding);
+    assert_ne!(first.request_binding_id, retry.request_binding_id);
+    assert_eq!(
+        first.binding.host_request_binding_id_sha256,
+        retry.binding.host_request_binding_id_sha256
+    );
+
+    assert_eq!(
+        store
+            .claim_provider_intent(&first)
+            .await
+            .expect("first claim"),
+        ProviderIntentClaimDisposition::Inserted
+    );
+    assert_eq!(
+        store
+            .claim_provider_intent(&retry)
+            .await
+            .expect("retry claim"),
+        ProviderIntentClaimDisposition::BlockedByBinding(ProviderBindingState::Pending)
+    );
+
+    let not_dispatched = ProviderInvocationReceipt::new(
+        first,
+        ProviderTerminal::NotDispatched {
+            reason_code: "transport_not_entered".to_string(),
+        },
+    );
+    store
+        .append_provider_receipt(&not_dispatched)
+        .await
+        .expect("not-dispatched terminal");
+    assert_eq!(
+        store
+            .claim_provider_intent(&retry)
+            .await
+            .expect("retry after not-dispatched"),
+        ProviderIntentClaimDisposition::Inserted
     );
 }
 
@@ -419,4 +522,68 @@ async fn open_rejects_missing_provider_schema_object() {
         Err(error) => error,
     };
     assert!(matches!(error, EvidenceError::Corrupt(_)));
+}
+
+#[tokio::test]
+async fn open_rejects_legacy_provider_rows_without_host_binding_digest() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let raw = sqlite
+        .open_durable_evidence_pool(store.path())
+        .await
+        .expect("raw evidence pool");
+    sqlx::query("DROP TRIGGER provider_invocation_intents_host_binding_required")
+        .execute(&raw)
+        .await
+        .expect("drop host binding trigger");
+    sqlx::query(
+        "INSERT INTO provider_invocation_intents (
+            attempt_id, request_binding_id, attempt_nonce_sha256, thread_id, turn_id,
+            request_kind, provider_id, provider_config_sha256, model, transport,
+            endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
+            previous_response_id_sha256, generate, schema_version,
+            payload_json, payload_sha256, recorded_at_ms
+         ) VALUES (?, ?, ?, ?, ?, 'turn', ?, ?, ?, 'http', ?, ?, ?, NULL, 1, 1, '{}', ?, 0)",
+    )
+    .bind(format!("provider-attempt:v1:{}", "1".repeat(64)))
+    .bind(format!("provider-request:v1:{}", "2".repeat(64)))
+    .bind("3".repeat(64))
+    .bind("thread-legacy")
+    .bind("turn-legacy")
+    .bind("provider-legacy")
+    .bind("4".repeat(64))
+    .bind("model-legacy")
+    .bind("5".repeat(64))
+    .bind("6".repeat(64))
+    .bind("7".repeat(64))
+    .bind(Sha256Digest::for_bytes(b"{}").as_str())
+    .execute(&raw)
+    .await
+    .expect("insert legacy row");
+    sqlx::query(
+        "CREATE TRIGGER provider_invocation_intents_host_binding_required
+         BEFORE INSERT ON provider_invocation_intents
+         WHEN NEW.host_request_binding_id_sha256 IS NULL
+         BEGIN
+             SELECT RAISE(ABORT, 'provider invocation intent requires host request binding digest');
+         END",
+    )
+    .execute(&raw)
+    .await
+    .expect("restore host binding trigger");
+    raw.close().await;
+    drop(store);
+
+    let error = match HeptaEvidenceStore::open(&sqlite).await {
+        Ok(_) => panic!("legacy unbound row must require explicit migration"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        EvidenceError::Corrupt(detail)
+            if detail.contains("predate host request binding evidence")
+    ));
 }

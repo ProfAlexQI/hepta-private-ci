@@ -455,6 +455,41 @@ async fn streaming_client_retries_on_transport_error() -> Result<()> {
 }
 
 #[tokio::test]
+async fn streaming_client_single_transport_attempt_disables_internal_retry() {
+    let transport = FlakyTransport::new();
+
+    let mut provider = provider("openai");
+    provider.retry.max_attempts = 3;
+
+    let request = ResponsesApiRequest {
+        model: "gpt-test".into(),
+        instructions: "Say hi".into(),
+        input: Vec::new(),
+        tools: Some(empty_tools().into()),
+        tool_choice: "auto".into(),
+        parallel_tool_calls: false,
+        reasoning: None,
+        store: false,
+        stream: true,
+        stream_options: None,
+        include: Vec::new(),
+        service_tier: None,
+        prompt_cache_key: None,
+        text: None,
+        client_metadata: None,
+    };
+    let client = ResponsesClient::new(transport.clone(), provider, Arc::new(NoAuth));
+
+    let result = client
+        .stream_request_single_attempt(request, ResponsesOptions::default())
+        .await;
+
+    assert!(result.is_err());
+    assert_eq!(transport.attempts(), 1);
+    assert_eq!(transport.requests().len(), 1);
+}
+
+#[tokio::test]
 async fn streaming_client_retries_on_transient_auth_error() -> Result<()> {
     let state = RecordingState::default();
     let transport = RecordingTransport::new(state.clone());

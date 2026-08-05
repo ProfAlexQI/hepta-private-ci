@@ -72,6 +72,34 @@ impl<T: HttpTransport> ResponsesClient<T> {
         request: ResponsesApiRequest,
         options: ResponsesOptions,
     ) -> Result<ResponseStream, ApiError> {
+        self.stream_request_with_retry_mode(
+            request, options, /*single_transport_attempt*/ false,
+        )
+        .await
+    }
+
+    /// Streams one request without transparent transport retries.
+    ///
+    /// This is used by hosts that durably claim every provider send. A caller
+    /// may perform a later retry, but it must return through its claim seam and
+    /// invoke this method again with a fresh attempt identity.
+    pub async fn stream_request_single_attempt(
+        &self,
+        request: ResponsesApiRequest,
+        options: ResponsesOptions,
+    ) -> Result<ResponseStream, ApiError> {
+        self.stream_request_with_retry_mode(
+            request, options, /*single_transport_attempt*/ true,
+        )
+        .await
+    }
+
+    async fn stream_request_with_retry_mode(
+        &self,
+        request: ResponsesApiRequest,
+        options: ResponsesOptions,
+        single_transport_attempt: bool,
+    ) -> Result<ResponseStream, ApiError> {
         let ResponsesOptions {
             session_id,
             thread_id,
@@ -93,8 +121,14 @@ impl<T: HttpTransport> ResponsesClient<T> {
             insert_header(&mut headers, "x-openai-subagent", &subagent);
         }
 
-        self.stream_encoded(body, headers, compression, turn_state)
-            .await
+        self.stream_encoded(
+            body,
+            headers,
+            compression,
+            turn_state,
+            single_transport_attempt,
+        )
+        .await
     }
 
     fn path() -> &'static str {
@@ -121,8 +155,14 @@ impl<T: HttpTransport> ResponsesClient<T> {
     ) -> Result<ResponseStream, ApiError> {
         let body = EncodedJsonBody::encode(&body)
             .map_err(|e| ApiError::Stream(format!("failed to encode responses request: {e}")))?;
-        self.stream_encoded(body, extra_headers, compression, turn_state)
-            .await
+        self.stream_encoded(
+            body,
+            extra_headers,
+            compression,
+            turn_state,
+            /*single_transport_attempt*/ false,
+        )
+        .await
     }
 
     async fn stream_encoded(
@@ -131,6 +171,7 @@ impl<T: HttpTransport> ResponsesClient<T> {
         extra_headers: HeaderMap,
         compression: Compression,
         turn_state: Option<Arc<OnceLock<String>>>,
+        single_transport_attempt: bool,
     ) -> Result<ResponseStream, ApiError> {
         let request_compression = match compression {
             Compression::None => RequestCompression::None,
@@ -144,6 +185,7 @@ impl<T: HttpTransport> ResponsesClient<T> {
                 Self::path(),
                 extra_headers,
                 Some(body),
+                single_transport_attempt,
                 |req| {
                     req.headers.insert(
                         http::header::ACCEPT,

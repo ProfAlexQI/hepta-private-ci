@@ -34,6 +34,8 @@ use codex_hepta_evidence::AppendDisposition;
 use codex_hepta_evidence::HeptaEvidenceStore;
 use codex_state::StateRuntime;
 
+mod provider_policy;
+
 const BOOTSTRAP_POLICY_ID: &str = "hepta.bootstrap_integrity.v1";
 const BOOTSTRAP_POLICY_REVISION: u64 = 1;
 const BOOTSTRAP_POLICY_CONTENT: &[u8] =
@@ -684,6 +686,7 @@ pub fn install_with_mode<C, F>(
         evidence: tokio::sync::OnceCell::new(),
     });
     registry.thread_lifecycle_contributor(extension.clone());
+    registry.model_provider_policy_contributor(extension.clone());
     registry.tool_policy_contributor(extension);
 }
 

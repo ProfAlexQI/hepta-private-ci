@@ -19,6 +19,10 @@ use codex_api::AgentIdentityTelemetry;
 use codex_api::ApiError;
 use codex_api::ResponseEvent;
 use codex_api::TransportError;
+use codex_extension_api::ModelProviderAttemptLease;
+use codex_extension_api::ModelProviderPolicyError;
+use codex_extension_api::ModelProviderPolicyFuture;
+use codex_extension_api::ModelProviderTerminal;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
 use codex_login::AuthCredentialsStoreMode;
@@ -36,6 +40,7 @@ use codex_model_provider_info::create_oss_provider_with_base_url;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
 use codex_protocol::auth::AuthMode;
+use codex_protocol::error::CodexErrKind;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
@@ -587,6 +592,7 @@ async fn dropped_response_stream_traces_cancelled_partial_output() -> anyhow::Re
         test_session_telemetry(),
         attempt,
         test_model_provider(),
+        /*provider_policy_lease*/ None,
     );
 
     let observed = stream
@@ -616,6 +622,473 @@ async fn dropped_response_stream_traces_cancelled_partial_output() -> anyhow::Re
     Ok(())
 }
 
+#[derive(Default)]
+struct ProviderLeaseTestState {
+    terminals: Mutex<Vec<ModelProviderTerminal>>,
+    finish_started: Notify,
+    terminal_recorded: Notify,
+}
+
+struct TestProviderAttemptLease {
+    state: Arc<ProviderLeaseTestState>,
+    release_finish: Option<Arc<Notify>>,
+    finish_error: bool,
+}
+
+impl ModelProviderAttemptLease for TestProviderAttemptLease {
+    fn finish(
+        self: Box<Self>,
+        terminal: ModelProviderTerminal,
+    ) -> ModelProviderPolicyFuture<'static, ()> {
+        Box::pin(async move {
+            self.state.finish_started.notify_one();
+            if let Some(release_finish) = self.release_finish {
+                release_finish.notified().await;
+            }
+            self.state
+                .terminals
+                .lock()
+                .expect("provider terminal lock should not be poisoned")
+                .push(terminal);
+            self.state.terminal_recorded.notify_one();
+            if self.finish_error {
+                Err(ModelProviderPolicyError::new(
+                    "test_provider_terminal_failed",
+                    "test provider terminal persistence failed",
+                ))
+            } else {
+                Ok(())
+            }
+        })
+    }
+}
+
+fn provider_policy_lease(
+    state: &Arc<ProviderLeaseTestState>,
+    release_finish: Option<Arc<Notify>>,
+    finish_error: bool,
+) -> Box<dyn ModelProviderAttemptLease> {
+    Box::new(TestProviderAttemptLease {
+        state: Arc::clone(state),
+        release_finish,
+        finish_error,
+    })
+}
+
+async fn wait_for_provider_terminals(
+    state: &ProviderLeaseTestState,
+    expected: usize,
+) -> Vec<ModelProviderTerminal> {
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let recorded = state.terminal_recorded.notified();
+            let terminals = state
+                .terminals
+                .lock()
+                .expect("provider terminal lock should not be poisoned")
+                .clone();
+            if terminals.len() >= expected {
+                return terminals;
+            }
+            recorded.await;
+        }
+    })
+    .await
+    .expect("provider terminal should be recorded before timeout")
+}
+
+#[tokio::test]
+async fn provider_completed_terminal_is_persisted_before_event_delivery() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let release_finish = Arc::new(Notify::new());
+    let finish_started = state.finish_started.notified();
+    let api_stream = futures::stream::iter([Ok(ResponseEvent::Completed {
+        response_id: "resp-provider-policy".to_string(),
+        token_usage: None,
+        end_turn: Some(true),
+    })]);
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        Some(provider_policy_lease(
+            &state,
+            Some(Arc::clone(&release_finish)),
+            /*finish_error*/ false,
+        )),
+    );
+
+    finish_started.await;
+    let mut next_event = Box::pin(stream.next());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), &mut next_event)
+            .await
+            .is_err(),
+        "response.completed must remain withheld while terminal persistence is pending"
+    );
+    release_finish.notify_one();
+
+    let event = next_event
+        .await
+        .expect("mapped stream should deliver completion")
+        .expect("persisted completion should be delivered");
+    assert!(matches!(event, ResponseEvent::Completed { .. }));
+    assert!(matches!(
+        state
+            .terminals
+            .lock()
+            .expect("provider terminal lock should not be poisoned")
+            .as_slice(),
+        [ModelProviderTerminal::Completed { .. }]
+    ));
+}
+
+#[tokio::test]
+async fn provider_completed_terminal_failure_is_fatal_and_suppresses_completion() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let api_stream = futures::stream::iter([Ok(ResponseEvent::Completed {
+        response_id: "resp-provider-policy".to_string(),
+        token_usage: None,
+        end_turn: Some(true),
+    })]);
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        Some(provider_policy_lease(
+            &state, /*release_finish*/ None, /*finish_error*/ true,
+        )),
+    );
+
+    let error = stream
+        .next()
+        .await
+        .expect("mapped stream should report terminal failure")
+        .expect_err("terminal persistence failure must suppress response.completed");
+    assert_eq!(CodexErrKind::from(&error), CodexErrKind::Fatal);
+    assert!(error.to_string().contains("test_provider_terminal_failed"));
+    assert!(stream.next().await.is_none());
+    assert!(matches!(
+        state
+            .terminals
+            .lock()
+            .expect("provider terminal lock should not be poisoned")
+            .as_slice(),
+        [ModelProviderTerminal::Completed { .. }]
+    ));
+}
+
+#[tokio::test]
+async fn provider_stream_error_consumes_one_indeterminate_terminal() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let api_stream = futures::stream::iter([Err(ApiError::Stream("provider failed".to_string()))]);
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        Some(provider_policy_lease(
+            &state, /*release_finish*/ None, /*finish_error*/ false,
+        )),
+    );
+
+    assert!(
+        stream
+            .next()
+            .await
+            .expect("mapped stream should report provider failure")
+            .is_err()
+    );
+    assert!(stream.next().await.is_none());
+    assert_eq!(
+        wait_for_provider_terminals(&state, 1).await,
+        [ModelProviderTerminal::Indeterminate {
+            reason_code: "provider_response_stream_failed".to_string(),
+            partial_response_sha256: None,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn provider_stream_error_terminal_stops_before_later_completion() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let polled_events = Arc::new(AtomicUsize::new(0));
+    let polled_events_for_stream = Arc::clone(&polled_events);
+    let api_stream = futures::stream::iter([
+        Err(ApiError::Stream("provider failed".to_string())),
+        Ok(ResponseEvent::Completed {
+            response_id: "resp-after-provider-error".to_string(),
+            token_usage: None,
+            end_turn: Some(true),
+        }),
+    ])
+    .inspect(move |_| {
+        polled_events_for_stream.fetch_add(1, Ordering::SeqCst);
+    });
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        Some(provider_policy_lease(
+            &state, /*release_finish*/ None, /*finish_error*/ false,
+        )),
+    );
+
+    assert!(
+        stream
+            .next()
+            .await
+            .expect("mapped stream should report provider failure")
+            .is_err()
+    );
+    assert!(
+        stream.next().await.is_none(),
+        "a completion after an indeterminate terminal must not be forwarded"
+    );
+    assert_eq!(
+        polled_events.load(Ordering::SeqCst),
+        1,
+        "the mapper must stop polling after the provider terminal is committed"
+    );
+    assert_eq!(
+        wait_for_provider_terminals(&state, 1).await,
+        [ModelProviderTerminal::Indeterminate {
+            reason_code: "provider_response_stream_failed".to_string(),
+            partial_response_sha256: None,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn provider_completed_terminal_stops_before_additional_events() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let polled_events = Arc::new(AtomicUsize::new(0));
+    let polled_events_for_stream = Arc::clone(&polled_events);
+    let api_stream = futures::stream::iter([
+        Ok(ResponseEvent::Completed {
+            response_id: "resp-provider-policy".to_string(),
+            token_usage: None,
+            end_turn: Some(true),
+        }),
+        Ok(ResponseEvent::Created),
+    ])
+    .inspect(move |_| {
+        polled_events_for_stream.fetch_add(1, Ordering::SeqCst);
+    });
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        Some(provider_policy_lease(
+            &state, /*release_finish*/ None, /*finish_error*/ false,
+        )),
+    );
+
+    let event = stream
+        .next()
+        .await
+        .expect("mapped stream should deliver completion")
+        .expect("completion terminal should persist");
+    assert!(matches!(event, ResponseEvent::Completed { .. }));
+    assert!(
+        stream.next().await.is_none(),
+        "events after a committed completion must not be forwarded"
+    );
+    assert_eq!(
+        polled_events.load(Ordering::SeqCst),
+        1,
+        "the mapper must stop polling after response.completed"
+    );
+    assert!(matches!(
+        state
+            .terminals
+            .lock()
+            .expect("provider terminal lock should not be poisoned")
+            .as_slice(),
+        [ModelProviderTerminal::Completed { .. }]
+    ));
+}
+
+#[tokio::test]
+async fn provider_stream_error_terminal_failure_is_fatal_and_stops() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let polled_events = Arc::new(AtomicUsize::new(0));
+    let polled_events_for_stream = Arc::clone(&polled_events);
+    let api_stream = futures::stream::iter([
+        Err(ApiError::Stream("provider failed".to_string())),
+        Ok(ResponseEvent::Completed {
+            response_id: "resp-after-terminal-failure".to_string(),
+            token_usage: None,
+            end_turn: Some(true),
+        }),
+    ])
+    .inspect(move |_| {
+        polled_events_for_stream.fetch_add(1, Ordering::SeqCst);
+    });
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        Some(provider_policy_lease(
+            &state, /*release_finish*/ None, /*finish_error*/ true,
+        )),
+    );
+
+    let error = stream
+        .next()
+        .await
+        .expect("mapped stream should report terminal failure")
+        .expect_err("terminal persistence failure must be fatal");
+    assert_eq!(CodexErrKind::from(&error), CodexErrKind::Fatal);
+    assert!(error.to_string().contains("test_provider_terminal_failed"));
+    assert!(stream.next().await.is_none());
+    assert_eq!(polled_events.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        state
+            .terminals
+            .lock()
+            .expect("provider terminal lock should not be poisoned")
+            .as_slice(),
+        [ModelProviderTerminal::Indeterminate { .. }]
+    ));
+}
+
+#[tokio::test]
+async fn provider_policy_inactive_preserves_post_error_stream_behavior() {
+    let api_stream = futures::stream::iter([
+        Err(ApiError::Stream("provider failed".to_string())),
+        Ok(ResponseEvent::Completed {
+            response_id: "resp-without-provider-policy".to_string(),
+            token_usage: None,
+            end_turn: Some(true),
+        }),
+    ]);
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        /*provider_policy_lease*/ None,
+    );
+
+    assert!(
+        stream
+            .next()
+            .await
+            .expect("feature-off stream should preserve the provider error")
+            .is_err()
+    );
+    assert!(matches!(
+        stream
+            .next()
+            .await
+            .expect("feature-off stream should preserve later completion")
+            .expect("feature-off completion should remain successful"),
+        ResponseEvent::Completed { .. }
+    ));
+}
+
+#[tokio::test]
+async fn provider_eof_consumes_one_indeterminate_terminal() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let api_stream = futures::stream::empty();
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        Some(provider_policy_lease(
+            &state, /*release_finish*/ None, /*finish_error*/ false,
+        )),
+    );
+
+    assert!(stream.next().await.is_none());
+    assert_eq!(
+        wait_for_provider_terminals(&state, 1).await,
+        [ModelProviderTerminal::Indeterminate {
+            reason_code: "provider_response_eof_before_completed".to_string(),
+            partial_response_sha256: None,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn provider_consumer_drop_consumes_one_indeterminate_terminal() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let api_stream = futures::stream::pending();
+    let (stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        Some(provider_policy_lease(
+            &state, /*release_finish*/ None, /*finish_error*/ false,
+        )),
+    );
+
+    drop(stream);
+    assert_eq!(
+        wait_for_provider_terminals(&state, 1).await,
+        [ModelProviderTerminal::Indeterminate {
+            reason_code: "provider_response_consumer_dropped".to_string(),
+            partial_response_sha256: None,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn provider_completed_then_consumer_drop_does_not_write_second_terminal() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let api_stream = futures::stream::iter([Ok(ResponseEvent::Completed {
+        response_id: "resp-provider-policy".to_string(),
+        token_usage: None,
+        end_turn: Some(true),
+    })])
+    .chain(futures::stream::pending());
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        InferenceTraceAttempt::disabled(),
+        test_model_provider(),
+        Some(provider_policy_lease(
+            &state, /*release_finish*/ None, /*finish_error*/ false,
+        )),
+    );
+
+    let event = stream
+        .next()
+        .await
+        .expect("mapped stream should deliver completion")
+        .expect("completion terminal should persist");
+    assert!(matches!(event, ResponseEvent::Completed { .. }));
+    drop(stream);
+    tokio::time::sleep(Duration::from_millis(20)).await;
+
+    assert!(matches!(
+        state
+            .terminals
+            .lock()
+            .expect("provider terminal lock should not be poisoned")
+            .as_slice(),
+        [ModelProviderTerminal::Completed { .. }]
+    ));
+}
+
 #[tokio::test]
 async fn response_stream_records_last_model_feedback_ids() {
     let tags = Arc::new(Mutex::new(BTreeMap::new()));
@@ -637,6 +1110,7 @@ async fn response_stream_records_last_model_feedback_ids() {
         test_session_telemetry(),
         InferenceTraceAttempt::disabled(),
         test_model_provider(),
+        /*provider_policy_lease*/ None,
     );
 
     while stream.next().await.is_some() {}
@@ -712,6 +1186,7 @@ async fn dropped_backpressured_response_stream_traces_cancelled_partial_output()
         test_session_telemetry(),
         attempt,
         test_model_provider(),
+        /*provider_policy_lease*/ None,
     );
 
     // Fill the mapper channel with non-terminal events, then yield one output

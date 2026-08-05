@@ -32,6 +32,7 @@ use crate::mentions::build_skill_name_counts;
 use crate::mentions::collect_explicit_app_ids;
 use crate::mentions::collect_explicit_plugin_mentions;
 use crate::mentions::collect_tool_mentions_from_messages;
+use crate::model_provider_policy::ModelProviderPolicyContext;
 use crate::plugins::build_plugin_injections;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::CodexResponsesRequestKind;
@@ -74,6 +75,7 @@ use codex_connectors::AppToolPolicyEvaluator;
 use codex_core_plugins::RecommendedPluginCandidatesInput;
 use codex_core_skills::injection::InjectedHostSkillPrompts;
 use codex_extension_api::ExtensionData;
+use codex_extension_api::ModelProviderRequestKind;
 use codex_extension_api::TurnInputContext;
 use codex_extension_api::TurnInputEnvironment;
 use codex_features::Feature;
@@ -2168,8 +2170,17 @@ async fn try_run_sampling_request(
         .features
         .enabled(Feature::ConcurrentReasoningSummaries)
         && turn_context.provider.info().is_openai();
+    let provider_policy_context = ModelProviderPolicyContext {
+        registry: sess.services.extensions.as_ref(),
+        session_store: &sess.services.session_extension_data,
+        thread_store: &sess.services.thread_extension_data,
+        turn_store: turn_store.as_ref(),
+        thread_id: sess.thread_id().to_string(),
+        turn_id: turn_context.sub_id.clone(),
+        request_kind: ModelProviderRequestKind::Turn,
+    };
     let mut stream = client_session
-        .stream(
+        .stream_with_policy(
             prompt,
             &turn_context.model_info,
             &turn_context.session_telemetry,
@@ -2178,6 +2189,7 @@ async fn try_run_sampling_request(
             turn_context.config.service_tier.clone(),
             responses_metadata,
             &inference_trace,
+            Some(&provider_policy_context),
         )
         .instrument(trace_span!("stream_request"))
         .or_cancel(&cancellation_token)

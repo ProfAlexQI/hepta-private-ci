@@ -4,6 +4,8 @@ mod canonical;
 mod provider_store;
 mod store;
 
+pub use provider_store::ProviderBindingState;
+pub use provider_store::ProviderIntentClaimDisposition;
 pub use provider_store::StoredProviderAttemptEvidence;
 pub use provider_store::StoredProviderIntent;
 pub use provider_store::StoredProviderReceipt;

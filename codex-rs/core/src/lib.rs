@@ -200,4 +200,5 @@ pub use exec_policy::load_exec_policy;
 pub use installation_id::resolve_installation_id;
 pub mod compact;
 mod memory_usage;
+mod model_provider_policy;
 pub mod otel_init;

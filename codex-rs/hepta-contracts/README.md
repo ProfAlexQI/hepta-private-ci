@@ -129,17 +129,45 @@ implementation is an oracle and evidence source, not a merge target.
   Feature-disabled dispatch keeps the upstream legacy cancellation ordering.
 - Provider invocation types, a generic Hepta-neutral Extension API pre-send
   contributor/opaque lease, and separate immutable provider intent/terminal
-  tables now exist. They support versioned request/attempt identities, exact
-  replay, conflict rejection, pending queries, restart recovery, and
-  secret-free digest material. Endpoint and per-send nonce material cross the
-  evidence boundary only as SHA-256 digests. No Core provider send path calls
-  this contributor, obtains a lease, or writes these rows yet, so provider
-  egress is **not** governed by this slice and no exactly-once claim is made.
-- This hook covers ToolRegistry dispatch only. It does **not** govern
-  model/provider invocation, Memory/Intelligence/KG reads or mutations, channel
-  sends, effect intent/ACK, or reconciliation. `HandlerCompleted` is
-  handler-reported status, not proof of an external effect or exactly-once
-  execution. Those remain later M2/M3/M4 increments.
+  tables now exist. Codex's shared `/responses` HTTP and WebSocket send paths,
+  including startup WebSocket prewarm and the compaction flows that reuse
+  `ModelClientSession::stream`, invoke this contributor after the final semantic
+  request is formed and before the provider request send. A WebSocket connection
+  may already exist before the `response.create` intent is claimed; establishing
+  the connection is not represented as a provider invocation. Active HTTP
+  policy disables the API client's transparent transport retry, so every actual
+  transport invocation must return through the claim seam with a fresh attempt.
+  Only the first atomic durable claim for one send receives a single-use lease.
+  Enforce mode blocks exact replay and blocks an automatic retry of the same
+  host logical request while an earlier attempt is pending, completed, or
+  indeterminate, even if fallback changes HTTP/WebSocket or full/incremental
+  wire encoding. The host logical binding excludes transport, endpoint, wire
+  shape, prior response identity, credentials, headers, query values, and retry
+  configuration; those cannot rotate around an older pending attempt. Physical
+  evidence separately binds a canonical, non-secret endpoint routing shape and
+  exact wire semantics. Rejected and provably-not-dispatched attempts permit a
+  fresh claim. Shadow failures and replays receive a detached lease that cannot
+  complete older evidence. Endpoint, host logical-request identity, and host
+  per-send identity cross the evidence boundary only as SHA-256 digests.
+- Provider `Completed` is committed before the event is released to the turn.
+  In Enforce mode, terminal-write failure is fatal and suppresses that
+  completion; Shadow mode warns and continues without claiming a durable
+  terminal, leaving the intent pending. A 401 is `Rejected`; send failure,
+  stream error, EOF-before-completed, or consumer drop is conservatively
+  `Indeterminate`. Once an active-policy stream terminal commits, the mapper
+  stops polling and cannot later release a contradictory `Completed` event.
+  The provider supplies no universal idempotency key, so this is durable
+  intent/replay prevention, **not** an exactly-once claim or effect acknowledgement.
+- Provider host-binding semantics were corrected before release. A development
+  evidence database containing rows written by the earlier unbound schema is
+  rejected as corrupt and must be explicitly preserved or isolated; no silent
+  hash backfill can reconstruct the missing logical binding.
+- ToolRegistry dispatch and the covered `/responses` sends are the active Core
+  governance paths. The current slice does **not** yet govern the unary
+  `/responses/compact` endpoint, Memory/Intelligence/KG reads or mutations,
+  realtime/image providers, channel sends, effect ACK, or reconciliation.
+  `HandlerCompleted` is handler-reported status, not proof of an external effect
+  or exactly-once execution. Those remain later M2/M3/M4 increments.
 - The Hepta product resolves its process home as
   `HEPTA_HOME > CODEX_HOME > ~/.hepta` before the shared Codex loader starts.
   Ordinary `codex` keeps its upstream home behavior. Explicit `HEPTA_HOME` and

@@ -63,6 +63,9 @@ use codex_api::auth_header_telemetry;
 use codex_api::build_session_headers;
 use codex_api::create_text_param_for_request;
 use codex_api::response_create_client_metadata;
+use codex_extension_api::ModelProviderAttemptLease;
+use codex_extension_api::ModelProviderTerminal;
+use codex_extension_api::ModelProviderTransport;
 use codex_http_client::ClientRouteClass;
 use codex_http_client::HttpClientFactory;
 use codex_login::AuthManager;
@@ -115,6 +118,13 @@ use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
 use crate::feedback_tags;
+use crate::model_provider_policy::ModelProviderPolicyBegin;
+use crate::model_provider_policy::ModelProviderPolicyContext;
+use crate::model_provider_policy::begin_model_provider_policy;
+use crate::model_provider_policy::bytes_sha256;
+use crate::model_provider_policy::canonical_sha256;
+use crate::model_provider_policy::has_active_model_provider_policy;
+use crate::model_provider_policy::prepare_model_provider_policy;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::subagent_header_value;
 use crate::util::emit_feedback_auth_recovery_tags;
@@ -356,6 +366,19 @@ fn responses_request_properties_match(
         && previous_service_tier == current_service_tier
         && previous_prompt_cache_key == current_prompt_cache_key
         && previous_text == current_text
+}
+
+/// Retry-stable model-visible request semantics for provider governance.
+///
+/// Routing/cache/client metadata can legitimately change after a reconnect or
+/// process restart without changing the logical model request. It remains in
+/// the wire digest where applicable, but must not mint a fresh logical replay
+/// identity.
+fn provider_policy_logical_request(request: &ResponsesApiRequest) -> ResponsesApiRequest {
+    let mut logical = request.clone();
+    logical.prompt_cache_key = None;
+    logical.client_metadata = None;
+    logical
 }
 
 fn response_items_equal_ignoring_internal_metadata(
@@ -1408,6 +1431,7 @@ impl ModelClientSession {
         service_tier: Option<String>,
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
     ) -> Result<ResponseStream> {
         let auth_manager = self.client.state.provider.auth_manager();
         let mut auth_recovery = auth_manager
@@ -1453,6 +1477,42 @@ impl ModelClientSession {
                 .prepare_response_items_for_request(&mut request.input);
             let request_session_telemetry =
                 session_telemetry_for_request(session_telemetry, &request);
+            let mut provider_policy_lease = None;
+            if let Some(context) = provider_policy_context.filter(|context| {
+                has_active_model_provider_policy(context.registry, context.thread_store)
+            }) {
+                // A durable policy lease represents exactly one provider send.
+                // Disable the API client's transparent transport retries so
+                // every later retry returns through this pre-send claim seam.
+                let endpoint = client_setup.api_provider.url_for_path(RESPONSES_ENDPOINT);
+                let logical_request = provider_policy_logical_request(&request);
+                let prepared = prepare_model_provider_policy(
+                    context,
+                    client_setup.api_provider.name.as_str(),
+                    model_info.slug.as_str(),
+                    ModelProviderTransport::Http,
+                    endpoint.as_str(),
+                    &logical_request,
+                    &request,
+                    /*previous_response_id*/ None,
+                    /*generate*/ true,
+                )
+                .map_err(model_provider_policy_error)?;
+                provider_policy_lease = match begin_model_provider_policy(
+                    context.registry,
+                    prepared.invocation_input(context),
+                )
+                .await
+                .map_err(model_provider_policy_error)?
+                {
+                    ModelProviderPolicyBegin::NoPolicy => None,
+                    ModelProviderPolicyBegin::Allow { lease } => Some(lease),
+                    ModelProviderPolicyBegin::Block {
+                        reason_code,
+                        message,
+                    } => return Err(model_provider_policy_blocked(reason_code, message)),
+                };
+            }
             let inference_trace_attempt = inference_trace.start_attempt();
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
@@ -1462,7 +1522,11 @@ impl ModelClientSession {
                 client_setup.api_auth,
             )
             .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
-            let stream_result = client.stream_request(request, options).await;
+            let stream_result = if provider_policy_lease.is_some() {
+                client.stream_request_single_attempt(request, options).await
+            } else {
+                client.stream_request(request, options).await
+            };
 
             match stream_result {
                 Ok(stream) => {
@@ -1471,12 +1535,20 @@ impl ModelClientSession {
                         request_session_telemetry,
                         inference_trace_attempt,
                         Arc::clone(&self.client.state.provider),
+                        provider_policy_lease,
                     );
                     return Ok(stream);
                 }
                 Err(ApiError::Transport(
                     unauthorized_transport @ TransportError::Http { status, .. },
                 )) if status == StatusCode::UNAUTHORIZED => {
+                    finish_model_provider_policy(
+                        &mut provider_policy_lease,
+                        ModelProviderTerminal::Rejected {
+                            reason_code: "provider_http_unauthorized".to_string(),
+                        },
+                    )
+                    .await?;
                     let response_debug_context =
                         extract_response_debug_context(&unauthorized_transport);
                     inference_trace_attempt.record_failed(
@@ -1496,6 +1568,14 @@ impl ModelClientSession {
                     continue;
                 }
                 Err(err) => {
+                    finish_model_provider_policy(
+                        &mut provider_policy_lease,
+                        ModelProviderTerminal::Indeterminate {
+                            reason_code: "provider_http_send_failed".to_string(),
+                            partial_response_sha256: None,
+                        },
+                    )
+                    .await?;
                     let response_debug_context =
                         extract_response_debug_context_from_api_error(&err);
                     let err = self.client.state.provider.map_api_error(err);
@@ -1537,6 +1617,7 @@ impl ModelClientSession {
         warmup: bool,
         request_trace: Option<W3cTraceContext>,
         inference_trace: &InferenceTraceContext,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
     ) -> Result<WebsocketStreamOutcome> {
         let auth_manager = self.client.state.provider.auth_manager();
 
@@ -1561,6 +1642,17 @@ impl ModelClientSession {
                 service_tier.clone(),
                 responses_metadata,
             )?;
+            let provider_policy_active = provider_policy_context.is_some_and(|context| {
+                has_active_model_provider_policy(context.registry, context.thread_store)
+            });
+            let policy_logical_request = if provider_policy_active {
+                let mut logical_request = request.clone();
+                self.client
+                    .prepare_response_items_for_request(&mut logical_request.input);
+                Some(provider_policy_logical_request(&logical_request))
+            } else {
+                None
+            };
             let request_session_telemetry = if warmup {
                 // `generate=false` prewarm is connection setup, not an inference request.
                 session_telemetry.clone()
@@ -1576,7 +1668,7 @@ impl ModelClientSession {
             match self
                 .websocket_connection(WebsocketConnectParams {
                     session_telemetry,
-                    api_provider: client_setup.api_provider,
+                    api_provider: client_setup.api_provider.clone(),
                     api_auth: client_setup.api_auth,
                     responses_metadata,
                     auth_context: request_auth_context,
@@ -1618,7 +1710,7 @@ impl ModelClientSession {
             } else {
                 inference_trace.start_attempt()
             };
-            if previous_response_id_from_untraced_warmup {
+            if previous_response_id_from_untraced_warmup && !provider_policy_active {
                 // The transport can reuse an untraced warmup response id and omit the
                 // already-sent input, but rollout replay needs the logical model-visible
                 // request rather than the compressed websocket delta.
@@ -1629,6 +1721,7 @@ impl ModelClientSession {
                 Some((response_id, items)) => (Some(response_id), Some(items)),
                 None => (None, None),
             };
+            let previous_response_id_for_policy = previous_response_id.clone();
             let original_item_ids = if let Some(incremental_items) = &mut incremental_items {
                 self.client
                     .prepare_response_items_for_request(incremental_items);
@@ -1643,6 +1736,15 @@ impl ModelClientSession {
                     .prepare_response_items_for_request(&mut request.input);
                 Some(original_item_ids)
             };
+            let policy_ws_payload = provider_policy_active.then(|| ResponseCreateWsRequest {
+                previous_response_id: previous_response_id_for_policy.clone(),
+                input: incremental_items.as_deref().unwrap_or(&request.input),
+                generate: if warmup { Some(false) } else { None },
+                // Trace context, request timestamps, and sticky transport metadata are
+                // intentionally excluded from the semantic wire binding.
+                client_metadata: None,
+                ..ResponseCreateWsRequest::from(&request)
+            });
             let ws_payload = ResponseCreateWsRequest {
                 previous_response_id,
                 input: incremental_items.as_deref().unwrap_or(&request.input),
@@ -1654,17 +1756,60 @@ impl ModelClientSession {
                 ..ResponseCreateWsRequest::from(&request)
             };
             let mut ws_request = ResponsesWsRequest::ResponseCreate(ws_payload);
+            let mut provider_policy_lease = None;
+            if let (Some(context), Some(logical_request), Some(wire_semantic)) = (
+                provider_policy_context,
+                policy_logical_request.as_ref(),
+                policy_ws_payload.as_ref(),
+            ) {
+                let endpoint = client_setup.api_provider.url_for_path(RESPONSES_ENDPOINT);
+                let prepared = prepare_model_provider_policy(
+                    context,
+                    client_setup.api_provider.name.as_str(),
+                    model_info.slug.as_str(),
+                    ModelProviderTransport::WebSocket,
+                    endpoint.as_str(),
+                    logical_request,
+                    wire_semantic,
+                    previous_response_id_for_policy.as_deref(),
+                    !warmup,
+                )
+                .map_err(model_provider_policy_error)?;
+                provider_policy_lease = match begin_model_provider_policy(
+                    context.registry,
+                    prepared.invocation_input(context),
+                )
+                .await
+                .map_err(model_provider_policy_error)?
+                {
+                    ModelProviderPolicyBegin::NoPolicy => None,
+                    ModelProviderPolicyBegin::Allow { lease } => Some(lease),
+                    ModelProviderPolicyBegin::Block {
+                        reason_code,
+                        message,
+                    } => return Err(model_provider_policy_blocked(reason_code, message)),
+                };
+                if previous_response_id_from_untraced_warmup {
+                    inference_trace_attempt.record_started(&request);
+                }
+            }
             stamp_ws_stream_request_start_ms(&mut ws_request);
             if !previous_response_id_from_untraced_warmup {
                 inference_trace_attempt.record_started(&ws_request);
             }
 
-            let websocket_connection =
-                self.websocket_session.connection.as_ref().ok_or_else(|| {
-                    self.client.state.provider.map_api_error(ApiError::Stream(
-                        "websocket connection is unavailable".to_string(),
-                    ))
-                })?;
+            let Some(websocket_connection) = self.websocket_session.connection.as_ref() else {
+                finish_model_provider_policy(
+                    &mut provider_policy_lease,
+                    ModelProviderTerminal::NotDispatched {
+                        reason_code: "provider_websocket_connection_missing".to_string(),
+                    },
+                )
+                .await?;
+                return Err(self.client.state.provider.map_api_error(ApiError::Stream(
+                    "websocket connection is unavailable".to_string(),
+                )));
+            };
             let stream_result = websocket_connection
                 .stream_request(
                     ws_request,
@@ -1679,21 +1824,38 @@ impl ModelClientSession {
             }
             self.websocket_session.last_request = Some(request);
             self.websocket_session.last_response_from_untraced_warmup = warmup;
-            let stream_result = stream_result.map_err(|err| {
-                let response_debug_context = extract_response_debug_context_from_api_error(&err);
-                let err = self.client.state.provider.map_api_error(err);
-                inference_trace_attempt.record_failed(
-                    &err,
-                    response_debug_context.request_id.as_deref(),
-                    /*output_items*/ &[],
-                );
-                err
-            })?;
+            let stream_result = match stream_result {
+                Ok(stream) => stream,
+                Err(err) => {
+                    let terminal =
+                        if api_error_http_status(&err) == Some(StatusCode::UNAUTHORIZED.as_u16()) {
+                            ModelProviderTerminal::Rejected {
+                                reason_code: "provider_websocket_unauthorized".to_string(),
+                            }
+                        } else {
+                            ModelProviderTerminal::Indeterminate {
+                                reason_code: "provider_websocket_send_failed".to_string(),
+                                partial_response_sha256: None,
+                            }
+                        };
+                    finish_model_provider_policy(&mut provider_policy_lease, terminal).await?;
+                    let response_debug_context =
+                        extract_response_debug_context_from_api_error(&err);
+                    let err = self.client.state.provider.map_api_error(err);
+                    inference_trace_attempt.record_failed(
+                        &err,
+                        response_debug_context.request_id.as_deref(),
+                        /*output_items*/ &[],
+                    );
+                    return Err(err);
+                }
+            };
             let (stream, last_request_rx) = map_response_stream(
                 stream_result,
                 request_session_telemetry,
                 inference_trace_attempt,
                 Arc::clone(&self.client.state.provider),
+                provider_policy_lease,
             );
             self.websocket_session.last_response_rx = Some(last_request_rx);
             return Ok(WebsocketStreamOutcome::Stream(stream));
@@ -1746,6 +1908,31 @@ impl ModelClientSession {
         service_tier: Option<String>,
         responses_metadata: &CodexResponsesMetadata,
     ) -> Result<()> {
+        self.prewarm_websocket_with_policy(
+            prompt,
+            model_info,
+            session_telemetry,
+            effort,
+            summary,
+            service_tier,
+            responses_metadata,
+            /*provider_policy_context*/ None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn prewarm_websocket_with_policy(
+        &mut self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &CodexResponsesMetadata,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
+    ) -> Result<()> {
         if !self.client.responses_websocket_enabled() {
             return Ok(());
         }
@@ -1766,6 +1953,7 @@ impl ModelClientSession {
                 /*warmup*/ true,
                 current_span_w3c_trace_context(),
                 &disabled_trace,
+                provider_policy_context,
             )
             .await
         {
@@ -1808,6 +1996,33 @@ impl ModelClientSession {
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
     ) -> Result<ResponseStream> {
+        self.stream_with_policy(
+            prompt,
+            model_info,
+            session_telemetry,
+            effort,
+            summary,
+            service_tier,
+            responses_metadata,
+            inference_trace,
+            /*provider_policy_context*/ None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn stream_with_policy(
+        &mut self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &CodexResponsesMetadata,
+        inference_trace: &InferenceTraceContext,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
+    ) -> Result<ResponseStream> {
         let wire_api = self.client.state.provider.info().wire_api;
         match wire_api {
             WireApi::Responses => {
@@ -1825,6 +2040,7 @@ impl ModelClientSession {
                             /*warmup*/ false,
                             request_trace,
                             inference_trace,
+                            provider_policy_context,
                         )
                         .await?
                     {
@@ -1844,6 +2060,7 @@ impl ModelClientSession {
                     service_tier,
                     responses_metadata,
                     inference_trace,
+                    provider_policy_context,
                 )
                 .await
             }
@@ -1922,11 +2139,105 @@ fn add_responses_lite_header(headers: &mut ApiHeaderMap, use_responses_lite: boo
 const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 1600;
 const STREAM_DROPPED_REASON: &str = "response stream dropped before provider terminal event";
 
+fn model_provider_policy_error(error: codex_extension_api::ModelProviderPolicyError) -> CodexErr {
+    CodexErr::Fatal(format!(
+        "model-provider governance failed ({}): {}",
+        error.reason_code(),
+        error.detail()
+    ))
+}
+
+fn model_provider_policy_blocked(reason_code: String, message: String) -> CodexErr {
+    CodexErr::Fatal(format!(
+        "model-provider request blocked by governance ({reason_code}): {message}"
+    ))
+}
+
+async fn finish_model_provider_policy(
+    lease: &mut Option<Box<dyn ModelProviderAttemptLease>>,
+    terminal: ModelProviderTerminal,
+) -> Result<()> {
+    let Some(lease) = lease.take() else {
+        return Ok(());
+    };
+    lease
+        .finish(terminal)
+        .await
+        .map_err(model_provider_policy_error)
+}
+
+enum ModelProviderPolicyTerminalState {
+    Inactive,
+    Pending(Box<dyn ModelProviderAttemptLease>),
+    Committed,
+    CommitFailed,
+}
+
+impl ModelProviderPolicyTerminalState {
+    fn new(lease: Option<Box<dyn ModelProviderAttemptLease>>) -> Self {
+        match lease {
+            Some(lease) => Self::Pending(lease),
+            None => Self::Inactive,
+        }
+    }
+
+    fn is_pending(&self) -> bool {
+        matches!(self, Self::Pending(_))
+    }
+
+    async fn finish(&mut self, terminal: ModelProviderTerminal) -> Result<bool> {
+        let previous = std::mem::replace(self, Self::CommitFailed);
+        match previous {
+            Self::Inactive => {
+                *self = Self::Inactive;
+                Ok(false)
+            }
+            Self::Pending(lease) => match lease.finish(terminal).await {
+                Ok(()) => {
+                    *self = Self::Committed;
+                    Ok(true)
+                }
+                Err(error) => Err(model_provider_policy_error(error)),
+            },
+            Self::Committed => {
+                *self = Self::Committed;
+                Err(CodexErr::Fatal(
+                    "model-provider governance terminal was already committed".to_string(),
+                ))
+            }
+            Self::CommitFailed => Err(CodexErr::Fatal(
+                "model-provider governance terminal commit already failed".to_string(),
+            )),
+        }
+    }
+
+    async fn finish_indeterminate(
+        &mut self,
+        reason_code: &'static str,
+        items_added: &[ResponseItem],
+    ) -> Result<bool> {
+        if !self.is_pending() {
+            return Ok(false);
+        }
+        let partial_response_sha256 = if items_added.is_empty() {
+            None
+        } else {
+            Some(canonical_sha256(&items_added).map_err(model_provider_policy_error)?)
+        };
+        self.finish(ModelProviderTerminal::Indeterminate {
+            reason_code: reason_code.to_string(),
+            partial_response_sha256,
+        })
+        .await
+    }
+}
+
 fn map_response_stream(
     api_stream: codex_api::ResponseStream,
     session_telemetry: SessionTelemetry,
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
+    provider_policy_lease: Option<Box<dyn ModelProviderAttemptLease>>,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>) {
     let codex_api::ResponseStream {
         rx_event,
@@ -1942,6 +2253,7 @@ fn map_response_stream(
         session_telemetry,
         inference_trace_attempt,
         provider,
+        provider_policy_lease,
     )
 }
 
@@ -1951,6 +2263,7 @@ fn map_response_events<S>(
     session_telemetry: SessionTelemetry,
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
+    provider_policy_lease: Option<Box<dyn ModelProviderAttemptLease>>,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>)
 where
     S: futures::Stream<Item = std::result::Result<ResponseEvent, ApiError>>
@@ -1966,6 +2279,8 @@ where
 
     tokio::spawn(async move {
         let mut logged_error = false;
+        let mut provider_policy_terminal =
+            ModelProviderPolicyTerminalState::new(provider_policy_lease);
         let mut tx_last_response = Some(tx_last_response);
         let mut items_added: Vec<ResponseItem> = Vec::new();
         let (request_start, mut ttft_ms) = (Instant::now(), None);
@@ -1977,6 +2292,12 @@ where
         loop {
             let event = tokio::select! {
                 _ = consumer_dropped.cancelled() => {
+                    if let Err(error) = provider_policy_terminal.finish_indeterminate(
+                        "provider_response_consumer_dropped",
+                        &items_added,
+                    ).await {
+                        warn!(%error, "failed to persist provider indeterminate terminal after consumer drop");
+                    }
                     inference_trace_attempt.record_cancelled(
                         STREAM_DROPPED_REASON,
                         upstream_request_id,
@@ -1997,6 +2318,15 @@ where
                         .await
                         .is_err()
                     {
+                        if let Err(error) = provider_policy_terminal
+                            .finish_indeterminate(
+                                "provider_response_consumer_dropped",
+                                &items_added,
+                            )
+                            .await
+                        {
+                            warn!(%error, "failed to persist provider indeterminate terminal after output delivery failed");
+                        }
                         inference_trace_attempt.record_cancelled(
                             STREAM_DROPPED_REASON,
                             upstream_request_id,
@@ -2010,6 +2340,36 @@ where
                     token_usage,
                     end_turn,
                 }) => {
+                    let mut provider_terminal_committed = false;
+                    if provider_policy_terminal.is_pending() {
+                        let terminal = (|| {
+                            Ok::<_, CodexErr>(ModelProviderTerminal::Completed {
+                                response_id_sha256: bytes_sha256(response_id.as_bytes())
+                                    .map_err(model_provider_policy_error)?,
+                                response_items_sha256: canonical_sha256(&items_added)
+                                    .map_err(model_provider_policy_error)?,
+                                token_usage_sha256: canonical_sha256(&token_usage)
+                                    .map_err(model_provider_policy_error)?,
+                                end_turn,
+                            })
+                        })();
+                        let terminal_result = match terminal {
+                            Ok(terminal) => provider_policy_terminal.finish(terminal).await,
+                            Err(error) => Err(error),
+                        };
+                        match terminal_result {
+                            Ok(committed) => provider_terminal_committed = committed,
+                            Err(error) => {
+                                inference_trace_attempt.record_failed(
+                                    &error,
+                                    upstream_request_id,
+                                    &items_added,
+                                );
+                                let _ = tx_event.send(Err(error)).await;
+                                return;
+                            }
+                        }
+                    }
                     feedback_tags!(last_model_response_id = &response_id);
                     if let Some(usage) = &token_usage {
                         session_telemetry.sse_event_completed(usage, ttft_ms);
@@ -2037,6 +2397,9 @@ where
                     {
                         return;
                     }
+                    if provider_terminal_committed {
+                        return;
+                    }
                 }
                 Ok(event) => {
                     if matches!(&event, ResponseEvent::OutputItemAdded(_)) && ttft_ms.is_none() {
@@ -2045,6 +2408,15 @@ where
                         );
                     }
                     if tx_event.send(Ok(event)).await.is_err() {
+                        if let Err(error) = provider_policy_terminal
+                            .finish_indeterminate(
+                                "provider_response_consumer_dropped",
+                                &items_added,
+                            )
+                            .await
+                        {
+                            warn!(%error, "failed to persist provider indeterminate terminal after event delivery failed");
+                        }
                         inference_trace_attempt.record_cancelled(
                             STREAM_DROPPED_REASON,
                             upstream_request_id,
@@ -2062,6 +2434,21 @@ where
                         feedback_tags!(last_model_request_id = upstream_request_id);
                     }
                     let mapped = provider.map_api_error(err);
+                    let provider_terminal_committed = match provider_policy_terminal
+                        .finish_indeterminate("provider_response_stream_failed", &items_added)
+                        .await
+                    {
+                        Ok(committed) => committed,
+                        Err(error) => {
+                            inference_trace_attempt.record_failed(
+                                &error,
+                                upstream_request_id,
+                                &items_added,
+                            );
+                            let _ = tx_event.send(Err(error)).await;
+                            return;
+                        }
+                    };
                     inference_trace_attempt.record_failed(
                         &mapped,
                         upstream_request_id,
@@ -2074,8 +2461,19 @@ where
                     if tx_event.send(Err(mapped)).await.is_err() {
                         return;
                     }
+                    if provider_terminal_committed {
+                        return;
+                    }
                 }
             }
+        }
+        if let Err(error) = provider_policy_terminal
+            .finish_indeterminate("provider_response_eof_before_completed", &items_added)
+            .await
+        {
+            inference_trace_attempt.record_failed(&error, upstream_request_id, &items_added);
+            let _ = tx_event.send(Err(error)).await;
+            return;
         }
         inference_trace_attempt.record_failed(
             "stream closed before response.completed",

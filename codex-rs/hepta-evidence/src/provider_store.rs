@@ -36,7 +36,62 @@ pub struct StoredProviderAttemptEvidence {
     pub receipt: Option<StoredProviderReceipt>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderBindingState {
+    Pending,
+    Completed,
+    Indeterminate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderIntentClaimDisposition {
+    Inserted,
+    ExactReplay,
+    BlockedByBinding(ProviderBindingState),
+}
+
 impl HeptaEvidenceStore {
+    /// Atomically claims one enforce-mode provider attempt.
+    ///
+    /// A host logical-request binding with a pending, completed, or
+    /// indeterminate attempt cannot be sent again, even if a retry changes
+    /// transport or incremental wire encoding. Rejected and
+    /// provably-not-dispatched attempts do not prevent a fresh physical send.
+    /// The binding check and insert share one `BEGIN IMMEDIATE` transaction,
+    /// so concurrent pools cannot both win.
+    pub async fn claim_provider_intent(
+        &self,
+        intent: &ProviderInvocationIntent,
+    ) -> Result<ProviderIntentClaimDisposition, EvidenceError> {
+        validate_provider_intent(intent)?;
+        let payload = canonical_json(intent)?;
+        let payload_json = String::from_utf8(payload.clone())
+            .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
+        let payload_sha256 = Sha256Digest::for_bytes(&payload);
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(classify_sqlx_error)?;
+        if let Some(state) = blocking_provider_binding_state(&mut transaction, intent).await? {
+            transaction.commit().await.map_err(classify_sqlx_error)?;
+            return Ok(ProviderIntentClaimDisposition::BlockedByBinding(state));
+        }
+        let inserted = insert_provider_intent(
+            &mut transaction,
+            intent,
+            &payload_json,
+            payload_sha256.as_str(),
+        )
+        .await?;
+        transaction.commit().await.map_err(classify_sqlx_error)?;
+        Ok(if inserted == AppendDisposition::Inserted {
+            ProviderIntentClaimDisposition::Inserted
+        } else {
+            ProviderIntentClaimDisposition::ExactReplay
+        })
+    }
+
     pub async fn append_provider_intent(
         &self,
         intent: &ProviderInvocationIntent,
@@ -51,50 +106,11 @@ impl HeptaEvidenceStore {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(classify_sqlx_error)?;
-        let binding = &intent.binding;
-        let insert = sqlx::query(
-            "INSERT INTO provider_invocation_intents (
-                attempt_id, request_binding_id, attempt_nonce_sha256, thread_id, turn_id,
-                request_kind, provider_id, provider_config_sha256, model, transport,
-                endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
-                previous_response_id_sha256, generate, schema_version,
-                payload_json, payload_sha256, recorded_at_ms
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT DO NOTHING",
-        )
-        .bind(intent.attempt_id.as_str())
-        .bind(intent.request_binding_id.as_str())
-        .bind(intent.attempt_nonce_sha256.as_str())
-        .bind(&binding.thread_id)
-        .bind(&binding.turn_id)
-        .bind(binding.request_kind.as_str())
-        .bind(&binding.provider_id)
-        .bind(binding.provider_config_sha256.as_str())
-        .bind(&binding.model)
-        .bind(binding.transport.as_str())
-        .bind(binding.endpoint_sha256.as_str())
-        .bind(binding.logical_request_sha256.as_str())
-        .bind(binding.wire_semantic_sha256.as_str())
-        .bind(
-            binding
-                .previous_response_id_sha256
-                .as_ref()
-                .map(Sha256Digest::as_str),
-        )
-        .bind(binding.generate)
-        .bind(i64::from(PROVIDER_EVIDENCE_SCHEMA_VERSION))
-        .bind(&payload_json)
-        .bind(payload_sha256.as_str())
-        .bind(now_millis()?)
-        .execute(&mut *transaction)
-        .await
-        .map_err(classify_sqlx_error)?;
-        let disposition = verify_provider_intent(
+        let disposition = insert_provider_intent(
             &mut transaction,
             intent,
             &payload_json,
             payload_sha256.as_str(),
-            insert.rows_affected() == 1,
         )
         .await?;
         transaction.commit().await.map_err(classify_sqlx_error)?;
@@ -234,7 +250,8 @@ impl HeptaEvidenceStore {
         }
         let rows = sqlx::query(
             "SELECT intents.seq, intents.attempt_id, intents.request_binding_id,
-                    intents.attempt_nonce_sha256, intents.thread_id, intents.turn_id,
+                    intents.attempt_nonce_sha256, intents.host_request_binding_id_sha256,
+                    intents.thread_id, intents.turn_id,
                     intents.request_kind, intents.provider_id,
                     intents.provider_config_sha256, intents.model, intents.transport,
                     intents.endpoint_sha256, intents.logical_request_sha256,
@@ -279,7 +296,8 @@ impl HeptaEvidenceStore {
         attempt_id: &ProviderAttemptId,
     ) -> Result<Option<StoredProviderIntent>, EvidenceError> {
         let row = sqlx::query(
-            "SELECT seq, attempt_id, request_binding_id, attempt_nonce_sha256, thread_id, turn_id,
+            "SELECT seq, attempt_id, request_binding_id, attempt_nonce_sha256,
+                    host_request_binding_id_sha256, thread_id, turn_id,
                     request_kind, provider_id, provider_config_sha256, model, transport,
                     endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
                     previous_response_id_sha256, generate, schema_version,
@@ -296,6 +314,115 @@ impl HeptaEvidenceStore {
         })
         .transpose()
     }
+}
+
+async fn blocking_provider_binding_state(
+    transaction: &mut Transaction<'_, Sqlite>,
+    requested: &ProviderInvocationIntent,
+) -> Result<Option<ProviderBindingState>, EvidenceError> {
+    let rows = sqlx::query(
+        "SELECT seq, attempt_id, request_binding_id, attempt_nonce_sha256,
+                host_request_binding_id_sha256, thread_id, turn_id,
+                request_kind, provider_id, provider_config_sha256, model, transport,
+                endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
+                previous_response_id_sha256, generate, schema_version,
+                payload_json, payload_sha256
+         FROM provider_invocation_intents
+         WHERE host_request_binding_id_sha256 = ? AND attempt_id <> ?
+         ORDER BY seq ASC",
+    )
+    .bind(requested.binding.host_request_binding_id_sha256.as_str())
+    .bind(requested.attempt_id.as_str())
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(classify_sqlx_error)?;
+    for row in rows {
+        let existing = decode_provider_intent_row(&row)?;
+        let terminal_row = sqlx::query(
+            "SELECT seq, receipt_id, attempt_id, request_binding_id, thread_id, turn_id,
+                    terminal_kind, schema_version, payload_json, payload_sha256
+             FROM provider_invocation_terminals WHERE attempt_id = ?",
+        )
+        .bind(existing.attempt_id.as_str())
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(classify_sqlx_error)?;
+        let Some(terminal_row) = terminal_row else {
+            return Ok(Some(ProviderBindingState::Pending));
+        };
+        let receipt = decode_provider_receipt_row(&terminal_row)?;
+        if receipt.intent != existing {
+            return Err(EvidenceError::Corrupt(
+                "provider binding terminal differs from its authoritative intent".to_string(),
+            ));
+        }
+        match receipt.terminal {
+            ProviderTerminal::Completed { .. } => {
+                return Ok(Some(ProviderBindingState::Completed));
+            }
+            ProviderTerminal::Indeterminate { .. } => {
+                return Ok(Some(ProviderBindingState::Indeterminate));
+            }
+            ProviderTerminal::Rejected { .. } | ProviderTerminal::NotDispatched { .. } => {}
+        }
+    }
+    Ok(None)
+}
+
+async fn insert_provider_intent(
+    transaction: &mut Transaction<'_, Sqlite>,
+    intent: &ProviderInvocationIntent,
+    payload_json: &str,
+    payload_sha256: &str,
+) -> Result<AppendDisposition, EvidenceError> {
+    let binding = &intent.binding;
+    let insert = sqlx::query(
+        "INSERT INTO provider_invocation_intents (
+            attempt_id, request_binding_id, attempt_nonce_sha256,
+            host_request_binding_id_sha256, thread_id, turn_id,
+            request_kind, provider_id, provider_config_sha256, model, transport,
+            endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
+            previous_response_id_sha256, generate, schema_version,
+            payload_json, payload_sha256, recorded_at_ms
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(intent.attempt_id.as_str())
+    .bind(intent.request_binding_id.as_str())
+    .bind(intent.attempt_nonce_sha256.as_str())
+    .bind(binding.host_request_binding_id_sha256.as_str())
+    .bind(&binding.thread_id)
+    .bind(&binding.turn_id)
+    .bind(binding.request_kind.as_str())
+    .bind(&binding.provider_id)
+    .bind(binding.provider_config_sha256.as_str())
+    .bind(&binding.model)
+    .bind(binding.transport.as_str())
+    .bind(binding.endpoint_sha256.as_str())
+    .bind(binding.logical_request_sha256.as_str())
+    .bind(binding.wire_semantic_sha256.as_str())
+    .bind(
+        binding
+            .previous_response_id_sha256
+            .as_ref()
+            .map(Sha256Digest::as_str),
+    )
+    .bind(binding.generate)
+    .bind(i64::from(PROVIDER_EVIDENCE_SCHEMA_VERSION))
+    .bind(payload_json)
+    .bind(payload_sha256)
+    .bind(now_millis()?)
+    .execute(&mut **transaction)
+    .await
+    .map_err(classify_sqlx_error)?;
+    verify_provider_intent(
+        transaction,
+        intent,
+        payload_json,
+        payload_sha256,
+        insert.rows_affected() == 1,
+    )
+    .await
 }
 
 async fn ensure_provider_intent(
@@ -319,7 +446,8 @@ async fn verify_provider_intent(
     inserted: bool,
 ) -> Result<AppendDisposition, EvidenceError> {
     let rows = sqlx::query(
-        "SELECT attempt_id, request_binding_id, attempt_nonce_sha256, thread_id, turn_id,
+        "SELECT attempt_id, request_binding_id, attempt_nonce_sha256,
+                host_request_binding_id_sha256, thread_id, turn_id,
                 request_kind, provider_id, provider_config_sha256, model, transport,
                 endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
                 previous_response_id_sha256, generate, schema_version,
@@ -412,6 +540,10 @@ fn decode_provider_intent_row(row: &SqliteRow) -> Result<ProviderInvocationInten
     if row.get::<String, _>("attempt_id") != intent.attempt_id.as_str()
         || row.get::<String, _>("request_binding_id") != intent.request_binding_id.as_str()
         || row.get::<String, _>("attempt_nonce_sha256") != intent.attempt_nonce_sha256.as_str()
+        || row
+            .get::<Option<String>, _>("host_request_binding_id_sha256")
+            .as_deref()
+            != Some(binding.host_request_binding_id_sha256.as_str())
         || row.get::<String, _>("thread_id") != binding.thread_id
         || row.get::<String, _>("turn_id") != binding.turn_id
         || row.get::<String, _>("request_kind") != binding.request_kind.as_str()
@@ -495,6 +627,10 @@ fn validate_provider_intent(intent: &ProviderInvocationIntent) -> Result<(), Evi
     }
     for (label, digest) in [
         ("attempt nonce", &intent.attempt_nonce_sha256),
+        (
+            "host request binding id",
+            &intent.binding.host_request_binding_id_sha256,
+        ),
         ("provider config", &intent.binding.provider_config_sha256),
         ("endpoint", &intent.binding.endpoint_sha256),
         ("logical request", &intent.binding.logical_request_sha256),

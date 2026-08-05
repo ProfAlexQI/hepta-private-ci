@@ -72,6 +72,10 @@ impl HeptaEvidenceStore {
             pool.close().await;
             return Err(error);
         }
+        if let Err(error) = verify_provider_host_bindings(&pool).await {
+            pool.close().await;
+            return Err(error);
+        }
         Ok(Self { pool, path })
     }
 
@@ -659,6 +663,7 @@ const REQUIRED_SCHEMA_OBJECTS: &[SchemaObjectSpec] = &[
             "provider_invocation_intents",
             "attempt_id",
             "request_binding_id",
+            "host_request_binding_id_sha256",
             "payload_sha256",
         ],
     },
@@ -697,6 +702,17 @@ const REQUIRED_SCHEMA_OBJECTS: &[SchemaObjectSpec] = &[
         ],
     },
     SchemaObjectSpec {
+        name: "provider_invocation_intents_host_binding_seq",
+        object_type: "index",
+        table_name: "provider_invocation_intents",
+        required_sql_fragments: &[
+            "create index",
+            "provider_invocation_intents",
+            "host_request_binding_id_sha256",
+            "seq",
+        ],
+    },
+    SchemaObjectSpec {
         name: "provider_invocation_terminals_thread_seq",
         object_type: "index",
         table_name: "provider_invocation_terminals",
@@ -705,6 +721,17 @@ const REQUIRED_SCHEMA_OBJECTS: &[SchemaObjectSpec] = &[
             "provider_invocation_terminals",
             "thread_id",
             "seq",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_intents_host_binding_required",
+        object_type: "trigger",
+        table_name: "provider_invocation_intents",
+        required_sql_fragments: &[
+            "before insert",
+            "on provider_invocation_intents",
+            "host_request_binding_id_sha256",
+            "raise(abort",
         ],
     },
     SchemaObjectSpec {
@@ -752,6 +779,23 @@ const REQUIRED_SCHEMA_OBJECTS: &[SchemaObjectSpec] = &[
         ],
     },
 ];
+
+async fn verify_provider_host_bindings(pool: &SqlitePool) -> Result<(), EvidenceError> {
+    let missing: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM provider_invocation_intents
+         WHERE host_request_binding_id_sha256 IS NULL",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(classify_sqlx_error)?;
+    if missing == 0 {
+        Ok(())
+    } else {
+        Err(EvidenceError::Corrupt(format!(
+            "{missing} provider intent rows predate host request binding evidence; explicit migration is required"
+        )))
+    }
+}
 
 async fn verify_schema_manifest(pool: &SqlitePool) -> Result<(), EvidenceError> {
     for spec in REQUIRED_SCHEMA_OBJECTS {

@@ -125,6 +125,7 @@ impl<T: HttpTransport> EndpointSession<T> {
         path: &str,
         extra_headers: HeaderMap,
         body: Option<EncodedJsonBody>,
+        single_transport_attempt: bool,
         configure: C,
     ) -> Result<StreamResponse, ApiError>
     where
@@ -136,8 +137,14 @@ impl<T: HttpTransport> EndpointSession<T> {
         let request = request.into_prepared().map_err(TransportError::Build)?;
         let make_request = || request.clone();
 
+        let mut retry_policy = self.provider.retry.to_policy();
+        if single_transport_attempt {
+            // `RetryPolicy::max_attempts` is the maximum retry index; zero
+            // therefore means one initial transport invocation and no retry.
+            retry_policy.max_attempts = 0;
+        }
         let stream = run_with_request_telemetry(
-            self.provider.retry.to_policy(),
+            retry_policy,
             self.request_telemetry.clone(),
             make_request,
             |req| {
