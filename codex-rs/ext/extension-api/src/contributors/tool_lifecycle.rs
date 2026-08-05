@@ -13,6 +13,8 @@ pub type ToolLifecycleFuture<'a> = Pin<Box<dyn Future<Output = ()> + Send + 'a>>
 pub enum ToolCallSource {
     /// The model invoked the tool directly.
     Direct,
+    /// A collaboration message invoked the tool through the explicit plaintext path.
+    DirectPlaintextMessage,
     /// Code mode invoked the tool while executing a runtime cell.
     CodeMode {
         /// Runtime cell that issued the nested tool request.
@@ -41,6 +43,12 @@ pub enum ToolCallOutcome {
     /// win before the dispatch path accepts the call, so contributors should not
     /// assume a matching start callback exists.
     Aborted,
+    /// The outer runtime observed that the task hosting the tool dispatch ended
+    /// abnormally, so it cannot prove a normal handler terminal outcome.
+    ///
+    /// Reason codes are host-defined stable identifiers. They intentionally do
+    /// not contain the dynamic panic or join-error text.
+    Indeterminate { reason_code: &'static str },
 }
 
 /// Input supplied when the host starts executing one tool call.

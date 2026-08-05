@@ -8,6 +8,7 @@ use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolPayload;
 #[cfg(test)]
 use crate::tools::handlers::ToolSearchHandlerCache;
+use crate::tools::lifecycle::ToolDispatchAttemptId;
 use crate::tools::registry::AnyToolResult;
 use crate::tools::registry::CoreToolRuntime;
 use crate::tools::registry::ToolArgumentDiffConsumer;
@@ -215,6 +216,7 @@ impl ToolRouter {
         call: ToolCall,
         source: ToolCallSource,
     ) -> Result<AnyToolResult, FunctionCallError> {
+        let attempt_id = ToolDispatchAttemptId::new();
         self.dispatch_tool_call_with_code_mode_result_inner(
             session,
             step_context,
@@ -222,6 +224,7 @@ impl ToolRouter {
             tracker,
             call,
             source,
+            attempt_id,
             /*terminal_outcome_reached*/ None,
         )
         .await
@@ -237,6 +240,7 @@ impl ToolRouter {
         tracker: SharedTurnDiffTracker,
         call: ToolCall,
         source: ToolCallSource,
+        attempt_id: ToolDispatchAttemptId,
         terminal_outcome_reached: Arc<AtomicBool>,
     ) -> Result<AnyToolResult, FunctionCallError> {
         self.dispatch_tool_call_with_code_mode_result_inner(
@@ -246,6 +250,7 @@ impl ToolRouter {
             tracker,
             call,
             source,
+            attempt_id,
             Some(terminal_outcome_reached),
         )
         .await
@@ -260,6 +265,7 @@ impl ToolRouter {
         tracker: SharedTurnDiffTracker,
         call: ToolCall,
         source: ToolCallSource,
+        attempt_id: ToolDispatchAttemptId,
         terminal_outcome_reached: Option<Arc<AtomicBool>>,
     ) -> Result<AnyToolResult, FunctionCallError> {
         let ToolCall {
@@ -284,7 +290,11 @@ impl ToolRouter {
         };
 
         self.registry
-            .dispatch_any_with_terminal_outcome(invocation, terminal_outcome_reached)
+            .dispatch_any_with_terminal_outcome_for_attempt(
+                invocation,
+                &attempt_id,
+                terminal_outcome_reached,
+            )
             .await
     }
 }

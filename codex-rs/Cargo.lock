@@ -2020,6 +2020,7 @@ dependencies = [
  "codex-git-utils",
  "codex-goal-extension",
  "codex-guardian",
+ "codex-hepta-governance",
  "codex-home",
  "codex-hooks",
  "codex-http-client",
@@ -2407,8 +2408,10 @@ dependencies = [
  "codex-terminal-detection",
  "codex-tui",
  "codex-utils-absolute-path",
+ "codex-utils-build-identity",
  "codex-utils-cargo-bin",
  "codex-utils-cli",
+ "codex-utils-home-dir",
  "codex-utils-path",
  "codex-windows-sandbox",
  "crossterm",
@@ -3282,6 +3285,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-contracts"
+version = "0.0.0"
+dependencies = [
+ "pretty_assertions",
+ "serde",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "codex-hepta-evidence"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-contracts",
+ "codex-state",
+ "codex-utils-absolute-path",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "codex-hepta-governance"
+version = "0.0.0"
+dependencies = [
+ "codex-extension-api",
+ "codex-hepta-contracts",
+ "codex-hepta-evidence",
+ "codex-state",
+ "codex-utils-absolute-path",
+ "pretty_assertions",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "codex-home"
 version = "0.0.0"
 dependencies = [
@@ -3548,6 +3592,7 @@ dependencies = [
  "codex-extension-api",
  "codex-features",
  "codex-git-attribution",
+ "codex-hepta-governance",
  "codex-home",
  "codex-image-generation-extension",
  "codex-login",
@@ -4406,6 +4451,10 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
 ]
+
+[[package]]
+name = "codex-utils-build-identity"
+version = "0.0.0"
 
 [[package]]
 name = "codex-utils-cache"

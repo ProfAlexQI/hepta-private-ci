@@ -11,6 +11,10 @@ name = "codex"
 path = "src/main.rs"
 
 [[bin]]
+name = "hepta"
+path = "src/hepta.rs"
+
+[[bin]]
 name = "logs_client"
 path = "src/bin/logs_client.rs"
 
@@ -37,6 +41,7 @@ codex-chatgpt = { workspace = true }
 codex-cloud-config = { workspace = true }
 codex-cloud-tasks = { path = "../cloud-tasks" }
 codex-utils-cli = { workspace = true }
+codex-utils-home-dir = { workspace = true }
 codex-config = { workspace = true }
 codex-core = { workspace = true }
 codex-core-plugins = { workspace = true }
@@ -118,6 +123,9 @@ sqlx = { workspace = true }
 tokio-tungstenite = { workspace = true }
 wiremock = { workspace = true }
 zstd = { workspace = true }
+
+[build-dependencies]
+codex-utils-build-identity = { workspace = true }
 
 [package.metadata.cargo-shear]
 # These Rust sources are intentionally Bazel-only macrobenchmarks rather than

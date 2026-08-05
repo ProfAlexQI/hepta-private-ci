@@ -43,6 +43,8 @@ members = [
     "core-plugins",
     "core-skills",
     "hooks",
+    "hepta-contracts",
+    "hepta-evidence",
     "http-client",
     "secrets",
     "exec",
@@ -57,6 +59,7 @@ members = [
     "ext/goal",
     "ext/git-attribution",
     "ext/guardian",
+    "ext/hepta-governance",
     "ext/image-generation",
     "ext/items",
     "ext/memories",
@@ -94,6 +97,7 @@ members = [
     "v8-poc",
     "websocket-client",
     "utils/absolute-path",
+    "utils/build-identity",
     "utils/audio",
     "utils/path-uri",
     "utils/cargo-bin",
@@ -173,6 +177,8 @@ codex-code-mode-protocol = { path = "code-mode-protocol" }
 codex-code-mode-runtime = { path = "code-mode-runtime" }
 codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
+codex-hepta-contracts = { path = "hepta-contracts" }
+codex-hepta-evidence = { path = "hepta-evidence" }
 codex-websocket-client = { path = "websocket-client" }
 codex-config = { path = "config" }
 codex-connectors = { path = "connectors" }
@@ -194,6 +200,7 @@ codex-extension-items = { path = "ext/items" }
 codex-goal-extension = { path = "ext/goal" }
 codex-git-attribution = { path = "ext/git-attribution" }
 codex-guardian = { path = "ext/guardian" }
+codex-hepta-governance = { path = "ext/hepta-governance" }
 codex-image-generation-extension = { path = "ext/image-generation" }
 codex-external-agent-migration = { path = "external-agent-migration" }
 codex-experimental-api-macros = { path = "codex-experimental-api-macros" }
@@ -246,6 +253,7 @@ codex-tools = { path = "tools" }
 codex-tui = { path = "tui" }
 codex-uds = { path = "uds" }
 codex-utils-absolute-path = { path = "utils/absolute-path" }
+codex-utils-build-identity = { path = "utils/build-identity" }
 codex-utils-approval-presets = { path = "utils/approval-presets" }
 codex-utils-audio = { path = "utils/audio" }
 codex-utils-cache = { path = "utils/cache" }

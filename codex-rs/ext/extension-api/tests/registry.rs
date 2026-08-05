@@ -13,6 +13,7 @@ use codex_extension_api::ExtensionFuture;
 use codex_extension_api::ExtensionMetrics;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::ExtensionWarning;
+use codex_extension_api::ModelProviderPolicyContributor;
 use codex_extension_api::PromptFragment;
 use codex_extension_api::PromptSlot;
 use codex_extension_api::SkillInvocationContributor;
@@ -22,6 +23,7 @@ use codex_extension_api::ToolCall;
 use codex_extension_api::ToolContributor;
 use codex_extension_api::ToolExecutor;
 use codex_extension_api::ToolLifecycleContributor;
+use codex_extension_api::ToolPolicyContributor;
 use codex_extension_api::TurnContextContributionInput;
 use codex_extension_api::TurnInputContext;
 use codex_extension_api::TurnInputContributor;
@@ -58,6 +60,8 @@ impl TokenUsageContributor for AllContributors {}
 
 impl SkillInvocationContributor for AllContributors {}
 
+impl ModelProviderPolicyContributor for AllContributors {}
+
 impl TurnInputContributor for AllContributors {
     fn contribute<'a>(
         &'a self,
@@ -86,6 +90,8 @@ impl ToolContributor for AllContributors {
 }
 
 impl ToolLifecycleContributor for AllContributors {}
+
+impl ToolPolicyContributor for AllContributors {}
 
 impl TurnItemContributor for AllContributors {
     fn contribute<'a>(
@@ -125,9 +131,11 @@ async fn build_round_trips_every_contributor_category() {
     builder.token_usage_contributor(contributor.clone());
     builder.skill_invocation_contributor(contributor.clone());
     builder.prompt_contributor(contributor.clone());
+    builder.model_provider_policy_contributor(contributor.clone());
     builder.turn_input_contributor(contributor.clone());
     builder.tool_contributor(contributor.clone());
     builder.tool_lifecycle_contributor(contributor.clone());
+    builder.tool_policy_contributor(contributor.clone());
     builder.turn_item_contributor(contributor.clone());
     builder.approval_review_contributor(contributor);
     let registry = builder.build();
@@ -138,9 +146,15 @@ async fn build_round_trips_every_contributor_category() {
     assert_eq!(registry.token_usage_contributors().len(), 1);
     assert_eq!(registry.skill_invocation_contributors().len(), 1);
     assert_eq!(registry.context_contributors().len(), 1);
+    assert_eq!(registry.model_provider_policy_contributors().len(), 1);
+    assert!(
+        registry.model_provider_policy_contributors()[0].is_active(&ExtensionData::new("thread"))
+    );
     assert_eq!(registry.turn_input_contributors().len(), 1);
     assert_eq!(registry.tool_contributors().len(), 1);
     assert_eq!(registry.tool_lifecycle_contributors().len(), 1);
+    assert_eq!(registry.tool_policy_contributors().len(), 1);
+    assert!(registry.tool_policy_contributors()[0].is_active(&ExtensionData::new("thread")));
     assert_eq!(registry.turn_item_contributors().len(), 1);
     assert_eq!(
         registry

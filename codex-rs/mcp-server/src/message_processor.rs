@@ -75,6 +75,11 @@ impl MessageProcessor {
             config.chatgpt_base_url.clone(),
             config.http_client_factory(),
         );
+        codex_hepta_governance::install(&mut extensions, state_db.clone(), |config: &Config| {
+            config
+                .features
+                .enabled(codex_features::Feature::HeptaGovernance)
+        });
         codex_image_generation_extension::install(
             &mut extensions,
             auth_manager.clone(),
