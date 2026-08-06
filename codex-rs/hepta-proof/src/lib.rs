@@ -16,7 +16,9 @@
 //! Historical context attachment rereads one caller-selected record from the
 //! current local Evidence store immediately before execution. It records an
 //! exact association only; it does not prove that the candidate caused or
-//! inherited that evidence, and it does not mint exclusive provenance.
+//! inherited that evidence, and it does not mint exclusive provenance. The
+//! typed context-origin marker distinguishes crate API paths but is neither
+//! secret nor protection against direct replacement of the local root.
 
 mod command;
 mod file_hash;
@@ -34,6 +36,7 @@ pub use command::MAX_PROOF_PATH_BYTES;
 pub use command::MAX_PROOF_TIMEOUT_MS;
 pub use command::PROOF_SCHEMA_VERSION;
 pub use command::ProofCommandSpec;
+pub use command::ProofContextOrigin;
 pub use command::ProofExecutionResult;
 pub use command::ProofHarness;
 pub use command::ProofInvocation;
@@ -45,9 +48,12 @@ pub use command::ProofStreamKind;
 pub use command::ProofSubject;
 pub use command::ProofTerminal;
 pub use file_hash::sha256_regular_file;
+pub use provenance::LOCAL_PROOF_PROVENANCE_LINEAGE_SCHEMA_VERSION;
+pub use provenance::LocalProofProvenanceLineage;
 pub use provenance::PROOF_PROVENANCE_SCHEMA_VERSION;
 pub use provenance::ProofProvenanceContext;
 pub use provenance::ProvenanceEvidenceKind;
+pub use provenance::build_local_proof_provenance_lineage;
 pub use provenance::run_historical_observation;
 pub use store::ProofAppendDisposition;
 pub use store::ProofStore;

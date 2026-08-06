@@ -22,13 +22,23 @@ fn subject() -> ProofSubject {
 }
 
 fn command(temp: &TempDir, max_stdout_bytes: u64) -> ProofCommandSpec {
-    ProofCommandSpec::new(
+    #[cfg(unix)]
+    let (program, arguments) = (
+        PathBuf::from("/usr/bin/printf"),
+        vec!["proof-observation\n".to_string()],
+    );
+    #[cfg(not(unix))]
+    let (program, arguments) = (
         std::env::current_exe().expect("current test executable"),
         vec![
             "--list".to_string(),
             "--format".to_string(),
             "terse".to_string(),
         ],
+    );
+    ProofCommandSpec::new(
+        program,
+        arguments,
         temp.path(),
         BTreeMap::new(),
         30_000,
@@ -668,6 +678,16 @@ async fn canonical_receipt_and_intent_substitution_fail_closed() {
         assert_receipt_read_fails_corrupt(&store, &receipt_id);
         fs::write(&intent_path, &original_intent).expect("restore intent");
     }
+    let mut substituted_origin = intent.clone();
+    substituted_origin["subject"]["context_origin"] =
+        serde_json::json!("historical_store_resolved");
+    fs::write(
+        &intent_path,
+        canonical_json(&substituted_origin).expect("canonical substituted intent origin"),
+    )
+    .expect("replace intent origin");
+    assert_receipt_read_fails_corrupt(&store, &receipt_id);
+    fs::write(&intent_path, &original_intent).expect("restore intent");
 
     let mut unknown_intent = intent;
     unknown_intent["unknown"] = serde_json::json!(true);
@@ -738,6 +758,16 @@ async fn canonical_receipt_and_intent_substitution_fail_closed() {
         assert_receipt_read_fails_corrupt(&store, &receipt_id);
         fs::write(&receipt_path, &original_receipt).expect("restore receipt");
     }
+    let mut substituted_origin = receipt.clone();
+    substituted_origin["subject"]["context_origin"] =
+        serde_json::json!("historical_store_resolved");
+    fs::write(
+        &receipt_path,
+        canonical_json(&substituted_origin).expect("canonical substituted receipt origin"),
+    )
+    .expect("replace receipt origin");
+    assert_receipt_read_fails_corrupt(&store, &receipt_id);
+    fs::write(&receipt_path, &original_receipt).expect("restore receipt");
 
     let mut unknown_receipt = receipt;
     unknown_receipt["unknown"] = serde_json::json!(true);

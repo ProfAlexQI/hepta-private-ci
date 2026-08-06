@@ -127,7 +127,7 @@ impl ProofCommandSpec {
     }
 }
 
-/// Caller-supplied metadata naming the subject and context of one proof run.
+/// Metadata naming the subject and context of one proof run.
 ///
 /// These digests are attribution only. A `ProofSubject` does not prove that a
 /// candidate or context is authoritative, present, or accepted.
@@ -135,6 +135,39 @@ impl ProofCommandSpec {
 pub struct ProofSubject {
     candidate_sha256: Sha256Digest,
     context_sha256: Sha256Digest,
+    #[serde(
+        default,
+        skip_serializing_if = "ProofContextOrigin::is_caller_supplied"
+    )]
+    context_origin: ProofContextOrigin,
+}
+
+/// The in-process API path that supplied a proof context.
+///
+/// This marker distinguishes the public generic constructor from the
+/// crate-private historical-store resolver. It is not secret, signed, or an
+/// authority against direct replacement of the local proof root.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProofContextOrigin {
+    #[default]
+    CallerSupplied,
+    HistoricalStoreResolved,
+}
+
+impl ProofContextOrigin {
+    pub(crate) const fn as_wire_str(self) -> &'static str {
+        match self {
+            Self::CallerSupplied => "caller_supplied",
+            Self::HistoricalStoreResolved => "historical_store_resolved",
+        }
+    }
+
+    // Serde's `skip_serializing_if` callback receives a shared reference.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    const fn is_caller_supplied(&self) -> bool {
+        matches!(self, Self::CallerSupplied)
+    }
 }
 
 impl ProofSubject {
@@ -147,7 +180,17 @@ impl ProofSubject {
         Ok(Self {
             candidate_sha256,
             context_sha256,
+            context_origin: ProofContextOrigin::CallerSupplied,
         })
+    }
+
+    pub(crate) fn new_historical_store_resolved(
+        candidate_sha256: Sha256Digest,
+        context_sha256: Sha256Digest,
+    ) -> Result<Self, String> {
+        let mut subject = Self::new(candidate_sha256, context_sha256)?;
+        subject.context_origin = ProofContextOrigin::HistoricalStoreResolved;
+        Ok(subject)
     }
 
     pub const fn candidate_sha256(&self) -> &Sha256Digest {
@@ -157,6 +200,10 @@ impl ProofSubject {
     pub const fn context_sha256(&self) -> &Sha256Digest {
         &self.context_sha256
     }
+
+    pub const fn context_origin(&self) -> ProofContextOrigin {
+        self.context_origin
+    }
 }
 
 #[derive(Deserialize)]
@@ -164,6 +211,8 @@ impl ProofSubject {
 struct ProofSubjectWire {
     candidate_sha256: Sha256Digest,
     context_sha256: Sha256Digest,
+    #[serde(default)]
+    context_origin: ProofContextOrigin,
 }
 
 impl<'de> Deserialize<'de> for ProofSubject {
@@ -172,7 +221,10 @@ impl<'de> Deserialize<'de> for ProofSubject {
         D: Deserializer<'de>,
     {
         let wire = ProofSubjectWire::deserialize(deserializer)?;
-        Self::new(wire.candidate_sha256, wire.context_sha256).map_err(serde::de::Error::custom)
+        let mut subject = Self::new(wire.candidate_sha256, wire.context_sha256)
+            .map_err(serde::de::Error::custom)?;
+        subject.context_origin = wire.context_origin;
+        Ok(subject)
     }
 }
 
@@ -192,14 +244,26 @@ impl ProofInvocationId {
         command_binding_sha256: &Sha256Digest,
         nonce_sha256: &Sha256Digest,
     ) -> Self {
-        let digest = digest_parts([
-            PROOF_INVOCATION_DOMAIN,
-            &PROOF_SCHEMA_VERSION.to_string(),
-            subject.candidate_sha256.as_str(),
-            subject.context_sha256.as_str(),
-            command_binding_sha256.as_str(),
-            nonce_sha256.as_str(),
-        ]);
+        let schema_version = PROOF_SCHEMA_VERSION.to_string();
+        let digest = match subject.context_origin {
+            ProofContextOrigin::CallerSupplied => digest_parts([
+                PROOF_INVOCATION_DOMAIN,
+                schema_version.as_str(),
+                subject.candidate_sha256.as_str(),
+                subject.context_sha256.as_str(),
+                command_binding_sha256.as_str(),
+                nonce_sha256.as_str(),
+            ]),
+            ProofContextOrigin::HistoricalStoreResolved => digest_parts([
+                PROOF_INVOCATION_DOMAIN,
+                schema_version.as_str(),
+                subject.context_origin.as_wire_str(),
+                subject.candidate_sha256.as_str(),
+                subject.context_sha256.as_str(),
+                command_binding_sha256.as_str(),
+                nonce_sha256.as_str(),
+            ]),
+        };
         Self(format!("{PROOF_INVOCATION_ID_PREFIX}{digest}"))
     }
 
@@ -281,7 +345,28 @@ pub struct ProofInvocation {
 }
 
 impl ProofInvocation {
-    pub fn new(subject: ProofSubject, nonce: [u8; 16], command: ProofCommandSpec) -> Self {
+    pub fn new(mut subject: ProofSubject, nonce: [u8; 16], command: ProofCommandSpec) -> Self {
+        subject.context_origin = ProofContextOrigin::CallerSupplied;
+        Self::new_with_bound_origin(subject, nonce, command)
+    }
+
+    pub(crate) fn new_historical_store_resolved(
+        subject: ProofSubject,
+        nonce: [u8; 16],
+        command: ProofCommandSpec,
+    ) -> Self {
+        debug_assert_eq!(
+            subject.context_origin,
+            ProofContextOrigin::HistoricalStoreResolved
+        );
+        Self::new_with_bound_origin(subject, nonce, command)
+    }
+
+    fn new_with_bound_origin(
+        subject: ProofSubject,
+        nonce: [u8; 16],
+        command: ProofCommandSpec,
+    ) -> Self {
         let nonce_sha256 = Sha256Digest::for_bytes(&nonce);
         let invocation_id =
             ProofInvocationId::for_intent(&subject, &command.binding_sha256, &nonce_sha256);
