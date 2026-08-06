@@ -7895,6 +7895,93 @@
       "title": "GuardianWarningNotification",
       "type": "object"
     },
+    "HeptaChannelIngressEvidenceSummary": {
+      "properties": {
+        "events": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "indeterminateEvents": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "pendingEvents": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "receipts": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "events",
+        "indeterminateEvents",
+        "pendingEvents",
+        "receipts"
+      ],
+      "type": "object"
+    },
+    "HeptaGovernanceEvidenceSummary": {
+      "properties": {
+        "decisions": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "pendingActions": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "receipts": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "decisions",
+        "pendingActions",
+        "receipts"
+      ],
+      "type": "object"
+    },
+    "HeptaProviderEvidenceSummary": {
+      "properties": {
+        "indeterminateAttempts": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "intents": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "pendingAttempts": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "receipts": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "indeterminateAttempts",
+        "intents",
+        "pendingAttempts",
+        "receipts"
+      ],
+      "type": "object"
+    },
     "HookCompletedNotification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {

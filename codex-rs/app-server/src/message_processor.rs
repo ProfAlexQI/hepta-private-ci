@@ -16,6 +16,7 @@ use crate::extensions::thread_extensions;
 use crate::external_agent_migration::ExternalAgentConfigRequestProcessor;
 use crate::external_agent_migration::ExternalAgentConfigRequestProcessorArgs;
 use crate::fs_watch::FsWatchManager;
+use crate::hepta_evidence_processor::HeptaEvidenceRequestProcessor;
 use crate::outgoing_message::ConnectionId;
 use crate::outgoing_message::ConnectionRequestId;
 use crate::outgoing_message::OutgoingMessageSender;
@@ -112,6 +113,7 @@ pub(crate) struct MessageProcessor {
     external_agent_config_processor: ExternalAgentConfigRequestProcessor,
     feedback_processor: FeedbackRequestProcessor,
     fs_processor: FsRequestProcessor,
+    hepta_evidence_processor: HeptaEvidenceRequestProcessor,
     git_processor: GitRequestProcessor,
     initialize_processor: InitializeRequestProcessor,
     marketplace_processor: MarketplaceRequestProcessor,
@@ -455,6 +457,12 @@ impl MessageProcessor {
             thread_list_state_permit,
             Arc::clone(&skills_watcher),
         );
+        let hepta_evidence_processor = HeptaEvidenceRequestProcessor::new(
+            config
+                .features
+                .enabled(codex_features::Feature::HeptaGovernance),
+            state_db.clone(),
+        );
         if matches!(plugin_startup_tasks, crate::PluginStartupTasks::Start) {
             // Keep plugin startup warmups aligned at app-server startup.
             let on_effective_plugins_changed =
@@ -505,6 +513,7 @@ impl MessageProcessor {
             external_agent_config_processor,
             feedback_processor,
             fs_processor,
+            hepta_evidence_processor,
             git_processor,
             initialize_processor,
             marketplace_processor,
@@ -1048,6 +1057,11 @@ impl MessageProcessor {
             ClientRequest::ModelProviderCapabilitiesRead { params: _, .. } => self
                 .config_processor
                 .model_provider_capabilities_read()
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::HeptaEvidenceSummaryRead { params, .. } => self
+                .hepta_evidence_processor
+                .summary_read(params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::ThreadStart { params, .. } => {

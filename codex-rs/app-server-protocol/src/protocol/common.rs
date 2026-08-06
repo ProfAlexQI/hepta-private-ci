@@ -921,6 +921,12 @@ client_request_definitions! {
         serialization: None,
         response: v2::ModelProviderCapabilitiesReadResponse,
     },
+    #[experimental("hepta/evidence/summary/read")]
+    HeptaEvidenceSummaryRead => "hepta/evidence/summary/read" {
+        params: v2::HeptaEvidenceSummaryReadParams,
+        serialization: global_shared_read("hepta-evidence"),
+        response: v2::HeptaEvidenceSummaryReadResponse,
+    },
     ExperimentalFeatureList => "experimentalFeature/list" {
         params: v2::ExperimentalFeatureListParams,
         serialization: global("config"),

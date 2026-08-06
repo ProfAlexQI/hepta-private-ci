@@ -2021,6 +2021,7 @@ dependencies = [
  "codex-goal-extension",
  "codex-guardian",
  "codex-hepta-contracts",
+ "codex-hepta-evidence",
  "codex-hepta-governance",
  "codex-hepta-memory-extension",
  "codex-home",
