@@ -28,6 +28,13 @@ use std::time::Duration;
 
 pub use codex_app_server::app_server_control_socket_path;
 pub use codex_app_server::in_process::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY;
+pub use codex_app_server::in_process::InProcessChannelIngressCapability;
+pub use codex_app_server::in_process::InProcessChannelIngressNotEnqueued;
+pub use codex_app_server::in_process::InProcessChannelIngressPrepareOutcome;
+pub use codex_app_server::in_process::InProcessChannelIngressRejection;
+pub use codex_app_server::in_process::InProcessChannelIngressResponseLost;
+pub use codex_app_server::in_process::InProcessChannelIngressTakeOutcome;
+pub use codex_app_server::in_process::InProcessChannelIngressUnavailable;
 pub use codex_app_server::in_process::InProcessServerEvent;
 use codex_app_server::in_process::InProcessStartArgs;
 use codex_app_server::in_process::LogDbLayer;
@@ -54,6 +61,8 @@ pub use codex_core::otel_init::build_provider as build_otel_provider;
 pub use codex_exec_server::EnvironmentManager;
 pub use codex_exec_server::ExecServerRuntimePaths;
 use codex_feedback::CodexFeedback;
+use codex_hepta_contracts::ChannelIngressEvent;
+use codex_protocol::ThreadId;
 use codex_protocol::protocol::SessionSource;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use serde::de::DeserializeOwned;
@@ -415,6 +424,16 @@ enum ClientCommand {
         error: JSONRPCErrorError,
         response_tx: oneshot::Sender<IoResult<()>>,
     },
+    PrepareChannelIngress {
+        thread_id: ThreadId,
+        event: Box<ChannelIngressEvent>,
+        payload: String,
+        response_tx: oneshot::Sender<InProcessChannelIngressPrepareOutcome>,
+    },
+    TakeChannelIngress {
+        capability: InProcessChannelIngressCapability,
+        response_tx: oneshot::Sender<InProcessChannelIngressTakeOutcome>,
+    },
     Shutdown {
         response_tx: oneshot::Sender<IoResult<()>>,
     },
@@ -507,6 +526,32 @@ impl InProcessAppServerClient {
                             }) => {
                                 let send_result = request_sender.fail_server_request(request_id, error);
                                 let _ = response_tx.send(send_result);
+                            }
+                            Some(ClientCommand::PrepareChannelIngress {
+                                thread_id,
+                                event,
+                                payload,
+                                response_tx,
+                            }) => {
+                                let request_sender = request_sender.clone();
+                                tokio::spawn(async move {
+                                    let outcome = request_sender
+                                        .prepare_channel_ingress(thread_id, *event, payload)
+                                        .await;
+                                    let _ = response_tx.send(outcome);
+                                });
+                            }
+                            Some(ClientCommand::TakeChannelIngress {
+                                capability,
+                                response_tx,
+                            }) => {
+                                let request_sender = request_sender.clone();
+                                tokio::spawn(async move {
+                                    let outcome = request_sender
+                                        .take_channel_ingress(capability)
+                                        .await;
+                                    let _ = response_tx.send(outcome);
+                                });
                             }
                             Some(ClientCommand::Shutdown { response_tx }) => {
                                 let shutdown_result = handle.shutdown().await;
@@ -769,6 +814,72 @@ impl InProcessAppServerClient {
 }
 
 impl InProcessAppServerRequestHandle {
+    /// Runs the hidden in-process preflight and, on success, returns a
+    /// runtime-bound take-once capability. This API has no remote equivalent.
+    pub async fn prepare_channel_ingress(
+        &self,
+        thread_id: ThreadId,
+        event: ChannelIngressEvent,
+        payload: String,
+    ) -> InProcessChannelIngressPrepareOutcome {
+        let (response_tx, response_rx) = oneshot::channel();
+        match self
+            .command_tx
+            .try_send(ClientCommand::PrepareChannelIngress {
+                thread_id,
+                event: Box::new(event),
+                payload,
+                response_tx,
+            }) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                return InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                    reason: InProcessChannelIngressNotEnqueued::RuntimeQueueFull,
+                };
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                return InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                    reason: InProcessChannelIngressNotEnqueued::RuntimeQueueClosed,
+                };
+            }
+        }
+        response_rx
+            .await
+            .unwrap_or(InProcessChannelIngressPrepareOutcome::ResponseLost {
+                phase: InProcessChannelIngressResponseLost::AppServerRuntime,
+            })
+    }
+
+    /// Consumes a capability and re-runs the exact stored preflight. The
+    /// capability is never converted into a JSON-RPC request or user turn.
+    pub async fn take_channel_ingress(
+        &self,
+        capability: InProcessChannelIngressCapability,
+    ) -> InProcessChannelIngressTakeOutcome {
+        let (response_tx, response_rx) = oneshot::channel();
+        match self.command_tx.try_send(ClientCommand::TakeChannelIngress {
+            capability,
+            response_tx,
+        }) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                return InProcessChannelIngressTakeOutcome::NotEnqueued {
+                    reason: InProcessChannelIngressNotEnqueued::RuntimeQueueFull,
+                };
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                return InProcessChannelIngressTakeOutcome::NotEnqueued {
+                    reason: InProcessChannelIngressNotEnqueued::RuntimeQueueClosed,
+                };
+            }
+        }
+        response_rx
+            .await
+            .unwrap_or(InProcessChannelIngressTakeOutcome::ResponseLost {
+                phase: InProcessChannelIngressResponseLost::AppServerRuntime,
+            })
+    }
+
     pub async fn request(&self, request: ClientRequest) -> IoResult<RequestResult> {
         let (response_tx, response_rx) = oneshot::channel();
         self.command_tx
@@ -928,6 +1039,10 @@ mod tests {
     use codex_app_server_protocol::ToolRequestUserInputQuestion;
     use codex_core::config::ConfigBuilder;
     use codex_core::init_state_db;
+    use codex_hepta_contracts::ChannelAdapterId;
+    use codex_hepta_contracts::ChannelScope;
+    use codex_hepta_contracts::Sha256Digest;
+    use codex_hepta_contracts::channel_target_thread_sha256;
     use codex_uds::UnixListener;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use futures::SinkExt;
@@ -1031,6 +1146,115 @@ mod tests {
 
     async fn start_test_client(session_source: SessionSource) -> TestClient {
         start_test_client_with_capacity(session_source, DEFAULT_IN_PROCESS_CHANNEL_CAPACITY).await
+    }
+
+    fn channel_ingress_event(thread_id: &str, payload: &str) -> ChannelIngressEvent {
+        ChannelIngressEvent::new(
+            ChannelScope {
+                adapter_id: ChannelAdapterId::new("native.app_server.loopback.v1")
+                    .expect("adapter id"),
+                installation_sha256: Sha256Digest::for_bytes(b"installation"),
+                account_sha256: Sha256Digest::for_bytes(b"account"),
+                conversation_sha256: Sha256Digest::for_bytes(b"conversation"),
+                principal_sha256: Sha256Digest::for_bytes(b"principal"),
+            },
+            Sha256Digest::for_bytes(b"source-event"),
+            Sha256Digest::for_bytes(payload.as_bytes()),
+            channel_target_thread_sha256(thread_id).expect("target thread"),
+            None,
+            Sha256Digest::for_bytes(b"next-cursor"),
+            1_000,
+        )
+        .expect("channel ingress event")
+    }
+
+    #[tokio::test]
+    async fn channel_ingress_facade_preserves_full_closed_and_response_lost() {
+        let thread_id = ThreadId::new();
+        let event = channel_ingress_event(&thread_id.to_string(), "payload");
+        let (command_tx, mut command_rx) = mpsc::channel(/*buffer*/ 1);
+        let handle = InProcessAppServerRequestHandle { command_tx };
+        let (notify_response_tx, _notify_response_rx) = oneshot::channel();
+        handle
+            .command_tx
+            .try_send(ClientCommand::Notify {
+                notification: ClientNotification::Initialized,
+                response_tx: notify_response_tx,
+            })
+            .expect("fill facade queue");
+        assert!(matches!(
+            handle
+                .prepare_channel_ingress(thread_id, event.clone(), "payload".to_string())
+                .await,
+            InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                reason: InProcessChannelIngressNotEnqueued::RuntimeQueueFull
+            }
+        ));
+        let _ = command_rx.recv().await;
+
+        let prepare = tokio::spawn({
+            let handle = handle.clone();
+            let event = event.clone();
+            async move {
+                handle
+                    .prepare_channel_ingress(thread_id, event, "payload".to_string())
+                    .await
+            }
+        });
+        let Some(ClientCommand::PrepareChannelIngress { response_tx, .. }) =
+            command_rx.recv().await
+        else {
+            panic!("expected prepare command")
+        };
+        drop(response_tx);
+        assert!(matches!(
+            prepare.await.expect("prepare task"),
+            InProcessChannelIngressPrepareOutcome::ResponseLost {
+                phase: InProcessChannelIngressResponseLost::AppServerRuntime
+            }
+        ));
+
+        drop(command_rx);
+        assert!(matches!(
+            handle
+                .prepare_channel_ingress(thread_id, event, "payload".to_string())
+                .await,
+            InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                reason: InProcessChannelIngressNotEnqueued::RuntimeQueueClosed
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn channel_ingress_facade_roundtrips_opaque_capability_without_rpc() {
+        let client = start_test_client(SessionSource::Cli).await;
+        let response: ThreadStartResponse = client
+            .request_typed(ClientRequest::ThreadStart {
+                request_id: RequestId::Integer(90),
+                params: ThreadStartParams {
+                    ephemeral: Some(true),
+                    ..ThreadStartParams::default()
+                },
+            })
+            .await
+            .expect("thread/start");
+        let thread_id = ThreadId::from_string(&response.thread.id).expect("thread id");
+        let payload = "private channel payload";
+        let event = channel_ingress_event(&response.thread.id, payload);
+        let handle = client.request_handle();
+        let capability = match handle
+            .prepare_channel_ingress(thread_id, event.clone(), payload.to_string())
+            .await
+        {
+            InProcessChannelIngressPrepareOutcome::Prepared { capability } => capability,
+            other => panic!("expected prepared capability, got {other:?}"),
+        };
+        assert!(matches!(
+            handle.take_channel_ingress(capability).await,
+            InProcessChannelIngressTakeOutcome::ObservedReady { event_id, .. }
+                if event_id == event.event_id
+        ));
+        client.shutdown().await.expect("shutdown");
     }
 
     async fn start_test_remote_server<F, Fut>(handler: F) -> String

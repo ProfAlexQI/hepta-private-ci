@@ -2098,6 +2098,7 @@ dependencies = [
  "codex-core",
  "codex-exec-server",
  "codex-feedback",
+ "codex-hepta-contracts",
  "codex-protocol",
  "codex-uds",
  "codex-utils-absolute-path",
