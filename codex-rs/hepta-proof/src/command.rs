@@ -301,6 +301,10 @@ impl ProofInvocation {
         &self.intent.invocation_id
     }
 
+    pub const fn subject(&self) -> &ProofSubject {
+        &self.intent.subject
+    }
+
     pub fn receipt_id(&self) -> ProofReceiptId {
         ProofReceiptId::for_invocation(&self.intent.invocation_id)
     }

@@ -3374,6 +3374,9 @@ name = "codex-hepta-proof"
 version = "0.0.0"
 dependencies = [
  "codex-hepta-contracts",
+ "codex-hepta-evidence",
+ "codex-state",
+ "codex-utils-absolute-path",
  "codex-utils-pty",
  "serde",
  "serde_json",

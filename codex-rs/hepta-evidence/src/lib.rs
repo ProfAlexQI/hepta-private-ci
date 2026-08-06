@@ -20,6 +20,7 @@ pub use historical::HistoricalEvidenceFamily;
 pub use historical::HistoricalEvidenceRecord;
 pub use historical::HistoricalEvidenceSelector;
 pub use historical::HistoricalEvidenceState;
+pub use historical::historical_record_sha256;
 pub use memory_mutation_store::MEMORY_MUTATION_SHADOW_SCHEMA_VERSION;
 pub use memory_mutation_store::MemoryMutationShadowObservation;
 pub use memory_mutation_store::StoredMemoryMutationShadowObservation;

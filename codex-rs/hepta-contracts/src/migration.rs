@@ -199,6 +199,7 @@ impl MigrationFamilySnapshot {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MigrationFamilySnapshotWire {
     schema_version: u32,
     snapshot_id: MigrationSnapshotId,
@@ -301,6 +302,9 @@ mod tests {
                 "{field} substitution must fail closed"
             );
         }
+        let mut unknown = canonical;
+        unknown["unknown"] = json!(true);
+        assert!(serde_json::from_value::<MigrationFamilySnapshot>(unknown).is_err());
     }
 
     #[test]

@@ -12,9 +12,15 @@
 //! race. The store persists only the command binding and stream digests, not an
 //! independently recoverable command manifest or raw stdout/stderr. Receipt
 //! digests are unkeyed self-consistency checks, not external tamper anchors.
+//!
+//! Historical context attachment rereads one caller-selected record from the
+//! current local Evidence store immediately before execution. It records an
+//! exact association only; it does not prove that the candidate caused or
+//! inherited that evidence, and it does not mint exclusive provenance.
 
 mod command;
 mod file_hash;
+mod provenance;
 mod runner;
 mod store;
 mod validation;
@@ -39,6 +45,10 @@ pub use command::ProofStreamKind;
 pub use command::ProofSubject;
 pub use command::ProofTerminal;
 pub use file_hash::sha256_regular_file;
+pub use provenance::PROOF_PROVENANCE_SCHEMA_VERSION;
+pub use provenance::ProofProvenanceContext;
+pub use provenance::ProvenanceEvidenceKind;
+pub use provenance::run_historical_observation;
 pub use store::ProofAppendDisposition;
 pub use store::ProofStore;
 

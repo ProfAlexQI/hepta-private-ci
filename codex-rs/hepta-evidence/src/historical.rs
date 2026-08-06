@@ -384,7 +384,11 @@ fn evidence_digest<T: Serialize>(
     })
 }
 
-pub(crate) fn historical_record_sha256(
+/// Recomputes the canonical digest of one historical projection.
+///
+/// The digest provides record self-consistency only; it is not a keyed
+/// authority, external anchor, or anti-rollback root.
+pub fn historical_record_sha256(
     schema_version: u32,
     family: HistoricalEvidenceFamily,
     record_id: &str,
