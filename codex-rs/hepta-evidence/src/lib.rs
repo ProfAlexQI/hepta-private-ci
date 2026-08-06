@@ -5,6 +5,7 @@ mod channel_store;
 mod memory_mutation_store;
 mod provider_store;
 mod store;
+mod summary;
 
 pub use channel_store::ChannelIngressClaimDisposition;
 pub use channel_store::ChannelIngressState;
@@ -23,6 +24,10 @@ pub use store::AppendDisposition;
 pub use store::HeptaEvidenceStore;
 pub use store::StoredActionEvidence;
 pub use store::StoredReceipt;
+pub use summary::ChannelIngressEvidenceSummary;
+pub use summary::EvidenceSummary;
+pub use summary::GovernanceEvidenceSummary;
+pub use summary::ProviderEvidenceSummary;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EvidenceError {
@@ -53,3 +58,7 @@ mod memory_mutation_tests;
 #[cfg(test)]
 #[path = "channel_tests.rs"]
 mod channel_tests;
+
+#[cfg(test)]
+#[path = "summary_tests.rs"]
+mod summary_tests;
