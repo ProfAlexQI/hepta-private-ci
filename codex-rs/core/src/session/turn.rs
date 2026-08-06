@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use crate::SkillInjections;
 use crate::build_skill_injections;
 use crate::client::ModelClientSession;
+use crate::client_common::EphemeralInputAuthorityBinding;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::collect_explicit_skill_mentions;
@@ -15,6 +16,7 @@ use crate::compact_remote::run_inline_remote_auto_compact_task;
 use crate::compact_remote_v2::run_inline_remote_auto_compact_task as run_inline_remote_auto_compact_task_v2;
 use crate::connectors;
 use crate::context::ContextualUserFragment;
+use crate::context::HeptaMemoryReference;
 use crate::environment_selection::TurnEnvironmentSnapshot;
 use crate::feedback_tags;
 use crate::hook_runtime::inspect_pending_input;
@@ -75,7 +77,11 @@ use codex_connectors::AppToolPolicyEvaluator;
 use codex_core_plugins::RecommendedPluginCandidatesInput;
 use codex_core_skills::injection::InjectedHostSkillPrompts;
 use codex_extension_api::ExtensionData;
+use codex_extension_api::ModelProviderPolicyError;
 use codex_extension_api::ModelProviderRequestKind;
+use codex_extension_api::PROMPT_ONLY_INPUT_PROPOSAL_SCHEMA_VERSION;
+use codex_extension_api::PromptOnlyInputContext;
+use codex_extension_api::PromptOnlyInputProposal;
 use codex_extension_api::TurnInputContext;
 use codex_extension_api::TurnInputEnvironment;
 use codex_features::Feature;
@@ -123,6 +129,8 @@ use codex_utils_stream_parser::strip_citations;
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use futures::stream::FuturesOrdered;
+use sha2::Digest as _;
+use sha2::Sha256;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::error;
@@ -873,7 +881,15 @@ async fn build_extension_turn_input_items(
     cancellation_token: &CancellationToken,
 ) -> Option<Vec<ResponseItem>> {
     let turn_context = step_context.turn.as_ref();
-    let contributors = sess.services.extensions.turn_input_contributors().to_vec();
+    let thread_store = &sess.services.thread_extension_data;
+    let contributors = sess
+        .services
+        .extensions
+        .turn_input_contributors()
+        .iter()
+        .filter(|contributor| contributor.is_active(thread_store))
+        .cloned()
+        .collect::<Vec<_>>();
     if contributors.is_empty() {
         return Some(Vec::new());
     }
@@ -1357,12 +1373,20 @@ async fn run_sampling_request(
         {
             codex_protocol::models::bound_executed_tool_calls_for_prompt(&mut prompt_input);
         }
-        let prompt = build_prompt(
+        let mut prompt = build_prompt(
             prompt_input,
             router.as_ref(),
             turn_context.as_ref(),
             base_instructions.clone(),
         );
+        attach_prompt_only_input(
+            sess.as_ref(),
+            turn_context.as_ref(),
+            turn_store.as_ref(),
+            &mut prompt,
+            &cancellation_token,
+        )
+        .await?;
         let err = match try_run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),
@@ -1415,6 +1439,142 @@ async fn run_sampling_request(
         .await?;
         turn_context.turn_timing_state.record_sampling_retry();
     }
+}
+
+async fn attach_prompt_only_input(
+    sess: &Session,
+    turn_context: &TurnContext,
+    turn_store: &ExtensionData,
+    prompt: &mut Prompt,
+    cancellation_token: &CancellationToken,
+) -> CodexResult<()> {
+    let thread_store = &sess.services.thread_extension_data;
+    let contributors = sess
+        .services
+        .extensions
+        .prompt_only_input_contributors()
+        .iter()
+        .filter(|contributor| contributor.is_active(thread_store, turn_store))
+        .cloned()
+        .collect::<Vec<_>>();
+    if contributors.is_empty() {
+        return Ok(());
+    }
+
+    let host_authority_enabled = turn_context
+        .config
+        .features
+        .enabled(Feature::HeptaGovernance)
+        && turn_context.config.features.enabled(Feature::HeptaMemory)
+        && turn_context
+            .config
+            .features
+            .enabled(Feature::HeptaMemoryReadOnly);
+    let cwd = turn_context
+        .environments
+        .primary()
+        .and_then(|environment| environment.cwd().to_abs_path().ok())
+        .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+        .ok_or_else(|| {
+            CodexErr::Fatal(
+                "prompt-only input requires one host-resolved primary workspace".to_string(),
+            )
+        })?;
+    let input = PromptOnlyInputContext {
+        thread_id: thread_store.level_id().to_string(),
+        turn_id: turn_context.sub_id.to_string(),
+        cwd,
+        model_context_window: turn_context.model_context_window(),
+        host_authority_enabled,
+    };
+    let mut selected = None;
+    for contributor in contributors {
+        let proposal = contributor
+            .contribute(
+                input.clone(),
+                &sess.services.session_extension_data,
+                thread_store,
+                turn_store,
+            )
+            .or_cancel(cancellation_token)
+            .await?
+            .map_err(prompt_only_input_error)?;
+        if let Some(proposal) = proposal
+            && selected.replace(proposal).is_some()
+        {
+            return Err(CodexErr::Fatal(
+                "multiple prompt-only input contributors claimed one provider request".to_string(),
+            ));
+        }
+    }
+    let Some(proposal) = selected else {
+        return Ok(());
+    };
+    validate_prompt_only_input_proposal(&input, &proposal)?;
+    let policy_binding = prompt_only_policy_binding(&proposal).map_err(prompt_only_input_error)?;
+    let response_item = ContextualUserFragment::into(HeptaMemoryReference::new(proposal.content));
+    let authority =
+        EphemeralInputAuthorityBinding::new(input.thread_id, input.turn_id, policy_binding)
+            .map_err(prompt_only_input_error)?;
+    prompt
+        .set_ephemeral_input_with_witness(vec![response_item], authority)
+        .map_err(prompt_only_input_error)
+}
+
+fn validate_prompt_only_input_proposal(
+    input: &PromptOnlyInputContext,
+    proposal: &PromptOnlyInputProposal,
+) -> CodexResult<()> {
+    if !input.host_authority_enabled
+        || proposal.schema_version != PROMPT_ONLY_INPUT_PROPOSAL_SCHEMA_VERSION
+        || proposal.source.as_str() != "hepta_memory_same_thread_v1"
+        || proposal.thread_id != input.thread_id
+        || proposal.turn_id != input.turn_id
+        || proposal.content.is_empty()
+        || proposal.claimed_token_count == 0
+        || proposal.claimed_token_count > 999
+        || proposal.content.len() > 999
+    {
+        return Err(CodexErr::Fatal(
+            "prompt-only input proposal failed host validation".to_string(),
+        ));
+    }
+    let content_sha256 = format!("{:x}", Sha256::digest(proposal.content.as_bytes()));
+    if proposal.content_sha256.as_str() != content_sha256 {
+        return Err(CodexErr::Fatal(
+            "prompt-only input proposal content binding mismatch".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn prompt_only_policy_binding(
+    proposal: &PromptOnlyInputProposal,
+) -> Result<codex_extension_api::ModelProviderSha256Digest, ModelProviderPolicyError> {
+    let claimed_token_count = proposal.claimed_token_count.to_string();
+    let mut hasher = Sha256::new();
+    for part in [
+        "codex:prompt-only-policy-binding:v1",
+        proposal.source.as_str(),
+        proposal.thread_id.as_str(),
+        proposal.turn_id.as_str(),
+        proposal.source_binding_sha256.as_str(),
+        proposal.content_sha256.as_str(),
+        claimed_token_count.as_str(),
+        "hepta_governance+hepta_memory+hepta_memory_read_only",
+    ] {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    codex_extension_api::ModelProviderSha256Digest::parse(format!("{:x}", hasher.finalize()))
+}
+
+fn prompt_only_input_error(error: ModelProviderPolicyError) -> CodexErr {
+    CodexErr::Fatal(format!(
+        "prompt-only input governance failed ({}): {}",
+        error.reason_code(),
+        error.detail()
+    ))
 }
 
 pub(crate) struct PreparedToolRecommendations {

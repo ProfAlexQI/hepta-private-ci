@@ -47,6 +47,9 @@ use codex_app_server_protocol::ThreadDeletedNotification;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ThreadLoadedListParams;
 use codex_app_server_protocol::ThreadLoadedListResponse;
+use codex_app_server_protocol::ThreadMemoryMode;
+use codex_app_server_protocol::ThreadMemoryModeSetParams;
+use codex_app_server_protocol::ThreadMemoryModeSetResponse;
 use codex_app_server_protocol::ThreadSettingsUpdatedNotification;
 use codex_app_server_protocol::ThreadSource;
 use codex_app_server_protocol::ThreadStartParams;
@@ -65,6 +68,7 @@ use codex_app_server_protocol::WarningNotification;
 use codex_core::test_support::all_model_presets;
 use codex_exec_server::LOCAL_ENVIRONMENT_ID;
 use codex_features::Feature;
+use codex_protocol::ThreadId;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::MultiAgentMode;
@@ -76,6 +80,8 @@ use codex_protocol::models::ImageDetail;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::MULTI_AGENT_MODE_OPEN_TAG;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
+use codex_state::Stage1JobClaimOutcome;
+use codex_state::StateRuntime;
 use codex_utils_absolute_path::test_support::PathExt;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
@@ -88,6 +94,7 @@ use serde_json::Value;
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
@@ -301,6 +308,146 @@ async fn memory_enabled_turn_start_steer_returns_exact_admitted_turn_id() -> Res
     )?;
     assert_eq!(completed.turn.id, parent_turn.id);
     assert_eq!(completed.turn.status, TurnStatus::Completed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn read_only_hepta_memory_reaches_the_provider_through_the_real_app_server_host() -> Result<()>
+{
+    const SUMMARY: &str = "Aurora release code is violet";
+
+    let server = create_mock_responses_server_sequence_unchecked(vec![
+        create_final_assistant_message_sse_response("Done")?,
+    ])
+    .await;
+    let codex_home = TempDir::new()?;
+    let workspace = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri())
+        .enable_feature(Feature::Sqlite)
+        .enable_feature(Feature::HeptaGovernance)
+        .enable_feature(Feature::HeptaMemory)
+        .enable_feature(Feature::HeptaMemoryReadOnly)
+        .write(codex_home.path())?;
+    let state_db = init_hepta_memory_state_db(codex_home.path()).await?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .without_managed_config()
+        .build_initialized()
+        .await?;
+    let thread_start_request = mcp
+        .send_thread_start_request(ThreadStartParams {
+            model: Some("mock-model".to_string()),
+            cwd: Some(workspace.path().display().to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let ThreadStartResponse { thread, .. } = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_response(thread_start_request),
+    )
+    .await??;
+    let thread_id = ThreadId::try_from(thread.id.as_str())?;
+    let _: ThreadMemoryModeSetResponse = mcp
+        .request(|request_id| ClientRequest::ThreadMemoryModeSet {
+            request_id,
+            params: ThreadMemoryModeSetParams {
+                thread_id: thread.id.clone(),
+                mode: ThreadMemoryMode::Enabled,
+            },
+        })
+        .await?;
+    let memory_mode = state_db
+        .get_thread_memory_mode(thread_id)
+        .await?
+        .context("thread should be indexed in the shared state DB")?;
+    assert_eq!(memory_mode, "enabled");
+    seed_same_thread_stage1_summary(&state_db, thread_id, SUMMARY).await?;
+    let candidate = state_db
+        .memories()
+        .get_stage1_recall_candidate(thread_id, workspace.path())
+        .await?
+        .context("seeded same-thread summary should be recallable")?;
+    assert_eq!(candidate.rollout_summary, SUMMARY);
+
+    mcp.request::<TurnStartResponse>(|request_id| ClientRequest::TurnStart {
+        request_id,
+        params: TurnStartParams {
+            thread_id: thread.id,
+            client_user_message_id: None,
+            input: vec![V2UserInput::Text {
+                text: "What is the Aurora release code?".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        },
+    })
+    .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+
+    let requests = server
+        .received_requests()
+        .await
+        .context("failed to read mock provider requests")?;
+    let provider_requests = requests
+        .iter()
+        .filter(|request| request.url.path().ends_with("/responses"))
+        .collect::<Vec<_>>();
+    assert_eq!(provider_requests.len(), 1);
+    assert!(body_contains(
+        provider_requests[0],
+        "<hepta_memory_reference"
+    ));
+    assert!(body_contains(provider_requests[0], SUMMARY));
+    Ok(())
+}
+
+async fn init_hepta_memory_state_db(codex_home: &Path) -> Result<Arc<StateRuntime>> {
+    let state_db = StateRuntime::init(
+        codex_state::SqliteConfig::new_for_testing(codex_home.abs()),
+        "mock_provider".into(),
+    )
+    .await?;
+    state_db
+        .mark_backfill_complete(/*last_watermark*/ None)
+        .await?;
+    Ok(state_db)
+}
+
+async fn seed_same_thread_stage1_summary(
+    state_db: &Arc<StateRuntime>,
+    thread_id: ThreadId,
+    summary: &str,
+) -> Result<()> {
+    let now = chrono::Utc::now().timestamp();
+    let worker_id = ThreadId::from_string(&uuid::Uuid::new_v4().to_string())?;
+    let claim = state_db
+        .memories()
+        .try_claim_stage1_job(
+            thread_id, worker_id, now, /*lease_seconds*/ 3600, /*max_running_jobs*/ 64,
+        )
+        .await?;
+    let Stage1JobClaimOutcome::Claimed { ownership_token } = claim else {
+        anyhow::bail!("unexpected stage-1 claim outcome: {claim:?}");
+    };
+    assert!(
+        state_db
+            .memories()
+            .mark_stage1_job_succeeded(
+                thread_id,
+                ownership_token.as_str(),
+                now,
+                "",
+                summary,
+                /*rollout_slug*/ None,
+            )
+            .await?
+    );
     Ok(())
 }
 

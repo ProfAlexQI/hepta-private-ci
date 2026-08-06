@@ -68,7 +68,6 @@ impl Default for Prompt {
 }
 
 impl Prompt {
-    #[cfg(test)]
     const MAX_EPHEMERAL_INPUT_BYTES: usize = 999;
     const MAX_EPHEMERAL_INPUT_ATTEMPTS: usize = 16;
 
@@ -76,7 +75,6 @@ impl Prompt {
     ///
     /// The items stay separate from `input`, so history, rollout, resume, fork,
     /// and compaction cannot acquire them through normal conversation recording.
-    #[cfg(test)]
     pub(crate) fn set_ephemeral_input(
         &mut self,
         items: Vec<ResponseItem>,
@@ -119,7 +117,6 @@ impl Prompt {
     }
 
     /// Replaces prompt-only input and binds it to one host-owned authority.
-    #[cfg(test)]
     pub(crate) fn set_ephemeral_input_with_witness(
         &mut self,
         items: Vec<ResponseItem>,
@@ -234,7 +231,6 @@ pub(crate) struct EphemeralInputAuthorityBinding {
 }
 
 impl EphemeralInputAuthorityBinding {
-    #[cfg(test)]
     pub(crate) fn new(
         thread_id: impl Into<String>,
         turn_id: impl Into<String>,
@@ -262,7 +258,6 @@ struct EphemeralInputWitness {
     consumed_attempt_ids: Arc<Mutex<BTreeSet<String>>>,
 }
 
-#[cfg(test)]
 fn ephemeral_input_error() -> ModelProviderPolicyError {
     ModelProviderPolicyError::new(
         "ephemeral_model_input_invalid",
