@@ -3290,6 +3290,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-channel-adapter"
+version = "0.0.0"
+dependencies = [
+ "codex-app-server-client",
+ "codex-hepta-contracts",
+ "codex-protocol",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "codex-hepta-contracts"
 version = "0.0.0"
 dependencies = [

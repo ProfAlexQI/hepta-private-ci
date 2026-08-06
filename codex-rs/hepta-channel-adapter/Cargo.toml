@@ -1,0 +1,19 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-hepta-channel-adapter"
+version.workspace = true
+
+[lib]
+name = "codex_hepta_channel_adapter"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-app-server-client = { workspace = true }
+codex-hepta-contracts = { workspace = true }
+codex-protocol = { workspace = true }
+thiserror = { workspace = true }

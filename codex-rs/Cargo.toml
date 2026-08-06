@@ -44,6 +44,7 @@ members = [
     "core-skills",
     "hooks",
     "hepta-contracts",
+    "hepta-channel-adapter",
     "hepta-evidence",
     "hepta-memory",
     "http-client",
@@ -180,6 +181,7 @@ codex-code-mode-runtime = { path = "code-mode-runtime" }
 codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
 codex-hepta-contracts = { path = "hepta-contracts" }
+codex-hepta-channel-adapter = { path = "hepta-channel-adapter" }
 codex-hepta-evidence = { path = "hepta-evidence" }
 codex-hepta-memory = { path = "hepta-memory" }
 codex-websocket-client = { path = "websocket-client" }
