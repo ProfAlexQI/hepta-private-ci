@@ -259,13 +259,15 @@ pub(crate) async fn run_codex_thread_one_shot(
             let _ = tx_bridge.send(event).await;
             if should_shutdown {
                 let _ = ops_tx
-                    .send(Submission {
-                        id: "shutdown".to_string(),
-                        op: Op::Shutdown {},
-                        client_user_message_id: None,
-                        trace: None,
-                        parent_turn_id: None,
-                    })
+                    .send(crate::session::SessionCommand::Protocol(Box::new(
+                        Submission {
+                            id: "shutdown".to_string(),
+                            op: Op::Shutdown {},
+                            client_user_message_id: None,
+                            trace: None,
+                            parent_turn_id: None,
+                        },
+                    )))
                     .await;
                 child_cancel.cancel();
                 break;
@@ -481,15 +483,22 @@ async fn forward_event_or_shutdown(
 /// Forward ops from a caller to a sub-agent, respecting cancellation.
 async fn forward_ops(
     io: Arc<SessionIo>,
-    rx_ops: Receiver<Submission>,
+    rx_ops: Receiver<crate::session::SessionCommand>,
     cancel_token_ops: CancellationToken,
 ) {
     loop {
-        let submission = match rx_ops.recv().or_cancel(&cancel_token_ops).await {
-            Ok(Ok(submission)) => submission,
+        let command = match rx_ops.recv().or_cancel(&cancel_token_ops).await {
+            Ok(Ok(command)) => command,
             Ok(Err(_)) | Err(_) => break,
         };
-        let _ = io.submit_with_id(submission).await;
+        match command {
+            crate::session::SessionCommand::Protocol(submission) => {
+                let _ = io.submit_with_id(*submission).await;
+            }
+            command @ crate::session::SessionCommand::ChannelIngressPreflight(_) => {
+                let _ = io.tx_sub.send(command).or_cancel(&cancel_token_ops).await;
+            }
+        }
     }
 }
 

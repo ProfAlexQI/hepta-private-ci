@@ -10,6 +10,7 @@ use tracing::Instrument;
 use tracing::debug_span;
 use tracing::info_span;
 
+use crate::session::SessionCommand;
 use crate::session::SteerInputError;
 use crate::session::TurnInput;
 use crate::session::session::Session;
@@ -707,14 +708,21 @@ pub async fn review(
     }
 }
 
-pub(super) async fn submission_loop(
+pub(crate) async fn submission_loop(
     sess: Arc<Session>,
     config: Arc<Config>,
-    rx_sub: Receiver<Submission>,
+    rx_sub: Receiver<SessionCommand>,
 ) {
     // To break out of this loop, send Op::Shutdown.
     let mut shutdown_received = false;
-    while let Ok(sub) = rx_sub.recv().await {
+    while let Ok(command) = rx_sub.recv().await {
+        let sub = match command {
+            SessionCommand::Protocol(sub) => *sub,
+            SessionCommand::ChannelIngressPreflight(command) => {
+                (*command).dispatch(sess.as_ref()).await;
+                continue;
+            }
+        };
         debug!(?sub, "Submission");
         let dispatch_span = submission_dispatch_span(&sub);
         let should_exit = async {

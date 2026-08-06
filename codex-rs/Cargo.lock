@@ -2737,6 +2737,7 @@ dependencies = [
  "codex-feedback",
  "codex-file-system",
  "codex-git-utils",
+ "codex-hepta-contracts",
  "codex-home",
  "codex-hooks",
  "codex-http-client",

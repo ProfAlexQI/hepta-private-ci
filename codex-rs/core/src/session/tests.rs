@@ -6832,7 +6832,7 @@ async fn submit_with_id_captures_current_span_trace_context() {
     .instrument(request_span)
     .await;
 
-    let submitted = rx_sub.recv().await.expect("submission");
+    let submitted = rx_sub.recv().await.expect("submission").expect_protocol();
     assert_eq!(submitted.trace, Some(expected_trace));
 }
 
@@ -7564,10 +7564,14 @@ async fn submission_loop_channel_close_aborts_active_turn_before_thread_stop_lif
 #[tokio::test]
 async fn shutdown_and_wait_allows_multiple_waiters() {
     let (_session, _turn_context) = make_session_and_context().await;
-    let (tx_sub, rx_sub) = async_channel::bounded(4);
+    let (tx_sub, rx_sub) = async_channel::bounded::<SessionCommand>(4);
     let (_tx_event, rx_event) = async_channel::unbounded();
     let session_loop_handle = tokio::spawn(async move {
-        let shutdown: Submission = rx_sub.recv().await.expect("shutdown submission");
+        let shutdown = rx_sub
+            .recv()
+            .await
+            .expect("shutdown submission")
+            .expect_protocol();
         assert_eq!(shutdown.op, Op::Shutdown);
         tokio::time::sleep(StdDuration::from_millis(50)).await;
     });
@@ -7651,14 +7655,15 @@ async fn shutdown_and_wait_shuts_down_cached_guardian_subagent() {
     };
 
     let (child_session, _child_turn_context) = make_session_and_context().await;
-    let (child_tx_sub, child_rx_sub) = async_channel::bounded(4);
+    let (child_tx_sub, child_rx_sub) = async_channel::bounded::<SessionCommand>(4);
     let (_child_tx_event, child_rx_event) = async_channel::unbounded();
     let (child_shutdown_tx, child_shutdown_rx) = tokio::sync::oneshot::channel();
     let child_session_loop_handle = tokio::spawn(async move {
-        let shutdown: Submission = child_rx_sub
+        let shutdown = child_rx_sub
             .recv()
             .await
-            .expect("child shutdown submission");
+            .expect("child shutdown submission")
+            .expect_protocol();
         assert_eq!(shutdown.op, Op::Shutdown);
         child_shutdown_tx
             .send(())
@@ -7736,14 +7741,15 @@ async fn shutdown_and_wait_shuts_down_tracked_ephemeral_guardian_review() {
     };
 
     let (child_session, _child_turn_context) = make_session_and_context().await;
-    let (child_tx_sub, child_rx_sub) = async_channel::bounded(4);
+    let (child_tx_sub, child_rx_sub) = async_channel::bounded::<SessionCommand>(4);
     let (_child_tx_event, child_rx_event) = async_channel::unbounded();
     let (child_shutdown_tx, child_shutdown_rx) = tokio::sync::oneshot::channel();
     let child_session_loop_handle = tokio::spawn(async move {
-        let shutdown: Submission = child_rx_sub
+        let shutdown = child_rx_sub
             .recv()
             .await
-            .expect("child shutdown submission");
+            .expect("child shutdown submission")
+            .expect_protocol();
         assert_eq!(shutdown.op, Op::Shutdown);
         child_shutdown_tx
             .send(())

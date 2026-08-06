@@ -174,6 +174,9 @@ use tracing::instrument;
 use tracing::warn;
 use uuid::Uuid;
 
+use crate::channel_ingress_preflight::ChannelIngressPreflightCommand;
+use crate::channel_ingress_preflight::ChannelIngressPreflightNotEnqueued;
+use crate::channel_ingress_preflight::ChannelIngressPreflightOutcome;
 use crate::client::ModelClient;
 use crate::codex_thread::ThreadConfigSnapshot;
 #[cfg(test)]
@@ -190,6 +193,7 @@ use crate::thread_rollout_truncation::initial_history_has_prior_user_turns;
 use codex_config::CONFIG_TOML_FILE;
 use codex_config::ConfigLayerSource;
 use codex_config::types::McpServerConfig;
+use codex_hepta_contracts::ChannelIngressEvent;
 use codex_model_provider::create_model_provider;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_protocol::error::CodexErr;
@@ -226,7 +230,7 @@ use self::config_lock::export_config_lock_if_configured;
 use self::config_lock::validate_config_lock_if_configured;
 #[cfg(test)]
 use self::handlers::submission_dispatch_span;
-use self::handlers::submission_loop;
+pub(crate) use self::handlers::submission_loop;
 pub(crate) use self::input_queue::InputQueueActivity;
 pub use self::input_queue::TurnInput;
 pub(crate) use self::input_queue::TurnInputQueue;
@@ -389,13 +393,30 @@ use codex_utils_stream_parser::ProposedPlanSegment;
 /// submission senders be dropped to terminate the session loop. The shared
 /// completion future observes that shutdown.
 pub(crate) struct SessionIo {
-    pub(crate) tx_sub: Sender<Submission>,
+    pub(crate) tx_sub: Sender<SessionCommand>,
     pub(crate) rx_event: Receiver<Event>,
     // Last known status of the agent.
     pub(crate) agent_status: watch::Receiver<AgentStatus>,
     // Shared future for the background submission loop completion so multiple
     // callers can wait for shutdown.
     pub(crate) session_loop_termination: SessionLoopTermination,
+}
+
+pub(crate) enum SessionCommand {
+    Protocol(Box<Submission>),
+    ChannelIngressPreflight(Box<ChannelIngressPreflightCommand>),
+}
+
+#[cfg(test)]
+impl SessionCommand {
+    pub(crate) fn expect_protocol(self) -> Submission {
+        match self {
+            Self::Protocol(submission) => *submission,
+            Self::ChannelIngressPreflight(_) => {
+                panic!("expected protocol submission, found channel ingress preflight")
+            }
+        }
+    }
 }
 
 pub(crate) type SessionLoopTermination = Shared<BoxFuture<'static, ()>>;
@@ -833,10 +854,43 @@ impl SessionIo {
             sub.trace = current_span_w3c_trace_context();
         }
         self.tx_sub
-            .send(sub)
+            .send(SessionCommand::Protocol(Box::new(sub)))
             .await
             .map_err(|_| CodexErr::InternalAgentDied)?;
         Ok(())
+    }
+
+    pub(crate) async fn preflight_channel_ingress(
+        &self,
+        event: ChannelIngressEvent,
+        payload: String,
+    ) -> ChannelIngressPreflightOutcome {
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+        let command = match ChannelIngressPreflightCommand::new(event, payload, response_tx) {
+            Ok(command) => SessionCommand::ChannelIngressPreflight(Box::new(command)),
+            Err(reason) => return ChannelIngressPreflightOutcome::Rejected { reason },
+        };
+        match self.tx_sub.try_send(command) {
+            Ok(()) => {}
+            Err(async_channel::TrySendError::Full(_)) => {
+                return ChannelIngressPreflightOutcome::NotEnqueued {
+                    reason: ChannelIngressPreflightNotEnqueued::QueueFull,
+                };
+            }
+            Err(async_channel::TrySendError::Closed(_)) => {
+                return ChannelIngressPreflightOutcome::NotEnqueued {
+                    reason: ChannelIngressPreflightNotEnqueued::QueueClosed,
+                };
+            }
+        }
+
+        tokio::select! {
+            biased;
+            result = response_rx => result.unwrap_or(ChannelIngressPreflightOutcome::ResponseLost),
+            () = self.session_loop_termination.clone() => {
+                ChannelIngressPreflightOutcome::ResponseLost
+            }
+        }
     }
 
     pub(crate) async fn shutdown_and_wait(&self) -> CodexResult<()> {

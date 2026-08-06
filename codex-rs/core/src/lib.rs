@@ -7,6 +7,7 @@
 
 mod apply_patch;
 mod apps;
+mod channel_ingress_preflight;
 mod client;
 mod client_common;
 mod realtime_context;
@@ -27,6 +28,10 @@ mod compact_remote_v2;
 mod compact_token_budget;
 mod config_lock;
 mod user_message_admission;
+pub use channel_ingress_preflight::ChannelIngressPreflightNotEnqueued;
+pub use channel_ingress_preflight::ChannelIngressPreflightOutcome;
+pub use channel_ingress_preflight::ChannelIngressPreflightRejection;
+pub use channel_ingress_preflight::channel_canary_deny_provider_and_tools_v1_sha256;
 pub use codex_thread::BackgroundTerminalInfo;
 pub use codex_thread::CodexThread;
 pub use codex_thread::CodexThreadSettingsOverrides;

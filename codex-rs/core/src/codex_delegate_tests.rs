@@ -1,8 +1,15 @@
 use super::*;
+use crate::channel_ingress_preflight::ChannelIngressPreflightCommand;
 use crate::environment_selection::TurnEnvironmentState;
 use crate::mcp_tool_call::MCP_TOOL_APPROVAL_DECLINE_SYNTHETIC;
 use crate::mcp_tool_call::MCP_TOOL_APPROVAL_QUESTION_ID_PREFIX;
+use crate::session::SessionCommand;
 use async_channel::bounded;
+use codex_hepta_contracts::ChannelAdapterId;
+use codex_hepta_contracts::ChannelIngressEvent;
+use codex_hepta_contracts::ChannelScope;
+use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_contracts::channel_target_thread_sha256;
 use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::error::CodexErrorDetails;
@@ -138,7 +145,7 @@ async fn forward_events_filters_private_events_before_blocked_send_is_cancelled(
 
     let mut ops = Vec::new();
     while let Ok(sub) = rx_sub.try_recv() {
-        ops.push(sub.op);
+        ops.push(sub.expect_protocol().op);
     }
     assert!(
         ops.iter().any(|op| matches!(op, Op::Interrupt)),
@@ -177,17 +184,79 @@ async fn forward_ops_preserves_submission_trace_context() {
         }),
         parent_turn_id: Some("parent-turn".to_string()),
     };
-    tx_ops.send(submission.clone()).await.unwrap();
+    tx_ops
+        .send(SessionCommand::Protocol(Box::new(submission.clone())))
+        .await
+        .unwrap();
     drop(tx_ops);
 
     let forwarded = timeout(Duration::from_secs(1), rx_sub.recv())
         .await
         .expect("forward_ops hung")
-        .expect("forwarded submission missing");
+        .expect("forwarded submission missing")
+        .expect_protocol();
     assert_eq!(submission.id, forwarded.id);
     assert_eq!(submission.op, forwarded.op);
     assert_eq!(submission.trace, forwarded.trace);
     assert_eq!(submission.parent_turn_id, forwarded.parent_turn_id);
+
+    timeout(Duration::from_secs(1), forward)
+        .await
+        .expect("forward_ops did not exit")
+        .expect("forward_ops join error");
+}
+
+#[tokio::test]
+async fn forward_ops_preserves_channel_preflight_envelope() {
+    let (tx_sub, rx_sub) = bounded(SUBMISSION_CHANNEL_CAPACITY);
+    let (_tx_events, rx_events) = bounded(SUBMISSION_CHANNEL_CAPACITY);
+    let (_agent_status_tx, agent_status) = watch::channel(AgentStatus::PendingInit);
+    let io = Arc::new(SessionIo {
+        tx_sub,
+        rx_event: rx_events,
+        agent_status,
+        session_loop_termination: completed_session_loop_termination(),
+    });
+    let (tx_ops, rx_ops) = bounded(1);
+    let cancel = CancellationToken::new();
+    let forward = tokio::spawn(forward_ops(Arc::clone(&io), rx_ops, cancel));
+    let digest = |value: &str| Sha256Digest::for_bytes(value.as_bytes());
+    let thread_id = codex_protocol::ThreadId::default();
+    let event = ChannelIngressEvent::new(
+        ChannelScope {
+            adapter_id: ChannelAdapterId::new("native.app_server.loopback.v1").expect("adapter id"),
+            installation_sha256: digest("installation"),
+            account_sha256: digest("account"),
+            conversation_sha256: digest("conversation"),
+            principal_sha256: digest("principal"),
+        },
+        digest("source-event"),
+        digest("payload"),
+        channel_target_thread_sha256(&thread_id.to_string()).expect("target thread"),
+        None,
+        digest("next-cursor"),
+        1,
+    )
+    .expect("ingress event");
+    let (response_tx, response_rx) = oneshot::channel();
+    let command = ChannelIngressPreflightCommand::new(event, "payload".to_string(), response_tx)
+        .expect("bounded preflight");
+    tx_ops
+        .send(SessionCommand::ChannelIngressPreflight(Box::new(command)))
+        .await
+        .expect("send preflight envelope");
+    drop(tx_ops);
+
+    let forwarded = timeout(Duration::from_secs(1), rx_sub.recv())
+        .await
+        .expect("forward_ops hung")
+        .expect("forwarded preflight missing");
+    assert!(matches!(
+        &forwarded,
+        SessionCommand::ChannelIngressPreflight(_)
+    ));
+    drop(forwarded);
+    assert!(response_rx.await.is_err());
 
     timeout(Duration::from_secs(1), forward)
         .await
@@ -318,7 +387,8 @@ async fn handle_request_permissions_uses_tool_call_id_for_round_trip() {
     let submission = timeout(Duration::from_secs(1), rx_sub.recv())
         .await
         .expect("request_permissions response timed out")
-        .expect("request_permissions response missing");
+        .expect("request_permissions response missing")
+        .expect_protocol();
     assert_eq!(
         submission.op,
         Op::RequestPermissionsResponse {
@@ -412,7 +482,8 @@ async fn handle_request_user_input_preserves_non_blocking_flag_for_round_trip() 
     let submission = timeout(Duration::from_secs(1), rx_sub.recv())
         .await
         .expect("request_user_input response timed out")
-        .expect("request_user_input response missing");
+        .expect("request_user_input response missing")
+        .expect_protocol();
     assert_eq!(
         submission.op,
         Op::UserInputAnswer {
@@ -535,7 +606,8 @@ async fn handle_exec_approval_uses_call_id_for_guardian_review_and_approval_id_f
     let submission = timeout(Duration::from_secs(2), rx_sub.recv())
         .await
         .expect("exec approval response timed out")
-        .expect("exec approval response missing");
+        .expect("exec approval response missing")
+        .expect_protocol();
     assert_eq!(
         submission.op,
         Op::ExecApproval {

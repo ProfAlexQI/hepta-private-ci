@@ -1,4 +1,5 @@
 use crate::agent::AgentStatus;
+use crate::channel_ingress_preflight::ChannelIngressPreflightOutcome;
 use crate::config::ConstraintResult;
 use crate::elicitation::ElicitationRegistration;
 use crate::session::SessionIo;
@@ -12,6 +13,7 @@ use crate::user_message_admission::UserMessageAdmission;
 use codex_exec_server::SelectedCapabilityRootsStatus;
 use codex_extension_api::ModelProviderRequestKind;
 use codex_features::Feature;
+use codex_hepta_contracts::ChannelIngressEvent;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ApprovalsReviewer;
@@ -340,6 +342,21 @@ impl CodexThread {
         self.io
             .submit_user_input_with_client_user_message_id(op, trace, client_user_message_id)
             .await
+    }
+
+    /// Runs the hidden transport-private channel ingress preflight on Core's
+    /// normal bounded session FIFO without creating or reserving a turn.
+    ///
+    /// A ready result is only a point-in-time observation. It is not a started
+    /// turn, an atomic snapshot, or durable authority, and must not be
+    /// projected as an accepted channel receipt.
+    #[doc(hidden)]
+    pub async fn preflight_channel_ingress(
+        &self,
+        event: ChannelIngressEvent,
+        payload: String,
+    ) -> ChannelIngressPreflightOutcome {
+        self.io.preflight_channel_ingress(event, payload).await
     }
 
     /// Waits until Core has actually started a turn or steered the active turn.
