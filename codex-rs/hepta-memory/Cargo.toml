@@ -1,11 +1,11 @@
 [package]
 edition.workspace = true
 license.workspace = true
-name = "codex-hepta-contracts"
+name = "codex-hepta-memory"
 version.workspace = true
 
 [lib]
-name = "codex_hepta_contracts"
+name = "codex_hepta_memory"
 path = "src/lib.rs"
 doctest = false
 
@@ -13,9 +13,10 @@ doctest = false
 workspace = true
 
 [dependencies]
+codex-hepta-contracts = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 sha2 = { workspace = true }
+unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
-pretty_assertions = { workspace = true }
 serde_json = { workspace = true }

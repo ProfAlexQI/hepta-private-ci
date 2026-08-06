@@ -3291,6 +3291,7 @@ version = "0.0.0"
 dependencies = [
  "pretty_assertions",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
 ]
 
@@ -3324,6 +3325,17 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "codex-hepta-memory"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-contracts",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "unicode-segmentation",
 ]
 
 [[package]]

@@ -45,6 +45,7 @@ members = [
     "hooks",
     "hepta-contracts",
     "hepta-evidence",
+    "hepta-memory",
     "http-client",
     "secrets",
     "exec",
@@ -179,6 +180,7 @@ codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
 codex-hepta-contracts = { path = "hepta-contracts" }
 codex-hepta-evidence = { path = "hepta-evidence" }
+codex-hepta-memory = { path = "hepta-memory" }
 codex-websocket-client = { path = "websocket-client" }
 codex-config = { path = "config" }
 codex-connectors = { path = "connectors" }
