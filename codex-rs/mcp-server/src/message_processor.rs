@@ -80,6 +80,7 @@ impl MessageProcessor {
                 .features
                 .enabled(codex_features::Feature::HeptaGovernance)
         });
+        install_hepta_memory_extension(&mut extensions, state_db.clone());
         codex_image_generation_extension::install(
             &mut extensions,
             auth_manager.clone(),
@@ -591,4 +592,25 @@ impl MessageProcessor {
     fn handle_initialized_notification(&self) {
         tracing::info!("notifications/initialized");
     }
+}
+
+fn install_hepta_memory_extension(
+    builder: &mut ExtensionRegistryBuilder<Config>,
+    state_db: Option<StateDbHandle>,
+) {
+    codex_hepta_memory_extension::install(builder, state_db, |config: &Config| {
+        codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
+            codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
+                governance_enabled: config
+                    .features
+                    .enabled(codex_features::Feature::HeptaGovernance),
+                memory_enabled: config
+                    .features
+                    .enabled(codex_features::Feature::HeptaMemory),
+                read_only_enabled: config
+                    .features
+                    .enabled(codex_features::Feature::HeptaMemoryReadOnly),
+            },
+        )
+    });
 }

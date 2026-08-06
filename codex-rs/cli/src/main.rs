@@ -1025,9 +1025,10 @@ async fn cli_main(
     let toggle_overrides = feature_toggles.to_overrides()?;
     root_config_overrides.raw_overrides.extend(toggle_overrides);
     if PRODUCT_COMMAND_NAME == "hepta" {
-        root_config_overrides
-            .raw_overrides
-            .push("features.hepta_governance=true".to_string());
+        root_config_overrides.raw_overrides.extend([
+            "features.hepta_governance=true".to_string(),
+            "features.hepta_memory=true".to_string(),
+        ]);
     }
     let root_remote = remote.remote;
     let root_remote_auth_token_env = remote.remote_auth_token_env;

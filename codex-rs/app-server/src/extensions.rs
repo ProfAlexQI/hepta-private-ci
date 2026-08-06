@@ -86,11 +86,12 @@ where
         git_attribution_base_url,
         http_client_factory,
     );
-    codex_hepta_governance::install(&mut builder, state_db, |config: &Config| {
+    codex_hepta_governance::install(&mut builder, state_db.clone(), |config: &Config| {
         config
             .features
             .enabled(codex_features::Feature::HeptaGovernance)
     });
+    install_hepta_memory_extension(&mut builder, state_db);
     codex_guardian::install(&mut builder, guardian_agent_spawner);
     codex_memories_extension::install(&mut builder, codex_otel::global());
     codex_mcp_extension::install(&mut builder);
@@ -119,6 +120,27 @@ where
         },
     );
     Arc::new(builder.build())
+}
+
+fn install_hepta_memory_extension(
+    builder: &mut ExtensionRegistryBuilder<Config>,
+    state_db: Option<StateDbHandle>,
+) {
+    codex_hepta_memory_extension::install(builder, state_db, |config: &Config| {
+        codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
+            codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
+                governance_enabled: config
+                    .features
+                    .enabled(codex_features::Feature::HeptaGovernance),
+                memory_enabled: config
+                    .features
+                    .enabled(codex_features::Feature::HeptaMemory),
+                read_only_enabled: config
+                    .features
+                    .enabled(codex_features::Feature::HeptaMemoryReadOnly),
+            },
+        )
+    });
 }
 
 pub(crate) fn app_server_extension_event_sink(
