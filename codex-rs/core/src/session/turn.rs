@@ -1291,16 +1291,15 @@ pub(crate) fn build_prompt(
     turn_context: &TurnContext,
     base_instructions: BaseInstructions,
 ) -> Prompt {
-    Prompt {
-        input,
-        tools: router.model_visible_specs(),
-        parallel_tool_calls: turn_context.model_info.supports_parallel_tool_calls,
-        base_instructions,
-        output_schema: turn_context.final_output_json_schema.clone(),
-        output_schema_strict: !crate::guardian::is_guardian_reviewer_source(
-            &turn_context.session_source,
-        ),
-    }
+    let mut prompt = Prompt::default();
+    prompt.input = input;
+    prompt.tools = router.model_visible_specs();
+    prompt.parallel_tool_calls = turn_context.model_info.supports_parallel_tool_calls;
+    prompt.base_instructions = base_instructions;
+    prompt.output_schema = turn_context.final_output_json_schema.clone();
+    prompt.output_schema_strict =
+        !crate::guardian::is_guardian_reviewer_source(&turn_context.session_source);
+    prompt
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2179,6 +2178,7 @@ async fn try_run_sampling_request(
         thread_id: sess.thread_id().to_string(),
         turn_id: turn_context.sub_id.clone(),
         request_kind: ModelProviderRequestKind::Turn,
+        ephemeral_input_sha256: prompt.ephemeral_input_sha256().cloned(),
     };
     let mut stream = client_session
         .stream_with_policy(

@@ -69,14 +69,11 @@ pub(super) async fn run_remote_compact_v2_attempt(
     let mut input = history.for_prompt(&turn_context.model_info.input_modalities);
     let tool_router = &step_context.tool_router;
     input.push(ResponseItem::CompactionTrigger {});
-    let prompt = Prompt {
-        input,
-        tools: tool_router.model_visible_specs(),
-        parallel_tool_calls: turn_context.model_info.supports_parallel_tool_calls,
-        base_instructions,
-        output_schema: None,
-        output_schema_strict: true,
-    };
+    let mut prompt = Prompt::default();
+    prompt.input = input;
+    prompt.tools = tool_router.model_visible_specs();
+    prompt.parallel_tool_calls = turn_context.model_info.supports_parallel_tool_calls;
+    prompt.base_instructions = base_instructions;
 
     let window_id = sess.current_window_id().await;
     let responses_metadata = turn_context.turn_metadata_state.to_responses_metadata(

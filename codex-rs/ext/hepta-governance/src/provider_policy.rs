@@ -86,6 +86,30 @@ impl GovernanceState {
         &self,
         input: ModelProviderInvocationInput<'_>,
     ) -> Result<ModelProviderPolicyDecision, ModelProviderPolicyError> {
+        match (
+            input.ephemeral_input_sha256,
+            input.ephemeral_input_witness_sha256,
+        ) {
+            (Some(_), None) => {
+                return Ok(provider_block(
+                    "hepta_ephemeral_input_witness_missing",
+                    "Hepta blocked prompt-only model input without an exact pre-send witness",
+                ));
+            }
+            (None, Some(_)) => {
+                return Ok(provider_block(
+                    "hepta_ephemeral_input_witness_orphaned",
+                    "Hepta blocked a prompt-only witness without prompt-only model input",
+                ));
+            }
+            (Some(_), Some(_)) if !self.enabled => {
+                return Ok(provider_block(
+                    "hepta_ephemeral_input_governance_disabled",
+                    "Hepta blocked prompt-only model input while governance was disabled",
+                ));
+            }
+            (Some(_), Some(_)) | (None, None) => {}
+        }
         if !self.enabled {
             return Ok(detached_shadow_allow());
         }
@@ -270,6 +294,14 @@ fn provider_intent(
         },
         endpoint_sha256: contract_digest(input.endpoint_sha256.as_str())?,
         logical_request_sha256: contract_digest(input.logical_request_sha256.as_str())?,
+        ephemeral_input_sha256: input
+            .ephemeral_input_sha256
+            .map(|digest| contract_digest(digest.as_str()))
+            .transpose()?,
+        ephemeral_input_witness_sha256: input
+            .ephemeral_input_witness_sha256
+            .map(|digest| contract_digest(digest.as_str()))
+            .transpose()?,
         wire_semantic_sha256: contract_digest(input.wire_semantic_sha256.as_str())?,
         previous_response_id_sha256: input
             .previous_response_id_sha256
@@ -416,6 +448,7 @@ mod tests {
 
     use super::DurableProviderAttemptLease;
     use super::GovernanceState;
+    use super::contract_digest;
     use super::provider_intent;
     use crate::install_with_mode;
 
@@ -486,6 +519,8 @@ mod tests {
             transport: ModelProviderTransport::Http,
             endpoint_sha256: &digests.endpoint,
             logical_request_sha256: &digests.logical,
+            ephemeral_input_sha256: None,
+            ephemeral_input_witness_sha256: None,
             wire_semantic_sha256: &digests.wire,
             previous_response_id_sha256: None,
             generate: true,
@@ -499,6 +534,153 @@ mod tests {
             token_usage_sha256: api_digest(b"token-usage"),
             end_turn: Some(true),
         }
+    }
+
+    #[tokio::test]
+    async fn prompt_only_input_is_blocked_without_a_witness_in_every_mode() {
+        for mode in [GovernanceMode::Shadow, GovernanceMode::Enforce] {
+            let temp = TempDir::new().expect("temp dir");
+            let evidence = evidence(&temp).await;
+            let state = GovernanceState::enabled(mode, Ok(evidence.clone()));
+            let (session, thread, turn) = stores();
+            let digests = digests(b"https://provider.invalid/responses");
+            let ephemeral = api_digest(b"prompt-only-input");
+            let mut invocation = input(
+                &session,
+                &thread,
+                &turn,
+                "attempt-without-witness",
+                "binding-without-witness",
+                &digests,
+            );
+            invocation.ephemeral_input_sha256 = Some(&ephemeral);
+
+            let decision = state
+                .begin_provider(invocation)
+                .await
+                .expect("missing witness should produce a stable block");
+            assert!(matches!(
+                decision,
+                ModelProviderPolicyDecision::Block { ref reason_code, .. }
+                    if reason_code == "hepta_ephemeral_input_witness_missing"
+            ));
+            assert_eq!(
+                evidence
+                    .pending_provider_attempt_count()
+                    .await
+                    .expect("pending count"),
+                0
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn complete_prompt_only_authority_is_blocked_when_governance_is_disabled() {
+        let state = GovernanceState::disabled();
+        let (session, thread, turn) = stores();
+        let digests = digests(b"https://provider.invalid/responses");
+        let ephemeral = api_digest(b"prompt-only-input");
+        let witness = api_digest(b"host-witness");
+        let mut invocation = input(
+            &session,
+            &thread,
+            &turn,
+            "attempt-governance-disabled",
+            "binding-governance-disabled",
+            &digests,
+        );
+        invocation.ephemeral_input_sha256 = Some(&ephemeral);
+        invocation.ephemeral_input_witness_sha256 = Some(&witness);
+
+        let decision = state
+            .begin_provider(invocation)
+            .await
+            .expect("disabled governance should produce a stable block");
+        assert!(matches!(
+            decision,
+            ModelProviderPolicyDecision::Block { ref reason_code, .. }
+                if reason_code == "hepta_ephemeral_input_governance_disabled"
+        ));
+    }
+
+    #[tokio::test]
+    async fn host_witness_allows_and_durably_binds_prompt_only_input() {
+        let temp = TempDir::new().expect("temp dir");
+        let evidence = evidence(&temp).await;
+        let state = GovernanceState::enabled(GovernanceMode::Enforce, Ok(evidence.clone()));
+        let (session, thread, turn) = stores();
+        let digests = digests(b"https://provider.invalid/responses");
+        let ephemeral = api_digest(b"prompt-only-input");
+        let witness = api_digest(b"host-witness");
+        let mut invocation = input(
+            &session,
+            &thread,
+            &turn,
+            "attempt-with-witness",
+            "binding-with-witness",
+            &digests,
+        );
+        invocation.ephemeral_input_sha256 = Some(&ephemeral);
+        invocation.ephemeral_input_witness_sha256 = Some(&witness);
+        let expected = provider_intent(&invocation).expect("convert witnessed intent");
+
+        let decision = state
+            .begin_provider(invocation)
+            .await
+            .expect("host witness should reach durable policy");
+        assert!(matches!(
+            decision,
+            ModelProviderPolicyDecision::Allow { .. }
+        ));
+        let stored = evidence
+            .get_provider_attempt(&expected.attempt_id)
+            .await
+            .expect("read witnessed attempt")
+            .expect("witnessed attempt");
+        assert_eq!(
+            stored.intent.intent.binding.ephemeral_input_sha256,
+            Some(contract_digest(ephemeral.as_str()).expect("input digest"))
+        );
+        assert_eq!(
+            stored.intent.intent.binding.ephemeral_input_witness_sha256,
+            Some(contract_digest(witness.as_str()).expect("witness digest"))
+        );
+    }
+
+    #[tokio::test]
+    async fn orphaned_prompt_only_witness_is_blocked_without_evidence() {
+        let temp = TempDir::new().expect("temp dir");
+        let evidence = evidence(&temp).await;
+        let state = GovernanceState::enabled(GovernanceMode::Enforce, Ok(evidence.clone()));
+        let (session, thread, turn) = stores();
+        let digests = digests(b"https://provider.invalid/responses");
+        let witness = api_digest(b"host-witness");
+        let mut invocation = input(
+            &session,
+            &thread,
+            &turn,
+            "attempt-orphaned-witness",
+            "binding-orphaned-witness",
+            &digests,
+        );
+        invocation.ephemeral_input_witness_sha256 = Some(&witness);
+
+        let decision = state
+            .begin_provider(invocation)
+            .await
+            .expect("orphaned witness should produce a stable block");
+        assert!(matches!(
+            decision,
+            ModelProviderPolicyDecision::Block { ref reason_code, .. }
+                if reason_code == "hepta_ephemeral_input_witness_orphaned"
+        ));
+        assert_eq!(
+            evidence
+                .pending_provider_attempt_count()
+                .await
+                .expect("pending count"),
+            0
+        );
     }
 
     #[tokio::test]

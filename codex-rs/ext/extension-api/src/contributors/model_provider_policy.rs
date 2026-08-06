@@ -5,7 +5,7 @@ use std::pin::Pin;
 use crate::ExtensionData;
 
 /// Schema version for [`ModelProviderInvocationInput`].
-pub const MODEL_PROVIDER_POLICY_INPUT_SCHEMA_VERSION: u32 = 1;
+pub const MODEL_PROVIDER_POLICY_INPUT_SCHEMA_VERSION: u32 = 3;
 
 /// Future returned by one model-provider policy callback.
 pub type ModelProviderPolicyFuture<'a, T> =
@@ -106,6 +106,12 @@ pub struct ModelProviderInvocationInput<'a> {
     pub transport: ModelProviderTransport,
     pub endpoint_sha256: &'a ModelProviderSha256Digest,
     pub logical_request_sha256: &'a ModelProviderSha256Digest,
+    /// Digest of bounded prompt-only input that is absent from conversation
+    /// history. `None` means the request carries no ephemeral input.
+    pub ephemeral_input_sha256: Option<&'a ModelProviderSha256Digest>,
+    /// Host-minted, single-use authority bound to the exact prompt-only input,
+    /// thread, turn, policy facts, and final logical request.
+    pub ephemeral_input_witness_sha256: Option<&'a ModelProviderSha256Digest>,
     pub wire_semantic_sha256: &'a ModelProviderSha256Digest,
     pub previous_response_id_sha256: Option<&'a ModelProviderSha256Digest>,
     pub generate: bool,

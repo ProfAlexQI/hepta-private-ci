@@ -28,26 +28,39 @@ impl RequestBindingId {
         } else {
             "no_generate"
         };
-        Self(format!(
-            "provider-request:v1:{}",
-            digest_parts([
-                schema_version.as_str(),
-                binding.thread_id.as_str(),
-                binding.turn_id.as_str(),
-                binding.host_request_binding_id_sha256.as_str(),
-                binding.request_kind.as_str(),
-                binding.provider_id.as_str(),
-                binding.provider_config_sha256.as_str(),
-                binding.model.as_str(),
-                binding.transport.as_str(),
-                binding.endpoint_sha256.as_str(),
-                binding.logical_request_sha256.as_str(),
-                binding.wire_semantic_sha256.as_str(),
-                previous_response_present,
-                previous_response_id,
-                generate,
-            ])
-        ))
+        let mut parts = vec![
+            schema_version.as_str(),
+            binding.thread_id.as_str(),
+            binding.turn_id.as_str(),
+            binding.host_request_binding_id_sha256.as_str(),
+            binding.request_kind.as_str(),
+            binding.provider_id.as_str(),
+            binding.provider_config_sha256.as_str(),
+            binding.model.as_str(),
+            binding.transport.as_str(),
+            binding.endpoint_sha256.as_str(),
+            binding.logical_request_sha256.as_str(),
+            binding.wire_semantic_sha256.as_str(),
+            previous_response_present,
+            previous_response_id,
+            generate,
+        ];
+        if binding.ephemeral_input_sha256.is_some()
+            || binding.ephemeral_input_witness_sha256.is_some()
+        {
+            parts.extend([
+                "ephemeral_input:v1",
+                binding
+                    .ephemeral_input_sha256
+                    .as_ref()
+                    .map_or("absent", Sha256Digest::as_str),
+                binding
+                    .ephemeral_input_witness_sha256
+                    .as_ref()
+                    .map_or("absent", Sha256Digest::as_str),
+            ]);
+        }
+        Self(format!("provider-request:v1:{}", digest_parts(parts)))
     }
 
     pub fn as_str(&self) -> &str {
@@ -151,6 +164,12 @@ pub struct ProviderRequestBinding {
     pub transport: ProviderTransport,
     pub endpoint_sha256: Sha256Digest,
     pub logical_request_sha256: Sha256Digest,
+    /// Digest of bounded prompt-only input absent from conversation history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ephemeral_input_sha256: Option<Sha256Digest>,
+    /// Host-minted single-use witness bound to the exact logical request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ephemeral_input_witness_sha256: Option<Sha256Digest>,
     pub wire_semantic_sha256: Sha256Digest,
     pub previous_response_id_sha256: Option<Sha256Digest>,
     pub generate: bool,
@@ -287,6 +306,8 @@ mod tests {
             transport: ProviderTransport::Http,
             endpoint_sha256: Sha256Digest::for_bytes(b"/responses"),
             logical_request_sha256: Sha256Digest::for_bytes(b"logical"),
+            ephemeral_input_sha256: None,
+            ephemeral_input_witness_sha256: None,
             wire_semantic_sha256: Sha256Digest::for_bytes(b"wire"),
             previous_response_id_sha256: None,
             generate: true,
@@ -315,6 +336,19 @@ mod tests {
     }
 
     #[test]
+    fn absent_prompt_only_authority_preserves_legacy_identity_and_wire_shape() {
+        let binding = binding();
+
+        assert_eq!(
+            RequestBindingId::for_request(&binding).as_str(),
+            "provider-request:v1:af856c7c8c26482cec5a16aeb1c302f126e7eb1091cd4ad1a58b594fc0d40809"
+        );
+        let json = serde_json::to_string(&binding).expect("serialize provider binding");
+        assert!(!json.contains("ephemeral_input_sha256"));
+        assert!(!json.contains("ephemeral_input_witness_sha256"));
+    }
+
+    #[test]
     fn request_binding_changes_for_websocket_incremental_semantics() {
         let http = binding();
         let mut websocket = http.clone();
@@ -325,6 +359,19 @@ mod tests {
         assert_ne!(
             RequestBindingId::for_request(&http),
             RequestBindingId::for_request(&websocket)
+        );
+    }
+
+    #[test]
+    fn request_binding_changes_for_prompt_only_authority() {
+        let plain = binding();
+        let mut attached = plain.clone();
+        attached.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(b"ephemeral"));
+        attached.ephemeral_input_witness_sha256 = Some(Sha256Digest::for_bytes(b"witness"));
+
+        assert_ne!(
+            RequestBindingId::for_request(&plain),
+            RequestBindingId::for_request(&attached)
         );
     }
 }

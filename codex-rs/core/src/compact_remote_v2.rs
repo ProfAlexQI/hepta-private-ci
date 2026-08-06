@@ -349,6 +349,7 @@ async fn run_remote_compaction_request_v2(
         thread_id: sess.thread_id().to_string(),
         turn_id: turn_context.sub_id.clone(),
         request_kind: ModelProviderRequestKind::Compaction,
+        ephemeral_input_sha256: prompt.ephemeral_input_sha256().cloned(),
     };
     let max_retries = turn_context
         .provider

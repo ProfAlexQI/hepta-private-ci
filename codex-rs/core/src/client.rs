@@ -579,7 +579,9 @@ impl ModelClient {
         session_telemetry: &SessionTelemetry,
         compaction_trace: &CompactionTraceContext,
         responses_metadata: &CodexResponsesMetadata,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
     ) -> Result<Vec<ResponseItem>> {
+        validate_ephemeral_model_input_policy(prompt, provider_policy_context)?;
         if prompt.input.is_empty() {
             return Ok(Vec::new());
         }
@@ -630,6 +632,14 @@ impl ModelClient {
             prompt_cache_key: prompt_cache_key.as_deref(),
             text,
         };
+        // Materialize the exact final unary JSON before claiming provider
+        // intent. A serialization failure is therefore guaranteed to happen
+        // before policy begin and before any physical send.
+        let body = serde_json::to_value(&payload)
+            .map_err(|error| {
+                ApiError::Stream(format!("failed to encode compaction input: {error}"))
+            })
+            .map_err(|error| self.state.provider.map_api_error(error))?;
 
         let mut extra_headers = ApiHeaderMap::new();
         if let Ok(header_value) = HeaderValue::from_str(&responses_metadata.installation_id) {
@@ -653,21 +663,103 @@ impl ModelClient {
             .api_provider
             .stream_idle_timeout
             .saturating_mul(COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER);
-        let client =
-            ApiCompactClient::new(transport, client_setup.api_provider, client_setup.api_auth)
-                .with_telemetry(Some(request_telemetry));
-        let trace_attempt = compaction_trace.start_attempt(&payload);
-        let result = client
-            .compact_input(
-                &payload,
-                extra_headers,
-                compact_request_timeout,
-                turn_state.as_deref(),
+        let client = ApiCompactClient::new(
+            transport,
+            client_setup.api_provider.clone(),
+            client_setup.api_auth,
+        )
+        .with_telemetry(Some(request_telemetry));
+        let mut provider_policy_send = UnaryModelProviderPolicySend::inactive();
+        if let Some(context) = provider_policy_context.filter(|context| {
+            has_active_model_provider_policy(context.registry, context.thread_store)
+        }) {
+            // This is the last seam before the single physical unary send. All
+            // model-visible request shaping, headers, auth setup, and
+            // attestation preparation have completed above.
+            let endpoint = client_setup
+                .api_provider
+                .url_for_path(RESPONSES_COMPACT_ENDPOINT);
+            let prepared = prepare_model_provider_policy(
+                context,
+                client_setup.api_provider.name.as_str(),
+                model_info.slug.as_str(),
+                ModelProviderTransport::Http,
+                endpoint.as_str(),
+                &body,
+                &body,
+                /*previous_response_id*/ None,
+                /*generate*/ true,
+            )
+            .map_err(model_provider_policy_error)?;
+            let ephemeral_input_witness_sha256 = consume_ephemeral_model_input_witness(
+                prompt,
+                context,
+                prepared.attempt_id(),
+                prepared.logical_request_sha256(),
+            )?;
+            provider_policy_send = match begin_model_provider_policy(
+                context.registry,
+                prepared.invocation_input(context, ephemeral_input_witness_sha256.as_ref()),
             )
             .await
-            .map_err(|error| self.state.provider.map_api_error(error));
+            .map_err(model_provider_policy_error)?
+            {
+                ModelProviderPolicyBegin::NoPolicy => UnaryModelProviderPolicySend::inactive(),
+                ModelProviderPolicyBegin::Allow { lease } => {
+                    UnaryModelProviderPolicySend::claimed(lease)
+                }
+                ModelProviderPolicyBegin::Block {
+                    reason_code,
+                    message,
+                } => return Err(model_provider_policy_blocked(reason_code, message)),
+            };
+        }
+        let trace_attempt = compaction_trace.start_attempt(&payload);
+        validate_ephemeral_model_input_policy(prompt, provider_policy_context)?;
+        provider_policy_send.mark_dispatch_started();
+        let result = if provider_policy_send.is_active() {
+            client
+                .compact_single_attempt(
+                    body,
+                    extra_headers,
+                    compact_request_timeout,
+                    turn_state.as_deref(),
+                )
+                .await
+        } else {
+            client
+                .compact(
+                    body,
+                    extra_headers,
+                    compact_request_timeout,
+                    turn_state.as_deref(),
+                )
+                .await
+        };
         trace_attempt.record_result(result.as_deref());
-        result
+        match result {
+            Ok(output) => {
+                provider_policy_send
+                    .finish(compact_completed_terminal(&output)?)
+                    .await?;
+                Ok(output)
+            }
+            Err(error) => {
+                let terminal =
+                    if api_error_http_status(&error) == Some(StatusCode::UNAUTHORIZED.as_u16()) {
+                        ModelProviderTerminal::Rejected {
+                            reason_code: "provider_compact_http_unauthorized".to_string(),
+                        }
+                    } else {
+                        ModelProviderTerminal::Indeterminate {
+                            reason_code: "provider_compact_send_failed".to_string(),
+                            partial_response_sha256: None,
+                        }
+                    };
+                provider_policy_send.finish(terminal).await?;
+                Err(self.state.provider.map_api_error(error))
+            }
+        }
     }
 
     pub(crate) async fn create_realtime_call_with_headers(
@@ -1439,6 +1531,7 @@ impl ModelClientSession {
             .map(AuthManager::unauthorized_recovery);
         let mut pending_retry = PendingUnauthorizedRetry::default();
         loop {
+            validate_ephemeral_model_input_policy(prompt, provider_policy_context)?;
             let client_setup = self.client.current_client_setup().await?;
             let transport = self
                 .client
@@ -1498,9 +1591,15 @@ impl ModelClientSession {
                     /*generate*/ true,
                 )
                 .map_err(model_provider_policy_error)?;
+                let ephemeral_input_witness_sha256 = consume_ephemeral_model_input_witness(
+                    prompt,
+                    context,
+                    prepared.attempt_id(),
+                    prepared.logical_request_sha256(),
+                )?;
                 provider_policy_lease = match begin_model_provider_policy(
                     context.registry,
-                    prepared.invocation_input(context),
+                    prepared.invocation_input(context, ephemeral_input_witness_sha256.as_ref()),
                 )
                 .await
                 .map_err(model_provider_policy_error)?
@@ -1626,6 +1725,8 @@ impl ModelClientSession {
             .map(AuthManager::unauthorized_recovery);
         let mut pending_retry = PendingUnauthorizedRetry::default();
         loop {
+            // Recheck before every connection or reconnection attempt.
+            validate_ephemeral_model_input_policy(prompt, provider_policy_context)?;
             let client_setup = self.client.current_client_setup().await?;
             let request_auth_context = AuthRequestTelemetryContext::new(
                 client_setup.auth.as_ref().map(CodexAuth::auth_mode),
@@ -1701,6 +1802,10 @@ impl ModelClientSession {
                 Err(err) => return Err(self.client.state.provider.map_api_error(err)),
             }
 
+            // Connection setup awaits external state. Recheck before constructing or sending
+            // `response.create` so a later policy change cannot cross that gap.
+            validate_ephemeral_model_input_policy(prompt, provider_policy_context)?;
+
             let (incremental_request, previous_response_id_from_untraced_warmup) =
                 self.prepare_websocket_request(&request);
             let inference_trace_attempt = if warmup {
@@ -1775,9 +1880,15 @@ impl ModelClientSession {
                     !warmup,
                 )
                 .map_err(model_provider_policy_error)?;
+                let ephemeral_input_witness_sha256 = consume_ephemeral_model_input_witness(
+                    prompt,
+                    context,
+                    prepared.attempt_id(),
+                    prepared.logical_request_sha256(),
+                )?;
                 provider_policy_lease = match begin_model_provider_policy(
                     context.registry,
-                    prepared.invocation_input(context),
+                    prepared.invocation_input(context, ephemeral_input_witness_sha256.as_ref()),
                 )
                 .await
                 .map_err(model_provider_policy_error)?
@@ -2153,6 +2264,54 @@ fn model_provider_policy_blocked(reason_code: String, message: String) -> CodexE
     ))
 }
 
+fn validate_ephemeral_model_input_policy(
+    prompt: &Prompt,
+    provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
+) -> Result<()> {
+    let prompt_digest = prompt.ephemeral_input_sha256();
+    let context_digest =
+        provider_policy_context.and_then(|context| context.ephemeral_input_sha256.as_ref());
+    if prompt_digest.is_some() && provider_policy_context.is_none() {
+        return Err(model_provider_policy_blocked(
+            "ephemeral_model_input_policy_missing".to_string(),
+            "prompt-only model input requires an active pre-send policy".to_string(),
+        ));
+    }
+    if prompt_digest != context_digest {
+        return Err(model_provider_policy_blocked(
+            "ephemeral_model_input_binding_mismatch".to_string(),
+            "prompt-only model input does not match its pre-send policy binding".to_string(),
+        ));
+    }
+    if prompt_digest.is_some()
+        && !provider_policy_context.is_some_and(|context| {
+            has_active_model_provider_policy(context.registry, context.thread_store)
+        })
+    {
+        return Err(model_provider_policy_blocked(
+            "ephemeral_model_input_policy_missing".to_string(),
+            "prompt-only model input requires an active pre-send policy".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn consume_ephemeral_model_input_witness(
+    prompt: &Prompt,
+    provider_policy_context: &ModelProviderPolicyContext<'_>,
+    attempt_id: &str,
+    logical_request_sha256: &codex_extension_api::ModelProviderSha256Digest,
+) -> Result<Option<codex_extension_api::ModelProviderSha256Digest>> {
+    prompt
+        .consume_ephemeral_input_witness(
+            provider_policy_context.thread_id.as_str(),
+            provider_policy_context.turn_id.as_str(),
+            attempt_id,
+            logical_request_sha256,
+        )
+        .map_err(model_provider_policy_error)
+}
+
 async fn finish_model_provider_policy(
     lease: &mut Option<Box<dyn ModelProviderAttemptLease>>,
     terminal: ModelProviderTerminal,
@@ -2164,6 +2323,103 @@ async fn finish_model_provider_policy(
         .finish(terminal)
         .await
         .map_err(model_provider_policy_error)
+}
+
+/// Cancellation-safe owner for one claimed unary provider send.
+///
+/// Terminal persistence runs in its own task. Consequently, cancelling the
+/// caller while the HTTP request or terminal write is in flight cannot drop a
+/// claimed attempt without an explicit terminal observation.
+struct UnaryModelProviderPolicySend {
+    lease: Option<Box<dyn ModelProviderAttemptLease>>,
+    dispatch_started: bool,
+}
+
+impl UnaryModelProviderPolicySend {
+    fn inactive() -> Self {
+        Self {
+            lease: None,
+            dispatch_started: false,
+        }
+    }
+
+    fn claimed(lease: Box<dyn ModelProviderAttemptLease>) -> Self {
+        Self {
+            lease: Some(lease),
+            dispatch_started: false,
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        self.lease.is_some()
+    }
+
+    fn mark_dispatch_started(&mut self) {
+        if self.is_active() {
+            self.dispatch_started = true;
+        }
+    }
+
+    async fn finish(&mut self, terminal: ModelProviderTerminal) -> Result<()> {
+        let Some(lease) = self.lease.take() else {
+            return Ok(());
+        };
+        let terminal_task = tokio::spawn(async move { lease.finish(terminal).await });
+        terminal_task
+            .await
+            .map_err(|error| {
+                CodexErr::Fatal(format!(
+                    "model-provider governance terminal task failed: {error}"
+                ))
+            })?
+            .map_err(model_provider_policy_error)
+    }
+}
+
+impl Drop for UnaryModelProviderPolicySend {
+    fn drop(&mut self) {
+        let Some(lease) = self.lease.take() else {
+            return;
+        };
+        let terminal = if self.dispatch_started {
+            ModelProviderTerminal::Indeterminate {
+                reason_code: "provider_compact_cancelled".to_string(),
+                partial_response_sha256: None,
+            }
+        } else {
+            ModelProviderTerminal::NotDispatched {
+                reason_code: "provider_compact_cancelled_before_send".to_string(),
+            }
+        };
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            warn!("could not persist cancelled unary provider terminal outside a Tokio runtime");
+            return;
+        };
+        drop(runtime.spawn(async move {
+            if let Err(error) = lease.finish(terminal).await {
+                warn!(
+                    reason_code = error.reason_code(),
+                    detail = error.detail(),
+                    "failed to persist cancelled unary provider terminal"
+                );
+            }
+        }));
+    }
+}
+
+fn compact_completed_terminal(output: &[ResponseItem]) -> Result<ModelProviderTerminal> {
+    // `/responses/compact` returns only `output`: it has no response id,
+    // token-usage, or end-turn fields. Digest the exact absence observation for
+    // the compatibility fields and bind completion only to the returned items;
+    // this is provider completion evidence, never an effect acknowledgement.
+    let omitted_field_sha256 =
+        canonical_sha256(&serde_json::Value::Null).map_err(model_provider_policy_error)?;
+    Ok(ModelProviderTerminal::Completed {
+        response_id_sha256: omitted_field_sha256.clone(),
+        response_items_sha256: canonical_sha256(&output).map_err(model_provider_policy_error)?,
+        token_usage_sha256: omitted_field_sha256,
+        end_turn: None,
+    })
 }
 
 enum ModelProviderPolicyTerminalState {

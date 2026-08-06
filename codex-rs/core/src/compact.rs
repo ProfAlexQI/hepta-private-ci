@@ -271,11 +271,9 @@ async fn run_compact_task_inner_impl(
             .clone()
             .for_prompt(&turn_context.model_info.input_modalities);
         let turn_input_len = turn_input.len();
-        let prompt = Prompt {
-            input: turn_input,
-            base_instructions: sess.get_base_instructions().await,
-            ..Default::default()
-        };
+        let mut prompt = Prompt::default();
+        prompt.input = turn_input;
+        prompt.base_instructions = sess.get_base_instructions().await;
         let attempt_result = drain_to_completed(
             &sess,
             turn_context.as_ref(),
@@ -706,6 +704,7 @@ async fn drain_to_completed(
         thread_id: sess.thread_id().to_string(),
         turn_id: turn_context.sub_id.clone(),
         request_kind: ModelProviderRequestKind::Compaction,
+        ephemeral_input_sha256: prompt.ephemeral_input_sha256().cloned(),
     };
     let mut stream = client_session
         .stream_with_policy(

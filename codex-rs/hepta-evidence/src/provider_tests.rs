@@ -35,6 +35,8 @@ fn binding(thread_id: &str, logical: &[u8], wire: &[u8]) -> ProviderRequestBindi
         transport: ProviderTransport::Http,
         endpoint_sha256: Sha256Digest::for_bytes(b"/responses"),
         logical_request_sha256: Sha256Digest::for_bytes(logical),
+        ephemeral_input_sha256: None,
+        ephemeral_input_witness_sha256: None,
         wire_semantic_sha256: Sha256Digest::for_bytes(wire),
         previous_response_id_sha256: None,
         generate: true,
@@ -55,6 +57,76 @@ fn completed(intent: ProviderInvocationIntent, output: &[u8]) -> ProviderInvocat
             end_turn: Some(true),
         },
     )
+}
+
+#[tokio::test]
+async fn provider_intent_requires_exact_prompt_only_input_witness_pair() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    for witness_only in [false, true] {
+        let mut binding = binding("thread-1", b"logical", b"wire");
+        if witness_only {
+            binding.ephemeral_input_witness_sha256 = Some(Sha256Digest::for_bytes(b"witness"));
+        } else {
+            binding.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(b"input"));
+        }
+        let intent = ProviderInvocationIntent::new([u8::from(witness_only); 16], binding);
+        assert!(matches!(
+            store
+                .append_provider_intent(&intent)
+                .await
+                .expect_err("partial prompt-only authority must fail closed"),
+            EvidenceError::InvalidRecord(_)
+        ));
+    }
+    assert_eq!(
+        store
+            .pending_provider_attempt_count()
+            .await
+            .expect("pending count"),
+        0
+    );
+}
+
+#[tokio::test]
+async fn rotating_prompt_only_witness_cannot_bypass_host_request_replay_state() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let mut first_binding = binding("thread-1", b"logical", b"wire");
+    first_binding.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(b"input"));
+    first_binding.ephemeral_input_witness_sha256 = Some(Sha256Digest::for_bytes(b"witness-1"));
+    let first = ProviderInvocationIntent::new([11; 16], first_binding.clone());
+    let mut retry_binding = first_binding;
+    retry_binding.ephemeral_input_witness_sha256 = Some(Sha256Digest::for_bytes(b"witness-2"));
+    let retry = ProviderInvocationIntent::new([12; 16], retry_binding);
+    assert_ne!(first.request_binding_id, retry.request_binding_id);
+    assert_eq!(
+        first.binding.host_request_binding_id_sha256,
+        retry.binding.host_request_binding_id_sha256
+    );
+
+    assert_eq!(
+        store
+            .claim_provider_intent(&first)
+            .await
+            .expect("first claim"),
+        ProviderIntentClaimDisposition::Inserted
+    );
+    store
+        .append_provider_receipt(&completed(first, b"output"))
+        .await
+        .expect("completed terminal");
+    assert_eq!(
+        store
+            .claim_provider_intent(&retry)
+            .await
+            .expect("retry claim"),
+        ProviderIntentClaimDisposition::BlockedByBinding(ProviderBindingState::Completed)
+    );
 }
 
 #[tokio::test]

@@ -638,6 +638,17 @@ fn validate_provider_intent(intent: &ProviderInvocationIntent) -> Result<(), Evi
     ] {
         validate_digest(label, digest)?;
     }
+    match (
+        intent.binding.ephemeral_input_sha256.as_ref(),
+        intent.binding.ephemeral_input_witness_sha256.as_ref(),
+    ) {
+        (Some(input), Some(witness)) => {
+            validate_digest("ephemeral input", input)?;
+            validate_digest("ephemeral input witness", witness)?;
+        }
+        (None, None) => {}
+        _ => return invalid("provider intent requires an exact prompt-only input/witness pair"),
+    }
     if let Some(digest) = intent.binding.previous_response_id_sha256.as_ref() {
         validate_digest("previous response id", digest)?;
     }

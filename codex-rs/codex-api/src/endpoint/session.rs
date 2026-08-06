@@ -88,6 +88,61 @@ impl<T: HttpTransport> EndpointSession<T> {
     where
         C: Fn(&mut Request),
     {
+        self.execute_with_retry_mode(
+            method,
+            path,
+            extra_headers,
+            body,
+            /*single_transport_attempt*/ false,
+            configure,
+        )
+        .await
+    }
+
+    /// Executes one unary request without transparent transport retries.
+    ///
+    /// Hosts that durably claim each provider send use this entry point so one
+    /// policy lease can never cover more than one transport invocation.
+    #[instrument(
+        name = "endpoint_session.execute_with_single_attempt",
+        level = "info",
+        skip_all,
+        fields(http.method = %method, api.path = path)
+    )]
+    pub(crate) async fn execute_with_single_attempt<C>(
+        &self,
+        method: Method,
+        path: &str,
+        extra_headers: HeaderMap,
+        body: Option<Value>,
+        configure: C,
+    ) -> Result<Response, ApiError>
+    where
+        C: Fn(&mut Request),
+    {
+        self.execute_with_retry_mode(
+            method,
+            path,
+            extra_headers,
+            body,
+            /*single_transport_attempt*/ true,
+            configure,
+        )
+        .await
+    }
+
+    async fn execute_with_retry_mode<C>(
+        &self,
+        method: Method,
+        path: &str,
+        extra_headers: HeaderMap,
+        body: Option<Value>,
+        single_transport_attempt: bool,
+        configure: C,
+    ) -> Result<Response, ApiError>
+    where
+        C: Fn(&mut Request),
+    {
         let body = body.map(RequestBody::Json);
         let make_request = || {
             let mut req = self.make_request(&method, path, &extra_headers, body.as_ref());
@@ -95,8 +150,14 @@ impl<T: HttpTransport> EndpointSession<T> {
             req
         };
 
+        let mut retry_policy = self.provider.retry.to_policy();
+        if single_transport_attempt {
+            // `RetryPolicy::max_attempts` is the maximum retry index; zero
+            // therefore means one initial transport invocation and no retry.
+            retry_policy.max_attempts = 0;
+        }
         let response = run_with_request_telemetry(
-            self.provider.retry.to_policy(),
+            retry_policy,
             self.request_telemetry.clone(),
             make_request,
             |req| {

@@ -9,6 +9,7 @@ use super::X_CODEX_PARENT_THREAD_ID_HEADER;
 use super::X_CODEX_TURN_METADATA_HEADER;
 use super::X_CODEX_WINDOW_ID_HEADER;
 use super::X_OPENAI_SUBAGENT_HEADER;
+use super::validate_ephemeral_model_input_policy;
 use crate::AttestationContext;
 use crate::AttestationProvider;
 use crate::GenerateAttestationFuture;
@@ -78,6 +79,32 @@ use tracing::field::Visit;
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context as LayerContext;
 use tracing_subscriber::layer::SubscriberExt;
+
+#[test]
+fn prompt_only_input_requires_an_active_exact_policy_binding() {
+    let mut prompt = Prompt::default();
+    prompt
+        .set_ephemeral_input(vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "bounded prompt-only reference".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }])
+        .expect("bounded prompt-only input");
+
+    let error = validate_ephemeral_model_input_policy(&prompt, None)
+        .expect_err("prompt-only input without policy must fail closed");
+    assert!(
+        error
+            .to_string()
+            .contains("ephemeral_model_input_policy_missing")
+    );
+    assert!(validate_ephemeral_model_input_policy(&Prompt::default(), None).is_ok());
+}
+
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 use wiremock::Mock;
@@ -158,20 +185,18 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
         /*attestation_provider*/ None,
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
     );
-    let prompt = Prompt {
-        input: vec![ResponseItem::Message {
-            id: None,
-            role: "user".to_string(),
-            content: vec![ContentItem::InputText {
-                text: "please compact".to_string(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
+    let mut prompt = Prompt::default();
+    prompt.input = vec![ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "please compact".to_string(),
         }],
-        base_instructions: BaseInstructions {
-            text: "base instructions".to_string(),
-        },
-        ..Default::default()
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    }];
+    prompt.base_instructions = BaseInstructions {
+        text: "base instructions".to_string(),
     };
     let responses_metadata = test_responses_metadata_for_client(
         &client,
@@ -194,6 +219,7 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
             &test_session_telemetry(),
             &CompactionTraceContext::disabled(),
             &responses_metadata,
+            /*provider_policy_context*/ None,
         )
         .await?;
 
@@ -695,6 +721,42 @@ async fn wait_for_provider_terminals(
     })
     .await
     .expect("provider terminal should be recorded before timeout")
+}
+
+#[tokio::test]
+async fn cancelled_unary_provider_send_finishes_indeterminate() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let mut send = super::UnaryModelProviderPolicySend::claimed(provider_policy_lease(
+        &state, /*release_finish*/ None, /*finish_error*/ false,
+    ));
+    send.mark_dispatch_started();
+
+    drop(send);
+
+    assert_eq!(
+        wait_for_provider_terminals(&state, 1).await,
+        [ModelProviderTerminal::Indeterminate {
+            reason_code: "provider_compact_cancelled".to_string(),
+            partial_response_sha256: None,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn cancelled_unary_provider_claim_before_send_is_not_dispatched() {
+    let state = Arc::new(ProviderLeaseTestState::default());
+    let send = super::UnaryModelProviderPolicySend::claimed(provider_policy_lease(
+        &state, /*release_finish*/ None, /*finish_error*/ false,
+    ));
+
+    drop(send);
+
+    assert_eq!(
+        wait_for_provider_terminals(&state, 1).await,
+        [ModelProviderTerminal::NotDispatched {
+            reason_code: "provider_compact_cancelled_before_send".to_string(),
+        }]
+    );
 }
 
 #[tokio::test]

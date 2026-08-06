@@ -48,6 +48,7 @@ pub(crate) struct ModelProviderPolicyContext<'a> {
     pub(crate) thread_id: String,
     pub(crate) turn_id: String,
     pub(crate) request_kind: ModelProviderRequestKind,
+    pub(crate) ephemeral_input_sha256: Option<ModelProviderSha256Digest>,
 }
 
 /// Owned, digest-only material for one physical provider send.
@@ -72,9 +73,18 @@ pub(crate) struct PreparedModelProviderPolicy {
 }
 
 impl PreparedModelProviderPolicy {
+    pub(crate) fn attempt_id(&self) -> &str {
+        &self.attempt_id
+    }
+
+    pub(crate) fn logical_request_sha256(&self) -> &ModelProviderSha256Digest {
+        &self.logical_request_sha256
+    }
+
     pub(crate) fn invocation_input<'a>(
         &'a self,
         context: &'a ModelProviderPolicyContext<'a>,
+        ephemeral_input_witness_sha256: Option<&'a ModelProviderSha256Digest>,
     ) -> ModelProviderInvocationInput<'a> {
         ModelProviderInvocationInput {
             schema_version: codex_extension_api::MODEL_PROVIDER_POLICY_INPUT_SCHEMA_VERSION,
@@ -92,6 +102,8 @@ impl PreparedModelProviderPolicy {
             transport: self.transport,
             endpoint_sha256: &self.endpoint_sha256,
             logical_request_sha256: &self.logical_request_sha256,
+            ephemeral_input_sha256: context.ephemeral_input_sha256.as_ref(),
+            ephemeral_input_witness_sha256,
             wire_semantic_sha256: &self.wire_semantic_sha256,
             previous_response_id_sha256: self.previous_response_id_sha256.as_ref(),
             generate: self.generate,
@@ -417,6 +429,8 @@ fn copy_input<'a>(input: &ModelProviderInvocationInput<'a>) -> ModelProviderInvo
         transport: input.transport,
         endpoint_sha256: input.endpoint_sha256,
         logical_request_sha256: input.logical_request_sha256,
+        ephemeral_input_sha256: input.ephemeral_input_sha256,
+        ephemeral_input_witness_sha256: input.ephemeral_input_witness_sha256,
         wire_semantic_sha256: input.wire_semantic_sha256,
         previous_response_id_sha256: input.previous_response_id_sha256,
         generate: input.generate,
@@ -553,6 +567,8 @@ mod tests {
             transport: ModelProviderTransport::Http,
             endpoint_sha256: &digests[1],
             logical_request_sha256: &digests[2],
+            ephemeral_input_sha256: None,
+            ephemeral_input_witness_sha256: None,
             wire_semantic_sha256: &digests[3],
             previous_response_id_sha256: None,
             generate: true,
@@ -811,6 +827,7 @@ mod tests {
             thread_id: "thread-1".to_string(),
             turn_id: "turn-1".to_string(),
             request_kind: ModelProviderRequestKind::Turn,
+            ephemeral_input_sha256: None,
         };
         let request = serde_json::json!({"input": [1, 2, 3], "model": "model-1"});
         let incremental = serde_json::json!({"input": [3], "previous_response_id": "prior"});
@@ -866,6 +883,40 @@ mod tests {
     }
 
     #[test]
+    fn prompt_only_digest_crosses_the_pre_send_policy_seam() {
+        let registry = ExtensionRegistryBuilder::<crate::config::Config>::new().build();
+        let (session_store, thread_store, turn_store) = stores();
+        let ephemeral_input_sha256 = digest('e');
+        let context = ModelProviderPolicyContext {
+            registry: &registry,
+            session_store: &session_store,
+            thread_store: &thread_store,
+            turn_store: &turn_store,
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            request_kind: ModelProviderRequestKind::Turn,
+            ephemeral_input_sha256: Some(ephemeral_input_sha256.clone()),
+        };
+        let request = serde_json::json!({"input": [1], "model": "model-1"});
+        let prepared = prepare_model_provider_policy(
+            &context,
+            "provider-1",
+            "model-1",
+            ModelProviderTransport::Http,
+            "https://example.invalid/v1/responses",
+            &request,
+            &request,
+            /*previous_response_id*/ None,
+            /*generate*/ true,
+        )
+        .expect("prepare provider policy");
+
+        let input = prepared.invocation_input(&context, None);
+        assert_eq!(input.ephemeral_input_sha256, Some(&ephemeral_input_sha256));
+        assert_eq!(input.ephemeral_input_witness_sha256, None);
+    }
+
+    #[test]
     fn endpoint_digest_sorts_query_names_and_excludes_values_and_credentials() {
         let left = canonical_endpoint_sha256(
             "https://alice:secret@example.test/v1/responses?z=secret-z&a=secret-a&z=again",
@@ -896,6 +947,7 @@ mod tests {
             thread_id: "thread-1".to_string(),
             turn_id: "turn-1".to_string(),
             request_kind: ModelProviderRequestKind::Turn,
+            ephemeral_input_sha256: None,
         };
         let request = serde_json::json!({"input": [1], "model": "model-1"});
         let first = prepare_model_provider_policy(
