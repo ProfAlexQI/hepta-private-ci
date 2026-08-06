@@ -7951,6 +7951,64 @@
       ],
       "type": "object"
     },
+    "HeptaHistoricalEvidenceFamily": {
+      "enum": [
+        "governanceAction",
+        "providerAttempt",
+        "channelIngress"
+      ],
+      "type": "string"
+    },
+    "HeptaHistoricalEvidenceRecord": {
+      "properties": {
+        "evidenceSha256": {
+          "type": "string"
+        },
+        "family": {
+          "$ref": "#/definitions/HeptaHistoricalEvidenceFamily"
+        },
+        "recordId": {
+          "type": "string"
+        },
+        "recordSha256": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/definitions/HeptaHistoricalEvidenceState"
+        }
+      },
+      "required": [
+        "evidenceSha256",
+        "family",
+        "recordId",
+        "recordSha256",
+        "schemaVersion",
+        "state"
+      ],
+      "type": "object"
+    },
+    "HeptaHistoricalEvidenceState": {
+      "enum": [
+        "pending",
+        "handlerCompletedSuccess",
+        "handlerCompletedFailure",
+        "blocked",
+        "handlerFailedBeforeExecution",
+        "handlerFailedAfterExecution",
+        "aborted",
+        "completed",
+        "accepted",
+        "rejected",
+        "notDispatched",
+        "indeterminate"
+      ],
+      "type": "string"
+    },
     "HeptaProviderEvidenceSummary": {
       "properties": {
         "indeterminateAttempts": {

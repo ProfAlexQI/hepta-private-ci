@@ -1064,6 +1064,11 @@ impl MessageProcessor {
                 .summary_read(params)
                 .await
                 .map(|response| Some(response.into())),
+            ClientRequest::HeptaHistoricalEvidenceRead { params, .. } => self
+                .hepta_evidence_processor
+                .historical_read(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::ThreadStart { params, .. } => {
                 self.thread_processor
                     .thread_start(

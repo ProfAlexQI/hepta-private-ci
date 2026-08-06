@@ -5,13 +5,23 @@ use codex_app_server_protocol::HeptaChannelIngressEvidenceSummary;
 use codex_app_server_protocol::HeptaEvidenceSummaryReadParams;
 use codex_app_server_protocol::HeptaEvidenceSummaryReadResponse;
 use codex_app_server_protocol::HeptaGovernanceEvidenceSummary;
+use codex_app_server_protocol::HeptaHistoricalEvidenceFamily;
+use codex_app_server_protocol::HeptaHistoricalEvidenceReadParams;
+use codex_app_server_protocol::HeptaHistoricalEvidenceReadResponse;
+use codex_app_server_protocol::HeptaHistoricalEvidenceRecord;
+use codex_app_server_protocol::HeptaHistoricalEvidenceState;
 use codex_app_server_protocol::HeptaProviderEvidenceSummary;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_hepta_evidence::EvidenceSummary;
 use codex_hepta_evidence::HeptaEvidenceStore;
+use codex_hepta_evidence::HistoricalEvidenceFamily;
+use codex_hepta_evidence::HistoricalEvidenceRecord;
+use codex_hepta_evidence::HistoricalEvidenceSelector;
+use codex_hepta_evidence::HistoricalEvidenceState;
 use codex_rollout::StateDbHandle;
 
 use crate::error_code::internal_error;
+use crate::error_code::invalid_params;
 use crate::error_code::method_not_found;
 
 pub(crate) struct HeptaEvidenceRequestProcessor {
@@ -44,6 +54,32 @@ impl HeptaEvidenceRequestProcessor {
         Ok(summary_response(summary))
     }
 
+    pub(crate) async fn historical_read(
+        &self,
+        params: HeptaHistoricalEvidenceReadParams,
+    ) -> Result<HeptaHistoricalEvidenceReadResponse, JSONRPCErrorError> {
+        if !self.enabled {
+            return Err(method_not_found("Hepta evidence is not enabled"));
+        }
+        let family = historical_family(params.family);
+        let selector = HistoricalEvidenceSelector::new(family, params.record_id)
+            .map_err(|error| invalid_params(format!("invalid Hepta evidence selector: {error}")))?;
+        let evidence = self.evidence().await?;
+        let record = evidence
+            .historical_record(&selector)
+            .await
+            .map_err(|error| {
+                tracing::error!(detail = %error, "Hepta historical evidence read failed");
+                internal_error("Hepta historical evidence is unavailable")
+            })?
+            .map(|record| project_historical_record(record, &selector))
+            .transpose()?;
+        Ok(HeptaHistoricalEvidenceReadResponse {
+            schema_version: codex_app_server_protocol::HEPTA_HISTORICAL_EVIDENCE_SCHEMA_VERSION,
+            record,
+        })
+    }
+
     async fn evidence(&self) -> Result<Arc<HeptaEvidenceStore>, JSONRPCErrorError> {
         let evidence = self
             .evidence
@@ -61,6 +97,82 @@ impl HeptaEvidenceRequestProcessor {
             tracing::error!(%detail, "Hepta evidence store failed to open");
             internal_error("Hepta evidence store is unavailable")
         })
+    }
+}
+
+fn historical_family(family: HeptaHistoricalEvidenceFamily) -> HistoricalEvidenceFamily {
+    match family {
+        HeptaHistoricalEvidenceFamily::GovernanceAction => {
+            HistoricalEvidenceFamily::GovernanceAction
+        }
+        HeptaHistoricalEvidenceFamily::ProviderAttempt => HistoricalEvidenceFamily::ProviderAttempt,
+        HeptaHistoricalEvidenceFamily::ChannelIngress => HistoricalEvidenceFamily::ChannelIngress,
+    }
+}
+
+fn project_historical_record(
+    record: HistoricalEvidenceRecord,
+    selector: &HistoricalEvidenceSelector,
+) -> Result<HeptaHistoricalEvidenceRecord, JSONRPCErrorError> {
+    record.validate().map_err(|error| {
+        tracing::error!(detail = %error, "Hepta historical evidence record failed validation");
+        internal_error("Hepta historical evidence is unavailable")
+    })?;
+    if record.schema_version()
+        != codex_app_server_protocol::HEPTA_HISTORICAL_EVIDENCE_SCHEMA_VERSION
+    {
+        tracing::error!(
+            schema_version = record.schema_version(),
+            "Hepta historical evidence schema is unsupported by the protocol"
+        );
+        return Err(internal_error("Hepta historical evidence is unavailable"));
+    }
+    if record.family() != selector.family() || record.record_id() != selector.record_id() {
+        tracing::error!("Hepta historical evidence store returned a mismatched selector");
+        return Err(internal_error("Hepta historical evidence is unavailable"));
+    }
+    Ok(HeptaHistoricalEvidenceRecord {
+        schema_version: record.schema_version(),
+        family: project_historical_family(record.family()),
+        record_id: record.record_id().to_string(),
+        state: project_historical_state(record.state()),
+        evidence_sha256: record.evidence_sha256().as_str().to_string(),
+        record_sha256: record.record_sha256().as_str().to_string(),
+    })
+}
+
+fn project_historical_family(family: HistoricalEvidenceFamily) -> HeptaHistoricalEvidenceFamily {
+    match family {
+        HistoricalEvidenceFamily::GovernanceAction => {
+            HeptaHistoricalEvidenceFamily::GovernanceAction
+        }
+        HistoricalEvidenceFamily::ProviderAttempt => HeptaHistoricalEvidenceFamily::ProviderAttempt,
+        HistoricalEvidenceFamily::ChannelIngress => HeptaHistoricalEvidenceFamily::ChannelIngress,
+    }
+}
+
+fn project_historical_state(state: HistoricalEvidenceState) -> HeptaHistoricalEvidenceState {
+    match state {
+        HistoricalEvidenceState::Pending => HeptaHistoricalEvidenceState::Pending,
+        HistoricalEvidenceState::HandlerCompletedSuccess => {
+            HeptaHistoricalEvidenceState::HandlerCompletedSuccess
+        }
+        HistoricalEvidenceState::HandlerCompletedFailure => {
+            HeptaHistoricalEvidenceState::HandlerCompletedFailure
+        }
+        HistoricalEvidenceState::Blocked => HeptaHistoricalEvidenceState::Blocked,
+        HistoricalEvidenceState::HandlerFailedBeforeExecution => {
+            HeptaHistoricalEvidenceState::HandlerFailedBeforeExecution
+        }
+        HistoricalEvidenceState::HandlerFailedAfterExecution => {
+            HeptaHistoricalEvidenceState::HandlerFailedAfterExecution
+        }
+        HistoricalEvidenceState::Aborted => HeptaHistoricalEvidenceState::Aborted,
+        HistoricalEvidenceState::Completed => HeptaHistoricalEvidenceState::Completed,
+        HistoricalEvidenceState::Accepted => HeptaHistoricalEvidenceState::Accepted,
+        HistoricalEvidenceState::Rejected => HeptaHistoricalEvidenceState::Rejected,
+        HistoricalEvidenceState::NotDispatched => HeptaHistoricalEvidenceState::NotDispatched,
+        HistoricalEvidenceState::Indeterminate => HeptaHistoricalEvidenceState::Indeterminate,
     }
 }
 
@@ -89,6 +201,8 @@ fn summary_response(summary: EvidenceSummary) -> HeptaEvidenceSummaryReadRespons
 
 #[cfg(test)]
 mod tests {
+    use codex_hepta_evidence::HISTORICAL_EVIDENCE_SCHEMA_VERSION;
+
     use crate::error_code::INTERNAL_ERROR_CODE;
     use crate::error_code::METHOD_NOT_FOUND_ERROR_CODE;
 
@@ -112,6 +226,127 @@ mod tests {
             .await
             .expect_err("missing state runtime must fail closed");
         assert_eq!(error.code, INTERNAL_ERROR_CODE);
+    }
+
+    #[tokio::test]
+    async fn disabled_product_does_not_expose_historical_evidence() {
+        let processor = HeptaEvidenceRequestProcessor::new(false, None);
+        let error = processor
+            .historical_read(HeptaHistoricalEvidenceReadParams {
+                family: HeptaHistoricalEvidenceFamily::GovernanceAction,
+                record_id: format!("tool:v1:{}", "a".repeat(64)),
+            })
+            .await
+            .expect_err("ordinary Codex must not expose historical Hepta evidence");
+        assert_eq!(error.code, METHOD_NOT_FOUND_ERROR_CODE);
+    }
+
+    #[tokio::test]
+    async fn historical_evidence_rejects_malformed_exact_id_before_store_open() {
+        let processor = HeptaEvidenceRequestProcessor::new(true, None);
+        let error = processor
+            .historical_read(HeptaHistoricalEvidenceReadParams {
+                family: HeptaHistoricalEvidenceFamily::ProviderAttempt,
+                record_id: "not-an-attempt".to_string(),
+            })
+            .await
+            .expect_err("malformed historical selector must fail closed");
+        assert_eq!(error.code, crate::error_code::INVALID_PARAMS_ERROR_CODE);
+    }
+
+    #[tokio::test]
+    async fn historical_evidence_rejects_cross_family_id_before_store_open() {
+        let processor = HeptaEvidenceRequestProcessor::new(true, None);
+        let error = processor
+            .historical_read(HeptaHistoricalEvidenceReadParams {
+                family: HeptaHistoricalEvidenceFamily::ProviderAttempt,
+                record_id: format!("channel-ingress:v1:{}", "a".repeat(64)),
+            })
+            .await
+            .expect_err("cross-family selector must fail before store access");
+        assert_eq!(error.code, crate::error_code::INVALID_PARAMS_ERROR_CODE);
+    }
+
+    #[tokio::test]
+    async fn valid_historical_selector_reaches_store_and_fails_closed_without_runtime() {
+        let processor = HeptaEvidenceRequestProcessor::new(true, None);
+        let error = processor
+            .historical_read(HeptaHistoricalEvidenceReadParams {
+                family: HeptaHistoricalEvidenceFamily::GovernanceAction,
+                record_id: format!("tool:v1:{}", "a".repeat(64)),
+            })
+            .await
+            .expect_err("valid selector must reach the unavailable store");
+        assert_eq!(error.code, INTERNAL_ERROR_CODE);
+    }
+
+    #[test]
+    fn historical_projection_maps_every_family_and_state_wire_tag() {
+        assert_eq!(
+            codex_app_server_protocol::HEPTA_HISTORICAL_EVIDENCE_SCHEMA_VERSION,
+            HISTORICAL_EVIDENCE_SCHEMA_VERSION
+        );
+
+        let families = [
+            (
+                HistoricalEvidenceFamily::GovernanceAction,
+                HeptaHistoricalEvidenceFamily::GovernanceAction,
+                "governanceAction",
+            ),
+            (
+                HistoricalEvidenceFamily::ProviderAttempt,
+                HeptaHistoricalEvidenceFamily::ProviderAttempt,
+                "providerAttempt",
+            ),
+            (
+                HistoricalEvidenceFamily::ChannelIngress,
+                HeptaHistoricalEvidenceFamily::ChannelIngress,
+                "channelIngress",
+            ),
+        ];
+        for (source, expected, wire) in families {
+            let projected = project_historical_family(source);
+            assert_eq!(projected, expected);
+            assert_eq!(historical_family(projected), source);
+            assert_eq!(
+                serde_json::to_value(projected).expect("serialize projected family"),
+                serde_json::Value::String(wire.to_string())
+            );
+        }
+
+        let states = [
+            (HistoricalEvidenceState::Pending, "pending"),
+            (
+                HistoricalEvidenceState::HandlerCompletedSuccess,
+                "handlerCompletedSuccess",
+            ),
+            (
+                HistoricalEvidenceState::HandlerCompletedFailure,
+                "handlerCompletedFailure",
+            ),
+            (HistoricalEvidenceState::Blocked, "blocked"),
+            (
+                HistoricalEvidenceState::HandlerFailedBeforeExecution,
+                "handlerFailedBeforeExecution",
+            ),
+            (
+                HistoricalEvidenceState::HandlerFailedAfterExecution,
+                "handlerFailedAfterExecution",
+            ),
+            (HistoricalEvidenceState::Aborted, "aborted"),
+            (HistoricalEvidenceState::Completed, "completed"),
+            (HistoricalEvidenceState::Accepted, "accepted"),
+            (HistoricalEvidenceState::Rejected, "rejected"),
+            (HistoricalEvidenceState::NotDispatched, "notDispatched"),
+            (HistoricalEvidenceState::Indeterminate, "indeterminate"),
+        ];
+        for (source, wire) in states {
+            assert_eq!(
+                serde_json::to_value(project_historical_state(source))
+                    .expect("serialize projected state"),
+                serde_json::Value::String(wire.to_string())
+            );
+        }
     }
 
     #[test]

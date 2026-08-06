@@ -1496,6 +1496,14 @@
       },
       "type": "object"
     },
+    "HeptaHistoricalEvidenceFamily": {
+      "enum": [
+        "governanceAction",
+        "providerAttempt",
+        "channelIngress"
+      ],
+      "type": "string"
+    },
     "HookMigration": {
       "properties": {
         "name": {

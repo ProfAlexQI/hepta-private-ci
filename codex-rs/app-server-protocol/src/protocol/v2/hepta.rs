@@ -4,6 +4,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 pub const HEPTA_EVIDENCE_SUMMARY_SCHEMA_VERSION: u32 = 1;
+pub const HEPTA_HISTORICAL_EVIDENCE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +48,61 @@ pub struct HeptaEvidenceSummaryReadResponse {
     pub governance: HeptaGovernanceEvidenceSummary,
     pub provider: HeptaProviderEvidenceSummary,
     pub channel_ingress: HeptaChannelIngressEvidenceSummary,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum HeptaHistoricalEvidenceFamily {
+    GovernanceAction,
+    ProviderAttempt,
+    ChannelIngress,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum HeptaHistoricalEvidenceState {
+    Pending,
+    HandlerCompletedSuccess,
+    HandlerCompletedFailure,
+    Blocked,
+    HandlerFailedBeforeExecution,
+    HandlerFailedAfterExecution,
+    Aborted,
+    Completed,
+    Accepted,
+    Rejected,
+    NotDispatched,
+    Indeterminate,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct HeptaHistoricalEvidenceReadParams {
+    pub family: HeptaHistoricalEvidenceFamily,
+    pub record_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct HeptaHistoricalEvidenceRecord {
+    pub schema_version: u32,
+    pub family: HeptaHistoricalEvidenceFamily,
+    pub record_id: String,
+    pub state: HeptaHistoricalEvidenceState,
+    pub evidence_sha256: String,
+    pub record_sha256: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct HeptaHistoricalEvidenceReadResponse {
+    pub schema_version: u32,
+    pub record: Option<HeptaHistoricalEvidenceRecord>,
 }
 
 #[cfg(test)]
@@ -103,5 +159,66 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn historical_evidence_uses_exact_typed_ids_and_authoritative_digests() {
+        let params = HeptaHistoricalEvidenceReadParams {
+            family: HeptaHistoricalEvidenceFamily::GovernanceAction,
+            record_id: format!("tool:v1:{}", "a".repeat(64)),
+        };
+        assert_eq!(
+            serde_json::to_value(params).expect("serialize historical evidence params"),
+            json!({
+                "family": "governanceAction",
+                "recordId": format!("tool:v1:{}", "a".repeat(64))
+            })
+        );
+
+        let response = HeptaHistoricalEvidenceReadResponse {
+            schema_version: HEPTA_HISTORICAL_EVIDENCE_SCHEMA_VERSION,
+            record: Some(HeptaHistoricalEvidenceRecord {
+                schema_version: HEPTA_HISTORICAL_EVIDENCE_SCHEMA_VERSION,
+                family: HeptaHistoricalEvidenceFamily::ProviderAttempt,
+                record_id: format!("provider-attempt:v1:{}", "b".repeat(64)),
+                state: HeptaHistoricalEvidenceState::NotDispatched,
+                evidence_sha256: "c".repeat(64),
+                record_sha256: "d".repeat(64),
+            }),
+        };
+        assert_eq!(
+            serde_json::to_value(response).expect("serialize historical evidence response"),
+            json!({
+                "schemaVersion": 1,
+                "record": {
+                    "schemaVersion": 1,
+                    "family": "providerAttempt",
+                    "recordId": format!("provider-attempt:v1:{}", "b".repeat(64)),
+                    "state": "notDispatched",
+                    "evidenceSha256": "c".repeat(64),
+                    "recordSha256": "d".repeat(64)
+                }
+            })
+        );
+
+        assert_eq!(
+            serde_json::to_value(HeptaHistoricalEvidenceReadResponse {
+                schema_version: HEPTA_HISTORICAL_EVIDENCE_SCHEMA_VERSION,
+                record: None,
+            })
+            .expect("serialize missing historical evidence"),
+            json!({"schemaVersion": 1, "record": null})
+        );
+
+        assert!(
+            serde_json::from_value::<HeptaHistoricalEvidenceFamily>(json!("channelDelivery"))
+                .is_err()
+        );
+        for forbidden in ["acknowledged", "notDelivered"] {
+            assert!(
+                serde_json::from_value::<HeptaHistoricalEvidenceState>(json!(forbidden)).is_err(),
+                "forbidden historical state must stay outside the wire contract: {forbidden}"
+            );
+        }
     }
 }
