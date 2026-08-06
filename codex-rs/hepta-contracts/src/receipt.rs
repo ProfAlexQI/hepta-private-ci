@@ -18,6 +18,10 @@ impl Sha256Digest {
         Self(format!("{:x}", Sha256::digest(bytes)))
     }
 
+    pub(crate) fn from_sha256_output(output: sha2::digest::Output<Sha256>) -> Self {
+        Self(format!("{output:x}"))
+    }
+
     pub fn parse(value: impl Into<String>) -> Result<Self, String> {
         let value = value.into();
         if value.len() != 64

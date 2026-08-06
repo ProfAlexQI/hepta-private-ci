@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod channel;
 mod identity;
 mod memory;
 mod memory_mutation;
@@ -8,6 +9,17 @@ mod provider;
 mod receipt;
 mod stable_id;
 
+pub use channel::CHANNEL_EVIDENCE_SCHEMA_VERSION;
+pub use channel::ChannelAdapterId;
+pub use channel::ChannelIngressEvent;
+pub use channel::ChannelIngressEventId;
+pub use channel::ChannelIngressReceipt;
+pub use channel::ChannelIngressReceiptId;
+pub use channel::ChannelIngressTerminal;
+pub use channel::ChannelScope;
+pub use channel::channel_target_thread_sha256;
+pub use channel::validate_ingress_event;
+pub use channel::validate_ingress_receipt;
 pub use identity::ActionId;
 pub use identity::DecisionId;
 pub use identity::ReceiptId;
