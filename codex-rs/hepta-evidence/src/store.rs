@@ -778,6 +778,66 @@ const REQUIRED_SCHEMA_OBJECTS: &[SchemaObjectSpec] = &[
             "provider invocation terminals are immutable",
         ],
     },
+    SchemaObjectSpec {
+        name: "memory_mutation_shadow_observations",
+        object_type: "table",
+        table_name: "memory_mutation_shadow_observations",
+        required_sql_fragments: &[
+            "create table",
+            "memory_mutation_shadow_observations",
+            "dry_run_id",
+            "proposal_id",
+            "projected_memory_writes between 0 and 2",
+            "unique(proposal_id, snapshot_sha256)",
+            "disposition = 'blocked'",
+            "reason = 'ready'",
+            "evidence_sha256",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "memory_mutation_shadow_proposal_seq",
+        object_type: "index",
+        table_name: "memory_mutation_shadow_observations",
+        required_sql_fragments: &[
+            "create index",
+            "memory_mutation_shadow_observations",
+            "proposal_id",
+            "seq",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "memory_mutation_shadow_turn_seq",
+        object_type: "index",
+        table_name: "memory_mutation_shadow_observations",
+        required_sql_fragments: &[
+            "create index",
+            "memory_mutation_shadow_observations",
+            "turn_sha256",
+            "seq",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "memory_mutation_shadow_no_update",
+        object_type: "trigger",
+        table_name: "memory_mutation_shadow_observations",
+        required_sql_fragments: &[
+            "before update",
+            "on memory_mutation_shadow_observations",
+            "raise(abort",
+            "memory mutation shadow observations are immutable",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "memory_mutation_shadow_no_delete",
+        object_type: "trigger",
+        table_name: "memory_mutation_shadow_observations",
+        required_sql_fragments: &[
+            "before delete",
+            "on memory_mutation_shadow_observations",
+            "raise(abort",
+            "memory mutation shadow observations are immutable",
+        ],
+    },
 ];
 
 async fn verify_provider_host_bindings(pool: &SqlitePool) -> Result<(), EvidenceError> {

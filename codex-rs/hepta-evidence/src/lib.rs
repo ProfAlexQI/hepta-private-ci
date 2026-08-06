@@ -1,9 +1,13 @@
 #![forbid(unsafe_code)]
 
 mod canonical;
+mod memory_mutation_store;
 mod provider_store;
 mod store;
 
+pub use memory_mutation_store::MEMORY_MUTATION_SHADOW_SCHEMA_VERSION;
+pub use memory_mutation_store::MemoryMutationShadowObservation;
+pub use memory_mutation_store::StoredMemoryMutationShadowObservation;
 pub use provider_store::ProviderBindingState;
 pub use provider_store::ProviderIntentClaimDisposition;
 pub use provider_store::StoredProviderAttemptEvidence;
@@ -16,15 +20,15 @@ pub use store::StoredReceipt;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EvidenceError {
-    #[error("failed to serialize governance evidence: {0}")]
+    #[error("failed to serialize Hepta evidence: {0}")]
     Serialization(String),
-    #[error("governance evidence backend is unavailable: {0}")]
+    #[error("Hepta evidence backend is unavailable: {0}")]
     Unavailable(String),
-    #[error("governance evidence identity conflict for {record_id}")]
+    #[error("Hepta evidence identity conflict for {record_id}")]
     IdempotencyConflict { record_id: String },
-    #[error("invalid governance evidence record: {0}")]
+    #[error("invalid Hepta evidence record: {0}")]
     InvalidRecord(String),
-    #[error("governance evidence is corrupt: {0}")]
+    #[error("Hepta evidence is corrupt: {0}")]
     Corrupt(String),
 }
 
@@ -35,3 +39,7 @@ mod tests;
 #[cfg(test)]
 #[path = "provider_tests.rs"]
 mod provider_tests;
+
+#[cfg(test)]
+#[path = "memory_mutation_tests.rs"]
+mod memory_mutation_tests;
