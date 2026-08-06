@@ -23,6 +23,7 @@ use crate::outgoing_message::RequestContext;
 use crate::request_processors::AccountRequestProcessor;
 use crate::request_processors::AppsRequestProcessor;
 use crate::request_processors::CatalogRequestProcessor;
+use crate::request_processors::ChannelIngressThreadPreflightError;
 use crate::request_processors::CommandExecRequestProcessor;
 use crate::request_processors::ConfigRequestProcessor;
 use crate::request_processors::EnvironmentRequestProcessor;
@@ -64,11 +65,13 @@ use codex_app_server_protocol::experimental_required_message;
 use codex_arg0::Arg0DispatchPaths;
 use codex_chatgpt::workspace_settings;
 use codex_code_mode::CodeModeSessionProvider;
+use codex_core::ChannelIngressPreflightOutcome;
 use codex_core::ThreadManager;
 use codex_core::config::Config;
 use codex_exec_server::EnvironmentManager;
 use codex_feedback::CodexFeedback;
 use codex_goal_extension::GoalService;
+use codex_hepta_contracts::ChannelIngressEvent;
 use codex_home::CodexHomeUserInstructionsProvider;
 use codex_login::AuthManager;
 use codex_protocol::ThreadId;
@@ -522,6 +525,19 @@ impl MessageProcessor {
         self.apps_processor.shutdown();
         self.models_refresh_worker.shutdown();
         self.skills_watcher.shutdown();
+    }
+
+    /// Narrow in-process bridge for the channel canary. It bypasses JSON-RPC
+    /// dispatch and does not create, resume, or mutate a turn.
+    pub(crate) async fn preflight_channel_ingress(
+        &self,
+        thread_id: ThreadId,
+        event: ChannelIngressEvent,
+        payload: String,
+    ) -> Result<ChannelIngressPreflightOutcome, ChannelIngressThreadPreflightError> {
+        self.turn_processor
+            .preflight_channel_ingress(thread_id, event, payload)
+            .await
     }
 
     pub(crate) async fn process_request(

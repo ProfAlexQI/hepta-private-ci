@@ -41,6 +41,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::hash_map::Entry;
+use std::fmt;
 use std::io::Error as IoError;
 use std::io::ErrorKind;
 use std::io::Result as IoResult;
@@ -63,6 +64,7 @@ use crate::outgoing_message::OutgoingEnvelope;
 use crate::outgoing_message::OutgoingMessage;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::QueuedOutgoingMessage;
+use crate::request_processors::ChannelIngressThreadPreflightError;
 use crate::transport::CHANNEL_CAPACITY;
 use crate::transport::OutboundConnectionState;
 use crate::transport::route_outgoing_envelope;
@@ -80,22 +82,34 @@ use codex_arg0::Arg0DispatchPaths;
 use codex_config::CloudConfigBundleLoader;
 use codex_config::LoaderOverrides;
 use codex_config::ThreadConfigLoader;
+use codex_core::ChannelIngressPreflightNotEnqueued;
+use codex_core::ChannelIngressPreflightOutcome;
+use codex_core::ChannelIngressPreflightRejection;
 use codex_core::check_execpolicy_for_warnings;
 use codex_core::config::Config;
 use codex_core::resolve_installation_id;
 use codex_exec_server::EnvironmentManager;
 use codex_feedback::CodexFeedback;
+use codex_hepta_contracts::ChannelIngressEvent;
+use codex_hepta_contracts::ChannelIngressEventId;
+use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_contracts::validate_ingress_event;
 use codex_login::AuthManager;
+use codex_protocol::ThreadId;
 use codex_protocol::protocol::SessionSource;
 pub use codex_rollout::StateDbHandle;
 pub use codex_state::log_db::LogDbLayer;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio::time::Instant;
 use tokio::time::timeout;
 use toml::Value as TomlValue;
 use tracing::warn;
 
 const IN_PROCESS_CONNECTION_ID: ConnectionId = ConnectionId(0);
+const MAX_IN_PROCESS_CHANNEL_INGRESS_PAYLOAD_BYTES: usize = 64 * 1024;
+const CHANNEL_INGRESS_CAPABILITY_LIMIT: usize = 128;
+const CHANNEL_INGRESS_CAPABILITY_TTL: Duration = Duration::from_secs(30);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 // Covers both bounded runtime drains plus the analytics client's 25-second best-effort flush.
 const SHUTDOWN_ACK_TIMEOUT: Duration = Duration::from_secs(35);
@@ -167,6 +181,200 @@ pub enum InProcessServerEvent {
     Lagged { skipped: usize },
 }
 
+struct InProcessChannelIngressRuntimeMarker;
+
+/// Opaque, runtime-bound, take-once capability produced only after an exact
+/// Core preflight. It carries no caller-readable or caller-selected binding.
+pub struct InProcessChannelIngressCapability {
+    runtime_marker: Arc<InProcessChannelIngressRuntimeMarker>,
+    slot_id: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InProcessChannelIngressRejection {
+    ThreadNotFound,
+    DirectInputNotAllowed,
+    Core(ChannelIngressPreflightRejection),
+    RegistryFull,
+    SlotIdExhausted,
+    BindingMismatch,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InProcessChannelIngressNotEnqueued {
+    RuntimeQueueFull,
+    RuntimeQueueClosed,
+    ProcessorQueueFull,
+    ProcessorQueueClosed,
+    CoreQueueFull,
+    CoreQueueClosed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InProcessChannelIngressResponseLost {
+    AppServerRuntime,
+    CoreSession,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InProcessChannelIngressUnavailable {
+    ForeignRuntime,
+    Missing,
+    Expired,
+}
+
+/// Prepare never reserves a turn. `Prepared` only proves that the host actor
+/// stored one exact, bounded request after a best-effort Core observation.
+pub enum InProcessChannelIngressPrepareOutcome {
+    Prepared {
+        capability: InProcessChannelIngressCapability,
+    },
+    Rejected {
+        reason: InProcessChannelIngressRejection,
+    },
+    NotEnqueued {
+        reason: InProcessChannelIngressNotEnqueued,
+    },
+    ResponseLost {
+        phase: InProcessChannelIngressResponseLost,
+    },
+}
+
+impl fmt::Debug for InProcessChannelIngressPrepareOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Prepared { .. } => formatter.write_str("Prepared { capability: .. }"),
+            Self::Rejected { reason } => formatter
+                .debug_struct("Rejected")
+                .field("reason", reason)
+                .finish(),
+            Self::NotEnqueued { reason } => formatter
+                .debug_struct("NotEnqueued")
+                .field("reason", reason)
+                .finish(),
+            Self::ResponseLost { phase } => formatter
+                .debug_struct("ResponseLost")
+                .field("phase", phase)
+                .finish(),
+        }
+    }
+}
+
+/// A successful take is still a non-reserving observation, not turn
+/// admission and not an Accepted channel receipt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InProcessChannelIngressTakeOutcome {
+    ObservedReady {
+        event_id: ChannelIngressEventId,
+        preflight_binding_sha256: Sha256Digest,
+    },
+    Rejected {
+        reason: InProcessChannelIngressRejection,
+    },
+    Unavailable {
+        reason: InProcessChannelIngressUnavailable,
+    },
+    NotEnqueued {
+        reason: InProcessChannelIngressNotEnqueued,
+    },
+    ResponseLost {
+        phase: InProcessChannelIngressResponseLost,
+    },
+}
+
+struct PrepareChannelIngressCommand {
+    thread_id: ThreadId,
+    event: ChannelIngressEvent,
+    payload: Box<str>,
+    response_tx: oneshot::Sender<InProcessChannelIngressPrepareOutcome>,
+}
+
+struct TakeChannelIngressCommand {
+    capability: InProcessChannelIngressCapability,
+    response_tx: oneshot::Sender<InProcessChannelIngressTakeOutcome>,
+}
+
+struct ChannelIngressCapabilityEntry {
+    thread_id: ThreadId,
+    event: ChannelIngressEvent,
+    payload: Box<str>,
+    preflight_binding_sha256: Sha256Digest,
+    expires_at: Instant,
+}
+
+struct ChannelIngressCapabilityRegistry {
+    runtime_marker: Arc<InProcessChannelIngressRuntimeMarker>,
+    next_slot_id: u64,
+    slots: HashMap<u64, ChannelIngressCapabilityEntry>,
+}
+
+impl ChannelIngressCapabilityRegistry {
+    fn new(runtime_marker: Arc<InProcessChannelIngressRuntimeMarker>) -> Self {
+        Self {
+            runtime_marker,
+            next_slot_id: 0,
+            slots: HashMap::new(),
+        }
+    }
+
+    fn issue(
+        &mut self,
+        thread_id: ThreadId,
+        event: ChannelIngressEvent,
+        payload: Box<str>,
+        preflight_binding_sha256: Sha256Digest,
+        now: Instant,
+    ) -> std::result::Result<InProcessChannelIngressCapability, InProcessChannelIngressRejection>
+    {
+        self.slots.retain(|_, entry| entry.expires_at > now);
+        if self.slots.len() >= CHANNEL_INGRESS_CAPABILITY_LIMIT {
+            return Err(InProcessChannelIngressRejection::RegistryFull);
+        }
+        let slot_id = self
+            .next_slot_id
+            .checked_add(1)
+            .ok_or(InProcessChannelIngressRejection::SlotIdExhausted)?;
+        self.next_slot_id = slot_id;
+        self.slots.insert(
+            slot_id,
+            ChannelIngressCapabilityEntry {
+                thread_id,
+                event,
+                payload,
+                preflight_binding_sha256,
+                expires_at: now + CHANNEL_INGRESS_CAPABILITY_TTL,
+            },
+        );
+        Ok(InProcessChannelIngressCapability {
+            runtime_marker: Arc::clone(&self.runtime_marker),
+            slot_id,
+        })
+    }
+
+    fn take(
+        &mut self,
+        capability: InProcessChannelIngressCapability,
+        now: Instant,
+    ) -> std::result::Result<ChannelIngressCapabilityEntry, InProcessChannelIngressUnavailable>
+    {
+        if !Arc::ptr_eq(&capability.runtime_marker, &self.runtime_marker) {
+            return Err(InProcessChannelIngressUnavailable::ForeignRuntime);
+        }
+        let entry = self
+            .slots
+            .remove(&capability.slot_id)
+            .ok_or(InProcessChannelIngressUnavailable::Missing)?;
+        if entry.expires_at <= now {
+            return Err(InProcessChannelIngressUnavailable::Expired);
+        }
+        Ok(entry)
+    }
+
+    fn revoke(&mut self, slot_id: u64) {
+        self.slots.remove(&slot_id);
+    }
+}
+
 /// Internal message sent from [`InProcessClientHandle`] methods to the runtime task.
 ///
 /// Requests carry a oneshot sender for the response; notifications and server-request
@@ -188,6 +396,8 @@ enum InProcessClientMessage {
         request_id: RequestId,
         error: JSONRPCErrorError,
     },
+    PrepareChannelIngress(Box<PrepareChannelIngressCommand>),
+    TakeChannelIngress(Box<TakeChannelIngressCommand>),
     Shutdown {
         done_tx: oneshot::Sender<()>,
     },
@@ -196,11 +406,14 @@ enum InProcessClientMessage {
 enum ProcessorCommand {
     Request(Box<ClientRequest>),
     Notification(ClientNotification),
+    PrepareChannelIngress(Box<PrepareChannelIngressCommand>),
+    TakeChannelIngress(Box<TakeChannelIngressCommand>),
 }
 
 #[derive(Clone)]
 pub struct InProcessClientSender {
     client_tx: mpsc::Sender<InProcessClientMessage>,
+    runtime_marker: Arc<InProcessChannelIngressRuntimeMarker>,
 }
 
 impl InProcessClientSender {
@@ -240,6 +453,86 @@ impl InProcessClientSender {
         })
     }
 
+    pub async fn prepare_channel_ingress(
+        &self,
+        thread_id: ThreadId,
+        event: ChannelIngressEvent,
+        payload: String,
+    ) -> InProcessChannelIngressPrepareOutcome {
+        if let Err(reason) = validate_in_process_channel_ingress_envelope(&event, &payload) {
+            return InProcessChannelIngressPrepareOutcome::Rejected {
+                reason: InProcessChannelIngressRejection::Core(reason),
+            };
+        }
+        let (response_tx, response_rx) = oneshot::channel();
+        let command = PrepareChannelIngressCommand {
+            thread_id,
+            event,
+            payload: payload.into_boxed_str(),
+            response_tx,
+        };
+        match self
+            .client_tx
+            .try_send(InProcessClientMessage::PrepareChannelIngress(Box::new(
+                command,
+            ))) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                return InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                    reason: InProcessChannelIngressNotEnqueued::RuntimeQueueFull,
+                };
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                return InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                    reason: InProcessChannelIngressNotEnqueued::RuntimeQueueClosed,
+                };
+            }
+        }
+        response_rx
+            .await
+            .unwrap_or(InProcessChannelIngressPrepareOutcome::ResponseLost {
+                phase: InProcessChannelIngressResponseLost::AppServerRuntime,
+            })
+    }
+
+    pub async fn take_channel_ingress(
+        &self,
+        capability: InProcessChannelIngressCapability,
+    ) -> InProcessChannelIngressTakeOutcome {
+        if !Arc::ptr_eq(&capability.runtime_marker, &self.runtime_marker) {
+            return InProcessChannelIngressTakeOutcome::Unavailable {
+                reason: InProcessChannelIngressUnavailable::ForeignRuntime,
+            };
+        }
+        let (response_tx, response_rx) = oneshot::channel();
+        let command = TakeChannelIngressCommand {
+            capability,
+            response_tx,
+        };
+        match self
+            .client_tx
+            .try_send(InProcessClientMessage::TakeChannelIngress(Box::new(
+                command,
+            ))) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                return InProcessChannelIngressTakeOutcome::NotEnqueued {
+                    reason: InProcessChannelIngressNotEnqueued::RuntimeQueueFull,
+                };
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                return InProcessChannelIngressTakeOutcome::NotEnqueued {
+                    reason: InProcessChannelIngressNotEnqueued::RuntimeQueueClosed,
+                };
+            }
+        }
+        response_rx
+            .await
+            .unwrap_or(InProcessChannelIngressTakeOutcome::ResponseLost {
+                phase: InProcessChannelIngressResponseLost::AppServerRuntime,
+            })
+    }
+
     fn try_send_client_message(&self, message: InProcessClientMessage) -> IoResult<()> {
         match self.client_tx.try_send(message) {
             Ok(()) => Ok(()),
@@ -253,6 +546,180 @@ impl InProcessClientSender {
             )),
         }
     }
+}
+
+fn validate_in_process_channel_ingress_envelope(
+    event: &ChannelIngressEvent,
+    payload: &str,
+) -> std::result::Result<(), ChannelIngressPreflightRejection> {
+    if payload.is_empty() {
+        return Err(ChannelIngressPreflightRejection::EmptyPayload);
+    }
+    if payload.len() > MAX_IN_PROCESS_CHANNEL_INGRESS_PAYLOAD_BYTES {
+        return Err(ChannelIngressPreflightRejection::PayloadTooLarge);
+    }
+    if validate_ingress_event(event).is_err() {
+        return Err(ChannelIngressPreflightRejection::InvalidEvent);
+    }
+    if Sha256Digest::for_bytes(payload.as_bytes()) != event.payload_sha256 {
+        return Err(ChannelIngressPreflightRejection::PayloadDigestMismatch);
+    }
+    Ok(())
+}
+
+fn map_thread_preflight_error(
+    error: ChannelIngressThreadPreflightError,
+) -> InProcessChannelIngressRejection {
+    match error {
+        ChannelIngressThreadPreflightError::ThreadNotFound => {
+            InProcessChannelIngressRejection::ThreadNotFound
+        }
+        ChannelIngressThreadPreflightError::DirectInputNotAllowed => {
+            InProcessChannelIngressRejection::DirectInputNotAllowed
+        }
+    }
+}
+
+fn map_core_not_enqueued(
+    reason: ChannelIngressPreflightNotEnqueued,
+) -> InProcessChannelIngressNotEnqueued {
+    match reason {
+        ChannelIngressPreflightNotEnqueued::QueueFull => {
+            InProcessChannelIngressNotEnqueued::CoreQueueFull
+        }
+        ChannelIngressPreflightNotEnqueued::QueueClosed => {
+            InProcessChannelIngressNotEnqueued::CoreQueueClosed
+        }
+    }
+}
+
+async fn process_prepare_channel_ingress(
+    processor: &MessageProcessor,
+    registry: &mut ChannelIngressCapabilityRegistry,
+    command: PrepareChannelIngressCommand,
+) {
+    let PrepareChannelIngressCommand {
+        thread_id,
+        event,
+        payload,
+        response_tx,
+    } = command;
+    let outcome = match processor
+        .preflight_channel_ingress(thread_id, event.clone(), payload.to_string())
+        .await
+    {
+        Err(error) => InProcessChannelIngressPrepareOutcome::Rejected {
+            reason: map_thread_preflight_error(error),
+        },
+        Ok(ChannelIngressPreflightOutcome::ObservedReady {
+            event_id,
+            preflight_binding_sha256,
+        }) if event_id == event.event_id => match registry.issue(
+            thread_id,
+            event,
+            payload,
+            preflight_binding_sha256,
+            Instant::now(),
+        ) {
+            Ok(capability) => InProcessChannelIngressPrepareOutcome::Prepared { capability },
+            Err(reason) => InProcessChannelIngressPrepareOutcome::Rejected { reason },
+        },
+        Ok(ChannelIngressPreflightOutcome::ObservedReady { .. }) => {
+            InProcessChannelIngressPrepareOutcome::Rejected {
+                reason: InProcessChannelIngressRejection::BindingMismatch,
+            }
+        }
+        Ok(ChannelIngressPreflightOutcome::Rejected { reason }) => {
+            InProcessChannelIngressPrepareOutcome::Rejected {
+                reason: InProcessChannelIngressRejection::Core(reason),
+            }
+        }
+        Ok(ChannelIngressPreflightOutcome::NotEnqueued { reason }) => {
+            InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                reason: map_core_not_enqueued(reason),
+            }
+        }
+        Ok(ChannelIngressPreflightOutcome::ResponseLost) => {
+            InProcessChannelIngressPrepareOutcome::ResponseLost {
+                phase: InProcessChannelIngressResponseLost::CoreSession,
+            }
+        }
+    };
+    deliver_prepare_channel_ingress_outcome(registry, response_tx, outcome);
+}
+
+fn deliver_prepare_channel_ingress_outcome(
+    registry: &mut ChannelIngressCapabilityRegistry,
+    response_tx: oneshot::Sender<InProcessChannelIngressPrepareOutcome>,
+    outcome: InProcessChannelIngressPrepareOutcome,
+) {
+    let slot_id = match &outcome {
+        InProcessChannelIngressPrepareOutcome::Prepared { capability } => Some(capability.slot_id),
+        _ => None,
+    };
+    if response_tx.send(outcome).is_err()
+        && let Some(slot_id) = slot_id
+    {
+        registry.revoke(slot_id);
+    }
+}
+
+async fn process_take_channel_ingress(
+    processor: &MessageProcessor,
+    registry: &mut ChannelIngressCapabilityRegistry,
+    command: TakeChannelIngressCommand,
+) {
+    let TakeChannelIngressCommand {
+        capability,
+        response_tx,
+    } = command;
+    let outcome = match registry.take(capability, Instant::now()) {
+        Err(reason) => InProcessChannelIngressTakeOutcome::Unavailable { reason },
+        Ok(entry) => match processor
+            .preflight_channel_ingress(
+                entry.thread_id,
+                entry.event.clone(),
+                entry.payload.to_string(),
+            )
+            .await
+        {
+            Err(error) => InProcessChannelIngressTakeOutcome::Rejected {
+                reason: map_thread_preflight_error(error),
+            },
+            Ok(ChannelIngressPreflightOutcome::ObservedReady {
+                event_id,
+                preflight_binding_sha256,
+            }) if event_id == entry.event.event_id
+                && preflight_binding_sha256 == entry.preflight_binding_sha256 =>
+            {
+                InProcessChannelIngressTakeOutcome::ObservedReady {
+                    event_id,
+                    preflight_binding_sha256,
+                }
+            }
+            Ok(ChannelIngressPreflightOutcome::ObservedReady { .. }) => {
+                InProcessChannelIngressTakeOutcome::Rejected {
+                    reason: InProcessChannelIngressRejection::BindingMismatch,
+                }
+            }
+            Ok(ChannelIngressPreflightOutcome::Rejected { reason }) => {
+                InProcessChannelIngressTakeOutcome::Rejected {
+                    reason: InProcessChannelIngressRejection::Core(reason),
+                }
+            }
+            Ok(ChannelIngressPreflightOutcome::NotEnqueued { reason }) => {
+                InProcessChannelIngressTakeOutcome::NotEnqueued {
+                    reason: map_core_not_enqueued(reason),
+                }
+            }
+            Ok(ChannelIngressPreflightOutcome::ResponseLost) => {
+                InProcessChannelIngressTakeOutcome::ResponseLost {
+                    phase: InProcessChannelIngressResponseLost::CoreSession,
+                }
+            }
+        },
+    };
+    let _ = response_tx.send(outcome);
 }
 
 /// Handle used by an in-process client to call app-server and consume events.
@@ -407,6 +874,8 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
     let installation_id = resolve_installation_id(&args.config.codex_home).await?;
     let (client_tx, mut client_rx) = mpsc::channel::<InProcessClientMessage>(channel_capacity);
     let (event_tx, event_rx) = mpsc::channel::<InProcessServerEvent>(channel_capacity);
+    let runtime_marker = Arc::new(InProcessChannelIngressRuntimeMarker);
+    let processor_runtime_marker = Arc::clone(&runtime_marker);
 
     let runtime_handle = tokio::spawn(async move {
         let (outgoing_tx, outgoing_rx) = mpsc::channel::<OutgoingEnvelope>(channel_capacity);
@@ -479,6 +948,8 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
             let mut thread_created_rx = processor.thread_created_receiver();
             let session = Arc::new(ConnectionSessionState::new());
             let mut listen_for_threads = true;
+            let mut channel_ingress_registry =
+                ChannelIngressCapabilityRegistry::new(processor_runtime_marker);
 
             loop {
                 tokio::select! {
@@ -517,6 +988,22 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
                             }
                             Some(ProcessorCommand::Notification(notification)) => {
                                 processor.process_client_notification(notification).await;
+                            }
+                            Some(ProcessorCommand::PrepareChannelIngress(command)) => {
+                                process_prepare_channel_ingress(
+                                    processor.as_ref(),
+                                    &mut channel_ingress_registry,
+                                    *command,
+                                )
+                                .await;
+                            }
+                            Some(ProcessorCommand::TakeChannelIngress(command)) => {
+                                process_take_channel_ingress(
+                                    processor.as_ref(),
+                                    &mut channel_ingress_registry,
+                                    *command,
+                                )
+                                .await;
                             }
                             None => {
                                 break;
@@ -611,6 +1098,58 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
                                     warn!("dropping in-process client notification (queue full)");
                                 }
                                 Err(mpsc::error::TrySendError::Closed(_)) => {
+                                    break;
+                                }
+                            }
+                        }
+                        Some(InProcessClientMessage::PrepareChannelIngress(command)) => {
+                            match processor_tx.try_send(ProcessorCommand::PrepareChannelIngress(command)) {
+                                Ok(()) => {}
+                                Err(mpsc::error::TrySendError::Full(command)) => {
+                                    let ProcessorCommand::PrepareChannelIngress(command) = command else {
+                                        unreachable!("prepare command was just submitted")
+                                    };
+                                    let _ = command.response_tx.send(
+                                        InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                                            reason: InProcessChannelIngressNotEnqueued::ProcessorQueueFull,
+                                        },
+                                    );
+                                }
+                                Err(mpsc::error::TrySendError::Closed(command)) => {
+                                    let ProcessorCommand::PrepareChannelIngress(command) = command else {
+                                        unreachable!("prepare command was just submitted")
+                                    };
+                                    let _ = command.response_tx.send(
+                                        InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                                            reason: InProcessChannelIngressNotEnqueued::ProcessorQueueClosed,
+                                        },
+                                    );
+                                    break;
+                                }
+                            }
+                        }
+                        Some(InProcessClientMessage::TakeChannelIngress(command)) => {
+                            match processor_tx.try_send(ProcessorCommand::TakeChannelIngress(command)) {
+                                Ok(()) => {}
+                                Err(mpsc::error::TrySendError::Full(command)) => {
+                                    let ProcessorCommand::TakeChannelIngress(command) = command else {
+                                        unreachable!("take command was just submitted")
+                                    };
+                                    let _ = command.response_tx.send(
+                                        InProcessChannelIngressTakeOutcome::NotEnqueued {
+                                            reason: InProcessChannelIngressNotEnqueued::ProcessorQueueFull,
+                                        },
+                                    );
+                                }
+                                Err(mpsc::error::TrySendError::Closed(command)) => {
+                                    let ProcessorCommand::TakeChannelIngress(command) = command else {
+                                        unreachable!("take command was just submitted")
+                                    };
+                                    let _ = command.response_tx.send(
+                                        InProcessChannelIngressTakeOutcome::NotEnqueued {
+                                            reason: InProcessChannelIngressNotEnqueued::ProcessorQueueClosed,
+                                        },
+                                    );
                                     break;
                                 }
                             }
@@ -764,7 +1303,10 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
     });
 
     Ok(InProcessClientHandle {
-        client: InProcessClientSender { client_tx },
+        client: InProcessClientSender {
+            client_tx,
+            runtime_marker,
+        },
         event_rx,
         runtime_handle,
         #[cfg(test)]
@@ -786,6 +1328,9 @@ mod tests {
     use codex_app_server_protocol::TurnItemsView;
     use codex_app_server_protocol::TurnStatus;
     use codex_core::config::ConfigBuilder;
+    use codex_hepta_contracts::ChannelAdapterId;
+    use codex_hepta_contracts::ChannelScope;
+    use codex_hepta_contracts::channel_target_thread_sha256;
     use pretty_assertions::assert_eq;
     use std::path::Path;
     use tempfile::TempDir;
@@ -847,6 +1392,289 @@ mod tests {
 
     async fn start_test_client(session_source: SessionSource) -> InProcessClientHandle {
         start_test_client_with_capacity(session_source, DEFAULT_IN_PROCESS_CHANNEL_CAPACITY).await
+    }
+
+    fn channel_ingress_event(thread_id: &str, payload: &str) -> ChannelIngressEvent {
+        ChannelIngressEvent::new(
+            ChannelScope {
+                adapter_id: ChannelAdapterId::new("native.app_server.loopback.v1")
+                    .expect("adapter id"),
+                installation_sha256: Sha256Digest::for_bytes(b"installation"),
+                account_sha256: Sha256Digest::for_bytes(b"account"),
+                conversation_sha256: Sha256Digest::for_bytes(b"conversation"),
+                principal_sha256: Sha256Digest::for_bytes(b"principal"),
+            },
+            Sha256Digest::for_bytes(b"source-event"),
+            Sha256Digest::for_bytes(payload.as_bytes()),
+            channel_target_thread_sha256(thread_id).expect("target thread"),
+            None,
+            Sha256Digest::for_bytes(b"next-cursor"),
+            1_000,
+        )
+        .expect("channel ingress event")
+    }
+
+    #[test]
+    fn channel_ingress_capability_registry_is_bounded_take_once_and_runtime_bound() {
+        let marker = Arc::new(InProcessChannelIngressRuntimeMarker);
+        let mut registry = ChannelIngressCapabilityRegistry::new(Arc::clone(&marker));
+        let now = Instant::now();
+        let thread_id = ThreadId::new();
+        let event = channel_ingress_event(&thread_id.to_string(), "payload");
+        let binding = Sha256Digest::for_bytes(b"binding");
+
+        for _ in 0..CHANNEL_INGRESS_CAPABILITY_LIMIT {
+            registry
+                .issue(
+                    thread_id,
+                    event.clone(),
+                    "payload".into(),
+                    binding.clone(),
+                    now,
+                )
+                .expect("slot below cap");
+        }
+        assert!(matches!(
+            registry.issue(
+                thread_id,
+                event.clone(),
+                "payload".into(),
+                binding.clone(),
+                now,
+            ),
+            Err(InProcessChannelIngressRejection::RegistryFull)
+        ));
+
+        let expired_capability = registry
+            .issue(
+                thread_id,
+                event,
+                "payload".into(),
+                binding,
+                now + CHANNEL_INGRESS_CAPABILITY_TTL,
+            )
+            .expect("expired entries should be pruned before issuing");
+        let duplicate = InProcessChannelIngressCapability {
+            runtime_marker: Arc::clone(&expired_capability.runtime_marker),
+            slot_id: expired_capability.slot_id,
+        };
+        registry
+            .take(expired_capability, now + CHANNEL_INGRESS_CAPABILITY_TTL)
+            .expect("fresh replacement slot should be available");
+        assert!(matches!(
+            registry.take(duplicate, now + CHANNEL_INGRESS_CAPABILITY_TTL),
+            Err(InProcessChannelIngressUnavailable::Missing)
+        ));
+
+        let retained_thread_id = ThreadId::new();
+        let retained = registry
+            .issue(
+                retained_thread_id,
+                channel_ingress_event(&retained_thread_id.to_string(), "payload"),
+                "payload".into(),
+                Sha256Digest::for_bytes(b"retained-binding"),
+                now + CHANNEL_INGRESS_CAPABILITY_TTL,
+            )
+            .expect("retained slot");
+        let retained_duplicate = InProcessChannelIngressCapability {
+            runtime_marker: Arc::clone(&retained.runtime_marker),
+            slot_id: retained.slot_id,
+        };
+        let foreign = InProcessChannelIngressCapability {
+            runtime_marker: Arc::new(InProcessChannelIngressRuntimeMarker),
+            slot_id: retained.slot_id,
+        };
+        assert!(matches!(
+            registry.take(foreign, now),
+            Err(InProcessChannelIngressUnavailable::ForeignRuntime)
+        ));
+        registry
+            .take(retained_duplicate, now + CHANNEL_INGRESS_CAPABILITY_TTL)
+            .expect("foreign runtime must not consume origin slot");
+
+        let expiry_thread_id = ThreadId::new();
+        let expired = registry
+            .issue(
+                expiry_thread_id,
+                channel_ingress_event(&expiry_thread_id.to_string(), "payload"),
+                "payload".into(),
+                Sha256Digest::for_bytes(b"expiry-binding"),
+                now + CHANNEL_INGRESS_CAPABILITY_TTL,
+            )
+            .expect("expiry slot");
+        assert!(matches!(
+            registry.take(
+                expired,
+                now + CHANNEL_INGRESS_CAPABILITY_TTL + CHANNEL_INGRESS_CAPABILITY_TTL
+            ),
+            Err(InProcessChannelIngressUnavailable::Expired)
+        ));
+    }
+
+    #[test]
+    fn channel_ingress_prepare_response_loss_revokes_issued_slot() {
+        let marker = Arc::new(InProcessChannelIngressRuntimeMarker);
+        let mut registry = ChannelIngressCapabilityRegistry::new(marker);
+        let thread_id = ThreadId::new();
+        let capability = registry
+            .issue(
+                thread_id,
+                channel_ingress_event(&thread_id.to_string(), "payload"),
+                "payload".into(),
+                Sha256Digest::for_bytes(b"binding"),
+                Instant::now(),
+            )
+            .expect("capability");
+        let duplicate = InProcessChannelIngressCapability {
+            runtime_marker: Arc::clone(&capability.runtime_marker),
+            slot_id: capability.slot_id,
+        };
+        let (response_tx, response_rx) = oneshot::channel();
+        drop(response_rx);
+        deliver_prepare_channel_ingress_outcome(
+            &mut registry,
+            response_tx,
+            InProcessChannelIngressPrepareOutcome::Prepared { capability },
+        );
+        assert!(matches!(
+            registry.take(duplicate, Instant::now()),
+            Err(InProcessChannelIngressUnavailable::Missing)
+        ));
+    }
+
+    #[tokio::test]
+    async fn channel_ingress_sender_rejects_before_queue_and_classifies_runtime_loss() {
+        let marker = Arc::new(InProcessChannelIngressRuntimeMarker);
+        let (client_tx, mut client_rx) = mpsc::channel(/*buffer*/ 1);
+        let sender = InProcessClientSender {
+            client_tx,
+            runtime_marker: Arc::clone(&marker),
+        };
+        let thread_id = ThreadId::new();
+        let mut event = channel_ingress_event(&thread_id.to_string(), "payload");
+        event.payload_sha256 = Sha256Digest::for_bytes(b"substitution");
+        assert_eq!(
+            format!(
+                "{:?}",
+                sender
+                    .prepare_channel_ingress(thread_id, event, "payload".to_string())
+                    .await
+            ),
+            "Rejected { reason: Core(PayloadDigestMismatch) }"
+        );
+        assert!(client_rx.try_recv().is_err());
+
+        sender
+            .client_tx
+            .try_send(InProcessClientMessage::Notification {
+                notification: ClientNotification::Initialized,
+            })
+            .expect("fill runtime queue");
+        let event = channel_ingress_event(&thread_id.to_string(), "payload");
+        assert!(matches!(
+            sender
+                .prepare_channel_ingress(thread_id, event, "payload".to_string())
+                .await,
+            InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                reason: InProcessChannelIngressNotEnqueued::RuntimeQueueFull
+            }
+        ));
+        let _ = client_rx.recv().await;
+
+        let event = channel_ingress_event(&thread_id.to_string(), "payload");
+        let prepare = tokio::spawn({
+            let sender = sender.clone();
+            async move {
+                sender
+                    .prepare_channel_ingress(thread_id, event, "payload".to_string())
+                    .await
+            }
+        });
+        let command = client_rx.recv().await.expect("prepare should enqueue");
+        drop(command);
+        assert!(matches!(
+            prepare.await.expect("prepare task"),
+            InProcessChannelIngressPrepareOutcome::ResponseLost {
+                phase: InProcessChannelIngressResponseLost::AppServerRuntime
+            }
+        ));
+
+        let foreign = InProcessChannelIngressCapability {
+            runtime_marker: Arc::new(InProcessChannelIngressRuntimeMarker),
+            slot_id: 7,
+        };
+        assert!(matches!(
+            sender.take_channel_ingress(foreign).await,
+            InProcessChannelIngressTakeOutcome::Unavailable {
+                reason: InProcessChannelIngressUnavailable::ForeignRuntime
+            }
+        ));
+        assert!(client_rx.try_recv().is_err());
+
+        drop(client_rx);
+        let event = channel_ingress_event(&thread_id.to_string(), "payload");
+        assert!(matches!(
+            sender
+                .prepare_channel_ingress(thread_id, event, "payload".to_string())
+                .await,
+            InProcessChannelIngressPrepareOutcome::NotEnqueued {
+                reason: InProcessChannelIngressNotEnqueued::RuntimeQueueClosed
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn channel_ingress_prepare_and_take_revalidate_the_exact_loaded_thread() {
+        let client = start_test_client(SessionSource::Cli).await;
+        let response = client
+            .request(ClientRequest::ThreadStart {
+                request_id: RequestId::Integer(91),
+                params: ThreadStartParams {
+                    ephemeral: Some(true),
+                    ..ThreadStartParams::default()
+                },
+            })
+            .await
+            .expect("request transport")
+            .expect("thread/start");
+        let parsed: ThreadStartResponse =
+            serde_json::from_value(response).expect("thread/start response");
+        let thread_id = ThreadId::from_string(&parsed.thread.id).expect("thread id");
+        let payload = "private channel payload";
+        let event = channel_ingress_event(&parsed.thread.id, payload);
+        let sender = client.sender();
+
+        let capability = match sender
+            .prepare_channel_ingress(thread_id, event.clone(), payload.to_string())
+            .await
+        {
+            InProcessChannelIngressPrepareOutcome::Prepared { capability } => capability,
+            other => panic!("expected prepared capability, got {other:?}"),
+        };
+        let duplicate = InProcessChannelIngressCapability {
+            runtime_marker: Arc::clone(&capability.runtime_marker),
+            slot_id: capability.slot_id,
+        };
+        let first = sender.take_channel_ingress(capability).await;
+        let first_binding = match first {
+            InProcessChannelIngressTakeOutcome::ObservedReady {
+                event_id,
+                preflight_binding_sha256,
+            } => {
+                assert_eq!(event_id, event.event_id);
+                preflight_binding_sha256
+            }
+            other => panic!("expected observed ready, got {other:?}"),
+        };
+        assert_ne!(first_binding, Sha256Digest::for_bytes(b"caller-selected"));
+        assert!(matches!(
+            sender.take_channel_ingress(duplicate).await,
+            InProcessChannelIngressTakeOutcome::Unavailable {
+                reason: InProcessChannelIngressUnavailable::Missing
+            }
+        ));
+
+        client.shutdown().await.expect("shutdown");
     }
 
     #[tokio::test]
@@ -965,7 +1793,10 @@ mod tests {
             let _ = done_tx.send(());
         });
         let client = InProcessClientHandle {
-            client: InProcessClientSender { client_tx },
+            client: InProcessClientSender {
+                client_tx,
+                runtime_marker: Arc::new(InProcessChannelIngressRuntimeMarker),
+            },
             event_rx,
             runtime_handle,
             _test_codex_home: None,

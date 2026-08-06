@@ -2,6 +2,8 @@ use super::*;
 use codex_agent_extension::AgentInvocation;
 use codex_agent_extension::AgentRun;
 use codex_agent_extension::AgentRunner;
+use codex_core::ChannelIngressPreflightOutcome;
+use codex_hepta_contracts::ChannelIngressEvent;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
@@ -18,6 +20,12 @@ use crate::image_url::is_remote_image_url;
 
 const DIRECT_INPUT_TO_MULTI_AGENT_V2_SUBAGENT_ERROR: &str =
     "direct app-server input is not allowed for multi-agent v2 sub-agents";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ChannelIngressThreadPreflightError {
+    ThreadNotFound,
+    DirectInputNotAllowed,
+}
 
 /// Mirrors the direct-input policy in both request validation and thread capability responses.
 pub(super) fn can_accept_direct_input(
@@ -170,6 +178,31 @@ impl TurnRequestProcessor {
             thread_list_state_permit,
             skills_watcher,
         }
+    }
+
+    /// Resolves an already-loaded thread and delegates to Core's hidden
+    /// no-turn preflight. This never resumes cold threads or enters JSON-RPC
+    /// turn dispatch.
+    pub(crate) async fn preflight_channel_ingress(
+        &self,
+        thread_id: ThreadId,
+        event: ChannelIngressEvent,
+        payload: String,
+    ) -> Result<ChannelIngressPreflightOutcome, ChannelIngressThreadPreflightError> {
+        let thread = self
+            .thread_manager
+            .get_thread(thread_id)
+            .await
+            .map_err(|_| ChannelIngressThreadPreflightError::ThreadNotFound)?;
+        let config_snapshot = thread.config_snapshot().await;
+        if !can_accept_direct_input(
+            thread.multi_agent_version(),
+            &config_snapshot.session_source,
+        ) {
+            return Err(ChannelIngressThreadPreflightError::DirectInputNotAllowed);
+        }
+
+        Ok(thread.preflight_channel_ingress(event, payload).await)
     }
 
     pub(crate) async fn turn_start(
