@@ -895,6 +895,7 @@ async fn build_extension_turn_input_items(
 
     let input = TurnInputContext {
         turn_id: turn_context.sub_id.to_string(),
+        model_context_window: turn_context.model_context_window(),
         user_input: user_input.to_vec(),
         environments,
     };

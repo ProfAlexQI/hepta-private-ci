@@ -18,6 +18,8 @@ pub struct TurnInputEnvironment {
 pub struct TurnInputContext {
     /// Stable host-owned turn identifier.
     pub turn_id: String,
+    /// Effective model context-window size for this turn.
+    pub model_context_window: Option<i64>,
     /// User input submitted for this turn.
     pub user_input: Vec<UserInput>,
     /// Resolved turn environments, in host priority order.

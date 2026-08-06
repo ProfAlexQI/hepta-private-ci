@@ -16,6 +16,7 @@ mod context;
 mod mcp;
 mod model_provider_policy;
 mod prompt;
+mod prompt_only_input;
 mod skill_invocation;
 mod thread_lifecycle;
 mod tool_lifecycle;
@@ -40,9 +41,15 @@ pub use model_provider_policy::ModelProviderTransport;
 use model_provider_policy::NoopModelProviderAttemptLease;
 pub use prompt::PromptFragment;
 pub use prompt::PromptSlot;
+pub use prompt_only_input::PROMPT_ONLY_INPUT_PROPOSAL_SCHEMA_VERSION;
+pub use prompt_only_input::PromptOnlyInputContext;
+pub use prompt_only_input::PromptOnlyInputContributor;
+pub use prompt_only_input::PromptOnlyInputProposal;
+pub use prompt_only_input::PromptOnlyInputSource;
 pub use skill_invocation::SkillInvocationInput;
 pub use skill_invocation::SkillInvocationKind;
 pub use thread_lifecycle::ThreadIdleInput;
+pub use thread_lifecycle::ThreadInstallationId;
 pub use thread_lifecycle::ThreadOriginator;
 pub use thread_lifecycle::ThreadResumeInput;
 pub use thread_lifecycle::ThreadStartInput;
@@ -224,6 +231,13 @@ pub trait TurnLifecycleContributor: Send + Sync {
 /// host-specific dependencies belong on the extension value installed by the
 /// host, not in this input.
 pub trait TurnInputContributor: Send + Sync {
+    /// Returns whether this contributor is active for the host-owned thread.
+    /// Hosts call this before cloning turn input or resolving environments, so
+    /// a feature-disabled contributor has no turn-input materialization cost.
+    fn is_active(&self, _thread_store: &ExtensionData) -> bool {
+        true
+    }
+
     /// Returns additional contextual fragments for one submitted turn. The optional metrics
     /// capability is bound to the effective model for that turn.
     fn contribute<'a>(

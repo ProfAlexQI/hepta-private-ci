@@ -10,6 +10,7 @@ use crate::ExtensionEventSink;
 use crate::McpServerContributor;
 use crate::ModelProviderPolicyContributor;
 use crate::NoopExtensionEventSink;
+use crate::PromptOnlyInputContributor;
 use crate::SkillInvocationContributor;
 use crate::ThreadLifecycleContributor;
 use crate::TokenUsageContributor;
@@ -39,6 +40,7 @@ impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
                 context_contributors: Vec::new(),
                 mcp_server_contributors: Vec::new(),
                 model_provider_policy_contributors: Vec::new(),
+                prompt_only_input_contributors: Vec::new(),
                 turn_input_contributors: Vec::new(),
                 tool_contributors: Vec::new(),
                 tool_lifecycle_contributors: Vec::new(),
@@ -127,6 +129,16 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
             .push(contributor);
     }
 
+    /// Registers one prompt-only input contributor.
+    pub fn prompt_only_input_contributor(
+        &mut self,
+        contributor: Arc<dyn PromptOnlyInputContributor>,
+    ) {
+        self.registry
+            .prompt_only_input_contributors
+            .push(contributor);
+    }
+
     /// Registers one turn-input contributor.
     pub fn turn_input_contributor(&mut self, contributor: Arc<dyn TurnInputContributor>) {
         self.registry.turn_input_contributors.push(contributor);
@@ -169,6 +181,7 @@ pub struct ExtensionRegistry<C: Sync> {
     context_contributors: Vec<Arc<dyn ContextContributor>>,
     mcp_server_contributors: Vec<Arc<dyn McpServerContributor<C>>>,
     model_provider_policy_contributors: Vec<Arc<dyn ModelProviderPolicyContributor>>,
+    prompt_only_input_contributors: Vec<Arc<dyn PromptOnlyInputContributor>>,
     turn_input_contributors: Vec<Arc<dyn TurnInputContributor>>,
     tool_contributors: Vec<Arc<dyn ToolContributor>>,
     tool_lifecycle_contributors: Vec<Arc<dyn ToolLifecycleContributor>>,
@@ -241,6 +254,11 @@ impl<C: Sync> ExtensionRegistry<C> {
     /// Returns the registered pre-send model-provider policy contributors.
     pub fn model_provider_policy_contributors(&self) -> &[Arc<dyn ModelProviderPolicyContributor>] {
         &self.model_provider_policy_contributors
+    }
+
+    /// Returns the registered prompt-only input contributors.
+    pub fn prompt_only_input_contributors(&self) -> &[Arc<dyn PromptOnlyInputContributor>] {
+        &self.prompt_only_input_contributors
     }
 
     /// Returns the registered turn-input contributors.

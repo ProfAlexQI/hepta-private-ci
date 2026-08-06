@@ -16,6 +16,7 @@ pub use memories::Phase2JobClaimOutcome;
 pub use memories::Stage1JobClaim;
 pub use memories::Stage1JobClaimOutcome;
 pub use memories::Stage1Output;
+pub use memories::Stage1RecallCandidate;
 pub use memories::Stage1StartupClaimParams;
 pub use queued_item::QueuedUserSubmissionRecord;
 pub use thread_goal::ThreadGoal;

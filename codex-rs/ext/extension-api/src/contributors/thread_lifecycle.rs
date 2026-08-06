@@ -14,6 +14,14 @@ use codex_protocol::protocol::TurnEnvironmentSelection;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ThreadOriginator(pub String);
 
+/// Host-resolved installation identity for a thread runtime.
+///
+/// This value comes from the same persisted installation identity used by the
+/// provider request path. Extensions should derive domain-separated bindings
+/// from it and must not expose the raw value in model input or evidence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ThreadInstallationId(pub String);
+
 /// Input supplied when the host starts a runtime for a thread.
 pub struct ThreadStartInput<'a, C> {
     /// Host configuration visible at thread start.

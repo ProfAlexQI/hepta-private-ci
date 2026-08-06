@@ -15,6 +15,9 @@ use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::ExtensionWarning;
 use codex_extension_api::ModelProviderPolicyContributor;
 use codex_extension_api::PromptFragment;
+use codex_extension_api::PromptOnlyInputContext;
+use codex_extension_api::PromptOnlyInputContributor;
+use codex_extension_api::PromptOnlyInputProposal;
 use codex_extension_api::PromptSlot;
 use codex_extension_api::SkillInvocationContributor;
 use codex_extension_api::ThreadLifecycleContributor;
@@ -61,6 +64,21 @@ impl TokenUsageContributor for AllContributors {}
 impl SkillInvocationContributor for AllContributors {}
 
 impl ModelProviderPolicyContributor for AllContributors {}
+
+impl PromptOnlyInputContributor for AllContributors {
+    fn contribute<'a>(
+        &'a self,
+        _input: PromptOnlyInputContext,
+        _session_store: &'a ExtensionData,
+        _thread_store: &'a ExtensionData,
+        _turn_store: &'a ExtensionData,
+    ) -> ExtensionFuture<
+        'a,
+        Result<Option<PromptOnlyInputProposal>, codex_extension_api::ModelProviderPolicyError>,
+    > {
+        Box::pin(std::future::ready(Ok(None)))
+    }
+}
 
 impl TurnInputContributor for AllContributors {
     fn contribute<'a>(
@@ -132,6 +150,7 @@ async fn build_round_trips_every_contributor_category() {
     builder.skill_invocation_contributor(contributor.clone());
     builder.prompt_contributor(contributor.clone());
     builder.model_provider_policy_contributor(contributor.clone());
+    builder.prompt_only_input_contributor(contributor.clone());
     builder.turn_input_contributor(contributor.clone());
     builder.tool_contributor(contributor.clone());
     builder.tool_lifecycle_contributor(contributor.clone());
@@ -150,7 +169,13 @@ async fn build_round_trips_every_contributor_category() {
     assert!(
         registry.model_provider_policy_contributors()[0].is_active(&ExtensionData::new("thread"))
     );
+    assert_eq!(registry.prompt_only_input_contributors().len(), 1);
+    assert!(
+        registry.prompt_only_input_contributors()[0]
+            .is_active(&ExtensionData::new("thread"), &ExtensionData::new("turn"))
+    );
     assert_eq!(registry.turn_input_contributors().len(), 1);
+    assert!(registry.turn_input_contributors()[0].is_active(&ExtensionData::new("thread")));
     assert_eq!(registry.tool_contributors().len(), 1);
     assert_eq!(registry.tool_lifecycle_contributors().len(), 1);
     assert_eq!(registry.tool_policy_contributors().len(), 1);

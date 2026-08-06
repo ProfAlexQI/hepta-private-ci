@@ -6,6 +6,7 @@ use crate::model::Phase2JobClaimOutcome;
 use crate::model::Stage1JobClaim;
 use crate::model::Stage1JobClaimOutcome;
 use crate::model::Stage1Output;
+use crate::model::Stage1RecallCandidate;
 use crate::model::Stage1StartupClaimParams;
 use crate::model::ThreadRow;
 use chrono::DateTime;
@@ -20,6 +21,7 @@ const JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL: &str = "memory_consolidate_global";
 const MEMORY_CONSOLIDATION_JOB_KEY: &str = "global";
 const PHASE2_SUCCESS_COOLDOWN_SECONDS: i64 = 6 * 60 * 60;
 const PHASE2_INPUT_SELECTION_PAGE_SIZE: usize = 512;
+const MAX_STAGE1_RECALL_SUMMARY_BYTES: i64 = 64 * 1024;
 
 const DEFAULT_RETRY_REMAINING: i64 = 3;
 
@@ -376,6 +378,85 @@ ORDER BY so.source_updated_at DESC, so.thread_id DESC
         }
 
         Ok(outputs)
+    }
+
+    /// Returns the summary-only stage-1 row for one exact source thread.
+    ///
+    /// Same-thread authority is enforced at the SQL/read boundary: this API
+    /// never materializes another thread's summary and filters it afterward.
+    /// The source thread must still be memory-enabled, and the summary's UTF-8
+    /// byte length is capped before it crosses into extension code.
+    pub async fn get_stage1_recall_candidate(
+        &self,
+        thread_id: ThreadId,
+        expected_workspace: &Path,
+    ) -> anyhow::Result<Option<Stage1RecallCandidate>> {
+        if !self
+            .thread_recall_enabled_for_workspace(thread_id, expected_workspace)
+            .await?
+        {
+            return Ok(None);
+        }
+        let row = sqlx::query(
+            r#"
+SELECT
+    so.thread_id,
+    so.source_updated_at,
+    so.rollout_summary,
+    so.generated_at
+FROM stage1_outputs AS so
+WHERE so.thread_id = ?
+  AND length(trim(so.rollout_summary)) > 0
+  AND length(CAST(so.rollout_summary AS BLOB)) <= ?
+  AND so.source_updated_at >= 0
+  AND so.generated_at >= so.source_updated_at
+            "#,
+        )
+        .bind(thread_id.to_string())
+        .bind(MAX_STAGE1_RECALL_SUMMARY_BYTES)
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+
+        row.map(|row| {
+            let stored_thread_id: String = row.try_get("thread_id")?;
+            let stored_thread_id = ThreadId::try_from(stored_thread_id.as_str())?;
+            if stored_thread_id != thread_id {
+                anyhow::bail!("stage-1 recall source thread binding drift");
+            }
+            Ok(Stage1RecallCandidate {
+                thread_id,
+                source_updated_at: datetime_from_epoch_seconds(row.try_get("source_updated_at")?)?,
+                rollout_summary: row.try_get("rollout_summary")?,
+                generated_at: datetime_from_epoch_seconds(row.try_get("generated_at")?)?,
+            })
+        })
+        .transpose()
+    }
+
+    /// Returns only the state needed to scope a recall candidate. Avoid loading
+    /// previews, first-user messages, rollout paths, or other ThreadRow fields
+    /// into the memory-recall boundary.
+    async fn thread_recall_enabled_for_workspace(
+        &self,
+        thread_id: ThreadId,
+        expected_workspace: &Path,
+    ) -> anyhow::Result<bool> {
+        let row = sqlx::query(
+            r#"
+SELECT threads.cwd
+FROM threads
+WHERE threads.id = ? AND threads.memory_mode = 'enabled'
+            "#,
+        )
+        .bind(thread_id.to_string())
+        .fetch_optional(self.state_pool.as_ref())
+        .await?;
+
+        let Some(row) = row else {
+            return Ok(false);
+        };
+        let cwd = PathBuf::from(row.try_get::<String, _>("cwd")?);
+        Ok(cwd == expected_workspace)
     }
 
     /// Prunes stale stage-1 outputs while preserving the latest phase-2
@@ -1683,6 +1764,7 @@ impl StateRuntime {
 mod tests {
     use super::JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL;
     use super::JOB_KIND_MEMORY_STAGE1;
+    use super::MAX_STAGE1_RECALL_SUMMARY_BYTES;
     use super::MEMORY_CONSOLIDATION_JOB_KEY;
     use super::PHASE2_SUCCESS_COOLDOWN_SECONDS;
     use super::StateRuntime;
@@ -3447,6 +3529,144 @@ VALUES (?, ?, ?, ?, ?)
             .expect("list stage1 outputs for global");
         assert_eq!(outputs.len(), 1);
         assert_eq!(outputs[0].thread_id, thread_id_enabled);
+
+        let _ = tokio::fs::remove_dir_all(codex_home).await;
+    }
+
+    #[tokio::test]
+    async fn get_stage1_recall_candidate_is_exact_thread_bounded_and_summary_only() {
+        let codex_home = unique_temp_dir();
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
+
+        let enabled = stable_thread_id("00000000-0000-4000-8000-000000000101");
+        let polluted = stable_thread_id("00000000-0000-4000-8000-000000000102");
+        let oversized = stable_thread_id("00000000-0000-4000-8000-000000000103");
+        let invalid_time = stable_thread_id("00000000-0000-4000-8000-000000000104");
+        let other_enabled = stable_thread_id("00000000-0000-4000-8000-000000000105");
+        for (thread_id, workspace) in [
+            (enabled, "workspace-enabled"),
+            (polluted, "workspace-polluted"),
+            (oversized, "workspace-oversized"),
+            (invalid_time, "workspace-invalid-time"),
+            (other_enabled, "workspace-other-enabled"),
+        ] {
+            runtime
+                .upsert_thread(&test_thread_metadata(
+                    &codex_home,
+                    thread_id,
+                    codex_home.join(workspace),
+                ))
+                .await
+                .expect("upsert recall source thread");
+        }
+        runtime
+            .set_thread_memory_mode(polluted, "polluted")
+            .await
+            .expect("disable polluted recall source");
+
+        let oversized_summary = "x".repeat(MAX_STAGE1_RECALL_SUMMARY_BYTES as usize + 1);
+        for (thread_id, updated_at, raw_memory, summary) in [
+            (
+                oversized,
+                300_i64,
+                "raw oversized secret",
+                oversized_summary.as_str(),
+            ),
+            (polluted, 200_i64, "raw polluted secret", "newest summary"),
+            (
+                other_enabled,
+                500_i64,
+                "raw other-thread secret",
+                "newer other-thread summary",
+            ),
+            (enabled, 100_i64, "raw enabled secret", "eligible summary"),
+            (
+                invalid_time,
+                400_i64,
+                "raw invalid-time secret",
+                "invalid-time summary",
+            ),
+        ] {
+            sqlx::query(
+                r#"
+INSERT INTO stage1_outputs (
+    thread_id,
+    source_updated_at,
+    raw_memory,
+    rollout_summary,
+    generated_at
+)
+VALUES (?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(thread_id.to_string())
+            .bind(updated_at)
+            .bind(raw_memory)
+            .bind(summary)
+            .bind(if thread_id == invalid_time {
+                updated_at - 1
+            } else {
+                updated_at
+            })
+            .execute(memory_pool(&runtime))
+            .await
+            .expect("insert recall candidate");
+        }
+
+        assert!(
+            runtime
+                .memories()
+                .get_stage1_recall_candidate(polluted, &codex_home.join("workspace-polluted"))
+                .await
+                .expect("polluted source lookup")
+                .is_none(),
+            "a non-enabled source must not cross the recall boundary"
+        );
+        assert!(
+            runtime
+                .memories()
+                .get_stage1_recall_candidate(oversized, &codex_home.join("workspace-oversized"))
+                .await
+                .expect("oversized source lookup")
+                .is_none(),
+            "an oversized summary must be rejected before materialization"
+        );
+        assert!(
+            runtime
+                .memories()
+                .get_stage1_recall_candidate(
+                    invalid_time,
+                    &codex_home.join("workspace-invalid-time"),
+                )
+                .await
+                .expect("invalid-time source lookup")
+                .is_none(),
+            "a generated-at watermark older than the source must be rejected"
+        );
+
+        assert!(
+            runtime
+                .memories()
+                .get_stage1_recall_candidate(enabled, &codex_home.join("workspace-other"))
+                .await
+                .expect("workspace-mismatched source lookup")
+                .is_none(),
+            "a source from another workspace must not cross the recall boundary"
+        );
+
+        let candidate = runtime
+            .memories()
+            .get_stage1_recall_candidate(enabled, &codex_home.join("workspace-enabled"))
+            .await
+            .expect("exact-thread recall lookup")
+            .expect("eligible exact-thread summary");
+        assert_eq!(candidate.thread_id, enabled);
+        assert_eq!(candidate.rollout_summary, "eligible summary");
 
         let _ = tokio::fs::remove_dir_all(codex_home).await;
     }
