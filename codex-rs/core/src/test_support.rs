@@ -31,6 +31,8 @@ use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::protocol::SessionSource;
 use once_cell::sync::Lazy;
 
+use crate::CodexThread;
+use crate::MemoryModelProviderPolicyHandle;
 use crate::ThreadManager;
 use crate::config::Config;
 use crate::responses_metadata::CodexResponsesMetadata;
@@ -81,6 +83,27 @@ pub fn with_code_mode_host_program(
     config: &crate::config::Config,
 ) -> ThreadManager {
     thread_manager.with_code_mode_host_program_for_tests(host_program, config)
+}
+
+/// Creates a synthetic parent-turn capability for cross-crate tests that call
+/// detached memory sampling directly instead of entering through app-server.
+pub async fn memory_model_provider_policy_handle(
+    thread: &CodexThread,
+) -> MemoryModelProviderPolicyHandle {
+    thread.memory_model_provider_policy_handle_for_test().await
+}
+
+pub fn memory_model_provider_policy_parent_turn_id(
+    handle: &MemoryModelProviderPolicyHandle,
+) -> &str {
+    handle.parent_turn_id()
+}
+
+pub fn memory_model_provider_policy_handles_share_parent_turn(
+    left: &MemoryModelProviderPolicyHandle,
+    right: &MemoryModelProviderPolicyHandle,
+) -> bool {
+    left.shares_parent_turn_with(right)
 }
 
 pub fn thread_manager_with_models_provider(

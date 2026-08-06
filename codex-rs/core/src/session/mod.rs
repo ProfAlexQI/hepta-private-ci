@@ -3943,10 +3943,6 @@ impl Session {
     /// Inject additional user input into the currently active turn.
     ///
     /// Returns the active turn id when accepted.
-    #[expect(
-        clippy::await_holding_invalid_type,
-        reason = "active turn checks and turn state updates must remain atomic"
-    )]
     pub async fn steer_input(
         &self,
         input: Vec<UserInput>,
@@ -3955,6 +3951,29 @@ impl Session {
         client_user_message_id: Option<String>,
         responsesapi_client_metadata: Option<HashMap<String, String>>,
     ) -> Result<String, SteerInputError> {
+        self.steer_input_with_context(
+            input,
+            additional_context,
+            expected_turn_id,
+            client_user_message_id,
+            responsesapi_client_metadata,
+        )
+        .await
+        .map(|(turn_id, _turn_context)| turn_id)
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
+    pub(crate) async fn steer_input_with_context(
+        &self,
+        input: Vec<UserInput>,
+        additional_context: BTreeMap<String, AdditionalContextEntry>,
+        expected_turn_id: Option<&str>,
+        client_user_message_id: Option<String>,
+        responsesapi_client_metadata: Option<HashMap<String, String>>,
+    ) -> Result<(String, Arc<TurnContext>), SteerInputError> {
         let mut active = self.active_turn.lock().await;
         let Some(active_turn) = active.as_mut() else {
             return Err(SteerInputError::NoActiveTurn(input));
@@ -4019,7 +4038,10 @@ impl Session {
                 pending_input,
             )
             .await;
-        Ok(active_turn_id.clone())
+        Ok((
+            active_turn_id.clone(),
+            Arc::clone(&active_task.turn_context),
+        ))
     }
 
     pub(crate) async fn record_memory_citation_for_turn(&self, sub_id: &str) {

@@ -111,6 +111,7 @@ use tracing::instrument;
 use tracing::trace;
 use tracing::warn;
 
+use crate::MemoryModelProviderPolicyHandle;
 use crate::attestation::AttestationContext;
 use crate::attestation::AttestationProvider;
 use crate::attestation::X_OAI_ATTESTATION_HEADER;
@@ -2117,6 +2118,38 @@ impl ModelClientSession {
             responses_metadata,
             inference_trace,
             /*provider_policy_context*/ None,
+        )
+        .await
+    }
+
+    /// Streams one detached memory request through the exact admitted parent
+    /// session/thread/turn extension scopes retained by `provider_policy`.
+    /// The request kind is fixed to `Memory`; callers cannot substitute stores
+    /// or relabel a different provider request across this API boundary.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn stream_memory_with_policy(
+        &mut self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &CodexResponsesMetadata,
+        inference_trace: &InferenceTraceContext,
+        provider_policy: &MemoryModelProviderPolicyHandle,
+    ) -> Result<ResponseStream> {
+        let provider_policy_context = provider_policy.context();
+        self.stream_with_policy(
+            prompt,
+            model_info,
+            session_telemetry,
+            effort,
+            summary,
+            service_tier,
+            responses_metadata,
+            inference_trace,
+            Some(&provider_policy_context),
         )
         .await
     }

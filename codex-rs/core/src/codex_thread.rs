@@ -6,8 +6,11 @@ use crate::session::SessionSettingsUpdate;
 use crate::session::SteerInputError;
 use crate::session::TurnInput;
 use crate::session::session::Session;
+use crate::session::turn_context::TurnContext;
+use crate::user_message_admission::AdmittedUserMessage;
 use crate::user_message_admission::UserMessageAdmission;
 use codex_exec_server::SelectedCapabilityRootsStatus;
+use codex_extension_api::ModelProviderRequestKind;
 use codex_features::Feature;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
@@ -190,6 +193,47 @@ pub struct CodexThread {
     out_of_band_elicitations: Mutex<OutOfBandElicitations>,
 }
 
+/// Opaque capability for provider-governed detached memory requests.
+///
+/// The handle retains the exact session and admitted parent turn, so detached
+/// memory work reuses Codex's installed extension registry and scoped stores
+/// even after the interactive turn has completed.
+#[derive(Clone)]
+pub struct MemoryModelProviderPolicyHandle {
+    session: Arc<Session>,
+    parent_turn: Arc<TurnContext>,
+}
+
+impl MemoryModelProviderPolicyHandle {
+    fn new(session: Arc<Session>, parent_turn: Arc<TurnContext>) -> Self {
+        Self {
+            session,
+            parent_turn,
+        }
+    }
+
+    pub(crate) fn context(&self) -> crate::model_provider_policy::ModelProviderPolicyContext<'_> {
+        crate::model_provider_policy::ModelProviderPolicyContext {
+            registry: self.session.services.extensions.as_ref(),
+            session_store: &self.session.services.session_extension_data,
+            thread_store: &self.session.services.thread_extension_data,
+            turn_store: self.parent_turn.extension_data.as_ref(),
+            thread_id: self.session.thread_id().to_string(),
+            turn_id: self.parent_turn.sub_id.clone(),
+            request_kind: ModelProviderRequestKind::Memory,
+            ephemeral_input_sha256: None,
+        }
+    }
+
+    pub(crate) fn parent_turn_id(&self) -> &str {
+        &self.parent_turn.sub_id
+    }
+
+    pub(crate) fn shares_parent_turn_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.parent_turn, &other.parent_turn)
+    }
+}
+
 #[derive(Default)]
 struct OutOfBandElicitations {
     count: i64,
@@ -305,6 +349,34 @@ impl CodexThread {
         trace: Option<W3cTraceContext>,
         client_user_message_id: Option<String>,
     ) -> CodexResult<UserMessageAdmission> {
+        Ok(self
+            .submit_user_input_and_wait_for_admitted_message(op, trace, client_user_message_id)
+            .await?
+            .admission)
+    }
+
+    /// Submits user input and atomically captures the exact admitted turn as a
+    /// provider-policy capability for detached memory work.
+    pub async fn submit_user_input_and_capture_memory_policy(
+        &self,
+        op: Op,
+        trace: Option<W3cTraceContext>,
+        client_user_message_id: Option<String>,
+    ) -> CodexResult<(UserMessageAdmission, MemoryModelProviderPolicyHandle)> {
+        let admitted = self
+            .submit_user_input_and_wait_for_admitted_message(op, trace, client_user_message_id)
+            .await?;
+        let policy =
+            MemoryModelProviderPolicyHandle::new(Arc::clone(&self.session), admitted.turn_context);
+        Ok((admitted.admission, policy))
+    }
+
+    async fn submit_user_input_and_wait_for_admitted_message(
+        &self,
+        op: Op,
+        trace: Option<W3cTraceContext>,
+        client_user_message_id: Option<String>,
+    ) -> CodexResult<AdmittedUserMessage> {
         if !matches!(op, Op::UserInput { .. }) {
             return Err(CodexErr::InvalidRequest(
                 "user message admission requires user input".to_string(),
@@ -334,6 +406,15 @@ impl CodexThread {
             result = admission => result.map_err(|_| CodexErr::InternalAgentDied)?,
             () = self.io.session_loop_termination.clone() => Err(CodexErr::InternalAgentDied),
         }
+    }
+
+    pub(crate) async fn memory_model_provider_policy_handle_for_test(
+        &self,
+    ) -> MemoryModelProviderPolicyHandle {
+        MemoryModelProviderPolicyHandle::new(
+            Arc::clone(&self.session),
+            self.session.new_default_turn().await,
+        )
     }
 
     /// Persist whether this thread is eligible for future memory generation.

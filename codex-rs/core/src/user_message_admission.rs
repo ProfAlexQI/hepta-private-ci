@@ -1,7 +1,10 @@
 use codex_protocol::error::Result as CodexResult;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::oneshot;
+
+use crate::session::turn_context::TurnContext;
 
 /// The turn that accepted a submitted user message.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -12,9 +15,26 @@ pub enum UserMessageAdmission {
     Steered { turn_id: String },
 }
 
+impl UserMessageAdmission {
+    pub fn turn_id(&self) -> &str {
+        match self {
+            Self::Started { turn_id } | Self::Steered { turn_id } => turn_id,
+        }
+    }
+}
+
+/// Core-owned admission result that retains the exact turn context that
+/// accepted the message. Public callers receive only [`UserMessageAdmission`];
+/// narrow internal capabilities can retain this context without racing the
+/// active-turn lifecycle.
+pub(crate) struct AdmittedUserMessage {
+    pub(crate) admission: UserMessageAdmission,
+    pub(crate) turn_context: Arc<TurnContext>,
+}
+
 #[derive(Default)]
 pub(crate) struct PendingUserMessageAdmissions {
-    pending: Mutex<HashMap<String, oneshot::Sender<CodexResult<UserMessageAdmission>>>>,
+    pending: Mutex<HashMap<String, oneshot::Sender<CodexResult<AdmittedUserMessage>>>>,
 }
 
 impl PendingUserMessageAdmissions {
@@ -23,7 +43,7 @@ impl PendingUserMessageAdmissions {
         submission_id: String,
     ) -> (
         PendingUserMessageAdmissionGuard<'_>,
-        oneshot::Receiver<CodexResult<UserMessageAdmission>>,
+        oneshot::Receiver<CodexResult<AdmittedUserMessage>>,
     ) {
         let (sender, receiver) = oneshot::channel();
         self.pending
@@ -42,7 +62,7 @@ impl PendingUserMessageAdmissions {
     pub(crate) fn complete(
         &self,
         submission_id: &str,
-        admission: CodexResult<UserMessageAdmission>,
+        admission: CodexResult<AdmittedUserMessage>,
     ) {
         let admission_sender = self
             .pending
