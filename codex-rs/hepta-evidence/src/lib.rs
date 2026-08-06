@@ -1,10 +1,16 @@
 #![forbid(unsafe_code)]
 
 mod canonical;
+mod channel_store;
 mod memory_mutation_store;
 mod provider_store;
 mod store;
 
+pub use channel_store::ChannelIngressClaimDisposition;
+pub use channel_store::ChannelIngressState;
+pub use channel_store::StoredChannelIngressEvent;
+pub use channel_store::StoredChannelIngressEvidence;
+pub use channel_store::StoredChannelIngressReceipt;
 pub use memory_mutation_store::MEMORY_MUTATION_SHADOW_SCHEMA_VERSION;
 pub use memory_mutation_store::MemoryMutationShadowObservation;
 pub use memory_mutation_store::StoredMemoryMutationShadowObservation;
@@ -43,3 +49,7 @@ mod provider_tests;
 #[cfg(test)]
 #[path = "memory_mutation_tests.rs"]
 mod memory_mutation_tests;
+
+#[cfg(test)]
+#[path = "channel_tests.rs"]
+mod channel_tests;
