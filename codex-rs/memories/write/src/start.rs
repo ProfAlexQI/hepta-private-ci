@@ -6,6 +6,7 @@ use crate::phase1;
 use crate::phase2;
 use crate::runtime::MemoryStartupContext;
 use codex_core::CodexThread;
+use codex_core::MemoryModelProviderPolicyHandle;
 use codex_core::ThreadManager;
 use codex_core::config::Config;
 use codex_features::Feature;
@@ -16,23 +17,27 @@ use codex_protocol::protocol::SessionSource;
 use std::sync::Arc;
 use tracing::warn;
 
+/// Returns whether this session can run the startup memory pipeline.
+pub fn memories_startup_eligible(config: &Config, source: &SessionSource) -> bool {
+    !config.ephemeral && config.features.enabled(Feature::MemoryTool) && !source.is_non_root_agent()
+}
+
 /// Starts the asynchronous startup memory pipeline for an eligible root session.
 ///
 /// The pipeline is skipped for ephemeral sessions, disabled feature flags, and
 /// subagent sessions.
+#[allow(clippy::too_many_arguments)]
 pub fn start_memories_startup_task(
     thread_manager: Arc<ThreadManager>,
     auth_manager: Arc<AuthManager>,
     thread_id: ThreadId,
     thread: Arc<CodexThread>,
+    provider_policy: MemoryModelProviderPolicyHandle,
     config: Arc<Config>,
     parent_permission_profile: PermissionProfile,
     source: &SessionSource,
 ) {
-    if config.ephemeral
-        || !config.features.enabled(Feature::MemoryTool)
-        || source.is_non_root_agent()
-    {
+    if !memories_startup_eligible(&config, source) {
         return;
     }
 
@@ -41,6 +46,7 @@ pub fn start_memories_startup_task(
         Arc::clone(&auth_manager),
         thread_id,
         thread,
+        provider_policy,
         config.as_ref(),
         source.clone(),
     ));

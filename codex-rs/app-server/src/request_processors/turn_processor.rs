@@ -553,8 +553,20 @@ impl TurnRequestProcessor {
                     .as_ref()
                     .map(PermissionProfile::from_legacy_sandbox_policy)
             });
+        let memory_startup_config = if turn_has_input && thread.enabled(Feature::MemoryTool) {
+            let config = thread.config().await;
+            let config_snapshot = thread.config_snapshot().await;
+            codex_memories_write::memories_startup_eligible(
+                config.as_ref(),
+                &config_snapshot.session_source,
+            )
+            .then_some(config)
+        } else {
+            None
+        };
 
-        // Start the turn by submitting the user input. Return its submission id as turn_id.
+        // Start the turn by submitting the user input. Eligible memory startup
+        // waits for Core admission so it can retain the exact parent-turn scope.
         let turn_op = Op::UserInput {
             items: mapped_items,
             final_output_json_schema: params.output_schema,
@@ -562,20 +574,20 @@ impl TurnRequestProcessor {
             additional_context,
             thread_settings,
         };
-        let turn_id = thread
-            .submit_user_input_with_client_user_message_id(
-                turn_op,
-                self.request_trace_context(&request_id).await,
-                client_user_message_id,
-            )
-            .await
-            .map_err(|err| {
-                let error = internal_error(format!("failed to start turn: {err}"));
-                self.track_error_response(&request_id, &error, /*error_type*/ None);
-                error
-            })?;
-
-        if turn_has_input {
+        let request_trace_context = self.request_trace_context(&request_id).await;
+        let turn_id = if let Some(memory_startup_config) = memory_startup_config {
+            let (admission, provider_policy) = thread
+                .submit_user_input_and_capture_memory_policy(
+                    turn_op,
+                    request_trace_context,
+                    client_user_message_id,
+                )
+                .await
+                .map_err(|err| {
+                    let error = internal_error(format!("failed to start turn: {err}"));
+                    self.track_error_response(&request_id, &error, /*error_type*/ None);
+                    error
+                })?;
             let config_snapshot = thread.config_snapshot().await;
             let parent_permission_profile =
                 parent_permission_profile_override.unwrap_or(config_snapshot.permission_profile);
@@ -584,11 +596,26 @@ impl TurnRequestProcessor {
                 Arc::clone(&self.auth_manager),
                 thread_id,
                 Arc::clone(&thread),
-                thread.config().await,
+                provider_policy,
+                memory_startup_config,
                 parent_permission_profile,
                 &config_snapshot.session_source,
             );
-        }
+            admission.turn_id().to_string()
+        } else {
+            thread
+                .submit_user_input_with_client_user_message_id(
+                    turn_op,
+                    request_trace_context,
+                    client_user_message_id,
+                )
+                .await
+                .map_err(|err| {
+                    let error = internal_error(format!("failed to start turn: {err}"));
+                    self.track_error_response(&request_id, &error, /*error_type*/ None);
+                    error
+                })?
+        };
 
         self.outgoing
             .record_request_turn_id(&request_id, &turn_id)

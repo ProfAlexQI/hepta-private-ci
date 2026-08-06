@@ -1,4 +1,5 @@
 use codex_core::CodexThread;
+use codex_core::MemoryModelProviderPolicyHandle;
 use codex_core::ModelClient;
 use codex_core::NewThread;
 use codex_core::Prompt;
@@ -69,6 +70,7 @@ impl StageOneRequestContext {
 pub(crate) struct MemoryStartupContext {
     thread_id: ThreadId,
     thread: Arc<CodexThread>,
+    provider_policy: MemoryModelProviderPolicyHandle,
     thread_manager: Arc<ThreadManager>,
     auth_manager: Arc<AuthManager>,
     provider: SharedModelProvider,
@@ -113,6 +115,7 @@ impl MemoryStartupContext {
         auth_manager: Arc<AuthManager>,
         thread_id: ThreadId,
         thread: Arc<CodexThread>,
+        provider_policy: MemoryModelProviderPolicyHandle,
         config: &Config,
         source: SessionSource,
     ) -> Self {
@@ -125,6 +128,7 @@ impl MemoryStartupContext {
             auth_manager,
             thread_id,
             thread,
+            provider_policy,
             config,
             source,
             provider,
@@ -132,11 +136,13 @@ impl MemoryStartupContext {
     }
 
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_for_testing(
         thread_manager: Arc<ThreadManager>,
         auth_manager: Arc<AuthManager>,
         thread_id: ThreadId,
         thread: Arc<CodexThread>,
+        provider_policy: MemoryModelProviderPolicyHandle,
         config: &Config,
         source: SessionSource,
         provider: SharedModelProvider,
@@ -146,17 +152,20 @@ impl MemoryStartupContext {
             auth_manager,
             thread_id,
             thread,
+            provider_policy,
             config,
             source,
             provider,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn new_with_provider(
         thread_manager: Arc<ThreadManager>,
         auth_manager: Arc<AuthManager>,
         thread_id: ThreadId,
         thread: Arc<CodexThread>,
+        provider_policy: MemoryModelProviderPolicyHandle,
         config: &Config,
         source: SessionSource,
         provider: SharedModelProvider,
@@ -174,6 +183,7 @@ impl MemoryStartupContext {
         Self {
             thread_id,
             thread,
+            provider_policy,
             thread_manager,
             auth_manager,
             provider,
@@ -277,7 +287,7 @@ impl MemoryStartupContext {
         )
         .await;
         let mut stream = client_session
-            .stream(
+            .stream_memory_with_policy(
                 prompt,
                 &context.model_info,
                 &context.session_telemetry,
@@ -286,6 +296,7 @@ impl MemoryStartupContext {
                 context.service_tier.clone(),
                 &responses_metadata,
                 &InferenceTraceContext::disabled(),
+                &self.provider_policy,
             )
             .await?;
 

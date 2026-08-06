@@ -25,10 +25,12 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::RolloutLine;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SubAgentSource;
 use codex_state::Phase2JobClaimOutcome;
 use codex_utils_absolute_path::test_support::PathExt;
 use core_test_support::responses::ResponseMock;
@@ -49,6 +51,56 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::time::Duration;
 use tokio::time::Instant;
+
+#[tokio::test]
+async fn memories_startup_eligibility_requires_enabled_persistent_root_session()
+-> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let home = Arc::new(TempDir::new()?);
+    let test = build_test_codex(&server, home).await?;
+    let mut config = test.config.clone();
+
+    config
+        .features
+        .enable(Feature::MemoryTool)
+        .expect("test config should allow feature update");
+    assert!(crate::memories_startup_eligible(
+        &config,
+        &SessionSource::VSCode
+    ));
+
+    config
+        .features
+        .disable(Feature::MemoryTool)
+        .expect("test config should allow feature update");
+    assert!(!crate::memories_startup_eligible(
+        &config,
+        &SessionSource::VSCode
+    ));
+
+    config
+        .features
+        .enable(Feature::MemoryTool)
+        .expect("test config should allow feature update");
+    config.ephemeral = true;
+    assert!(!crate::memories_startup_eligible(
+        &config,
+        &SessionSource::VSCode
+    ));
+
+    config.ephemeral = false;
+    assert!(!crate::memories_startup_eligible(
+        &config,
+        &SessionSource::SubAgent(SubAgentSource::Other("memory-eligibility-test".to_string()))
+    ));
+    assert!(!crate::memories_startup_eligible(
+        &config,
+        &SessionSource::Internal(InternalSessionSource::MemoryConsolidation)
+    ));
+
+    shutdown_test_codex(&test).await?;
+    Ok(())
+}
 
 #[tokio::test]
 async fn memories_startup_creates_memory_root() -> anyhow::Result<()> {
@@ -356,11 +408,14 @@ async fn memories_startup_phase1_uses_live_thread_service_tier_and_detached_meta
         Some(ServiceTier::Fast.request_value().to_string())
     );
 
+    let provider_policy =
+        codex_core::test_support::memory_model_provider_policy_handle(test.codex.as_ref()).await;
     let context = crate::runtime::MemoryStartupContext::new(
         Arc::clone(&test.thread_manager),
         test.thread_manager.auth_manager(),
         test.session_configured.thread_id,
         Arc::clone(&test.codex),
+        provider_policy,
         &test.config,
         config_snapshot.session_source.clone(),
     );
@@ -620,6 +675,8 @@ async fn init_state_db(home: &Arc<TempDir>) -> anyhow::Result<Arc<codex_state::S
 
 async fn trigger_memories_startup(test: &TestCodex) {
     let config_snapshot = test.codex.config_snapshot().await;
+    let provider_policy =
+        codex_core::test_support::memory_model_provider_policy_handle(test.codex.as_ref()).await;
     let mut config = test.config.clone();
     config
         .features
@@ -631,6 +688,7 @@ async fn trigger_memories_startup(test: &TestCodex) {
         test.thread_manager.auth_manager(),
         test.session_configured.thread_id,
         Arc::clone(&test.codex),
+        provider_policy,
         Arc::new(config),
         parent_permission_profile,
         &config_snapshot.session_source,
@@ -642,6 +700,8 @@ async fn memory_startup_context_with_provider(
     provider: SharedModelProvider,
 ) -> (Arc<MemoryStartupContext>, Arc<codex_core::config::Config>) {
     let config_snapshot = test.codex.config_snapshot().await;
+    let provider_policy =
+        codex_core::test_support::memory_model_provider_policy_handle(test.codex.as_ref()).await;
     let mut config = test.config.clone();
     config
         .features
@@ -653,6 +713,7 @@ async fn memory_startup_context_with_provider(
         test.thread_manager.auth_manager(),
         test.session_configured.thread_id,
         Arc::clone(&test.codex),
+        provider_policy,
         config.as_ref(),
         config_snapshot.session_source,
         provider,

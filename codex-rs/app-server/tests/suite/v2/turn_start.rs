@@ -81,12 +81,15 @@ use core_test_support::responses;
 use core_test_support::skip_if_no_network;
 use core_test_support::skip_if_remote;
 use core_test_support::skip_if_wine_exec;
+use core_test_support::streaming_sse::StreamingSseChunk;
+use core_test_support::streaming_sse::start_streaming_sse_server;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::Path;
 use tempfile::TempDir;
+use tokio::sync::oneshot;
 use tokio::time::timeout;
 use wiremock::ResponseTemplate;
 
@@ -201,6 +204,104 @@ async fn received_response_input_images(server: &wiremock::MockServer) -> Result
     }
 
     Ok(input_images)
+}
+
+#[tokio::test]
+async fn memory_enabled_turn_start_steer_returns_exact_admitted_turn_id() -> Result<()> {
+    let (release_parent, parent_gate) = oneshot::channel();
+    let mut response_streams = vec![vec![
+        StreamingSseChunk {
+            gate: None,
+            body: responses::sse(vec![responses::ev_response_created("resp-parent")]),
+        },
+        StreamingSseChunk {
+            gate: Some(parent_gate),
+            body: responses::sse(vec![responses::ev_completed("resp-parent")]),
+        },
+    ]];
+    for response_index in 2..=6 {
+        let response_id = format!("resp-{response_index}");
+        let message_id = format!("msg-{response_index}");
+        response_streams.push(vec![StreamingSseChunk {
+            gate: None,
+            body: responses::sse(vec![
+                responses::ev_response_created(&response_id),
+                responses::ev_assistant_message(&message_id, "Done"),
+                responses::ev_completed(&response_id),
+            ]),
+        }]);
+    }
+    let (server, _response_completions) = start_streaming_sse_server(response_streams).await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(server.uri())
+        .enable_feature(Feature::MemoryTool)
+        .write(codex_home.path())?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_managed_config()
+        .build_initialized()
+        .await?;
+    let ThreadStartResponse { thread, .. } = mcp
+        .start_thread(ThreadStartParams {
+            model: Some("mock-model".to_string()),
+            ..Default::default()
+        })
+        .await?;
+
+    let TurnStartResponse { turn: parent_turn } = mcp
+        .request(|request_id| ClientRequest::TurnStart {
+            request_id,
+            params: TurnStartParams {
+                thread_id: thread.id.clone(),
+                client_user_message_id: None,
+                input: Vec::new(),
+                ..Default::default()
+            },
+        })
+        .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/started"),
+    )
+    .await??;
+
+    let TurnStartResponse { turn: steered_turn } = mcp
+        .request(|request_id| ClientRequest::TurnStart {
+            request_id,
+            params: TurnStartParams {
+                thread_id: thread.id.clone(),
+                client_user_message_id: Some("memory-steered-message".to_string()),
+                input: vec![V2UserInput::Text {
+                    text: "steer through turn start".to_string(),
+                    text_elements: Vec::new(),
+                }],
+                ..Default::default()
+            },
+        })
+        .await?;
+
+    assert_eq!(
+        steered_turn.id, parent_turn.id,
+        "memory-enabled turn/start must return the exact active turn that admitted a steer"
+    );
+
+    release_parent
+        .send(())
+        .expect("parent response gate should remain open");
+    let completed = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+    let completed: TurnCompletedNotification = serde_json::from_value(
+        completed
+            .params
+            .context("turn/completed should include params")?,
+    )?;
+    assert_eq!(completed.turn.id, parent_turn.id);
+    assert_eq!(completed.turn.status, TurnStatus::Completed);
+    Ok(())
 }
 
 #[tokio::test]
