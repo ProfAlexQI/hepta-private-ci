@@ -47,6 +47,7 @@ members = [
     "hepta-channel-adapter",
     "hepta-evidence",
     "hepta-memory",
+    "hepta-proof",
     "http-client",
     "secrets",
     "exec",
@@ -184,6 +185,7 @@ codex-hepta-contracts = { path = "hepta-contracts" }
 codex-hepta-channel-adapter = { path = "hepta-channel-adapter" }
 codex-hepta-evidence = { path = "hepta-evidence" }
 codex-hepta-memory = { path = "hepta-memory" }
+codex-hepta-proof = { path = "hepta-proof" }
 codex-websocket-client = { path = "websocket-client" }
 codex-config = { path = "config" }
 codex-connectors = { path = "connectors" }
