@@ -2,8 +2,10 @@
 
 mod identity;
 mod memory;
+mod memory_mutation;
 mod provider;
 mod receipt;
+mod stable_id;
 
 pub use identity::ActionId;
 pub use identity::DecisionId;
@@ -28,6 +30,11 @@ pub use memory::RecallRequestId;
 pub use memory::RecallScorePpm;
 pub use memory::RevisionStamp;
 pub use memory::SCORE_SCALE_PPM;
+pub use memory_mutation::MEMORY_MUTATION_SCHEMA_VERSION;
+pub use memory_mutation::MemoryMutationOperation;
+pub use memory_mutation::MemoryMutationProposal;
+pub use memory_mutation::MemoryMutationProposalId;
+pub use memory_mutation::MemoryMutationReasonCode;
 pub use provider::PROVIDER_EVIDENCE_SCHEMA_VERSION;
 pub use provider::ProviderAttemptId;
 pub use provider::ProviderInvocationIntent;
