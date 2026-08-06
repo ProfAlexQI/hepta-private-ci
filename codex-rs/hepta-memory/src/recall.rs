@@ -1186,4 +1186,199 @@ mod tests {
             candidate_digest(&second_expiry)
         );
     }
+
+    fn digest_parts_once(parts: &[Vec<u8>]) -> (Vec<u8>, String) {
+        let mut hasher = Sha256::new();
+        for part in parts {
+            hash_part(&mut hasher, part);
+        }
+        let bytes = hasher.finalize().to_vec();
+        let hex = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+        (bytes, hex)
+    }
+
+    #[test]
+    fn canonical_recall_digest_oracles_lock_single_and_double_sha_layers() {
+        let query = "rust durable memory";
+        let request = request(query, scope("thread-oracle"), limits(4, 2, 2, 64));
+        let memory = revision(
+            query,
+            scope("thread-oracle"),
+            MemoryLifecycle::Active,
+            MemorySourceKind::CodexStage1Summary,
+            None,
+        );
+        let candidate = RecallCandidate::new(&memory, query, 20, 3);
+
+        let candidate_parts = vec![
+            b"hepta-memory:candidate:v1".to_vec(),
+            memory.schema_version.to_be_bytes().to_vec(),
+            memory.memory_id.as_str().as_bytes().to_vec(),
+            memory.revision.revision.to_be_bytes().to_vec(),
+            memory.revision.content_sha256.as_str().as_bytes().to_vec(),
+            Sha256Digest::for_bytes(query.as_bytes())
+                .as_str()
+                .as_bytes()
+                .to_vec(),
+            20_i64.to_be_bytes().to_vec(),
+            3_u32.to_be_bytes().to_vec(),
+            b"active".to_vec(),
+            b"no_valid_until".to_vec(),
+            memory
+                .scope
+                .installation_sha256
+                .as_str()
+                .as_bytes()
+                .to_vec(),
+            memory.scope.workspace_sha256.as_str().as_bytes().to_vec(),
+            memory.scope.thread_sha256.as_str().as_bytes().to_vec(),
+            memory.scope.principal_sha256.as_str().as_bytes().to_vec(),
+            b"codex_stage1_summary".to_vec(),
+            memory
+                .provenance
+                .source_id_sha256
+                .as_str()
+                .as_bytes()
+                .to_vec(),
+            memory
+                .provenance
+                .source_revision
+                .revision
+                .to_be_bytes()
+                .to_vec(),
+            memory
+                .provenance
+                .source_revision
+                .content_sha256
+                .as_str()
+                .as_bytes()
+                .to_vec(),
+            memory
+                .provenance
+                .observed_at_unix_seconds
+                .to_be_bytes()
+                .to_vec(),
+        ];
+        let (candidate_single_bytes, candidate_single_sha256) = digest_parts_once(&candidate_parts);
+        let candidate_double_sha256 = candidate_semantic_digest(&candidate);
+        assert_eq!(
+            candidate_single_sha256,
+            "c2509e419042163a1fb68afe30b495b4d8c8c7546a5a0c26a341ec292efebe33",
+        );
+        assert_eq!(
+            candidate_double_sha256.as_str(),
+            "0def661efa77d4c1f7847308cc5eef4237bc3626458483201c3d715a69075334",
+        );
+        assert_eq!(
+            candidate_double_sha256,
+            Sha256Digest::for_bytes(&candidate_single_bytes),
+        );
+
+        let candidate_set_parts = vec![
+            b"hepta-memory:candidate-set:v1".to_vec(),
+            candidate_double_sha256.as_str().as_bytes().to_vec(),
+        ];
+        let (candidate_set_single_bytes, candidate_set_single_sha256) =
+            digest_parts_once(&candidate_set_parts);
+        let candidate_set_double_sha256 =
+            candidate_set_digest(&[(candidate_double_sha256, &candidate)]);
+        assert_eq!(
+            candidate_set_single_sha256,
+            "81b58f3fc45f2287937e86c9972ed4a2b90c2efeba2b8dd8b10ff079c9d5ee09",
+        );
+        assert_eq!(
+            candidate_set_double_sha256.as_str(),
+            "f0bb32e15c8e27ec8e4f2b81ac935535acec2d375b8c4f408dec1126706da622",
+        );
+        assert_eq!(
+            candidate_set_double_sha256,
+            Sha256Digest::for_bytes(&candidate_set_single_bytes),
+        );
+
+        let result = shadow_recall(&request, query, &[candidate], 100);
+        assert_eq!(result.reason, RecallObservationReason::Ranked);
+        assert_eq!(result.candidate_set_sha256, candidate_set_double_sha256);
+        let mut observation_parts = vec![
+            b"hepta-memory:shadow-observation:v1".to_vec(),
+            result.request_id.as_str().as_bytes().to_vec(),
+            result.candidate_set_sha256.as_str().as_bytes().to_vec(),
+            result.reason.as_str().as_bytes().to_vec(),
+        ];
+        let RecallCounts {
+            submitted,
+            scanned,
+            eligible,
+            matched,
+            selected,
+            unsupported_schema,
+            inactive,
+            expired,
+            scope_denied,
+            revision_mismatch,
+            invalid_binding,
+            summary_budget_exceeded,
+            secret_like_summary_excluded,
+            item_token_budget_exceeded,
+            source_budget_excluded,
+            total_token_budget_excluded,
+        } = &result.counts;
+        for count in [
+            submitted,
+            scanned,
+            eligible,
+            matched,
+            selected,
+            unsupported_schema,
+            inactive,
+            expired,
+            scope_denied,
+            revision_mismatch,
+            invalid_binding,
+            summary_budget_exceeded,
+            secret_like_summary_excluded,
+            item_token_budget_exceeded,
+            source_budget_excluded,
+            total_token_budget_excluded,
+        ] {
+            observation_parts.push(count.to_be_bytes().to_vec());
+        }
+        for ranked_ref in &result.ranked {
+            observation_parts.push(ranked_ref.memory_id.as_str().as_bytes().to_vec());
+            observation_parts.push(ranked_ref.revision.revision.to_be_bytes().to_vec());
+            observation_parts.push(
+                ranked_ref
+                    .revision
+                    .content_sha256
+                    .as_str()
+                    .as_bytes()
+                    .to_vec(),
+            );
+            observation_parts.push(ranked_ref.score_ppm.get().to_be_bytes().to_vec());
+            observation_parts.push(
+                ranked_ref
+                    .source_updated_at_unix_seconds
+                    .to_be_bytes()
+                    .to_vec(),
+            );
+        }
+        let (observation_single_bytes, observation_single_sha256) =
+            digest_parts_once(&observation_parts);
+        let observation_double_sha256 = Sha256Digest::for_bytes(&observation_single_bytes);
+        assert_eq!(
+            observation_single_sha256,
+            "ec5ec4191405c36b508ee1f32caa30d3dff4b810bdfb0da721321d5567b22473",
+        );
+        assert_eq!(
+            observation_double_sha256.as_str(),
+            "fb6ca5d4938c75450707d8ae7854c20c83116944d698eac70f300338e9b4f4ff",
+        );
+        assert_eq!(
+            result.observation_id.as_str(),
+            format!("memory-shadow:v1:{observation_single_sha256}"),
+        );
+        assert_ne!(
+            result.observation_id.as_str(),
+            format!("memory-shadow:v1:{}", observation_double_sha256.as_str()),
+        );
+    }
 }

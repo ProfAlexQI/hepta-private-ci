@@ -25,6 +25,7 @@ use super::GovernanceState;
 use super::HeptaGovernanceExtension;
 use super::governance_state;
 use super::handler_outcome;
+use super::payload_digest;
 
 fn sqlite_config(temp: &TempDir) -> SqliteConfig {
     SqliteConfig::new_for_testing(
@@ -38,6 +39,42 @@ fn stores() -> (ExtensionData, ExtensionData, ExtensionData) {
         ExtensionData::new("thread-1"),
         ExtensionData::new("turn-1"),
     )
+}
+
+#[test]
+fn payload_digest_byte_formulas_have_fixed_oracles() {
+    let payloads = [
+        ToolPayload::Function {
+            arguments: r#"{"command":"echo canonical"}"#.to_string(),
+        },
+        ToolPayload::ToolSearch {
+            arguments: serde_json::from_value(serde_json::json!({
+                "query": "hepta canonical payload",
+                "limit": 3,
+            }))
+            .expect("tool-search arguments"),
+        },
+        ToolPayload::Custom {
+            input: "canonical custom input".to_string(),
+        },
+    ];
+    let actual = payloads
+        .iter()
+        .map(|payload| {
+            payload_digest(payload)
+                .expect("canonical payload digest")
+                .as_str()
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        [
+            "c9ad9ec461a2fd78e811b6bf612486e810913bb8f8f417fcc5ba4b214201feb9",
+            "5508a4a10b4c87f6b2288b98afa27067796bc227dad2b8951ea2d7c4131dafc1",
+            "2ed75af0ae2c38705ac0ab94a98d69d1c26a284172f331735ec9e09a979eb40b",
+        ]
+    );
 }
 
 #[test]

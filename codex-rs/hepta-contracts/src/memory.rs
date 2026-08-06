@@ -792,6 +792,56 @@ mod tests {
     }
 
     #[test]
+    fn memory_ids_and_legacy_nested_bindings_have_fixed_canonical_oracles() {
+        let exact_scope = scope("thread-1");
+        let same_thread = RecallAuthority::SameThread;
+        let exact_source_thread = RecallAuthority::CrossThread {
+            capability_sha256: digest("capability"),
+            scope: CrossThreadScope::ExactSourceThread {
+                thread_sha256: digest("thread-2"),
+            },
+        };
+        let workspace_threads = RecallAuthority::CrossThread {
+            capability_sha256: digest("capability"),
+            scope: CrossThreadScope::WorkspaceThreads,
+        };
+        let limits = RecallLimits::conservative_default();
+        let recall = request(RecallAuthority::SameThread);
+
+        // These v1 bindings intentionally freeze H(hex(H(framed parts)))
+        // compatibility. A future single-SHA helper must not flatten them
+        // without a new schema/domain and corresponding ID version.
+        assert_eq!(
+            exact_scope.binding_sha256().as_str(),
+            "ced71284e7542b2db6686bc3b9c37e54a27c4d88135094a5b70c0e92354e623d"
+        );
+        assert_eq!(
+            MemoryId::for_content(&exact_scope, b"reviewed summary").as_str(),
+            "memory:v1:aef81743b474c2324e8d04904ad491a7d768be99831ce400d71c395e05453b1a"
+        );
+        assert_eq!(
+            same_thread.binding_sha256().as_str(),
+            "1caf4a2a9681366d26f4f072c36e0e264b072e8a2673297aed91fb8a2de7ccdd"
+        );
+        assert_eq!(
+            exact_source_thread.binding_sha256().as_str(),
+            "eeafcebef8c6e9c8ce177a7b563f726085ccce620755df04805ac8ce7eb6ba0b"
+        );
+        assert_eq!(
+            workspace_threads.binding_sha256().as_str(),
+            "eb30574f30db2ee50fb14527e12e266975fe09670b286e30e886137657ecebd4"
+        );
+        assert_eq!(
+            limits.binding_sha256().as_str(),
+            "660381145bcfc930e963af3e9f206df70546a8bbab899d46d610b0b5ab8e2128"
+        );
+        assert_eq!(
+            recall.request_id.as_str(),
+            "memory-recall:v1:14fafb6f3ab3e75219c2641c9dc1d1db301094ed0b86b6450af4655cbbc25e82"
+        );
+    }
+
+    #[test]
     fn deserialization_rejects_invalid_limits_scores_and_request_binding() {
         assert!(serde_json::from_str::<RecallScorePpm>("1000001").is_err());
         assert!(

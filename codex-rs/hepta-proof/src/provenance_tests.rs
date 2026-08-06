@@ -58,6 +58,25 @@ fn digest(label: &str) -> Sha256Digest {
     Sha256Digest::for_bytes(label.as_bytes())
 }
 
+#[test]
+fn historical_store_resolved_invocation_id_has_a_fixed_oracle() {
+    let subject = ProofSubject::new_historical_store_resolved(
+        digest("canonical-candidate"),
+        digest("canonical-historical-context"),
+    )
+    .expect("historical-store-resolved subject");
+    let invocation_id = ProofInvocationId::for_intent(
+        &subject,
+        &digest("canonical-command-binding"),
+        &digest("canonical-nonce"),
+    );
+
+    assert_eq!(
+        invocation_id.as_str(),
+        "proof-invocation:v1:966059f2053fd0172912e2b81aa4b77a448f258dbdd7778c488feaa91b70b6b3"
+    );
+}
+
 fn sqlite_config(temp: &TempDir) -> SqliteConfig {
     SqliteConfig::new_for_testing(
         AbsolutePathBuf::try_from(temp.path().to_path_buf()).expect("absolute temp path"),

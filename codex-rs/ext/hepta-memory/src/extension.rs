@@ -1754,6 +1754,201 @@ mod tests {
         assert_eq!(shadow_recall_turn_observation(&turn_store), Some(first));
     }
 
+    fn digest_parts_once(parts: &[Vec<u8>]) -> (Vec<u8>, String) {
+        let mut hasher = Sha256::new();
+        for part in parts {
+            hash_part(&mut hasher, part);
+        }
+        let bytes = hasher.finalize().to_vec();
+        let hex = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+        (bytes, hex)
+    }
+
+    #[test]
+    fn canonical_extension_digest_oracles_lock_double_sha_layers() {
+        let workspace = Path::new("");
+        let workspace_parts = vec![
+            b"hepta-memory:workspace:v1".to_vec(),
+            path_identity_bytes(workspace),
+        ];
+        let (workspace_single_bytes, workspace_single_sha256) = digest_parts_once(&workspace_parts);
+        let workspace_double_sha256 = workspace_digest(workspace);
+        assert_eq!(
+            workspace_single_sha256,
+            "e64791144f7e28eece11f6ebb2e3087d52e897343d02f0ef0bc78e503000625a",
+        );
+        assert_eq!(
+            workspace_double_sha256.as_str(),
+            "a4453dbe38ea8e292ac04f841dd577c6b5b0aa1a57c1682da247bfd160e57d4b",
+        );
+        assert_eq!(
+            workspace_double_sha256,
+            Sha256Digest::for_bytes(&workspace_single_bytes),
+        );
+
+        let thread_state = HeptaMemoryThreadState {
+            installation_sha256: Sha256Digest::for_bytes(b"installation"),
+            originator_sha256: Sha256Digest::for_bytes(b"originator"),
+            limits: RecallLimits::conservative_default(),
+            attachment_proposal_enabled: false,
+        };
+        let summary = "rust durable memory";
+        let stage1_candidate = candidate(THREAD_ID, summary);
+        let expected_thread = ThreadId::try_from(THREAD_ID).expect("valid thread id");
+        let revision =
+            stage1_revision(&stage1_candidate, &thread_state, workspace, expected_thread)
+                .expect("valid stage1 revision");
+        assert_eq!(revision.scope.workspace_sha256, workspace_double_sha256);
+        let source_parts = vec![
+            b"hepta-memory:stage1-source:v2".to_vec(),
+            THREAD_ID.as_bytes().to_vec(),
+            10_i64.to_be_bytes().to_vec(),
+            20_i64.to_be_bytes().to_vec(),
+            revision
+                .provenance
+                .source_revision
+                .content_sha256
+                .as_str()
+                .as_bytes()
+                .to_vec(),
+        ];
+        let (source_single_bytes, source_single_sha256) = digest_parts_once(&source_parts);
+        let source_double_sha256 = revision.provenance.source_id_sha256.clone();
+        assert_eq!(
+            source_single_sha256,
+            "e116026a861c6ec96e7d00d6ad0ec4b4f1676fe0ae436dedc0ea76618e8b3444",
+        );
+        assert_eq!(
+            source_double_sha256.as_str(),
+            "eeb80970e2ed67cadcbbb2dab112500a24cf95ffe69d96c06faf3ff8a692e98c",
+        );
+        assert_eq!(
+            source_double_sha256,
+            Sha256Digest::for_bytes(&source_single_bytes),
+        );
+
+        let request = RecallRequest::new(
+            TURN_ID,
+            revision.scope.clone(),
+            RecallAuthority::SameThread,
+            summary.as_bytes(),
+            RecallLimits::conservative_default(),
+        )
+        .expect("valid request");
+        let recall_candidate = codex_hepta_memory::RecallCandidate::new(
+            &revision,
+            summary,
+            10,
+            conservative_token_count(summary),
+        );
+        let recall = shadow_recall(&request, summary, &[recall_candidate], 20);
+        assert_eq!(recall.reason, RecallObservationReason::Ranked);
+        let mut ranked_parts = vec![b"hepta-memory:ranked-refs:v1".to_vec()];
+        for ranked_ref in &recall.ranked {
+            ranked_parts.push(ranked_ref.memory_id.as_str().as_bytes().to_vec());
+            ranked_parts.push(ranked_ref.revision.revision.to_be_bytes().to_vec());
+            ranked_parts.push(
+                ranked_ref
+                    .revision
+                    .content_sha256
+                    .as_str()
+                    .as_bytes()
+                    .to_vec(),
+            );
+            ranked_parts.push(ranked_ref.score_ppm.get().to_be_bytes().to_vec());
+            ranked_parts.push(
+                ranked_ref
+                    .source_updated_at_unix_seconds
+                    .to_be_bytes()
+                    .to_vec(),
+            );
+        }
+        let (ranked_single_bytes, ranked_single_sha256) = digest_parts_once(&ranked_parts);
+        let ranked_double_sha256 = ranked_refs_digest(&recall.ranked);
+        assert_eq!(
+            ranked_single_sha256,
+            "eeaf4e14b314e92747bca7095a6311a16f378638ed0497451f5b54dc75ed5a00",
+        );
+        assert_eq!(
+            ranked_double_sha256.as_str(),
+            "f081ff17595f63fd06d2af97ab10c65ff8536b9e2182d3c0dab5e7dc87b7cbda",
+        );
+        assert_eq!(
+            ranked_double_sha256,
+            Sha256Digest::for_bytes(&ranked_single_bytes),
+        );
+
+        let observation = ShadowRecallTurnObservation::from_recall(recall);
+        assert_eq!(observation.ranked_refs_sha256, ranked_double_sha256);
+        let mut observation_parts = vec![
+            b"hepta-memory-extension:turn-observation:v1".to_vec(),
+            HEPTA_MEMORY_SHADOW_OBSERVATION_SCHEMA_VERSION
+                .to_be_bytes()
+                .to_vec(),
+            observation.request_id.as_str().as_bytes().to_vec(),
+            observation
+                .candidate_set_sha256
+                .as_str()
+                .as_bytes()
+                .to_vec(),
+            observation.ranked_refs_sha256.as_str().as_bytes().to_vec(),
+        ];
+        let RecallCounts {
+            submitted,
+            scanned,
+            eligible,
+            matched,
+            selected,
+            unsupported_schema,
+            inactive,
+            expired,
+            scope_denied,
+            revision_mismatch,
+            invalid_binding,
+            summary_budget_exceeded,
+            secret_like_summary_excluded,
+            item_token_budget_exceeded,
+            source_budget_excluded,
+            total_token_budget_excluded,
+        } = &observation.counts;
+        for count in [
+            submitted,
+            scanned,
+            eligible,
+            matched,
+            selected,
+            unsupported_schema,
+            inactive,
+            expired,
+            scope_denied,
+            revision_mismatch,
+            invalid_binding,
+            summary_budget_exceeded,
+            secret_like_summary_excluded,
+            item_token_budget_exceeded,
+            source_budget_excluded,
+            total_token_budget_excluded,
+        ] {
+            observation_parts.push(count.to_be_bytes().to_vec());
+        }
+        observation_parts.push(observation.reason.stable_tag().as_bytes().to_vec());
+        let (observation_single_bytes, observation_single_sha256) =
+            digest_parts_once(&observation_parts);
+        let observation_double_sha256 = Sha256Digest::for_bytes(&observation_single_bytes);
+        assert_eq!(
+            observation_single_sha256,
+            "4966b14d885f1b58333ea4582742ec3c86cf5219d5d1d65ab2969c0dd1db5238",
+        );
+        assert_eq!(
+            observation_double_sha256.as_str(),
+            "f7010943449acb11e7efbb83123d8bc17ea3f47e32e73cf24447a08b5260e038",
+        );
+        assert_eq!(
+            observation.observation_id.as_str(),
+            format!("memory-shadow:v1:{}", observation_double_sha256.as_str()),
+        );
+    }
+
     #[test]
     fn install_registers_one_contributor_for_each_owned_seam() {
         let mut builder = ExtensionRegistryBuilder::<TestConfig>::new();

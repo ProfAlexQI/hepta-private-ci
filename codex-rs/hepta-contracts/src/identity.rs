@@ -68,6 +68,8 @@ fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::ActionId;
+    use super::DecisionId;
+    use super::ReceiptId;
 
     #[test]
     fn tool_identity_is_versioned_and_length_delimited() {
@@ -77,5 +79,25 @@ mod tests {
         assert!(left.as_str().starts_with("tool:v1:"));
         assert_ne!(left, right);
         assert_eq!(left, ActionId::for_tool_call("ab", "c", "d"));
+    }
+
+    #[test]
+    fn governance_ids_have_fixed_canonical_oracles() {
+        let action = ActionId::for_tool_call("thread-1", "turn-1", "call-1");
+        let decision = DecisionId::for_action(&action, "authorization");
+        let receipt = ReceiptId::for_action(&action);
+
+        assert_eq!(
+            action.as_str(),
+            "tool:v1:96bf3e5017e6063cdcd767179f5badf6fb1357541119939ac4db94db0e482400"
+        );
+        assert_eq!(
+            decision.as_str(),
+            "decision:v1:7b3e5fa2f59800b0cf435efa21f4f8faa1377708a46b1422dc047245c8a0206f"
+        );
+        assert_eq!(
+            receipt.as_str(),
+            "receipt:v1:678f7e1ff3d20f7257d677c910ec0d41c2f4e9fa128cfdc6e2e70662f2e1583c"
+        );
     }
 }
