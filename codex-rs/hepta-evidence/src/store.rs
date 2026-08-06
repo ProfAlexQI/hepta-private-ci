@@ -220,59 +220,10 @@ impl HeptaEvidenceStore {
         &self,
         action_id: &ActionId,
     ) -> Result<StoredActionEvidence, EvidenceError> {
-        let decision_rows = sqlx::query(
-            "SELECT decision_id, action_id, thread_id, turn_id, call_id, phase,
-                    schema_version, payload_json, payload_sha256
-             FROM governance_decisions WHERE action_id = ? ORDER BY seq ASC",
-        )
-        .bind(action_id.as_str())
-        .fetch_all(&self.pool)
-        .await
-        .map_err(classify_sqlx_error)?;
-        let mut admission = None;
-        let mut authorization = None;
-        for row in decision_rows {
-            let record = decode_decision_row(&row)?;
-            let slot = match record.phase {
-                PolicyPhase::Admission => &mut admission,
-                PolicyPhase::Authorization => &mut authorization,
-            };
-            if slot.replace(record).is_some() {
-                return Err(EvidenceError::Corrupt(
-                    "multiple decisions exist for one action phase".to_string(),
-                ));
-            }
-        }
-        let receipt_row = sqlx::query(
-            "SELECT seq, receipt_id, action_id, thread_id, turn_id, call_id,
-                    admission_decision_id, admission_phase,
-                    authorization_decision_id, authorization_phase,
-                    schema_version, payload_json, payload_sha256
-             FROM governance_receipts WHERE action_id = ?",
-        )
-        .bind(action_id.as_str())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(classify_sqlx_error)?;
-        let receipt = receipt_row
-            .map(|row| {
-                let seq = row.get("seq");
-                decode_receipt_row(&row).map(|receipt| StoredReceipt { seq, receipt })
-            })
-            .transpose()?;
-        if let Some(stored_receipt) = receipt.as_ref()
-            && (admission.as_ref() != Some(&stored_receipt.receipt.admission)
-                || authorization.as_ref() != stored_receipt.receipt.authorization.as_ref())
-        {
-            return Err(EvidenceError::Corrupt(
-                "receipt decision material differs from authoritative decision rows".to_string(),
-            ));
-        }
-        Ok(StoredActionEvidence {
-            admission,
-            authorization,
-            receipt,
-        })
+        let mut transaction = self.pool.begin().await.map_err(classify_sqlx_error)?;
+        let evidence = load_action_evidence_in_transaction(&mut transaction, action_id).await?;
+        transaction.commit().await.map_err(classify_sqlx_error)?;
+        Ok(evidence)
     }
 
     pub async fn pending_action_count(&self) -> Result<i64, EvidenceError> {
@@ -338,6 +289,72 @@ impl HeptaEvidenceStore {
         .map_err(classify_sqlx_error)?;
         row.map(|row| decode_decision_row(&row)).transpose()
     }
+}
+
+pub(crate) async fn load_action_evidence_in_transaction(
+    transaction: &mut Transaction<'_, Sqlite>,
+    action_id: &ActionId,
+) -> Result<StoredActionEvidence, EvidenceError> {
+    let decision_rows = sqlx::query(
+        "SELECT decision_id, action_id, thread_id, turn_id, call_id, phase,
+                    schema_version, payload_json, payload_sha256
+             FROM governance_decisions WHERE action_id = ? ORDER BY seq ASC",
+    )
+    .bind(action_id.as_str())
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(classify_sqlx_error)?;
+    let mut admission = None;
+    let mut authorization = None;
+    for row in decision_rows {
+        let record = decode_decision_row(&row)?;
+        let slot = match record.phase {
+            PolicyPhase::Admission => &mut admission,
+            PolicyPhase::Authorization => &mut authorization,
+        };
+        if slot.replace(record).is_some() {
+            return Err(EvidenceError::Corrupt(
+                "multiple decisions exist for one action phase".to_string(),
+            ));
+        }
+    }
+    let receipt_rows = sqlx::query(
+        "SELECT seq, receipt_id, action_id, thread_id, turn_id, call_id,
+                    admission_decision_id, admission_phase,
+                    authorization_decision_id, authorization_phase,
+                    schema_version, payload_json, payload_sha256
+             FROM governance_receipts WHERE action_id = ?",
+    )
+    .bind(action_id.as_str())
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(classify_sqlx_error)?;
+    if receipt_rows.len() > 1 {
+        return Err(EvidenceError::Corrupt(
+            "multiple governance receipts exist for one action".to_string(),
+        ));
+    }
+    let receipt = receipt_rows
+        .into_iter()
+        .next()
+        .map(|row| {
+            let seq = row.get("seq");
+            decode_receipt_row(&row).map(|receipt| StoredReceipt { seq, receipt })
+        })
+        .transpose()?;
+    if let Some(stored_receipt) = receipt.as_ref()
+        && (admission.as_ref() != Some(&stored_receipt.receipt.admission)
+            || authorization.as_ref() != stored_receipt.receipt.authorization.as_ref())
+    {
+        return Err(EvidenceError::Corrupt(
+            "receipt decision material differs from authoritative decision rows".to_string(),
+        ));
+    }
+    Ok(StoredActionEvidence {
+        admission,
+        authorization,
+        receipt,
+    })
 }
 
 async fn ensure_decision(

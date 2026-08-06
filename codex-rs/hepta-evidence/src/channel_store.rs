@@ -367,14 +367,10 @@ impl HeptaEvidenceStore {
         event_id: &ChannelIngressEventId,
     ) -> Result<Option<StoredChannelIngressEvidence>, EvidenceError> {
         let mut transaction = self.pool.begin().await.map_err(classify_sqlx_error)?;
-        let snapshot = load_ingress_snapshot(&mut transaction).await?;
-        let Some(event) = snapshot.event(event_id).cloned() else {
-            transaction.commit().await.map_err(classify_sqlx_error)?;
-            return Ok(None);
-        };
-        let receipt = snapshot.receipt(event_id).cloned();
+        let evidence =
+            load_channel_ingress_evidence_in_transaction(&mut transaction, event_id).await?;
         transaction.commit().await.map_err(classify_sqlx_error)?;
-        Ok(Some(StoredChannelIngressEvidence { event, receipt }))
+        Ok(evidence)
     }
 
     pub async fn current_channel_cursor(
@@ -387,6 +383,18 @@ impl HeptaEvidenceStore {
         transaction.commit().await.map_err(classify_sqlx_error)?;
         Ok(cursor)
     }
+}
+
+pub(crate) async fn load_channel_ingress_evidence_in_transaction(
+    transaction: &mut Transaction<'_, Sqlite>,
+    event_id: &ChannelIngressEventId,
+) -> Result<Option<StoredChannelIngressEvidence>, EvidenceError> {
+    let snapshot = load_ingress_snapshot(transaction).await?;
+    let Some(event) = snapshot.event(event_id).cloned() else {
+        return Ok(None);
+    };
+    let receipt = snapshot.receipt(event_id).cloned();
+    Ok(Some(StoredChannelIngressEvidence { event, receipt }))
 }
 
 async fn load_ingress_snapshot(

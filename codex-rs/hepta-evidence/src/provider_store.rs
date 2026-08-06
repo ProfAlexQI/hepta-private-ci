@@ -168,34 +168,10 @@ impl HeptaEvidenceStore {
         &self,
         attempt_id: &ProviderAttemptId,
     ) -> Result<Option<StoredProviderAttemptEvidence>, EvidenceError> {
-        let Some(intent) = self.load_provider_intent(attempt_id).await? else {
-            return Ok(None);
-        };
-        let receipt_row = sqlx::query(
-            "SELECT seq, receipt_id, attempt_id, request_binding_id, thread_id, turn_id,
-                    terminal_kind, schema_version, payload_json, payload_sha256
-             FROM provider_invocation_terminals WHERE attempt_id = ?",
-        )
-        .bind(attempt_id.as_str())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(classify_sqlx_error)?;
-        let receipt = receipt_row
-            .map(|row| {
-                let seq = row.get("seq");
-                decode_provider_receipt_row(&row)
-                    .map(|receipt| StoredProviderReceipt { seq, receipt })
-            })
-            .transpose()?;
-        if receipt
-            .as_ref()
-            .is_some_and(|stored| stored.receipt.intent != intent.intent)
-        {
-            return Err(EvidenceError::Corrupt(
-                "provider terminal intent differs from authoritative intent row".to_string(),
-            ));
-        }
-        Ok(Some(StoredProviderAttemptEvidence { intent, receipt }))
+        let mut transaction = self.pool.begin().await.map_err(classify_sqlx_error)?;
+        let evidence = load_provider_attempt_in_transaction(&mut transaction, attempt_id).await?;
+        transaction.commit().await.map_err(classify_sqlx_error)?;
+        Ok(evidence)
     }
 
     pub async fn get_provider_receipt(
@@ -295,25 +271,82 @@ impl HeptaEvidenceStore {
         &self,
         attempt_id: &ProviderAttemptId,
     ) -> Result<Option<StoredProviderIntent>, EvidenceError> {
-        let row = sqlx::query(
-            "SELECT seq, attempt_id, request_binding_id, attempt_nonce_sha256,
+        let mut transaction = self.pool.begin().await.map_err(classify_sqlx_error)?;
+        let intent = load_provider_intent_in_transaction(&mut transaction, attempt_id).await?;
+        transaction.commit().await.map_err(classify_sqlx_error)?;
+        Ok(intent)
+    }
+}
+
+async fn load_provider_intent_in_transaction(
+    transaction: &mut Transaction<'_, Sqlite>,
+    attempt_id: &ProviderAttemptId,
+) -> Result<Option<StoredProviderIntent>, EvidenceError> {
+    let rows = sqlx::query(
+        "SELECT seq, attempt_id, request_binding_id, attempt_nonce_sha256,
                     host_request_binding_id_sha256, thread_id, turn_id,
                     request_kind, provider_id, provider_config_sha256, model, transport,
                     endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
                     previous_response_id_sha256, generate, schema_version,
                     payload_json, payload_sha256
              FROM provider_invocation_intents WHERE attempt_id = ?",
-        )
-        .bind(attempt_id.as_str())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(classify_sqlx_error)?;
-        row.map(|row| {
+    )
+    .bind(attempt_id.as_str())
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(classify_sqlx_error)?;
+    if rows.len() > 1 {
+        return Err(EvidenceError::Corrupt(
+            "multiple provider intents exist for one attempt".to_string(),
+        ));
+    }
+    rows.into_iter()
+        .next()
+        .map(|row| {
             let seq = row.get("seq");
             decode_provider_intent_row(&row).map(|intent| StoredProviderIntent { seq, intent })
         })
         .transpose()
+}
+
+pub(crate) async fn load_provider_attempt_in_transaction(
+    transaction: &mut Transaction<'_, Sqlite>,
+    attempt_id: &ProviderAttemptId,
+) -> Result<Option<StoredProviderAttemptEvidence>, EvidenceError> {
+    let Some(intent) = load_provider_intent_in_transaction(transaction, attempt_id).await? else {
+        return Ok(None);
+    };
+    let receipt_rows = sqlx::query(
+        "SELECT seq, receipt_id, attempt_id, request_binding_id, thread_id, turn_id,
+                terminal_kind, schema_version, payload_json, payload_sha256
+         FROM provider_invocation_terminals WHERE attempt_id = ?",
+    )
+    .bind(attempt_id.as_str())
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(classify_sqlx_error)?;
+    if receipt_rows.len() > 1 {
+        return Err(EvidenceError::Corrupt(
+            "multiple provider terminals exist for one attempt".to_string(),
+        ));
     }
+    let receipt = receipt_rows
+        .into_iter()
+        .next()
+        .map(|row| {
+            let seq = row.get("seq");
+            decode_provider_receipt_row(&row).map(|receipt| StoredProviderReceipt { seq, receipt })
+        })
+        .transpose()?;
+    if receipt
+        .as_ref()
+        .is_some_and(|stored| stored.receipt.intent != intent.intent)
+    {
+        return Err(EvidenceError::Corrupt(
+            "provider terminal intent differs from authoritative intent row".to_string(),
+        ));
+    }
+    Ok(Some(StoredProviderAttemptEvidence { intent, receipt }))
 }
 
 async fn blocking_provider_binding_state(
