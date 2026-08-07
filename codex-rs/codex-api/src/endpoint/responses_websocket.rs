@@ -1,3 +1,4 @@
+use crate::auth::AuthProvider;
 use crate::auth::SharedAuthProvider;
 use crate::common::ResponseEvent;
 use crate::common::ResponseStream;
@@ -152,6 +153,7 @@ impl Drop for WsStream {
     }
 }
 
+const X_CODEX_ROUTING_HINT_HEADER: &str = "x-codex-routing-hint";
 const X_CODEX_TURN_STATE_HEADER: &str = "x-codex-turn-state";
 const X_MODELS_ETAG_HEADER: &str = "x-models-etag";
 const X_REASONING_INCLUDED_HEADER: &str = "x-reasoning-included";
@@ -187,6 +189,9 @@ pub struct ResponsesWebsocketConnection {
     server_reasoning_included: bool,
     models_etag: Option<String>,
     server_model: Option<String>,
+    /// Exact routing hint present after provider, host and auth headers were
+    /// merged for the successful opening handshake.
+    routing_hint: Option<HeaderValue>,
     telemetry: Option<Arc<dyn WebsocketTelemetry>>,
 }
 
@@ -198,6 +203,7 @@ impl std::fmt::Debug for ResponsesWebsocketConnection {
             .field("server_reasoning_included", &self.server_reasoning_included)
             .field("models_etag", &self.models_etag)
             .field("server_model", &self.server_model)
+            .field("routing_hint_present", &self.routing_hint.is_some())
             .field("telemetry", &self.telemetry.as_ref().map(|_| "<telemetry>"))
             .finish()
     }
@@ -210,6 +216,7 @@ impl ResponsesWebsocketConnection {
         server_reasoning_included: bool,
         models_etag: Option<String>,
         server_model: Option<String>,
+        routing_hint: Option<HeaderValue>,
         telemetry: Option<Arc<dyn WebsocketTelemetry>>,
     ) -> Self {
         Self {
@@ -218,12 +225,17 @@ impl ResponsesWebsocketConnection {
             server_reasoning_included,
             models_etag,
             server_model,
+            routing_hint,
             telemetry,
         }
     }
 
     pub async fn is_closed(&self) -> bool {
         self.stream.lock().await.is_none()
+    }
+
+    pub fn routing_hint(&self) -> Option<&HeaderValue> {
+        self.routing_hint.as_ref()
     }
 
     #[instrument(
@@ -457,9 +469,13 @@ impl ResponsesWebsocketClient {
             .websocket_url_for_path("responses")
             .map_err(|err| ApiError::Stream(format!("failed to build websocket URL: {err}")))?;
 
-        let mut headers =
-            merge_request_headers(&self.provider.headers, extra_headers, default_headers);
-        self.auth.add_auth_headers(&mut headers);
+        let headers = merge_authenticated_request_headers(
+            &self.provider.headers,
+            extra_headers,
+            default_headers,
+            self.auth.as_ref(),
+        );
+        let routing_hint = headers.get(X_CODEX_ROUTING_HINT_HEADER).cloned();
 
         let (stream, _status, server_reasoning_included, models_etag, server_model) =
             connect_websocket(ws_url, headers, http_client_factory, turn_state.clone()).await?;
@@ -469,6 +485,7 @@ impl ResponsesWebsocketClient {
             server_reasoning_included,
             models_etag,
             server_model,
+            routing_hint,
             telemetry,
         ))
     }
@@ -492,9 +509,12 @@ impl ResponsesWebsocketClient {
             .websocket_url_for_path("responses")
             .map_err(|err| ApiError::Stream(format!("failed to build websocket URL: {err}")))?;
 
-        let mut headers =
-            merge_request_headers(&self.provider.headers, extra_headers, default_headers);
-        self.auth.add_auth_headers(&mut headers);
+        let headers = merge_authenticated_request_headers(
+            &self.provider.headers,
+            extra_headers,
+            default_headers,
+            self.auth.as_ref(),
+        );
 
         let (mut stream, status, reasoning_included, models_etag, server_model) =
             connect_websocket(
@@ -551,6 +571,17 @@ fn merge_request_headers(
             entry.insert(value.clone());
         }
     }
+    headers
+}
+
+fn merge_authenticated_request_headers(
+    provider_headers: &HeaderMap,
+    extra_headers: HeaderMap,
+    default_headers: HeaderMap,
+    auth: &dyn AuthProvider,
+) -> HeaderMap {
+    let mut headers = merge_request_headers(provider_headers, extra_headers, default_headers);
+    auth.add_auth_headers(&mut headers);
     headers
 }
 
@@ -1009,8 +1040,20 @@ mod tests {
             server_reasoning_included: false,
             models_etag: None,
             server_model: None,
+            routing_hint: None,
             telemetry: None,
         }
+    }
+
+    #[test]
+    fn connection_exposes_final_handshake_routing_hint() {
+        let mut connection = connection_with_stream(None);
+        connection.routing_hint = Some(HeaderValue::from_static("auth-overridden-hint"));
+
+        assert_eq!(
+            connection.routing_hint(),
+            Some(&HeaderValue::from_static("auth-overridden-hint"))
+        );
     }
 
     #[tokio::test]
@@ -1297,6 +1340,42 @@ mod tests {
         assert_eq!(
             merged.get("x-default-only"),
             Some(&HeaderValue::from_static("default-only"))
+        );
+    }
+
+    #[test]
+    fn authenticated_merge_exposes_auth_overridden_routing_hint() {
+        struct RoutingHintAuth;
+
+        impl AuthProvider for RoutingHintAuth {
+            fn add_auth_headers(&self, headers: &mut HeaderMap) {
+                headers.insert(
+                    X_CODEX_ROUTING_HINT_HEADER,
+                    HeaderValue::from_static("auth-hint"),
+                );
+            }
+        }
+
+        let mut provider_headers = HeaderMap::new();
+        provider_headers.insert(
+            X_CODEX_ROUTING_HINT_HEADER,
+            HeaderValue::from_static("provider-hint"),
+        );
+        let mut extra_headers = HeaderMap::new();
+        extra_headers.insert(
+            X_CODEX_ROUTING_HINT_HEADER,
+            HeaderValue::from_static("host-hint"),
+        );
+
+        let merged = merge_authenticated_request_headers(
+            &provider_headers,
+            extra_headers,
+            HeaderMap::new(),
+            &RoutingHintAuth,
+        );
+        assert_eq!(
+            merged.get(X_CODEX_ROUTING_HINT_HEADER),
+            Some(&HeaderValue::from_static("auth-hint"))
         );
     }
 
