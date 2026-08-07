@@ -290,6 +290,26 @@ impl SqliteConfig {
             .await
     }
 
+    /// Open an append-only evidence database with full synchronous durability.
+    ///
+    /// Evidence owners remain responsible for their own migrations and must
+    /// not route authoritative corruption through the rebuildable state-DB
+    /// recovery path.
+    pub async fn open_durable_evidence_pool(&self, path: &Path) -> Result<SqlitePool, Error> {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Full)
+            .foreign_keys(true)
+            .busy_timeout(Duration::from_secs(5))
+            .log_statements(LevelFilter::Off);
+        SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect_with(options)
+            .await
+    }
+
     /// Open an existing Codex SQLite database without creating or modifying it.
     pub async fn open_read_only_pool(&self, path: &Path) -> Result<SqlitePool, Error> {
         let options = SqliteConnectOptions::new()
