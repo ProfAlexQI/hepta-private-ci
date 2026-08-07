@@ -1,3 +1,4 @@
+use codex_api::CompactionInput;
 use codex_api::ResponseCreateWsRequest;
 use codex_api::ResponsesApiRequest;
 use codex_api::WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY;
@@ -194,10 +195,21 @@ pub(crate) fn logical_responses_request(request: &ResponsesApiRequest) -> Respon
     logical
 }
 
+/// Retry-stable model-visible semantics for `/responses/compact`.
+///
+/// The cache key remains part of the physical wire binding, but changing it
+/// alone must not mint a new logical compaction identity.
+pub(crate) fn logical_compaction_request<'a>(request: &CompactionInput<'a>) -> CompactionInput<'a> {
+    let mut logical = request.clone();
+    logical.prompt_cache_key = None;
+    logical
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
+    use codex_api::CompactionInput;
     use codex_api::ResponseCreateWsRequest;
     use codex_api::ResponsesApiRequest;
     use codex_api::WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY;
@@ -210,6 +222,7 @@ mod tests {
     use super::TURN_STATE_KEY;
     use super::WS_REQUEST_START_MS_KEY;
     use super::WS_RESPONSES_LITE_KEY;
+    use super::logical_compaction_request;
     use super::logical_responses_request;
     use super::provider_websocket_wire_payload;
     use super::responses_lite_from_http_header;
@@ -236,6 +249,20 @@ mod tests {
                 "request_timestamp".to_string(),
                 "1".to_string(),
             )])),
+        }
+    }
+
+    fn compaction_request(cache_key: Option<&'static str>) -> CompactionInput<'static> {
+        CompactionInput {
+            model: "gpt-test",
+            input: &[],
+            instructions: "compact faithfully",
+            tools: None,
+            parallel_tool_calls: false,
+            reasoning: None,
+            service_tier: Some("priority"),
+            prompt_cache_key: cache_key,
+            text: None,
         }
     }
 
@@ -278,6 +305,61 @@ mod tests {
         assert_ne!(
             digest,
             canonical_sha256(&logical_responses_request(&changed_tier)).expect("tier digest")
+        );
+    }
+
+    #[test]
+    fn logical_compaction_excludes_only_cache_key() {
+        let request = compaction_request(Some("cache-a"));
+        let logical = logical_compaction_request(&request);
+        let mut expected = serde_json::to_value(&request).expect("wire request");
+        expected
+            .as_object_mut()
+            .expect("compaction request object")
+            .remove("prompt_cache_key");
+        assert_eq!(
+            serde_json::to_value(&logical).expect("logical request"),
+            expected
+        );
+
+        let changed = compaction_request(Some("cache-b"));
+        assert_eq!(
+            canonical_sha256(&logical).expect("logical digest"),
+            canonical_sha256(&logical_compaction_request(&changed)).expect("changed digest")
+        );
+    }
+
+    #[test]
+    fn compaction_wire_digest_binds_cache_routing_and_responses_lite() {
+        let request = compaction_request(Some("cache-a"));
+        let changed_cache = compaction_request(Some("cache-b"));
+        let hint_a = ProviderRoutingHint::from_header(Some(&HeaderValue::from_static("route-a")))
+            .expect("valid hint")
+            .expect("present hint");
+        let hint_b = ProviderRoutingHint::from_header(Some(&HeaderValue::from_static("route-b")))
+            .expect("valid hint")
+            .expect("present hint");
+        let base = canonical_sha256(&ProviderWireSemantic::new(&request, Some(&hint_a), false))
+            .expect("base wire digest");
+
+        assert_ne!(
+            base,
+            canonical_sha256(&ProviderWireSemantic::new(
+                &changed_cache,
+                Some(&hint_a),
+                false,
+            ))
+            .expect("cache wire digest")
+        );
+        assert_ne!(
+            base,
+            canonical_sha256(&ProviderWireSemantic::new(&request, Some(&hint_b), false))
+                .expect("routing wire digest")
+        );
+        assert_ne!(
+            base,
+            canonical_sha256(&ProviderWireSemantic::new(&request, Some(&hint_a), true))
+                .expect("responses-lite wire digest")
         );
     }
 
