@@ -187,7 +187,7 @@ fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn digest_parts_sha256<'a>(
+pub(super) fn digest_parts_sha256<'a>(
     parts: impl IntoIterator<Item = &'a str>,
 ) -> Result<ModelProviderSha256Digest, ModelProviderPolicyError> {
     ModelProviderSha256Digest::parse(digest_parts(parts))
