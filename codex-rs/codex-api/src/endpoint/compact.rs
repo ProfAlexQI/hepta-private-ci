@@ -202,6 +202,18 @@ mod tests {
         fn add_auth_headers(&self, _headers: &mut HeaderMap) {}
     }
 
+    #[derive(Clone, Default)]
+    struct OverridingAuth;
+
+    impl AuthProvider for OverridingAuth {
+        fn add_auth_headers(&self, headers: &mut HeaderMap) {
+            headers.insert(
+                http::HeaderName::from_static("x-codex-routing-hint"),
+                http::HeaderValue::from_static("auth-hint"),
+            );
+        }
+    }
+
     #[tokio::test]
     async fn compact_single_attempt_marks_transport_and_disables_retry() {
         let transport = FailingTransport::default();
@@ -236,5 +248,53 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
         assert!(dispatch_metadata.transport_invoked());
+    }
+
+    #[tokio::test]
+    async fn compact_single_attempt_rejects_auth_header_drift_before_dispatch() {
+        let transport = FailingTransport::default();
+        let attempts = Arc::clone(&transport.attempts);
+        let provider = Provider {
+            name: "test".to_string(),
+            base_url: "https://example.test/v1".to_string(),
+            query_params: None,
+            headers: HeaderMap::new(),
+            retry: RetryConfig {
+                max_attempts: 3,
+                base_delay: Duration::from_millis(1),
+                retry_429: false,
+                retry_5xx: false,
+                retry_transport: true,
+            },
+            stream_idle_timeout: Duration::from_secs(1),
+        };
+        let client = CompactClient::new(transport, provider, Arc::new(OverridingAuth));
+        let routing_hint = http::HeaderName::from_static("x-codex-routing-hint");
+        let host_hint = http::HeaderValue::from_static("host-hint");
+        let mut extra_headers = HeaderMap::new();
+        extra_headers.insert(routing_hint.clone(), host_hint.clone());
+        let dispatch_metadata = RequestDispatchMetadata::new_with_expected_headers(vec![(
+            routing_hint,
+            Some(host_hint),
+        )]);
+
+        let result = client
+            .compact_with_retry_mode(
+                serde_json::json!({"model": "gpt-test", "input": []}),
+                extra_headers,
+                Duration::from_secs(1),
+                /*turn_state*/ None,
+                CompactRetryMode::SingleTransportAttempt(dispatch_metadata.clone()),
+            )
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(ApiError::Transport(TransportError::Build(message)))
+                if message ==
+                    "request header state changed after provider policy admission: x-codex-routing-hint"
+        ));
+        assert_eq!(attempts.load(Ordering::SeqCst), 0);
+        assert!(!dispatch_metadata.transport_invoked());
     }
 }
