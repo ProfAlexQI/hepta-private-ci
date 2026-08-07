@@ -119,7 +119,7 @@ fn provider_binding_requires_an_all_or_none_ephemeral_digest_pair() {
 }
 
 #[test]
-fn provider_binding_maps_ephemeral_digests_into_v2_request_identity() {
+fn provider_binding_maps_ephemeral_digests_into_exact_request_identity() {
     let (session, thread, turn) = stores();
     let digests = digests(b"https://provider.invalid/responses");
     let ephemeral = api_digest(b"ephemeral-input");
@@ -140,7 +140,7 @@ fn provider_binding_maps_ephemeral_digests_into_v2_request_identity() {
         intent
             .request_binding_id
             .as_str()
-            .starts_with("provider-request:v2:")
+            .starts_with("provider-request:v1:")
     );
     assert_eq!(
         intent.binding.ephemeral_input_sha256,

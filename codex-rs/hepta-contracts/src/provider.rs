@@ -51,30 +51,22 @@ impl RequestBindingId {
             return Self(format!("provider-request:v1:{}", digest_parts(base_parts)));
         }
 
+        // Lineage two already persisted this exact outer binding. The witness
+        // digest owns its own versioned domain, so changing the request-id
+        // prefix would only make durable pending and terminal rows unreadable.
         let ephemeral_input = binding
             .ephemeral_input_sha256
             .as_ref()
-            .map_or("", Sha256Digest::as_str);
-        let ephemeral_input_present = if binding.ephemeral_input_sha256.is_some() {
-            "present"
-        } else {
-            "absent"
-        };
+            .map_or("absent", Sha256Digest::as_str);
         let ephemeral_input_witness = binding
             .ephemeral_input_witness_sha256
             .as_ref()
-            .map_or("", Sha256Digest::as_str);
-        let ephemeral_input_witness_present = if binding.ephemeral_input_witness_sha256.is_some() {
-            "present"
-        } else {
-            "absent"
-        };
+            .map_or("absent", Sha256Digest::as_str);
         Self(format!(
-            "provider-request:v2:{}",
+            "provider-request:v1:{}",
             digest_parts(base_parts.into_iter().chain([
-                ephemeral_input_present,
+                "ephemeral_input:v1",
                 ephemeral_input,
-                ephemeral_input_witness_present,
                 ephemeral_input_witness,
             ]))
         ))
@@ -366,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn ephemeral_input_uses_v2_exact_binding_and_binds_both_digests() {
+    fn ephemeral_input_preserves_lineage_two_identity_and_binds_both_digests() {
         let mut binding = binding();
         binding.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(b"ephemeral-input"));
         binding.ephemeral_input_witness_sha256 =
@@ -375,7 +367,7 @@ mod tests {
 
         assert_eq!(
             request_id.as_str(),
-            "provider-request:v2:c24546b5083d654198db73c790207179f72b951fd5a5453e8ec6df1eecd1220d"
+            "provider-request:v1:b7f20b62164f89b8b41023307cbc8380094c6ba750836e31bdb612aac0275344"
         );
         let mut changed_input = binding.clone();
         changed_input.ephemeral_input_sha256 =
@@ -392,13 +384,13 @@ mod tests {
     }
 
     #[test]
-    fn orphaned_ephemeral_digest_cannot_alias_a_v1_binding() {
+    fn orphaned_ephemeral_digest_cannot_alias_an_absent_binding() {
         let v1 = binding();
         let mut orphaned = v1.clone();
         orphaned.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(b"orphaned"));
 
         let orphaned_id = RequestBindingId::for_request(&orphaned);
-        assert!(orphaned_id.as_str().starts_with("provider-request:v2:"));
+        assert!(orphaned_id.as_str().starts_with("provider-request:v1:"));
         assert_ne!(RequestBindingId::for_request(&v1), orphaned_id);
     }
 
