@@ -56,17 +56,19 @@ impl HeptaEvidenceStore {
         let binding = &intent.binding;
         let insert = sqlx::query(
             "INSERT INTO provider_invocation_intents (
-                attempt_id, request_binding_id, attempt_nonce_sha256, thread_id, turn_id,
+                attempt_id, request_binding_id, attempt_nonce_sha256,
+                host_request_binding_id_sha256, thread_id, turn_id,
                 request_kind, provider_id, provider_config_sha256, model, transport,
                 endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
                 previous_response_id_sha256, generate, schema_version,
                 payload_json, payload_sha256, recorded_at_ms
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT DO NOTHING",
         )
         .bind(intent.attempt_id.as_str())
         .bind(intent.request_binding_id.as_str())
         .bind(intent.attempt_nonce_sha256.as_str())
+        .bind(binding.host_request_binding_id_sha256.as_str())
         .bind(&binding.thread_id)
         .bind(&binding.turn_id)
         .bind(binding.request_kind.as_str())
@@ -236,7 +238,8 @@ impl HeptaEvidenceStore {
         }
         let rows = sqlx::query(
             "SELECT intents.seq, intents.attempt_id, intents.request_binding_id,
-                    intents.attempt_nonce_sha256, intents.thread_id, intents.turn_id,
+                    intents.attempt_nonce_sha256, intents.host_request_binding_id_sha256,
+                    intents.thread_id, intents.turn_id,
                     intents.request_kind, intents.provider_id,
                     intents.provider_config_sha256, intents.model, intents.transport,
                     intents.endpoint_sha256, intents.logical_request_sha256,
@@ -281,7 +284,8 @@ impl HeptaEvidenceStore {
         attempt_id: &ProviderAttemptId,
     ) -> Result<Option<StoredProviderIntent>, EvidenceError> {
         let row = sqlx::query(
-            "SELECT seq, attempt_id, request_binding_id, attempt_nonce_sha256, thread_id, turn_id,
+            "SELECT seq, attempt_id, request_binding_id, attempt_nonce_sha256,
+                    host_request_binding_id_sha256, thread_id, turn_id,
                     request_kind, provider_id, provider_config_sha256, model, transport,
                     endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
                     previous_response_id_sha256, generate, schema_version,
