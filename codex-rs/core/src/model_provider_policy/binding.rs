@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionRegistry;
 use codex_extension_api::ModelProviderInvocationInput;
@@ -17,8 +19,8 @@ use super::ephemeral_input::EphemeralModelInputBinding;
 
 /// Extension scopes and host identities required to bind one provider send.
 ///
-/// The context owns only secret-free IDs. Extension stores remain borrowed
-/// from Codex's single session/thread/turn lifecycle.
+/// IDs and the selected local cwd are host-resolved; extension stores remain
+/// borrowed from Codex's single session/thread/turn lifecycle.
 pub(crate) struct ModelProviderPolicyContext<'a> {
     pub(crate) registry: &'a ExtensionRegistry<Config>,
     pub(crate) session_store: &'a ExtensionData,
@@ -27,6 +29,7 @@ pub(crate) struct ModelProviderPolicyContext<'a> {
     pub(crate) thread_id: String,
     pub(crate) turn_id: String,
     pub(crate) request_kind: ModelProviderRequestKind,
+    pub(crate) ephemeral_input_cwd: Option<PathBuf>,
 }
 
 /// Base identity and immutable host facts for one physical provider attempt.
@@ -51,12 +54,40 @@ pub(crate) struct ModelProviderAttemptEnvelope {
 }
 
 impl ModelProviderAttemptEnvelope {
-    pub(crate) fn attempt_id(&self) -> &str {
+    pub(super) fn attempt_id(&self) -> &str {
         &self.attempt_id
     }
 
-    pub(crate) fn base_logical_request_sha256(&self) -> &ModelProviderSha256Digest {
+    pub(super) fn base_logical_request_sha256(&self) -> &ModelProviderSha256Digest {
         &self.base_logical_request_sha256
+    }
+
+    pub(super) fn thread_id(&self) -> &str {
+        &self.thread_id
+    }
+
+    pub(super) fn turn_id(&self) -> &str {
+        &self.turn_id
+    }
+
+    pub(super) fn request_kind(&self) -> ModelProviderRequestKind {
+        self.request_kind
+    }
+
+    pub(super) fn provider_id(&self) -> &str {
+        &self.provider_id
+    }
+
+    pub(super) fn model(&self) -> &str {
+        &self.model
+    }
+
+    pub(super) fn transport(&self) -> ModelProviderTransport {
+        self.transport
+    }
+
+    pub(super) fn generate(&self) -> bool {
+        self.generate
     }
 
     pub(crate) fn finalize<L: Serialize, W: Serialize>(

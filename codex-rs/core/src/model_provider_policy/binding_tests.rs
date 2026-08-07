@@ -46,6 +46,7 @@ fn retry_stable_binding_has_fresh_physical_attempt_identity() {
         thread_id: "thread-1".to_string(),
         turn_id: "turn-1".to_string(),
         request_kind: ModelProviderRequestKind::Turn,
+        ephemeral_input_cwd: None,
     };
     let logical = serde_json::json!({"input": [1, 2, 3], "model": "model-1"});
     let websocket_wire = serde_json::json!({
@@ -103,6 +104,7 @@ fn routing_hint_is_physical_wire_semantics_not_logical_identity() {
         thread_id: "thread-1".to_string(),
         turn_id: "turn-1".to_string(),
         request_kind: ModelProviderRequestKind::Turn,
+        ephemeral_input_cwd: None,
     };
     let logical = serde_json::json!({
         "input": [1],
@@ -176,6 +178,7 @@ fn two_phase_attempt_keeps_base_identity_and_binds_effective_input() {
         thread_id: "thread-1".to_string(),
         turn_id: "turn-1".to_string(),
         request_kind: ModelProviderRequestKind::Turn,
+        ephemeral_input_cwd: None,
     };
     let base = serde_json::json!({ "input": ["base"], "model": "model-1" });
     let effective = serde_json::json!({

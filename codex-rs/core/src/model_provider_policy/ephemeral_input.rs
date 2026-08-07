@@ -9,9 +9,12 @@ use codex_extension_api::ModelProviderSha256Digest;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 
+use super::binding::ModelProviderAttemptEnvelope;
+use super::binding::ModelProviderPolicyContext;
 use super::binding::bytes_sha256;
 use super::binding::canonical_sha256;
 use super::binding::digest_parts_sha256;
+use super::lifecycle::has_active_model_provider_policy;
 
 const WRAPPER_OPEN: &str = "<hepta_memory_reference schema=\"1\">";
 const WRAPPER_CLOSE: &str = "</hepta_memory_reference>";
@@ -47,15 +50,88 @@ impl EphemeralModelInputBinding {
 ///
 /// This value deliberately implements neither `Clone` nor `Debug`. The raw
 /// item may only be consumed into the one physical request being finalized.
-pub(super) struct PreparedEphemeralModelInput {
+pub(crate) struct PreparedEphemeralModelInput {
     item: ResponseItem,
     binding: EphemeralModelInputBinding,
 }
 
 impl PreparedEphemeralModelInput {
-    pub(super) fn into_parts(self) -> (ResponseItem, EphemeralModelInputBinding) {
+    pub(crate) fn into_parts(self) -> (ResponseItem, EphemeralModelInputBinding) {
         (self.item, self.binding)
     }
+}
+
+/// Resolves at most one fresh proposal for this exact physical send.
+///
+/// Inactive governance, non-generating requests, and non-local turns do not
+/// invoke contributors. A proposal is never dispatch authority; the caller
+/// must finalize the effective request and acquire a policy lease separately.
+pub(crate) async fn resolve_ephemeral_model_input(
+    context: &ModelProviderPolicyContext<'_>,
+    attempt: &ModelProviderAttemptEnvelope,
+    model_context_window: Option<i64>,
+) -> Result<Option<PreparedEphemeralModelInput>, ModelProviderPolicyError> {
+    if attempt.request_kind() != ModelProviderRequestKind::Turn
+        || !attempt.generate()
+        || !has_active_model_provider_policy(context.registry, context.thread_store)
+    {
+        return Ok(None);
+    }
+    let Some(cwd) = context.ephemeral_input_cwd.as_deref() else {
+        return Ok(None);
+    };
+    if context.thread_id != attempt.thread_id()
+        || context.turn_id != attempt.turn_id()
+        || context.request_kind != attempt.request_kind()
+        || context.thread_store.level_id() != attempt.thread_id()
+        || context.turn_store.level_id() != attempt.turn_id()
+        || !cwd.is_absolute()
+    {
+        return Err(invalid_scope());
+    }
+
+    let contributor_input = || EphemeralModelInputContext {
+        schema_version: EPHEMERAL_MODEL_INPUT_SCHEMA_VERSION,
+        session_store: context.session_store,
+        thread_store: context.thread_store,
+        turn_store: context.turn_store,
+        attempt_id: attempt.attempt_id(),
+        base_logical_request_sha256: attempt.base_logical_request_sha256(),
+        thread_id: attempt.thread_id(),
+        turn_id: attempt.turn_id(),
+        cwd,
+        request_kind: attempt.request_kind(),
+        provider_id: attempt.provider_id(),
+        model: attempt.model(),
+        transport: attempt.transport(),
+        generate: attempt.generate(),
+        model_context_window,
+        max_content_bytes: EPHEMERAL_MODEL_INPUT_MAX_CONTENT_BYTES,
+        max_content_tokens: EPHEMERAL_MODEL_INPUT_MAX_CONTENT_TOKENS,
+    };
+    let contributors = context
+        .registry
+        .ephemeral_model_input_contributors()
+        .iter()
+        .filter(|contributor| contributor.is_active(context.thread_store, context.turn_store))
+        .collect::<Vec<_>>();
+    let mut prepared = None;
+    for contributor in contributors {
+        if let Some(proposal) = contributor.contribute(contributor_input()).await? {
+            if prepared.is_some() {
+                return Err(ModelProviderPolicyError::new(
+                    "ephemeral_model_input_multiple_claimants",
+                    "multiple contributors claimed one physical model-provider send",
+                ));
+            }
+            prepared = Some(prepare_ephemeral_model_input(
+                &contributor_input(),
+                proposal,
+            )?);
+        }
+    }
+
+    Ok(prepared)
 }
 
 /// Validates and renders one contributor proposal without retaining raw input
@@ -476,3 +552,7 @@ mod tests {
         assert_eq!(error.reason_code(), "ephemeral_model_input_scope_invalid");
     }
 }
+
+#[cfg(test)]
+#[path = "ephemeral_input_resolver_tests.rs"]
+mod resolver_tests;
