@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 use std::time::Instant;
 
 use tokio::sync::RwLock;
@@ -20,13 +21,26 @@ use crate::session::step_context::StepContext;
 use crate::tools::context::AbortedToolOutput;
 use crate::tools::context::SharedTurnDiffTracker;
 use crate::tools::context::ToolPayload;
+use crate::tools::lifecycle::ToolDispatchAttemptId;
+use crate::tools::lifecycle::ToolPolicyTerminalPhase;
+use crate::tools::lifecycle::has_active_tool_policy;
 use crate::tools::lifecycle::notify_tool_aborted;
+use crate::tools::lifecycle::notify_tool_indeterminate;
 use crate::tools::registry::AnyToolResult;
 use crate::tools::registry::ToolArgumentDiffConsumer;
 use crate::tools::router::ToolCall;
 use crate::tools::router::ToolCallSource;
 use codex_protocol::error::CodexErr;
 use codex_protocol::models::ResponseInputItem;
+
+const HANDLER_TASK_JOIN_ERROR_REASON_CODE: &str = "handler_task_join_error";
+#[cfg(not(test))]
+const POLICY_TERMINAL_CANCELLATION_GRACE: Duration = Duration::from_secs(1);
+#[cfg(test)]
+const POLICY_TERMINAL_CANCELLATION_GRACE: Duration = Duration::from_millis(50);
+const POLICY_RESULT_WITHHELD_MESSAGE: &str = "tool dispatch reached a durable terminal before cancellation, but result post-processing did not finish; result withheld; do not retry automatically";
+const POLICY_TERMINAL_UNCONFIRMED_MESSAGE: &str =
+    "tool policy terminal persistence is unconfirmed; do not retry automatically";
 
 struct ToolCallTimingGuard {
     started_at: Instant,
@@ -129,6 +143,11 @@ impl ToolCallRuntime {
         let abort_session = Arc::clone(&session);
         let abort_source = source.clone();
         let abort_turn = Arc::clone(&turn);
+        let attempt_id = ToolDispatchAttemptId::new();
+        if has_active_tool_policy(session.as_ref()) {
+            attempt_id.activate_policy();
+        }
+        let dispatch_attempt_id = attempt_id.clone();
         let terminal_outcome_reached = Arc::new(AtomicBool::new(false));
         let dispatch_terminal_outcome_reached = Arc::clone(&terminal_outcome_reached);
         let dispatch_call = call.clone();
@@ -168,7 +187,8 @@ impl ToolCallRuntime {
                         invocation_cancellation_token,
                         tracker,
                         dispatch_call,
-                        source,
+                        source.clone(),
+                        dispatch_attempt_id,
                         dispatch_terminal_outcome_reached,
                     )
                     .instrument(dispatch_span.clone())
@@ -178,30 +198,132 @@ impl ToolCallRuntime {
         async move {
             let _tool_call_timing_guard = tool_call_timing_guard;
             tokio::select! {
-                res = &mut dispatch_handle => res.map_err(Self::tool_task_join_error)?,
+                res = &mut dispatch_handle => match res {
+                    Ok(result) => result,
+                    Err(err) => {
+                        Self::notify_join_error_terminal_if_needed(
+                            abort_session.as_ref(),
+                            abort_turn.as_ref(),
+                            &call,
+                            &attempt_id,
+                            abort_source.clone(),
+                            terminal_outcome_reached.as_ref(),
+                            false,
+                        )
+                        .await?;
+                        Err(Self::tool_task_join_error(err))
+                    }
+                },
                 _ = cancellation_token.cancelled() => {
+                    if attempt_id.policy_is_active() {
+                        return Self::handle_active_policy_cancellation(
+                            &mut dispatch_handle,
+                            wait_for_runtime_cancellation,
+                            started,
+                            &abort_dispatch_span,
+                            abort_session.as_ref(),
+                            abort_turn.as_ref(),
+                            &call,
+                            &attempt_id,
+                            abort_source,
+                            terminal_outcome_reached.as_ref(),
+                        )
+                        .await;
+                    }
                     if terminal_outcome_reached.load(Ordering::Acquire) || dispatch_handle.is_finished() {
-                        dispatch_handle.await.map_err(Self::tool_task_join_error)?
+                        match dispatch_handle.await {
+                            Ok(result) => result,
+                            Err(err) => {
+                                Self::notify_join_error_terminal_if_needed(
+                                    abort_session.as_ref(),
+                                    abort_turn.as_ref(),
+                                    &call,
+                                    &attempt_id,
+                                    abort_source.clone(),
+                                    terminal_outcome_reached.as_ref(),
+                                    false,
+                                )
+                                .await?;
+                                Err(Self::tool_task_join_error(err))
+                            }
+                        }
                     } else {
                         let secs = started.elapsed().as_secs_f32().max(0.1);
                         abort_dispatch_span.record("aborted", true);
                         if wait_for_runtime_cancellation {
                             if terminal_outcome_reached.swap(true, Ordering::AcqRel) {
-                                return dispatch_handle.await.map_err(Self::tool_task_join_error)?;
+                                return match dispatch_handle.await {
+                                    Ok(result) => result,
+                                    Err(err) => {
+                                        Self::notify_join_error_terminal_if_needed(
+                                            abort_session.as_ref(),
+                                            abort_turn.as_ref(),
+                                            &call,
+                                            &attempt_id,
+                                            abort_source.clone(),
+                                            terminal_outcome_reached.as_ref(),
+                                            false,
+                                        )
+                                        .await?;
+                                        Err(Self::tool_task_join_error(err))
+                                    }
+                                };
                             }
                             // The abort owns the terminal outcome; await only so
                             // the runtime can finish process teardown.
                             match dispatch_handle.await {
                                 Ok(_) => {}
                                 Err(err) if err.is_cancelled() => {}
-                                Err(err) => return Err(Self::tool_task_join_error(err)),
+                                Err(err) => {
+                                    Self::notify_join_error_terminal_if_needed(
+                                        abort_session.as_ref(),
+                                        abort_turn.as_ref(),
+                                        &call,
+                                        &attempt_id,
+                                        abort_source.clone(),
+                                        terminal_outcome_reached.as_ref(),
+                                        true,
+                                    )
+                                    .await?;
+                                    return Err(Self::tool_task_join_error(err));
+                                }
                             }
                         } else {
+                            if terminal_outcome_reached.swap(true, Ordering::AcqRel) {
+                                return match dispatch_handle.await {
+                                    Ok(result) => result,
+                                    Err(err) => {
+                                        Self::notify_join_error_terminal_if_needed(
+                                            abort_session.as_ref(),
+                                            abort_turn.as_ref(),
+                                            &call,
+                                            &attempt_id,
+                                            abort_source.clone(),
+                                            terminal_outcome_reached.as_ref(),
+                                            false,
+                                        )
+                                        .await?;
+                                        Err(Self::tool_task_join_error(err))
+                                    }
+                                };
+                            }
                             dispatch_handle.abort();
                             match dispatch_handle.await {
                                 Ok(result) => return result,
                                 Err(err) if err.is_cancelled() => {}
-                                Err(err) => return Err(Self::tool_task_join_error(err)),
+                                Err(err) => {
+                                    Self::notify_join_error_terminal_if_needed(
+                                        abort_session.as_ref(),
+                                        abort_turn.as_ref(),
+                                        &call,
+                                        &attempt_id,
+                                        abort_source.clone(),
+                                        terminal_outcome_reached.as_ref(),
+                                        true,
+                                    )
+                                    .await?;
+                                    return Err(Self::tool_task_join_error(err));
+                                }
                             }
                         }
                         let response = Self::aborted_response(&call, secs);
@@ -209,10 +331,11 @@ impl ToolCallRuntime {
                             abort_session.as_ref(),
                             abort_turn.as_ref(),
                             call.call_id.as_str(),
+                            &attempt_id,
                             &call.tool_name,
                             abort_source,
                         )
-                        .await;
+                        .await?;
                         Ok(response)
                     }
                 },
@@ -223,6 +346,247 @@ impl ToolCallRuntime {
 }
 
 impl ToolCallRuntime {
+    #[allow(clippy::too_many_arguments)]
+    async fn handle_active_policy_cancellation(
+        dispatch_handle: &mut AbortOnDropHandle<Result<AnyToolResult, FunctionCallError>>,
+        wait_for_runtime_cancellation: bool,
+        started: Instant,
+        abort_dispatch_span: &tracing::Span,
+        session: &Session,
+        turn: &crate::session::turn_context::TurnContext,
+        call: &ToolCall,
+        attempt_id: &ToolDispatchAttemptId,
+        source: ToolCallSource,
+        legacy_terminal_outcome_reached: &AtomicBool,
+    ) -> Result<AnyToolResult, FunctionCallError> {
+        if dispatch_handle.is_finished() {
+            return match (&mut *dispatch_handle).await {
+                Ok(result) => result,
+                Err(err) => {
+                    Self::notify_join_error_terminal_if_needed(
+                        session,
+                        turn,
+                        call,
+                        attempt_id,
+                        source,
+                        legacy_terminal_outcome_reached,
+                        false,
+                    )
+                    .await?;
+                    Err(Self::tool_task_join_error(err))
+                }
+            };
+        }
+
+        loop {
+            match attempt_id.policy_terminal_phase() {
+                ToolPolicyTerminalPhase::Open => {
+                    if !attempt_id.try_claim_policy_cancellation() {
+                        continue;
+                    }
+                }
+                ToolPolicyTerminalPhase::PreHandlerWriting => {
+                    match tokio::time::timeout(
+                        POLICY_TERMINAL_CANCELLATION_GRACE,
+                        attempt_id.wait_for_policy_terminal_resolution(),
+                    )
+                    .await
+                    {
+                        Ok(_) => continue,
+                        Err(_) => {
+                            if !attempt_id.mark_pre_handler_terminal_unconfirmed() {
+                                continue;
+                            }
+                            dispatch_handle.abort();
+                            let _ = (&mut *dispatch_handle).await;
+                            return Err(FunctionCallError::Fatal(
+                                POLICY_TERMINAL_UNCONFIRMED_MESSAGE.to_string(),
+                            ));
+                        }
+                    }
+                }
+                ToolPolicyTerminalPhase::HandlerWriting => {
+                    match tokio::time::timeout(
+                        POLICY_TERMINAL_CANCELLATION_GRACE,
+                        attempt_id.wait_for_policy_terminal_resolution(),
+                    )
+                    .await
+                    {
+                        Ok(_) => continue,
+                        Err(_) => {
+                            if !attempt_id.mark_handler_terminal_unconfirmed() {
+                                continue;
+                            }
+                            dispatch_handle.abort();
+                            let _ = (&mut *dispatch_handle).await;
+                            return Err(FunctionCallError::Fatal(
+                                POLICY_TERMINAL_UNCONFIRMED_MESSAGE.to_string(),
+                            ));
+                        }
+                    }
+                }
+                ToolPolicyTerminalPhase::PreHandlerCommitted
+                | ToolPolicyTerminalPhase::HandlerCommitted => {
+                    dispatch_handle.abort();
+                    match (&mut *dispatch_handle).await {
+                        Ok(_) => {}
+                        Err(err) if err.is_cancelled() => {}
+                        Err(err) => return Err(Self::tool_task_join_error(err)),
+                    }
+                    return Ok(Self::policy_result_withheld_response(call));
+                }
+                ToolPolicyTerminalPhase::PreHandlerUnconfirmed
+                | ToolPolicyTerminalPhase::HandlerUnconfirmed => {
+                    dispatch_handle.abort();
+                    let _ = (&mut *dispatch_handle).await;
+                    return Err(FunctionCallError::Fatal(
+                        POLICY_TERMINAL_UNCONFIRMED_MESSAGE.to_string(),
+                    ));
+                }
+                ToolPolicyTerminalPhase::CancellationClaimed => {
+                    let secs = started.elapsed().as_secs_f32().max(0.1);
+                    abort_dispatch_span.record("aborted", true);
+                    let joined = if wait_for_runtime_cancellation {
+                        (&mut *dispatch_handle).await
+                    } else {
+                        dispatch_handle.abort();
+                        (&mut *dispatch_handle).await
+                    };
+                    match joined {
+                        Ok(result) => {
+                            if attempt_id.policy_terminal_phase()
+                                == ToolPolicyTerminalPhase::CancellationClaimed
+                            {
+                                notify_tool_aborted(
+                                    session,
+                                    turn,
+                                    call.call_id.as_str(),
+                                    attempt_id,
+                                    &call.tool_name,
+                                    source.clone(),
+                                )
+                                .await?;
+                                return Ok(Self::aborted_response(call, secs));
+                            }
+                            if matches!(
+                                attempt_id.policy_terminal_phase(),
+                                ToolPolicyTerminalPhase::PreHandlerCommitted
+                                    | ToolPolicyTerminalPhase::HandlerCommitted
+                            ) {
+                                return Ok(Self::policy_result_withheld_response(call));
+                            }
+                            if matches!(
+                                attempt_id.policy_terminal_phase(),
+                                ToolPolicyTerminalPhase::PreHandlerUnconfirmed
+                                    | ToolPolicyTerminalPhase::HandlerUnconfirmed
+                            ) {
+                                return Err(FunctionCallError::Fatal(
+                                    POLICY_TERMINAL_UNCONFIRMED_MESSAGE.to_string(),
+                                ));
+                            }
+                            return result;
+                        }
+                        Err(err) if err.is_cancelled() => {
+                            if attempt_id.policy_terminal_phase()
+                                == ToolPolicyTerminalPhase::CancellationClaimed
+                            {
+                                notify_tool_aborted(
+                                    session,
+                                    turn,
+                                    call.call_id.as_str(),
+                                    attempt_id,
+                                    &call.tool_name,
+                                    source.clone(),
+                                )
+                                .await?;
+                                return Ok(Self::aborted_response(call, secs));
+                            }
+                            continue;
+                        }
+                        Err(err) => {
+                            Self::notify_join_error_terminal_if_needed(
+                                session,
+                                turn,
+                                call,
+                                attempt_id,
+                                source.clone(),
+                                legacy_terminal_outcome_reached,
+                                true,
+                            )
+                            .await?;
+                            return Err(Self::tool_task_join_error(err));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    async fn notify_join_error_terminal_if_needed(
+        session: &Session,
+        turn: &crate::session::turn_context::TurnContext,
+        call: &ToolCall,
+        attempt_id: &ToolDispatchAttemptId,
+        source: ToolCallSource,
+        terminal_outcome_reached: &AtomicBool,
+        terminal_claimed_by_outer: bool,
+    ) -> Result<(), FunctionCallError> {
+        if attempt_id.policy_is_active() {
+            match attempt_id.policy_terminal_phase() {
+                ToolPolicyTerminalPhase::PreHandlerWriting => {
+                    attempt_id.mark_pre_handler_terminal_unconfirmed();
+                    return Ok(());
+                }
+                ToolPolicyTerminalPhase::HandlerWriting => {
+                    attempt_id.mark_handler_terminal_unconfirmed();
+                    return Ok(());
+                }
+                ToolPolicyTerminalPhase::PreHandlerCommitted
+                | ToolPolicyTerminalPhase::PreHandlerUnconfirmed
+                | ToolPolicyTerminalPhase::HandlerCommitted
+                | ToolPolicyTerminalPhase::HandlerUnconfirmed => return Ok(()),
+                ToolPolicyTerminalPhase::Open | ToolPolicyTerminalPhase::CancellationClaimed => {
+                    if !attempt_id.try_begin_indeterminate_terminal() {
+                        return Ok(());
+                    }
+                    let terminal_result = notify_tool_indeterminate(
+                        session,
+                        turn,
+                        call.call_id.as_str(),
+                        attempt_id,
+                        &call.tool_name,
+                        source,
+                        HANDLER_TASK_JOIN_ERROR_REASON_CODE,
+                    )
+                    .await;
+                    return match terminal_result {
+                        Ok(()) if attempt_id.mark_handler_terminal_committed() => Ok(()),
+                        Ok(()) => Err(FunctionCallError::Fatal(
+                            POLICY_TERMINAL_UNCONFIRMED_MESSAGE.to_string(),
+                        )),
+                        Err(err) => {
+                            attempt_id.mark_handler_terminal_unconfirmed();
+                            Err(err)
+                        }
+                    };
+                }
+            }
+        }
+        if !terminal_claimed_by_outer && terminal_outcome_reached.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+        notify_tool_indeterminate(
+            session,
+            turn,
+            call.call_id.as_str(),
+            attempt_id,
+            &call.tool_name,
+            source,
+            HANDLER_TASK_JOIN_ERROR_REASON_CODE,
+        )
+        .await
+    }
+
     fn tool_task_join_error(err: JoinError) -> FunctionCallError {
         FunctionCallError::Fatal(format!("tool task failed to receive: {err:?}"))
     }
@@ -260,6 +624,17 @@ impl ToolCallRuntime {
             payload: call.payload.clone(),
             result: Box::new(AbortedToolOutput {
                 message: Self::abort_message(call, secs),
+            }),
+            post_tool_use_payload: None,
+        }
+    }
+
+    fn policy_result_withheld_response(call: &ToolCall) -> AnyToolResult {
+        AnyToolResult {
+            call_id: call.call_id.clone(),
+            payload: call.payload.clone(),
+            result: Box::new(AbortedToolOutput {
+                message: POLICY_RESULT_WITHHELD_MESSAGE.to_string(),
             }),
             post_tool_use_payload: None,
         }
