@@ -557,6 +557,31 @@ async fn open_classifies_non_database_file_as_corrupt() {
     assert!(matches!(error, EvidenceError::Corrupt(_)));
 }
 
+#[test]
+fn lineage_two_preserves_reserved_migration_checksums() {
+    let migrator = sqlx::migrate!("./migrations");
+    let checksum = |version| {
+        migrator
+            .migrations
+            .iter()
+            .find(|migration| migration.version == version)
+            .unwrap_or_else(|| panic!("missing reserved migration {version}"))
+            .checksum
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    };
+
+    assert_eq!(
+        checksum(4),
+        "e28610023f8b4f754cf742c256d00b6cafe2ff77f5c6366e4a4201c771a35d3df4b52957f316ecbcf899191f62442452"
+    );
+    assert_eq!(
+        checksum(5),
+        "6a6b54d6e8b599c1e11c131e64245c36c46694a7a722c8130b50d4f3a3400281bd1d1a27116c349e34f00c96feb9f24a"
+    );
+}
+
 #[tokio::test]
 async fn open_does_not_touch_frozen_lineage_with_channel_0004() {
     // SHA-384 of frozen vNext's 0004_channel_evidence.sql. The clean series
@@ -672,6 +697,47 @@ async fn open_rejects_missing_immutable_trigger_even_when_quick_check_is_ok() {
         Err(error) => error,
     };
     assert!(matches!(error, EvidenceError::Corrupt(_)));
+}
+
+#[tokio::test]
+async fn open_requires_reserved_lineage_immutable_triggers() {
+    for (trigger, statement) in [
+        (
+            "memory_mutation_shadow_no_delete",
+            "DROP TRIGGER memory_mutation_shadow_no_delete",
+        ),
+        (
+            "channel_ingress_receipts_no_delete",
+            "DROP TRIGGER channel_ingress_receipts_no_delete",
+        ),
+    ] {
+        let temp = TempDir::new().expect("temp dir");
+        let sqlite = sqlite_config(&temp);
+        let store = HeptaEvidenceStore::open(&sqlite)
+            .await
+            .expect("open evidence");
+        let raw = sqlite
+            .open_durable_evidence_pool(store.path())
+            .await
+            .expect("raw evidence pool");
+        sqlx::query(statement)
+            .execute(&raw)
+            .await
+            .expect("drop reserved immutable trigger");
+        let quick_check: String = sqlx::query_scalar("PRAGMA quick_check(1)")
+            .fetch_one(&raw)
+            .await
+            .expect("quick check");
+        assert_eq!(quick_check, "ok");
+        raw.close().await;
+        drop(store);
+
+        let error = match HeptaEvidenceStore::open(&sqlite).await {
+            Ok(_) => panic!("missing reserved trigger {trigger} must be rejected"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, EvidenceError::Corrupt(_)));
+    }
 }
 
 #[tokio::test]
