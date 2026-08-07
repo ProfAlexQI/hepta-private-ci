@@ -22,11 +22,29 @@ pub enum UserMessageAdmission {
 /// Core capabilities may retain this context without racing the active-turn
 /// lifecycle after admission.
 pub(crate) struct AdmittedUserMessage {
-    pub(crate) admission: UserMessageAdmission,
-    pub(crate) turn_context: Arc<TurnContext>,
+    admission: UserMessageAdmission,
+    turn_context: Arc<TurnContext>,
 }
 
 impl AdmittedUserMessage {
+    pub(crate) fn started(turn_context: Arc<TurnContext>) -> Self {
+        Self {
+            admission: UserMessageAdmission::Started {
+                turn_id: turn_context.sub_id.clone(),
+            },
+            turn_context,
+        }
+    }
+
+    pub(crate) fn steered(turn_context: Arc<TurnContext>) -> Self {
+        Self {
+            admission: UserMessageAdmission::Steered {
+                turn_id: turn_context.sub_id.clone(),
+            },
+            turn_context,
+        }
+    }
+
     pub(crate) fn into_admission(self) -> UserMessageAdmission {
         let Self {
             admission,
@@ -178,13 +196,9 @@ impl PendingUserMessageAdmissions {
                 .then(|| submission_id.clone())
             });
         if let Some(submission_id) = submission_id {
-            let turn_id = turn_context.sub_id.clone();
             self.complete(
                 &submission_id,
-                Ok(AdmittedUserMessage {
-                    admission: UserMessageAdmission::Steered { turn_id },
-                    turn_context,
-                }),
+                Ok(AdmittedUserMessage::steered(turn_context)),
             );
         }
     }

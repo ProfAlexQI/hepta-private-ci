@@ -23,7 +23,6 @@ use crate::tasks::UserShellCommandMode;
 use crate::tasks::UserShellCommandTask;
 use crate::tasks::execute_user_shell_command;
 use crate::user_message_admission::AdmittedUserMessage;
-use crate::user_message_admission::UserMessageAdmission;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::ContentItem;
@@ -233,12 +232,9 @@ pub(super) async fn user_input_or_turn_inner(
         )
         .await
     {
-        Ok((turn_id, admitted_context)) => {
+        Ok(admitted_context) => {
             current_context.session_telemetry.user_prompt(&items);
-            Ok(AdmittedUserMessage {
-                admission: UserMessageAdmission::Steered { turn_id },
-                turn_context: admitted_context,
-            })
+            Ok(AdmittedUserMessage::steered(admitted_context))
         }
         Err(SteerInputError::NoActiveTurn(items)) => {
             if let Some(id) = parent_turn_id {
@@ -271,10 +267,7 @@ pub(super) async fn user_input_or_turn_inner(
                 crate::tasks::RegularTask::new(),
             )
             .await;
-            Ok(AdmittedUserMessage {
-                admission: UserMessageAdmission::Started { turn_id: sub_id },
-                turn_context: current_context,
-            })
+            Ok(AdmittedUserMessage::started(current_context))
         }
         Err(err) => {
             sess.send_event_raw(Event {

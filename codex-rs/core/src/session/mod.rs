@@ -4039,7 +4039,7 @@ impl Session {
             responsesapi_client_metadata,
         )
         .await
-        .map(|(turn_id, _)| turn_id)
+        .map(|turn_context| turn_context.sub_id.clone())
     }
 
     /// Atomically returns the exact active turn context that accepted the input.
@@ -4054,7 +4054,7 @@ impl Session {
         expected_turn_id: Option<&str>,
         client_user_message_id: Option<String>,
         responsesapi_client_metadata: Option<HashMap<String, String>>,
-    ) -> Result<(String, Arc<TurnContext>), SteerInputError> {
+    ) -> Result<Arc<TurnContext>, SteerInputError> {
         let mut active = self.active_turn.lock().await;
         let Some(active_turn) = active.as_mut() else {
             return Err(SteerInputError::NoActiveTurn(input));
@@ -4124,7 +4124,7 @@ impl Session {
             self.pending_user_message_admissions
                 .associate_steered_by_client_id(client_id, Arc::clone(&active_turn_context));
         }
-        Ok((active_turn_id, active_turn_context))
+        Ok(active_turn_context)
     }
 
     pub(crate) async fn record_memory_citation_for_turn(&self, sub_id: &str) {
