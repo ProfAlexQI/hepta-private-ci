@@ -18,12 +18,22 @@ const WRAPPER_CLOSE: &str = "</hepta_memory_reference>";
 const HEPTA_MEMORY_SOURCE: &str = "hepta_memory_same_thread_v1";
 
 /// Digest-only binding consumed by the final provider-attempt envelope.
-pub(super) struct EphemeralModelInputBinding {
+pub(crate) struct EphemeralModelInputBinding {
     input_sha256: ModelProviderSha256Digest,
     authority_sha256: ModelProviderSha256Digest,
 }
 
 impl EphemeralModelInputBinding {
+    pub(super) fn new(
+        input_sha256: ModelProviderSha256Digest,
+        authority_sha256: ModelProviderSha256Digest,
+    ) -> Self {
+        Self {
+            input_sha256,
+            authority_sha256,
+        }
+    }
+
     pub(super) fn input_sha256(&self) -> &ModelProviderSha256Digest {
         &self.input_sha256
     }
@@ -108,10 +118,7 @@ pub(super) fn prepare_ephemeral_model_input(
 
     Ok(PreparedEphemeralModelInput {
         item,
-        binding: EphemeralModelInputBinding {
-            input_sha256,
-            authority_sha256,
-        },
+        binding: EphemeralModelInputBinding::new(input_sha256, authority_sha256),
     })
 }
 
