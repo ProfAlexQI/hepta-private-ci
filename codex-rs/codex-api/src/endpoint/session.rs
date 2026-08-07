@@ -130,14 +130,69 @@ impl<T: HttpTransport> EndpointSession<T> {
     where
         C: Fn(&mut Request),
     {
+        self.stream_encoded_json_with_retry_mode(
+            method,
+            path,
+            extra_headers,
+            body,
+            StreamRetryMode::ProviderDefault,
+            configure,
+        )
+        .await
+    }
+
+    /// Streams one encoded request without transparent transport retries.
+    ///
+    /// Hosts that durably claim physical provider sends use this entry point so
+    /// every later retry must return through the host's claim boundary.
+    pub(crate) async fn stream_encoded_json_once_with<C>(
+        &self,
+        method: Method,
+        path: &str,
+        extra_headers: HeaderMap,
+        body: Option<EncodedJsonBody>,
+        configure: C,
+    ) -> Result<StreamResponse, ApiError>
+    where
+        C: Fn(&mut Request),
+    {
+        self.stream_encoded_json_with_retry_mode(
+            method,
+            path,
+            extra_headers,
+            body,
+            StreamRetryMode::SingleTransportAttempt,
+            configure,
+        )
+        .await
+    }
+
+    async fn stream_encoded_json_with_retry_mode<C>(
+        &self,
+        method: Method,
+        path: &str,
+        extra_headers: HeaderMap,
+        body: Option<EncodedJsonBody>,
+        retry_mode: StreamRetryMode,
+        configure: C,
+    ) -> Result<StreamResponse, ApiError>
+    where
+        C: Fn(&mut Request),
+    {
         let body = body.map(RequestBody::EncodedJson);
         let mut request = self.make_request(&method, path, &extra_headers, body.as_ref());
         configure(&mut request);
         let request = request.into_prepared().map_err(TransportError::Build)?;
         let make_request = || request.clone();
 
+        let mut retry_policy = self.provider.retry.to_policy();
+        if retry_mode == StreamRetryMode::SingleTransportAttempt {
+            // `max_attempts` is the maximum retry index; zero means the
+            // initial invocation is made once and is never retried here.
+            retry_policy.max_attempts = 0;
+        }
         let stream = run_with_request_telemetry(
-            self.provider.retry.to_policy(),
+            retry_policy,
             self.request_telemetry.clone(),
             make_request,
             |req| {
@@ -153,4 +208,10 @@ impl<T: HttpTransport> EndpointSession<T> {
 
         Ok(stream)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StreamRetryMode {
+    ProviderDefault,
+    SingleTransportAttempt,
 }
