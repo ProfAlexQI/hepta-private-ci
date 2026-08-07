@@ -178,3 +178,7 @@ fn copy_input<'a>(input: &ModelProviderInvocationInput<'a>) -> ModelProviderInvo
         generate: input.generate,
     }
 }
+
+#[cfg(test)]
+#[path = "lifecycle_tests.rs"]
+mod tests;
