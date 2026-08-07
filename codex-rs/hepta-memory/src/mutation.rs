@@ -335,10 +335,12 @@ mod tests {
             b"private memory",
         )
         .expect("create proposal");
+        let replay = dry_run_memory_mutation(&proposal, Some(b"private memory"), Some(&current));
         assert_eq!(
-            dry_run_memory_mutation(&proposal, Some(b"private memory"), Some(&current)).disposition,
-            MemoryMutationDryRunDisposition::NoOp
+            replay.snapshot_sha256.as_str(),
+            "367c6e7416afb9e1b13ac306f8c67f1d7e674bed5be4fc405a7932959a007e4e"
         );
+        assert_eq!(replay.disposition, MemoryMutationDryRunDisposition::NoOp);
         let substituted = dry_run_memory_mutation(&proposal, Some(b"substituted"), None);
         assert_eq!(
             substituted.reason,
