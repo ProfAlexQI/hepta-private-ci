@@ -4,6 +4,10 @@ mod admission;
 mod authorization;
 mod binding;
 mod install;
+mod provider_binding;
+mod provider_error;
+mod provider_lease;
+mod provider_policy;
 mod state;
 mod terminal;
 

@@ -141,7 +141,8 @@ pub fn install_with_mode<C, F>(
         evidence: tokio::sync::OnceCell::new(),
     });
     registry.thread_lifecycle_contributor(extension.clone());
-    registry.tool_policy_contributor(extension);
+    registry.tool_policy_contributor(extension.clone());
+    registry.model_provider_policy_contributor(extension);
 }
 
 pub(crate) fn governance_state(
