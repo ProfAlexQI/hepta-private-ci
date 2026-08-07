@@ -55,6 +55,7 @@ pub(super) struct ProviderPolicyState {
     pub(super) terminal_count: AtomicUsize,
     pub(super) completed_count: AtomicUsize,
     pub(super) attempts: Mutex<Vec<ProviderAttemptObservation>>,
+    pub(super) terminals: Mutex<Vec<ModelProviderTerminal>>,
     terminal_entered: Notify,
     pub(super) terminal_release: Semaphore,
 }
@@ -68,6 +69,7 @@ impl ProviderPolicyState {
             terminal_count: AtomicUsize::new(0),
             completed_count: AtomicUsize::new(0),
             attempts: Mutex::new(Vec::new()),
+            terminals: Mutex::new(Vec::new()),
             terminal_entered: Notify::new(),
             terminal_release: Semaphore::new(0),
         })
@@ -138,10 +140,15 @@ impl ModelProviderAttemptLease for TestProviderLease {
         terminal: ModelProviderTerminal,
     ) -> ModelProviderPolicyFuture<'static, ()> {
         Box::pin(async move {
-            self.state.terminal_count.fetch_add(1, Ordering::SeqCst);
+            self.state
+                .terminals
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(terminal.clone());
             if matches!(terminal, ModelProviderTerminal::Completed { .. }) {
                 self.state.completed_count.fetch_add(1, Ordering::SeqCst);
             }
+            self.state.terminal_count.fetch_add(1, Ordering::SeqCst);
             self.state.terminal_entered.notify_one();
             let permit = self
                 .state
