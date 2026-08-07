@@ -253,6 +253,8 @@ pub enum Feature {
     GuardianReuseParentCompaction,
     /// Enable Guardian V2 automatic approval reviews.
     GuardianV2,
+    /// Enable the Hepta typed governance extension plane.
+    HeptaGovernance,
     /// Enable persisted thread goals and automatic goal continuation.
     Goals,
     /// Add current context-window metadata to model-visible context.
@@ -1384,6 +1386,12 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::GuardianV2,
         key: "guardianv2",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::HeptaGovernance,
+        key: "hepta_governance",
         stage: Stage::UnderDevelopment,
         default_enabled: false,
     },
