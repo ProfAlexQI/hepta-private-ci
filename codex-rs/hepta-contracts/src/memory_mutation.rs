@@ -459,6 +459,10 @@ mod tests {
         )
         .expect("valid create proposal");
 
+        assert_eq!(
+            proposal.proposal_id.as_str(),
+            "memory-mutation:v1:6412c086a3c967cddd513466dc92f32ff1b9e42674fb023eeb76d89108373b47"
+        );
         assert!(proposal.validate(Some(b"private reviewed memory")).is_ok());
         assert!(
             proposal
@@ -490,27 +494,32 @@ mod tests {
     fn supersede_and_tombstone_require_exact_positive_preconditions() {
         let current = candidate(b"current", 1);
         let successor = candidate(b"successor", 2);
-        assert!(
-            MemoryMutationProposal::supersede(
-                "turn-1",
-                digest("proposer"),
-                current.memory_id.clone(),
-                current.revision.clone(),
-                successor,
-                b"successor",
-            )
-            .is_ok()
+        let supersede = MemoryMutationProposal::supersede(
+            "turn-1",
+            digest("proposer"),
+            current.memory_id.clone(),
+            current.revision.clone(),
+            successor,
+            b"successor",
+        )
+        .expect("valid supersede proposal");
+        let tombstone = MemoryMutationProposal::tombstone(
+            "turn-1",
+            digest("proposer"),
+            current.scope.clone(),
+            current.memory_id,
+            current.revision,
+            MemoryMutationReasonCode::parse("operator_delete").expect("reason"),
+        )
+        .expect("valid tombstone proposal");
+
+        assert_eq!(
+            supersede.proposal_id.as_str(),
+            "memory-mutation:v1:f2acb0127308856fdf9cc8c52bcc92170ba80b41d358a947ac8657d3ab56de0d"
         );
-        assert!(
-            MemoryMutationProposal::tombstone(
-                "turn-1",
-                digest("proposer"),
-                current.scope.clone(),
-                current.memory_id,
-                current.revision,
-                MemoryMutationReasonCode::parse("operator_delete").expect("reason"),
-            )
-            .is_ok()
+        assert_eq!(
+            tombstone.proposal_id.as_str(),
+            "memory-mutation:v1:a5b23dcaf0087415f4f405b9c012294b70e4c607f38e3c31f3957183cd10d668"
         );
         assert!(MemoryMutationReasonCode::parse("Operator Delete").is_err());
     }
