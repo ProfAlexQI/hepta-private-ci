@@ -13,3 +13,8 @@ mod lifecycle;
 // reviewed and tested independently.
 #[allow(dead_code)]
 mod attempt_owner;
+
+// Registered before response-stream plumbing so terminal framing remains a
+// focused review slice.
+#[allow(dead_code)]
+mod response_terminal;
