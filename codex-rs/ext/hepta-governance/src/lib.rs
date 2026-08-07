@@ -25,3 +25,7 @@ use install::governance_state;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "provider_policy_tests.rs"]
+mod provider_policy_tests;
