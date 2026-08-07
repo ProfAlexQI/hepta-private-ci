@@ -23,6 +23,7 @@ use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::test_codex;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -49,7 +50,7 @@ pub(super) struct ProviderAttemptObservation {
 }
 
 pub(super) struct ProviderPolicyState {
-    active: bool,
+    active: AtomicBool,
     decision: TestDecision,
     pub(super) begin_count: AtomicUsize,
     pub(super) terminal_count: AtomicUsize,
@@ -63,7 +64,7 @@ pub(super) struct ProviderPolicyState {
 impl ProviderPolicyState {
     pub(super) fn new(active: bool, decision: TestDecision) -> Arc<Self> {
         Arc::new(Self {
-            active,
+            active: AtomicBool::new(active),
             decision,
             begin_count: AtomicUsize::new(0),
             terminal_count: AtomicUsize::new(0),
@@ -80,6 +81,10 @@ impl ProviderPolicyState {
             self.terminal_entered.notified().await;
         }
     }
+
+    pub(super) fn set_active(&self, active: bool) {
+        self.active.store(active, Ordering::SeqCst);
+    }
 }
 
 struct TestProviderPolicy {
@@ -88,7 +93,7 @@ struct TestProviderPolicy {
 
 impl ModelProviderPolicyContributor for TestProviderPolicy {
     fn is_active(&self, _thread_store: &ExtensionData) -> bool {
-        self.state.active
+        self.state.active.load(Ordering::SeqCst)
     }
 
     fn begin<'a>(
@@ -145,7 +150,11 @@ impl ModelProviderAttemptLease for TestProviderLease {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(terminal.clone());
-            if matches!(terminal, ModelProviderTerminal::Completed { .. }) {
+            if matches!(
+                terminal,
+                ModelProviderTerminal::Completed { .. }
+                    | ModelProviderTerminal::CompletedUnary { .. }
+            ) {
                 self.state.completed_count.fetch_add(1, Ordering::SeqCst);
             }
             self.state.terminal_count.fetch_add(1, Ordering::SeqCst);
