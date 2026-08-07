@@ -329,15 +329,18 @@ mod tests {
         let right_nonce = Sha256Digest::for_bytes(b"a:bc");
         let left = ProviderAttemptId::for_send(&request_id, &left_nonce);
         let right = ProviderAttemptId::for_send(&request_id, &right_nonce);
+        let receipt = ProviderReceiptId::for_attempt(&left);
 
         assert!(request_id.as_str().starts_with("provider-request:v1:"));
         assert_eq!(request_id, repeated);
-        assert!(left.as_str().starts_with("provider-attempt:v1:"));
+        assert_eq!(
+            left.as_str(),
+            "provider-attempt:v1:8e80f9156d8397f65845d7bba8cee76365f6a38fcc39d1d6538c6038b6b55245"
+        );
         assert_ne!(left, right);
-        assert!(
-            ProviderReceiptId::for_attempt(&left)
-                .as_str()
-                .starts_with("provider-receipt:v1:")
+        assert_eq!(
+            receipt.as_str(),
+            "provider-receipt:v1:2e4d34f5a53576b1aa24f3c4f8a3252508c2138c0305e42a0b4ba1e8a02e8107"
         );
     }
 
