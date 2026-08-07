@@ -86,6 +86,7 @@ mod mcp_startup_refresh_http_proxy;
 mod mcp_tool_cache;
 mod mcp_tool_exposure;
 mod mcp_turn_metadata;
+mod memory_provider_policy;
 mod model_overrides;
 mod model_provider_policy;
 mod model_provider_policy_compaction;

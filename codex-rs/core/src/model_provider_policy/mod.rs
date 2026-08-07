@@ -9,6 +9,8 @@ mod binding;
 #[allow(dead_code)]
 mod lifecycle;
 
+mod memory;
+
 // Registered before the HTTP/WS callsites so cancellation ownership can be
 // reviewed and tested independently.
 #[allow(dead_code)]
@@ -34,6 +36,7 @@ pub(crate) use binding::prepare_model_provider_policy;
 pub(crate) use lifecycle::ModelProviderPolicyBegin;
 pub(crate) use lifecycle::begin_model_provider_policy;
 pub(crate) use lifecycle::has_active_model_provider_policy;
+pub use memory::MemoryModelProviderPolicyHandle;
 pub(crate) use response_terminal::ProviderResponseTerminal;
 pub(crate) use transport::ProviderRoutingHint;
 pub(crate) use transport::ProviderWireSemantic;
