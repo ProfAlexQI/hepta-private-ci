@@ -4,10 +4,9 @@ use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::de::Error as _;
-use sha2::Digest;
-use sha2::Sha256;
 
 use crate::Sha256Digest;
+use crate::canonical::length_delimited_sha256;
 
 pub const MEMORY_CONTRACT_SCHEMA_VERSION: u32 = 1;
 pub const SCORE_SCALE_PPM: u32 = 1_000_000;
@@ -27,10 +26,11 @@ impl MemoryId {
     pub fn for_content(scope: &MemoryScope, canonical_content: &[u8]) -> Self {
         Self(format!(
             "memory:v1:{}",
-            digest_parts([
+            length_delimited_sha256([
                 scope.binding_sha256().as_str(),
                 Sha256Digest::for_bytes(canonical_content).as_str(),
             ])
+            .as_str()
         ))
     }
 
@@ -68,15 +68,13 @@ pub struct MemoryScope {
 
 impl MemoryScope {
     pub fn binding_sha256(&self) -> Sha256Digest {
-        Sha256Digest::for_bytes(
-            digest_parts([
-                self.installation_sha256.as_str(),
-                self.workspace_sha256.as_str(),
-                self.thread_sha256.as_str(),
-                self.principal_sha256.as_str(),
-            ])
-            .as_bytes(),
-        )
+        let inner = length_delimited_sha256([
+            self.installation_sha256.as_str(),
+            self.workspace_sha256.as_str(),
+            self.thread_sha256.as_str(),
+            self.principal_sha256.as_str(),
+        ]);
+        Sha256Digest::for_bytes(inner.as_str().as_bytes())
     }
 }
 
@@ -121,11 +119,11 @@ impl RecallAuthority {
 
     fn binding_sha256(&self) -> Sha256Digest {
         let binding = match self {
-            Self::SameThread => digest_parts(["same_thread"]),
+            Self::SameThread => length_delimited_sha256(["same_thread"]),
             Self::CrossThread {
                 capability_sha256,
                 scope: CrossThreadScope::ExactSourceThread { thread_sha256 },
-            } => digest_parts([
+            } => length_delimited_sha256([
                 "cross_thread",
                 "exact_source_thread",
                 capability_sha256.as_str(),
@@ -134,13 +132,13 @@ impl RecallAuthority {
             Self::CrossThread {
                 capability_sha256,
                 scope: CrossThreadScope::WorkspaceThreads,
-            } => digest_parts([
+            } => length_delimited_sha256([
                 "cross_thread",
                 "workspace_threads",
                 capability_sha256.as_str(),
             ]),
         };
-        Sha256Digest::for_bytes(binding.as_bytes())
+        Sha256Digest::for_bytes(binding.as_str().as_bytes())
     }
 }
 
@@ -406,18 +404,16 @@ impl RecallLimits {
         let max_item_tokens = self.max_item_tokens.to_string();
         let max_total_tokens = self.max_total_tokens.to_string();
         let max_context_window_ppm = self.max_context_window_ppm.to_string();
-        Sha256Digest::for_bytes(
-            digest_parts([
-                max_query_bytes.as_str(),
-                max_candidates_scanned.as_str(),
-                max_items_per_source.as_str(),
-                max_items.as_str(),
-                max_item_tokens.as_str(),
-                max_total_tokens.as_str(),
-                max_context_window_ppm.as_str(),
-            ])
-            .as_bytes(),
-        )
+        let inner = length_delimited_sha256([
+            max_query_bytes.as_str(),
+            max_candidates_scanned.as_str(),
+            max_items_per_source.as_str(),
+            max_items.as_str(),
+            max_item_tokens.as_str(),
+            max_total_tokens.as_str(),
+            max_context_window_ppm.as_str(),
+        ]);
+        Sha256Digest::for_bytes(inner.as_str().as_bytes())
     }
 }
 
@@ -519,7 +515,7 @@ impl RecallRequest {
     fn expected_request_id(&self) -> RecallRequestId {
         RecallRequestId(format!(
             "memory-recall:v1:{}",
-            digest_parts([
+            length_delimited_sha256([
                 self.schema_version.to_string().as_str(),
                 self.turn_sha256.as_str(),
                 self.scope.binding_sha256().as_str(),
@@ -527,6 +523,7 @@ impl RecallRequest {
                 self.query.sha256().as_str(),
                 self.limits.binding_sha256().as_str(),
             ])
+            .as_str()
         ))
     }
 }
@@ -639,15 +636,6 @@ impl MemoryAttachmentMetadata {
             self.revision.content_sha256.as_str()
         )
     }
-}
-
-fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
-    let mut hasher = Sha256::new();
-    for part in parts {
-        hasher.update((part.len() as u64).to_be_bytes());
-        hasher.update(part.as_bytes());
-    }
-    format!("{:x}", hasher.finalize())
 }
 
 #[cfg(test)]
