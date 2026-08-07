@@ -1,9 +1,8 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::canonical::length_delimited_sha256;
 use crate::stable_id::parse_prefixed_sha256_id;
-use sha2::Digest;
-use sha2::Sha256;
 
 use crate::Sha256Digest;
 
@@ -62,7 +61,10 @@ impl RequestBindingId {
                     .map_or("absent", Sha256Digest::as_str),
             ]);
         }
-        Self(format!("provider-request:v1:{}", digest_parts(parts)))
+        Self(format!(
+            "provider-request:v1:{}",
+            length_delimited_sha256(parts).as_str()
+        ))
     }
 
     pub fn as_str(&self) -> &str {
@@ -85,7 +87,8 @@ impl ProviderAttemptId {
     ) -> Self {
         Self(format!(
             "provider-attempt:v1:{}",
-            digest_parts([request_binding_id.as_str(), attempt_nonce_sha256.as_str()])
+            length_delimited_sha256([request_binding_id.as_str(), attempt_nonce_sha256.as_str(),])
+                .as_str()
         ))
     }
 
@@ -102,7 +105,7 @@ impl ProviderReceiptId {
     pub fn for_attempt(attempt_id: &ProviderAttemptId) -> Self {
         Self(format!(
             "provider-receipt:v1:{}",
-            digest_parts([attempt_id.as_str()])
+            length_delimited_sha256([attempt_id.as_str()]).as_str()
         ))
     }
 
@@ -284,15 +287,6 @@ impl ProviderInvocationReceipt {
             terminal,
         }
     }
-}
-
-fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
-    let mut hasher = Sha256::new();
-    for part in parts {
-        hasher.update((part.len() as u64).to_be_bytes());
-        hasher.update(part.as_bytes());
-    }
-    format!("{:x}", hasher.finalize())
 }
 
 #[cfg(test)]
