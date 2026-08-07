@@ -11,6 +11,11 @@ mod lifecycle;
 
 mod memory;
 
+// Registered before the physical-send callers so the one-shot renderer and
+// authority binding can be reviewed independently from transport control flow.
+#[allow(dead_code)]
+mod ephemeral_input;
+
 // Registered before the HTTP/WS callsites so cancellation ownership can be
 // reviewed and tested independently.
 #[allow(dead_code)]
