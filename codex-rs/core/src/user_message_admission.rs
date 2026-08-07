@@ -16,6 +16,14 @@ pub enum UserMessageAdmission {
     Steered { turn_id: String },
 }
 
+impl UserMessageAdmission {
+    pub fn turn_id(&self) -> &str {
+        match self {
+            Self::Started { turn_id } | Self::Steered { turn_id } => turn_id,
+        }
+    }
+}
+
 /// Core-owned admission result retaining the exact turn that accepted a message.
 ///
 /// Public callers continue to receive only [`UserMessageAdmission`]. Narrow
@@ -52,6 +60,10 @@ impl AdmittedUserMessage {
         } = self;
         drop(turn_context);
         admission
+    }
+
+    pub(crate) fn into_parts(self) -> (UserMessageAdmission, Arc<TurnContext>) {
+        (self.admission, self.turn_context)
     }
 }
 

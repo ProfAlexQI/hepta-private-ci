@@ -77,6 +77,7 @@ use codex_otel::current_span_w3c_trace_context;
 use codex_protocol::auth::AuthMode;
 
 use codex_extension_api::ModelProviderPolicyError;
+use codex_extension_api::ModelProviderRequestKind;
 use codex_extension_api::ModelProviderTerminal;
 use codex_extension_api::ModelProviderTransport;
 use codex_protocol::ThreadId;
@@ -137,6 +138,7 @@ use crate::model_provider_policy::provider_websocket_wire_payload;
 use crate::model_provider_policy::responses_lite_from_http_header;
 use crate::model_provider_policy::responses_lite_from_ws_metadata;
 use crate::responses_metadata::CodexResponsesMetadata;
+use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::responses_metadata::subagent_header_value;
 use crate::util::emit_feedback_auth_recovery_tags;
 use codex_feedback::FeedbackRequestTags;
@@ -1659,8 +1661,10 @@ impl ModelClientSession {
             .as_ref()
             .map(AuthManager::unauthorized_recovery);
         let mut pending_retry = PendingUnauthorizedRetry::default();
+        let mut memory_retry_index = 0;
         loop {
             let client_setup = self.client.current_client_setup().await?;
+            let retry_config = client_setup.api_provider.retry.clone();
             let transport = self
                 .client
                 .build_api_transport(&client_setup.api_provider, RESPONSES_ENDPOINT)?;
@@ -1778,6 +1782,10 @@ impl ModelClientSession {
                 }
                 None => client.stream_request(request, options).await,
             };
+            let governed_memory_attempt = admitted_provider_attempt.is_some()
+                && provider_policy_context.is_some_and(|context| {
+                    context.request_kind == ModelProviderRequestKind::Memory
+                });
 
             match stream_result {
                 Ok(stream) => {
@@ -1824,6 +1832,15 @@ impl ModelClientSession {
                             .finish_immediate(api_error_http_status(&err), "http")
                             .await?;
                     }
+                    let retry_delay = if governed_memory_attempt {
+                        match &err {
+                            ApiError::Transport(transport_error) => retry_config
+                                .retry_delay_after_error(transport_error, memory_retry_index),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
                     let response_debug_context =
                         extract_response_debug_context_from_api_error(&err);
                     let err = self.client.state.provider.map_api_error(err);
@@ -1832,6 +1849,11 @@ impl ModelClientSession {
                         response_debug_context.request_id.as_deref(),
                         /*output_items*/ &[],
                     );
+                    if let Some(delay) = retry_delay {
+                        memory_retry_index += 1;
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
                     return Err(err);
                 }
             }
@@ -2293,6 +2315,58 @@ impl ModelClientSession {
             responses_metadata,
             inference_trace,
             /*provider_policy_context*/ None,
+        )
+        .await
+    }
+
+    /// Streams one detached Memory request through the exact admitted parent
+    /// session/thread/turn scopes retained by `provider_policy`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn stream_memory_with_policy(
+        &mut self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &CodexResponsesMetadata,
+        inference_trace: &InferenceTraceContext,
+        provider_policy: &crate::MemoryModelProviderPolicyHandle,
+    ) -> Result<ResponseStream> {
+        let policy_thread_id = provider_policy.thread_id();
+        let policy_session_id = provider_policy.session_id();
+        if self.client.state.thread_id != policy_thread_id
+            || responses_metadata.thread_id != policy_thread_id.to_string()
+            || responses_metadata.session_id != policy_session_id.to_string()
+        {
+            return Err(CodexErr::InvalidRequest(
+                "memory provider client, metadata, and policy session/thread identities must match"
+                    .to_string(),
+            ));
+        }
+        if responses_metadata.turn_id.is_some()
+            || !matches!(
+                responses_metadata.request_kind,
+                Some(CodexResponsesRequestKind::Memory)
+            )
+        {
+            return Err(CodexErr::InvalidRequest(
+                "memory provider policy requires detached Memory response metadata".to_string(),
+            ));
+        }
+
+        let provider_policy_context = provider_policy.context();
+        self.stream_with_policy(
+            prompt,
+            model_info,
+            session_telemetry,
+            effort,
+            summary,
+            service_tier,
+            responses_metadata,
+            inference_trace,
+            Some(&provider_policy_context),
         )
         .await
     }

@@ -364,7 +364,7 @@ impl CodexThread {
         .map(AdmittedUserMessage::into_admission)
     }
 
-    async fn submit_user_input_and_wait_for_admission_inner(
+    pub(crate) async fn submit_user_input_and_wait_for_admission_inner(
         &self,
         op: Op,
         trace: Option<W3cTraceContext>,
