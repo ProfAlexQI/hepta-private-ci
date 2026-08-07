@@ -9,6 +9,7 @@ use crate::hook_runtime::PostCompactHookOutcome;
 use crate::hook_runtime::PreCompactHookOutcome;
 use crate::hook_runtime::run_post_compact_hooks;
 use crate::hook_runtime::run_pre_compact_hooks;
+use crate::model_provider_policy::ModelProviderPolicyContext;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::responses_metadata::CompactionTurnMetadata;
@@ -28,6 +29,7 @@ use codex_analytics::CompactionStatus;
 use codex_analytics::CompactionStrategy;
 use codex_analytics::CompactionTrigger;
 use codex_analytics::now_unix_seconds;
+use codex_extension_api::ModelProviderRequestKind;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::Result as CodexResult;
@@ -312,6 +314,12 @@ async fn run_compact_task_inner_impl(
                     continue;
                 }
                 sess.set_total_tokens_full(turn_context.as_ref()).await;
+                sess.track_turn_codex_error(turn_context.as_ref(), &e);
+                let event = EventMsg::Error(e.to_error_event(/*message_prefix*/ None));
+                sess.send_event(&turn_context, event).await;
+                return Err(e);
+            }
+            Err(e) if !e.is_retryable() => {
                 sess.track_turn_codex_error(turn_context.as_ref(), &e);
                 let event = EventMsg::Error(e.to_error_event(/*message_prefix*/ None));
                 sess.send_event(&turn_context, event).await;
@@ -696,8 +704,17 @@ async fn drain_to_completed(
     responses_metadata: &CodexResponsesMetadata,
     prompt: &Prompt,
 ) -> CodexResult<()> {
+    let provider_policy_context = ModelProviderPolicyContext {
+        registry: sess.services.extensions.as_ref(),
+        session_store: &sess.services.session_extension_data,
+        thread_store: &sess.services.thread_extension_data,
+        turn_store: turn_context.extension_data.as_ref(),
+        thread_id: sess.thread_id().to_string(),
+        turn_id: turn_context.sub_id.clone(),
+        request_kind: ModelProviderRequestKind::Compaction,
+    };
     let mut stream = client_session
-        .stream(
+        .stream_with_policy(
             prompt,
             &turn_context.model_info,
             &turn_context.session_telemetry,
@@ -708,6 +725,7 @@ async fn drain_to_completed(
             // Rollout tracing currently models remote compaction only; local compaction streams
             // are left untraced until the reducer has a first-class local compaction lifecycle.
             &InferenceTraceContext::disabled(),
+            Some(&provider_policy_context),
         )
         .await?;
     loop {

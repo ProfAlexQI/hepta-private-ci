@@ -35,32 +35,32 @@ use wiremock::matchers::method;
 use wiremock::matchers::path;
 
 #[derive(Clone, Copy)]
-enum TestDecision {
+pub(super) enum TestDecision {
     Allow,
     Block,
 }
 
-#[derive(Debug, Eq, PartialEq)]
-struct ProviderAttemptObservation {
-    request_kind: ModelProviderRequestKind,
-    transport: ModelProviderTransport,
-    has_previous_response: bool,
-    generate: bool,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ProviderAttemptObservation {
+    pub(super) request_kind: ModelProviderRequestKind,
+    pub(super) transport: ModelProviderTransport,
+    pub(super) has_previous_response: bool,
+    pub(super) generate: bool,
 }
 
-struct ProviderPolicyState {
+pub(super) struct ProviderPolicyState {
     active: bool,
     decision: TestDecision,
-    begin_count: AtomicUsize,
-    terminal_count: AtomicUsize,
-    completed_count: AtomicUsize,
-    attempts: Mutex<Vec<ProviderAttemptObservation>>,
+    pub(super) begin_count: AtomicUsize,
+    pub(super) terminal_count: AtomicUsize,
+    pub(super) completed_count: AtomicUsize,
+    pub(super) attempts: Mutex<Vec<ProviderAttemptObservation>>,
     terminal_entered: Notify,
-    terminal_release: Semaphore,
+    pub(super) terminal_release: Semaphore,
 }
 
 impl ProviderPolicyState {
-    fn new(active: bool, decision: TestDecision) -> Arc<Self> {
+    pub(super) fn new(active: bool, decision: TestDecision) -> Arc<Self> {
         Arc::new(Self {
             active,
             decision,
@@ -73,7 +73,7 @@ impl ProviderPolicyState {
         })
     }
 
-    async fn wait_for_terminal_count(&self, expected: usize) {
+    pub(super) async fn wait_for_terminal_count(&self, expected: usize) {
         while self.terminal_count.load(Ordering::SeqCst) < expected {
             self.terminal_entered.notified().await;
         }
@@ -157,7 +157,7 @@ impl ModelProviderAttemptLease for TestProviderLease {
     }
 }
 
-fn extensions_with_policy(
+pub(super) fn extensions_with_policy(
     state: Arc<ProviderPolicyState>,
 ) -> Arc<codex_extension_api::ExtensionRegistry<Config>> {
     let mut extensions = ExtensionRegistryBuilder::<Config>::new();
