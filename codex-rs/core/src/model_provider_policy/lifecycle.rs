@@ -276,6 +276,8 @@ fn copy_input<'a>(input: &ModelProviderInvocationInput<'a>) -> ModelProviderInvo
         endpoint_sha256: input.endpoint_sha256,
         logical_request_sha256: input.logical_request_sha256,
         wire_semantic_sha256: input.wire_semantic_sha256,
+        ephemeral_input_sha256: input.ephemeral_input_sha256,
+        ephemeral_input_witness_sha256: input.ephemeral_input_witness_sha256,
         previous_response_id_sha256: input.previous_response_id_sha256,
         generate: input.generate,
     }

@@ -34,9 +34,42 @@ fn binding(thread_id: &str, logical: &[u8], wire: &[u8]) -> ProviderRequestBindi
         endpoint_sha256: Sha256Digest::for_bytes(b"/responses"),
         logical_request_sha256: Sha256Digest::for_bytes(logical),
         wire_semantic_sha256: Sha256Digest::for_bytes(wire),
+        ephemeral_input_sha256: None,
+        ephemeral_input_witness_sha256: None,
         previous_response_id_sha256: None,
         generate: true,
     }
+}
+
+#[tokio::test]
+async fn provider_intent_rejects_orphaned_ephemeral_digests_before_insert() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    for (nonce, input_present) in [(91, true), (92, false)] {
+        let mut binding = binding("thread-1", b"logical", b"wire");
+        if input_present {
+            binding.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(b"orphaned-input"));
+        } else {
+            binding.ephemeral_input_witness_sha256 =
+                Some(Sha256Digest::for_bytes(b"orphaned-witness"));
+        }
+        let intent = ProviderInvocationIntent::new([nonce; 16], binding);
+
+        let error = store
+            .append_provider_intent(&intent)
+            .await
+            .expect_err("orphaned ephemeral digest must fail closed");
+        assert!(matches!(error, EvidenceError::InvalidRecord(_)));
+    }
+    assert_eq!(
+        store
+            .pending_provider_attempt_count()
+            .await
+            .expect("pending count"),
+        0
+    );
 }
 
 fn intent(nonce: u8) -> ProviderInvocationIntent {

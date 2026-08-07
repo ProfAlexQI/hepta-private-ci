@@ -28,25 +28,55 @@ impl RequestBindingId {
         } else {
             "no_generate"
         };
+        let base_parts = [
+            schema_version.as_str(),
+            binding.thread_id.as_str(),
+            binding.turn_id.as_str(),
+            binding.host_request_binding_id_sha256.as_str(),
+            binding.request_kind.as_str(),
+            binding.provider_id.as_str(),
+            binding.provider_config_sha256.as_str(),
+            binding.model.as_str(),
+            binding.transport.as_str(),
+            binding.endpoint_sha256.as_str(),
+            binding.logical_request_sha256.as_str(),
+            binding.wire_semantic_sha256.as_str(),
+            previous_response_present,
+            previous_response_id,
+            generate,
+        ];
+        if binding.ephemeral_input_sha256.is_none()
+            && binding.ephemeral_input_witness_sha256.is_none()
+        {
+            return Self(format!("provider-request:v1:{}", digest_parts(base_parts)));
+        }
+
+        let ephemeral_input = binding
+            .ephemeral_input_sha256
+            .as_ref()
+            .map_or("", Sha256Digest::as_str);
+        let ephemeral_input_present = if binding.ephemeral_input_sha256.is_some() {
+            "present"
+        } else {
+            "absent"
+        };
+        let ephemeral_input_witness = binding
+            .ephemeral_input_witness_sha256
+            .as_ref()
+            .map_or("", Sha256Digest::as_str);
+        let ephemeral_input_witness_present = if binding.ephemeral_input_witness_sha256.is_some() {
+            "present"
+        } else {
+            "absent"
+        };
         Self(format!(
-            "provider-request:v1:{}",
-            digest_parts([
-                schema_version.as_str(),
-                binding.thread_id.as_str(),
-                binding.turn_id.as_str(),
-                binding.host_request_binding_id_sha256.as_str(),
-                binding.request_kind.as_str(),
-                binding.provider_id.as_str(),
-                binding.provider_config_sha256.as_str(),
-                binding.model.as_str(),
-                binding.transport.as_str(),
-                binding.endpoint_sha256.as_str(),
-                binding.logical_request_sha256.as_str(),
-                binding.wire_semantic_sha256.as_str(),
-                previous_response_present,
-                previous_response_id,
-                generate,
-            ])
+            "provider-request:v2:{}",
+            digest_parts(base_parts.into_iter().chain([
+                ephemeral_input_present,
+                ephemeral_input,
+                ephemeral_input_witness_present,
+                ephemeral_input_witness,
+            ]))
         ))
     }
 
@@ -152,6 +182,12 @@ pub struct ProviderRequestBinding {
     pub endpoint_sha256: Sha256Digest,
     pub logical_request_sha256: Sha256Digest,
     pub wire_semantic_sha256: Sha256Digest,
+    /// Digest of the exact host-rendered input scoped to one physical send.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ephemeral_input_sha256: Option<Sha256Digest>,
+    /// Host witness binding ephemeral input to the exact provider attempt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ephemeral_input_witness_sha256: Option<Sha256Digest>,
     pub previous_response_id_sha256: Option<Sha256Digest>,
     pub generate: bool,
 }
@@ -292,6 +328,8 @@ mod tests {
             endpoint_sha256: Sha256Digest::for_bytes(b"/responses"),
             logical_request_sha256: Sha256Digest::for_bytes(b"logical"),
             wire_semantic_sha256: Sha256Digest::for_bytes(b"wire"),
+            ephemeral_input_sha256: None,
+            ephemeral_input_witness_sha256: None,
             previous_response_id_sha256: None,
             generate: true,
         }
@@ -307,7 +345,16 @@ mod tests {
         let left = ProviderAttemptId::for_send(&request_id, &left_nonce);
         let right = ProviderAttemptId::for_send(&request_id, &right_nonce);
 
-        assert!(request_id.as_str().starts_with("provider-request:v1:"));
+        assert_eq!(
+            request_id.as_str(),
+            "provider-request:v1:af856c7c8c26482cec5a16aeb1c302f126e7eb1091cd4ad1a58b594fc0d40809"
+        );
+        let serialized = serde_json::to_string(&binding).expect("serialize binding");
+        assert!(!serialized.contains("ephemeral_input"));
+        let legacy: ProviderRequestBinding =
+            serde_json::from_str(&serialized).expect("deserialize binding without optional fields");
+        assert!(legacy.ephemeral_input_sha256.is_none());
+        assert!(legacy.ephemeral_input_witness_sha256.is_none());
         assert_eq!(request_id, repeated);
         assert!(left.as_str().starts_with("provider-attempt:v1:"));
         assert_ne!(left, right);
@@ -316,6 +363,43 @@ mod tests {
                 .as_str()
                 .starts_with("provider-receipt:v1:")
         );
+    }
+
+    #[test]
+    fn ephemeral_input_uses_v2_exact_binding_and_binds_both_digests() {
+        let mut binding = binding();
+        binding.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(b"ephemeral-input"));
+        binding.ephemeral_input_witness_sha256 =
+            Some(Sha256Digest::for_bytes(b"ephemeral-witness"));
+        let request_id = RequestBindingId::for_request(&binding);
+
+        assert_eq!(
+            request_id.as_str(),
+            "provider-request:v2:c24546b5083d654198db73c790207179f72b951fd5a5453e8ec6df1eecd1220d"
+        );
+        let mut changed_input = binding.clone();
+        changed_input.ephemeral_input_sha256 =
+            Some(Sha256Digest::for_bytes(b"changed-ephemeral-input"));
+        let mut changed_witness = binding.clone();
+        changed_witness.ephemeral_input_witness_sha256 =
+            Some(Sha256Digest::for_bytes(b"changed-ephemeral-witness"));
+        assert_ne!(request_id, RequestBindingId::for_request(&changed_input));
+        assert_ne!(request_id, RequestBindingId::for_request(&changed_witness));
+
+        let serialized = serde_json::to_string(&binding).expect("serialize binding");
+        assert!(serialized.contains("ephemeral_input_sha256"));
+        assert!(serialized.contains("ephemeral_input_witness_sha256"));
+    }
+
+    #[test]
+    fn orphaned_ephemeral_digest_cannot_alias_a_v1_binding() {
+        let v1 = binding();
+        let mut orphaned = v1.clone();
+        orphaned.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(b"orphaned"));
+
+        let orphaned_id = RequestBindingId::for_request(&orphaned);
+        assert!(orphaned_id.as_str().starts_with("provider-request:v2:"));
+        assert_ne!(RequestBindingId::for_request(&v1), orphaned_id);
     }
 
     #[test]

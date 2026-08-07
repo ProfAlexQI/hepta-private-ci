@@ -89,9 +89,143 @@ fn input<'a>(
         endpoint_sha256: &digests.endpoint,
         logical_request_sha256: &digests.logical,
         wire_semantic_sha256: &digests.wire,
+        ephemeral_input_sha256: None,
+        ephemeral_input_witness_sha256: None,
         previous_response_id_sha256: None,
         generate: true,
     }
+}
+
+#[test]
+fn provider_binding_requires_an_all_or_none_ephemeral_digest_pair() {
+    let (session, thread, turn) = stores();
+    let digests = digests(b"https://provider.invalid/responses");
+    let ephemeral = api_digest(b"ephemeral-input");
+    let mut invocation = input(
+        &session,
+        &thread,
+        &turn,
+        "attempt-ephemeral",
+        "binding-ephemeral",
+        &digests,
+    );
+    invocation.ephemeral_input_sha256 = Some(&ephemeral);
+
+    let error = provider_intent(&invocation).expect_err("orphaned digest must fail closed");
+    assert_eq!(
+        error.reason_code(),
+        "hepta_provider_ephemeral_input_incomplete"
+    );
+}
+
+#[test]
+fn provider_binding_maps_ephemeral_digests_into_v2_request_identity() {
+    let (session, thread, turn) = stores();
+    let digests = digests(b"https://provider.invalid/responses");
+    let ephemeral = api_digest(b"ephemeral-input");
+    let witness = api_digest(b"ephemeral-witness");
+    let mut invocation = input(
+        &session,
+        &thread,
+        &turn,
+        "attempt-ephemeral",
+        "binding-ephemeral",
+        &digests,
+    );
+    invocation.ephemeral_input_sha256 = Some(&ephemeral);
+    invocation.ephemeral_input_witness_sha256 = Some(&witness);
+
+    let intent = provider_intent(&invocation).expect("complete pair should bind");
+    assert!(
+        intent
+            .request_binding_id
+            .as_str()
+            .starts_with("provider-request:v2:")
+    );
+    assert_eq!(
+        intent.binding.ephemeral_input_sha256,
+        Some(Sha256Digest::for_bytes(b"ephemeral-input"))
+    );
+    assert_eq!(
+        intent.binding.ephemeral_input_witness_sha256,
+        Some(Sha256Digest::for_bytes(b"ephemeral-witness"))
+    );
+}
+
+#[tokio::test]
+async fn orphaned_ephemeral_digests_are_blocked_without_evidence_in_every_mode() {
+    for mode in [GovernanceMode::Shadow, GovernanceMode::Enforce] {
+        for input_present in [true, false] {
+            let temp = TempDir::new().expect("temp dir");
+            let evidence = evidence(&temp).await;
+            let state = GovernanceState::enabled(mode, Ok(evidence.clone()));
+            let (session, thread, turn) = stores();
+            let digests = digests(b"https://provider.invalid/responses");
+            let ephemeral = api_digest(b"ephemeral-input");
+            let witness = api_digest(b"ephemeral-witness");
+            let mut invocation = input(
+                &session,
+                &thread,
+                &turn,
+                "attempt-orphaned",
+                "binding-orphaned",
+                &digests,
+            );
+            let expected_reason = if input_present {
+                invocation.ephemeral_input_sha256 = Some(&ephemeral);
+                "hepta_ephemeral_input_witness_missing"
+            } else {
+                invocation.ephemeral_input_witness_sha256 = Some(&witness);
+                "hepta_ephemeral_input_witness_orphaned"
+            };
+
+            let decision = state
+                .begin_provider(invocation)
+                .await
+                .expect("orphaned digest should produce a stable block");
+            assert!(matches!(
+                decision,
+                ModelProviderPolicyDecision::Block { ref reason_code, .. }
+                    if reason_code == expected_reason
+            ));
+            assert_eq!(
+                evidence
+                    .pending_provider_attempt_count()
+                    .await
+                    .expect("pending count"),
+                0
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn complete_ephemeral_binding_is_blocked_when_governance_is_disabled() {
+    let state = GovernanceState::disabled();
+    let (session, thread, turn) = stores();
+    let digests = digests(b"https://provider.invalid/responses");
+    let ephemeral = api_digest(b"ephemeral-input");
+    let witness = api_digest(b"ephemeral-witness");
+    let mut invocation = input(
+        &session,
+        &thread,
+        &turn,
+        "attempt-disabled",
+        "binding-disabled",
+        &digests,
+    );
+    invocation.ephemeral_input_sha256 = Some(&ephemeral);
+    invocation.ephemeral_input_witness_sha256 = Some(&witness);
+
+    let decision = state
+        .begin_provider(invocation)
+        .await
+        .expect("disabled governance should produce a stable block");
+    assert!(matches!(
+        decision,
+        ModelProviderPolicyDecision::Block { ref reason_code, .. }
+            if reason_code == "hepta_ephemeral_input_governance_disabled"
+    ));
 }
 
 fn completed() -> ModelProviderTerminal {

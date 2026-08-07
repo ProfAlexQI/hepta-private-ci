@@ -34,6 +34,8 @@ fn binding(wire: &[u8]) -> ProviderRequestBinding {
         endpoint_sha256: Sha256Digest::for_bytes(b"/responses"),
         logical_request_sha256: Sha256Digest::for_bytes(b"logical"),
         wire_semantic_sha256: Sha256Digest::for_bytes(wire),
+        ephemeral_input_sha256: None,
+        ephemeral_input_witness_sha256: None,
         previous_response_id_sha256: None,
         generate: true,
     }

@@ -149,6 +149,8 @@ fn input<'a>(
         endpoint_sha256: &digests[1],
         logical_request_sha256: &digests[2],
         wire_semantic_sha256: &digests[3],
+        ephemeral_input_sha256: None,
+        ephemeral_input_witness_sha256: None,
         previous_response_id_sha256: None,
         generate: true,
     }
