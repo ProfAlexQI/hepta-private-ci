@@ -1,6 +1,7 @@
 pub(crate) mod api_bridge;
 pub(crate) mod auth;
 pub(crate) mod common;
+mod dispatch_metadata;
 pub(crate) mod endpoint;
 pub(crate) mod error;
 pub(crate) mod files;
@@ -47,6 +48,7 @@ pub use crate::common::WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY;
 pub use crate::common::WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY;
 pub use crate::common::create_text_param_for_request;
 pub use crate::common::response_create_client_metadata;
+pub use crate::dispatch_metadata::RequestDispatchMetadata;
 pub use crate::endpoint::CompactClient;
 pub use crate::endpoint::ImagesClient;
 pub use crate::endpoint::MemoriesClient;

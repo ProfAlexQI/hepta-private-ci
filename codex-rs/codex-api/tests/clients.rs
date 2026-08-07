@@ -10,6 +10,7 @@ use codex_api::AuthError;
 use codex_api::AuthProvider;
 use codex_api::Compression;
 use codex_api::Provider;
+use codex_api::RequestDispatchMetadata;
 use codex_api::ResponsesApiRequest;
 use codex_api::ResponsesClient;
 use codex_api::ResponsesOptions;
@@ -479,14 +480,65 @@ async fn streaming_client_single_transport_attempt_disables_internal_retry() {
         client_metadata: None,
     };
     let client = ResponsesClient::new(transport.clone(), provider, Arc::new(NoAuth));
+    let dispatch_metadata = RequestDispatchMetadata::new();
 
     let result = client
-        .stream_request_single_attempt(request, ResponsesOptions::default())
+        .stream_request_single_attempt(
+            request,
+            ResponsesOptions::default(),
+            dispatch_metadata.clone(),
+        )
         .await;
 
     assert!(result.is_err());
     assert_eq!(transport.attempts(), 1);
     assert_eq!(transport.requests().len(), 1);
+    assert!(dispatch_metadata.transport_invoked());
+}
+
+#[tokio::test]
+async fn streaming_client_auth_failure_is_proven_not_dispatched() {
+    let state = RecordingState::default();
+    let transport = RecordingTransport::new(state.clone());
+    let auth = FailsOnceAuth::build();
+    let mut provider = provider("openai");
+    provider.retry.max_attempts = 3;
+    let request = ResponsesApiRequest {
+        model: "gpt-test".into(),
+        instructions: "Say hi".into(),
+        input: Vec::new(),
+        tools: Some(empty_tools().into()),
+        tool_choice: "auto".into(),
+        parallel_tool_calls: false,
+        reasoning: None,
+        store: false,
+        stream: true,
+        stream_options: None,
+        include: Vec::new(),
+        service_tier: None,
+        prompt_cache_key: None,
+        text: None,
+        client_metadata: None,
+    };
+    let client = ResponsesClient::new(transport, provider, Arc::new(auth.clone()));
+    let dispatch_metadata = RequestDispatchMetadata::new();
+
+    let result = client
+        .stream_request_single_attempt(
+            request,
+            ResponsesOptions::default(),
+            dispatch_metadata.clone(),
+        )
+        .await;
+
+    assert!(matches!(
+        result,
+        Err(ApiError::Transport(TransportError::Build(message)))
+            if message == "invalid auth configuration"
+    ));
+    assert_eq!(auth.attempts(), 1);
+    assert!(state.take_stream_requests().is_empty());
+    assert!(!dispatch_metadata.transport_invoked());
 }
 
 #[tokio::test]
