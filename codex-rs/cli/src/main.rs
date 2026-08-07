@@ -1,5 +1,6 @@
 use clap::Args;
 use clap::CommandFactory;
+use clap::FromArgMatches;
 use clap::Parser;
 use clap_complete::Shell;
 use clap_complete::generate;
@@ -89,6 +90,20 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::user_input::UserInput;
 use codex_terminal_detection::TerminalName;
 
+const PRODUCT_COMMAND_NAME: &str = env!("CARGO_BIN_NAME");
+const PRODUCT_USAGE: &str = concat!(
+    env!("CARGO_BIN_NAME"),
+    " [OPTIONS] [PROMPT]\n       ",
+    env!("CARGO_BIN_NAME"),
+    " [OPTIONS] <COMMAND> [ARGS]"
+);
+const HEPTA_VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("CODEX_BUILD_SOURCE_IDENTITY"),
+    ")"
+);
+
 /// Codex CLI
 ///
 /// If no subcommand is specified, options will be forwarded to the interactive CLI.
@@ -98,11 +113,10 @@ use codex_terminal_detection::TerminalName;
     version,
     // If a sub‑command is given, ignore requirements of the default args.
     subcommand_negates_reqs = true,
-    // The executable is sometimes invoked via a platform‑specific name like
-    // `codex-x86_64-unknown-linux-musl`, but the help output should always use
-    // the generic `codex` command name that users run.
-    bin_name = "codex",
-    override_usage = "codex [OPTIONS] [PROMPT]\n       codex [OPTIONS] <COMMAND> [ARGS]"
+    // Release executables can have platform-specific file names, but help uses
+    // the generic product command selected by the Cargo binary target.
+    bin_name = PRODUCT_COMMAND_NAME,
+    override_usage = PRODUCT_USAGE
 )]
 struct MultitoolCli {
     /// Enable process-only PSP routing for first-party ChatGPT requests.
@@ -981,11 +995,20 @@ fn stage_str(stage: Stage) -> &'static str {
 }
 
 fn main() -> anyhow::Result<()> {
+    configure_product_home()?;
     let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();
     arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {
         cli_main(arg0_paths, remote_control_disabled).await?;
         Ok(())
     })
+}
+
+fn configure_product_home() -> anyhow::Result<()> {
+    if PRODUCT_COMMAND_NAME == "hepta" {
+        let hepta_home = codex_utils_home_dir::find_hepta_home()?;
+        codex_utils_home_dir::set_process_codex_home_override(hepta_home)?;
+    }
+    Ok(())
 }
 
 async fn cli_main(
@@ -999,12 +1022,17 @@ async fn cli_main(
         remote,
         mut interactive,
         subcommand,
-    } = MultitoolCli::parse();
+    } = parse_product_cli();
     interactive.psp = psp;
 
     // Fold --enable/--disable into config overrides so they flow to all subcommands.
     let toggle_overrides = feature_toggles.to_overrides()?;
     root_config_overrides.raw_overrides.extend(toggle_overrides);
+    if PRODUCT_COMMAND_NAME == "hepta" {
+        root_config_overrides
+            .raw_overrides
+            .push("features.hepta_governance=true".to_string());
+    }
     let root_remote = remote.remote;
     let root_remote_auth_token_env = remote.remote_auth_token_env;
     let root_strict_config = interactive.strict_config;
@@ -2642,9 +2670,31 @@ fn merge_interactive_cli_flags(interactive: &mut TuiCli, subcommand_cli: TuiCli)
 }
 
 fn print_completion(cmd: CompletionCommand) {
-    let mut app = MultitoolCli::command();
-    let name = "codex";
-    generate(cmd.shell, &mut app, name, &mut std::io::stdout());
+    let mut app = product_command();
+    generate(
+        cmd.shell,
+        &mut app,
+        PRODUCT_COMMAND_NAME,
+        &mut std::io::stdout(),
+    );
+}
+
+fn parse_product_cli() -> MultitoolCli {
+    let matches = product_command().get_matches();
+    MultitoolCli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit())
+}
+
+fn product_command() -> clap::Command {
+    let command = MultitoolCli::command();
+    if PRODUCT_COMMAND_NAME == "hepta" {
+        command
+            .name(PRODUCT_COMMAND_NAME)
+            .about("Hepta CLI")
+            .long_about("Hepta CLI")
+            .version(HEPTA_VERSION)
+    } else {
+        command
+    }
 }
 
 #[cfg(test)]

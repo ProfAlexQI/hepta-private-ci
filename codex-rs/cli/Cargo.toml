@@ -11,6 +11,10 @@ name = "codex"
 path = "src/main.rs"
 
 [[bin]]
+name = "hepta"
+path = "src/hepta.rs"
+
+[[bin]]
 name = "logs_client"
 path = "src/bin/logs_client.rs"
 
@@ -37,6 +41,7 @@ codex-chatgpt = { workspace = true }
 codex-cloud-config = { workspace = true }
 codex-cloud-tasks = { path = "../cloud-tasks" }
 codex-utils-cli = { workspace = true }
+codex-utils-home-dir = { workspace = true }
 codex-config = { workspace = true }
 codex-core = { workspace = true }
 codex-core-plugins = { workspace = true }
