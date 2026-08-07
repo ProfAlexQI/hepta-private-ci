@@ -103,6 +103,13 @@ const REQUIRED_SCHEMA_OBJECTS: &[SchemaObjectSpec] = &[
             "attempt_id",
             "request_binding_id",
             "host_request_binding_id_sha256",
+            "ephemeral_input_sha256",
+            "length(ephemeral_input_sha256) = 64",
+            "ephemeral_input_sha256 not glob '*[^0-9a-f]*'",
+            "ephemeral_input_witness_sha256",
+            "length(ephemeral_input_witness_sha256) = 64",
+            "ephemeral_input_witness_sha256 not glob '*[^0-9a-f]*'",
+            "(ephemeral_input_sha256 is null) = (ephemeral_input_witness_sha256 is null)",
             "payload_sha256",
         ],
     },
@@ -398,6 +405,38 @@ pub(crate) async fn verify_provider_host_bindings(pool: &SqlitePool) -> Result<(
     }
 }
 
+pub(crate) async fn verify_provider_ephemeral_input_projection(
+    pool: &SqlitePool,
+) -> Result<(), EvidenceError> {
+    let invalid: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM provider_invocation_intents
+         WHERE CASE
+             WHEN json_valid(payload_json) = 0 THEN 1
+             WHEN json_type(payload_json, '$.binding.ephemeral_input_sha256') IS NULL
+                  AND json_type(payload_json, '$.binding.ephemeral_input_witness_sha256') IS NULL
+             THEN ephemeral_input_sha256 IS NOT NULL
+                  OR ephemeral_input_witness_sha256 IS NOT NULL
+             WHEN json_type(payload_json, '$.binding.ephemeral_input_sha256') = 'text'
+                  AND json_type(payload_json, '$.binding.ephemeral_input_witness_sha256') = 'text'
+             THEN ephemeral_input_sha256 IS NOT
+                      json_extract(payload_json, '$.binding.ephemeral_input_sha256')
+                  OR ephemeral_input_witness_sha256 IS NOT
+                      json_extract(payload_json, '$.binding.ephemeral_input_witness_sha256')
+             ELSE 1
+         END",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(classify_sqlx_error)?;
+    if invalid == 0 {
+        Ok(())
+    } else {
+        Err(EvidenceError::Corrupt(format!(
+            "{invalid} provider intent rows have invalid ephemeral input projections"
+        )))
+    }
+}
+
 pub(crate) async fn verify_schema_manifest(pool: &SqlitePool) -> Result<(), EvidenceError> {
     for spec in REQUIRED_SCHEMA_OBJECTS {
         let row = sqlx::query(
@@ -423,7 +462,11 @@ pub(crate) async fn verify_schema_manifest(pool: &SqlitePool) -> Result<(), Evid
                 spec.name
             )));
         };
-        let normalized_sql = sql.to_ascii_lowercase();
+        let normalized_sql = sql
+            .split_ascii_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_ascii_lowercase();
         if object_type != spec.object_type
             || table_name != spec.table_name
             || spec

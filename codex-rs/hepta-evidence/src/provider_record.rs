@@ -41,6 +41,7 @@ pub(crate) async fn verify_provider_intent(
                 host_request_binding_id_sha256, thread_id, turn_id,
                 request_kind, provider_id, provider_config_sha256, model, transport,
                 endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
+                ephemeral_input_sha256, ephemeral_input_witness_sha256,
                 previous_response_id_sha256, generate, schema_version,
                 payload_json, payload_sha256
          FROM provider_invocation_intents WHERE attempt_id = ?",
@@ -147,6 +148,20 @@ pub(crate) fn decode_provider_intent_row(
         || row.get::<String, _>("endpoint_sha256") != binding.endpoint_sha256.as_str()
         || row.get::<String, _>("logical_request_sha256") != binding.logical_request_sha256.as_str()
         || row.get::<String, _>("wire_semantic_sha256") != binding.wire_semantic_sha256.as_str()
+        || row
+            .get::<Option<String>, _>("ephemeral_input_sha256")
+            .as_deref()
+            != binding
+                .ephemeral_input_sha256
+                .as_ref()
+                .map(Sha256Digest::as_str)
+        || row
+            .get::<Option<String>, _>("ephemeral_input_witness_sha256")
+            .as_deref()
+            != binding
+                .ephemeral_input_witness_sha256
+                .as_ref()
+                .map(Sha256Digest::as_str)
         || row
             .get::<Option<String>, _>("previous_response_id_sha256")
             .as_deref()

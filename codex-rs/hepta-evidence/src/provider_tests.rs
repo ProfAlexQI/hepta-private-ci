@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use codex_hepta_contracts::PROVIDER_EVIDENCE_SCHEMA_VERSION;
 use codex_hepta_contracts::ProviderInvocationIntent;
 use codex_hepta_contracts::ProviderInvocationReceipt;
@@ -8,11 +10,14 @@ use codex_hepta_contracts::ProviderTransport;
 use codex_hepta_contracts::Sha256Digest;
 use codex_state::SqliteConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use sqlx::migrate::Migrator;
 use tempfile::TempDir;
 
 use crate::AppendDisposition;
 use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
+use crate::ProviderBindingState;
+use crate::ProviderIntentClaimDisposition;
 
 fn sqlite_config(temp: &TempDir) -> SqliteConfig {
     SqliteConfig::new_for_testing(
@@ -76,6 +81,111 @@ fn intent(nonce: u8) -> ProviderInvocationIntent {
     ProviderInvocationIntent::new([nonce; 16], binding("thread-1", b"logical", b"wire"))
 }
 
+fn ephemeral_intent(nonce: u8, thread_id: &str) -> ProviderInvocationIntent {
+    let mut binding = binding(thread_id, b"logical-with-ephemeral", b"wire-with-ephemeral");
+    binding.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(b"ephemeral-input"));
+    binding.ephemeral_input_witness_sha256 =
+        Some(Sha256Digest::for_bytes(b"ephemeral-input-witness"));
+    ProviderInvocationIntent::new([nonce; 16], binding)
+}
+
+fn migrator_through(version: i64) -> Migrator {
+    let migrator = sqlx::migrate!("./migrations");
+    Migrator {
+        migrations: Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|migration| migration.version <= version)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: migrator.ignore_missing,
+        locking: migrator.locking,
+        table_name: migrator.table_name.clone(),
+        create_schemas: migrator.create_schemas.clone(),
+        no_tx: migrator.no_tx,
+    }
+}
+
+async fn insert_pre_0006_intent(
+    pool: &sqlx::SqlitePool,
+    intent: &ProviderInvocationIntent,
+    recorded_at_ms: i64,
+) {
+    let payload = crate::canonical::canonical_json(intent).expect("canonical provider intent");
+    let payload_json = String::from_utf8(payload.clone()).expect("UTF-8 provider intent");
+    let payload_sha256 = Sha256Digest::for_bytes(&payload);
+    let binding = &intent.binding;
+    sqlx::query(
+        "INSERT INTO provider_invocation_intents (
+            attempt_id, request_binding_id, attempt_nonce_sha256,
+            host_request_binding_id_sha256, thread_id, turn_id,
+            request_kind, provider_id, provider_config_sha256, model, transport,
+            endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
+            previous_response_id_sha256, generate, schema_version,
+            payload_json, payload_sha256, recorded_at_ms
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(intent.attempt_id.as_str())
+    .bind(intent.request_binding_id.as_str())
+    .bind(intent.attempt_nonce_sha256.as_str())
+    .bind(binding.host_request_binding_id_sha256.as_str())
+    .bind(&binding.thread_id)
+    .bind(&binding.turn_id)
+    .bind(binding.request_kind.as_str())
+    .bind(&binding.provider_id)
+    .bind(binding.provider_config_sha256.as_str())
+    .bind(&binding.model)
+    .bind(binding.transport.as_str())
+    .bind(binding.endpoint_sha256.as_str())
+    .bind(binding.logical_request_sha256.as_str())
+    .bind(binding.wire_semantic_sha256.as_str())
+    .bind(
+        binding
+            .previous_response_id_sha256
+            .as_ref()
+            .map(Sha256Digest::as_str),
+    )
+    .bind(binding.generate)
+    .bind(i64::from(PROVIDER_EVIDENCE_SCHEMA_VERSION))
+    .bind(payload_json)
+    .bind(payload_sha256.as_str())
+    .bind(recorded_at_ms)
+    .execute(pool)
+    .await
+    .expect("insert pre-0006 provider intent");
+}
+
+async fn insert_pre_0006_receipt(
+    pool: &sqlx::SqlitePool,
+    receipt: &ProviderInvocationReceipt,
+    recorded_at_ms: i64,
+) {
+    let payload = crate::canonical::canonical_json(receipt).expect("canonical provider receipt");
+    let payload_json = String::from_utf8(payload.clone()).expect("UTF-8 provider receipt");
+    let payload_sha256 = Sha256Digest::for_bytes(&payload);
+    sqlx::query(
+        "INSERT INTO provider_invocation_terminals (
+            receipt_id, attempt_id, request_binding_id, thread_id, turn_id,
+            terminal_kind, schema_version, payload_json, payload_sha256, recorded_at_ms
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(receipt.receipt_id.as_str())
+    .bind(receipt.attempt_id.as_str())
+    .bind(receipt.request_binding_id.as_str())
+    .bind(&receipt.intent.binding.thread_id)
+    .bind(&receipt.intent.binding.turn_id)
+    .bind(receipt.terminal.kind())
+    .bind(i64::from(PROVIDER_EVIDENCE_SCHEMA_VERSION))
+    .bind(payload_json)
+    .bind(payload_sha256.as_str())
+    .bind(recorded_at_ms)
+    .execute(pool)
+    .await
+    .expect("insert pre-0006 provider receipt");
+}
+
 fn completed(intent: ProviderInvocationIntent, output: &[u8]) -> ProviderInvocationReceipt {
     ProviderInvocationReceipt::new(
         intent,
@@ -86,6 +196,237 @@ fn completed(intent: ProviderInvocationIntent, output: &[u8]) -> ProviderInvocat
             end_turn: Some(true),
         },
     )
+}
+
+#[tokio::test]
+async fn migration_0006_backfills_ephemeral_projection_without_rewriting_evidence() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let path = sqlite.home().join("hepta_evidence_2.sqlite");
+    let pre_0006 = sqlite
+        .open_durable_evidence_pool(&path)
+        .await
+        .expect("open pre-0006 evidence");
+    migrator_through(5)
+        .run(&pre_0006)
+        .await
+        .expect("apply lineage through 0005");
+
+    let attached = ephemeral_intent(81, "thread-attached");
+    let receipt = completed(attached.clone(), b"attached-output");
+    let mut plain_binding = binding("thread-plain", b"plain-logical", b"plain-wire");
+    plain_binding.host_request_binding_id_sha256 = Sha256Digest::for_bytes(b"plain-host-binding");
+    let plain = ProviderInvocationIntent::new([82; 16], plain_binding);
+    insert_pre_0006_intent(&pre_0006, &attached, 8_100).await;
+    insert_pre_0006_receipt(&pre_0006, &receipt, 8_101).await;
+    insert_pre_0006_intent(&pre_0006, &plain, 8_200).await;
+    let intent_before = sqlx::query_as::<_, (String, String, String, String, i64)>(
+        "SELECT attempt_id, request_binding_id, payload_json, payload_sha256, recorded_at_ms
+         FROM provider_invocation_intents WHERE attempt_id = ?",
+    )
+    .bind(attached.attempt_id.as_str())
+    .fetch_one(&pre_0006)
+    .await
+    .expect("read pre-0006 intent");
+    let receipt_before = sqlx::query_as::<_, (String, String, String, String, i64)>(
+        "SELECT receipt_id, attempt_id, payload_json, payload_sha256, recorded_at_ms
+         FROM provider_invocation_terminals WHERE receipt_id = ?",
+    )
+    .bind(receipt.receipt_id.as_str())
+    .fetch_one(&pre_0006)
+    .await
+    .expect("read pre-0006 receipt");
+    pre_0006.close().await;
+
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("upgrade evidence through 0006");
+    let raw = sqlite
+        .open_durable_evidence_pool(store.path())
+        .await
+        .expect("open upgraded evidence");
+    let intent_after = sqlx::query_as::<_, (String, String, String, String, i64)>(
+        "SELECT attempt_id, request_binding_id, payload_json, payload_sha256, recorded_at_ms
+         FROM provider_invocation_intents WHERE attempt_id = ?",
+    )
+    .bind(attached.attempt_id.as_str())
+    .fetch_one(&raw)
+    .await
+    .expect("read upgraded intent");
+    let receipt_after = sqlx::query_as::<_, (String, String, String, String, i64)>(
+        "SELECT receipt_id, attempt_id, payload_json, payload_sha256, recorded_at_ms
+         FROM provider_invocation_terminals WHERE receipt_id = ?",
+    )
+    .bind(receipt.receipt_id.as_str())
+    .fetch_one(&raw)
+    .await
+    .expect("read upgraded receipt");
+    assert_eq!(intent_after, intent_before);
+    assert_eq!(receipt_after, receipt_before);
+
+    let attached_projection = sqlx::query_as::<_, (Option<String>, Option<String>)>(
+        "SELECT ephemeral_input_sha256, ephemeral_input_witness_sha256
+         FROM provider_invocation_intents WHERE attempt_id = ?",
+    )
+    .bind(attached.attempt_id.as_str())
+    .fetch_one(&raw)
+    .await
+    .expect("read attached projection");
+    assert_eq!(
+        attached_projection,
+        (
+            attached
+                .binding
+                .ephemeral_input_sha256
+                .as_ref()
+                .map(|digest| digest.as_str().to_string()),
+            attached
+                .binding
+                .ephemeral_input_witness_sha256
+                .as_ref()
+                .map(|digest| digest.as_str().to_string()),
+        )
+    );
+    let plain_projection = sqlx::query_as::<_, (Option<String>, Option<String>)>(
+        "SELECT ephemeral_input_sha256, ephemeral_input_witness_sha256
+         FROM provider_invocation_intents WHERE attempt_id = ?",
+    )
+    .bind(plain.attempt_id.as_str())
+    .fetch_one(&raw)
+    .await
+    .expect("read plain projection");
+    assert_eq!(plain_projection, (None, None));
+    raw.close().await;
+
+    let stored = store
+        .get_provider_attempt(&attached.attempt_id)
+        .await
+        .expect("read migrated attempt")
+        .expect("migrated attempt");
+    assert_eq!(stored.intent.intent, attached);
+    assert_eq!(stored.receipt.expect("migrated receipt").receipt, receipt);
+    assert_eq!(
+        store
+            .append_provider_intent(&attached)
+            .await
+            .expect("replay migrated intent"),
+        AppendDisposition::AlreadyPresent
+    );
+    assert_eq!(
+        store
+            .append_provider_receipt(&receipt)
+            .await
+            .expect("replay migrated receipt"),
+        AppendDisposition::AlreadyPresent
+    );
+    assert_eq!(
+        store
+            .list_pending_provider_intents("thread-plain", 0, 10)
+            .await
+            .expect("read migrated pending intents")[0]
+            .intent,
+        plain
+    );
+
+    let mut retry_binding = attached.binding.clone();
+    retry_binding.ephemeral_input_witness_sha256 =
+        Some(Sha256Digest::for_bytes(b"rotated-witness"));
+    let retry = ProviderInvocationIntent::new([83; 16], retry_binding);
+    assert_eq!(
+        store
+            .claim_provider_intent(&retry)
+            .await
+            .expect("claim after migration"),
+        ProviderIntentClaimDisposition::BlockedByBinding(ProviderBindingState::Completed)
+    );
+}
+
+#[tokio::test]
+async fn ephemeral_projection_round_trips_and_detects_projection_corruption() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = ephemeral_intent(84, "thread-ephemeral");
+    store
+        .append_provider_intent(&intent)
+        .await
+        .expect("append ephemeral intent");
+    assert_eq!(
+        store
+            .list_pending_provider_intents("thread-ephemeral", 0, 10)
+            .await
+            .expect("read ephemeral pending intent")[0]
+            .intent,
+        intent
+    );
+    drop(store);
+
+    let reopened = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("reopen evidence");
+    assert_eq!(
+        reopened
+            .get_provider_attempt(&intent.attempt_id)
+            .await
+            .expect("read ephemeral attempt")
+            .expect("ephemeral attempt")
+            .intent
+            .intent,
+        intent
+    );
+    let raw = sqlite
+        .open_durable_evidence_pool(reopened.path())
+        .await
+        .expect("open raw evidence");
+    sqlx::query("DROP TRIGGER provider_invocation_intents_no_update")
+        .execute(&raw)
+        .await
+        .expect("disable immutable trigger for corruption simulation");
+    let error = sqlx::query(
+        "UPDATE provider_invocation_intents SET ephemeral_input_sha256 = NULL
+         WHERE attempt_id = ?",
+    )
+    .bind(intent.attempt_id.as_str())
+    .execute(&raw)
+    .await
+    .expect_err("one-sided ephemeral projection must violate its CHECK");
+    assert!(error.to_string().contains("CHECK constraint failed"));
+    sqlx::query(
+        "UPDATE provider_invocation_intents SET ephemeral_input_sha256 = ?
+         WHERE attempt_id = ?",
+    )
+    .bind(Sha256Digest::for_bytes(b"drifted-ephemeral-input").as_str())
+    .bind(intent.attempt_id.as_str())
+    .execute(&raw)
+    .await
+    .expect("simulate valid-shape projection corruption");
+    assert!(matches!(
+        reopened
+            .get_provider_attempt(&intent.attempt_id)
+            .await
+            .expect_err("projection corruption must fail closed"),
+        EvidenceError::Corrupt(_)
+    ));
+    sqlx::query(
+        "CREATE TRIGGER provider_invocation_intents_no_update
+         BEFORE UPDATE ON provider_invocation_intents
+         BEGIN
+             SELECT RAISE(ABORT, 'provider invocation intents are immutable');
+         END",
+    )
+    .execute(&raw)
+    .await
+    .expect("restore immutable trigger");
+    raw.close().await;
+    drop(reopened);
+
+    let error = match HeptaEvidenceStore::open(&sqlite).await {
+        Ok(_) => panic!("startup projection scan must fail closed"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, EvidenceError::Corrupt(_)));
 }
 
 #[tokio::test]
@@ -383,6 +724,8 @@ async fn provider_evidence_never_persists_prompt_token_header_or_output_plaintex
     const HEADER: &[u8] = b"fixture-auth-header-ultra-private-873";
     const OUTPUT: &[u8] = b"fixture-provider-output-ultra-private-874";
     const ENDPOINT: &[u8] = b"https://provider.invalid/responses?secret=875";
+    const EPHEMERAL_INPUT: &[u8] = b"fixture-ephemeral-input-ultra-private-876";
+    const EPHEMERAL_WITNESS: &[u8] = b"fixture-ephemeral-witness-ultra-private-877";
 
     let temp = TempDir::new().expect("temp dir");
     let sqlite = sqlite_config(&temp);
@@ -392,6 +735,8 @@ async fn provider_evidence_never_persists_prompt_token_header_or_output_plaintex
     let mut binding = binding("thread-secret-test", PROMPT, HEADER);
     binding.provider_config_sha256 = Sha256Digest::for_bytes(TOKEN);
     binding.endpoint_sha256 = Sha256Digest::for_bytes(ENDPOINT);
+    binding.ephemeral_input_sha256 = Some(Sha256Digest::for_bytes(EPHEMERAL_INPUT));
+    binding.ephemeral_input_witness_sha256 = Some(Sha256Digest::for_bytes(EPHEMERAL_WITNESS));
     let intent = ProviderInvocationIntent::new([7; 16], binding);
     let receipt = completed(intent.clone(), OUTPUT);
     store.append_provider_intent(&intent).await.expect("intent");
@@ -412,7 +757,15 @@ async fn provider_evidence_never_persists_prompt_token_header_or_output_plaintex
     .await
     .expect("provider JSON rows");
     let joined = rows.join("\n");
-    for forbidden in [PROMPT, TOKEN, HEADER, OUTPUT, ENDPOINT] {
+    for forbidden in [
+        PROMPT,
+        TOKEN,
+        HEADER,
+        OUTPUT,
+        ENDPOINT,
+        EPHEMERAL_INPUT,
+        EPHEMERAL_WITNESS,
+    ] {
         assert!(
             !joined
                 .as_bytes()

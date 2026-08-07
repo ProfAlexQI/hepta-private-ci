@@ -202,7 +202,9 @@ impl HeptaEvidenceStore {
                     intents.request_kind, intents.provider_id,
                     intents.provider_config_sha256, intents.model, intents.transport,
                     intents.endpoint_sha256, intents.logical_request_sha256,
-                    intents.wire_semantic_sha256, intents.previous_response_id_sha256,
+                    intents.wire_semantic_sha256, intents.ephemeral_input_sha256,
+                    intents.ephemeral_input_witness_sha256,
+                    intents.previous_response_id_sha256,
                     intents.generate, intents.schema_version,
                     intents.payload_json, intents.payload_sha256
              FROM provider_invocation_intents AS intents
@@ -247,6 +249,7 @@ impl HeptaEvidenceStore {
                     host_request_binding_id_sha256, thread_id, turn_id,
                     request_kind, provider_id, provider_config_sha256, model, transport,
                     endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
+                    ephemeral_input_sha256, ephemeral_input_witness_sha256,
                     previous_response_id_sha256, generate, schema_version,
                     payload_json, payload_sha256
              FROM provider_invocation_intents WHERE attempt_id = ?",
