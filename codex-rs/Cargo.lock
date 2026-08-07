@@ -3584,6 +3584,7 @@ dependencies = [
  "codex-extension-api",
  "codex-features",
  "codex-git-attribution",
+ "codex-hepta-governance",
  "codex-home",
  "codex-image-generation-extension",
  "codex-login",
