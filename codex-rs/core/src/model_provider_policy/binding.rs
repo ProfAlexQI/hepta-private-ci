@@ -13,6 +13,8 @@ use uuid::Uuid;
 
 use crate::config::Config;
 
+use super::ephemeral_input::EphemeralModelInputBinding;
+
 /// Extension scopes and host identities required to bind one provider send.
 ///
 /// The context owns only secret-free IDs. Extension stores remain borrowed
@@ -27,6 +29,91 @@ pub(crate) struct ModelProviderPolicyContext<'a> {
     pub(crate) request_kind: ModelProviderRequestKind,
 }
 
+/// Base identity and immutable host facts for one physical provider attempt.
+///
+/// The base logical digest mints the retry-stable request identity before an
+/// attempt-local ephemeral input can affect the effective logical or wire
+/// semantics.
+pub(crate) struct ModelProviderAttemptEnvelope {
+    attempt_id: String,
+    request_binding_id: String,
+    thread_id: String,
+    turn_id: String,
+    request_kind: ModelProviderRequestKind,
+    provider_id: String,
+    provider_config_sha256: ModelProviderSha256Digest,
+    model: String,
+    transport: ModelProviderTransport,
+    endpoint_sha256: ModelProviderSha256Digest,
+    base_logical_request_sha256: ModelProviderSha256Digest,
+    previous_response_id_sha256: Option<ModelProviderSha256Digest>,
+    generate: bool,
+}
+
+impl ModelProviderAttemptEnvelope {
+    pub(crate) fn attempt_id(&self) -> &str {
+        &self.attempt_id
+    }
+
+    pub(crate) fn base_logical_request_sha256(&self) -> &ModelProviderSha256Digest {
+        &self.base_logical_request_sha256
+    }
+
+    pub(crate) fn finalize<L: Serialize, W: Serialize>(
+        self,
+        effective_logical_request: &L,
+        effective_wire_semantic: &W,
+        ephemeral_input: Option<EphemeralModelInputBinding>,
+    ) -> Result<PreparedModelProviderPolicy, ModelProviderPolicyError> {
+        let logical_request_sha256 = canonical_sha256(effective_logical_request)?;
+        let wire_semantic_sha256 = canonical_sha256(effective_wire_semantic)?;
+        if ephemeral_input.is_some() != (logical_request_sha256 != self.base_logical_request_sha256)
+        {
+            return Err(ModelProviderPolicyError::new(
+                "ephemeral_model_input_effective_binding_mismatch",
+                "effective logical semantics and ephemeral input presence must change together",
+            ));
+        }
+        let (ephemeral_input_sha256, ephemeral_input_witness_sha256) = match ephemeral_input {
+            Some(binding) => {
+                let witness = ephemeral_input_witness_sha256(
+                    self.attempt_id.as_str(),
+                    self.thread_id.as_str(),
+                    self.turn_id.as_str(),
+                    self.request_binding_id.as_str(),
+                    self.transport,
+                    &logical_request_sha256,
+                    &wire_semantic_sha256,
+                    self.previous_response_id_sha256.as_ref(),
+                    self.generate,
+                    &binding,
+                )?;
+                (Some(binding.input_sha256().clone()), Some(witness))
+            }
+            None => (None, None),
+        };
+
+        Ok(PreparedModelProviderPolicy {
+            attempt_id: self.attempt_id,
+            request_binding_id: self.request_binding_id,
+            thread_id: self.thread_id,
+            turn_id: self.turn_id,
+            request_kind: self.request_kind,
+            provider_id: self.provider_id,
+            provider_config_sha256: self.provider_config_sha256,
+            model: self.model,
+            transport: self.transport,
+            endpoint_sha256: self.endpoint_sha256,
+            logical_request_sha256,
+            wire_semantic_sha256,
+            ephemeral_input_sha256,
+            ephemeral_input_witness_sha256,
+            previous_response_id_sha256: self.previous_response_id_sha256,
+            generate: self.generate,
+        })
+    }
+}
+
 /// Owned, digest-only material for one physical provider send.
 ///
 /// Raw request/provider values are used only while constructing this value and
@@ -34,6 +121,9 @@ pub(crate) struct ModelProviderPolicyContext<'a> {
 pub(crate) struct PreparedModelProviderPolicy {
     attempt_id: String,
     request_binding_id: String,
+    thread_id: String,
+    turn_id: String,
+    request_kind: ModelProviderRequestKind,
     provider_id: String,
     // Compatibility-named Extension API field. This is deliberately the
     // digest of the stable, secret-free provider selector, never a digest of
@@ -44,6 +134,8 @@ pub(crate) struct PreparedModelProviderPolicy {
     endpoint_sha256: ModelProviderSha256Digest,
     logical_request_sha256: ModelProviderSha256Digest,
     wire_semantic_sha256: ModelProviderSha256Digest,
+    ephemeral_input_sha256: Option<ModelProviderSha256Digest>,
+    ephemeral_input_witness_sha256: Option<ModelProviderSha256Digest>,
     previous_response_id_sha256: Option<ModelProviderSha256Digest>,
     generate: bool,
 }
@@ -60,9 +152,9 @@ impl PreparedModelProviderPolicy {
             turn_store: context.turn_store,
             attempt_id: &self.attempt_id,
             request_binding_id: &self.request_binding_id,
-            thread_id: &context.thread_id,
-            turn_id: &context.turn_id,
-            request_kind: context.request_kind,
+            thread_id: &self.thread_id,
+            turn_id: &self.turn_id,
+            request_kind: self.request_kind,
             provider_id: &self.provider_id,
             provider_config_sha256: &self.provider_config_sha256,
             model: &self.model,
@@ -70,8 +162,8 @@ impl PreparedModelProviderPolicy {
             endpoint_sha256: &self.endpoint_sha256,
             logical_request_sha256: &self.logical_request_sha256,
             wire_semantic_sha256: &self.wire_semantic_sha256,
-            ephemeral_input_sha256: None,
-            ephemeral_input_witness_sha256: None,
+            ephemeral_input_sha256: self.ephemeral_input_sha256.as_ref(),
+            ephemeral_input_witness_sha256: self.ephemeral_input_witness_sha256.as_ref(),
             previous_response_id_sha256: self.previous_response_id_sha256.as_ref(),
             generate: self.generate,
         }
@@ -96,14 +188,38 @@ pub(crate) fn prepare_model_provider_policy<L: Serialize, W: Serialize>(
     previous_response_id: Option<&str>,
     generate: bool,
 ) -> Result<PreparedModelProviderPolicy, ModelProviderPolicyError> {
+    prepare_model_provider_attempt(
+        context,
+        provider_id,
+        model,
+        transport,
+        endpoint,
+        logical_request,
+        previous_response_id,
+        generate,
+    )?
+    .finalize(logical_request, wire_semantic, None)
+}
+
+/// Freezes retry-stable identity before attempt-local input is resolved.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_model_provider_attempt<L: Serialize>(
+    context: &ModelProviderPolicyContext<'_>,
+    provider_id: &str,
+    model: &str,
+    transport: ModelProviderTransport,
+    endpoint: &str,
+    base_logical_request: &L,
+    previous_response_id: Option<&str>,
+    generate: bool,
+) -> Result<ModelProviderAttemptEnvelope, ModelProviderPolicyError> {
     // Do not hash provider configuration here. It may contain bearer/header/
     // query/retry configuration, so even its digest would make evidence
     // secret-derived and unstable across credential rotation.
     let provider_config_sha256 =
         digest_parts_sha256(["model-provider-logical-selector:v1", provider_id])?;
     let endpoint_sha256 = canonical_endpoint_sha256(endpoint)?;
-    let logical_request_sha256 = canonical_sha256(logical_request)?;
-    let wire_semantic_sha256 = canonical_sha256(wire_semantic)?;
+    let base_logical_request_sha256 = canonical_sha256(base_logical_request)?;
     let previous_response_id_sha256 = previous_response_id
         .map(|value| bytes_sha256(value.as_bytes()))
         .transpose()?;
@@ -114,26 +230,62 @@ pub(crate) fn prepare_model_provider_policy<L: Serialize, W: Serialize>(
         request_kind_name(context.request_kind),
         provider_id,
         model,
-        logical_request_sha256.as_str(),
+        base_logical_request_sha256.as_str(),
         // Host identity is retry-stable across HTTP/WebSocket fallback and
         // incremental/full encodings. Hepta evidence additionally binds the
         // physical transport, wire semantics, endpoint and previous response.
         if generate { "generate" } else { "no-generate" },
     ]);
 
-    Ok(PreparedModelProviderPolicy {
+    Ok(ModelProviderAttemptEnvelope {
         attempt_id: format!("model-provider-attempt:v1:{}", Uuid::new_v4()),
         request_binding_id: format!("model-provider-request:v1:{request_binding_digest}"),
+        thread_id: context.thread_id.clone(),
+        turn_id: context.turn_id.clone(),
+        request_kind: context.request_kind,
         provider_id: provider_id.to_string(),
         provider_config_sha256,
         model: model.to_string(),
         transport,
         endpoint_sha256,
-        logical_request_sha256,
-        wire_semantic_sha256,
+        base_logical_request_sha256,
         previous_response_id_sha256,
         generate,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn ephemeral_input_witness_sha256(
+    attempt_id: &str,
+    thread_id: &str,
+    turn_id: &str,
+    request_binding_id: &str,
+    transport: ModelProviderTransport,
+    logical_request_sha256: &ModelProviderSha256Digest,
+    wire_semantic_sha256: &ModelProviderSha256Digest,
+    previous_response_id_sha256: Option<&ModelProviderSha256Digest>,
+    generate: bool,
+    binding: &EphemeralModelInputBinding,
+) -> Result<ModelProviderSha256Digest, ModelProviderPolicyError> {
+    let (previous_presence, previous_sha256) = match previous_response_id_sha256 {
+        Some(digest) => ("present", digest.as_str()),
+        None => ("absent", ""),
+    };
+    digest_parts_sha256([
+        "codex:ephemeral-model-input-witness:v2",
+        attempt_id,
+        thread_id,
+        turn_id,
+        request_binding_id,
+        transport_name(transport),
+        logical_request_sha256.as_str(),
+        wire_semantic_sha256.as_str(),
+        previous_presence,
+        previous_sha256,
+        if generate { "generate" } else { "no_generate" },
+        binding.authority_sha256().as_str(),
+        binding.input_sha256().as_str(),
+    ])
 }
 
 pub(crate) fn canonical_sha256<T: Serialize>(
@@ -238,6 +390,13 @@ const fn request_kind_name(kind: ModelProviderRequestKind) -> &'static str {
         ModelProviderRequestKind::Prewarm => "prewarm",
         ModelProviderRequestKind::Compaction => "compaction",
         ModelProviderRequestKind::Memory => "memory",
+    }
+}
+
+const fn transport_name(transport: ModelProviderTransport) -> &'static str {
+    match transport {
+        ModelProviderTransport::Http => "http",
+        ModelProviderTransport::WebSocket => "web_socket",
     }
 }
 
