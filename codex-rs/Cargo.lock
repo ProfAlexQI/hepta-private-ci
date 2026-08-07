@@ -3282,6 +3282,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-evidence"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-contracts",
+ "codex-state",
+ "codex-utils-absolute-path",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "codex-home"
 version = "0.0.0"
 dependencies = [
