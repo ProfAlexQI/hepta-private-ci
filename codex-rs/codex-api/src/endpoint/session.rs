@@ -161,6 +161,9 @@ impl<T: HttpTransport> EndpointSession<T> {
                 async move {
                     let req = auth.apply_auth(req).await.map_err(TransportError::from)?;
                     if let Some(dispatch_metadata) = dispatch_metadata {
+                        dispatch_metadata
+                            .validate_headers(&req.headers)
+                            .map_err(TransportError::Build)?;
                         dispatch_metadata.mark_transport_invoked();
                     }
                     transport.execute(req).await
@@ -266,6 +269,9 @@ impl<T: HttpTransport> EndpointSession<T> {
                 async move {
                     let req = auth.apply_auth(req).await.map_err(TransportError::from)?;
                     if let Some(dispatch_metadata) = dispatch_metadata {
+                        dispatch_metadata
+                            .validate_headers(&req.headers)
+                            .map_err(TransportError::Build)?;
                         dispatch_metadata.mark_transport_invoked();
                     }
                     transport.stream(req).await
