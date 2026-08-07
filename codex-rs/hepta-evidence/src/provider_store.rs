@@ -14,8 +14,10 @@ use sqlx::sqlite::SqliteRow;
 use crate::AppendDisposition;
 use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
-use crate::canonical::canonical_json;
 use crate::canonical::canonical_storage_payload;
+use crate::canonical::invalid_record_as_corrupt;
+use crate::canonical::verify_canonical_storage_payload;
+use crate::canonical::verify_storage_payload_digest;
 use crate::store::classify_sqlx_error;
 use crate::store::now_millis;
 
@@ -553,11 +555,11 @@ async fn verify_provider_receipt(
 
 fn decode_provider_intent_row(row: &SqliteRow) -> Result<ProviderInvocationIntent, EvidenceError> {
     let payload_json: String = row.get("payload_json");
-    verify_stored_digest(&payload_json, row.get("payload_sha256"), "provider intent")?;
+    verify_storage_payload_digest(&payload_json, row.get("payload_sha256"), "provider intent")?;
     let intent: ProviderInvocationIntent = serde_json::from_str(&payload_json)
         .map_err(|error| EvidenceError::Corrupt(error.to_string()))?;
-    validate_provider_intent(&intent).map_err(invalid_as_corrupt)?;
-    verify_canonical_payload(&intent, &payload_json, "provider intent")?;
+    validate_provider_intent(&intent).map_err(invalid_record_as_corrupt)?;
+    verify_canonical_storage_payload(&intent, &payload_json, "provider intent")?;
     let binding = &intent.binding;
     if row.get::<String, _>("attempt_id") != intent.attempt_id.as_str()
         || row.get::<String, _>("request_binding_id") != intent.request_binding_id.as_str()
@@ -597,15 +599,15 @@ fn decode_provider_receipt_row(
     row: &SqliteRow,
 ) -> Result<ProviderInvocationReceipt, EvidenceError> {
     let payload_json: String = row.get("payload_json");
-    verify_stored_digest(
+    verify_storage_payload_digest(
         &payload_json,
         row.get("payload_sha256"),
         "provider terminal",
     )?;
     let receipt: ProviderInvocationReceipt = serde_json::from_str(&payload_json)
         .map_err(|error| EvidenceError::Corrupt(error.to_string()))?;
-    validate_provider_receipt(&receipt).map_err(invalid_as_corrupt)?;
-    verify_canonical_payload(&receipt, &payload_json, "provider terminal")?;
+    validate_provider_receipt(&receipt).map_err(invalid_record_as_corrupt)?;
+    verify_canonical_storage_payload(&receipt, &payload_json, "provider terminal")?;
     if row.get::<String, _>("receipt_id") != receipt.receipt_id.as_str()
         || row.get::<String, _>("attempt_id") != receipt.attempt_id.as_str()
         || row.get::<String, _>("request_binding_id") != receipt.request_binding_id.as_str()
@@ -724,43 +726,6 @@ fn validate_digest(label: &str, digest: &Sha256Digest) -> Result<(), EvidenceErr
         Ok(())
     } else {
         invalid(format!("{label} digest is not canonical lowercase SHA-256"))
-    }
-}
-
-fn verify_stored_digest(
-    payload_json: &str,
-    expected: &str,
-    record_kind: &str,
-) -> Result<(), EvidenceError> {
-    let actual = Sha256Digest::for_bytes(payload_json.as_bytes());
-    if actual.as_str() == expected {
-        Ok(())
-    } else {
-        Err(EvidenceError::Corrupt(format!(
-            "stored {record_kind} payload digest mismatch"
-        )))
-    }
-}
-
-fn verify_canonical_payload<T: serde::Serialize>(
-    value: &T,
-    stored: &str,
-    record_kind: &str,
-) -> Result<(), EvidenceError> {
-    let canonical = canonical_json(value)?;
-    if canonical == stored.as_bytes() {
-        Ok(())
-    } else {
-        Err(EvidenceError::Corrupt(format!(
-            "stored {record_kind} JSON is not canonical"
-        )))
-    }
-}
-
-fn invalid_as_corrupt(error: EvidenceError) -> EvidenceError {
-    match error {
-        EvidenceError::InvalidRecord(detail) => EvidenceError::Corrupt(detail),
-        other => other,
     }
 }
 

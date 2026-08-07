@@ -2,7 +2,6 @@ use codex_hepta_contracts::MemoryMutationDryRun;
 use codex_hepta_contracts::MemoryMutationDryRunId;
 use codex_hepta_contracts::MemoryMutationProposal;
 use codex_hepta_contracts::MemoryMutationProposalId;
-use codex_hepta_contracts::Sha256Digest;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -15,8 +14,10 @@ use sqlx::sqlite::SqliteRow;
 use crate::AppendDisposition;
 use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
-use crate::canonical::canonical_json;
 use crate::canonical::canonical_storage_payload;
+use crate::canonical::invalid_record_as_corrupt;
+use crate::canonical::verify_canonical_storage_payload;
+use crate::canonical::verify_storage_payload_digest;
 use crate::store::classify_sqlx_error;
 use crate::store::now_millis;
 
@@ -237,15 +238,15 @@ fn decode_observation_row(
     row: &SqliteRow,
 ) -> Result<MemoryMutationShadowObservation, EvidenceError> {
     let payload_json: String = row.get("payload_json");
-    verify_stored_digest(
+    verify_storage_payload_digest(
         &payload_json,
         row.get("evidence_sha256"),
         "memory mutation shadow observation",
     )?;
     let observation: MemoryMutationShadowObservation = serde_json::from_str(&payload_json)
         .map_err(|error| EvidenceError::Corrupt(error.to_string()))?;
-    validate_observation(&observation).map_err(invalid_as_corrupt)?;
-    verify_canonical_payload(
+    validate_observation(&observation).map_err(invalid_record_as_corrupt)?;
+    verify_canonical_storage_payload(
         &observation,
         &payload_json,
         "memory mutation shadow observation",
@@ -275,43 +276,6 @@ fn validate_observation(
     observation: &MemoryMutationShadowObservation,
 ) -> Result<(), EvidenceError> {
     observation.validate().map_err(EvidenceError::InvalidRecord)
-}
-
-fn verify_stored_digest(
-    payload_json: &str,
-    expected: &str,
-    record_kind: &str,
-) -> Result<(), EvidenceError> {
-    let actual = Sha256Digest::for_bytes(payload_json.as_bytes());
-    if actual.as_str() == expected {
-        Ok(())
-    } else {
-        Err(EvidenceError::Corrupt(format!(
-            "stored {record_kind} payload digest mismatch"
-        )))
-    }
-}
-
-fn verify_canonical_payload<T: Serialize>(
-    value: &T,
-    stored: &str,
-    record_kind: &str,
-) -> Result<(), EvidenceError> {
-    let canonical = canonical_json(value)?;
-    if canonical == stored.as_bytes() {
-        Ok(())
-    } else {
-        Err(EvidenceError::Corrupt(format!(
-            "stored {record_kind} JSON is not canonical"
-        )))
-    }
-}
-
-fn invalid_as_corrupt(error: EvidenceError) -> EvidenceError {
-    match error {
-        EvidenceError::InvalidRecord(detail) => EvidenceError::Corrupt(detail),
-        other => other,
-    }
 }
 
 fn invalid<T>(detail: impl Into<String>) -> Result<T, EvidenceError> {

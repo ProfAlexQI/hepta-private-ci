@@ -9,7 +9,6 @@ use codex_hepta_contracts::GovernanceReceipt;
 use codex_hepta_contracts::HandlerOutcome;
 use codex_hepta_contracts::PolicyPhase;
 use codex_hepta_contracts::ReceiptId;
-use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_contracts::ToolAction;
 use codex_state::SqliteConfig;
 use sqlx::Row;
@@ -19,8 +18,10 @@ use sqlx::Transaction;
 use sqlx::sqlite::SqliteRow;
 
 use crate::EvidenceError;
-use crate::canonical::canonical_json;
 use crate::canonical::canonical_storage_payload;
+use crate::canonical::invalid_record_as_corrupt;
+use crate::canonical::verify_canonical_storage_payload;
+use crate::canonical::verify_storage_payload_digest;
 
 const EVIDENCE_DB_FILENAME: &str = "hepta_evidence_1.sqlite";
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -470,24 +471,13 @@ async fn verify_receipt(
     })
 }
 
-fn verify_stored_digest(payload_json: &str, expected: &str) -> Result<(), EvidenceError> {
-    let actual = Sha256Digest::for_bytes(payload_json.as_bytes());
-    if actual.as_str() == expected {
-        Ok(())
-    } else {
-        Err(EvidenceError::Corrupt(
-            "stored governance payload digest mismatch".to_string(),
-        ))
-    }
-}
-
 fn decode_decision_row(row: &SqliteRow) -> Result<GovernanceDecisionRecord, EvidenceError> {
     let payload_json: String = row.get("payload_json");
-    verify_stored_digest(&payload_json, row.get("payload_sha256"))?;
+    verify_storage_payload_digest(&payload_json, row.get("payload_sha256"), "governance")?;
     let record: GovernanceDecisionRecord = serde_json::from_str(&payload_json)
         .map_err(|error| EvidenceError::Corrupt(error.to_string()))?;
-    validate_decision(&record).map_err(invalid_as_corrupt)?;
-    verify_canonical_payload(&record, &payload_json)?;
+    validate_decision(&record).map_err(invalid_record_as_corrupt)?;
+    verify_canonical_storage_payload(&record, &payload_json, "governance")?;
     if row.get::<String, _>("decision_id") != record.decision_id.as_str()
         || row.get::<String, _>("action_id") != record.action.action_id.as_str()
         || row.get::<String, _>("thread_id") != record.action.thread_id.as_str()
@@ -505,11 +495,11 @@ fn decode_decision_row(row: &SqliteRow) -> Result<GovernanceDecisionRecord, Evid
 
 fn decode_receipt_row(row: &SqliteRow) -> Result<GovernanceReceipt, EvidenceError> {
     let payload_json: String = row.get("payload_json");
-    verify_stored_digest(&payload_json, row.get("payload_sha256"))?;
+    verify_storage_payload_digest(&payload_json, row.get("payload_sha256"), "governance")?;
     let receipt: GovernanceReceipt = serde_json::from_str(&payload_json)
         .map_err(|error| EvidenceError::Corrupt(error.to_string()))?;
-    validate_receipt_binding(&receipt).map_err(invalid_as_corrupt)?;
-    verify_canonical_payload(&receipt, &payload_json)?;
+    validate_receipt_binding(&receipt).map_err(invalid_record_as_corrupt)?;
+    verify_canonical_storage_payload(&receipt, &payload_json, "governance")?;
     let action = receipt
         .authorization
         .as_ref()
@@ -542,27 +532,6 @@ fn decode_receipt_row(row: &SqliteRow) -> Result<GovernanceReceipt, EvidenceErro
         ));
     }
     Ok(receipt)
-}
-
-fn verify_canonical_payload<T: serde::Serialize>(
-    value: &T,
-    stored: &str,
-) -> Result<(), EvidenceError> {
-    let canonical = canonical_json(value)?;
-    if canonical == stored.as_bytes() {
-        Ok(())
-    } else {
-        Err(EvidenceError::Corrupt(
-            "stored governance JSON is not canonical".to_string(),
-        ))
-    }
-}
-
-fn invalid_as_corrupt(error: EvidenceError) -> EvidenceError {
-    match error {
-        EvidenceError::InvalidRecord(detail) => EvidenceError::Corrupt(detail),
-        other => other,
-    }
 }
 
 pub(crate) fn now_millis() -> Result<i64, EvidenceError> {

@@ -21,6 +21,43 @@ pub(crate) fn canonical_storage_payload<T: Serialize>(
     Ok((payload_json, payload_sha256))
 }
 
+pub(crate) fn verify_storage_payload_digest(
+    payload_json: &str,
+    expected: &str,
+    record_kind: &str,
+) -> Result<(), EvidenceError> {
+    let actual = Sha256Digest::for_bytes(payload_json.as_bytes());
+    if actual.as_str() == expected {
+        Ok(())
+    } else {
+        Err(EvidenceError::Corrupt(format!(
+            "stored {record_kind} payload digest mismatch"
+        )))
+    }
+}
+
+pub(crate) fn verify_canonical_storage_payload<T: Serialize>(
+    value: &T,
+    stored: &str,
+    record_kind: &str,
+) -> Result<(), EvidenceError> {
+    let canonical = canonical_json(value)?;
+    if canonical == stored.as_bytes() {
+        Ok(())
+    } else {
+        Err(EvidenceError::Corrupt(format!(
+            "stored {record_kind} JSON is not canonical"
+        )))
+    }
+}
+
+pub(crate) fn invalid_record_as_corrupt(error: EvidenceError) -> EvidenceError {
+    match error {
+        EvidenceError::InvalidRecord(detail) => EvidenceError::Corrupt(detail),
+        other => other,
+    }
+}
+
 fn sort_value(value: &mut Value) {
     match value {
         Value::Array(items) => {
