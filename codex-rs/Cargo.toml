@@ -100,6 +100,7 @@ members = [
     "websocket-client",
     "workload-identity",
     "utils/absolute-path",
+    "utils/build-identity",
     "utils/audio",
     "utils/path-uri",
     "utils/cargo-bin",
@@ -254,6 +255,7 @@ codex-tools = { path = "tools" }
 codex-tui = { path = "tui" }
 codex-uds = { path = "uds" }
 codex-utils-absolute-path = { path = "utils/absolute-path" }
+codex-utils-build-identity = { path = "utils/build-identity" }
 codex-utils-approval-presets = { path = "utils/approval-presets" }
 codex-utils-audio = { path = "utils/audio" }
 codex-utils-cache = { path = "utils/cache" }
