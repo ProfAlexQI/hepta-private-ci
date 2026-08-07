@@ -75,6 +75,7 @@ use codex_otel::SessionTelemetry;
 use codex_otel::current_span_w3c_trace_context;
 use codex_protocol::auth::AuthMode;
 
+use codex_extension_api::ModelProviderPolicyError;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::Verbosity as VerbosityConfig;
@@ -116,6 +117,8 @@ use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
 use crate::feedback_tags;
+use crate::model_provider_policy::ProviderAttemptOwner;
+use crate::model_provider_policy::ProviderResponseTerminal;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::subagent_header_value;
 use crate::util::emit_feedback_auth_recovery_tags;
@@ -1521,6 +1524,7 @@ impl ModelClientSession {
                         request_session_telemetry,
                         inference_trace_attempt,
                         Arc::clone(&self.client.state.provider),
+                        /*provider_attempt*/ None,
                     );
                     return Ok(stream);
                 }
@@ -1750,6 +1754,7 @@ impl ModelClientSession {
                 request_session_telemetry,
                 inference_trace_attempt,
                 Arc::clone(&self.client.state.provider),
+                /*provider_attempt*/ None,
             );
             self.websocket_session.last_response_rx = Some(last_request_rx);
             return Ok(WebsocketStreamOutcome::Stream(stream));
@@ -1983,6 +1988,7 @@ fn map_response_stream(
     session_telemetry: SessionTelemetry,
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
+    provider_attempt: Option<ProviderAttemptOwner>,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>) {
     let codex_api::ResponseStream {
         rx_event,
@@ -1998,6 +2004,7 @@ fn map_response_stream(
         session_telemetry,
         inference_trace_attempt,
         provider,
+        provider_attempt,
     )
 }
 
@@ -2007,6 +2014,7 @@ fn map_response_events<S>(
     session_telemetry: SessionTelemetry,
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
+    provider_attempt: Option<ProviderAttemptOwner>,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>)
 where
     S: futures::Stream<Item = std::result::Result<ResponseEvent, ApiError>>
@@ -2026,6 +2034,7 @@ where
         let mut items_added: Vec<ResponseItem> = Vec::new();
         let (request_start, mut ttft_ms) = (Instant::now(), None);
         let mut api_stream = api_stream;
+        let mut provider_terminal = ProviderResponseTerminal::new(provider_attempt);
         let upstream_request_id = upstream_request_id.as_deref();
         if let Some(upstream_request_id) = upstream_request_id {
             feedback_tags!(last_model_request_id = upstream_request_id);
@@ -2033,6 +2042,11 @@ where
         loop {
             let event = tokio::select! {
                 _ = consumer_dropped.cancelled() => {
+                    finish_abandoned_provider_response(
+                        &mut provider_terminal,
+                        "provider_response_consumer_dropped",
+                        &items_added,
+                    ).await;
                     inference_trace_attempt.record_cancelled(
                         STREAM_DROPPED_REASON,
                         upstream_request_id,
@@ -2053,6 +2067,12 @@ where
                         .await
                         .is_err()
                     {
+                        finish_abandoned_provider_response(
+                            &mut provider_terminal,
+                            "provider_response_consumer_dropped",
+                            &items_added,
+                        )
+                        .await;
                         inference_trace_attempt.record_cancelled(
                             STREAM_DROPPED_REASON,
                             upstream_request_id,
@@ -2066,6 +2086,23 @@ where
                     token_usage,
                     end_turn,
                 }) => {
+                    let provider_terminal_committed = match provider_terminal
+                        .finish_completed(&response_id, &items_added, &token_usage, end_turn)
+                        .await
+                    {
+                        Ok(committed) => committed,
+                        Err(error) => {
+                            let error = model_provider_policy_error(error);
+                            inference_trace_attempt.record_failed(
+                                &error,
+                                upstream_request_id,
+                                &items_added,
+                            );
+                            session_telemetry.see_event_completed_failed(&error);
+                            let _ = tx_event.send(Err(error)).await;
+                            return;
+                        }
+                    };
                     feedback_tags!(last_model_response_id = &response_id);
                     if let Some(usage) = &token_usage {
                         session_telemetry.sse_event_completed(usage, ttft_ms);
@@ -2093,6 +2130,9 @@ where
                     {
                         return;
                     }
+                    if provider_terminal_committed {
+                        return;
+                    }
                 }
                 Ok(event) => {
                     if matches!(&event, ResponseEvent::OutputItemAdded(_)) && ttft_ms.is_none() {
@@ -2101,6 +2141,12 @@ where
                         );
                     }
                     if tx_event.send(Ok(event)).await.is_err() {
+                        finish_abandoned_provider_response(
+                            &mut provider_terminal,
+                            "provider_response_consumer_dropped",
+                            &items_added,
+                        )
+                        .await;
                         inference_trace_attempt.record_cancelled(
                             STREAM_DROPPED_REASON,
                             upstream_request_id,
@@ -2110,6 +2156,17 @@ where
                     }
                 }
                 Err(err) => {
+                    let provider_terminal_result = if api_error_http_status(&err)
+                        == Some(StatusCode::UNAUTHORIZED.as_u16())
+                    {
+                        provider_terminal
+                            .finish_rejected("provider_response_unauthorized")
+                            .await
+                    } else {
+                        provider_terminal
+                            .finish_indeterminate("provider_response_stream_error", &items_added)
+                            .await
+                    };
                     let response_debug_context =
                         extract_response_debug_context_from_api_error(&err);
                     let upstream_request_id =
@@ -2117,6 +2174,20 @@ where
                     if let Some(upstream_request_id) = upstream_request_id {
                         feedback_tags!(last_model_request_id = upstream_request_id);
                     }
+                    let provider_terminal_committed = match provider_terminal_result {
+                        Ok(committed) => committed,
+                        Err(error) => {
+                            let error = model_provider_policy_error(error);
+                            inference_trace_attempt.record_failed(
+                                &error,
+                                upstream_request_id,
+                                &items_added,
+                            );
+                            session_telemetry.see_event_completed_failed(&error);
+                            let _ = tx_event.send(Err(error)).await;
+                            return;
+                        }
+                    };
                     let mapped = provider.map_api_error(err);
                     inference_trace_attempt.record_failed(
                         &mapped,
@@ -2130,8 +2201,21 @@ where
                     if tx_event.send(Err(mapped)).await.is_err() {
                         return;
                     }
+                    if provider_terminal_committed {
+                        return;
+                    }
                 }
             }
+        }
+        if let Err(error) = provider_terminal
+            .finish_indeterminate("provider_response_stream_closed", &items_added)
+            .await
+        {
+            let error = model_provider_policy_error(error);
+            inference_trace_attempt.record_failed(&error, upstream_request_id, &items_added);
+            session_telemetry.see_event_completed_failed(&error);
+            let _ = tx_event.send(Err(error)).await;
+            return;
         }
         inference_trace_attempt.record_failed(
             "stream closed before response.completed",
@@ -2147,6 +2231,31 @@ where
         },
         rx_last_response,
     )
+}
+
+async fn finish_abandoned_provider_response(
+    provider_terminal: &mut ProviderResponseTerminal,
+    reason_code: &'static str,
+    response_items: &[ResponseItem],
+) {
+    if let Err(error) = provider_terminal
+        .finish_indeterminate(reason_code, response_items)
+        .await
+    {
+        warn!(
+            reason_code = error.reason_code(),
+            detail = error.detail(),
+            "failed to persist abandoned provider response terminal"
+        );
+    }
+}
+
+fn model_provider_policy_error(error: ModelProviderPolicyError) -> CodexErr {
+    CodexErr::Fatal(format!(
+        "model provider policy failed [{}]: {}",
+        error.reason_code(),
+        error.detail()
+    ))
 }
 
 /// Handles a 401 response by optionally refreshing ChatGPT tokens once.
@@ -2500,3 +2609,7 @@ impl WebsocketTelemetry for ApiTelemetry {
 #[cfg(test)]
 #[path = "client_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "client_provider_policy_tests.rs"]
+mod provider_policy_tests;
