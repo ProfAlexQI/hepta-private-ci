@@ -238,3 +238,7 @@ const fn request_kind_name(kind: ModelProviderRequestKind) -> &'static str {
         ModelProviderRequestKind::Memory => "memory",
     }
 }
+
+#[cfg(test)]
+#[path = "binding_tests.rs"]
+mod tests;
