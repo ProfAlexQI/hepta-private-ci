@@ -107,6 +107,13 @@ pub struct ModelProviderInvocationInput<'a> {
     pub endpoint_sha256: &'a ModelProviderSha256Digest,
     pub logical_request_sha256: &'a ModelProviderSha256Digest,
     pub wire_semantic_sha256: &'a ModelProviderSha256Digest,
+    /// Digest of host-rendered input that exists only for this physical send.
+    ///
+    /// This and `ephemeral_input_witness_sha256` must either both be present or
+    /// both be absent. Raw input must never cross this policy seam.
+    pub ephemeral_input_sha256: Option<&'a ModelProviderSha256Digest>,
+    /// Host witness binding the ephemeral input to this exact physical send.
+    pub ephemeral_input_witness_sha256: Option<&'a ModelProviderSha256Digest>,
     pub previous_response_id_sha256: Option<&'a ModelProviderSha256Digest>,
     pub generate: bool,
 }

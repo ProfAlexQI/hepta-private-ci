@@ -24,6 +24,30 @@ impl GovernanceState {
         &self,
         input: ModelProviderInvocationInput<'_>,
     ) -> Result<ModelProviderPolicyDecision, ModelProviderPolicyError> {
+        match (
+            input.ephemeral_input_sha256,
+            input.ephemeral_input_witness_sha256,
+        ) {
+            (Some(_), None) => {
+                return Ok(provider_block(
+                    "hepta_ephemeral_input_witness_missing",
+                    "Hepta blocked ephemeral model input without an exact pre-send witness",
+                ));
+            }
+            (None, Some(_)) => {
+                return Ok(provider_block(
+                    "hepta_ephemeral_input_witness_orphaned",
+                    "Hepta blocked an ephemeral input witness without model input",
+                ));
+            }
+            (Some(_), Some(_)) if !self.enabled => {
+                return Ok(provider_block(
+                    "hepta_ephemeral_input_governance_disabled",
+                    "Hepta blocked ephemeral model input while governance was disabled",
+                ));
+            }
+            (Some(_), Some(_)) | (None, None) => {}
+        }
         if !self.enabled {
             return Ok(detached_shadow_allow());
         }

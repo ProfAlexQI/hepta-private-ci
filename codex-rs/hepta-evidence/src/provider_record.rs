@@ -211,6 +211,21 @@ pub(crate) fn validate_provider_intent(
             return invalid(format!("provider intent requires a non-empty {label}"));
         }
     }
+    match (
+        intent.binding.ephemeral_input_sha256.as_ref(),
+        intent.binding.ephemeral_input_witness_sha256.as_ref(),
+    ) {
+        (Some(input), Some(witness)) => {
+            validate_digest("ephemeral input", input)?;
+            validate_digest("ephemeral input witness", witness)?;
+        }
+        (None, None) => {}
+        _ => {
+            return invalid(
+                "provider intent requires both ephemeral input and witness digests or neither",
+            );
+        }
+    }
     let expected_binding = RequestBindingId::for_request(&intent.binding);
     if intent.request_binding_id != expected_binding {
         return invalid("request binding id does not bind provider request semantics");

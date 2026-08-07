@@ -44,6 +44,12 @@ pub(crate) fn provider_intent(
             "provider invocation identity does not match extension store scope",
         ));
     }
+    if input.ephemeral_input_sha256.is_some() != input.ephemeral_input_witness_sha256.is_some() {
+        return Err(ModelProviderPolicyError::new(
+            "hepta_provider_ephemeral_input_incomplete",
+            "ephemeral provider input requires both its content and host witness digests",
+        ));
+    }
     let binding = ProviderRequestBinding {
         schema_version: PROVIDER_EVIDENCE_SCHEMA_VERSION,
         thread_id: input.thread_id.to_string(),
@@ -67,6 +73,14 @@ pub(crate) fn provider_intent(
         endpoint_sha256: contract_digest(input.endpoint_sha256.as_str())?,
         logical_request_sha256: contract_digest(input.logical_request_sha256.as_str())?,
         wire_semantic_sha256: contract_digest(input.wire_semantic_sha256.as_str())?,
+        ephemeral_input_sha256: input
+            .ephemeral_input_sha256
+            .map(|digest| contract_digest(digest.as_str()))
+            .transpose()?,
+        ephemeral_input_witness_sha256: input
+            .ephemeral_input_witness_sha256
+            .map(|digest| contract_digest(digest.as_str()))
+            .transpose()?,
         previous_response_id_sha256: input
             .previous_response_id_sha256
             .map(|digest| contract_digest(digest.as_str()))

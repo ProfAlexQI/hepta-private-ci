@@ -70,6 +70,8 @@ impl PreparedModelProviderPolicy {
             endpoint_sha256: &self.endpoint_sha256,
             logical_request_sha256: &self.logical_request_sha256,
             wire_semantic_sha256: &self.wire_semantic_sha256,
+            ephemeral_input_sha256: None,
+            ephemeral_input_witness_sha256: None,
             previous_response_id_sha256: self.previous_response_id_sha256.as_ref(),
             generate: self.generate,
         }
