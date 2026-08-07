@@ -10,12 +10,12 @@ use crate::AppendDisposition;
 use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
 use crate::canonical::canonical_json;
+use crate::provider_insert::insert_provider_intent;
 use crate::provider_record::decode_provider_intent_row;
 use crate::provider_record::decode_provider_receipt_row;
 use crate::provider_record::ensure_provider_intent;
 use crate::provider_record::validate_provider_intent;
 use crate::provider_record::validate_provider_receipt;
-use crate::provider_record::verify_provider_intent;
 use crate::provider_record::verify_provider_receipt;
 use crate::schema_validation::classify_sqlx_error;
 use crate::store::now_millis;
@@ -53,52 +53,11 @@ impl HeptaEvidenceStore {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(classify_sqlx_error)?;
-        let binding = &intent.binding;
-        let insert = sqlx::query(
-            "INSERT INTO provider_invocation_intents (
-                attempt_id, request_binding_id, attempt_nonce_sha256,
-                host_request_binding_id_sha256, thread_id, turn_id,
-                request_kind, provider_id, provider_config_sha256, model, transport,
-                endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
-                previous_response_id_sha256, generate, schema_version,
-                payload_json, payload_sha256, recorded_at_ms
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT DO NOTHING",
-        )
-        .bind(intent.attempt_id.as_str())
-        .bind(intent.request_binding_id.as_str())
-        .bind(intent.attempt_nonce_sha256.as_str())
-        .bind(binding.host_request_binding_id_sha256.as_str())
-        .bind(&binding.thread_id)
-        .bind(&binding.turn_id)
-        .bind(binding.request_kind.as_str())
-        .bind(&binding.provider_id)
-        .bind(binding.provider_config_sha256.as_str())
-        .bind(&binding.model)
-        .bind(binding.transport.as_str())
-        .bind(binding.endpoint_sha256.as_str())
-        .bind(binding.logical_request_sha256.as_str())
-        .bind(binding.wire_semantic_sha256.as_str())
-        .bind(
-            binding
-                .previous_response_id_sha256
-                .as_ref()
-                .map(Sha256Digest::as_str),
-        )
-        .bind(binding.generate)
-        .bind(i64::from(PROVIDER_EVIDENCE_SCHEMA_VERSION))
-        .bind(&payload_json)
-        .bind(payload_sha256.as_str())
-        .bind(now_millis()?)
-        .execute(&mut *transaction)
-        .await
-        .map_err(classify_sqlx_error)?;
-        let disposition = verify_provider_intent(
+        let disposition = insert_provider_intent(
             &mut transaction,
             intent,
             &payload_json,
             payload_sha256.as_str(),
-            insert.rows_affected() == 1,
         )
         .await?;
         transaction.commit().await.map_err(classify_sqlx_error)?;
