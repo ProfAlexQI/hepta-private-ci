@@ -98,6 +98,9 @@ pub struct ModelProviderInvocationInput<'a> {
     pub turn_id: &'a str,
     pub request_kind: ModelProviderRequestKind,
     pub provider_id: &'a str,
+    /// Compatibility-named digest of the host's versioned, secret-free
+    /// provider selector. Hosts must not derive this from credentials, raw
+    /// provider configuration, headers, endpoint query values, or retry state.
     pub provider_config_sha256: &'a ModelProviderSha256Digest,
     pub model: &'a str,
     pub transport: ModelProviderTransport,
@@ -119,7 +122,8 @@ pub enum ModelProviderTerminal {
         response_id_sha256: ModelProviderSha256Digest,
         response_items_sha256: ModelProviderSha256Digest,
         token_usage_sha256: ModelProviderSha256Digest,
-        end_turn: bool,
+        /// Exact provider observation. `None` means the provider omitted the field.
+        end_turn: Option<bool>,
     },
     Rejected {
         reason_code: String,

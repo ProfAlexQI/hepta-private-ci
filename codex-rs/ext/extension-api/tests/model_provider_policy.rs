@@ -170,7 +170,7 @@ async fn allow_lease_delivers_exact_owned_terminal() {
         response_id_sha256: digest('e'),
         response_items_sha256: digest('f'),
         token_usage_sha256: digest('0'),
-        end_turn: true,
+        end_turn: Some(true),
     };
 
     lease
