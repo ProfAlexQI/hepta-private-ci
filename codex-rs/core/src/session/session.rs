@@ -1207,6 +1207,7 @@ impl Session {
                 contributor.on_thread_start(codex_extension_api::ThreadStartInput {
                     config: config.as_ref(),
                     session_source: &session_configuration.session_source,
+                    installation_id: installation_id.as_str(),
                     persistent_thread_state_available: state_db_ctx.is_some(),
                     environments: session_configuration.environment_selections(),
                     mcp_resource_client: Some(Arc::clone(&mcp_resource_client)),

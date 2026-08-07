@@ -819,7 +819,7 @@ async fn start_thread_keeps_internal_threads_hidden_from_normal_lookups() {
 #[tokio::test]
 async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() {
     struct InitialDataRecorder {
-        lifecycle_observed: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+        lifecycle_observed: Arc<std::sync::Mutex<Vec<(String, String, String)>>>,
         mcp_observed: Arc<std::sync::Mutex<Vec<(String, SessionSource)>>>,
     }
 
@@ -837,7 +837,11 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() 
                 self.lifecycle_observed
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push((input.thread_store.level_id().to_string(), selected_root.id));
+                    .push((
+                        input.thread_store.level_id().to_string(),
+                        selected_root.id,
+                        input.installation_id.to_string(),
+                    ));
                 input
                     .thread_store
                     .insert(Vec::<SelectedCapabilityRoot>::new());
@@ -1002,10 +1006,15 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() 
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner),
         vec![
-            (first_thread.thread_id.to_string(), "selected-a".to_string()),
+            (
+                first_thread.thread_id.to_string(),
+                "selected-a".to_string(),
+                TEST_INSTALLATION_ID.to_string(),
+            ),
             (
                 second_thread.thread_id.to_string(),
-                "selected-b".to_string()
+                "selected-b".to_string(),
+                TEST_INSTALLATION_ID.to_string(),
             ),
         ]
     );
