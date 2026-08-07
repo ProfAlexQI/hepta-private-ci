@@ -4023,10 +4023,6 @@ impl Session {
     /// Inject additional user input into the currently active turn.
     ///
     /// Returns the active turn id when accepted.
-    #[expect(
-        clippy::await_holding_invalid_type,
-        reason = "active turn checks and turn state updates must remain atomic"
-    )]
     pub async fn steer_input(
         &self,
         input: Vec<UserInput>,
@@ -4035,6 +4031,30 @@ impl Session {
         client_user_message_id: Option<String>,
         responsesapi_client_metadata: Option<HashMap<String, String>>,
     ) -> Result<String, SteerInputError> {
+        self.steer_input_with_context(
+            input,
+            additional_context,
+            expected_turn_id,
+            client_user_message_id,
+            responsesapi_client_metadata,
+        )
+        .await
+        .map(|(turn_id, _)| turn_id)
+    }
+
+    /// Atomically returns the exact active turn context that accepted the input.
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
+    pub(crate) async fn steer_input_with_context(
+        &self,
+        input: Vec<UserInput>,
+        additional_context: BTreeMap<String, AdditionalContextEntry>,
+        expected_turn_id: Option<&str>,
+        client_user_message_id: Option<String>,
+        responsesapi_client_metadata: Option<HashMap<String, String>>,
+    ) -> Result<(String, Arc<TurnContext>), SteerInputError> {
         let mut active = self.active_turn.lock().await;
         let Some(active_turn) = active.as_mut() else {
             return Err(SteerInputError::NoActiveTurn(input));
@@ -4043,7 +4063,8 @@ impl Session {
         let Some(active_task) = active_turn.task.as_ref() else {
             return Err(SteerInputError::NoActiveTurn(input));
         };
-        let active_turn_id = &active_task.turn_context.sub_id;
+        let active_turn_context = Arc::clone(&active_task.turn_context);
+        let active_turn_id = active_turn_context.sub_id.clone();
 
         if let Some(expected_turn_id) = expected_turn_id
             && expected_turn_id != active_turn_id
@@ -4101,9 +4122,9 @@ impl Session {
             .await;
         if let Some(client_id) = client_user_message_id.as_deref() {
             self.pending_user_message_admissions
-                .associate_steered_by_client_id(client_id, active_turn_id);
+                .associate_steered_by_client_id(client_id, Arc::clone(&active_turn_context));
         }
-        Ok(active_turn_id.clone())
+        Ok((active_turn_id, active_turn_context))
     }
 
     pub(crate) async fn record_memory_citation_for_turn(&self, sub_id: &str) {

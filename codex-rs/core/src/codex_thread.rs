@@ -6,6 +6,7 @@ use crate::session::SessionSettingsUpdate;
 use crate::session::SteerInputError;
 use crate::session::TurnInput;
 use crate::session::session::Session;
+use crate::user_message_admission::AdmittedUserMessage;
 use crate::user_message_admission::PendingUserMessageAdmissionState;
 use crate::user_message_admission::UserMessageAdmission;
 use crate::user_message_admission::UserMessageAdmissionError;
@@ -332,6 +333,7 @@ impl CodexThread {
             PendingUserMessageAdmissionState::Immediate,
         )
         .await
+        .map(AdmittedUserMessage::into_admission)
         .map_err(Into::into)
     }
 
@@ -359,6 +361,7 @@ impl CodexThread {
             PendingUserMessageAdmissionState::WaitingForAdmission,
         )
         .await
+        .map(AdmittedUserMessage::into_admission)
     }
 
     async fn submit_user_input_and_wait_for_admission_inner(
@@ -367,7 +370,7 @@ impl CodexThread {
         trace: Option<W3cTraceContext>,
         client_user_message_id: Option<String>,
         state: PendingUserMessageAdmissionState,
-    ) -> Result<UserMessageAdmission, UserMessageAdmissionError> {
+    ) -> Result<AdmittedUserMessage, UserMessageAdmissionError> {
         let Op::UserInput { items, .. } = &op else {
             return Err(UserMessageAdmissionError::Admission(
                 CodexErr::InvalidRequest("user message admission requires user input".to_string()),
