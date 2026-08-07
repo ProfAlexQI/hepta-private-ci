@@ -92,7 +92,7 @@ implementation is an oracle and evidence source, not a merge target.
   Both bootstrap phase records are explicitly `NotEvaluated`. The
   Authorization phase name identifies the lifecycle boundary only; it is not
   capability-policy authorization, fresh approval, or an execution credential.
-- `codex-hepta-evidence` owns an append-only `hepta_evidence_1.sqlite` with WAL,
+- `codex-hepta-evidence` owns an append-only `hepta_evidence_2.sqlite` lineage with WAL,
   `synchronous=FULL`, immutable rows, foreign-key-bound decisions/receipts,
   exact-replay idempotency, and hard conflict detection. It is opened lazily
   only for feature-enabled threads and is not a rebuildable Codex state index.
@@ -129,11 +129,14 @@ implementation is an oracle and evidence source, not a merge target.
   Feature-disabled dispatch keeps the upstream legacy cancellation ordering.
 - Provider invocation types, a generic Hepta-neutral Extension API pre-send
   contributor/opaque lease, and separate immutable provider intent/terminal
-  tables now exist. They support versioned request/attempt identities, exact
-  replay, conflict rejection, pending queries, restart recovery, and
-  secret-free digest material. Endpoint and per-send nonce material cross the
-  evidence boundary only as SHA-256 digests. No Core provider send path calls
-  this contributor, obtains a lease, or writes these rows yet, so provider
+  tables now exist. Hepta registers a provider-policy implementation that can
+  atomically claim one retry-stable host request binding, persist its exact
+  terminal, and block pending, completed, or indeterminate retries in Enforce
+  mode. Raw host attempt/request identities, endpoint contents, and provider
+  material cross the evidence boundary only as SHA-256 digests. Unary remote
+  compaction success has its own items-only terminal; missing response IDs,
+  token usage, or end-turn fields are never synthesized. No Core provider send
+  path calls this contributor or obtains its lease yet, so product provider
   egress is **not** governed by this slice and no exactly-once claim is made.
 - This hook covers ToolRegistry dispatch only. It does **not** govern
   model/provider invocation, Memory/Intelligence/KG reads or mutations, channel
