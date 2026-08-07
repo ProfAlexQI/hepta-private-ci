@@ -72,6 +72,33 @@ impl<T: HttpTransport> ResponsesClient<T> {
         request: ResponsesApiRequest,
         options: ResponsesOptions,
     ) -> Result<ResponseStream, ApiError> {
+        self.stream_request_with_retry_mode(request, options, StreamRetryMode::ProviderDefault)
+            .await
+    }
+
+    /// Streams one request without transparent transport retries.
+    ///
+    /// A host that durably claims each physical provider send may perform a
+    /// later retry, but it must call this method again with a fresh claim.
+    pub async fn stream_request_single_attempt(
+        &self,
+        request: ResponsesApiRequest,
+        options: ResponsesOptions,
+    ) -> Result<ResponseStream, ApiError> {
+        self.stream_request_with_retry_mode(
+            request,
+            options,
+            StreamRetryMode::SingleTransportAttempt,
+        )
+        .await
+    }
+
+    async fn stream_request_with_retry_mode(
+        &self,
+        request: ResponsesApiRequest,
+        options: ResponsesOptions,
+        retry_mode: StreamRetryMode,
+    ) -> Result<ResponseStream, ApiError> {
         let ResponsesOptions {
             session_id,
             thread_id,
@@ -93,7 +120,7 @@ impl<T: HttpTransport> ResponsesClient<T> {
             insert_header(&mut headers, "x-openai-subagent", &subagent);
         }
 
-        self.stream_encoded(body, headers, compression, turn_state)
+        self.stream_encoded(body, headers, compression, turn_state, retry_mode)
             .await
     }
 
@@ -121,8 +148,14 @@ impl<T: HttpTransport> ResponsesClient<T> {
     ) -> Result<ResponseStream, ApiError> {
         let body = EncodedJsonBody::encode(&body)
             .map_err(|e| ApiError::Stream(format!("failed to encode responses request: {e}")))?;
-        self.stream_encoded(body, extra_headers, compression, turn_state)
-            .await
+        self.stream_encoded(
+            body,
+            extra_headers,
+            compression,
+            turn_state,
+            StreamRetryMode::ProviderDefault,
+        )
+        .await
     }
 
     async fn stream_encoded(
@@ -131,28 +164,44 @@ impl<T: HttpTransport> ResponsesClient<T> {
         extra_headers: HeaderMap,
         compression: Compression,
         turn_state: Option<Arc<OnceLock<String>>>,
+        retry_mode: StreamRetryMode,
     ) -> Result<ResponseStream, ApiError> {
         let request_compression = match compression {
             Compression::None => RequestCompression::None,
             Compression::Zstd => RequestCompression::Zstd,
         };
 
-        let stream_response = self
-            .session
-            .stream_encoded_json_with(
-                Method::POST,
-                Self::path(),
-                extra_headers,
-                Some(body),
-                |req| {
-                    req.headers.insert(
-                        http::header::ACCEPT,
-                        HeaderValue::from_static("text/event-stream"),
-                    );
-                    req.compression = request_compression;
-                },
-            )
-            .await?;
+        let configure = |req: &mut codex_client::Request| {
+            req.headers.insert(
+                http::header::ACCEPT,
+                HeaderValue::from_static("text/event-stream"),
+            );
+            req.compression = request_compression;
+        };
+        let stream_response = match retry_mode {
+            StreamRetryMode::ProviderDefault => {
+                self.session
+                    .stream_encoded_json_with(
+                        Method::POST,
+                        Self::path(),
+                        extra_headers,
+                        Some(body),
+                        configure,
+                    )
+                    .await?
+            }
+            StreamRetryMode::SingleTransportAttempt => {
+                self.session
+                    .stream_encoded_json_once_with(
+                        Method::POST,
+                        Self::path(),
+                        extra_headers,
+                        Some(body),
+                        configure,
+                    )
+                    .await?
+            }
+        };
 
         Ok(spawn_response_stream(
             stream_response,
@@ -161,4 +210,10 @@ impl<T: HttpTransport> ResponsesClient<T> {
             turn_state,
         ))
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum StreamRetryMode {
+    ProviderDefault,
+    SingleTransportAttempt,
 }
