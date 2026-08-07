@@ -64,6 +64,13 @@ test-group = 'app_server_integration_local'
 filter = 'package(codex-app-server) & kind(test) & test(suite::v2::turn_start_zsh_fork::)'
 threads-required = "num-test-threads"
 
+[[profile.local.overrides]]
+# These wall-clock parallelism assertions are sensitive to unrelated local
+# test load. Reserve the full nextest pool while preserving each test's
+# internal Tokio and process concurrency.
+filter = 'package(codex-core) & kind(test) & test(suite::tool_parallelism::) & test(_run_in_parallel)'
+threads-required = "num-test-threads"
+
 [[profile.default.overrides]]
 # These tests exercise full Codex turns and apply_patch execution, and they are
 # sensitive to Windows runner process-startup stalls when many cases launch at once.
