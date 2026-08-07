@@ -3,6 +3,8 @@ use codex_network_proxy::NetworkProxy;
 use codex_network_proxy::PROXY_URL_ENV_KEYS;
 use codex_network_proxy::has_proxy_url_env_vars;
 use codex_network_proxy::proxy_url_env_value;
+use codex_protocol::permissions::FileSystemAccessMode;
+use codex_protocol::permissions::FileSystemPath;
 use codex_protocol::permissions::FileSystemSandboxPolicy;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::permissions::PROTECTED_METADATA_PATH_NAMES;
@@ -349,10 +351,17 @@ struct SeatbeltAccessRoot {
     protected_metadata_names: Vec<String>,
 }
 
+#[derive(Clone, Copy)]
+enum SeatbeltExcludedSubpathMode {
+    Canonicalized,
+    RawAndCanonicalized,
+}
+
 fn build_seatbelt_access_policy(
     action: &str,
     param_prefix: &str,
     roots: Vec<SeatbeltAccessRoot>,
+    excluded_subpath_mode: SeatbeltExcludedSubpathMode,
 ) -> (String, Vec<(String, PathBuf)>) {
     let mut policy_components = Vec::new();
     let mut params = Vec::new();
@@ -371,11 +380,28 @@ fn build_seatbelt_access_policy(
         }
 
         let mut require_parts = vec![format!("(subpath (param \"{root_param}\"))")];
-        for (excluded_index, excluded_subpath) in
-            access_root.excluded_subpaths.into_iter().enumerate()
+        let excluded_subpaths = access_root.excluded_subpaths.into_iter().flat_map(|path| {
+            let normalized = normalize_path_for_sandbox(path.as_path());
+            match excluded_subpath_mode {
+                SeatbeltExcludedSubpathMode::Canonicalized => {
+                    vec![normalized.unwrap_or(path)]
+                }
+                SeatbeltExcludedSubpathMode::RawAndCanonicalized => {
+                    let mut paths = vec![path.clone()];
+                    if let Some(normalized) = normalized
+                        && normalized != path
+                    {
+                        paths.push(normalized);
+                    }
+                    paths
+                }
+            }
+        });
+        let mut seen_excluded_subpaths = BTreeSet::new();
+        for (excluded_index, excluded_subpath) in excluded_subpaths
+            .filter(|path| seen_excluded_subpaths.insert(path.clone()))
+            .enumerate()
         {
-            let excluded_subpath =
-                normalize_path_for_sandbox(excluded_subpath.as_path()).unwrap_or(excluded_subpath);
             let excluded_param = format!("{param_prefix}_{index}_EXCLUDED_{excluded_index}");
             params.push((excluded_param.clone(), excluded_subpath.into_path_buf()));
             // Exclude both the exact protected path and anything beneath it.
@@ -436,6 +462,199 @@ fn protected_metadata_names_for_writable_root(
         }
     }
     names
+}
+
+fn normalize_path_for_seatbelt_containment(path: &Path) -> Option<AbsolutePathBuf> {
+    let absolute = AbsolutePathBuf::from_absolute_path(path).ok()?;
+    for ancestor in path.ancestors() {
+        let Ok(canonical_ancestor) = ancestor.canonicalize() else {
+            continue;
+        };
+        let Ok(suffix) = path.strip_prefix(ancestor) else {
+            continue;
+        };
+        if let Ok(canonical) = AbsolutePathBuf::from_absolute_path(canonical_ancestor.join(suffix))
+        {
+            return Some(canonical);
+        }
+    }
+    Some(absolute)
+}
+
+fn seatbelt_dynamic_git_write_protections(writable_root: &AbsolutePathBuf) -> Vec<AbsolutePathBuf> {
+    let dot_git = writable_root.join(".git");
+    let gitdir = if let Ok(contents) = std::fs::read_to_string(dot_git.as_path()) {
+        let Some((prefix, gitdir_raw)) = contents.trim().split_once(':') else {
+            return Vec::new();
+        };
+        if prefix.trim() != "gitdir" || gitdir_raw.trim().is_empty() {
+            return Vec::new();
+        }
+        let Some(worktree_root) = dot_git.as_path().parent() else {
+            return Vec::new();
+        };
+        AbsolutePathBuf::resolve_path_against_base(gitdir_raw.trim(), worktree_root)
+    } else {
+        let Some(gitdir) = normalize_path_for_seatbelt_containment(dot_git.as_path()) else {
+            return Vec::new();
+        };
+        if !gitdir.as_path().is_dir() {
+            return Vec::new();
+        }
+        gitdir
+    };
+    let mut protected_paths = vec![gitdir.clone()];
+
+    let common_dir_file = gitdir.join("commondir");
+    if let Ok(common_dir_raw) = std::fs::read_to_string(common_dir_file.as_path()) {
+        let common_dir_raw = common_dir_raw.trim();
+        if !common_dir_raw.is_empty() {
+            protected_paths.push(AbsolutePathBuf::resolve_path_against_base(
+                common_dir_raw,
+                gitdir.as_path(),
+            ));
+        }
+    }
+
+    protected_paths.sort_by(|left, right| left.as_path().cmp(right.as_path()));
+    protected_paths.dedup();
+    protected_paths
+}
+
+fn has_exact_seatbelt_write_override(
+    file_system_sandbox_policy: &FileSystemSandboxPolicy,
+    protected_path: &AbsolutePathBuf,
+) -> bool {
+    let Some(protected_path) = normalize_path_for_seatbelt_containment(protected_path.as_path())
+    else {
+        return false;
+    };
+    file_system_sandbox_policy.entries.iter().any(|entry| {
+        if entry.access != FileSystemAccessMode::Write
+            || entry.skips_missing_path()
+                && matches!(&entry.path, FileSystemPath::Path { path } if !path.as_path().exists())
+        {
+            return false;
+        }
+        let FileSystemPath::Path { path } = &entry.path else {
+            return false;
+        };
+        normalize_path_for_seatbelt_containment(path.as_path())
+            .is_some_and(|path| path == protected_path)
+    })
+}
+
+fn seatbelt_writable_access_roots(
+    file_system_sandbox_policy: &FileSystemSandboxPolicy,
+    cwd: &Path,
+) -> Vec<SeatbeltAccessRoot> {
+    let mut roots = file_system_sandbox_policy
+        .get_writable_roots_with_cwd(cwd)
+        .into_iter()
+        .map(|root| SeatbeltAccessRoot {
+            protected_metadata_names: protected_metadata_names_for_writable_root(
+                file_system_sandbox_policy,
+                &root,
+                cwd,
+            ),
+            root: root.root,
+            excluded_subpaths: root.read_only_subpaths,
+        })
+        .collect::<Vec<_>>();
+
+    for root in &mut roots {
+        for protected_path in seatbelt_dynamic_git_write_protections(&root.root) {
+            let mut candidates = vec![protected_path.clone()];
+            if let Some(canonical) =
+                normalize_path_for_seatbelt_containment(protected_path.as_path())
+                && canonical != protected_path
+            {
+                candidates.push(canonical);
+            }
+            for candidate in candidates {
+                if has_exact_seatbelt_write_override(file_system_sandbox_policy, &candidate)
+                    || root.excluded_subpaths.contains(&candidate)
+                {
+                    continue;
+                }
+                root.excluded_subpaths.push(candidate);
+            }
+        }
+    }
+
+    // Seatbelt expresses each writable root as an independent allow arm. A
+    // broader arm must therefore repeat protections discovered for a nested
+    // writable root, or the broader allow can bypass the nested arm's `.git`
+    // pointer/gitdir carveout or protected metadata-name rule. Keep this
+    // closure local to the write policy: it must not add readable roots or feed
+    // missing paths into platform ACL materialization.
+    let protected_paths = roots
+        .iter()
+        .enumerate()
+        .flat_map(|(source_index, root)| {
+            let normalized_source = normalize_path_for_seatbelt_containment(root.root.as_path())
+                .unwrap_or_else(|| root.root.clone());
+            root.excluded_subpaths
+                .iter()
+                .cloned()
+                .chain(
+                    root.protected_metadata_names
+                        .iter()
+                        .map(|name| root.root.join(name)),
+                )
+                .flat_map(move |path| {
+                    let mut effective_paths = vec![
+                        path.as_path()
+                            .strip_prefix(root.root.as_path())
+                            .ok()
+                            .map(|suffix| normalized_source.join(suffix))
+                            .unwrap_or_else(|| {
+                                normalize_path_for_seatbelt_containment(path.as_path())
+                                    .unwrap_or_else(|| path.clone())
+                            }),
+                    ];
+                    if let Some(effective_path) =
+                        normalize_path_for_seatbelt_containment(path.as_path())
+                        && !effective_paths.contains(&effective_path)
+                    {
+                        effective_paths.push(effective_path);
+                    }
+                    effective_paths
+                        .into_iter()
+                        .map(move |effective_path| (source_index, path.clone(), effective_path))
+                })
+        })
+        .collect::<Vec<_>>();
+    for (target_index, target_root) in roots.iter_mut().enumerate() {
+        let normalized_target = normalize_path_for_seatbelt_containment(target_root.root.as_path())
+            .unwrap_or_else(|| target_root.root.clone());
+        for (source_index, protected_path, effective_path) in &protected_paths {
+            if *source_index == target_index && effective_path == protected_path {
+                continue;
+            }
+            let protected_path = if effective_path
+                .as_path()
+                .starts_with(normalized_target.as_path())
+            {
+                effective_path.clone()
+            } else if protected_path
+                .as_path()
+                .starts_with(target_root.root.as_path())
+            {
+                protected_path.clone()
+            } else {
+                continue;
+            };
+            if has_exact_seatbelt_write_override(file_system_sandbox_policy, &protected_path) {
+                continue;
+            }
+            if !target_root.excluded_subpaths.contains(&protected_path) {
+                target_root.excluded_subpaths.push(protected_path);
+            }
+        }
+    }
+
+    roots
 }
 
 fn build_seatbelt_unreadable_glob_policy(
@@ -654,25 +873,15 @@ pub fn create_seatbelt_command_args(
                         excluded_subpaths: unreadable_roots.clone(),
                         protected_metadata_names: Vec::new(),
                     }],
+                    SeatbeltExcludedSubpathMode::RawAndCanonicalized,
                 )
             }
         } else {
             build_seatbelt_access_policy(
                 "file-write*",
                 "WRITABLE_ROOT",
-                file_system_sandbox_policy
-                    .get_writable_roots_with_cwd(sandbox_policy_cwd)
-                    .into_iter()
-                    .map(|root| SeatbeltAccessRoot {
-                        protected_metadata_names: protected_metadata_names_for_writable_root(
-                            file_system_sandbox_policy,
-                            &root,
-                            sandbox_policy_cwd,
-                        ),
-                        root: root.root,
-                        excluded_subpaths: root.read_only_subpaths,
-                    })
-                    .collect(),
+                seatbelt_writable_access_roots(file_system_sandbox_policy, sandbox_policy_cwd),
+                SeatbeltExcludedSubpathMode::RawAndCanonicalized,
             )
         };
 
@@ -692,6 +901,7 @@ pub fn create_seatbelt_command_args(
                         excluded_subpaths: unreadable_roots,
                         protected_metadata_names: Vec::new(),
                     }],
+                    SeatbeltExcludedSubpathMode::Canonicalized,
                 );
                 (
                     format!("; allow read-only file operations\n{policy}"),
@@ -715,6 +925,7 @@ pub fn create_seatbelt_command_args(
                         root,
                     })
                     .collect(),
+                SeatbeltExcludedSubpathMode::Canonicalized,
             );
             if policy.is_empty() {
                 (String::new(), params)

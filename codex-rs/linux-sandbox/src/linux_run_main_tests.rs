@@ -648,6 +648,57 @@ fn legacy_landlock_rejects_split_only_filesystem_policies() {
 }
 
 #[test]
+#[should_panic(expected = "writable-root carveouts")]
+fn legacy_landlock_rejects_write_carveouts_before_generic_direct_enforcement() {
+    let temp_dir = tempfile::TempDir::new().expect("tempdir");
+    for metadata_name in [".git", ".agents", ".codex"] {
+        std::fs::create_dir_all(temp_dir.path().join(metadata_name))
+            .expect("create protected metadata directory");
+    }
+    let policy = FileSystemSandboxPolicy::from_legacy_sandbox_policy_for_cwd(
+        &codex_protocol::protocol::SandboxPolicy::new_workspace_write_policy(),
+        temp_dir.path(),
+    );
+
+    assert!(
+        policy
+            .get_writable_roots_with_cwd(temp_dir.path())
+            .iter()
+            .any(|root| !root.read_only_subpaths.is_empty()
+                || !root.protected_metadata_names.is_empty())
+    );
+
+    ensure_legacy_landlock_mode_supports_policy(
+        /*use_legacy_landlock*/ true,
+        &policy,
+        NetworkSandboxPolicy::Restricted,
+        temp_dir.path(),
+    );
+}
+
+#[test]
+fn legacy_landlock_accepts_semantically_compatible_policy_without_write_carveouts() {
+    let temp_dir = tempfile::TempDir::new().expect("tempdir");
+    let policy = FileSystemSandboxPolicy::read_only();
+
+    assert!(
+        !policy.needs_direct_runtime_enforcement(NetworkSandboxPolicy::Restricted, temp_dir.path())
+    );
+    assert!(
+        policy
+            .get_writable_roots_with_cwd(temp_dir.path())
+            .is_empty()
+    );
+
+    ensure_legacy_landlock_mode_supports_policy(
+        /*use_legacy_landlock*/ true,
+        &policy,
+        NetworkSandboxPolicy::Restricted,
+        temp_dir.path(),
+    );
+}
+
+#[test]
 fn valid_inner_stage_modes_do_not_panic() {
     ensure_inner_stage_mode_is_valid(
         /*apply_seccomp_then_exec*/ false, /*use_legacy_landlock*/ false,

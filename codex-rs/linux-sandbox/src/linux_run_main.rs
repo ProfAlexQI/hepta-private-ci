@@ -311,9 +311,23 @@ fn ensure_legacy_landlock_mode_supports_policy(
     network_sandbox_policy: NetworkSandboxPolicy,
     sandbox_policy_cwd: &Path,
 ) {
-    if use_legacy_landlock
-        && file_system_sandbox_policy
-            .needs_direct_runtime_enforcement(network_sandbox_policy, sandbox_policy_cwd)
+    if !use_legacy_landlock {
+        return;
+    }
+
+    let has_write_carveouts = file_system_sandbox_policy
+        .get_writable_roots_with_cwd(sandbox_policy_cwd)
+        .iter()
+        .any(|root| {
+            !root.read_only_subpaths.is_empty() || !root.protected_metadata_names.is_empty()
+        });
+    if has_write_carveouts {
+        panic!(
+            "permission profiles with writable-root carveouts are incompatible with --use-legacy-landlock"
+        );
+    }
+    if file_system_sandbox_policy
+        .needs_direct_runtime_enforcement(network_sandbox_policy, sandbox_policy_cwd)
     {
         panic!(
             "permission profiles requiring direct runtime enforcement are incompatible with --use-legacy-landlock"

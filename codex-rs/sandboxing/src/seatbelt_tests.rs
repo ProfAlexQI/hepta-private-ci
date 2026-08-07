@@ -21,6 +21,7 @@ use codex_network_proxy::NetworkProxyConfig;
 use codex_network_proxy::NetworkProxyConstraints;
 use codex_network_proxy::NetworkProxyState;
 use codex_network_proxy::build_config_state;
+use codex_protocol::models::PermissionProfile;
 use codex_protocol::permissions::FileSystemAccessMode;
 use codex_protocol::permissions::FileSystemPath;
 use codex_protocol::permissions::FileSystemSandboxEntry;
@@ -53,8 +54,38 @@ fn assert_seatbelt_denied(stderr: &[u8], path: &Path) {
     );
 }
 
+fn run_seatbelt_command(
+    command: Vec<String>,
+    file_system_sandbox_policy: &FileSystemSandboxPolicy,
+    network_sandbox_policy: NetworkSandboxPolicy,
+    cwd: &Path,
+) -> std::process::Output {
+    let args = create_seatbelt_command_args(CreateSeatbeltCommandArgsParams {
+        command,
+        file_system_sandbox_policy,
+        network_sandbox_policy,
+        sandbox_policy_cwd: cwd,
+        enforce_managed_network: false,
+        managed_network: None,
+        environment_id: None,
+        network: None,
+        extra_allow_unix_sockets: &[],
+    })
+    .expect("create Seatbelt command args");
+    Command::new(MACOS_PATH_TO_SEATBELT_EXECUTABLE)
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .expect("execute Seatbelt command")
+}
+
 fn absolute_path(path: &str) -> AbsolutePathBuf {
     AbsolutePathBuf::from_absolute_path(Path::new(path)).expect("absolute path")
+}
+
+fn canonical_absolute_path(path: &Path) -> AbsolutePathBuf {
+    AbsolutePathBuf::from_absolute_path(path.canonicalize().expect("canonicalize path"))
+        .expect("canonical path is absolute")
 }
 
 fn seatbelt_policy_arg(args: &[String]) -> &str {
@@ -1278,6 +1309,393 @@ fn create_seatbelt_args_with_read_only_git_pointer_file() {
         gitdir_config.display()
     );
     assert_seatbelt_denied(&output.stderr, &gitdir_config);
+}
+
+#[test]
+fn permission_profile_overlapping_writable_roots_keep_git_pointer_target_read_only() {
+    let tmp = TempDir::new().expect("tempdir");
+    let broad_root = tmp.path().canonicalize().expect("canonicalize broad root");
+    let worktree_root = broad_root.join("worktree");
+    let gitdir = broad_root.join("main/.git/worktrees/worktree");
+    let common_dir = broad_root.join("main/.git");
+    fs::create_dir_all(&worktree_root).expect("create worktree root");
+    fs::create_dir_all(&gitdir).expect("create gitdir");
+    fs::write(gitdir.join("commondir"), "../..\n").expect("write commondir pointer");
+
+    let gitdir_config = gitdir.join("config");
+    let gitdir_config_contents = "[core]\n";
+    fs::write(&gitdir_config, gitdir_config_contents).expect("write gitdir config");
+    let common_config = common_dir.join("config");
+    let common_config_contents = "[extensions]\n";
+    fs::write(&common_config, common_config_contents).expect("write common git config");
+
+    let dot_git = worktree_root.join(".git");
+    let dot_git_contents = "gitdir: ../main/.git/worktrees/worktree\n";
+    fs::write(&dot_git, dot_git_contents).expect("write .git pointer");
+
+    let broad_root =
+        AbsolutePathBuf::from_absolute_path(broad_root).expect("broad root is absolute");
+    let worktree_root = canonical_absolute_path(&worktree_root);
+    let (file_system_policy, network_sandbox_policy) = PermissionProfile::workspace_write_with(
+        std::slice::from_ref(&broad_root),
+        NetworkSandboxPolicy::Restricted,
+        /*exclude_tmpdir_env_var*/ true,
+        /*exclude_slash_tmp*/ true,
+    )
+    .materialize_project_roots_with_workspace_roots(std::slice::from_ref(&worktree_root))
+    .to_runtime_permissions();
+
+    for (protected_path, expected_contents) in [
+        (dot_git.as_path(), dot_git_contents),
+        (gitdir_config.as_path(), gitdir_config_contents),
+        (common_config.as_path(), common_config_contents),
+    ] {
+        let command = vec![
+            "bash".to_string(),
+            "-c".to_string(),
+            "echo 'pwned!' > \"$1\"".to_string(),
+            "bash".to_string(),
+            protected_path.to_string_lossy().to_string(),
+        ];
+        let output = run_seatbelt_command(
+            command,
+            &file_system_policy,
+            network_sandbox_policy,
+            worktree_root.as_path(),
+        );
+
+        assert_eq!(
+            expected_contents,
+            String::from_utf8_lossy(
+                &fs::read(protected_path).expect("read protected metadata path")
+            ),
+            "{} should remain read-only under overlapping writable roots",
+            protected_path.display()
+        );
+        assert!(
+            !output.status.success(),
+            "command to write {} should fail under seatbelt",
+            protected_path.display()
+        );
+        assert!(
+            !String::from_utf8_lossy(&output.stderr)
+                .contains("sandbox-exec: sandbox_apply: Operation not permitted"),
+            "the Seatbelt profile itself must load before testing {}: {}",
+            protected_path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_seatbelt_denied(&output.stderr, protected_path);
+    }
+
+    let missing_metadata = worktree_root.join(".codex");
+    let output = run_seatbelt_command(
+        vec![
+            "bash".to_string(),
+            "-c".to_string(),
+            "mkdir -p \"$1\"".to_string(),
+            "bash".to_string(),
+            missing_metadata.to_string_lossy().to_string(),
+        ],
+        &file_system_policy,
+        network_sandbox_policy,
+        worktree_root.as_path(),
+    );
+    assert!(!output.status.success());
+    assert!(!missing_metadata.as_path().exists());
+    assert!(
+        !String::from_utf8_lossy(&output.stderr)
+            .contains("sandbox-exec: sandbox_apply: Operation not permitted")
+    );
+
+    let allowed_path = broad_root.join("allowed.txt");
+    let output = run_seatbelt_command(
+        vec![
+            "bash".to_string(),
+            "-c".to_string(),
+            "echo 'allowed' > \"$1\"".to_string(),
+            "bash".to_string(),
+            allowed_path.to_string_lossy().to_string(),
+        ],
+        &file_system_policy,
+        network_sandbox_policy,
+        worktree_root.as_path(),
+    );
+    assert!(
+        output.status.success(),
+        "ordinary broad-root write should remain allowed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(allowed_path.as_path()).expect("read writable control"),
+        "allowed\n"
+    );
+
+    let mut override_policy = file_system_policy;
+    override_policy.entries.push(FileSystemSandboxEntry::new(
+        FileSystemPath::Path {
+            path: AbsolutePathBuf::from_absolute_path(gitdir).expect("absolute gitdir"),
+        },
+        FileSystemAccessMode::Write,
+    ));
+    let output = run_seatbelt_command(
+        vec![
+            "bash".to_string(),
+            "-c".to_string(),
+            "echo override > \"$1\"".to_string(),
+            "bash".to_string(),
+            gitdir_config.to_string_lossy().to_string(),
+        ],
+        &override_policy,
+        network_sandbox_policy,
+        worktree_root.as_path(),
+    );
+    assert!(output.status.success());
+    assert_eq!(fs::read_to_string(gitdir_config).unwrap(), "override\n");
+}
+
+#[test]
+fn overlapping_writable_roots_keep_symlinked_git_directory_target_read_only() {
+    let tmp = TempDir::new().expect("tempdir");
+    let source_root = tmp.path().join("source");
+    let target_root = tmp.path().join("target");
+    let worktree_root = source_root.join("worktree");
+    let gitdir = target_root.join("repo.git");
+    let common_dir = target_root.join("common.git");
+    fs::create_dir_all(&worktree_root).expect("create worktree root");
+    fs::create_dir_all(&gitdir).expect("create gitdir");
+    fs::create_dir_all(&common_dir).expect("create common dir");
+    let dot_git = worktree_root.join(".git");
+    std::os::unix::fs::symlink(&gitdir, &dot_git).expect("create .git directory symlink");
+    fs::write(gitdir.join("commondir"), "../common.git\n").expect("write commondir pointer");
+
+    let gitdir_config = gitdir.join("config");
+    let common_config = common_dir.join("config");
+    fs::write(&gitdir_config, "protected\n").expect("write gitdir config");
+    fs::write(&common_config, "common\n").expect("write common config");
+
+    let source_root = canonical_absolute_path(&source_root);
+    let target_root = canonical_absolute_path(&target_root);
+    let worktree_root = canonical_absolute_path(&worktree_root);
+    let (file_system_policy, network_sandbox_policy) = PermissionProfile::workspace_write_with(
+        &[source_root, target_root.clone()],
+        NetworkSandboxPolicy::Restricted,
+        /*exclude_tmpdir_env_var*/ true,
+        /*exclude_slash_tmp*/ true,
+    )
+    .materialize_project_roots_with_workspace_roots(std::slice::from_ref(&worktree_root))
+    .to_runtime_permissions();
+
+    let allowed_path = target_root.join("allowed.txt");
+    let output = run_seatbelt_command(
+        vec![
+            "bash".to_string(),
+            "-c".to_string(),
+            "if echo pwned 2>/dev/null > \"$1\"; then exit 99; fi; if echo pwned > \"$2\"; then exit 98; fi; if rm \"$3\" 2>/dev/null; then exit 97; fi; echo allowed > \"$4\"".to_string(),
+            "bash".to_string(),
+            gitdir_config.to_string_lossy().to_string(),
+            common_config.to_string_lossy().to_string(),
+            dot_git.to_string_lossy().to_string(),
+            allowed_path.to_string_lossy().to_string(),
+        ],
+        &file_system_policy,
+        network_sandbox_policy,
+        worktree_root.as_path(),
+    );
+
+    assert!(
+        output.status.success(),
+        "the protected write should fail before the writable control: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_seatbelt_denied(&output.stderr, &common_config);
+    assert_eq!(
+        fs::read_to_string(&gitdir_config).expect("read protected gitdir config"),
+        "protected\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&common_config).expect("read protected common config"),
+        "common\n"
+    );
+    assert!(fs::symlink_metadata(&dot_git).is_ok());
+    assert_eq!(
+        fs::read_to_string(allowed_path.as_path()).expect("read writable control"),
+        "allowed\n"
+    );
+}
+
+#[test]
+fn missing_git_targets_are_write_protected_without_host_materialization() {
+    let tmp = TempDir::new().expect("tempdir");
+    let broad_root = tmp.path().canonicalize().expect("canonicalize broad root");
+    let missing_git_worktree = broad_root.join("missing-git-worktree");
+    let missing_common_worktree = broad_root.join("missing-common-worktree");
+    let gitdir = broad_root.join("gitdir");
+    let missing_gitdir = broad_root.join("missing-gitdir");
+    let missing_common = broad_root.join("missing-common");
+    fs::create_dir_all(&missing_git_worktree).expect("create missing-git worktree");
+    fs::create_dir_all(&missing_common_worktree).expect("create missing-common worktree");
+    fs::create_dir_all(&gitdir).expect("create gitdir");
+    fs::write(
+        missing_git_worktree.join(".git"),
+        "gitdir: ../missing-gitdir\n",
+    )
+    .expect("write missing gitdir pointer");
+    fs::write(missing_common_worktree.join(".git"), "gitdir: ../gitdir\n")
+        .expect("write existing gitdir pointer");
+    fs::write(gitdir.join("commondir"), "../missing-common\n")
+        .expect("write missing common pointer");
+
+    let broad_root =
+        AbsolutePathBuf::from_absolute_path(broad_root).expect("broad root is absolute");
+    let workspace_roots = [missing_git_worktree, missing_common_worktree]
+        .into_iter()
+        .map(|root| {
+            AbsolutePathBuf::from_absolute_path(root.canonicalize().expect("canonicalize worktree"))
+                .expect("worktree is absolute")
+        })
+        .collect::<Vec<_>>();
+    let (file_system_policy, network_sandbox_policy) = PermissionProfile::workspace_write_with(
+        std::slice::from_ref(&broad_root),
+        NetworkSandboxPolicy::Restricted,
+        /*exclude_tmpdir_env_var*/ true,
+        /*exclude_slash_tmp*/ true,
+    )
+    .materialize_project_roots_with_workspace_roots(&workspace_roots)
+    .to_runtime_permissions();
+
+    for protected_path in [&missing_gitdir, &missing_common] {
+        assert!(!protected_path.exists());
+        let output = run_seatbelt_command(
+            vec![
+                "bash".to_string(),
+                "-c".to_string(),
+                "mkdir -p \"$1\"".to_string(),
+                "bash".to_string(),
+                protected_path.to_string_lossy().to_string(),
+            ],
+            &file_system_policy,
+            network_sandbox_policy,
+            workspace_roots[0].as_path(),
+        );
+
+        assert!(!output.status.success());
+        assert!(!protected_path.exists());
+        assert!(
+            !String::from_utf8_lossy(&output.stderr)
+                .contains("sandbox-exec: sandbox_apply: Operation not permitted")
+        );
+    }
+
+    let mut override_policy = file_system_policy;
+    let missing_gitdir =
+        AbsolutePathBuf::from_absolute_path(missing_gitdir).expect("missing gitdir is absolute");
+    override_policy.entries.push(FileSystemSandboxEntry::new(
+        FileSystemPath::Path {
+            path: missing_gitdir.clone(),
+        },
+        FileSystemAccessMode::Write,
+    ));
+    let output = run_seatbelt_command(
+        vec![
+            "bash".to_string(),
+            "-c".to_string(),
+            "mkdir -p \"$1\"".to_string(),
+            "bash".to_string(),
+            missing_gitdir.to_string_lossy().to_string(),
+        ],
+        &override_policy,
+        network_sandbox_policy,
+        workspace_roots[0].as_path(),
+    );
+    assert!(
+        output.status.success(),
+        "exact write override should reopen missing gitdir: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(missing_gitdir.as_path().is_dir());
+}
+
+#[test]
+fn symlinked_broad_root_closes_canonical_git_metadata_targets() {
+    let tmp = TempDir::new().expect("tempdir");
+    let real_root = tmp.path().join("real");
+    let alias_root = tmp.path().join("alias");
+    let worktree_root = real_root.join("worktree");
+    let gitdir = real_root.join("main/.git/worktrees/worktree");
+    let common_dir = real_root.join("main/.git");
+    fs::create_dir_all(&worktree_root).expect("create worktree root");
+    fs::create_dir_all(&gitdir).expect("create gitdir");
+    std::os::unix::fs::symlink(&real_root, &alias_root).expect("create broad-root alias");
+    fs::write(gitdir.join("commondir"), "../..\n").expect("write commondir pointer");
+    fs::write(
+        worktree_root.join(".git"),
+        format!("gitdir: {}\n", gitdir.display()),
+    )
+    .expect("write canonical gitdir pointer");
+
+    let gitdir_config = gitdir.join("config");
+    let common_config = common_dir.join("config");
+    fs::write(&gitdir_config, "gitdir\n").expect("write gitdir config");
+    fs::write(&common_config, "common\n").expect("write common config");
+
+    let alias_root =
+        AbsolutePathBuf::from_absolute_path(alias_root).expect("alias root is absolute");
+    let worktree_root = canonical_absolute_path(&worktree_root);
+    let (file_system_policy, network_sandbox_policy) = PermissionProfile::workspace_write_with(
+        std::slice::from_ref(&alias_root),
+        NetworkSandboxPolicy::Restricted,
+        /*exclude_tmpdir_env_var*/ true,
+        /*exclude_slash_tmp*/ true,
+    )
+    .materialize_project_roots_with_workspace_roots(std::slice::from_ref(&worktree_root))
+    .to_runtime_permissions();
+
+    for (protected_path, expected_contents) in
+        [(&gitdir_config, "gitdir\n"), (&common_config, "common\n")]
+    {
+        let output = run_seatbelt_command(
+            vec![
+                "bash".to_string(),
+                "-c".to_string(),
+                "echo pwned > \"$1\"".to_string(),
+                "bash".to_string(),
+                protected_path.to_string_lossy().to_string(),
+            ],
+            &file_system_policy,
+            network_sandbox_policy,
+            worktree_root.as_path(),
+        );
+
+        assert!(!output.status.success());
+        assert_eq!(
+            fs::read_to_string(protected_path).expect("read protected config"),
+            expected_contents
+        );
+        assert!(
+            !String::from_utf8_lossy(&output.stderr)
+                .contains("sandbox-exec: sandbox_apply: Operation not permitted")
+        );
+        assert_seatbelt_denied(&output.stderr, protected_path);
+    }
+
+    let allowed_path = real_root.join("allowed.txt");
+    let output = run_seatbelt_command(
+        vec![
+            "bash".to_string(),
+            "-c".to_string(),
+            "echo allowed > \"$1\"".to_string(),
+            "bash".to_string(),
+            allowed_path.to_string_lossy().to_string(),
+        ],
+        &file_system_policy,
+        network_sandbox_policy,
+        worktree_root.as_path(),
+    );
+    assert!(output.status.success());
+    assert_eq!(
+        fs::read_to_string(allowed_path).expect("read allowed control"),
+        "allowed\n"
+    );
 }
 
 #[test]

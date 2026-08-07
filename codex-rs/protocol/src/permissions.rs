@@ -2366,6 +2366,57 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn materialized_git_pointer_does_not_expand_read_authority() {
+        let tmp = TempDir::new().expect("tempdir");
+        let worktree_root = tmp.path().join("worktree");
+        let outside_root = tmp.path().join("outside");
+        let outside_gitdir = outside_root.join("gitdir");
+        let outside_common_dir = outside_root.join("common");
+        fs::create_dir_all(&worktree_root).expect("create worktree root");
+        fs::create_dir_all(&outside_gitdir).expect("create outside gitdir");
+        fs::create_dir_all(&outside_common_dir).expect("create outside common dir");
+        fs::write(outside_gitdir.join("commondir"), "../common\n")
+            .expect("write commondir pointer");
+        symlink_dir(&outside_root, &worktree_root.join("escape")).expect("create escaping symlink");
+        let dot_git = worktree_root.join(".git");
+        fs::write(&dot_git, "gitdir: escape/gitdir\n").expect("write .git pointer");
+
+        let worktree_root = AbsolutePathBuf::from_absolute_path(
+            worktree_root
+                .canonicalize()
+                .expect("canonicalize worktree root"),
+        )
+        .expect("absolute worktree root");
+        let policy = FileSystemSandboxPolicy::restricted(vec![FileSystemSandboxEntry::new(
+            FileSystemPath::Special {
+                value: FileSystemSpecialPath::project_roots(/*subpath*/ None),
+            },
+            FileSystemAccessMode::Write,
+        )])
+        .materialize_project_roots_with_workspace_roots(std::slice::from_ref(&worktree_root));
+
+        assert!(policy.can_read_path_with_cwd(&dot_git, worktree_root.as_path()));
+        assert!(!policy.can_read_path_with_cwd(Path::new("/"), worktree_root.as_path()));
+        assert!(!policy.can_read_path_with_cwd(Path::new("/etc"), worktree_root.as_path()));
+        assert!(!policy.can_read_path_with_cwd(&outside_gitdir, worktree_root.as_path()));
+        assert!(!policy.can_read_path_with_cwd(&outside_common_dir, worktree_root.as_path()));
+        assert!(!policy.has_full_disk_read_access());
+        let logical_gitdir = worktree_root.join("escape/gitdir");
+        let logical_common_dir = worktree_root.join("escape/common");
+        assert!(!policy.entries.iter().any(|entry| {
+            entry.access == FileSystemAccessMode::Read
+                && matches!(&entry.path, FileSystemPath::Path { path } if path == &logical_gitdir || path == &logical_common_dir)
+        }));
+        assert!(
+            policy
+                .get_readable_roots_with_cwd(worktree_root.as_path())
+                .iter()
+                .all(|root| root.as_path() != Path::new("/"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn project_roots_special_path_preserves_symlinked_root() {
         let cwd = TempDir::new().expect("tempdir");
         let real_root = cwd.path().join("real");
