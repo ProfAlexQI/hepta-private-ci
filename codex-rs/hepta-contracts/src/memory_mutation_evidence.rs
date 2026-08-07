@@ -2,12 +2,11 @@ use crate::MemoryMutationOperation;
 use crate::MemoryMutationProposal;
 use crate::MemoryMutationProposalId;
 use crate::Sha256Digest;
+use crate::canonical::length_delimited_sha256;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::de::Error as _;
-use sha2::Digest as _;
-use sha2::Sha256;
 
 pub const MEMORY_MUTATION_DRY_RUN_SCHEMA_VERSION: u32 = 1;
 
@@ -273,23 +272,15 @@ fn expected_dry_run_id(
     let projected_memory_writes = projected_memory_writes.to_string();
     MemoryMutationDryRunId(format!(
         "memory-mutation-dry-run:v1:{}",
-        digest_parts([
+        length_delimited_sha256([
             proposal_id.as_str(),
             snapshot_sha256.as_str(),
             disposition.as_str(),
             reason.as_str(),
             projected_memory_writes.as_str(),
         ])
+        .as_str()
     ))
-}
-
-fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
-    let mut hasher = Sha256::new();
-    for part in parts {
-        hasher.update((part.len() as u64).to_be_bytes());
-        hasher.update(part.as_bytes());
-    }
-    format!("{:x}", hasher.finalize())
 }
 
 #[cfg(test)]
