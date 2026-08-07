@@ -2426,6 +2426,7 @@ dependencies = [
  "codex-thread-store",
  "codex-tui",
  "codex-utils-absolute-path",
+ "codex-utils-build-identity",
  "codex-utils-cargo-bin",
  "codex-utils-cli",
  "codex-utils-path",
