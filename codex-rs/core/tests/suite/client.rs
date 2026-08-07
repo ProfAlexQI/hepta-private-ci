@@ -1533,7 +1533,7 @@ async fn send_request_with_provider(provider: ModelProviderInfo) {
     });
 
     let mut stream = client_session
-        .stream(
+        .stream_unguarded_for_test(
             &prompt,
             &model_info,
             &session_telemetry,
@@ -3195,7 +3195,7 @@ async fn azure_responses_request_includes_store_and_prefixed_item_ids() {
     );
 
     let mut stream = client_session
-        .stream(
+        .stream_unguarded_for_test(
             &prompt,
             &model_info,
             &session_telemetry,

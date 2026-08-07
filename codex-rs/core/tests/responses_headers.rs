@@ -150,7 +150,7 @@ async fn responses_stream_includes_subagent_header_on_review() {
     }];
 
     let mut stream = client_session
-        .stream(
+        .stream_unguarded_for_test(
             &prompt,
             &model_info,
             &session_telemetry,
@@ -286,7 +286,7 @@ async fn responses_stream_includes_subagent_header_on_other() {
     }];
 
     let mut stream = client_session
-        .stream(
+        .stream_unguarded_for_test(
             &prompt,
             &model_info,
             &session_telemetry,
@@ -407,7 +407,7 @@ async fn responses_respects_model_info_overrides_from_config() {
     }];
 
     let mut stream = client_session
-        .stream(
+        .stream_unguarded_for_test(
             &prompt,
             &model_info,
             &session_telemetry,
