@@ -1,0 +1,285 @@
+use sqlx::Row;
+use sqlx::SqlitePool;
+
+use crate::EvidenceError;
+
+pub(crate) async fn verify_quick_check(pool: &SqlitePool) -> Result<(), EvidenceError> {
+    let results = sqlx::query_scalar::<_, String>("PRAGMA quick_check(1)")
+        .fetch_all(pool)
+        .await
+        .map_err(classify_sqlx_error)?;
+    if results.len() == 1 && results[0] == "ok" {
+        Ok(())
+    } else {
+        Err(EvidenceError::Corrupt(
+            "SQLite quick_check reported invalid evidence storage".to_string(),
+        ))
+    }
+}
+
+struct SchemaObjectSpec {
+    name: &'static str,
+    object_type: &'static str,
+    table_name: &'static str,
+    required_sql_fragments: &'static [&'static str],
+}
+
+const REQUIRED_SCHEMA_OBJECTS: &[SchemaObjectSpec] = &[
+    SchemaObjectSpec {
+        name: "governance_decisions",
+        object_type: "table",
+        table_name: "governance_decisions",
+        required_sql_fragments: &["create table", "governance_decisions"],
+    },
+    SchemaObjectSpec {
+        name: "governance_receipts",
+        object_type: "table",
+        table_name: "governance_receipts",
+        required_sql_fragments: &["create table", "governance_receipts"],
+    },
+    SchemaObjectSpec {
+        name: "governance_decisions_thread_seq",
+        object_type: "index",
+        table_name: "governance_decisions",
+        required_sql_fragments: &["create index", "governance_decisions", "thread_id", "seq"],
+    },
+    SchemaObjectSpec {
+        name: "governance_receipts_thread_seq",
+        object_type: "index",
+        table_name: "governance_receipts",
+        required_sql_fragments: &["create index", "governance_receipts", "thread_id", "seq"],
+    },
+    SchemaObjectSpec {
+        name: "governance_decisions_no_update",
+        object_type: "trigger",
+        table_name: "governance_decisions",
+        required_sql_fragments: &[
+            "before update",
+            "on governance_decisions",
+            "raise(abort",
+            "governance decisions are immutable",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "governance_decisions_no_delete",
+        object_type: "trigger",
+        table_name: "governance_decisions",
+        required_sql_fragments: &[
+            "before delete",
+            "on governance_decisions",
+            "raise(abort",
+            "governance decisions are immutable",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "governance_receipts_no_update",
+        object_type: "trigger",
+        table_name: "governance_receipts",
+        required_sql_fragments: &[
+            "before update",
+            "on governance_receipts",
+            "raise(abort",
+            "governance receipts are immutable",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "governance_receipts_no_delete",
+        object_type: "trigger",
+        table_name: "governance_receipts",
+        required_sql_fragments: &[
+            "before delete",
+            "on governance_receipts",
+            "raise(abort",
+            "governance receipts are immutable",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_intents",
+        object_type: "table",
+        table_name: "provider_invocation_intents",
+        required_sql_fragments: &[
+            "create table",
+            "provider_invocation_intents",
+            "attempt_id",
+            "request_binding_id",
+            "payload_sha256",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_terminals",
+        object_type: "table",
+        table_name: "provider_invocation_terminals",
+        required_sql_fragments: &[
+            "create table",
+            "provider_invocation_terminals",
+            "foreign key",
+            "provider_invocation_intents",
+            "on delete restrict",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_intents_thread_seq",
+        object_type: "index",
+        table_name: "provider_invocation_intents",
+        required_sql_fragments: &[
+            "create index",
+            "provider_invocation_intents",
+            "thread_id",
+            "seq",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_intents_binding_seq",
+        object_type: "index",
+        table_name: "provider_invocation_intents",
+        required_sql_fragments: &[
+            "create index",
+            "provider_invocation_intents",
+            "request_binding_id",
+            "seq",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_terminals_thread_seq",
+        object_type: "index",
+        table_name: "provider_invocation_terminals",
+        required_sql_fragments: &[
+            "create index",
+            "provider_invocation_terminals",
+            "thread_id",
+            "seq",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_intents_no_update",
+        object_type: "trigger",
+        table_name: "provider_invocation_intents",
+        required_sql_fragments: &[
+            "before update",
+            "on provider_invocation_intents",
+            "raise(abort",
+            "provider invocation intents are immutable",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_intents_no_delete",
+        object_type: "trigger",
+        table_name: "provider_invocation_intents",
+        required_sql_fragments: &[
+            "before delete",
+            "on provider_invocation_intents",
+            "raise(abort",
+            "provider invocation intents are immutable",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_terminals_no_update",
+        object_type: "trigger",
+        table_name: "provider_invocation_terminals",
+        required_sql_fragments: &[
+            "before update",
+            "on provider_invocation_terminals",
+            "raise(abort",
+            "provider invocation terminals are immutable",
+        ],
+    },
+    SchemaObjectSpec {
+        name: "provider_invocation_terminals_no_delete",
+        object_type: "trigger",
+        table_name: "provider_invocation_terminals",
+        required_sql_fragments: &[
+            "before delete",
+            "on provider_invocation_terminals",
+            "raise(abort",
+            "provider invocation terminals are immutable",
+        ],
+    },
+];
+
+pub(crate) async fn verify_schema_manifest(pool: &SqlitePool) -> Result<(), EvidenceError> {
+    for spec in REQUIRED_SCHEMA_OBJECTS {
+        let row = sqlx::query(
+            "SELECT type AS object_type, tbl_name, sql
+             FROM sqlite_schema WHERE name = ?",
+        )
+        .bind(spec.name)
+        .fetch_optional(pool)
+        .await
+        .map_err(classify_sqlx_error)?
+        .ok_or_else(|| {
+            EvidenceError::Corrupt(format!(
+                "required SQLite schema object {} is missing",
+                spec.name
+            ))
+        })?;
+        let object_type: String = row.get("object_type");
+        let table_name: String = row.get("tbl_name");
+        let sql: Option<String> = row.get("sql");
+        let Some(sql) = sql else {
+            return Err(EvidenceError::Corrupt(format!(
+                "required SQLite schema object {} has no definition",
+                spec.name
+            )));
+        };
+        let normalized_sql = sql.to_ascii_lowercase();
+        if object_type != spec.object_type
+            || table_name != spec.table_name
+            || spec
+                .required_sql_fragments
+                .iter()
+                .any(|fragment| !normalized_sql.contains(fragment))
+        {
+            return Err(EvidenceError::Corrupt(format!(
+                "required SQLite schema object {} has an invalid definition",
+                spec.name
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) async fn verify_foreign_keys(pool: &SqlitePool) -> Result<(), EvidenceError> {
+    let violation = sqlx::query("PRAGMA foreign_key_check")
+        .fetch_optional(pool)
+        .await
+        .map_err(classify_sqlx_error)?;
+    if violation.is_some() {
+        Err(EvidenceError::Corrupt(
+            "SQLite foreign_key_check found invalid evidence references".to_string(),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+pub(crate) fn classify_migrate_error(error: sqlx::migrate::MigrateError) -> EvidenceError {
+    let detail = error.to_string();
+    match error {
+        sqlx::migrate::MigrateError::Execute(error)
+        | sqlx::migrate::MigrateError::ExecuteMigration(error, _) => classify_sqlx_error(error),
+        sqlx::migrate::MigrateError::VersionMissing(_)
+        | sqlx::migrate::MigrateError::VersionMismatch(_)
+        | sqlx::migrate::MigrateError::VersionNotPresent(_)
+        | sqlx::migrate::MigrateError::Dirty(_) => EvidenceError::Corrupt(detail),
+        _ => EvidenceError::Unavailable(detail),
+    }
+}
+
+pub(crate) fn classify_sqlx_error(error: sqlx::Error) -> EvidenceError {
+    let detail = error.to_string();
+    match sqlite_primary_code(&error) {
+        // SQLITE_CORRUPT, SQLITE_SCHEMA, SQLITE_NOTADB. SQLx exposes the
+        // extended numeric code, whose low byte is the primary result code.
+        Some(11 | 17 | 26) => EvidenceError::Corrupt(detail),
+        _ => EvidenceError::Unavailable(detail),
+    }
+}
+
+fn sqlite_primary_code(error: &sqlx::Error) -> Option<i32> {
+    error
+        .as_database_error()?
+        .code()?
+        .parse::<i32>()
+        .ok()
+        .map(|code| code & 0xff)
+}
