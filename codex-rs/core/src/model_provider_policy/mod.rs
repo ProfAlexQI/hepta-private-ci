@@ -37,6 +37,7 @@ pub(crate) use lifecycle::has_active_model_provider_policy;
 pub(crate) use response_terminal::ProviderResponseTerminal;
 pub(crate) use transport::ProviderRoutingHint;
 pub(crate) use transport::ProviderWireSemantic;
+pub(crate) use transport::logical_compaction_request;
 pub(crate) use transport::logical_responses_request;
 pub(crate) use transport::provider_websocket_wire_payload;
 pub(crate) use transport::responses_lite_from_http_header;

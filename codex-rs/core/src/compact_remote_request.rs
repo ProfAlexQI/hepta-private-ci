@@ -5,10 +5,12 @@ use super::trim_function_call_history_to_fit_context_window;
 use crate::Prompt;
 use crate::client::CompactConversationRequestSettings;
 use crate::compact::CompactionAnalyticsDetails;
+use crate::model_provider_policy::ModelProviderPolicyContext;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::responses_metadata::CompactionTurnMetadata;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
+use codex_extension_api::ModelProviderRequestKind;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::ResponseItem;
@@ -74,6 +76,15 @@ pub(super) async fn run_remote_compact_attempt(
         window_id,
         CodexResponsesRequestKind::Compaction(compaction_metadata),
     );
+    let provider_policy_context = ModelProviderPolicyContext {
+        registry: sess.services.extensions.as_ref(),
+        session_store: &sess.services.session_extension_data,
+        thread_store: &sess.services.thread_extension_data,
+        turn_store: turn_context.extension_data.as_ref(),
+        thread_id: sess.thread_id().to_string(),
+        turn_id: turn_context.sub_id.clone(),
+        request_kind: ModelProviderRequestKind::Compaction,
+    };
     let new_history = sess
         .services
         .model_client
@@ -93,6 +104,7 @@ pub(super) async fn run_remote_compact_attempt(
             &turn_context.session_telemetry,
             compaction_trace,
             &responses_metadata,
+            Some(&provider_policy_context),
         )
         .await?;
     Ok(RemoteCompactAttempt {

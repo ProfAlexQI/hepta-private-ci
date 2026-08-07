@@ -89,6 +89,7 @@ use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::W3cTraceContext;
+use codex_rollout_trace::CompactionTraceAttempt;
 use codex_rollout_trace::CompactionTraceContext;
 use codex_rollout_trace::InferenceTraceAttempt;
 use codex_rollout_trace::InferenceTraceContext;
@@ -129,6 +130,7 @@ use crate::model_provider_policy::ProviderRoutingHint;
 use crate::model_provider_policy::ProviderWireSemantic;
 use crate::model_provider_policy::begin_model_provider_policy;
 use crate::model_provider_policy::has_active_model_provider_policy;
+use crate::model_provider_policy::logical_compaction_request;
 use crate::model_provider_policy::logical_responses_request;
 use crate::model_provider_policy::prepare_model_provider_policy;
 use crate::model_provider_policy::provider_websocket_wire_payload;
@@ -634,6 +636,7 @@ impl ModelClient {
         session_telemetry: &SessionTelemetry,
         compaction_trace: &CompactionTraceContext,
         responses_metadata: &CodexResponsesMetadata,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
     ) -> Result<Vec<ResponseItem>> {
         if prompt.input.is_empty() {
             return Ok(Vec::new());
@@ -715,21 +718,132 @@ impl ModelClient {
             .api_provider
             .stream_idle_timeout
             .saturating_mul(COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER);
+        let active_provider_policy_context = provider_policy_context.filter(|context| {
+            has_active_model_provider_policy(context.registry, context.thread_store)
+        });
+        let retry_config = client_setup.api_provider.retry.clone();
+        let provider_id = client_setup.api_provider.name.clone();
+        let endpoint = client_setup
+            .api_provider
+            .url_for_path(RESPONSES_COMPACT_ENDPOINT);
         let client =
             ApiCompactClient::new(transport, client_setup.api_provider, client_setup.api_auth)
                 .with_telemetry(Some(request_telemetry));
         let trace_attempt = compaction_trace.start_attempt(&payload);
-        let result = client
-            .compact_input(
-                &payload,
-                extra_headers,
-                compact_request_timeout,
-                turn_state.as_deref(),
+        let Some(provider_policy_context) = active_provider_policy_context else {
+            let result = client
+                .compact_input(
+                    &payload,
+                    extra_headers,
+                    compact_request_timeout,
+                    turn_state.as_deref(),
+                )
+                .await
+                .map_err(|error| self.state.provider.map_api_error(error));
+            trace_attempt.record_result(result.as_deref());
+            return result;
+        };
+
+        let routing_hint =
+            ProviderRoutingHint::from_header(extra_headers.get(X_CODEX_ROUTING_HINT_HEADER))
+                .map_err(|error| trace_compaction_policy_error(&trace_attempt, error))?;
+        let responses_lite = responses_lite_from_http_header(
+            extra_headers.get(X_OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER),
+        )
+        .map_err(|error| trace_compaction_policy_error(&trace_attempt, error))?;
+        let logical_request = logical_compaction_request(&payload);
+
+        for retry_index in 0..=retry_config.max_attempts {
+            let wire_semantic =
+                ProviderWireSemantic::new(&payload, routing_hint.as_ref(), responses_lite);
+            let prepared = prepare_model_provider_policy(
+                provider_policy_context,
+                provider_id.as_str(),
+                model.as_str(),
+                ModelProviderTransport::Http,
+                endpoint.as_str(),
+                &logical_request,
+                &wire_semantic,
+                /*previous_response_id*/ None,
+                /*generate*/ true,
+            )
+            .map_err(|error| trace_compaction_policy_error(&trace_attempt, error))?;
+            let mut admitted_provider_attempt = match begin_model_provider_policy(
+                provider_policy_context.registry,
+                prepared.invocation_input(provider_policy_context),
             )
             .await
-            .map_err(|error| self.state.provider.map_api_error(error));
-        trace_attempt.record_result(result.as_deref());
-        result
+            .map_err(|error| trace_compaction_policy_error(&trace_attempt, error))?
+            {
+                ModelProviderPolicyBegin::NoPolicy => None,
+                ModelProviderPolicyBegin::Allow { lease } => {
+                    let dispatch = provider_http_dispatch_metadata(&extra_headers);
+                    Some(AdmittedProviderAttempt::new(lease, dispatch))
+                }
+                ModelProviderPolicyBegin::Block {
+                    reason_code,
+                    message,
+                } => {
+                    let error = model_provider_policy_blocked(reason_code, message);
+                    trace_attempt.record_failed(&error);
+                    return Err(error);
+                }
+            };
+            let dispatch_metadata = admitted_provider_attempt
+                .as_ref()
+                .map(AdmittedProviderAttempt::dispatch_metadata)
+                .unwrap_or_default();
+            let result = client
+                .compact_input_single_attempt(
+                    &payload,
+                    extra_headers.clone(),
+                    compact_request_timeout,
+                    turn_state.as_deref(),
+                    dispatch_metadata,
+                )
+                .await;
+
+            match result {
+                Ok(output) => {
+                    let mut terminal = ProviderResponseTerminal::new(
+                        admitted_provider_attempt
+                            .take()
+                            .map(AdmittedProviderAttempt::into_owner),
+                    );
+                    if let Err(error) = terminal.finish_completed_unary(&output).await {
+                        let error = model_provider_policy_error(error);
+                        trace_attempt.record_failed(&error);
+                        return Err(error);
+                    }
+                    trace_attempt.record_completed(&output);
+                    return Ok(output);
+                }
+                Err(error) => {
+                    if let Some(attempt) = admitted_provider_attempt.take()
+                        && let Err(terminal_error) = attempt
+                            .finish_immediate(api_error_http_status(&error), "http")
+                            .await
+                    {
+                        trace_attempt.record_failed(&terminal_error);
+                        return Err(terminal_error);
+                    }
+                    let retry_delay = match &error {
+                        ApiError::Transport(transport_error) => {
+                            retry_config.retry_delay_after_error(transport_error, retry_index)
+                        }
+                        _ => None,
+                    };
+                    if let Some(delay) = retry_delay {
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
+                    let error = self.state.provider.map_api_error(error);
+                    trace_attempt.record_failed(&error);
+                    return Err(error);
+                }
+            }
+        }
+        unreachable!("provider retry budget must terminate the governed compaction loop")
     }
 
     pub(crate) async fn create_realtime_call_with_headers(
@@ -2597,6 +2711,15 @@ fn model_provider_policy_error(error: ModelProviderPolicyError) -> CodexErr {
         error.reason_code(),
         error.detail()
     ))
+}
+
+fn trace_compaction_policy_error(
+    trace_attempt: &CompactionTraceAttempt,
+    error: ModelProviderPolicyError,
+) -> CodexErr {
+    let error = model_provider_policy_error(error);
+    trace_attempt.record_failed(&error);
+    error
 }
 
 fn model_provider_policy_blocked(reason_code: String, message: String) -> CodexErr {
