@@ -421,3 +421,67 @@ async fn open_rejects_missing_provider_schema_object() {
     };
     assert!(matches!(error, EvidenceError::Corrupt(_)));
 }
+
+#[tokio::test]
+async fn open_rejects_legacy_provider_rows_without_host_binding_digest() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let raw = sqlite
+        .open_durable_evidence_pool(store.path())
+        .await
+        .expect("raw evidence pool");
+    sqlx::query("DROP TRIGGER provider_invocation_intents_host_binding_required")
+        .execute(&raw)
+        .await
+        .expect("drop host binding trigger");
+    sqlx::query(
+        "INSERT INTO provider_invocation_intents (
+            attempt_id, request_binding_id, attempt_nonce_sha256, thread_id, turn_id,
+            request_kind, provider_id, provider_config_sha256, model, transport,
+            endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
+            previous_response_id_sha256, generate, schema_version,
+            payload_json, payload_sha256, recorded_at_ms
+         ) VALUES (?, ?, ?, ?, ?, 'turn', ?, ?, ?, 'http', ?, ?, ?, NULL, 1, 1, '{}', ?, 0)",
+    )
+    .bind(format!("provider-attempt:v1:{}", "1".repeat(64)))
+    .bind(format!("provider-request:v1:{}", "2".repeat(64)))
+    .bind("3".repeat(64))
+    .bind("thread-legacy")
+    .bind("turn-legacy")
+    .bind("provider-legacy")
+    .bind("4".repeat(64))
+    .bind("model-legacy")
+    .bind("5".repeat(64))
+    .bind("6".repeat(64))
+    .bind("7".repeat(64))
+    .bind(Sha256Digest::for_bytes(b"{}").as_str())
+    .execute(&raw)
+    .await
+    .expect("insert legacy row");
+    sqlx::query(
+        "CREATE TRIGGER provider_invocation_intents_host_binding_required
+         BEFORE INSERT ON provider_invocation_intents
+         WHEN NEW.host_request_binding_id_sha256 IS NULL
+         BEGIN
+             SELECT RAISE(ABORT, 'provider invocation intent requires host request binding digest');
+         END",
+    )
+    .execute(&raw)
+    .await
+    .expect("restore host binding trigger");
+    raw.close().await;
+    drop(store);
+
+    let error = match HeptaEvidenceStore::open(&sqlite).await {
+        Ok(_) => panic!("legacy unbound row must require explicit migration"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        EvidenceError::Corrupt(detail)
+            if detail.contains("predate host request binding evidence")
+    ));
+}
