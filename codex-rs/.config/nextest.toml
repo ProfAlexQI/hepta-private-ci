@@ -58,6 +58,12 @@ test-group = 'app_server_integration'
 filter = 'package(codex-app-server) & kind(test) & not test(suite::v2::turn_start_zsh_fork::)'
 test-group = 'app_server_integration_local'
 
+[[profile.local.overrides]]
+# Packaged-zsh startup is also sensitive to unrelated local test load. Reserve
+# the full nextest pool so these four fixtures run without competing processes.
+filter = 'package(codex-app-server) & kind(test) & test(suite::v2::turn_start_zsh_fork::)'
+threads-required = "num-test-threads"
+
 [[profile.default.overrides]]
 # These tests exercise full Codex turns and apply_patch execution, and they are
 # sensitive to Windows runner process-startup stalls when many cases launch at once.
