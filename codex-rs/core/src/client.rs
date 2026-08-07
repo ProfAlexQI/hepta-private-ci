@@ -119,6 +119,7 @@ use crate::client_common::ResponseStream;
 use crate::feedback_tags;
 use crate::model_provider_policy::ProviderAttemptOwner;
 use crate::model_provider_policy::ProviderResponseTerminal;
+use crate::model_provider_policy::ProviderRoutingHint;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::subagent_header_value;
 use crate::util::emit_feedback_auth_recovery_tags;
@@ -298,11 +299,20 @@ struct LastResponse {
 
 #[derive(Debug, Default)]
 struct WebsocketSession {
-    connection: Option<ApiWebSocketConnection>,
+    connection: Option<ConnectedWebsocket>,
     last_request: Option<ResponsesApiRequest>,
     last_response_rx: Option<oneshot::Receiver<LastResponse>>,
     last_response_from_untraced_warmup: bool,
     connection_reused: StdMutex<bool>,
+}
+
+#[derive(Debug)]
+struct ConnectedWebsocket {
+    connection: ApiWebSocketConnection,
+    /// Routing hint actually used for this connection's opening handshake.
+    /// This remains sticky even if a later request desires a different hint.
+    #[allow(dead_code)]
+    actual_routing_hint: Option<ProviderRoutingHint>,
 }
 
 // This is intentionally not a `PartialEq` implementation: request equality includes `input` and
@@ -1048,7 +1058,7 @@ impl ModelClient {
         responses_metadata: &CodexResponsesMetadata,
         auth_context: AuthRequestTelemetryContext,
         request_route_telemetry: RequestRouteTelemetry,
-    ) -> std::result::Result<ApiWebSocketConnection, ApiError> {
+    ) -> std::result::Result<ConnectedWebsocket, ApiError> {
         let headers = self.build_websocket_headers(responses_metadata).await;
         let websocket_telemetry = ModelClientSession::build_websocket_telemetry(
             session_telemetry,
@@ -1121,7 +1131,20 @@ impl ModelClient {
             },
             &self.state.auth_env_telemetry,
         );
-        result
+        result.and_then(|connection| {
+            let actual_routing_hint = ProviderRoutingHint::from_header(connection.routing_hint())
+                .map_err(|error| {
+                ApiError::Stream(format!(
+                    "failed to bind websocket routing hint [{}]: {}",
+                    error.reason_code(),
+                    error.detail()
+                ))
+            })?;
+            Ok(ConnectedWebsocket {
+                connection,
+                actual_routing_hint,
+            })
+        })
     }
 
     /// Builds websocket handshake headers for both prewarm and turn-time reconnect.
@@ -1360,7 +1383,7 @@ impl ModelClientSession {
     async fn websocket_connection(
         &mut self,
         params: WebsocketConnectParams<'_>,
-    ) -> std::result::Result<&ApiWebSocketConnection, ApiError> {
+    ) -> std::result::Result<&ConnectedWebsocket, ApiError> {
         let WebsocketConnectParams {
             session_telemetry,
             api_provider,
@@ -1370,7 +1393,7 @@ impl ModelClientSession {
             request_route_telemetry,
         } = params;
         let needs_new = match self.websocket_session.connection.as_ref() {
-            Some(conn) => conn.is_closed().await,
+            Some(conn) => conn.connection.is_closed().await,
             None => true,
         };
 
@@ -1726,6 +1749,7 @@ impl ModelClientSession {
                     ))
                 })?;
             let stream_result = websocket_connection
+                .connection
                 .stream_request(
                     ws_request,
                     self.websocket_session.connection_reused(),
