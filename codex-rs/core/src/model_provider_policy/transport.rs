@@ -2,6 +2,7 @@ use codex_api::ResponsesApiRequest;
 use codex_extension_api::ModelProviderPolicyError;
 use http::HeaderValue;
 use serde::Serialize;
+use std::collections::HashMap;
 
 /// Exact, secret-free routing hint attached to a provider transport.
 ///
@@ -34,6 +35,49 @@ impl ProviderRoutingHint {
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// Reads Responses Lite from the exact HTTP header carrier.
+///
+/// Absence means the normal Responses contract. The only accepted enabled
+/// representation is the literal `true` inserted by Core.
+pub(crate) fn responses_lite_from_http_header(
+    value: Option<&HeaderValue>,
+) -> Result<bool, ModelProviderPolicyError> {
+    let value = value
+        .map(HeaderValue::to_str)
+        .transpose()
+        .map_err(|error| invalid_responses_lite(error.to_string()))?;
+    responses_lite_from_text(value)
+}
+
+/// Reads Responses Lite from the exact WebSocket response.create metadata.
+pub(crate) fn responses_lite_from_ws_metadata(
+    client_metadata: Option<&HashMap<String, String>>,
+    key: &str,
+) -> Result<bool, ModelProviderPolicyError> {
+    responses_lite_from_text(
+        client_metadata
+            .and_then(|client_metadata| client_metadata.get(key))
+            .map(String::as_str),
+    )
+}
+
+fn responses_lite_from_text(value: Option<&str>) -> Result<bool, ModelProviderPolicyError> {
+    match value {
+        None => Ok(false),
+        Some("true") => Ok(true),
+        Some(value) => Err(invalid_responses_lite(format!(
+            "expected absent or `true`, found `{value}`"
+        ))),
+    }
+}
+
+fn invalid_responses_lite(detail: String) -> ModelProviderPolicyError {
+    ModelProviderPolicyError::new(
+        "model_provider_policy_invalid_responses_lite",
+        format!("invalid Responses Lite transport marker: {detail}"),
+    )
 }
 
 /// Versioned behavior-affecting values for one physical provider send.
@@ -87,6 +131,8 @@ mod tests {
     use super::ProviderRoutingHint;
     use super::ProviderWireSemantic;
     use super::logical_responses_request;
+    use super::responses_lite_from_http_header;
+    use super::responses_lite_from_ws_metadata;
     use crate::model_provider_policy::binding::canonical_sha256;
 
     fn request() -> ResponsesApiRequest {
@@ -191,6 +237,39 @@ mod tests {
         assert_eq!(
             error.reason_code(),
             "model_provider_policy_invalid_routing_hint"
+        );
+    }
+
+    #[test]
+    fn responses_lite_is_derived_from_exact_transport_carriers() {
+        assert!(!responses_lite_from_http_header(None).expect("absent HTTP marker"));
+        assert!(
+            responses_lite_from_http_header(Some(&HeaderValue::from_static("true")))
+                .expect("enabled HTTP marker")
+        );
+
+        let key = "responses-lite";
+        let metadata = HashMap::from([(key.to_string(), "true".to_string())]);
+        assert!(
+            responses_lite_from_ws_metadata(Some(&metadata), key)
+                .expect("enabled websocket marker")
+        );
+        assert!(!responses_lite_from_ws_metadata(None, key).expect("absent websocket marker"));
+    }
+
+    #[test]
+    fn invalid_responses_lite_marker_fails_closed() {
+        let error = responses_lite_from_http_header(Some(&HeaderValue::from_static("false")))
+            .expect_err("false must be represented by absence");
+        assert_eq!(
+            error.reason_code(),
+            "model_provider_policy_invalid_responses_lite"
+        );
+
+        let metadata = HashMap::from([("responses-lite".to_string(), "1".to_string())]);
+        assert!(
+            responses_lite_from_ws_metadata(Some(&metadata), "responses-lite").is_err(),
+            "non-canonical websocket marker must fail closed"
         );
     }
 }
