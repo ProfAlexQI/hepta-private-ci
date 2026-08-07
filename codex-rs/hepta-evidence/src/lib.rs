@@ -3,11 +3,15 @@
 mod canonical;
 mod governance_store;
 mod governance_validation;
+mod provider_claim;
+mod provider_insert;
 mod provider_record;
 mod provider_store;
 mod schema_validation;
 mod store;
 
+pub use provider_claim::ProviderBindingState;
+pub use provider_claim::ProviderIntentClaimDisposition;
 pub use provider_store::StoredProviderAttemptEvidence;
 pub use provider_store::StoredProviderIntent;
 pub use provider_store::StoredProviderReceipt;
