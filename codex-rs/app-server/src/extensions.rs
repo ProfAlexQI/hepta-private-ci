@@ -78,7 +78,7 @@ where
         ));
         codex_queue_extension::install(&mut builder, queue_service);
     }
-    if let Some(state_db) = state_db {
+    if let Some(state_db) = state_db.clone() {
         codex_goal_extension::install_with_backend(
             &mut builder,
             state_db,
@@ -98,6 +98,11 @@ where
         git_attribution_base_url,
         http_client_factory,
     );
+    codex_hepta_governance::install(&mut builder, state_db, |config: &Config| {
+        config
+            .features
+            .enabled(codex_features::Feature::HeptaGovernance)
+    });
     codex_guardian::install(&mut builder, guardian_agent_spawner);
     codex_memories_extension::install(&mut builder, codex_otel::global());
     codex_mcp_extension::install(&mut builder);
