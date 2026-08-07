@@ -712,6 +712,7 @@ async fn drain_to_completed(
         thread_id: sess.thread_id().to_string(),
         turn_id: turn_context.sub_id.clone(),
         request_kind: ModelProviderRequestKind::Compaction,
+        ephemeral_input_cwd: None,
     };
     let mut stream = client_session
         .stream_with_policy(

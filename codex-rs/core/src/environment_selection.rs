@@ -487,6 +487,14 @@ impl TurnEnvironmentSnapshot {
             .find(|environment| !environment.environment.is_remote())
     }
 
+    pub(crate) fn primary_local_environment_cwd(&self) -> Option<AbsolutePathBuf> {
+        let environment = self.primary()?;
+        if environment.environment.is_remote() {
+            return None;
+        }
+        environment.cwd().to_abs_path().ok()
+    }
+
     #[cfg(test)]
     pub(crate) fn primary_environment(&self) -> Option<Arc<codex_exec_server::Environment>> {
         self.primary()
@@ -970,6 +978,7 @@ url = "ws://127.0.0.1:8765"
         );
         assert_eq!(starting.to_selections(), vec![local.clone()]);
         assert!(starting.single_local_environment().is_none());
+        assert!(starting.primary_local_environment_cwd().is_some());
 
         let next_config = test_environment_config();
         turn_environments.update_environment_configs(&next_config);
@@ -1006,6 +1015,7 @@ url = "ws://127.0.0.1:8765"
             vec![expected_config.clone(), expected_config]
         );
         assert_eq!(attached.to_selections(), vec![remote, local]);
+        assert!(attached.primary_local_environment_cwd().is_none());
         assert_eq!(
             next_starting
                 .refresh_readiness()

@@ -323,6 +323,7 @@ async fn schedule_startup_prewarm_inner(
         thread_id: session.thread_id().to_string(),
         turn_id: startup_turn_context.sub_id.clone(),
         request_kind: ModelProviderRequestKind::Prewarm,
+        ephemeral_input_cwd: None,
     };
     let websocket_warmup_started_at = Instant::now();
     client_session

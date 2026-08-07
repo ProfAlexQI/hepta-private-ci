@@ -1375,6 +1375,7 @@ async fn run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),
             Arc::clone(&turn_context),
+            &step_context.environments,
             Arc::clone(&turn_store),
             client_session,
             responses_metadata,
@@ -2153,6 +2154,7 @@ async fn try_run_sampling_request(
     tool_runtime: ToolCallRuntime,
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
+    environments: &TurnEnvironmentSnapshot,
     turn_store: Arc<codex_extension_api::ExtensionData>,
     client_session: &mut ModelClientSession,
     responses_metadata: &CodexResponsesMetadata,
@@ -2187,6 +2189,9 @@ async fn try_run_sampling_request(
         thread_id: sess.thread_id().to_string(),
         turn_id: turn_context.sub_id.clone(),
         request_kind: ModelProviderRequestKind::Turn,
+        ephemeral_input_cwd: environments
+            .primary_local_environment_cwd()
+            .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
     };
     let mut stream = client_session
         .stream_with_policy(
