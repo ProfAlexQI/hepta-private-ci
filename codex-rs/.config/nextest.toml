@@ -52,8 +52,10 @@ test-group = 'app_server_integration'
 
 [[profile.local.overrides]]
 # Use up to four app-server subprocesses locally. The global nextest pool still
-# limits this to the machine's logical CPU count.
-filter = 'package(codex-app-server) & kind(test)'
+# limits this to the machine's logical CPU count. Keep the zsh-fork fixtures in
+# the inherited serial app-server group because concurrent packaged-zsh startup
+# regularly exceeds their initialization timeout on developer machines.
+filter = 'package(codex-app-server) & kind(test) & not test(suite::v2::turn_start_zsh_fork::)'
 test-group = 'app_server_integration_local'
 
 [[profile.default.overrides]]
