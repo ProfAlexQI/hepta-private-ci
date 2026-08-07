@@ -41,3 +41,7 @@ mod tests;
 #[cfg(test)]
 #[path = "provider_tests.rs"]
 mod provider_tests;
+
+#[cfg(test)]
+#[path = "provider_claim_tests.rs"]
+mod provider_claim_tests;
