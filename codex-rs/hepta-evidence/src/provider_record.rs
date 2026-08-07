@@ -37,7 +37,8 @@ pub(crate) async fn verify_provider_intent(
     inserted: bool,
 ) -> Result<AppendDisposition, EvidenceError> {
     let rows = sqlx::query(
-        "SELECT attempt_id, request_binding_id, attempt_nonce_sha256, thread_id, turn_id,
+        "SELECT attempt_id, request_binding_id, attempt_nonce_sha256,
+                host_request_binding_id_sha256, thread_id, turn_id,
                 request_kind, provider_id, provider_config_sha256, model, transport,
                 endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
                 previous_response_id_sha256, generate, schema_version,
@@ -132,6 +133,10 @@ pub(crate) fn decode_provider_intent_row(
     if row.get::<String, _>("attempt_id") != intent.attempt_id.as_str()
         || row.get::<String, _>("request_binding_id") != intent.request_binding_id.as_str()
         || row.get::<String, _>("attempt_nonce_sha256") != intent.attempt_nonce_sha256.as_str()
+        || row
+            .get::<Option<String>, _>("host_request_binding_id_sha256")
+            .as_deref()
+            != Some(binding.host_request_binding_id_sha256.as_str())
         || row.get::<String, _>("thread_id") != binding.thread_id
         || row.get::<String, _>("turn_id") != binding.turn_id
         || row.get::<String, _>("request_kind") != binding.request_kind.as_str()
@@ -217,6 +222,10 @@ pub(crate) fn validate_provider_intent(
     }
     for (label, digest) in [
         ("attempt nonce", &intent.attempt_nonce_sha256),
+        (
+            "host request binding id",
+            &intent.binding.host_request_binding_id_sha256,
+        ),
         ("provider config", &intent.binding.provider_config_sha256),
         ("endpoint", &intent.binding.endpoint_sha256),
         ("logical request", &intent.binding.logical_request_sha256),

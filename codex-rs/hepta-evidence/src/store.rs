@@ -25,6 +25,7 @@ use crate::governance_validation::validate_receipt_binding;
 use crate::schema_validation::classify_migrate_error;
 use crate::schema_validation::classify_sqlx_error;
 use crate::schema_validation::verify_foreign_keys;
+use crate::schema_validation::verify_provider_host_bindings;
 use crate::schema_validation::verify_quick_check;
 use crate::schema_validation::verify_schema_manifest;
 
@@ -75,6 +76,10 @@ impl HeptaEvidenceStore {
             return Err(classify_migrate_error(error));
         }
         if let Err(error) = verify_schema_manifest(&pool).await {
+            pool.close().await;
+            return Err(error);
+        }
+        if let Err(error) = verify_provider_host_bindings(&pool).await {
             pool.close().await;
             return Err(error);
         }
