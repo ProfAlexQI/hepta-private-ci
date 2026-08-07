@@ -45,6 +45,7 @@ use codex_api::RealtimeCallClient as ApiRealtimeCallClient;
 use codex_api::RealtimeSessionConfig as ApiRealtimeSessionConfig;
 use codex_api::Reasoning;
 use codex_api::ReasoningContext;
+use codex_api::RequestDispatchMetadata;
 use codex_api::RequestTelemetry;
 use codex_api::ReqwestTransport;
 use codex_api::ResponseCreateWsRequest;
@@ -76,6 +77,8 @@ use codex_otel::current_span_w3c_trace_context;
 use codex_protocol::auth::AuthMode;
 
 use codex_extension_api::ModelProviderPolicyError;
+use codex_extension_api::ModelProviderTerminal;
+use codex_extension_api::ModelProviderTransport;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::Verbosity as VerbosityConfig;
@@ -96,6 +99,7 @@ use eventsource_stream::Event;
 use eventsource_stream::EventStreamError;
 use futures::StreamExt;
 use http::HeaderMap as ApiHeaderMap;
+use http::HeaderName;
 use http::HeaderValue;
 use http::StatusCode;
 use std::time::Duration;
@@ -117,9 +121,17 @@ use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
 use crate::feedback_tags;
+use crate::model_provider_policy::ModelProviderPolicyBegin;
+use crate::model_provider_policy::ModelProviderPolicyContext;
 use crate::model_provider_policy::ProviderAttemptOwner;
 use crate::model_provider_policy::ProviderResponseTerminal;
 use crate::model_provider_policy::ProviderRoutingHint;
+use crate::model_provider_policy::ProviderWireSemantic;
+use crate::model_provider_policy::begin_model_provider_policy;
+use crate::model_provider_policy::has_active_model_provider_policy;
+use crate::model_provider_policy::logical_responses_request;
+use crate::model_provider_policy::prepare_model_provider_policy;
+use crate::model_provider_policy::responses_lite_from_http_header;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::subagent_header_value;
 use crate::util::emit_feedback_auth_recovery_tags;
@@ -313,6 +325,56 @@ struct ConnectedWebsocket {
     /// This remains sticky even if a later request desires a different hint.
     #[allow(dead_code)]
     actual_routing_hint: Option<ProviderRoutingHint>,
+}
+
+struct AdmittedProviderAttempt {
+    owner: ProviderAttemptOwner,
+    dispatch: RequestDispatchMetadata,
+}
+
+impl AdmittedProviderAttempt {
+    fn new(
+        lease: Box<dyn codex_extension_api::ModelProviderAttemptLease>,
+        dispatch: RequestDispatchMetadata,
+    ) -> Self {
+        Self {
+            owner: ProviderAttemptOwner::new(lease, dispatch.clone()),
+            dispatch,
+        }
+    }
+
+    fn dispatch_metadata(&self) -> RequestDispatchMetadata {
+        self.dispatch.clone()
+    }
+
+    fn into_owner(self) -> ProviderAttemptOwner {
+        self.owner
+    }
+
+    async fn finish_immediate(
+        self,
+        http_status: Option<u16>,
+        operation: &'static str,
+    ) -> Result<()> {
+        let terminal = if !self.dispatch.transport_invoked() {
+            ModelProviderTerminal::NotDispatched {
+                reason_code: format!("provider_{operation}_not_dispatched"),
+            }
+        } else if http_status == Some(StatusCode::UNAUTHORIZED.as_u16()) {
+            ModelProviderTerminal::Rejected {
+                reason_code: format!("provider_{operation}_unauthorized"),
+            }
+        } else {
+            ModelProviderTerminal::Indeterminate {
+                reason_code: format!("provider_{operation}_send_failed"),
+                partial_response_sha256: None,
+            }
+        };
+        self.owner
+            .finish(terminal)
+            .await
+            .map_err(model_provider_policy_error)
+    }
 }
 
 // This is intentionally not a `PartialEq` implementation: request equality includes `input` and
@@ -1475,6 +1537,7 @@ impl ModelClientSession {
         service_tier: Option<String>,
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
     ) -> Result<ResponseStream> {
         let auth_manager = self.client.state.provider.auth_manager();
         let mut auth_recovery = auth_manager
@@ -1529,6 +1592,56 @@ impl ModelClientSession {
                 .prepare_response_items_for_request(&mut request.input);
             let request_session_telemetry =
                 session_telemetry_for_request(session_telemetry, &request);
+            let mut admitted_provider_attempt = if let Some(context) = provider_policy_context
+                .filter(|context| {
+                    has_active_model_provider_policy(context.registry, context.thread_store)
+                }) {
+                let routing_hint = ProviderRoutingHint::from_header(
+                    options.extra_headers.get(X_CODEX_ROUTING_HINT_HEADER),
+                )
+                .map_err(model_provider_policy_error)?;
+                let responses_lite = responses_lite_from_http_header(
+                    options
+                        .extra_headers
+                        .get(X_OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER),
+                )
+                .map_err(model_provider_policy_error)?;
+                let logical_request = logical_responses_request(&request);
+                let wire_semantic =
+                    ProviderWireSemantic::new(&request, routing_hint.as_ref(), responses_lite);
+                let endpoint = client_setup.api_provider.url_for_path(RESPONSES_ENDPOINT);
+                let prepared = prepare_model_provider_policy(
+                    context,
+                    client_setup.api_provider.name.as_str(),
+                    request.model.as_str(),
+                    ModelProviderTransport::Http,
+                    endpoint.as_str(),
+                    &logical_request,
+                    &wire_semantic,
+                    /*previous_response_id*/ None,
+                    /*generate*/ true,
+                )
+                .map_err(model_provider_policy_error)?;
+                match begin_model_provider_policy(
+                    context.registry,
+                    prepared.invocation_input(context),
+                )
+                .await
+                .map_err(model_provider_policy_error)?
+                {
+                    ModelProviderPolicyBegin::NoPolicy => None,
+                    ModelProviderPolicyBegin::Allow { lease } => {
+                        let dispatch = provider_http_dispatch_metadata(&options.extra_headers);
+                        Some(AdmittedProviderAttempt::new(lease, dispatch))
+                    }
+                    ModelProviderPolicyBegin::Block {
+                        reason_code,
+                        message,
+                    } => return Err(model_provider_policy_blocked(reason_code, message)),
+                }
+            } else {
+                None
+            };
             let inference_trace_attempt = inference_trace.start_attempt();
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
@@ -1538,7 +1651,18 @@ impl ModelClientSession {
                 client_setup.api_auth,
             )
             .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
-            let stream_result = client.stream_request(request, options).await;
+            let stream_result = match admitted_provider_attempt.as_ref() {
+                Some(attempt) => {
+                    client
+                        .stream_request_single_attempt(
+                            request,
+                            options,
+                            attempt.dispatch_metadata(),
+                        )
+                        .await
+                }
+                None => client.stream_request(request, options).await,
+            };
 
             match stream_result {
                 Ok(stream) => {
@@ -1547,13 +1671,20 @@ impl ModelClientSession {
                         request_session_telemetry,
                         inference_trace_attempt,
                         Arc::clone(&self.client.state.provider),
-                        /*provider_attempt*/ None,
+                        admitted_provider_attempt
+                            .take()
+                            .map(AdmittedProviderAttempt::into_owner),
                     );
                     return Ok(stream);
                 }
                 Err(ApiError::Transport(
                     unauthorized_transport @ TransportError::Http { status, .. },
                 )) if status == StatusCode::UNAUTHORIZED => {
+                    if let Some(attempt) = admitted_provider_attempt.take() {
+                        attempt
+                            .finish_immediate(Some(status.as_u16()), "http")
+                            .await?;
+                    }
                     let response_debug_context =
                         extract_response_debug_context(&unauthorized_transport);
                     inference_trace_attempt.record_failed(
@@ -1573,6 +1704,11 @@ impl ModelClientSession {
                     continue;
                 }
                 Err(err) => {
+                    if let Some(attempt) = admitted_provider_attempt.take() {
+                        attempt
+                            .finish_immediate(api_error_http_status(&err), "http")
+                            .await?;
+                    }
                     let response_debug_context =
                         extract_response_debug_context_from_api_error(&err);
                     let err = self.client.state.provider.map_api_error(err);
@@ -1893,6 +2029,33 @@ impl ModelClientSession {
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
     ) -> Result<ResponseStream> {
+        self.stream_with_policy(
+            prompt,
+            model_info,
+            session_telemetry,
+            effort,
+            summary,
+            service_tier,
+            responses_metadata,
+            inference_trace,
+            /*provider_policy_context*/ None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn stream_with_policy(
+        &mut self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &CodexResponsesMetadata,
+        inference_trace: &InferenceTraceContext,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
+    ) -> Result<ResponseStream> {
         let wire_api = self.client.state.provider.info().wire_api;
         match wire_api {
             WireApi::Responses => {
@@ -1929,6 +2092,7 @@ impl ModelClientSession {
                     service_tier,
                     responses_metadata,
                     inference_trace,
+                    provider_policy_context,
                 )
                 .await
             }
@@ -2002,6 +2166,18 @@ fn add_responses_lite_header(headers: &mut ApiHeaderMap, use_responses_lite: boo
             HeaderValue::from_static("true"),
         );
     }
+}
+
+fn provider_http_dispatch_metadata(headers: &ApiHeaderMap) -> RequestDispatchMetadata {
+    RequestDispatchMetadata::new_with_expected_headers(
+        [
+            X_CODEX_ROUTING_HINT_HEADER,
+            X_OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER,
+        ]
+        .into_iter()
+        .map(|name| (HeaderName::from_static(name), headers.get(name).cloned()))
+        .collect(),
+    )
 }
 
 const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 1600;
@@ -2279,6 +2455,12 @@ fn model_provider_policy_error(error: ModelProviderPolicyError) -> CodexErr {
         "model provider policy failed [{}]: {}",
         error.reason_code(),
         error.detail()
+    ))
+}
+
+fn model_provider_policy_blocked(reason_code: String, message: String) -> CodexErr {
+    CodexErr::Fatal(format!(
+        "model provider request blocked by policy [{reason_code}]: {message}"
     ))
 }
 
