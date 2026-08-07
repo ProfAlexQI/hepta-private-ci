@@ -8,3 +8,8 @@ mod binding;
 // as `binding`; the caller-composition slice removes this allowance.
 #[allow(dead_code)]
 mod lifecycle;
+
+// Registered before the HTTP/WS callsites so cancellation ownership can be
+// reviewed and tested independently.
+#[allow(dead_code)]
+mod attempt_owner;
