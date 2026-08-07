@@ -7,6 +7,7 @@ use crate::start_memories_startup_task;
 use crate::storage::rebuild_raw_memories_file_from_memories;
 use crate::storage::sync_rollout_summaries_from_memories;
 use codex_config::types::MemoriesConfig;
+use codex_core::MemoryModelProviderPolicyHandle;
 use codex_features::Feature;
 use codex_git_utils::diff_since_latest_init;
 use codex_git_utils::reset_git_repository;
@@ -25,8 +26,11 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SubAgentSource;
+use codex_protocol::user_input::UserInput;
 use codex_rollout::RolloutItem;
 use codex_rollout::RolloutLine;
 use codex_state::Phase2JobClaimOutcome;
@@ -38,6 +42,7 @@ use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::sse;
+use core_test_support::responses::sse_response;
 use core_test_support::responses::start_mock_server;
 use core_test_support::test_codex::TestCodex;
 use core_test_support::test_codex::test_codex;
@@ -49,6 +54,60 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use wiremock::Mock;
+use wiremock::matchers::body_string_contains;
+use wiremock::matchers::method;
+use wiremock::matchers::path;
+
+#[tokio::test]
+async fn memories_startup_eligibility_requires_enabled_persistent_root_session()
+-> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let home = Arc::new(TempDir::new()?);
+    let test = build_test_codex(&server, home).await?;
+    let mut config = test.config.clone();
+
+    config
+        .features
+        .enable(Feature::MemoryTool)
+        .expect("test config should allow feature update");
+    assert!(crate::memories_startup_eligible(
+        &config,
+        &SessionSource::VSCode
+    ));
+
+    config
+        .features
+        .disable(Feature::MemoryTool)
+        .expect("test config should allow feature update");
+    assert!(!crate::memories_startup_eligible(
+        &config,
+        &SessionSource::VSCode
+    ));
+
+    config
+        .features
+        .enable(Feature::MemoryTool)
+        .expect("test config should allow feature update");
+    config.ephemeral = true;
+    assert!(!crate::memories_startup_eligible(
+        &config,
+        &SessionSource::VSCode
+    ));
+
+    config.ephemeral = false;
+    assert!(!crate::memories_startup_eligible(
+        &config,
+        &SessionSource::SubAgent(SubAgentSource::Other("memory-eligibility-test".to_string()))
+    ));
+    assert!(!crate::memories_startup_eligible(
+        &config,
+        &SessionSource::Internal(InternalSessionSource::MemoryConsolidation)
+    ));
+
+    shutdown_test_codex(&test).await?;
+    Ok(())
+}
 
 #[tokio::test]
 async fn memories_startup_creates_memory_root() -> anyhow::Result<()> {
@@ -58,7 +117,7 @@ async fn memories_startup_creates_memory_root() -> anyhow::Result<()> {
     let test = build_test_codex(&server, home).await?;
 
     assert!(!memory_root.exists());
-    trigger_memories_startup(&test).await;
+    trigger_memories_startup(&test, &server).await?;
     wait_for_dir(&memory_root).await?;
 
     shutdown_test_codex(&test).await?;
@@ -119,7 +178,7 @@ async fn memories_startup_phase2_tracks_workspace_diff_across_runs() -> anyhow::
     .await;
 
     let test = build_test_codex(&server, home.clone()).await?;
-    trigger_memories_startup(&test).await;
+    trigger_memories_startup(&test, &server).await?;
 
     let request = wait_for_single_request(&phase2).await;
     let prompt = phase2_prompt_text(&request);
@@ -189,7 +248,7 @@ async fn phase2_retries_when_clean_workspace_is_missing_artifacts() -> anyhow::R
     .await;
     let test = build_test_codex(&server, home.clone()).await?;
 
-    trigger_memories_startup(&test).await;
+    trigger_memories_startup(&test, &server).await?;
     wait_for_single_request(&phase2).await;
 
     assert_eq!(
@@ -254,7 +313,7 @@ async fn memories_startup_phase2_prunes_old_extension_resources() -> anyhow::Res
     .await;
 
     let test = build_test_codex(&server, home.clone()).await?;
-    trigger_memories_startup(&test).await;
+    trigger_memories_startup(&test, &server).await?;
 
     let request = wait_for_single_request(&phase2).await;
     let prompt = phase2_prompt_text(&request);
@@ -315,7 +374,7 @@ async fn memories_startup_phase2_prunes_old_extension_resources_without_stage1_i
     .await;
 
     let test = build_test_codex(&server, home.clone()).await?;
-    trigger_memories_startup(&test).await;
+    trigger_memories_startup(&test, &server).await?;
 
     let request = wait_for_single_request(&phase2).await;
     let prompt = phase2_prompt_text(&request);
@@ -356,11 +415,13 @@ async fn memories_startup_phase1_uses_live_thread_service_tier_and_detached_meta
         Some(ServiceTier::Fast.request_value().to_string())
     );
 
+    let provider_policy = capture_memory_policy(&test, &server).await?;
     let context = crate::runtime::MemoryStartupContext::new(
         Arc::clone(&test.thread_manager),
         test.thread_manager.auth_manager(),
         test.session_configured.thread_id,
         Arc::clone(&test.codex),
+        provider_policy,
         &test.config,
         config_snapshot.session_source.clone(),
     );
@@ -510,7 +571,7 @@ async fn run_memory_phase_one_model_request_test(
     )
     .await;
 
-    let (context, config) = memory_startup_context_with_provider(&test, provider).await;
+    let (context, config) = memory_startup_context_with_provider(&test, server, provider).await?;
     phase1::run(context, config).await;
     let request = wait_for_single_request(&response).await;
     shutdown_test_codex(&test).await?;
@@ -551,7 +612,7 @@ async fn run_memory_phase_two_model_request_test(
     )
     .await;
 
-    let (context, config) = memory_startup_context_with_provider(&test, provider).await;
+    let (context, config) = memory_startup_context_with_provider(&test, server, provider).await?;
     let root = memory_root(&config.codex_home);
     tokio::fs::create_dir_all(&root).await?;
     seed_extension_instructions(&root).await?;
@@ -619,8 +680,12 @@ async fn init_state_db(home: &Arc<TempDir>) -> anyhow::Result<Arc<codex_state::S
     Ok(db)
 }
 
-async fn trigger_memories_startup(test: &TestCodex) {
+async fn trigger_memories_startup(
+    test: &TestCodex,
+    server: &wiremock::MockServer,
+) -> anyhow::Result<()> {
     let config_snapshot = test.codex.config_snapshot().await;
+    let provider_policy = capture_memory_policy(test, server).await?;
     let mut config = test.config.clone();
     config
         .features
@@ -632,17 +697,21 @@ async fn trigger_memories_startup(test: &TestCodex) {
         test.thread_manager.auth_manager(),
         test.session_configured.thread_id,
         Arc::clone(&test.codex),
+        provider_policy,
         Arc::new(config),
         parent_permission_profile,
         &config_snapshot.session_source,
     );
+    Ok(())
 }
 
 async fn memory_startup_context_with_provider(
     test: &TestCodex,
+    server: &wiremock::MockServer,
     provider: SharedModelProvider,
-) -> (Arc<MemoryStartupContext>, Arc<codex_core::config::Config>) {
+) -> anyhow::Result<(Arc<MemoryStartupContext>, Arc<codex_core::config::Config>)> {
     let config_snapshot = test.codex.config_snapshot().await;
+    let provider_policy = capture_memory_policy(test, server).await?;
     let mut config = test.config.clone();
     config
         .features
@@ -654,12 +723,54 @@ async fn memory_startup_context_with_provider(
         test.thread_manager.auth_manager(),
         test.session_configured.thread_id,
         Arc::clone(&test.codex),
+        provider_policy,
         config.as_ref(),
         config_snapshot.session_source,
         provider,
     ));
 
-    (context, config)
+    Ok((context, config))
+}
+
+const MEMORY_POLICY_PARENT_INPUT: &str = "capture exact parent scope for memory startup test";
+
+async fn capture_memory_policy(
+    test: &TestCodex,
+    server: &wiremock::MockServer,
+) -> anyhow::Result<MemoryModelProviderPolicyHandle> {
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .and(body_string_contains(MEMORY_POLICY_PARENT_INPUT))
+        .respond_with(sse_response(sse(vec![
+            ev_response_created("memory-policy-parent"),
+            ev_completed("memory-policy-parent"),
+        ])))
+        .with_priority(1)
+        .expect(1)
+        .mount(server)
+        .await;
+    let (_, provider_policy) = test
+        .codex
+        .submit_user_input_and_capture_memory_policy(
+            Op::UserInput {
+                items: vec![UserInput::Text {
+                    text: MEMORY_POLICY_PARENT_INPUT.to_string(),
+                    text_elements: Vec::new(),
+                }],
+                final_output_json_schema: None,
+                responsesapi_client_metadata: None,
+                additional_context: Default::default(),
+                thread_settings: Default::default(),
+            },
+            /*trace*/ None,
+            /*client_user_message_id*/ None,
+        )
+        .await?;
+    wait_for_event(&test.codex, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+    Ok(provider_policy)
 }
 
 const MOCK_PROVIDER_PHASE_ONE_MODEL: &str = "mock.phase-one";
