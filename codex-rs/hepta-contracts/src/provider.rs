@@ -34,6 +34,7 @@ impl RequestBindingId {
                 schema_version.as_str(),
                 binding.thread_id.as_str(),
                 binding.turn_id.as_str(),
+                binding.host_request_binding_id_sha256.as_str(),
                 binding.request_kind.as_str(),
                 binding.provider_id.as_str(),
                 binding.provider_config_sha256.as_str(),
@@ -136,8 +137,15 @@ pub struct ProviderRequestBinding {
     pub schema_version: u32,
     pub thread_id: String,
     pub turn_id: String,
+    /// Digest of the host-owned retry-stable request binding identity.
+    ///
+    /// The opaque host identity itself must never cross the Hepta evidence boundary.
+    pub host_request_binding_id_sha256: Sha256Digest,
     pub request_kind: ProviderRequestKind,
     pub provider_id: String,
+    /// Compatibility-named digest of the versioned, secret-free provider
+    /// selector. It must never be derived from credentials, headers, raw
+    /// endpoint configuration, query values, or retry policy.
     pub provider_config_sha256: Sha256Digest,
     pub model: String,
     pub transport: ProviderTransport,
@@ -164,6 +172,21 @@ impl ProviderInvocationIntent {
     /// governance boundary or be persisted.
     pub fn new(attempt_nonce: [u8; 16], binding: ProviderRequestBinding) -> Self {
         let attempt_nonce_sha256 = Sha256Digest::for_bytes(&attempt_nonce);
+        Self::from_attempt_id_digest(attempt_nonce_sha256, binding)
+    }
+
+    /// Construct an intent from an opaque host-owned per-send attempt identity.
+    ///
+    /// Only the SHA-256 digest crosses the governance boundary; the host identity is discarded.
+    pub fn for_host_attempt_id(host_attempt_id: &str, binding: ProviderRequestBinding) -> Self {
+        let attempt_nonce_sha256 = Sha256Digest::for_bytes(host_attempt_id.as_bytes());
+        Self::from_attempt_id_digest(attempt_nonce_sha256, binding)
+    }
+
+    fn from_attempt_id_digest(
+        attempt_nonce_sha256: Sha256Digest,
+        binding: ProviderRequestBinding,
+    ) -> Self {
         let request_binding_id = RequestBindingId::for_request(&binding);
         let attempt_id = ProviderAttemptId::for_send(&request_binding_id, &attempt_nonce_sha256);
         Self {
@@ -187,7 +210,8 @@ pub enum ProviderTerminal {
         response_id_sha256: Sha256Digest,
         response_items_sha256: Sha256Digest,
         token_usage_sha256: Sha256Digest,
-        end_turn: bool,
+        /// Exact provider observation. `None` means the provider omitted the field.
+        end_turn: Option<bool>,
     },
     Rejected {
         reason_code: String,
@@ -255,6 +279,7 @@ mod tests {
             schema_version: PROVIDER_EVIDENCE_SCHEMA_VERSION,
             thread_id: "thread-1".to_string(),
             turn_id: "turn-1".to_string(),
+            host_request_binding_id_sha256: Sha256Digest::for_bytes(b"host-request-1"),
             request_kind: ProviderRequestKind::Turn,
             provider_id: "provider-1".to_string(),
             provider_config_sha256: Sha256Digest::for_bytes(b"config"),
@@ -300,6 +325,29 @@ mod tests {
         assert_ne!(
             RequestBindingId::for_request(&http),
             RequestBindingId::for_request(&websocket)
+        );
+    }
+
+    #[test]
+    fn host_ids_are_hashed_and_bound_without_persisting_plaintext() {
+        let left = binding();
+        let mut right = left.clone();
+        right.host_request_binding_id_sha256 = Sha256Digest::for_bytes(b"host-request-2");
+
+        let intent = ProviderInvocationIntent::for_host_attempt_id("host-attempt-1", left.clone());
+
+        assert_ne!(
+            RequestBindingId::for_request(&left),
+            RequestBindingId::for_request(&right)
+        );
+        assert_eq!(
+            intent.attempt_nonce_sha256,
+            Sha256Digest::for_bytes(b"host-attempt-1")
+        );
+        assert_ne!(intent.attempt_nonce_sha256.as_str(), "host-attempt-1");
+        assert_ne!(
+            intent.binding.host_request_binding_id_sha256.as_str(),
+            "host-request-1"
         );
     }
 }

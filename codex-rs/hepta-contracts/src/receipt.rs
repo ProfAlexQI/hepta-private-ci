@@ -18,6 +18,21 @@ impl Sha256Digest {
         Self(format!("{:x}", Sha256::digest(bytes)))
     }
 
+    pub fn parse(value: impl Into<String>) -> Result<Self, String> {
+        let value = value.into();
+        if value.len() != 64
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(
+                "SHA-256 digests must contain exactly 64 lowercase hexadecimal characters"
+                    .to_string(),
+            );
+        }
+        Ok(Self(value))
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

@@ -25,6 +25,7 @@ fn binding(thread_id: &str, logical: &[u8], wire: &[u8]) -> ProviderRequestBindi
         schema_version: PROVIDER_EVIDENCE_SCHEMA_VERSION,
         thread_id: thread_id.to_string(),
         turn_id: "turn-1".to_string(),
+        host_request_binding_id_sha256: Sha256Digest::for_bytes(b"host-request-binding-1"),
         request_kind: ProviderRequestKind::Turn,
         provider_id: "provider-fixture".to_string(),
         provider_config_sha256: Sha256Digest::for_bytes(b"provider-config"),
@@ -49,7 +50,7 @@ fn completed(intent: ProviderInvocationIntent, output: &[u8]) -> ProviderInvocat
             response_id_sha256: Sha256Digest::for_bytes(b"response-id"),
             response_items_sha256: Sha256Digest::for_bytes(output),
             token_usage_sha256: Sha256Digest::for_bytes(b"token-usage"),
-            end_turn: true,
+            end_turn: Some(true),
         },
     )
 }
