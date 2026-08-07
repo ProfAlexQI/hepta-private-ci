@@ -22,6 +22,7 @@ use crate::tasks::CompactTask;
 use crate::tasks::UserShellCommandMode;
 use crate::tasks::UserShellCommandTask;
 use crate::tasks::execute_user_shell_command;
+use crate::user_message_admission::AdmittedUserMessage;
 use crate::user_message_admission::UserMessageAdmission;
 use codex_history::RolloutItem;
 use codex_protocol::error::CodexErr;
@@ -193,7 +194,7 @@ pub(super) async fn user_input_or_turn_inner(
     op: Op,
     client_user_message_id: Option<String>,
     parent_turn_id: Option<String>,
-) -> CodexResult<UserMessageAdmission> {
+) -> CodexResult<AdmittedUserMessage> {
     let Op::UserInput {
         items,
         final_output_json_schema,
@@ -224,7 +225,7 @@ pub(super) async fn user_input_or_turn_inner(
     sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
         .await;
     match sess
-        .steer_input(
+        .steer_input_with_context(
             items.clone(),
             additional_context.clone(),
             /*expected_turn_id*/ None,
@@ -233,9 +234,12 @@ pub(super) async fn user_input_or_turn_inner(
         )
         .await
     {
-        Ok(turn_id) => {
+        Ok((turn_id, admitted_context)) => {
             current_context.session_telemetry.user_prompt(&items);
-            Ok(UserMessageAdmission::Steered { turn_id })
+            Ok(AdmittedUserMessage {
+                admission: UserMessageAdmission::Steered { turn_id },
+                turn_context: admitted_context,
+            })
         }
         Err(SteerInputError::NoActiveTurn(items)) => {
             if let Some(id) = parent_turn_id {
@@ -268,7 +272,10 @@ pub(super) async fn user_input_or_turn_inner(
                 crate::tasks::RegularTask::new(),
             )
             .await;
-            Ok(UserMessageAdmission::Started { turn_id: sub_id })
+            Ok(AdmittedUserMessage {
+                admission: UserMessageAdmission::Started { turn_id: sub_id },
+                turn_context: current_context,
+            })
         }
         Err(err) => {
             sess.send_event_raw(Event {

@@ -1,8 +1,11 @@
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::oneshot;
+
+use crate::session::turn_context::TurnContext;
 
 /// The turn that accepted a submitted user message.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -11,6 +14,27 @@ pub enum UserMessageAdmission {
     Started { turn_id: String },
     /// Core accepted the submitted message into an already-running turn.
     Steered { turn_id: String },
+}
+
+/// Core-owned admission result retaining the exact turn that accepted a message.
+///
+/// Public callers continue to receive only [`UserMessageAdmission`]. Narrow
+/// Core capabilities may retain this context without racing the active-turn
+/// lifecycle after admission.
+pub(crate) struct AdmittedUserMessage {
+    pub(crate) admission: UserMessageAdmission,
+    pub(crate) turn_context: Arc<TurnContext>,
+}
+
+impl AdmittedUserMessage {
+    pub(crate) fn into_admission(self) -> UserMessageAdmission {
+        let Self {
+            admission,
+            turn_context,
+        } = self;
+        drop(turn_context);
+        admission
+    }
 }
 
 /// Explains why a submitted user message did not become durable.
@@ -46,14 +70,14 @@ pub(crate) struct PendingUserMessageAdmissions {
 
 struct PendingUserMessageAdmission {
     client_id: Option<String>,
-    sender: oneshot::Sender<Result<UserMessageAdmission, UserMessageAdmissionError>>,
+    sender: oneshot::Sender<Result<AdmittedUserMessage, UserMessageAdmissionError>>,
     state: PendingUserMessageAdmissionState,
 }
 
 pub(crate) enum PendingUserMessageAdmissionState {
     Immediate,
     WaitingForAdmission,
-    Admitted(UserMessageAdmission),
+    Admitted(AdmittedUserMessage),
     Persisted,
 }
 
@@ -65,7 +89,7 @@ impl PendingUserMessageAdmissions {
         state: PendingUserMessageAdmissionState,
     ) -> (
         PendingUserMessageAdmissionGuard<'_>,
-        oneshot::Receiver<Result<UserMessageAdmission, UserMessageAdmissionError>>,
+        oneshot::Receiver<Result<AdmittedUserMessage, UserMessageAdmissionError>>,
     ) {
         let (sender, receiver) = oneshot::channel();
         self.pending
@@ -91,7 +115,7 @@ impl PendingUserMessageAdmissions {
     pub(crate) fn complete(
         &self,
         submission_id: &str,
-        admission: CodexResult<UserMessageAdmission>,
+        admission: CodexResult<AdmittedUserMessage>,
     ) {
         let mut pending = self
             .pending
@@ -135,7 +159,11 @@ impl PendingUserMessageAdmissions {
             })
     }
 
-    pub(crate) fn associate_steered_by_client_id(&self, client_id: &str, turn_id: &str) {
+    pub(crate) fn associate_steered_by_client_id(
+        &self,
+        client_id: &str,
+        turn_context: Arc<TurnContext>,
+    ) {
         let submission_id = self
             .pending
             .lock()
@@ -150,10 +178,12 @@ impl PendingUserMessageAdmissions {
                 .then(|| submission_id.clone())
             });
         if let Some(submission_id) = submission_id {
+            let turn_id = turn_context.sub_id.clone();
             self.complete(
                 &submission_id,
-                Ok(UserMessageAdmission::Steered {
-                    turn_id: turn_id.to_string(),
+                Ok(AdmittedUserMessage {
+                    admission: UserMessageAdmission::Steered { turn_id },
+                    turn_context,
                 }),
             );
         }
@@ -213,14 +243,16 @@ impl PendingUserMessageAdmissions {
                     PendingUserMessageAdmissionState::WaitingForAdmission => {
                         submission_id == turn_id
                     }
-                    PendingUserMessageAdmissionState::Admitted(
-                        UserMessageAdmission::Started {
-                            turn_id: admission_turn_id,
-                        }
-                        | UserMessageAdmission::Steered {
-                            turn_id: admission_turn_id,
-                        },
-                    ) => admission_turn_id == turn_id,
+                    PendingUserMessageAdmissionState::Admitted(AdmittedUserMessage {
+                        admission:
+                            UserMessageAdmission::Started {
+                                turn_id: admission_turn_id,
+                            }
+                            | UserMessageAdmission::Steered {
+                                turn_id: admission_turn_id,
+                            },
+                        ..
+                    }) => admission_turn_id == turn_id,
                     PendingUserMessageAdmissionState::Immediate
                     | PendingUserMessageAdmissionState::Persisted => false,
                 };
