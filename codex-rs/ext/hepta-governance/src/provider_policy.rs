@@ -745,12 +745,16 @@ mod tests {
             );
         }
         assert_eq!(
-            receipt.intent.attempt_nonce_sha256,
-            Sha256Digest::for_bytes(HOST_ATTEMPT.as_bytes())
+            receipt.intent.attempt_nonce_sha256.as_str(),
+            "217edc25ad61597c3f87831b868911c1802c76d53058495e990949ea3dee459b"
         );
         assert_eq!(
-            receipt.intent.binding.host_request_binding_id_sha256,
-            Sha256Digest::for_bytes(HOST_BINDING.as_bytes())
+            receipt
+                .intent
+                .binding
+                .host_request_binding_id_sha256
+                .as_str(),
+            "04787b8678a791d99a9537273018fd67a052b3d51eb36cc9640fcb8144ef614c"
         );
     }
 
