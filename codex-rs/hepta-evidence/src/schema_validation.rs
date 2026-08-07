@@ -500,13 +500,27 @@ pub(crate) async fn verify_foreign_keys(pool: &SqlitePool) -> Result<(), Evidenc
 pub(crate) fn classify_migrate_error(error: sqlx::migrate::MigrateError) -> EvidenceError {
     let detail = error.to_string();
     match error {
-        sqlx::migrate::MigrateError::Execute(error)
-        | sqlx::migrate::MigrateError::ExecuteMigration(error, _) => classify_sqlx_error(error),
+        sqlx::migrate::MigrateError::Execute(error) => classify_sqlx_error(error),
+        sqlx::migrate::MigrateError::ExecuteMigration(error, version) => {
+            classify_migration_execution_error(error, version)
+        }
         sqlx::migrate::MigrateError::VersionMissing(_)
         | sqlx::migrate::MigrateError::VersionMismatch(_)
         | sqlx::migrate::MigrateError::VersionNotPresent(_)
         | sqlx::migrate::MigrateError::Dirty(_) => EvidenceError::Corrupt(detail),
         _ => EvidenceError::Unavailable(detail),
+    }
+}
+
+fn classify_migration_execution_error(error: sqlx::Error, version: i64) -> EvidenceError {
+    let detail = error.to_string();
+    let invalid_ephemeral_backfill = version == 6
+        && (sqlite_primary_code(&error) == Some(19)
+            || detail.to_ascii_lowercase().contains("malformed json"));
+    if invalid_ephemeral_backfill {
+        EvidenceError::Corrupt(detail)
+    } else {
+        classify_sqlx_error(error)
     }
 }
 

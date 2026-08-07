@@ -430,6 +430,125 @@ async fn ephemeral_projection_round_trips_and_detects_projection_corruption() {
 }
 
 #[tokio::test]
+async fn migration_0006_rejects_invalid_payload_shapes_and_rolls_back() {
+    for (offset, corruption) in ["explicit-null", "non-text", "orphan", "malformed"]
+        .into_iter()
+        .enumerate()
+    {
+        let temp = TempDir::new().expect("temp dir");
+        let sqlite = sqlite_config(&temp);
+        let path = sqlite.home().join("hepta_evidence_2.sqlite");
+        let pre_0006 = sqlite
+            .open_durable_evidence_pool(&path)
+            .await
+            .expect("open pre-0006 evidence");
+        migrator_through(5)
+            .run(&pre_0006)
+            .await
+            .expect("apply lineage through 0005");
+        let intent = ephemeral_intent(90 + offset as u8, "thread-invalid-migration");
+        insert_pre_0006_intent(&pre_0006, &intent, 9_000 + offset as i64).await;
+        let original: String = sqlx::query_scalar(
+            "SELECT payload_json FROM provider_invocation_intents WHERE attempt_id = ?",
+        )
+        .bind(intent.attempt_id.as_str())
+        .fetch_one(&pre_0006)
+        .await
+        .expect("read canonical pre-0006 payload");
+        let input_field = format!(
+            "\"ephemeral_input_sha256\":\"{}\"",
+            intent
+                .binding
+                .ephemeral_input_sha256
+                .as_ref()
+                .expect("input digest")
+                .as_str()
+        );
+        let witness_field = format!(
+            ",\"ephemeral_input_witness_sha256\":\"{}\"",
+            intent
+                .binding
+                .ephemeral_input_witness_sha256
+                .as_ref()
+                .expect("witness digest")
+                .as_str()
+        );
+        let invalid = match corruption {
+            "explicit-null" => {
+                original.replacen(&input_field, "\"ephemeral_input_sha256\":null", 1)
+            }
+            "non-text" => original.replacen(&input_field, "\"ephemeral_input_sha256\":17", 1),
+            "orphan" => original.replacen(&witness_field, "", 1),
+            "malformed" => "{".to_string(),
+            _ => unreachable!(),
+        };
+        assert_ne!(invalid, original, "{corruption} fixture must mutate JSON");
+        let invalid_sha256 = Sha256Digest::for_bytes(invalid.as_bytes());
+        sqlx::query("DROP TRIGGER provider_invocation_intents_no_update")
+            .execute(&pre_0006)
+            .await
+            .expect("disable immutable trigger for legacy corruption fixture");
+        sqlx::query(
+            "UPDATE provider_invocation_intents
+             SET payload_json = ?, payload_sha256 = ? WHERE attempt_id = ?",
+        )
+        .bind(invalid)
+        .bind(invalid_sha256.as_str())
+        .bind(intent.attempt_id.as_str())
+        .execute(&pre_0006)
+        .await
+        .expect("write invalid legacy payload shape");
+        sqlx::query(
+            "CREATE TRIGGER provider_invocation_intents_no_update
+             BEFORE UPDATE ON provider_invocation_intents
+             BEGIN
+                 SELECT RAISE(ABORT, 'provider invocation intents are immutable');
+             END",
+        )
+        .execute(&pre_0006)
+        .await
+        .expect("restore pre-0006 immutable trigger");
+        pre_0006.close().await;
+
+        let error = match HeptaEvidenceStore::open(&sqlite).await {
+            Ok(_) => panic!("{corruption} legacy payload must fail migration"),
+            Err(error) => error,
+        };
+        assert!(
+            matches!(error, EvidenceError::Corrupt(_)),
+            "{corruption}: {error:?}"
+        );
+        let rolled_back = sqlite
+            .open_durable_evidence_pool(&path)
+            .await
+            .expect("open rolled-back evidence");
+        let projected_columns: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_table_info('provider_invocation_intents')
+             WHERE name IN ('ephemeral_input_sha256', 'ephemeral_input_witness_sha256')",
+        )
+        .fetch_one(&rolled_back)
+        .await
+        .expect("inspect rolled-back columns");
+        assert_eq!(projected_columns, 0, "{corruption}");
+        let migration_rows: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations WHERE version = 6")
+                .fetch_one(&rolled_back)
+                .await
+                .expect("inspect rolled-back migration ledger");
+        assert_eq!(migration_rows, 0, "{corruption}");
+        let immutable_trigger: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_schema
+             WHERE type = 'trigger' AND name = 'provider_invocation_intents_no_update'",
+        )
+        .fetch_one(&rolled_back)
+        .await
+        .expect("inspect rolled-back immutable trigger");
+        assert_eq!(immutable_trigger, 1, "{corruption}");
+        rolled_back.close().await;
+    }
+}
+
+#[tokio::test]
 async fn provider_records_are_idempotent_pending_and_persistent() {
     let temp = TempDir::new().expect("temp dir");
     let sqlite = sqlite_config(&temp);
