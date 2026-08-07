@@ -8,15 +8,20 @@ use codex_extension_api::ModelProviderPolicyContributor;
 use codex_extension_api::ModelProviderPolicyDecision;
 use codex_extension_api::ModelProviderPolicyError;
 use codex_extension_api::ModelProviderPolicyFuture;
+use codex_extension_api::ModelProviderRequestKind;
 use codex_extension_api::ModelProviderTerminal;
+use codex_extension_api::ModelProviderTransport;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
+use core_test_support::responses::start_websocket_server;
+use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::test_codex;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -34,12 +39,21 @@ enum TestDecision {
     Block,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct ProviderAttemptObservation {
+    request_kind: ModelProviderRequestKind,
+    transport: ModelProviderTransport,
+    has_previous_response: bool,
+    generate: bool,
+}
+
 struct ProviderPolicyState {
     active: bool,
     decision: TestDecision,
     begin_count: AtomicUsize,
     terminal_count: AtomicUsize,
     completed_count: AtomicUsize,
+    attempts: Mutex<Vec<ProviderAttemptObservation>>,
     terminal_entered: Notify,
     terminal_release: Semaphore,
 }
@@ -52,6 +66,7 @@ impl ProviderPolicyState {
             begin_count: AtomicUsize::new(0),
             terminal_count: AtomicUsize::new(0),
             completed_count: AtomicUsize::new(0),
+            attempts: Mutex::new(Vec::new()),
             terminal_entered: Notify::new(),
             terminal_release: Semaphore::new(0),
         })
@@ -75,8 +90,18 @@ impl ModelProviderPolicyContributor for TestProviderPolicy {
 
     fn begin<'a>(
         &'a self,
-        _input: ModelProviderInvocationInput<'a>,
+        input: ModelProviderInvocationInput<'a>,
     ) -> ModelProviderPolicyFuture<'a, ModelProviderPolicyDecision> {
+        self.state
+            .attempts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(ProviderAttemptObservation {
+                request_kind: input.request_kind,
+                transport: input.transport,
+                has_previous_response: input.previous_response_id_sha256.is_some(),
+                generate: input.generate,
+            });
         self.state.begin_count.fetch_add(1, Ordering::SeqCst);
         let state = Arc::clone(&self.state);
         Box::pin(async move {
@@ -273,5 +298,53 @@ async fn active_provider_policy_claims_every_http_transport_invocation() -> Resu
         claim_count,
         "every claimed failed send must reach one terminal"
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn active_provider_policy_governs_websocket_turn() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_websocket_server(vec![vec![
+        vec![ev_response_created("warm-1"), ev_completed("warm-1")],
+        vec![
+            ev_response_created("resp-1"),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ],
+    ]])
+    .await;
+    let state = ProviderPolicyState::new(true, TestDecision::Allow);
+    state.terminal_release.add_permits(1);
+    let mut builder = test_codex()
+        .with_config(|config| {
+            config.model_provider.stream_max_retries = Some(0);
+        })
+        .with_extensions(extensions_with_policy(Arc::clone(&state)));
+    let test = builder.build_with_websocket_server(&server).await?;
+
+    test.submit_turn("the turn request must have its own websocket claim")
+        .await?;
+
+    assert_eq!(state.begin_count.load(Ordering::SeqCst), 1);
+    assert_eq!(state.terminal_count.load(Ordering::SeqCst), 1);
+    assert_eq!(state.completed_count.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        *state
+            .attempts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+        vec![ProviderAttemptObservation {
+            request_kind: ModelProviderRequestKind::Turn,
+            transport: ModelProviderTransport::WebSocket,
+            has_previous_response: false,
+            generate: true,
+        }]
+    );
+    let connections = server.connections();
+    assert_eq!(connections.len(), 1);
+    assert_eq!(connections[0].len(), 2);
+
+    server.shutdown().await;
     Ok(())
 }

@@ -149,7 +149,11 @@ fn endpoint_digest_sorts_query_names_and_excludes_secrets() {
     let different_path =
         canonical_endpoint_sha256("https://example.test/v2/responses?a=changed&z=changed&z=other")
             .expect("different endpoint should parse");
+    let websocket =
+        canonical_endpoint_sha256("wss://example.test/v1/responses?a=changed&z=changed&z=other")
+            .expect("websocket endpoint should parse");
 
     assert_eq!(left, right);
     assert_ne!(left, different_path);
+    assert_ne!(left, websocket);
 }

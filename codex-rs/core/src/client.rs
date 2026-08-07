@@ -131,7 +131,9 @@ use crate::model_provider_policy::begin_model_provider_policy;
 use crate::model_provider_policy::has_active_model_provider_policy;
 use crate::model_provider_policy::logical_responses_request;
 use crate::model_provider_policy::prepare_model_provider_policy;
+use crate::model_provider_policy::provider_websocket_wire_payload;
 use crate::model_provider_policy::responses_lite_from_http_header;
+use crate::model_provider_policy::responses_lite_from_ws_metadata;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::subagent_header_value;
 use crate::util::emit_feedback_auth_recovery_tags;
@@ -323,7 +325,6 @@ struct ConnectedWebsocket {
     connection: ApiWebSocketConnection,
     /// Routing hint actually used for this connection's opening handshake.
     /// This remains sticky even if a later request desires a different hint.
-    #[allow(dead_code)]
     actual_routing_hint: Option<ProviderRoutingHint>,
 }
 
@@ -1750,6 +1751,7 @@ impl ModelClientSession {
         warmup: bool,
         request_trace: Option<W3cTraceContext>,
         inference_trace: &InferenceTraceContext,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
     ) -> Result<WebsocketStreamOutcome> {
         let auth_manager = self.client.state.provider.auth_manager();
 
@@ -1795,7 +1797,7 @@ impl ModelClientSession {
             match self
                 .websocket_connection(WebsocketConnectParams {
                     session_telemetry,
-                    api_provider: client_setup.api_provider,
+                    api_provider: client_setup.api_provider.clone(),
                     api_auth: client_setup.api_auth,
                     responses_metadata: &websocket_metadata,
                     auth_context: request_auth_context,
@@ -1828,6 +1830,18 @@ impl ModelClientSession {
                 Err(err) => return Err(self.client.state.provider.map_api_error(err)),
             }
 
+            let provider_policy_active = provider_policy_context.is_some_and(|context| {
+                has_active_model_provider_policy(context.registry, context.thread_store)
+            });
+            let policy_logical_request = if provider_policy_active {
+                let mut logical_request = request.clone();
+                self.client
+                    .prepare_response_items_for_request(&mut logical_request.input);
+                Some(logical_responses_request(&logical_request))
+            } else {
+                None
+            };
+
             let (incremental_request, previous_response_id_from_untraced_warmup) =
                 self.prepare_websocket_request(&request);
             let inference_trace_attempt = if warmup {
@@ -1837,7 +1851,7 @@ impl ModelClientSession {
             } else {
                 inference_trace.start_attempt()
             };
-            if previous_response_id_from_untraced_warmup {
+            if previous_response_id_from_untraced_warmup && !provider_policy_active {
                 // The transport can reuse an untraced warmup response id and omit the
                 // already-sent input, but rollout replay needs the logical model-visible
                 // request rather than the compressed websocket delta.
@@ -1848,6 +1862,7 @@ impl ModelClientSession {
                 Some((response_id, items)) => (Some(response_id), Some(items)),
                 None => (None, None),
             };
+            let previous_response_id_for_policy = previous_response_id.clone();
             let original_item_ids = if let Some(incremental_items) = &mut incremental_items {
                 self.client
                     .prepare_response_items_for_request(incremental_items);
@@ -1872,26 +1887,114 @@ impl ModelClientSession {
                 ),
                 ..ResponseCreateWsRequest::from(&request)
             };
+            let mut admitted_provider_attempt = if let (Some(context), Some(logical_request)) =
+                (provider_policy_context, policy_logical_request.as_ref())
+            {
+                let responses_lite = responses_lite_from_ws_metadata(
+                    ws_payload.client_metadata.as_ref(),
+                    WS_REQUEST_HEADER_RESPONSES_LITE_CLIENT_METADATA_KEY,
+                )
+                .map_err(model_provider_policy_error)?;
+                let semantic_payload = provider_websocket_wire_payload(&ws_payload)
+                    .map_err(model_provider_policy_error)?;
+                let actual_routing_hint = self
+                    .websocket_session
+                    .connection
+                    .as_ref()
+                    .ok_or_else(|| {
+                        self.client.state.provider.map_api_error(ApiError::Stream(
+                            "websocket connection is unavailable".to_string(),
+                        ))
+                    })?
+                    .actual_routing_hint
+                    .clone();
+                let wire_semantic = ProviderWireSemantic::new(
+                    &semantic_payload,
+                    actual_routing_hint.as_ref(),
+                    responses_lite,
+                );
+                let endpoint = client_setup
+                    .api_provider
+                    .websocket_url_for_path("responses")
+                    .map_err(|error| {
+                        model_provider_policy_error(ModelProviderPolicyError::new(
+                            "model_provider_policy_invalid_websocket_endpoint",
+                            format!("failed to build provider WebSocket endpoint: {error}"),
+                        ))
+                    })?;
+                let prepared = prepare_model_provider_policy(
+                    context,
+                    client_setup.api_provider.name.as_str(),
+                    request.model.as_str(),
+                    ModelProviderTransport::WebSocket,
+                    endpoint.as_str(),
+                    logical_request,
+                    &wire_semantic,
+                    previous_response_id_for_policy.as_deref(),
+                    !warmup,
+                )
+                .map_err(model_provider_policy_error)?;
+                match begin_model_provider_policy(
+                    context.registry,
+                    prepared.invocation_input(context),
+                )
+                .await
+                .map_err(model_provider_policy_error)?
+                {
+                    ModelProviderPolicyBegin::NoPolicy => None,
+                    ModelProviderPolicyBegin::Allow { lease } => Some(
+                        AdmittedProviderAttempt::new(lease, RequestDispatchMetadata::new()),
+                    ),
+                    ModelProviderPolicyBegin::Block {
+                        reason_code,
+                        message,
+                    } => return Err(model_provider_policy_blocked(reason_code, message)),
+                }
+            } else {
+                None
+            };
+            if previous_response_id_from_untraced_warmup && provider_policy_active {
+                inference_trace_attempt.record_started(&request);
+            }
             let mut ws_request = ResponsesWsRequest::ResponseCreate(ws_payload);
             stamp_ws_stream_request_start_ms(&mut ws_request);
             if !previous_response_id_from_untraced_warmup {
                 inference_trace_attempt.record_started(&ws_request);
             }
 
-            let websocket_connection =
-                self.websocket_session.connection.as_ref().ok_or_else(|| {
-                    self.client.state.provider.map_api_error(ApiError::Stream(
-                        "websocket connection is unavailable".to_string(),
-                    ))
-                })?;
-            let stream_result = websocket_connection
-                .connection
-                .stream_request(
-                    ws_request,
-                    self.websocket_session.connection_reused(),
-                    Some(Arc::clone(&self.turn_state)),
-                )
-                .await;
+            let Some(websocket_connection) = self.websocket_session.connection.as_ref() else {
+                if let Some(attempt) = admitted_provider_attempt.take() {
+                    attempt
+                        .finish_immediate(/*http_status*/ None, "websocket")
+                        .await?;
+                }
+                return Err(self.client.state.provider.map_api_error(ApiError::Stream(
+                    "websocket connection is unavailable".to_string(),
+                )));
+            };
+            let stream_result = match admitted_provider_attempt.as_ref() {
+                Some(attempt) => {
+                    websocket_connection
+                        .connection
+                        .stream_request_single_attempt(
+                            ws_request,
+                            self.websocket_session.connection_reused(),
+                            Some(Arc::clone(&self.turn_state)),
+                            attempt.dispatch_metadata(),
+                        )
+                        .await
+                }
+                None => {
+                    websocket_connection
+                        .connection
+                        .stream_request(
+                            ws_request,
+                            self.websocket_session.connection_reused(),
+                            Some(Arc::clone(&self.turn_state)),
+                        )
+                        .await
+                }
+            };
             if let Some(original_item_ids) = original_item_ids {
                 for (item, original_item_id) in request.input.iter_mut().zip(original_item_ids) {
                     item.set_id(original_item_id);
@@ -1899,22 +2002,33 @@ impl ModelClientSession {
             }
             self.websocket_session.last_request = Some(request);
             self.websocket_session.last_response_from_untraced_warmup = warmup;
-            let stream_result = stream_result.map_err(|err| {
-                let response_debug_context = extract_response_debug_context_from_api_error(&err);
-                let err = self.client.state.provider.map_api_error(err);
-                inference_trace_attempt.record_failed(
-                    &err,
-                    response_debug_context.request_id.as_deref(),
-                    /*output_items*/ &[],
-                );
-                err
-            })?;
+            let stream_result = match stream_result {
+                Ok(stream) => stream,
+                Err(err) => {
+                    if let Some(attempt) = admitted_provider_attempt.take() {
+                        attempt
+                            .finish_immediate(api_error_http_status(&err), "websocket")
+                            .await?;
+                    }
+                    let response_debug_context =
+                        extract_response_debug_context_from_api_error(&err);
+                    let err = self.client.state.provider.map_api_error(err);
+                    inference_trace_attempt.record_failed(
+                        &err,
+                        response_debug_context.request_id.as_deref(),
+                        /*output_items*/ &[],
+                    );
+                    return Err(err);
+                }
+            };
             let (stream, last_request_rx) = map_response_stream(
                 stream_result,
                 request_session_telemetry,
                 inference_trace_attempt,
                 Arc::clone(&self.client.state.provider),
-                /*provider_attempt*/ None,
+                admitted_provider_attempt
+                    .take()
+                    .map(AdmittedProviderAttempt::into_owner),
             );
             self.websocket_session.last_response_rx = Some(last_request_rx);
             return Ok(WebsocketStreamOutcome::Stream(stream));
@@ -1987,6 +2101,7 @@ impl ModelClientSession {
                 /*warmup*/ true,
                 current_span_w3c_trace_context(),
                 &disabled_trace,
+                /*provider_policy_context*/ None,
             )
             .await
         {
@@ -2073,6 +2188,7 @@ impl ModelClientSession {
                             /*warmup*/ false,
                             request_trace,
                             inference_trace,
+                            provider_policy_context,
                         )
                         .await?
                     {
