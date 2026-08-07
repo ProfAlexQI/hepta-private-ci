@@ -4,6 +4,7 @@ use crate::common::ResponseStream;
 use crate::common::ResponsesWsRequest;
 use crate::common::SafetyBufferingTreatment;
 use crate::common::WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY;
+use crate::dispatch_metadata::RequestDispatchMetadata;
 use crate::error::ApiError;
 use crate::provider::Provider;
 use crate::rate_limits::parse_rate_limit_event;
@@ -237,6 +238,43 @@ impl ResponsesWebsocketConnection {
         connection_reused: bool,
         turn_state: Option<Arc<OnceLock<String>>>,
     ) -> Result<ResponseStream, ApiError> {
+        self.stream_request_with_optional_dispatch(
+            request,
+            connection_reused,
+            turn_state,
+            /*dispatch_metadata*/ None,
+        )
+        .await
+    }
+
+    /// Starts one WebSocket request through a cancellation-safe dispatch gate.
+    ///
+    /// The returned future does not complete until the connection task is
+    /// ready to invoke the transport. If the caller drops the future before
+    /// that handoff, the task exits without sending the request.
+    pub async fn stream_request_single_attempt(
+        &self,
+        request: ResponsesWsRequest<'_>,
+        connection_reused: bool,
+        turn_state: Option<Arc<OnceLock<String>>>,
+        dispatch_metadata: RequestDispatchMetadata,
+    ) -> Result<ResponseStream, ApiError> {
+        self.stream_request_with_optional_dispatch(
+            request,
+            connection_reused,
+            turn_state,
+            Some(dispatch_metadata),
+        )
+        .await
+    }
+
+    async fn stream_request_with_optional_dispatch(
+        &self,
+        request: ResponsesWsRequest<'_>,
+        connection_reused: bool,
+        turn_state: Option<Arc<OnceLock<String>>>,
+        dispatch_metadata: Option<RequestDispatchMetadata>,
+    ) -> Result<ResponseStream, ApiError> {
         let (tx_event, rx_event) =
             mpsc::channel::<std::result::Result<ResponseEvent, ApiError>>(1600);
         let stream = Arc::clone(&self.stream);
@@ -271,6 +309,12 @@ impl ResponsesWebsocketConnection {
             connection_reused,
         };
         let request_text = serialize_websocket_request(&request)?;
+        let (dispatch_ready_tx, dispatch_ready_rx) = if dispatch_metadata.is_some() {
+            let (tx, rx) = oneshot::channel();
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
 
         let current_span = Span::current();
         tokio::spawn(
@@ -301,6 +345,16 @@ impl ResponsesWebsocketConnection {
                         return;
                     };
 
+                    if let Some(dispatch_ready_tx) = dispatch_ready_tx {
+                        let (dispatch_permit_tx, dispatch_permit_rx) = oneshot::channel();
+                        if dispatch_ready_tx.send(dispatch_permit_tx).is_err() {
+                            return;
+                        }
+                        if dispatch_permit_rx.await.is_err() {
+                            return;
+                        }
+                    }
+
                     run_websocket_response_stream(
                         ws_stream,
                         tx_event.clone(),
@@ -324,6 +378,20 @@ impl ResponsesWebsocketConnection {
             }
             .instrument(current_span),
         );
+
+        if let (Some(dispatch_metadata), Some(dispatch_ready_rx)) =
+            (dispatch_metadata, dispatch_ready_rx)
+        {
+            let dispatch_permit = dispatch_ready_rx.await.map_err(|_| {
+                ApiError::Stream("websocket request became unavailable before dispatch".to_string())
+            })?;
+            // Mark before releasing the task. The permit send is synchronous,
+            // but the spawned task may run on another worker immediately.
+            dispatch_metadata.mark_transport_invoked();
+            dispatch_permit.send(()).map_err(|_| {
+                ApiError::Stream("websocket request dispatch task stopped".to_string())
+            })?;
+        }
 
         Ok(ResponseStream {
             rx_event,
@@ -911,6 +979,92 @@ mod tests {
     use serde_json::value::to_raw_value;
     use std::collections::HashMap;
     use std::sync::Arc;
+
+    fn empty_ws_request() -> ResponsesWsRequest<'static> {
+        ResponsesWsRequest::ResponseCreate(ResponseCreateWsRequest {
+            model: "gpt-test",
+            instructions: "",
+            previous_response_id: None,
+            input: &[],
+            tools: None,
+            tool_choice: "auto",
+            parallel_tool_calls: false,
+            reasoning: None,
+            store: false,
+            stream: true,
+            stream_options: None,
+            include: &[],
+            service_tier: None,
+            prompt_cache_key: None,
+            text: None,
+            generate: None,
+            client_metadata: None,
+        })
+    }
+
+    fn connection_with_stream(stream: Option<WsStream>) -> ResponsesWebsocketConnection {
+        ResponsesWebsocketConnection {
+            stream: Arc::new(Mutex::new(stream)),
+            idle_timeout: Duration::from_millis(50),
+            server_reasoning_included: false,
+            models_etag: None,
+            server_model: None,
+            telemetry: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn claimed_websocket_closed_before_send_is_not_dispatched() {
+        let connection = connection_with_stream(None);
+        let dispatch_metadata = RequestDispatchMetadata::new();
+
+        let result = connection
+            .stream_request_single_attempt(
+                empty_ws_request(),
+                /*connection_reused*/ false,
+                /*turn_state*/ None,
+                dispatch_metadata.clone(),
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(!dispatch_metadata.transport_invoked());
+    }
+
+    #[tokio::test]
+    async fn claimed_websocket_send_failure_is_dispatch_attempted() {
+        let (tx_command, rx_command) = mpsc::channel(1);
+        drop(rx_command);
+        let (_tx_message, rx_message) = mpsc::unbounded_channel();
+        let pump_task = tokio::spawn(std::future::pending::<()>());
+        let stream = WsStream {
+            tx_command,
+            rx_message,
+            pump_task,
+        };
+        let connection = connection_with_stream(Some(stream));
+        let dispatch_metadata = RequestDispatchMetadata::new();
+
+        let mut response_stream = connection
+            .stream_request_single_attempt(
+                empty_ws_request(),
+                /*connection_reused*/ false,
+                /*turn_state*/ None,
+                dispatch_metadata.clone(),
+            )
+            .await
+            .expect("dispatch gate should hand off to the send task");
+
+        assert!(dispatch_metadata.transport_invoked());
+        assert!(
+            response_stream
+                .rx_event
+                .recv()
+                .await
+                .expect("send failure should emit one event")
+                .is_err()
+        );
+    }
 
     #[test]
     fn direct_serialization_preserves_websocket_request_payload() {

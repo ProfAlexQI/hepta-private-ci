@@ -1,6 +1,7 @@
 use crate::auth::SharedAuthProvider;
 use crate::common::ResponseStream;
 use crate::common::ResponsesApiRequest;
+use crate::dispatch_metadata::RequestDispatchMetadata;
 use crate::endpoint::session::EndpointSession;
 use crate::error::ApiError;
 use crate::provider::Provider;
@@ -84,11 +85,12 @@ impl<T: HttpTransport> ResponsesClient<T> {
         &self,
         request: ResponsesApiRequest,
         options: ResponsesOptions,
+        dispatch_metadata: RequestDispatchMetadata,
     ) -> Result<ResponseStream, ApiError> {
         self.stream_request_with_retry_mode(
             request,
             options,
-            StreamRetryMode::SingleTransportAttempt,
+            StreamRetryMode::SingleTransportAttempt(dispatch_metadata),
         )
         .await
     }
@@ -190,13 +192,14 @@ impl<T: HttpTransport> ResponsesClient<T> {
                     )
                     .await?
             }
-            StreamRetryMode::SingleTransportAttempt => {
+            StreamRetryMode::SingleTransportAttempt(dispatch_metadata) => {
                 self.session
                     .stream_encoded_json_once_with(
                         Method::POST,
                         Self::path(),
                         extra_headers,
                         Some(body),
+                        dispatch_metadata,
                         configure,
                     )
                     .await?
@@ -212,8 +215,7 @@ impl<T: HttpTransport> ResponsesClient<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
 enum StreamRetryMode {
     ProviderDefault,
-    SingleTransportAttempt,
+    SingleTransportAttempt(RequestDispatchMetadata),
 }

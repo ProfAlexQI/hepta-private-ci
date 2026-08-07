@@ -1,4 +1,5 @@
 use crate::auth::SharedAuthProvider;
+use crate::dispatch_metadata::RequestDispatchMetadata;
 use crate::error::ApiError;
 use crate::provider::Provider;
 use crate::telemetry::run_with_request_telemetry;
@@ -88,6 +89,52 @@ impl<T: HttpTransport> EndpointSession<T> {
     where
         C: Fn(&mut Request),
     {
+        self.execute_with_retry_mode(
+            method,
+            path,
+            extra_headers,
+            body,
+            ExecuteRetryMode::ProviderDefault,
+            configure,
+        )
+        .await
+    }
+
+    pub(crate) async fn execute_once_with<C>(
+        &self,
+        method: Method,
+        path: &str,
+        extra_headers: HeaderMap,
+        body: Option<Value>,
+        dispatch_metadata: RequestDispatchMetadata,
+        configure: C,
+    ) -> Result<Response, ApiError>
+    where
+        C: Fn(&mut Request),
+    {
+        self.execute_with_retry_mode(
+            method,
+            path,
+            extra_headers,
+            body,
+            ExecuteRetryMode::SingleTransportAttempt(dispatch_metadata),
+            configure,
+        )
+        .await
+    }
+
+    async fn execute_with_retry_mode<C>(
+        &self,
+        method: Method,
+        path: &str,
+        extra_headers: HeaderMap,
+        body: Option<Value>,
+        retry_mode: ExecuteRetryMode,
+        configure: C,
+    ) -> Result<Response, ApiError>
+    where
+        C: Fn(&mut Request),
+    {
         let body = body.map(RequestBody::Json);
         let make_request = || {
             let mut req = self.make_request(&method, path, &extra_headers, body.as_ref());
@@ -95,15 +142,27 @@ impl<T: HttpTransport> EndpointSession<T> {
             req
         };
 
+        let mut retry_policy = self.provider.retry.to_policy();
+        let dispatch_metadata = match retry_mode {
+            ExecuteRetryMode::ProviderDefault => None,
+            ExecuteRetryMode::SingleTransportAttempt(metadata) => {
+                retry_policy.max_attempts = 0;
+                Some(metadata)
+            }
+        };
         let response = run_with_request_telemetry(
-            self.provider.retry.to_policy(),
+            retry_policy,
             self.request_telemetry.clone(),
             make_request,
             |req| {
                 let auth = self.auth.clone();
                 let transport = &self.transport;
+                let dispatch_metadata = dispatch_metadata.clone();
                 async move {
                     let req = auth.apply_auth(req).await.map_err(TransportError::from)?;
+                    if let Some(dispatch_metadata) = dispatch_metadata {
+                        dispatch_metadata.mark_transport_invoked();
+                    }
                     transport.execute(req).await
                 }
             },
@@ -151,6 +210,7 @@ impl<T: HttpTransport> EndpointSession<T> {
         path: &str,
         extra_headers: HeaderMap,
         body: Option<EncodedJsonBody>,
+        dispatch_metadata: RequestDispatchMetadata,
         configure: C,
     ) -> Result<StreamResponse, ApiError>
     where
@@ -161,7 +221,7 @@ impl<T: HttpTransport> EndpointSession<T> {
             path,
             extra_headers,
             body,
-            StreamRetryMode::SingleTransportAttempt,
+            StreamRetryMode::SingleTransportAttempt(dispatch_metadata),
             configure,
         )
         .await
@@ -186,11 +246,15 @@ impl<T: HttpTransport> EndpointSession<T> {
         let make_request = || request.clone();
 
         let mut retry_policy = self.provider.retry.to_policy();
-        if retry_mode == StreamRetryMode::SingleTransportAttempt {
+        if matches!(retry_mode, StreamRetryMode::SingleTransportAttempt(_)) {
             // `max_attempts` is the maximum retry index; zero means the
             // initial invocation is made once and is never retried here.
             retry_policy.max_attempts = 0;
         }
+        let dispatch_metadata = match retry_mode {
+            StreamRetryMode::ProviderDefault => None,
+            StreamRetryMode::SingleTransportAttempt(metadata) => Some(metadata),
+        };
         let stream = run_with_request_telemetry(
             retry_policy,
             self.request_telemetry.clone(),
@@ -198,8 +262,12 @@ impl<T: HttpTransport> EndpointSession<T> {
             |req| {
                 let auth = self.auth.clone();
                 let transport = &self.transport;
+                let dispatch_metadata = dispatch_metadata.clone();
                 async move {
                     let req = auth.apply_auth(req).await.map_err(TransportError::from)?;
+                    if let Some(dispatch_metadata) = dispatch_metadata {
+                        dispatch_metadata.mark_transport_invoked();
+                    }
                     transport.stream(req).await
                 }
             },
@@ -210,8 +278,12 @@ impl<T: HttpTransport> EndpointSession<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StreamRetryMode {
     ProviderDefault,
-    SingleTransportAttempt,
+    SingleTransportAttempt(RequestDispatchMetadata),
+}
+
+enum ExecuteRetryMode {
+    ProviderDefault,
+    SingleTransportAttempt(RequestDispatchMetadata),
 }
