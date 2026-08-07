@@ -276,7 +276,7 @@ pub(super) fn non_openai_model_provider(server: &MockServer) -> ModelProviderInf
     provider
 }
 
-fn openai_model_provider(server: &MockServer) -> ModelProviderInfo {
+pub(super) fn openai_model_provider(server: &MockServer) -> ModelProviderInfo {
     let mut provider =
         built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone();
     provider.base_url = Some(format!("{}/v1", server.uri()));

@@ -20,6 +20,7 @@ use crate::hook_runtime::PostCompactHookOutcome;
 use crate::hook_runtime::PreCompactHookOutcome;
 use crate::hook_runtime::run_post_compact_hooks;
 use crate::hook_runtime::run_pre_compact_hooks;
+use crate::model_provider_policy::ModelProviderPolicyContext;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::CompactionTurnMetadata;
 use crate::responses_retry::ResponsesStreamRequest;
@@ -32,6 +33,7 @@ use codex_analytics::CompactionImplementation;
 use codex_analytics::CompactionPhase;
 use codex_analytics::CompactionReason;
 use codex_analytics::CompactionTrigger;
+use codex_extension_api::ModelProviderRequestKind;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::Result as CodexResult;
@@ -340,6 +342,15 @@ async fn run_remote_compaction_request_v2(
     prompt: &Prompt,
     responses_metadata: &CodexResponsesMetadata,
 ) -> CodexResult<RemoteCompactionV2Output> {
+    let provider_policy_context = ModelProviderPolicyContext {
+        registry: sess.services.extensions.as_ref(),
+        session_store: &sess.services.session_extension_data,
+        thread_store: &sess.services.thread_extension_data,
+        turn_store: turn_context.extension_data.as_ref(),
+        thread_id: sess.thread_id().to_string(),
+        turn_id: turn_context.sub_id.clone(),
+        request_kind: ModelProviderRequestKind::Compaction,
+    };
     let max_retries = turn_context
         .provider
         .info()
@@ -348,7 +359,7 @@ async fn run_remote_compaction_request_v2(
     let mut retry_state = ResponsesStreamRetryState::default();
     loop {
         let result = match client_session
-            .stream(
+            .stream_with_policy(
                 prompt,
                 &turn_context.model_info,
                 &turn_context.session_telemetry,
@@ -357,6 +368,7 @@ async fn run_remote_compaction_request_v2(
                 turn_context.config.service_tier.clone(),
                 responses_metadata,
                 &InferenceTraceContext::disabled(),
+                Some(&provider_policy_context),
             )
             .await
         {
