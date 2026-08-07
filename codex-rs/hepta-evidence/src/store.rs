@@ -20,6 +20,7 @@ use sqlx::sqlite::SqliteRow;
 
 use crate::EvidenceError;
 use crate::canonical::canonical_json;
+use crate::canonical::canonical_storage_payload;
 
 const EVIDENCE_DB_FILENAME: &str = "hepta_evidence_1.sqlite";
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -88,10 +89,7 @@ impl HeptaEvidenceStore {
         record: &GovernanceDecisionRecord,
     ) -> Result<AppendDisposition, EvidenceError> {
         validate_decision(record)?;
-        let payload = canonical_json(record)?;
-        let payload_json = String::from_utf8(payload.clone())
-            .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
-        let payload_sha256 = Sha256Digest::for_bytes(&payload);
+        let (payload_json, payload_sha256) = canonical_storage_payload(record)?;
         let mut transaction = self.pool.begin().await.map_err(classify_sqlx_error)?;
         let insert = sqlx::query(
             "INSERT INTO governance_decisions (
@@ -130,10 +128,7 @@ impl HeptaEvidenceStore {
         receipt: &GovernanceReceipt,
     ) -> Result<AppendDisposition, EvidenceError> {
         validate_receipt_binding(receipt)?;
-        let payload = canonical_json(receipt)?;
-        let payload_json = String::from_utf8(payload.clone())
-            .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
-        let payload_sha256 = Sha256Digest::for_bytes(&payload);
+        let (payload_json, payload_sha256) = canonical_storage_payload(receipt)?;
         let mut transaction = self.pool.begin().await.map_err(classify_sqlx_error)?;
         ensure_decision(&mut transaction, &receipt.admission).await?;
         if let Some(authorization) = receipt.authorization.as_ref() {
@@ -361,10 +356,7 @@ async fn ensure_decision(
     transaction: &mut Transaction<'_, Sqlite>,
     record: &GovernanceDecisionRecord,
 ) -> Result<(), EvidenceError> {
-    let payload = canonical_json(record)?;
-    let payload_json = String::from_utf8(payload.clone())
-        .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
-    let digest = Sha256Digest::for_bytes(&payload);
+    let (payload_json, digest) = canonical_storage_payload(record)?;
     verify_decision(transaction, record, &payload_json, digest.as_str(), false)
         .await
         .map(|_| ())

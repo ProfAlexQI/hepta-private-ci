@@ -15,6 +15,7 @@ use crate::AppendDisposition;
 use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
 use crate::canonical::canonical_json;
+use crate::canonical::canonical_storage_payload;
 use crate::store::classify_sqlx_error;
 use crate::store::now_millis;
 
@@ -64,10 +65,7 @@ impl HeptaEvidenceStore {
         intent: &ProviderInvocationIntent,
     ) -> Result<ProviderIntentClaimDisposition, EvidenceError> {
         validate_provider_intent(intent)?;
-        let payload = canonical_json(intent)?;
-        let payload_json = String::from_utf8(payload.clone())
-            .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
-        let payload_sha256 = Sha256Digest::for_bytes(&payload);
+        let (payload_json, payload_sha256) = canonical_storage_payload(intent)?;
         let mut transaction = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -97,10 +95,7 @@ impl HeptaEvidenceStore {
         intent: &ProviderInvocationIntent,
     ) -> Result<AppendDisposition, EvidenceError> {
         validate_provider_intent(intent)?;
-        let payload = canonical_json(intent)?;
-        let payload_json = String::from_utf8(payload.clone())
-            .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
-        let payload_sha256 = Sha256Digest::for_bytes(&payload);
+        let (payload_json, payload_sha256) = canonical_storage_payload(intent)?;
         let mut transaction = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -122,10 +117,7 @@ impl HeptaEvidenceStore {
         receipt: &ProviderInvocationReceipt,
     ) -> Result<AppendDisposition, EvidenceError> {
         validate_provider_receipt(receipt)?;
-        let payload = canonical_json(receipt)?;
-        let payload_json = String::from_utf8(payload.clone())
-            .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
-        let payload_sha256 = Sha256Digest::for_bytes(&payload);
+        let (payload_json, payload_sha256) = canonical_storage_payload(receipt)?;
         let mut transaction = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -462,10 +454,7 @@ async fn ensure_provider_intent(
     transaction: &mut Transaction<'_, Sqlite>,
     intent: &ProviderInvocationIntent,
 ) -> Result<(), EvidenceError> {
-    let payload = canonical_json(intent)?;
-    let payload_json = String::from_utf8(payload.clone())
-        .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
-    let digest = Sha256Digest::for_bytes(&payload);
+    let (payload_json, digest) = canonical_storage_payload(intent)?;
     verify_provider_intent(transaction, intent, &payload_json, digest.as_str(), false)
         .await
         .map(|_| ())

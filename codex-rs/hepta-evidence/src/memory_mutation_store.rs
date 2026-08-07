@@ -16,6 +16,7 @@ use crate::AppendDisposition;
 use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
 use crate::canonical::canonical_json;
+use crate::canonical::canonical_storage_payload;
 use crate::store::classify_sqlx_error;
 use crate::store::now_millis;
 
@@ -91,10 +92,7 @@ impl HeptaEvidenceStore {
         observation: &MemoryMutationShadowObservation,
     ) -> Result<AppendDisposition, EvidenceError> {
         validate_observation(observation)?;
-        let payload = canonical_json(observation)?;
-        let payload_json = String::from_utf8(payload.clone())
-            .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
-        let evidence_sha256 = Sha256Digest::for_bytes(&payload);
+        let (payload_json, evidence_sha256) = canonical_storage_payload(observation)?;
         let scope_sha256 = observation.proposal.scope.binding_sha256();
         let dry_run = &observation.dry_run;
         let mut transaction = self

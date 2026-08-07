@@ -1,3 +1,4 @@
+use codex_hepta_contracts::Sha256Digest;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -8,6 +9,16 @@ pub(crate) fn canonical_json<T: Serialize>(value: &T) -> Result<Vec<u8>, Evidenc
         .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
     sort_value(&mut value);
     serde_json::to_vec(&value).map_err(|error| EvidenceError::Serialization(error.to_string()))
+}
+
+pub(crate) fn canonical_storage_payload<T: Serialize>(
+    value: &T,
+) -> Result<(String, Sha256Digest), EvidenceError> {
+    let payload = canonical_json(value)?;
+    let payload_json = String::from_utf8(payload)
+        .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
+    let payload_sha256 = Sha256Digest::for_bytes(payload_json.as_bytes());
+    Ok((payload_json, payload_sha256))
 }
 
 fn sort_value(value: &mut Value) {
@@ -31,9 +42,7 @@ fn sort_value(value: &mut Value) {
 
 #[cfg(test)]
 mod tests {
-    use codex_hepta_contracts::Sha256Digest;
-
-    use super::canonical_json;
+    use super::canonical_storage_payload;
 
     #[test]
     fn storage_payload_has_fixed_sorted_json_and_sha256_oracle() {
@@ -42,14 +51,15 @@ mod tests {
             "list": [{"b": 1, "a": 2}],
             "a": {"z": 2, "a": 3},
         });
-        let payload = canonical_json(&value).expect("canonical storage payload");
+        let (payload_json, payload_sha256) =
+            canonical_storage_payload(&value).expect("canonical storage payload");
 
         assert_eq!(
-            String::from_utf8(payload.clone()).expect("UTF-8 JSON"),
+            payload_json,
             r#"{"a":{"a":3,"z":2},"list":[{"a":2,"b":1}],"z":1}"#
         );
         assert_eq!(
-            Sha256Digest::for_bytes(&payload).as_str(),
+            payload_sha256.as_str(),
             "2d0c8efa120f8fed7856c164ea8b5ae5f828b2ec798b48ddbf2942692115c47d"
         );
     }

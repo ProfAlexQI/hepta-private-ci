@@ -18,6 +18,7 @@ use crate::AppendDisposition;
 use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
 use crate::canonical::canonical_json;
+use crate::canonical::canonical_storage_payload;
 use crate::store::classify_sqlx_error;
 use crate::store::now_millis;
 
@@ -196,8 +197,7 @@ impl HeptaEvidenceStore {
         event: &ChannelIngressEvent,
     ) -> Result<ChannelIngressClaimDisposition, EvidenceError> {
         validate_ingress_event(event).map_err(invalid_record)?;
-        let payload_json = canonical_payload_json(event)?;
-        let evidence_sha256 = Sha256Digest::for_bytes(payload_json.as_bytes());
+        let (payload_json, evidence_sha256) = canonical_storage_payload(event)?;
         let scope_sha256 = event.scope.binding_sha256();
         let mut transaction = self
             .pool
@@ -286,8 +286,7 @@ impl HeptaEvidenceStore {
         receipt: &ChannelIngressReceipt,
     ) -> Result<AppendDisposition, EvidenceError> {
         validate_ingress_receipt(receipt).map_err(invalid_record)?;
-        let payload_json = canonical_payload_json(receipt)?;
-        let evidence_sha256 = Sha256Digest::for_bytes(payload_json.as_bytes());
+        let (payload_json, evidence_sha256) = canonical_storage_payload(receipt)?;
         let scope_sha256 = receipt.event.scope.binding_sha256();
         let mut transaction = self
             .pool
