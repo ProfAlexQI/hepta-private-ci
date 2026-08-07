@@ -24,6 +24,7 @@ enum Behavior {
     Allow { finish_error: bool },
     Block,
     Error,
+    Pending,
 }
 
 struct RecordingContributor {
@@ -46,6 +47,9 @@ impl ModelProviderPolicyContributor for RecordingContributor {
             .lock()
             .expect("events lock should not be poisoned")
             .push(format!("begin:{}", self.name));
+        if matches!(self.behavior, Behavior::Pending) {
+            return Box::pin(std::future::pending());
+        }
         let result = match self.behavior {
             Behavior::Allow { finish_error } => Ok(ModelProviderPolicyDecision::Allow {
                 lease: Box::new(RecordingLease {
@@ -62,6 +66,7 @@ impl ModelProviderPolicyContributor for RecordingContributor {
                 format!("{}_error", self.name),
                 format!("{} failed", self.name),
             )),
+            Behavior::Pending => unreachable!("pending behavior returned before result creation"),
         };
         Box::pin(std::future::ready(result))
     }
@@ -334,4 +339,55 @@ async fn composite_finish_attempts_every_lease_and_surfaces_failures() {
             .iter()
             .any(|event| event.starts_with("finish:good:"))
     );
+}
+
+#[tokio::test]
+async fn cancelled_begin_closes_every_acquired_lease() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let mut builder = ExtensionRegistryBuilder::<crate::config::Config>::new();
+    builder.model_provider_policy_contributor(contributor(
+        "allow",
+        true,
+        Behavior::Allow {
+            finish_error: false,
+        },
+        &events,
+    ));
+    builder.model_provider_policy_contributor(contributor(
+        "pending",
+        true,
+        Behavior::Pending,
+        &events,
+    ));
+    let registry = builder.build();
+    let (session_store, thread_store, turn_store) = stores();
+    let digests = [digest('a'), digest('b'), digest('c'), digest('d')];
+    let mut begin = Box::pin(begin_model_provider_policy(
+        &registry,
+        input(&session_store, &thread_store, &turn_store, &digests),
+    ));
+
+    tokio::select! {
+        result = &mut begin => panic!("pending contributor unexpectedly completed: {}", result.is_ok()),
+        _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
+    }
+    drop(begin);
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if events
+                .lock()
+                .expect("events lock should not be poisoned")
+                .iter()
+                .any(|event| {
+                    event == "finish:allow:NotDispatched { reason_code: \"model_provider_policy_begin_cancelled\" }"
+                })
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("cancelled begin should close acquired leases");
 }
