@@ -18,3 +18,10 @@ mod attempt_owner;
 // focused review slice.
 #[allow(dead_code)]
 mod response_terminal;
+
+pub(crate) use attempt_owner::ProviderAttemptOwner;
+#[cfg(test)]
+pub(crate) use binding::bytes_sha256;
+#[cfg(test)]
+pub(crate) use binding::canonical_sha256;
+pub(crate) use response_terminal::ProviderResponseTerminal;
