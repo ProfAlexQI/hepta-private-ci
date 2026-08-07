@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod framing;
 mod mutation;
 mod recall;
 

@@ -15,6 +15,8 @@ use sha2::Digest;
 use sha2::Sha256;
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::framing::frame_part;
+
 pub const RECALL_OBSERVATION_SCHEMA_VERSION: u32 = 1;
 
 const MAX_SUMMARY_BYTES: usize = 64 * 1024;
@@ -445,29 +447,29 @@ fn lifecycle_tag(lifecycle: &MemoryLifecycle) -> &'static str {
 
 fn candidate_set_digest(candidates: &[(Sha256Digest, &RecallCandidate<'_>)]) -> Sha256Digest {
     let mut hasher = Sha256::new();
-    hash_part(&mut hasher, b"hepta-memory:candidate-set:v1");
+    frame_part(&mut hasher, b"hepta-memory:candidate-set:v1");
     for (candidate_digest, _) in candidates {
-        hash_part(&mut hasher, candidate_digest.as_str().as_bytes());
+        frame_part(&mut hasher, candidate_digest.as_str().as_bytes());
     }
     Sha256Digest::for_bytes(&hasher.finalize())
 }
 
 fn candidate_semantic_digest(candidate: &RecallCandidate<'_>) -> Sha256Digest {
     let mut hasher = Sha256::new();
-    hash_part(&mut hasher, b"hepta-memory:candidate:v1");
-    hash_part(
+    frame_part(&mut hasher, b"hepta-memory:candidate:v1");
+    frame_part(
         &mut hasher,
         &candidate.revision.schema_version.to_be_bytes(),
     );
-    hash_part(
+    frame_part(
         &mut hasher,
         candidate.revision.memory_id.as_str().as_bytes(),
     );
-    hash_part(
+    frame_part(
         &mut hasher,
         &candidate.revision.revision.revision.to_be_bytes(),
     );
-    hash_part(
+    frame_part(
         &mut hasher,
         candidate
             .revision
@@ -477,27 +479,27 @@ fn candidate_semantic_digest(candidate: &RecallCandidate<'_>) -> Sha256Digest {
             .as_bytes(),
     );
     if candidate.summary.len() <= MAX_SUMMARY_BYTES {
-        hash_part(
+        frame_part(
             &mut hasher,
             Sha256Digest::for_bytes(candidate.summary.as_bytes())
                 .as_str()
                 .as_bytes(),
         );
     } else {
-        hash_part(&mut hasher, b"oversize_summary");
-        hash_part(
+        frame_part(&mut hasher, b"oversize_summary");
+        frame_part(
             &mut hasher,
             &u64::try_from(candidate.summary.len())
                 .unwrap_or(u64::MAX)
                 .to_be_bytes(),
         );
     }
-    hash_part(
+    frame_part(
         &mut hasher,
         &candidate.source_updated_at_unix_seconds.to_be_bytes(),
     );
-    hash_part(&mut hasher, &candidate.token_count.to_be_bytes());
-    hash_part(
+    frame_part(&mut hasher, &candidate.token_count.to_be_bytes());
+    frame_part(
         &mut hasher,
         lifecycle_tag(&candidate.revision.lifecycle).as_bytes(),
     );
@@ -505,8 +507,8 @@ fn candidate_semantic_digest(candidate: &RecallCandidate<'_>) -> Sha256Digest {
         MemoryLifecycle::Active => {}
         MemoryLifecycle::Superseded {
             successor_memory_id,
-        } => hash_part(&mut hasher, successor_memory_id.as_str().as_bytes()),
-        MemoryLifecycle::Tombstoned { reason_code } => hash_part(
+        } => frame_part(&mut hasher, successor_memory_id.as_str().as_bytes()),
+        MemoryLifecycle::Tombstoned { reason_code } => frame_part(
             &mut hasher,
             Sha256Digest::for_bytes(reason_code.as_bytes())
                 .as_str()
@@ -514,14 +516,14 @@ fn candidate_semantic_digest(candidate: &RecallCandidate<'_>) -> Sha256Digest {
         ),
         MemoryLifecycle::Expired {
             expired_at_unix_seconds,
-        } => hash_part(&mut hasher, &expired_at_unix_seconds.to_be_bytes()),
+        } => frame_part(&mut hasher, &expired_at_unix_seconds.to_be_bytes()),
     }
     match candidate.revision.valid_until_unix_seconds {
         Some(valid_until) => {
-            hash_part(&mut hasher, b"valid_until");
-            hash_part(&mut hasher, &valid_until.to_be_bytes());
+            frame_part(&mut hasher, b"valid_until");
+            frame_part(&mut hasher, &valid_until.to_be_bytes());
         }
-        None => hash_part(&mut hasher, b"no_valid_until"),
+        None => frame_part(&mut hasher, b"no_valid_until"),
     }
     for scope_digest in [
         &candidate.revision.scope.installation_sha256,
@@ -529,13 +531,13 @@ fn candidate_semantic_digest(candidate: &RecallCandidate<'_>) -> Sha256Digest {
         &candidate.revision.scope.thread_sha256,
         &candidate.revision.scope.principal_sha256,
     ] {
-        hash_part(&mut hasher, scope_digest.as_str().as_bytes());
+        frame_part(&mut hasher, scope_digest.as_str().as_bytes());
     }
-    hash_part(
+    frame_part(
         &mut hasher,
         source_kind_tag(candidate.revision.provenance.source_kind).as_bytes(),
     );
-    hash_part(
+    frame_part(
         &mut hasher,
         candidate
             .revision
@@ -544,7 +546,7 @@ fn candidate_semantic_digest(candidate: &RecallCandidate<'_>) -> Sha256Digest {
             .as_str()
             .as_bytes(),
     );
-    hash_part(
+    frame_part(
         &mut hasher,
         &candidate
             .revision
@@ -553,7 +555,7 @@ fn candidate_semantic_digest(candidate: &RecallCandidate<'_>) -> Sha256Digest {
             .revision
             .to_be_bytes(),
     );
-    hash_part(
+    frame_part(
         &mut hasher,
         candidate
             .revision
@@ -563,7 +565,7 @@ fn candidate_semantic_digest(candidate: &RecallCandidate<'_>) -> Sha256Digest {
             .as_str()
             .as_bytes(),
     );
-    hash_part(
+    frame_part(
         &mut hasher,
         &candidate
             .revision
@@ -586,10 +588,10 @@ fn observation(
     ranked: Vec<RankedMemoryRef>,
 ) -> RecallObservation {
     let mut hasher = Sha256::new();
-    hash_part(&mut hasher, b"hepta-memory:shadow-observation:v1");
-    hash_part(&mut hasher, request.request_id.as_str().as_bytes());
-    hash_part(&mut hasher, candidate_set_sha256.as_str().as_bytes());
-    hash_part(&mut hasher, reason.as_str().as_bytes());
+    frame_part(&mut hasher, b"hepta-memory:shadow-observation:v1");
+    frame_part(&mut hasher, request.request_id.as_str().as_bytes());
+    frame_part(&mut hasher, candidate_set_sha256.as_str().as_bytes());
+    frame_part(&mut hasher, reason.as_str().as_bytes());
     for count in [
         counts.submitted,
         counts.scanned,
@@ -608,17 +610,17 @@ fn observation(
         counts.source_budget_excluded,
         counts.total_token_budget_excluded,
     ] {
-        hash_part(&mut hasher, &count.to_be_bytes());
+        frame_part(&mut hasher, &count.to_be_bytes());
     }
     for ranked_ref in &ranked {
-        hash_part(&mut hasher, ranked_ref.memory_id.as_str().as_bytes());
-        hash_part(&mut hasher, &ranked_ref.revision.revision.to_be_bytes());
-        hash_part(
+        frame_part(&mut hasher, ranked_ref.memory_id.as_str().as_bytes());
+        frame_part(&mut hasher, &ranked_ref.revision.revision.to_be_bytes());
+        frame_part(
             &mut hasher,
             ranked_ref.revision.content_sha256.as_str().as_bytes(),
         );
-        hash_part(&mut hasher, &ranked_ref.score_ppm.get().to_be_bytes());
-        hash_part(
+        frame_part(&mut hasher, &ranked_ref.score_ppm.get().to_be_bytes());
+        frame_part(
             &mut hasher,
             &ranked_ref.source_updated_at_unix_seconds.to_be_bytes(),
         );
@@ -633,11 +635,6 @@ fn observation(
         reason,
         ranked,
     }
-}
-
-fn hash_part(hasher: &mut Sha256, part: &[u8]) {
-    hasher.update((part.len() as u64).to_be_bytes());
-    hasher.update(part);
 }
 
 #[cfg(test)]
@@ -1190,7 +1187,7 @@ mod tests {
     fn digest_parts_once(parts: &[Vec<u8>]) -> (Vec<u8>, String) {
         let mut hasher = Sha256::new();
         for part in parts {
-            hash_part(&mut hasher, part);
+            frame_part(&mut hasher, part);
         }
         let bytes = hasher.finalize().to_vec();
         let hex = bytes.iter().map(|byte| format!("{byte:02x}")).collect();

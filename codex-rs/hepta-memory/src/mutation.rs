@@ -12,6 +12,8 @@ use codex_hepta_contracts::canonical_memory_mutation_dry_run;
 use sha2::Digest as _;
 use sha2::Sha256;
 
+use crate::framing::frame_part;
+
 /// Simulates one exact-CAS memory mutation without owning a writer.
 pub fn dry_run_memory_mutation(
     proposal: &MemoryMutationProposal,
@@ -195,8 +197,11 @@ fn memory_revision_binding(revision: &MemoryRevision) -> String {
     let revision_number = revision.revision.revision.to_string();
     let source_revision = revision.provenance.source_revision.revision.to_string();
     let observed_at = revision.provenance.observed_at_unix_seconds.to_string();
-    digest_parts([
-        &revision.schema_version.to_string(),
+    let schema_version = revision.schema_version.to_string();
+    let lifecycle = lifecycle(&revision.lifecycle);
+    let mut hasher = Sha256::new();
+    for part in [
+        schema_version.as_str(),
         revision.memory_id.as_str(),
         revision_number.as_str(),
         revision.revision.content_sha256.as_str(),
@@ -206,9 +211,12 @@ fn memory_revision_binding(revision: &MemoryRevision) -> String {
         source_revision.as_str(),
         revision.provenance.source_revision.content_sha256.as_str(),
         observed_at.as_str(),
-        lifecycle(&revision.lifecycle).as_str(),
+        lifecycle.as_str(),
         valid_until.as_str(),
-    ])
+    ] {
+        frame_part(&mut hasher, part.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
 }
 
 fn source_kind(source: MemorySourceKind) -> &'static str {
@@ -232,14 +240,6 @@ fn lifecycle(lifecycle: &MemoryLifecycle) -> String {
     }
 }
 
-fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
-    let mut hasher = Sha256::new();
-    for part in parts {
-        hasher.update((part.len() as u64).to_be_bytes());
-        hasher.update(part.as_bytes());
-    }
-    format!("{:x}", hasher.finalize())
-}
 #[cfg(test)]
 mod tests {
     use super::*;
