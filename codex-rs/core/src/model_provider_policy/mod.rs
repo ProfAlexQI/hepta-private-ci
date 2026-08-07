@@ -25,9 +25,17 @@ mod response_terminal;
 mod transport;
 
 pub(crate) use attempt_owner::ProviderAttemptOwner;
+pub(crate) use binding::ModelProviderPolicyContext;
 #[cfg(test)]
 pub(crate) use binding::bytes_sha256;
 #[cfg(test)]
 pub(crate) use binding::canonical_sha256;
+pub(crate) use binding::prepare_model_provider_policy;
+pub(crate) use lifecycle::ModelProviderPolicyBegin;
+pub(crate) use lifecycle::begin_model_provider_policy;
+pub(crate) use lifecycle::has_active_model_provider_policy;
 pub(crate) use response_terminal::ProviderResponseTerminal;
 pub(crate) use transport::ProviderRoutingHint;
+pub(crate) use transport::ProviderWireSemantic;
+pub(crate) use transport::logical_responses_request;
+pub(crate) use transport::responses_lite_from_http_header;
