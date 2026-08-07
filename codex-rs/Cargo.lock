@@ -3317,6 +3317,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-governance"
+version = "0.0.0"
+dependencies = [
+ "codex-extension-api",
+ "codex-hepta-contracts",
+ "codex-hepta-evidence",
+ "codex-state",
+ "codex-utils-absolute-path",
+ "pretty_assertions",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "codex-hepta-operator-acceptance"
 version = "0.0.0"
 dependencies = [
