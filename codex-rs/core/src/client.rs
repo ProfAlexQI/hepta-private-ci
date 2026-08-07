@@ -503,9 +503,9 @@ impl ModelClient {
     /// Creates a new session-scoped `ModelClient`.
     ///
     /// All arguments are expected to be stable for the lifetime of a Codex session. Per-turn values
-    /// are passed to [`ModelClientSession::stream`] (and other turn-scoped methods) explicitly. The
-    /// HTTP client factory must come from the effective session configuration so every transport
-    /// observes the resolved outbound proxy policy.
+    /// are passed explicitly to `ModelClientSession` turn-scoped methods. The HTTP client factory
+    /// must come from the effective session configuration so every transport observes the resolved
+    /// outbound proxy policy.
     pub fn new(
         auth_manager: Option<Arc<AuthManager>>,
         agent_identity_policy: AgentIdentityAuthPolicy,
@@ -2285,16 +2285,12 @@ impl ModelClientSession {
         }
     }
 
+    /// Ungoverned low-level stream entrypoint retained only for transport and
+    /// header integration tests. Production callsites must use a host-owned
+    /// policy context or a narrow governed capability.
+    #[doc(hidden)]
     #[allow(clippy::too_many_arguments)]
-    /// Streams a single model request within the current turn.
-    ///
-    /// The caller is responsible for passing per-turn settings explicitly (model selection,
-    /// reasoning settings, telemetry context, and turn metadata). This method will prefer the
-    /// Responses WebSocket transport when the provider supports it and it remains healthy, and will
-    /// fall back to the HTTP Responses API transport otherwise. The trace context may be enabled or
-    /// disabled, but is always explicit so transport paths do not need separate trace/no-trace
-    /// branches.
-    pub async fn stream(
+    pub async fn stream_unguarded_for_test(
         &mut self,
         prompt: &Prompt,
         model_info: &ModelInfo,
