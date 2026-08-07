@@ -2,8 +2,6 @@ use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::de::Error as _;
-use sha2::Digest as _;
-use sha2::Sha256;
 
 use crate::MEMORY_CONTRACT_SCHEMA_VERSION;
 use crate::MemoryId;
@@ -13,6 +11,7 @@ use crate::MemoryScope;
 use crate::MemorySourceKind;
 use crate::RevisionStamp;
 use crate::Sha256Digest;
+use crate::canonical::length_delimited_sha256;
 
 pub const MEMORY_MUTATION_SCHEMA_VERSION: u32 = 1;
 
@@ -258,7 +257,7 @@ impl MemoryMutationProposal {
     fn expected_proposal_id(&self) -> MemoryMutationProposalId {
         MemoryMutationProposalId(format!(
             "memory-mutation:v1:{}",
-            digest_parts([
+            length_delimited_sha256([
                 self.schema_version.to_string(),
                 self.turn_sha256.as_str().to_string(),
                 self.proposer_binding_sha256.as_str().to_string(),
@@ -268,6 +267,7 @@ impl MemoryMutationProposal {
                     .as_ref()
                     .map_or_else(|| "candidate:absent".to_string(), revision_binding),
             ])
+            .as_str()
         ))
     }
 }
@@ -330,21 +330,25 @@ fn operation_binding(operation: &MemoryMutationOperation) -> String {
         MemoryMutationOperation::Supersede {
             expected_memory_id,
             expected_revision,
-        } => digest_parts([
+        } => length_delimited_sha256([
             "supersede".to_string(),
             expected_memory_id.as_str().to_string(),
             revision_stamp_binding(expected_revision),
-        ]),
+        ])
+        .as_str()
+        .to_string(),
         MemoryMutationOperation::Tombstone {
             expected_memory_id,
             expected_revision,
             reason_code,
-        } => digest_parts([
+        } => length_delimited_sha256([
             "tombstone".to_string(),
             expected_memory_id.as_str().to_string(),
             revision_stamp_binding(expected_revision),
             reason_code.as_str().to_string(),
-        ]),
+        ])
+        .as_str()
+        .to_string(),
     }
 }
 
@@ -352,7 +356,7 @@ pub(crate) fn revision_binding(revision: &MemoryRevision) -> String {
     let valid_until = revision
         .valid_until_unix_seconds
         .map_or_else(|| "none".to_string(), |value| value.to_string());
-    digest_parts([
+    length_delimited_sha256([
         revision.schema_version.to_string(),
         revision.memory_id.as_str().to_string(),
         revision_stamp_binding(&revision.revision),
@@ -364,13 +368,17 @@ pub(crate) fn revision_binding(revision: &MemoryRevision) -> String {
         lifecycle_binding(&revision.lifecycle),
         valid_until,
     ])
+    .as_str()
+    .to_string()
 }
 
 fn revision_stamp_binding(revision: &RevisionStamp) -> String {
-    digest_parts([
+    length_delimited_sha256([
         revision.revision.to_string(),
         revision.content_sha256.as_str().to_string(),
     ])
+    .as_str()
+    .to_string()
 }
 
 fn memory_source_kind(source: MemorySourceKind) -> &'static str {
@@ -392,15 +400,6 @@ fn lifecycle_binding(lifecycle: &MemoryLifecycle) -> String {
             expired_at_unix_seconds,
         } => format!("expired:{expired_at_unix_seconds}"),
     }
-}
-
-fn digest_parts(parts: impl IntoIterator<Item = String>) -> String {
-    let mut hasher = Sha256::new();
-    for part in parts {
-        hasher.update((part.len() as u64).to_be_bytes());
-        hasher.update(part.as_bytes());
-    }
-    format!("{:x}", hasher.finalize())
 }
 
 fn invalid_reason_code() -> String {
