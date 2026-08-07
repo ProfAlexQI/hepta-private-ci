@@ -26,6 +26,7 @@ use crate::ProofReceiptId;
 use crate::ProofStore;
 use crate::ProofSubject;
 use crate::ProofTerminal;
+use crate::framing::length_delimited_sha256;
 
 pub const PROOF_PROVENANCE_SCHEMA_VERSION: u32 = 1;
 pub const LOCAL_PROOF_PROVENANCE_LINEAGE_SCHEMA_VERSION: u32 = 1;
@@ -216,7 +217,7 @@ impl ProofProvenanceContext {
     fn expected_context_sha256(&self) -> Sha256Digest {
         let schema_version = self.schema_version.to_string();
         let historical_schema_version = self.historical_schema_version.to_string();
-        digest_parts([
+        length_delimited_sha256([
             PROOF_PROVENANCE_CONTEXT_DOMAIN,
             schema_version.as_str(),
             self.snapshot_id.as_str(),
@@ -402,7 +403,7 @@ impl LocalProofProvenanceLineage {
     fn expected_lineage_sha256(&self) -> Sha256Digest {
         let schema_version = self.schema_version.to_string();
         let proof_schema_version = self.proof_schema_version.to_string();
-        digest_parts([
+        length_delimited_sha256([
             LOCAL_PROOF_PROVENANCE_LINEAGE_DOMAIN,
             schema_version.as_str(),
             self.context.context_sha256().as_str(),
@@ -561,15 +562,6 @@ fn map_evidence_error(error: EvidenceError) -> ProofError {
             "unexpected historical evidence identity conflict for {record_id}"
         )),
     }
-}
-
-fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> Sha256Digest {
-    let mut canonical = Vec::new();
-    for part in parts {
-        canonical.extend_from_slice(&(part.len() as u64).to_be_bytes());
-        canonical.extend_from_slice(part.as_bytes());
-    }
-    Sha256Digest::for_bytes(&canonical)
 }
 
 #[cfg(test)]

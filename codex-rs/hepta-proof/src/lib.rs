@@ -22,6 +22,7 @@
 
 mod command;
 mod file_hash;
+mod framing;
 mod provenance;
 mod runner;
 mod store;

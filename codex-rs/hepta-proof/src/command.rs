@@ -8,14 +8,13 @@ use codex_hepta_contracts::Sha256Digest;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
-use sha2::Digest;
-use sha2::Sha256;
 
 use crate::ProofAppendDisposition;
 use crate::ProofError;
 use crate::ProofStore;
 use crate::file_hash::sha256_regular_file;
 use crate::file_hash::validate_execution_directory;
+use crate::framing::length_delimited_sha256;
 use crate::runner::execute;
 
 pub const MAX_PROOF_ARGUMENTS: usize = 256;
@@ -246,7 +245,7 @@ impl ProofInvocationId {
     ) -> Self {
         let schema_version = PROOF_SCHEMA_VERSION.to_string();
         let digest = match subject.context_origin {
-            ProofContextOrigin::CallerSupplied => digest_parts([
+            ProofContextOrigin::CallerSupplied => length_delimited_sha256([
                 PROOF_INVOCATION_DOMAIN,
                 schema_version.as_str(),
                 subject.candidate_sha256.as_str(),
@@ -254,7 +253,7 @@ impl ProofInvocationId {
                 command_binding_sha256.as_str(),
                 nonce_sha256.as_str(),
             ]),
-            ProofContextOrigin::HistoricalStoreResolved => digest_parts([
+            ProofContextOrigin::HistoricalStoreResolved => length_delimited_sha256([
                 PROOF_INVOCATION_DOMAIN,
                 schema_version.as_str(),
                 subject.context_origin.as_wire_str(),
@@ -264,7 +263,7 @@ impl ProofInvocationId {
                 nonce_sha256.as_str(),
             ]),
         };
-        Self(format!("{PROOF_INVOCATION_ID_PREFIX}{digest}"))
+        Self(format!("{PROOF_INVOCATION_ID_PREFIX}{}", digest.as_str()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -300,12 +299,12 @@ impl ProofReceiptId {
     }
 
     pub(crate) fn for_invocation(invocation_id: &ProofInvocationId) -> Self {
-        let digest = digest_parts([
+        let digest = length_delimited_sha256([
             PROOF_RECEIPT_DOMAIN,
             &PROOF_SCHEMA_VERSION.to_string(),
             invocation_id.as_str(),
         ]);
-        Self(format!("{PROOF_RECEIPT_ID_PREFIX}{digest}"))
+        Self(format!("{PROOF_RECEIPT_ID_PREFIX}{}", digest.as_str()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -860,15 +859,6 @@ fn parse_prefixed_sha256_id(value: String, prefix: &str) -> Result<String, Strin
     };
     Sha256Digest::parse(digest.to_string())?;
     Ok(value)
-}
-
-fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
-    let mut hasher = Sha256::new();
-    for part in parts {
-        hasher.update((part.len() as u64).to_be_bytes());
-        hasher.update(part.as_bytes());
-    }
-    format!("{:x}", hasher.finalize())
 }
 
 fn now_millis() -> Result<u64, ProofError> {
