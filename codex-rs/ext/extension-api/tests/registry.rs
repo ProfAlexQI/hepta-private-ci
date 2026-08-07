@@ -7,6 +7,7 @@ use codex_extension_api::ApprovalReviewContributor;
 use codex_extension_api::ConfigContributor;
 use codex_extension_api::ContextContributor;
 use codex_extension_api::ContextualUserFragment;
+use codex_extension_api::EphemeralModelInputContributor;
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ExtensionEventSink;
@@ -90,6 +91,8 @@ impl SkillInvocationContributor for AllContributors {}
 
 impl ModelProviderPolicyContributor for AllContributors {}
 
+impl EphemeralModelInputContributor for AllContributors {}
+
 impl TurnInputContributor for AllContributors {
     fn contribute<'a>(
         &'a self,
@@ -159,6 +162,7 @@ async fn build_round_trips_every_contributor_category() {
     builder.token_usage_contributor(contributor.clone());
     builder.skill_invocation_contributor(contributor.clone());
     builder.prompt_contributor(contributor.clone());
+    builder.ephemeral_model_input_contributor(contributor.clone());
     builder.model_provider_policy_contributor(contributor.clone());
     builder.turn_input_contributor(contributor.clone());
     builder.tool_contributor(contributor.clone());
@@ -174,6 +178,7 @@ async fn build_round_trips_every_contributor_category() {
     assert_eq!(registry.token_usage_contributors().len(), 1);
     assert_eq!(registry.skill_invocation_contributors().len(), 1);
     assert_eq!(registry.context_contributors().len(), 1);
+    assert_eq!(registry.ephemeral_model_input_contributors().len(), 1);
     assert_eq!(registry.model_provider_policy_contributors().len(), 1);
     assert!(
         registry.model_provider_policy_contributors()[0].is_active(&ExtensionData::new("thread"))
@@ -194,6 +199,21 @@ async fn build_round_trips_every_contributor_category() {
             .await,
         Some(ReviewDecision::ApprovedForSession)
     );
+}
+
+#[test]
+fn ephemeral_model_input_contributors_preserve_registration_order() {
+    let first: Arc<dyn EphemeralModelInputContributor> = Arc::new(AllContributors);
+    let second: Arc<dyn EphemeralModelInputContributor> = Arc::new(AllContributors);
+    let mut builder = ExtensionRegistryBuilder::<()>::new();
+    builder.ephemeral_model_input_contributor(Arc::clone(&first));
+    builder.ephemeral_model_input_contributor(Arc::clone(&second));
+
+    let registry = builder.build();
+    let contributors = registry.ephemeral_model_input_contributors();
+
+    assert!(Arc::ptr_eq(&contributors[0], &first));
+    assert!(Arc::ptr_eq(&contributors[1], &second));
 }
 
 struct NamedContextContributor(&'static str);

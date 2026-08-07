@@ -5,6 +5,7 @@ use codex_protocol::protocol::ReviewDecision;
 use crate::ApprovalReviewContributor;
 use crate::ConfigContributor;
 use crate::ContextContributor;
+use crate::EphemeralModelInputContributor;
 use crate::ExtensionData;
 use crate::ExtensionEventSink;
 use crate::McpServerContributor;
@@ -37,6 +38,7 @@ impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
                 skill_invocation_contributors: Vec::new(),
                 approval_review_contributors: Vec::new(),
                 context_contributors: Vec::new(),
+                ephemeral_model_input_contributors: Vec::new(),
                 mcp_server_contributors: Vec::new(),
                 model_provider_policy_contributors: Vec::new(),
                 turn_input_contributors: Vec::new(),
@@ -112,6 +114,16 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
         self.registry.context_contributors.push(contributor);
     }
 
+    /// Registers one physical-send ephemeral model-input contributor.
+    pub fn ephemeral_model_input_contributor(
+        &mut self,
+        contributor: Arc<dyn EphemeralModelInputContributor>,
+    ) {
+        self.registry
+            .ephemeral_model_input_contributors
+            .push(contributor);
+    }
+
     /// Registers one runtime MCP server contributor.
     pub fn mcp_server_contributor(&mut self, contributor: Arc<dyn McpServerContributor<C>>) {
         self.registry.mcp_server_contributors.push(contributor);
@@ -167,6 +179,7 @@ pub struct ExtensionRegistry<C: Sync> {
     token_usage_contributors: Vec<Arc<dyn TokenUsageContributor>>,
     skill_invocation_contributors: Vec<Arc<dyn SkillInvocationContributor>>,
     context_contributors: Vec<Arc<dyn ContextContributor>>,
+    ephemeral_model_input_contributors: Vec<Arc<dyn EphemeralModelInputContributor>>,
     mcp_server_contributors: Vec<Arc<dyn McpServerContributor<C>>>,
     model_provider_policy_contributors: Vec<Arc<dyn ModelProviderPolicyContributor>>,
     turn_input_contributors: Vec<Arc<dyn TurnInputContributor>>,
@@ -231,6 +244,11 @@ impl<C: Sync> ExtensionRegistry<C> {
     /// Returns the registered prompt contributors.
     pub fn context_contributors(&self) -> &[Arc<dyn ContextContributor>] {
         &self.context_contributors
+    }
+
+    /// Returns physical-send ephemeral model-input contributors in registration order.
+    pub fn ephemeral_model_input_contributors(&self) -> &[Arc<dyn EphemeralModelInputContributor>] {
+        &self.ephemeral_model_input_contributors
     }
 
     /// Returns the registered runtime MCP server contributors.
