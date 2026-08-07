@@ -33,6 +33,22 @@ impl RetryConfig {
             },
         }
     }
+
+    /// Returns the provider-configured delay before the next host-owned retry.
+    ///
+    /// `attempt` is the zero-based index of the transport attempt that just
+    /// failed. `None` means the failure or remaining budget is not retryable.
+    pub fn retry_delay_after_error(
+        &self,
+        error: &codex_client::TransportError,
+        attempt: u64,
+    ) -> Option<Duration> {
+        let policy = self.to_policy();
+        policy
+            .retry_on
+            .should_retry(error, attempt, policy.max_attempts)
+            .then(|| codex_client::backoff(policy.base_delay, attempt + 1))
+    }
 }
 
 /// HTTP endpoint configuration used to talk to a concrete API deployment.
@@ -129,6 +145,52 @@ fn matches_azure_responses_base_url(base_url: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retry_delay_preserves_provider_error_and_budget_rules() {
+        let config = RetryConfig {
+            max_attempts: 1,
+            base_delay: Duration::from_millis(10),
+            retry_429: false,
+            retry_5xx: false,
+            retry_transport: true,
+        };
+
+        assert!(
+            config
+                .retry_delay_after_error(
+                    &codex_client::TransportError::Network("offline".to_string()),
+                    0,
+                )
+                .is_some()
+        );
+        assert!(
+            config
+                .retry_delay_after_error(
+                    &codex_client::TransportError::Network("offline".to_string()),
+                    1,
+                )
+                .is_none()
+        );
+        assert!(
+            config
+                .retry_delay_after_error(
+                    &codex_client::TransportError::Build("invalid request".to_string()),
+                    0,
+                )
+                .is_none()
+        );
+
+        let no_transport_retry = RetryConfig {
+            retry_transport: false,
+            ..config
+        };
+        assert!(
+            no_transport_retry
+                .retry_delay_after_error(&codex_client::TransportError::Timeout, 0)
+                .is_none()
+        );
+    }
 
     #[test]
     fn detects_azure_responses_base_urls() {
