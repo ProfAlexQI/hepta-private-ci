@@ -22,7 +22,15 @@ use crate::tools::context::ToolPayload;
 use crate::tools::flat_tool_name;
 use crate::tools::handlers::multi_agents_spec::MULTI_AGENT_V1_NAMESPACE;
 use crate::tools::hook_names::HookToolName;
+use crate::tools::lifecycle::ToolDispatchAttemptId;
+use crate::tools::lifecycle::ToolPolicyTerminalPhase;
+use crate::tools::lifecycle::enforce_tool_admission;
+use crate::tools::lifecycle::enforce_tool_authorization;
+use crate::tools::lifecycle::has_active_tool_policy;
+use crate::tools::lifecycle::notify_tool_admission_blocked;
 use crate::tools::lifecycle::notify_tool_finish;
+use crate::tools::lifecycle::notify_tool_lifecycle_finish;
+use crate::tools::lifecycle::notify_tool_policy_terminal;
 use crate::tools::lifecycle::notify_tool_start;
 use crate::tools::router::tool_log_payload;
 use crate::tools::tool_dispatch_trace::ToolDispatchTrace;
@@ -471,13 +479,29 @@ impl ToolRegistry {
         Some(tool.waits_for_runtime_cancellation())
     }
 
+    #[cfg(test)]
+    pub(crate) async fn dispatch_any_with_terminal_outcome(
+        &self,
+        invocation: ToolInvocation,
+        terminal_outcome_reached: Option<Arc<AtomicBool>>,
+    ) -> Result<AnyToolResult, FunctionCallError> {
+        let attempt_id = ToolDispatchAttemptId::new();
+        self.dispatch_any_with_terminal_outcome_for_attempt(
+            invocation,
+            &attempt_id,
+            terminal_outcome_reached,
+        )
+        .await
+    }
+
     #[expect(
         clippy::await_holding_invalid_type,
         reason = "tool dispatch must keep active-turn accounting atomic"
     )]
-    pub(crate) async fn dispatch_any_with_terminal_outcome(
+    pub(crate) async fn dispatch_any_with_terminal_outcome_for_attempt(
         &self,
         mut invocation: ToolInvocation,
+        attempt_id: &ToolDispatchAttemptId,
         terminal_outcome_reached: Option<Arc<AtomicBool>>,
     ) -> Result<AnyToolResult, FunctionCallError> {
         let tool_name = invocation.tool_name.clone();
@@ -563,6 +587,30 @@ impl ToolRegistry {
             return Err(err);
         }
 
+        if has_active_tool_policy(invocation.session.as_ref()) {
+            attempt_id.activate_policy();
+        }
+
+        if let Err(err) = enforce_tool_admission(&invocation, attempt_id).await {
+            dispatch_trace.record_failed(&err);
+            if attempt_id.try_begin_pre_handler_terminal() {
+                match notify_tool_admission_blocked(&invocation, attempt_id).await {
+                    Ok(()) if attempt_id.mark_pre_handler_terminal_committed() => {}
+                    Ok(()) => {
+                        return Err(FunctionCallError::Fatal(
+                            "tool admission terminal state changed before commit".to_string(),
+                        ));
+                    }
+                    Err(terminal_err) => {
+                        attempt_id.mark_pre_handler_terminal_unconfirmed();
+                        return Err(terminal_err);
+                    }
+                }
+            }
+            return Err(err);
+        }
+        attempt_id.mark_host_accepted();
+
         notify_tool_start(&invocation).await;
 
         if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
@@ -580,10 +628,11 @@ impl ToolRegistry {
                     dispatch_trace.record_failed(&err);
                     notify_tool_finish_if_unclaimed(
                         &invocation,
+                        attempt_id,
                         terminal_outcome_reached.as_deref(),
                         ToolCallOutcome::Blocked,
                     )
-                    .await;
+                    .await?;
                     return Err(err);
                 }
                 PreToolUseHookResult::Continue {
@@ -596,12 +645,13 @@ impl ToolRegistry {
                         dispatch_trace.record_failed(&err);
                         notify_tool_finish_if_unclaimed(
                             &invocation,
+                            attempt_id,
                             terminal_outcome_reached.as_deref(),
                             ToolCallOutcome::Failed {
                                 handler_executed: false,
                             },
                         )
-                        .await;
+                        .await?;
                         return Err(err);
                     }
                 },
@@ -609,6 +659,18 @@ impl ToolRegistry {
                     updated_input: None,
                 } => {}
             }
+        }
+
+        if let Err(err) = enforce_tool_authorization(&invocation, attempt_id).await {
+            dispatch_trace.record_failed(&err);
+            notify_tool_finish_if_unclaimed(
+                &invocation,
+                attempt_id,
+                terminal_outcome_reached.as_deref(),
+                ToolCallOutcome::Blocked,
+            )
+            .await?;
+            return Err(err);
         }
 
         if let Some(command) = shell_script_for_invocation(&invocation) {
@@ -630,6 +692,8 @@ impl ToolRegistry {
         let response_cell = tokio::sync::Mutex::new(None);
         let invocation_for_tool = invocation.clone();
         let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
+        let policy_terminal_attempt = attempt_id.clone();
+        let policy_active = attempt_id.policy_is_active();
 
         let result = otel
             .log_tool_result_with_tags(
@@ -644,13 +708,21 @@ impl ToolRegistry {
                     async move {
                         match handle_any_tool(tool.as_ref(), invocation_for_tool).await {
                             Ok(result) => {
+                                if policy_active {
+                                    policy_terminal_attempt.try_begin_handler_terminal();
+                                }
                                 let preview = result.result.log_preview();
                                 let success = result.result.success_for_logging();
                                 let mut guard = response_cell.lock().await;
                                 *guard = Some(result);
                                 Ok((preview, success))
                             }
-                            Err(err) => Err(err),
+                            Err(err) => {
+                                if policy_active {
+                                    policy_terminal_attempt.try_begin_handler_terminal();
+                                }
+                                Err(err)
+                            }
                         }
                     }
                 },
@@ -661,6 +733,36 @@ impl ToolRegistry {
             Err(_) => false,
         };
         emit_metric_for_tool_read(&invocation, success);
+        let lifecycle_outcome = match &result {
+            Ok(_) => {
+                let guard = response_cell.lock().await;
+                match guard.as_ref() {
+                    Some(result) => ToolCallOutcome::Completed {
+                        success: result.result.success_for_logging(),
+                    },
+                    None => ToolCallOutcome::Failed {
+                        handler_executed: true,
+                    },
+                }
+            }
+            Err(_) => ToolCallOutcome::Failed {
+                handler_executed: true,
+            },
+        };
+        let terminal_ownership = match claim_tool_policy_terminal_if_registered(
+            &invocation,
+            attempt_id,
+            lifecycle_outcome,
+        )
+        .await
+        {
+            Ok(ownership) => ownership,
+            Err(err) => {
+                notify_tool_lifecycle_finish(&invocation, lifecycle_outcome).await;
+                dispatch_trace.record_failed(&err);
+                return Err(err);
+            }
+        };
         let post_tool_use_payload = if success {
             let guard = response_cell.lock().await;
             guard
@@ -695,28 +797,23 @@ impl ToolRegistry {
         }
 
         // A PostToolUse block rejects the result, not the already-completed tool execution.
-        let lifecycle_outcome = match &result {
-            Ok(_) => {
-                let guard = response_cell.lock().await;
-                match guard.as_ref() {
-                    Some(result) => ToolCallOutcome::Completed {
-                        success: result.result.success_for_logging(),
-                    },
-                    None => ToolCallOutcome::Failed {
-                        handler_executed: true,
-                    },
-                }
+        // With policy sinks, terminal material was persisted immediately after the handler;
+        // without them, retain the upstream post-hook finish/cancellation ordering.
+        match terminal_ownership {
+            HandlerTerminalOwnership::DeferredToLegacyFinish => {
+                notify_tool_finish_if_unclaimed(
+                    &invocation,
+                    attempt_id,
+                    terminal_outcome_reached.as_deref(),
+                    lifecycle_outcome,
+                )
+                .await?;
             }
-            Err(_) => ToolCallOutcome::Failed {
-                handler_executed: true,
-            },
-        };
-        notify_tool_finish_if_unclaimed(
-            &invocation,
-            terminal_outcome_reached.as_deref(),
-            lifecycle_outcome,
-        )
-        .await;
+            HandlerTerminalOwnership::ClaimedByDispatch => {
+                notify_tool_lifecycle_finish(&invocation, lifecycle_outcome).await;
+            }
+            HandlerTerminalOwnership::AlreadyClaimed => {}
+        }
 
         match result {
             Ok(_) => {
@@ -761,15 +858,102 @@ impl ToolRegistry {
 
 async fn notify_tool_finish_if_unclaimed(
     invocation: &ToolInvocation,
+    attempt_id: &ToolDispatchAttemptId,
     terminal_outcome_reached: Option<&AtomicBool>,
     outcome: ToolCallOutcome,
-) -> bool {
-    if terminal_outcome_reached.is_some_and(|reached| reached.swap(true, Ordering::AcqRel)) {
-        return false;
+) -> Result<bool, FunctionCallError> {
+    if attempt_id.policy_is_active() {
+        if !attempt_id.try_begin_pre_handler_terminal() {
+            return Ok(false);
+        }
+        match notify_tool_policy_terminal(invocation, attempt_id, outcome).await {
+            Ok(()) if attempt_id.mark_pre_handler_terminal_committed() => {
+                notify_tool_lifecycle_finish(invocation, outcome).await;
+                return Ok(true);
+            }
+            Ok(()) => {
+                return Err(FunctionCallError::Fatal(
+                    "pre-handler policy terminal state changed before commit".to_string(),
+                ));
+            }
+            Err(err) => {
+                attempt_id.mark_pre_handler_terminal_unconfirmed();
+                return Err(err);
+            }
+        }
     }
 
-    notify_tool_finish(invocation, outcome).await;
-    true
+    if terminal_outcome_reached.is_some_and(|reached| reached.swap(true, Ordering::AcqRel)) {
+        return Ok(false);
+    }
+
+    notify_tool_finish(invocation, attempt_id, outcome).await?;
+    Ok(true)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HandlerTerminalOwnership {
+    /// No policy sink exists, so preserve the upstream finish/cancellation ordering.
+    DeferredToLegacyFinish,
+    /// Dispatch persisted policy terminal material and owns the ordinary finish callback.
+    ClaimedByDispatch,
+    /// Cancellation or another path already owns the terminal outcome.
+    AlreadyClaimed,
+}
+
+async fn claim_tool_policy_terminal_if_registered(
+    invocation: &ToolInvocation,
+    attempt_id: &ToolDispatchAttemptId,
+    outcome: ToolCallOutcome,
+) -> Result<HandlerTerminalOwnership, FunctionCallError> {
+    if !invocation
+        .session
+        .services
+        .extensions
+        .tool_policy_contributors()
+        .iter()
+        .any(|contributor| {
+            contributor.is_active(&invocation.session.services.thread_extension_data)
+        })
+    {
+        return Ok(HandlerTerminalOwnership::DeferredToLegacyFinish);
+    }
+
+    match attempt_id.policy_terminal_phase() {
+        ToolPolicyTerminalPhase::CancellationClaimed
+        | ToolPolicyTerminalPhase::PreHandlerWriting
+        | ToolPolicyTerminalPhase::PreHandlerCommitted => {
+            Ok(HandlerTerminalOwnership::AlreadyClaimed)
+        }
+        ToolPolicyTerminalPhase::PreHandlerUnconfirmed => Err(FunctionCallError::Fatal(
+            "pre-handler policy terminal persistence is unconfirmed; do not retry automatically"
+                .to_string(),
+        )),
+        ToolPolicyTerminalPhase::HandlerWriting => {
+            match notify_tool_policy_terminal(invocation, attempt_id, outcome).await {
+                Ok(()) if attempt_id.mark_handler_terminal_committed() => {
+                    Ok(HandlerTerminalOwnership::ClaimedByDispatch)
+                }
+                Ok(()) => Err(FunctionCallError::Fatal(
+                    "tool policy terminal state changed before commit; execution result is unconfirmed"
+                        .to_string(),
+                )),
+                Err(err) => {
+                    attempt_id.mark_handler_terminal_unconfirmed();
+                    Err(err)
+                }
+            }
+        }
+        ToolPolicyTerminalPhase::HandlerUnconfirmed => Err(FunctionCallError::Fatal(
+            "tool policy terminal persistence is unconfirmed; do not retry automatically"
+                .to_string(),
+        )),
+        ToolPolicyTerminalPhase::HandlerCommitted => Ok(HandlerTerminalOwnership::AlreadyClaimed),
+        ToolPolicyTerminalPhase::Open => Err(FunctionCallError::Fatal(
+            "active tool policy did not claim the handler terminal before post-processing"
+                .to_string(),
+        )),
+    }
 }
 
 async fn handle_any_tool(
