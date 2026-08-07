@@ -10,12 +10,12 @@ use tracing::info;
 use tracing::instrument;
 use tracing::trace_span;
 use tracing::warn;
+use uuid::Uuid;
 
 use crate::client::ModelClientSession;
 use crate::guardian::routes_approval_to_guardian;
 use crate::model_provider_policy::ModelProviderPolicyContext;
 use crate::responses_metadata::CodexResponsesRequestKind;
-use crate::session::INITIAL_SUBMIT_ID;
 use crate::session::session::Session;
 use crate::session::turn::build_prompt;
 use codex_extension_api::ModelProviderRequestKind;
@@ -254,8 +254,9 @@ async fn schedule_startup_prewarm_inner(
     base_instructions: String,
 ) -> CodexResult<ModelClientSession> {
     let prewarm_started_at = Instant::now();
+    let startup_turn_id = format!("startup-prewarm:{}", Uuid::now_v7());
     let startup_turn_context = session
-        .new_startup_prewarm_turn_with_sub_id(INITIAL_SUBMIT_ID.to_owned())
+        .new_startup_prewarm_turn_with_sub_id(startup_turn_id)
         .await;
     startup_turn_context.session_telemetry.record_startup_phase(
         "startup_prewarm_create_turn_context",

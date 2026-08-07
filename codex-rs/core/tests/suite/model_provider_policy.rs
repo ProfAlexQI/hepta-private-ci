@@ -11,6 +11,7 @@ use codex_extension_api::ModelProviderPolicyFuture;
 use codex_extension_api::ModelProviderRequestKind;
 use codex_extension_api::ModelProviderTerminal;
 use codex_extension_api::ModelProviderTransport;
+use codex_features::Feature;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_response_created;
@@ -92,6 +93,15 @@ impl ModelProviderPolicyContributor for TestProviderPolicy {
         &'a self,
         input: ModelProviderInvocationInput<'a>,
     ) -> ModelProviderPolicyFuture<'a, ModelProviderPolicyDecision> {
+        assert!(
+            !input.turn_id.trim().is_empty(),
+            "provider turn ID must be non-empty"
+        );
+        assert_eq!(
+            input.turn_id,
+            input.turn_store.level_id(),
+            "provider turn ID must identify the supplied turn store"
+        );
         self.state
             .attempts
             .lock()
@@ -316,13 +326,21 @@ async fn active_provider_policy_governs_websocket_prewarm_and_turn() -> Result<(
     .await;
     let state = ProviderPolicyState::new(true, TestDecision::Allow);
     let mut builder = test_codex()
+        .with_windows_cmd_shell()
         .with_config(|config| {
             config.model_provider.stream_max_retries = Some(0);
+            config
+                .features
+                .enable(Feature::ResponsesWebsocketsV2)
+                .expect("test config should allow websocket v2");
         })
         .with_extensions(extensions_with_policy(Arc::clone(&state)));
     let test = builder.build_with_websocket_server(&server).await?;
 
-    let submit = test.submit_turn("prewarm and turn need separate websocket claims");
+    let submit = test.submit_turn_with_policy(
+        "prewarm and turn need separate websocket claims",
+        test.config.legacy_sandbox_policy(),
+    );
     tokio::pin!(submit);
     tokio::select! {
         result = &mut submit => panic!("turn completed before prewarm terminal entered: {result:?}"),
@@ -331,6 +349,9 @@ async fn active_provider_policy_governs_websocket_prewarm_and_turn() -> Result<(
     assert_eq!(state.begin_count.load(Ordering::SeqCst), 1);
     assert_eq!(state.terminal_count.load(Ordering::SeqCst), 1);
     assert_eq!(state.completed_count.load(Ordering::SeqCst), 1);
+    let prewarm_connections = server.connections();
+    assert_eq!(prewarm_connections.len(), 1);
+    assert_eq!(prewarm_connections[0].len(), 1);
     assert!(
         timeout(Duration::from_millis(50), &mut submit)
             .await
@@ -352,6 +373,20 @@ async fn active_provider_policy_governs_websocket_prewarm_and_turn() -> Result<(
     assert_eq!(state.begin_count.load(Ordering::SeqCst), 2);
     assert_eq!(state.terminal_count.load(Ordering::SeqCst), 2);
     assert_eq!(state.completed_count.load(Ordering::SeqCst), 2);
+    let connections = server.connections();
+    assert_eq!(connections.len(), 1);
+    assert_eq!(connections[0].len(), 2);
+    let turn_request = connections[0][1].body_json();
+    assert_eq!(
+        turn_request["previous_response_id"].as_str(),
+        Some("warm-1")
+    );
+    assert!(
+        turn_request
+            .get("input")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|items| !items.is_empty())
+    );
     assert_eq!(
         *state
             .attempts
@@ -367,14 +402,11 @@ async fn active_provider_policy_governs_websocket_prewarm_and_turn() -> Result<(
             ProviderAttemptObservation {
                 request_kind: ModelProviderRequestKind::Turn,
                 transport: ModelProviderTransport::WebSocket,
-                has_previous_response: false,
+                has_previous_response: true,
                 generate: true,
             }
         ]
     );
-    let connections = server.connections();
-    assert_eq!(connections.len(), 1);
-    assert_eq!(connections[0].len(), 2);
 
     server.shutdown().await;
     Ok(())
