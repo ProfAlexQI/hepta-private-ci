@@ -51,6 +51,8 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use tempfile::TempDir;
 
+const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
+
 #[tokio::test]
 async fn installed_goal_tools_create_goal_and_fill_empty_preview() -> anyhow::Result<()> {
     let runtime = test_runtime().await?;
@@ -1267,6 +1269,7 @@ async fn installed_tools_with_start(
             .on_thread_start(ThreadStartInput {
                 config: &(),
                 session_source: &session_source,
+                installation_id: TEST_INSTALLATION_ID,
                 persistent_thread_state_available,
                 environments: &[],
                 mcp_resource_client: None,
@@ -1325,6 +1328,7 @@ impl GoalExtensionHarness {
                 .on_thread_start(ThreadStartInput {
                     config: &(),
                     session_source: &session_source,
+                    installation_id: TEST_INSTALLATION_ID,
                     persistent_thread_state_available: true,
                     environments: &[],
                     mcp_resource_client: None,

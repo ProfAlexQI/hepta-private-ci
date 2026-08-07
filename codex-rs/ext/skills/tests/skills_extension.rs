@@ -75,6 +75,7 @@ use pretty_assertions::assert_eq;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 static NEXT_CODEX_HOME_ID: AtomicUsize = AtomicUsize::new(0);
+const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
 const SKILLS_INTRO_WITH_ABSOLUTE_PATHS: &str = "A skill is a set of instructions provided through a `SKILL.md` source. Below is the list of skills that can be used. Each entry includes a name, description, and source locator. `file` locators are on the host filesystem, `environment resource` locators are owned by an execution environment, `orchestrator package` locators are opaque package identifiers, and `custom resource` locators use their provider's access mechanism.";
 const DEMO_SKILL_CONTENTS: &str =
     "---\nname: demo\ndescription: Demo skill.\n---\n# Demo\n\nUse the demo skill.\n";
@@ -149,6 +150,7 @@ async fn installed_extension_uses_host_service_snapshot() -> TestResult {
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &session_source,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -231,6 +233,7 @@ async fn host_world_state_records_catalog_metrics_on_publish_and_change() -> Tes
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -377,6 +380,7 @@ async fn persisted_host_snapshot_deduplicates_warning_after_reinitialization() -
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -418,6 +422,7 @@ async fn persisted_host_snapshot_deduplicates_warning_after_reinitialization() -
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -498,6 +503,7 @@ async fn executor_orchestrator_and_host_share_catalog_world_state_flow() -> Test
         .on_thread_start(ThreadStartInput {
             config: &default_config(),
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -605,6 +611,7 @@ async fn nonempty_executor_empty_host_records_catalog_metrics() -> TestResult {
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -690,6 +697,7 @@ async fn host_world_state_uses_provider_catalog_with_core_compatible_rendering()
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -769,6 +777,7 @@ async fn shadow_selection_uses_host_catalog_when_instructions_are_disabled() -> 
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -878,6 +887,7 @@ async fn selected_executor_catalog_follows_step_availability_and_reuses_its_cach
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &session_source,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -1089,6 +1099,7 @@ async fn default_context_truncates_catalog_descriptions() -> TestResult {
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &session_source,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -1174,6 +1185,7 @@ async fn moderate_budget_pressure_keeps_every_catalog_entry() -> TestResult {
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &session_source,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -1290,6 +1302,7 @@ async fn extreme_budget_pressure_removes_descriptions_before_omitting_entries() 
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &session_source,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -1389,6 +1402,7 @@ async fn skills_list_only_returns_model_visible_bounded_metadata() -> TestResult
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &session_source,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -1467,6 +1481,7 @@ async fn orchestrator_catalog_snapshot_caches_failure() -> TestResult {
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &session_source,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -1561,6 +1576,7 @@ async fn root_qualified_locator_selects_only_the_matching_executor_skill() -> Te
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &session_source,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -1673,6 +1689,7 @@ async fn model_context_window_scales_executor_and_orchestrator_catalogs() -> Tes
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -1794,6 +1811,7 @@ async fn executor_catalog_emits_at_most_four_warnings() -> TestResult {
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -1918,6 +1936,7 @@ async fn host_catalog_compacts_shared_paths_under_budget_pressure() -> TestResul
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,
@@ -2006,6 +2025,7 @@ async fn prompt_hidden_skill_can_still_be_invoked() -> TestResult {
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &session_source,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,

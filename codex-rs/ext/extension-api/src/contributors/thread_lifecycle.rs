@@ -20,6 +20,12 @@ pub struct ThreadStartInput<'a, C> {
     pub config: &'a C,
     /// Source that created the session for this thread.
     pub session_source: &'a SessionSource,
+    /// Host-resolved installation identity for provenance correlation and binding.
+    ///
+    /// This value is not an authorization capability. Extensions should derive
+    /// any required domain-separated digest during this callback instead of
+    /// retaining or exposing the raw identity.
+    pub installation_id: &'a str,
     /// Whether persistent thread-scoped state is available for this thread.
     pub persistent_thread_state_available: bool,
     /// Execution environments selected for this thread.
