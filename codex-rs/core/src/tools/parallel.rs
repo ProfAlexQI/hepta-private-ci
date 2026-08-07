@@ -808,7 +808,14 @@ mod tests {
     #[tokio::test]
     async fn cancellation_before_dispatch_admission_logs_dispatch_only_timing() -> anyhow::Result<()>
     {
-        let (session, turn_context) = crate::session::tests::make_session_and_context().await;
+        let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
+        let policy_records = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut builder =
+            codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+        builder.tool_policy_contributor(Arc::new(PolicyAttemptRecorder {
+            records: Arc::clone(&policy_records),
+        }));
+        session.services.extensions = Arc::new(builder.build());
         let session = Arc::new(session);
         let turn_context = Arc::new(turn_context);
         let tool_name = codex_tools::ToolName::plain("test_tool");
@@ -901,6 +908,22 @@ mod tests {
             dispatch_duration_ms, total_duration_ms,
             "tool cancelled before admission should attribute all elapsed time to dispatch: {timing_event}"
         );
+        let policy_records = policy_records
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain(..)
+            .collect::<Vec<_>>();
+        assert_eq!(policy_records.len(), 1);
+        assert_eq!(policy_records[0].call_id, "call-1");
+        assert!(!policy_records[0].attempt_id.is_empty());
+        assert_eq!(
+            policy_records[0].phase,
+            PolicyAttemptPhase::Terminal {
+                outcome: ToolCallOutcome::Aborted,
+                host_accepted: false,
+            },
+            "cancellation before admission must not claim host acceptance",
+        );
         release_execution_gate_tx
             .send(())
             .expect("execution gate task should remain available");
@@ -942,6 +965,76 @@ mod tests {
     }
 
     impl CoreToolRuntime for ImmediateHandler {}
+
+    struct PanickingHandler {
+        tool_name: codex_tools::ToolName,
+    }
+
+    impl ToolExecutor<ToolInvocation> for PanickingHandler {
+        fn tool_name(&self) -> codex_tools::ToolName {
+            self.tool_name.clone()
+        }
+
+        fn spec(&self) -> codex_tools::ToolSpec {
+            codex_tools::ToolSpec::Function(codex_tools::ResponsesApiTool {
+                name: self.tool_name.name.clone(),
+                description: "Panicking test tool.".to_string(),
+                strict: false,
+                defer_loading: None,
+                parameters: codex_tools::JsonSchema::default(),
+                output_schema: None,
+            })
+        }
+
+        fn handle(&self, _invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
+            Box::pin(async { panic!("intentional handler panic") })
+        }
+    }
+
+    impl CoreToolRuntime for PanickingHandler {}
+
+    struct CancellationPanicHandler {
+        tool_name: codex_tools::ToolName,
+        started: std::sync::Mutex<Option<oneshot::Sender<()>>>,
+    }
+
+    impl ToolExecutor<ToolInvocation> for CancellationPanicHandler {
+        fn tool_name(&self) -> codex_tools::ToolName {
+            self.tool_name.clone()
+        }
+
+        fn spec(&self) -> codex_tools::ToolSpec {
+            codex_tools::ToolSpec::Function(codex_tools::ResponsesApiTool {
+                name: self.tool_name.name.clone(),
+                description: "Cancellation panic test tool.".to_string(),
+                strict: false,
+                defer_loading: None,
+                parameters: codex_tools::JsonSchema::default(),
+                output_schema: None,
+            })
+        }
+
+        fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
+            Box::pin(async move {
+                let started = self
+                    .started
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take();
+                if let Some(started) = started {
+                    let _ = started.send(());
+                }
+                invocation.cancellation_token.cancelled().await;
+                panic!("intentional cancellation cleanup panic")
+            })
+        }
+    }
+
+    impl CoreToolRuntime for CancellationPanicHandler {
+        fn waits_for_runtime_cancellation(&self) -> bool {
+            true
+        }
+    }
 
     struct CancellationCleanupHandler {
         tool_name: codex_tools::ToolName,
@@ -1011,6 +1104,120 @@ mod tests {
         records: Arc<std::sync::Mutex<Vec<ToolCallOutcome>>>,
     }
 
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum PolicyAttemptPhase {
+        Admission,
+        Authorization,
+        Terminal {
+            outcome: ToolCallOutcome,
+            host_accepted: bool,
+        },
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct PolicyAttemptRecord {
+        attempt_id: String,
+        call_id: String,
+        phase: PolicyAttemptPhase,
+    }
+
+    struct PolicyAttemptRecorder {
+        records: Arc<std::sync::Mutex<Vec<PolicyAttemptRecord>>>,
+    }
+
+    impl codex_extension_api::ToolPolicyContributor for PolicyAttemptRecorder {
+        fn admit<'a>(
+            &'a self,
+            input: codex_extension_api::ToolPolicyInput<'a>,
+        ) -> codex_extension_api::ToolPolicyFuture<'a, codex_extension_api::ToolPolicyDecision>
+        {
+            let records = Arc::clone(&self.records);
+            let record = PolicyAttemptRecord {
+                attempt_id: input.attempt_id.to_string(),
+                call_id: input.call_id.to_string(),
+                phase: PolicyAttemptPhase::Admission,
+            };
+            Box::pin(async move {
+                records
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(record);
+                Ok(codex_extension_api::ToolPolicyDecision::Allow)
+            })
+        }
+
+        fn authorize<'a>(
+            &'a self,
+            input: codex_extension_api::ToolPolicyInput<'a>,
+        ) -> codex_extension_api::ToolPolicyFuture<'a, codex_extension_api::ToolPolicyDecision>
+        {
+            let records = Arc::clone(&self.records);
+            let record = PolicyAttemptRecord {
+                attempt_id: input.attempt_id.to_string(),
+                call_id: input.call_id.to_string(),
+                phase: PolicyAttemptPhase::Authorization,
+            };
+            Box::pin(async move {
+                records
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(record);
+                Ok(codex_extension_api::ToolPolicyDecision::Allow)
+            })
+        }
+
+        fn on_terminal<'a>(
+            &'a self,
+            input: codex_extension_api::ToolPolicyTerminalInput<'a>,
+        ) -> codex_extension_api::ToolPolicyFuture<'a, ()> {
+            let records = Arc::clone(&self.records);
+            let record = PolicyAttemptRecord {
+                attempt_id: input.attempt_id.to_string(),
+                call_id: input.call_id.to_string(),
+                phase: PolicyAttemptPhase::Terminal {
+                    outcome: input.outcome,
+                    host_accepted: input.host_accepted,
+                },
+            };
+            Box::pin(async move {
+                records
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(record);
+                Ok(())
+            })
+        }
+    }
+
+    struct BlockingTerminalPolicy {
+        terminal_started: std::sync::Mutex<Option<oneshot::Sender<()>>>,
+        allow_terminal: Arc<Notify>,
+        terminal_calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl codex_extension_api::ToolPolicyContributor for BlockingTerminalPolicy {
+        fn on_terminal<'a>(
+            &'a self,
+            _input: codex_extension_api::ToolPolicyTerminalInput<'a>,
+        ) -> codex_extension_api::ToolPolicyFuture<'a, ()> {
+            let terminal_started = self
+                .terminal_started
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            let allow_terminal = Arc::clone(&self.allow_terminal);
+            let terminal_calls = Arc::clone(&self.terminal_calls);
+            Box::pin(async move {
+                terminal_calls.fetch_add(1, Ordering::AcqRel);
+                if let Some(terminal_started) = terminal_started {
+                    let _ = terminal_started.send(());
+                }
+                allow_terminal.notified().await;
+                Ok(())
+            })
+        }
+    }
+
     impl codex_extension_api::ToolLifecycleContributor for FinishRecorder {
         fn on_tool_finish<'a>(
             &'a self,
@@ -1057,6 +1264,258 @@ mod tests {
                     .push(outcome);
             })
         }
+    }
+
+    struct PanickingFinishContributor;
+
+    impl codex_extension_api::ToolLifecycleContributor for PanickingFinishContributor {
+        fn on_tool_finish<'a>(
+            &'a self,
+            _input: codex_extension_api::ToolFinishInput<'a>,
+        ) -> codex_extension_api::ToolLifecycleFuture<'a> {
+            Box::pin(async { panic!("intentional lifecycle finish panic") })
+        }
+    }
+
+    #[tokio::test]
+    async fn handler_task_panic_emits_one_indeterminate_terminal() -> anyhow::Result<()> {
+        let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
+        let policy_records = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let lifecycle_records = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut builder =
+            codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+        builder.tool_policy_contributor(Arc::new(PolicyAttemptRecorder {
+            records: Arc::clone(&policy_records),
+        }));
+        builder.tool_lifecycle_contributor(Arc::new(FinishRecorder {
+            records: Arc::clone(&lifecycle_records),
+        }));
+        session.services.extensions = Arc::new(builder.build());
+
+        let session = Arc::new(session);
+        let turn_context = Arc::new(turn_context);
+        let tool_name = codex_tools::ToolName::plain("panic_tool");
+        let handler = Arc::new(PanickingHandler {
+            tool_name: tool_name.clone(),
+        }) as Arc<dyn CoreToolRuntime>;
+        let step_context = StepContext::for_test(Arc::clone(&turn_context));
+        let router = Arc::new(ToolRouter::from_parts(
+            ToolRegistry::from_tools([handler]),
+            Vec::new(),
+        ));
+        let step_context = step_context.with_tool_router_for_test(router);
+        let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+        let runtime = ToolCallRuntime::new(session, step_context, tracker);
+        let call = ToolCall {
+            tool_name,
+            call_id: "call-panic".to_string(),
+            payload: ToolPayload::Function {
+                arguments: "{}".to_string(),
+            },
+            encrypted_function_args: None,
+        };
+
+        let result = runtime
+            .handle_tool_call(call, CancellationToken::new())
+            .await;
+        assert!(
+            result.is_err(),
+            "panicked handler should return a fatal error"
+        );
+
+        let policy_records = policy_records
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(policy_records.len(), 3);
+        let attempt_id = policy_records[0].attempt_id.as_str();
+        assert!(
+            policy_records
+                .iter()
+                .all(|record| record.attempt_id == attempt_id)
+        );
+        assert_eq!(
+            policy_records
+                .iter()
+                .map(|record| record.phase)
+                .collect::<Vec<_>>(),
+            [
+                PolicyAttemptPhase::Admission,
+                PolicyAttemptPhase::Authorization,
+                PolicyAttemptPhase::Terminal {
+                    outcome: ToolCallOutcome::Indeterminate {
+                        reason_code: HANDLER_TASK_JOIN_ERROR_REASON_CODE,
+                    },
+                    host_accepted: true,
+                },
+            ],
+        );
+        assert_eq!(
+            *lifecycle_records
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            [ToolCallOutcome::Indeterminate {
+                reason_code: HANDLER_TASK_JOIN_ERROR_REASON_CODE,
+            }],
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancellation_owner_records_indeterminate_when_handler_task_panics()
+    -> anyhow::Result<()> {
+        let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
+        let policy_records = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let lifecycle_records = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut builder =
+            codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+        builder.tool_policy_contributor(Arc::new(PolicyAttemptRecorder {
+            records: Arc::clone(&policy_records),
+        }));
+        builder.tool_lifecycle_contributor(Arc::new(FinishRecorder {
+            records: Arc::clone(&lifecycle_records),
+        }));
+        session.services.extensions = Arc::new(builder.build());
+
+        let session = Arc::new(session);
+        let turn_context = Arc::new(turn_context);
+        let tool_name = codex_tools::ToolName::plain("cancellation_panic_tool");
+        let (started_tx, started_rx) = oneshot::channel();
+        let handler = Arc::new(CancellationPanicHandler {
+            tool_name: tool_name.clone(),
+            started: std::sync::Mutex::new(Some(started_tx)),
+        }) as Arc<dyn CoreToolRuntime>;
+        let step_context = StepContext::for_test(Arc::clone(&turn_context));
+        let router = Arc::new(ToolRouter::from_parts(
+            ToolRegistry::from_tools([handler]),
+            Vec::new(),
+        ));
+        let step_context = step_context.with_tool_router_for_test(router);
+        let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+        let runtime = ToolCallRuntime::new(session, step_context, tracker);
+        let cancellation_token = CancellationToken::new();
+        let call = ToolCall {
+            tool_name,
+            call_id: "call-cancellation-panic".to_string(),
+            payload: ToolPayload::Function {
+                arguments: "{}".to_string(),
+            },
+            encrypted_function_args: None,
+        };
+        let response_task =
+            tokio::spawn(runtime.handle_tool_call(call, cancellation_token.clone()));
+        started_rx.await.expect("handler should start");
+        cancellation_token.cancel();
+        let result = tokio::time::timeout(Duration::from_secs(1), response_task)
+            .await
+            .expect("timed out waiting for panicked handler response")
+            .expect("outer tool call task should join");
+        assert!(
+            result.is_err(),
+            "panicked cancellation cleanup should return a fatal error"
+        );
+
+        let policy_records = policy_records
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(policy_records.len(), 3);
+        let attempt_id = policy_records[0].attempt_id.as_str();
+        assert!(
+            policy_records
+                .iter()
+                .all(|record| record.attempt_id == attempt_id)
+        );
+        assert_eq!(
+            policy_records
+                .iter()
+                .map(|record| record.phase)
+                .collect::<Vec<_>>(),
+            [
+                PolicyAttemptPhase::Admission,
+                PolicyAttemptPhase::Authorization,
+                PolicyAttemptPhase::Terminal {
+                    outcome: ToolCallOutcome::Indeterminate {
+                        reason_code: HANDLER_TASK_JOIN_ERROR_REASON_CODE,
+                    },
+                    host_accepted: true,
+                },
+            ],
+        );
+        assert_eq!(
+            *lifecycle_records
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            [ToolCallOutcome::Indeterminate {
+                reason_code: HANDLER_TASK_JOIN_ERROR_REASON_CODE,
+            }],
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn panic_after_handler_terminal_does_not_emit_a_second_terminal() -> anyhow::Result<()> {
+        let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
+        let policy_records = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut builder =
+            codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+        builder.tool_policy_contributor(Arc::new(PolicyAttemptRecorder {
+            records: Arc::clone(&policy_records),
+        }));
+        builder.tool_lifecycle_contributor(Arc::new(PanickingFinishContributor));
+        session.services.extensions = Arc::new(builder.build());
+
+        let session = Arc::new(session);
+        let turn_context = Arc::new(turn_context);
+        let tool_name = codex_tools::ToolName::plain("test_tool");
+        let handler = Arc::new(ImmediateHandler {
+            tool_name: tool_name.clone(),
+        }) as Arc<dyn CoreToolRuntime>;
+        let step_context = StepContext::for_test(Arc::clone(&turn_context));
+        let router = Arc::new(ToolRouter::from_parts(
+            ToolRegistry::from_tools([handler]),
+            Vec::new(),
+        ));
+        let step_context = step_context.with_tool_router_for_test(router);
+        let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+        let runtime = ToolCallRuntime::new(session, step_context, tracker);
+        let call = ToolCall {
+            tool_name,
+            call_id: "call-finish-panic".to_string(),
+            payload: ToolPayload::Function {
+                arguments: "{}".to_string(),
+            },
+            encrypted_function_args: None,
+        };
+
+        let result = runtime
+            .handle_tool_call(call, CancellationToken::new())
+            .await;
+        assert!(
+            result.is_err(),
+            "panicked lifecycle finish should return a fatal error"
+        );
+
+        let policy_records = policy_records
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(policy_records.len(), 3);
+        assert_eq!(
+            policy_records
+                .iter()
+                .map(|record| record.phase)
+                .collect::<Vec<_>>(),
+            [
+                PolicyAttemptPhase::Admission,
+                PolicyAttemptPhase::Authorization,
+                PolicyAttemptPhase::Terminal {
+                    outcome: ToolCallOutcome::Completed { success: true },
+                    host_accepted: true,
+                },
+            ],
+        );
+
+        Ok(())
     }
 
     #[tokio::test]
@@ -1133,12 +1592,171 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancellation_waiting_for_runtime_cleanup_emits_only_aborted_lifecycle()
+    async fn active_policy_committed_terminal_does_not_wait_for_lifecycle_tail()
+    -> anyhow::Result<()> {
+        let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
+        let lifecycle_records = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let policy_records = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (finish_started_tx, finish_started_rx) = oneshot::channel();
+        let allow_finish = Arc::new(Notify::new());
+        let mut builder =
+            codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+        builder.tool_policy_contributor(Arc::new(PolicyAttemptRecorder {
+            records: Arc::clone(&policy_records),
+        }));
+        builder.tool_lifecycle_contributor(Arc::new(BlockingFinishContributor {
+            records: Arc::clone(&lifecycle_records),
+            finish_started: std::sync::Mutex::new(Some(finish_started_tx)),
+            allow_finish: Arc::clone(&allow_finish),
+        }));
+        session.services.extensions = Arc::new(builder.build());
+
+        let session = Arc::new(session);
+        let turn_context = Arc::new(turn_context);
+        let tool_name = codex_tools::ToolName::plain("test_tool");
+        let handler = Arc::new(ImmediateHandler {
+            tool_name: tool_name.clone(),
+        }) as Arc<dyn CoreToolRuntime>;
+        let step_context = StepContext::for_test(Arc::clone(&turn_context));
+        let router = Arc::new(ToolRouter::from_parts(
+            ToolRegistry::from_tools([handler]),
+            Vec::new(),
+        ));
+        let step_context = step_context.with_tool_router_for_test(router);
+        let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+        let runtime = ToolCallRuntime::new(session, step_context, tracker);
+        let cancellation_token = CancellationToken::new();
+        let call = ToolCall {
+            tool_name,
+            call_id: "call-policy-tail".to_string(),
+            payload: ToolPayload::Function {
+                arguments: "{}".to_string(),
+            },
+            encrypted_function_args: None,
+        };
+
+        let response_task =
+            tokio::spawn(runtime.handle_tool_call(call, cancellation_token.clone()));
+        finish_started_rx
+            .await
+            .expect("lifecycle tail should start after policy terminal commit");
+        cancellation_token.cancel();
+        let response = tokio::time::timeout(Duration::from_millis(500), response_task)
+            .await
+            .expect("committed policy terminal must not wait for lifecycle tail")
+            .expect("tool response task should join")?;
+        let ResponseInputItem::FunctionCallOutput { output, .. } = response else {
+            anyhow::bail!("cancelled tool should return function output");
+        };
+        let FunctionCallOutputBody::Text(text) = output.body else {
+            anyhow::bail!("cancelled tool output should be text");
+        };
+        assert_eq!(text, POLICY_RESULT_WITHHELD_MESSAGE);
+        assert!(
+            lifecycle_records
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty(),
+            "aborted lifecycle tail must not fabricate an Aborted observation",
+        );
+        assert!(matches!(
+            policy_records
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_slice(),
+            [
+                PolicyAttemptRecord {
+                    phase: PolicyAttemptPhase::Admission,
+                    ..
+                },
+                PolicyAttemptRecord {
+                    phase: PolicyAttemptPhase::Authorization,
+                    ..
+                },
+                PolicyAttemptRecord {
+                    phase: PolicyAttemptPhase::Terminal {
+                        outcome: ToolCallOutcome::Completed { success: true },
+                        host_accepted: true,
+                    },
+                    ..
+                },
+            ]
+        ));
+        allow_finish.notify_waiters();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn active_policy_terminal_write_timeout_is_fatal_and_not_aborted() -> anyhow::Result<()> {
+        let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
+        let (terminal_started_tx, terminal_started_rx) = oneshot::channel();
+        let allow_terminal = Arc::new(Notify::new());
+        let terminal_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut builder =
+            codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+        builder.tool_policy_contributor(Arc::new(BlockingTerminalPolicy {
+            terminal_started: std::sync::Mutex::new(Some(terminal_started_tx)),
+            allow_terminal: Arc::clone(&allow_terminal),
+            terminal_calls: Arc::clone(&terminal_calls),
+        }));
+        session.services.extensions = Arc::new(builder.build());
+
+        let session = Arc::new(session);
+        let turn_context = Arc::new(turn_context);
+        let tool_name = codex_tools::ToolName::plain("test_tool");
+        let handler = Arc::new(ImmediateHandler {
+            tool_name: tool_name.clone(),
+        }) as Arc<dyn CoreToolRuntime>;
+        let step_context = StepContext::for_test(Arc::clone(&turn_context));
+        let router = Arc::new(ToolRouter::from_parts(
+            ToolRegistry::from_tools([handler]),
+            Vec::new(),
+        ));
+        let step_context = step_context.with_tool_router_for_test(router);
+        let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+        let runtime = ToolCallRuntime::new(session, step_context, tracker);
+        let cancellation_token = CancellationToken::new();
+        let call = ToolCall {
+            tool_name,
+            call_id: "call-policy-writing".to_string(),
+            payload: ToolPayload::Function {
+                arguments: "{}".to_string(),
+            },
+            encrypted_function_args: None,
+        };
+
+        let response_task =
+            tokio::spawn(runtime.handle_tool_call(call, cancellation_token.clone()));
+        terminal_started_rx
+            .await
+            .expect("policy terminal write should start");
+        cancellation_token.cancel();
+        let result = tokio::time::timeout(Duration::from_millis(500), response_task)
+            .await
+            .expect("terminal write cancellation grace must be bounded")
+            .expect("tool response task should join");
+        let error = result.expect_err("unconfirmed terminal must fail the turn");
+        assert!(
+            error
+                .to_string()
+                .contains(POLICY_TERMINAL_UNCONFIRMED_MESSAGE)
+        );
+        assert_eq!(terminal_calls.load(Ordering::Acquire), 1);
+        allow_terminal.notify_waiters();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancellation_after_runtime_cleanup_commits_completed_and_withholds_result()
     -> anyhow::Result<()> {
         let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
         let records = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let policy_records = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut builder =
             codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+        builder.tool_policy_contributor(Arc::new(PolicyAttemptRecorder {
+            records: Arc::clone(&policy_records),
+        }));
         builder.tool_lifecycle_contributor(Arc::new(FinishRecorder {
             records: Arc::clone(&records),
         }));
@@ -1194,14 +1812,51 @@ mod tests {
         let FunctionCallOutputBody::Text(text) = output.body else {
             anyhow::bail!("cancelled tool output should be text");
         };
-        assert!(text.contains("aborted by user"));
+        assert_eq!(text, POLICY_RESULT_WITHHELD_MESSAGE);
 
         let actual = records
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .drain(..)
             .collect::<Vec<_>>();
-        assert_eq!(vec![ToolCallOutcome::Aborted], actual);
+        assert_eq!(vec![ToolCallOutcome::Completed { success: false }], actual);
+
+        let policy_records = policy_records
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain(..)
+            .collect::<Vec<_>>();
+        assert_eq!(policy_records.len(), 3);
+        assert!(
+            policy_records
+                .iter()
+                .all(|record| record.call_id == "call-1")
+        );
+        let attempt_id = policy_records[0].attempt_id.as_str();
+        assert!(
+            !attempt_id.is_empty(),
+            "attempt ID must be opaque and non-empty"
+        );
+        assert!(
+            policy_records
+                .iter()
+                .all(|record| record.attempt_id == attempt_id),
+            "cancellation terminal must retain the dispatch attempt ID",
+        );
+        assert_eq!(
+            policy_records
+                .iter()
+                .map(|record| record.phase)
+                .collect::<Vec<_>>(),
+            [
+                PolicyAttemptPhase::Admission,
+                PolicyAttemptPhase::Authorization,
+                PolicyAttemptPhase::Terminal {
+                    outcome: ToolCallOutcome::Completed { success: false },
+                    host_accepted: true,
+                },
+            ],
+        );
 
         Ok(())
     }
