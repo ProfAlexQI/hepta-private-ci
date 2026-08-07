@@ -2,6 +2,7 @@
 
 mod canonical;
 mod channel_store;
+mod governance_validation;
 mod historical;
 mod memory_mutation_store;
 mod provider_store;
