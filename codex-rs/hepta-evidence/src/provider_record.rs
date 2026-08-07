@@ -265,6 +265,9 @@ pub(crate) fn validate_provider_receipt(
             validate_digest("response items", response_items_sha256)?;
             validate_digest("token usage", token_usage_sha256)?;
         }
+        ProviderTerminal::CompletedUnary {
+            response_items_sha256,
+        } => validate_digest("response items", response_items_sha256)?,
         ProviderTerminal::Rejected { reason_code }
         | ProviderTerminal::NotDispatched { reason_code }
         | ProviderTerminal::Indeterminate { reason_code, .. } => {

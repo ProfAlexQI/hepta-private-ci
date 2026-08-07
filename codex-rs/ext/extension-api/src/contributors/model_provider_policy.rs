@@ -125,6 +125,13 @@ pub enum ModelProviderTerminal {
         /// Exact provider observation. `None` means the provider omitted the field.
         end_turn: Option<bool>,
     },
+    /// Successful unary provider operation with no response id or token usage.
+    ///
+    /// This is used by endpoints such as remote compaction that return only
+    /// response items. Missing fields must not be replaced with synthetic digests.
+    CompletedUnary {
+        response_items_sha256: ModelProviderSha256Digest,
+    },
     Rejected {
         reason_code: String,
     },
