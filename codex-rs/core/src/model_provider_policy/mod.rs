@@ -19,6 +19,11 @@ mod attempt_owner;
 #[allow(dead_code)]
 mod response_terminal;
 
+// Registered before HTTP/WS caller composition so wire identity can be
+// reviewed independently from transport control flow.
+#[allow(dead_code)]
+mod transport;
+
 pub(crate) use attempt_owner::ProviderAttemptOwner;
 #[cfg(test)]
 pub(crate) use binding::bytes_sha256;
