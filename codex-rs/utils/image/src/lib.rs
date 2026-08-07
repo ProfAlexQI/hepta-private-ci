@@ -168,28 +168,26 @@ pub fn load_for_prompt_bytes(
                 width: prepared_width,
                 height: prepared_height,
             }
+        } else if let Some(format) = format.filter(|format| can_preserve_source_bytes(*format)) {
+            let mime = format_to_mime(format);
+            EncodedImage {
+                bytes: file_bytes.into(),
+                mime,
+                source_width: width,
+                source_height: height,
+                width,
+                height,
+            }
         } else {
-            if let Some(format) = format.filter(|format| can_preserve_source_bytes(*format)) {
-                let mime = format_to_mime(format);
-                EncodedImage {
-                    bytes: file_bytes.into(),
-                    mime,
-                    source_width: width,
-                    source_height: height,
-                    width,
-                    height,
-                }
-            } else {
-                let (bytes, output_format) = encode_image(&dynamic, ImageFormat::Png, metadata)?;
-                let mime = format_to_mime(output_format);
-                EncodedImage {
-                    bytes: bytes.into(),
-                    mime,
-                    source_width: width,
-                    source_height: height,
-                    width,
-                    height,
-                }
+            let (bytes, output_format) = encode_image(&dynamic, ImageFormat::Png, metadata)?;
+            let mime = format_to_mime(output_format);
+            EncodedImage {
+                bytes: bytes.into(),
+                mime,
+                source_width: width,
+                source_height: height,
+                width,
+                height,
             }
         };
 
