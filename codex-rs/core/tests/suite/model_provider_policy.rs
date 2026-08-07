@@ -72,8 +72,8 @@ impl ProviderPolicyState {
         })
     }
 
-    async fn wait_for_terminal(&self) {
-        while self.terminal_count.load(Ordering::SeqCst) == 0 {
+    async fn wait_for_terminal_count(&self, expected: usize) {
+        while self.terminal_count.load(Ordering::SeqCst) < expected {
             self.terminal_entered.notified().await;
         }
     }
@@ -200,7 +200,7 @@ async fn provider_policy_completed_terminal_precedes_turn_completion() -> Result
     tokio::pin!(submit);
     tokio::select! {
         result = &mut submit => panic!("turn completed before provider terminal entered: {result:?}"),
-        () = state.wait_for_terminal() => {}
+        () = state.wait_for_terminal_count(1) => {}
     }
 
     assert_eq!(state.begin_count.load(Ordering::SeqCst), 1);
@@ -302,7 +302,7 @@ async fn active_provider_policy_claims_every_http_transport_invocation() -> Resu
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn active_provider_policy_governs_websocket_turn() -> Result<()> {
+async fn active_provider_policy_governs_websocket_prewarm_and_turn() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_websocket_server(vec![vec![
@@ -315,7 +315,6 @@ async fn active_provider_policy_governs_websocket_turn() -> Result<()> {
     ]])
     .await;
     let state = ProviderPolicyState::new(true, TestDecision::Allow);
-    state.terminal_release.add_permits(1);
     let mut builder = test_codex()
         .with_config(|config| {
             config.model_provider.stream_max_retries = Some(0);
@@ -323,23 +322,55 @@ async fn active_provider_policy_governs_websocket_turn() -> Result<()> {
         .with_extensions(extensions_with_policy(Arc::clone(&state)));
     let test = builder.build_with_websocket_server(&server).await?;
 
-    test.submit_turn("the turn request must have its own websocket claim")
-        .await?;
-
+    let submit = test.submit_turn("prewarm and turn need separate websocket claims");
+    tokio::pin!(submit);
+    tokio::select! {
+        result = &mut submit => panic!("turn completed before prewarm terminal entered: {result:?}"),
+        () = state.wait_for_terminal_count(1) => {}
+    }
     assert_eq!(state.begin_count.load(Ordering::SeqCst), 1);
     assert_eq!(state.terminal_count.load(Ordering::SeqCst), 1);
     assert_eq!(state.completed_count.load(Ordering::SeqCst), 1);
+    assert!(
+        timeout(Duration::from_millis(50), &mut submit)
+            .await
+            .is_err(),
+        "turn must wait for the prewarm terminal acknowledgement"
+    );
+
+    state.terminal_release.add_permits(1);
+    timeout(Duration::from_secs(5), state.wait_for_terminal_count(2)).await?;
+    assert!(
+        timeout(Duration::from_millis(50), &mut submit)
+            .await
+            .is_err(),
+        "turn must wait for its own provider terminal acknowledgement"
+    );
+    state.terminal_release.add_permits(1);
+    timeout(Duration::from_secs(10), &mut submit).await??;
+
+    assert_eq!(state.begin_count.load(Ordering::SeqCst), 2);
+    assert_eq!(state.terminal_count.load(Ordering::SeqCst), 2);
+    assert_eq!(state.completed_count.load(Ordering::SeqCst), 2);
     assert_eq!(
         *state
             .attempts
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner),
-        vec![ProviderAttemptObservation {
-            request_kind: ModelProviderRequestKind::Turn,
-            transport: ModelProviderTransport::WebSocket,
-            has_previous_response: false,
-            generate: true,
-        }]
+        vec![
+            ProviderAttemptObservation {
+                request_kind: ModelProviderRequestKind::Prewarm,
+                transport: ModelProviderTransport::WebSocket,
+                has_previous_response: false,
+                generate: false,
+            },
+            ProviderAttemptObservation {
+                request_kind: ModelProviderRequestKind::Turn,
+                transport: ModelProviderTransport::WebSocket,
+                has_previous_response: false,
+                generate: true,
+            }
+        ]
     );
     let connections = server.connections();
     assert_eq!(connections.len(), 1);
