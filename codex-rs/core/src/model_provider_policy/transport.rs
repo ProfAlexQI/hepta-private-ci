@@ -1,8 +1,18 @@
+use codex_api::ResponseCreateWsRequest;
 use codex_api::ResponsesApiRequest;
+use codex_api::WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY;
+use codex_api::WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY;
 use codex_extension_api::ModelProviderPolicyError;
 use http::HeaderValue;
 use serde::Serialize;
+use serde_json::Value;
 use std::collections::HashMap;
+
+const TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
+const TURN_STARTED_AT_UNIX_MS_KEY: &str = "turn_started_at_unix_ms";
+const TURN_STATE_KEY: &str = "x-codex-turn-state";
+const WS_REQUEST_START_MS_KEY: &str = "x-codex-ws-stream-request-start-ms";
+const WS_RESPONSES_LITE_KEY: &str = "ws_request_header_x_openai_internal_codex_responses_lite";
 
 /// Exact, secret-free routing hint attached to a provider transport.
 ///
@@ -60,6 +70,69 @@ pub(crate) fn responses_lite_from_ws_metadata(
         client_metadata
             .and_then(|client_metadata| client_metadata.get(key))
             .map(String::as_str),
+    )
+}
+
+/// Builds the stable semantic payload for one WebSocket response.create.
+///
+/// The encoded provider request remains unchanged. This projection removes
+/// transport tracing, request timing, opaque sticky turn state, and the
+/// Responses Lite carrier (which is bound separately as a typed value). All
+/// other client metadata remains in the physical wire identity. The canonical
+/// turn-metadata JSON string is represented structurally so its request-start
+/// timestamp can be excluded without discarding stable turn semantics.
+pub(crate) fn provider_websocket_wire_payload(
+    payload: &ResponseCreateWsRequest<'_>,
+) -> Result<Value, ModelProviderPolicyError> {
+    let mut semantic = serde_json::to_value(payload).map_err(|error| {
+        ModelProviderPolicyError::new(
+            "model_provider_policy_serialization_failed",
+            format!("failed to serialize WebSocket provider payload: {error}"),
+        )
+    })?;
+    let Some(metadata) = semantic
+        .get_mut("client_metadata")
+        .and_then(Value::as_object_mut)
+    else {
+        return Ok(semantic);
+    };
+
+    for key in [
+        WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY,
+        WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY,
+        WS_REQUEST_START_MS_KEY,
+        TURN_STATE_KEY,
+        WS_RESPONSES_LITE_KEY,
+    ] {
+        metadata.remove(key);
+    }
+
+    if let Some(turn_metadata) = metadata.get_mut(TURN_METADATA_KEY) {
+        let encoded = turn_metadata.as_str().ok_or_else(|| {
+            invalid_ws_metadata("turn metadata carrier must be a JSON string".to_string())
+        })?;
+        let mut structured = serde_json::from_str::<Value>(encoded).map_err(|error| {
+            invalid_ws_metadata(format!("failed to parse turn metadata JSON: {error}"))
+        })?;
+        let object = structured.as_object_mut().ok_or_else(|| {
+            invalid_ws_metadata("turn metadata JSON must encode an object".to_string())
+        })?;
+        object.remove(TURN_STARTED_AT_UNIX_MS_KEY);
+        *turn_metadata = structured;
+    }
+
+    if metadata.is_empty()
+        && let Some(object) = semantic.as_object_mut()
+    {
+        object.remove("client_metadata");
+    }
+    Ok(semantic)
+}
+
+fn invalid_ws_metadata(detail: String) -> ModelProviderPolicyError {
+    ModelProviderPolicyError::new(
+        "model_provider_policy_invalid_ws_metadata",
+        format!("invalid WebSocket provider metadata: {detail}"),
     )
 }
 
@@ -125,12 +198,20 @@ pub(crate) fn logical_responses_request(request: &ResponsesApiRequest) -> Respon
 mod tests {
     use std::collections::HashMap;
 
+    use codex_api::ResponseCreateWsRequest;
     use codex_api::ResponsesApiRequest;
+    use codex_api::WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY;
+    use codex_api::WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY;
     use http::HeaderValue;
 
     use super::ProviderRoutingHint;
     use super::ProviderWireSemantic;
+    use super::TURN_METADATA_KEY;
+    use super::TURN_STATE_KEY;
+    use super::WS_REQUEST_START_MS_KEY;
+    use super::WS_RESPONSES_LITE_KEY;
     use super::logical_responses_request;
+    use super::provider_websocket_wire_payload;
     use super::responses_lite_from_http_header;
     use super::responses_lite_from_ws_metadata;
     use crate::model_provider_policy::binding::canonical_sha256;
@@ -255,6 +336,82 @@ mod tests {
                 .expect("enabled websocket marker")
         );
         assert!(!responses_lite_from_ws_metadata(None, key).expect("absent websocket marker"));
+    }
+
+    #[test]
+    fn websocket_wire_payload_excludes_only_volatile_metadata() {
+        let request = request();
+        let mut payload = ResponseCreateWsRequest::from(&request);
+        payload.client_metadata = Some(HashMap::from([
+            ("stable".to_string(), "alpha".to_string()),
+            (
+                WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY.to_string(),
+                "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01".to_string(),
+            ),
+            (
+                WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY.to_string(),
+                "vendor=a".to_string(),
+            ),
+            (WS_REQUEST_START_MS_KEY.to_string(), "1".to_string()),
+            (TURN_STATE_KEY.to_string(), "opaque-a".to_string()),
+            (WS_RESPONSES_LITE_KEY.to_string(), "true".to_string()),
+            (
+                TURN_METADATA_KEY.to_string(),
+                r#"{"turn_id":"turn-1","turn_started_at_unix_ms":1}"#.to_string(),
+            ),
+        ]));
+        let base = provider_websocket_wire_payload(&payload).expect("base semantic payload");
+
+        let metadata = payload.client_metadata.as_mut().expect("metadata");
+        metadata.insert(
+            WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY.to_string(),
+            "trace-b".to_string(),
+        );
+        metadata.insert(
+            WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY.to_string(),
+            "vendor=b".to_string(),
+        );
+        metadata.insert(WS_REQUEST_START_MS_KEY.to_string(), "2".to_string());
+        metadata.insert(TURN_STATE_KEY.to_string(), "opaque-b".to_string());
+        metadata.insert(
+            TURN_METADATA_KEY.to_string(),
+            r#"{"turn_id":"turn-1","turn_started_at_unix_ms":2}"#.to_string(),
+        );
+        let changed_volatile =
+            provider_websocket_wire_payload(&payload).expect("changed volatile payload");
+        assert_eq!(
+            canonical_sha256(&base).expect("base digest"),
+            canonical_sha256(&changed_volatile).expect("volatile digest")
+        );
+
+        payload
+            .client_metadata
+            .as_mut()
+            .expect("metadata")
+            .insert("stable".to_string(), "beta".to_string());
+        let changed_stable =
+            provider_websocket_wire_payload(&payload).expect("changed stable payload");
+        assert_ne!(
+            canonical_sha256(&base).expect("base digest"),
+            canonical_sha256(&changed_stable).expect("stable digest")
+        );
+    }
+
+    #[test]
+    fn malformed_websocket_turn_metadata_fails_closed() {
+        let request = request();
+        let mut payload = ResponseCreateWsRequest::from(&request);
+        payload.client_metadata = Some(HashMap::from([(
+            TURN_METADATA_KEY.to_string(),
+            "not-json".to_string(),
+        )]));
+
+        let error = provider_websocket_wire_payload(&payload)
+            .expect_err("malformed turn metadata must fail closed");
+        assert_eq!(
+            error.reason_code(),
+            "model_provider_policy_invalid_ws_metadata"
+        );
     }
 
     #[test]
