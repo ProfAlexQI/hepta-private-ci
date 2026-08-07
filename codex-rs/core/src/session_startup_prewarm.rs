@@ -13,10 +13,12 @@ use tracing::warn;
 
 use crate::client::ModelClientSession;
 use crate::guardian::routes_approval_to_guardian;
+use crate::model_provider_policy::ModelProviderPolicyContext;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::session::INITIAL_SUBMIT_ID;
 use crate::session::session::Session;
 use crate::session::turn::build_prompt;
+use codex_extension_api::ModelProviderRequestKind;
 use codex_otel::STARTUP_PREWARM_AGE_AT_FIRST_TURN_METRIC;
 use codex_otel::STARTUP_PREWARM_DURATION_METRIC;
 use codex_otel::SessionTelemetry;
@@ -312,9 +314,18 @@ async fn schedule_startup_prewarm_inner(
             CodexResponsesRequestKind::Prewarm,
         );
     let mut client_session = session.services.model_client.new_session();
+    let provider_policy_context = ModelProviderPolicyContext {
+        registry: session.services.extensions.as_ref(),
+        session_store: &session.services.session_extension_data,
+        thread_store: &session.services.thread_extension_data,
+        turn_store: startup_turn_context.extension_data.as_ref(),
+        thread_id: session.thread_id().to_string(),
+        turn_id: startup_turn_context.sub_id.clone(),
+        request_kind: ModelProviderRequestKind::Prewarm,
+    };
     let websocket_warmup_started_at = Instant::now();
     client_session
-        .prewarm_websocket(
+        .prewarm_websocket_with_policy(
             &startup_prompt,
             &startup_turn_context.model_info,
             &startup_turn_context.session_telemetry,
@@ -322,6 +333,7 @@ async fn schedule_startup_prewarm_inner(
             startup_turn_context.reasoning_summary,
             startup_turn_context.config.service_tier.clone(),
             &responses_metadata,
+            Some(&provider_policy_context),
         )
         .await?;
     startup_turn_context.session_telemetry.record_startup_phase(

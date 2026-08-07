@@ -2081,6 +2081,31 @@ impl ModelClientSession {
         service_tier: Option<String>,
         responses_metadata: &CodexResponsesMetadata,
     ) -> Result<()> {
+        self.prewarm_websocket_with_policy(
+            prompt,
+            model_info,
+            session_telemetry,
+            effort,
+            summary,
+            service_tier,
+            responses_metadata,
+            /*provider_policy_context*/ None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn prewarm_websocket_with_policy(
+        &mut self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &CodexResponsesMetadata,
+        provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
+    ) -> Result<()> {
         if !self.client.responses_websocket_enabled() {
             return Ok(());
         }
@@ -2101,7 +2126,7 @@ impl ModelClientSession {
                 /*warmup*/ true,
                 current_span_w3c_trace_context(),
                 &disabled_trace,
-                /*provider_policy_context*/ None,
+                provider_policy_context,
             )
             .await
         {
