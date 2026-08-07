@@ -3,7 +3,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
+#[cfg(test)]
 use std::sync::Mutex;
+#[cfg(test)]
 use std::sync::PoisonError;
 use std::time::Duration;
 
@@ -32,13 +34,13 @@ use codex_hepta_contracts::MemoryProvenance;
 use codex_hepta_contracts::MemoryRevision;
 use codex_hepta_contracts::MemoryScope;
 use codex_hepta_contracts::MemorySourceKind;
-use codex_hepta_contracts::RankedMemoryRef;
 use codex_hepta_contracts::RecallAuthority;
 use codex_hepta_contracts::RecallLimits;
 use codex_hepta_contracts::RecallRequest;
 use codex_hepta_contracts::RecallRequestId;
 use codex_hepta_contracts::RevisionStamp;
 use codex_hepta_contracts::Sha256Digest;
+#[cfg(test)]
 use codex_hepta_memory::RecallCounts;
 use codex_hepta_memory::RecallObservation;
 use codex_hepta_memory::RecallObservationReason;
@@ -47,15 +49,30 @@ use codex_protocol::ThreadId;
 use codex_protocol::user_input::UserInput;
 use codex_state::Stage1RecallCandidate;
 use codex_state::StateRuntime;
-use serde::Serialize;
+#[cfg(test)]
 use sha2::Digest;
+#[cfg(test)]
 use sha2::Sha256;
 
-pub const HEPTA_MEMORY_SHADOW_OBSERVATION_SCHEMA_VERSION: u32 = 1;
+use crate::framing::digest_many;
+use crate::framing::domain_digest;
+#[cfg(test)]
+use crate::framing::hash_part;
+use crate::framing::path_identity_bytes;
+use crate::framing::workspace_digest;
+#[cfg(test)]
+use crate::observation::HEPTA_MEMORY_SHADOW_OBSERVATION_SCHEMA_VERSION;
+#[cfg(test)]
+use crate::observation::ShadowRecallObservationCommitDisposition;
+use crate::observation::ShadowRecallTurnObservation;
+use crate::observation::ShadowRecallTurnReason;
+use crate::observation::commit_turn_observation;
+#[cfg(test)]
+use crate::observation::ranked_refs_digest;
+#[cfg(test)]
+use crate::observation::shadow_recall_turn_observation;
 
 const RECALL_BACKEND_TIMEOUT: Duration = Duration::from_secs(2);
-const UNSCANNED_CANDIDATE_SET_DOMAIN: &[u8] = b"hepta-memory-extension:candidate-set:v1:unscanned";
-
 type RecallBackendFuture<'a> = Pin<
     Box<
         dyn Future<Output = Result<Option<Stage1RecallCandidate>, RecallBackendUnavailable>>
@@ -183,170 +200,6 @@ struct PreparedMemoryAttachment {
     source_binding_sha256: Sha256Digest,
     content: String,
     claimed_token_count: u32,
-}
-
-/// Digest-only identity for one shadow turn observation.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(transparent)]
-pub struct ShadowRecallTurnObservationId(String);
-
-impl ShadowRecallTurnObservationId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Terminal reason for one shadow recall attempt.
-///
-/// Backend failures are distinct from a valid recall that selected no memory;
-/// this prevents shadow telemetry from misclassifying unavailable state as an
-/// empty candidate set.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ShadowRecallTurnReason {
-    Recall { reason: RecallObservationReason },
-    BackendMissing,
-    BackendUnavailable,
-    BackendTimeout,
-    SourceBindingMismatch,
-    InvalidSourceTime,
-}
-
-impl ShadowRecallTurnReason {
-    fn stable_tag(&self) -> &'static str {
-        match self {
-            Self::Recall { reason } => match reason {
-                RecallObservationReason::Ranked => "recall:ranked",
-                RecallObservationReason::EmptyQuery => "recall:empty_query",
-                RecallObservationReason::SecretLikeQuery => "recall:secret_like_query",
-                RecallObservationReason::InvalidRequest => "recall:invalid_request",
-                RecallObservationReason::QueryBudgetExceeded => "recall:query_budget_exceeded",
-                RecallObservationReason::QueryBindingMismatch => "recall:query_binding_mismatch",
-                RecallObservationReason::CandidateBudgetExceeded => {
-                    "recall:candidate_budget_exceeded"
-                }
-                RecallObservationReason::CandidateIdentityConflict => {
-                    "recall:candidate_identity_conflict"
-                }
-                RecallObservationReason::NoEligibleCandidates => "recall:no_eligible_candidates",
-                RecallObservationReason::NoLexicalMatch => "recall:no_lexical_match",
-            },
-            Self::BackendMissing => "backend_missing",
-            Self::BackendUnavailable => "backend_unavailable",
-            Self::BackendTimeout => "backend_timeout",
-            Self::SourceBindingMismatch => "source_binding_mismatch",
-            Self::InvalidSourceTime => "invalid_source_time",
-        }
-    }
-}
-
-/// Digest-only turn observation retained in [`ExtensionData`].
-///
-/// The ranked material is collapsed into `ranked_refs_sha256`; raw query,
-/// summary, path, principal, installation, and source identifiers never enter
-/// this value.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ShadowRecallTurnObservation {
-    pub schema_version: u32,
-    pub observation_id: ShadowRecallTurnObservationId,
-    pub request_id: RecallRequestId,
-    pub candidate_set_sha256: Sha256Digest,
-    pub ranked_refs_sha256: Sha256Digest,
-    pub counts: RecallCounts,
-    pub reason: ShadowRecallTurnReason,
-}
-
-impl ShadowRecallTurnObservation {
-    fn from_recall(observation: RecallObservation) -> Self {
-        let ranked_refs_sha256 = ranked_refs_digest(&observation.ranked);
-        let reason = ShadowRecallTurnReason::Recall {
-            reason: observation.reason,
-        };
-        let observation_id = shadow_observation_id(
-            &observation.request_id,
-            &observation.candidate_set_sha256,
-            &ranked_refs_sha256,
-            &observation.counts,
-            &reason,
-        );
-        Self {
-            schema_version: HEPTA_MEMORY_SHADOW_OBSERVATION_SCHEMA_VERSION,
-            observation_id,
-            request_id: observation.request_id,
-            candidate_set_sha256: observation.candidate_set_sha256,
-            ranked_refs_sha256,
-            counts: observation.counts,
-            reason,
-        }
-    }
-
-    fn failure(request: &RecallRequest, reason: ShadowRecallTurnReason) -> Self {
-        let candidate_set_sha256 = Sha256Digest::for_bytes(UNSCANNED_CANDIDATE_SET_DOMAIN);
-        let ranked_refs_sha256 = ranked_refs_digest(&[]);
-        let counts = RecallCounts::default();
-        let observation_id = shadow_observation_id(
-            &request.request_id,
-            &candidate_set_sha256,
-            &ranked_refs_sha256,
-            &counts,
-            &reason,
-        );
-        Self {
-            schema_version: HEPTA_MEMORY_SHADOW_OBSERVATION_SCHEMA_VERSION,
-            observation_id,
-            request_id: request.request_id.clone(),
-            candidate_set_sha256,
-            ranked_refs_sha256,
-            counts,
-            reason,
-        }
-    }
-}
-
-#[derive(Debug)]
-struct ShadowRecallTurnSlot {
-    observation: Mutex<Option<ShadowRecallTurnObservation>>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ShadowRecallObservationCommitDisposition {
-    Inserted,
-    ExactReplay,
-    Conflict,
-}
-
-/// Returns the immutable shadow observation committed for this exact turn.
-pub fn shadow_recall_turn_observation(
-    turn_store: &ExtensionData,
-) -> Option<ShadowRecallTurnObservation> {
-    let slot = turn_store.get::<ShadowRecallTurnSlot>()?;
-    slot.observation
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clone()
-}
-
-fn commit_turn_observation(
-    turn_store: &ExtensionData,
-    observation: ShadowRecallTurnObservation,
-) -> ShadowRecallObservationCommitDisposition {
-    let slot = turn_store.get_or_init(|| ShadowRecallTurnSlot {
-        observation: Mutex::new(None),
-    });
-    let mut stored = slot
-        .observation
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    match stored.as_ref() {
-        None => {
-            *stored = Some(observation);
-            ShadowRecallObservationCommitDisposition::Inserted
-        }
-        Some(existing) if existing == &observation => {
-            ShadowRecallObservationCommitDisposition::ExactReplay
-        }
-        Some(_) => ShadowRecallObservationCommitDisposition::Conflict,
-    }
 }
 
 pub struct HeptaMemoryExtension<F> {
@@ -875,113 +728,6 @@ fn stage1_revision(
 
 fn conservative_token_count(summary: &str) -> u32 {
     u32::try_from(summary.len()).unwrap_or(u32::MAX)
-}
-
-fn shadow_observation_id(
-    request_id: &RecallRequestId,
-    candidate_set_sha256: &Sha256Digest,
-    ranked_refs_sha256: &Sha256Digest,
-    counts: &RecallCounts,
-    reason: &ShadowRecallTurnReason,
-) -> ShadowRecallTurnObservationId {
-    let mut hasher = Sha256::new();
-    hash_part(&mut hasher, b"hepta-memory-extension:turn-observation:v1");
-    hash_part(
-        &mut hasher,
-        &HEPTA_MEMORY_SHADOW_OBSERVATION_SCHEMA_VERSION.to_be_bytes(),
-    );
-    hash_part(&mut hasher, request_id.as_str().as_bytes());
-    hash_part(&mut hasher, candidate_set_sha256.as_str().as_bytes());
-    hash_part(&mut hasher, ranked_refs_sha256.as_str().as_bytes());
-    for count in [
-        counts.submitted,
-        counts.scanned,
-        counts.eligible,
-        counts.matched,
-        counts.selected,
-        counts.unsupported_schema,
-        counts.inactive,
-        counts.expired,
-        counts.scope_denied,
-        counts.revision_mismatch,
-        counts.invalid_binding,
-        counts.summary_budget_exceeded,
-        counts.secret_like_summary_excluded,
-        counts.item_token_budget_exceeded,
-        counts.source_budget_excluded,
-        counts.total_token_budget_excluded,
-    ] {
-        hash_part(&mut hasher, &count.to_be_bytes());
-    }
-    hash_part(&mut hasher, reason.stable_tag().as_bytes());
-    let digest = Sha256Digest::for_bytes(&hasher.finalize());
-    ShadowRecallTurnObservationId(format!("memory-shadow:v1:{}", digest.as_str()))
-}
-
-fn ranked_refs_digest(ranked: &[RankedMemoryRef]) -> Sha256Digest {
-    let mut hasher = Sha256::new();
-    hash_part(&mut hasher, b"hepta-memory:ranked-refs:v1");
-    for ranked_ref in ranked {
-        hash_part(&mut hasher, ranked_ref.memory_id.as_str().as_bytes());
-        hash_part(&mut hasher, &ranked_ref.revision.revision.to_be_bytes());
-        hash_part(
-            &mut hasher,
-            ranked_ref.revision.content_sha256.as_str().as_bytes(),
-        );
-        hash_part(&mut hasher, &ranked_ref.score_ppm.get().to_be_bytes());
-        hash_part(
-            &mut hasher,
-            &ranked_ref.source_updated_at_unix_seconds.to_be_bytes(),
-        );
-    }
-    Sha256Digest::for_bytes(&hasher.finalize())
-}
-
-fn workspace_digest(path: &Path) -> Sha256Digest {
-    domain_digest(
-        b"hepta-memory:workspace:v1",
-        path_identity_bytes(path).as_slice(),
-    )
-}
-
-#[cfg(unix)]
-fn path_identity_bytes(path: &Path) -> Vec<u8> {
-    use std::os::unix::ffi::OsStrExt;
-
-    path.as_os_str().as_bytes().to_vec()
-}
-
-#[cfg(windows)]
-fn path_identity_bytes(path: &Path) -> Vec<u8> {
-    use std::os::windows::ffi::OsStrExt;
-
-    path.as_os_str()
-        .encode_wide()
-        .flat_map(u16::to_le_bytes)
-        .collect()
-}
-
-#[cfg(not(any(unix, windows)))]
-fn path_identity_bytes(path: &Path) -> Vec<u8> {
-    path.as_os_str().to_string_lossy().as_bytes().to_vec()
-}
-
-fn domain_digest(domain: &[u8], value: &[u8]) -> Sha256Digest {
-    digest_many(domain, &[value])
-}
-
-fn digest_many(domain: &[u8], values: &[&[u8]]) -> Sha256Digest {
-    let mut hasher = Sha256::new();
-    hash_part(&mut hasher, domain);
-    for value in values {
-        hash_part(&mut hasher, value);
-    }
-    Sha256Digest::for_bytes(&hasher.finalize())
-}
-
-fn hash_part(hasher: &mut Sha256, part: &[u8]) {
-    hasher.update((part.len() as u64).to_be_bytes());
-    hasher.update(part);
 }
 
 #[cfg(test)]

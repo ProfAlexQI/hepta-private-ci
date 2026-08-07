@@ -16,6 +16,7 @@ use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
 use crate::canonical::canonical_storage_payload;
 use crate::canonical::invalid_record_as_corrupt;
+use crate::canonical::validate_digest;
 use crate::canonical::verify_canonical_storage_payload;
 use crate::canonical::verify_storage_payload_digest;
 use crate::store::classify_sqlx_error;
@@ -719,21 +720,6 @@ fn validate_provider_receipt(receipt: &ProviderInvocationReceipt) -> Result<(), 
         }
     }
     Ok(())
-}
-
-fn validate_digest(label: &str, digest: &Sha256Digest) -> Result<(), EvidenceError> {
-    if is_canonical_sha256(digest.as_str()) {
-        Ok(())
-    } else {
-        invalid(format!("{label} digest is not canonical lowercase SHA-256"))
-    }
-}
-
-fn is_canonical_sha256(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn invalid<T>(detail: impl Into<String>) -> Result<T, EvidenceError> {

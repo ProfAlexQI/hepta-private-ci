@@ -20,6 +20,7 @@ use sqlx::sqlite::SqliteRow;
 use crate::EvidenceError;
 use crate::canonical::canonical_storage_payload;
 use crate::canonical::invalid_record_as_corrupt;
+use crate::canonical::validate_digest;
 use crate::canonical::verify_canonical_storage_payload;
 use crate::canonical::verify_storage_payload_digest;
 
@@ -1048,9 +1049,7 @@ fn validate_decision(record: &GovernanceDecisionRecord) -> Result<(), EvidenceEr
         ("payload", &record.action.payload_sha256),
         ("policy", &record.policy.content_sha256),
     ] {
-        if !is_canonical_sha256(digest.as_str()) {
-            return invalid(format!("{label} digest is not canonical lowercase SHA-256"));
-        }
+        validate_digest(label, digest)?;
     }
     if record.policy.policy_id.trim().is_empty() || record.policy.revision == 0 {
         return invalid("policy stamp requires a non-empty id and positive revision");
@@ -1114,13 +1113,6 @@ fn same_action_binding(left: &ToolAction, right: &ToolAction) -> bool {
         && left.call_id == right.call_id
         && left.tool_name == right.tool_name
         && left.source == right.source
-}
-
-fn is_canonical_sha256(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn invalid<T>(detail: impl Into<String>) -> Result<T, EvidenceError> {

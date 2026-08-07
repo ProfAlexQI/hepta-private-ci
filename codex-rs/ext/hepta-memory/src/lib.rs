@@ -1,13 +1,15 @@
 #![forbid(unsafe_code)]
 
 mod extension;
+mod framing;
+mod observation;
 
-pub use extension::HEPTA_MEMORY_SHADOW_OBSERVATION_SCHEMA_VERSION;
 pub use extension::HeptaMemoryExtension;
 pub use extension::HeptaMemoryFeatureFlags;
 pub use extension::HeptaMemoryThreadConfig;
-pub use extension::ShadowRecallTurnObservation;
-pub use extension::ShadowRecallTurnObservationId;
-pub use extension::ShadowRecallTurnReason;
 pub use extension::install;
-pub use extension::shadow_recall_turn_observation;
+pub use observation::HEPTA_MEMORY_SHADOW_OBSERVATION_SCHEMA_VERSION;
+pub use observation::ShadowRecallTurnObservation;
+pub use observation::ShadowRecallTurnObservationId;
+pub use observation::ShadowRecallTurnReason;
+pub use observation::shadow_recall_turn_observation;

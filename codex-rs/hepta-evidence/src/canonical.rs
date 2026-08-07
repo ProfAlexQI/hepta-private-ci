@@ -36,6 +36,16 @@ pub(crate) fn verify_storage_payload_digest(
     }
 }
 
+pub(crate) fn validate_digest(label: &str, digest: &Sha256Digest) -> Result<(), EvidenceError> {
+    Sha256Digest::parse(digest.as_str())
+        .map(|_| ())
+        .map_err(|_| {
+            EvidenceError::InvalidRecord(format!(
+                "{label} digest is not canonical lowercase SHA-256"
+            ))
+        })
+}
+
 pub(crate) fn verify_canonical_storage_payload<T: Serialize>(
     value: &T,
     stored: &str,
