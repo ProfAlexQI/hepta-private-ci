@@ -14,10 +14,12 @@ use crate::ExtensionMetrics;
 
 mod context;
 mod mcp;
+mod model_provider_policy;
 mod prompt;
 mod skill_invocation;
 mod thread_lifecycle;
 mod tool_lifecycle;
+mod tool_policy;
 mod turn_input;
 mod turn_lifecycle;
 mod world_state;
@@ -25,6 +27,17 @@ mod world_state;
 pub use context::TurnContextContributionInput;
 pub use mcp::McpServerContribution;
 pub use mcp::McpServerContributionContext;
+pub use model_provider_policy::MODEL_PROVIDER_POLICY_INPUT_SCHEMA_VERSION;
+pub use model_provider_policy::ModelProviderAttemptLease;
+pub use model_provider_policy::ModelProviderInvocationInput;
+pub use model_provider_policy::ModelProviderPolicyDecision;
+pub use model_provider_policy::ModelProviderPolicyError;
+pub use model_provider_policy::ModelProviderPolicyFuture;
+pub use model_provider_policy::ModelProviderRequestKind;
+pub use model_provider_policy::ModelProviderSha256Digest;
+pub use model_provider_policy::ModelProviderTerminal;
+pub use model_provider_policy::ModelProviderTransport;
+use model_provider_policy::NoopModelProviderAttemptLease;
 pub use prompt::PromptFragment;
 pub use prompt::PromptSlot;
 pub use skill_invocation::SkillInvocationInput;
@@ -40,6 +53,11 @@ pub use tool_lifecycle::ToolCallSource;
 pub use tool_lifecycle::ToolFinishInput;
 pub use tool_lifecycle::ToolLifecycleFuture;
 pub use tool_lifecycle::ToolStartInput;
+pub use tool_policy::ToolPolicyDecision;
+pub use tool_policy::ToolPolicyError;
+pub use tool_policy::ToolPolicyFuture;
+pub use tool_policy::ToolPolicyInput;
+pub use tool_policy::ToolPolicyTerminalInput;
 pub use turn_input::TurnInputContext;
 pub use turn_input::TurnInputEnvironment;
 pub use turn_lifecycle::TurnAbortInput;
@@ -307,6 +325,68 @@ pub trait ToolLifecycleContributor: Send + Sync {
     /// Called after the tool call returns, is blocked, fails, or is cancelled.
     fn on_tool_finish<'a>(&'a self, _input: ToolFinishInput<'a>) -> ToolLifecycleFuture<'a> {
         Box::pin(std::future::ready(()))
+    }
+}
+
+/// Contributor for synchronous host-owned tool admission and authorization.
+///
+/// Admission sees the model-supplied payload before configurable pre-tool
+/// hooks. Authorization sees the final payload after any trusted hook rewrite
+/// and immediately before the handler. Contributors must persist any durable
+/// pre-effect intent before returning `Allow` when operating in enforce mode.
+pub trait ToolPolicyContributor: Send + Sync {
+    /// Returns whether this contributor participates in policy gates and
+    /// terminal persistence for the current thread.
+    ///
+    /// Disabled contributors should return `false` so merely registering the
+    /// extension does not alter the host's tool lifecycle ordering. The
+    /// default keeps existing contributors active.
+    fn is_active(&self, _thread_store: &ExtensionData) -> bool {
+        true
+    }
+
+    fn admit<'a>(
+        &'a self,
+        _input: ToolPolicyInput<'a>,
+    ) -> ToolPolicyFuture<'a, ToolPolicyDecision> {
+        Box::pin(std::future::ready(Ok(ToolPolicyDecision::Allow)))
+    }
+
+    fn authorize<'a>(
+        &'a self,
+        _input: ToolPolicyInput<'a>,
+    ) -> ToolPolicyFuture<'a, ToolPolicyDecision> {
+        Box::pin(std::future::ready(Ok(ToolPolicyDecision::Allow)))
+    }
+
+    /// Persists a terminal handler observation. A failure is returned to the
+    /// host so it can stop the turn and leave the durable intent pending for
+    /// reconciliation instead of silently claiming a receipt exists.
+    fn on_terminal<'a>(&'a self, _input: ToolPolicyTerminalInput<'a>) -> ToolPolicyFuture<'a, ()> {
+        Box::pin(std::future::ready(Ok(())))
+    }
+}
+
+/// Contributor for host-owned model-provider invocation policy.
+///
+/// The host calls `begin` after it has finalized the semantic provider request
+/// and before any network send. An `Allow` decision carries an opaque,
+/// single-use lease that must be completed with the exact attempt's terminal
+/// observation. Contributors operating in enforce mode must durably commit any
+/// pre-send intent before returning `Allow`.
+pub trait ModelProviderPolicyContributor: Send + Sync {
+    /// Returns whether this contributor participates for the current thread.
+    fn is_active(&self, _thread_store: &ExtensionData) -> bool {
+        true
+    }
+
+    fn begin<'a>(
+        &'a self,
+        _input: ModelProviderInvocationInput<'a>,
+    ) -> ModelProviderPolicyFuture<'a, ModelProviderPolicyDecision> {
+        Box::pin(std::future::ready(Ok(ModelProviderPolicyDecision::Allow {
+            lease: Box::new(NoopModelProviderAttemptLease),
+        })))
     }
 }
 

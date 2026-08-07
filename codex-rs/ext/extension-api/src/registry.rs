@@ -8,12 +8,14 @@ use crate::ContextContributor;
 use crate::ExtensionData;
 use crate::ExtensionEventSink;
 use crate::McpServerContributor;
+use crate::ModelProviderPolicyContributor;
 use crate::NoopExtensionEventSink;
 use crate::SkillInvocationContributor;
 use crate::ThreadLifecycleContributor;
 use crate::TokenUsageContributor;
 use crate::ToolContributor;
 use crate::ToolLifecycleContributor;
+use crate::ToolPolicyContributor;
 use crate::TurnInputContributor;
 use crate::TurnItemContributor;
 use crate::TurnLifecycleContributor;
@@ -36,9 +38,11 @@ impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
                 approval_review_contributors: Vec::new(),
                 context_contributors: Vec::new(),
                 mcp_server_contributors: Vec::new(),
+                model_provider_policy_contributors: Vec::new(),
                 turn_input_contributors: Vec::new(),
                 tool_contributors: Vec::new(),
                 tool_lifecycle_contributors: Vec::new(),
+                tool_policy_contributors: Vec::new(),
                 turn_item_contributors: Vec::new(),
             },
         }
@@ -113,6 +117,16 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
         self.registry.mcp_server_contributors.push(contributor);
     }
 
+    /// Registers one pre-send model-provider policy contributor.
+    pub fn model_provider_policy_contributor(
+        &mut self,
+        contributor: Arc<dyn ModelProviderPolicyContributor>,
+    ) {
+        self.registry
+            .model_provider_policy_contributors
+            .push(contributor);
+    }
+
     /// Registers one turn-input contributor.
     pub fn turn_input_contributor(&mut self, contributor: Arc<dyn TurnInputContributor>) {
         self.registry.turn_input_contributors.push(contributor);
@@ -126,6 +140,11 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
     /// Registers one tool-lifecycle contributor.
     pub fn tool_lifecycle_contributor(&mut self, contributor: Arc<dyn ToolLifecycleContributor>) {
         self.registry.tool_lifecycle_contributors.push(contributor);
+    }
+
+    /// Registers one two-phase tool policy contributor.
+    pub fn tool_policy_contributor(&mut self, contributor: Arc<dyn ToolPolicyContributor>) {
+        self.registry.tool_policy_contributors.push(contributor);
     }
 
     /// Registers one ordered turn-item contributor.
@@ -149,9 +168,11 @@ pub struct ExtensionRegistry<C: Sync> {
     skill_invocation_contributors: Vec<Arc<dyn SkillInvocationContributor>>,
     context_contributors: Vec<Arc<dyn ContextContributor>>,
     mcp_server_contributors: Vec<Arc<dyn McpServerContributor<C>>>,
+    model_provider_policy_contributors: Vec<Arc<dyn ModelProviderPolicyContributor>>,
     turn_input_contributors: Vec<Arc<dyn TurnInputContributor>>,
     tool_contributors: Vec<Arc<dyn ToolContributor>>,
     tool_lifecycle_contributors: Vec<Arc<dyn ToolLifecycleContributor>>,
+    tool_policy_contributors: Vec<Arc<dyn ToolPolicyContributor>>,
     turn_item_contributors: Vec<Arc<dyn TurnItemContributor>>,
     approval_review_contributors: Vec<Arc<dyn ApprovalReviewContributor>>,
 }
@@ -217,6 +238,11 @@ impl<C: Sync> ExtensionRegistry<C> {
         &self.mcp_server_contributors
     }
 
+    /// Returns the registered pre-send model-provider policy contributors.
+    pub fn model_provider_policy_contributors(&self) -> &[Arc<dyn ModelProviderPolicyContributor>] {
+        &self.model_provider_policy_contributors
+    }
+
     /// Returns the registered turn-input contributors.
     pub fn turn_input_contributors(&self) -> &[Arc<dyn TurnInputContributor>] {
         &self.turn_input_contributors
@@ -230,6 +256,11 @@ impl<C: Sync> ExtensionRegistry<C> {
     /// Returns the registered tool-lifecycle contributors.
     pub fn tool_lifecycle_contributors(&self) -> &[Arc<dyn ToolLifecycleContributor>] {
         &self.tool_lifecycle_contributors
+    }
+
+    /// Returns the registered two-phase tool policy contributors.
+    pub fn tool_policy_contributors(&self) -> &[Arc<dyn ToolPolicyContributor>] {
+        &self.tool_policy_contributors
     }
 
     /// Returns the registered ordered turn-item contributors.
