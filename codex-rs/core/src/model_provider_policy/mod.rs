@@ -30,3 +30,4 @@ pub(crate) use binding::bytes_sha256;
 #[cfg(test)]
 pub(crate) use binding::canonical_sha256;
 pub(crate) use response_terminal::ProviderResponseTerminal;
+pub(crate) use transport::ProviderRoutingHint;
