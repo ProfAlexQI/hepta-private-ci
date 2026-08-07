@@ -41,8 +41,13 @@ use tempfile::TempDir;
 fn assert_seatbelt_denied(stderr: &[u8], path: &Path) {
     let stderr = String::from_utf8_lossy(stderr);
     let expected = format!("bash: {}: Operation not permitted\n", path.display());
+    let expected_with_line = format!(
+        "bash: line 1: {}: Operation not permitted\n",
+        path.display()
+    );
     assert!(
         stderr == expected
+            || stderr == expected_with_line
             || stderr.contains("sandbox-exec: sandbox_apply: Operation not permitted"),
         "unexpected stderr: {stderr}"
     );
@@ -974,21 +979,21 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
             "-DWRITABLE_ROOT_0_EXCLUDED_0={}",
             cwd.canonicalize()
                 .expect("canonicalize cwd")
-                .join(".codex")
+                .join(".git")
                 .display()
         ),
         format!(
             "-DWRITABLE_ROOT_0_EXCLUDED_1={}",
             cwd.canonicalize()
                 .expect("canonicalize cwd")
-                .join(".git")
+                .join(".agents")
                 .display()
         ),
         format!(
             "-DWRITABLE_ROOT_0_EXCLUDED_2={}",
             cwd.canonicalize()
                 .expect("canonicalize cwd")
-                .join(".agents")
+                .join(".codex")
                 .display()
         ),
         format!(
@@ -1365,20 +1370,20 @@ fn create_seatbelt_args_for_cwd_as_git_repo() {
         "missing {expected_dot_git}: {args:#?}"
     );
     let expected_dot_codex = format!(
-        "-DWRITABLE_ROOT_0_EXCLUDED_1={}",
+        "-DWRITABLE_ROOT_0_EXCLUDED_2={}",
         dot_codex_canonical.to_string_lossy()
     );
     assert!(
         args.contains(&expected_dot_codex),
         "missing {expected_dot_codex}: {args:#?}"
     );
-    let unexpected_dot_agents = format!(
+    let expected_dot_agents = format!(
         "-DWRITABLE_ROOT_0_EXCLUDED_1={}",
         dot_agents_canonical.to_string_lossy()
     );
     assert!(
-        !args.contains(&unexpected_dot_agents),
-        "missing .agents should be handled by regex rather than materialized as a path param: {args:#?}"
+        args.contains(&expected_dot_agents),
+        "missing {expected_dot_agents}: {args:#?}"
     );
     let expected_slash_tmp = format!("-DWRITABLE_ROOT_1={}", slash_tmp.to_string_lossy());
     assert!(
