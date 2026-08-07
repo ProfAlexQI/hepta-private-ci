@@ -112,7 +112,7 @@ async fn blocking_provider_binding_state(
             ));
         }
         match receipt.terminal {
-            ProviderTerminal::Completed { .. } => {
+            ProviderTerminal::Completed { .. } | ProviderTerminal::CompletedUnary { .. } => {
                 return Ok(Some(ProviderBindingState::Completed));
             }
             ProviderTerminal::Indeterminate { .. } => {

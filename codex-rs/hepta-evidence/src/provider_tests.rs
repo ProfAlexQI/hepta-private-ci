@@ -161,6 +161,46 @@ async fn provider_terminal_conflict_never_overwrites_original() {
 }
 
 #[tokio::test]
+async fn unary_completion_persists_without_synthetic_provider_fields() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = intent(21);
+    let receipt = ProviderInvocationReceipt::new(
+        intent.clone(),
+        ProviderTerminal::CompletedUnary {
+            response_items_sha256: Sha256Digest::for_bytes(b"compacted-items"),
+        },
+    );
+    store.append_provider_intent(&intent).await.expect("intent");
+    store
+        .append_provider_receipt(&receipt)
+        .await
+        .expect("unary terminal");
+
+    let stored = store
+        .get_provider_attempt(&intent.attempt_id)
+        .await
+        .expect("read provider attempt")
+        .expect("provider attempt")
+        .receipt
+        .expect("unary receipt");
+    assert_eq!(stored.receipt, receipt);
+    let raw = sqlite
+        .open_durable_evidence_pool(store.path())
+        .await
+        .expect("raw evidence pool");
+    let terminal_kind: String =
+        sqlx::query_scalar("SELECT terminal_kind FROM provider_invocation_terminals")
+            .fetch_one(&raw)
+            .await
+            .expect("terminal projection");
+    assert_eq!(terminal_kind, "completed");
+}
+
+#[tokio::test]
 async fn concurrent_provider_intent_replay_inserts_exactly_once() {
     let temp = TempDir::new().expect("temp dir");
     let sqlite = sqlite_config(&temp);

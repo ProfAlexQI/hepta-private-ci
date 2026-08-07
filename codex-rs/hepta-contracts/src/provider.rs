@@ -213,6 +213,10 @@ pub enum ProviderTerminal {
         /// Exact provider observation. `None` means the provider omitted the field.
         end_turn: Option<bool>,
     },
+    /// Successful unary operation whose provider response contains only items.
+    CompletedUnary {
+        response_items_sha256: Sha256Digest,
+    },
     Rejected {
         reason_code: String,
     },
@@ -228,7 +232,7 @@ pub enum ProviderTerminal {
 impl ProviderTerminal {
     pub const fn kind(&self) -> &'static str {
         match self {
-            Self::Completed { .. } => "completed",
+            Self::Completed { .. } | Self::CompletedUnary { .. } => "completed",
             Self::Rejected { .. } => "rejected",
             Self::NotDispatched { .. } => "not_dispatched",
             Self::Indeterminate { .. } => "indeterminate",
