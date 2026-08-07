@@ -3,7 +3,7 @@ use serde::Deserializer;
 use serde::Serialize;
 
 use crate::Sha256Digest;
-use crate::channel::digest_parts;
+use crate::canonical::length_delimited_sha256;
 
 pub const MIGRATION_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 pub const MAX_MIGRATION_FAMILY_ID_BYTES: usize = 128;
@@ -90,7 +90,7 @@ impl MigrationSnapshotId {
 
     fn for_snapshot(snapshot: &MigrationFamilySnapshot) -> Self {
         let schema_version = snapshot.schema_version.to_string();
-        let digest = digest_parts([
+        let digest = length_delimited_sha256([
             MIGRATION_SNAPSHOT_DOMAIN,
             schema_version.as_str(),
             snapshot.family_id.as_str(),

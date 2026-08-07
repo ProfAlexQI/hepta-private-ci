@@ -1,9 +1,8 @@
 use serde::Deserialize;
 use serde::Serialize;
-use sha2::Digest;
-use sha2::Sha256;
 
 use crate::Sha256Digest;
+use crate::canonical::length_delimited_sha256;
 
 pub const CHANNEL_EVIDENCE_SCHEMA_VERSION: u32 = 1;
 
@@ -47,7 +46,7 @@ pub struct ChannelScope {
 
 impl ChannelScope {
     pub fn binding_sha256(&self) -> Sha256Digest {
-        digest_parts([
+        length_delimited_sha256([
             self.adapter_id.as_str(),
             self.installation_sha256.as_str(),
             self.account_sha256.as_str(),
@@ -78,7 +77,7 @@ impl ChannelIngressEventId {
     pub fn for_event(scope: &ChannelScope, source_event_sha256: &Sha256Digest) -> Self {
         Self(format!(
             "channel-ingress:v1:{}",
-            digest_parts([
+            length_delimited_sha256([
                 scope.binding_sha256().as_str(),
                 source_event_sha256.as_str(),
             ])
@@ -99,7 +98,7 @@ impl ChannelIngressReceiptId {
     pub fn for_event(event_id: &ChannelIngressEventId) -> Self {
         Self(format!(
             "channel-ingress-receipt:v1:{}",
-            digest_parts([event_id.as_str()]).as_str()
+            length_delimited_sha256([event_id.as_str()]).as_str()
         ))
     }
 
@@ -154,7 +153,10 @@ pub fn channel_target_thread_sha256(thread_id: &str) -> Result<Sha256Digest, Str
     if thread_id.trim().is_empty() {
         return Err("channel ingress target thread id must not be empty".to_string());
     }
-    Ok(digest_parts(["hepta-channel-target-thread-v1", thread_id]))
+    Ok(length_delimited_sha256([
+        "hepta-channel-target-thread-v1",
+        thread_id,
+    ]))
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -283,15 +285,6 @@ pub(crate) fn validate_reason_code(reason_code: &str) -> Result<(), String> {
         );
     }
     Ok(())
-}
-
-pub(crate) fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> Sha256Digest {
-    let mut hasher = Sha256::new();
-    for part in parts {
-        hasher.update((part.len() as u64).to_be_bytes());
-        hasher.update(part.as_bytes());
-    }
-    Sha256Digest::from_sha256_output(hasher.finalize())
 }
 
 #[cfg(test)]

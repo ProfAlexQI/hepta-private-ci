@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod canonical;
 mod channel;
 mod identity;
 mod memory;
