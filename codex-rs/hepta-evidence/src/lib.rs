@@ -6,6 +6,7 @@ mod governance_validation;
 mod historical;
 mod memory_mutation_store;
 mod provider_store;
+mod schema_validation;
 mod store;
 mod summary;
 
