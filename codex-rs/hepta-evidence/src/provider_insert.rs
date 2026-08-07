@@ -23,9 +23,10 @@ pub(crate) async fn insert_provider_intent(
             host_request_binding_id_sha256, thread_id, turn_id,
             request_kind, provider_id, provider_config_sha256, model, transport,
             endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
+            ephemeral_input_sha256, ephemeral_input_witness_sha256,
             previous_response_id_sha256, generate, schema_version,
             payload_json, payload_sha256, recorded_at_ms
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT DO NOTHING",
     )
     .bind(intent.attempt_id.as_str())
@@ -42,6 +43,18 @@ pub(crate) async fn insert_provider_intent(
     .bind(binding.endpoint_sha256.as_str())
     .bind(binding.logical_request_sha256.as_str())
     .bind(binding.wire_semantic_sha256.as_str())
+    .bind(
+        binding
+            .ephemeral_input_sha256
+            .as_ref()
+            .map(Sha256Digest::as_str),
+    )
+    .bind(
+        binding
+            .ephemeral_input_witness_sha256
+            .as_ref()
+            .map(Sha256Digest::as_str),
+    )
     .bind(
         binding
             .previous_response_id_sha256

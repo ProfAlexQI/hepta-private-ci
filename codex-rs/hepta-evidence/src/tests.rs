@@ -580,6 +580,10 @@ fn lineage_two_preserves_reserved_migration_checksums() {
         checksum(5),
         "6a6b54d6e8b599c1e11c131e64245c36c46694a7a722c8130b50d4f3a3400281bd1d1a27116c349e34f00c96feb9f24a"
     );
+    assert_eq!(
+        checksum(6),
+        "2707b5d484e7a9b8a518bcd05b415ddc0757bb095a0049545e71ffcb158c7b775e9fccef5eeca47ca4c6e1f5216b1ad4"
+    );
 }
 
 #[tokio::test]

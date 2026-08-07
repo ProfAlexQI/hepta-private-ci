@@ -80,6 +80,7 @@ async fn blocking_provider_binding_state(
                 host_request_binding_id_sha256, thread_id, turn_id,
                 request_kind, provider_id, provider_config_sha256, model, transport,
                 endpoint_sha256, logical_request_sha256, wire_semantic_sha256,
+                ephemeral_input_sha256, ephemeral_input_witness_sha256,
                 previous_response_id_sha256, generate, schema_version,
                 payload_json, payload_sha256
          FROM provider_invocation_intents
