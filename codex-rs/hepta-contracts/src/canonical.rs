@@ -16,3 +16,16 @@ where
     }
     Sha256Digest::from_sha256_output(hasher.finalize())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::length_delimited_sha256;
+
+    #[test]
+    fn length_delimited_sha256_counts_utf8_bytes() {
+        assert_eq!(
+            length_delimited_sha256(["é"]).as_str(),
+            "1d9b2f68e31ef2b6730c67d7729ca6a523e7f19d8987ca7c72eb93cb3bb9d979"
+        );
+    }
+}
