@@ -173,7 +173,7 @@ impl EnvironmentInfo {
             capabilities: EnvironmentCapabilities {
                 network_proxy_launch: true,
                 capability_discovery_sandbox: true,
-                stable_handle_authorized_read: false,
+                stable_handle_authorized_read: cfg!(any(target_os = "macos", target_os = "linux")),
             },
         }
     }
@@ -975,6 +975,12 @@ mod tests {
         assert_eq!(
             EnvironmentInfo::local().temporary_directories,
             Some(expected)
+        );
+        assert_eq!(
+            EnvironmentInfo::local()
+                .capabilities
+                .stable_handle_authorized_read,
+            cfg!(any(target_os = "macos", target_os = "linux"))
         );
     }
 
