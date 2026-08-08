@@ -5,8 +5,9 @@ implementation is an oracle and evidence source, not a merge target.
 
 ## Frozen baselines
 
-- Upstream spine: `5d89ab65dc9d4d0c55796c11df112b54157922b4`.
-- Old Hepta oracle: `464c87520acc` plus its separately tracked report canary.
+- Candidate spine: execution-time `upstream/main`, currently
+  `6f647caa9bd62b16824cf5efc8e4575090feddf4`.
+- Read-only Hepta oracle: `2f704dc7c1172cefca908852456beccf4d02a5d1`.
 - The old raw-U evidence run, its receipts, and its verification semantics stay
   isolated from vNext work.
 
@@ -26,6 +27,8 @@ implementation is an oracle and evidence source, not a merge target.
    state machines, manifests, or generated projections.
 6. Every migrated family must pass an old-vs-vNext canonical oracle before the
    old implementation can be retired.
+7. Every new public Hepta surface must have a named product caller in
+   `CALLERS.toml`. Caller-zero work remains outside the promotion stack.
 
 ## Migration waves
 
@@ -135,14 +138,15 @@ implementation is an oracle and evidence source, not a merge target.
   mode. Raw host attempt/request identities, endpoint contents, and provider
   material cross the evidence boundary only as SHA-256 digests. Unary remote
   compaction success has its own items-only terminal; missing response IDs,
-  token usage, or end-turn fields are never synthesized. No Core provider send
-  path calls this contributor or obtains its lease yet, so product provider
-  egress is **not** governed by this slice and no exactly-once claim is made.
-- This hook covers ToolRegistry dispatch only. It does **not** govern
-  model/provider invocation, Memory/Intelligence/KG reads or mutations, channel
-  sends, effect intent/ACK, or reconciliation. `HandlerCompleted` is
-  handler-reported status, not proof of an external effect or exactly-once
-  execution. Those remain later M2/M3/M4 increments.
+  token usage, or end-turn fields are never synthesized. Core HTTP, websocket,
+  compact, prewarm, detached-memory, and physical-send paths now use the shared
+  provider attempt/terminal lifecycle. This does not prove exactly-once external
+  delivery.
+- The promoted stack governs ToolRegistry dispatch and the listed provider send
+  paths. Memory recall, memory mutation writers, external channel transport,
+  outbound delivery, effect ACK, retirement, and automatic reconciliation stay
+  outside this candidate. `HandlerCompleted` is handler-reported status, not
+  proof of an external effect or exactly-once execution.
 - The Hepta product resolves its process home as
   `HEPTA_HOME > CODEX_HOME > ~/.hepta` before the shared Codex loader starts.
   Ordinary `codex` keeps its upstream home behavior. Explicit `HEPTA_HOME` and
