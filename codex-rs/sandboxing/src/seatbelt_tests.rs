@@ -21,6 +21,7 @@ use codex_network_proxy::NetworkProxyConfig;
 use codex_network_proxy::NetworkProxyConstraints;
 use codex_network_proxy::NetworkProxyState;
 use codex_network_proxy::build_config_state;
+use codex_protocol::models::PermissionProfile;
 use codex_protocol::permissions::FileSystemAccessMode;
 use codex_protocol::permissions::FileSystemPath;
 use codex_protocol::permissions::FileSystemSandboxEntry;
@@ -41,8 +42,13 @@ use tempfile::TempDir;
 fn assert_seatbelt_denied(stderr: &[u8], path: &Path) {
     let stderr = String::from_utf8_lossy(stderr);
     let expected = format!("bash: {}: Operation not permitted\n", path.display());
+    let expected_with_line = format!(
+        "bash: line 1: {}: Operation not permitted\n",
+        path.display()
+    );
     assert!(
         stderr == expected
+            || stderr == expected_with_line
             || stderr.contains("sandbox-exec: sandbox_apply: Operation not permitted"),
         "unexpected stderr: {stderr}"
     );
@@ -974,21 +980,21 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
             "-DWRITABLE_ROOT_0_EXCLUDED_0={}",
             cwd.canonicalize()
                 .expect("canonicalize cwd")
-                .join(".codex")
+                .join(".git")
                 .display()
         ),
         format!(
             "-DWRITABLE_ROOT_0_EXCLUDED_1={}",
             cwd.canonicalize()
                 .expect("canonicalize cwd")
-                .join(".git")
+                .join(".agents")
                 .display()
         ),
         format!(
             "-DWRITABLE_ROOT_0_EXCLUDED_2={}",
             cwd.canonicalize()
                 .expect("canonicalize cwd")
-                .join(".agents")
+                .join(".codex")
                 .display()
         ),
         format!(
@@ -1276,6 +1282,80 @@ fn create_seatbelt_args_with_read_only_git_pointer_file() {
 }
 
 #[test]
+fn overlapping_writable_roots_preserve_nested_metadata_protection() {
+    let tmp = TempDir::new().expect("tempdir");
+    let broad_root = tmp.path().canonicalize().expect("canonicalize broad root");
+    let workspace_root = broad_root.join("workspace");
+    let protected_dir = workspace_root.join(".codex");
+    fs::create_dir_all(&protected_dir).expect("create protected metadata directory");
+    let protected_config = protected_dir.join("config.toml");
+    fs::write(&protected_config, "sandbox_mode = \"read-only\"\n").expect("write protected config");
+
+    let broad_root =
+        AbsolutePathBuf::from_absolute_path(broad_root).expect("broad root is absolute");
+    let workspace_root = AbsolutePathBuf::from_absolute_path(
+        workspace_root
+            .canonicalize()
+            .expect("canonicalize workspace root"),
+    )
+    .expect("workspace root is absolute");
+    let (file_system_policy, network_sandbox_policy) = PermissionProfile::workspace_write_with(
+        std::slice::from_ref(&broad_root),
+        NetworkSandboxPolicy::Restricted,
+        /*exclude_tmpdir_env_var*/ true,
+        /*exclude_slash_tmp*/ true,
+    )
+    .materialize_project_roots_with_workspace_roots(std::slice::from_ref(&workspace_root))
+    .to_runtime_permissions();
+
+    let allowed_path = broad_root.join("allowed.txt");
+    let args = create_seatbelt_command_args(CreateSeatbeltCommandArgsParams {
+        command: vec![
+            "bash".to_string(),
+            "-c".to_string(),
+            "if printf pwned > \"$1\"; then exit 91; fi; printf allowed > \"$2\"".to_string(),
+            "bash".to_string(),
+            protected_config.to_string_lossy().to_string(),
+            allowed_path.to_string_lossy().to_string(),
+        ],
+        file_system_sandbox_policy: &file_system_policy,
+        network_sandbox_policy,
+        sandbox_policy_cwd: workspace_root.as_path(),
+        enforce_managed_network: false,
+        managed_network: None,
+        environment_id: None,
+        network: None,
+        extra_allow_unix_sockets: &[],
+    })
+    .expect("create Seatbelt command args");
+    let output = Command::new(MACOS_PATH_TO_SEATBELT_EXECUTABLE)
+        .args(args)
+        .current_dir(workspace_root.as_path())
+        .output()
+        .expect("execute Seatbelt command");
+
+    assert!(
+        output.status.success(),
+        "protected write should fail before the broad-root control write: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&protected_config).expect("read protected config"),
+        "sandbox_mode = \"read-only\"\n"
+    );
+    assert_eq!(
+        fs::read_to_string(allowed_path.as_path()).expect("read broad-root control"),
+        "allowed"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&protected_config.to_string_lossy().to_string())
+            && stderr.contains("Operation not permitted"),
+        "expected Seatbelt to deny the nested metadata write: {stderr}"
+    );
+}
+
+#[test]
 fn create_seatbelt_args_for_cwd_as_git_repo() {
     // Create a temporary workspace with two writable roots: one containing
     // top-level workspace metadata paths and one without them.
@@ -1365,20 +1445,20 @@ fn create_seatbelt_args_for_cwd_as_git_repo() {
         "missing {expected_dot_git}: {args:#?}"
     );
     let expected_dot_codex = format!(
-        "-DWRITABLE_ROOT_0_EXCLUDED_1={}",
+        "-DWRITABLE_ROOT_0_EXCLUDED_2={}",
         dot_codex_canonical.to_string_lossy()
     );
     assert!(
         args.contains(&expected_dot_codex),
         "missing {expected_dot_codex}: {args:#?}"
     );
-    let unexpected_dot_agents = format!(
+    let expected_dot_agents = format!(
         "-DWRITABLE_ROOT_0_EXCLUDED_1={}",
         dot_agents_canonical.to_string_lossy()
     );
     assert!(
-        !args.contains(&unexpected_dot_agents),
-        "missing .agents should be handled by regex rather than materialized as a path param: {args:#?}"
+        args.contains(&expected_dot_agents),
+        "missing {expected_dot_agents}: {args:#?}"
     );
     let expected_slash_tmp = format!("-DWRITABLE_ROOT_1={}", slash_tmp.to_string_lossy());
     assert!(
