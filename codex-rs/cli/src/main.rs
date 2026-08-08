@@ -3266,19 +3266,14 @@ mod tests {
     #[test]
     fn plugin_marketplace_help_uses_plugin_namespace() {
         let help = help_from_args(&["codex", "plugin", "marketplace", "--help"]);
-        assert!(
-            help.contains("Usage: codex plugin marketplace [OPTIONS] <COMMAND>"),
-            "{help}"
-        );
+        let root_usage =
+            format!("Usage: {PRODUCT_COMMAND_NAME} plugin marketplace [OPTIONS] <COMMAND>");
+        assert!(help.contains(&root_usage), "{help}");
 
-        for (subcommand, usage) in [
-            ("add", "Usage: codex plugin marketplace add"),
-            ("list", "Usage: codex plugin marketplace list"),
-            ("upgrade", "Usage: codex plugin marketplace upgrade"),
-            ("remove", "Usage: codex plugin marketplace remove"),
-        ] {
+        for subcommand in ["add", "list", "upgrade", "remove"] {
             let help = help_from_args(&["codex", "plugin", "marketplace", subcommand, "--help"]);
-            assert!(help.contains(usage), "{help}");
+            let usage = format!("Usage: {PRODUCT_COMMAND_NAME} plugin marketplace {subcommand}");
+            assert!(help.contains(&usage), "{help}");
         }
     }
 
