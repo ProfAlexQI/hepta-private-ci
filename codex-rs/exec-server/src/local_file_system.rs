@@ -145,9 +145,9 @@ impl LocalFileSystem {
         let mut file = regular_file::open(native_path.as_path())
             .await
             .map_err(redact_file_access_error)?;
-        ensure_open_file_is_linked(&file).await?;
+        ensure_open_file_is_uniquely_linked(&file).await?;
         let final_path = stable_file_path(&file)?;
-        ensure_open_file_is_linked(&file).await?;
+        ensure_open_file_is_uniquely_linked(&file).await?;
         authorize_stable_file_path(final_path.as_path(), sandbox)?;
         file.seek(std::io::SeekFrom::Start(0))
             .await
@@ -165,7 +165,7 @@ impl LocalFileSystem {
                 "authorized file read exceeds the requested limit",
             ));
         }
-        ensure_open_file_is_linked(limited.get_ref()).await?;
+        ensure_open_file_is_uniquely_linked(limited.get_ref()).await?;
         Ok(bytes)
     }
 
@@ -898,14 +898,15 @@ fn authorized_read_limit(max_bytes: usize) -> io::Result<u64> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-async fn ensure_open_file_is_linked(file: &tokio::fs::File) -> io::Result<()> {
+async fn ensure_open_file_is_uniquely_linked(file: &tokio::fs::File) -> io::Result<()> {
     use std::os::unix::fs::MetadataExt;
 
     let metadata = file.metadata().await.map_err(redact_file_access_error)?;
-    if metadata.nlink() == 0 {
-        return Err(authorized_read_error(io::ErrorKind::NotFound));
+    match metadata.nlink() {
+        1 if metadata.is_file() => Ok(()),
+        0 => Err(authorized_read_error(io::ErrorKind::NotFound)),
+        _ => Err(authorized_read_error(io::ErrorKind::PermissionDenied)),
     }
-    Ok(())
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
