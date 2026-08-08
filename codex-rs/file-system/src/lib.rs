@@ -429,7 +429,11 @@ pub trait ExecutorFileSystem: Send + Sync {
     /// Implementations must authorize and read from the same open file handle. They must not
     /// compose path canonicalization, a policy check, and a later path-based read because that
     /// leaves a symlink race. A file larger than `max_bytes` must return an error without exposing
-    /// a partial prefix. Filesystems without a stable-handle implementation fail closed.
+    /// a partial prefix. A supported implementation must define one kernel-enforced path lookup
+    /// as the authorization linearization point and read only from the handle returned by that
+    /// lookup. A later rename does not revoke the already-authorized handle. This contract is
+    /// current-path authority, not historical file provenance. Filesystems without the required
+    /// primitives fail closed.
     fn read_file_bounded_authorized<'a>(
         &'a self,
         _path: &'a PathUri,

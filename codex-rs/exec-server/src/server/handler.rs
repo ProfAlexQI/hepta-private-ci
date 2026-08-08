@@ -177,7 +177,7 @@ impl ExecServerHandler {
 
     pub(crate) fn environment_info(&self) -> Result<EnvironmentInfo, JSONRPCErrorError> {
         self.require_initialized_for("environment info")?;
-        Ok(EnvironmentInfo::local())
+        Ok(crate::local_environment_info())
     }
 
     pub(crate) async fn environment_config_read(

@@ -428,7 +428,9 @@ mod tests {
             .read_file_authorized(params(4096))
             .await
             .expect_err("missing authorized read target must fail closed");
-        let expected = if cfg!(any(target_os = "macos", target_os = "linux")) {
+        let expected = if cfg!(target_os = "macos")
+            && crate::local_file_system::stable_handle_authorized_read_available()
+        {
             not_found("authorized file read target was not found".to_string())
         } else {
             internal_error("bounded authorized file reads are unsupported".to_string())
