@@ -576,6 +576,9 @@
             "guardianv2": {
               "type": "boolean"
             },
+            "hepta_governance": {
+              "type": "boolean"
+            },
             "hooks": {
               "type": "boolean"
             },
@@ -5242,6 +5245,9 @@
           "type": "boolean"
         },
         "guardianv2": {
+          "type": "boolean"
+        },
+        "hepta_governance": {
           "type": "boolean"
         },
         "hooks": {
