@@ -411,17 +411,16 @@ fn install_rewriting_pre_tool_hook(
             ..Default::default()
         },
     };
-    session
-        .services
-        .hooks
-        .store(Arc::new(codex_hooks::Hooks::new(
-            codex_hooks::HooksConfig {
-                feature_enabled: true,
-                bypass_hook_trust: true,
-                plugin_hook_sources: vec![plugin_hook_source],
-                ..Default::default()
-            },
-        )));
+    let (hooks, _async_hook_results) = codex_hooks::Hooks::new(
+        codex_hooks::HooksConfig {
+            feature_enabled: true,
+            bypass_hook_trust: true,
+            plugin_hook_sources: vec![plugin_hook_source],
+            ..Default::default()
+        },
+        session.thread_id(),
+    );
+    session.services.hooks.store(Arc::new(hooks));
 }
 
 fn dispatch_error(
