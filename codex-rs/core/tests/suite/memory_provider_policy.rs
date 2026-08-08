@@ -282,6 +282,7 @@ async fn stream_detached_memory(
         format!("{thread_id}:memory-policy-test"),
         &config_snapshot.session_source,
         &config.cwd,
+        config.permissions.permission_profile(),
         /*sandbox*/ None,
     )
     .await;
