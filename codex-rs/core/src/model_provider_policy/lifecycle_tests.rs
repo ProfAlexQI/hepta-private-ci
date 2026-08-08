@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionRegistryBuilder;
@@ -29,14 +31,15 @@ enum Behavior {
 
 struct RecordingContributor {
     name: &'static str,
-    active: bool,
+    active: Arc<AtomicBool>,
+    set_active_on_begin: Option<(Arc<AtomicBool>, bool)>,
     behavior: Behavior,
     events: Arc<Mutex<Vec<String>>>,
 }
 
 impl ModelProviderPolicyContributor for RecordingContributor {
     fn is_active(&self, _thread_store: &ExtensionData) -> bool {
-        self.active
+        self.active.load(Ordering::SeqCst)
     }
 
     fn begin<'a>(
@@ -47,6 +50,9 @@ impl ModelProviderPolicyContributor for RecordingContributor {
             .lock()
             .expect("events lock should not be poisoned")
             .push(format!("begin:{}", self.name));
+        if let Some((active, value)) = &self.set_active_on_begin {
+            active.store(*value, Ordering::SeqCst);
+        }
         if matches!(self.behavior, Behavior::Pending) {
             return Box::pin(std::future::pending());
         }
@@ -105,12 +111,78 @@ fn contributor(
     behavior: Behavior,
     events: &Arc<Mutex<Vec<String>>>,
 ) -> Arc<dyn ModelProviderPolicyContributor> {
+    dynamic_contributor(
+        name,
+        Arc::new(AtomicBool::new(active)),
+        None,
+        behavior,
+        events,
+    )
+}
+
+fn dynamic_contributor(
+    name: &'static str,
+    active: Arc<AtomicBool>,
+    set_active_on_begin: Option<(Arc<AtomicBool>, bool)>,
+    behavior: Behavior,
+    events: &Arc<Mutex<Vec<String>>>,
+) -> Arc<dyn ModelProviderPolicyContributor> {
     Arc::new(RecordingContributor {
         name,
         active,
+        set_active_on_begin,
         behavior,
         events: Arc::clone(events),
     })
+}
+
+#[tokio::test]
+async fn active_snapshot_is_stable_across_contributor_awaits() {
+    for (next_initially_active, next_value, should_run_next) in
+        [(true, false, true), (false, true, false)]
+    {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let next_active = Arc::new(AtomicBool::new(next_initially_active));
+        let mut builder = ExtensionRegistryBuilder::<crate::config::Config>::new();
+        builder.model_provider_policy_contributor(dynamic_contributor(
+            "first",
+            Arc::new(AtomicBool::new(true)),
+            Some((Arc::clone(&next_active), next_value)),
+            Behavior::Allow {
+                finish_error: false,
+            },
+            &events,
+        ));
+        builder.model_provider_policy_contributor(dynamic_contributor(
+            "next",
+            next_active,
+            None,
+            Behavior::Block,
+            &events,
+        ));
+        let registry = builder.build();
+        let (session_store, thread_store, turn_store) = stores();
+        let digests = [digest('a'), digest('b'), digest('c'), digest('d')];
+
+        let result = begin_model_provider_policy(
+            &registry,
+            input(&session_store, &thread_store, &turn_store, &digests),
+        )
+        .await
+        .expect("snapshot evaluation should not fail");
+        assert_eq!(
+            matches!(result, ModelProviderPolicyBegin::Block { .. }),
+            should_run_next
+        );
+        assert_eq!(
+            events
+                .lock()
+                .expect("events lock should not be poisoned")
+                .iter()
+                .any(|event| event == "begin:next"),
+            should_run_next
+        );
+    }
 }
 
 fn digest(byte: char) -> ModelProviderSha256Digest {
