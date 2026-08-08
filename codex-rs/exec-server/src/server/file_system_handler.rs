@@ -32,6 +32,7 @@ use crate::protocol::FsReadBlockResponse;
 use crate::protocol::FsReadDirectoryEntry;
 use crate::protocol::FsReadDirectoryParams;
 use crate::protocol::FsReadDirectoryResponse;
+use crate::protocol::FsReadFileAuthorizedParams;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsReadFileResponse;
 use crate::protocol::FsRemoveParams;
@@ -126,6 +127,29 @@ impl FileSystemHandler {
         let bytes = self
             .file_system
             .read_file(&params.path, params.sandbox.as_ref())
+            .await
+            .map_err(map_fs_error)?;
+        Ok(FsReadFileResponse {
+            data_base64: STANDARD.encode(bytes),
+        })
+    }
+
+    pub(crate) async fn read_file_authorized(
+        &self,
+        params: FsReadFileAuthorizedParams,
+    ) -> Result<FsReadFileResponse, JSONRPCErrorError> {
+        let max_bytes = usize::try_from(params.max_bytes)
+            .ok()
+            .filter(|max_bytes| *max_bytes > 0 && max_bytes.checked_add(1).is_some())
+            .ok_or_else(|| {
+                invalid_request(
+                    "authorized file read bound must leave room for an overflow sentinel"
+                        .to_string(),
+                )
+            })?;
+        let bytes = self
+            .file_system
+            .read_file_bounded_authorized(&params.path, &params.sandbox, max_bytes)
             .await
             .map_err(map_fs_error)?;
         Ok(FsReadFileResponse {
@@ -296,6 +320,7 @@ mod tests {
 
     use super::*;
     use crate::FileSystemSandboxContext;
+    use crate::protocol::FsReadFileAuthorizedParams;
     use crate::protocol::FsReadFileParams;
     use crate::protocol::FsWriteFileParams;
 
@@ -363,5 +388,54 @@ mod tests {
 
             assert_eq!(response.data_base64, STANDARD.encode("ok"));
         }
+    }
+
+    #[tokio::test]
+    async fn authorized_read_fails_closed_without_a_stable_handle_implementation() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let runtime_paths = ExecServerRuntimePaths::new(
+            std::env::current_exe().expect("current exe"),
+            /*codex_linux_sandbox_exe*/ None,
+        )
+        .expect("runtime paths");
+        let handler = FileSystemHandler::new(runtime_paths);
+        let cwd = PathUri::from_host_native_path(temp_dir.path()).expect("tempdir URI");
+        let params = |max_bytes| FsReadFileAuthorizedParams {
+            path: cwd.join("bounded.txt").expect("file URI"),
+            sandbox: FileSystemSandboxContext::from_permission_profile_with_cwd(
+                codex_protocol::models::PermissionProfile::default(),
+                cwd.clone(),
+            ),
+            max_bytes,
+        };
+        let invalid_bound = handler
+            .read_file_authorized(params(0))
+            .await
+            .expect_err("zero bound must fail closed");
+        let expected_invalid_bound = JSONRPCErrorError {
+            code: -32600,
+            data: None,
+            message: "authorized file read bound must leave room for an overflow sentinel"
+                .to_string(),
+        };
+        assert_eq!(invalid_bound, expected_invalid_bound);
+        let overflowing_bound = handler
+            .read_file_authorized(params(u64::MAX))
+            .await
+            .expect_err("unrepresentable bound must fail closed");
+        assert_eq!(overflowing_bound, expected_invalid_bound);
+        let error = handler
+            .read_file_authorized(params(4096))
+            .await
+            .expect_err("unimplemented authorized read must fail closed");
+
+        assert_eq!(
+            error,
+            JSONRPCErrorError {
+                code: -32603,
+                data: None,
+                message: "bounded authorized file reads are unsupported".to_string(),
+            }
+        );
     }
 }
