@@ -484,8 +484,12 @@ async fn migration_0006_rejects_invalid_payload_shapes_and_rolls_back() {
         };
         assert_ne!(invalid, original, "{corruption} fixture must mutate JSON");
         let invalid_sha256 = Sha256Digest::for_bytes(invalid.as_bytes());
+        let mut fixture_connection = pre_0006
+            .acquire()
+            .await
+            .expect("acquire legacy corruption fixture connection");
         sqlx::query("DROP TRIGGER provider_invocation_intents_no_update")
-            .execute(&pre_0006)
+            .execute(&mut *fixture_connection)
             .await
             .expect("disable immutable trigger for legacy corruption fixture");
         sqlx::query(
@@ -495,7 +499,7 @@ async fn migration_0006_rejects_invalid_payload_shapes_and_rolls_back() {
         .bind(invalid)
         .bind(invalid_sha256.as_str())
         .bind(intent.attempt_id.as_str())
-        .execute(&pre_0006)
+        .execute(&mut *fixture_connection)
         .await
         .expect("write invalid legacy payload shape");
         sqlx::query(
@@ -505,9 +509,10 @@ async fn migration_0006_rejects_invalid_payload_shapes_and_rolls_back() {
                  SELECT RAISE(ABORT, 'provider invocation intents are immutable');
              END",
         )
-        .execute(&pre_0006)
+        .execute(&mut *fixture_connection)
         .await
         .expect("restore pre-0006 immutable trigger");
+        drop(fixture_connection);
         pre_0006.close().await;
 
         let error = match HeptaEvidenceStore::open(&sqlite).await {
