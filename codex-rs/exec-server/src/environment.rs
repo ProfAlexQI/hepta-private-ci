@@ -880,7 +880,7 @@ impl Environment {
     pub async fn info(&self) -> Result<EnvironmentInfo, ExecServerError> {
         match &self.remote_client {
             Some(client) => client.environment_info().await,
-            None => Ok(EnvironmentInfo::local()),
+            None => Ok(crate::local_environment_info()),
         }
     }
 

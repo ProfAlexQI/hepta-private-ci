@@ -173,7 +173,9 @@ impl EnvironmentInfo {
             capabilities: EnvironmentCapabilities {
                 network_proxy_launch: true,
                 capability_discovery_sandbox: true,
-                stable_handle_authorized_read: cfg!(any(target_os = "macos", target_os = "linux")),
+                // The protocol crate cannot probe the executor's filesystem primitives.
+                // The exec-server overrides this conservative default after a real runtime probe.
+                stable_handle_authorized_read: false,
             },
         }
     }
@@ -980,7 +982,7 @@ mod tests {
             EnvironmentInfo::local()
                 .capabilities
                 .stable_handle_authorized_read,
-            cfg!(any(target_os = "macos", target_os = "linux"))
+            false
         );
     }
 
