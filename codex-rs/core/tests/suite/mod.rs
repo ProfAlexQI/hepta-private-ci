@@ -89,6 +89,8 @@ mod memory_provider_policy;
 mod model_overrides;
 mod model_provider_policy;
 mod model_provider_policy_compaction;
+mod model_provider_policy_http_ephemeral;
+mod model_provider_policy_http_ephemeral_retry;
 mod model_runtime_selectors;
 mod model_switching;
 mod model_visible_layout;
