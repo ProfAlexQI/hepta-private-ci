@@ -38,3 +38,17 @@ reason = "No product caller; proof command remains outside the promotion stack. 
 [[excluded]]
 crate = "codex-hepta-memory"
 reason = "No product caller; six recall-only commits are deferred rather than promoting a caller-zero public surface."
+
+[[qualification]]
+slice = "S2_memory_recall"
+composition = "writer_not_composed"
+persistent_telemetry = false
+otel_telemetry = false
+zero_event_interpretation = "invalid_until_writer_is_composed"
+promotion_eligible = false
+
+[[qualification]]
+slice = "S5_evidence_summary"
+composition = "reader_not_composed"
+zero_event_interpretation = "not_equivalent_to_zero_authoritative_events"
+promotion_eligible = false

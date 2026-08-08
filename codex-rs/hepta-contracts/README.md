@@ -76,6 +76,11 @@ implementation is an oracle and evidence source, not a merge target.
    authorize new Hepta mutations. A shadow backend failure is warn-and-allow
    and must not be reported as durable evidence.
 4. Static callers and persistent telemetry show the replacement is complete.
+   A caller-zero writer is reported as `writer_not_composed`; it must never be
+   collapsed into a zero-event observation. S2 persistent/OTel hit, failure,
+   and latency telemetry remains ineligible until a product writer is named in
+   `CALLERS.toml`. S5 similarly cannot report authoritative zeroes while its
+   reader is not composed.
 5. An operator receipt authorizes retirement.
 6. Exact-SHA local, Nix, and hosted receipts are refreshed only after the
    candidate SHA is clean and frozen.
