@@ -1,5 +1,6 @@
 {
   cmake,
+  fetchurl,
   llvmPackages,
   openssl,
   libcap ? null,
@@ -10,10 +11,29 @@
   version ? "0.0.0",
   ...
 }:
+let
+  rustyV8ReleaseUrl = "https://github.com/openai/codex/releases/download/rusty-v8-v150.4.0";
+  rustyV8 = lib.optionalAttrs (stdenv.hostPlatform.system == "x86_64-linux") {
+    archive = fetchurl {
+      url = "${rustyV8ReleaseUrl}/librusty_v8_ptrcomp_sandbox_release_x86_64-unknown-linux-gnu.a.gz";
+      hash = "sha256-o1x10fJuapg4haRbM0kKTr5U8FBQVosyuJz7QhswtYM=";
+    };
+    binding = fetchurl {
+      url = "${rustyV8ReleaseUrl}/src_binding_ptrcomp_sandbox_release_x86_64-unknown-linux-gnu.rs";
+      hash = "sha256-dyeCauR5vbZF6Acjn7EtH44uI956bPFvXuWSaQ0dhQY=";
+    };
+  };
+in
 rustPlatform.buildRustPackage (_: {
-  env.PKG_CONFIG_PATH = lib.makeSearchPathOutput "dev" "lib/pkgconfig" (
-    [ openssl ] ++ lib.optionals stdenv.isLinux [ libcap ]
-  );
+  env = {
+    PKG_CONFIG_PATH = lib.makeSearchPathOutput "dev" "lib/pkgconfig" (
+      [ openssl ] ++ lib.optionals stdenv.isLinux [ libcap ]
+    );
+  }
+  // lib.optionalAttrs (stdenv.hostPlatform.system == "x86_64-linux") {
+    RUSTY_V8_ARCHIVE = rustyV8.archive;
+    RUSTY_V8_SRC_BINDING_PATH = rustyV8.binding;
+  };
   pname = "codex-rs";
   inherit version;
   cargoLock.lockFile = ./Cargo.lock;
@@ -33,7 +53,8 @@ rustPlatform.buildRustPackage (_: {
     llvmPackages.libclang.lib
     openssl
     pkg-config
-  ] ++ lib.optionals stdenv.isLinux [
+  ]
+  ++ lib.optionals stdenv.isLinux [
     libcap
   ];
 
