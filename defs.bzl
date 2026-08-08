@@ -386,6 +386,7 @@ def codex_rust_crate(
             deps = all_crate_deps() + maybe_deps + deps_extra,
             edition = crate_edition,
             rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS,
+            rustc_env = rustc_env | {"CARGO_BIN_NAME": binary},
             srcs = native.glob(["src/**/*.rs"]),
             visibility = ["//visibility:public"],
         )
