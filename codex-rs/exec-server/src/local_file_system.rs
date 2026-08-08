@@ -1,3 +1,7 @@
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use codex_protocol::models::PermissionProfile;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use codex_protocol::permissions::ReadDenyMatcher;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
 use std::path::Path;
@@ -8,6 +12,8 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tokio::io;
 use tokio::io::AsyncReadExt;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use tokio::io::AsyncSeekExt;
 use tokio_util::io::ReaderStream;
 
 use crate::CopyOptions;
@@ -125,6 +131,44 @@ impl LocalFileSystem {
         file_system.read_file(path, sandbox).await
     }
 
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    async fn read_file_bounded_authorized(
+        &self,
+        path: &PathUri,
+        sandbox: &FileSystemSandboxContext,
+        max_bytes: usize,
+    ) -> FileSystemResult<Vec<u8>> {
+        let read_limit = authorized_read_limit(max_bytes)?;
+        let native_path = path
+            .to_abs_path()
+            .map_err(|_| authorized_read_error(io::ErrorKind::InvalidInput))?;
+        let mut file = regular_file::open(native_path.as_path())
+            .await
+            .map_err(redact_file_access_error)?;
+        ensure_open_file_is_linked(&file).await?;
+        let final_path = stable_file_path(&file)?;
+        ensure_open_file_is_linked(&file).await?;
+        authorize_stable_file_path(final_path.as_path(), sandbox)?;
+        file.seek(std::io::SeekFrom::Start(0))
+            .await
+            .map_err(redact_file_access_error)?;
+
+        let mut bytes = Vec::with_capacity(max_bytes.min(FILE_READ_CHUNK_SIZE));
+        let mut limited = file.take(read_limit);
+        limited
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(redact_file_access_error)?;
+        if bytes.len() > max_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "authorized file read exceeds the requested limit",
+            ));
+        }
+        ensure_open_file_is_linked(limited.get_ref()).await?;
+        Ok(bytes)
+    }
+
     async fn read_file_stream(
         &self,
         path: &PathUri,
@@ -221,6 +265,18 @@ impl ExecutorFileSystem for LocalFileSystem {
         sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
         Box::pin(LocalFileSystem::read_file(self, path, sandbox))
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn read_file_bounded_authorized<'a>(
+        &'a self,
+        path: &'a PathUri,
+        sandbox: &'a FileSystemSandboxContext,
+        max_bytes: usize,
+    ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
+        Box::pin(LocalFileSystem::read_file_bounded_authorized(
+            self, path, sandbox, max_bytes,
+        ))
     }
 
     fn read_file_stream<'a>(
@@ -829,6 +885,125 @@ fn reject_platform_sandbox_context(sandbox: Option<&FileSystemSandboxContext>) -
     Ok(())
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn authorized_read_limit(max_bytes: usize) -> io::Result<u64> {
+    let read_limit = max_bytes
+        .checked_add(1)
+        .and_then(|limit| u64::try_from(limit).ok())
+        .filter(|_| {
+            max_bytes > 0 && u64::try_from(max_bytes).is_ok_and(|max| max <= MAX_READ_FILE_BYTES)
+        })
+        .ok_or_else(|| authorized_read_error(io::ErrorKind::InvalidInput))?;
+    Ok(read_limit)
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+async fn ensure_open_file_is_linked(file: &tokio::fs::File) -> io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = file.metadata().await.map_err(redact_file_access_error)?;
+    if metadata.nlink() == 0 {
+        return Err(authorized_read_error(io::ErrorKind::NotFound));
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn authorize_stable_file_path(
+    final_path: &Path,
+    sandbox: &FileSystemSandboxContext,
+) -> io::Result<()> {
+    let cwd = match sandbox.cwd.as_ref() {
+        Some(cwd) => cwd
+            .to_abs_path()
+            .map_err(|_| authorized_read_error(io::ErrorKind::InvalidInput))?,
+        None if sandbox.has_cwd_dependent_permissions() => {
+            return Err(authorized_read_error(io::ErrorKind::InvalidInput));
+        }
+        None => AbsolutePathBuf::from_absolute_path(
+            current_sandbox_cwd()
+                .map_err(|_| authorized_read_error(io::ErrorKind::InvalidInput))?,
+        )
+        .map_err(|_| authorized_read_error(io::ErrorKind::InvalidInput))?,
+    };
+    let workspace_roots = sandbox
+        .workspace_roots
+        .iter()
+        .map(|root| {
+            root.to_abs_path()
+                .map_err(|_| authorized_read_error(io::ErrorKind::InvalidInput))
+        })
+        .collect::<io::Result<Vec<_>>>()?;
+    let permissions: PermissionProfile = sandbox
+        .permissions
+        .clone()
+        .try_into()
+        .map_err(|_| authorized_read_error(io::ErrorKind::InvalidInput))?;
+    let policy = permissions
+        .materialize_project_roots_with_workspace_roots(&workspace_roots)
+        .file_system_sandbox_policy();
+    let denied_by_pattern = ReadDenyMatcher::new(&policy, cwd.as_path())
+        .is_some_and(|matcher| matcher.is_read_denied(final_path));
+    if denied_by_pattern || !policy.can_read_path_with_cwd(final_path, cwd.as_path()) {
+        return Err(authorized_read_error(io::ErrorKind::PermissionDenied));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn stable_file_path(file: &tokio::fs::File) -> io::Result<AbsolutePathBuf> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::ffi::OsStrExt;
+
+    let path = std::fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))
+        .map_err(redact_file_access_error)?;
+    if path.as_os_str().as_bytes().ends_with(b" (deleted)") {
+        return Err(authorized_read_error(io::ErrorKind::NotFound));
+    }
+    AbsolutePathBuf::from_absolute_path(path)
+        .map_err(|_| authorized_read_error(io::ErrorKind::PermissionDenied))
+}
+
+#[cfg(target_os = "macos")]
+fn stable_file_path(file: &tokio::fs::File) -> io::Result<AbsolutePathBuf> {
+    use std::ffi::OsStr;
+    use std::os::fd::AsRawFd;
+    use std::os::unix::ffi::OsStrExt;
+
+    let mut buffer = [0_u8; libc::PATH_MAX as usize];
+    // SAFETY: `file` owns a live fd and `buffer` is writable for PATH_MAX bytes.
+    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETPATH, buffer.as_mut_ptr()) } == -1 {
+        return Err(redact_file_access_error(io::Error::last_os_error()));
+    }
+    let length = buffer
+        .iter()
+        .position(|byte| *byte == 0)
+        .ok_or_else(|| authorized_read_error(io::ErrorKind::PermissionDenied))?;
+    let path = PathBuf::from(OsStr::from_bytes(&buffer[..length]));
+    AbsolutePathBuf::from_absolute_path(path)
+        .map_err(|_| authorized_read_error(io::ErrorKind::PermissionDenied))
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn redact_file_access_error(error: io::Error) -> io::Error {
+    if error.kind() == io::ErrorKind::NotFound {
+        authorized_read_error(io::ErrorKind::NotFound)
+    } else {
+        authorized_read_error(io::ErrorKind::PermissionDenied)
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn authorized_read_error(kind: io::ErrorKind) -> io::Error {
+    let message = match kind {
+        io::ErrorKind::NotFound => "authorized file read target was not found",
+        io::ErrorKind::PermissionDenied => "authorized file read denied",
+        io::ErrorKind::InvalidInput => "authorized file read request is invalid",
+        _ => "authorized file read failed",
+    };
+    io::Error::new(kind, message)
+}
+
 fn copy_dir_recursive(source: &Path, target: &Path) -> io::Result<()> {
     std::fs::create_dir_all(target)?;
     for entry in std::fs::read_dir(source)? {
@@ -928,6 +1103,10 @@ fn system_time_to_unix_ms(time: SystemTime) -> i64 {
 #[cfg(all(test, any(unix, windows)))]
 #[path = "local_file_system_path_uri_tests.rs"]
 mod path_uri_tests;
+
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[path = "local_file_system_authorized_read_tests.rs"]
+mod authorized_read_tests;
 
 #[cfg(all(test, unix))]
 mod tests {
