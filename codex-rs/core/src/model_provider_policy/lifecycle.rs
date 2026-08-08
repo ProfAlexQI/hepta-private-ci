@@ -6,6 +6,7 @@ use codex_extension_api::ModelProviderPolicyDecision;
 use codex_extension_api::ModelProviderPolicyError;
 use codex_extension_api::ModelProviderPolicyFuture;
 use codex_extension_api::ModelProviderTerminal;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -28,6 +29,32 @@ pub(crate) enum ModelProviderPolicyBegin {
     },
 }
 
+/// Exact policy contributors active before any asynchronous request composition.
+pub(crate) struct ActiveModelProviderPolicies {
+    contributors: Vec<Arc<dyn codex_extension_api::ModelProviderPolicyContributor>>,
+}
+
+impl ActiveModelProviderPolicies {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.contributors.is_empty()
+    }
+}
+
+/// Freezes policy activation so extension awaits cannot change this attempt's gate set.
+pub(crate) fn active_model_provider_policies<C: Sync>(
+    registry: &ExtensionRegistry<C>,
+    thread_store: &ExtensionData,
+) -> ActiveModelProviderPolicies {
+    ActiveModelProviderPolicies {
+        contributors: registry
+            .model_provider_policy_contributors()
+            .iter()
+            .filter(|contributor| contributor.is_active(thread_store))
+            .cloned()
+            .collect(),
+    }
+}
+
 /// Returns whether constructing a provider-policy binding is necessary.
 pub(crate) fn has_active_model_provider_policy<C: Sync>(
     registry: &ExtensionRegistry<C>,
@@ -48,14 +75,19 @@ pub(crate) async fn begin_model_provider_policy<C: Sync>(
     registry: &ExtensionRegistry<C>,
     input: ModelProviderInvocationInput<'_>,
 ) -> Result<ModelProviderPolicyBegin, ModelProviderPolicyError> {
-    let active = registry
-        .model_provider_policy_contributors()
-        .iter()
-        .filter(|contributor| contributor.is_active(input.thread_store));
+    let active = active_model_provider_policies(registry, input.thread_store);
+    begin_active_model_provider_policy(active, input).await
+}
+
+/// Runs only the contributors captured by `active_model_provider_policies`.
+pub(crate) async fn begin_active_model_provider_policy(
+    active: ActiveModelProviderPolicies,
+    input: ModelProviderInvocationInput<'_>,
+) -> Result<ModelProviderPolicyBegin, ModelProviderPolicyError> {
     let supervisor = LeaseSupervisor::new();
     let mut lease_count = 0usize;
 
-    for contributor in active {
+    for contributor in active.contributors {
         match contributor.begin(copy_input(&input)).await {
             Ok(ModelProviderPolicyDecision::Allow { lease }) => {
                 supervisor.add(lease)?;
