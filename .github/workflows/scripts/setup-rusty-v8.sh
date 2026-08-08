@@ -4,9 +4,14 @@ set -euo pipefail
 target="${1:?target triple is required}"
 destination="${2:?destination directory is required}"
 env_file="${3:?environment output file is required}"
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+repo_root="${4:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+checksums_override="${5:-}"
 
 if command -v cygpath >/dev/null 2>&1; then
+  repo_root="$(cygpath --unix "$repo_root")"
+  if [[ -n "$checksums_override" ]]; then
+    checksums_override="$(cygpath --unix "$checksums_override")"
+  fi
   destination="$(cygpath --unix "$destination")"
   env_file="$(cygpath --unix "$env_file")"
 fi
@@ -28,7 +33,7 @@ else
 fi
 binding_name="src_binding_${profile}_${target}.rs"
 checksums_name="rusty_v8_${profile}_${target}.sha256"
-checksums_path="${repo_root}/third_party/v8/rusty_v8_${version//./_}.sha256"
+checksums_path="${checksums_override:-${repo_root}/third_party/v8/rusty_v8_${version//./_}.sha256}"
 
 if [[ ! -f "$checksums_path" ]]; then
   echo "Missing checked V8 checksum manifest: ${checksums_path}" >&2

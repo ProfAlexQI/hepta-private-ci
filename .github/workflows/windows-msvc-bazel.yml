@@ -1,67 +1,263 @@
 name: Bazel Windows MSVC
-run-name: Bazel Windows MSVC @ ${{ github.ref_name }}
+run-name: Hepta vNext Windows exact candidate @ 478f1396f6
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/windows-msvc-bazel.yml
-      - .github/workflows/scripts/export-msvc-env.ps1
-      - .github/workflows/scripts/setup-rusty-v8.sh
-      - MODULE.bazel
-      - MODULE.bazel.lock
-      - patches/**
-      - third_party/**
-      - codex-rs/**
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/windows-msvc-bazel.yml
-      - .github/workflows/scripts/export-msvc-env.ps1
-      - .github/workflows/scripts/setup-rusty-v8.sh
-      - MODULE.bazel
-      - MODULE.bazel.lock
-      - patches/**
-      - third_party/**
-      - codex-rs/**
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  CANDIDATE_REF: hepta/vnext-s4-candidate-478f1396f6
+  CANDIDATE_SHA: 478f1396f68de7e51bf1596598dba71e0a7cfa12
+  CANDIDATE_TREE: 95c7a72d151a49b54ea4a8e591007b86be98b5cb
+  CANDIDATE_TREE_ENTRIES: "6142"
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
 
 concurrency:
   group: bazel-windows-msvc-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test-windows-msvc:
-    name: Bazel test x86_64-pc-windows-msvc
+  cargo_windows_msvc:
+    name: Cargo Hepta qualification x86_64-pc-windows-msvc
     runs-on: windows-2025
-    timeout-minutes: 90
+    timeout-minutes: 240
 
     steps:
       - name: Enable Git long paths
         shell: pwsh
         run: git config --global core.longpaths true
 
-      - name: Check out source
+      - name: Check out CI driver
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
+      - name: Check out exact candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 478f1396f68de7e51bf1596598dba71e0a7cfa12
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact candidate identity
+        id: candidate_identity
+        shell: pwsh
+        run: |
+          $head = (git -C source rev-parse HEAD).Trim()
+          $tree = (git -C source rev-parse "HEAD^{tree}").Trim()
+          $entries = (git -C source ls-tree -r --name-only HEAD | Measure-Object -Line).Lines
+          $dirty = @(git -C source status --porcelain)
+          if ($head -cne $env:CANDIDATE_SHA) { throw "candidate HEAD mismatch: $head" }
+          if ($tree -cne $env:CANDIDATE_TREE) { throw "candidate tree mismatch: $tree" }
+          if ($entries -ne [int]$env:CANDIDATE_TREE_ENTRIES) { throw "candidate tree entry mismatch: $entries" }
+          if ($dirty.Count -ne 0) { throw "candidate checkout is dirty: $($dirty -join '; ')" }
+
+      - name: Install Rust 1.95.0
+        id: rust_toolchain
+        uses: dtolnay/rust-toolchain@f133eefe930d61f0d9371efd474daf0125ed3dd1 # 1.95.0
+
+      - name: Set up candidate rusty_v8 inputs
+        id: rusty_v8
+        shell: bash
+        run: bash .github/workflows/scripts/setup-rusty-v8.sh x86_64-pc-windows-msvc "$RUNNER_TEMP/rusty-v8/x86_64-pc-windows-msvc" "$GITHUB_ENV" "$GITHUB_WORKSPACE/source" "$GITHUB_WORKSPACE/.github/workflows/scripts/hepta-vnext-rusty-v8-150.4.0-windows.sha256"
+
+      - name: Check product composition
+        id: product_composition
+        working-directory: source
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/hepta-windows-cargo.log" -Force
+          try {
+            cargo check --locked --manifest-path codex-rs/Cargo.toml -p codex-app-server -p codex-mcp-server -p codex-cli
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Stop-Transcript
+          }
+
+      - name: Test Hepta contracts and product lifecycle
+        id: cargo_tests
+        working-directory: source
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/hepta-windows-cargo.log" -Append
+          try {
+            cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-evidence
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-governance
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-core --lib model_provider_policy
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-core --test all model_provider_policy_http_ephemeral
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Stop-Transcript
+          }
+
+      - name: Require Cargo transcript evidence
+        id: cargo_evidence
+        if: success()
+        shell: pwsh
+        run: |
+          $cargoLog = "$env:RUNNER_TEMP/hepta-windows-cargo.log"
+          if (-not (Test-Path $cargoLog -PathType Leaf)) { throw "missing Cargo transcript" }
+          if ((Get-Item $cargoLog).Length -le 0) { throw "empty Cargo transcript" }
+
+      - name: Write Cargo qualification receipt
+        if: always() && !cancelled()
+        shell: pwsh
+        run: |
+          $head = $null
+          $tree = $null
+          $entries = $null
+          if (Test-Path source/.git) {
+            $headOutput = @(git -C source rev-parse HEAD 2>$null)
+            if ($LASTEXITCODE -eq 0) { $head = ($headOutput -join "`n").Trim() }
+            $treeOutput = @(git -C source rev-parse "HEAD^{tree}" 2>$null)
+            if ($LASTEXITCODE -eq 0) { $tree = ($treeOutput -join "`n").Trim() }
+            $entryOutput = @(git -C source ls-tree -r --name-only HEAD 2>$null)
+            if ($LASTEXITCODE -eq 0) { $entries = $entryOutput.Count }
+          }
+          $rustcVersion = if (Get-Command rustc -ErrorAction SilentlyContinue) { ((rustc --version) -join "`n") } else { "unavailable" }
+          $cargoVersion = if (Get-Command cargo -ErrorAction SilentlyContinue) { ((cargo --version) -join "`n") } else { "unavailable" }
+          $cargoLog = $null
+          if (Test-Path "$env:RUNNER_TEMP/hepta-windows-cargo.log" -PathType Leaf) {
+            $logFile = Get-Item "$env:RUNNER_TEMP/hepta-windows-cargo.log"
+            $cargoLog = [ordered]@{
+              bytes = $logFile.Length
+              sha256 = (Get-FileHash -Algorithm SHA256 $logFile.FullName).Hash.ToLowerInvariant()
+            }
+          }
+          $receipt = [ordered]@{
+            schema_version = 1
+            qualification = "hepta-vnext-windows-cargo"
+            candidate_ref = $env:CANDIDATE_REF
+            candidate_sha = $env:CANDIDATE_SHA
+            observed_head = $head
+            candidate_tree = $env:CANDIDATE_TREE
+            observed_tree = $tree
+            tree_entries = $entries
+            driver_sha = $env:GITHUB_SHA
+            workflow_run_id = $env:GITHUB_RUN_ID
+            workflow_run_attempt = $env:GITHUB_RUN_ATTEMPT
+            status_before_evidence_upload = "${{ job.status }}"
+            steps = [ordered]@{
+              candidate_identity = "${{ steps.candidate_identity.outcome }}"
+              rust_toolchain = "${{ steps.rust_toolchain.outcome }}"
+              rusty_v8 = "${{ steps.rusty_v8.outcome }}"
+              product_composition = "${{ steps.product_composition.outcome }}"
+              cargo_tests = "${{ steps.cargo_tests.outcome }}"
+              cargo_evidence = "${{ steps.cargo_evidence.outcome }}"
+            }
+            runner = [ordered]@{
+              os = $env:RUNNER_OS
+              arch = $env:RUNNER_ARCH
+              name = $env:RUNNER_NAME
+              image_os = $env:ImageOS
+              image_version = $env:ImageVersion
+            }
+            rustc = $rustcVersion
+            cargo = $cargoVersion
+            rusty_v8 = [ordered]@{
+              version = "150.4.0"
+              archive_sha256 = "732ec5da4243aa166799780c8519a5eea6f32f6e47657a323342794dc3c239d6"
+              binding_sha256 = "dabf78ba1faac127660db9862b1d0354175c71b8db2d4fcb5bacbd9c93576b16"
+            }
+            cargo_log = $cargoLog
+            commands = @(
+              "cargo check --locked --manifest-path codex-rs/Cargo.toml -p codex-app-server -p codex-mcp-server -p codex-cli",
+              "cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts",
+              "cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-evidence",
+              "cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-governance",
+              "cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-core --lib model_provider_policy",
+              "cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-core --test all model_provider_policy_http_ephemeral"
+            )
+          }
+          $receipt | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/hepta-windows-cargo-receipt.json"
+
+      - name: Upload Cargo transcript
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-windows-cargo-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-windows-cargo.log
+          if-no-files-found: error
+
+      - name: Upload Cargo qualification receipt
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-windows-cargo-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-windows-cargo-receipt.json
+          if-no-files-found: error
+
+      - name: Check for clean candidate and driver worktrees
+        if: always() && !cancelled()
+        shell: pwsh
+        run: |
+          $head = (git -C source rev-parse HEAD).Trim()
+          $tree = (git -C source rev-parse "HEAD^{tree}").Trim()
+          $dirty = @(git -C source status --porcelain --untracked-files=all)
+          if ($head -cne $env:CANDIDATE_SHA) { throw "candidate HEAD changed: $head" }
+          if ($tree -cne $env:CANDIDATE_TREE) { throw "candidate tree changed: $tree" }
+          if ($dirty.Count -ne 0) { throw "candidate worktree changed: $($dirty -join '; ')" }
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  bazel_windows_msvc:
+    name: Bazel Hepta qualification x86_64-pc-windows-msvc
+    runs-on: windows-2025
+    timeout-minutes: 240
+
+    steps:
+      - name: Enable Git long paths
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Check out CI driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Check out exact candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 478f1396f68de7e51bf1596598dba71e0a7cfa12
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact candidate identity
+        id: candidate_identity
+        shell: pwsh
+        run: |
+          $head = (git -C source rev-parse HEAD).Trim()
+          $tree = (git -C source rev-parse "HEAD^{tree}").Trim()
+          $entries = (git -C source ls-tree -r --name-only HEAD | Measure-Object -Line).Lines
+          $dirty = @(git -C source status --porcelain)
+          if ($head -cne $env:CANDIDATE_SHA) { throw "candidate HEAD mismatch: $head" }
+          if ($tree -cne $env:CANDIDATE_TREE) { throw "candidate tree mismatch: $tree" }
+          if ($entries -ne [int]$env:CANDIDATE_TREE_ENTRIES) { throw "candidate tree entry mismatch: $entries" }
+          if ($dirty.Count -ne 0) { throw "candidate checkout is dirty: $($dirty -join '; ')" }
+
       - name: Install Bazelisk
+        id: bazelisk
         shell: pwsh
         run: choco install bazelisk --yes --no-progress
 
-      - name: Set up sandboxed rusty_v8
-        shell: bash
-        run: bash .github/workflows/scripts/setup-rusty-v8.sh x86_64-pc-windows-msvc "$RUNNER_TEMP/rusty-v8/x86_64-pc-windows-msvc" "$GITHUB_ENV"
-
       - name: Export the x64 MSVC developer environment
+        id: msvc
         shell: pwsh
         run: .github/workflows/scripts/export-msvc-env.ps1
 
-      - name: Run the native Windows Bazel suite
+      - name: Run the native Windows Hepta Bazel targets
+        id: bazel_targets
+        working-directory: source
         shell: pwsh
         run: |
           $executionLogDirectory = Join-Path $env:RUNNER_TEMP "bazel-execution-logs"
@@ -93,39 +289,259 @@ jobs:
           }
 
           $bazelArguments = @(
-              "test",
               "--config=ci-windows",
               "--platforms=//:windows_x86_64_msvc",
               "--host_platform=//:windows_x86_64_msvc",
               "--extra_execution_platforms=//:windows_x86_64_msvc",
               "--extra_toolchains=//:windows_msvc_tests_on_msvc_host_toolchain",
               "--jobs=8",
-              "--test_tag_filters=-argument-comment-lint",
-              "--test_verbose_timeout_warnings",
-              "--execution_log_compact_file=$executionLogDirectory/execution-log.zst",
               "--repo_contents_cache=$env:RUNNER_TEMP/bazel-repo-contents-cache"
           )
-          $targets = @(
-              "//...",
-              "-//third_party/v8:all",
-              "-//codex-rs/v8-poc:v8-poc-unit-tests"
+          $testTargets = @(
+              "//codex-rs/hepta-contracts:hepta-contracts-unit-tests",
+              "//codex-rs/hepta-evidence:hepta-evidence-unit-tests",
+              "//codex-rs/ext/hepta-governance:hepta-governance-unit-tests"
+          )
+          $buildTargets = @(
+              "//codex-rs/hepta-contracts:hepta-contracts",
+              "//codex-rs/hepta-evidence:hepta-evidence",
+              "//codex-rs/ext/hepta-governance:hepta-governance",
+              "//codex-rs/cli:hepta"
           )
 
-          & bazelisk @bazelArguments @environmentArguments "--" @targets
+          & bazelisk "test" @bazelArguments @environmentArguments "--test_tag_filters=-argument-comment-lint" "--test_output=errors" "--test_verbose_timeout_warnings" "--execution_log_compact_file=$executionLogDirectory/tests-execution-log.zst" "--" @testTargets
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+          & bazelisk "build" @bazelArguments @environmentArguments "--execution_log_compact_file=$executionLogDirectory/builds-execution-log.zst" "--" @buildTargets
           if ($LASTEXITCODE -ne 0) {
               exit $LASTEXITCODE
           }
 
-      - name: Upload Bazel execution logs
-        if: always() && !cancelled()
-        continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: bazel-execution-logs-windows-x86_64-pc-windows-msvc
-          path: ${{ runner.temp }}/bazel-execution-logs
-          if-no-files-found: ignore
+      - name: Require complete Bazel execution evidence
+        id: bazel_evidence
+        if: success()
+        shell: pwsh
+        run: |
+          $testLog = "$env:RUNNER_TEMP/bazel-execution-logs/tests-execution-log.zst"
+          $buildLog = "$env:RUNNER_TEMP/bazel-execution-logs/builds-execution-log.zst"
+          if (-not (Test-Path $testLog -PathType Leaf)) { throw "missing Bazel test execution log" }
+          if (-not (Test-Path $buildLog -PathType Leaf)) { throw "missing Bazel build execution log" }
+          if ((Get-Item $testLog).Length -le 0) { throw "empty Bazel test execution log" }
+          if ((Get-Item $buildLog).Length -le 0) { throw "empty Bazel build execution log" }
+          $heptaTestLogs = @(Get-ChildItem "source/bazel-testlogs/codex-rs" -Filter test.log -File -Recurse -ErrorAction SilentlyContinue | Where-Object {
+            $_.FullName -match "hepta-contracts|hepta-evidence|hepta-governance"
+          })
+          if ($heptaTestLogs.Count -lt 3) { throw "missing Hepta Bazel test logs: found $($heptaTestLogs.Count)" }
+          foreach ($testEvidence in $heptaTestLogs) {
+            if ($testEvidence.Length -le 0) { throw "empty Hepta Bazel test log: $($testEvidence.FullName)" }
+          }
 
-      - name: Check for a clean worktree
+      - name: Verify the Hepta Windows binary
+        id: hepta_binary
+        working-directory: source
+        shell: pwsh
+        run: |
+          $binaryPath = "bazel-bin/codex-rs/cli/hepta.exe"
+          if (-not (Test-Path $binaryPath -PathType Leaf)) { throw "Bazel did not produce hepta.exe" }
+          $binary = Get-Item $binaryPath
+          $version = @(& $binary.FullName --version)
+          if ($LASTEXITCODE -ne 0) { throw "hepta.exe --version failed with exit code $LASTEXITCODE" }
+          if ($version.Count -eq 0 -or [string]::IsNullOrWhiteSpace(($version -join "`n"))) { throw "hepta.exe --version returned no identity" }
+          $artifactDirectory = "$env:RUNNER_TEMP/hepta-windows-binary"
+          New-Item -ItemType Directory -Force -Path $artifactDirectory | Out-Null
+          Copy-Item -Force $binary.FullName "$artifactDirectory/hepta.exe"
+          $binaryReceipt = [ordered]@{
+            source_path = $binary.FullName
+            artifact_name = "hepta.exe"
+            bytes = $binary.Length
+            sha256 = (Get-FileHash -Algorithm SHA256 $binary.FullName).Hash.ToLowerInvariant()
+            version = ($version -join "`n")
+          }
+          $binaryReceipt | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 "$artifactDirectory/hepta-binary-receipt.json"
+
+      - name: Write Bazel qualification receipt
         if: always() && !cancelled()
         shell: pwsh
-        run: git diff --exit-code
+        run: |
+          $head = $null
+          $tree = $null
+          $entries = $null
+          if (Test-Path source/.git) {
+            $headOutput = @(git -C source rev-parse HEAD 2>$null)
+            if ($LASTEXITCODE -eq 0) { $head = ($headOutput -join "`n").Trim() }
+            $treeOutput = @(git -C source rev-parse "HEAD^{tree}" 2>$null)
+            if ($LASTEXITCODE -eq 0) { $tree = ($treeOutput -join "`n").Trim() }
+            $entryOutput = @(git -C source ls-tree -r --name-only HEAD 2>$null)
+            if ($LASTEXITCODE -eq 0) { $entries = $entryOutput.Count }
+          }
+          $artifacts = @()
+          Get-ChildItem "$env:RUNNER_TEMP/bazel-execution-logs" -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $artifacts += [ordered]@{
+              name = $_.Name
+              bytes = $_.Length
+              sha256 = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            }
+          }
+          $testLogs = @()
+          Get-ChildItem "source/bazel-testlogs/codex-rs" -Filter test.log -File -Recurse -ErrorAction SilentlyContinue | Where-Object {
+            $_.FullName -match "hepta-contracts|hepta-evidence|hepta-governance"
+          } | ForEach-Object {
+            $testLogs += [ordered]@{
+              path = $_.FullName
+              bytes = $_.Length
+              sha256 = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            }
+          }
+          $bazelVersion = if (Get-Command bazelisk -ErrorAction SilentlyContinue) { ((bazelisk version) -join "`n") } else { "unavailable" }
+          $binaryReceipt = $null
+          $binaryReceiptPath = "$env:RUNNER_TEMP/hepta-windows-binary/hepta-binary-receipt.json"
+          if (Test-Path $binaryReceiptPath -PathType Leaf) {
+            $binaryReceipt = Get-Content -Raw $binaryReceiptPath | ConvertFrom-Json
+          }
+          $receipt = [ordered]@{
+            schema_version = 1
+            qualification = "hepta-vnext-windows-bazel"
+            candidate_ref = $env:CANDIDATE_REF
+            candidate_sha = $env:CANDIDATE_SHA
+            observed_head = $head
+            candidate_tree = $env:CANDIDATE_TREE
+            observed_tree = $tree
+            tree_entries = $entries
+            driver_sha = $env:GITHUB_SHA
+            workflow_run_id = $env:GITHUB_RUN_ID
+            workflow_run_attempt = $env:GITHUB_RUN_ATTEMPT
+            status_before_evidence_upload = "${{ job.status }}"
+            steps = [ordered]@{
+              candidate_identity = "${{ steps.candidate_identity.outcome }}"
+              bazelisk = "${{ steps.bazelisk.outcome }}"
+              msvc = "${{ steps.msvc.outcome }}"
+              bazel_targets = "${{ steps.bazel_targets.outcome }}"
+              bazel_evidence = "${{ steps.bazel_evidence.outcome }}"
+              hepta_binary = "${{ steps.hepta_binary.outcome }}"
+            }
+            runner = [ordered]@{
+              os = $env:RUNNER_OS
+              arch = $env:RUNNER_ARCH
+              name = $env:RUNNER_NAME
+              image_os = $env:ImageOS
+              image_version = $env:ImageVersion
+            }
+            bazelisk = $bazelVersion
+            v8_resolution = "candidate MODULE.bazel @v8_targets"
+            hepta_binary = $binaryReceipt
+            bazel_arguments = @(
+              "--config=ci-windows",
+              "--platforms=//:windows_x86_64_msvc",
+              "--host_platform=//:windows_x86_64_msvc",
+              "--extra_execution_platforms=//:windows_x86_64_msvc",
+              "--extra_toolchains=//:windows_msvc_tests_on_msvc_host_toolchain",
+              "--jobs=8",
+              "--repo_contents_cache=<RUNNER_TEMP>/bazel-repo-contents-cache",
+              "test: --test_tag_filters=-argument-comment-lint --test_output=errors --test_verbose_timeout_warnings",
+              "--action_env/--host_action_env for the exported MSVC variable allowlist"
+            )
+            test_targets = @(
+              "//codex-rs/hepta-contracts:hepta-contracts-unit-tests",
+              "//codex-rs/hepta-evidence:hepta-evidence-unit-tests",
+              "//codex-rs/ext/hepta-governance:hepta-governance-unit-tests"
+            )
+            build_targets = @(
+              "//codex-rs/hepta-contracts:hepta-contracts",
+              "//codex-rs/hepta-evidence:hepta-evidence",
+              "//codex-rs/ext/hepta-governance:hepta-governance",
+              "//codex-rs/cli:hepta"
+            )
+            execution_logs = $artifacts
+            test_logs = $testLogs
+          }
+          $receipt | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/hepta-windows-bazel-receipt.json"
+
+      - name: Upload Bazel execution logs
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bazel-execution-logs-windows-x86_64-pc-windows-msvc-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bazel-execution-logs
+          if-no-files-found: error
+
+      - name: Upload Bazel qualification receipt
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-windows-bazel-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-windows-bazel-receipt.json
+          if-no-files-found: error
+
+      - name: Upload Bazel Hepta test logs
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-windows-bazel-testlogs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            source/bazel-testlogs/codex-rs/hepta-contracts/**/test.log
+            source/bazel-testlogs/codex-rs/hepta-evidence/**/test.log
+            source/bazel-testlogs/codex-rs/ext/hepta-governance/**/test.log
+          if-no-files-found: error
+
+      - name: Upload the Hepta Windows binary
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-windows-binary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-windows-binary
+          if-no-files-found: error
+
+      - name: Check for clean candidate and driver worktrees
+        if: always() && !cancelled()
+        shell: pwsh
+        run: |
+          $head = (git -C source rev-parse HEAD).Trim()
+          $tree = (git -C source rev-parse "HEAD^{tree}").Trim()
+          $dirty = @(git -C source status --porcelain --untracked-files=all)
+          if ($head -cne $env:CANDIDATE_SHA) { throw "candidate HEAD changed: $head" }
+          if ($tree -cne $env:CANDIDATE_TREE) { throw "candidate tree changed: $tree" }
+          if ($dirty.Count -ne 0) { throw "candidate worktree changed: $($dirty -join '; ')" }
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  results:
+    name: Exact-candidate qualification result
+    if: always()
+    needs:
+      - cargo_windows_msvc
+      - bazel_windows_msvc
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Write aggregate qualification receipt
+        shell: bash
+        env:
+          CARGO_RESULT: ${{ needs.cargo_windows_msvc.result }}
+          BAZEL_RESULT: ${{ needs.bazel_windows_msvc.result }}
+        run: |
+          jq -n \
+            --arg candidate_sha "$CANDIDATE_SHA" \
+            --arg candidate_tree "$CANDIDATE_TREE" \
+            --arg driver_sha "$GITHUB_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg cargo_result "$CARGO_RESULT" \
+            --arg bazel_result "$BAZEL_RESULT" \
+            '{schema_version: 1, qualification: "hepta-vnext-windows-exact-candidate", candidate_sha: $candidate_sha, candidate_tree: $candidate_tree, driver_sha: $driver_sha, workflow_run_id: $run_id, workflow_run_attempt: $run_attempt, cargo_result: $cargo_result, bazel_result: $bazel_result}' \
+            > "$RUNNER_TEMP/hepta-windows-aggregate-receipt.json"
+
+      - name: Upload aggregate qualification receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-windows-aggregate-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-windows-aggregate-receipt.json
+          if-no-files-found: error
+
+      - name: Require both qualification jobs
+        shell: bash
+        env:
+          CARGO_RESULT: ${{ needs.cargo_windows_msvc.result }}
+          BAZEL_RESULT: ${{ needs.bazel_windows_msvc.result }}
+        run: |
+          test "$CARGO_RESULT" = success
+          test "$BAZEL_RESULT" = success
