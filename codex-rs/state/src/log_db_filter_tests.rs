@@ -42,6 +42,10 @@ async fn sqlite_sink_drops_low_level_opentelemetry_sdk_logs() {
     tracing::debug!(target: "codex_http_client::transport", "retained-request-diagnostic");
     tracing::trace!(target: "codex_api::sse", "dropped-sse-parent");
     tracing::trace!(target: "codex_api::sse::responses", "dropped-sse-payload");
+    tracing::trace!(
+        target: "codex_core::post_sampling_token_estimate",
+        "dropped-post-sampling-token-estimate"
+    );
     tracing::debug!(target: "codex_api::sse::responses", "retained-sse-diagnostic");
     tracing::trace!(target: "codex_state", "retained-trace");
     tracing::trace!(

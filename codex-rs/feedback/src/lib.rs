@@ -740,6 +740,10 @@ mod tests {
         tracing::trace!(target: "codex_http_client::transport", "transport-trace");
         tracing::trace!(target: "codex_api::sse", "sse-trace");
         tracing::trace!(target: "codex_api::sse::responses", "nested-sse-trace");
+        tracing::trace!(
+            target: "codex_core::post_sampling_token_estimate",
+            "post-sampling-token-estimate"
+        );
         tracing::debug!(target: "codex_http_client::transport", "transport-debug");
         tracing::debug!(target: "codex_api::sse::responses", "sse-debug");
         tracing::trace!(target: "codex_feedback_test", "unrelated-trace");
@@ -757,6 +761,7 @@ mod tests {
             "transport-trace",
             "sse-trace",
             "nested-sse-trace",
+            "post-sampling-token-estimate",
             "websocket-handshake-payload",
             "websocket-frame-payload",
         ] {
