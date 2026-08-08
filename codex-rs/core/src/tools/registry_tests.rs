@@ -1392,7 +1392,7 @@ async fn terminal_sink_failure_surfaces_after_handler_execution() {
                     Arc::new(session),
                     Arc::new(turn),
                     "terminal-call",
-                    tool_name,
+                    tool_name.with_default_namespace(),
                 ),
                 /*terminal_outcome_reached*/ None,
             )
