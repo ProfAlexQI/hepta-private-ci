@@ -171,6 +171,11 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
 
+      - name: Configure rusty_v8 artifact overrides and verify checksums
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ inputs.target }}
+
       - name: Build nextest archive
         shell: bash
         run: |
@@ -180,6 +185,7 @@ jobs:
           cargo nextest archive \
             --target ${{ inputs.target }} \
             --cargo-profile ${{ inputs.profile }} \
+            --features codex-v8-poc/sandbox \
             --timings \
             --archive-file "${archive_dir}/${NEXTEST_ARCHIVE_FILE}"
 
