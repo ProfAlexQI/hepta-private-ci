@@ -1,7 +1,3 @@
-// This binding slice is registered before the transport callers so its
-// identity rules can be reviewed independently. The allowance is removed by
-// the caller-composition slice that consumes every exported operation.
-#[allow(dead_code)]
 mod binding;
 
 // Registered ahead of the transport caller for the same staged-review reason
@@ -11,9 +7,6 @@ mod lifecycle;
 
 mod memory;
 
-// Registered before the physical-send callers so the one-shot renderer and
-// authority binding can be reviewed independently from transport control flow.
-#[allow(dead_code)]
 mod ephemeral_input;
 
 // Registered before the HTTP/WS callsites so cancellation ownership can be
@@ -37,8 +30,12 @@ pub(crate) use binding::ModelProviderPolicyContext;
 pub(crate) use binding::bytes_sha256;
 #[cfg(test)]
 pub(crate) use binding::canonical_sha256;
+pub(crate) use binding::prepare_model_provider_attempt;
 pub(crate) use binding::prepare_model_provider_policy;
+pub(crate) use ephemeral_input::resolve_ephemeral_model_input;
 pub(crate) use lifecycle::ModelProviderPolicyBegin;
+pub(crate) use lifecycle::active_model_provider_policies;
+pub(crate) use lifecycle::begin_active_model_provider_policy;
 pub(crate) use lifecycle::begin_model_provider_policy;
 pub(crate) use lifecycle::has_active_model_provider_policy;
 pub use memory::MemoryModelProviderPolicyHandle;

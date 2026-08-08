@@ -849,6 +849,31 @@ impl SessionTelemetry {
         }
     }
 
+    /// Records SSE timing and outcome without provider-controlled event data or error text.
+    pub fn log_redacted_sse_event<E>(
+        &self,
+        response: &Result<Option<Result<StreamEvent, StreamError<E>>>, Elapsed>,
+        duration: Duration,
+    ) {
+        match response {
+            Ok(Some(Ok(sse))) if sse.event == "response.failed" => {
+                self.sse_event_failed(/*kind*/ None, duration, &"provider response failed");
+            }
+            Ok(Some(Ok(_))) => self.sse_event("provider_event", duration),
+            Ok(Some(Err(_))) => self.sse_event_failed(
+                /*kind*/ None,
+                duration,
+                &"provider stream event failed",
+            ),
+            Ok(None) => {}
+            Err(_) => self.sse_event_failed(
+                /*kind*/ None,
+                duration,
+                &"idle timeout waiting for SSE",
+            ),
+        }
+    }
+
     fn sse_event(&self, kind: &str, duration: Duration) {
         self.counter(
             SSE_EVENT_COUNT_METRIC,

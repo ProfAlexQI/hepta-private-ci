@@ -49,6 +49,13 @@ pub(super) struct ProviderAttemptObservation {
     pub(super) generate: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ProviderBindingObservation {
+    pub(super) attempt_id: String,
+    pub(super) request_binding_id: String,
+    pub(super) has_ephemeral_input: bool,
+}
+
 pub(super) struct ProviderPolicyState {
     active: AtomicBool,
     decision: TestDecision,
@@ -56,6 +63,7 @@ pub(super) struct ProviderPolicyState {
     pub(super) terminal_count: AtomicUsize,
     pub(super) completed_count: AtomicUsize,
     pub(super) attempts: Mutex<Vec<ProviderAttemptObservation>>,
+    pub(super) bindings: Mutex<Vec<ProviderBindingObservation>>,
     pub(super) terminals: Mutex<Vec<ModelProviderTerminal>>,
     terminal_entered: Notify,
     pub(super) terminal_release: Semaphore,
@@ -70,6 +78,7 @@ impl ProviderPolicyState {
             terminal_count: AtomicUsize::new(0),
             completed_count: AtomicUsize::new(0),
             attempts: Mutex::new(Vec::new()),
+            bindings: Mutex::new(Vec::new()),
             terminals: Mutex::new(Vec::new()),
             terminal_entered: Notify::new(),
             terminal_release: Semaphore::new(0),
@@ -118,6 +127,20 @@ impl ModelProviderPolicyContributor for TestProviderPolicy {
                 transport: input.transport,
                 has_previous_response: input.previous_response_id_sha256.is_some(),
                 generate: input.generate,
+            });
+        assert_eq!(
+            input.ephemeral_input_sha256.is_some(),
+            input.ephemeral_input_witness_sha256.is_some(),
+            "ephemeral provider digests must be all-or-none"
+        );
+        self.state
+            .bindings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(ProviderBindingObservation {
+                attempt_id: input.attempt_id.to_string(),
+                request_binding_id: input.request_binding_id.to_string(),
+                has_ephemeral_input: input.ephemeral_input_sha256.is_some(),
             });
         self.state.begin_count.fetch_add(1, Ordering::SeqCst);
         let state = Arc::clone(&self.state);
@@ -177,8 +200,14 @@ pub(super) fn extensions_with_policy(
     state: Arc<ProviderPolicyState>,
 ) -> Arc<codex_extension_api::ExtensionRegistry<Config>> {
     let mut extensions = ExtensionRegistryBuilder::<Config>::new();
-    extensions.model_provider_policy_contributor(Arc::new(TestProviderPolicy { state }));
+    extensions.model_provider_policy_contributor(test_provider_policy(state));
     Arc::new(extensions.build())
+}
+
+pub(super) fn test_provider_policy(
+    state: Arc<ProviderPolicyState>,
+) -> Arc<dyn ModelProviderPolicyContributor> {
+    Arc::new(TestProviderPolicy { state })
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

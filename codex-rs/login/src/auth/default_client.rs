@@ -249,23 +249,53 @@ pub fn create_client_for_route(
     request_url: &str,
     route_class: ClientRouteClass,
 ) -> Result<HttpClient, BuildRouteAwareHttpClientError> {
+    create_client_for_route_with_builder(
+        http_client_factory,
+        request_url,
+        route_class,
+        default_http_client_builder(),
+    )
+}
+
+/// Builds a route-aware client that neither follows redirects nor records request diagnostics.
+///
+/// This is for one-shot requests whose body must not be replayed by the transport. A redirect is
+/// returned to the caller as an ordinary non-success response so a new authorization can be
+/// minted for any later destination.
+pub fn create_client_for_sensitive_route(
+    http_client_factory: &HttpClientFactory,
+    request_url: &str,
+    route_class: ClientRouteClass,
+) -> Result<HttpClient, BuildRouteAwareHttpClientError> {
+    create_client_for_route_with_builder(
+        http_client_factory,
+        request_url,
+        route_class,
+        default_http_client_builder()
+            .without_redirects()
+            .without_request_logging(),
+    )
+}
+
+fn create_client_for_route_with_builder(
+    http_client_factory: &HttpClientFactory,
+    request_url: &str,
+    route_class: ClientRouteClass,
+    builder: HttpClientBuilder,
+) -> Result<HttpClient, BuildRouteAwareHttpClientError> {
     if matches!(
         http_client_factory.outbound_proxy_policy(),
         OutboundProxyPolicy::ReqwestDefault
     ) {
-        return Ok(create_client());
+        return Ok(build_default_client(builder));
     }
     if is_sandboxed() {
         // Preserve the sandbox's existing no-proxy policy; sandboxed command egress is routed
         // separately through network-proxy.
-        return Ok(create_client());
+        return Ok(build_default_client(builder));
     }
 
-    default_http_client_builder().build_respecting_outbound_proxy_policy(
-        http_client_factory,
-        request_url,
-        route_class,
-    )
+    builder.build_respecting_outbound_proxy_policy(http_client_factory, request_url, route_class)
 }
 
 /// Builds the default Codex HTTP client for a concrete outbound route without blocking the
