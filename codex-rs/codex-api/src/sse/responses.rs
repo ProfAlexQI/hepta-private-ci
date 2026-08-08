@@ -36,6 +36,7 @@ pub fn spawn_response_stream(
     idle_timeout: Duration,
     telemetry: Option<Arc<dyn SseTelemetry>>,
     turn_state: Option<Arc<OnceLock<String>>>,
+    redact_provider_diagnostics: bool,
 ) -> ResponseStream {
     let rate_limit_snapshots = parse_all_rate_limits(&stream_response.headers);
     let models_etag = stream_response
@@ -89,6 +90,7 @@ pub fn spawn_response_stream(
             idle_timeout,
             telemetry,
             safety_buffering_treatment,
+            redact_provider_diagnostics,
         )
         .await;
     });
@@ -330,6 +332,13 @@ impl ResponsesEventError {
 pub fn process_responses_event(
     event: ResponsesStreamEvent,
 ) -> std::result::Result<Option<ResponseEvent>, ResponsesEventError> {
+    process_responses_event_with_diagnostics(event, false)
+}
+
+fn process_responses_event_with_diagnostics(
+    event: ResponsesStreamEvent,
+    redact_provider_diagnostics: bool,
+) -> std::result::Result<Option<ResponseEvent>, ResponsesEventError> {
     match event.kind.as_str() {
         "response.output_item.done" => {
             if let Some(item_val) = event.item {
@@ -400,19 +409,31 @@ pub fn process_responses_event(
                     } else if is_usage_not_included(&error) {
                         response_error = ApiError::UsageNotIncluded;
                     } else if is_cyber_policy_error(&error) {
-                        let message = cyber_policy_message(error.message);
+                        let message = if redact_provider_diagnostics {
+                            "provider request rejected by cyber policy".to_string()
+                        } else {
+                            cyber_policy_message(error.message)
+                        };
                         response_error = ApiError::CyberPolicy { message };
                     } else if matches!(error.code.as_deref(), Some("invalid_prompt" | "bio_policy"))
                     {
-                        let message = error
-                            .message
-                            .unwrap_or_else(|| "Invalid request.".to_string());
+                        let message = if redact_provider_diagnostics {
+                            "provider rejected the request".to_string()
+                        } else {
+                            error
+                                .message
+                                .unwrap_or_else(|| "Invalid request.".to_string())
+                        };
                         response_error = ApiError::InvalidRequest { message };
                     } else if is_server_overloaded_error(&error) {
                         response_error = ApiError::ServerOverloaded;
                     } else {
                         let delay = try_parse_retry_after(&error);
-                        let message = error.message.unwrap_or_default();
+                        let message = if redact_provider_diagnostics {
+                            "provider response failed".to_string()
+                        } else {
+                            error.message.unwrap_or_default()
+                        };
                         response_error = ApiError::Retryable { message, delay };
                     }
                 }
@@ -430,8 +451,12 @@ pub fn process_responses_event(
                     .and_then(|details| details.get("reason"))
                     .and_then(Value::as_str)
             });
-            let reason = reason.unwrap_or("unknown");
-            let message = format!("Incomplete response returned, reason: {reason}");
+            let message = if redact_provider_diagnostics {
+                "Incomplete response returned".to_string()
+            } else {
+                let reason = reason.unwrap_or("unknown");
+                format!("Incomplete response returned, reason: {reason}")
+            };
             return Err(ResponsesEventError::Api(ApiError::Stream(message)));
         }
         "response.completed" => {
@@ -445,7 +470,11 @@ pub fn process_responses_event(
                         }));
                     }
                     Err(err) => {
-                        let error = format!("failed to parse ResponseCompleted: {err}");
+                        let error = if redact_provider_diagnostics {
+                            "failed to parse provider response completion".to_string()
+                        } else {
+                            format!("failed to parse ResponseCompleted: {err}")
+                        };
                         debug!("{error}");
                         return Err(ResponsesEventError::Api(ApiError::Stream(error)));
                     }
@@ -478,16 +507,28 @@ pub fn process_responses_event(
         | "response.output_text.done"
         | "response.reasoning_summary_part.done"
         | "responsesapi.websocket_timing" => {
-            trace!("unhandled responses event: {}", event.kind);
+            if redact_provider_diagnostics {
+                trace!("unhandled redacted responses event");
+            } else {
+                trace!("unhandled responses event: {}", event.kind);
+            }
         }
         kind if kind.ends_with(".delta") => {
-            trace!("unhandled responses event: {kind}");
+            if redact_provider_diagnostics {
+                trace!("unhandled redacted responses delta event");
+            } else {
+                trace!("unhandled responses event: {kind}");
+            }
         }
         _ => {
-            debug!(
-                "unhandled responses event: {:?}",
-                event.kind.chars().take(128).collect::<String>()
-            );
+            if redact_provider_diagnostics {
+                debug!("unhandled redacted responses event");
+            } else {
+                debug!(
+                    "unhandled responses event: {:?}",
+                    event.kind.chars().take(128).collect::<String>()
+                );
+            }
         }
     }
 
@@ -507,6 +548,7 @@ pub async fn process_sse(
         idle_timeout,
         telemetry,
         SafetyBufferingTreatment::default(),
+        /*redact_provider_diagnostics*/ false,
     )
     .await;
 }
@@ -517,6 +559,7 @@ async fn process_sse_with_treatment(
     idle_timeout: Duration,
     telemetry: Option<Arc<dyn SseTelemetry>>,
     safety_buffering_treatment: SafetyBufferingTreatment,
+    redact_provider_diagnostics: bool,
 ) {
     let mut stream = stream.eventsource();
     let mut response_error: Option<ApiError> = None;
@@ -531,8 +574,14 @@ async fn process_sse_with_treatment(
         let sse = match response {
             Ok(Some(Ok(sse))) => sse,
             Ok(Some(Err(e))) => {
-                debug!("SSE Error: {e:#}");
-                let _ = tx_event.send(Err(ApiError::Stream(e.to_string()))).await;
+                let message = if redact_provider_diagnostics {
+                    debug!("redacted provider SSE transport error");
+                    "provider SSE transport error".to_string()
+                } else {
+                    debug!("SSE Error: {e:#}");
+                    e.to_string()
+                };
+                let _ = tx_event.send(Err(ApiError::Stream(message))).await;
                 return;
             }
             Ok(None) => {
@@ -550,18 +599,26 @@ async fn process_sse_with_treatment(
             }
         };
 
-        trace!("SSE event: {}", &sse.data);
+        if redact_provider_diagnostics {
+            trace!("redacted provider SSE event received");
+        } else {
+            trace!("SSE event: {}", &sse.data);
+        }
 
         let event: ResponsesStreamEvent = match serde_json::from_str(&sse.data) {
             Ok(event) => event,
             Err(e) => {
-                debug!(
-                    error_category = ?e.classify(),
-                    error_line = e.line(),
-                    error_column = e.column(),
-                    payload_bytes = sse.data.len(),
-                    "Failed to parse SSE event"
-                );
+                if redact_provider_diagnostics {
+                    debug!("failed to parse redacted provider SSE event");
+                } else {
+                    debug!(
+                        error_category = ?e.classify(),
+                        error_line = e.line(),
+                        error_column = e.column(),
+                        payload_bytes = sse.data.len(),
+                        "Failed to parse SSE event"
+                    );
+                }
                 continue;
             }
         };
@@ -606,7 +663,7 @@ async fn process_sse_with_treatment(
             return;
         }
 
-        match process_responses_event(event) {
+        match process_responses_event_with_diagnostics(event, redact_provider_diagnostics) {
             Ok(Some(event)) => {
                 let is_completed = matches!(event, ResponseEvent::Completed { .. });
                 if tx_event.send(Ok(event)).await.is_err() {
@@ -1288,6 +1345,7 @@ mod tests {
             idle_timeout(),
             /*telemetry*/ None,
             /*turn_state*/ None,
+            /*redact_provider_diagnostics*/ false,
         );
         assert_eq!(stream.upstream_request_id.as_deref(), Some("req-1"));
         let event = stream
@@ -1328,6 +1386,7 @@ mod tests {
             idle_timeout(),
             /*telemetry*/ None,
             /*turn_state*/ None,
+            /*redact_provider_diagnostics*/ false,
         );
         let mut events = Vec::new();
         while let Some(event) = stream.rx_event.recv().await {

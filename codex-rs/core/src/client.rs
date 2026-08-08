@@ -72,6 +72,7 @@ use codex_login::RefreshTokenError;
 use codex_login::UnauthorizedRecovery;
 use codex_login::default_client::add_originator_header;
 use codex_login::default_client::create_client_for_route;
+use codex_login::default_client::create_client_for_sensitive_route;
 use codex_otel::SessionTelemetry;
 use codex_otel::current_span_w3c_trace_context;
 use codex_protocol::auth::AuthMode;
@@ -129,12 +130,16 @@ use crate::model_provider_policy::ProviderAttemptOwner;
 use crate::model_provider_policy::ProviderResponseTerminal;
 use crate::model_provider_policy::ProviderRoutingHint;
 use crate::model_provider_policy::ProviderWireSemantic;
+use crate::model_provider_policy::active_model_provider_policies;
+use crate::model_provider_policy::begin_active_model_provider_policy;
 use crate::model_provider_policy::begin_model_provider_policy;
 use crate::model_provider_policy::has_active_model_provider_policy;
 use crate::model_provider_policy::logical_compaction_request;
 use crate::model_provider_policy::logical_responses_request;
+use crate::model_provider_policy::prepare_model_provider_attempt;
 use crate::model_provider_policy::prepare_model_provider_policy;
 use crate::model_provider_policy::provider_websocket_wire_payload;
+use crate::model_provider_policy::resolve_ephemeral_model_input;
 use crate::model_provider_policy::responses_lite_from_http_header;
 use crate::model_provider_policy::responses_lite_from_ws_metadata;
 use crate::responses_metadata::CodexResponsesMetadata;
@@ -155,7 +160,12 @@ use codex_model_provider_info::DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
 use codex_protocol::error::CodexErr;
+use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::Result;
+use codex_protocol::error::RetryLimitReachedError;
+use codex_protocol::error::UnexpectedResponseError;
+use codex_protocol::error::UsageLimitReachedError;
+use codex_response_debug_context::ResponseDebugContext;
 use codex_response_debug_context::extract_response_debug_context;
 use codex_response_debug_context::extract_response_debug_context_from_api_error;
 use codex_response_debug_context::telemetry_api_error_message;
@@ -1009,6 +1019,7 @@ impl ModelClient {
             auth_context,
             request_route_telemetry,
             auth_env_telemetry,
+            /*redact_provider_diagnostics*/ false,
         ));
         let request_telemetry: Arc<dyn RequestTelemetry> = telemetry;
         request_telemetry
@@ -1212,6 +1223,21 @@ impl ModelClient {
     ) -> Result<ReqwestTransport> {
         let request_url = api_provider.url_for_path(endpoint);
         let client = create_client_for_route(
+            &self.http_client_factory,
+            &request_url,
+            ClientRouteClass::Api,
+        )
+        .map_err(std::io::Error::from)?;
+        Ok(ReqwestTransport::from_http_client(client))
+    }
+
+    fn build_sensitive_api_transport(
+        &self,
+        api_provider: &ApiProvider,
+        endpoint: &str,
+    ) -> Result<ReqwestTransport> {
+        let request_url = api_provider.url_for_path(endpoint);
+        let client = create_client_for_sensitive_route(
             &self.http_client_factory,
             &request_url,
             ClientRouteClass::Api,
@@ -1665,7 +1691,7 @@ impl ModelClientSession {
         loop {
             let client_setup = self.client.current_client_setup().await?;
             let retry_config = client_setup.api_provider.retry.clone();
-            let transport = self
+            let mut transport = self
                 .client
                 .build_api_transport(&client_setup.api_provider, RESPONSES_ENDPOINT)?;
             let request_auth_context = AuthRequestTelemetryContext::new(
@@ -1673,12 +1699,6 @@ impl ModelClientSession {
                 client_setup.api_auth.as_ref(),
                 client_setup.agent_identity_telemetry.clone(),
                 pending_retry,
-            );
-            let (request_telemetry, sse_telemetry) = Self::build_streaming_telemetry(
-                session_telemetry,
-                request_auth_context,
-                RequestRouteTelemetry::for_endpoint(RESPONSES_ENDPOINT),
-                self.client.state.auth_env_telemetry.clone(),
             );
             let compression = self.responses_request_compression(client_setup.auth.as_ref());
             let mut options = self
@@ -1711,10 +1731,18 @@ impl ModelClientSession {
                 .prepare_response_items_for_request(&mut request.input);
             let request_session_telemetry =
                 session_telemetry_for_request(session_telemetry, &request);
-            let mut admitted_provider_attempt = if let Some(context) = provider_policy_context
-                .filter(|context| {
-                    has_active_model_provider_policy(context.registry, context.thread_store)
-                }) {
+            let mut effective_request = None;
+            let mut has_ephemeral_input = false;
+            let mut admitted_provider_attempt = if let Some((context, active_policies)) =
+                provider_policy_context
+                    .map(|context| {
+                        (
+                            context,
+                            active_model_provider_policies(context.registry, context.thread_store),
+                        )
+                    })
+                    .filter(|(_, active)| !active.is_empty())
+            {
                 let routing_hint = ProviderRoutingHint::from_header(
                     options.extra_headers.get(X_CODEX_ROUTING_HINT_HEADER),
                 )
@@ -1725,29 +1753,72 @@ impl ModelClientSession {
                         .get(X_OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER),
                 )
                 .map_err(model_provider_policy_error)?;
-                let logical_request = logical_responses_request(&request);
-                let wire_semantic =
-                    ProviderWireSemantic::new(&request, routing_hint.as_ref(), responses_lite);
+                let base_logical_request = logical_responses_request(&request);
                 let endpoint = client_setup.api_provider.url_for_path(RESPONSES_ENDPOINT);
-                let prepared = prepare_model_provider_policy(
+                let attempt = prepare_model_provider_attempt(
                     context,
                     client_setup.api_provider.name.as_str(),
                     request.model.as_str(),
                     ModelProviderTransport::Http,
                     endpoint.as_str(),
-                    &logical_request,
-                    &wire_semantic,
+                    &base_logical_request,
                     /*previous_response_id*/ None,
                     /*generate*/ true,
                 )
                 .map_err(model_provider_policy_error)?;
-                match begin_model_provider_policy(
-                    context.registry,
+                let model_context_window = model_info.resolved_context_window().map(|window| {
+                    window.saturating_mul(model_info.effective_context_window_percent) / 100
+                });
+                let ephemeral_input = resolve_ephemeral_model_input(
+                    context,
+                    &attempt,
+                    &active_policies,
+                    model_context_window,
+                )
+                .await
+                .map_err(model_provider_policy_error)?;
+                let ephemeral_binding = ephemeral_input.map(|prepared| {
+                    let (item, binding) = prepared.into_parts();
+                    let request = effective_request.get_or_insert_with(|| request.clone());
+                    request.prompt_cache_key = None;
+                    request.store = false;
+                    request.input.push(item);
+                    binding
+                });
+                has_ephemeral_input = ephemeral_binding.is_some();
+                if has_ephemeral_input {
+                    transport = self.client.build_sensitive_api_transport(
+                        &client_setup.api_provider,
+                        RESPONSES_ENDPOINT,
+                    )?;
+                }
+                let request_for_policy = effective_request.as_ref().unwrap_or(&request);
+                let effective_logical_request = logical_responses_request(request_for_policy);
+                let wire_semantic = ProviderWireSemantic::new(
+                    request_for_policy,
+                    routing_hint.as_ref(),
+                    responses_lite,
+                );
+                let prepared = attempt
+                    .finalize(
+                        &effective_logical_request,
+                        &wire_semantic,
+                        ephemeral_binding,
+                    )
+                    .map_err(model_provider_policy_error)?;
+                match begin_active_model_provider_policy(
+                    active_policies,
                     prepared.invocation_input(context),
                 )
                 .await
                 .map_err(model_provider_policy_error)?
                 {
+                    ModelProviderPolicyBegin::NoPolicy if has_ephemeral_input => {
+                        return Err(model_provider_policy_error(ModelProviderPolicyError::new(
+                            "ephemeral_model_input_policy_missing",
+                            "ephemeral model input requires an active provider policy lease",
+                        )));
+                    }
                     ModelProviderPolicyBegin::NoPolicy => None,
                     ModelProviderPolicyBegin::Allow { lease } => {
                         let dispatch = provider_http_dispatch_metadata(&options.extra_headers);
@@ -1764,12 +1835,25 @@ impl ModelClientSession {
             let inference_trace_attempt = inference_trace.start_attempt();
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
+            let request = effective_request.unwrap_or(request);
+            let (request_telemetry, sse_telemetry) = Self::build_streaming_telemetry(
+                session_telemetry,
+                request_auth_context,
+                RequestRouteTelemetry::for_endpoint(RESPONSES_ENDPOINT),
+                self.client.state.auth_env_telemetry.clone(),
+                has_ephemeral_input,
+            );
             let client = ApiResponsesClient::new(
                 transport,
                 client_setup.api_provider,
                 client_setup.api_auth,
             )
             .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
+            let client = if has_ephemeral_input {
+                client.with_redacted_response_diagnostics()
+            } else {
+                client
+            };
             let stream_result = match admitted_provider_attempt.as_ref() {
                 Some(attempt) => {
                     client
@@ -1797,6 +1881,7 @@ impl ModelClientSession {
                         admitted_provider_attempt
                             .take()
                             .map(AdmittedProviderAttempt::into_owner),
+                        has_ephemeral_input,
                     );
                     return Ok(stream);
                 }
@@ -1808,10 +1893,17 @@ impl ModelClientSession {
                             .finish_immediate(Some(status.as_u16()), "http")
                             .await?;
                     }
-                    let response_debug_context =
-                        extract_response_debug_context(&unauthorized_transport);
+                    let response_debug_context = redact_ephemeral_response_debug_context(
+                        extract_response_debug_context(&unauthorized_transport),
+                        has_ephemeral_input,
+                    );
+                    let trace_error = if has_ephemeral_input {
+                        format!("ephemeral model-provider request failed with HTTP {status}")
+                    } else {
+                        unauthorized_transport.to_string()
+                    };
                     inference_trace_attempt.record_failed(
-                        &unauthorized_transport,
+                        trace_error,
                         response_debug_context.request_id.as_deref(),
                         /*output_items*/ &[],
                     );
@@ -1821,16 +1913,16 @@ impl ModelClientSession {
                             &mut auth_recovery,
                             session_telemetry,
                             &self.client.state.provider,
+                            has_ephemeral_input,
                         )
                         .await?,
                     );
                     continue;
                 }
                 Err(err) => {
+                    let http_status = api_error_http_status(&err);
                     if let Some(attempt) = admitted_provider_attempt.take() {
-                        attempt
-                            .finish_immediate(api_error_http_status(&err), "http")
-                            .await?;
+                        attempt.finish_immediate(http_status, "http").await?;
                     }
                     let retry_delay = if governed_memory_attempt {
                         match &err {
@@ -1841,11 +1933,28 @@ impl ModelClientSession {
                     } else {
                         None
                     };
-                    let response_debug_context =
-                        extract_response_debug_context_from_api_error(&err);
-                    let err = self.client.state.provider.map_api_error(err);
+                    let response_debug_context = redact_ephemeral_response_debug_context(
+                        extract_response_debug_context_from_api_error(&err),
+                        has_ephemeral_input,
+                    );
+                    let err = redact_ephemeral_provider_error(
+                        self.client.state.provider.map_api_error(err),
+                        has_ephemeral_input,
+                    );
+                    let trace_error = if has_ephemeral_input {
+                        http_status.map_or_else(
+                            || "ephemeral model-provider request failed".to_string(),
+                            |status| {
+                                format!(
+                                    "ephemeral model-provider request failed with HTTP {status}"
+                                )
+                            },
+                        )
+                    } else {
+                        err.to_string()
+                    };
                     inference_trace_attempt.record_failed(
-                        &err,
+                        trace_error,
                         response_debug_context.request_id.as_deref(),
                         /*output_items*/ &[],
                     );
@@ -1958,6 +2067,7 @@ impl ModelClientSession {
                             &mut auth_recovery,
                             session_telemetry,
                             &self.client.state.provider,
+                            /*redact_provider_error*/ false,
                         )
                         .await?,
                     );
@@ -2165,6 +2275,7 @@ impl ModelClientSession {
                 admitted_provider_attempt
                     .take()
                     .map(AdmittedProviderAttempt::into_owner),
+                /*redact_provider_errors*/ false,
             );
             self.websocket_session.last_response_rx = Some(last_request_rx);
             return Ok(WebsocketStreamOutcome::Stream(stream));
@@ -2177,12 +2288,14 @@ impl ModelClientSession {
         auth_context: AuthRequestTelemetryContext,
         request_route_telemetry: RequestRouteTelemetry,
         auth_env_telemetry: AuthEnvTelemetry,
+        redact_provider_diagnostics: bool,
     ) -> (Arc<dyn RequestTelemetry>, Arc<dyn SseTelemetry>) {
         let telemetry = Arc::new(ApiTelemetry::new(
             session_telemetry.clone(),
             auth_context,
             request_route_telemetry,
             auth_env_telemetry,
+            redact_provider_diagnostics,
         ));
         let request_telemetry: Arc<dyn RequestTelemetry> = telemetry.clone();
         let sse_telemetry: Arc<dyn SseTelemetry> = telemetry;
@@ -2201,6 +2314,7 @@ impl ModelClientSession {
             auth_context,
             request_route_telemetry,
             auth_env_telemetry,
+            /*redact_provider_diagnostics*/ false,
         ));
         let websocket_telemetry: Arc<dyn WebsocketTelemetry> = telemetry;
         websocket_telemetry
@@ -2514,11 +2628,17 @@ fn map_response_stream(
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
     provider_attempt: Option<ProviderAttemptOwner>,
+    redact_provider_errors: bool,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>) {
     let codex_api::ResponseStream {
         rx_event,
         upstream_request_id,
     } = api_stream;
+    let upstream_request_id = if redact_provider_errors {
+        None
+    } else {
+        upstream_request_id
+    };
     let api_stream = codex_api::ResponseStream {
         rx_event,
         upstream_request_id: None,
@@ -2530,6 +2650,7 @@ fn map_response_stream(
         inference_trace_attempt,
         provider,
         provider_attempt,
+        redact_provider_errors,
     )
 }
 
@@ -2540,6 +2661,7 @@ fn map_response_events<S>(
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
     provider_attempt: Option<ProviderAttemptOwner>,
+    redact_provider_errors: bool,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>)
 where
     S: futures::Stream<Item = std::result::Result<ResponseEvent, ApiError>>
@@ -2692,8 +2814,10 @@ where
                             .finish_indeterminate("provider_response_stream_error", &items_added)
                             .await
                     };
-                    let response_debug_context =
-                        extract_response_debug_context_from_api_error(&err);
+                    let response_debug_context = redact_ephemeral_response_debug_context(
+                        extract_response_debug_context_from_api_error(&err),
+                        redact_provider_errors,
+                    );
                     let upstream_request_id =
                         upstream_request_id.or(response_debug_context.request_id.as_deref());
                     if let Some(upstream_request_id) = upstream_request_id {
@@ -2713,7 +2837,10 @@ where
                             return;
                         }
                     };
-                    let mapped = provider.map_api_error(err);
+                    let mapped = redact_ephemeral_provider_error(
+                        provider.map_api_error(err),
+                        redact_provider_errors,
+                    );
                     inference_trace_attempt.record_failed(
                         &mapped,
                         upstream_request_id,
@@ -2881,8 +3008,12 @@ async fn handle_unauthorized(
     auth_recovery: &mut Option<UnauthorizedRecovery>,
     session_telemetry: &SessionTelemetry,
     provider: &SharedModelProvider,
+    redact_provider_error: bool,
 ) -> Result<UnauthorizedRecoveryExecution> {
-    let debug = extract_response_debug_context(&transport);
+    let debug = redact_ephemeral_response_debug_context(
+        extract_response_debug_context(&transport),
+        redact_provider_error,
+    );
     if let Some(recovery) = auth_recovery
         && recovery.has_next()
     {
@@ -2990,7 +3121,10 @@ async fn handle_unauthorized(
         debug.auth_error_code.as_deref(),
     );
 
-    Err(provider.map_api_error(ApiError::Transport(transport)))
+    Err(redact_ephemeral_provider_error(
+        provider.map_api_error(ApiError::Transport(transport)),
+        redact_provider_error,
+    ))
 }
 
 fn api_error_http_status(error: &ApiError) -> Option<u16> {
@@ -3000,11 +3134,97 @@ fn api_error_http_status(error: &ApiError) -> Option<u16> {
     }
 }
 
+fn redacted_transport_error_message(error: &TransportError) -> String {
+    match error {
+        TransportError::Http { status, .. } => format!("http {}", status.as_u16()),
+        TransportError::RetryLimit => "retry limit reached".to_string(),
+        TransportError::Timeout => "timeout".to_string(),
+        TransportError::Network(_) => "network error".to_string(),
+        TransportError::Connection(_) => "connection error".to_string(),
+        TransportError::Build(_) => "request build error".to_string(),
+    }
+}
+
+const EPHEMERAL_PROVIDER_ERROR: &str = "ephemeral model-provider request failed";
+
+fn redact_ephemeral_provider_error(error: CodexErr, redact: bool) -> CodexErr {
+    if !redact {
+        return error;
+    }
+    let retry_delay = error.retry_delay();
+    let redacted = match error.details() {
+        CodexErrorDetails::UnexpectedStatus(response) => {
+            CodexErr::UnexpectedStatus(UnexpectedResponseError {
+                status: response.status,
+                body: EPHEMERAL_PROVIDER_ERROR.to_string(),
+                user_message: None,
+                url: None,
+                cf_ray: None,
+                request_id: None,
+                identity_authorization_error: None,
+                identity_error_code: None,
+            })
+        }
+        CodexErrorDetails::InvalidRequest(_) => {
+            CodexErr::InvalidRequest(EPHEMERAL_PROVIDER_ERROR.to_string())
+        }
+        CodexErrorDetails::CyberPolicy { .. } => CodexErr::new(CodexErrorDetails::CyberPolicy {
+            message: "ephemeral model-provider request rejected by cyber policy".to_string(),
+        }),
+        CodexErrorDetails::Stream(_)
+        | CodexErrorDetails::ResponseStreamFailed(_)
+        | CodexErrorDetails::ConnectionFailed(_) => {
+            CodexErr::Stream(EPHEMERAL_PROVIDER_ERROR.to_string())
+        }
+        CodexErrorDetails::RetryLimit(retry) => CodexErr::RetryLimit(RetryLimitReachedError {
+            status: retry.status,
+            request_id: None,
+        }),
+        CodexErrorDetails::UsageLimitReached(usage) => {
+            CodexErr::UsageLimitReached(UsageLimitReachedError {
+                plan_type: usage.plan_type.clone(),
+                resets_at: usage.resets_at.to_owned(),
+                rate_limits: None,
+                promo_message: None,
+                rate_limit_reached_type: usage.rate_limit_reached_type.to_owned(),
+            })
+        }
+        CodexErrorDetails::ContextWindowExceeded
+        | CodexErrorDetails::Timeout
+        | CodexErrorDetails::RequestTimeout
+        | CodexErrorDetails::InvalidImageRequest()
+        | CodexErrorDetails::ServerOverloaded
+        | CodexErrorDetails::QuotaExceeded
+        | CodexErrorDetails::UsageNotIncluded
+        | CodexErrorDetails::InternalServerError => return error,
+        _ => CodexErr::Stream(EPHEMERAL_PROVIDER_ERROR.to_string()),
+    };
+    match retry_delay {
+        Some(delay) => redacted.with_retry_delay(delay),
+        None => redacted,
+    }
+}
+
+fn redact_ephemeral_response_debug_context(
+    mut context: ResponseDebugContext,
+    redact: bool,
+) -> ResponseDebugContext {
+    if !redact {
+        return context;
+    }
+    context.request_id = None;
+    context.cf_ray = None;
+    context.auth_error = None;
+    context.auth_error_code = None;
+    context
+}
+
 struct ApiTelemetry {
     session_telemetry: SessionTelemetry,
     auth_context: AuthRequestTelemetryContext,
     request_route_telemetry: RequestRouteTelemetry,
     auth_env_telemetry: AuthEnvTelemetry,
+    redact_provider_diagnostics: bool,
 }
 
 impl ApiTelemetry {
@@ -3013,12 +3233,14 @@ impl ApiTelemetry {
         auth_context: AuthRequestTelemetryContext,
         request_route_telemetry: RequestRouteTelemetry,
         auth_env_telemetry: AuthEnvTelemetry,
+        redact_provider_diagnostics: bool,
     ) -> Self {
         Self {
             session_telemetry,
             auth_context,
             request_route_telemetry,
             auth_env_telemetry,
+            redact_provider_diagnostics,
         }
     }
 }
@@ -3031,11 +3253,20 @@ impl RequestTelemetry for ApiTelemetry {
         error: Option<&TransportError>,
         duration: Duration,
     ) {
-        let error_message = error.map(telemetry_transport_error_message);
+        let error_message = error.map(|error| {
+            if self.redact_provider_diagnostics {
+                redacted_transport_error_message(error)
+            } else {
+                telemetry_transport_error_message(error)
+            }
+        });
         let status = status.map(|s| s.as_u16());
-        let debug = error
-            .map(extract_response_debug_context)
-            .unwrap_or_default();
+        let debug = redact_ephemeral_response_debug_context(
+            error
+                .map(extract_response_debug_context)
+                .unwrap_or_default(),
+            self.redact_provider_diagnostics,
+        );
         self.session_telemetry.record_api_request(
             attempt,
             status,
@@ -3091,7 +3322,12 @@ impl SseTelemetry for ApiTelemetry {
         >,
         duration: Duration,
     ) {
-        self.session_telemetry.log_sse_event(result, duration);
+        if self.redact_provider_diagnostics {
+            self.session_telemetry
+                .log_redacted_sse_event(result, duration);
+        } else {
+            self.session_telemetry.log_sse_event(result, duration);
+        }
     }
 }
 

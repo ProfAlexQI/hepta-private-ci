@@ -27,6 +27,7 @@ use tracing::instrument;
 pub struct ResponsesClient<T: HttpTransport> {
     session: EndpointSession<T>,
     sse_telemetry: Option<Arc<dyn SseTelemetry>>,
+    redact_response_diagnostics: bool,
 }
 
 #[derive(Default)]
@@ -44,6 +45,7 @@ impl<T: HttpTransport> ResponsesClient<T> {
         Self {
             session: EndpointSession::new(transport, provider, auth),
             sse_telemetry: None,
+            redact_response_diagnostics: false,
         }
     }
 
@@ -55,7 +57,14 @@ impl<T: HttpTransport> ResponsesClient<T> {
         Self {
             session: self.session.with_request_telemetry(request),
             sse_telemetry: sse,
+            redact_response_diagnostics: self.redact_response_diagnostics,
         }
+    }
+
+    /// Keeps response metrics while excluding provider-controlled diagnostic payloads.
+    pub fn with_redacted_response_diagnostics(mut self) -> Self {
+        self.redact_response_diagnostics = true;
+        self
     }
 
     #[instrument(
@@ -211,6 +220,7 @@ impl<T: HttpTransport> ResponsesClient<T> {
             self.session.provider().stream_idle_timeout,
             self.sse_telemetry.clone(),
             turn_state,
+            self.redact_response_diagnostics,
         ))
     }
 }

@@ -15,15 +15,18 @@ use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionRegistry;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::ModelProviderPolicyContributor;
+use codex_extension_api::ModelProviderPolicyError;
 use codex_extension_api::ModelProviderPolicyFuture;
 use codex_extension_api::ModelProviderRequestKind;
 use codex_extension_api::ModelProviderTransport;
 
 use super::super::binding::prepare_model_provider_attempt;
+use super::super::lifecycle::active_model_provider_policies;
 use super::ModelProviderAttemptEnvelope;
 use super::ModelProviderPolicyContext;
+use super::PreparedEphemeralModelInput;
 use super::bytes_sha256;
-use super::resolve_ephemeral_model_input;
+use super::resolve_ephemeral_model_input as resolve_ephemeral_model_input_with_policies;
 use crate::config::Config;
 
 struct ActivePolicy;
@@ -144,6 +147,16 @@ fn attempt(
         generate,
     )
     .expect("attempt envelope")
+}
+
+async fn resolve_ephemeral_model_input(
+    context: &ModelProviderPolicyContext<'_>,
+    attempt: &ModelProviderAttemptEnvelope,
+    model_context_window: Option<i64>,
+) -> Result<Option<PreparedEphemeralModelInput>, ModelProviderPolicyError> {
+    let active = active_model_provider_policies(context.registry, context.thread_store);
+    resolve_ephemeral_model_input_with_policies(context, attempt, &active, model_context_window)
+        .await
 }
 
 #[tokio::test]

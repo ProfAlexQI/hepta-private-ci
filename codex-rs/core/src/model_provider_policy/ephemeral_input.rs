@@ -14,7 +14,7 @@ use super::binding::ModelProviderPolicyContext;
 use super::binding::bytes_sha256;
 use super::binding::canonical_sha256;
 use super::binding::digest_parts_sha256;
-use super::lifecycle::has_active_model_provider_policy;
+use super::lifecycle::ActiveModelProviderPolicies;
 
 const WRAPPER_OPEN: &str = "<hepta_memory_reference schema=\"1\">";
 const WRAPPER_CLOSE: &str = "</hepta_memory_reference>";
@@ -69,11 +69,12 @@ impl PreparedEphemeralModelInput {
 pub(crate) async fn resolve_ephemeral_model_input(
     context: &ModelProviderPolicyContext<'_>,
     attempt: &ModelProviderAttemptEnvelope,
+    active_policies: &ActiveModelProviderPolicies,
     model_context_window: Option<i64>,
 ) -> Result<Option<PreparedEphemeralModelInput>, ModelProviderPolicyError> {
     if attempt.request_kind() != ModelProviderRequestKind::Turn
         || !attempt.generate()
-        || !has_active_model_provider_policy(context.registry, context.thread_store)
+        || active_policies.is_empty()
     {
         return Ok(None);
     }

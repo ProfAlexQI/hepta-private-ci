@@ -590,6 +590,7 @@ async fn dropped_response_stream_traces_cancelled_partial_output() -> anyhow::Re
         attempt,
         test_model_provider(),
         /*provider_attempt*/ None,
+        /*redact_provider_errors*/ false,
     );
 
     let observed = stream
@@ -641,6 +642,7 @@ async fn response_stream_records_last_model_feedback_ids() {
         InferenceTraceAttempt::disabled(),
         test_model_provider(),
         /*provider_attempt*/ None,
+        /*redact_provider_errors*/ false,
     );
 
     while stream.next().await.is_some() {}
@@ -677,6 +679,7 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
         &mut auth_recovery,
         &test_session_telemetry(),
         &provider,
+        /*redact_provider_error*/ false,
     )
     .await
     .expect_err("expired Bedrock signature should fail");
@@ -687,6 +690,99 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
             "Amazon Bedrock rejected the request because its AWS signature has expired. Refresh your AWS credentials and retry. If `AWS_BEARER_TOKEN_BEDROCK` is set, update or unset it, then restart Codex, url: {url}"
         )
     );
+}
+
+#[test]
+fn ephemeral_provider_errors_remove_untrusted_diagnostics() {
+    const SENTINEL: &str = "echoed-ephemeral-secret";
+    let errors = [
+        codex_protocol::error::CodexErr::InvalidRequest(SENTINEL.to_string()),
+        codex_protocol::error::CodexErr::new(
+            codex_protocol::error::CodexErrorDetails::CyberPolicy {
+                message: SENTINEL.to_string(),
+            },
+        ),
+        codex_protocol::error::CodexErr::UnexpectedStatus(
+            codex_protocol::error::UnexpectedResponseError {
+                status: http::StatusCode::IM_A_TEAPOT,
+                body: SENTINEL.to_string(),
+                user_message: Some(SENTINEL.to_string()),
+                url: Some(format!("https://example.test/{SENTINEL}")),
+                cf_ray: Some("safe-ray".to_string()),
+                request_id: Some("safe-request".to_string()),
+                identity_authorization_error: Some(SENTINEL.to_string()),
+                identity_error_code: Some(SENTINEL.to_string()),
+            },
+        ),
+    ];
+
+    for error in errors {
+        let redacted = super::redact_ephemeral_provider_error(error, true);
+        assert!(!redacted.to_string().contains(SENTINEL));
+        assert!(!format!("{redacted:?}").contains(SENTINEL));
+        assert!(!format!("{redacted:?}").contains("safe-request"));
+        assert!(!format!("{redacted:?}").contains("safe-ray"));
+        assert!(!redacted.to_error_event(None).message.contains(SENTINEL));
+    }
+
+    let redacted = super::redact_ephemeral_provider_error(
+        codex_protocol::error::CodexErr::Stream(SENTINEL.to_string())
+            .with_retry_delay(Duration::from_secs(3)),
+        true,
+    );
+    assert_eq!(redacted.retry_delay(), Some(Duration::from_secs(3)));
+}
+
+#[tokio::test]
+async fn ephemeral_unauthorized_and_stream_errors_are_redacted() -> anyhow::Result<()> {
+    const SENTINEL: &str = "echoed-ephemeral-secret";
+    let provider = test_model_provider();
+    let mut auth_recovery = None;
+    let mut headers = http::HeaderMap::new();
+    headers.insert("x-request-id", http::HeaderValue::from_static(SENTINEL));
+    headers.insert(
+        "x-openai-authorization-error",
+        http::HeaderValue::from_static(SENTINEL),
+    );
+    let error = super::handle_unauthorized(
+        TransportError::Http {
+            status: http::StatusCode::UNAUTHORIZED,
+            url: Some(format!("https://example.test/{SENTINEL}")),
+            headers: Some(headers),
+            body: Some(SENTINEL.to_string()),
+        },
+        &mut auth_recovery,
+        &test_session_telemetry(),
+        &provider,
+        /*redact_provider_error*/ true,
+    )
+    .await
+    .expect_err("missing auth recovery should return the provider error");
+    assert_eq!(error.http_status_code_value(), Some(401));
+    assert!(!error.to_string().contains(SENTINEL));
+
+    let temp = TempDir::new()?;
+    let attempt = started_inference_attempt(&temp)?;
+    let api_stream = futures::stream::iter([Err(ApiError::InvalidRequest {
+        message: SENTINEL.to_string(),
+    })]);
+    let (mut stream, _) = super::map_response_events(
+        /*upstream_request_id*/ None,
+        api_stream,
+        test_session_telemetry(),
+        attempt,
+        provider,
+        /*provider_attempt*/ None,
+        /*redact_provider_errors*/ true,
+    );
+    let error = stream
+        .next()
+        .await
+        .expect("stream should return the mapped error")
+        .expect_err("provider error should remain an error");
+    assert!(!error.to_string().contains(SENTINEL));
+    assert!(!std::fs::read_to_string(temp.path().join("trace.jsonl"))?.contains(SENTINEL));
+    Ok(())
 }
 
 #[tokio::test]
@@ -717,6 +813,7 @@ async fn dropped_backpressured_response_stream_traces_cancelled_partial_output()
         attempt,
         test_model_provider(),
         /*provider_attempt*/ None,
+        /*redact_provider_errors*/ false,
     );
 
     // Fill the mapper channel with non-terminal events, then yield one output
