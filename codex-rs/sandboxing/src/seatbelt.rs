@@ -438,6 +438,64 @@ fn protected_metadata_names_for_writable_root(
     names
 }
 
+fn seatbelt_writable_access_roots(
+    file_system_sandbox_policy: &FileSystemSandboxPolicy,
+    cwd: &Path,
+) -> Vec<SeatbeltAccessRoot> {
+    let mut roots = file_system_sandbox_policy
+        .get_writable_roots_with_cwd(cwd)
+        .into_iter()
+        .map(|root| SeatbeltAccessRoot {
+            protected_metadata_names: protected_metadata_names_for_writable_root(
+                file_system_sandbox_policy,
+                &root,
+                cwd,
+            ),
+            root: root.root,
+            excluded_subpaths: root.read_only_subpaths,
+        })
+        .collect::<Vec<_>>();
+
+    // Each writable root becomes an independent Seatbelt allow arm. Repeat a
+    // nested root's protections on every broader root so the broader arm
+    // cannot bypass a nested read-only carveout or protected metadata name.
+    let nested_protections = roots
+        .iter()
+        .enumerate()
+        .flat_map(|(source_index, root)| {
+            let source_root = root.root.clone();
+            root.excluded_subpaths
+                .iter()
+                .cloned()
+                .chain(
+                    root.protected_metadata_names
+                        .iter()
+                        .map(|name| root.root.join(name)),
+                )
+                .map(move |path| (source_index, source_root.clone(), path))
+        })
+        .collect::<Vec<_>>();
+
+    for (target_index, target_root) in roots.iter_mut().enumerate() {
+        for (source_index, source_root, protected_path) in &nested_protections {
+            if *source_index == target_index
+                || !source_root
+                    .as_path()
+                    .starts_with(target_root.root.as_path())
+                || !protected_path
+                    .as_path()
+                    .starts_with(target_root.root.as_path())
+                || target_root.excluded_subpaths.contains(protected_path)
+            {
+                continue;
+            }
+            target_root.excluded_subpaths.push(protected_path.clone());
+        }
+    }
+
+    roots
+}
+
 fn build_seatbelt_unreadable_glob_policy(
     file_system_sandbox_policy: &FileSystemSandboxPolicy,
     cwd: &Path,
@@ -660,19 +718,7 @@ pub fn create_seatbelt_command_args(
             build_seatbelt_access_policy(
                 "file-write*",
                 "WRITABLE_ROOT",
-                file_system_sandbox_policy
-                    .get_writable_roots_with_cwd(sandbox_policy_cwd)
-                    .into_iter()
-                    .map(|root| SeatbeltAccessRoot {
-                        protected_metadata_names: protected_metadata_names_for_writable_root(
-                            file_system_sandbox_policy,
-                            &root,
-                            sandbox_policy_cwd,
-                        ),
-                        root: root.root,
-                        excluded_subpaths: root.read_only_subpaths,
-                    })
-                    .collect(),
+                seatbelt_writable_access_roots(file_system_sandbox_policy, sandbox_policy_cwd),
             )
         };
 
