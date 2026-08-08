@@ -39,10 +39,15 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
-#[cfg(windows)]
-const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
-#[cfg(not(windows))]
 const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+// macOS can spend tens of seconds in cold dyld startup for the freshly staged
+// app-server test binary. Keep later protocol waits short so fallback branches
+// complete before nextest's per-test timeout.
+#[cfg(target_os = "macos")]
+const APP_SERVER_STARTUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+#[cfg(not(target_os = "macos"))]
+const APP_SERVER_STARTUP_TIMEOUT: std::time::Duration = DEFAULT_READ_TIMEOUT;
 
 #[tokio::test]
 async fn turn_start_shell_zsh_fork_executes_command_v2() -> Result<()> {
@@ -732,7 +737,7 @@ async fn create_zsh_test_mcp_process(
         .with_codex_home(codex_home)
         .with_program(&app_server)
         .with_env_overrides(&[("ZDOTDIR", Some(zdotdir.as_str()))])
-        .build_initialized_with_timeout(DEFAULT_READ_TIMEOUT)
+        .build_initialized_with_timeout(APP_SERVER_STARTUP_TIMEOUT)
         .await
 }
 
