@@ -145,9 +145,9 @@ impl LocalFileSystem {
         let mut file = regular_file::open(native_path.as_path())
             .await
             .map_err(redact_file_access_error)?;
-        ensure_open_file_is_linked(&file).await?;
+        let identity = unique_file_identity(&file).await?;
         let final_path = stable_file_path(&file)?;
-        ensure_open_file_is_linked(&file).await?;
+        verify_stable_path(final_path.as_path(), identity).await?;
         authorize_stable_file_path(final_path.as_path(), sandbox)?;
         file.seek(std::io::SeekFrom::Start(0))
             .await
@@ -159,13 +159,20 @@ impl LocalFileSystem {
             .read_to_end(&mut bytes)
             .await
             .map_err(redact_file_access_error)?;
+        if unique_file_identity(limited.get_ref()).await? != identity {
+            return Err(authorized_read_error(io::ErrorKind::PermissionDenied));
+        }
+        let post_read_path = stable_file_path(limited.get_ref())?;
+        if post_read_path != final_path {
+            return Err(authorized_read_error(io::ErrorKind::PermissionDenied));
+        }
+        verify_stable_path(final_path.as_path(), identity).await?;
         if bytes.len() > max_bytes {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "authorized file read exceeds the requested limit",
             ));
         }
-        ensure_open_file_is_linked(limited.get_ref()).await?;
         Ok(bytes)
     }
 
@@ -898,12 +905,39 @@ fn authorized_read_limit(max_bytes: usize) -> io::Result<u64> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-async fn ensure_open_file_is_linked(file: &tokio::fs::File) -> io::Result<()> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct UniqueFileIdentity {
+    device: u64,
+    inode: u64,
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+async fn unique_file_identity(file: &tokio::fs::File) -> io::Result<UniqueFileIdentity> {
     use std::os::unix::fs::MetadataExt;
 
     let metadata = file.metadata().await.map_err(redact_file_access_error)?;
-    if metadata.nlink() == 0 {
-        return Err(authorized_read_error(io::ErrorKind::NotFound));
+    if !metadata.is_file() || metadata.nlink() != 1 {
+        return Err(authorized_read_error(io::ErrorKind::PermissionDenied));
+    }
+    Ok(UniqueFileIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    })
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+async fn verify_stable_path(path: &Path, identity: UniqueFileIdentity) -> io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = tokio::fs::symlink_metadata(path)
+        .await
+        .map_err(redact_file_access_error)?;
+    if !metadata.is_file()
+        || metadata.nlink() != 1
+        || metadata.dev() != identity.device
+        || metadata.ino() != identity.inode
+    {
+        return Err(authorized_read_error(io::ErrorKind::PermissionDenied));
     }
     Ok(())
 }

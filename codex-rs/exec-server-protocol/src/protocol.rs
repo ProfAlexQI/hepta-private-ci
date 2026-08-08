@@ -173,10 +173,31 @@ impl EnvironmentInfo {
             capabilities: EnvironmentCapabilities {
                 network_proxy_launch: true,
                 capability_discovery_sandbox: true,
-                stable_handle_authorized_read: cfg!(any(target_os = "macos", target_os = "linux")),
+                stable_handle_authorized_read: stable_handle_authorized_read_available(),
             },
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn stable_handle_authorized_read_available() -> bool {
+    true
+}
+
+#[cfg(target_os = "linux")]
+fn stable_handle_authorized_read_available() -> bool {
+    use std::os::fd::AsRawFd;
+
+    let Ok(fd_directory) = std::fs::File::open("/proc/self/fd") else {
+        return false;
+    };
+    std::fs::read_link(format!("/proc/self/fd/{}", fd_directory.as_raw_fd()))
+        .is_ok_and(|path| path.is_absolute())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn stable_handle_authorized_read_available() -> bool {
+    false
 }
 
 /// Shell detected for an execution/filesystem environment.
@@ -980,7 +1001,7 @@ mod tests {
             EnvironmentInfo::local()
                 .capabilities
                 .stable_handle_authorized_read,
-            cfg!(any(target_os = "macos", target_os = "linux"))
+            stable_handle_authorized_read_available()
         );
     }
 

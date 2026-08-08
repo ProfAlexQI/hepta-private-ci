@@ -1,7 +1,7 @@
 use super::ExecutorFileSystem;
 use super::FileSystemSandboxContext;
 use super::LocalFileSystem;
-use super::ensure_open_file_is_linked;
+use super::unique_file_identity;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::permissions::FileSystemAccessMode;
 use codex_protocol::permissions::FileSystemPath;
@@ -136,6 +136,52 @@ async fn stable_handle_read_rejects_max_plus_one_without_returning_a_prefix() ->
     Ok(())
 }
 
+#[tokio::test]
+async fn denied_inode_hardlinked_into_allowed_root_is_rejected() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let allowed_dir = temp_dir.path().join("allowed");
+    let denied_dir = temp_dir.path().join("denied");
+    std::fs::create_dir_all(&allowed_dir)?;
+    std::fs::create_dir_all(&denied_dir)?;
+    let secret_file = denied_dir.join("SECRET.txt");
+    let allowed_link = allowed_dir.join("alias.txt");
+    std::fs::write(&secret_file, SECRET)?;
+    std::fs::hard_link(&secret_file, &allowed_link)?;
+
+    let error = authorized_read(
+        &LocalFileSystem::unsandboxed(),
+        &allowed_link,
+        &read_sandbox(&allowed_dir)?,
+        SECRET.len(),
+    )
+    .await
+    .expect_err("a denied inode with an allowed hardlink must fail closed");
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "authorized file read denied");
+    Ok(())
+}
+
+#[tokio::test]
+async fn two_allowed_hardlinks_are_rejected() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let original = temp_dir.path().join("original.txt");
+    let alias = temp_dir.path().join("alias.txt");
+    std::fs::write(&original, ALLOWED)?;
+    std::fs::hard_link(&original, &alias)?;
+
+    let error = authorized_read(
+        &LocalFileSystem::unsandboxed(),
+        &alias,
+        &read_sandbox(temp_dir.path())?,
+        ALLOWED.len(),
+    )
+    .await
+    .expect_err("even two allowed names make path authority ambiguous");
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "authorized file read denied");
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn symlink_swap_never_returns_denied_contents() -> io::Result<()> {
     use std::os::unix::fs::symlink;
@@ -199,6 +245,64 @@ async fn symlink_swap_never_returns_denied_contents() -> io::Result<()> {
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn hardlink_and_rename_churn_never_returns_denied_contents() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let allowed_dir = temp_dir.path().join("allowed");
+    let denied_dir = temp_dir.path().join("denied");
+    std::fs::create_dir_all(&allowed_dir)?;
+    std::fs::create_dir_all(&denied_dir)?;
+    let secret_file = denied_dir.join("secret.txt");
+    let slot = allowed_dir.join("slot.txt");
+    std::fs::write(&secret_file, SECRET)?;
+    std::fs::write(&slot, ALLOWED)?;
+    let sandbox = read_sandbox(&allowed_dir)?;
+    let stop = Arc::new(AtomicBool::new(false));
+    let toggler_stop = Arc::clone(&stop);
+    let toggler_slot = slot.clone();
+    let toggler = std::thread::spawn(move || -> io::Result<()> {
+        let replacement = toggler_slot.with_extension("next");
+        for _ in 0..2048 {
+            if toggler_stop.load(Ordering::Acquire) {
+                break;
+            }
+            let _ = std::fs::remove_file(&replacement);
+            std::fs::write(&replacement, ALLOWED)?;
+            std::fs::rename(&replacement, &toggler_slot)?;
+            std::fs::hard_link(&secret_file, &replacement)?;
+            std::fs::rename(&replacement, &toggler_slot)?;
+        }
+        Ok(())
+    });
+    let file_system = LocalFileSystem::unsandboxed();
+    let mut unexpected = None;
+    for _ in 0..512 {
+        match authorized_read(&file_system, &slot, &sandbox, ALLOWED.len()).await {
+            Ok(contents) if contents == ALLOWED => {}
+            Ok(contents) => {
+                unexpected = Some(format!("unexpected contents: {contents:?}"));
+                break;
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::PermissionDenied | io::ErrorKind::NotFound
+                ) => {}
+            Err(error) => {
+                unexpected = Some(format!("unexpected error kind: {:?}", error.kind()));
+                break;
+            }
+        }
+        tokio::task::yield_now().await;
+    }
+    stop.store(true, Ordering::Release);
+    toggler
+        .join()
+        .expect("hardlink churn thread must not panic")?;
+    assert_eq!(unexpected, None);
+    Ok(())
+}
+
 #[tokio::test]
 async fn authorized_read_errors_do_not_expose_requested_paths() -> io::Result<()> {
     let temp_dir = tempfile::tempdir()?;
@@ -222,9 +326,10 @@ async fn an_unlinked_open_handle_fails_closed() -> io::Result<()> {
     std::fs::write(&path, ALLOWED)?;
     let file = crate::regular_file::open(&path).await?;
     std::fs::remove_file(&path)?;
-    let error = ensure_open_file_is_linked(&file)
+    let error = unique_file_identity(&file)
         .await
         .expect_err("an unlinked handle must fail closed regardless of path API behavior");
-    assert_eq!(error.kind(), io::ErrorKind::NotFound);
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "authorized file read denied");
     Ok(())
 }
