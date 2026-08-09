@@ -4,6 +4,7 @@ mod canonical;
 mod frozen_oracle_qualification;
 mod governance_store;
 mod governance_validation;
+mod live_product_shadow;
 mod promotion_replay_store;
 mod provider_claim;
 mod provider_insert;
@@ -66,3 +67,7 @@ mod provider_claim_tests;
 #[cfg(test)]
 #[path = "frozen_oracle_qualification_tests.rs"]
 mod frozen_oracle_qualification_tests;
+
+#[cfg(test)]
+#[path = "live_product_shadow_tests.rs"]
+mod live_product_shadow_tests;

@@ -150,6 +150,247 @@ const EXACT_PROMOTION_REPLAY_SCHEMA_FINGERPRINTS: &[ExactSchemaFingerprint] = &[
     },
 ];
 
+// Migration 0009 is qualification-only, but its append-only boundary is still
+// exact: every explicitly created table, index, and trigger is fingerprinted.
+// This prevents a plausible-looking replacement DDL from opening as the v2
+// live-product foundation before a strict path-based importer exists.
+const EXACT_LIVE_PRODUCT_SHADOW_V2_SCHEMA_FINGERPRINTS: &[ExactSchemaFingerprint] = &[
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_artifact_imports",
+        normalized_sql_sha256: "00863bb6ed395818c010a6066bd4785b5de23cf7693c038379f754862e373ba6",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_imports_before_terminal",
+        normalized_sql_sha256: "1b8c775811ad549461ec6f2906087262467fa1ed080084457a6a1fb78bfcf901",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_imports_chronology_guard",
+        normalized_sql_sha256: "fd35e307cf5da27ace27d8aa27b99bbfe81830a422beae7cfbf299612a9bb0f5",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_imports_identity_collision_guard",
+        normalized_sql_sha256: "88252e6db9bd92bcbf90b57d6ec206c16e1c2460df9d299adeb209c8991b7789",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_imports_intent",
+        normalized_sql_sha256: "d02a3ec471b97681c7bb5f0183143bb04cf1a5ef30218ef840e477ce765ca43a",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_imports_no_delete",
+        normalized_sql_sha256: "46a4faeab70e8366f6ffecd16356e2365365b8b28ab0287de7a82ab9655247f9",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_imports_no_update",
+        normalized_sql_sha256: "615b6f3c6f6f6c6fb5f6785e06e9c5c093bfa15df63e753c482f2235773271a9",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_imports_run_segment",
+        normalized_sql_sha256: "d0bc815c5e8500139eb498a3444f2e4b5a8ec702c1f029ea49cfc4ab736c9a4c",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_intents_chain_guard",
+        normalized_sql_sha256: "71f04addad9180dad41c93e2f6155de4e59cd6bc46c9c22b242b3c97cca0b97f",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_intents_identity_collision_guard",
+        normalized_sql_sha256: "1912d130b55be72b8a0a7f536fb6b0b2dd5cff93c0f0e7d8ac3da6cdd2d2c19c",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_intents_no_delete",
+        normalized_sql_sha256: "132297ba8337be4ceb34326ce2f8d463f47ca7ab5f260322f81a0f2f0901e1e5",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_intents_no_update",
+        normalized_sql_sha256: "264a83798b5b0eb22976e0bcc1ba4120ced1159b2bd1188ee309f4209622380c",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_intents_run_segment_intent",
+        normalized_sql_sha256: "9a268515388517434d2a0ab4e6ec136552c7107c77ea97e5f61d0ce1ef988053",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_intents_segment_ordinal",
+        normalized_sql_sha256: "170fe543fcf1a673790dc77fc438f5591015305c1490fd588723149e93df0391",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_intents_segment_sample",
+        normalized_sql_sha256: "8e329cb0744bda237c13239b5ac9bbe3c5ffb63aa28dc69b81c3b426061df5bc",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_pre_send_intents",
+        normalized_sql_sha256: "24991dede4a2649bd45b524943b7f0459d38c0ea668c10b3117568934fb1045e",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_runs",
+        normalized_sql_sha256: "43adb1d6c6766d633b70b593ad7c045593f9a834c1368c549aea187a0e106570",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_runs_identity_collision_guard",
+        normalized_sql_sha256: "823e78ebcd3e36c852fa15488ca6be8bd52febf486ab916a3a1a4fc2170bfad3",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_runs_no_delete",
+        normalized_sql_sha256: "3f0f4d56f8cec614b70663785fb3feff95b877c7344b9e3cb3358ad1d000d63a",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_runs_no_update",
+        normalized_sql_sha256: "2dc50199ba82273d769aa8aba685513ae80f7646d63ea722e4250bed571fcbd4",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_runs_nonce",
+        normalized_sql_sha256: "56e5bca7c846a455b3b18981859f51da93bd6cc1417cd0f02a21ca4dce47440e",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments",
+        normalized_sql_sha256: "125ef4fc59ba45e3205c95d43201b0b2c1c8dd1f5b53a96a0f204ff17f4165b2",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments_before_terminal",
+        normalized_sql_sha256: "8e7ab396233b96d34434db4c96e58318e38136a7fd456abcf06d71b010bb09c5",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments_chronology_guard",
+        normalized_sql_sha256: "c13a9bcfb76425b46f4618308bb010b9d561b75c16380e73da5536d08a20230b",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments_database_nonce",
+        normalized_sql_sha256: "e7478de7b62634affe8bdfe2cc260c5c40ec08b7eed1f3e8659d6206a8af53e5",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments_identity_collision_guard",
+        normalized_sql_sha256: "43f2c667355548dc23adb278dd176035381f927cc7e367ecb1f0c9ca5138804c",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments_no_delete",
+        normalized_sql_sha256: "8c8c5774eb0f35d0c133d9f4a1fd5c91dba561c4b3b937f53394340b30e39acc",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments_no_update",
+        normalized_sql_sha256: "a5de9b7c8aa21d35562df530530efef2cf3e04fb2ccdc79398aada8af0d925ce",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments_run_ordinal",
+        normalized_sql_sha256: "47e47db8c817555d5636a6ef3cf30a9e201803b378ae1af661ba57bbdbde7fd3",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments_run_segment",
+        normalized_sql_sha256: "436ec33cf771319dc71b34764663e65298adc701542f7294e60df705cbddf45d",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_segments_run_surface",
+        normalized_sql_sha256: "5aa33b5bf979245cacded4456cf8d177fdb88c78497c3172214d3d3366e0f6ce",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_terminals",
+        normalized_sql_sha256: "00a81a17864cc04965434b9d800782df726403f3d5c23d23a47ad1327fe5c721",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_terminals_identity_collision_guard",
+        normalized_sql_sha256: "707d96e1f167eb7fd0d17f6a2a86b8b08e565140e3ce43b8ed49a6002d308c54",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_terminals_no_delete",
+        normalized_sql_sha256: "33cf63ed1ad0b5e0790cfe13cbb7d010fd499e7465c6019cf2e828a3189f1992",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_terminals_no_update",
+        normalized_sql_sha256: "7495fd424e7f7ad7e0600bba8d229897214d44455e1861249cf456fdea753d96",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_terminals_run",
+        normalized_sql_sha256: "6e643b48f6f5fb516b10204456c6c63e35e7365084a98eb8d428d38a905393b7",
+    },
+    ExactSchemaFingerprint {
+        name: "live_product_shadow_v2_terminals_state_guard",
+        normalized_sql_sha256: "e809679dcab9d8b6c6217ac25d94bcb8eacb50a67357e39391dc43c4c88bb65c",
+    },
+];
+const EXACT_LIVE_PRODUCT_SHADOW_V2_TRIGGER_SET: &[(&str, &str)] = &[
+    (
+        "live_product_shadow_v2_artifact_imports",
+        "live_product_shadow_v2_imports_before_terminal",
+    ),
+    (
+        "live_product_shadow_v2_artifact_imports",
+        "live_product_shadow_v2_imports_chronology_guard",
+    ),
+    (
+        "live_product_shadow_v2_artifact_imports",
+        "live_product_shadow_v2_imports_identity_collision_guard",
+    ),
+    (
+        "live_product_shadow_v2_artifact_imports",
+        "live_product_shadow_v2_imports_no_delete",
+    ),
+    (
+        "live_product_shadow_v2_artifact_imports",
+        "live_product_shadow_v2_imports_no_update",
+    ),
+    (
+        "live_product_shadow_v2_pre_send_intents",
+        "live_product_shadow_v2_intents_chain_guard",
+    ),
+    (
+        "live_product_shadow_v2_pre_send_intents",
+        "live_product_shadow_v2_intents_identity_collision_guard",
+    ),
+    (
+        "live_product_shadow_v2_pre_send_intents",
+        "live_product_shadow_v2_intents_no_delete",
+    ),
+    (
+        "live_product_shadow_v2_pre_send_intents",
+        "live_product_shadow_v2_intents_no_update",
+    ),
+    (
+        "live_product_shadow_v2_runs",
+        "live_product_shadow_v2_runs_identity_collision_guard",
+    ),
+    (
+        "live_product_shadow_v2_runs",
+        "live_product_shadow_v2_runs_no_delete",
+    ),
+    (
+        "live_product_shadow_v2_runs",
+        "live_product_shadow_v2_runs_no_update",
+    ),
+    (
+        "live_product_shadow_v2_segments",
+        "live_product_shadow_v2_segments_before_terminal",
+    ),
+    (
+        "live_product_shadow_v2_segments",
+        "live_product_shadow_v2_segments_chronology_guard",
+    ),
+    (
+        "live_product_shadow_v2_segments",
+        "live_product_shadow_v2_segments_identity_collision_guard",
+    ),
+    (
+        "live_product_shadow_v2_segments",
+        "live_product_shadow_v2_segments_no_delete",
+    ),
+    (
+        "live_product_shadow_v2_segments",
+        "live_product_shadow_v2_segments_no_update",
+    ),
+    (
+        "live_product_shadow_v2_terminals",
+        "live_product_shadow_v2_terminals_identity_collision_guard",
+    ),
+    (
+        "live_product_shadow_v2_terminals",
+        "live_product_shadow_v2_terminals_no_delete",
+    ),
+    (
+        "live_product_shadow_v2_terminals",
+        "live_product_shadow_v2_terminals_no_update",
+    ),
+    (
+        "live_product_shadow_v2_terminals",
+        "live_product_shadow_v2_terminals_state_guard",
+    ),
+];
+
 const EXACT_PROMOTION_REPLAY_TRIGGER_SET: &[(&str, &str)] = &[
     (
         "promotion_receipt_consumptions",
@@ -1063,6 +1304,8 @@ pub(crate) async fn verify_schema_manifest(pool: &SqlitePool) -> Result<(), Evid
         }
     }
     verify_exact_promotion_replay_trigger_set(pool).await?;
+    verify_exact_live_product_shadow_v2_trigger_set(pool).await?;
+    verify_exact_live_product_shadow_v2_object_set(pool).await?;
     for fingerprint in EXACT_FROZEN_ORACLE_TRIGGER_FINGERPRINTS
         .iter()
         .chain(EXACT_PROMOTION_REPLAY_SCHEMA_FINGERPRINTS)
@@ -1084,6 +1327,28 @@ pub(crate) async fn verify_schema_manifest(pool: &SqlitePool) -> Result<(), Evid
         if actual.as_str() != fingerprint.normalized_sql_sha256 {
             return Err(EvidenceError::Corrupt(format!(
                 "fingerprinted SQLite trigger or schema object {} has an invalid canonical definition",
+                fingerprint.name
+            )));
+        }
+    }
+    for fingerprint in EXACT_LIVE_PRODUCT_SHADOW_V2_SCHEMA_FINGERPRINTS {
+        let sql =
+            sqlx::query_scalar::<_, Option<String>>("SELECT sql FROM sqlite_schema WHERE name = ?")
+                .bind(fingerprint.name)
+                .fetch_optional(pool)
+                .await
+                .map_err(classify_sqlx_error)?
+                .flatten()
+                .ok_or_else(|| {
+                    EvidenceError::Corrupt(format!(
+                        "fingerprinted live product-Shadow v2 schema object {} is missing",
+                        fingerprint.name
+                    ))
+                })?;
+        let actual = Sha256Digest::for_bytes(normalize_schema_sql_preserving_case(&sql).as_bytes());
+        if actual.as_str() != fingerprint.normalized_sql_sha256 {
+            return Err(EvidenceError::Corrupt(format!(
+                "fingerprinted live product-Shadow v2 schema object {} has an invalid exact definition",
                 fingerprint.name
             )));
         }
@@ -1133,11 +1398,91 @@ async fn verify_exact_promotion_replay_trigger_set(pool: &SqlitePool) -> Result<
     Ok(())
 }
 
+async fn verify_exact_live_product_shadow_v2_trigger_set(
+    pool: &SqlitePool,
+) -> Result<(), EvidenceError> {
+    let mut rows = sqlx::query(
+        "SELECT tbl_name, name
+         FROM sqlite_schema
+         WHERE type = 'trigger'
+           AND tbl_name IN (
+               'live_product_shadow_v2_runs',
+               'live_product_shadow_v2_segments',
+               'live_product_shadow_v2_pre_send_intents',
+               'live_product_shadow_v2_artifact_imports',
+               'live_product_shadow_v2_terminals'
+           )
+         ORDER BY tbl_name ASC, name ASC",
+    )
+    .fetch(pool);
+    let mut index = 0usize;
+    while let Some(row) = rows.try_next().await.map_err(classify_sqlx_error)? {
+        let table_name: String = row.get("tbl_name");
+        let trigger_name: String = row.get("name");
+        let Some((expected_table, expected_trigger)) =
+            EXACT_LIVE_PRODUCT_SHADOW_V2_TRIGGER_SET.get(index)
+        else {
+            return Err(EvidenceError::Corrupt(format!(
+                "unexpected live product-Shadow v2 trigger {trigger_name} exists on {table_name}"
+            )));
+        };
+        if table_name != *expected_table || trigger_name != *expected_trigger {
+            return Err(EvidenceError::Corrupt(format!(
+                "live product-Shadow v2 trigger set differs at {table_name}.{trigger_name}"
+            )));
+        }
+        index += 1;
+    }
+    if index != EXACT_LIVE_PRODUCT_SHADOW_V2_TRIGGER_SET.len() {
+        return Err(EvidenceError::Corrupt(format!(
+            "live product-Shadow v2 trigger set is incomplete: expected {}, found {index}",
+            EXACT_LIVE_PRODUCT_SHADOW_V2_TRIGGER_SET.len()
+        )));
+    }
+    Ok(())
+}
+
+async fn verify_exact_live_product_shadow_v2_object_set(
+    pool: &SqlitePool,
+) -> Result<(), EvidenceError> {
+    let mut rows = sqlx::query(
+        "SELECT name
+         FROM sqlite_schema
+         WHERE name LIKE 'live_product_shadow_v2_%'
+           AND name NOT LIKE 'sqlite_autoindex_%'
+         ORDER BY name ASC",
+    )
+    .fetch(pool);
+    let mut index = 0usize;
+    while let Some(row) = rows.try_next().await.map_err(classify_sqlx_error)? {
+        let name: String = row.get("name");
+        let Some(expected) = EXACT_LIVE_PRODUCT_SHADOW_V2_SCHEMA_FINGERPRINTS.get(index) else {
+            return Err(EvidenceError::Corrupt(format!(
+                "unexpected live product-Shadow v2 schema object {name} exists"
+            )));
+        };
+        if name != expected.name {
+            return Err(EvidenceError::Corrupt(format!(
+                "live product-Shadow v2 schema object set differs at {name}"
+            )));
+        }
+        index += 1;
+    }
+    if index != EXACT_LIVE_PRODUCT_SHADOW_V2_SCHEMA_FINGERPRINTS.len() {
+        return Err(EvidenceError::Corrupt(format!(
+            "live product-Shadow v2 schema object set is incomplete: expected {}, found {index}",
+            EXACT_LIVE_PRODUCT_SHADOW_V2_SCHEMA_FINGERPRINTS.len()
+        )));
+    }
+    Ok(())
+}
+
 fn normalize_schema_sql(sql: &str) -> String {
-    sql.split_ascii_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_ascii_lowercase()
+    normalize_schema_sql_preserving_case(sql).to_ascii_lowercase()
+}
+
+fn normalize_schema_sql_preserving_case(sql: &str) -> String {
+    sql.split_ascii_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub(crate) async fn verify_foreign_keys(pool: &SqlitePool) -> Result<(), EvidenceError> {

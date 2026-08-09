@@ -24,6 +24,7 @@ use crate::governance_store::verify_decision;
 use crate::governance_store::verify_receipt;
 use crate::governance_validation::validate_decision;
 use crate::governance_validation::validate_receipt_binding;
+use crate::live_product_shadow::verify_live_product_shadow_v2_integrity;
 use crate::promotion_replay_store::SqlitePromotionReceiptReplayStore;
 use crate::promotion_replay_store::verify_promotion_replay_integrity;
 use crate::schema_validation::classify_migrate_error;
@@ -89,6 +90,10 @@ impl HeptaEvidenceStore {
             return Err(error);
         }
         if let Err(error) = verify_promotion_replay_integrity(&pool).await {
+            pool.close().await;
+            return Err(error);
+        }
+        if let Err(error) = verify_live_product_shadow_v2_integrity(&pool).await {
             pool.close().await;
             return Err(error);
         }
