@@ -10,6 +10,7 @@ use crate::CopyOptions;
 use crate::CreateDirectoryOptions;
 use crate::ExecServerRuntimePaths;
 use crate::ExecutorFileSystem;
+use crate::FileSystemSandboxContext;
 use crate::RemoveOptions;
 use crate::file_read::FileReadHandleManager;
 use crate::local_file_system::LocalFileSystem;
@@ -72,6 +73,16 @@ impl FileSystemHandler {
         &self,
         params: CapabilityRootsDiscoverParams,
     ) -> Result<CapabilityRootsDiscoverResponse, JSONRPCErrorError> {
+        if params.roots.iter().any(|root| {
+            root.sandbox
+                .as_ref()
+                .is_some_and(FileSystemSandboxContext::should_run_in_sandbox)
+        }) && !crate::local_file_system::stable_handle_authorized_read_available()
+        {
+            return Err(invalid_request(
+                "exec-server does not support sandboxed capability discovery".to_string(),
+            ));
+        }
         crate::discover_capability_roots(&self.file_system, params)
             .await
             .map_err(|error| invalid_request(error.to_string()))
