@@ -1,3 +1,4 @@
+use std::num::NonZeroU64;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -15,6 +16,7 @@ use sqlx::SqlitePool;
 
 use crate::EvidenceError;
 use crate::canonical::canonical_json;
+use crate::frozen_oracle_qualification::verify_frozen_oracle_qualification_integrity;
 use crate::governance_store::decode_decision_row;
 use crate::governance_store::decode_receipt_row;
 use crate::governance_store::ensure_decision;
@@ -22,6 +24,8 @@ use crate::governance_store::verify_decision;
 use crate::governance_store::verify_receipt;
 use crate::governance_validation::validate_decision;
 use crate::governance_validation::validate_receipt_binding;
+use crate::promotion_replay_store::SqlitePromotionReceiptReplayStore;
+use crate::promotion_replay_store::verify_promotion_replay_integrity;
 use crate::schema_validation::classify_migrate_error;
 use crate::schema_validation::classify_sqlx_error;
 use crate::schema_validation::verify_foreign_keys;
@@ -80,6 +84,14 @@ impl HeptaEvidenceStore {
             pool.close().await;
             return Err(error);
         }
+        if let Err(error) = verify_frozen_oracle_qualification_integrity(&pool).await {
+            pool.close().await;
+            return Err(error);
+        }
+        if let Err(error) = verify_promotion_replay_integrity(&pool).await {
+            pool.close().await;
+            return Err(error);
+        }
         if let Err(error) = verify_provider_host_bindings(&pool).await {
             pool.close().await;
             return Err(error);
@@ -97,6 +109,16 @@ impl HeptaEvidenceStore {
 
     pub fn path(&self) -> &std::path::Path {
         &self.path
+    }
+
+    /// Creates the durable promotion replay facade with an explicit trusted
+    /// clock forward-jump policy. No product default is selected here: an
+    /// excessive jump fails closed and requires authenticated store recovery.
+    pub fn promotion_receipt_replay_store(
+        &self,
+        max_forward_jump_seconds: NonZeroU64,
+    ) -> SqlitePromotionReceiptReplayStore {
+        SqlitePromotionReceiptReplayStore::new(self.pool.clone(), max_forward_jump_seconds)
     }
 
     pub async fn append_decision(

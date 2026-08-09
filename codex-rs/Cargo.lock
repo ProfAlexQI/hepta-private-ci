@@ -3280,6 +3280,8 @@ dependencies = [
 name = "codex-hepta-contracts"
 version = "0.0.0"
 dependencies = [
+ "ed25519-dalek",
+ "futures",
  "pretty_assertions",
  "serde",
  "serde_json",
@@ -3293,6 +3295,7 @@ dependencies = [
  "codex-hepta-contracts",
  "codex-state",
  "codex-utils-absolute-path",
+ "futures",
  "serde",
  "serde_json",
  "sha2 0.10.9",

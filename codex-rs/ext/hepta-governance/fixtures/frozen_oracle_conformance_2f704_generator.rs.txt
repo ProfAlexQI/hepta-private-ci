@@ -1,0 +1,385 @@
+use std::sync::Arc;
+
+use codex_extension_api::ExtensionData;
+use codex_extension_api::ToolCallOutcome;
+use codex_extension_api::ToolCallSource;
+use codex_extension_api::ToolPayload;
+use codex_extension_api::ToolPolicyContributor;
+use codex_extension_api::ToolPolicyDecision;
+use codex_extension_api::ToolPolicyInput;
+use codex_extension_api::ToolPolicyTerminalInput;
+use codex_hepta_contracts::ActionId;
+use codex_hepta_contracts::GovernanceMode;
+use codex_hepta_contracts::ReceiptId;
+use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_evidence::HeptaEvidenceStore;
+use codex_state::SqliteConfig;
+use codex_utils_absolute_path::AbsolutePathBuf;
+use tempfile::TempDir;
+
+use super::GovernanceState;
+use super::HeptaGovernanceExtension;
+
+const PAYLOAD_KINDS: [&str; 3] = ["function", "tool_search", "custom"];
+const RECEIPT_PHASES: [&str; 2] = ["admission_only", "admission_and_authorization"];
+const SOURCE_KINDS: [&str; 3] = ["direct", "direct_plaintext_message", "code_mode"];
+const OUTCOME_KINDS: [&str; 7] = [
+    "completed_success",
+    "completed_reported_failure",
+    "blocked",
+    "failed_before_handler",
+    "failed_after_handler",
+    "aborted",
+    "indeterminate",
+];
+const HOST_ACCEPTED_VALUES: [bool; 2] = [false, true];
+
+fn canonical_json(value: &serde_json::Value) -> Vec<u8> {
+    fn sort(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    sort(item);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                let mut entries = std::mem::take(map).into_iter().collect::<Vec<_>>();
+                entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+                for (_, item) in &mut entries {
+                    sort(item);
+                }
+                map.extend(entries);
+            }
+            _ => {}
+        }
+    }
+
+    let mut value = value.clone();
+    sort(&mut value);
+    serde_json::to_vec(&value).expect("canonical frozen-oracle lifecycle JSON")
+}
+
+fn payload(payload_kind: &str) -> ToolPayload {
+    match payload_kind {
+        "function" => ToolPayload::Function {
+            arguments: r#"{"command":"echo canonical"}"#.to_string(),
+        },
+        "tool_search" => ToolPayload::ToolSearch {
+            arguments: serde_json::from_value(serde_json::json!({
+                "query": "hepta canonical payload",
+                "limit": 3,
+            }))
+            .expect("tool-search arguments"),
+        },
+        "custom" => ToolPayload::Custom {
+            input: "canonical custom input".to_string(),
+        },
+        other => panic!("unknown payload kind {other}"),
+    }
+}
+
+fn source(source_kind: &str) -> ToolCallSource {
+    match source_kind {
+        "direct" => ToolCallSource::Direct,
+        "direct_plaintext_message" => ToolCallSource::DirectPlaintextMessage,
+        "code_mode" => ToolCallSource::CodeMode {
+            cell_id: "cell-oracle".to_string(),
+            runtime_tool_call_id: "runtime-oracle".to_string(),
+        },
+        other => panic!("unknown source kind {other}"),
+    }
+}
+
+fn outcome(outcome_kind: &str) -> ToolCallOutcome {
+    match outcome_kind {
+        "completed_success" => ToolCallOutcome::Completed { success: true },
+        "completed_reported_failure" => ToolCallOutcome::Completed { success: false },
+        "blocked" => ToolCallOutcome::Blocked,
+        "failed_before_handler" => ToolCallOutcome::Failed {
+            handler_executed: false,
+        },
+        "failed_after_handler" => ToolCallOutcome::Failed {
+            handler_executed: true,
+        },
+        "aborted" => ToolCallOutcome::Aborted,
+        "indeterminate" => ToolCallOutcome::Indeterminate {
+            reason_code: "canonical_oracle_indeterminate",
+        },
+        other => panic!("unknown outcome kind {other}"),
+    }
+}
+
+fn decision_projection(decision: ToolPolicyDecision) -> serde_json::Value {
+    match decision {
+        ToolPolicyDecision::Allow => serde_json::json!({"decision": "allow"}),
+        ToolPolicyDecision::Block {
+            reason_code,
+            message,
+        } => serde_json::json!({
+            "decision": "block",
+            "reason_code": reason_code,
+            "message": message,
+        }),
+    }
+}
+
+async fn lifecycle_projection(
+    evidence: &Arc<HeptaEvidenceStore>,
+    ordinal: u64,
+    payload_kind: &str,
+    receipt_phase: &str,
+    source_kind: &str,
+    outcome_kind: &str,
+    host_accepted: bool,
+) -> serde_json::Value {
+    let session = ExtensionData::new("session-oracle");
+    let thread = ExtensionData::new("thread-oracle");
+    let turn = ExtensionData::new("turn-oracle");
+    thread.insert(GovernanceState::enabled(
+        GovernanceMode::Shadow,
+        Ok(Arc::clone(evidence)),
+    ));
+    let extension = HeptaGovernanceExtension {
+        enabled: |_: &()| true,
+        mode: GovernanceMode::Shadow,
+        state_db: None,
+        evidence: tokio::sync::OnceCell::new(),
+    };
+    let payload = payload(payload_kind);
+    let source = source(source_kind);
+    let call_id = format!("frozen-oracle-case-{ordinal:03}");
+    let attempt_id = format!("frozen-oracle-attempt-{ordinal:03}");
+    let tool_name = "exec_command".into();
+    let input = || ToolPolicyInput {
+        session_store: &session,
+        thread_store: &thread,
+        turn_store: &turn,
+        attempt_id: &attempt_id,
+        turn_id: "turn-oracle",
+        call_id: &call_id,
+        tool_name: &tool_name,
+        source: source.clone(),
+        payload: &payload,
+    };
+
+    let admission = extension
+        .admit(input())
+        .await
+        .expect("product admission callback");
+    let authorization = match receipt_phase {
+        "admission_only" => None,
+        "admission_and_authorization" => Some(
+            extension
+                .authorize(input())
+                .await
+                .expect("product authorization callback"),
+        ),
+        other => panic!("unknown receipt phase {other}"),
+    };
+    extension
+        .on_terminal(ToolPolicyTerminalInput {
+            session_store: &session,
+            thread_store: &thread,
+            turn_store: &turn,
+            attempt_id: &attempt_id,
+            turn_id: "turn-oracle",
+            call_id: &call_id,
+            tool_name: &tool_name,
+            source,
+            outcome: outcome(outcome_kind),
+            host_accepted,
+        })
+        .await
+        .expect("product terminal callback in Shadow mode");
+
+    let action_id = ActionId::for_tool_call("thread-oracle", "turn-oracle", &call_id);
+    let stored = evidence
+        .get_action_evidence(&action_id)
+        .await
+        .expect("read durable lifecycle evidence");
+    let durable_receipt = stored.receipt.as_ref().map(|stored_receipt| {
+        let receipt_id = ReceiptId::for_action(&action_id);
+        let receipt = &stored_receipt.receipt;
+        assert_eq!(receipt.receipt_id, receipt_id);
+        serde_json::to_value(receipt).expect("serialize durable governance receipt")
+    });
+    serde_json::json!({
+        "admission_decision": decision_projection(admission),
+        "authorization_decision": authorization.map(decision_projection),
+        "terminal_callback": "ok",
+        "durable_admission": stored.admission,
+        "durable_authorization": stored.authorization,
+        "durable_receipt": durable_receipt,
+    })
+}
+
+fn assert_complete_dimensions(cases: &[serde_json::Value]) {
+    let mut keys = std::collections::BTreeSet::new();
+    let mut payloads = std::collections::BTreeSet::new();
+    let mut phases = std::collections::BTreeSet::new();
+    let mut sources = std::collections::BTreeSet::new();
+    let mut outcomes = std::collections::BTreeSet::new();
+    let mut host_values = std::collections::BTreeSet::new();
+    for case in cases {
+        let dimensions = &case["dimensions"];
+        let payload = dimensions["payload_kind"].as_str().expect("payload dimension");
+        let phase = dimensions["receipt_phase"].as_str().expect("phase dimension");
+        let source = dimensions["source_kind"].as_str().expect("source dimension");
+        let outcome = dimensions["outcome_kind"].as_str().expect("outcome dimension");
+        let host_accepted = dimensions["host_accepted"].as_bool().expect("host dimension");
+        payloads.insert(payload.to_string());
+        phases.insert(phase.to_string());
+        sources.insert(source.to_string());
+        outcomes.insert(outcome.to_string());
+        host_values.insert(host_accepted);
+        assert!(keys.insert((
+            payload.to_string(),
+            phase.to_string(),
+            source.to_string(),
+            outcome.to_string(),
+            host_accepted,
+        )));
+    }
+    assert_eq!(payloads, PAYLOAD_KINDS.into_iter().map(str::to_string).collect());
+    assert_eq!(phases, RECEIPT_PHASES.into_iter().map(str::to_string).collect());
+    assert_eq!(sources, SOURCE_KINDS.into_iter().map(str::to_string).collect());
+    assert_eq!(outcomes, OUTCOME_KINDS.into_iter().map(str::to_string).collect());
+    assert_eq!(host_values, HOST_ACCEPTED_VALUES.into_iter().collect());
+    assert_eq!(keys.len(), 252);
+}
+
+#[tokio::test]
+async fn emit_frozen_oracle_conformance_corpus_v2() {
+    let generator_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src/tests.rs");
+    let generator_bytes = std::fs::read(&generator_path).expect("read executing generator source");
+    let generator_source_sha256 = Sha256Digest::for_bytes(&generator_bytes);
+    let injected_source_sha256 = std::env::var(
+        "HEPTA_FROZEN_ORACLE_GENERATOR_SOURCE_SHA256",
+    )
+    .expect("isolated runner must inject the tracked generator digest");
+    assert_eq!(
+        generator_source_sha256.as_str(),
+        injected_source_sha256,
+        "executing generator bytes differ from the tracked source digest"
+    );
+
+    let temp = TempDir::new().expect("generator temp dir");
+    let sqlite = SqliteConfig::new_for_testing(
+        AbsolutePathBuf::try_from(temp.path().to_path_buf()).expect("absolute generator path"),
+    );
+    let evidence = Arc::new(
+        HeptaEvidenceStore::open(&sqlite)
+            .await
+            .expect("open frozen governance evidence"),
+    );
+    let mut cases = Vec::with_capacity(252);
+    let mut sample_ids = std::collections::BTreeSet::new();
+    let mut outputs = std::collections::BTreeSet::new();
+    for payload_kind in PAYLOAD_KINDS {
+        for receipt_phase in RECEIPT_PHASES {
+            for source_kind in SOURCE_KINDS {
+                for outcome_kind in OUTCOME_KINDS {
+                    for host_accepted in HOST_ACCEPTED_VALUES {
+                        let ordinal = cases.len() as u64 + 1;
+                        let projection = lifecycle_projection(
+                            &evidence,
+                            ordinal,
+                            payload_kind,
+                            receipt_phase,
+                            source_kind,
+                            outcome_kind,
+                            host_accepted,
+                        )
+                        .await;
+                        let canonical = canonical_json(&projection);
+                        let output_sha256 = Sha256Digest::for_bytes(&canonical);
+                        let sample_label = format!(
+                            "hepta-frozen-oracle-conformance:v2:{payload_kind}:{receipt_phase}:{source_kind}:{outcome_kind}:{host_accepted}"
+                        );
+                        let sample_id_sha256 = Sha256Digest::for_bytes(sample_label.as_bytes());
+                        assert!(sample_ids.insert(sample_id_sha256.as_str().to_string()));
+                        assert!(outputs.insert(output_sha256.as_str().to_string()));
+                        cases.push(serde_json::json!({
+                            "ordinal": ordinal,
+                            "dimensions": {
+                                "payload_kind": payload_kind,
+                                "receipt_phase": receipt_phase,
+                                "source_kind": source_kind,
+                                "outcome_kind": outcome_kind,
+                                "host_accepted": host_accepted,
+                            },
+                            "sample_id_sha256": sample_id_sha256,
+                            "expected_lifecycle_projection": projection,
+                            "expected_output_sha256": output_sha256,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+    assert_complete_dimensions(&cases);
+    assert_eq!(sample_ids.len(), 252);
+    assert_eq!(outputs.len(), 252);
+    let durable_receipt_count = cases
+        .iter()
+        .filter(|case| !case["expected_lifecycle_projection"]["durable_receipt"].is_null())
+        .count();
+    assert_eq!(durable_receipt_count, 171);
+    assert_eq!(cases.len() - durable_receipt_count, 81);
+
+    let aborted = cases.iter().filter(|case| case["dimensions"]["outcome_kind"] == "aborted");
+    let mut aborted_phase_counts = std::collections::BTreeMap::new();
+    for case in aborted {
+        let phase = case["dimensions"]["receipt_phase"]
+            .as_str()
+            .expect("aborted phase");
+        let outcome = &case["expected_lifecycle_projection"]["durable_receipt"]["outcome"];
+        match phase {
+            "admission_only" => assert_eq!(outcome["outcome"], "aborted"),
+            "admission_and_authorization" => {
+                assert_eq!(outcome["outcome"], "indeterminate");
+                assert_eq!(outcome["reason_code"], "cancelled_after_authorization");
+            }
+            other => panic!("unknown aborted phase {other}"),
+        }
+        *aborted_phase_counts.entry(phase.to_string()).or_insert(0_u64) += 1;
+    }
+    assert_eq!(aborted_phase_counts.get("admission_only"), Some(&18));
+    assert_eq!(aborted_phase_counts.get("admission_and_authorization"), Some(&18));
+
+    let corpus = serde_json::json!({
+        "schema": "hepta_frozen_oracle_conformance_corpus_v2",
+        "scope": "bounded_offline_frozen_oracle_qualification_conformance",
+        "live_product_shadow_collector_completed": false,
+        "oracle_commit": "2f704dc7c1172cefca908852456beccf4d02a5d1",
+        "oracle_tree": "7be9a382b2610790838eef874cb4d381b5025490",
+        "oracle_manifest_sha256": "2c82d45303e912b92a7b9ac31da4661197e59a5ca415d3c70375b49169691377",
+        "canonical_object": "hepta_governance_durable_lifecycle_projection_v1",
+        "canonical_encoding": "compact_utf8_json_recursive_lexicographic_object_keys",
+        "formula": "3_payloads_x_2_receipt_phases_x_3_sources_x_7_outcomes_x_2_host_accepted",
+        "generator": {
+            "schema": "hepta_frozen_oracle_conformance_generator_v2",
+            "version": 2,
+            "source_sha256": generator_source_sha256,
+            "source_digest_computed_from_executing_bytes": true,
+            "entrypoint": "tests::emit_frozen_oracle_conformance_corpus_v2",
+            "lifecycle": "HeptaGovernanceExtension.ToolPolicyContributor.admit_authorize_on_terminal_then_durable_read",
+        },
+        "identity_pattern": {
+            "thread_id": "thread-oracle",
+            "turn_id": "turn-oracle",
+            "call_id": "frozen-oracle-case-{ordinal:03}",
+            "tool_name": "exec_command",
+        },
+        "cases": cases,
+    });
+    let encoded = canonical_json(&corpus);
+    if let Some(output_path) = std::env::var_os("HEPTA_FROZEN_ORACLE_CONFORMANCE_OUTPUT") {
+        std::fs::write(output_path, &encoded).expect("write frozen-oracle conformance corpus");
+    }
+    println!(
+        "FROZEN_ORACLE_CONFORMANCE_CORPUS_V2={}",
+        String::from_utf8(encoded).expect("UTF-8 corpus")
+    );
+}

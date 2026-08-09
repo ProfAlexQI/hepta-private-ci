@@ -27,5 +27,9 @@ use install::governance_state;
 mod tests;
 
 #[cfg(test)]
+#[path = "frozen_oracle_qualification_tests.rs"]
+mod frozen_oracle_qualification_tests;
+
+#[cfg(test)]
 #[path = "provider_policy_tests.rs"]
 mod provider_policy_tests;
