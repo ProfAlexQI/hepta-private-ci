@@ -17,6 +17,9 @@ mod request_tests;
 mod sealer;
 #[cfg(test)]
 mod sealer_tests;
+mod semantic_verifier;
+#[cfg(test)]
+mod semantic_verifier_tests;
 #[cfg(test)]
 mod test_support;
 mod verification_primitives;
@@ -42,3 +45,5 @@ pub use oracle::FrozenOracle;
 pub use request::Surface;
 pub use sealer::TerminalSeal;
 pub use sealer::TerminalStatus;
+pub use semantic_verifier::SemanticVerifier;
+pub use semantic_verifier::VerifiedSemanticReceipt;
