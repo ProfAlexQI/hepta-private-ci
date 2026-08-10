@@ -20,6 +20,9 @@ mod report_tests;
 mod request;
 #[cfg(test)]
 mod request_tests;
+mod runtime;
+#[cfg(test)]
+mod runtime_tests;
 mod sealer;
 #[cfg(test)]
 mod sealer_tests;
@@ -56,6 +59,9 @@ pub use report::QualificationReport;
 pub use report::ReportFailure;
 pub use report::SemanticSampleReport;
 pub use request::Surface;
+pub use runtime::FrozenProductBinary;
+pub use runtime::QualificationRuntimeLayout;
+pub use runtime::SurfaceRuntimeLayout;
 pub use sealer::TerminalSeal;
 pub use sealer::TerminalStatus;
 pub use semantic_verifier::SemanticVerifier;
