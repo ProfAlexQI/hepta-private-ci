@@ -10,12 +10,14 @@ use super::report::SemanticSampleReport;
 use super::sealer::TerminalSeal;
 use super::test_support::completed_run;
 use super::test_support::product_receipts;
+use super::test_support::transport_evidence;
 use crate::QualificationError;
 use crate::Surface;
 
 #[test]
 fn writes_an_exact_report_with_no_authority() -> Result<(), QualificationError> {
     let (completed, _temp) = completed_run()?;
+    let _transport = transport_evidence(&completed)?;
     let oracle = FrozenOracle::load_embedded()?;
     let products = product_receipts(&completed, &oracle)?;
     let manifest = QualificationManifest::write(&completed, &oracle)?;
@@ -56,6 +58,7 @@ fn writes_an_exact_report_with_no_authority() -> Result<(), QualificationError> 
 #[test]
 fn inventories_import_semantic_duplicate_and_missing_failures() -> Result<(), QualificationError> {
     let (completed, _temp) = completed_run()?;
+    let _transport = transport_evidence(&completed)?;
     let oracle = FrozenOracle::load_embedded()?;
     let products = product_receipts(&completed, &oracle)?;
     let manifest = QualificationManifest::write(&completed, &oracle)?;

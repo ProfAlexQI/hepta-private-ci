@@ -15,7 +15,7 @@ use crate::durable::write_private_new;
 use crate::request::canonical_json;
 
 const MAX_CHECKPOINT_BYTES: usize = 64 * 1024;
-const TERMINAL_SEAL_DOMAIN: &[u8] = b"hepta-live-product-shadow-terminal-seal:v2";
+const TERMINAL_SEAL_DOMAIN: &[u8] = b"hepta-live-product-shadow-terminal-seal:v3";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -43,6 +43,8 @@ pub struct TerminalSeal {
     seal_file_sha256: String,
     status: TerminalStatus,
     terminal_seal_sha256: String,
+    transport_artifact_count: usize,
+    transport_evidence_sha256: String,
     verified_count: usize,
 }
 
@@ -70,10 +72,12 @@ impl TerminalSeal {
             outbound: false,
             promotion: false,
             run_id: checkpoint.run_id(),
-            schema: "hepta_shadow_qualification_terminal_seal_v2",
-            schema_version: 2,
+            schema: "hepta_shadow_qualification_terminal_seal_v3",
+            schema_version: 3,
             status,
             terminal: true,
+            transport_artifact_count: checkpoint.transport_artifact_count(),
+            transport_evidence_sha256: checkpoint.transport_evidence_sha256(),
             verified_artifact_count: checkpoint.verified_count(),
         };
         let binding_bytes = canonical_json(&fields)?;
@@ -100,6 +104,8 @@ impl TerminalSeal {
             seal_file_sha256: sha256(&seal_bytes),
             status,
             terminal_seal_sha256,
+            transport_artifact_count: checkpoint.transport_artifact_count(),
+            transport_evidence_sha256: checkpoint.transport_evidence_sha256().to_string(),
             verified_count: checkpoint.verified_count(),
         })
     }
@@ -136,6 +142,14 @@ impl TerminalSeal {
         &self.terminal_seal_sha256
     }
 
+    pub fn transport_artifact_count(&self) -> usize {
+        self.transport_artifact_count
+    }
+
+    pub fn transport_evidence_sha256(&self) -> &str {
+        &self.transport_evidence_sha256
+    }
+
     pub fn verified_count(&self) -> usize {
         self.verified_count
     }
@@ -155,6 +169,8 @@ struct TerminalSealFields<'a> {
     schema_version: u32,
     status: TerminalStatus,
     terminal: bool,
+    transport_artifact_count: usize,
+    transport_evidence_sha256: &'a str,
     verified_artifact_count: usize,
 }
 

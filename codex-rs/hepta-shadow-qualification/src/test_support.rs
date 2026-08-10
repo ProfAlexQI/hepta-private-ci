@@ -14,6 +14,7 @@ use crate::product_receipts::ProductReceiptArtifact;
 use crate::request::FIXED_PROMPT;
 use crate::request::app_server_sample_request;
 use crate::request::mcp_sample_request;
+use crate::transport::TransportEvidence;
 
 pub(crate) const PROMPT: &str = FIXED_PROMPT;
 
@@ -102,6 +103,20 @@ pub(crate) fn product_receipts(
         run_id: completed.run_id().to_string(),
         run_root: completed.run_root().to_path_buf(),
     })
+}
+
+pub(crate) fn transport_evidence(
+    completed: &CompletedPreSend,
+) -> Result<TransportEvidence, QualificationError> {
+    for directory in ["http", "protocol"] {
+        create_private_directory(&completed.run_root().join(directory))?;
+    }
+    write_private_new(&completed.run_root().join("http/fixture.http"), b"http")?;
+    write_private_new(
+        &completed.run_root().join("protocol/fixture.jsonl"),
+        b"{}\n",
+    )?;
+    TransportEvidence::capture_tree(completed.run_id(), completed.run_root())
 }
 
 pub(crate) fn completed_run() -> Result<(CompletedPreSend, tempfile::TempDir), QualificationError> {

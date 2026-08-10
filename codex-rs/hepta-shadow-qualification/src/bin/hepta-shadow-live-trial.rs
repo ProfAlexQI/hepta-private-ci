@@ -49,6 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "terminal_seal_file_sha256": outcome.seal().seal_file_sha256(),
         "terminal_seal_sha256": outcome.seal().terminal_seal_sha256(),
         "terminal_status": outcome.seal().status(),
+        "transport_artifact_count": outcome.seal().transport_artifact_count(),
+        "transport_evidence_sha256": outcome.seal().transport_evidence_sha256(),
     });
     println!("{}", serde_json::to_string(&document)?);
     if !outcome.report().exact_closure() {

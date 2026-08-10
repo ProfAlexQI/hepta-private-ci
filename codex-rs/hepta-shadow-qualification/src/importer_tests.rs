@@ -4,12 +4,14 @@ use std::io::Write;
 use super::importer::ImportCheckpoint;
 use super::test_support::completed_run;
 use super::test_support::product_receipts;
+use super::test_support::transport_evidence;
 use crate::FrozenOracle;
 use crate::QualificationError;
 
 #[test]
 fn imports_exactly_four_artifacts_and_writes_a_checkpoint() -> Result<(), QualificationError> {
     let (completed, _temp) = completed_run()?;
+    let _transport = transport_evidence(&completed)?;
     let products = product_receipts(&completed, &FrozenOracle::load_embedded()?)?;
     let checkpoint = ImportCheckpoint::create(&completed, &products)?;
     assert!(checkpoint.is_complete());
@@ -29,6 +31,7 @@ fn imports_exactly_four_artifacts_and_writes_a_checkpoint() -> Result<(), Qualif
 #[test]
 fn inventories_all_broken_samples_before_checkpointing_failure() -> Result<(), QualificationError> {
     let (completed, _temp) = completed_run()?;
+    let _transport = transport_evidence(&completed)?;
     let products = product_receipts(&completed, &FrozenOracle::load_embedded()?)?;
     fs::remove_file(completed.run_root().join("app_server-01.raw.json"))?;
     fs::write(completed.run_root().join("mcp-02.pre-send.json"), b"{}")?;

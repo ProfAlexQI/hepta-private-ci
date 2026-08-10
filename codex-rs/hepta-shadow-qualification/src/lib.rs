@@ -47,6 +47,9 @@ mod session;
 mod session_tests;
 #[cfg(test)]
 mod test_support;
+mod transport;
+#[cfg(test)]
+mod transport_tests;
 mod trial;
 #[cfg(test)]
 mod trial_tests;
