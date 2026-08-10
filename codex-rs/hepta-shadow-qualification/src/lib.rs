@@ -11,6 +11,9 @@ mod observer_tests;
 mod request;
 #[cfg(test)]
 mod request_tests;
+mod sealer;
+#[cfg(test)]
+mod sealer_tests;
 #[cfg(test)]
 mod test_support;
 
@@ -32,3 +35,5 @@ pub use observer::CompletedPreSend;
 pub use observer::DurablePreSendObserver;
 pub use observer::DurablePreSendToken;
 pub use request::Surface;
+pub use sealer::TerminalSeal;
+pub use sealer::TerminalStatus;
