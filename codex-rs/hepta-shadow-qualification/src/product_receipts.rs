@@ -123,7 +123,7 @@ impl ProductReceiptSet {
         Ok(reports)
     }
 
-    pub fn verify_artifact(&self, surface: Surface, ordinal: u8) -> Result<String, String> {
+    pub(crate) fn verify_artifact(&self, surface: Surface, ordinal: u8) -> Result<String, String> {
         let artifact = self
             .artifact(surface, ordinal)
             .ok_or_else(|| self.failure_reason(surface, ordinal))?;

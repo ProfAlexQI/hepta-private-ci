@@ -10,6 +10,7 @@ use super::report::SemanticSampleReport;
 use super::sealer::TerminalSeal;
 use super::semantic_verifier::SemanticVerifier;
 use super::test_support::completed_run;
+use super::test_support::product_receipts;
 use crate::QualificationError;
 use crate::Surface;
 
@@ -17,6 +18,7 @@ use crate::Surface;
 fn writes_an_exact_report_with_no_authority() -> Result<(), QualificationError> {
     let (completed, _temp) = completed_run()?;
     let oracle = FrozenOracle::load_embedded()?;
+    let products = product_receipts(&completed, &oracle)?;
     let manifest = QualificationManifest::write(&completed, &oracle)?;
     assert_eq!(manifest.file_sha256().len(), 64);
     assert_eq!(manifest.run_id(), completed.run_id());
@@ -26,7 +28,7 @@ fn writes_an_exact_report_with_no_authority() -> Result<(), QualificationError> 
             .join("qualification-manifest.json")
             .is_file()
     );
-    let seal = TerminalSeal::create(ImportCheckpoint::create(&completed)?)?;
+    let seal = TerminalSeal::create(ImportCheckpoint::create(&completed, &products)?)?;
     let verified = SemanticVerifier::verify(&oracle, oracle.expected_normalized_receipt())?;
     let mut samples = Vec::new();
     for surface in [Surface::AppServer, Surface::Mcp] {
@@ -62,9 +64,10 @@ fn writes_an_exact_report_with_no_authority() -> Result<(), QualificationError> 
 fn inventories_import_semantic_duplicate_and_missing_failures() -> Result<(), QualificationError> {
     let (completed, _temp) = completed_run()?;
     let oracle = FrozenOracle::load_embedded()?;
+    let products = product_receipts(&completed, &oracle)?;
     let manifest = QualificationManifest::write(&completed, &oracle)?;
     fs::remove_file(completed.run_root().join("mcp-02.raw.json"))?;
-    let seal = TerminalSeal::create(ImportCheckpoint::create(&completed)?)?;
+    let seal = TerminalSeal::create(ImportCheckpoint::create(&completed, &products)?)?;
     let failed =
         SemanticSampleReport::failed(Surface::AppServer, 1, &oracle, "receipt artifact is absent")?;
     let report =
