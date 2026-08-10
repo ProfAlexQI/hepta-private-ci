@@ -16,6 +16,7 @@ rust_library(
         "@crates//:sha2",
         "@crates//:thiserror",
         "@crates//:tokio",
+        "@crates//:toml",
     ],
 )
 
