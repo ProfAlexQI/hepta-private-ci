@@ -28,6 +28,7 @@ use crate::protocol::FsCopyParams;
 use crate::protocol::FsCreateDirectoryParams;
 use crate::protocol::FsGetMetadataParams;
 use crate::protocol::FsReadDirectoryParams;
+use crate::protocol::FsReadFileAuthorizedParams;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsRemoveParams;
 use crate::protocol::FsWalkParams;
@@ -36,6 +37,9 @@ use crate::protocol::FsWriteFileParams;
 const INVALID_REQUEST_ERROR_CODE: i64 = -32600;
 const METHOD_NOT_FOUND_ERROR_CODE: i64 = -32601;
 const NOT_FOUND_ERROR_CODE: i64 = -32004;
+const INVALID_READ_BOUND: &str =
+    "authorized file read bound must leave room for an overflow sentinel";
+const READ_EXCEEDED: &str = "remote authorized file read exceeded its bound";
 
 #[path = "remote_file_stream.rs"]
 mod file_stream;
@@ -93,6 +97,52 @@ impl RemoteFileSystem {
                 format!("remote fs/readFile returned invalid base64 dataBase64: {err}"),
             )
         })
+    }
+
+    async fn read_file_bounded_authorized(
+        &self,
+        path: &PathUri,
+        sandbox: &FileSystemSandboxContext,
+        max_bytes: usize,
+    ) -> FileSystemResult<Vec<u8>> {
+        let max_bytes_u64 = u64::try_from(max_bytes)
+            .ok()
+            .filter(|_| max_bytes > 0 && max_bytes.checked_add(1).is_some())
+            .ok_or_else(invalid_authorized_read_bound)?;
+        let client = self
+            .client
+            .get()
+            .await
+            .map_err(map_authorized_read_remote_error)?;
+        let info = client
+            .environment_info()
+            .await
+            .map_err(map_authorized_read_remote_error)?;
+        if !info.capabilities.stable_handle_authorized_read {
+            return Err(unsupported_authorized_read());
+        }
+        let response = client
+            .fs_read_file_authorized(FsReadFileAuthorizedParams {
+                path: path.clone(),
+                sandbox: sandbox.clone().drop_cwd_if_unused(),
+                max_bytes: max_bytes_u64,
+            })
+            .await
+            .map_err(map_authorized_read_remote_error)?;
+        let max_encoded_len = max_bytes
+            .checked_add(2)
+            .and_then(|len| (len / 3).checked_mul(4))
+            .unwrap_or(usize::MAX);
+        if response.data_base64.len() > max_encoded_len {
+            return Err(invalid_authorized_read_data(READ_EXCEEDED));
+        }
+        let bytes = STANDARD
+            .decode(response.data_base64)
+            .map_err(|_| invalid_authorized_read_data("invalid remote authorized read data"))?;
+        if bytes.len() > max_bytes {
+            return Err(invalid_authorized_read_data(READ_EXCEEDED));
+        }
+        Ok(bytes)
     }
 
     async fn read_file_stream(
@@ -331,6 +381,17 @@ impl ExecutorFileSystem for RemoteFileSystem {
         Box::pin(RemoteFileSystem::read_file(self, path, sandbox))
     }
 
+    fn read_file_bounded_authorized<'a>(
+        &'a self,
+        path: &'a PathUri,
+        sandbox: &'a FileSystemSandboxContext,
+        max_bytes: usize,
+    ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
+        Box::pin(RemoteFileSystem::read_file_bounded_authorized(
+            self, path, sandbox, max_bytes,
+        ))
+    }
+
     fn read_file_stream<'a>(
         &'a self,
         path: &'a PathUri,
@@ -434,6 +495,44 @@ fn map_remote_error(error: ExecServerError) -> io::Error {
     }
 }
 
+fn invalid_authorized_read_bound() -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, INVALID_READ_BOUND)
+}
+
+fn invalid_authorized_read_data(message: &'static str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+fn unsupported_authorized_read() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::Unsupported,
+        "remote exec-server does not support stable-handle authorized reads",
+    )
+}
+
+fn map_authorized_read_remote_error(error: ExecServerError) -> io::Error {
+    match error {
+        ExecServerError::Server { code, .. } if code == METHOD_NOT_FOUND_ERROR_CODE => {
+            unsupported_authorized_read()
+        }
+        ExecServerError::Server {
+            code: INVALID_REQUEST_ERROR_CODE | -32602,
+            ..
+        } => io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "remote authorized file read was rejected",
+        ),
+        ExecServerError::Server { code, .. } if code == NOT_FOUND_ERROR_CODE => io::Error::new(
+            io::ErrorKind::NotFound,
+            "remote authorized file is unavailable",
+        ),
+        ExecServerError::Closed | ExecServerError::Disconnected(_) => {
+            io::Error::new(io::ErrorKind::BrokenPipe, "exec-server transport closed")
+        }
+        _ => io::Error::other("remote authorized file read failed"),
+    }
+}
+
 #[cfg(all(test, any(unix, windows)))]
 #[path = "remote_file_system_path_uri_tests.rs"]
 mod path_uri_tests;
@@ -524,6 +623,18 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn authorized_read_transport_errors_are_fixed() {
+        for error in [
+            ExecServerError::Closed,
+            ExecServerError::Disconnected("secret transport detail".to_string()),
+        ] {
+            let error = map_authorized_read_remote_error(error);
+            assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+            assert_eq!(error.to_string(), "exec-server transport closed");
+        }
     }
 
     fn absolute_test_path(name: &str) -> AbsolutePathBuf {
