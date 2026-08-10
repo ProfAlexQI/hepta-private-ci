@@ -204,6 +204,14 @@ impl DurablePreSendObserver {
         })
     }
 
+    pub(crate) fn run_id(&self) -> &str {
+        &self.run_id
+    }
+
+    pub(crate) fn run_root(&self) -> &Path {
+        &self.run_root
+    }
+
     pub fn record_app_server(
         &mut self,
         raw_request: &[u8],

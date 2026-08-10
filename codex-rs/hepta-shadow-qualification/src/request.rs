@@ -10,10 +10,10 @@ const SAMPLE_TOKEN_DOMAIN: &[u8] = b"hepta-live-product-shadow-sample-token:v2";
 const PROVIDER_SEMANTIC_DOMAIN: &[u8] = b"hepta-live-product-shadow-provider-request-semantic:v2";
 const ORACLE_SAMPLE_ID_SHA256: &str =
     "426468e3c420e5557f2edbbb0adfc845b611c00416112c1ed95d99219fa9c5ef";
-const FIXED_PROMPT: &str =
+pub(crate) const FIXED_PROMPT: &str =
     "Run the controlled qualification command exactly once and report completion.";
-const FIXED_MODEL: &str = "hepta-shadow-qualification";
-const FIXED_PROVIDER: &str = "hepta-shadow-loopback-v1";
+pub(crate) const FIXED_MODEL: &str = "hepta-shadow-qualification";
+pub(crate) const FIXED_PROVIDER: &str = "hepta-shadow-loopback-v1";
 const FIXED_MCP_BASE_INSTRUCTIONS: &str = "Execute only the exact requested controlled qualification command. Do not invoke any other tool or network service.";
 const FIXED_MCP_DEVELOPER_INSTRUCTIONS: &str =
     "This is a controlled short trial, not a duration soak and not promotion authority.";
@@ -46,6 +46,60 @@ pub(crate) struct ParsedRequest {
     pub(crate) body_sha256: String,
     pub(crate) provider_semantic_sha256: String,
     pub(crate) sample_token_sha256: String,
+}
+
+pub(crate) fn app_server_sample_request(
+    ordinal: u8,
+    thread_id: &str,
+) -> Result<Vec<u8>, QualificationError> {
+    if !(1..=2).contains(&ordinal) || !valid_dynamic_id(thread_id) {
+        return Err(invalid("invalid app-server sample identity"));
+    }
+    json_line(&serde_json::json!({
+        "id": ordinal + 2,
+        "method": "turn/start",
+        "params": {
+            "input": [{"text": FIXED_PROMPT, "textElements": [], "type": "text"}],
+            "threadId": thread_id,
+        },
+    }))
+}
+
+pub(crate) fn mcp_sample_request(
+    ordinal: u8,
+    expected_work_directory: &str,
+    thread_id: Option<&str>,
+) -> Result<Vec<u8>, QualificationError> {
+    let value = match (ordinal, thread_id) {
+        (1, None) => serde_json::json!({
+            "id": 2,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "arguments": {
+                    "approval-policy": "never",
+                    "base-instructions": FIXED_MCP_BASE_INSTRUCTIONS,
+                    "cwd": expected_work_directory,
+                    "developer-instructions": FIXED_MCP_DEVELOPER_INSTRUCTIONS,
+                    "model": FIXED_MODEL,
+                    "prompt": FIXED_PROMPT,
+                    "sandbox": "workspace-write",
+                },
+                "name": "codex",
+            },
+        }),
+        (2, Some(thread_id)) if valid_dynamic_id(thread_id) => serde_json::json!({
+            "id": 3,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "arguments": {"prompt": FIXED_PROMPT, "threadId": thread_id},
+                "name": "codex-reply",
+            },
+        }),
+        _ => return Err(invalid("invalid MCP sample identity")),
+    };
+    json_line(&value)
 }
 
 #[derive(Deserialize)]
@@ -159,6 +213,12 @@ pub(crate) fn canonical_json<T: Serialize>(value: &T) -> Result<Vec<u8>, Qualifi
         .map_err(|error| QualificationError::Serialization(error.to_string()))?;
     sort_value(&mut value);
     serde_json::to_vec(&value).map_err(|error| QualificationError::Serialization(error.to_string()))
+}
+
+pub(crate) fn json_line<T: Serialize>(value: &T) -> Result<Vec<u8>, QualificationError> {
+    let mut bytes = canonical_json(value)?;
+    bytes.push(b'\n');
+    Ok(bytes)
 }
 
 fn validate_app_server(body: &[u8], ordinal: u8) -> Result<(), QualificationError> {

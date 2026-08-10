@@ -15,6 +15,7 @@ rust_library(
         "@crates//:serde_json",
         "@crates//:sha2",
         "@crates//:thiserror",
+        "@crates//:tokio",
     ],
 )
 

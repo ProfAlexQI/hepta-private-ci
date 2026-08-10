@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
 mod digest;
+mod driver;
+#[cfg(test)]
+mod driver_tests;
 mod durable;
 mod importer;
 #[cfg(test)]
@@ -39,6 +42,9 @@ pub enum QualificationError {
     State(String),
 }
 
+pub use driver::AppServerDriver;
+pub use driver::McpDriver;
+pub use driver::QualificationDriverRun;
 pub use importer::ImportCheckpoint;
 pub use importer::ImportFailure;
 pub use observer::CompletedPreSend;
