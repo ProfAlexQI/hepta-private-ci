@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 rust_library(
     name = "hepta-shadow-qualification-lib",
@@ -27,5 +27,18 @@ rust_test(
     deps = [
         "@crates//:pretty_assertions",
         "@crates//:tempfile",
+    ],
+)
+
+rust_binary(
+    name = "hepta-shadow-live-trial",
+    srcs = ["src/bin/hepta-shadow-live-trial.rs"],
+    crate_root = "src/bin/hepta-shadow-live-trial.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":hepta-shadow-qualification-lib",
+        "@crates//:serde_json",
+        "@crates//:tokio",
     ],
 )

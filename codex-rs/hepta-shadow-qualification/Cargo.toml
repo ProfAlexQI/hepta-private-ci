@@ -10,6 +10,11 @@ name = "codex_hepta_shadow_qualification"
 path = "src/lib.rs"
 doctest = false
 
+[[bin]]
+name = "hepta-shadow-live-trial"
+path = "src/bin/hepta-shadow-live-trial.rs"
+test = false
+
 [lints]
 workspace = true
 
