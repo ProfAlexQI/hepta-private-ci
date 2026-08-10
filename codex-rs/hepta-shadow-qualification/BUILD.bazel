@@ -14,6 +14,7 @@ rust_library(
         "@crates//:serde",
         "@crates//:serde_json",
         "@crates//:sha2",
+        "@crates//:sqlx",
         "@crates//:thiserror",
         "@crates//:tokio",
         "@crates//:toml",

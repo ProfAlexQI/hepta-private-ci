@@ -20,6 +20,10 @@ mod observer_tests;
 mod oracle;
 #[cfg(test)]
 mod oracle_tests;
+mod product_database;
+mod product_receipts;
+#[cfg(test)]
+mod product_receipts_tests;
 mod report;
 #[cfg(test)]
 mod report_tests;
@@ -53,6 +57,8 @@ pub enum QualificationError {
     Serialization(String),
     #[error("qualification evidence I/O failed: {0}")]
     Io(#[from] std::io::Error),
+    #[error("qualification evidence database failed: {0}")]
+    Database(#[from] sqlx::Error),
     #[error("invalid observer state: {0}")]
     State(String),
 }
@@ -70,6 +76,7 @@ pub use observer::CompletedPreSend;
 pub use observer::DurablePreSendObserver;
 pub use observer::DurablePreSendToken;
 pub use oracle::FrozenOracle;
+pub use product_receipts::ProductReceiptSet;
 pub use report::QualificationManifest;
 pub use report::QualificationReport;
 pub use report::ReportFailure;
