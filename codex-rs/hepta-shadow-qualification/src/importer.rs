@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::CompletedPreSend;
+use crate::ProductReceiptSet;
 use crate::QualificationError;
 use crate::Surface;
 use crate::digest::framed_digest;
@@ -38,18 +39,44 @@ pub struct ImportCheckpoint {
 }
 
 impl ImportCheckpoint {
-    pub fn create(completed: &CompletedPreSend) -> Result<Self, QualificationError> {
+    pub fn create(
+        completed: &CompletedPreSend,
+        product_receipts: &ProductReceiptSet,
+    ) -> Result<Self, QualificationError> {
+        if completed.run_id() != product_receipts.run_id()
+            || completed.run_root() != product_receipts.run_root()
+        {
+            return Err(QualificationError::Invalid(
+                "pre-send and product receipt imports belong to different runs".to_string(),
+            ));
+        }
         verify_private_directory(completed.run_root())?;
         let mut failures = inventory_failures(completed.run_root())?;
         let mut evidence = Vec::with_capacity(4);
         for surface in [Surface::AppServer, Surface::Mcp] {
             for ordinal in 1..=2 {
-                match verify_one(completed, surface, ordinal) {
-                    Ok(digest) => evidence.push(digest),
-                    Err(reason) => failures.push(ImportFailure {
-                        artifact: format!("{}-{ordinal:02}", surface.as_str()),
-                        reason,
-                    }),
+                let observer = verify_one(completed, surface, ordinal);
+                let product = product_receipts.verify_artifact(surface, ordinal);
+                match (observer, product) {
+                    (Ok(observer), Ok(product)) => evidence.push(framed_digest(
+                        b"hepta-shadow-imported-complete-sample:v2",
+                        [observer.as_bytes(), product.as_bytes()],
+                    )),
+                    (observer, product) => {
+                        let artifact = format!("{}-{ordinal:02}", surface.as_str());
+                        if let Err(reason) = observer {
+                            failures.push(ImportFailure {
+                                artifact: artifact.clone(),
+                                reason: format!("pre-send import: {reason}"),
+                            });
+                        }
+                        if let Err(reason) = product {
+                            failures.push(ImportFailure {
+                                artifact,
+                                reason: format!("product receipt import: {reason}"),
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -230,6 +257,7 @@ fn verify_one(
 fn inventory_failures(run_root: &Path) -> Result<Vec<ImportFailure>, QualificationError> {
     let mut allowed = BTreeSet::from([
         "http".to_string(),
+        "product-evidence".to_string(),
         "protocol".to_string(),
         "qualification-manifest.json".to_string(),
         "run.json".to_string(),
@@ -239,6 +267,8 @@ fn inventory_failures(run_root: &Path) -> Result<Vec<ImportFailure>, Qualificati
             let stem = format!("{}-{ordinal:02}", surface.as_str());
             allowed.insert(format!("{stem}.raw.json"));
             allowed.insert(format!("{stem}.pre-send.json"));
+            allowed.insert(format!("{stem}.product-import.json"));
+            allowed.insert(format!("{stem}.product-receipt.json"));
         }
     }
     let mut failures = Vec::new();

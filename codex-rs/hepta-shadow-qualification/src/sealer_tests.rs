@@ -6,12 +6,15 @@ use super::importer::ImportCheckpoint;
 use super::sealer::TerminalSeal;
 use super::sealer::TerminalStatus;
 use super::test_support::completed_run;
+use super::test_support::product_receipts;
+use crate::FrozenOracle;
 use crate::QualificationError;
 
 #[test]
 fn seals_a_complete_checkpoint_with_every_gate_disabled() -> Result<(), QualificationError> {
     let (completed, _temp) = completed_run()?;
-    let checkpoint = ImportCheckpoint::create(&completed)?;
+    let products = product_receipts(&completed, &FrozenOracle::load_embedded()?)?;
+    let checkpoint = ImportCheckpoint::create(&completed, &products)?;
     let seal = TerminalSeal::create(checkpoint)?;
     assert_eq!(seal.status(), TerminalStatus::Complete);
     assert_eq!(seal.verified_count(), 4);
@@ -35,9 +38,10 @@ fn seals_a_complete_checkpoint_with_every_gate_disabled() -> Result<(), Qualific
 #[test]
 fn seals_a_failed_checkpoint_without_losing_failures() -> Result<(), QualificationError> {
     let (completed, _temp) = completed_run()?;
+    let products = product_receipts(&completed, &FrozenOracle::load_embedded()?)?;
     fs::remove_file(completed.run_root().join("app_server-01.raw.json"))?;
     fs::write(completed.run_root().join("unexpected.txt"), b"unexpected")?;
-    let checkpoint = ImportCheckpoint::create(&completed)?;
+    let checkpoint = ImportCheckpoint::create(&completed, &products)?;
     let expected_failures = checkpoint.failures().to_vec();
     let seal = TerminalSeal::create(checkpoint)?;
     assert_eq!(seal.status(), TerminalStatus::Failed);
@@ -49,7 +53,8 @@ fn seals_a_failed_checkpoint_without_losing_failures() -> Result<(), Qualificati
 #[test]
 fn rejects_a_checkpoint_changed_before_sealing() -> Result<(), QualificationError> {
     let (completed, _temp) = completed_run()?;
-    let checkpoint = ImportCheckpoint::create(&completed)?;
+    let products = product_receipts(&completed, &FrozenOracle::load_embedded()?)?;
+    let checkpoint = ImportCheckpoint::create(&completed, &products)?;
     fs::write(completed.run_root().join("import-checkpoint.json"), b"{}")?;
     assert!(TerminalSeal::create(checkpoint).is_err());
     assert!(!completed.run_root().join("terminal-seal.json").exists());
