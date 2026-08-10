@@ -35,8 +35,14 @@ mod sealer_tests;
 mod semantic_verifier;
 #[cfg(test)]
 mod semantic_verifier_tests;
+mod session;
+#[cfg(test)]
+mod session_tests;
 #[cfg(test)]
 mod test_support;
+mod trial;
+#[cfg(test)]
+mod trial_tests;
 mod verification_primitives;
 
 #[derive(Debug, thiserror::Error)]
@@ -76,3 +82,5 @@ pub use sealer::TerminalSeal;
 pub use sealer::TerminalStatus;
 pub use semantic_verifier::SemanticVerifier;
 pub use semantic_verifier::VerifiedSemanticReceipt;
+pub use trial::QualificationTrial;
+pub use trial::QualificationTrialOutcome;
