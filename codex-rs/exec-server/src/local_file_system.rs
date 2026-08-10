@@ -1,6 +1,6 @@
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(target_os = "macos")]
 use codex_protocol::models::PermissionProfile;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(target_os = "macos")]
 use codex_protocol::permissions::ReadDenyMatcher;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tokio::io;
 use tokio::io::AsyncReadExt;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(target_os = "macos")]
 use tokio::io::AsyncSeekExt;
 use tokio_util::io::ReaderStream;
 
@@ -131,24 +131,31 @@ impl LocalFileSystem {
         file_system.read_file(path, sandbox).await
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     async fn read_file_bounded_authorized(
         &self,
         path: &PathUri,
         sandbox: &FileSystemSandboxContext,
         max_bytes: usize,
     ) -> FileSystemResult<Vec<u8>> {
+        if !stable_handle_authorized_read_available() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "bounded authorized file reads are unsupported",
+            ));
+        }
         let read_limit = authorized_read_limit(max_bytes)?;
         let native_path = path
             .to_abs_path()
             .map_err(|_| authorized_read_error(io::ErrorKind::InvalidInput))?;
-        let mut file = regular_file::open(native_path.as_path())
+        let original_file = regular_file::open(native_path.as_path())
             .await
             .map_err(redact_file_access_error)?;
-        ensure_open_file_is_linked(&file).await?;
-        let final_path = stable_file_path(&file)?;
-        ensure_open_file_is_linked(&file).await?;
+        let original_identity = unique_file_identity(&original_file).await?;
+        let final_path = stable_file_path(&original_file)?;
         authorize_stable_file_path(final_path.as_path(), sandbox)?;
+        let mut file =
+            secure_reopen_matching_identity(final_path.as_path(), original_identity).await?;
         file.seek(std::io::SeekFrom::Start(0))
             .await
             .map_err(redact_file_access_error)?;
@@ -165,7 +172,6 @@ impl LocalFileSystem {
                 "authorized file read exceeds the requested limit",
             ));
         }
-        ensure_open_file_is_linked(limited.get_ref()).await?;
         Ok(bytes)
     }
 
@@ -267,7 +273,7 @@ impl ExecutorFileSystem for LocalFileSystem {
         Box::pin(LocalFileSystem::read_file(self, path, sandbox))
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     fn read_file_bounded_authorized<'a>(
         &'a self,
         path: &'a PathUri,
@@ -885,7 +891,7 @@ fn reject_platform_sandbox_context(sandbox: Option<&FileSystemSandboxContext>) -
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(target_os = "macos")]
 fn authorized_read_limit(max_bytes: usize) -> io::Result<u64> {
     let read_limit = max_bytes
         .checked_add(1)
@@ -897,18 +903,141 @@ fn authorized_read_limit(max_bytes: usize) -> io::Result<u64> {
     Ok(read_limit)
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-async fn ensure_open_file_is_linked(file: &tokio::fs::File) -> io::Result<()> {
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct UniqueFileIdentity {
+    device: u64,
+    inode: u64,
+}
+
+#[cfg(target_os = "macos")]
+async fn unique_file_identity(file: &tokio::fs::File) -> io::Result<UniqueFileIdentity> {
     use std::os::unix::fs::MetadataExt;
 
     let metadata = file.metadata().await.map_err(redact_file_access_error)?;
-    if metadata.nlink() == 0 {
-        return Err(authorized_read_error(io::ErrorKind::NotFound));
+    if !metadata.is_file() || metadata.nlink() != 1 {
+        return Err(authorized_read_error(io::ErrorKind::PermissionDenied));
     }
-    Ok(())
+    Ok(UniqueFileIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    })
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(target_os = "macos")]
+fn unique_std_file_identity(file: &std::fs::File) -> io::Result<UniqueFileIdentity> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = file.metadata().map_err(redact_file_access_error)?;
+    if !metadata.is_file() || metadata.nlink() != 1 {
+        return Err(authorized_read_error(io::ErrorKind::PermissionDenied));
+    }
+    Ok(UniqueFileIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    })
+}
+
+#[cfg(target_os = "macos")]
+async fn secure_reopen_final_path(path: &Path) -> io::Result<tokio::fs::File> {
+    let path = path.to_path_buf();
+    let file = tokio::task::spawn_blocking(move || secure_open_unique_without_symlinks(&path))
+        .await
+        .map_err(|_| authorized_read_error(io::ErrorKind::PermissionDenied))?
+        .map_err(redact_file_access_error)?;
+    Ok(tokio::fs::File::from_std(file))
+}
+
+#[cfg(target_os = "macos")]
+async fn secure_reopen_matching_identity(
+    path: &Path,
+    expected_identity: UniqueFileIdentity,
+) -> io::Result<tokio::fs::File> {
+    let file = secure_reopen_final_path(path).await?;
+    if unique_file_identity(&file).await? != expected_identity
+        || stable_file_path(&file)?.as_path() != path
+    {
+        return Err(authorized_read_error(io::ErrorKind::PermissionDenied));
+    }
+    Ok(file)
+}
+
+#[cfg(target_os = "macos")]
+fn secure_open_unique_without_symlinks(path: &Path) -> io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    // O_UNIQUE is an open(2)-only Darwin flag that makes path lookup fail when
+    // the resolved vnode has more than one hard link. libc does not currently
+    // expose the constant, so keep it aligned with <sys/fcntl.h>.
+    const O_UNIQUE: libc::c_int = 0x0000_2000;
+
+    let mut options = std::fs::OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC | libc::O_NOFOLLOW_ANY | O_UNIQUE);
+    options.open(path)
+}
+
+#[cfg(target_os = "macos")]
+static STABLE_HANDLE_AUTHORIZED_READ_AVAILABLE: LazyLock<bool> = LazyLock::new(|| {
+    use std::os::unix::fs::DirBuilderExt;
+    use std::os::unix::fs::symlink;
+
+    let probe_dir = std::env::temp_dir().join(format!(
+        "codex-authorized-read-probe-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    let mut builder = std::fs::DirBuilder::new();
+    builder.mode(0o700);
+    if builder.create(&probe_dir).is_err() {
+        return false;
+    }
+
+    let result = (|| -> io::Result<bool> {
+        let probe_dir = std::fs::canonicalize(&probe_dir)?;
+        let original_path = probe_dir.join("original");
+        let hardlink_path = probe_dir.join("hardlink");
+        let symlink_parent = probe_dir.join("symlink-parent");
+        std::fs::write(&original_path, b"probe")?;
+        std::fs::hard_link(&original_path, &hardlink_path)?;
+
+        // A kernel that does not implement O_UNIQUE may silently accept the
+        // flag. Require a multi-link vnode to be rejected before advertising.
+        let hardlink_was_rejected = secure_open_unique_without_symlinks(&original_path).is_err();
+        std::fs::remove_file(&hardlink_path)?;
+
+        let reopened = secure_open_unique_without_symlinks(&original_path)?;
+        let reopened_identity = unique_std_file_identity(&reopened)?;
+        let reopened_path = stable_file_path_from_fd(&reopened)?;
+
+        symlink(&probe_dir, &symlink_parent)?;
+        let symlink_was_rejected =
+            secure_open_unique_without_symlinks(&symlink_parent.join("original")).is_err();
+
+        Ok(hardlink_was_rejected
+            && symlink_was_rejected
+            && reopened_identity
+                == unique_std_file_identity(&std::fs::File::open(&original_path)?)?
+            && reopened_path.as_path() == original_path)
+    })()
+    .unwrap_or(false);
+
+    let _ = std::fs::remove_dir_all(&probe_dir);
+    result
+});
+
+#[cfg(target_os = "macos")]
+pub(crate) fn stable_handle_authorized_read_available() -> bool {
+    *STABLE_HANDLE_AUTHORIZED_READ_AVAILABLE
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn stable_handle_authorized_read_available() -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
 fn authorize_stable_file_path(
     final_path: &Path,
     sandbox: &FileSystemSandboxContext,
@@ -950,29 +1079,28 @@ fn authorize_stable_file_path(
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(target_os = "macos")]
 fn stable_file_path(file: &tokio::fs::File) -> io::Result<AbsolutePathBuf> {
     use std::os::fd::AsRawFd;
-    use std::os::unix::ffi::OsStrExt;
 
-    let path = std::fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))
-        .map_err(redact_file_access_error)?;
-    if path.as_os_str().as_bytes().ends_with(b" (deleted)") {
-        return Err(authorized_read_error(io::ErrorKind::NotFound));
-    }
-    AbsolutePathBuf::from_absolute_path(path)
-        .map_err(|_| authorized_read_error(io::ErrorKind::PermissionDenied))
+    stable_file_path_from_raw_fd(file.as_raw_fd())
 }
 
 #[cfg(target_os = "macos")]
-fn stable_file_path(file: &tokio::fs::File) -> io::Result<AbsolutePathBuf> {
-    use std::ffi::OsStr;
+fn stable_file_path_from_fd(file: &std::fs::File) -> io::Result<AbsolutePathBuf> {
     use std::os::fd::AsRawFd;
+
+    stable_file_path_from_raw_fd(file.as_raw_fd())
+}
+
+#[cfg(target_os = "macos")]
+fn stable_file_path_from_raw_fd(fd: std::os::fd::RawFd) -> io::Result<AbsolutePathBuf> {
+    use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
 
     let mut buffer = [0_u8; libc::PATH_MAX as usize];
-    // SAFETY: `file` owns a live fd and `buffer` is writable for PATH_MAX bytes.
-    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETPATH, buffer.as_mut_ptr()) } == -1 {
+    // SAFETY: the caller owns a live fd and `buffer` is writable for PATH_MAX bytes.
+    if unsafe { libc::fcntl(fd, libc::F_GETPATH, buffer.as_mut_ptr()) } == -1 {
         return Err(redact_file_access_error(io::Error::last_os_error()));
     }
     let length = buffer
@@ -984,7 +1112,7 @@ fn stable_file_path(file: &tokio::fs::File) -> io::Result<AbsolutePathBuf> {
         .map_err(|_| authorized_read_error(io::ErrorKind::PermissionDenied))
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(target_os = "macos")]
 fn redact_file_access_error(error: io::Error) -> io::Error {
     if error.kind() == io::ErrorKind::NotFound {
         authorized_read_error(io::ErrorKind::NotFound)
@@ -993,7 +1121,7 @@ fn redact_file_access_error(error: io::Error) -> io::Error {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(target_os = "macos")]
 fn authorized_read_error(kind: io::ErrorKind) -> io::Error {
     let message = match kind {
         io::ErrorKind::NotFound => "authorized file read target was not found",
@@ -1104,7 +1232,7 @@ fn system_time_to_unix_ms(time: SystemTime) -> i64 {
 #[path = "local_file_system_path_uri_tests.rs"]
 mod path_uri_tests;
 
-#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[cfg(all(test, target_os = "macos"))]
 #[path = "local_file_system_authorized_read_tests.rs"]
 mod authorized_read_tests;
 

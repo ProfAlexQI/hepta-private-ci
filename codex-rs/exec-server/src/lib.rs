@@ -201,3 +201,11 @@ pub use server::RequestDispatchMode;
 pub use server::run_main;
 pub use server::run_main_with_telemetry;
 pub use telemetry::ExecServerTelemetry;
+
+/// Returns local environment information with executor-owned runtime capabilities populated.
+pub fn local_environment_info() -> EnvironmentInfo {
+    let mut info = EnvironmentInfo::local();
+    info.capabilities.stable_handle_authorized_read =
+        local_file_system::stable_handle_authorized_read_available();
+    info
+}
