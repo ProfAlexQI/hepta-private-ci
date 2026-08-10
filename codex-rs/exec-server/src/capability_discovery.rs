@@ -329,7 +329,7 @@ async fn read_optional_text_file(
     budget: &mut BundleBudget,
     warnings: &mut Vec<String>,
 ) -> Option<CapabilityTextFile> {
-    let contents = if let Some(sandbox) = sandbox {
+    let contents = if let Some(sandbox) = authorized_read_context(sandbox) {
         match file_system
             .read_file_bounded_authorized(&path, sandbox, MAX_FILE_BYTES)
             .await
@@ -416,6 +416,12 @@ async fn read_optional_text_file(
     };
     budget.add(contents.len());
     Some(CapabilityTextFile { path, contents })
+}
+
+fn authorized_read_context(
+    sandbox: Option<&FileSystemSandboxContext>,
+) -> Option<&FileSystemSandboxContext> {
+    sandbox.filter(|context| context.should_run_in_sandbox())
 }
 
 fn is_plugin_manifest_path(path: &PathUri) -> bool {
@@ -646,6 +652,18 @@ mod tests {
         )
         .await;
         (result, warnings)
+    }
+
+    #[test]
+    fn authorized_reads_require_platform_sandbox_enforcement() {
+        let restricted =
+            FileSystemSandboxContext::from_permission_profile(PermissionProfile::read_only());
+        let disabled =
+            FileSystemSandboxContext::from_permission_profile(PermissionProfile::Disabled);
+
+        assert!(authorized_read_context(Some(&restricted)).is_some());
+        assert!(authorized_read_context(Some(&disabled)).is_none());
+        assert!(authorized_read_context(None).is_none());
     }
 
     #[tokio::test]
