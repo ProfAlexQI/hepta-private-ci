@@ -3,6 +3,7 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 rust_library(
     name = "hepta-shadow-qualification-lib",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = ["fixtures/live_product_oracle_v2_2f704.json"],
     crate_name = "codex_hepta_shadow_qualification",
     crate_root = "src/lib.rs",
     edition = "2024",
@@ -19,6 +20,7 @@ rust_library(
 
 rust_test(
     name = "hepta-shadow-qualification-tests",
+    compile_data = ["fixtures/live_product_oracle_v2_2f704.json"],
     crate = ":hepta-shadow-qualification-lib",
     deps = [
         "@crates//:pretty_assertions",
