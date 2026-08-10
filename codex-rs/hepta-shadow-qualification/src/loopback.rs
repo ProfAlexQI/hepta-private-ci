@@ -47,6 +47,22 @@ impl HttpAuditRecord {
         self.post_ordinal
     }
 
+    pub(crate) fn request_body_sha256(&self) -> &str {
+        &self.request_body_sha256
+    }
+
+    pub(crate) fn request_wire_sha256(&self) -> &str {
+        &self.request_wire_sha256
+    }
+
+    pub(crate) fn response_body_sha256(&self) -> &str {
+        &self.response_body_sha256
+    }
+
+    pub(crate) fn response_wire_sha256(&self) -> &str {
+        &self.response_wire_sha256
+    }
+
     pub fn sample_ordinal(&self) -> u8 {
         self.sample_ordinal
     }

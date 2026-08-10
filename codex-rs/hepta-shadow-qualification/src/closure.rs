@@ -10,6 +10,7 @@ use crate::QualificationReport;
 use crate::QualificationTrial;
 use crate::QualificationTrialOutcome;
 use crate::TerminalSeal;
+use crate::transport::TransportEvidence;
 
 pub struct QualificationClosure;
 
@@ -21,11 +22,13 @@ impl QualificationClosure {
     ) -> Result<QualificationClosureOutcome, QualificationError> {
         let oracle = FrozenOracle::load_embedded()?;
         let trial = QualificationTrial::run(product_path, runtime_root, timeout).await?;
+        let transport = TransportEvidence::capture(&trial)?;
         let product_receipts = ProductReceiptSet::import(&trial, &oracle).await?;
         let manifest = QualificationManifest::write(trial.completed(), &oracle)?;
         let checkpoint = ImportCheckpoint::create(trial.completed(), &product_receipts)?;
         let seal = TerminalSeal::create(checkpoint)?;
         let samples = product_receipts.semantic_reports(&oracle)?;
+        transport.verify()?;
         let report = QualificationReport::write(&manifest, &seal, &oracle, samples)?;
         Ok(QualificationClosureOutcome {
             product_receipts,

@@ -17,10 +17,11 @@ use crate::durable::verify_private_directory;
 use crate::durable::write_private_new;
 use crate::request::canonical_json;
 use crate::request::parse_request;
+use crate::transport::TransportEvidence;
 
 const MAX_RECEIPT_BYTES: usize = 16 * 1024;
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
-const EVIDENCE_SET_DOMAIN: &[u8] = b"hepta-live-product-shadow-evidence-set:v2";
+const EVIDENCE_SET_DOMAIN: &[u8] = b"hepta-live-product-shadow-evidence-set:v3";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ImportFailure {
@@ -35,6 +36,8 @@ pub struct ImportCheckpoint {
     failures: Vec<ImportFailure>,
     run_id: String,
     run_root: PathBuf,
+    transport_artifact_count: usize,
+    transport_evidence_sha256: String,
     verified_count: usize,
 }
 
@@ -51,6 +54,7 @@ impl ImportCheckpoint {
             ));
         }
         verify_private_directory(completed.run_root())?;
+        let transport = TransportEvidence::load(completed.run_id(), completed.run_root())?;
         let mut failures = inventory_failures(completed.run_root())?;
         let mut evidence = Vec::with_capacity(4);
         for surface in [Surface::AppServer, Surface::Mcp] {
@@ -89,9 +93,8 @@ impl ImportCheckpoint {
         let failure_bytes = canonical_json(&failures)?;
         let evidence_set_sha256 = framed_digest(
             EVIDENCE_SET_DOMAIN,
-            evidence
-                .iter()
-                .map(String::as_bytes)
+            std::iter::once(transport.transport_evidence_sha256().as_bytes())
+                .chain(evidence.iter().map(String::as_bytes))
                 .chain(std::iter::once(failure_bytes.as_slice())),
         );
         let document = CheckpointDocument {
@@ -103,13 +106,15 @@ impl ImportCheckpoint {
             outbound: false,
             promotion: false,
             run_id: completed.run_id(),
-            schema: "hepta_shadow_qualification_import_checkpoint_v2",
-            schema_version: 2,
+            schema: "hepta_shadow_qualification_import_checkpoint_v3",
+            schema_version: 3,
             status: if failures.is_empty() {
                 "complete"
             } else {
                 "failed"
             },
+            transport_artifact_count: transport.artifact_count(),
+            transport_evidence_sha256: transport.transport_evidence_sha256(),
             verified_artifact_count: verified_count,
         };
         let checkpoint_bytes = canonical_json(&document)?;
@@ -125,6 +130,8 @@ impl ImportCheckpoint {
             failures,
             run_id: completed.run_id().to_string(),
             run_root: completed.run_root().to_path_buf(),
+            transport_artifact_count: transport.artifact_count(),
+            transport_evidence_sha256: transport.transport_evidence_sha256().to_string(),
             verified_count,
         })
     }
@@ -156,6 +163,14 @@ impl ImportCheckpoint {
     pub fn verified_count(&self) -> usize {
         self.verified_count
     }
+
+    pub(crate) fn transport_artifact_count(&self) -> usize {
+        self.transport_artifact_count
+    }
+
+    pub(crate) fn transport_evidence_sha256(&self) -> &str {
+        &self.transport_evidence_sha256
+    }
 }
 
 #[derive(Serialize)]
@@ -171,6 +186,8 @@ struct CheckpointDocument<'a> {
     schema: &'static str,
     schema_version: u32,
     status: &'static str,
+    transport_artifact_count: usize,
+    transport_evidence_sha256: &'a str,
     verified_artifact_count: usize,
 }
 
@@ -261,6 +278,7 @@ fn inventory_failures(run_root: &Path) -> Result<Vec<ImportFailure>, Qualificati
         "protocol".to_string(),
         "qualification-manifest.json".to_string(),
         "run.json".to_string(),
+        "transport-manifest.json".to_string(),
     ]);
     for surface in [Surface::AppServer, Surface::Mcp] {
         for ordinal in 1..=2 {

@@ -16,6 +16,7 @@ use crate::durable::read_private_bounded;
 use crate::durable::sync_directory;
 use crate::durable::write_private_new;
 use crate::request::canonical_json;
+use crate::transport::TransportEvidence;
 
 const MAX_FAILURE_REASON_BYTES: usize = 1_024;
 const MAX_MANIFEST_BYTES: usize = 32 * 1024;
@@ -69,6 +70,9 @@ pub struct QualificationManifest {
     file_sha256: String,
     run_id: String,
     run_root: PathBuf,
+    transport_artifact_count: usize,
+    transport_evidence_sha256: String,
+    transport_manifest_sha256: String,
 }
 
 impl QualificationManifest {
@@ -76,6 +80,7 @@ impl QualificationManifest {
         completed: &CompletedPreSend,
         oracle: &FrozenOracle,
     ) -> Result<Self, QualificationError> {
+        let transport = TransportEvidence::load(completed.run_id(), completed.run_root())?;
         let expected_work_directory_sha256 = sha256(completed.expected_work_directory().as_bytes());
         let document = ManifestDocument {
             authority: AuthorityFlags::none(),
@@ -86,9 +91,12 @@ impl QualificationManifest {
             qualification_kind: "controlled_short_trial",
             qualification_only: true,
             run_id: completed.run_id(),
-            schema: "hepta_shadow_qualification_manifest_v2",
-            schema_version: 2,
+            schema: "hepta_shadow_qualification_manifest_v3",
+            schema_version: 3,
             surfaces: [Surface::AppServer, Surface::Mcp],
+            transport_artifact_count: transport.artifact_count(),
+            transport_evidence_sha256: transport.transport_evidence_sha256(),
+            transport_manifest_sha256: transport.file_sha256(),
         };
         let bytes = canonical_json(&document)?;
         write_private_new(
@@ -100,6 +108,9 @@ impl QualificationManifest {
             file_sha256: sha256(&bytes),
             run_id: completed.run_id().to_string(),
             run_root: completed.run_root().to_path_buf(),
+            transport_artifact_count: transport.artifact_count(),
+            transport_evidence_sha256: transport.transport_evidence_sha256().to_string(),
+            transport_manifest_sha256: transport.file_sha256().to_string(),
         })
     }
 
@@ -129,6 +140,9 @@ struct ManifestDocument<'a> {
     schema: &'static str,
     schema_version: u32,
     surfaces: [Surface; 2],
+    transport_artifact_count: usize,
+    transport_evidence_sha256: &'a str,
+    transport_manifest_sha256: &'a str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -220,6 +234,17 @@ impl QualificationReport {
                 "manifest and terminal seal belong to different runs",
             ));
         }
+        let transport = TransportEvidence::load(manifest.run_id(), manifest.run_root())?;
+        if manifest.transport_artifact_count != seal.transport_artifact_count()
+            || manifest.transport_artifact_count != transport.artifact_count()
+            || manifest.transport_evidence_sha256 != seal.transport_evidence_sha256()
+            || manifest.transport_evidence_sha256 != transport.transport_evidence_sha256()
+            || manifest.transport_manifest_sha256 != transport.file_sha256()
+        {
+            return Err(invalid(
+                "manifest, terminal seal, and transport evidence differ",
+            ));
+        }
         let manifest_bytes = read_private_bounded(
             &manifest.run_root().join("qualification-manifest.json"),
             MAX_MANIFEST_BYTES,
@@ -299,6 +324,7 @@ impl QualificationReport {
         let exact_closure = failures.is_empty()
             && seal.status() == TerminalStatus::Complete
             && seal.verified_count() == 4
+            && transport.artifact_count() > 0
             && samples.len() == 4;
         let document = ReportDocument {
             authority: AuthorityFlags::none(),
@@ -310,10 +336,13 @@ impl QualificationReport {
             oracle: OracleBinding::new(oracle),
             run_id: seal.run_id(),
             samples: &samples,
-            schema: "hepta_shadow_qualification_report_v2",
-            schema_version: 2,
+            schema: "hepta_shadow_qualification_report_v3",
+            schema_version: 3,
             terminal_seal_sha256: seal.terminal_seal_sha256(),
             terminal_status: seal.status(),
+            transport_artifact_count: transport.artifact_count(),
+            transport_evidence_sha256: transport.transport_evidence_sha256(),
+            transport_manifest_sha256: transport.file_sha256(),
             verified_artifact_count: seal.verified_count(),
         };
         let bytes = canonical_json(&document)?;
@@ -369,6 +398,9 @@ struct ReportDocument<'a> {
     schema_version: u32,
     terminal_seal_sha256: &'a str,
     terminal_status: TerminalStatus,
+    transport_artifact_count: usize,
+    transport_evidence_sha256: &'a str,
+    transport_manifest_sha256: &'a str,
     verified_artifact_count: usize,
 }
 
