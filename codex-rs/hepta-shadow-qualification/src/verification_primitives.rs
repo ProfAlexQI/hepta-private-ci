@@ -23,6 +23,15 @@ pub(crate) fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+pub(crate) fn digest_parts<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
+    let mut hasher = Sha256::new();
+    for part in parts {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
 fn sort_value(value: &mut Value) {
     match value {
         Value::Array(items) => items.iter_mut().for_each(sort_value),
