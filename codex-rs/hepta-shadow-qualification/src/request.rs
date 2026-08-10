@@ -18,7 +18,7 @@ const FIXED_MCP_BASE_INSTRUCTIONS: &str = "Execute only the exact requested cont
 const FIXED_MCP_DEVELOPER_INSTRUCTIONS: &str =
     "This is a controlled short trial, not a duration soak and not promotion authority.";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Surface {
     AppServer,

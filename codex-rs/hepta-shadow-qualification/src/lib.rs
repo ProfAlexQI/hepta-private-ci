@@ -2,6 +2,9 @@
 
 mod digest;
 mod durable;
+mod importer;
+#[cfg(test)]
+mod importer_tests;
 mod observer;
 #[cfg(test)]
 mod observer_tests;
@@ -21,6 +24,8 @@ pub enum QualificationError {
     State(String),
 }
 
+pub use importer::ImportCheckpoint;
+pub use importer::ImportFailure;
 pub use observer::CompletedPreSend;
 pub use observer::DurablePreSendObserver;
 pub use observer::DurablePreSendToken;

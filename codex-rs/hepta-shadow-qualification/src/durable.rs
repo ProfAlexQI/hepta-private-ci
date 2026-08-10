@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::time::SystemTime;
@@ -25,6 +26,32 @@ pub(crate) fn write_private_new(path: &Path, bytes: &[u8]) -> Result<(), Qualifi
         path.parent()
             .ok_or_else(|| invalid("artifact has no parent"))?,
     )
+}
+
+pub(crate) fn read_private_bounded(
+    path: &Path,
+    max_bytes: usize,
+) -> Result<Vec<u8>, QualificationError> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+    }
+    let file = options.open(path)?;
+    let opened = file.metadata()?;
+    if !opened.is_file() {
+        return Err(invalid("private artifact must be a regular file"));
+    }
+    verify_private_mode(&opened, "private artifact")?;
+    let mut bytes = Vec::new();
+    file.take(max_bytes.saturating_add(1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > max_bytes {
+        return Err(invalid("private artifact exceeds its read bound"));
+    }
+    Ok(bytes)
 }
 
 pub(crate) fn create_or_verify_private_directory(path: &Path) -> Result<(), QualificationError> {
