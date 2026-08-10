@@ -39,6 +39,10 @@ pub struct HttpAuditRecord {
 }
 
 impl HttpAuditRecord {
+    pub fn call_id(&self) -> &str {
+        &self.call_id
+    }
+
     pub fn post_ordinal(&self) -> u8 {
         self.post_ordinal
     }

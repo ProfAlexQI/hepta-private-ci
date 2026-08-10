@@ -307,7 +307,7 @@ fn provider_semantic(surface: Surface, ordinal: u8) -> Result<String, Qualificat
     ))
 }
 
-fn valid_dynamic_id(value: &str) -> bool {
+pub(crate) fn valid_dynamic_id(value: &str) -> bool {
     (1..=256).contains(&value.len())
         && value
             .bytes()

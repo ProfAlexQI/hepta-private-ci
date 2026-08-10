@@ -35,7 +35,7 @@ pub struct ProductChild {
     protocol_root: std::path::PathBuf,
     stderr_task: Option<JoinHandle<Result<StderrOutcome, QualificationError>>>,
     stdin: Option<ChildStdin>,
-    stdout: BufReader<ChildStdout>,
+    stdout: Option<BufReader<ChildStdout>>,
     surface: Surface,
     timeout: Duration,
 }
@@ -91,7 +91,7 @@ impl ProductChild {
             protocol_root,
             stderr_task: Some(stderr_task),
             stdin: Some(stdin),
-            stdout: BufReader::new(stdout),
+            stdout: Some(BufReader::new(stdout)),
             surface: layout.surface(),
             timeout,
         })
@@ -130,6 +130,17 @@ impl ProductChild {
 
     pub async fn shutdown(mut self) -> Result<ChildOutcome, QualificationError> {
         drop(self.stdin.take());
+        let stdout = self
+            .stdout
+            .take()
+            .ok_or_else(|| state("child stdout pipe is unavailable"))?;
+        let protocol_root = self.protocol_root.clone();
+        let surface = self.surface;
+        let sequence = self.inbound_sequence;
+        let mut stdout_task =
+            tokio::spawn(
+                async move { drain_stdout(stdout, protocol_root, surface, sequence).await },
+            );
         let status = match tokio::time::timeout(self.timeout, self.child.wait()).await {
             Ok(status) => status?,
             Err(_) => {
@@ -139,12 +150,29 @@ impl ProductChild {
                     .map_err(|_| state("child did not exit after bounded kill"))??
             }
         };
-        let stderr = self
+        let tail_count = match tokio::time::timeout(self.timeout, &mut stdout_task).await {
+            Ok(result) => {
+                result.map_err(|error| state(format!("stdout drain task failed: {error}")))??
+            }
+            Err(_) => {
+                stdout_task.abort();
+                return Err(state("timed out draining child protocol tail"));
+            }
+        };
+        self.inbound_sequence = self.inbound_sequence.saturating_add(tail_count);
+        let mut stderr_task = self
             .stderr_task
             .take()
-            .ok_or_else(|| state("stderr capture task is unavailable"))?
-            .await
-            .map_err(|error| state(format!("stderr task failed: {error}")))??;
+            .ok_or_else(|| state("stderr capture task is unavailable"))?;
+        let stderr = match tokio::time::timeout(self.timeout, &mut stderr_task).await {
+            Ok(result) => {
+                result.map_err(|error| state(format!("stderr task failed: {error}")))??
+            }
+            Err(_) => {
+                stderr_task.abort();
+                return Err(state("timed out draining child stderr"));
+            }
+        };
         if !status.success() {
             return Err(state(format!("product child exited with {status}")));
         }
@@ -171,7 +199,11 @@ impl ProductChild {
 
     async fn read_message(&mut self) -> Result<Value, QualificationError> {
         let mut wire = Vec::new();
-        let count = tokio::time::timeout(self.timeout, self.stdout.read_until(b'\n', &mut wire))
+        let stdout = self
+            .stdout
+            .as_mut()
+            .ok_or_else(|| state("child stdout pipe is unavailable"))?;
+        let count = tokio::time::timeout(self.timeout, stdout.read_until(b'\n', &mut wire))
             .await
             .map_err(|_| state("timed out reading child protocol line"))??;
         if count == 0 {
@@ -186,6 +218,23 @@ impl ProductChild {
             self.inbound_sequence,
             &wire,
         )
+    }
+}
+
+async fn drain_stdout(
+    mut stdout: BufReader<ChildStdout>,
+    protocol_root: std::path::PathBuf,
+    surface: Surface,
+    mut sequence: u64,
+) -> Result<u64, QualificationError> {
+    let initial_sequence = sequence;
+    loop {
+        let mut wire = Vec::new();
+        if stdout.read_until(b'\n', &mut wire).await? == 0 {
+            return Ok(sequence.saturating_sub(initial_sequence));
+        }
+        sequence = sequence.saturating_add(1);
+        persist_inbound(&protocol_root, surface, sequence, &wire)?;
     }
 }
 
