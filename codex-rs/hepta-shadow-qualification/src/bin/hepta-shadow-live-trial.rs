@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use codex_hepta_shadow_qualification::QualificationTrial;
+use codex_hepta_shadow_qualification::QualificationClosure;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,36 +12,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if arguments.next().is_some() {
         return Err(argument_error(usage(&program)).into());
     }
-    let outcome = QualificationTrial::run(product, &runtime_root, Duration::from_secs(120)).await?;
+    let outcome =
+        QualificationClosure::run(product, &runtime_root, Duration::from_secs(120)).await?;
+    let trial = outcome.trial();
     let document = serde_json::json!({
         "app_server": {
-            "exit_code": outcome.app_server_child().exit_code(),
-            "http_exchange_count": outcome.app_server_http().len(),
-            "inbound_message_count": outcome.app_server_child().inbound_message_count(),
-            "stderr_sha256": outcome.app_server_child().stderr_sha256(),
-            "stderr_size_bytes": outcome.app_server_child().stderr_size_bytes(),
-            "stderr_truncated": outcome.app_server_child().stderr_truncated(),
-            "thread_id": outcome.app_server_thread_id(),
-            "turn_ids": outcome.app_server_turn_ids(),
+            "exit_code": trial.app_server_child().exit_code(),
+            "http_exchange_count": trial.app_server_http().len(),
+            "inbound_message_count": trial.app_server_child().inbound_message_count(),
+            "stderr_sha256": trial.app_server_child().stderr_sha256(),
+            "stderr_size_bytes": trial.app_server_child().stderr_size_bytes(),
+            "stderr_truncated": trial.app_server_child().stderr_truncated(),
+            "thread_id": trial.app_server_thread_id(),
+            "turn_ids": trial.app_server_turn_ids(),
         },
         "authority": false,
         "enforce": false,
+        "exact_closure": outcome.report().exact_closure(),
         "mcp": {
-            "exit_code": outcome.mcp_child().exit_code(),
-            "http_exchange_count": outcome.mcp_http().len(),
-            "inbound_message_count": outcome.mcp_child().inbound_message_count(),
-            "stderr_sha256": outcome.mcp_child().stderr_sha256(),
-            "stderr_size_bytes": outcome.mcp_child().stderr_size_bytes(),
-            "stderr_truncated": outcome.mcp_child().stderr_truncated(),
-            "thread_id": outcome.mcp_thread_id(),
+            "exit_code": trial.mcp_child().exit_code(),
+            "http_exchange_count": trial.mcp_http().len(),
+            "inbound_message_count": trial.mcp_child().inbound_message_count(),
+            "stderr_sha256": trial.mcp_child().stderr_sha256(),
+            "stderr_size_bytes": trial.mcp_child().stderr_size_bytes(),
+            "stderr_truncated": trial.mcp_child().stderr_truncated(),
+            "thread_id": trial.mcp_thread_id(),
         },
         "outbound": false,
+        "product_receipt_failure_count": outcome.product_receipts().failures().len(),
         "promotion": false,
-        "run_id": outcome.completed().run_id(),
-        "run_root": outcome.completed().run_root(),
+        "qualification_report_sha256": outcome.report().file_sha256(),
+        "report_failures": outcome.report().failures(),
+        "run_id": trial.completed().run_id(),
+        "run_root": trial.completed().run_root(),
         "runtime_root": runtime_root,
+        "terminal_seal_file_sha256": outcome.seal().seal_file_sha256(),
+        "terminal_seal_sha256": outcome.seal().terminal_seal_sha256(),
+        "terminal_status": outcome.seal().status(),
     });
     println!("{}", serde_json::to_string(&document)?);
+    if !outcome.report().exact_closure() {
+        return Err(std::io::Error::other("qualification did not reach exact closure").into());
+    }
     Ok(())
 }
 

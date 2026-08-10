@@ -8,6 +8,7 @@ use crate::HttpAuditRecord;
 use crate::QualificationDriverRun;
 use crate::QualificationError;
 use crate::QualificationRuntimeLayout;
+use crate::durable::verify_private_tree;
 use crate::session::run_app_server;
 use crate::session::run_mcp;
 
@@ -32,6 +33,8 @@ impl QualificationTrial {
         let app_server =
             run_app_server(&product, layout.app_server(), &mut driver, timeout).await?;
         let mcp = run_mcp(&product, layout.mcp(), &mut driver, timeout).await?;
+        layout.harden_known_product_permissions()?;
+        verify_private_tree(layout.root())?;
         let completed = driver.finish()?;
         Ok(QualificationTrialOutcome {
             app_server_child: app_server.child,

@@ -30,7 +30,15 @@ fn creates_private_surface_layouts_and_strict_configs() -> Result<(), Qualificat
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
+
         assert_eq!(fs::metadata(layout.root())?.permissions().mode() & 0o077, 0);
+        for surface in [layout.app_server(), layout.mcp()] {
+            let path = surface.home().join("installation_id");
+            fs::write(&path, "11111111-1111-4111-8111-111111111111")?;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o644))?;
+        }
+        layout.harden_known_product_permissions()?;
+        super::durable::verify_private_tree(layout.root())?;
     }
     Ok(())
 }

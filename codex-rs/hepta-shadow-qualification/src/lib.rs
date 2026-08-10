@@ -3,11 +3,14 @@
 mod child;
 #[cfg(test)]
 mod child_tests;
+mod closure;
 mod digest;
 mod driver;
 #[cfg(test)]
 mod driver_tests;
 mod durable;
+#[cfg(test)]
+mod durable_tests;
 mod importer;
 #[cfg(test)]
 mod importer_tests;
@@ -65,6 +68,8 @@ pub enum QualificationError {
 
 pub use child::ChildOutcome;
 pub use child::ProductChild;
+pub use closure::QualificationClosure;
+pub use closure::QualificationClosureOutcome;
 pub use driver::AppServerDriver;
 pub use driver::McpDriver;
 pub use driver::QualificationDriverRun;

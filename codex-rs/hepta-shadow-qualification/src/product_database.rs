@@ -9,6 +9,7 @@ use sqlx::sqlite::SqliteConnectOptions;
 use crate::QualificationError;
 use crate::Surface;
 use crate::digest::sha256;
+use crate::durable::create_private_directory;
 use crate::durable::read_private_bounded;
 use crate::durable::same_file_snapshot;
 use crate::durable::verify_private_regular;
@@ -16,7 +17,8 @@ use crate::durable::write_private_new;
 use crate::request::canonical_json;
 
 const DATABASE_FILENAME: &str = "hepta_evidence_1.sqlite";
-const MAX_DATABASE_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const MAX_DATABASE_BYTES: usize = 32 * 1024 * 1024;
+const MAX_WAL_BYTES: usize = 32 * 1024 * 1024;
 const MIGRATION_BYTES: usize = 880;
 const MIGRATION_SHA256: &str = "fa57edd23c048ee384f0a3dce8d06675102ef4fe18a529129b39e031b4cddf15";
 const SCHEMA_BYTES: usize = 19_498;
@@ -26,39 +28,91 @@ pub(crate) async fn snapshot_and_read(
     sqlite_root: &Path,
     surface: Surface,
     snapshot_root: &Path,
-) -> Result<(String, Vec<ProductReceiptRow>), QualificationError> {
-    let database_sha256 = snapshot_database(sqlite_root, surface, snapshot_root)?;
-    let snapshot = snapshot_root.join(format!("{}-{DATABASE_FILENAME}", surface.as_str()));
+) -> Result<(String, std::path::PathBuf, Vec<ProductReceiptRow>), QualificationError> {
+    let (database_sha256, snapshot) =
+        snapshot_database(sqlite_root, surface, snapshot_root).await?;
     let rows = read_rows(&snapshot).await?;
-    Ok((database_sha256, rows))
+    Ok((database_sha256, snapshot, rows))
 }
 
-fn snapshot_database(
+async fn snapshot_database(
     sqlite_root: &Path,
     surface: Surface,
     snapshot_root: &Path,
-) -> Result<String, QualificationError> {
+) -> Result<(String, std::path::PathBuf), QualificationError> {
     let source = sqlite_root.join(DATABASE_FILENAME);
     let wal = sqlite_root.join(format!("{DATABASE_FILENAME}-wal"));
     verify_private_regular(&source)?;
     verify_private_regular(&wal)?;
-    if std::fs::metadata(&wal)?.len() != 0 {
+    let source_before = std::fs::metadata(&source)?;
+    let wal_before = std::fs::metadata(&wal)?;
+    let source_bytes = read_private_bounded(&source, MAX_DATABASE_BYTES)?;
+    let wal_bytes = read_private_bounded(&wal, MAX_WAL_BYTES)?;
+    let source_after = std::fs::metadata(&source)?;
+    let wal_after = std::fs::metadata(&wal)?;
+    if !same_file_snapshot(&source_before, &source_after)
+        || !same_file_snapshot(&wal_before, &wal_after)
+        || !source_bytes.starts_with(b"SQLite format 3\0")
+        || (!wal_bytes.is_empty()
+            && (wal_bytes.len() < 32
+                || !matches!(
+                    wal_bytes[..4],
+                    [0x37, 0x7f, 0x06, 0x82] | [0x37, 0x7f, 0x06, 0x83]
+                )))
+    {
         return Err(invalid(
-            "product evidence WAL is not empty after clean child exit",
+            "product evidence database pair changed or has invalid headers",
         ));
     }
-    let before = std::fs::metadata(&source)?;
-    let bytes = read_private_bounded(&source, MAX_DATABASE_BYTES)?;
-    let after = std::fs::metadata(&source)?;
-    if !same_file_snapshot(&before, &after) || !bytes.starts_with(b"SQLite format 3\0") {
+    let staging = snapshot_root.join(format!(".{}-staging", surface.as_str()));
+    create_private_directory(&staging)?;
+    let staging_database = staging.join(DATABASE_FILENAME);
+    let staging_wal = staging.join(format!("{DATABASE_FILENAME}-wal"));
+    write_private_new(&staging_database, &source_bytes)?;
+    write_private_new(&staging_wal, &wal_bytes)?;
+    checkpoint_staging(&staging_database).await?;
+    let before = std::fs::metadata(&staging_database)?;
+    let snapshot_bytes = read_private_bounded(&staging_database, MAX_DATABASE_BYTES)?;
+    let after = std::fs::metadata(&staging_database)?;
+    if !same_file_snapshot(&before, &after) || !snapshot_bytes.starts_with(b"SQLite format 3\0") {
         return Err(invalid(
-            "product evidence database changed or lacks SQLite header",
+            "checkpointed product evidence snapshot changed or lacks SQLite header",
         ));
     }
-    let database_sha256 = sha256(&bytes);
+    let database_sha256 = sha256(&snapshot_bytes);
     let destination = snapshot_root.join(format!("{}-{DATABASE_FILENAME}", surface.as_str()));
-    write_private_new(&destination, &bytes)?;
-    Ok(database_sha256)
+    write_private_new(&destination, &snapshot_bytes)?;
+    Ok((database_sha256, destination))
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "qualification-only importer checkpoints a private copy and never production state"
+)]
+async fn checkpoint_staging(path: &Path) -> Result<(), QualificationError> {
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(false);
+    let mut connection = SqliteConnection::connect_with(&options).await?;
+    let row = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .fetch_one(&mut connection)
+        .await?;
+    let busy: i64 = row.try_get(0)?;
+    let log_frames: i64 = row.try_get(1)?;
+    let checkpointed_frames: i64 = row.try_get(2)?;
+    connection.close().await?;
+    if busy != 0 || log_frames != 0 || checkpointed_frames != 0 {
+        return Err(invalid(
+            "private product database WAL did not reach a complete truncated checkpoint",
+        ));
+    }
+    let wal = path.with_file_name(format!("{DATABASE_FILENAME}-wal"));
+    if std::fs::metadata(&wal).is_ok_and(|metadata| metadata.len() != 0) {
+        return Err(invalid(
+            "private product database WAL remains nonempty after checkpoint",
+        ));
+    }
+    Ok(())
 }
 
 #[expect(

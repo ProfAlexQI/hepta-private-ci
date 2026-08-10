@@ -12,6 +12,7 @@ use crate::QualificationError;
 use crate::Surface;
 use crate::durable::create_private_directory;
 use crate::durable::same_file_snapshot;
+use crate::durable::sync_directory;
 use crate::durable::write_private_new;
 use crate::request::FIXED_MODEL;
 use crate::request::FIXED_PROVIDER;
@@ -128,6 +129,52 @@ impl QualificationRuntimeLayout {
 
     pub fn work(&self) -> &Path {
         &self.work
+    }
+
+    pub(crate) fn harden_known_product_permissions(&self) -> Result<(), QualificationError> {
+        for layout in [&self.app_server, &self.mcp] {
+            let path = layout.home().join("installation_id");
+            let mut options = OpenOptions::new();
+            options.read(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+            }
+            let mut file = options.open(&path)?;
+            let metadata = file.metadata()?;
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)?;
+            let valid_uuid = contents.len() == 36
+                && contents.bytes().enumerate().all(|(index, byte)| {
+                    if matches!(index, 8 | 13 | 18 | 23) {
+                        byte == b'-'
+                    } else {
+                        byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()
+                    }
+                });
+            if !metadata.is_file() || !valid_uuid {
+                return Err(invalid(
+                    "product installation fixture is not one regular lowercase UUID",
+                ));
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = metadata.permissions().mode() & 0o777;
+                if !matches!(mode, 0o600 | 0o644) {
+                    return Err(invalid(
+                        "product installation fixture has an unexpected mode",
+                    ));
+                }
+                let mut permissions = metadata.permissions();
+                permissions.set_mode(0o600);
+                file.set_permissions(permissions)?;
+            }
+            file.sync_all()?;
+            sync_directory(layout.home())?;
+        }
+        Ok(())
     }
 }
 
