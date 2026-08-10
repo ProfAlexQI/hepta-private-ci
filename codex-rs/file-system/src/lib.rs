@@ -424,6 +424,31 @@ pub trait ExecutorFileSystem: Send + Sync {
         sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, Vec<u8>>;
 
+    /// Reads at most `max_bytes` after authorizing the opened file's stable identity.
+    ///
+    /// Implementations must authorize and read from the same open file handle. They must not
+    /// compose path canonicalization, a policy check, and a later path-based read because that
+    /// leaves a symlink race. Filesystems without a stable-handle implementation fail closed.
+    fn read_file_bounded_authorized<'a>(
+        &'a self,
+        _path: &'a PathUri,
+        _sandbox: &'a FileSystemSandboxContext,
+        max_bytes: usize,
+    ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
+        Box::pin(async move {
+            if max_bytes == 0 || max_bytes.checked_add(1).is_none() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "authorized file read bound must leave room for an overflow sentinel",
+                ));
+            }
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "bounded authorized file reads are unsupported",
+            ))
+        })
+    }
+
     /// Reads a file as a stream of chunks no larger than [`FILE_READ_CHUNK_SIZE`].
     fn read_file_stream<'a>(
         &'a self,
