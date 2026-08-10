@@ -205,7 +205,13 @@ pub use telemetry::ExecServerTelemetry;
 /// Returns local environment information with executor-owned runtime capabilities populated.
 pub fn local_environment_info() -> EnvironmentInfo {
     let mut info = EnvironmentInfo::local();
-    info.capabilities.stable_handle_authorized_read =
+    let stable_handle_authorized_read =
         local_file_system::stable_handle_authorized_read_available();
+    info.capabilities.stable_handle_authorized_read = stable_handle_authorized_read;
+    // Sandboxed discovery materializes plugin and skill contents through the
+    // atomic authorized-read contract. Advertising discovery when that read
+    // primitive is unavailable would silently turn permitted files into an
+    // empty bundle instead of failing closed.
+    info.capabilities.capability_discovery_sandbox = stable_handle_authorized_read;
     info
 }
