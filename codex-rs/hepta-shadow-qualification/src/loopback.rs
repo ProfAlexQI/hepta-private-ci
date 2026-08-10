@@ -151,7 +151,14 @@ async fn serve(
             &request.body,
         )?;
         let call_id = format!("{}-{sample_ordinal}-call-v1", surface.as_str());
-        let validated_output = validate_request(&request, &expected_host, &call_id, post_ordinal)?;
+        let validated_output = validate_request(
+            &request,
+            &expected_host,
+            surface,
+            sample_ordinal,
+            &call_id,
+            post_ordinal,
+        )?;
         let response_body = if post_ordinal == 1 {
             function_call_sse(surface, sample_ordinal, &call_id)
         } else {
@@ -292,6 +299,8 @@ async fn read_request(stream: &mut TcpStream) -> Result<HttpRequest, Qualificati
 fn validate_request(
     request: &HttpRequest,
     expected_host: &str,
+    surface: Surface,
+    sample_ordinal: u8,
     call_id: &str,
     post_ordinal: u8,
 ) -> Result<Option<String>, QualificationError> {
@@ -312,23 +321,32 @@ fn validate_request(
         ));
     }
     let outputs = function_outputs(&body);
-    match post_ordinal {
-        1 if outputs.is_empty() => Ok(None),
-        2 if outputs.len() == 1 => {
-            let (actual_call_id, output) = outputs[0];
-            if actual_call_id != Some(call_id) {
-                return Err(invalid("function output call_id differs from issued call"));
-            }
-            let output = output
-                .and_then(Value::as_str)
-                .ok_or_else(|| invalid("function output payload is not a string"))?;
-            validate_shell_output(output)?;
-            Ok(Some(output.to_string()))
-        }
-        _ => Err(invalid(
-            "function output cardinality differs from post ordinal",
-        )),
+    let expected_count = usize::from(sample_ordinal - 1) + usize::from(post_ordinal == 2);
+    if outputs.len() != expected_count {
+        return Err(invalid("function output history cardinality differs"));
     }
+    let mut current_output = None;
+    for (index, (actual_call_id, output)) in outputs.into_iter().enumerate() {
+        let output_sample = u8::try_from(index + 1)
+            .map_err(|_| invalid("function output sample ordinal overflow"))?;
+        let expected_call_id = format!("{}-{output_sample}-call-v1", surface.as_str());
+        if actual_call_id != Some(expected_call_id.as_str()) {
+            return Err(invalid(
+                "function output call_id differs from issued history",
+            ));
+        }
+        let output = output
+            .and_then(Value::as_str)
+            .ok_or_else(|| invalid("function output payload is not a string"))?;
+        validate_shell_output(output)?;
+        if actual_call_id == Some(call_id) {
+            current_output = Some(output.to_string());
+        }
+    }
+    if (post_ordinal == 2) != current_output.is_some() {
+        return Err(invalid("current function output differs from post ordinal"));
+    }
+    Ok(current_output)
 }
 
 fn contains_shell_tool(value: &Value) -> bool {

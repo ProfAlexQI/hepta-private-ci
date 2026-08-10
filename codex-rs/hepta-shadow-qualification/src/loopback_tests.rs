@@ -20,7 +20,7 @@ async fn persists_exact_http_requests_and_responses() -> Result<(), Qualificatio
     )
     .await?;
     for sample in 1..=2 {
-        send(loopback.address(), first_body()).await?;
+        send(loopback.address(), first_body(sample)).await?;
         send(loopback.address(), second_body(sample)).await?;
     }
     let records = loopback.finish().await?;
@@ -33,9 +33,9 @@ async fn persists_exact_http_requests_and_responses() -> Result<(), Qualificatio
     Ok(())
 }
 
-fn first_body() -> Vec<u8> {
+fn first_body(sample: u8) -> Vec<u8> {
     serde_json::to_vec(&serde_json::json!({
-        "input": [],
+        "input": prior_outputs(sample),
         "model": "hepta-shadow-qualification",
         "stream": true,
         "tools": [{"name": "shell_command", "type": "function"}],
@@ -44,17 +44,27 @@ fn first_body() -> Vec<u8> {
 }
 
 fn second_body(sample: u8) -> Vec<u8> {
+    let mut input = prior_outputs(sample);
+    input.push(output(sample));
     serde_json::to_vec(&serde_json::json!({
-        "input": [{
-            "call_id": format!("app_server-{sample}-call-v1"),
-            "output": "Exit code: 0\nWall time: 0.01 seconds\nOutput:\nhepta-shadow-probe",
-            "type": "function_call_output",
-        }],
+        "input": input,
         "model": "hepta-shadow-qualification",
         "stream": true,
         "tools": [{"name": "shell_command", "type": "function"}],
     }))
     .unwrap_or_default()
+}
+
+fn prior_outputs(sample: u8) -> Vec<serde_json::Value> {
+    (1..sample).map(output).collect()
+}
+
+fn output(sample: u8) -> serde_json::Value {
+    serde_json::json!({
+        "call_id": format!("app_server-{sample}-call-v1"),
+        "output": "Exit code: 0\nWall time: 0.01 seconds\nOutput:\nhepta-shadow-probe",
+        "type": "function_call_output",
+    })
 }
 
 async fn send(address: std::net::SocketAddr, body: Vec<u8>) -> Result<(), QualificationError> {
