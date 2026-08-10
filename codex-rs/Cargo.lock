@@ -3276,10 +3276,13 @@ dependencies = [
 name = "codex-hepta-shadow-qualification"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "pretty_assertions",
+ "rand 0.9.3",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

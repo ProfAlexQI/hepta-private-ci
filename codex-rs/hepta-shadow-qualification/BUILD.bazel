@@ -8,6 +8,8 @@ rust_library(
     edition = "2024",
     visibility = ["//visibility:private"],
     deps = [
+        "@crates//:libc",
+        "@crates//:rand",
         "@crates//:serde",
         "@crates//:serde_json",
         "@crates//:sha2",
@@ -18,5 +20,8 @@ rust_library(
 rust_test(
     name = "hepta-shadow-qualification-tests",
     crate = ":hepta-shadow-qualification-lib",
-    deps = ["@crates//:pretty_assertions"],
+    deps = [
+        "@crates//:pretty_assertions",
+        "@crates//:tempfile",
+    ],
 )
