@@ -11,6 +11,7 @@ use sha2::Sha256;
 use crate::QualificationError;
 use crate::Surface;
 use crate::durable::create_private_directory;
+use crate::durable::same_file_snapshot;
 use crate::durable::write_private_new;
 use crate::request::FIXED_MODEL;
 use crate::request::FIXED_PROVIDER;
@@ -308,22 +309,6 @@ fn create_child(parent: &Path, name: &str) -> Result<PathBuf, QualificationError
 fn toml_string(value: &str) -> Result<String, QualificationError> {
     serde_json::to_string(value)
         .map_err(|error| QualificationError::Serialization(error.to_string()))
-}
-
-fn same_file_snapshot(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        before.dev() == after.dev()
-            && before.ino() == after.ino()
-            && before.len() == after.len()
-            && before.mtime() == after.mtime()
-            && before.mtime_nsec() == after.mtime_nsec()
-    }
-    #[cfg(not(unix))]
-    {
-        before.len() == after.len() && before.modified().ok() == after.modified().ok()
-    }
 }
 
 fn invalid(message: impl Into<String>) -> QualificationError {

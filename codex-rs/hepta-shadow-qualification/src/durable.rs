@@ -102,6 +102,22 @@ pub(crate) fn now_millis() -> Result<u128, QualificationError> {
         })
 }
 
+pub(crate) fn same_file_snapshot(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        before.dev() == after.dev()
+            && before.ino() == after.ino()
+            && before.len() == after.len()
+            && before.mtime() == after.mtime()
+            && before.mtime_nsec() == after.mtime_nsec()
+    }
+    #[cfg(not(unix))]
+    {
+        before.len() == after.len() && before.modified().ok() == after.modified().ok()
+    }
+}
+
 fn verify_private_mode(
     metadata: &std::fs::Metadata,
     label: &str,
