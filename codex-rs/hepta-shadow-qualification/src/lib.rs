@@ -11,6 +11,9 @@ mod observer_tests;
 mod oracle;
 #[cfg(test)]
 mod oracle_tests;
+mod report;
+#[cfg(test)]
+mod report_tests;
 mod request;
 #[cfg(test)]
 mod request_tests;
@@ -42,6 +45,10 @@ pub use observer::CompletedPreSend;
 pub use observer::DurablePreSendObserver;
 pub use observer::DurablePreSendToken;
 pub use oracle::FrozenOracle;
+pub use report::QualificationManifest;
+pub use report::QualificationReport;
+pub use report::ReportFailure;
+pub use report::SemanticSampleReport;
 pub use request::Surface;
 pub use sealer::TerminalSeal;
 pub use sealer::TerminalStatus;
