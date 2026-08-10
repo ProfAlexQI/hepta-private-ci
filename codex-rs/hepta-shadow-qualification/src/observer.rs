@@ -58,9 +58,10 @@ impl DurablePreSendToken {
 
 #[derive(Debug)]
 pub struct CompletedPreSend {
+    expected_work_directory: String,
     run_id: String,
     run_root: PathBuf,
-    token_count: usize,
+    tokens: Vec<DurablePreSendToken>,
 }
 
 impl CompletedPreSend {
@@ -73,7 +74,17 @@ impl CompletedPreSend {
     }
 
     pub fn token_count(&self) -> usize {
-        self.token_count
+        self.tokens.len()
+    }
+
+    pub(crate) fn expected_work_directory(&self) -> &str {
+        &self.expected_work_directory
+    }
+
+    pub(crate) fn token(&self, surface: Surface, ordinal: u8) -> Option<&DurablePreSendToken> {
+        self.tokens
+            .iter()
+            .find(|token| token.surface == surface && token.ordinal == ordinal)
     }
 }
 
@@ -206,18 +217,18 @@ impl DurablePreSendObserver {
         self.record(Surface::Mcp, raw_request)
     }
 
-    pub fn finish(mut self) -> Result<CompletedPreSend, QualificationError> {
+    pub fn finish(self) -> Result<CompletedPreSend, QualificationError> {
         if !matches!(self.stage, Stage::Complete) || self.tokens.len() != 4 {
             return Err(state(
                 "observer requires exactly two app-server and two MCP requests",
             ));
         }
         sync_directory(&self.run_root)?;
-        self.tokens.clear();
         Ok(CompletedPreSend {
+            expected_work_directory: self.expected_work_directory,
             run_id: self.run_id,
             run_root: self.run_root,
-            token_count: 4,
+            tokens: self.tokens,
         })
     }
 
