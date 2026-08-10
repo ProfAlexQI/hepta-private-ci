@@ -29,6 +29,7 @@ pub const EXEC_CLOSED_METHOD: &str = "process/closed";
 pub const ENVIRONMENT_INFO_METHOD: &str = "environment/info";
 pub const ENVIRONMENT_STATUS_METHOD: &str = "environment/status";
 pub const FS_READ_FILE_METHOD: &str = "fs/readFile";
+pub const FS_READ_FILE_AUTHORIZED_METHOD: &str = "fs/readFileAuthorized";
 pub const FS_OPEN_METHOD: &str = "fs/open";
 pub const FS_READ_BLOCK_METHOD: &str = "fs/readBlock";
 pub const FS_CLOSE_METHOD: &str = "fs/close";
@@ -115,6 +116,9 @@ pub struct EnvironmentCapabilities {
     /// Whether this executor supports the `environmentConfig/read` request.
     #[serde(default)]
     pub environment_config_read: bool,
+    /// Whether bounded reads authorize and consume the same executor-local file handle.
+    #[serde(default)]
+    pub stable_handle_authorized_read: bool,
 }
 
 /// Status returned by an initialized exec-server connection.
@@ -173,6 +177,9 @@ impl EnvironmentInfo {
                 network_proxy_launch: true,
                 capability_discovery_sandbox: true,
                 environment_config_read: true,
+                // The protocol crate cannot probe the executor's filesystem primitives.
+                // The exec-server overrides this conservative default after a real runtime probe.
+                stable_handle_authorized_read: false,
             },
         }
     }
@@ -352,6 +359,14 @@ pub struct TerminateResponse {
 pub struct FsReadFileParams {
     pub path: PathUri,
     pub sandbox: Option<FileSystemSandboxContext>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsReadFileAuthorizedParams {
+    pub path: PathUri,
+    pub sandbox: FileSystemSandboxContext,
+    pub max_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -795,6 +810,7 @@ mod tests {
     use super::ExecExitedNotification;
     use super::ExecParams;
     use super::ExecResponse;
+    use super::FsReadFileAuthorizedParams;
     use super::FsReadFileParams;
     use super::HttpRequestParams;
     use super::ProcessId;
@@ -921,6 +937,7 @@ mod tests {
                 network_proxy_launch: true,
                 capability_discovery_sandbox: true,
                 environment_config_read: false,
+                stable_handle_authorized_read: false,
             }
         );
     }
@@ -935,6 +952,7 @@ mod tests {
                 "networkProxyLaunch": false,
                 "capabilityDiscoverySandbox": false,
                 "environmentConfigRead": false,
+                "stableHandleAuthorizedRead": false,
             },
         });
         let info: EnvironmentInfo = serde_json::from_value(expected.clone())
@@ -944,6 +962,15 @@ mod tests {
             serde_json::to_value(info).expect("environment info should serialize"),
             expected,
         );
+
+        let mut legacy = expected;
+        legacy["capabilities"]
+            .as_object_mut()
+            .expect("capabilities object")
+            .remove("stableHandleAuthorizedRead");
+        let legacy: EnvironmentInfo =
+            serde_json::from_value(legacy).expect("legacy capabilities should deserialize");
+        assert!(!legacy.capabilities.stable_handle_authorized_read);
     }
 
     #[test]
@@ -974,6 +1001,11 @@ mod tests {
         assert_eq!(
             EnvironmentInfo::local().temporary_directories,
             Some(expected)
+        );
+        assert!(
+            !EnvironmentInfo::local()
+                .capabilities
+                .stable_handle_authorized_read
         );
     }
 
@@ -1034,6 +1066,30 @@ mod tests {
             "sandbox": native_path_sandbox,
         }))
         .expect_err("native absolute sandbox cwd should not deserialize as a URI");
+    }
+
+    #[test]
+    fn authorized_read_round_trips_its_required_sandbox_and_bound() {
+        let native_cwd = std::env::current_dir().expect("current directory");
+        let cwd = PathUri::from_host_native_path(&native_cwd).expect("cwd URI");
+        let path = cwd.join("bounded.txt").expect("file URI");
+        let params = FsReadFileAuthorizedParams {
+            path: path.clone(),
+            sandbox: FileSystemSandboxContext::from_permission_profile_with_cwd(
+                PermissionProfile::default(),
+                cwd,
+            ),
+            max_bytes: 4096,
+        };
+
+        let serialized = serde_json::to_value(&params).expect("serialize authorized read");
+        assert_eq!(serialized["path"], path.to_string());
+        assert_eq!(serialized["maxBytes"], 4096);
+        assert_eq!(
+            serde_json::from_value::<FsReadFileAuthorizedParams>(serialized)
+                .expect("deserialize authorized read"),
+            params,
+        );
     }
 
     #[test]
