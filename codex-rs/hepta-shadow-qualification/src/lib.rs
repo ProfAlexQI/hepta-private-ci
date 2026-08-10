@@ -11,6 +11,8 @@ mod observer_tests;
 mod request;
 #[cfg(test)]
 mod request_tests;
+#[cfg(test)]
+mod test_support;
 
 #[derive(Debug, thiserror::Error)]
 pub enum QualificationError {

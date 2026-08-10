@@ -4,10 +4,10 @@ use serde_json::Value;
 
 use super::observer::DurablePreSendObserver;
 use super::request::Surface;
-use super::request::canonical_json;
+use super::test_support::app_request;
+use super::test_support::mcp_request;
+use super::test_support::only_run_root;
 use crate::QualificationError;
-
-const PROMPT: &str = "Run the controlled qualification command exactly once and report completion.";
 
 #[test]
 fn returns_tokens_only_after_four_private_durable_pairs() -> Result<(), QualificationError> {
@@ -87,71 +87,6 @@ fn rejects_noncanonical_input_before_writing_an_artifact() -> Result<(), Qualifi
     let run_root = only_run_root(&root)?;
     assert_eq!(fs::read_dir(run_root)?.count(), 1);
     Ok(())
-}
-
-fn app_request(ordinal: u8) -> Result<Vec<u8>, QualificationError> {
-    line(&serde_json::json!({
-        "id": ordinal + 2,
-        "method": "turn/start",
-        "params": {
-            "input": [{"text": PROMPT, "textElements": [], "type": "text"}],
-            "threadId": format!("thread-{ordinal}"),
-        },
-    }))
-}
-
-fn mcp_request(ordinal: u8, cwd: &str) -> Result<Vec<u8>, QualificationError> {
-    let request = match ordinal {
-        1 => serde_json::json!({
-            "id": 2,
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {
-                "arguments": {
-                    "approval-policy": "never",
-                    "base-instructions": "Execute only the exact requested controlled qualification command. Do not invoke any other tool or network service.",
-                    "cwd": cwd,
-                    "developer-instructions": "This is a controlled short trial, not a duration soak and not promotion authority.",
-                    "model": "hepta-shadow-qualification",
-                    "prompt": PROMPT,
-                    "sandbox": "workspace-write",
-                },
-                "name": "codex",
-            },
-        }),
-        2 => serde_json::json!({
-            "id": 3,
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {
-                "arguments": {"prompt": PROMPT, "threadId": "thread-mcp"},
-                "name": "codex-reply",
-            },
-        }),
-        _ => {
-            return Err(QualificationError::Invalid(
-                "invalid MCP ordinal".to_string(),
-            ));
-        }
-    };
-    line(&request)
-}
-
-fn line(value: &Value) -> Result<Vec<u8>, QualificationError> {
-    let mut bytes = canonical_json(value)?;
-    bytes.push(b'\n');
-    Ok(bytes)
-}
-
-fn only_run_root(root: &std::path::Path) -> Result<std::path::PathBuf, QualificationError> {
-    let mut entries = fs::read_dir(root)?;
-    let entry = entries
-        .next()
-        .ok_or_else(|| QualificationError::State("missing run root".to_string()))??;
-    if entries.next().is_some() {
-        return Err(QualificationError::State("multiple run roots".to_string()));
-    }
-    Ok(entry.path())
 }
 
 fn assert_private_tree(root: &std::path::Path) -> Result<(), QualificationError> {
