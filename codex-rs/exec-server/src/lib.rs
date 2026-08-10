@@ -158,6 +158,7 @@ pub use protocol::FsReadBlockResponse;
 pub use protocol::FsReadDirectoryEntry;
 pub use protocol::FsReadDirectoryParams;
 pub use protocol::FsReadDirectoryResponse;
+pub use protocol::FsReadFileAuthorizedParams;
 pub use protocol::FsReadFileParams;
 pub use protocol::FsReadFileResponse;
 pub use protocol::FsRemoveParams;
