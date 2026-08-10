@@ -46,7 +46,9 @@ async fn authorized_read_validates_bounds_and_platform_support() {
         .await
         .expect_err("missing authorized read target must fail closed");
 
-    let expected = if cfg!(any(target_os = "macos", target_os = "linux")) {
+    let expected = if cfg!(target_os = "macos")
+        && crate::local_file_system::stable_handle_authorized_read_available()
+    {
         JSONRPCErrorError {
             code: -32004,
             data: None,

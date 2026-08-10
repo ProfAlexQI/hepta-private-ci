@@ -1,7 +1,10 @@
 use super::ExecutorFileSystem;
 use super::FileSystemSandboxContext;
 use super::LocalFileSystem;
-use super::ensure_open_file_is_linked;
+use super::authorize_stable_file_path;
+use super::secure_reopen_matching_identity;
+use super::stable_file_path;
+use super::unique_file_identity;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::permissions::FileSystemAccessMode;
 use codex_protocol::permissions::FileSystemPath;
@@ -13,8 +16,11 @@ use codex_utils_path_uri::PathUri;
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Barrier;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use tokio::io::AsyncReadExt;
 const ALLOWED: &[u8] = b"ALLOWED";
 const SECRET: &[u8] = b"SECRET";
 fn read_sandbox(readable_root: &Path) -> io::Result<FileSystemSandboxContext> {
@@ -136,6 +142,166 @@ async fn stable_handle_read_rejects_max_plus_one_without_returning_a_prefix() ->
     Ok(())
 }
 
+#[tokio::test]
+async fn denied_inode_hardlinked_into_allowed_root_is_rejected() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let allowed_dir = temp_dir.path().join("allowed");
+    let denied_dir = temp_dir.path().join("denied");
+    std::fs::create_dir_all(&allowed_dir)?;
+    std::fs::create_dir_all(&denied_dir)?;
+    let secret_file = denied_dir.join("SECRET.txt");
+    let allowed_link = allowed_dir.join("alias.txt");
+    std::fs::write(&secret_file, SECRET)?;
+    std::fs::hard_link(&secret_file, &allowed_link)?;
+
+    let error = authorized_read(
+        &LocalFileSystem::unsandboxed(),
+        &allowed_link,
+        &read_sandbox(&allowed_dir)?,
+        SECRET.len(),
+    )
+    .await
+    .expect_err("a denied inode with an allowed hardlink must fail closed");
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "authorized file read denied");
+    Ok(())
+}
+
+#[tokio::test]
+async fn two_allowed_hardlinks_are_rejected() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let original = temp_dir.path().join("original.txt");
+    let alias = temp_dir.path().join("alias.txt");
+    std::fs::write(&original, ALLOWED)?;
+    std::fs::hard_link(&original, &alias)?;
+
+    let error = authorized_read(
+        &LocalFileSystem::unsandboxed(),
+        &alias,
+        &read_sandbox(temp_dir.path())?,
+        ALLOWED.len(),
+    )
+    .await
+    .expect_err("even two allowed names make path authority ambiguous");
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "authorized file read denied");
+    Ok(())
+}
+
+#[tokio::test]
+async fn hardlink_added_after_initial_open_is_rejected_by_atomic_reopen() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let path = temp_dir.path().join("allowed.txt");
+    let alias = temp_dir.path().join("alias.txt");
+    std::fs::write(&path, ALLOWED)?;
+    let original = crate::regular_file::open(&path).await?;
+    let identity = unique_file_identity(&original).await?;
+    let final_path = stable_file_path(&original)?;
+
+    std::fs::hard_link(&path, &alias)?;
+    let error = secure_reopen_matching_identity(final_path.as_path(), identity)
+        .await
+        .expect_err("O_UNIQUE must reject a link added after the initial open");
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "authorized file read denied");
+    Ok(())
+}
+
+#[tokio::test]
+async fn hardlink_added_after_atomic_authorization_does_not_revoke_the_handle() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let allowed_dir = temp_dir.path().join("allowed");
+    let denied_dir = temp_dir.path().join("denied");
+    std::fs::create_dir_all(&allowed_dir)?;
+    std::fs::create_dir_all(&denied_dir)?;
+    let path = allowed_dir.join("allowed.txt");
+    let denied_alias = denied_dir.join("alias.txt");
+    std::fs::write(&path, ALLOWED)?;
+    let original = crate::regular_file::open(&path).await?;
+    let identity = unique_file_identity(&original).await?;
+    let final_path = stable_file_path(&original)?;
+    authorize_stable_file_path(final_path.as_path(), &read_sandbox(&allowed_dir)?)?;
+    let mut authorized = secure_reopen_matching_identity(final_path.as_path(), identity).await?;
+
+    std::fs::hard_link(&path, &denied_alias)?;
+    let mut contents = Vec::new();
+    authorized.read_to_end(&mut contents).await?;
+    assert_eq!(contents, ALLOWED);
+    Ok(())
+}
+
+#[tokio::test]
+async fn parent_symlink_aba_is_rejected_by_atomic_reopen() -> io::Result<()> {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = tempfile::tempdir()?;
+    let allowed_dir = temp_dir.path().join("allowed");
+    let denied_dir = temp_dir.path().join("denied");
+    let live_parent = allowed_dir.join("parent");
+    let moved_parent = denied_dir.join("parent");
+    std::fs::create_dir_all(&live_parent)?;
+    std::fs::create_dir_all(&denied_dir)?;
+    let path = live_parent.join("file.txt");
+    std::fs::write(&path, ALLOWED)?;
+    let original = crate::regular_file::open(&path).await?;
+    let identity = unique_file_identity(&original).await?;
+    let final_path = stable_file_path(&original)?;
+
+    std::fs::rename(&live_parent, &moved_parent)?;
+    symlink(&moved_parent, &live_parent)?;
+    let error = secure_reopen_matching_identity(final_path.as_path(), identity)
+        .await
+        .expect_err("a parent symlink must fail the no-symlink kernel lookup");
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "authorized file read denied");
+    Ok(())
+}
+
+#[tokio::test]
+async fn parent_directory_decoy_is_rejected_by_inode_identity() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let allowed_dir = temp_dir.path().join("allowed");
+    let denied_dir = temp_dir.path().join("denied");
+    let live_parent = allowed_dir.join("parent");
+    let moved_parent = denied_dir.join("parent");
+    std::fs::create_dir_all(&live_parent)?;
+    std::fs::create_dir_all(&denied_dir)?;
+    let path = live_parent.join("file.txt");
+    std::fs::write(&path, ALLOWED)?;
+    let original = crate::regular_file::open(&path).await?;
+    let identity = unique_file_identity(&original).await?;
+    let final_path = stable_file_path(&original)?;
+
+    std::fs::rename(&live_parent, &moved_parent)?;
+    std::fs::create_dir(&live_parent)?;
+    std::fs::write(&path, SECRET)?;
+    let error = secure_reopen_matching_identity(final_path.as_path(), identity)
+        .await
+        .expect_err("a same-name decoy must not replace the initially opened inode");
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "authorized file read denied");
+    Ok(())
+}
+
+#[tokio::test]
+async fn path_replacement_after_atomic_reopen_does_not_change_the_open_handle() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let path = temp_dir.path().join("file.txt");
+    let moved = temp_dir.path().join("moved.txt");
+    std::fs::write(&path, ALLOWED)?;
+    let original = crate::regular_file::open(&path).await?;
+    let identity = unique_file_identity(&original).await?;
+    let final_path = stable_file_path(&original)?;
+    let mut reopened = secure_reopen_matching_identity(final_path.as_path(), identity).await?;
+
+    std::fs::rename(&path, &moved)?;
+    std::fs::write(&path, SECRET)?;
+    let mut contents = Vec::new();
+    reopened.read_to_end(&mut contents).await?;
+    assert_eq!(contents, ALLOWED);
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn symlink_swap_never_returns_denied_contents() -> io::Result<()> {
     use std::os::unix::fs::symlink;
@@ -151,11 +317,16 @@ async fn symlink_swap_never_returns_denied_contents() -> io::Result<()> {
     let link = temp_dir.path().join("swap-link");
     symlink(&allowed_file, &link)?;
     let stop = Arc::new(AtomicBool::new(false));
+    let start = Arc::new(Barrier::new(2));
+    let churn_count = Arc::new(AtomicUsize::new(0));
     let toggler_stop = Arc::clone(&stop);
+    let toggler_start = Arc::clone(&start);
+    let toggler_churn_count = Arc::clone(&churn_count);
     let toggler_link = link.clone();
     let toggler = std::thread::spawn(move || -> io::Result<()> {
         let replacement = toggler_link.with_extension("next");
         let mut use_secret = true;
+        toggler_start.wait();
         while !toggler_stop.load(Ordering::Relaxed) {
             let _ = std::fs::remove_file(&replacement);
             let target = if use_secret {
@@ -165,16 +336,24 @@ async fn symlink_swap_never_returns_denied_contents() -> io::Result<()> {
             };
             symlink(target, &replacement)?;
             std::fs::rename(&replacement, &toggler_link)?;
+            toggler_churn_count.fetch_add(1, Ordering::Release);
+            std::thread::yield_now();
             use_secret = !use_secret;
         }
         Ok(())
     });
+    start.wait();
+    while churn_count.load(Ordering::Acquire) == 0 {
+        std::thread::yield_now();
+    }
     let sandbox = read_sandbox(&allowed_dir)?;
     let file_system = LocalFileSystem::unsandboxed();
     let mut unexpected = None;
-    for _ in 0..256 {
+    let mut allowed_reads = 0;
+    let mut rejected_reads = 0;
+    for _ in 0..512 {
         match authorized_read(&file_system, &link, &sandbox, ALLOWED.len()).await {
-            Ok(contents) if contents == ALLOWED => {}
+            Ok(contents) if contents == ALLOWED => allowed_reads += 1,
             Ok(contents) => {
                 unexpected = Some(format!("unexpected contents: {contents:?}"));
                 break;
@@ -183,7 +362,10 @@ async fn symlink_swap_never_returns_denied_contents() -> io::Result<()> {
                 if matches!(
                     error.kind(),
                     io::ErrorKind::PermissionDenied | io::ErrorKind::NotFound
-                ) => {}
+                ) =>
+            {
+                rejected_reads += 1
+            }
             Err(error) => {
                 unexpected = Some(format!("unexpected error kind: {:?}", error.kind()));
                 break;
@@ -196,6 +378,88 @@ async fn symlink_swap_never_returns_denied_contents() -> io::Result<()> {
         .join()
         .expect("symlink swap thread must not panic")?;
     assert_eq!(unexpected, None);
+    assert!(churn_count.load(Ordering::Acquire) > 0);
+    assert!(allowed_reads > 0, "churn must exercise successful reads");
+    assert!(rejected_reads > 0, "churn must exercise rejected reads");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn hardlink_and_rename_churn_never_returns_denied_contents() -> io::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let allowed_dir = temp_dir.path().join("allowed");
+    let denied_dir = temp_dir.path().join("denied");
+    std::fs::create_dir_all(&allowed_dir)?;
+    std::fs::create_dir_all(&denied_dir)?;
+    let secret_file = denied_dir.join("secret.txt");
+    let slot = allowed_dir.join("slot.txt");
+    std::fs::write(&secret_file, SECRET)?;
+    std::fs::write(&slot, ALLOWED)?;
+    let sandbox = read_sandbox(&allowed_dir)?;
+    let stop = Arc::new(AtomicBool::new(false));
+    let start = Arc::new(Barrier::new(2));
+    let churn_count = Arc::new(AtomicUsize::new(0));
+    let toggler_stop = Arc::clone(&stop);
+    let toggler_start = Arc::clone(&start);
+    let toggler_churn_count = Arc::clone(&churn_count);
+    let toggler_slot = slot.clone();
+    let toggler = std::thread::spawn(move || -> io::Result<()> {
+        let replacement = toggler_slot.with_extension("next");
+        toggler_start.wait();
+        for _ in 0..2048 {
+            if toggler_stop.load(Ordering::Acquire) {
+                break;
+            }
+            let _ = std::fs::remove_file(&replacement);
+            std::fs::write(&replacement, ALLOWED)?;
+            std::fs::rename(&replacement, &toggler_slot)?;
+            toggler_churn_count.fetch_add(1, Ordering::Release);
+            std::thread::yield_now();
+            std::fs::hard_link(&secret_file, &replacement)?;
+            std::fs::rename(&replacement, &toggler_slot)?;
+            toggler_churn_count.fetch_add(1, Ordering::Release);
+            std::thread::yield_now();
+        }
+        Ok(())
+    });
+    start.wait();
+    while churn_count.load(Ordering::Acquire) == 0 {
+        std::thread::yield_now();
+    }
+    let file_system = LocalFileSystem::unsandboxed();
+    let mut unexpected = None;
+    let mut allowed_reads = 0;
+    let mut rejected_reads = 0;
+    for _ in 0..512 {
+        match authorized_read(&file_system, &slot, &sandbox, ALLOWED.len()).await {
+            Ok(contents) if contents == ALLOWED => allowed_reads += 1,
+            Ok(contents) => {
+                unexpected = Some(format!("unexpected contents: {contents:?}"));
+                break;
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::PermissionDenied | io::ErrorKind::NotFound
+                ) =>
+            {
+                rejected_reads += 1
+            }
+            Err(error) => {
+                unexpected = Some(format!("unexpected error kind: {:?}", error.kind()));
+                break;
+            }
+        }
+        tokio::task::yield_now().await;
+    }
+    stop.store(true, Ordering::Release);
+    toggler
+        .join()
+        .expect("hardlink churn thread must not panic")?;
+    assert_eq!(unexpected, None);
+    assert!(churn_count.load(Ordering::Acquire) > 0);
+    assert!(allowed_reads > 0, "churn must exercise successful reads");
+    assert!(rejected_reads > 0, "churn must exercise rejected reads");
     Ok(())
 }
 
@@ -222,9 +486,10 @@ async fn an_unlinked_open_handle_fails_closed() -> io::Result<()> {
     std::fs::write(&path, ALLOWED)?;
     let file = crate::regular_file::open(&path).await?;
     std::fs::remove_file(&path)?;
-    let error = ensure_open_file_is_linked(&file)
+    let error = unique_file_identity(&file)
         .await
         .expect_err("an unlinked handle must fail closed regardless of path API behavior");
-    assert_eq!(error.kind(), io::ErrorKind::NotFound);
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "authorized file read denied");
     Ok(())
 }
