@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use serde::Serialize;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
@@ -7,6 +8,11 @@ use crate::CompletedPreSend;
 use crate::DurablePreSendObserver;
 use crate::DurablePreSendToken;
 use crate::QualificationError;
+use crate::Surface;
+use crate::digest::sha256;
+use crate::durable::create_or_verify_private_directory;
+use crate::durable::sync_directory;
+use crate::durable::write_private_new;
 use crate::request::FIXED_MODEL;
 use crate::request::FIXED_PROVIDER;
 use crate::request::app_server_sample_request;
@@ -38,9 +44,11 @@ impl QualificationDriverRun {
         expected_work_directory: impl AsRef<Path>,
     ) -> Result<Self, QualificationError> {
         let expected_work_directory = expected_work_directory.as_ref();
+        let observer = DurablePreSendObserver::create(observer_root, expected_work_directory)?;
+        create_or_verify_private_directory(&observer.run_root().join("protocol"))?;
         Ok(Self {
             expected_work_directory: expected_work_directory.to_string_lossy().into_owned(),
-            observer: DurablePreSendObserver::create(observer_root, expected_work_directory)?,
+            observer,
             stage: RunStage::NeedAppServer,
         })
     }
@@ -136,14 +144,24 @@ where
                 },
             },
         }))?;
-        self.send_control(AppStage::NeedInitialize, AppStage::NeedInitialized, &wire)
-            .await
+        self.send_control(
+            AppStage::NeedInitialize,
+            AppStage::NeedInitialized,
+            1,
+            &wire,
+        )
+        .await
     }
 
     pub async fn initialized(&mut self) -> Result<(), QualificationError> {
         let wire = json_line(&serde_json::json!({"method": "initialized"}))?;
-        self.send_control(AppStage::NeedInitialized, AppStage::NeedThreadStart, &wire)
-            .await
+        self.send_control(
+            AppStage::NeedInitialized,
+            AppStage::NeedThreadStart,
+            2,
+            &wire,
+        )
+        .await
     }
 
     pub async fn start_thread(&mut self) -> Result<(), QualificationError> {
@@ -159,7 +177,7 @@ where
                 "sandbox": "workspace-write",
             },
         }))?;
-        self.send_control(AppStage::NeedThreadStart, AppStage::NeedTurn(1), &wire)
+        self.send_control(AppStage::NeedThreadStart, AppStage::NeedTurn(1), 3, &wire)
             .await
     }
 
@@ -173,6 +191,11 @@ where
         };
         let wire = app_server_sample_request(ordinal, thread_id)?;
         let token = self.observer.record_app_server(&wire)?;
+        if let Err(error) = persist_outbound(self.observer, Surface::AppServer, ordinal + 3, &wire)
+        {
+            self.fail();
+            return Err(error);
+        }
         self.stage = if ordinal == 1 {
             AppStage::NeedTurn(2)
         } else {
@@ -197,10 +220,15 @@ where
         &mut self,
         expected: AppStage,
         next: AppStage,
+        sequence: u8,
         wire: &[u8],
     ) -> Result<(), QualificationError> {
         if self.stage != expected {
             return Err(state("app-server control message is out of order"));
+        }
+        if let Err(error) = persist_outbound(self.observer, Surface::AppServer, sequence, wire) {
+            self.fail();
+            return Err(error);
         }
         self.stage = next;
         if let Err(error) = write_wire(&mut self.writer, wire).await {
@@ -253,8 +281,13 @@ where
                 "protocolVersion": MCP_PROTOCOL_VERSION,
             },
         }))?;
-        self.send_control(McpStage::NeedInitialize, McpStage::NeedInitialized, &wire)
-            .await
+        self.send_control(
+            McpStage::NeedInitialize,
+            McpStage::NeedInitialized,
+            1,
+            &wire,
+        )
+        .await
     }
 
     pub async fn initialized(&mut self) -> Result<(), QualificationError> {
@@ -262,7 +295,7 @@ where
             "jsonrpc": "2.0",
             "method": "notifications/initialized",
         }))?;
-        self.send_control(McpStage::NeedInitialized, McpStage::NeedFirstCall, &wire)
+        self.send_control(McpStage::NeedInitialized, McpStage::NeedFirstCall, 2, &wire)
             .await
     }
 
@@ -272,6 +305,10 @@ where
         }
         let wire = mcp_sample_request(1, &self.expected_work_directory, None)?;
         let token = self.observer.record_mcp(&wire)?;
+        if let Err(error) = persist_outbound(self.observer, Surface::Mcp, 3, &wire) {
+            self.fail();
+            return Err(error);
+        }
         self.stage = McpStage::NeedSecondCall;
         if let Err(error) = write_wire(&mut self.writer, &wire).await {
             self.fail();
@@ -289,6 +326,10 @@ where
         }
         let wire = mcp_sample_request(2, &self.expected_work_directory, Some(thread_id))?;
         let token = self.observer.record_mcp(&wire)?;
+        if let Err(error) = persist_outbound(self.observer, Surface::Mcp, 4, &wire) {
+            self.fail();
+            return Err(error);
+        }
         self.stage = McpStage::Complete;
         if let Err(error) = write_wire(&mut self.writer, &wire).await {
             self.fail();
@@ -309,10 +350,15 @@ where
         &mut self,
         expected: McpStage,
         next: McpStage,
+        sequence: u8,
         wire: &[u8],
     ) -> Result<(), QualificationError> {
         if self.stage != expected {
             return Err(state("MCP control message is out of order"));
+        }
+        if let Err(error) = persist_outbound(self.observer, Surface::Mcp, sequence, wire) {
+            self.fail();
+            return Err(error);
         }
         self.stage = next;
         if let Err(error) = write_wire(&mut self.writer, wire).await {
@@ -335,6 +381,51 @@ where
     writer.write_all(wire).await?;
     writer.flush().await?;
     Ok(())
+}
+
+#[derive(Serialize)]
+struct ProtocolReceipt<'a> {
+    authority: bool,
+    direction: &'static str,
+    enforce: bool,
+    outbound: bool,
+    promotion: bool,
+    raw_sha256: &'a str,
+    raw_size_bytes: usize,
+    schema: &'static str,
+    schema_version: u32,
+    sequence: u8,
+    surface: Surface,
+}
+
+fn persist_outbound(
+    observer: &DurablePreSendObserver,
+    surface: Surface,
+    sequence: u8,
+    wire: &[u8],
+) -> Result<(), QualificationError> {
+    let root = observer.run_root().join("protocol");
+    let stem = format!("{}-outbound-{sequence:03}", surface.as_str());
+    let raw_sha256 = sha256(wire);
+    let receipt = ProtocolReceipt {
+        authority: false,
+        direction: "outbound_pre_send",
+        enforce: false,
+        outbound: false,
+        promotion: false,
+        raw_sha256: &raw_sha256,
+        raw_size_bytes: wire.len(),
+        schema: "hepta_shadow_qualification_protocol_artifact_v2",
+        schema_version: 2,
+        sequence,
+        surface,
+    };
+    write_private_new(&root.join(format!("{stem}.raw.jsonl")), wire)?;
+    write_private_new(
+        &root.join(format!("{stem}.receipt.json")),
+        &crate::request::canonical_json(&receipt)?,
+    )?;
+    sync_directory(&root)
 }
 
 fn state(message: impl Into<String>) -> QualificationError {

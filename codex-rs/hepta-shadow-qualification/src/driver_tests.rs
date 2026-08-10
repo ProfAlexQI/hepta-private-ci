@@ -50,6 +50,7 @@ async fn app_and_mcp_fsm_persist_before_every_sample_write() -> Result<(), Quali
 
     let completed = run.finish()?;
     assert_eq!(completed.token_count(), 4);
+    assert_eq!(std::fs::read_dir(run_root.join("protocol"))?.count(), 18);
     Ok(())
 }
 
@@ -70,6 +71,11 @@ async fn failed_pipe_write_keeps_durable_pre_send_and_poisoned_fsm()
     assert!(app.start_turn("thread-app").await.is_err());
     drop(app);
     assert!(receipt.is_file());
+    assert!(
+        run.run_root()
+            .join("protocol/app_server-outbound-004.receipt.json")
+            .is_file()
+    );
     assert!(run.finish().is_err());
     Ok(())
 }

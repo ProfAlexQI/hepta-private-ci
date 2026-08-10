@@ -230,6 +230,7 @@ fn verify_one(
 fn inventory_failures(run_root: &Path) -> Result<Vec<ImportFailure>, QualificationError> {
     let mut allowed = BTreeSet::from([
         "http".to_string(),
+        "protocol".to_string(),
         "qualification-manifest.json".to_string(),
         "run.json".to_string(),
     ]);
