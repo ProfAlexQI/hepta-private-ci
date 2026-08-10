@@ -1,0 +1,22 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "hepta-shadow-qualification-lib",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "codex_hepta_shadow_qualification",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:sha2",
+        "@crates//:thiserror",
+    ],
+)
+
+rust_test(
+    name = "hepta-shadow-qualification-tests",
+    crate = ":hepta-shadow-qualification-lib",
+    deps = ["@crates//:pretty_assertions"],
+)
