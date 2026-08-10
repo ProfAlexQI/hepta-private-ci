@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod child;
+#[cfg(test)]
+mod child_tests;
 mod digest;
 mod driver;
 #[cfg(test)]
@@ -48,6 +51,8 @@ pub enum QualificationError {
     State(String),
 }
 
+pub use child::ChildOutcome;
+pub use child::ProductChild;
 pub use driver::AppServerDriver;
 pub use driver::McpDriver;
 pub use driver::QualificationDriverRun;
