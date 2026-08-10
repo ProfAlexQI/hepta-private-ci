@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod digest;
+mod durable;
 mod observer;
 #[cfg(test)]
 mod observer_tests;
