@@ -8,6 +8,9 @@ mod importer_tests;
 mod observer;
 #[cfg(test)]
 mod observer_tests;
+mod oracle;
+#[cfg(test)]
+mod oracle_tests;
 mod request;
 #[cfg(test)]
 mod request_tests;
@@ -16,6 +19,7 @@ mod sealer;
 mod sealer_tests;
 #[cfg(test)]
 mod test_support;
+mod verification_primitives;
 
 #[derive(Debug, thiserror::Error)]
 pub enum QualificationError {
@@ -34,6 +38,7 @@ pub use importer::ImportFailure;
 pub use observer::CompletedPreSend;
 pub use observer::DurablePreSendObserver;
 pub use observer::DurablePreSendToken;
+pub use oracle::FrozenOracle;
 pub use request::Surface;
 pub use sealer::TerminalSeal;
 pub use sealer::TerminalStatus;
