@@ -138,6 +138,24 @@ impl ExecutorFileSystem for SyntheticFileSystem {
         Box::pin(SyntheticFileSystem::read_file(self, path))
     }
 
+    fn read_file_bounded_authorized<'a>(
+        &'a self,
+        path: &'a PathUri,
+        _sandbox: &'a FileSystemSandboxContext,
+        max_bytes: usize,
+    ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
+        Box::pin(async move {
+            let contents = self.read_file(path).await?;
+            if contents.len() > max_bytes {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "read limit exceeded",
+                ));
+            }
+            Ok(contents)
+        })
+    }
+
     fn read_file_stream<'a>(
         &'a self,
         _path: &'a PathUri,

@@ -1,3 +1,4 @@
+use std::io;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
@@ -24,10 +25,13 @@ pub(super) enum ManifestMetadataBehavior {
     WaitForSkillRead,
 }
 
-pub(super) struct RecordingFileSystem<'a> {
+pub(crate) struct RecordingFileSystem<'a> {
     inner: &'a dyn ExecutorFileSystem,
     read_files: Mutex<Vec<PathUri>>,
     metadata_files: Mutex<Vec<PathUri>>,
+    authorized_read: Option<Result<Vec<u8>, io::ErrorKind>>,
+    authorized_calls: AtomicUsize,
+    authorized_max_bytes: AtomicUsize,
     pub(super) walks: AtomicUsize,
     manifest_metadata_behavior: ManifestMetadataBehavior,
     skill_read_started: AtomicBool,
@@ -53,6 +57,9 @@ impl<'a> RecordingFileSystem<'a> {
             inner,
             read_files: Mutex::new(Vec::new()),
             metadata_files: Mutex::new(Vec::new()),
+            authorized_read: None,
+            authorized_calls: AtomicUsize::new(0),
+            authorized_max_bytes: AtomicUsize::new(0),
             walks: AtomicUsize::new(/*v*/ 0),
             manifest_metadata_behavior,
             skill_read_started: AtomicBool::new(/*v*/ false),
@@ -61,6 +68,29 @@ impl<'a> RecordingFileSystem<'a> {
             blocked_walk_gate: Semaphore::new(/*permits*/ 0),
             walk_started: Notify::new(),
         }
+    }
+
+    pub(crate) fn for_authorized_read(
+        inner: &'a dyn ExecutorFileSystem,
+        result: Result<Vec<u8>, io::ErrorKind>,
+    ) -> Self {
+        let mut file_system = Self::new(inner, ManifestMetadataBehavior::Immediate);
+        file_system.authorized_read = Some(result);
+        file_system
+    }
+
+    pub(crate) fn authorized_call(&self) -> (usize, usize) {
+        (
+            self.authorized_calls.load(Ordering::Relaxed),
+            self.authorized_max_bytes.load(Ordering::Relaxed),
+        )
+    }
+
+    fn reject_legacy_read_path(&self) {
+        assert!(
+            self.authorized_read.is_none(),
+            "sandboxed consumer used a legacy filesystem read path"
+        );
     }
 
     pub(super) fn calls(&self) -> FileSystemCalls {
@@ -90,6 +120,7 @@ impl ExecutorFileSystem for RecordingFileSystem<'_> {
         path: &'a PathUri,
         sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, PathUri> {
+        self.reject_legacy_read_path();
         self.inner.canonicalize(path, sandbox)
     }
 
@@ -98,6 +129,7 @@ impl ExecutorFileSystem for RecordingFileSystem<'_> {
         path: &'a PathUri,
         sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
+        self.reject_legacy_read_path();
         self.read_files
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -109,11 +141,34 @@ impl ExecutorFileSystem for RecordingFileSystem<'_> {
         self.inner.read_file(path, sandbox)
     }
 
+    fn read_file_bounded_authorized<'a>(
+        &'a self,
+        path: &'a PathUri,
+        sandbox: &'a FileSystemSandboxContext,
+        max_bytes: usize,
+    ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
+        self.authorized_calls.fetch_add(1, Ordering::Relaxed);
+        self.authorized_max_bytes
+            .store(max_bytes, Ordering::Relaxed);
+        if let Some(result) = self.authorized_read.clone() {
+            return Box::pin(async move {
+                result.map_err(|kind| io::Error::new(kind, "/private/provider/path"))
+            });
+        }
+        self.read_files
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(path.clone());
+        self.inner
+            .read_file_bounded_authorized(path, sandbox, max_bytes)
+    }
+
     fn read_file_stream<'a>(
         &'a self,
         path: &'a PathUri,
         sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, FileSystemReadStream> {
+        self.reject_legacy_read_path();
         self.inner.read_file_stream(path, sandbox)
     }
 
@@ -140,6 +195,7 @@ impl ExecutorFileSystem for RecordingFileSystem<'_> {
         path: &'a PathUri,
         sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, FileMetadata> {
+        self.reject_legacy_read_path();
         self.metadata_files
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
