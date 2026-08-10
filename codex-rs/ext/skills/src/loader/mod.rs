@@ -3,7 +3,7 @@ mod environment;
 mod host;
 mod host_merge;
 #[cfg(test)]
-mod io_test_support;
+pub(crate) mod io_test_support;
 mod metadata;
 mod namespace;
 

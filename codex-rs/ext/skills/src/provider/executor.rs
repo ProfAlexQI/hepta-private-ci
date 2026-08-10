@@ -284,30 +284,24 @@ async fn read_bounded_text(
             "failed to read executor skill resource {resource}: {err}"
         ))
     };
-    let contents = if sandbox.is_some_and(FileSystemSandboxContext::should_run_in_sandbox) {
-        if path.infer_path_convention() == Some(PathConvention::Windows)
-            && sandbox.is_some_and(|context| {
-                context.windows_sandbox_level
-                    == codex_protocol::config_types::WindowsSandboxLevel::Disabled
-            })
+    let contents = if let Some(sandbox) = sandbox {
+        if sandbox.should_run_in_sandbox()
+            && path.infer_path_convention() == Some(PathConvention::Windows)
+            && sandbox.windows_sandbox_level
+                == codex_protocol::config_types::WindowsSandboxLevel::Disabled
         {
             return Err(SkillProviderError::new(
                 "executor skill resource requires an unavailable filesystem sandbox",
             ));
         }
-        let metadata = file_system
-            .get_metadata(path, sandbox)
-            .await
-            .map_err(&read_error)?;
-        if metadata.size > MAX_SKILL_RESOURCE_CONTENT_BYTES as u64 {
-            return Err(SkillProviderError::new(format!(
-                "executor skill resource {resource} exceeds {MAX_SKILL_RESOURCE_CONTENT_BYTES} bytes"
-            )));
-        }
         file_system
-            .read_file(path, sandbox)
+            .read_file_bounded_authorized(path, sandbox, MAX_SKILL_RESOURCE_CONTENT_BYTES)
             .await
-            .map_err(&read_error)?
+            .map_err(|_| {
+                SkillProviderError::new(format!(
+                    "failed to read executor skill resource {resource} through the authorized sandbox"
+                ))
+            })?
     } else {
         let mut stream = file_system
             .read_file_stream(path, sandbox)
@@ -335,4 +329,83 @@ async fn read_bounded_text(
             "executor skill resource {resource} is not valid UTF-8"
         ))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use codex_exec_server::LocalFileSystem;
+    use codex_protocol::models::PermissionProfile;
+
+    use super::*;
+    use crate::loader::io_test_support::RecordingFileSystem;
+
+    fn sandbox() -> FileSystemSandboxContext {
+        FileSystemSandboxContext::from_permission_profile(PermissionProfile::default())
+    }
+
+    #[tokio::test]
+    async fn sandboxed_skill_read_uses_only_the_authorized_seam_and_rechecks_its_bound() {
+        let inner = LocalFileSystem::unsandboxed();
+        let path = PathUri::parse("file:///skills/demo/SKILL.md").expect("test path");
+        let file_system =
+            RecordingFileSystem::for_authorized_read(&inner, Ok(b"skill contents".to_vec()));
+        let contents = read_bounded_text(
+            &file_system,
+            &path,
+            "skill://demo/SKILL.md",
+            Some(&sandbox()),
+        )
+        .await
+        .expect("authorized skill read");
+        assert_eq!(contents, "skill contents");
+        assert_eq!(
+            file_system.authorized_call(),
+            (1, MAX_SKILL_RESOURCE_CONTENT_BYTES)
+        );
+
+        let file_system = RecordingFileSystem::for_authorized_read(
+            &inner,
+            Ok(vec![b'x'; MAX_SKILL_RESOURCE_CONTENT_BYTES + 1]),
+        );
+        let error = read_bounded_text(
+            &file_system,
+            &path,
+            "skill://demo/SKILL.md",
+            Some(&sandbox()),
+        )
+        .await
+        .expect_err("an over-limit prefix must not be returned");
+        assert_eq!(
+            error.message,
+            format!(
+                "executor skill resource skill://demo/SKILL.md exceeds {MAX_SKILL_RESOURCE_CONTENT_BYTES} bytes"
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn unsupported_sandboxed_skill_read_does_not_fallback() {
+        let inner = LocalFileSystem::unsandboxed();
+        let file_system =
+            RecordingFileSystem::for_authorized_read(&inner, Err(io::ErrorKind::Unsupported));
+        let error = read_bounded_text(
+            &file_system,
+            &PathUri::parse("file:///skills/demo/SKILL.md").expect("test path"),
+            "skill://demo/SKILL.md",
+            Some(&sandbox()),
+        )
+        .await
+        .expect_err("unsupported authorized reads fail closed");
+        assert_eq!(
+            error.message,
+            "failed to read executor skill resource skill://demo/SKILL.md through the authorized sandbox"
+        );
+        assert!(!error.message.contains("private/provider/path"));
+        assert_eq!(
+            file_system.authorized_call(),
+            (1, MAX_SKILL_RESOURCE_CONTENT_BYTES)
+        );
+    }
 }
