@@ -228,7 +228,10 @@ fn verify_one(
 }
 
 fn inventory_failures(run_root: &Path) -> Result<Vec<ImportFailure>, QualificationError> {
-    let mut allowed = BTreeSet::from(["run.json".to_string()]);
+    let mut allowed = BTreeSet::from([
+        "qualification-manifest.json".to_string(),
+        "run.json".to_string(),
+    ]);
     for surface in [Surface::AppServer, Surface::Mcp] {
         for ordinal in 1..=2 {
             let stem = format!("{}-{ordinal:02}", surface.as_str());
