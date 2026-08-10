@@ -2,15 +2,14 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-use serde_json::Value;
-
 use crate::CompletedPreSend;
 use crate::DurablePreSendObserver;
 use crate::QualificationError;
-use crate::request::canonical_json;
+use crate::request::FIXED_PROMPT;
+use crate::request::app_server_sample_request;
+use crate::request::mcp_sample_request;
 
-pub(crate) const PROMPT: &str =
-    "Run the controlled qualification command exactly once and report completion.";
+pub(crate) const PROMPT: &str = FIXED_PROMPT;
 
 pub(crate) fn completed_run() -> Result<(CompletedPreSend, tempfile::TempDir), QualificationError> {
     let temp = tempfile::tempdir()?;
@@ -28,51 +27,12 @@ pub(crate) fn completed_run() -> Result<(CompletedPreSend, tempfile::TempDir), Q
 }
 
 pub(crate) fn app_request(ordinal: u8) -> Result<Vec<u8>, QualificationError> {
-    line(&serde_json::json!({
-        "id": ordinal + 2,
-        "method": "turn/start",
-        "params": {
-            "input": [{"text": PROMPT, "textElements": [], "type": "text"}],
-            "threadId": format!("thread-{ordinal}"),
-        },
-    }))
+    app_server_sample_request(ordinal, &format!("thread-{ordinal}"))
 }
 
 pub(crate) fn mcp_request(ordinal: u8, cwd: &str) -> Result<Vec<u8>, QualificationError> {
-    let request = match ordinal {
-        1 => serde_json::json!({
-            "id": 2,
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {
-                "arguments": {
-                    "approval-policy": "never",
-                    "base-instructions": "Execute only the exact requested controlled qualification command. Do not invoke any other tool or network service.",
-                    "cwd": cwd,
-                    "developer-instructions": "This is a controlled short trial, not a duration soak and not promotion authority.",
-                    "model": "hepta-shadow-qualification",
-                    "prompt": PROMPT,
-                    "sandbox": "workspace-write",
-                },
-                "name": "codex",
-            },
-        }),
-        2 => serde_json::json!({
-            "id": 3,
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {
-                "arguments": {"prompt": PROMPT, "threadId": "thread-mcp"},
-                "name": "codex-reply",
-            },
-        }),
-        _ => {
-            return Err(QualificationError::Invalid(
-                "invalid MCP ordinal".to_string(),
-            ));
-        }
-    };
-    line(&request)
+    let thread_id = (ordinal == 2).then_some("thread-mcp");
+    mcp_sample_request(ordinal, cwd, thread_id)
 }
 
 pub(crate) fn only_run_root(root: &Path) -> Result<PathBuf, QualificationError> {
@@ -84,10 +44,4 @@ pub(crate) fn only_run_root(root: &Path) -> Result<PathBuf, QualificationError> 
         return Err(QualificationError::State("multiple run roots".to_string()));
     }
     Ok(entry.path())
-}
-
-fn line(value: &Value) -> Result<Vec<u8>, QualificationError> {
-    let mut bytes = canonical_json(value)?;
-    bytes.push(b'\n');
-    Ok(bytes)
 }
