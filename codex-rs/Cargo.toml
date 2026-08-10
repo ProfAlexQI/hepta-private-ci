@@ -44,6 +44,7 @@ members = [
     "core-plugins",
     "diagnostics",
     "hooks",
+    "hepta-shadow-qualification",
     "history",
     "http-client",
     "secrets",

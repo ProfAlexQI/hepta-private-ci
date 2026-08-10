@@ -3292,6 +3292,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-shadow-qualification"
+version = "0.0.0"
+dependencies = [
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "codex-history"
 version = "0.0.0"
 dependencies = [
