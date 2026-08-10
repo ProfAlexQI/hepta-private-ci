@@ -9,7 +9,7 @@ use crate::protocol::FsReadFileAuthorizedParams;
 use crate::protocol::JSONRPCErrorError;
 
 #[tokio::test]
-async fn authorized_read_fails_closed_without_a_stable_handle_implementation() {
+async fn authorized_read_validates_bounds_and_platform_support() {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let runtime_paths = ExecServerRuntimePaths::new(
         std::env::current_exe().expect("current exe"),
@@ -44,14 +44,20 @@ async fn authorized_read_fails_closed_without_a_stable_handle_implementation() {
     let error = handler
         .read_file_authorized(params(4096))
         .await
-        .expect_err("unimplemented authorized read must fail closed");
+        .expect_err("missing authorized read target must fail closed");
 
-    assert_eq!(
-        error,
+    let expected = if cfg!(any(target_os = "macos", target_os = "linux")) {
+        JSONRPCErrorError {
+            code: -32004,
+            data: None,
+            message: "authorized file read target was not found".to_string(),
+        }
+    } else {
         JSONRPCErrorError {
             code: -32603,
             data: None,
             message: "bounded authorized file reads are unsupported".to_string(),
         }
-    );
+    };
+    assert_eq!(error, expected);
 }
