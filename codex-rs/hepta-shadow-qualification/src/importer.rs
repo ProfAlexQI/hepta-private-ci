@@ -29,6 +29,7 @@ pub struct ImportFailure {
 
 #[derive(Debug)]
 pub struct ImportCheckpoint {
+    checkpoint_sha256: String,
     evidence_set_sha256: String,
     failures: Vec<ImportFailure>,
     run_id: String,
@@ -68,9 +69,11 @@ impl ImportCheckpoint {
         );
         let document = CheckpointDocument {
             authority: false,
+            enforce: false,
             evidence_set_sha256: &evidence_set_sha256,
             failures: &failures,
             observed_artifact_count: 4,
+            outbound: false,
             promotion: false,
             run_id: completed.run_id(),
             schema: "hepta_shadow_qualification_import_checkpoint_v2",
@@ -82,18 +85,25 @@ impl ImportCheckpoint {
             },
             verified_artifact_count: verified_count,
         };
+        let checkpoint_bytes = canonical_json(&document)?;
+        let checkpoint_sha256 = sha256(&checkpoint_bytes);
         write_private_new(
             &completed.run_root().join("import-checkpoint.json"),
-            &canonical_json(&document)?,
+            &checkpoint_bytes,
         )?;
         sync_directory(completed.run_root())?;
         Ok(Self {
+            checkpoint_sha256,
             evidence_set_sha256,
             failures,
             run_id: completed.run_id().to_string(),
             run_root: completed.run_root().to_path_buf(),
             verified_count,
         })
+    }
+
+    pub fn checkpoint_sha256(&self) -> &str {
+        &self.checkpoint_sha256
     }
 
     pub fn evidence_set_sha256(&self) -> &str {
@@ -124,9 +134,11 @@ impl ImportCheckpoint {
 #[derive(Serialize)]
 struct CheckpointDocument<'a> {
     authority: bool,
+    enforce: bool,
     evidence_set_sha256: &'a str,
     failures: &'a [ImportFailure],
     observed_artifact_count: usize,
+    outbound: bool,
     promotion: bool,
     run_id: &'a str,
     schema: &'static str,
@@ -146,6 +158,7 @@ struct StoredReceipt {
     intent_chain_sha256: String,
     intent_id: String,
     ordinal: u8,
+    outbound: bool,
     product_http_pre_send_claimed: bool,
     promotion: bool,
     provider_semantic_sha256: String,
@@ -190,6 +203,7 @@ fn verify_one(
         && !receipt.authority
         && !receipt.enforce
         && !receipt.promotion
+        && !receipt.outbound
         && !receipt.product_http_pre_send_claimed
         && receipt.durability_scope == "create_new_file_fsync_then_parent_fsync_before_token"
         && receipt.raw_path_sha256 == raw_path_sha256

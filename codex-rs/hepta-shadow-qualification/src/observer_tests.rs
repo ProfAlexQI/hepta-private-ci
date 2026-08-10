@@ -47,6 +47,7 @@ fn returns_tokens_only_after_four_private_durable_pairs() -> Result<(), Qualific
                 .map_err(|error| QualificationError::Serialization(error.to_string()))?;
             assert_eq!(value["authority"], false);
             assert_eq!(value["enforce"], false);
+            assert_eq!(value["outbound"], false);
             assert_eq!(value["promotion"], false);
             assert_eq!(value["product_http_pre_send_claimed"], false);
         }
