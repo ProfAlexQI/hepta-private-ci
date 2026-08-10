@@ -8,6 +8,9 @@ mod durable;
 mod importer;
 #[cfg(test)]
 mod importer_tests;
+mod loopback;
+#[cfg(test)]
+mod loopback_tests;
 mod observer;
 #[cfg(test)]
 mod observer_tests;
@@ -50,6 +53,8 @@ pub use driver::McpDriver;
 pub use driver::QualificationDriverRun;
 pub use importer::ImportCheckpoint;
 pub use importer::ImportFailure;
+pub use loopback::HttpAuditRecord;
+pub use loopback::LoopbackHandle;
 pub use observer::CompletedPreSend;
 pub use observer::DurablePreSendObserver;
 pub use observer::DurablePreSendToken;
