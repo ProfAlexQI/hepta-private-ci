@@ -52,9 +52,15 @@ pub(crate) fn product_receipts(
     create_private_directory(&completed.run_root().join("product-evidence"))?;
     let raw = dynamic_receipt(oracle)?;
     let raw_sha256 = sha256(&raw);
-    let database_sha256 = "0".repeat(64);
     let mut artifacts = Vec::with_capacity(4);
     for surface in [Surface::AppServer, Surface::Mcp] {
+        let database_path = completed
+            .run_root()
+            .join("product-evidence")
+            .join(format!("{}-hepta_evidence_1.sqlite", surface.as_str()));
+        let database = format!("{} product database snapshot", surface.as_str());
+        write_private_new(&database_path, database.as_bytes())?;
+        let database_sha256 = sha256(database.as_bytes());
         for ordinal in 1..=2 {
             let stem = format!("{}-{ordinal:02}", surface.as_str());
             let raw_path = completed
@@ -80,6 +86,7 @@ pub(crate) fn product_receipts(
                 }))?,
             )?;
             artifacts.push(ProductReceiptArtifact {
+                database_path: database_path.clone(),
                 database_sha256: database_sha256.clone(),
                 import_path,
                 ordinal,

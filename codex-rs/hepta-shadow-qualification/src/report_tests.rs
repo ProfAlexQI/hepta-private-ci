@@ -8,7 +8,6 @@ use super::report::QualificationManifest;
 use super::report::QualificationReport;
 use super::report::SemanticSampleReport;
 use super::sealer::TerminalSeal;
-use super::semantic_verifier::SemanticVerifier;
 use super::test_support::completed_run;
 use super::test_support::product_receipts;
 use crate::QualificationError;
@@ -29,13 +28,7 @@ fn writes_an_exact_report_with_no_authority() -> Result<(), QualificationError> 
             .is_file()
     );
     let seal = TerminalSeal::create(ImportCheckpoint::create(&completed, &products)?)?;
-    let verified = SemanticVerifier::verify(&oracle, oracle.expected_normalized_receipt())?;
-    let mut samples = Vec::new();
-    for surface in [Surface::AppServer, Surface::Mcp] {
-        for ordinal in 1..=2 {
-            samples.push(SemanticSampleReport::verified(surface, ordinal, &verified));
-        }
-    }
+    let samples = products.semantic_reports(&oracle)?;
     let report = QualificationReport::write(&manifest, &seal, &oracle, samples)?;
     assert!(report.exact_closure());
     assert!(report.failures().is_empty());

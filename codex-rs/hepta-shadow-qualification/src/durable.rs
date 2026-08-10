@@ -88,6 +88,32 @@ pub(crate) fn verify_private_regular(path: &Path) -> Result<(), QualificationErr
     verify_private_mode(&metadata, "private artifact")
 }
 
+pub(crate) fn verify_private_tree(root: &Path) -> Result<(), QualificationError> {
+    verify_private_directory(root)?;
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            let metadata = std::fs::symlink_metadata(&path)?;
+            if metadata.file_type().is_symlink() {
+                return Err(invalid("private runtime tree must not contain symlinks"));
+            }
+            if metadata.is_dir() {
+                verify_private_mode(&metadata, "private runtime directory")?;
+                pending.push(path);
+            } else if metadata.is_file() {
+                verify_private_mode(&metadata, "private runtime artifact")?;
+            } else {
+                return Err(invalid(
+                    "private runtime tree must contain only directories and regular files",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn sync_directory(path: &Path) -> Result<(), QualificationError> {
     File::open(path)?.sync_all()?;
     Ok(())

@@ -18,6 +18,7 @@ use crate::durable::create_or_verify_private_directory;
 use crate::durable::read_private_bounded;
 use crate::durable::sync_directory;
 use crate::durable::write_private_new;
+use crate::product_database::MAX_DATABASE_BYTES;
 use crate::product_database::ProductReceiptRow;
 use crate::product_database::snapshot_and_read;
 use crate::request::canonical_json;
@@ -96,17 +97,23 @@ impl ProductReceiptSet {
             for ordinal in 1..=2 {
                 let report = match self.artifact(surface, ordinal) {
                     Some(artifact) => {
-                        match read_private_bounded(&artifact.raw_path, MAX_PRODUCT_RECEIPT_BYTES)
-                            .and_then(|bytes| SemanticVerifier::verify(oracle, &bytes))
-                        {
-                            Ok(verified) => {
+                        let before = self.verify_artifact(surface, ordinal);
+                        let verified =
+                            read_private_bounded(&artifact.raw_path, MAX_PRODUCT_RECEIPT_BYTES)
+                                .and_then(|bytes| SemanticVerifier::verify(oracle, &bytes));
+                        let after = self.verify_artifact(surface, ordinal);
+                        match (before, verified, after) {
+                            (Ok(before), Ok(verified), Ok(after)) if before == after => {
                                 SemanticSampleReport::verified(surface, ordinal, &verified)
                             }
-                            Err(error) => SemanticSampleReport::failed(
+                            (before, verified, after) => SemanticSampleReport::failed(
                                 surface,
                                 ordinal,
                                 oracle,
-                                bounded_reason(error.to_string()),
+                                bounded_reason(format!(
+                                    "durable semantic verification failed: before={before:?}; \
+                                     verify={verified:?}; after={after:?}"
+                                )),
                             )?,
                         }
                     }
@@ -131,6 +138,8 @@ impl ProductReceiptSet {
             .map_err(error_string)?;
         let imported = read_private_bounded(&artifact.import_path, MAX_IMPORT_RECEIPT_BYTES)
             .map_err(error_string)?;
+        let database = read_private_bounded(&artifact.database_path, MAX_DATABASE_BYTES)
+            .map_err(error_string)?;
         let receipt: StoredImportReceipt =
             serde_json::from_slice(&imported).map_err(error_string)?;
         if canonical_json(&receipt).map_err(error_string)? != imported
@@ -144,6 +153,7 @@ impl ProductReceiptSet {
             || receipt.ordinal != ordinal
             || receipt.raw_receipt_sha256 != sha256(&raw)
             || receipt.raw_receipt_sha256 != artifact.raw_sha256
+            || receipt.database_snapshot_sha256 != sha256(&database)
             || receipt.database_snapshot_sha256 != artifact.database_sha256
         {
             return Err("product import receipt binding differs from durable files".to_string());
@@ -176,6 +186,7 @@ struct SurfaceImport {
 }
 
 pub(crate) struct ProductReceiptArtifact {
+    pub(crate) database_path: PathBuf,
     pub(crate) database_sha256: String,
     pub(crate) import_path: PathBuf,
     pub(crate) ordinal: u8,
@@ -194,7 +205,7 @@ async fn import_surface(
         Surface::AppServer => trial.layout().app_server(),
         Surface::Mcp => trial.layout().mcp(),
     };
-    let (database_sha256, rows) =
+    let (database_sha256, database_path, rows) =
         snapshot_and_read(layout.sqlite(), surface, snapshot_root).await?;
     if rows.len() != 2 {
         return Err(invalid(
@@ -238,6 +249,7 @@ async fn import_surface(
                 surface,
                 ordinal,
                 row,
+                &database_path,
                 &database_sha256,
             ) {
                 Ok(artifact) => artifacts.push(artifact),
@@ -305,6 +317,7 @@ fn persist_row(
     surface: Surface,
     ordinal: u8,
     row: &ProductReceiptRow,
+    database_path: &Path,
     database_sha256: &str,
 ) -> Result<ProductReceiptArtifact, QualificationError> {
     let stem = stem(surface, ordinal);
@@ -326,6 +339,7 @@ fn persist_row(
     write_private_new(&raw_path, row.payload_json.as_bytes())?;
     write_private_new(&import_path, &canonical_json(&receipt)?)?;
     Ok(ProductReceiptArtifact {
+        database_path: database_path.to_path_buf(),
         database_sha256: database_sha256.to_string(),
         import_path,
         ordinal,
@@ -369,7 +383,13 @@ fn stem(surface: Surface, ordinal: u8) -> String {
 }
 
 fn bounded_reason(mut reason: String) -> String {
-    reason.truncate(1_024);
+    if reason.len() > 1_024 {
+        let mut end = 1_024;
+        while !reason.is_char_boundary(end) {
+            end -= 1;
+        }
+        reason.truncate(end);
+    }
     reason
 }
 

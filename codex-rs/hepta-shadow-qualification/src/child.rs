@@ -57,6 +57,16 @@ impl ProductChild {
             Surface::AppServer => &["app-server", "--stdio", "--strict-config"],
             Surface::Mcp => &["mcp-server", "--strict-config"],
         };
+        #[cfg(unix)]
+        let mut command = {
+            let mut command = Command::new("/bin/sh");
+            command
+                .args(["-c", "umask 077; exec \"$@\""])
+                .arg("hepta-shadow-product")
+                .arg(product.path());
+            command
+        };
+        #[cfg(not(unix))]
         let mut command = Command::new(product.path());
         command
             .args(args)
