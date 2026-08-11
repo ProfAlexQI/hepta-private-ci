@@ -205,7 +205,6 @@ use codex_protocol::error::Result as CodexResult;
 use codex_protocol::exec_output::StreamOutput;
 
 mod code_mode_warning;
-mod config_lock;
 pub(crate) mod context_window;
 mod extension_metrics;
 mod handlers;
@@ -228,8 +227,6 @@ pub(crate) mod turn;
 pub(crate) mod turn_context;
 mod world_state;
 use self::code_mode_warning::unsupported_code_mode_warning;
-use self::config_lock::export_config_lock_if_configured;
-use self::config_lock::validate_config_lock_if_configured;
 #[cfg(test)]
 use self::handlers::submission_dispatch_span;
 use self::handlers::submission_loop;
@@ -304,7 +301,6 @@ pub(crate) struct PreviousTurnSettings {
     pub(crate) realtime_active: Option<bool>,
 }
 
-use crate::HostSkillsService;
 use crate::exec_policy::ExecPolicyUpdateError;
 use crate::guardian::GuardianReviewOptions;
 use crate::guardian::GuardianReviewSessionManager;
@@ -385,6 +381,7 @@ use codex_protocol::protocol::TokenUsageInfo;
 use codex_protocol::protocol::TurnModerationMetadataEvent;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::user_input::UserInput;
+use codex_skills_extension::HostSkillsService;
 use codex_tools::UnifiedExecShellMode;
 use codex_utils_absolute_path::AbsolutePathBuf;
 #[cfg(test)]
@@ -690,11 +687,6 @@ impl Session {
             .get_model_info(model.as_str(), &config.to_models_manager_config())
             .await;
         let configured_config = Arc::clone(&config);
-        if config.config_lock_export_dir.is_some()
-            && config.config_lock_save_fields_resolved_from_model_catalog
-        {
-            self::token_budget::apply_model_defaults(Arc::make_mut(&mut config), &model_info);
-        }
         let multi_agent_version = config.multi_agent_version_override().or_else(|| {
             resolve_multi_agent_version(&conversation_history, inherited_multi_agent_version)
         });
@@ -742,7 +734,6 @@ impl Session {
             developer_instructions: config.developer_instructions.clone(),
             personality: config.personality,
             base_instructions,
-            compact_prompt: config.compact_prompt.clone(),
             approval_policy: config.permissions.approval_policy.clone(),
             approvals_reviewer: config.approvals_reviewer,
             permission_profile_state: session_permission_profile_state_from_config(&config)?,
