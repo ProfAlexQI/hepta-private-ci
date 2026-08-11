@@ -2,26 +2,88 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: canary-e2e.sh --binary PATH [--source-state-root DIR]" >&2
+  echo "usage: canary-e2e.sh --binary PATH [--source-state-root DIR] [--target-manifest PATH --snapshot-receipt PATH] [--output-receipt PATH --output-soak-receipt PATH]" >&2
   exit 64
 }
 
 binary=""
 source_state_root=""
+output_receipt=""
+output_soak_receipt=""
+target_manifest=""
+snapshot_receipt=""
 while (( $# > 0 )); do
   case "$1" in
     --binary) shift; [[ $# -gt 0 ]] || usage; binary="$1" ;;
     --source-state-root) shift; [[ $# -gt 0 ]] || usage; source_state_root="$1" ;;
+    --output-receipt) shift; [[ $# -gt 0 ]] || usage; output_receipt="$1" ;;
+    --output-soak-receipt) shift; [[ $# -gt 0 ]] || usage; output_soak_receipt="$1" ;;
+    --target-manifest) shift; [[ $# -gt 0 ]] || usage; target_manifest="$1" ;;
+    --snapshot-receipt) shift; [[ $# -gt 0 ]] || usage; snapshot_receipt="$1" ;;
     *) usage ;;
   esac
   shift
 done
+[[ ( -z "$output_receipt" && -z "$output_soak_receipt" ) \
+  || ( -n "$output_receipt" && -n "$output_soak_receipt" ) ]] || usage
+[[ ( -z "$target_manifest" && -z "$snapshot_receipt" ) \
+  || ( -n "$target_manifest" && -n "$snapshot_receipt" && -n "$source_state_root" ) ]] || usage
+[[ -z "$output_receipt" || -n "$target_manifest" ]] || {
+  echo "persisted canary evidence requires an exact target manifest and snapshot receipt" >&2
+  exit 1
+}
 [[ -x "$binary" && -f "$binary" && ! -L "$binary" ]] || usage
 binary="$(realpath "$binary")"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source_tree="$(cd "$script_dir/.." && pwd -P)"
+git -C "$source_tree" diff --quiet --ignore-submodules -- \
+  && git -C "$source_tree" diff --cached --quiet --ignore-submodules -- \
+  && [[ -z "$(git -C "$source_tree" ls-files --others --exclude-standard)" ]] || {
+    echo "canary source worktree must be clean so evidence cannot attribute dirty bytes to HEAD" >&2
+    exit 1
+  }
+source_commit="$(git -C "$source_tree" rev-parse --verify 'HEAD^{commit}')"
+[[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "canary source commit is not an exact Git object ID" >&2
+  exit 1
+}
 if [[ -n "$source_state_root" ]]; then
   source_state_root="$(realpath "$source_state_root")"
   [[ "$source_state_root" == /* && "$source_state_root" != "/" ]] || usage
 fi
+target_manifest_sha=""
+snapshot_receipt_sha=""
+if [[ -n "$target_manifest" ]]; then
+  target_manifest="$(realpath "$target_manifest")"
+  snapshot_receipt="$(realpath "$snapshot_receipt")"
+  target_release="$(dirname "$target_manifest")"
+  [[ "$(jq -r '.watchdog.verify_tool' "$target_manifest")" == "scripts/hepta-immutable-release-tree" ]] || {
+    echo "target manifest declares an unsupported verifier" >&2
+    exit 1
+  }
+  "$target_release/scripts/hepta-immutable-release-tree" verify --manifest "$target_manifest" >/dev/null
+  "$target_release/scripts/hepta-state-snapshot" verify --receipt "$snapshot_receipt" >/dev/null
+  [[ "$(jq -r '.artifact.sha256' "$target_manifest")" == "$(shasum -a 256 "$binary" | awk '{print $1}')" \
+    && "$(jq -r '.source.commit' "$target_manifest")" == "$source_commit" \
+    && "$(jq -r '.runtime.state_root' "$target_manifest")" == "$source_state_root" \
+    && "$(jq -r '.destination_state_root' "$snapshot_receipt")" == "$source_state_root" ]] || {
+    echo "target manifest, binary, source commit, and snapshot are not one exact canary candidate" >&2
+    exit 1
+  }
+  target_manifest_sha="$(shasum -a 256 "$target_manifest" | awk '{print $1}')"
+  snapshot_receipt_sha="$(shasum -a 256 "$snapshot_receipt" | awk '{print $1}')"
+fi
+for receipt_path in "$output_receipt" "$output_soak_receipt"; do
+  [[ -z "$receipt_path" || ( "$receipt_path" == /* && "$receipt_path" != "/" && "$receipt_path" != */ ) ]] || usage
+  [[ -z "$receipt_path" || ( ! -e "$receipt_path" && ! -L "$receipt_path" ) ]] || {
+    echo "refusing to replace canary evidence: $receipt_path" >&2
+    exit 1
+  }
+  if [[ -n "$source_state_root" && ( "$receipt_path" == "$source_state_root" || "$receipt_path" == "$source_state_root/"* ) ]]; then
+    echo "canary evidence must remain outside the source state root" >&2
+    exit 1
+  fi
+done
 if lsof -nP -iTCP:17373 -sTCP:LISTEN 2>/dev/null | grep -q .; then
   echo "isolated canary port 17373 is already in use" >&2
   exit 1
@@ -74,7 +136,44 @@ payload_inventory() {
   ) >"$output"
 }
 
+sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
+
+write_private_new() {
+  local destination="$1" source="$2" parent staged
+  [[ ! -e "$destination" && ! -L "$destination" ]] || return 1
+  parent="$(dirname "$destination")"; mkdir -p "$parent"; chmod 0700 "$parent"
+  staged="$(mktemp "$parent/.hepta-canary-evidence.XXXXXX")"
+  trap 'rm -f "$staged"' RETURN
+  cp "$source" "$staged"; chmod 0400 "$staged"; mv "$staged" "$destination"
+  trap - RETURN
+}
+
+production_inventory() {
+  local output="$1" launch_root="$HOME/Library/LaunchAgents" plist listener executable
+  : >"$output"
+  for plist in "$launch_root/ai.hepta.gateway.plist" "$launch_root/ai.hepta.installed-live-watchdog.plist"; do
+    if [[ -f "$plist" && ! -L "$plist" ]]; then
+      printf 'plist|%s|%s\n' "$(basename "$plist")" "$(sha256_file "$plist")" >>"$output"
+    else
+      printf 'plist|%s|absent\n' "$(basename "$plist")" >>"$output"
+    fi
+  done
+  listener="$(lsof -nP -iTCP:7373 -sTCP:LISTEN -t 2>/dev/null | LC_ALL=C sort -u || true)"
+  if [[ -z "$listener" ]]; then
+    printf 'listener|7373|absent\n' >>"$output"
+  else
+    while IFS= read -r listener_pid; do
+      executable="$(lsof -a -p "$listener_pid" -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
+      [[ -f "$executable" ]] || { echo "cannot identify production listener executable" >&2; return 1; }
+      printf 'listener|7373|%s\n' "$(sha256_file "$executable")" >>"$output"
+    done <<<"$listener"
+  fi
+}
+
 live_before=""; live_after=""; live_payload=""; copy_payload=""
+production_before="$root/production-before.inventory"
+production_after="$root/production-after.inventory"
+production_inventory "$production_before"
 mkdir -p "$state_root" "$launch_agents"
 chmod 0700 "$state_root" "$launch_agents"
 if [[ -n "$source_state_root" ]]; then
@@ -156,7 +255,6 @@ done
   exit 1
 }
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 "$script_dir/hepta-immutable-release-tree" materialize \
   --binary "$binary" \
   --destination "$release" \
@@ -165,7 +263,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
   --gateway-label ai.hepta.vnext.canary \
   --watchdog-label ai.hepta.vnext.canary.watchdog \
   --listen-port 17373 \
-  --source-commit canary-e2e >/dev/null
+  --source-commit "$source_commit" >/dev/null
 "$release/scripts/hepta-generation-pointer" initialize \
   --install-root "$install_root" \
   --manifest "$release/manifest.json" >/dev/null
@@ -195,9 +293,49 @@ if [[ -n "$source_state_root" ]]; then
     exit 1
   }
 fi
-jq -cn \
+for protected_route in \
+  /api/hepta/control/status \
+  /api/hepta/telegram/status \
+  /api/hepta/channels \
+  /api/hepta/plugins; do
+  response_code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 "http://127.0.0.1:17373$protected_route")"
+  [[ "$response_code" == "404" ]] || {
+    echo "legacy or protected route remained reachable: $protected_route ($response_code)" >&2
+    exit 1
+  }
+done
+post_code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 \
+  -X POST http://127.0.0.1:17373/api/hepta/runtime)"
+[[ "$post_code" == "405" ]] || { echo "read-only canary accepted POST" >&2; exit 1; }
+
+production_inventory "$production_after"
+diff -u "$production_before" "$production_after" >/dev/null || {
+  echo "production 7373 or LaunchAgent inventory changed during canary" >&2
+  exit 1
+}
+
+soak_tmp="$root/soak-receipt.json"
+canary_tmp="$root/canary-receipt.json"
+printf '%s\n' "$soak" >"$soak_tmp"
+jq -n \
   --arg binary_sha256 "$(shasum -a 256 "$binary" | awk '{print $1}')" \
+  --arg manifest "$release/manifest.json" \
   --arg manifest_sha256 "$(shasum -a 256 "$release/manifest.json" | awk '{print $1}')" \
+  --arg canary_state_root "$state_root" \
+  --arg target_manifest "$target_manifest" \
+  --arg target_manifest_sha256 "$target_manifest_sha" \
+  --arg snapshot_receipt_sha256 "$snapshot_receipt_sha" \
+  --arg source_commit "$source_commit" \
+  --arg source_state_root "$source_state_root" \
+  --arg source_inventory_sha256 "$(if [[ -n "$live_before" ]]; then sha256_file "$live_before"; else sha256_file "$before_inventory"; fi)" \
+  --arg copy_payload_sha256 "$(if [[ -n "$copy_payload" ]]; then sha256_file "$copy_payload"; else sha256_file "$before_inventory"; fi)" \
+  --arg soak_receipt_sha256 "$(sha256_file "$soak_tmp")" \
+  --arg production_inventory_sha256 "$(sha256_file "$production_before")" \
   --argjson source_state_copied "$source_state_copied" \
   --argjson source_unchanged "$source_unchanged" \
-  '{schema:"hepta_vnext_runtime_canary_e2e_v1",status:"ready",listen_addr:"127.0.0.1:17373",binary_sha256:$binary_sha256,manifest_sha256:$manifest_sha256,schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:$source_state_copied,source_unchanged:$source_unchanged,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,authority_all_closed:true,production_service_changed:false}'
+  '{schema:"hepta_vnext_runtime_canary_e2e_v1",status:"ready",listen_addr:"127.0.0.1:17373",source_commit:$source_commit,source_tree_clean:true,binary_sha256:$binary_sha256,manifest:$manifest,manifest_sha256:$manifest_sha256,canary_state_root:$canary_state_root,target_manifest:(if $target_manifest=="" then null else $target_manifest end),target_manifest_sha256:(if $target_manifest_sha256=="" then null else $target_manifest_sha256 end),snapshot_receipt_sha256:(if $snapshot_receipt_sha256=="" then null else $snapshot_receipt_sha256 end),source_state_root:(if $source_state_root=="" then null else $source_state_root end),source_inventory_sha256:$source_inventory_sha256,copy_payload_sha256:$copy_payload_sha256,soak_receipt_sha256:$soak_receipt_sha256,soak_samples:3,production_inventory_sha256:$production_inventory_sha256,schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:$source_state_copied,source_unchanged:$source_unchanged,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,protected_routes_absent:true,non_get_rejected:true,authority_all_closed:true,production_service_changed:false}' >"$canary_tmp"
+if [[ -n "$output_receipt" ]]; then
+  write_private_new "$output_soak_receipt" "$soak_tmp"
+  write_private_new "$output_receipt" "$canary_tmp"
+fi
+cat "$canary_tmp"

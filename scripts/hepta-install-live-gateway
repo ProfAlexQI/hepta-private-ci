@@ -87,11 +87,16 @@ fi
 
 archived=""; loaded=false
 if [[ "$install_job" == "true" ]]; then
+  if [[ "$listen_port" == 7373 || "$label" == ai.hepta.gateway ]]; then
+    echo "production-compatible gateway installation is allowed only through hepta-launchd-cutover-bridge" >&2
+    exit 1
+  fi
   [[ -d "$state_root/runtime-v2" && ! -L "$state_root/runtime-v2" ]] || {
     echo "open-existing runtime root is missing: $state_root/runtime-v2" >&2
     exit 1
   }
-  "$release/scripts/hepta-generation-pointer" verify --install-root "$install_root" >/dev/null
+  "$release/scripts/hepta-generation-pointer" verify \
+    --install-root "$install_root" --manifest "$manifest" >/dev/null
   mkdir -p "$launch_agent_root" "$archive_root" "$install_root/logs/gateway"
   [[ "$(realpath "$archive_root")" != "$(realpath "$launch_agent_root")" ]] || {
     echo "LaunchAgent archive must remain outside LaunchAgents" >&2

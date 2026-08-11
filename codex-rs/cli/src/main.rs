@@ -997,6 +997,9 @@ fn stage_str(stage: Stage) -> &'static str {
 fn main() -> anyhow::Result<()> {
     if PRODUCT_COMMAND_NAME == "hepta" {
         let args = std::env::args().skip(1).collect::<Vec<_>>();
+        if codex_hepta_native_gateway::print_live_shell_contract_if_requested(&args)? {
+            return Ok(());
+        }
         if codex_hepta_native_gateway::run_serve_ui_if_requested(&args)? {
             return Ok(());
         }

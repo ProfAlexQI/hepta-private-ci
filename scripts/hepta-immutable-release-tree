@@ -14,7 +14,7 @@ materialize options:
   --gateway-label LABEL     default: ai.hepta.gateway
   --watchdog-label LABEL    default: ai.hepta.installed-live-watchdog
   --listen-port PORT        default: 7373 (isolated canary: 17373)
-  --source-commit SHA       recorded source identity
+  --source-commit SHA       required exact 40-hex source identity
 
 Materialization never changes a generation pointer or launchd job.
 EOF
@@ -23,6 +23,31 @@ EOF
 
 sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
 file_size() { stat -f '%z' "$1" 2>/dev/null || stat -c '%s' "$1"; }
+LIVE_SHELL_CONTRACT_ARG=--hepta-vnext-live-shell-contract-v1
+
+expected_live_shell_contract() {
+  jq -cn '{schema:"hepta_vnext_live_shell_contract_v1",status:"ready",protocol_version:1,routes:["GET /","GET /api/hepta/runtime","GET /healthz"],runtime:{loopback_only:true,read_only:true,open_mode:"immutable-query-only-open-existing",schema_version:5,requires_empty_wal:true,keyed_integrity_required:true},authority:{telegram:false,outbound:false,model_invocation:false,operator_mutation:false,enforce:false,promotion:false,retirement:false,automatic_transition:false}}' | jq -S -c .
+}
+
+read_live_shell_contract() {
+  local binary="$1" actual expected
+  if ! actual="$("$binary" "$LIVE_SHELL_CONTRACT_ARG")"; then
+    echo "release artifact does not implement the vNext live-shell contract handshake" >&2
+    return 1
+  fi
+  actual="$(printf '%s\n' "$actual" | jq -S -c . 2>/dev/null)" || {
+    echo "release artifact emitted a malformed live-shell contract" >&2
+    return 1
+  }
+  expected="$(expected_live_shell_contract)"
+  [[ "$actual" == "$expected" ]] || {
+    echo "release artifact is not the exact closed vNext live shell" >&2
+    return 1
+  }
+  printf '%s\n' "$actual"
+}
+
+sha256_text() { printf '%s' "$1" | shasum -a 256 | awk '{print $1}'; }
 
 absolute_non_root() {
   [[ "$1" == /* \
@@ -52,6 +77,19 @@ valid_port() {
   fi
 }
 
+valid_commit() {
+  [[ "$1" =~ ^[0-9a-f]{40}$ ]] || {
+    echo "source commit must be an exact lowercase 40-hex object ID" >&2
+    exit 1
+  }
+  local source_repository
+  source_repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+  git -C "$source_repository" cat-file -e "$1^{commit}" 2>/dev/null || {
+    echo "source commit is not present in the materializer repository" >&2
+    exit 1
+  }
+}
+
 release_root_from_manifest() {
   local manifest="$1"
   [[ -f "$manifest" && ! -L "$manifest" ]] || {
@@ -62,14 +100,19 @@ release_root_from_manifest() {
 }
 
 verify_release() {
-  local manifest="$1" release_root artifact expected_sha actual_sha state_root install_root
+  local manifest="$1" release_root artifact expected_sha actual_sha expected_size actual_size state_root install_root
+  local actual_contract expected_contract_sha actual_contract_sha
   release_root="$(release_root_from_manifest "$manifest")"
   manifest="$release_root/$(basename "$manifest")"
   jq -e '
     .schema == "hepta_vnext_immutable_release_v1"
     and .status == "ready"
+    and (.source.commit | test("^[0-9a-f]{40}$"))
     and .artifact.relative_path == "bin/hepta"
     and (.artifact.sha256 | test("^[0-9a-f]{64}$"))
+    and (.artifact.size_bytes >= 1)
+    and .artifact.contract_schema == "hepta_vnext_live_shell_contract_v1"
+    and (.artifact.contract_sha256 | test("^[0-9a-f]{64}$"))
     and .runtime.listen_host == "127.0.0.1"
     and (.runtime.listen_port >= 1 and .runtime.listen_port <= 65535)
     and (.runtime.state_root | startswith("/"))
@@ -152,6 +195,19 @@ verify_release() {
     echo "release artifact SHA-256 differs from manifest" >&2
     return 1
   }
+  expected_size="$(jq -r '.artifact.size_bytes' "$manifest")"
+  actual_size="$(file_size "$artifact")"
+  [[ "$actual_size" == "$expected_size" ]] || {
+    echo "release artifact size differs from manifest" >&2
+    return 1
+  }
+  actual_contract="$(read_live_shell_contract "$artifact")" || return 1
+  actual_contract_sha="$(sha256_text "$actual_contract")"
+  expected_contract_sha="$(jq -r '.artifact.contract_sha256' "$manifest")"
+  [[ "$actual_contract_sha" == "$expected_contract_sha" ]] || {
+    echo "release artifact live-shell contract differs from manifest" >&2
+    return 1
+  }
   for contract in gateway_launch_agent watchdog_launch_agent; do
     local relative expected
     relative="$(jq -r ".${contract}.relative_path" "$manifest")"
@@ -166,19 +222,23 @@ verify_release() {
     --arg manifest "$manifest" \
     --arg manifest_sha256 "$(sha256_file "$manifest")" \
     --arg artifact_sha256 "$actual_sha" \
+    --arg contract_sha256 "$actual_contract_sha" \
     --arg state_root "$(jq -r '.runtime.state_root' "$manifest")" \
     --argjson listen_port "$(jq -r '.runtime.listen_port' "$manifest")" \
-    '{schema:"hepta_vnext_immutable_release_verification_v1",status:"ready",manifest:$manifest,manifest_sha256:$manifest_sha256,artifact_sha256:$artifact_sha256,state_root:$state_root,listen_host:"127.0.0.1",listen_port:$listen_port,authority_all_closed:true,service_changed:false}'
+    '{schema:"hepta_vnext_immutable_release_verification_v1",status:"ready",manifest:$manifest,manifest_sha256:$manifest_sha256,artifact_sha256:$artifact_sha256,live_shell_contract_sha256:$contract_sha256,state_root:$state_root,listen_host:"127.0.0.1",listen_port:$listen_port,authority_all_closed:true,service_changed:false}'
 }
 
 materialize_release() {
   local binary="$1" destination="$2" state_root="$3" install_root="$4"
   local gateway_label="$5" watchdog_label="$6" listen_port="$7" source_commit="$8"
   local destination_parent destination_name stage script_dir artifact_sha artifact_size
+  local live_shell_contract live_shell_contract_sha
   [[ -f "$binary" && -x "$binary" && ! -L "$binary" ]] || {
     echo "--binary must name a non-symlink executable regular file" >&2
     exit 1
   }
+  live_shell_contract="$(read_live_shell_contract "$binary")" || exit 1
+  live_shell_contract_sha="$(sha256_text "$live_shell_contract")"
   absolute_non_root "$destination"
   absolute_non_root "$state_root"
   absolute_non_root "$install_root"
@@ -189,6 +249,7 @@ materialize_release() {
     exit 1
   }
   valid_port "$listen_port"
+  valid_commit "$source_commit"
   [[ ! -e "$destination" && ! -L "$destination" ]] || {
     echo "release destination already exists: $destination" >&2
     exit 1
@@ -258,6 +319,7 @@ materialize_release() {
   jq -n \
     --arg source_commit "$source_commit" \
     --arg artifact_sha "$artifact_sha" \
+    --arg live_shell_contract_sha "$live_shell_contract_sha" \
     --argjson artifact_size "$artifact_size" \
     --arg state_root "$state_root" \
     --arg install_root "$install_root" \
@@ -270,7 +332,7 @@ materialize_release() {
     --arg watchdog_sha "$watchdog_sha" \
     --arg gateway_path "$gateway_path" \
     --arg watchdog_path "$watchdog_path" \
-    '{schema:"hepta_vnext_immutable_release_v1",status:"ready",source:{commit:$source_commit},artifact:{relative_path:"bin/hepta",sha256:$artifact_sha,size_bytes:$artifact_size,executable:true},runtime:{state_root:$state_root,install_root:$install_root,listen_host:"127.0.0.1",listen_port:$listen_port,open_mode:"immutable-query-only-open-existing",schema_version:5,requires_empty_wal:true,keyed_integrity_required:true},authority:{telegram:false,outbound:false,model_invocation:false,operator_mutation:false,enforce:false,promotion:false,retirement:false,automatic_transition:false},watchdog:{entrypoint:"scripts/hepta-watchdog.sh",verify_tool:"scripts/hepta-immutable-release-tree",immutable_release_bound:true},gateway_launch_agent:{schema:"hepta_vnext_gateway_launch_agent_v1",relative_path:$gateway_relative,sha256:$gateway_sha,label:$gateway_label,canonical_install_path:$gateway_path,state_root:$state_root,listen_port:$listen_port,effective_gates_all_false:true},watchdog_launch_agent:{schema:"hepta_vnext_watchdog_launch_agent_v1",relative_path:$watchdog_relative,sha256:$watchdog_sha,label:$watchdog_label,canonical_install_path:$watchdog_path,state_root:$state_root,listen_port:$listen_port,read_only:true}}' >"$stage/manifest.json"
+    '{schema:"hepta_vnext_immutable_release_v1",status:"ready",source:{commit:$source_commit},artifact:{relative_path:"bin/hepta",sha256:$artifact_sha,size_bytes:$artifact_size,executable:true,contract_schema:"hepta_vnext_live_shell_contract_v1",contract_sha256:$live_shell_contract_sha},runtime:{state_root:$state_root,install_root:$install_root,listen_host:"127.0.0.1",listen_port:$listen_port,open_mode:"immutable-query-only-open-existing",schema_version:5,requires_empty_wal:true,keyed_integrity_required:true},authority:{telegram:false,outbound:false,model_invocation:false,operator_mutation:false,enforce:false,promotion:false,retirement:false,automatic_transition:false},watchdog:{entrypoint:"scripts/hepta-watchdog.sh",verify_tool:"scripts/hepta-immutable-release-tree",immutable_release_bound:true},gateway_launch_agent:{schema:"hepta_vnext_gateway_launch_agent_v1",relative_path:$gateway_relative,sha256:$gateway_sha,label:$gateway_label,canonical_install_path:$gateway_path,state_root:$state_root,listen_port:$listen_port,effective_gates_all_false:true},watchdog_launch_agent:{schema:"hepta_vnext_watchdog_launch_agent_v1",relative_path:$watchdog_relative,sha256:$watchdog_sha,label:$watchdog_label,canonical_install_path:$watchdog_path,state_root:$state_root,listen_port:$listen_port,read_only:true}}' >"$stage/manifest.json"
   chmod 0444 "$stage/manifest.json"
   local sums
   sums="$(
@@ -302,17 +364,39 @@ materialize_release() {
     '{schema:"hepta_vnext_immutable_release_materialization_v1",status:"ready",release:$release,manifest:$manifest,manifest_sha256:$manifest_sha256,artifact_sha256:$artifact_sha256,state_root:$state_root,gateway_label:$gateway_label,watchdog_label:$watchdog_label,listen_port:$listen_port,service_changed:false,generation_changed:false}'
 }
 
+self_test_binary() {
+  local destination="$1" fallback_exit="$2" contract
+  contract="$(expected_live_shell_contract)"
+  # The single-quoted literals are emitted into the fixture.
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' \
+    'if [ "$#" -eq 1 ] && [ "$1" = "--hepta-vnext-live-shell-contract-v1" ]; then' \
+    "  printf '%s\\n' '$contract'" \
+    '  exit 0' \
+    'fi' \
+    "exit $fallback_exit" >"$destination"
+  chmod 0500 "$destination"
+}
+
 self_test() {
-  local root release temp_root
+  local root release temp_root fixture_binary source_commit
   temp_root="${TMPDIR:-/tmp}"
   root="$(mktemp -d "${temp_root%/}/hepta-release-self-test.XXXXXX")"
   HEPTA_RELEASE_SELF_TEST_ROOT="$root"
   trap 'chmod -R u+w "$HEPTA_RELEASE_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_RELEASE_SELF_TEST_ROOT"' EXIT
   release="$root/release"
-  materialize_release /usr/bin/true "$release" "$root/state" "$root/install" \
-    ai.hepta.canary ai.hepta.canary.watchdog 17373 self-test >/dev/null
+  fixture_binary="$root/hepta-fixture"
+  source_commit="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --verify 'HEAD^{commit}')"
+  self_test_binary "$fixture_binary" 0
+  if (materialize_release /usr/bin/true "$root/rejected-broad-binary" "$root/state-rejected" "$root/install-rejected" \
+    ai.hepta.rejected ai.hepta.rejected.watchdog 17372 0000000000000000000000000000000000000000 >/dev/null 2>&1); then
+    echo "unrelated executable was accepted as a closed vNext live shell" >&2
+    exit 1
+  fi
+  (materialize_release "$fixture_binary" "$release" "$root/state" "$root/install" \
+    ai.hepta.canary ai.hepta.canary.watchdog 17373 "$source_commit" >/dev/null)
   verify_release "$release/manifest.json" >/dev/null
-  jq -cn '{schema:"hepta_vnext_immutable_release_self_test_v1",status:"ready",canary_port:17373,production_unchanged:true}'
+  jq -cn '{schema:"hepta_vnext_immutable_release_self_test_v1",status:"ready",canary_port:17373,unrelated_binary_rejected:true,contract_bound:true,production_unchanged:true}'
 }
 
 command="${1:-}"
@@ -348,10 +432,7 @@ case "$command" in
       esac
       shift
     done
-    [[ -n "$binary" && -n "$destination" ]] || usage
-    if [[ -z "$source_commit" ]]; then
-      source_commit="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
-    fi
+    [[ -n "$binary" && -n "$destination" && -n "$source_commit" ]] || usage
     materialize_release "$binary" "$destination" "$state_root" "$install_root" \
       "$gateway_label" "$watchdog_label" "$listen_port" "$source_commit"
     ;;

@@ -21,6 +21,8 @@ use tokio::net::TcpStream;
 
 pub const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:7373";
 pub const CANARY_LISTEN_ADDR: &str = "127.0.0.1:17373";
+pub const LIVE_SHELL_CONTRACT_ARG: &str = "--hepta-vnext-live-shell-contract-v1";
+pub const LIVE_SHELL_CONTRACT_JSON: &str = r#"{"schema":"hepta_vnext_live_shell_contract_v1","status":"ready","protocol_version":1,"routes":["GET /","GET /api/hepta/runtime","GET /healthz"],"runtime":{"loopback_only":true,"read_only":true,"open_mode":"immutable-query-only-open-existing","schema_version":5,"requires_empty_wal":true,"keyed_integrity_required":true},"authority":{"telegram":false,"outbound":false,"model_invocation":false,"operator_mutation":false,"enforce":false,"promotion":false,"retirement":false,"automatic_transition":false}}"#;
 const MAX_REQUEST_BYTES: usize = 32 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -98,6 +100,22 @@ pub fn parse_serve_ui_args(raw_args: &[String]) -> Result<Option<NativeGatewayOp
     }
     let state_root = HeptaStateRoot::from_env()?;
     NativeGatewayOptions::from_args(&raw_args[1..], state_root).map(Some)
+}
+
+/// Prints the exact, machine-verifiable contract of the vNext live shell.
+///
+/// Release tooling uses this narrow handshake to reject an unrelated or
+/// legacy broad-capability `hepta` executable before assigning closed runtime
+/// claims to its immutable manifest.
+pub fn print_live_shell_contract_if_requested(raw_args: &[String]) -> Result<bool> {
+    if raw_args.first().map(String::as_str) != Some(LIVE_SHELL_CONTRACT_ARG) {
+        return Ok(false);
+    }
+    if raw_args.len() != 1 {
+        anyhow::bail!("{LIVE_SHELL_CONTRACT_ARG} accepts no additional arguments");
+    }
+    println!("{LIVE_SHELL_CONTRACT_JSON}");
+    Ok(true)
 }
 
 /// Runs the live shell when the Hepta binary was invoked with `--serve-ui`.
@@ -421,5 +439,21 @@ mod tests {
             RuntimeAuthorityStatus::default().automatic_transition,
             false
         );
+    }
+
+    #[test]
+    fn live_shell_contract_is_exact_and_all_authority_is_closed() -> Result<()> {
+        let value: serde_json::Value = serde_json::from_str(LIVE_SHELL_CONTRACT_JSON)?;
+        assert_eq!(value["schema"], "hepta_vnext_live_shell_contract_v1");
+        assert_eq!(value["routes"].as_array().map(Vec::len), Some(3));
+        assert_eq!(value["runtime"]["loopback_only"], true);
+        assert_eq!(value["runtime"]["read_only"], true);
+        assert_eq!(value["runtime"]["schema_version"], 5);
+        let authority = value["authority"]
+            .as_object()
+            .context("live shell contract authority object")?;
+        assert_eq!(authority.len(), 8);
+        assert!(authority.values().all(|gate| gate == false));
+        Ok(())
     }
 }

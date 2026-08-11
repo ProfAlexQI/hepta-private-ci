@@ -39,7 +39,8 @@ live_url="${live_url:-http://127.0.0.1:$listen_port}"
   echo "watchdog URL must match the manifest-bound loopback port" >&2
   exit 1
 }
-generation="$("$release/scripts/hepta-generation-pointer" verify --install-root "$install_root")"
+generation="$("$release/scripts/hepta-generation-pointer" verify \
+  --install-root "$install_root" --manifest "$manifest")"
 health="$(curl --fail --silent --show-error --max-time 5 "$live_url/healthz")"
 runtime="$(curl --fail --silent --show-error --max-time 5 "$live_url/api/hepta/runtime")"
 jq -e '.product == "hepta" and .status == "ok"' <<<"$health" >/dev/null || {
