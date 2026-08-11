@@ -6,6 +6,7 @@ use crate::model::Phase2JobClaimOutcome;
 use crate::model::Stage1JobClaim;
 use crate::model::Stage1JobClaimOutcome;
 use crate::model::Stage1Output;
+use crate::model::Stage1RecallCandidate;
 use crate::model::Stage1StartupClaimParams;
 use crate::model::ThreadRow;
 use chrono::DateTime;
@@ -13,6 +14,7 @@ use chrono::Duration;
 use sqlx::Executor;
 use sqlx::QueryBuilder;
 use sqlx::Sqlite;
+use std::future::Future;
 use uuid::Uuid;
 
 const JOB_KIND_MEMORY_STAGE1: &str = "memory_stage1";
@@ -20,6 +22,7 @@ const JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL: &str = "memory_consolidate_global";
 const MEMORY_CONSOLIDATION_JOB_KEY: &str = "global";
 const PHASE2_SUCCESS_COOLDOWN_SECONDS: i64 = 6 * 60 * 60;
 const PHASE2_INPUT_SELECTION_PAGE_SIZE: usize = 512;
+const MAX_STAGE1_RECALL_SUMMARY_BYTES: i64 = 64 * 1024;
 
 const DEFAULT_RETRY_REMAINING: i64 = 3;
 
@@ -381,6 +384,124 @@ ORDER BY so.source_updated_at DESC, so.thread_id DESC
         }
 
         Ok(outputs)
+    }
+
+    /// Returns the summary-only stage-1 row for one exact source thread.
+    ///
+    /// Same-thread source selection is enforced at the SQL/read boundary: this
+    /// API never materializes another thread's summary and filters it
+    /// afterward. Exact admitted-turn authority is intentionally not claimed
+    /// here; the extension binds the host-owned thread/turn stores to the final
+    /// physical provider attempt. The source thread must remain memory-enabled
+    /// on both sides of the separate memory-database read, and the summary's
+    /// UTF-8 byte length is capped before it crosses into extension code.
+    pub async fn get_stage1_recall_candidate(
+        &self,
+        thread_id: ThreadId,
+        expected_workspace: &Path,
+    ) -> anyhow::Result<Option<Stage1RecallCandidate>> {
+        self.get_stage1_recall_candidate_after_initial_eligibility(
+            thread_id,
+            expected_workspace,
+            || async { Ok(()) },
+        )
+        .await
+    }
+
+    async fn get_stage1_recall_candidate_after_initial_eligibility<F, Fut>(
+        &self,
+        thread_id: ThreadId,
+        expected_workspace: &Path,
+        after_initial_eligibility: F,
+    ) -> anyhow::Result<Option<Stage1RecallCandidate>>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = anyhow::Result<()>>,
+    {
+        if !self
+            .thread_recall_enabled_for_workspace(thread_id, expected_workspace)
+            .await?
+        {
+            return Ok(None);
+        }
+        after_initial_eligibility().await?;
+        let row = sqlx::query(
+            r#"
+SELECT
+    so.thread_id,
+    so.source_updated_at,
+    so.rollout_summary,
+    so.generated_at
+FROM stage1_outputs AS so
+WHERE so.thread_id = ?
+  AND length(trim(so.rollout_summary)) > 0
+  AND length(CAST(so.rollout_summary AS BLOB)) <= ?
+  AND so.source_updated_at >= 0
+  AND so.generated_at >= so.source_updated_at
+            "#,
+        )
+        .bind(thread_id.to_string())
+        .bind(MAX_STAGE1_RECALL_SUMMARY_BYTES)
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+
+        let candidate = row
+            .map(|row| {
+                let stored_thread_id: String = row.try_get("thread_id")?;
+                let stored_thread_id = ThreadId::try_from(stored_thread_id.as_str())?;
+                if stored_thread_id != thread_id {
+                    anyhow::bail!("stage-1 recall source thread binding drift");
+                }
+                Ok(Stage1RecallCandidate {
+                    thread_id,
+                    source_updated_at: datetime_from_epoch_seconds(
+                        row.try_get("source_updated_at")?,
+                    )?,
+                    rollout_summary: row.try_get("rollout_summary")?,
+                    generated_at: datetime_from_epoch_seconds(row.try_get("generated_at")?)?,
+                })
+            })
+            .transpose()?;
+
+        // State and stage-1 summaries live in separate SQLite databases, so a
+        // single transaction cannot cover both reads. Recheck the authoritative
+        // state after materialization: a disable racing between the first check
+        // and the memory read turns the result into an abstention. The physical
+        // send repeats this entire bracket before proposing any raw content.
+        if candidate.is_some()
+            && !self
+                .thread_recall_enabled_for_workspace(thread_id, expected_workspace)
+                .await?
+        {
+            return Ok(None);
+        }
+        Ok(candidate)
+    }
+
+    /// Returns only the state needed to scope a recall candidate. Avoid loading
+    /// previews, first-user messages, rollout paths, or other ThreadRow fields
+    /// into the memory-recall boundary.
+    async fn thread_recall_enabled_for_workspace(
+        &self,
+        thread_id: ThreadId,
+        expected_workspace: &Path,
+    ) -> anyhow::Result<bool> {
+        let row = sqlx::query(
+            r#"
+SELECT threads.cwd
+FROM threads
+WHERE threads.id = ? AND threads.memory_mode = 'enabled'
+            "#,
+        )
+        .bind(thread_id.to_string())
+        .fetch_optional(self.state_pool.as_ref())
+        .await?;
+
+        let Some(row) = row else {
+            return Ok(false);
+        };
+        let cwd = PathBuf::from(row.try_get::<String, _>("cwd")?);
+        Ok(cwd == expected_workspace)
     }
 
     /// Prunes stale stage-1 outputs while preserving the latest phase-2
@@ -1693,6 +1814,7 @@ impl StateRuntime {
 mod tests {
     use super::JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL;
     use super::JOB_KIND_MEMORY_STAGE1;
+    use super::MAX_STAGE1_RECALL_SUMMARY_BYTES;
     use super::MEMORY_CONSOLIDATION_JOB_KEY;
     use super::PHASE2_SUCCESS_COOLDOWN_SECONDS;
     use super::StateRuntime;
@@ -3458,6 +3580,108 @@ VALUES (?, ?, ?, ?, ?)
         assert_eq!(outputs.len(), 1);
         assert_eq!(outputs[0].thread_id, thread_id_enabled);
 
+        let _ = tokio::fs::remove_dir_all(codex_home).await;
+    }
+
+    #[tokio::test]
+    async fn stage1_recall_candidate_is_exact_thread_workspace_bounded_and_race_closed() {
+        let codex_home = unique_temp_dir();
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
+        let thread_id = stable_thread_id("00000000-0000-4000-8000-000000000101");
+        let oversized = stable_thread_id("00000000-0000-4000-8000-000000000102");
+        for (id, workspace) in [
+            (thread_id, "workspace-enabled"),
+            (oversized, "workspace-oversized"),
+        ] {
+            runtime
+                .upsert_thread(&test_thread_metadata(
+                    &codex_home,
+                    id,
+                    codex_home.join(workspace),
+                ))
+                .await
+                .expect("upsert recall source thread");
+        }
+        let oversized_summary = "x".repeat(MAX_STAGE1_RECALL_SUMMARY_BYTES as usize + 1);
+        for (id, summary) in [
+            (thread_id, "eligible summary"),
+            (oversized, &oversized_summary),
+        ] {
+            sqlx::query(
+                r#"
+INSERT INTO stage1_outputs (
+    thread_id, source_updated_at, raw_memory, rollout_summary, generated_at
+)
+VALUES (?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(id.to_string())
+            .bind(100_i64)
+            .bind("raw material must not cross the recall seam")
+            .bind(summary)
+            .bind(101_i64)
+            .execute(memory_pool(&runtime))
+            .await
+            .expect("insert stage1 recall source");
+        }
+
+        assert!(
+            runtime
+                .memories()
+                .get_stage1_recall_candidate(thread_id, &codex_home.join("workspace-other"))
+                .await
+                .expect("workspace mismatch")
+                .is_none()
+        );
+        assert!(
+            runtime
+                .memories()
+                .get_stage1_recall_candidate(oversized, &codex_home.join("workspace-oversized"))
+                .await
+                .expect("oversized source")
+                .is_none()
+        );
+        let candidate = runtime
+            .memories()
+            .get_stage1_recall_candidate(thread_id, &codex_home.join("workspace-enabled"))
+            .await
+            .expect("exact source")
+            .expect("eligible exact source");
+        assert_eq!(candidate.thread_id, thread_id);
+        assert_eq!(candidate.rollout_summary, "eligible summary");
+
+        let raced_candidate = runtime
+            .memories()
+            .get_stage1_recall_candidate_after_initial_eligibility(
+                thread_id,
+                &codex_home.join("workspace-enabled"),
+                || async {
+                    runtime
+                        .set_thread_memory_mode(thread_id, "polluted")
+                        .await
+                        .expect("disable source between eligibility and candidate reads");
+                    Ok(())
+                },
+            )
+            .await
+            .expect("raced source lookup");
+        assert!(
+            raced_candidate.is_none(),
+            "a disable between the state and memory reads must fail closed"
+        );
+        assert!(
+            runtime
+                .memories()
+                .get_stage1_recall_candidate(thread_id, &codex_home.join("workspace-enabled"))
+                .await
+                .expect("polluted source")
+                .is_none()
+        );
         let _ = tokio::fs::remove_dir_all(codex_home).await;
     }
 

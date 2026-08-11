@@ -1,12 +1,34 @@
 #![forbid(unsafe_code)]
 
+mod canonical;
 mod identity;
+mod memory;
 mod provider;
 mod receipt;
 
 pub use identity::ActionId;
 pub use identity::DecisionId;
 pub use identity::ReceiptId;
+pub use memory::AttachmentTrust;
+pub use memory::CrossThreadScope;
+pub use memory::MEMORY_CONTRACT_SCHEMA_VERSION;
+pub use memory::MemoryAttachmentMetadata;
+pub use memory::MemoryId;
+pub use memory::MemoryLifecycle;
+pub use memory::MemoryProvenance;
+pub use memory::MemoryRevision;
+pub use memory::MemoryScope;
+pub use memory::MemorySourceKind;
+pub use memory::QueryFingerprint;
+pub use memory::RankedMemoryRef;
+pub use memory::RecallAuthority;
+pub use memory::RecallEligibility;
+pub use memory::RecallLimits;
+pub use memory::RecallRequest;
+pub use memory::RecallRequestId;
+pub use memory::RecallScorePpm;
+pub use memory::RevisionStamp;
+pub use memory::SCORE_SCALE_PPM;
 pub use provider::PROVIDER_EVIDENCE_SCHEMA_VERSION;
 pub use provider::ProviderAttemptId;
 pub use provider::ProviderInvocationIntent;

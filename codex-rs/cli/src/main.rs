@@ -1011,6 +1011,15 @@ fn configure_product_home() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn apply_product_default_feature_overrides(product_name: &str, overrides: &mut Vec<String>) {
+    if product_name == "hepta" {
+        overrides.extend([
+            "features.hepta_governance=true".to_string(),
+            "features.hepta_memory=true".to_string(),
+        ]);
+    }
+}
+
 async fn cli_main(
     arg0_paths: Arg0DispatchPaths,
     remote_control_disabled: bool,
@@ -1028,11 +1037,10 @@ async fn cli_main(
     // Fold --enable/--disable into config overrides so they flow to all subcommands.
     let toggle_overrides = feature_toggles.to_overrides()?;
     root_config_overrides.raw_overrides.extend(toggle_overrides);
-    if PRODUCT_COMMAND_NAME == "hepta" {
-        root_config_overrides
-            .raw_overrides
-            .push("features.hepta_governance=true".to_string());
-    }
+    apply_product_default_feature_overrides(
+        PRODUCT_COMMAND_NAME,
+        &mut root_config_overrides.raw_overrides,
+    );
     let root_remote = remote.remote;
     let root_remote_auth_token_env = remote.remote_auth_token_env;
     let root_strict_config = interactive.strict_config;
@@ -4460,6 +4468,24 @@ mod tests {
                 "features.unified_exec=false".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn hepta_defaults_to_governance_and_digest_only_memory_shadow() {
+        let mut overrides = Vec::new();
+        apply_product_default_feature_overrides("hepta", &mut overrides);
+        assert_eq!(
+            overrides,
+            vec![
+                "features.hepta_governance=true".to_string(),
+                "features.hepta_memory=true".to_string(),
+            ]
+        );
+        assert!(!overrides.iter().any(|item| item.contains("read_only")));
+
+        let mut codex_overrides = Vec::new();
+        apply_product_default_feature_overrides("codex", &mut codex_overrides);
+        assert!(codex_overrides.is_empty());
     }
 
     #[test]

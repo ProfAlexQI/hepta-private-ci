@@ -98,10 +98,25 @@ where
         git_attribution_base_url,
         http_client_factory,
     );
-    codex_hepta_governance::install(&mut builder, state_db, |config: &Config| {
+    codex_hepta_governance::install(&mut builder, state_db.clone(), |config: &Config| {
         config
             .features
             .enabled(codex_features::Feature::HeptaGovernance)
+    });
+    codex_hepta_memory_extension::install(&mut builder, state_db, |config: &Config| {
+        codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
+            codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
+                governance_enabled: config
+                    .features
+                    .enabled(codex_features::Feature::HeptaGovernance),
+                memory_enabled: config
+                    .features
+                    .enabled(codex_features::Feature::HeptaMemory),
+                read_only_enabled: config
+                    .features
+                    .enabled(codex_features::Feature::HeptaMemoryReadOnly),
+            },
+        )
     });
     codex_guardian::install(&mut builder, guardian_agent_spawner);
     codex_memories_extension::install(&mut builder, codex_otel::global());

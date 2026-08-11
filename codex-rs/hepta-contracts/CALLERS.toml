@@ -23,11 +23,13 @@ crate = "codex-hepta-contracts"
 role = "typed_product_contracts"
 public_items = [
   "governance_contracts",
+  "memory_contracts",
   "provider_contracts",
   "canonical_digests",
 ]
 product_callers = [
   "codex-rs/ext/hepta-governance/src/lib.rs",
+  "codex-rs/ext/hepta-memory/src/extension.rs",
   "codex-rs/hepta-evidence/src/lib.rs",
 ]
 
@@ -35,16 +37,36 @@ product_callers = [
 crate = "codex-hepta-proof"
 reason = "No product caller; proof command remains outside the promotion stack. Its separate audit branch closes stdin by default."
 
-[[excluded]]
+[[surface]]
 crate = "codex-hepta-memory"
-reason = "No product caller; six recall-only commits are deferred rather than promoting a caller-zero public surface."
+role = "pure_same_thread_recall"
+public_items = ["shadow_recall", "RecallObservation", "RecallObservationReason"]
+product_callers = ["codex-rs/ext/hepta-memory/src/extension.rs"]
+
+[[surface]]
+crate = "codex-hepta-memory-extension"
+role = "product_extension"
+public_items = ["install", "HeptaMemoryFeatureFlags", "HeptaMemoryThreadConfig"]
+product_callers = [
+  "codex-rs/app-server/src/extensions.rs",
+  "codex-rs/mcp-server/src/message_processor.rs",
+]
 
 [[qualification]]
 slice = "S2_memory_recall"
-composition = "writer_not_composed"
+composition = "exact_admitted_turn_and_same_thread_read_path_composed"
+admitted_parent_binding = "host thread_store + turn_store + physical provider attempt"
+mutation_writer_composed = false
+cross_thread_recall = false
+default_mode = "digest_only_shadow"
+read_only_attachment_requires = [
+  "hepta_governance",
+  "hepta_memory",
+  "hepta_memory_read_only",
+]
 persistent_telemetry = false
 otel_telemetry = false
-zero_event_interpretation = "invalid_until_writer_is_composed"
+zero_event_interpretation = "shadow_observations_are_turn_local_and_not_persistent_telemetry"
 promotion_eligible = false
 
 [[qualification]]

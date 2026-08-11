@@ -80,6 +80,25 @@ impl MessageProcessor {
                 .features
                 .enabled(codex_features::Feature::HeptaGovernance)
         });
+        codex_hepta_memory_extension::install(
+            &mut extensions,
+            state_db.clone(),
+            |config: &Config| {
+                codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
+                    codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
+                        governance_enabled: config
+                            .features
+                            .enabled(codex_features::Feature::HeptaGovernance),
+                        memory_enabled: config
+                            .features
+                            .enabled(codex_features::Feature::HeptaMemory),
+                        read_only_enabled: config
+                            .features
+                            .enabled(codex_features::Feature::HeptaMemoryReadOnly),
+                    },
+                )
+            },
+        );
         codex_image_generation_extension::install(
             &mut extensions,
             auth_manager.clone(),

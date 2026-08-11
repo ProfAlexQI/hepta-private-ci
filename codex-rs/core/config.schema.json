@@ -582,6 +582,12 @@
             "hepta_governance": {
               "type": "boolean"
             },
+            "hepta_memory": {
+              "type": "boolean"
+            },
+            "hepta_memory_read_only": {
+              "type": "boolean"
+            },
             "hooks": {
               "type": "boolean"
             },
@@ -5266,6 +5272,12 @@
           "type": "boolean"
         },
         "hepta_governance": {
+          "type": "boolean"
+        },
+        "hepta_memory": {
+          "type": "boolean"
+        },
+        "hepta_memory_read_only": {
           "type": "boolean"
         },
         "hooks": {

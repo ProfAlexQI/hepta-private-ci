@@ -52,6 +52,7 @@ codex-goal-extension = { workspace = true }
 codex-git-attribution = { workspace = true }
 codex-guardian = { workspace = true }
 codex-hepta-governance = { workspace = true }
+codex-hepta-memory-extension = { workspace = true }
 codex-git-utils = { workspace = true }
 codex-file-watcher = { workspace = true }
 codex-hooks = { workspace = true }

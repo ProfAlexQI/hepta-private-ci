@@ -255,6 +255,10 @@ pub enum Feature {
     GuardianV2,
     /// Enable the Hepta typed governance extension plane.
     HeptaGovernance,
+    /// Enable same-thread digest-only Hepta Memory shadow recall.
+    HeptaMemory,
+    /// Allow bounded read-only Hepta Memory input on governed provider sends.
+    HeptaMemoryReadOnly,
     /// Enable persisted thread goals and automatic goal continuation.
     Goals,
     /// Add current context-window metadata to model-visible context.
@@ -1392,6 +1396,18 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::HeptaGovernance,
         key: "hepta_governance",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::HeptaMemory,
+        key: "hepta_memory",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::HeptaMemoryReadOnly,
+        key: "hepta_memory_read_only",
         stage: Stage::UnderDevelopment,
         default_enabled: false,
     },

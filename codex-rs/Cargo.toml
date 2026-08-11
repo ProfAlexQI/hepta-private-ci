@@ -46,6 +46,7 @@ members = [
     "hooks",
     "hepta-contracts",
     "hepta-evidence",
+    "hepta-memory",
     "hepta-operator-acceptance",
     "hepta-shadow-qualification",
     "history",
@@ -64,6 +65,7 @@ members = [
     "ext/git-attribution",
     "ext/guardian",
     "ext/hepta-governance",
+    "ext/hepta-memory",
     "ext/image-generation",
     "ext/items",
     "ext/memories",
@@ -185,6 +187,7 @@ codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
 codex-hepta-contracts = { path = "hepta-contracts" }
 codex-hepta-evidence = { path = "hepta-evidence" }
+codex-hepta-memory = { path = "hepta-memory" }
 codex-websocket-client = { path = "websocket-client" }
 codex-config = { path = "config" }
 codex-connectors = { path = "connectors" }
@@ -207,6 +210,7 @@ codex-goal-extension = { path = "ext/goal" }
 codex-git-attribution = { path = "ext/git-attribution" }
 codex-guardian = { path = "ext/guardian" }
 codex-hepta-governance = { path = "ext/hepta-governance" }
+codex-hepta-memory-extension = { path = "ext/hepta-memory" }
 codex-image-generation-extension = { path = "ext/image-generation" }
 codex-external-agent-migration = { path = "external-agent-migration" }
 codex-experimental-api-macros = { path = "codex-experimental-api-macros" }

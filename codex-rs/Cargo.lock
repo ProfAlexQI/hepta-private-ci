@@ -2022,6 +2022,7 @@ dependencies = [
  "codex-goal-extension",
  "codex-guardian",
  "codex-hepta-governance",
+ "codex-hepta-memory-extension",
  "codex-home",
  "codex-hooks",
  "codex-http-client",
@@ -3338,6 +3339,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-memory"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-contracts",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "codex-hepta-memory-extension"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "codex-extension-api",
+ "codex-hepta-contracts",
+ "codex-hepta-memory",
+ "codex-protocol",
+ "codex-state",
+ "codex-utils-path-uri",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+]
+
+[[package]]
 name = "codex-hepta-operator-acceptance"
 version = "0.0.0"
 dependencies = [
@@ -3656,6 +3685,7 @@ dependencies = [
  "codex-features",
  "codex-git-attribution",
  "codex-hepta-governance",
+ "codex-hepta-memory-extension",
  "codex-home",
  "codex-image-generation-extension",
  "codex-login",

@@ -19,6 +19,19 @@ pub struct Stage1Output {
     pub generated_at: DateTime<Utc>,
 }
 
+/// Bounded, summary-only stage-1 material exposed to recall extensions.
+///
+/// This projection intentionally omits raw memory text, rollout paths, slugs,
+/// and branches. Callers that only rank reviewed summaries should not receive
+/// those broader fields accidentally.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Stage1RecallCandidate {
+    pub thread_id: ThreadId,
+    pub source_updated_at: DateTime<Utc>,
+    pub rollout_summary: String,
+    pub generated_at: DateTime<Utc>,
+}
+
 /// Result of trying to claim a stage-1 memory extraction job.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stage1JobClaimOutcome {
