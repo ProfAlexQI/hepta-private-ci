@@ -929,6 +929,18 @@ client_request_definitions! {
         serialization: None,
         response: v2::ModelProviderCapabilitiesReadResponse,
     },
+    #[experimental("hepta/evidence/summary/read")]
+    HeptaEvidenceSummaryRead => "hepta/evidence/summary/read" {
+        params: v2::HeptaEvidenceSummaryReadParams,
+        serialization: global_shared_read("hepta-evidence"),
+        response: v2::HeptaEvidenceSummaryReadResponse,
+    },
+    #[experimental("hepta/evidence/historical/read")]
+    HeptaHistoricalEvidenceRead => "hepta/evidence/historical/read" {
+        params: v2::HeptaHistoricalEvidenceReadParams,
+        serialization: global_shared_read("hepta-evidence"),
+        response: v2::HeptaHistoricalEvidenceReadResponse,
+    },
     ExperimentalFeatureList => "experimentalFeature/list" {
         params: v2::ExperimentalFeatureListParams,
         serialization: global("config"),
@@ -3984,6 +3996,42 @@ mod tests {
         };
         let reason = crate::experimental_api::ExperimentalApi::experimental_reason(&request);
         assert_eq!(reason, Some("mock/experimentalMethod"));
+    }
+
+    #[test]
+    fn hepta_evidence_reads_are_experimental_shared_reads() {
+        let requests = [
+            (
+                ClientRequest::HeptaEvidenceSummaryRead {
+                    request_id: RequestId::Integer(1),
+                    params: v2::HeptaEvidenceSummaryReadParams::default(),
+                },
+                "hepta/evidence/summary/read",
+            ),
+            (
+                ClientRequest::HeptaHistoricalEvidenceRead {
+                    request_id: RequestId::Integer(2),
+                    params: v2::HeptaHistoricalEvidenceReadParams {
+                        family: v2::HeptaHistoricalEvidenceFamily::GovernanceAction,
+                        record_id: format!("tool:v1:{}", "a".repeat(64)),
+                    },
+                },
+                "hepta/evidence/historical/read",
+            ),
+        ];
+
+        for (request, method) in requests {
+            assert_eq!(
+                crate::experimental_api::ExperimentalApi::experimental_reason(&request),
+                Some(method)
+            );
+            assert_eq!(
+                request.serialization_scope(),
+                Some(ClientRequestSerializationScope::GlobalSharedRead(
+                    "hepta-evidence"
+                ))
+            );
+        }
     }
 
     #[test]

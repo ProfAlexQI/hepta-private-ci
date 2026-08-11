@@ -3,13 +3,21 @@
 mod canonical;
 mod governance_store;
 mod governance_validation;
+mod historical;
 mod provider_claim;
 mod provider_insert;
 mod provider_record;
 mod provider_store;
 mod schema_validation;
 mod store;
+mod summary;
 
+pub use historical::HISTORICAL_EVIDENCE_SCHEMA_VERSION;
+pub use historical::HistoricalEvidenceFamily;
+pub use historical::HistoricalEvidenceRecord;
+pub use historical::HistoricalEvidenceSelector;
+pub use historical::HistoricalEvidenceState;
+pub use historical::historical_record_sha256;
 pub use provider_claim::ProviderBindingState;
 pub use provider_claim::ProviderIntentClaimDisposition;
 pub use provider_store::StoredProviderAttemptEvidence;
@@ -19,6 +27,9 @@ pub use store::AppendDisposition;
 pub use store::HeptaEvidenceStore;
 pub use store::StoredActionEvidence;
 pub use store::StoredReceipt;
+pub use summary::EvidenceSummary;
+pub use summary::GovernanceEvidenceSummary;
+pub use summary::ProviderEvidenceSummary;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EvidenceError {
@@ -45,3 +56,11 @@ mod provider_tests;
 #[cfg(test)]
 #[path = "provider_claim_tests.rs"]
 mod provider_claim_tests;
+
+#[cfg(test)]
+#[path = "summary_tests.rs"]
+mod summary_tests;
+
+#[cfg(test)]
+#[path = "historical_tests.rs"]
+mod historical_tests;

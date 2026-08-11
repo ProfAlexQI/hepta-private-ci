@@ -4,6 +4,7 @@ use sha2::Digest;
 use sha2::Sha256;
 
 use crate::Sha256Digest;
+use crate::stable_id::parse_prefixed_sha256_id;
 
 pub const PROVIDER_EVIDENCE_SCHEMA_VERSION: u32 = 1;
 
@@ -82,6 +83,10 @@ impl RequestBindingId {
 pub struct ProviderAttemptId(String);
 
 impl ProviderAttemptId {
+    pub fn parse(value: impl Into<String>) -> Result<Self, String> {
+        parse_prefixed_sha256_id(value, "provider-attempt:v1:", "provider attempt").map(Self)
+    }
+
     pub fn for_send(
         request_binding_id: &RequestBindingId,
         attempt_nonce_sha256: &Sha256Digest,

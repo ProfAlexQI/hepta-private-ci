@@ -8004,6 +8004,118 @@
       "title": "GuardianWarningNotification",
       "type": "object"
     },
+    "HeptaGovernanceEvidenceSummary": {
+      "properties": {
+        "decisions": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "pendingActions": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "receipts": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "decisions",
+        "pendingActions",
+        "receipts"
+      ],
+      "type": "object"
+    },
+    "HeptaHistoricalEvidenceFamily": {
+      "enum": [
+        "governanceAction",
+        "providerAttempt"
+      ],
+      "type": "string"
+    },
+    "HeptaHistoricalEvidenceRecord": {
+      "properties": {
+        "evidenceSha256": {
+          "type": "string"
+        },
+        "family": {
+          "$ref": "#/definitions/HeptaHistoricalEvidenceFamily"
+        },
+        "recordId": {
+          "type": "string"
+        },
+        "recordSha256": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/definitions/HeptaHistoricalEvidenceState"
+        }
+      },
+      "required": [
+        "evidenceSha256",
+        "family",
+        "recordId",
+        "recordSha256",
+        "schemaVersion",
+        "state"
+      ],
+      "type": "object"
+    },
+    "HeptaHistoricalEvidenceState": {
+      "enum": [
+        "pending",
+        "handlerCompletedSuccess",
+        "handlerCompletedFailure",
+        "blocked",
+        "handlerFailedBeforeExecution",
+        "handlerFailedAfterExecution",
+        "aborted",
+        "completed",
+        "rejected",
+        "notDispatched",
+        "indeterminate"
+      ],
+      "type": "string"
+    },
+    "HeptaProviderEvidenceSummary": {
+      "properties": {
+        "indeterminateAttempts": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "intents": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "pendingAttempts": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "receipts": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "indeterminateAttempts",
+        "intents",
+        "pendingAttempts",
+        "receipts"
+      ],
+      "type": "object"
+    },
     "HookCompletedNotification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {

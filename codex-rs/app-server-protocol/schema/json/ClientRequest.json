@@ -1503,6 +1503,13 @@
       },
       "type": "object"
     },
+    "HeptaHistoricalEvidenceFamily": {
+      "enum": [
+        "governanceAction",
+        "providerAttempt"
+      ],
+      "type": "string"
+    },
     "HookMigration": {
       "properties": {
         "name": {

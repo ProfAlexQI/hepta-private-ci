@@ -557,6 +557,123 @@ async fn open_classifies_non_database_file_as_corrupt() {
     assert!(matches!(error, EvidenceError::Corrupt(_)));
 }
 
+#[tokio::test]
+async fn open_existing_read_only_does_not_create_a_missing_store() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let evidence_path = sqlite.home().join("hepta_evidence_2.sqlite");
+    assert!(!evidence_path.exists());
+
+    let error = match HeptaEvidenceStore::open_existing_read_only(&sqlite).await {
+        Ok(_) => panic!("a diagnostic read must not create the evidence store"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, EvidenceError::Unavailable(_)));
+    assert!(!evidence_path.exists());
+}
+
+#[tokio::test]
+async fn open_existing_read_only_reads_a_complete_store_without_mutating_it() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let writable = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("compose evidence store");
+    let ledger_before: Vec<(i64, String, bool, Vec<u8>)> = sqlx::query_as(
+        "SELECT version, description, success, checksum
+         FROM _sqlx_migrations ORDER BY version",
+    )
+    .fetch_all(&writable.pool)
+    .await
+    .expect("read migration ledger before diagnostic open");
+
+    let read_only = HeptaEvidenceStore::open_existing_read_only(&sqlite)
+        .await
+        .expect("open existing evidence store read-only");
+    assert_eq!(
+        read_only.summary().await.expect("read summary"),
+        Default::default()
+    );
+    let write_error = read_only
+        .append_decision(&decision(PolicyPhase::Admission, b"read-only"))
+        .await
+        .expect_err("the diagnostic pool must reject evidence writes");
+    assert!(matches!(write_error, EvidenceError::Unavailable(_)));
+    let ledger_after: Vec<(i64, String, bool, Vec<u8>)> = sqlx::query_as(
+        "SELECT version, description, success, checksum
+         FROM _sqlx_migrations ORDER BY version",
+    )
+    .fetch_all(&read_only.pool)
+    .await
+    .expect("read migration ledger after diagnostic open");
+    assert_eq!(ledger_after, ledger_before);
+    assert_eq!(
+        read_only
+            .pending_action_count()
+            .await
+            .expect("read governance count"),
+        0
+    );
+
+    read_only.pool.close().await;
+    writable.pool.close().await;
+}
+
+#[tokio::test]
+async fn open_existing_read_only_rejects_a_partial_ledger_without_migrating_it() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("compose evidence store");
+    let evidence_path = store.path().to_path_buf();
+    store.pool.close().await;
+
+    let raw = sqlite
+        .open_durable_evidence_pool(&evidence_path)
+        .await
+        .expect("open raw evidence pool");
+    let latest_version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations")
+        .fetch_one(&raw)
+        .await
+        .expect("read latest migration");
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = ?")
+        .bind(latest_version)
+        .execute(&raw)
+        .await
+        .expect("remove latest migration ledger entry");
+    let ledger_count_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+        .fetch_one(&raw)
+        .await
+        .expect("count partial ledger");
+    raw.close().await;
+
+    let error = match HeptaEvidenceStore::open_existing_read_only(&sqlite).await {
+        Ok(_) => panic!("a partial evidence lineage must fail closed"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, EvidenceError::Corrupt(_)));
+
+    let raw = sqlite
+        .open_durable_evidence_pool(&evidence_path)
+        .await
+        .expect("reopen raw evidence pool");
+    let ledger_count_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+        .fetch_one(&raw)
+        .await
+        .expect("count ledger after rejected diagnostic open");
+    assert_eq!(ledger_count_after, ledger_count_before);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _sqlx_migrations WHERE version = ?",)
+            .bind(latest_version)
+            .fetch_one(&raw)
+            .await
+            .expect("check that the missing migration was not installed"),
+        0
+    );
+    raw.close().await;
+}
+
 #[test]
 fn lineage_two_preserves_reserved_migration_checksums() {
     let migrator = sqlx::migrate!("./migrations");

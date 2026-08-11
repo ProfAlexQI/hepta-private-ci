@@ -2021,6 +2021,7 @@ dependencies = [
  "codex-git-utils",
  "codex-goal-extension",
  "codex-guardian",
+ "codex-hepta-evidence",
  "codex-hepta-governance",
  "codex-hepta-memory-extension",
  "codex-home",

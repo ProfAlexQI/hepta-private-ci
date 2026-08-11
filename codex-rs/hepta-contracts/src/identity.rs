@@ -3,11 +3,17 @@ use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
 
+use crate::stable_id::parse_prefixed_sha256_id;
+
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct ActionId(String);
 
 impl ActionId {
+    pub fn parse(value: impl Into<String>) -> Result<Self, String> {
+        parse_prefixed_sha256_id(value, "tool:v1:", "tool action").map(Self)
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

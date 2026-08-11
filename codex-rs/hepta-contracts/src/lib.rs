@@ -5,6 +5,7 @@ mod identity;
 mod memory;
 mod provider;
 mod receipt;
+mod stable_id;
 
 pub use identity::ActionId;
 pub use identity::DecisionId;
