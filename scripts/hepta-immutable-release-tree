@@ -121,6 +121,8 @@ verify_release() {
     and .runtime.schema_version == 5
     and .runtime.requires_empty_wal == true
     and .runtime.keyed_integrity_required == true
+    and .runtime.state_snapshot_scope == "full-state-root-v2"
+    and .runtime.rollback_recutover_epoch_schema == "v2"
     and .authority.telegram == false
     and .authority.outbound == false
     and .authority.model_invocation == false
@@ -332,7 +334,7 @@ materialize_release() {
     --arg watchdog_sha "$watchdog_sha" \
     --arg gateway_path "$gateway_path" \
     --arg watchdog_path "$watchdog_path" \
-    '{schema:"hepta_vnext_immutable_release_v1",status:"ready",source:{commit:$source_commit},artifact:{relative_path:"bin/hepta",sha256:$artifact_sha,size_bytes:$artifact_size,executable:true,contract_schema:"hepta_vnext_live_shell_contract_v1",contract_sha256:$live_shell_contract_sha},runtime:{state_root:$state_root,install_root:$install_root,listen_host:"127.0.0.1",listen_port:$listen_port,open_mode:"immutable-query-only-open-existing",schema_version:5,requires_empty_wal:true,keyed_integrity_required:true},authority:{telegram:false,outbound:false,model_invocation:false,operator_mutation:false,enforce:false,promotion:false,retirement:false,automatic_transition:false},watchdog:{entrypoint:"scripts/hepta-watchdog.sh",verify_tool:"scripts/hepta-immutable-release-tree",immutable_release_bound:true},gateway_launch_agent:{schema:"hepta_vnext_gateway_launch_agent_v1",relative_path:$gateway_relative,sha256:$gateway_sha,label:$gateway_label,canonical_install_path:$gateway_path,state_root:$state_root,listen_port:$listen_port,effective_gates_all_false:true},watchdog_launch_agent:{schema:"hepta_vnext_watchdog_launch_agent_v1",relative_path:$watchdog_relative,sha256:$watchdog_sha,label:$watchdog_label,canonical_install_path:$watchdog_path,state_root:$state_root,listen_port:$listen_port,read_only:true}}' >"$stage/manifest.json"
+    '{schema:"hepta_vnext_immutable_release_v1",status:"ready",source:{commit:$source_commit},artifact:{relative_path:"bin/hepta",sha256:$artifact_sha,size_bytes:$artifact_size,executable:true,contract_schema:"hepta_vnext_live_shell_contract_v1",contract_sha256:$live_shell_contract_sha},runtime:{state_root:$state_root,install_root:$install_root,listen_host:"127.0.0.1",listen_port:$listen_port,open_mode:"immutable-query-only-open-existing",schema_version:5,requires_empty_wal:true,keyed_integrity_required:true,state_snapshot_scope:"full-state-root-v2",rollback_recutover_epoch_schema:"v2"},authority:{telegram:false,outbound:false,model_invocation:false,operator_mutation:false,enforce:false,promotion:false,retirement:false,automatic_transition:false},watchdog:{entrypoint:"scripts/hepta-watchdog.sh",verify_tool:"scripts/hepta-immutable-release-tree",immutable_release_bound:true},gateway_launch_agent:{schema:"hepta_vnext_gateway_launch_agent_v1",relative_path:$gateway_relative,sha256:$gateway_sha,label:$gateway_label,canonical_install_path:$gateway_path,state_root:$state_root,listen_port:$listen_port,effective_gates_all_false:true},watchdog_launch_agent:{schema:"hepta_vnext_watchdog_launch_agent_v1",relative_path:$watchdog_relative,sha256:$watchdog_sha,label:$watchdog_label,canonical_install_path:$watchdog_path,state_root:$state_root,listen_port:$listen_port,read_only:true}}' >"$stage/manifest.json"
   chmod 0444 "$stage/manifest.json"
   local sums
   sums="$(

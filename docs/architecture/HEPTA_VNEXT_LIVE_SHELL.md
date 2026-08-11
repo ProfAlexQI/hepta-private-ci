@@ -116,19 +116,28 @@ never self-heals by restarting or changing a generation.
 
 The runtime must never attach to the mutable legacy SQLite namespace. After
 the legacy writer has been stopped, create the production vNext snapshot with
-`hepta-state-snapshot --materialize`. The command independently confirms that
-the legacy launchd label is unloaded and no process has `runtime-v2` open,
-rejects nonempty WAL files, preserves modes and sidecars, detects source
-identity/hash drift, and emits a private receipt. It does not stop or start
-either service. The receipt is first reserved as `pending`, then sealed only
-after the destination is published; `hepta-state-snapshot verify --receipt`
-recomputes the destination inventory before cutover, while
-`hepta-state-snapshot verify-source --receipt` rechecks that the original
-source is still quiescent and byte/metadata exact. Bridge preparation and
-every forward cutover or recutover run that source-freshness check. If the
-legacy generation is rolled back and writes state, the old snapshot becomes
-stale and recutover is refused until new snapshot/canary/soak evidence is
-created.
+`hepta-state-snapshot --materialize`. New receipts use the full-root v2
+contract: every top-level entry (including archive and release-run data) is
+covered, not only `runtime-v2`. The command independently confirms that the
+legacy launchd label is unloaded and no process has any file under the state
+root open, rejects nonempty WAL files and symlink/special/delimiter paths, and
+preserves WAL/SHM/key bytes plus mode, uid, gid, mtime, BSD flags, ACLs, and
+xattrs. A source identity inventory (device/inode/ctime included) detects drift
+during the copy; a separate portable payload inventory is compared across the
+copy boundary. A destination-derived binding prevents replaying a receipt
+against another copied root. Existing runtime-v2-only v1 receipts remain
+verifiable, but they are not sufficient for a new recutover plan.
+
+The tool does not stop or start either service. The receipt is first reserved
+as `pending`, then sealed only after the destination and binding are published;
+`hepta-state-snapshot verify --receipt` recomputes the destination inventories,
+while `hepta-state-snapshot verify-source --receipt` rechecks that the original
+full root is still quiescent and identity-exact. Bridge preparation and every
+forward cutover or recutover run that source-freshness check. The persisted
+canary v2 receipt binds the snapshot id and all full-root inventory digests. If
+the legacy generation is rolled back and writes state, the old snapshot becomes
+stale and recutover is refused until new full-root snapshot/canary/soak evidence
+is created.
 
 The old broad-capability executable is not copied into a vNext release and is
 never relabeled as `authority_all_closed`. Instead,
@@ -157,6 +166,38 @@ scripts/hepta-launchd-cutover-bridge recover-pending \
   --bundle /absolute/bridge \
   --pending-receipt /absolute/evidence/interrupted-transition.json
 ```
+
+After a rollback has written state, do not reuse the old plan or invoke its
+`recutover`. Create a new immutable release bound to the new snapshot root and
+prepare an epoch-v2 plan whose sole predecessor is the current rollback head:
+
+```sh
+scripts/hepta-launchd-cutover-bridge prepare-recutover \
+  --manifest /absolute/new-release/manifest.json \
+  --launch-agent-root /Users/qianqi/Library/LaunchAgents \
+  --bundle /absolute/bridge-epoch-2 \
+  --parent-bundle /absolute/bridge-epoch-1 \
+  --previous-receipt /absolute/evidence/rollback.json \
+  --snapshot-receipt /absolute/evidence/fresh-full-snapshot.json \
+  --canary-receipt /absolute/evidence/fresh-canary.json \
+  --soak-receipt /absolute/evidence/fresh-soak.json
+scripts/hepta-launchd-cutover-bridge rebase-after-rollback \
+  --bundle /absolute/bridge-epoch-2 \
+  --previous-receipt /absolute/evidence/rollback.json \
+  --output-receipt /absolute/evidence/rebase.json --apply
+scripts/hepta-launchd-cutover-bridge recutover \
+  --bundle /absolute/bridge-epoch-2 \
+  --previous-receipt /absolute/evidence/rollback.json \
+  --output-receipt /absolute/evidence/recutover-epoch-2.json --apply
+```
+
+Preparation is read-only. Rebase changes only the private CAS chain cursor,
+never the service pair; it accepts exactly the reviewed current rollback head,
+increments the plan epoch once, and records the parent plan. A stale, forked,
+replayed, wrong-predecessor, or arbitrary rebase fails before receipt or service
+mutation. Rebase and transition pending cursors are recoverable with the same
+`recover-pending` command; recovery restores the reviewed parent/source chain
+and publishes no rebase or transition PASS.
 
 Applied transitions reserve a durable pending receipt before changing either
 plist. Both templates are staged and verified first; any publish, reload, or
