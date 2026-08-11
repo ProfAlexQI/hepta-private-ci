@@ -2404,6 +2404,7 @@ dependencies = [
  "codex-features",
  "codex-git-attribution",
  "codex-git-utils",
+ "codex-hepta-native-gateway",
  "codex-history",
  "codex-home",
  "codex-http-client",
@@ -3368,6 +3369,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-native-gateway"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "codex-hepta-paths",
+ "codex-hepta-runtime",
+ "pretty_assertions",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "codex-hepta-operator-acceptance"
 version = "0.0.0"
 dependencies = [
@@ -3381,6 +3394,30 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "codex-hepta-paths"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "tempfile",
+]
+
+[[package]]
+name = "codex-hepta-runtime"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "codex-hepta-paths",
+ "codex-state",
+ "codex-utils-absolute-path",
+ "libc",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

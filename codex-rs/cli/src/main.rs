@@ -995,6 +995,12 @@ fn stage_str(stage: Stage) -> &'static str {
 }
 
 fn main() -> anyhow::Result<()> {
+    if PRODUCT_COMMAND_NAME == "hepta" {
+        let args = std::env::args().skip(1).collect::<Vec<_>>();
+        if codex_hepta_native_gateway::run_serve_ui_if_requested(&args)? {
+            return Ok(());
+        }
+    }
     configure_product_home()?;
     let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();
     arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {
