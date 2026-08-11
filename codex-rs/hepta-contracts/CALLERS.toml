@@ -71,6 +71,11 @@ promotion_eligible = false
 
 [[qualification]]
 slice = "S5_evidence_summary"
-composition = "reader_not_composed"
-zero_event_interpretation = "not_equivalent_to_zero_authoritative_events"
+composition = "app_server_read_only_summary_and_historical_reader_composed"
+product_callers = [
+  "codex-rs/app-server/src/message_processor.rs",
+  "codex-rs/app-server/src/hepta_evidence_processor.rs",
+]
+store_open_mode = "open_existing_read_only"
+zero_event_interpretation = "an_empty_integrity_checked_existing_store_is_observed_empty; it is not proof of writer coverage or promotion readiness"
 promotion_eligible = false

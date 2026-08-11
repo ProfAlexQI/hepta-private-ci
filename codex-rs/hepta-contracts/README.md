@@ -79,8 +79,10 @@ implementation is an oracle and evidence source, not a merge target.
    A caller-zero writer is reported as `writer_not_composed`; it must never be
    collapsed into a zero-event observation. S2 persistent/OTel hit, failure,
    and latency telemetry remains ineligible until a product writer is named in
-   `CALLERS.toml`. S5 similarly cannot report authoritative zeroes while its
-   reader is not composed.
+   `CALLERS.toml`. S5 has a feature-gated App Server reader that opens only an
+   existing integrity-checked evidence store in read-only mode. An empty S5
+   result therefore describes that store at read time; it is not proof of
+   writer coverage, authority, or promotion readiness.
 5. An operator receipt authorizes retirement.
 6. Exact-SHA local, Nix, and hosted receipts are refreshed only after the
    candidate SHA is clean and frozen.
