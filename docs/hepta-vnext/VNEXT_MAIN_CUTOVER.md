@@ -76,7 +76,9 @@ conditions are true:
 6. cutover, rollback, then a fresh-evidence epoch-v2 rebase and recutover
    succeed without accepting a stale or forked chain; if evidence drifts after
    rebase or pending recovery, a fresh controlled superseding epoch closes the
-   chain without manual cursor edits; and
+   chain without manual cursor edits; rebase finalization binds the exact
+   pending and final receipts so crash recovery is idempotent and stale,
+   copied, or modified pending receipts cannot roll the cursor back; and
 7. one complete development cycle finishes on the new tree.
 
 Only then may the old linked worktrees, common Git directory, release, or state

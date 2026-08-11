@@ -204,6 +204,18 @@ mutation. Rebase and transition pending cursors are recoverable with the same
 `recover-pending` command; recovery restores the reviewed parent/source chain
 and publishes no rebase or transition PASS.
 
+Rebase finalization is itself a receipt-bound two-stage CAS. The ready cursor
+first records the exact pending receipt path and digest, the pending-cursor
+digest, the prior-cursor digest, and the expected final rebase receipt digest.
+Only after that final receipt is atomically published does a second CAS mark
+the cursor finalized. If a crash lands between those steps,
+`recover-pending --apply` accepts only that exact final receipt and only the
+matching unfinalized cursor, then performs the missing CAS idempotently. Once
+finalized, stale pending bytes at the original path, copied or modified pending
+receipts, and sibling epoch rebases all fail closed without changing the
+cursor. Recutover and controlled superseding epochs also reverify this exact
+final receipt and pending provenance before advancing the chain.
+
 If evidence becomes stale after a successful rebase, or after recovery of an
 interrupted v2 recutover, the unapplied epoch may be superseded without manual
 cursor edits. `prepare-recutover` then requires the current v2 plan as its
@@ -241,3 +253,12 @@ receipt reservation or plist mutation. A crash can leave the lock directory
 or chain cursor pending; both conditions fail closed until the reviewed
 pending recovery is completed (an orphaned lock from an untrapped hard kill
 must first be inspected and removed manually).
+
+Transition receipt publication uses the same two-stage cursor finalization as
+rebase. The pending receipt binds its own canonical path and the byte-exact
+prior cursor; the ready cursor binds the pending receipt and pending cursor
+digests but remains explicitly unfinalized until the final transition receipt
+is atomically present. Recovery can then either restore the exact prior cursor
+from a genuine pending operation or idempotently finish the final cursor CAS.
+A copied, modified, or replayed pending receipt cannot roll back an already
+finalized transition.

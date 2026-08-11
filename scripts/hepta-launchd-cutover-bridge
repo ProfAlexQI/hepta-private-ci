@@ -647,8 +647,81 @@ verify_chain_head_any_plan() {
     and .current_generation == $generation
     and .head_receipt == $receipt
     and .head_receipt_sha256 == $receipt_sha
+    and (
+      (.transition_receipt == $receipt and .transition_receipt_sha256 == $receipt_sha
+        and .transition_receipt_finalized == true)
+      or
+      ((.rebase_receipt | type) == "string" and .rebase_receipt_finalized == true)
+    )
   ' "$cursor" >/dev/null || {
     echo "rollback predecessor is not the current bridge chain head" >&2
+    return 1
+  }
+}
+
+verify_rebase_ready_cursor() {
+  local cursor="$1" plan="$2" expected_sequence="$3" expected_receipt="$4" expected_receipt_sha="$5"
+  local plan_sha epoch parent_epoch parent_plan_sha bundle chain_cursor rebase_receipt rebase_receipt_sha canonical_rebase
+  plan_sha="$(sha256_file "$plan")" || return 1
+  epoch="$(jq -r '.epoch' "$plan")" || return 1
+  parent_epoch="$(jq -r '.parent_epoch' "$plan")" || return 1
+  parent_plan_sha="$(jq -r '.parent_plan_sha256' "$plan")" || return 1
+  bundle="$(cd "$(dirname "$plan")" && pwd -P)" || return 1
+  chain_cursor="$(jq -r '.chain_cursor' "$plan")" || return 1
+  [[ "$(canonical_file "$expected_receipt")" == "$expected_receipt" \
+    && "$(sha256_file "$expected_receipt")" == "$expected_receipt_sha" ]] || {
+    echo "rebase predecessor receipt differs from the reviewed chain head" >&2
+    return 1
+  }
+  jq -e --arg plan_sha "$plan_sha" --arg parent_plan_sha "$parent_plan_sha" \
+    --arg head_receipt "$expected_receipt" --arg head_receipt_sha "$expected_receipt_sha" \
+    --argjson epoch "$epoch" --argjson parent_epoch "$parent_epoch" --argjson sequence "$expected_sequence" '
+    .schema == "hepta_vnext_launchd_bridge_chain_v2"
+    and .status == "ready" and .plan_sha256 == $plan_sha and .epoch == $epoch
+    and .parent_epoch == $parent_epoch
+    and .parent_plan_sha256 == $parent_plan_sha and .sequence == $sequence
+    and .current_generation == "legacy" and .head_receipt == $head_receipt
+    and .head_receipt_sha256 == $head_receipt_sha
+    and (.rebase_receipt | startswith("/"))
+    and (.rebase_receipt_sha256 | test("^[0-9a-f]{64}$"))
+    and .rebase_pending_receipt == .rebase_receipt
+    and (.rebase_pending_receipt_sha256 | test("^[0-9a-f]{64}$"))
+    and (.rebase_pending_cursor_sha256 | test("^[0-9a-f]{64}$"))
+    and (.rebase_prior_cursor_sha256 | test("^[0-9a-f]{64}$"))
+    and .rebase_receipt_finalized == true
+  ' "$cursor" >/dev/null || {
+    echo "recutover chain cursor lacks finalized rebase provenance" >&2
+    return 1
+  }
+  rebase_receipt="$(jq -r '.rebase_receipt' "$cursor")"
+  canonical_rebase="$(canonical_file "$rebase_receipt")" || return 1
+  [[ "$canonical_rebase" == "$rebase_receipt" ]] || return 1
+  rebase_receipt_sha="$(sha256_file "$rebase_receipt")" || return 1
+  [[ "$rebase_receipt_sha" == "$(jq -r '.rebase_receipt_sha256' "$cursor")" ]] || {
+    echo "finalized rebase receipt differs from the chain cursor" >&2
+    return 1
+  }
+  jq -e --arg bundle "$bundle" --arg plan_sha "$plan_sha" --arg parent_plan_sha "$parent_plan_sha" \
+    --arg chain_cursor "$chain_cursor" --arg predecessor "$expected_receipt" \
+    --arg predecessor_sha "$expected_receipt_sha" \
+    --arg pending_receipt "$(jq -r '.rebase_pending_receipt' "$cursor")" \
+    --arg pending_sha "$(jq -r '.rebase_pending_receipt_sha256' "$cursor")" \
+    --arg pending_cursor_sha "$(jq -r '.rebase_pending_cursor_sha256' "$cursor")" \
+    --arg prior_cursor_sha "$(jq -r '.rebase_prior_cursor_sha256' "$cursor")" \
+    --argjson epoch "$epoch" --argjson parent_epoch "$parent_epoch" --argjson sequence "$expected_sequence" '
+    .schema == "hepta_vnext_launchd_bridge_rebase_v2" and .status == "ready"
+    and .bundle == $bundle and .plan_sha256 == $plan_sha and .epoch == $epoch
+    and .parent_epoch == $parent_epoch
+    and .parent_plan_sha256 == $parent_plan_sha and .chain_cursor == $chain_cursor
+    and .predecessor_rollback_receipt == $predecessor
+    and .predecessor_rollback_sha256 == $predecessor_sha
+    and .predecessor_sequence == $sequence and .prior_cursor_sha256 == $prior_cursor_sha
+    and .pending_receipt == $pending_receipt and .pending_receipt_sha256 == $pending_sha
+    and .pending_cursor_sha256 == $pending_cursor_sha
+    and .applied == true and .chain_rebase_committed == true
+    and .service_pair_unchanged == true and .service_changed == false
+  ' "$rebase_receipt" >/dev/null || {
+    echo "finalized rebase receipt does not match cursor provenance" >&2
     return 1
   }
 }
@@ -684,6 +757,8 @@ prepare_recutover_bundle_locked() {
       echo "only an unapplied recutover epoch may be superseded" >&2
       return 1
     }
+    verify_rebase_ready_cursor "$chain_cursor" "$parent_plan" "$predecessor_sequence" \
+      "$predecessor_receipt" "$predecessor_sha" || return 1
     supersedes=true
   fi
   [[ "$(jq -r '.schema' "$snapshot_receipt")" == hepta_vnext_state_snapshot_receipt_v2 \
@@ -753,7 +828,7 @@ active_pair_matches_generation() {
 rebase_after_rollback_locked() {
   local bundle="$1" predecessor_receipt="$2" output_receipt="$3" apply="$4"
   local plan plan_sha epoch parent_plan_sha parent_epoch chain_cursor predecessor_sha predecessor_sequence
-  local prior_cursor_sha prior_cursor_json prior_cursor_tmp pending_tmp final_tmp pending_cursor_tmp final_cursor_tmp pending_sha pending_cursor_sha final_cursor_sha final_receipt_sha temp_root
+  local prior_cursor_sha prior_cursor_json prior_cursor_tmp pending_tmp final_tmp pending_cursor_tmp final_cursor_tmp finalized_cursor_tmp pending_sha pending_cursor_sha final_cursor_sha final_receipt_sha temp_root
   verify_bundle "$bundle" >/dev/null || return 1
   plan="$bundle/plan.json"
   [[ "$(jq -r '.schema' "$plan")" == hepta_vnext_launchd_bridge_plan_v2 ]] || {
@@ -787,25 +862,43 @@ rebase_after_rollback_locked() {
   fi
   [[ -n "$output_receipt" ]] || usage
   absolute_non_root "$output_receipt" || return 1
-  prior_cursor_sha="$(sha256_file "$chain_cursor")"
-  prior_cursor_json="$(jq -c . "$chain_cursor")"
   temp_root="${TMPDIR:-/tmp}"
   pending_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-pending.XXXXXX")"
   prior_cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-prior-cursor.XXXXXX")"
   final_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-final.XXXXXX")"
   pending_cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-cursor-pending.XXXXXX")"
   final_cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-cursor-final.XXXXXX")"
-  printf '%s\n' "$prior_cursor_json" >"$prior_cursor_tmp"
-  trap 'rm -f "${prior_cursor_tmp:-}" "${pending_tmp:-}" "${final_tmp:-}" "${pending_cursor_tmp:-}" "${final_cursor_tmp:-}"; trap - RETURN' RETURN
+  finalized_cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-cursor-finalized.XXXXXX")"
+  trap 'rm -f "${prior_cursor_tmp:-}" "${pending_tmp:-}" "${final_tmp:-}" "${pending_cursor_tmp:-}" "${final_cursor_tmp:-}" "${finalized_cursor_tmp:-}"; trap - RETURN' RETURN
+  cp "$chain_cursor" "$prior_cursor_tmp" || return 1
+  prior_cursor_sha="$(sha256_file "$prior_cursor_tmp")"
+  [[ "$(sha256_file "$chain_cursor")" == "$prior_cursor_sha" ]] || {
+    echo "rebase parent cursor changed while it was captured" >&2
+    return 1
+  }
+  prior_cursor_json="$(jq -c . "$prior_cursor_tmp")" || return 1
   jq -n --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" --arg parent_plan_sha256 "$parent_plan_sha" \
     --arg chain_cursor "$chain_cursor" --arg predecessor_receipt "$predecessor_receipt" \
+    --arg pending_receipt "$output_receipt" \
     --arg predecessor_sha256 "$predecessor_sha" --arg prior_cursor_sha256 "$prior_cursor_sha" \
     --argjson prior_cursor "$prior_cursor_json" --argjson epoch "$epoch" --argjson parent_epoch "$parent_epoch" \
     --argjson predecessor_sequence "$predecessor_sequence" --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:"hepta_vnext_launchd_bridge_rebase_pending_v2",status:"pending",bundle:$bundle,plan_sha256:$plan_sha256,epoch:$epoch,parent_epoch:$parent_epoch,parent_plan_sha256:$parent_plan_sha256,chain_cursor:$chain_cursor,predecessor_rollback_receipt:$predecessor_receipt,predecessor_rollback_sha256:$predecessor_sha256,predecessor_sequence:$predecessor_sequence,prior_cursor_sha256:$prior_cursor_sha256,prior_cursor:$prior_cursor,created_at:$created_at,applied:false,service_changed:false}' >"$pending_tmp"
+    '{schema:"hepta_vnext_launchd_bridge_rebase_pending_v2",status:"pending",bundle:$bundle,plan_sha256:$plan_sha256,epoch:$epoch,parent_epoch:$parent_epoch,parent_plan_sha256:$parent_plan_sha256,chain_cursor:$chain_cursor,pending_receipt:$pending_receipt,predecessor_rollback_receipt:$predecessor_receipt,predecessor_rollback_sha256:$predecessor_sha256,predecessor_sequence:$predecessor_sequence,prior_cursor_sha256:$prior_cursor_sha256,prior_cursor:$prior_cursor,created_at:$created_at,applied:false,service_changed:false}' >"$pending_tmp"
   reserve_private_receipt "$output_receipt" "$pending_tmp" || return 1
   output_receipt="$(canonical_file "$output_receipt")" || return 1
   pending_sha="$(sha256_file "$output_receipt")"
+  if [[ -n "${HEPTA_BRIDGE_SELF_TEST_CAPTURE_REBASE_PENDING:-}" ]]; then
+    [[ -n "${HEPTA_BRIDGE_SELF_TEST_ROOT:-}" \
+      && "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_REBASE_PENDING" == "$HEPTA_BRIDGE_SELF_TEST_ROOT/"* \
+      && ! -e "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_REBASE_PENDING" \
+      && ! -L "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_REBASE_PENDING" ]] || return 1
+    cp "$output_receipt" "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_REBASE_PENDING" || return 1
+    chmod 0400 "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_REBASE_PENDING" || return 1
+  fi
+  if [[ "${HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_REBASE_RECEIPT_RESERVED:-0}" == 1 ]]; then
+    echo "injected failure after recutover rebase receipt reservation" >&2
+    return 1
+  fi
   jq -n --arg plan_sha256 "$plan_sha" --arg parent_plan_sha256 "$parent_plan_sha" \
     --arg pending_receipt "$output_receipt" --arg pending_receipt_sha256 "$pending_sha" \
     --arg predecessor_receipt "$predecessor_receipt" --arg predecessor_sha256 "$predecessor_sha" \
@@ -821,27 +914,44 @@ rebase_after_rollback_locked() {
   jq -n --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" --arg parent_plan_sha256 "$parent_plan_sha" \
     --arg chain_cursor "$chain_cursor" --arg predecessor_receipt "$predecessor_receipt" \
     --arg predecessor_sha256 "$predecessor_sha" --arg prior_cursor_sha256 "$prior_cursor_sha" \
+    --arg pending_receipt "$output_receipt" --arg pending_receipt_sha256 "$pending_sha" \
+    --arg pending_cursor_sha256 "$pending_cursor_sha" \
     --argjson epoch "$epoch" --argjson parent_epoch "$parent_epoch" --argjson predecessor_sequence "$predecessor_sequence" \
     --arg rebased_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:"hepta_vnext_launchd_bridge_rebase_v2",status:"ready",bundle:$bundle,plan_sha256:$plan_sha256,epoch:$epoch,parent_epoch:$parent_epoch,parent_plan_sha256:$parent_plan_sha256,chain_cursor:$chain_cursor,predecessor_rollback_receipt:$predecessor_receipt,predecessor_rollback_sha256:$predecessor_sha256,predecessor_sequence:$predecessor_sequence,prior_cursor_sha256:$prior_cursor_sha256,rebased_at:$rebased_at,applied:true,chain_rebase_committed:true,service_pair_unchanged:true,service_changed:false}' >"$final_tmp"
+    '{schema:"hepta_vnext_launchd_bridge_rebase_v2",status:"ready",bundle:$bundle,plan_sha256:$plan_sha256,epoch:$epoch,parent_epoch:$parent_epoch,parent_plan_sha256:$parent_plan_sha256,chain_cursor:$chain_cursor,predecessor_rollback_receipt:$predecessor_receipt,predecessor_rollback_sha256:$predecessor_sha256,predecessor_sequence:$predecessor_sequence,prior_cursor_sha256:$prior_cursor_sha256,pending_receipt:$pending_receipt,pending_receipt_sha256:$pending_receipt_sha256,pending_cursor_sha256:$pending_cursor_sha256,rebased_at:$rebased_at,applied:true,chain_rebase_committed:true,service_pair_unchanged:true,service_changed:false}' >"$final_tmp"
   final_receipt_sha="$(sha256_file "$final_tmp")"
   jq -n --arg plan_sha256 "$plan_sha" --arg parent_plan_sha256 "$parent_plan_sha" \
     --arg head_receipt "$predecessor_receipt" --arg head_receipt_sha256 "$predecessor_sha" \
     --arg rebase_receipt "$output_receipt" --arg rebase_receipt_sha256 "$final_receipt_sha" \
+    --arg rebase_pending_receipt "$output_receipt" --arg rebase_pending_receipt_sha256 "$pending_sha" \
+    --arg rebase_pending_cursor_sha256 "$pending_cursor_sha" --arg rebase_prior_cursor_sha256 "$prior_cursor_sha" \
     --argjson epoch "$epoch" --argjson parent_epoch "$parent_epoch" --argjson sequence "$predecessor_sequence" \
     --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:"hepta_vnext_launchd_bridge_chain_v2",status:"ready",plan_sha256:$plan_sha256,epoch:$epoch,parent_epoch:$parent_epoch,parent_plan_sha256:$parent_plan_sha256,sequence:$sequence,current_generation:"legacy",head_receipt:$head_receipt,head_receipt_sha256:$head_receipt_sha256,rebase_receipt:$rebase_receipt,rebase_receipt_sha256:$rebase_receipt_sha256,updated_at:$updated_at}' >"$final_cursor_tmp"
+    '{schema:"hepta_vnext_launchd_bridge_chain_v2",status:"ready",plan_sha256:$plan_sha256,epoch:$epoch,parent_epoch:$parent_epoch,parent_plan_sha256:$parent_plan_sha256,sequence:$sequence,current_generation:"legacy",head_receipt:$head_receipt,head_receipt_sha256:$head_receipt_sha256,rebase_receipt:$rebase_receipt,rebase_receipt_sha256:$rebase_receipt_sha256,rebase_pending_receipt:$rebase_pending_receipt,rebase_pending_receipt_sha256:$rebase_pending_receipt_sha256,rebase_pending_cursor_sha256:$rebase_pending_cursor_sha256,rebase_prior_cursor_sha256:$rebase_prior_cursor_sha256,rebase_receipt_finalized:false,updated_at:$updated_at}' >"$final_cursor_tmp"
+  jq '.rebase_receipt_finalized = true | .updated_at = $updated_at' \
+    --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$final_cursor_tmp" >"$finalized_cursor_tmp"
   if ! write_chain_cursor_cas "$chain_cursor" "$pending_cursor_sha" "$final_cursor_tmp"; then
     write_chain_cursor_cas "$chain_cursor" "$pending_cursor_sha" "$prior_cursor_tmp" 2>/dev/null || true
     return 1
   fi
   final_cursor_sha="$(sha256_file "$chain_cursor")"
-  if ! replace_reserved_receipt "$output_receipt" "$pending_sha" "$final_tmp"; then
+  if [[ "${HEPTA_BRIDGE_SELF_TEST_FAIL_REBASE_RECEIPT_REPLACE:-0}" == 1 ]] \
+    || ! replace_reserved_receipt "$output_receipt" "$pending_sha" "$final_tmp"; then
     write_chain_cursor_cas "$chain_cursor" "$final_cursor_sha" "$prior_cursor_tmp" 2>/dev/null || true
     return 1
   fi
+  if [[ "${HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_REBASE_RECEIPT_FINALIZED:-0}" == 1 ]]; then
+    echo "injected failure after rebase receipt finalization" >&2
+    return 1
+  fi
+  if ! write_chain_cursor_cas "$chain_cursor" "$final_cursor_sha" "$finalized_cursor_tmp"; then
+    echo "rebase receipt finalized but chain cursor finalization remains pending" >&2
+    return 1
+  fi
+  verify_rebase_ready_cursor "$chain_cursor" "$plan" "$predecessor_sequence" \
+    "$predecessor_receipt" "$predecessor_sha" || return 1
   trap - RETURN
-  rm -f "$prior_cursor_tmp" "$pending_tmp" "$final_tmp" "$pending_cursor_tmp" "$final_cursor_tmp"
+  rm -f "$prior_cursor_tmp" "$pending_tmp" "$final_tmp" "$pending_cursor_tmp" "$final_cursor_tmp" "$finalized_cursor_tmp"
   cat "$output_receipt"
 }
 
@@ -909,6 +1019,12 @@ verify_ready_chain_cursor() {
     and .head_receipt == $receipt
     and .head_receipt_sha256 == $receipt_sha
     and (if $epoch == "" then true else (.schema == "hepta_vnext_launchd_bridge_chain_v2" and (.epoch | tostring) == $epoch) end)
+    and (
+      (.transition_receipt == $receipt and .transition_receipt_sha256 == $receipt_sha
+        and .transition_receipt_finalized == true)
+      or
+      ((.rebase_receipt | type) == "string" and .rebase_receipt_finalized == true)
+    )
   ' "$cursor" >/dev/null || {
     echo "previous receipt is not the current bridge chain head" >&2
     return 1
@@ -1047,8 +1163,8 @@ transition_locked() {
   local command="$1" bundle="$2" previous_receipt="$3" output_receipt="$4" apply="$5" service_mode="$6"
   local source_generation target_generation expected_previous plan plan_sha previous_sha="" previous_path="" sequence
   local plan_schema epoch="" parent_plan_sha="" previous_plan_sha
-  local launch_root chain_cursor prior_cursor_sha="" chain_pending_sha final_receipt_sha
-  local receipt_tmp pending_tmp chain_pending_tmp chain_final_tmp pending_sha
+  local launch_root chain_cursor prior_cursor_sha="" prior_cursor_json="" chain_pending_sha chain_final_sha final_receipt_sha
+  local receipt_tmp pending_tmp chain_pending_tmp chain_final_tmp chain_finalized_tmp pending_sha
   verify_bundle "$bundle" >/dev/null || return 1
   plan="$bundle/plan.json"; plan_sha="$(sha256_file "$plan")"
   plan_schema="$(jq -r '.schema' "$plan")"
@@ -1089,7 +1205,12 @@ transition_locked() {
     sequence="$(( $(jq -r '.sequence' "$previous_path") + 1 ))"
     verify_ready_chain_cursor "$chain_cursor" "$plan_sha" "$((sequence - 1))" \
       "$source_generation" "$previous_path" "$previous_sha" "$epoch" || return 1
+    if [[ "$plan_schema" == hepta_vnext_launchd_bridge_plan_v2 && "$command" == recutover ]]; then
+      verify_rebase_ready_cursor "$chain_cursor" "$plan" "$((sequence - 1))" \
+        "$previous_path" "$previous_sha" || return 1
+    fi
     prior_cursor_sha="$(sha256_file "$chain_cursor")"
+    prior_cursor_json="$(jq -c . "$chain_cursor")" || return 1
   else
     [[ -z "$previous_receipt" ]] || usage
     sequence=1
@@ -1116,24 +1237,35 @@ transition_locked() {
   receipt_tmp="$(mktemp "${temp_root%/}/hepta-bridge-transition-final.XXXXXX")"
   chain_pending_tmp="$(mktemp "${temp_root%/}/hepta-bridge-chain-pending.XXXXXX")"
   chain_final_tmp="$(mktemp "${temp_root%/}/hepta-bridge-chain-final.XXXXXX")"
-  trap 'rm -f "${pending_tmp:-}" "${receipt_tmp:-}" "${chain_pending_tmp:-}" "${chain_final_tmp:-}"; trap - RETURN' RETURN
+  chain_finalized_tmp="$(mktemp "${temp_root%/}/hepta-bridge-chain-finalized.XXXXXX")"
+  trap 'rm -f "${pending_tmp:-}" "${receipt_tmp:-}" "${chain_pending_tmp:-}" "${chain_final_tmp:-}" "${chain_finalized_tmp:-}"; trap - RETURN' RETURN
   jq -n --arg transition "$command" --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" \
     --arg epoch "$epoch" --arg parent_plan_sha256 "$parent_plan_sha" \
     --arg source "$source_generation" --arg target "$target_generation" \
     --arg service_mode "$service_mode" \
-    --arg previous_receipt "$previous_path" --arg previous_receipt_sha256 "$previous_sha" \
+    --arg pending_receipt "$output_receipt" --arg previous_receipt "$previous_path" --arg previous_receipt_sha256 "$previous_sha" \
+    --arg prior_cursor_sha256 "$prior_cursor_sha" --arg prior_cursor_json "$prior_cursor_json" \
     --arg chain_cursor "$chain_cursor" --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson sequence "$sequence" \
-    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_pending_v2" else "hepta_vnext_launchd_bridge_transition_pending_v1" end),status:"pending",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,service_mode:$service_mode,chain_cursor:$chain_cursor,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),created_at:$created_at,applied:false}' >"$pending_tmp"
+    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_pending_v2" else "hepta_vnext_launchd_bridge_transition_pending_v1" end),status:"pending",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,service_mode:$service_mode,chain_cursor:$chain_cursor,pending_receipt:$pending_receipt,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),prior_cursor_sha256:(if $prior_cursor_sha256=="" then null else $prior_cursor_sha256 end),prior_cursor:(if $prior_cursor_json=="" then null else ($prior_cursor_json|fromjson) end),created_at:$created_at,applied:false}' >"$pending_tmp"
   reserve_private_receipt "$output_receipt" "$pending_tmp" || return 1
   output_receipt="$(canonical_file "$output_receipt")" || return 1
   pending_sha="$(sha256_file "$output_receipt")"
+  if [[ -n "${HEPTA_BRIDGE_SELF_TEST_CAPTURE_TRANSITION_PENDING:-}" ]]; then
+    [[ -n "${HEPTA_BRIDGE_SELF_TEST_ROOT:-}" \
+      && "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_TRANSITION_PENDING" == "$HEPTA_BRIDGE_SELF_TEST_ROOT/"* \
+      && ! -e "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_TRANSITION_PENDING" \
+      && ! -L "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_TRANSITION_PENDING" ]] || return 1
+    cp "$output_receipt" "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_TRANSITION_PENDING" || return 1
+    chmod 0400 "$HEPTA_BRIDGE_SELF_TEST_CAPTURE_TRANSITION_PENDING" || return 1
+  fi
   jq -n --arg transition "$command" --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" \
     --arg epoch "$epoch" --arg parent_plan_sha256 "$parent_plan_sha" --arg source "$source_generation" \
     --arg target "$target_generation" --arg pending_receipt "$output_receipt" \
     --arg pending_receipt_sha256 "$pending_sha" --arg previous_receipt "$previous_path" \
-    --arg previous_receipt_sha256 "$previous_sha" --argjson sequence "$sequence" \
-    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_chain_pending_v2" else "hepta_vnext_launchd_bridge_chain_pending_v1" end),status:"pending",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),plan_sha256:$plan_sha256,sequence:$sequence,transition:$transition,source_generation:$source,target_generation:$target,pending_receipt:$pending_receipt,pending_receipt_sha256:$pending_receipt_sha256,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end)}' >"$chain_pending_tmp"
+    --arg previous_receipt_sha256 "$previous_sha" --arg prior_cursor_sha256 "$prior_cursor_sha" \
+    --argjson sequence "$sequence" \
+    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_chain_pending_v2" else "hepta_vnext_launchd_bridge_chain_pending_v1" end),status:"pending",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),plan_sha256:$plan_sha256,sequence:$sequence,transition:$transition,source_generation:$source,target_generation:$target,pending_receipt:$pending_receipt,pending_receipt_sha256:$pending_receipt_sha256,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),prior_cursor_sha256:(if $prior_cursor_sha256=="" then null else $prior_cursor_sha256 end)}' >"$chain_pending_tmp"
   write_chain_cursor_cas "$chain_cursor" "$prior_cursor_sha" "$chain_pending_tmp" || return 1
   chain_pending_sha="$(sha256_file "$chain_cursor")"
   replace_plist_pair "$plan" "$bundle" "$source_generation" "$target_generation" "$service_mode" || return 1
@@ -1142,18 +1274,25 @@ transition_locked() {
     --arg source "$source_generation" --arg target "$target_generation" \
     --arg service_mode "$service_mode" \
     --arg chain_cursor "$chain_cursor" \
-    --arg previous_receipt_sha256 "$previous_sha" \
+    --arg pending_receipt "$output_receipt" --arg pending_receipt_sha256 "$pending_sha" \
+    --arg pending_cursor_sha256 "$chain_pending_sha" --arg prior_cursor_sha256 "$prior_cursor_sha" \
+    --arg previous_receipt "$previous_path" --arg previous_receipt_sha256 "$previous_sha" \
     --arg gateway_sha256 "$(jq -r ".${target_generation}.gateway.sha256" "$plan")" \
     --arg watchdog_sha256 "$(jq -r ".${target_generation}.watchdog.sha256" "$plan")" \
     --arg applied_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson sequence "$sequence" \
-    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_v2" else "hepta_vnext_launchd_bridge_transition_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,service_mode:$service_mode,chain_cursor:$chain_cursor,chain_head_committed:true,previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),installed:{gateway_sha256:$gateway_sha256,watchdog_sha256:$watchdog_sha256},applied_at:$applied_at,applied:true,service_pair_reloaded:true,post_transition_health_verified:true,post_transition_bounded_soak_verified:($service_mode == "launchctl" and $target == "vnext"),legacy_authority_reclassified:false}' >"$receipt_tmp"
+    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_v2" else "hepta_vnext_launchd_bridge_transition_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,service_mode:$service_mode,chain_cursor:$chain_cursor,pending_receipt:$pending_receipt,pending_receipt_sha256:$pending_receipt_sha256,pending_cursor_sha256:$pending_cursor_sha256,prior_cursor_sha256:(if $prior_cursor_sha256=="" then null else $prior_cursor_sha256 end),chain_head_committed:true,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),installed:{gateway_sha256:$gateway_sha256,watchdog_sha256:$watchdog_sha256},applied_at:$applied_at,applied:true,service_pair_reloaded:true,post_transition_health_verified:true,post_transition_bounded_soak_verified:($service_mode == "launchctl" and $target == "vnext"),legacy_authority_reclassified:false}' >"$receipt_tmp"
   final_receipt_sha="$(sha256_file "$receipt_tmp")"
   jq -n --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" --arg epoch "$epoch" \
     --arg parent_plan_sha256 "$parent_plan_sha" --arg current_generation "$target_generation" \
     --arg head_receipt "$output_receipt" --arg head_receipt_sha256 "$final_receipt_sha" \
+    --arg transition_receipt "$output_receipt" --arg transition_receipt_sha256 "$final_receipt_sha" \
+    --arg transition_pending_receipt "$output_receipt" --arg transition_pending_receipt_sha256 "$pending_sha" \
+    --arg transition_pending_cursor_sha256 "$chain_pending_sha" --arg transition_prior_cursor_sha256 "$prior_cursor_sha" \
     --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson sequence "$sequence" \
-    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_chain_v2" else "hepta_vnext_launchd_bridge_chain_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),plan_sha256:$plan_sha256,sequence:$sequence,current_generation:$current_generation,head_receipt:$head_receipt,head_receipt_sha256:$head_receipt_sha256,updated_at:$updated_at}' >"$chain_final_tmp"
+    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_chain_v2" else "hepta_vnext_launchd_bridge_chain_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),plan_sha256:$plan_sha256,sequence:$sequence,current_generation:$current_generation,head_receipt:$head_receipt,head_receipt_sha256:$head_receipt_sha256,transition_receipt:$transition_receipt,transition_receipt_sha256:$transition_receipt_sha256,transition_pending_receipt:$transition_pending_receipt,transition_pending_receipt_sha256:$transition_pending_receipt_sha256,transition_pending_cursor_sha256:$transition_pending_cursor_sha256,transition_prior_cursor_sha256:(if $transition_prior_cursor_sha256=="" then null else $transition_prior_cursor_sha256 end),transition_receipt_finalized:false,updated_at:$updated_at}' >"$chain_final_tmp"
+  jq '.transition_receipt_finalized = true | .updated_at = $updated_at' \
+    --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$chain_final_tmp" >"$chain_finalized_tmp"
   if ! write_chain_cursor_cas "$chain_cursor" "$chain_pending_sha" "$chain_final_tmp"; then
     echo "bridge chain finalization failed; restoring the source generation" >&2
     replace_plist_pair "$plan" "$bundle" "$target_generation" "$source_generation" "$service_mode" || {
@@ -1162,6 +1301,7 @@ transition_locked() {
     }
     return 1
   fi
+  chain_final_sha="$(sha256_file "$chain_cursor")"
   if ! replace_reserved_receipt "$output_receipt" "$pending_sha" "$receipt_tmp"; then
     echo "transition receipt finalization failed; restoring the source generation" >&2
     replace_plist_pair "$plan" "$bundle" "$target_generation" "$source_generation" "$service_mode" || {
@@ -1170,8 +1310,17 @@ transition_locked() {
     }
     return 1
   fi
+  if [[ "${HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_TRANSITION_RECEIPT_FINALIZED:-0}" == 1 ]]; then
+    echo "injected failure after transition receipt finalization" >&2
+    return 1
+  fi
+  if ! write_chain_cursor_cas "$chain_cursor" "$chain_final_sha" "$chain_finalized_tmp"; then
+    echo "transition receipt finalized but chain cursor finalization remains pending" >&2
+    return 1
+  fi
+  recover_transition_final_receipt_locked "$bundle" "$output_receipt" true "$service_mode" >/dev/null || return 1
   trap - RETURN
-  rm -f "$pending_tmp" "$receipt_tmp" "$chain_pending_tmp" "$chain_final_tmp"
+  rm -f "$pending_tmp" "$receipt_tmp" "$chain_pending_tmp" "$chain_final_tmp" "$chain_finalized_tmp"
   cat "$output_receipt"
 }
 
@@ -1192,9 +1341,9 @@ transition() {
 
 recover_pending_locked() {
   local bundle="$1" pending_receipt="$2" apply="$3" service_mode="$4"
-  local plan plan_sha source_generation target_generation pending_sha launch_root gateway_label watchdog_label role label current_sha source_sha target_sha receipt_tmp cursor_tmp temp_root
+  local plan plan_sha source_generation target_generation pending_sha launch_root gateway_label watchdog_label role label current_sha source_sha target_sha receipt_tmp="" cursor_tmp="" prior_cursor_tmp="" temp_root
   local transition_name sequence previous_receipt previous_sha chain_cursor cursor_sha=""
-  local plan_schema epoch="" parent_plan_sha=""
+  local plan_schema epoch="" parent_plan_sha="" exact_prior_cursor=false prior_cursor_sha=""
   verify_bundle "$bundle" >/dev/null || return 1
   plan="$bundle/plan.json"; plan_sha="$(sha256_file "$plan")"
   plan_schema="$(jq -r '.schema' "$plan")"
@@ -1206,13 +1355,15 @@ recover_pending_locked() {
   pending_sha="$(sha256_file "$pending_receipt")"
   chain_cursor="$(jq -r '.chain_cursor' "$plan")"
   jq -e --arg plan_sha "$plan_sha" --arg bundle "$bundle" --arg service_mode "$service_mode" \
-    --arg chain_cursor "$chain_cursor" --arg plan_schema "$plan_schema" --arg epoch "$epoch" --arg parent_plan_sha "$parent_plan_sha" '
+    --arg chain_cursor "$chain_cursor" --arg pending_receipt "$pending_receipt" \
+    --arg plan_schema "$plan_schema" --arg epoch "$epoch" --arg parent_plan_sha "$parent_plan_sha" '
     (.schema == "hepta_vnext_launchd_bridge_transition_pending_v1" or .schema == "hepta_vnext_launchd_bridge_transition_pending_v2")
     and .status == "pending"
     and .plan_sha256 == $plan_sha
     and .bundle == $bundle
     and .service_mode == $service_mode
     and .chain_cursor == $chain_cursor
+    and .pending_receipt == $pending_receipt
     and .applied == false
     and (if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then
       .schema == "hepta_vnext_launchd_bridge_transition_pending_v2"
@@ -1240,6 +1391,36 @@ recover_pending_locked() {
   previous_receipt="$(jq -r '.previous_receipt // ""' "$pending_receipt")"
   previous_sha="$(jq -r '.previous_receipt_sha256 // ""' "$pending_receipt")"
   launch_root="$(jq -r '.launch_agent_root' "$plan")"
+  temp_root="${TMPDIR:-/tmp}"
+  trap 'rm -f "${receipt_tmp:-}" "${cursor_tmp:-}" "${prior_cursor_tmp:-}"; trap - RETURN' RETURN
+  if (( sequence > 1 )); then
+    previous_receipt="$(canonical_file "$previous_receipt")" || return 1
+    [[ "$(sha256_file "$previous_receipt")" == "$previous_sha" ]] || {
+      echo "previous bridge receipt changed before chain recovery" >&2
+      return 1
+    }
+  fi
+  if (( sequence > 1 )); then
+    prior_cursor_sha="$(jq -r '.prior_cursor_sha256 // ""' "$pending_receipt")"
+    jq -e '
+      (.prior_cursor_sha256 | test("^[0-9a-f]{64}$"))
+      and (.prior_cursor | type == "object")
+    ' "$pending_receipt" >/dev/null || {
+      echo "pending bridge receipt lacks its exact prior cursor" >&2
+      return 1
+    }
+    prior_cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-chain-prior.XXXXXX")"
+    jq '.prior_cursor' "$pending_receipt" >"$prior_cursor_tmp"
+    [[ "$(sha256_file "$prior_cursor_tmp")" == "$prior_cursor_sha" ]] || {
+      echo "pending bridge embedded prior cursor differs from its digest" >&2
+      return 1
+    }
+    if [[ "$plan_schema" == hepta_vnext_launchd_bridge_plan_v2 && "$transition_name" == recutover ]]; then
+      verify_rebase_ready_cursor "$prior_cursor_tmp" "$plan" "$((sequence - 1))" \
+        "$previous_receipt" "$previous_sha" || return 1
+    fi
+    exact_prior_cursor=true
+  fi
   if [[ -e "$chain_cursor" || -L "$chain_cursor" ]]; then
     [[ -f "$chain_cursor" && ! -L "$chain_cursor" ]] || { echo "unsafe bridge chain cursor" >&2; return 1; }
     cursor_sha="$(sha256_file "$chain_cursor")"
@@ -1248,6 +1429,7 @@ recover_pending_locked() {
       --arg source "$source_generation" --arg target "$target_generation" \
       --arg previous_receipt "$previous_receipt" --arg previous_sha "$previous_sha" \
       --arg plan_schema "$plan_schema" --arg epoch "$epoch" --arg parent_plan_sha "$parent_plan_sha" \
+      --arg cursor_sha "$cursor_sha" --arg prior_cursor_sha "$prior_cursor_sha" \
       --argjson sequence "$sequence" '
       (
         (.schema == "hepta_vnext_launchd_bridge_chain_pending_v1" or .schema == "hepta_vnext_launchd_bridge_chain_pending_v2")
@@ -1265,6 +1447,7 @@ recover_pending_locked() {
           .schema == "hepta_vnext_launchd_bridge_chain_pending_v2"
           and (.epoch | tostring) == $epoch and .parent_plan_sha256 == $parent_plan_sha
         else .schema == "hepta_vnext_launchd_bridge_chain_pending_v1" end)
+        and (if $sequence > 1 then .prior_cursor_sha256 == $prior_cursor_sha else true end)
       ) or (
         (.schema == "hepta_vnext_launchd_bridge_chain_v1" or .schema == "hepta_vnext_launchd_bridge_chain_v2")
         and .status == "ready"
@@ -1275,10 +1458,19 @@ recover_pending_locked() {
         else .schema == "hepta_vnext_launchd_bridge_chain_v1" end)
         and (
           (.sequence == $sequence and .current_generation == $target
-            and .head_receipt == $pending_receipt and (.head_receipt_sha256 | test("^[0-9a-f]{64}$")))
+            and .head_receipt == $pending_receipt and (.head_receipt_sha256 | test("^[0-9a-f]{64}$"))
+            and .transition_receipt == $pending_receipt
+            and (.transition_receipt_sha256 | test("^[0-9a-f]{64}$"))
+            and .transition_pending_receipt == $pending_receipt
+            and .transition_pending_receipt_sha256 == $pending_sha
+            and (.transition_pending_cursor_sha256 | test("^[0-9a-f]{64}$"))
+            and (if $sequence > 1 then .transition_prior_cursor_sha256 == $prior_cursor_sha
+              else .transition_prior_cursor_sha256 == null end)
+            and .transition_receipt_finalized == false)
           or
           ($sequence > 1 and .sequence == ($sequence - 1) and .current_generation == $source
-            and .head_receipt == $previous_receipt and .head_receipt_sha256 == $previous_sha)
+            and .head_receipt == $previous_receipt and .head_receipt_sha256 == $previous_sha
+            and $cursor_sha == $prior_cursor_sha)
         )
       )
     ' "$chain_cursor" >/dev/null || { echo "pending receipt is not the recoverable bridge chain operation" >&2; return 1; }
@@ -1323,54 +1515,209 @@ recover_pending_locked() {
       remove_chain_cursor_cas "$chain_cursor" "$cursor_sha" || return 1
     fi
   else
-    previous_receipt="$(canonical_file "$previous_receipt")" || return 1
-    [[ "$(sha256_file "$previous_receipt")" == "$previous_sha" ]] || {
-      echo "previous bridge receipt changed before chain recovery" >&2
-      return 1
-    }
-    temp_root="${TMPDIR:-/tmp}"
-    cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-chain-recovery.XXXXXX")"
-    jq -n --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" --arg epoch "$epoch" \
-      --arg parent_plan_sha256 "$parent_plan_sha" --arg current_generation "$source_generation" \
-      --arg head_receipt "$previous_receipt" --arg head_receipt_sha256 "$previous_sha" \
-      --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson sequence "$((sequence - 1))" \
-      '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_chain_v2" else "hepta_vnext_launchd_bridge_chain_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),plan_sha256:$plan_sha256,sequence:$sequence,current_generation:$current_generation,head_receipt:$head_receipt,head_receipt_sha256:$head_receipt_sha256,updated_at:$updated_at}' >"$cursor_tmp"
+    if [[ "$exact_prior_cursor" == true ]]; then
+      cursor_tmp="$prior_cursor_tmp"
+    else
+      cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-chain-recovery.XXXXXX")"
+      jq -n --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" --arg epoch "$epoch" \
+        --arg parent_plan_sha256 "$parent_plan_sha" --arg current_generation "$source_generation" \
+        --arg head_receipt "$previous_receipt" --arg head_receipt_sha256 "$previous_sha" \
+        --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson sequence "$((sequence - 1))" \
+        '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_chain_v2" else "hepta_vnext_launchd_bridge_chain_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),plan_sha256:$plan_sha256,sequence:$sequence,current_generation:$current_generation,head_receipt:$head_receipt,head_receipt_sha256:$head_receipt_sha256,updated_at:$updated_at}' >"$cursor_tmp"
+    fi
     if [[ -n "$cursor_sha" ]] && [[ "$(sha256_file "$chain_cursor")" == "$(sha256_file "$cursor_tmp")" ]]; then
       :
     else
       write_chain_cursor_cas "$chain_cursor" "$cursor_sha" "$cursor_tmp" || { rm -f "$cursor_tmp"; return 1; }
     fi
-    rm -f "$cursor_tmp"
+    if [[ "$exact_prior_cursor" == true && "$plan_schema" == hepta_vnext_launchd_bridge_plan_v2 \
+      && "$transition_name" == recutover ]]; then
+      verify_rebase_ready_cursor "$chain_cursor" "$plan" "$((sequence - 1))" \
+        "$previous_receipt" "$previous_sha" || return 1
+    fi
+    [[ "$cursor_tmp" == "$prior_cursor_tmp" ]] || rm -f "$cursor_tmp"
+    cursor_tmp=""
   fi
-  temp_root="${TMPDIR:-/tmp}"; receipt_tmp="$(mktemp "${temp_root%/}/hepta-bridge-recovery.XXXXXX")"
+  receipt_tmp="$(mktemp "${temp_root%/}/hepta-bridge-recovery.XXXXXX")"
   jq -n --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" \
     --arg epoch "$epoch" --arg parent_plan_sha256 "$parent_plan_sha" --arg pending_sha256 "$pending_sha" \
     --arg restored_generation "$source_generation" --arg recovered_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_pending_recovery_v2" else "hepta_vnext_launchd_bridge_pending_recovery_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),bundle:$bundle,plan_sha256:$plan_sha256,pending_receipt_sha256:$pending_sha256,restored_generation:$restored_generation,recovered_at:$recovered_at,applied:true,source_service_pair_restored:true,chain_head_restored:true,no_transition_pass_published:true}' >"$receipt_tmp"
+    --argjson exact_prior_cursor_restored "$exact_prior_cursor" \
+    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_pending_recovery_v2" else "hepta_vnext_launchd_bridge_pending_recovery_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),bundle:$bundle,plan_sha256:$plan_sha256,pending_receipt_sha256:$pending_sha256,restored_generation:$restored_generation,recovered_at:$recovered_at,applied:true,source_service_pair_restored:true,chain_head_restored:true,exact_prior_cursor_restored:$exact_prior_cursor_restored,no_transition_pass_published:true}' >"$receipt_tmp"
   replace_reserved_receipt "$pending_receipt" "$pending_sha" "$receipt_tmp" || { rm -f "$receipt_tmp"; return 1; }
-  rm -f "$receipt_tmp"
+  trap - RETURN
+  rm -f "${receipt_tmp:-}" "${cursor_tmp:-}" "${prior_cursor_tmp:-}"
   cat "$pending_receipt"
+}
+
+recover_transition_final_receipt_locked() {
+  local bundle="$1" transition_receipt="$2" apply="$3" service_mode="$4"
+  local plan plan_sha plan_schema epoch="" parent_plan_sha="" chain_cursor receipt_sha cursor_sha
+  local sequence transition_name source_generation target_generation previous_receipt previous_sha finalized
+  local cursor_tmp temp_root
+  verify_bundle "$bundle" >/dev/null || return 1
+  plan="$bundle/plan.json"; plan_sha="$(sha256_file "$plan")"
+  plan_schema="$(jq -r '.schema' "$plan")"
+  if [[ "$plan_schema" == hepta_vnext_launchd_bridge_plan_v2 ]]; then
+    epoch="$(jq -r '.epoch' "$plan")"
+    parent_plan_sha="$(jq -r '.parent_plan_sha256' "$plan")"
+  fi
+  transition_receipt="$(canonical_file "$transition_receipt")" || return 1
+  receipt_sha="$(sha256_file "$transition_receipt")"
+  chain_cursor="$(jq -r '.chain_cursor' "$plan")"
+  jq -e --arg bundle "$bundle" --arg plan_sha "$plan_sha" --arg plan_schema "$plan_schema" \
+    --arg epoch "$epoch" --arg parent_plan_sha "$parent_plan_sha" --arg service_mode "$service_mode" \
+    --arg chain_cursor "$chain_cursor" --arg receipt "$transition_receipt" \
+    --arg legacy_gateway "$(jq -r '.legacy.gateway.sha256' "$plan")" \
+    --arg legacy_watchdog "$(jq -r '.legacy.watchdog.sha256' "$plan")" \
+    --arg vnext_gateway "$(jq -r '.vnext.gateway.sha256' "$plan")" \
+    --arg vnext_watchdog "$(jq -r '.vnext.watchdog.sha256' "$plan")" '
+    (.schema == "hepta_vnext_launchd_bridge_transition_v1" or .schema == "hepta_vnext_launchd_bridge_transition_v2")
+    and .status == "ready" and .bundle == $bundle and .plan_sha256 == $plan_sha
+    and .service_mode == $service_mode and .chain_cursor == $chain_cursor
+    and .pending_receipt == $receipt
+    and (.pending_receipt_sha256 | test("^[0-9a-f]{64}$"))
+    and (.pending_cursor_sha256 | test("^[0-9a-f]{64}$"))
+    and (if .sequence == 1 then .prior_cursor_sha256 == null
+      else (.prior_cursor_sha256 | test("^[0-9a-f]{64}$")) end)
+    and (if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then
+      .schema == "hepta_vnext_launchd_bridge_transition_v2"
+      and (.epoch | tostring) == $epoch and .parent_plan_sha256 == $parent_plan_sha
+    else .schema == "hepta_vnext_launchd_bridge_transition_v1" end)
+    and (.sequence | type == "number" and . >= 1 and . == floor)
+    and (if .transition == "cutover" then
+      .sequence == 1 and .source_generation == "legacy" and .target_generation == "vnext"
+      and .previous_receipt == null and .previous_receipt_sha256 == null
+    elif .transition == "rollback" then
+      .sequence >= 2 and .source_generation == "vnext" and .target_generation == "legacy"
+      and (.previous_receipt | startswith("/")) and (.previous_receipt_sha256 | test("^[0-9a-f]{64}$"))
+    elif .transition == "recutover" then
+      .sequence >= 3 and .source_generation == "legacy" and .target_generation == "vnext"
+      and (.previous_receipt | startswith("/")) and (.previous_receipt_sha256 | test("^[0-9a-f]{64}$"))
+    else false end)
+    and .installed.gateway_sha256 == (if .target_generation == "legacy" then $legacy_gateway else $vnext_gateway end)
+    and .installed.watchdog_sha256 == (if .target_generation == "legacy" then $legacy_watchdog else $vnext_watchdog end)
+    and .chain_head_committed == true and .applied == true
+    and .service_pair_reloaded == true and .post_transition_health_verified == true
+  ' "$transition_receipt" >/dev/null || {
+    echo "invalid finalized transition receipt" >&2
+    return 1
+  }
+  sequence="$(jq -r '.sequence' "$transition_receipt")"
+  transition_name="$(jq -r '.transition' "$transition_receipt")"
+  source_generation="$(jq -r '.source_generation' "$transition_receipt")"
+  target_generation="$(jq -r '.target_generation' "$transition_receipt")"
+  previous_receipt="$(jq -r '.previous_receipt // ""' "$transition_receipt")"
+  previous_sha="$(jq -r '.previous_receipt_sha256 // ""' "$transition_receipt")"
+  if (( sequence > 1 )); then
+    previous_receipt="$(canonical_file "$previous_receipt")" || return 1
+    [[ "$(sha256_file "$previous_receipt")" == "$previous_sha" ]] || {
+      echo "finalized transition predecessor differs from its receipt" >&2
+      return 1
+    }
+  fi
+  [[ -f "$chain_cursor" && ! -L "$chain_cursor" ]] || {
+    echo "finalized transition chain cursor is missing" >&2
+    return 1
+  }
+  cursor_sha="$(sha256_file "$chain_cursor")"
+  jq -e --arg plan_sha "$plan_sha" --arg plan_schema "$plan_schema" --arg epoch "$epoch" \
+    --arg parent_plan_sha "$parent_plan_sha" --arg target "$target_generation" \
+    --arg receipt "$transition_receipt" --arg receipt_sha "$receipt_sha" \
+    --arg pending_sha "$(jq -r '.pending_receipt_sha256' "$transition_receipt")" \
+    --arg pending_cursor_sha "$(jq -r '.pending_cursor_sha256' "$transition_receipt")" \
+    --arg prior_cursor_sha "$(jq -r '.prior_cursor_sha256 // ""' "$transition_receipt")" \
+    --argjson sequence "$sequence" '
+    (.schema == "hepta_vnext_launchd_bridge_chain_v1" or .schema == "hepta_vnext_launchd_bridge_chain_v2")
+    and .status == "ready" and .plan_sha256 == $plan_sha and .sequence == $sequence
+    and .current_generation == $target and .head_receipt == $receipt and .head_receipt_sha256 == $receipt_sha
+    and .transition_receipt == $receipt and .transition_receipt_sha256 == $receipt_sha
+    and .transition_pending_receipt == $receipt and .transition_pending_receipt_sha256 == $pending_sha
+    and .transition_pending_cursor_sha256 == $pending_cursor_sha
+    and (if $sequence == 1 then .transition_prior_cursor_sha256 == null
+      else .transition_prior_cursor_sha256 == $prior_cursor_sha end)
+    and (.transition_receipt_finalized == false or .transition_receipt_finalized == true)
+    and (if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then
+      .schema == "hepta_vnext_launchd_bridge_chain_v2"
+      and (.epoch | tostring) == $epoch and .parent_plan_sha256 == $parent_plan_sha
+    else .schema == "hepta_vnext_launchd_bridge_chain_v1" end)
+  ' "$chain_cursor" >/dev/null || {
+    echo "finalized transition receipt is not the cursor finalization operation" >&2
+    return 1
+  }
+  active_pair_matches_generation "$plan" "$target_generation" || {
+    echo "transition cursor finalization found a changed service pair" >&2
+    return 1
+  }
+  finalized="$(jq -r '.transition_receipt_finalized' "$chain_cursor")"
+  if [[ "$apply" != true ]]; then
+    jq -cn --arg bundle "$bundle" --arg receipt "$transition_receipt" \
+      --arg transition "$transition_name" --argjson already_finalized "$finalized" \
+      '{schema:"hepta_vnext_launchd_bridge_transition_finalization_plan_v1",status:"ready",bundle:$bundle,transition:$transition,transition_receipt:$receipt,already_finalized:$already_finalized,service_changed:false,applied:false}'
+    return
+  fi
+  if [[ "$finalized" == false ]]; then
+    temp_root="${TMPDIR:-/tmp}"
+    cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-transition-finalize-cursor.XXXXXX")"
+    trap 'rm -f "${cursor_tmp:-}"; trap - RETURN' RETURN
+    jq '.transition_receipt_finalized = true | .updated_at = $updated_at' \
+      --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$chain_cursor" >"$cursor_tmp"
+    write_chain_cursor_cas "$chain_cursor" "$cursor_sha" "$cursor_tmp" || return 1
+    trap - RETURN
+    rm -f "$cursor_tmp"
+  fi
+  verify_ready_chain_cursor "$chain_cursor" "$plan_sha" "$sequence" \
+    "$target_generation" "$transition_receipt" "$receipt_sha" "$epoch" || return 1
+  cat "$transition_receipt"
 }
 
 recover_rebase_pending_locked() {
   local bundle="$1" pending_receipt="$2" apply="$3" service_mode="$4"
   local plan plan_sha chain_cursor pending_sha current_cursor_sha prior_cursor_tmp recovery_tmp temp_root
+  local predecessor_receipt predecessor_sha predecessor_plan_sha
   verify_bundle "$bundle" >/dev/null || return 1
   plan="$bundle/plan.json"; plan_sha="$(sha256_file "$plan")"
   pending_receipt="$(canonical_file "$pending_receipt")" || return 1
   pending_sha="$(sha256_file "$pending_receipt")"
   chain_cursor="$(jq -r '.chain_cursor' "$plan")"
-  jq -e --arg bundle "$bundle" --arg plan_sha "$plan_sha" --arg chain_cursor "$chain_cursor" '
+  jq -e --arg bundle "$bundle" --arg plan_sha "$plan_sha" --arg chain_cursor "$chain_cursor" \
+    --arg pending_receipt "$pending_receipt" --arg parent_plan_sha "$(jq -r '.parent_plan_sha256' "$plan")" \
+    --arg predecessor "$(jq -r '.predecessor_rollback.receipt' "$plan")" \
+    --arg predecessor_sha "$(jq -r '.predecessor_rollback.sha256' "$plan")" \
+    --argjson predecessor_sequence "$(jq -r '.predecessor_rollback.sequence' "$plan")" \
+    --argjson epoch "$(jq -r '.epoch' "$plan")" --argjson parent_epoch "$(jq -r '.parent_epoch' "$plan")" '
     .schema == "hepta_vnext_launchd_bridge_rebase_pending_v2"
     and .status == "pending" and .bundle == $bundle and .plan_sha256 == $plan_sha
-    and .chain_cursor == $chain_cursor and .applied == false and .service_changed == false
-    and (.epoch | type == "number" and . >= 2 and . == floor)
-    and (.parent_plan_sha256 | test("^[0-9a-f]{64}$"))
-    and (.predecessor_rollback_sha256 | test("^[0-9a-f]{64}$"))
-    and (.predecessor_sequence | type == "number" and . >= 2 and . == floor)
+    and .chain_cursor == $chain_cursor and .pending_receipt == $pending_receipt
+    and .applied == false and .service_changed == false
+    and .epoch == $epoch and .parent_epoch == $parent_epoch
+    and .parent_plan_sha256 == $parent_plan_sha
+    and .predecessor_rollback_receipt == $predecessor
+    and .predecessor_rollback_sha256 == $predecessor_sha
+    and .predecessor_sequence == $predecessor_sequence
     and (.prior_cursor_sha256 | test("^[0-9a-f]{64}$"))
     and (.prior_cursor | type == "object")
   ' "$pending_receipt" >/dev/null || { echo "invalid pending chain rebase receipt" >&2; return 1; }
+  predecessor_receipt="$(jq -r '.predecessor_rollback_receipt' "$pending_receipt")"
+  [[ "$(canonical_file "$predecessor_receipt")" == "$predecessor_receipt" ]] || {
+    echo "pending rebase predecessor path is not canonical" >&2
+    return 1
+  }
+  predecessor_sha="$(jq -r '.predecessor_rollback_sha256' "$pending_receipt")"
+  [[ "$(sha256_file "$predecessor_receipt")" == "$predecessor_sha" ]] || {
+    echo "pending rebase predecessor receipt changed before recovery" >&2
+    return 1
+  }
+  predecessor_plan_sha="$(jq -r '.predecessor_rollback.plan_sha256' "$plan")"
+  [[ "$(verify_rollback_predecessor "$predecessor_receipt" "$predecessor_plan_sha" "$chain_cursor")" == "$predecessor_sha" ]] || return 1
+  temp_root="${TMPDIR:-/tmp}"
+  prior_cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-recovery-cursor.XXXXXX")"
+  trap 'rm -f "${prior_cursor_tmp:-}" "${recovery_tmp:-}"; trap - RETURN' RETURN
+  jq '.prior_cursor' "$pending_receipt" >"$prior_cursor_tmp"
+  [[ "$(sha256_file "$prior_cursor_tmp")" == "$(jq -r '.prior_cursor_sha256' "$pending_receipt")" ]] || {
+    echo "pending rebase embedded parent cursor does not match its digest" >&2
+    return 1
+  }
   jq -e --arg parent_plan "$(jq -r '.parent_plan_sha256' "$pending_receipt")" \
     --arg predecessor "$(jq -r '.predecessor_rollback_receipt' "$pending_receipt")" \
     --arg predecessor_sha "$(jq -r '.predecessor_rollback_sha256' "$pending_receipt")" \
@@ -1387,8 +1734,10 @@ recover_rebase_pending_locked() {
   current_cursor_sha="$(sha256_file "$chain_cursor")"
   jq -e --arg plan_sha "$plan_sha" --arg parent_plan "$(jq -r '.parent_plan_sha256' "$pending_receipt")" \
     --arg pending_receipt "$pending_receipt" --arg pending_sha "$pending_sha" \
+    --arg current_cursor_sha "$current_cursor_sha" \
     --arg predecessor "$(jq -r '.predecessor_rollback_receipt' "$pending_receipt")" \
     --arg predecessor_sha "$(jq -r '.predecessor_rollback_sha256' "$pending_receipt")" \
+    --arg prior_cursor_sha "$(jq -r '.prior_cursor_sha256' "$pending_receipt")" \
     --argjson epoch "$(jq -r '.epoch' "$pending_receipt")" --argjson sequence "$(jq -r '.predecessor_sequence' "$pending_receipt")" '
     (
       .schema == "hepta_vnext_launchd_bridge_chain_rebase_pending_v2"
@@ -1396,17 +1745,26 @@ recover_rebase_pending_locked() {
       and .parent_plan_sha256 == $parent_plan and .predecessor_sequence == $sequence
       and .predecessor_rollback_receipt == $predecessor and .predecessor_rollback_sha256 == $predecessor_sha
       and .pending_receipt == $pending_receipt and .pending_receipt_sha256 == $pending_sha
+      and .prior_cursor_sha256 == $prior_cursor_sha
     ) or (
       .schema == "hepta_vnext_launchd_bridge_chain_v2"
       and .status == "ready" and .plan_sha256 == $plan_sha and .epoch == $epoch
       and .parent_plan_sha256 == $parent_plan and .sequence == $sequence
       and .current_generation == "legacy" and .head_receipt == $predecessor
       and .head_receipt_sha256 == $predecessor_sha
+      and .rebase_receipt == $pending_receipt
+      and (.rebase_receipt_sha256 | test("^[0-9a-f]{64}$"))
+      and .rebase_pending_receipt == $pending_receipt
+      and .rebase_pending_receipt_sha256 == $pending_sha
+      and (.rebase_pending_cursor_sha256 | test("^[0-9a-f]{64}$"))
+      and .rebase_prior_cursor_sha256 == $prior_cursor_sha
+      and .rebase_receipt_finalized == false
     ) or (
       (.schema == "hepta_vnext_launchd_bridge_chain_v1" or .schema == "hepta_vnext_launchd_bridge_chain_v2")
       and .status == "ready" and .plan_sha256 == $parent_plan and .sequence == $sequence
       and .current_generation == "legacy" and .head_receipt == $predecessor
       and .head_receipt_sha256 == $predecessor_sha
+      and $current_cursor_sha == $prior_cursor_sha
     )
   ' "$chain_cursor" >/dev/null || { echo "pending rebase is not the recoverable chain operation" >&2; return 1; }
   active_pair_matches_generation "$plan" legacy || {
@@ -1418,11 +1776,7 @@ recover_rebase_pending_locked() {
       '{schema:"hepta_vnext_launchd_bridge_rebase_recovery_plan_v2",status:"ready",bundle:$bundle,pending_receipt:$pending_receipt,restore_parent_chain:true,service_changed:false,applied:false}'
     return
   fi
-  temp_root="${TMPDIR:-/tmp}"
-  prior_cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-recovery-cursor.XXXXXX")"
   recovery_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-recovery.XXXXXX")"
-  trap 'rm -f "${prior_cursor_tmp:-}" "${recovery_tmp:-}"; trap - RETURN' RETURN
-  jq '.prior_cursor' "$pending_receipt" >"$prior_cursor_tmp"
   if [[ "$(sha256_file "$chain_cursor")" != "$(sha256_file "$prior_cursor_tmp")" ]]; then
     write_chain_cursor_cas "$chain_cursor" "$current_cursor_sha" "$prior_cursor_tmp" || return 1
   fi
@@ -1437,6 +1791,101 @@ recover_rebase_pending_locked() {
   cat "$pending_receipt"
 }
 
+recover_rebase_final_receipt_locked() {
+  local bundle="$1" rebase_receipt="$2" apply="$3" service_mode="$4"
+  local plan plan_sha chain_cursor receipt_sha current_cursor_sha finalized cursor_tmp temp_root
+  local predecessor_receipt predecessor_sha predecessor_sequence parent_epoch
+  : "$service_mode"
+  verify_bundle "$bundle" >/dev/null || return 1
+  plan="$bundle/plan.json"; plan_sha="$(sha256_file "$plan")"
+  rebase_receipt="$(canonical_file "$rebase_receipt")" || return 1
+  receipt_sha="$(sha256_file "$rebase_receipt")"
+  chain_cursor="$(jq -r '.chain_cursor' "$plan")"
+  parent_epoch="$(jq -r '.parent_epoch' "$plan")"
+  predecessor_receipt="$(jq -r '.predecessor_rollback.receipt' "$plan")"
+  predecessor_receipt="$(canonical_file "$predecessor_receipt")" || return 1
+  predecessor_sha="$(jq -r '.predecessor_rollback.sha256' "$plan")"
+  predecessor_sequence="$(jq -r '.predecessor_rollback.sequence' "$plan")"
+  [[ "$(sha256_file "$predecessor_receipt")" == "$predecessor_sha" ]] || {
+    echo "finalized rebase predecessor differs from the reviewed rollback" >&2
+    return 1
+  }
+  jq -e --arg bundle "$bundle" --arg plan_sha "$plan_sha" --arg chain_cursor "$chain_cursor" \
+    --arg receipt "$rebase_receipt" --arg predecessor "$predecessor_receipt" \
+    --arg predecessor_sha "$predecessor_sha" --argjson predecessor_sequence "$predecessor_sequence" \
+    --argjson epoch "$(jq -r '.epoch' "$plan")" --argjson parent_epoch "$parent_epoch" \
+    --arg parent_plan_sha "$(jq -r '.parent_plan_sha256' "$plan")" '
+    .schema == "hepta_vnext_launchd_bridge_rebase_v2" and .status == "ready"
+    and .bundle == $bundle and .plan_sha256 == $plan_sha and .epoch == $epoch
+    and .parent_epoch == $parent_epoch
+    and .parent_plan_sha256 == $parent_plan_sha and .chain_cursor == $chain_cursor
+    and .pending_receipt == $receipt
+    and (.pending_receipt_sha256 | test("^[0-9a-f]{64}$"))
+    and (.pending_cursor_sha256 | test("^[0-9a-f]{64}$"))
+    and (.prior_cursor_sha256 | test("^[0-9a-f]{64}$"))
+    and .predecessor_rollback_receipt == $predecessor
+    and .predecessor_rollback_sha256 == $predecessor_sha
+    and .predecessor_sequence == $predecessor_sequence
+    and .applied == true and .chain_rebase_committed == true
+    and .service_pair_unchanged == true and .service_changed == false
+  ' "$rebase_receipt" >/dev/null || {
+    echo "invalid finalized rebase receipt" >&2
+    return 1
+  }
+  [[ -f "$chain_cursor" && ! -L "$chain_cursor" ]] || {
+    echo "finalized rebase chain cursor is missing" >&2
+    return 1
+  }
+  current_cursor_sha="$(sha256_file "$chain_cursor")"
+  jq -e --arg plan_sha "$plan_sha" --arg parent_plan_sha "$(jq -r '.parent_plan_sha256' "$plan")" \
+    --arg rebase_receipt "$rebase_receipt" --arg rebase_receipt_sha "$receipt_sha" \
+    --arg pending_sha "$(jq -r '.pending_receipt_sha256' "$rebase_receipt")" \
+    --arg pending_cursor_sha "$(jq -r '.pending_cursor_sha256' "$rebase_receipt")" \
+    --arg prior_cursor_sha "$(jq -r '.prior_cursor_sha256' "$rebase_receipt")" \
+    --arg predecessor "$(jq -r '.predecessor_rollback_receipt' "$rebase_receipt")" \
+    --arg predecessor_sha "$(jq -r '.predecessor_rollback_sha256' "$rebase_receipt")" \
+    --argjson epoch "$(jq -r '.epoch' "$plan")" --argjson parent_epoch "$parent_epoch" \
+    --argjson sequence "$predecessor_sequence" '
+    .schema == "hepta_vnext_launchd_bridge_chain_v2" and .status == "ready"
+    and .plan_sha256 == $plan_sha and .parent_plan_sha256 == $parent_plan_sha
+    and .epoch == $epoch and .parent_epoch == $parent_epoch
+    and .sequence == $sequence and .current_generation == "legacy"
+    and .head_receipt == $predecessor and .head_receipt_sha256 == $predecessor_sha
+    and .rebase_receipt == $rebase_receipt and .rebase_receipt_sha256 == $rebase_receipt_sha
+    and .rebase_pending_receipt == $rebase_receipt
+    and .rebase_pending_receipt_sha256 == $pending_sha
+    and .rebase_pending_cursor_sha256 == $pending_cursor_sha
+    and .rebase_prior_cursor_sha256 == $prior_cursor_sha
+    and (.rebase_receipt_finalized == false or .rebase_receipt_finalized == true)
+  ' "$chain_cursor" >/dev/null || {
+    echo "finalized rebase receipt is not the cursor finalization operation" >&2
+    return 1
+  }
+  active_pair_matches_generation "$plan" legacy || {
+    echo "rebase cursor finalization found a changed service pair" >&2
+    return 1
+  }
+  finalized="$(jq -r '.rebase_receipt_finalized' "$chain_cursor")"
+  if [[ "$apply" != true ]]; then
+    jq -cn --arg bundle "$bundle" --arg receipt "$rebase_receipt" --argjson already_finalized "$finalized" \
+      '{schema:"hepta_vnext_launchd_bridge_rebase_finalization_plan_v2",status:"ready",bundle:$bundle,rebase_receipt:$receipt,already_finalized:$already_finalized,service_changed:false,applied:false}'
+    return
+  fi
+  if [[ "$finalized" == false ]]; then
+    temp_root="${TMPDIR:-/tmp}"
+    cursor_tmp="$(mktemp "${temp_root%/}/hepta-bridge-rebase-finalize-cursor.XXXXXX")"
+    trap 'rm -f "${cursor_tmp:-}"; trap - RETURN' RETURN
+    jq '.rebase_receipt_finalized = true | .updated_at = $updated_at' \
+      --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$chain_cursor" >"$cursor_tmp"
+    write_chain_cursor_cas "$chain_cursor" "$current_cursor_sha" "$cursor_tmp" || return 1
+    trap - RETURN
+    rm -f "$cursor_tmp"
+  fi
+  verify_rebase_ready_cursor "$chain_cursor" "$plan" "$predecessor_sequence" \
+    "$predecessor_receipt" "$predecessor_sha" || return 1
+  cat "$rebase_receipt"
+}
+
 recover_pending() {
   local bundle="$1" pending_receipt="$2" apply="$3" service_mode="$4"
   local pending_schema
@@ -1444,6 +1893,11 @@ recover_pending() {
   if [[ "$apply" != true ]]; then
     if [[ "$pending_schema" == hepta_vnext_launchd_bridge_rebase_pending_v2 ]]; then
       recover_rebase_pending_locked "$@"
+    elif [[ "$pending_schema" == hepta_vnext_launchd_bridge_rebase_v2 ]]; then
+      recover_rebase_final_receipt_locked "$@"
+    elif [[ "$pending_schema" == hepta_vnext_launchd_bridge_transition_v1 \
+      || "$pending_schema" == hepta_vnext_launchd_bridge_transition_v2 ]]; then
+      recover_transition_final_receipt_locked "$@"
     else
       recover_pending_locked "$@"
     fi
@@ -1456,6 +1910,15 @@ recover_pending() {
   if [[ "$pending_schema" == hepta_vnext_launchd_bridge_rebase_pending_v2 ]]; then
     with_bridge_operation_lock "$launch_root" with_generation_coordination_lock \
       "$install_root" recover_rebase_pending_locked \
+        "$bundle" "$pending_receipt" "$apply" "$service_mode"
+  elif [[ "$pending_schema" == hepta_vnext_launchd_bridge_rebase_v2 ]]; then
+    with_bridge_operation_lock "$launch_root" with_generation_coordination_lock \
+      "$install_root" recover_rebase_final_receipt_locked \
+        "$bundle" "$pending_receipt" "$apply" "$service_mode"
+  elif [[ "$pending_schema" == hepta_vnext_launchd_bridge_transition_v1 \
+    || "$pending_schema" == hepta_vnext_launchd_bridge_transition_v2 ]]; then
+    with_bridge_operation_lock "$launch_root" with_generation_coordination_lock \
+      "$install_root" recover_transition_final_receipt_locked \
         "$bundle" "$pending_receipt" "$apply" "$service_mode"
   else
     with_bridge_operation_lock "$launch_root" with_generation_coordination_lock \
@@ -1559,13 +2022,16 @@ self_test() {
   local cutover_receipt rollback_receipt recutover_receipt second_rollback_receipt
   local snapshot_receipt canary_receipt soak_receipt legacy_state source_commit binary_sha fault_receipt occupied_receipt
   local manifest_sha snapshot_sha lock_receipt generation_lock_receipt replay_receipt stale_snapshot_receipt bad_canary bad_bundle
+  local transition_pending_copy saved_transition_receipt transition_receipt_sha transition_cursor_sha
   local legacy_v1_snapshot legacy_v1_canary legacy_v1_bundle legacy_v1_source_inventory legacy_v1_payload_inventory
   local log_symlink_receipt log_child_symlink_receipt
   local release2 install_root2 fresh_snapshot_receipt fresh_canary_receipt fresh_soak_receipt fresh_snapshot_sha
   local recutover_bundle fork_bundle rebase_fault_receipt rebase_receipt v2_pending_receipt v2_recutover_receipt v2_rollback_receipt
-  local wrong_predecessor_bundle fork_rebase_receipt stale_v2_receipt
+  local wrong_predecessor_bundle fork_rebase_receipt stale_v2_receipt successful_pending_copy modified_pending_copy
+  local saved_rebase_receipt completed_rebase_cursor_sha completed_rebase_receipt_sha recovered_rebase_cursor_sha
+  local reserved_fault_receipt reserved_pending_copy reserved_cursor_sha tampered_pending_tmp reserved_recovery_receipt replace_fault_receipt
   local release3 snapshot3 canary3 soak3 bundle3 rebase3 recutover3 rollback3 stale_after_rebase
-  local release4 snapshot4 canary4 soak4 bundle4 rebase4 release5 snapshot5 canary5 soak5 bundle5 rebase5 stale_after_recovery
+  local release4 snapshot4 canary4 soak4 bundle4 rebase4 rebase4_cursor_sha release5 snapshot5 canary5 soak5 bundle5 rebase5 stale_after_recovery
   temp_root="${TMPDIR:-/tmp}"
   root="$(mktemp -d "${temp_root%/}/hepta-launchd-bridge-self-test.XXXXXX")"
   HEPTA_BRIDGE_SELF_TEST_ROOT="$root"
@@ -1754,7 +2220,58 @@ self_test() {
     exit 1
   fi
   chmod 0755 "$install_root/logs" "$install_root/logs/gateway" "$install_root/logs/watchdog"
-  transition cutover "$bundle" "" "$cutover_receipt" true test >/dev/null
+  transition_pending_copy="$root/cutover-pending-copy.json"
+  if HEPTA_BRIDGE_SELF_TEST_CAPTURE_TRANSITION_PENDING="$transition_pending_copy" \
+    HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_TRANSITION_RECEIPT_FINALIZED=1 \
+    transition cutover "$bundle" "" "$cutover_receipt" true test >/dev/null 2>&1; then
+    echo "injected transition cursor-finalization interruption unexpectedly passed" >&2
+    exit 1
+  fi
+  jq -e '.schema == "hepta_vnext_launchd_bridge_transition_v1" and .transition == "cutover"
+    and .applied == true and .chain_head_committed == true' "$cutover_receipt" >/dev/null
+  jq -e '.transition_receipt_finalized == false' "$(jq -r '.chain_cursor' "$bundle/plan.json")" >/dev/null
+  transition_receipt_sha="$(sha256_file "$cutover_receipt")"
+  recover_pending "$bundle" "$cutover_receipt" true test >/dev/null
+  [[ "$(sha256_file "$cutover_receipt")" == "$transition_receipt_sha" ]] || {
+    echo "transition finalization recovery rewrote the final receipt" >&2
+    exit 1
+  }
+  jq -e '.transition_receipt_finalized == true' "$(jq -r '.chain_cursor' "$bundle/plan.json")" >/dev/null
+  transition_cursor_sha="$(sha256_file "$(jq -r '.chain_cursor' "$bundle/plan.json")")"
+  recover_pending "$bundle" "$cutover_receipt" true test >/dev/null
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$bundle/plan.json")")" == "$transition_cursor_sha" ]] || {
+    echo "idempotent transition finalization recovery changed the cursor" >&2
+    exit 1
+  }
+  if recover_pending "$bundle" "$transition_pending_copy" true test >/dev/null 2>&1; then
+    echo "completed transition accepted a copied stale pending receipt" >&2
+    exit 1
+  fi
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$bundle/plan.json")")" == "$transition_cursor_sha" ]] || {
+    echo "copied transition pending replay changed the completed cursor" >&2
+    exit 1
+  }
+  saved_transition_receipt="$root/cutover-final.saved"
+  cp "$cutover_receipt" "$saved_transition_receipt"
+  chmod 0400 "$saved_transition_receipt"
+  chmod 0600 "$cutover_receipt"
+  cp "$transition_pending_copy" "$cutover_receipt"
+  chmod 0400 "$cutover_receipt"
+  if recover_pending "$bundle" "$cutover_receipt" true test >/dev/null 2>&1; then
+    echo "completed transition accepted stale pending bytes at the original receipt path" >&2
+    exit 1
+  fi
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$bundle/plan.json")")" == "$transition_cursor_sha" ]] || {
+    echo "original-path transition pending replay changed the completed cursor" >&2
+    exit 1
+  }
+  chmod 0600 "$cutover_receipt"
+  cp "$saved_transition_receipt" "$cutover_receipt"
+  chmod 0400 "$cutover_receipt"
+  [[ "$(sha256_file "$cutover_receipt")" == "$transition_receipt_sha" ]] || {
+    echo "failed to restore the exact finalized transition receipt" >&2
+    exit 1
+  }
   for directory in "$install_root/logs" "$install_root/logs/gateway" "$install_root/logs/watchdog"; do
     [[ "$(stat -f '%Lp' "$directory")" == 700 ]] || {
       echo "bridge did not harden an existing vNext log directory: $directory" >&2
@@ -1834,6 +2351,56 @@ self_test() {
     "$fresh_snapshot_receipt" "$fresh_canary_receipt" "$fresh_soak_receipt" "$bundle" "$second_rollback_receipt" >/dev/null
   jq -e '.schema == "hepta_vnext_launchd_bridge_plan_v2" and .epoch == 2 and .parent_epoch == 1 and .fresh_evidence_required == true' "$recutover_bundle/plan.json" >/dev/null
 
+  reserved_fault_receipt="$root/rebase-reserved-only.json"
+  if HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_REBASE_RECEIPT_RESERVED=1 \
+    rebase_after_rollback "$recutover_bundle" "$second_rollback_receipt" "$reserved_fault_receipt" true >/dev/null 2>&1; then
+    echo "injected rebase receipt-reservation interruption unexpectedly passed" >&2
+    exit 1
+  fi
+  jq -e --arg receipt "$reserved_fault_receipt" '
+    .schema == "hepta_vnext_launchd_bridge_rebase_pending_v2"
+    and .status == "pending" and .pending_receipt == $receipt
+  ' "$reserved_fault_receipt" >/dev/null
+  reserved_cursor_sha="$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")"
+  reserved_pending_copy="$root/rebase-reserved-only-copy.json"
+  cp "$reserved_fault_receipt" "$reserved_pending_copy"
+  chmod 0400 "$reserved_pending_copy"
+  if recover_pending "$recutover_bundle" "$reserved_pending_copy" true test >/dev/null 2>&1; then
+    echo "pre-CAS recovery accepted a copied pending rebase receipt" >&2
+    exit 1
+  fi
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")" == "$reserved_cursor_sha" ]] || {
+    echo "copied pre-CAS pending receipt changed the parent cursor" >&2
+    exit 1
+  }
+  tampered_pending_tmp="$root/rebase-reserved-only-tampered.tmp"
+  jq '.prior_cursor.updated_at = "1970-01-01T00:00:00Z"' "$reserved_fault_receipt" >"$tampered_pending_tmp"
+  chmod 0600 "$reserved_fault_receipt"
+  cp "$tampered_pending_tmp" "$reserved_fault_receipt"
+  chmod 0400 "$reserved_fault_receipt"
+  if recover_pending "$recutover_bundle" "$reserved_fault_receipt" true test >/dev/null 2>&1; then
+    echo "pre-CAS recovery accepted pending bytes with a forged embedded cursor" >&2
+    exit 1
+  fi
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")" == "$reserved_cursor_sha" ]] || {
+    echo "forged pre-CAS pending receipt changed the parent cursor" >&2
+    exit 1
+  }
+  reserved_recovery_receipt="$root/rebase-reserved-recoverable.json"
+  if HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_REBASE_RECEIPT_RESERVED=1 \
+    rebase_after_rollback "$recutover_bundle" "$second_rollback_receipt" "$reserved_recovery_receipt" true >/dev/null 2>&1; then
+    echo "second injected rebase receipt-reservation interruption unexpectedly passed" >&2
+    exit 1
+  fi
+  recover_pending "$recutover_bundle" "$reserved_recovery_receipt" true test >/dev/null
+  jq -e '.schema == "hepta_vnext_launchd_bridge_rebase_recovery_v2"
+    and .parent_chain_restored == true and .no_rebase_pass_published == true' \
+    "$reserved_recovery_receipt" >/dev/null
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")" == "$reserved_cursor_sha" ]] || {
+    echo "valid pre-CAS pending recovery changed the exact parent cursor" >&2
+    exit 1
+  }
+
   rebase_fault_receipt="$root/rebase-pending.json"
   if HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_REBASE_PENDING=1 \
     rebase_after_rollback "$recutover_bundle" "$second_rollback_receipt" "$rebase_fault_receipt" true >/dev/null 2>&1; then
@@ -1843,9 +2410,92 @@ self_test() {
   jq -e '.schema == "hepta_vnext_launchd_bridge_rebase_pending_v2" and .status == "pending"' "$rebase_fault_receipt" >/dev/null
   recover_pending "$recutover_bundle" "$rebase_fault_receipt" true test >/dev/null
   jq -e '.schema == "hepta_vnext_launchd_bridge_rebase_recovery_v2" and .parent_chain_restored == true and .no_rebase_pass_published == true' "$rebase_fault_receipt" >/dev/null
+  replace_fault_receipt="$root/rebase-receipt-replace-fault.json"
+  if HEPTA_BRIDGE_SELF_TEST_FAIL_REBASE_RECEIPT_REPLACE=1 \
+    rebase_after_rollback "$recutover_bundle" "$second_rollback_receipt" "$replace_fault_receipt" true >/dev/null 2>&1; then
+    echo "injected rebase receipt replacement failure unexpectedly passed" >&2
+    exit 1
+  fi
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")" == "$reserved_cursor_sha" ]] || {
+    echo "rebase receipt replacement failure did not restore byte-exact parent cursor" >&2
+    exit 1
+  }
+  recover_pending "$recutover_bundle" "$replace_fault_receipt" true test >/dev/null
+  jq -e '.schema == "hepta_vnext_launchd_bridge_rebase_recovery_v2"
+    and .parent_chain_restored == true and .no_rebase_pass_published == true' \
+    "$replace_fault_receipt" >/dev/null
   rebase_receipt="$root/rebase.json"
-  rebase_after_rollback "$recutover_bundle" "$second_rollback_receipt" "$rebase_receipt" true >/dev/null
+  successful_pending_copy="$root/rebase-success-pending-copy.json"
+  if HEPTA_BRIDGE_SELF_TEST_CAPTURE_REBASE_PENDING="$successful_pending_copy" \
+    HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_REBASE_RECEIPT_FINALIZED=1 \
+    rebase_after_rollback "$recutover_bundle" "$second_rollback_receipt" "$rebase_receipt" true >/dev/null 2>&1; then
+    echo "injected rebase cursor-finalization interruption unexpectedly passed" >&2
+    exit 1
+  fi
   jq -e '.schema == "hepta_vnext_launchd_bridge_rebase_v2" and .chain_rebase_committed == true and .service_pair_unchanged == true' "$rebase_receipt" >/dev/null
+  jq -e --arg receipt "$rebase_receipt" --arg receipt_sha "$(sha256_file "$rebase_receipt")" '
+    .schema == "hepta_vnext_launchd_bridge_chain_v2"
+    and .rebase_receipt == $receipt and .rebase_receipt_sha256 == $receipt_sha
+    and .rebase_pending_receipt == $receipt and .rebase_receipt_finalized == false
+  ' "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")" >/dev/null
+  completed_rebase_receipt_sha="$(sha256_file "$rebase_receipt")"
+  recover_pending "$recutover_bundle" "$rebase_receipt" true test >/dev/null
+  [[ "$(sha256_file "$rebase_receipt")" == "$completed_rebase_receipt_sha" ]] || {
+    echo "rebase finalization recovery rewrote the final receipt" >&2
+    exit 1
+  }
+  jq -e '.rebase_receipt_finalized == true' "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")" >/dev/null
+  recovered_rebase_cursor_sha="$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")"
+  recover_pending "$recutover_bundle" "$rebase_receipt" true test >/dev/null
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")" == "$recovered_rebase_cursor_sha" ]] || {
+    echo "idempotent final rebase recovery changed the cursor" >&2
+    exit 1
+  }
+
+  completed_rebase_cursor_sha="$recovered_rebase_cursor_sha"
+  if recover_pending "$recutover_bundle" "$successful_pending_copy" true test >/dev/null 2>&1; then
+    echo "completed rebase accepted a copied stale pending receipt" >&2
+    exit 1
+  fi
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")" == "$completed_rebase_cursor_sha" ]] || {
+    echo "copied stale pending receipt changed the completed rebase cursor" >&2
+    exit 1
+  }
+  modified_pending_copy="$root/rebase-success-pending-modified.json"
+  jq '.created_at = "1970-01-01T00:00:00Z"' "$successful_pending_copy" >"$modified_pending_copy"
+  chmod 0400 "$modified_pending_copy"
+  if recover_pending "$recutover_bundle" "$modified_pending_copy" true test >/dev/null 2>&1; then
+    echo "completed rebase accepted a modified stale pending receipt" >&2
+    exit 1
+  fi
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")" == "$completed_rebase_cursor_sha" ]] || {
+    echo "modified stale pending receipt changed the completed rebase cursor" >&2
+    exit 1
+  }
+  saved_rebase_receipt="$root/rebase-success-final.saved"
+  cp "$rebase_receipt" "$saved_rebase_receipt"
+  chmod 0400 "$saved_rebase_receipt"
+  chmod 0600 "$rebase_receipt"
+  cp "$successful_pending_copy" "$rebase_receipt"
+  chmod 0400 "$rebase_receipt"
+  if recover_pending "$recutover_bundle" "$rebase_receipt" true test >/dev/null 2>&1; then
+    echo "completed rebase accepted stale pending bytes at the original receipt path" >&2
+    exit 1
+  fi
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")")" == "$completed_rebase_cursor_sha" ]] || {
+    echo "original-path stale pending replay changed the completed rebase cursor" >&2
+    exit 1
+  }
+  chmod 0600 "$rebase_receipt"
+  cp "$saved_rebase_receipt" "$rebase_receipt"
+  chmod 0400 "$rebase_receipt"
+  [[ "$(sha256_file "$rebase_receipt")" == "$completed_rebase_receipt_sha" ]] || {
+    echo "failed to restore the exact finalized rebase receipt" >&2
+    exit 1
+  }
+  verify_rebase_ready_cursor "$(jq -r '.chain_cursor' "$recutover_bundle/plan.json")" \
+    "$recutover_bundle/plan.json" "$(jq -r '.predecessor_sequence' "$rebase_receipt")" \
+    "$second_rollback_receipt" "$(sha256_file "$second_rollback_receipt")"
 
   fork_rebase_receipt="$root/fork-rebase.json"
   if rebase_after_rollback "$fork_bundle" "$second_rollback_receipt" "$fork_rebase_receipt" true >/dev/null 2>&1; then
@@ -1888,6 +2538,7 @@ self_test() {
   jq -e '.epoch == 4 and .parent_epoch == 3 and .supersedes_unapplied_epoch == false' "$bundle4/plan.json" >/dev/null
   rebase4="$root/rebase-epoch4.json"
   rebase_after_rollback "$bundle4" "$rollback3" "$rebase4" true >/dev/null
+  rebase4_cursor_sha="$(sha256_file "$(jq -r '.chain_cursor' "$bundle4/plan.json")")"
   v2_pending_receipt="$root/v2-recutover-pending.json"
   if HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_GATEWAY_PUBLISH=1 \
     transition recutover "$bundle4" "$rollback3" "$v2_pending_receipt" true test >/dev/null 2>&1; then
@@ -1896,7 +2547,16 @@ self_test() {
   fi
   jq -e '.schema == "hepta_vnext_launchd_bridge_transition_pending_v2" and .status == "pending" and .epoch == 4' "$v2_pending_receipt" >/dev/null
   recover_pending "$bundle4" "$v2_pending_receipt" true test >/dev/null
-  jq -e '.schema == "hepta_vnext_launchd_bridge_pending_recovery_v2" and .source_service_pair_restored == true and .chain_head_restored == true' "$v2_pending_receipt" >/dev/null
+  jq -e '.schema == "hepta_vnext_launchd_bridge_pending_recovery_v2"
+    and .source_service_pair_restored == true and .chain_head_restored == true
+    and .exact_prior_cursor_restored == true' "$v2_pending_receipt" >/dev/null
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$bundle4/plan.json")")" == "$rebase4_cursor_sha" ]] || {
+    echo "v2 recutover pending recovery did not restore byte-exact rebase provenance" >&2
+    exit 1
+  }
+  verify_rebase_ready_cursor "$(jq -r '.chain_cursor' "$bundle4/plan.json")" \
+    "$bundle4/plan.json" "$(jq -r '.predecessor_sequence' "$rebase4")" \
+    "$rollback3" "$(sha256_file "$rollback3")"
   : >"$legacy_state/runtime-v2/outcomes.sqlite3-shm"
   chmod 0600 "$legacy_state/runtime-v2/outcomes.sqlite3-shm"
   stale_after_recovery="$root/stale-after-pending-recovery.json"
@@ -1936,7 +2596,7 @@ self_test() {
     --arg v2_plan_sha256 "$(sha256_file "$bundle5/plan.json")" \
     --arg v2_recutover_receipt_sha256 "$(sha256_file "$v2_recutover_receipt")" \
     --arg v2_rollback_receipt_sha256 "$(sha256_file "$v2_rollback_receipt")" \
-    '{schema:"hepta_vnext_launchd_bridge_self_test_v2",status:"ready",plan_sha256:$plan_sha256,v2_plan_sha256:$v2_plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,v2_recutover_receipt_sha256:$v2_recutover_receipt_sha256,v2_rollback_receipt_sha256:$v2_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,fresh_full_state_snapshot:true,new_epoch_recutover:true,controlled_epoch_supersede:true,post_rebase_source_drift_recovered_with_fresh_epoch:true,pending_recovery_shm_drift_recovered_with_fresh_epoch:true,no_manual_cursor_mutation:true,v1_evidence_downgrade_rejected_for_v2_release:true,wrong_predecessor_rejected:true,stale_predecessor_rejected:true,fork_rejected:true,cross_plan_cas_enforced:true,rebase_pending_recovery_sealed:true,transition_pending_recovery_sealed:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,dry_run_log_directories_unchanged:true,private_log_directories_ready:true,existing_log_directories_hardened:true,symlink_log_root_rejected:true,symlink_log_child_rejected:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
+    '{schema:"hepta_vnext_launchd_bridge_self_test_v2",status:"ready",plan_sha256:$plan_sha256,v2_plan_sha256:$v2_plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,v2_recutover_receipt_sha256:$v2_recutover_receipt_sha256,v2_rollback_receipt_sha256:$v2_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,fresh_full_state_snapshot:true,new_epoch_recutover:true,controlled_epoch_supersede:true,post_rebase_source_drift_recovered_with_fresh_epoch:true,pending_recovery_shm_drift_recovered_with_fresh_epoch:true,no_manual_cursor_mutation:true,v1_evidence_downgrade_rejected_for_v2_release:true,wrong_predecessor_rejected:true,stale_predecessor_rejected:true,fork_rejected:true,cross_plan_cas_enforced:true,rebase_pending_recovery_sealed:true,rebase_replace_failure_restores_exact_cursor:true,pre_cas_pending_recovery_sealed:true,pre_cas_pending_copy_rejected:true,pre_cas_embedded_cursor_tamper_rejected:true,rebase_finalization_crash_recovered:true,rebase_finalization_recovery_idempotent:true,completed_rebase_stale_pending_rejected:true,completed_rebase_copied_pending_rejected:true,completed_rebase_modified_pending_rejected:true,completed_rebase_cursor_unchanged_on_replay:true,post_rebase_sibling_epoch_rejected:true,transition_pending_recovery_sealed:true,transition_finalization_crash_recovered:true,transition_finalization_recovery_idempotent:true,completed_transition_stale_pending_rejected:true,completed_transition_copied_pending_rejected:true,completed_transition_cursor_unchanged_on_replay:true,v2_recutover_pending_exact_cursor_restored:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,dry_run_log_directories_unchanged:true,private_log_directories_ready:true,existing_log_directories_hardened:true,symlink_log_root_rejected:true,symlink_log_child_rejected:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
 }
 
 command="${1:-}"; [[ -n "$command" ]] || usage; shift
