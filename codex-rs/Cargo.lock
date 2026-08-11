@@ -3410,14 +3410,15 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "codex-hepta-paths",
- "codex-state",
- "codex-utils-absolute-path",
+ "hmac 0.12.1",
  "libc",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "tempfile",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]

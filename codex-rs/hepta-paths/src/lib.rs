@@ -123,7 +123,11 @@ impl HeptaStateLayout {
 }
 
 fn validate_absolute_non_root(path: &Path) -> Result<()> {
-    if !path.is_absolute() || path == Path::new("/") {
+    if !path.is_absolute()
+        || !path
+            .components()
+            .any(|component| matches!(component, Component::Normal(_)))
+    {
         anyhow::bail!("path must be absolute and must not be filesystem root");
     }
     let raw_path = path.as_os_str().to_string_lossy();
@@ -143,6 +147,7 @@ fn validate_absolute_non_root(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn production_layout_matches_existing_hepta_names() -> Result<()> {
         let root = HeptaStateRoot::production_default(Path::new("/Users/operator"))?;
@@ -166,11 +171,35 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn production_layout_accepts_a_windows_absolute_home() -> Result<()> {
+        let root = HeptaStateRoot::production_default(Path::new(r"C:\Users\operator"))?;
+        assert_eq!(
+            root.as_path(),
+            Path::new(r"C:\Users\operator\.local\share\hepta")
+        );
+        assert_eq!(
+            root.layout().outcomes_database(),
+            Path::new(r"C:\Users\operator\.local\share\hepta\runtime-v2\outcomes.sqlite3")
+        );
+        Ok(())
+    }
+
     #[test]
     fn state_root_rejects_relative_root_and_parent_traversal() {
         assert!(HeptaStateRoot::parse("relative").is_err());
-        assert!(HeptaStateRoot::parse("/").is_err());
-        assert!(HeptaStateRoot::parse("/tmp/../escape").is_err());
-        assert!(HeptaStateRoot::parse("/tmp/./escape").is_err());
+        #[cfg(unix)]
+        {
+            assert!(HeptaStateRoot::parse("/").is_err());
+            assert!(HeptaStateRoot::parse("/tmp/../escape").is_err());
+            assert!(HeptaStateRoot::parse("/tmp/./escape").is_err());
+        }
+        #[cfg(windows)]
+        {
+            assert!(HeptaStateRoot::parse(r"C:\").is_err());
+            assert!(HeptaStateRoot::parse(r"C:\tmp\..\escape").is_err());
+            assert!(HeptaStateRoot::parse(r"C:\tmp\.\escape").is_err());
+        }
     }
 }

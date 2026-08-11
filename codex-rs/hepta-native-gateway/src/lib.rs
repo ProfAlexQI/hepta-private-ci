@@ -301,43 +301,45 @@ mod tests {
                 runtime_snapshot_version: 1,
                 runtime_snapshot_generation: 0,
                 integrity_binding_present: true,
-                integrity_verification: "fixture",
-                open_mode: "read-only-open-existing",
+                integrity_verification: "hmac-sha256-v1-key-id-and-row-macs-verified",
+                open_mode: "immutable-query-only-open-existing",
             }
         }
     }
 
+    fn fixture_root(name: &str) -> Result<HeptaStateRoot> {
+        HeptaStateRoot::parse(std::env::temp_dir().join(name))
+    }
+
     fn fixture_runtime() -> Result<HeptaRuntime> {
         Ok(HeptaRuntime::from_adapter(
-            HeptaStateRoot::parse("/tmp/hepta-vnext-gateway-test")?,
+            fixture_root("hepta-vnext-gateway-test")?,
             Arc::new(FixtureAdapter),
         ))
     }
 
     #[test]
     fn parses_production_default_and_isolated_canary_addresses() -> Result<()> {
-        let root = HeptaStateRoot::parse("/tmp/hepta-state")?;
+        let root = fixture_root("hepta-state")?;
+        let canary_root = std::env::temp_dir().join("hepta-canary");
         let production = NativeGatewayOptions::from_args(&[], root.clone())?;
         assert_eq!(production.listen_addr.to_string(), DEFAULT_LISTEN_ADDR);
         let canary = NativeGatewayOptions::from_args(
             &[
                 CANARY_LISTEN_ADDR.to_string(),
                 "--state-root".to_string(),
-                "/tmp/hepta-canary".to_string(),
+                canary_root.to_string_lossy().into_owned(),
             ],
             root,
         )?;
         assert_eq!(canary.listen_addr.to_string(), CANARY_LISTEN_ADDR);
-        assert_eq!(
-            canary.state_root.as_path(),
-            std::path::Path::new("/tmp/hepta-canary")
-        );
+        assert_eq!(canary.state_root.as_path(), canary_root);
         Ok(())
     }
 
     #[test]
     fn rejects_non_loopback_or_ephemeral_address() -> Result<()> {
-        let root = HeptaStateRoot::parse("/tmp/hepta-state")?;
+        let root = fixture_root("hepta-state")?;
         assert!(
             NativeGatewayOptions::from_args(&["0.0.0.0:7373".to_string()], root.clone()).is_err()
         );
