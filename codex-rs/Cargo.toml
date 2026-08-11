@@ -43,6 +43,7 @@ members = [
     "core-plugins",
     "diagnostics",
     "hooks",
+    "hepta-operator-acceptance",
     "hepta-shadow-qualification",
     "http-client",
     "secrets",
