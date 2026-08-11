@@ -122,11 +122,16 @@ covered, not only `runtime-v2`. The command independently confirms that the
 legacy launchd label is unloaded and no process has any file under the state
 root open, rejects nonempty WAL files and symlink/special/delimiter paths, and
 preserves WAL/SHM/key bytes plus mode, uid, gid, mtime, BSD flags, ACLs, and
-xattrs. A source identity inventory (device/inode/ctime included) detects drift
+xattrs. Regular-file hardlinks are bound by a portable alias-group inventory,
+preserved across materialization, and reverified; an alias whose kernel link
+count extends outside the state root is rejected rather than silently split.
+A source identity inventory (device/inode/ctime included) detects drift
 during the copy; a separate portable payload inventory is compared across the
 copy boundary. A destination-derived binding prevents replaying a receipt
 against another copied root. Existing runtime-v2-only v1 receipts remain
-verifiable, but they are not sufficient for a new recutover plan.
+verifiable for an old v1 release only. A release whose manifest declares
+`full-state-root-v2` rejects v1 snapshot/canary evidence during both persisted
+canary generation and bridge preparation.
 
 The tool does not stop or start either service. The receipt is first reserved
 as `pending`, then sealed only after the destination and binding are published;
@@ -198,6 +203,15 @@ replayed, wrong-predecessor, or arbitrary rebase fails before receipt or service
 mutation. Rebase and transition pending cursors are recoverable with the same
 `recover-pending` command; recovery restores the reviewed parent/source chain
 and publishes no rebase or transition PASS.
+
+If evidence becomes stale after a successful rebase, or after recovery of an
+interrupted v2 recutover, the unapplied epoch may be superseded without manual
+cursor edits. `prepare-recutover` then requires the current v2 plan as its
+parent, the same still-applied rollback receipt as its predecessor, and fresh
+full-root snapshot/canary/soak evidence. The new plan records both the parent
+chain head and the older applied rollback head, advances the epoch, and must
+itself be rebased before recutover. Only this exact unapplied-parent shape is
+accepted; a completed epoch or unrelated predecessor cannot be superseded.
 
 Applied transitions reserve a durable pending receipt before changing either
 plist. Both templates are staged and verified first; any publish, reload, or

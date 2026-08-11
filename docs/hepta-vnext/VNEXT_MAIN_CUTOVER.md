@@ -68,12 +68,15 @@ conditions are true:
    worktrees point to the unified head;
 3. Hepta UI is independently recoverable and no longer linked to the old
    common Git directory;
-4. a full-root v2 snapshot covers every legacy top-level entry and preserves
-   portable metadata, SQLite sidecars, keys, archive, and release-run payloads;
+4. a full-root v2 snapshot covers every legacy top-level entry, rejects
+   out-of-root hardlink aliases, and preserves portable metadata, in-root
+   hardlink groups, SQLite sidecars, keys, archive, and release-run payloads;
 5. the candidate opens that receipt-bound copied state generation in an
    isolated loopback canary without writing production state;
 6. cutover, rollback, then a fresh-evidence epoch-v2 rebase and recutover
-   succeed without accepting a stale or forked chain; and
+   succeed without accepting a stale or forked chain; if evidence drifts after
+   rebase or pending recovery, a fresh controlled superseding epoch closes the
+   chain without manual cursor edits; and
 7. one complete development cycle finishes on the new tree.
 
 Only then may the old linked worktrees, common Git directory, release, or state

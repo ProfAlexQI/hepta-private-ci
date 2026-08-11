@@ -106,7 +106,7 @@ identity_inventory_v2() {
       [[ ! -L "$item" ]] || { echo "state snapshot rejects symlink: $item" >&2; exit 1; }
       if [[ -f "$item" ]]; then
         printf '%s|file|%s|%s|%s|%s\n' "$item" \
-          "$(stat -f '%Lp|%u|%g|%z|%m|%c|%d|%i|%f' "$item")" \
+          "$(stat -f '%Lp|%u|%g|%z|%m|%c|%d|%i|%l|%f' "$item")" \
           "$(acl_sha256 "$item")" "$(xattr_sha256 "$item")" "$(sha256_file "$item")"
       elif [[ -d "$item" ]]; then
         printf '%s|directory|%s|%s|%s\n' "$item" \
@@ -121,7 +121,9 @@ identity_inventory_v2() {
 }
 
 # A portable payload inventory excludes device/inode/ctime, but binds every
-# byte and every property that must survive materialization.
+# byte and every property that must survive materialization. The link count is
+# portable only after the separate hardlink topology inventory proves that all
+# aliases are contained inside the state root.
 portable_inventory_v2() {
   local tree_root="$1" output="$2"
   [[ -d "$tree_root" && ! -L "$tree_root" ]] || return 1
@@ -132,7 +134,7 @@ portable_inventory_v2() {
       [[ ! -L "$item" ]] || { echo "state snapshot rejects symlink: $item" >&2; exit 1; }
       if [[ -f "$item" ]]; then
         printf '%s|file|%s|%s|%s|%s\n' "$item" \
-          "$(stat -f '%Lp|%u|%g|%z|%m|%f' "$item")" \
+          "$(stat -f '%Lp|%u|%g|%z|%m|%l|%f' "$item")" \
           "$(acl_sha256 "$item")" "$(xattr_sha256 "$item")" "$(sha256_file "$item")"
       elif [[ -d "$item" ]]; then
         printf '%s|directory|%s|%s|%s\n' "$item" \
@@ -144,6 +146,75 @@ portable_inventory_v2() {
       fi
     done
   ) >"$output"
+}
+
+# Bind hardlinks by a portable alias-group identity: the lexicographically
+# first path in a device/inode group is the group primary. A file whose kernel
+# link count exceeds the aliases visible below tree_root has an alias outside
+# the snapshot boundary and is rejected fail-closed.
+hardlink_topology_inventory_v2() {
+  local tree_root="$1" output="$2" raw temp_root
+  [[ -d "$tree_root" && ! -L "$tree_root" ]] || return 1
+  validate_tree_names "$tree_root" || return 1
+  temp_root="${TMPDIR:-/tmp}"
+  raw="$(mktemp "${temp_root%/}/hepta-state-v2-hardlinks.XXXXXX")" || return 1
+  if ! (
+    cd "$tree_root"
+    find . -type f -print | LC_ALL=C sort | while IFS= read -r item; do
+      printf '%s|%s|%s|%s\n' \
+        "$(stat -f '%d' "$item")" "$(stat -f '%i' "$item")" \
+        "$(stat -f '%l' "$item")" "$item"
+    done
+  ) >"$raw"; then
+    rm -f "$raw"
+    return 1
+  fi
+  if ! awk -F '|' '
+    {
+      key = $1 SUBSEP $2
+      rows += 1
+      file[rows] = $4
+      row_key[rows] = key
+      observed[key] += 1
+      if (!(key in primary)) {
+        primary[key] = $4
+        declared[key] = $3
+      } else if (declared[key] != $3) {
+        invalid = 1
+      }
+    }
+    END {
+      for (key in observed) {
+        if (declared[key] != observed[key]) invalid = 1
+      }
+      if (invalid) exit 1
+      for (row = 1; row <= rows; row++) {
+        key = row_key[row]
+        printf "%s|%s|%d\n", file[row], primary[key], observed[key]
+      }
+    }
+  ' "$raw" >"$output"; then
+    echo "state snapshot rejects hardlink aliases outside the full state root" >&2
+    rm -f "$raw" "$output"
+    return 1
+  fi
+  rm -f "$raw"
+}
+
+copy_full_tree_v2() {
+  local source="$1" destination="$2"
+  [[ -d "$source" && ! -L "$source" && ! -e "$destination" && ! -L "$destination" ]] || return 1
+  mkdir "$destination" || return 1
+  # macOS bsdtar preserves hardlinks, ACLs, xattrs, BSD flags, ownership,
+  # modes, and mtimes. The portable and topology inventories below still
+  # independently prove the exact result before it can be published.
+  if ! (cd "$source" && /usr/bin/tar --acls --xattrs --fflags -cf - .) \
+    | (cd "$destination" && /usr/bin/tar --acls --xattrs --fflags -xpf -); then
+    return 1
+  fi
+  # bsdtar restores every archived child but leaves the already-created
+  # extraction root with the extraction-time mtime. Bind that root too.
+  /usr/bin/touch -r "$source" "$destination" || return 1
 }
 
 inventory_subset_sha256() {
@@ -216,7 +287,7 @@ validate_source() {
 }
 
 validate_full_tree_v2() {
-  local tree_root="$1" require_quiescent="$2" legacy_label="$3" launch_output item mode
+  local tree_root="$1" require_quiescent="$2" legacy_label="$3" launch_output item mode hardlinks temp_root
   [[ -d "$tree_root" && ! -L "$tree_root" && -d "$tree_root/runtime-v2" && ! -L "$tree_root/runtime-v2" ]] || {
     echo "full state root or required runtime-v2 payload is missing or unsafe" >&2
     return 1
@@ -245,6 +316,13 @@ validate_full_tree_v2() {
       return 1
     }
   done < <(find "$tree_root" -print)
+  temp_root="${TMPDIR:-/tmp}"
+  hardlinks="$(mktemp "${temp_root%/}/hepta-state-v2-hardlink-validation.XXXXXX")" || return 1
+  if ! hardlink_topology_inventory_v2 "$tree_root" "$hardlinks"; then
+    rm -f "$hardlinks"
+    return 1
+  fi
+  rm -f "$hardlinks"
   [[ "$require_quiescent" == true ]] || return 0
   [[ "$legacy_label" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
     echo "invalid legacy launchd label: $legacy_label" >&2
@@ -384,8 +462,9 @@ snapshot() {
   local source_root="$1" destination_root="$2" receipt="$3" materialize="$4" legacy_label="$5"
   local destination_parent destination_name stage payload_root temp_root snapshot_id
   local source_identity_before source_identity_after source_portable destination_portable
+  local source_hardlinks destination_hardlinks
   local receipt_tmp pending_tmp binding_tmp pending_sha source_identity_sha portable_sha top_level_sha
-  local sidecar_sha key_sha file_count entry_count top_level_count sidecar_count key_count
+  local sidecar_sha key_sha hardlink_sha file_count entry_count top_level_count sidecar_count key_count hardlink_group_count hardlink_alias_count
   local binding binding_sha
   absolute_non_root "$source_root" || return 1
   absolute_non_root "$destination_root" || return 1
@@ -408,7 +487,7 @@ snapshot() {
   }
   if [[ "$materialize" != true ]]; then
     jq -cn --arg source "$source_root" --arg destination "$destination_root" --arg legacy_label "$legacy_label" \
-      '{schema:"hepta_vnext_state_snapshot_plan_v2",status:"ready",scope:"full-state-root",source_state_root:$source,destination_state_root:$destination,legacy_launchd_label:$legacy_label,legacy_launchd_unloaded:true,writer_stopped:true,wal_empty:true,all_top_level_entries_required:true,identity_inventory_separate:true,portable_payload_inventory_required:true,materialized:false,service_changed:false}'
+      '{schema:"hepta_vnext_state_snapshot_plan_v2",status:"ready",scope:"full-state-root",source_state_root:$source,destination_state_root:$destination,legacy_launchd_label:$legacy_label,legacy_launchd_unloaded:true,writer_stopped:true,wal_empty:true,all_top_level_entries_required:true,identity_inventory_separate:true,portable_payload_inventory_required:true,hardlink_topology_inventory_required:true,external_hardlinks_rejected:true,materialized:false,service_changed:false}'
     return
   fi
   [[ -n "$receipt" ]] || usage
@@ -435,12 +514,14 @@ snapshot() {
   source_identity_after="$(mktemp "${temp_root%/}/hepta-state-v2-identity-after.XXXXXX")"
   source_portable="$(mktemp "${temp_root%/}/hepta-state-v2-portable-source.XXXXXX")"
   destination_portable="$(mktemp "${temp_root%/}/hepta-state-v2-portable-destination.XXXXXX")"
+  source_hardlinks="$(mktemp "${temp_root%/}/hepta-state-v2-hardlinks-source.XXXXXX")"
+  destination_hardlinks="$(mktemp "${temp_root%/}/hepta-state-v2-hardlinks-destination.XXXXXX")"
   receipt_tmp="$(mktemp "${temp_root%/}/hepta-state-v2-receipt.XXXXXX")"
   pending_tmp="$(mktemp "${temp_root%/}/hepta-state-v2-pending.XXXXXX")"
   binding_tmp="$(mktemp "${temp_root%/}/hepta-state-v2-binding.XXXXXX")"
   stage=""
   trap '
-    rm -f "${source_identity_before:-}" "${source_identity_after:-}" "${source_portable:-}" "${destination_portable:-}" "${receipt_tmp:-}" "${pending_tmp:-}" "${binding_tmp:-}"
+    rm -f "${source_identity_before:-}" "${source_identity_after:-}" "${source_portable:-}" "${destination_portable:-}" "${source_hardlinks:-}" "${destination_hardlinks:-}" "${receipt_tmp:-}" "${pending_tmp:-}" "${binding_tmp:-}"
     if [[ -n "${stage:-}" && -d "$stage" ]]; then
       chflags -R nouchg,noschg "$stage" 2>/dev/null || true
       chmod -RN "$stage" 2>/dev/null || true
@@ -459,10 +540,11 @@ snapshot() {
 
   identity_inventory_v2 "$source_root" "$source_identity_before"
   portable_inventory_v2 "$source_root" "$source_portable"
+  hardlink_topology_inventory_v2 "$source_root" "$source_hardlinks"
   stage="$(mktemp -d "$destination_parent/.hepta-state-snapshot-v2.XXXXXX")"
   chmod 0700 "$stage"
   payload_root="$stage/payload"
-  cp -pR "$source_root" "$payload_root"
+  copy_full_tree_v2 "$source_root" "$payload_root"
   validate_full_tree_v2 "$payload_root" false "$legacy_label"
   identity_inventory_v2 "$source_root" "$source_identity_after"
   diff -u "$source_identity_before" "$source_identity_after" >/dev/null || {
@@ -470,8 +552,13 @@ snapshot() {
     return 1
   }
   portable_inventory_v2 "$payload_root" "$destination_portable"
+  hardlink_topology_inventory_v2 "$payload_root" "$destination_hardlinks"
   diff -u "$source_portable" "$destination_portable" >/dev/null || {
     echo "full snapshot bytes or portable metadata differ from source" >&2
+    return 1
+  }
+  diff -u "$source_hardlinks" "$destination_hardlinks" >/dev/null || {
+    echo "full snapshot hardlink alias topology differs from source" >&2
     return 1
   }
 
@@ -480,32 +567,38 @@ snapshot() {
   top_level_sha="$(top_level_inventory_sha256 "$source_portable")"
   sidecar_sha="$(inventory_subset_sha256 "$source_portable" '\\-(wal|shm)$')"
   key_sha="$(inventory_subset_sha256 "$source_portable" '(^|/)keys/|\\.key$')"
+  hardlink_sha="$(sha256_file "$source_hardlinks")"
   entry_count="$(find "$source_root" -print | wc -l | tr -d ' ')"
   file_count="$(find "$source_root" -type f | wc -l | tr -d ' ')"
   top_level_count="$(find "$source_root" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')"
   sidecar_count="$(find "$source_root" -type f \( -name '*-wal' -o -name '*-shm' \) | wc -l | tr -d ' ')"
   key_count="$(find "$source_root" -type f \( -path '*/keys/*' -o -name '*.key' \) | wc -l | tr -d ' ')"
+  hardlink_group_count="$(awk -F '|' '$1 == $2 && $3 > 1 { count += 1 } END { print count + 0 }' "$source_hardlinks")"
+  hardlink_alias_count="$(awk -F '|' '$1 != $2 { count += 1 } END { print count + 0 }' "$source_hardlinks")"
   mv "$payload_root" "$destination_parent/$destination_name"
   rmdir "$stage"
   stage=""
   destination_root="$destination_parent/$destination_name"
   jq -n --arg snapshot_id "$snapshot_id" --arg destination "$destination_root" \
     --arg portable_payload_sha256 "$portable_sha" \
-    '{schema:"hepta_vnext_state_snapshot_binding_v2",snapshot_id:$snapshot_id,destination_state_root:$destination,portable_payload_inventory_sha256:$portable_payload_sha256}' >"$binding_tmp"
+    --arg hardlink_topology_sha256 "$hardlink_sha" \
+    '{schema:"hepta_vnext_state_snapshot_binding_v2",snapshot_id:$snapshot_id,destination_state_root:$destination,portable_payload_inventory_sha256:$portable_payload_sha256,hardlink_topology_inventory_sha256:$hardlink_topology_sha256}' >"$binding_tmp"
   write_private_new "$binding" "$binding_tmp"
   binding_sha="$(sha256_file "$binding")"
   jq -n --arg snapshot_id "$snapshot_id" --arg source "$source_root" --arg destination "$destination_root" \
     --arg legacy_label "$legacy_label" --arg source_identity_sha256 "$source_identity_sha" \
     --arg portable_payload_sha256 "$portable_sha" --arg top_level_inventory_sha256 "$top_level_sha" \
     --arg sqlite_sidecar_inventory_sha256 "$sidecar_sha" --arg key_inventory_sha256 "$key_sha" \
+    --arg hardlink_topology_inventory_sha256 "$hardlink_sha" \
     --arg binding "$binding" --arg binding_sha256 "$binding_sha" \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson entry_count "$entry_count" \
     --argjson file_count "$file_count" --argjson top_level_entry_count "$top_level_count" \
     --argjson sqlite_sidecar_count "$sidecar_count" --argjson key_file_count "$key_count" \
-    '{schema:"hepta_vnext_state_snapshot_receipt_v2",status:"ready",scope:"full-state-root",snapshot_id:$snapshot_id,source_state_root:$source,destination_state_root:$destination,legacy_launchd_label:$legacy_label,legacy_launchd_unloaded:true,source_identity_inventory_sha256:$source_identity_sha256,portable_payload_inventory_sha256:$portable_payload_sha256,top_level_inventory_sha256:$top_level_inventory_sha256,sqlite_sidecar_inventory_sha256:$sqlite_sidecar_inventory_sha256,key_inventory_sha256:$key_inventory_sha256,destination_binding:$binding,destination_binding_sha256:$binding_sha256,entry_count:$entry_count,file_count:$file_count,top_level_entry_count:$top_level_entry_count,sqlite_sidecar_count:$sqlite_sidecar_count,key_file_count:$key_file_count,created_at:$created_at,writer_stopped:true,wal_empty:true,source_unchanged:true,destination_exact_copy:true,all_top_level_entries_covered:true,modes_uid_gid_mtime_flags_acl_xattr_preserved:true,wal_shm_and_keys_covered:true,identity_inventory_separate:true,replay_protected_by_destination_binding:true,service_changed:false}' >"$receipt_tmp"
+    --argjson hardlink_group_count "$hardlink_group_count" --argjson hardlink_alias_count "$hardlink_alias_count" \
+    '{schema:"hepta_vnext_state_snapshot_receipt_v2",status:"ready",scope:"full-state-root",snapshot_id:$snapshot_id,source_state_root:$source,destination_state_root:$destination,legacy_launchd_label:$legacy_label,legacy_launchd_unloaded:true,source_identity_inventory_sha256:$source_identity_sha256,portable_payload_inventory_sha256:$portable_payload_sha256,top_level_inventory_sha256:$top_level_inventory_sha256,sqlite_sidecar_inventory_sha256:$sqlite_sidecar_inventory_sha256,key_inventory_sha256:$key_inventory_sha256,hardlink_topology_inventory_sha256:$hardlink_topology_inventory_sha256,destination_binding:$binding,destination_binding_sha256:$binding_sha256,entry_count:$entry_count,file_count:$file_count,top_level_entry_count:$top_level_entry_count,sqlite_sidecar_count:$sqlite_sidecar_count,key_file_count:$key_file_count,hardlink_group_count:$hardlink_group_count,hardlink_alias_count:$hardlink_alias_count,created_at:$created_at,writer_stopped:true,wal_empty:true,source_unchanged:true,destination_exact_copy:true,all_top_level_entries_covered:true,modes_uid_gid_mtime_flags_acl_xattr_preserved:true,wal_shm_and_keys_covered:true,hardlinks_preserved:true,external_hardlinks_rejected:true,identity_inventory_separate:true,replay_protected_by_destination_binding:true,service_changed:false}' >"$receipt_tmp"
   replace_private_reserved "$receipt" "$pending_sha" "$receipt_tmp"
   trap - RETURN
-  rm -f "$source_identity_before" "$source_identity_after" "$source_portable" "$destination_portable" "$receipt_tmp" "$pending_tmp" "$binding_tmp"
+  rm -f "$source_identity_before" "$source_identity_after" "$source_portable" "$destination_portable" "$source_hardlinks" "$destination_hardlinks" "$receipt_tmp" "$pending_tmp" "$binding_tmp"
   cat "$receipt"
 }
 
@@ -607,7 +700,7 @@ verify_snapshot_source_v1() {
 
 verify_snapshot_receipt_v2() {
   local receipt="$1" destination binding portable expected_portable expected_top expected_sidecar expected_key
-  local actual_count actual_files actual_top actual_sidecars actual_keys temp_root
+  local hardlinks expected_hardlinks actual_count actual_files actual_top actual_sidecars actual_keys actual_hardlink_groups actual_hardlink_aliases temp_root
   absolute_non_root "$receipt" || return 1
   [[ -f "$receipt" && ! -L "$receipt" ]] || {
     echo "snapshot receipt is missing or unsafe" >&2
@@ -628,15 +721,18 @@ verify_snapshot_receipt_v2() {
     and (.top_level_inventory_sha256 | test("^[0-9a-f]{64}$"))
     and (.sqlite_sidecar_inventory_sha256 | test("^[0-9a-f]{64}$"))
     and (.key_inventory_sha256 | test("^[0-9a-f]{64}$"))
+    and (.hardlink_topology_inventory_sha256 | test("^[0-9a-f]{64}$"))
     and (.destination_binding | startswith("/"))
     and (.destination_binding_sha256 | test("^[0-9a-f]{64}$"))
     and (.entry_count >= 2) and (.file_count >= 1) and (.top_level_entry_count >= 1)
     and (.sqlite_sidecar_count >= 0) and (.key_file_count >= 0)
+    and (.hardlink_group_count >= 0) and (.hardlink_alias_count >= 0)
     and .writer_stopped == true and .wal_empty == true
     and .source_unchanged == true and .destination_exact_copy == true
     and .all_top_level_entries_covered == true
     and .modes_uid_gid_mtime_flags_acl_xattr_preserved == true
-    and .wal_shm_and_keys_covered == true and .identity_inventory_separate == true
+    and .wal_shm_and_keys_covered == true and .hardlinks_preserved == true
+    and .external_hardlinks_rejected == true and .identity_inventory_separate == true
     and .replay_protected_by_destination_binding == true
     and .service_changed == false
   ' "$receipt" >/dev/null || {
@@ -657,11 +753,13 @@ verify_snapshot_receipt_v2() {
     return 1
   }
   jq -e --arg snapshot_id "$(jq -r '.snapshot_id' "$receipt")" \
-    --arg destination "$destination" --arg portable "$(jq -r '.portable_payload_inventory_sha256' "$receipt")" '
+    --arg destination "$destination" --arg portable "$(jq -r '.portable_payload_inventory_sha256' "$receipt")" \
+    --arg hardlinks "$(jq -r '.hardlink_topology_inventory_sha256' "$receipt")" '
     .schema == "hepta_vnext_state_snapshot_binding_v2"
     and .snapshot_id == $snapshot_id
     and .destination_state_root == $destination
     and .portable_payload_inventory_sha256 == $portable
+    and .hardlink_topology_inventory_sha256 == $hardlinks
   ' "$binding" >/dev/null || {
     echo "snapshot destination binding does not match the receipt" >&2
     return 1
@@ -669,17 +767,21 @@ verify_snapshot_receipt_v2() {
   validate_full_tree_v2 "$destination" false "$(jq -r '.legacy_launchd_label' "$receipt")" || return 1
   temp_root="${TMPDIR:-/tmp}"
   portable="$(mktemp "${temp_root%/}/hepta-state-v2-verify.XXXXXX")"
-  trap 'rm -f "${portable:-}"; trap - RETURN' RETURN
+  hardlinks="$(mktemp "${temp_root%/}/hepta-state-v2-hardlinks-verify.XXXXXX")"
+  trap 'rm -f "${portable:-}" "${hardlinks:-}"; trap - RETURN' RETURN
   portable_inventory_v2 "$destination" "$portable"
+  hardlink_topology_inventory_v2 "$destination" "$hardlinks"
   expected_portable="$(jq -r '.portable_payload_inventory_sha256' "$receipt")"
   expected_top="$(jq -r '.top_level_inventory_sha256' "$receipt")"
   expected_sidecar="$(jq -r '.sqlite_sidecar_inventory_sha256' "$receipt")"
   expected_key="$(jq -r '.key_inventory_sha256' "$receipt")"
+  expected_hardlinks="$(jq -r '.hardlink_topology_inventory_sha256' "$receipt")"
   [[ "$(sha256_file "$portable")" == "$expected_portable" \
     && "$(top_level_inventory_sha256 "$portable")" == "$expected_top" \
     && "$(inventory_subset_sha256 "$portable" '\\-(wal|shm)$')" == "$expected_sidecar" \
-    && "$(inventory_subset_sha256 "$portable" '(^|/)keys/|\\.key$')" == "$expected_key" ]] || {
-    echo "full snapshot portable, top-level, sidecar, or key inventory differs from receipt" >&2
+    && "$(inventory_subset_sha256 "$portable" '(^|/)keys/|\\.key$')" == "$expected_key" \
+    && "$(sha256_file "$hardlinks")" == "$expected_hardlinks" ]] || {
+    echo "full snapshot portable, top-level, sidecar, key, or hardlink inventory differs from receipt" >&2
     return 1
   }
   actual_count="$(find "$destination" -print | wc -l | tr -d ' ')"
@@ -687,20 +789,24 @@ verify_snapshot_receipt_v2() {
   actual_top="$(find "$destination" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')"
   actual_sidecars="$(find "$destination" -type f \( -name '*-wal' -o -name '*-shm' \) | wc -l | tr -d ' ')"
   actual_keys="$(find "$destination" -type f \( -path '*/keys/*' -o -name '*.key' \) | wc -l | tr -d ' ')"
+  actual_hardlink_groups="$(awk -F '|' '$1 == $2 && $3 > 1 { count += 1 } END { print count + 0 }' "$hardlinks")"
+  actual_hardlink_aliases="$(awk -F '|' '$1 != $2 { count += 1 } END { print count + 0 }' "$hardlinks")"
   [[ "$actual_count" == "$(jq -r '.entry_count' "$receipt")" \
     && "$actual_files" == "$(jq -r '.file_count' "$receipt")" \
     && "$actual_top" == "$(jq -r '.top_level_entry_count' "$receipt")" \
     && "$actual_sidecars" == "$(jq -r '.sqlite_sidecar_count' "$receipt")" \
-    && "$actual_keys" == "$(jq -r '.key_file_count' "$receipt")" ]] || {
+    && "$actual_keys" == "$(jq -r '.key_file_count' "$receipt")" \
+    && "$actual_hardlink_groups" == "$(jq -r '.hardlink_group_count' "$receipt")" \
+    && "$actual_hardlink_aliases" == "$(jq -r '.hardlink_alias_count' "$receipt")" ]] || {
     echo "full snapshot entry counters differ from receipt" >&2
     return 1
   }
   jq -cn --arg receipt "$receipt" --arg receipt_sha256 "$(sha256_file "$receipt")" \
     --arg snapshot_id "$(jq -r '.snapshot_id' "$receipt")" --arg destination "$destination" \
-    --arg portable "$expected_portable" --arg top "$expected_top" \
-    '{schema:"hepta_vnext_state_snapshot_verification_v2",status:"ready",scope:"full-state-root",receipt:$receipt,receipt_sha256:$receipt_sha256,snapshot_id:$snapshot_id,destination_state_root:$destination,portable_payload_inventory_sha256:$portable,top_level_inventory_sha256:$top,all_top_level_entries_covered:true,destination_unchanged:true,replay_binding_verified:true,service_changed:false}'
+    --arg portable "$expected_portable" --arg top "$expected_top" --arg hardlinks "$expected_hardlinks" \
+    '{schema:"hepta_vnext_state_snapshot_verification_v2",status:"ready",scope:"full-state-root",receipt:$receipt,receipt_sha256:$receipt_sha256,snapshot_id:$snapshot_id,destination_state_root:$destination,portable_payload_inventory_sha256:$portable,top_level_inventory_sha256:$top,hardlink_topology_inventory_sha256:$hardlinks,all_top_level_entries_covered:true,hardlinks_preserved:true,destination_unchanged:true,replay_binding_verified:true,service_changed:false}'
   trap - RETURN
-  rm -f "$portable"
+  rm -f "$portable" "$hardlinks"
 }
 
 verify_snapshot_source_v2() {
@@ -750,7 +856,7 @@ verify_snapshot_source() {
 
 self_test() {
   local temp_root root source destination receipt bad_source bad_symlink bad_special bad_delimiter
-  local replay_destination replay_receipt v1_source v1_destination v1_receipt
+  local replay_destination replay_receipt v1_source v1_destination v1_receipt primary alias other_primary other_alias split_tmp
   temp_root="${TMPDIR:-/tmp}"; root="$(mktemp -d "${temp_root%/}/hepta-state-snapshot-self-test.XXXXXX")"
   HEPTA_STATE_SNAPSHOT_SELF_TEST_ROOT="$root"
   trap 'chflags -R nouchg,noschg "$HEPTA_STATE_SNAPSHOT_SELF_TEST_ROOT" 2>/dev/null || true; chmod -RN "$HEPTA_STATE_SNAPSHOT_SELF_TEST_ROOT" 2>/dev/null || true; chmod -R u+w "$HEPTA_STATE_SNAPSHOT_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_STATE_SNAPSHOT_SELF_TEST_ROOT"' EXIT
@@ -763,6 +869,10 @@ self_test() {
   printf 'key-material\n' >"$source/runtime-v2/keys/runtime-integrity.key"; chmod 0600 "$source/runtime-v2/keys/runtime-integrity.key"
   printf 'archive-payload\n' >"$source/archive/record.json"; chmod 0600 "$source/archive/record.json"
   printf 'run-payload\n' >"$source/release-runs/20260812/run.json"; chmod 0600 "$source/release-runs/20260812/run.json"
+  primary="$source/archive/shared-a.bin"; alias="$source/release-runs/20260812/shared-a-alias.bin"
+  other_primary="$source/archive/shared-b.bin"; other_alias="$source/release-runs/20260812/shared-b-alias.bin"
+  printf 'hardlink-payload\n' >"$primary"; chmod 0600 "$primary"; ln "$primary" "$alias"
+  printf 'hardlink-payload\n' >"$other_primary"; chmod 0600 "$other_primary"; touch -r "$primary" "$other_primary"; ln "$other_primary" "$other_alias"
   /usr/bin/xattr -w com.hepta.snapshot.selftest 'xattr-payload' "$source/archive/record.json"
   chmod +a 'everyone deny delete' "$source/archive/record.json"
   chflags hidden "$source/release-runs/20260812/run.json"
@@ -780,6 +890,8 @@ self_test() {
     and .top_level_entry_count == 3
     and .sqlite_sidecar_count == 2
     and .key_file_count == 1
+    and .hardlink_group_count == 2 and .hardlink_alias_count == 2
+    and .hardlinks_preserved == true and .external_hardlinks_rejected == true
     and .replay_protected_by_destination_binding == true
   ' "$receipt" >/dev/null
   [[ "$(/usr/bin/xattr -p com.hepta.snapshot.selftest "$destination/archive/record.json")" == xattr-payload \
@@ -789,6 +901,35 @@ self_test() {
     echo "full-root metadata, sidecar, or key payload was not preserved" >&2
     exit 1
   }
+  [[ "$(stat -f '%i' "$destination/archive/shared-a.bin")" == "$(stat -f '%i' "$destination/release-runs/20260812/shared-a-alias.bin")" \
+    && "$(stat -f '%l' "$destination/archive/shared-a.bin")" == 2 \
+    && "$(stat -f '%i' "$destination/archive/shared-b.bin")" == "$(stat -f '%i' "$destination/release-runs/20260812/shared-b-alias.bin")" \
+    && "$(stat -f '%l' "$destination/archive/shared-b.bin")" == 2 ]] || {
+    echo "full-root hardlink groups were not preserved" >&2
+    exit 1
+  }
+  split_tmp="$root/split-hardlink.bin"
+  /usr/bin/ditto "$destination/release-runs/20260812/shared-a-alias.bin" "$split_tmp"
+  rm "$destination/release-runs/20260812/shared-a-alias.bin"
+  mv "$split_tmp" "$destination/release-runs/20260812/shared-a-alias.bin"
+  if verify_snapshot_receipt "$receipt" >/dev/null 2>&1; then
+    echo "full snapshot accepted a split hardlink group" >&2
+    exit 1
+  fi
+  rm "$destination/release-runs/20260812/shared-a-alias.bin"
+  ln "$destination/archive/shared-a.bin" "$destination/release-runs/20260812/shared-a-alias.bin"
+  touch -r "$source/release-runs/20260812" "$destination/release-runs/20260812"
+  verify_snapshot_receipt "$receipt" >/dev/null
+  rm "$destination/release-runs/20260812/shared-a-alias.bin"
+  ln "$destination/archive/shared-b.bin" "$destination/release-runs/20260812/shared-a-alias.bin"
+  if verify_snapshot_receipt "$receipt" >/dev/null 2>&1; then
+    echo "full snapshot accepted a hardlink alias rebound to the wrong group" >&2
+    exit 1
+  fi
+  rm "$destination/release-runs/20260812/shared-a-alias.bin"
+  ln "$destination/archive/shared-a.bin" "$destination/release-runs/20260812/shared-a-alias.bin"
+  touch -r "$source/release-runs/20260812" "$destination/release-runs/20260812"
+  verify_snapshot_receipt "$receipt" >/dev/null
   bad_source="$root/legacy-nonempty-wal"
   mkdir -p "$bad_source/runtime-v2"; chmod 0700 "$bad_source" "$bad_source/runtime-v2"
   printf 'not-empty\n' >"$bad_source/runtime-v2/outcomes.sqlite3-wal"; chmod 0600 "$bad_source/runtime-v2/outcomes.sqlite3-wal"
@@ -854,7 +995,7 @@ self_test() {
   verify_snapshot_source "$v1_receipt" >/dev/null
   jq -cn --arg receipt_sha256 "$(sha256_file "$receipt")" \
     --arg v1_receipt_sha256 "$(sha256_file "$v1_receipt")" \
-    '{schema:"hepta_vnext_state_snapshot_self_test_v2",status:"ready",receipt_sha256:$receipt_sha256,v1_receipt_sha256:$v1_receipt_sha256,full_root_v2:true,all_top_level_entries_covered:true,identity_and_portable_inventories_separate:true,modes_uid_gid_mtime_flags_acl_xattr_preserved:true,wal_shm_and_keys_covered:true,nonempty_wal_rejected:true,symlink_rejected:true,special_entry_rejected:true,path_delimiter_rejected:true,nested_receipt_rejected:true,receipt_replay_rejected:true,top_level_drift_rejected:true,xattr_tamper_rejected:true,source_freshness_reverified:true,post_snapshot_mutation_rejected:true,v1_receipt_compatible:true,source_unchanged:true,destination_exact_copy:true,production_changed:false}'
+    '{schema:"hepta_vnext_state_snapshot_self_test_v2",status:"ready",receipt_sha256:$receipt_sha256,v1_receipt_sha256:$v1_receipt_sha256,full_root_v2:true,all_top_level_entries_covered:true,identity_and_portable_inventories_separate:true,modes_uid_gid_mtime_flags_acl_xattr_preserved:true,wal_shm_and_keys_covered:true,hardlink_topology_bound:true,hardlink_copy_preserved:true,hardlink_split_rejected:true,hardlink_rebind_rejected:true,external_hardlinks_rejected:true,nonempty_wal_rejected:true,symlink_rejected:true,special_entry_rejected:true,path_delimiter_rejected:true,nested_receipt_rejected:true,receipt_replay_rejected:true,top_level_drift_rejected:true,xattr_tamper_rejected:true,source_freshness_reverified:true,post_snapshot_mutation_rejected:true,v1_receipt_compatible:true,source_unchanged:true,destination_exact_copy:true,production_changed:false}'
 }
 
 if [[ "${1:-}" == "self-test" ]]; then

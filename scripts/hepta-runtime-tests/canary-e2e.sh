@@ -60,6 +60,7 @@ snapshot_portable_payload_sha=""
 snapshot_top_level_sha=""
 snapshot_sidecar_sha=""
 snapshot_key_sha=""
+snapshot_hardlink_sha=""
 if [[ -n "$target_manifest" ]]; then
   target_manifest="$(realpath "$target_manifest")"
   snapshot_receipt="$(realpath "$snapshot_receipt")"
@@ -80,6 +81,12 @@ if [[ -n "$target_manifest" ]]; then
   target_manifest_sha="$(shasum -a 256 "$target_manifest" | awk '{print $1}')"
   snapshot_receipt_sha="$(shasum -a 256 "$snapshot_receipt" | awk '{print $1}')"
   snapshot_schema="$(jq -r '.schema' "$snapshot_receipt")"
+  target_snapshot_scope="$(jq -r '.runtime.state_snapshot_scope // "runtime-v2-only-v1"' "$target_manifest")"
+  if [[ "$target_snapshot_scope" == full-state-root-v2 \
+    && "$snapshot_schema" != hepta_vnext_state_snapshot_receipt_v2 ]]; then
+    echo "a full-state-root-v2 target manifest rejects legacy v1 snapshot evidence" >&2
+    exit 1
+  fi
   if [[ "$snapshot_schema" == hepta_vnext_state_snapshot_receipt_v2 ]]; then
     jq -e '
       .scope == "full-state-root"
@@ -97,6 +104,7 @@ if [[ -n "$target_manifest" ]]; then
     snapshot_top_level_sha="$(jq -r '.top_level_inventory_sha256' "$snapshot_receipt")"
     snapshot_sidecar_sha="$(jq -r '.sqlite_sidecar_inventory_sha256' "$snapshot_receipt")"
     snapshot_key_sha="$(jq -r '.key_inventory_sha256' "$snapshot_receipt")"
+    snapshot_hardlink_sha="$(jq -r '.hardlink_topology_inventory_sha256' "$snapshot_receipt")"
   elif [[ "$snapshot_schema" != hepta_vnext_state_snapshot_receipt_v1 ]]; then
     echo "persisted canary received an unsupported snapshot receipt schema" >&2
     exit 1
@@ -146,7 +154,7 @@ inventory_tree() {
     find . -print | LC_ALL=C sort | while IFS= read -r item; do
       [[ ! -L "$item" ]] || { echo "symlink rejected in inventory: $item" >&2; exit 1; }
       if [[ -f "$item" ]]; then
-        printf '%s|file|%s|%s\n' "$item" "$(stat -f '%Lp|%u|%g|%z|%m|%c' "$item")" "$(shasum -a 256 "$item" | awk '{print $1}')"
+        printf '%s|file|%s|%s\n' "$item" "$(stat -f '%Lp|%u|%g|%z|%m|%c|%l' "$item")" "$(shasum -a 256 "$item" | awk '{print $1}')"
       elif [[ -d "$item" ]]; then
         printf '%s|directory|%s\n' "$item" "$(stat -f '%Lp|%u|%g|%z|%m|%c' "$item")"
       else
@@ -192,7 +200,7 @@ portable_inventory_v2() {
       [[ ! -L "$item" && "$item" != *$'\n'* && "$item" != *$'\r'* && "$item" != *'|'* ]] || exit 1
       if [[ -f "$item" ]]; then
         printf '%s|file|%s|%s|%s|%s\n' "$item" \
-          "$(stat -f '%Lp|%u|%g|%z|%m|%f' "$item")" \
+          "$(stat -f '%Lp|%u|%g|%z|%m|%l|%f' "$item")" \
           "$(acl_sha256 "$item")" "$(xattr_sha256 "$item")" "$(sha256_file "$item")"
       elif [[ -d "$item" ]]; then
         printf '%s|directory|%s|%s|%s\n' "$item" \
@@ -203,6 +211,51 @@ portable_inventory_v2() {
       fi
     done
   ) >"$output"
+}
+
+hardlink_topology_inventory_v2() {
+  local tree_root="$1" output="$2" raw
+  raw="$(mktemp "$root/hardlink-topology.XXXXXX")"
+  if ! (
+    cd "$tree_root"
+    find . -type f -print | LC_ALL=C sort | while IFS= read -r item; do
+      [[ "$item" != *$'\n'* && "$item" != *$'\r'* && "$item" != *'|'* ]] || exit 1
+      printf '%s|%s|%s|%s\n' "$(stat -f '%d' "$item")" "$(stat -f '%i' "$item")" "$(stat -f '%l' "$item")" "$item"
+    done
+  ) >"$raw"; then
+    rm -f "$raw"
+    return 1
+  fi
+  if ! awk -F '|' '
+    {
+      key = $1 SUBSEP $2
+      rows += 1; file[rows] = $4; row_key[rows] = key; observed[key] += 1
+      if (!(key in primary)) { primary[key] = $4; declared[key] = $3 }
+      else if (declared[key] != $3) invalid = 1
+    }
+    END {
+      for (key in observed) if (declared[key] != observed[key]) invalid = 1
+      if (invalid) exit 1
+      for (row = 1; row <= rows; row++) {
+        key = row_key[row]
+        printf "%s|%s|%d\n", file[row], primary[key], observed[key]
+      }
+    }
+  ' "$raw" >"$output"; then
+    rm -f "$raw" "$output"
+    return 1
+  fi
+  rm -f "$raw"
+}
+
+copy_full_tree_v2() {
+  local source="$1" destination="$2"
+  [[ -d "$source" && ! -L "$source" && ! -e "$destination" && ! -L "$destination" ]] || return 1
+  mkdir "$destination"
+  (cd "$source" && /usr/bin/tar --acls --xattrs --fflags -cf - .) \
+    | (cd "$destination" && /usr/bin/tar --acls --xattrs --fflags -xpf -) \
+    || return 1
+  /usr/bin/touch -r "$source" "$destination" || return 1
 }
 
 sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
@@ -239,7 +292,7 @@ production_inventory() {
   fi
 }
 
-live_before=""; live_after=""; live_payload=""; copy_payload=""; full_state_source_copied=false
+live_before=""; live_after=""; live_payload=""; copy_payload=""; live_hardlinks=""; copy_hardlinks=""; full_state_source_copied=false
 production_before="$root/production-before.inventory"
 production_after="$root/production-after.inventory"
 production_inventory "$production_before"
@@ -258,7 +311,7 @@ if [[ -n "$source_state_root" ]]; then
   inventory_tree "$source_state_root" "$live_before"
   if [[ "$snapshot_schema" == hepta_vnext_state_snapshot_receipt_v2 ]]; then
     rmdir "$state_root"
-    cp -pR "$source_state_root" "$state_root"
+    copy_full_tree_v2 "$source_state_root" "$state_root"
     full_state_source_copied=true
   else
     cp -pR "$source_runtime" "$state_root/runtime-v2"
@@ -271,6 +324,10 @@ if [[ -n "$source_state_root" ]]; then
   if [[ "$snapshot_schema" == hepta_vnext_state_snapshot_receipt_v2 ]]; then
     portable_inventory_v2 "$source_state_root" "$live_payload"
     portable_inventory_v2 "$state_root" "$copy_payload"
+    live_hardlinks="$root/live.hardlinks"
+    copy_hardlinks="$root/copy.hardlinks"
+    hardlink_topology_inventory_v2 "$source_state_root" "$live_hardlinks"
+    hardlink_topology_inventory_v2 "$state_root" "$copy_hardlinks"
   else
     payload_inventory "$source_runtime" "$live_payload"
     payload_inventory "$runtime_root" "$copy_payload"
@@ -282,6 +339,13 @@ if [[ -n "$source_state_root" ]]; then
   if [[ "$snapshot_schema" == hepta_vnext_state_snapshot_receipt_v2 \
     && "$(sha256_file "$live_payload")" != "$snapshot_portable_payload_sha" ]]; then
     echo "private full-state canary copy is not bound to the snapshot portable inventory" >&2
+    exit 1
+  fi
+  if [[ "$snapshot_schema" == hepta_vnext_state_snapshot_receipt_v2 \
+    && ( "$(sha256_file "$live_hardlinks")" != "$snapshot_hardlink_sha" \
+      || "$(sha256_file "$copy_hardlinks")" != "$snapshot_hardlink_sha" \
+      || ! -s "$live_hardlinks" ) ]]; then
+    echo "private full-state canary copy changed the snapshot hardlink alias topology" >&2
     exit 1
   fi
 else
@@ -417,6 +481,7 @@ jq -n \
   --arg snapshot_top_level_inventory_sha256 "$snapshot_top_level_sha" \
   --arg snapshot_sqlite_sidecar_inventory_sha256 "$snapshot_sidecar_sha" \
   --arg snapshot_key_inventory_sha256 "$snapshot_key_sha" \
+  --arg snapshot_hardlink_topology_inventory_sha256 "$snapshot_hardlink_sha" \
   --arg source_commit "$source_commit" \
   --arg source_state_root "$source_state_root" \
   --arg source_inventory_sha256 "$(if [[ -n "$live_before" ]]; then sha256_file "$live_before"; else sha256_file "$before_inventory"; fi)" \
@@ -426,7 +491,7 @@ jq -n \
   --argjson source_state_copied "$source_state_copied" \
   --argjson source_unchanged "$source_unchanged" \
   --argjson full_state_source_copied "$full_state_source_copied" \
-  '{schema:(if $snapshot_schema == "hepta_vnext_state_snapshot_receipt_v2" then "hepta_vnext_runtime_canary_e2e_v2" else "hepta_vnext_runtime_canary_e2e_v1" end),status:"ready",listen_addr:"127.0.0.1:17373",source_commit:$source_commit,source_tree_clean:true,binary_sha256:$binary_sha256,manifest:$manifest,manifest_sha256:$manifest_sha256,canary_state_root:$canary_state_root,target_manifest:(if $target_manifest=="" then null else $target_manifest end),target_manifest_sha256:(if $target_manifest_sha256=="" then null else $target_manifest_sha256 end),snapshot_receipt_sha256:(if $snapshot_receipt_sha256=="" then null else $snapshot_receipt_sha256 end),snapshot_schema:(if $snapshot_schema=="" then null else $snapshot_schema end),snapshot_id:(if $snapshot_id=="" then null else $snapshot_id end),snapshot_source_identity_inventory_sha256:(if $snapshot_source_identity_sha256=="" then null else $snapshot_source_identity_sha256 end),snapshot_portable_payload_inventory_sha256:(if $snapshot_portable_payload_sha256=="" then null else $snapshot_portable_payload_sha256 end),snapshot_top_level_inventory_sha256:(if $snapshot_top_level_inventory_sha256=="" then null else $snapshot_top_level_inventory_sha256 end),snapshot_sqlite_sidecar_inventory_sha256:(if $snapshot_sqlite_sidecar_inventory_sha256=="" then null else $snapshot_sqlite_sidecar_inventory_sha256 end),snapshot_key_inventory_sha256:(if $snapshot_key_inventory_sha256=="" then null else $snapshot_key_inventory_sha256 end),source_state_root:(if $source_state_root=="" then null else $source_state_root end),source_inventory_sha256:$source_inventory_sha256,copy_payload_sha256:$copy_payload_sha256,soak_receipt_sha256:$soak_receipt_sha256,soak_samples:3,production_inventory_sha256:$production_inventory_sha256,schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:$source_state_copied,full_state_source_copied:$full_state_source_copied,full_snapshot_receipt_bound:($snapshot_schema == "hepta_vnext_state_snapshot_receipt_v2"),all_top_level_entries_copied:($snapshot_schema == "hepta_vnext_state_snapshot_receipt_v2"),source_unchanged:$source_unchanged,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,protected_routes_absent:true,non_get_rejected:true,authority_all_closed:true,production_service_changed:false}' >"$canary_tmp"
+  '{schema:(if $snapshot_schema == "hepta_vnext_state_snapshot_receipt_v2" then "hepta_vnext_runtime_canary_e2e_v2" else "hepta_vnext_runtime_canary_e2e_v1" end),status:"ready",listen_addr:"127.0.0.1:17373",source_commit:$source_commit,source_tree_clean:true,binary_sha256:$binary_sha256,manifest:$manifest,manifest_sha256:$manifest_sha256,canary_state_root:$canary_state_root,target_manifest:(if $target_manifest=="" then null else $target_manifest end),target_manifest_sha256:(if $target_manifest_sha256=="" then null else $target_manifest_sha256 end),snapshot_receipt_sha256:(if $snapshot_receipt_sha256=="" then null else $snapshot_receipt_sha256 end),snapshot_schema:(if $snapshot_schema=="" then null else $snapshot_schema end),snapshot_id:(if $snapshot_id=="" then null else $snapshot_id end),snapshot_source_identity_inventory_sha256:(if $snapshot_source_identity_sha256=="" then null else $snapshot_source_identity_sha256 end),snapshot_portable_payload_inventory_sha256:(if $snapshot_portable_payload_sha256=="" then null else $snapshot_portable_payload_sha256 end),snapshot_top_level_inventory_sha256:(if $snapshot_top_level_inventory_sha256=="" then null else $snapshot_top_level_inventory_sha256 end),snapshot_sqlite_sidecar_inventory_sha256:(if $snapshot_sqlite_sidecar_inventory_sha256=="" then null else $snapshot_sqlite_sidecar_inventory_sha256 end),snapshot_key_inventory_sha256:(if $snapshot_key_inventory_sha256=="" then null else $snapshot_key_inventory_sha256 end),snapshot_hardlink_topology_inventory_sha256:(if $snapshot_hardlink_topology_inventory_sha256=="" then null else $snapshot_hardlink_topology_inventory_sha256 end),source_state_root:(if $source_state_root=="" then null else $source_state_root end),source_inventory_sha256:$source_inventory_sha256,copy_payload_sha256:$copy_payload_sha256,soak_receipt_sha256:$soak_receipt_sha256,soak_samples:3,production_inventory_sha256:$production_inventory_sha256,schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:$source_state_copied,full_state_source_copied:$full_state_source_copied,full_snapshot_receipt_bound:($snapshot_schema == "hepta_vnext_state_snapshot_receipt_v2"),all_top_level_entries_copied:($snapshot_schema == "hepta_vnext_state_snapshot_receipt_v2"),hardlinks_preserved:($snapshot_schema == "hepta_vnext_state_snapshot_receipt_v2"),source_unchanged:$source_unchanged,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,protected_routes_absent:true,non_get_rejected:true,authority_all_closed:true,production_service_changed:false}' >"$canary_tmp"
 if [[ -n "$output_receipt" ]]; then
   write_private_new "$output_soak_receipt" "$soak_tmp"
   write_private_new "$output_receipt" "$canary_tmp"
