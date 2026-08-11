@@ -8,6 +8,7 @@
 use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -21,6 +22,8 @@ use tokio::net::TcpStream;
 pub const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:7373";
 pub const CANARY_LISTEN_ADDR: &str = "127.0.0.1:17373";
 const MAX_REQUEST_BYTES: usize = 32 * 1024;
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 const CLOSED_EFFECT_ENV_VARS: &[&str] = &[
     "HEPTA_GATEWAY_ENABLE_TELEGRAM_PLUGIN",
@@ -170,13 +173,18 @@ fn truthy(value: &str) -> bool {
 }
 
 async fn serve_connection(mut stream: TcpStream, runtime: Arc<HeptaRuntime>) -> Result<()> {
-    let request = read_request(&mut stream).await?;
-    let response = route_request(&request, &runtime)?;
-    stream
-        .write_all(&response)
+    let request = tokio::time::timeout(REQUEST_TIMEOUT, read_request(&mut stream))
         .await
+        .context("loopback request timed out")??;
+    let response = route_request(&request, &runtime)?;
+    tokio::time::timeout(RESPONSE_TIMEOUT, stream.write_all(&response))
+        .await
+        .context("loopback response timed out")?
         .context("write loopback response")?;
-    stream.shutdown().await.context("close loopback response")
+    tokio::time::timeout(RESPONSE_TIMEOUT, stream.shutdown())
+        .await
+        .context("loopback shutdown timed out")?
+        .context("close loopback response")
 }
 
 async fn read_request(stream: &mut TcpStream) -> Result<Vec<u8>> {
@@ -186,9 +194,6 @@ async fn read_request(stream: &mut TcpStream) -> Result<Vec<u8>> {
         if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
             return Ok(bytes);
         }
-        if bytes.len() >= MAX_REQUEST_BYTES {
-            anyhow::bail!("HTTP request headers exceed {MAX_REQUEST_BYTES} bytes");
-        }
         let read = stream
             .read(&mut buffer)
             .await
@@ -197,6 +202,9 @@ async fn read_request(stream: &mut TcpStream) -> Result<Vec<u8>> {
             anyhow::bail!("loopback request ended before complete headers");
         }
         bytes.extend_from_slice(&buffer[..read]);
+        if bytes.len() > MAX_REQUEST_BYTES {
+            anyhow::bail!("HTTP request headers exceed {MAX_REQUEST_BYTES} bytes");
+        }
     }
 }
 
@@ -372,6 +380,25 @@ mod tests {
         )?;
         assert!(response.starts_with(b"HTTP/1.1 405 Method Not Allowed"));
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn rejects_headers_larger_than_the_limit_even_with_a_terminator() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            read_request(&mut stream).await
+        });
+
+        let mut client = TcpStream::connect(address).await.unwrap();
+        let mut request = b"GET / HTTP/1.1\r\nX-Large: ".to_vec();
+        request.resize(MAX_REQUEST_BYTES + 1, b'a');
+        request.extend_from_slice(b"\r\n\r\n");
+        client.write_all(&request).await.unwrap();
+
+        let error = server.await.unwrap().unwrap_err();
+        assert!(error.to_string().contains("headers exceed"));
     }
 
     #[test]
