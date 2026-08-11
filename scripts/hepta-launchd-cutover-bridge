@@ -1,0 +1,380 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  hepta-launchd-cutover-bridge prepare --manifest PATH --launch-agent-root DIR --bundle DIR
+  hepta-launchd-cutover-bridge cutover --bundle DIR [--output-receipt PATH] [--apply]
+  hepta-launchd-cutover-bridge rollback --bundle DIR --previous-receipt PATH [--output-receipt PATH] [--apply]
+  hepta-launchd-cutover-bridge recutover --bundle DIR --previous-receipt PATH [--output-receipt PATH] [--apply]
+  hepta-launchd-cutover-bridge self-test
+
+prepare snapshots and hashes the exact legacy and vNext plists without loading
+anything. Transition commands are dry-run unless --apply is explicit. The
+legacy executable is never copied into a vNext release or described as closed.
+EOF
+  exit 64
+}
+
+sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
+
+absolute_non_root() {
+  [[ "$1" == /* \
+    && "$1" != "/" \
+    && "$1" != */ \
+    && "$1" != *"//"* \
+    && "$1" != *"/../"* \
+    && "$1" != *"/./"* \
+    && "$1" != */.. \
+    && "$1" != */. ]] || {
+    echo "path must be absolute, normalized, and non-root: $1" >&2
+    return 1
+  }
+}
+
+canonical_file() {
+  [[ -f "$1" && ! -L "$1" ]] || { echo "regular non-symlink file required: $1" >&2; return 1; }
+  local directory
+  directory="$(cd "$(dirname "$1")" && pwd -P)"
+  printf '%s/%s\n' "$directory" "$(basename "$1")"
+}
+
+validate_label() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
+    echo "invalid launchd label: $1" >&2
+    return 1
+  }
+}
+
+verify_release_manifest() {
+  local manifest="$1" release verify_relative
+  manifest="$(canonical_file "$manifest")"
+  release="$(dirname "$manifest")"
+  verify_relative="$(jq -r '.watchdog.verify_tool' "$manifest")"
+  [[ "$verify_relative" == "scripts/hepta-immutable-release-tree" ]] || {
+    echo "manifest declares an unsupported verifier" >&2
+    return 1
+  }
+  "$release/$verify_relative" verify --manifest "$manifest" >/dev/null
+}
+
+write_private_new() {
+  local destination="$1" source="$2" parent staged
+  [[ ! -e "$destination" && ! -L "$destination" ]] || {
+    echo "refusing to replace receipt: $destination" >&2
+    return 1
+  }
+  parent="$(dirname "$destination")"
+  mkdir -p "$parent"
+  chmod 0700 "$parent"
+  staged="$(mktemp "$parent/.hepta-bridge-receipt.XXXXXX")"
+  trap 'rm -f "$staged"' RETURN
+  cp "$source" "$staged"
+  chmod 0400 "$staged"
+  mv "$staged" "$destination"
+  trap - RETURN
+}
+
+prepare_bundle() {
+  local manifest="$1" launch_root="$2" bundle="$3"
+  local release install_root gateway_label watchdog_label gateway_relative watchdog_relative
+  local legacy_gateway legacy_watchdog vnext_gateway vnext_watchdog legacy_program legacy_install_root
+  absolute_non_root "$launch_root"
+  absolute_non_root "$bundle"
+  [[ ! -e "$bundle" && ! -L "$bundle" ]] || { echo "bridge bundle already exists: $bundle" >&2; return 1; }
+  manifest="$(canonical_file "$manifest")"
+  verify_release_manifest "$manifest"
+  release="$(dirname "$manifest")"
+  install_root="$(jq -r '.runtime.install_root' "$manifest")"
+  absolute_non_root "$install_root"
+  "$release/scripts/hepta-generation-pointer" verify --install-root "$install_root" >/dev/null
+  gateway_label="$(jq -r '.gateway_launch_agent.label' "$manifest")"
+  watchdog_label="$(jq -r '.watchdog_launch_agent.label' "$manifest")"
+  validate_label "$gateway_label"; validate_label "$watchdog_label"
+  gateway_relative="$(jq -r '.gateway_launch_agent.relative_path' "$manifest")"
+  watchdog_relative="$(jq -r '.watchdog_launch_agent.relative_path' "$manifest")"
+  [[ "$gateway_relative" == "launchd/$gateway_label.plist" \
+    && "$watchdog_relative" == "launchd/$watchdog_label.plist" ]] || {
+    echo "manifest LaunchAgent paths are not label-bound" >&2
+    return 1
+  }
+  legacy_gateway="$(canonical_file "$launch_root/$gateway_label.plist")"
+  legacy_watchdog="$(canonical_file "$launch_root/$watchdog_label.plist")"
+  vnext_gateway="$(canonical_file "$release/$gateway_relative")"
+  vnext_watchdog="$(canonical_file "$release/$watchdog_relative")"
+  [[ "$(plutil -extract Label raw -o - "$legacy_gateway")" == "$gateway_label" \
+    && "$(plutil -extract Label raw -o - "$legacy_watchdog")" == "$watchdog_label" \
+    && "$(plutil -extract Label raw -o - "$vnext_gateway")" == "$gateway_label" \
+    && "$(plutil -extract Label raw -o - "$vnext_watchdog")" == "$watchdog_label" ]] || {
+    echo "LaunchAgent label differs from its bound role" >&2
+    return 1
+  }
+  legacy_program="$(plutil -extract ProgramArguments.0 raw -o - "$legacy_gateway")"
+  absolute_non_root "$legacy_program"
+  legacy_install_root="$(dirname "$(dirname "$legacy_program")")"
+  [[ "$legacy_install_root" != "$install_root" ]] || {
+    echo "vNext must use an install root separate from legacy" >&2
+    return 1
+  }
+  [[ "$(sha256_file "$legacy_gateway")" != "$(sha256_file "$vnext_gateway")" \
+    && "$(sha256_file "$legacy_watchdog")" != "$(sha256_file "$vnext_watchdog")" ]] || {
+    echo "legacy and vNext LaunchAgent bytes must be distinct" >&2
+    return 1
+  }
+
+  local parent stage plan
+  mkdir -p "$(dirname "$bundle")"
+  chmod 0700 "$(dirname "$bundle")"
+  parent="$(cd "$(dirname "$bundle")" && pwd -P)"
+  stage="$(mktemp -d "$parent/.hepta-launchd-bridge.XXXXXX")"
+  trap 'chmod -R u+w "$stage" 2>/dev/null || true; rm -rf "$stage"' RETURN
+  mkdir -p "$stage/legacy" "$stage/vnext"
+  cp "$legacy_gateway" "$stage/legacy/gateway.plist"
+  cp "$legacy_watchdog" "$stage/legacy/watchdog.plist"
+  cp "$vnext_gateway" "$stage/vnext/gateway.plist"
+  cp "$vnext_watchdog" "$stage/vnext/watchdog.plist"
+  chmod 0400 "$stage"/{legacy,vnext}/*.plist
+  plan="$stage/plan.json"
+  jq -n \
+    --arg manifest "$manifest" \
+    --arg manifest_sha256 "$(sha256_file "$manifest")" \
+    --arg launch_root "$launch_root" \
+    --arg install_root "$install_root" \
+    --arg legacy_program "$legacy_program" \
+    --arg gateway_label "$gateway_label" \
+    --arg watchdog_label "$watchdog_label" \
+    --arg legacy_gateway_sha "$(sha256_file "$legacy_gateway")" \
+    --arg legacy_watchdog_sha "$(sha256_file "$legacy_watchdog")" \
+    --arg vnext_gateway_sha "$(sha256_file "$vnext_gateway")" \
+    --arg vnext_watchdog_sha "$(sha256_file "$vnext_watchdog")" \
+    '{schema:"hepta_vnext_launchd_bridge_plan_v1",status:"ready",manifest:$manifest,manifest_sha256:$manifest_sha256,launch_agent_root:$launch_root,vnext_install_root:$install_root,separate_legacy_install_root:true,legacy_program:$legacy_program,labels:{gateway:$gateway_label,watchdog:$watchdog_label},legacy:{gateway:{relative_path:"legacy/gateway.plist",sha256:$legacy_gateway_sha},watchdog:{relative_path:"legacy/watchdog.plist",sha256:$legacy_watchdog_sha},authority_not_reclassified:true},vnext:{gateway:{relative_path:"vnext/gateway.plist",sha256:$vnext_gateway_sha},watchdog:{relative_path:"vnext/watchdog.plist",sha256:$vnext_watchdog_sha},authority_all_closed:true},transitions:["cutover","rollback","recutover"],service_changed:false}' >"$plan"
+  chmod 0400 "$plan"
+  local sums
+  sums="$(
+    cd "$stage"
+    find . -type f ! -name SHA256SUMS -print | sed 's#^./##' | LC_ALL=C sort | while IFS= read -r item; do shasum -a 256 "$item"; done
+  )"
+  (
+    cd "$stage"
+    printf '%s\n' "$sums" >SHA256SUMS
+    chmod 0400 SHA256SUMS
+  )
+  chmod 0500 "$stage" "$stage/legacy" "$stage/vnext"
+  mv "$stage" "$bundle"
+  stage=""
+  trap - RETURN
+  verify_bundle "$bundle" >/dev/null
+  jq -cn --arg bundle "$bundle" --arg plan_sha256 "$(sha256_file "$bundle/plan.json")" \
+    '{schema:"hepta_vnext_launchd_bridge_prepare_v1",status:"ready",bundle:$bundle,plan_sha256:$plan_sha256,legacy_archived:true,service_changed:false}'
+}
+
+verify_bundle() {
+  local bundle="$1" plan launch_root gateway_label watchdog_label manifest
+  absolute_non_root "$bundle"
+  [[ -d "$bundle" && ! -L "$bundle" && -f "$bundle/plan.json" && ! -L "$bundle/plan.json" ]] || {
+    echo "bridge bundle is missing or unsafe" >&2
+    return 1
+  }
+  if find "$bundle" -type l -print -quit | grep -q .; then
+    echo "bridge bundle contains a symlink" >&2
+    return 1
+  fi
+  (cd "$bundle" && shasum -a 256 -c SHA256SUMS >/dev/null)
+  plan="$bundle/plan.json"
+  jq -e '
+    .schema == "hepta_vnext_launchd_bridge_plan_v1"
+    and .status == "ready"
+    and .separate_legacy_install_root == true
+    and .legacy.authority_not_reclassified == true
+    and .vnext.authority_all_closed == true
+    and (.launch_agent_root | startswith("/"))
+  ' "$plan" >/dev/null || { echo "invalid bridge plan" >&2; return 1; }
+  manifest="$(jq -r '.manifest' "$plan")"
+  [[ "$(sha256_file "$manifest")" == "$(jq -r '.manifest_sha256' "$plan")" ]] || {
+    echo "release manifest changed after bridge preparation" >&2
+    return 1
+  }
+  verify_release_manifest "$manifest"
+  launch_root="$(jq -r '.launch_agent_root' "$plan")"; absolute_non_root "$launch_root"
+  gateway_label="$(jq -r '.labels.gateway' "$plan")"; validate_label "$gateway_label"
+  watchdog_label="$(jq -r '.labels.watchdog' "$plan")"; validate_label "$watchdog_label"
+  for generation in legacy vnext; do
+    for role in gateway watchdog; do
+      local relative expected
+      relative="$(jq -r ".${generation}.${role}.relative_path" "$plan")"
+      [[ "$relative" == "$generation/$role.plist" ]] || { echo "invalid bridge snapshot path" >&2; return 1; }
+      expected="$(jq -r ".${generation}.${role}.sha256" "$plan")"
+      [[ "$expected" =~ ^[0-9a-f]{64}$ && "$(sha256_file "$bundle/$relative")" == "$expected" ]] || {
+        echo "bridge snapshot differs from plan: $generation/$role" >&2
+        return 1
+      }
+    done
+  done
+  jq -cn --arg bundle "$bundle" --arg plan_sha256 "$(sha256_file "$plan")" \
+    '{schema:"hepta_vnext_launchd_bridge_verification_v1",status:"ready",bundle:$bundle,plan_sha256:$plan_sha256,legacy_authority_reclassified:false}'
+}
+
+verify_previous_receipt() {
+  local receipt="$1" expected_transition="$2" plan_sha="$3"
+  receipt="$(canonical_file "$receipt")"
+  jq -e --arg transition "$expected_transition" --arg plan_sha "$plan_sha" '
+    .schema == "hepta_vnext_launchd_bridge_transition_v1"
+    and .status == "ready"
+    and .transition == $transition
+    and .applied == true
+    and .service_pair_reloaded == true
+    and .plan_sha256 == $plan_sha
+  ' "$receipt" >/dev/null || { echo "previous bridge receipt is invalid" >&2; return 1; }
+  printf '%s\n' "$(sha256_file "$receipt")"
+}
+
+replace_plist_pair() {
+  local plan="$1" bundle="$2" source_generation="$3" target_generation="$4" service_mode="$5"
+  local launch_root gateway_label watchdog_label role label target source staged
+  launch_root="$(jq -r '.launch_agent_root' "$plan")"
+  gateway_label="$(jq -r '.labels.gateway' "$plan")"
+  watchdog_label="$(jq -r '.labels.watchdog' "$plan")"
+  for role in gateway watchdog; do
+    label="$gateway_label"; [[ "$role" == "watchdog" ]] && label="$watchdog_label"
+    target="$launch_root/$label.plist"
+    [[ -f "$target" && ! -L "$target" ]] || { echo "active plist is missing: $target" >&2; return 1; }
+    [[ "$(sha256_file "$target")" == "$(jq -r ".${source_generation}.${role}.sha256" "$plan")" ]] || {
+      echo "active $role plist changed since bridge review" >&2
+      return 1
+    }
+  done
+  for role in gateway watchdog; do
+    label="$gateway_label"; [[ "$role" == "watchdog" ]] && label="$watchdog_label"
+    target="$launch_root/$label.plist"
+    source="$bundle/$(jq -r ".${target_generation}.${role}.relative_path" "$plan")"
+    staged="$(mktemp "$launch_root/.$label.bridge.XXXXXX")"
+    cp "$source" "$staged"; chmod 0444 "$staged"; plutil -lint "$staged" >/dev/null
+    mv -f "$staged" "$target"
+  done
+  if [[ "$service_mode" == "launchctl" ]]; then
+    local domain
+    domain="gui/$(id -u)"
+    /bin/launchctl bootout "$domain/$watchdog_label" >/dev/null 2>&1 || true
+    /bin/launchctl bootout "$domain/$gateway_label" >/dev/null 2>&1 || true
+    if ! /bin/launchctl bootstrap "$domain" "$launch_root/$gateway_label.plist" \
+      || ! /bin/launchctl bootstrap "$domain" "$launch_root/$watchdog_label.plist" \
+      || ! /bin/launchctl kickstart -k "$domain/$gateway_label"; then
+      echo "service reload failed; restoring reviewed source plists" >&2
+      for role in gateway watchdog; do
+        label="$gateway_label"; [[ "$role" == "watchdog" ]] && label="$watchdog_label"
+        cp "$bundle/$(jq -r ".${source_generation}.${role}.relative_path" "$plan")" "$launch_root/$label.plist"
+        chmod 0444 "$launch_root/$label.plist"
+      done
+      /bin/launchctl bootout "$domain/$watchdog_label" >/dev/null 2>&1 || true
+      /bin/launchctl bootout "$domain/$gateway_label" >/dev/null 2>&1 || true
+      /bin/launchctl bootstrap "$domain" "$launch_root/$gateway_label.plist" >/dev/null 2>&1 || true
+      /bin/launchctl bootstrap "$domain" "$launch_root/$watchdog_label.plist" >/dev/null 2>&1 || true
+      /bin/launchctl kickstart -k "$domain/$gateway_label" >/dev/null 2>&1 || true
+      return 1
+    fi
+  fi
+  for role in gateway watchdog; do
+    label="$gateway_label"; [[ "$role" == "watchdog" ]] && label="$watchdog_label"
+    [[ "$(sha256_file "$launch_root/$label.plist")" == "$(jq -r ".${target_generation}.${role}.sha256" "$plan")" ]] || {
+      echo "installed $role plist differs from target generation" >&2
+      return 1
+    }
+  done
+}
+
+transition() {
+  local command="$1" bundle="$2" previous_receipt="$3" output_receipt="$4" apply="$5" service_mode="$6"
+  local source_generation target_generation expected_previous plan plan_sha previous_sha="" receipt_tmp
+  verify_bundle "$bundle" >/dev/null
+  plan="$bundle/plan.json"; plan_sha="$(sha256_file "$plan")"
+  case "$command" in
+    cutover) source_generation=legacy; target_generation=vnext; expected_previous="" ;;
+    rollback) source_generation=vnext; target_generation=legacy; expected_previous=cutover ;;
+    recutover) source_generation=legacy; target_generation=vnext; expected_previous=rollback ;;
+    *) usage ;;
+  esac
+  if [[ -n "$expected_previous" ]]; then
+    [[ -n "$previous_receipt" ]] || usage
+    previous_sha="$(verify_previous_receipt "$previous_receipt" "$expected_previous" "$plan_sha")"
+  else
+    [[ -z "$previous_receipt" ]] || usage
+  fi
+  if [[ "$apply" != "true" ]]; then
+    jq -cn --arg transition "$command" --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" \
+      --arg source "$source_generation" --arg target "$target_generation" \
+      '{schema:"hepta_vnext_launchd_bridge_transition_plan_v1",status:"ready",transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,applied:false,service_changed:false}'
+    return
+  fi
+  [[ -n "$output_receipt" ]] || usage
+  replace_plist_pair "$plan" "$bundle" "$source_generation" "$target_generation" "$service_mode"
+  local temp_root
+  temp_root="${TMPDIR:-/tmp}"
+  receipt_tmp="$(mktemp "${temp_root%/}/hepta-bridge-transition.XXXXXX")"
+  trap 'rm -f "$receipt_tmp"' RETURN
+  jq -n --arg transition "$command" --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" \
+    --arg source "$source_generation" --arg target "$target_generation" \
+    --arg previous_receipt_sha256 "$previous_sha" \
+    --arg gateway_sha256 "$(jq -r ".${target_generation}.gateway.sha256" "$plan")" \
+    --arg watchdog_sha256 "$(jq -r ".${target_generation}.watchdog.sha256" "$plan")" \
+    --arg applied_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:"hepta_vnext_launchd_bridge_transition_v1",status:"ready",transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),installed:{gateway_sha256:$gateway_sha256,watchdog_sha256:$watchdog_sha256},applied_at:$applied_at,applied:true,service_pair_reloaded:true,legacy_authority_reclassified:false}' >"$receipt_tmp"
+  write_private_new "$output_receipt" "$receipt_tmp"
+  trap - RETURN
+  cat "$output_receipt"
+}
+
+self_test() {
+  local temp_root root materializer release install_root launch_root bundle cutover_receipt rollback_receipt recutover_receipt
+  temp_root="${TMPDIR:-/tmp}"
+  root="$(mktemp -d "${temp_root%/}/hepta-launchd-bridge-self-test.XXXXXX")"
+  HEPTA_BRIDGE_SELF_TEST_ROOT="$root"
+  trap 'chmod -R u+w "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_BRIDGE_SELF_TEST_ROOT"' EXIT
+  materializer="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/hepta-immutable-release-tree"
+  release="$root/release"; install_root="$root/vnext-install"; launch_root="$root/LaunchAgents"; bundle="$root/bridge"
+  mkdir -p "$launch_root"
+  "$materializer" materialize --binary /usr/bin/true --destination "$release" \
+    --state-root "$root/state-copy" --install-root "$install_root" \
+    --gateway-label ai.hepta.gateway --watchdog-label ai.hepta.installed-live-watchdog \
+    --listen-port 17373 --source-commit bridge-self-test >/dev/null
+  "$release/scripts/hepta-generation-pointer" initialize --install-root "$install_root" --manifest "$release/manifest.json" >/dev/null
+  for role in gateway watchdog; do
+    local label program json target
+    label=ai.hepta.gateway; program="$root/legacy-install/bin/hepta"
+    [[ "$role" == "watchdog" ]] && { label=ai.hepta.installed-live-watchdog; program="$root/legacy-install/watchdog.sh"; }
+    json="$root/$role.json"; target="$launch_root/$label.plist"
+    jq -n --arg label "$label" --arg program "$program" '{Label:$label,ProgramArguments:[$program]}' >"$json"
+    plutil -convert xml1 -o "$target" "$json"; chmod 0444 "$target"
+  done
+  prepare_bundle "$release/manifest.json" "$launch_root" "$bundle" >/dev/null
+  cutover_receipt="$root/cutover.json"; rollback_receipt="$root/rollback.json"; recutover_receipt="$root/recutover.json"
+  transition cutover "$bundle" "" "$cutover_receipt" true test >/dev/null
+  transition rollback "$bundle" "$cutover_receipt" "$rollback_receipt" true test >/dev/null
+  transition recutover "$bundle" "$rollback_receipt" "$recutover_receipt" true test >/dev/null
+  jq -cn --arg plan_sha256 "$(sha256_file "$bundle/plan.json")" \
+    --arg cutover_receipt_sha256 "$(sha256_file "$cutover_receipt")" \
+    --arg rollback_receipt_sha256 "$(sha256_file "$rollback_receipt")" \
+    --arg recutover_receipt_sha256 "$(sha256_file "$recutover_receipt")" \
+    '{schema:"hepta_vnext_launchd_bridge_self_test_v1",status:"ready",plan_sha256:$plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,cutover:true,rollback:true,recutover:true,legacy_authority_reclassified:false,production_changed:false}'
+}
+
+command="${1:-}"; [[ -n "$command" ]] || usage; shift
+manifest=""; launch_root=""; bundle=""; previous_receipt=""; output_receipt=""; apply=false
+while (( $# > 0 )); do
+  case "$1" in
+    --manifest) shift; [[ $# -gt 0 ]] || usage; manifest="$1" ;;
+    --launch-agent-root) shift; [[ $# -gt 0 ]] || usage; launch_root="$1" ;;
+    --bundle) shift; [[ $# -gt 0 ]] || usage; bundle="$1" ;;
+    --previous-receipt) shift; [[ $# -gt 0 ]] || usage; previous_receipt="$1" ;;
+    --output-receipt) shift; [[ $# -gt 0 ]] || usage; output_receipt="$1" ;;
+    --apply) apply=true ;;
+    *) usage ;;
+  esac
+  shift
+done
+case "$command" in
+  prepare) [[ -n "$manifest" && -n "$launch_root" && -n "$bundle" && "$apply" == false ]] || usage; prepare_bundle "$manifest" "$launch_root" "$bundle" ;;
+  cutover|rollback|recutover) [[ -n "$bundle" ]] || usage; transition "$command" "$bundle" "$previous_receipt" "$output_receipt" "$apply" launchctl ;;
+  self-test) [[ -z "$manifest$launch_root$bundle$previous_receipt$output_receipt" && "$apply" == false ]] || usage; self_test ;;
+  *) usage ;;
+esac

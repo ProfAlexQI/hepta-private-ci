@@ -1,0 +1,359 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  hepta-immutable-release-tree materialize --binary PATH --destination DIR [options]
+  hepta-immutable-release-tree verify --manifest PATH
+  hepta-immutable-release-tree self-test
+
+materialize options:
+  --state-root DIR          default: $HEPTA_STATE_ROOT or ~/.local/share/hepta-vnext/live-snapshot
+  --install-root DIR        default: $HEPTA_INSTALL_ROOT or ~/.local/opt/hepta-vnext
+  --gateway-label LABEL     default: ai.hepta.gateway
+  --watchdog-label LABEL    default: ai.hepta.installed-live-watchdog
+  --listen-port PORT        default: 7373 (isolated canary: 17373)
+  --source-commit SHA       recorded source identity
+
+Materialization never changes a generation pointer or launchd job.
+EOF
+  exit 64
+}
+
+sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
+file_size() { stat -f '%z' "$1" 2>/dev/null || stat -c '%s' "$1"; }
+
+absolute_non_root() {
+  [[ "$1" == /* \
+    && "$1" != "/" \
+    && "$1" != */ \
+    && "$1" != *"//"* \
+    && "$1" != *"/../"* \
+    && "$1" != *"/./"* \
+    && "$1" != */.. \
+    && "$1" != */. ]] || {
+    echo "path must be absolute, normalized, and non-root: $1" >&2
+    exit 1
+  }
+}
+
+valid_label() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
+    echo "invalid launchd label: $1" >&2
+    exit 1
+  }
+}
+
+valid_port() {
+  if ! [[ "$1" =~ ^[0-9]+$ ]] || ! (( "$1" >= 1 && "$1" <= 65535 )); then
+    echo "listen port must be an integer from 1 through 65535" >&2
+    exit 1
+  fi
+}
+
+release_root_from_manifest() {
+  local manifest="$1"
+  [[ -f "$manifest" && ! -L "$manifest" ]] || {
+    echo "immutable manifest must be a regular file: $manifest" >&2
+    return 1
+  }
+  (cd "$(dirname "$manifest")" && pwd -P)
+}
+
+verify_release() {
+  local manifest="$1" release_root artifact expected_sha actual_sha state_root install_root
+  release_root="$(release_root_from_manifest "$manifest")"
+  manifest="$release_root/$(basename "$manifest")"
+  jq -e '
+    .schema == "hepta_vnext_immutable_release_v1"
+    and .status == "ready"
+    and .artifact.relative_path == "bin/hepta"
+    and (.artifact.sha256 | test("^[0-9a-f]{64}$"))
+    and .runtime.listen_host == "127.0.0.1"
+    and (.runtime.listen_port >= 1 and .runtime.listen_port <= 65535)
+    and (.runtime.state_root | startswith("/"))
+    and (.runtime.install_root | startswith("/"))
+    and .runtime.open_mode == "immutable-query-only-open-existing"
+    and .runtime.schema_version == 5
+    and .runtime.requires_empty_wal == true
+    and .runtime.keyed_integrity_required == true
+    and .authority.telegram == false
+    and .authority.outbound == false
+    and .authority.model_invocation == false
+    and .authority.operator_mutation == false
+    and .authority.enforce == false
+    and .authority.promotion == false
+    and .authority.retirement == false
+    and .authority.automatic_transition == false
+    and .watchdog.entrypoint == "scripts/hepta-watchdog.sh"
+    and .watchdog.verify_tool == "scripts/hepta-immutable-release-tree"
+    and .watchdog.immutable_release_bound == true
+    and (.gateway_launch_agent.label | test("^[A-Za-z0-9][A-Za-z0-9._-]*$"))
+    and .gateway_launch_agent.relative_path == ("launchd/" + .gateway_launch_agent.label + ".plist")
+    and (.gateway_launch_agent.sha256 | test("^[0-9a-f]{64}$"))
+    and .gateway_launch_agent.state_root == .runtime.state_root
+    and .gateway_launch_agent.listen_port == .runtime.listen_port
+    and .gateway_launch_agent.effective_gates_all_false == true
+    and (.watchdog_launch_agent.label | test("^[A-Za-z0-9][A-Za-z0-9._-]*$"))
+    and .watchdog_launch_agent.relative_path == ("launchd/" + .watchdog_launch_agent.label + ".plist")
+    and (.watchdog_launch_agent.sha256 | test("^[0-9a-f]{64}$"))
+    and .watchdog_launch_agent.state_root == .runtime.state_root
+    and .watchdog_launch_agent.listen_port == .runtime.listen_port
+    and .watchdog_launch_agent.read_only == true
+  ' "$manifest" >/dev/null || {
+    echo "invalid vNext immutable release manifest" >&2
+    return 1
+  }
+  state_root="$(jq -r '.runtime.state_root' "$manifest")"
+  install_root="$(jq -r '.runtime.install_root' "$manifest")"
+  absolute_non_root "$state_root"
+  absolute_non_root "$install_root"
+  [[ -f "$release_root/SHA256SUMS" && ! -L "$release_root/SHA256SUMS" ]] || {
+    echo "immutable release SHA256SUMS is missing" >&2
+    return 1
+  }
+  if find "$release_root" -type l -print -quit | grep -q .; then
+    echo "immutable release contains a symlink" >&2
+    return 1
+  fi
+  (
+    cd "$release_root"
+    shasum -a 256 -c SHA256SUMS >/dev/null
+    local temp_root
+    temp_root="${TMPDIR:-/tmp}"
+    actual_inventory="$(mktemp "${temp_root%/}/hepta-release-inventory.XXXXXX")"
+    manifest_inventory="$(mktemp "${temp_root%/}/hepta-release-manifest.XXXXXX")"
+    trap 'rm -f "$actual_inventory" "$manifest_inventory"' EXIT
+    find . -type f ! -name SHA256SUMS -print | sed 's#^\./##' | LC_ALL=C sort >"$actual_inventory"
+    awk '{print substr($0, 67)}' SHA256SUMS | LC_ALL=C sort >"$manifest_inventory"
+    diff -u "$manifest_inventory" "$actual_inventory" >/dev/null
+  ) || {
+    echo "immutable release inventory or digest verification failed" >&2
+    return 1
+  }
+  while IFS= read -r item; do
+    local mode
+    mode="$(stat -f '%Lp' "$item" 2>/dev/null || stat -c '%a' "$item")"
+    if (( (8#$mode & 022) != 0 )); then
+      echo "immutable release item is group/world writable: $item" >&2
+      return 1
+    fi
+  done < <(find "$release_root" -print)
+
+  artifact="$release_root/$(jq -r '.artifact.relative_path' "$manifest")"
+  [[ -f "$artifact" && -x "$artifact" && ! -L "$artifact" ]] || {
+    echo "release artifact is missing or non-executable" >&2
+    return 1
+  }
+  expected_sha="$(jq -r '.artifact.sha256' "$manifest")"
+  actual_sha="$(sha256_file "$artifact")"
+  [[ "$actual_sha" == "$expected_sha" ]] || {
+    echo "release artifact SHA-256 differs from manifest" >&2
+    return 1
+  }
+  for contract in gateway_launch_agent watchdog_launch_agent; do
+    local relative expected
+    relative="$(jq -r ".${contract}.relative_path" "$manifest")"
+    expected="$(jq -r ".${contract}.sha256" "$manifest")"
+    [[ "$(sha256_file "$release_root/$relative")" == "$expected" ]] || {
+      echo "$contract differs from manifest" >&2
+      return 1
+    }
+    plutil -lint "$release_root/$relative" >/dev/null
+  done
+  jq -cn \
+    --arg manifest "$manifest" \
+    --arg manifest_sha256 "$(sha256_file "$manifest")" \
+    --arg artifact_sha256 "$actual_sha" \
+    --arg state_root "$(jq -r '.runtime.state_root' "$manifest")" \
+    --argjson listen_port "$(jq -r '.runtime.listen_port' "$manifest")" \
+    '{schema:"hepta_vnext_immutable_release_verification_v1",status:"ready",manifest:$manifest,manifest_sha256:$manifest_sha256,artifact_sha256:$artifact_sha256,state_root:$state_root,listen_host:"127.0.0.1",listen_port:$listen_port,authority_all_closed:true,service_changed:false}'
+}
+
+materialize_release() {
+  local binary="$1" destination="$2" state_root="$3" install_root="$4"
+  local gateway_label="$5" watchdog_label="$6" listen_port="$7" source_commit="$8"
+  local destination_parent destination_name stage script_dir artifact_sha artifact_size
+  [[ -f "$binary" && -x "$binary" && ! -L "$binary" ]] || {
+    echo "--binary must name a non-symlink executable regular file" >&2
+    exit 1
+  }
+  absolute_non_root "$destination"
+  absolute_non_root "$state_root"
+  absolute_non_root "$install_root"
+  valid_label "$gateway_label"
+  valid_label "$watchdog_label"
+  [[ "$gateway_label" != "$watchdog_label" ]] || {
+    echo "gateway and watchdog labels must differ" >&2
+    exit 1
+  }
+  valid_port "$listen_port"
+  [[ ! -e "$destination" && ! -L "$destination" ]] || {
+    echo "release destination already exists: $destination" >&2
+    exit 1
+  }
+  destination_parent="$(cd "$(dirname "$destination")" && pwd -P)"
+  destination_name="$(basename "$destination")"
+  destination="$destination_parent/$destination_name"
+  stage="$(mktemp -d "$destination_parent/.hepta-release.XXXXXX")"
+  trap 'chmod -R u+w "$stage" 2>/dev/null || true; rm -rf "$stage"' EXIT
+  mkdir -p "$stage/bin" "$stage/scripts" "$stage/launchd"
+  cp "$binary" "$stage/bin/hepta"
+  chmod 0555 "$stage/bin/hepta"
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+  for script in \
+    hepta-immutable-release-tree \
+    hepta-generation-pointer \
+    hepta-install-live-gateway \
+    hepta-install-live-watchdog \
+    hepta-launchd-cutover-bridge \
+    hepta-live-soak.sh \
+    hepta-state-snapshot \
+    hepta-watchdog.sh; do
+    [[ -f "$script_dir/$script" && ! -L "$script_dir/$script" ]] || {
+      echo "release script is missing: $script_dir/$script" >&2
+      exit 1
+    }
+    cp "$script_dir/$script" "$stage/scripts/$script"
+    chmod 0555 "$stage/scripts/$script"
+  done
+
+  local gateway_plist watchdog_plist gateway_json watchdog_json live_url
+  gateway_plist="$stage/launchd/$gateway_label.plist"
+  watchdog_plist="$stage/launchd/$watchdog_label.plist"
+  gateway_json="$stage/.gateway-plist.json"
+  watchdog_json="$stage/.watchdog-plist.json"
+  live_url="http://127.0.0.1:$listen_port"
+  jq -n \
+    --arg label "$gateway_label" \
+    --arg program "$install_root/bin/hepta" \
+    --arg state_root "$state_root" \
+    --arg runtime_root "$state_root/runtime-v2" \
+    --arg listen "127.0.0.1:$listen_port" \
+    --arg live_url "$live_url" \
+    --arg stdout "$install_root/logs/gateway/stdout.log" \
+    --arg stderr "$install_root/logs/gateway/stderr.log" \
+    '{Label:$label,ProgramArguments:[$program,"--serve-ui",$listen,"--state-root",$state_root],WorkingDirectory:$runtime_root,RunAtLoad:true,KeepAlive:true,StandardOutPath:$stdout,StandardErrorPath:$stderr,EnvironmentVariables:{HEPTA_STATE_ROOT:$state_root,HEPTA_LIVE_URL:$live_url,HEPTA_LAUNCHD_LABEL:$label,HEPTA_GATEWAY_ENABLE_TELEGRAM_PLUGIN:"0",HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED:"0",HEPTA_NATIVE_POST_REAL_HANDLERS:"0",HEPTA_NATIVE_TELEGRAM_CODEX_CORE_RUNNER:"0",HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED:"0",HEPTA_NATIVE_TELEGRAM_HEPTA_KERNEL_RUNNER:"0",HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER:"0",HEPTA_NATIVE_TELEGRAM_LIVE_READ:"0",HEPTA_NATIVE_TELEGRAM_MODEL_TURN:"0",HEPTA_NATIVE_TELEGRAM_POLL_LOOP:"0",HEPTA_NATIVE_TELEGRAM_SEND:"0",HEPTA_OPERATOR_MUTATION_ENABLED:"0",HEPTA_RUNTIME_MUTATION_CANARY:"0",HEPTA_TELEGRAM_AUTHORITY_ENABLED:"0",HEPTA_ENFORCE_ENABLED:"0",HEPTA_PROMOTION_ENABLED:"0",HEPTA_OUTBOUND_ENABLED:"0",HEPTA_RETIREMENT_ENABLED:"0"}}' >"$gateway_json"
+  plutil -convert xml1 -o "$gateway_plist" "$gateway_json"
+  jq -n \
+    --arg label "$watchdog_label" \
+    --arg program "$destination/scripts/hepta-watchdog.sh" \
+    --arg manifest "$destination/manifest.json" \
+    --arg live_url "$live_url" \
+    --arg stdout "$install_root/logs/watchdog/stdout.log" \
+    --arg stderr "$install_root/logs/watchdog/stderr.log" \
+    '{Label:$label,ProgramArguments:[$program,"--manifest",$manifest,"--url",$live_url],RunAtLoad:true,StartInterval:900,StandardOutPath:$stdout,StandardErrorPath:$stderr}' >"$watchdog_json"
+  plutil -convert xml1 -o "$watchdog_plist" "$watchdog_json"
+  rm -f "$gateway_json" "$watchdog_json"
+  chmod 0444 "$gateway_plist" "$watchdog_plist"
+
+  artifact_sha="$(sha256_file "$stage/bin/hepta")"
+  artifact_size="$(file_size "$stage/bin/hepta")"
+  local gateway_sha watchdog_sha gateway_path watchdog_path
+  gateway_sha="$(sha256_file "$gateway_plist")"
+  watchdog_sha="$(sha256_file "$watchdog_plist")"
+  gateway_path="$HOME/Library/LaunchAgents/$gateway_label.plist"
+  watchdog_path="$HOME/Library/LaunchAgents/$watchdog_label.plist"
+  jq -n \
+    --arg source_commit "$source_commit" \
+    --arg artifact_sha "$artifact_sha" \
+    --argjson artifact_size "$artifact_size" \
+    --arg state_root "$state_root" \
+    --arg install_root "$install_root" \
+    --argjson listen_port "$listen_port" \
+    --arg gateway_label "$gateway_label" \
+    --arg watchdog_label "$watchdog_label" \
+    --arg gateway_relative "launchd/$gateway_label.plist" \
+    --arg watchdog_relative "launchd/$watchdog_label.plist" \
+    --arg gateway_sha "$gateway_sha" \
+    --arg watchdog_sha "$watchdog_sha" \
+    --arg gateway_path "$gateway_path" \
+    --arg watchdog_path "$watchdog_path" \
+    '{schema:"hepta_vnext_immutable_release_v1",status:"ready",source:{commit:$source_commit},artifact:{relative_path:"bin/hepta",sha256:$artifact_sha,size_bytes:$artifact_size,executable:true},runtime:{state_root:$state_root,install_root:$install_root,listen_host:"127.0.0.1",listen_port:$listen_port,open_mode:"immutable-query-only-open-existing",schema_version:5,requires_empty_wal:true,keyed_integrity_required:true},authority:{telegram:false,outbound:false,model_invocation:false,operator_mutation:false,enforce:false,promotion:false,retirement:false,automatic_transition:false},watchdog:{entrypoint:"scripts/hepta-watchdog.sh",verify_tool:"scripts/hepta-immutable-release-tree",immutable_release_bound:true},gateway_launch_agent:{schema:"hepta_vnext_gateway_launch_agent_v1",relative_path:$gateway_relative,sha256:$gateway_sha,label:$gateway_label,canonical_install_path:$gateway_path,state_root:$state_root,listen_port:$listen_port,effective_gates_all_false:true},watchdog_launch_agent:{schema:"hepta_vnext_watchdog_launch_agent_v1",relative_path:$watchdog_relative,sha256:$watchdog_sha,label:$watchdog_label,canonical_install_path:$watchdog_path,state_root:$state_root,listen_port:$listen_port,read_only:true}}' >"$stage/manifest.json"
+  chmod 0444 "$stage/manifest.json"
+  local sums
+  sums="$(
+    cd "$stage"
+    find . -type f ! -name SHA256SUMS -print \
+      | sed 's#^\./##' \
+      | LC_ALL=C sort \
+      | while IFS= read -r relative; do shasum -a 256 "$relative"; done
+  )"
+  (
+    cd "$stage"
+    printf '%s\n' "$sums" >SHA256SUMS
+    chmod 0444 SHA256SUMS
+  )
+  find "$stage" -type d -exec chmod 0555 {} +
+  mv "$stage" "$destination"
+  stage=""
+  trap - EXIT
+  verify_release "$destination/manifest.json" >/dev/null
+  jq -cn \
+    --arg release "$destination" \
+    --arg manifest "$destination/manifest.json" \
+    --arg manifest_sha256 "$(sha256_file "$destination/manifest.json")" \
+    --arg artifact_sha256 "$artifact_sha" \
+    --arg state_root "$state_root" \
+    --arg gateway_label "$gateway_label" \
+    --arg watchdog_label "$watchdog_label" \
+    --argjson listen_port "$listen_port" \
+    '{schema:"hepta_vnext_immutable_release_materialization_v1",status:"ready",release:$release,manifest:$manifest,manifest_sha256:$manifest_sha256,artifact_sha256:$artifact_sha256,state_root:$state_root,gateway_label:$gateway_label,watchdog_label:$watchdog_label,listen_port:$listen_port,service_changed:false,generation_changed:false}'
+}
+
+self_test() {
+  local root release temp_root
+  temp_root="${TMPDIR:-/tmp}"
+  root="$(mktemp -d "${temp_root%/}/hepta-release-self-test.XXXXXX")"
+  HEPTA_RELEASE_SELF_TEST_ROOT="$root"
+  trap 'chmod -R u+w "$HEPTA_RELEASE_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_RELEASE_SELF_TEST_ROOT"' EXIT
+  release="$root/release"
+  materialize_release /usr/bin/true "$release" "$root/state" "$root/install" \
+    ai.hepta.canary ai.hepta.canary.watchdog 17373 self-test >/dev/null
+  verify_release "$release/manifest.json" >/dev/null
+  jq -cn '{schema:"hepta_vnext_immutable_release_self_test_v1",status:"ready",canary_port:17373,production_unchanged:true}'
+}
+
+command="${1:-}"
+[[ -n "$command" ]] || usage
+shift
+case "$command" in
+  verify)
+    [[ "${1:-}" == "--manifest" && -n "${2:-}" && $# -eq 2 ]] || usage
+    verify_release "$2"
+    ;;
+  self-test)
+    [[ $# -eq 0 ]] || usage
+    self_test
+    ;;
+  materialize)
+    binary=""; destination=""; state_root="${HEPTA_STATE_ROOT:-$HOME/.local/share/hepta-vnext/live-snapshot}"
+    install_root="${HEPTA_INSTALL_ROOT:-$HOME/.local/opt/hepta-vnext}"
+    gateway_label="${HEPTA_GATEWAY_LABEL:-ai.hepta.gateway}"
+    watchdog_label="${HEPTA_WATCHDOG_LABEL:-ai.hepta.installed-live-watchdog}"
+    listen_port="${HEPTA_LISTEN_PORT:-7373}"
+    source_commit=""
+    while (( $# > 0 )); do
+      case "$1" in
+        --binary) shift; [[ $# -gt 0 ]] || usage; binary="$1" ;;
+        --destination) shift; [[ $# -gt 0 ]] || usage; destination="$1" ;;
+        --state-root) shift; [[ $# -gt 0 ]] || usage; state_root="$1" ;;
+        --install-root) shift; [[ $# -gt 0 ]] || usage; install_root="$1" ;;
+        --gateway-label) shift; [[ $# -gt 0 ]] || usage; gateway_label="$1" ;;
+        --watchdog-label) shift; [[ $# -gt 0 ]] || usage; watchdog_label="$1" ;;
+        --listen-port) shift; [[ $# -gt 0 ]] || usage; listen_port="$1" ;;
+        --source-commit) shift; [[ $# -gt 0 ]] || usage; source_commit="$1" ;;
+        *) usage ;;
+      esac
+      shift
+    done
+    [[ -n "$binary" && -n "$destination" ]] || usage
+    if [[ -z "$source_commit" ]]; then
+      source_commit="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
+    fi
+    materialize_release "$binary" "$destination" "$state_root" "$install_root" \
+      "$gateway_label" "$watchdog_label" "$listen_port" "$source_commit"
+    ;;
+  *) usage ;;
+esac

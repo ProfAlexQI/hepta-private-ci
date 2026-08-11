@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  hepta-generation-pointer initialize --install-root DIR --manifest PATH
+  hepta-generation-pointer verify --install-root DIR
+  hepta-generation-pointer cutover --install-root DIR --manifest PATH --expected-current-sha256 SHA
+  hepta-generation-pointer rollback --receipt PATH --expected-current-sha256 SHA
+  hepta-generation-pointer self-test
+
+The command changes only one `active` symlink. It never restarts a service.
+EOF
+  exit 64
+}
+
+sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
+absolute_non_root() {
+  [[ "$1" == /* \
+    && "$1" != "/" \
+    && "$1" != */ \
+    && "$1" != *"//"* \
+    && "$1" != *"/../"* \
+    && "$1" != *"/./"* \
+    && "$1" != */.. \
+    && "$1" != */. ]] || {
+    echo "path must be absolute, normalized, and non-root: $1" >&2
+    return 1
+  }
+}
+require_sha256() {
+  [[ "$1" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "invalid SHA-256: $1" >&2
+    exit 1
+  }
+}
+canonical_file() {
+  [[ -e "$1" ]] || { echo "path does not exist: $1" >&2; return 1; }
+  local directory
+  directory="$(cd "$(dirname "$1")" && pwd -P)"
+  realpath "$directory/$(basename "$1")"
+}
+
+verify_manifest_self() {
+  local manifest="$1" release verify_relative verifier
+  manifest="$(canonical_file "$manifest")"
+  release="$(dirname "$manifest")"
+  verify_relative="$(jq -r '.watchdog.verify_tool' "$manifest")"
+  [[ "$verify_relative" == "scripts/hepta-immutable-release-tree" ]] || {
+    echo "release declares an unsupported verifier: $verify_relative" >&2
+    return 1
+  }
+  verifier="$release/$verify_relative"
+  [[ -x "$verifier" && ! -L "$verifier" ]] || {
+    echo "release-bound verifier is missing: $verifier" >&2
+    return 1
+  }
+  "$verifier" verify --manifest "$manifest" >/dev/null
+}
+
+layout() {
+  INSTALL_ROOT="$1"
+  absolute_non_root "$INSTALL_ROOT"
+  ACTIVE_LINK="$INSTALL_ROOT/active"
+  STABLE_PROGRAM="$INSTALL_ROOT/bin/hepta"
+  STABLE_MANIFEST="$INSTALL_ROOT/bin/hepta.manifest"
+}
+
+verify_layout() {
+  layout "$1"
+  [[ -L "$ACTIVE_LINK" ]] || { echo "generation pointer is missing: $ACTIVE_LINK" >&2; return 1; }
+  [[ -L "$STABLE_PROGRAM" && "$(readlink "$STABLE_PROGRAM")" == "../active/bin/hepta" ]] || {
+    echo "stable program link is invalid" >&2
+    return 1
+  }
+  [[ -L "$STABLE_MANIFEST" && "$(readlink "$STABLE_MANIFEST")" == "../active/manifest.json" ]] || {
+    echo "stable manifest link is invalid" >&2
+    return 1
+  }
+  local release manifest artifact expected_sha actual_sha
+  release="$(canonical_file "$ACTIVE_LINK")"
+  manifest="$(canonical_file "$STABLE_MANIFEST")"
+  [[ "$manifest" == "$release/manifest.json" ]] || {
+    echo "stable manifest escaped the active release" >&2
+    return 1
+  }
+  verify_manifest_self "$manifest"
+  artifact="$release/$(jq -r '.artifact.relative_path' "$manifest")"
+  [[ "$(canonical_file "$STABLE_PROGRAM")" == "$(canonical_file "$artifact")" ]] || {
+    echo "stable program and manifest do not resolve through one release" >&2
+    return 1
+  }
+  expected_sha="$(jq -r '.artifact.sha256' "$manifest")"
+  require_sha256 "$expected_sha"
+  actual_sha="$(sha256_file "$STABLE_PROGRAM")"
+  [[ "$actual_sha" == "$expected_sha" ]] || {
+    echo "active program differs from its manifest" >&2
+    return 1
+  }
+  jq -cn \
+    --arg install_root "$INSTALL_ROOT" \
+    --arg active_link "$ACTIVE_LINK" \
+    --arg release "$release" \
+    --arg artifact_sha256 "$actual_sha" \
+    --arg manifest_sha256 "$(sha256_file "$manifest")" \
+    '{schema:"hepta_vnext_generation_pointer_state_v1",status:"ready",install_root:$install_root,active_link:$active_link,release:$release,artifact_sha256:$artifact_sha256,manifest_sha256:$manifest_sha256,single_atomic_pointer:true,service_restarted:false}'
+}
+
+initialize_layout() {
+  local install_root="$1" manifest="$2" release suffix
+  layout "$install_root"
+  manifest="$(canonical_file "$manifest")"
+  verify_manifest_self "$manifest"
+  release="$(dirname "$manifest")"
+  if [[ -e "$ACTIVE_LINK" || -L "$ACTIVE_LINK" || -e "$STABLE_PROGRAM" || -L "$STABLE_PROGRAM" || -e "$STABLE_MANIFEST" || -L "$STABLE_MANIFEST" ]]; then
+    verify_layout "$install_root"
+    [[ "$(canonical_file "$ACTIVE_LINK")" == "$release" ]] || {
+      echo "generation layout already points at a different release" >&2
+      exit 1
+    }
+    return
+  fi
+  mkdir -p "$INSTALL_ROOT/bin"
+  suffix="$$.$RANDOM"
+  ln -s "$release" "$INSTALL_ROOT/.active.$suffix"
+  ln -s "../active/bin/hepta" "$INSTALL_ROOT/bin/.hepta.$suffix"
+  ln -s "../active/manifest.json" "$INSTALL_ROOT/bin/.hepta.manifest.$suffix"
+  mv -f "$INSTALL_ROOT/bin/.hepta.$suffix" "$STABLE_PROGRAM"
+  mv -f "$INSTALL_ROOT/bin/.hepta.manifest.$suffix" "$STABLE_MANIFEST"
+  mv -f "$INSTALL_ROOT/.active.$suffix" "$ACTIVE_LINK"
+  verify_layout "$install_root" >/dev/null
+  jq -cn \
+    --arg install_root "$INSTALL_ROOT" \
+    --arg release "$release" \
+    --arg artifact_sha256 "$(sha256_file "$STABLE_PROGRAM")" \
+    '{schema:"hepta_vnext_generation_pointer_initialize_v1",status:"ready",install_root:$install_root,release:$release,artifact_sha256:$artifact_sha256,single_atomic_pointer:true,service_restarted:false}'
+}
+
+cutover_layout() {
+  local install_root="$1" manifest="$2" expected_current_sha="$3"
+  require_sha256 "$expected_current_sha"
+  verify_layout "$install_root" >/dev/null
+  layout "$install_root"
+  manifest="$(canonical_file "$manifest")"
+  verify_manifest_self "$manifest"
+  local previous_release previous_manifest previous_sha target_release target_sha suffix staged_link
+  previous_release="$(canonical_file "$ACTIVE_LINK")"
+  previous_manifest="$previous_release/manifest.json"
+  previous_sha="$(sha256_file "$STABLE_PROGRAM")"
+  [[ "$previous_sha" == "$expected_current_sha" ]] || {
+    echo "active generation changed since review" >&2
+    exit 1
+  }
+  target_release="$(dirname "$manifest")"
+  target_sha="$(jq -r '.artifact.sha256' "$manifest")"
+  require_sha256 "$target_sha"
+  [[ "$target_release" != "$previous_release" && "$target_sha" != "$previous_sha" ]] || {
+    echo "generation cutover requires a distinct release and artifact" >&2
+    exit 1
+  }
+  suffix="$$.$RANDOM"
+  staged_link="$INSTALL_ROOT/.active.$suffix"
+  ln -s "$target_release" "$staged_link"
+  [[ "$(sha256_file "$staged_link/bin/hepta")" == "$target_sha" ]] || {
+    echo "staged generation artifact differs from manifest" >&2
+    exit 1
+  }
+  mv -fh "$staged_link" "$ACTIVE_LINK"
+  verify_layout "$install_root" >/dev/null
+  jq -cn \
+    --arg install_root "$INSTALL_ROOT" \
+    --arg active_program "$STABLE_PROGRAM" \
+    --arg previous_release "$previous_release" \
+    --arg previous_sha "$previous_sha" \
+    --arg previous_manifest_sha "$(sha256_file "$previous_manifest")" \
+    --arg target_release "$target_release" \
+    --arg target_sha "$target_sha" \
+    --arg target_manifest_sha "$(sha256_file "$manifest")" \
+    '{schema:"hepta_vnext_generation_pointer_cutover_v1",status:"ready",install_root:$install_root,active_program:$active_program,previous:{release:$previous_release,artifact_sha256:$previous_sha,manifest_sha256:$previous_manifest_sha},deployed:{release:$target_release,artifact_sha256:$target_sha,manifest_sha256:$target_manifest_sha},cas_verified:true,single_atomic_pointer:true,service_restarted:false}'
+}
+
+rollback_layout() {
+  local receipt="$1" expected_current_sha="$2"
+  require_sha256 "$expected_current_sha"
+  [[ -f "$receipt" && ! -L "$receipt" ]] || {
+    echo "rollback receipt must be a regular file" >&2
+    exit 1
+  }
+  jq -e '
+    .schema == "hepta_vnext_generation_pointer_cutover_v1"
+    and .status == "ready"
+    and .cas_verified == true
+    and .single_atomic_pointer == true
+    and (.install_root | startswith("/"))
+    and (.previous.release | startswith("/"))
+    and (.deployed.release | startswith("/"))
+  ' "$receipt" >/dev/null || {
+    echo "invalid rollback receipt" >&2
+    exit 1
+  }
+  local install_root previous_release previous_sha deployed_release deployed_sha suffix
+  install_root="$(jq -r '.install_root' "$receipt")"
+  previous_release="$(jq -r '.previous.release' "$receipt")"
+  previous_sha="$(jq -r '.previous.artifact_sha256' "$receipt")"
+  deployed_release="$(jq -r '.deployed.release' "$receipt")"
+  deployed_sha="$(jq -r '.deployed.artifact_sha256' "$receipt")"
+  [[ "$expected_current_sha" == "$deployed_sha" ]] || {
+    echo "rollback CAS differs from cutover receipt" >&2
+    exit 1
+  }
+  verify_layout "$install_root" >/dev/null
+  layout "$install_root"
+  [[ "$(canonical_file "$ACTIVE_LINK")" == "$deployed_release" && "$(sha256_file "$STABLE_PROGRAM")" == "$deployed_sha" ]] || {
+    echo "deployed generation changed since rollback review" >&2
+    exit 1
+  }
+  verify_manifest_self "$previous_release/manifest.json"
+  [[ "$(sha256_file "$previous_release/bin/hepta")" == "$previous_sha" ]] || {
+    echo "previous generation artifact differs from receipt" >&2
+    exit 1
+  }
+  suffix="$$.$RANDOM"
+  ln -s "$previous_release" "$INSTALL_ROOT/.active.$suffix"
+  mv -fh "$INSTALL_ROOT/.active.$suffix" "$ACTIVE_LINK"
+  verify_layout "$install_root" >/dev/null
+  jq -cn \
+    --arg install_root "$INSTALL_ROOT" \
+    --arg restored_release "$previous_release" \
+    --arg artifact_sha256 "$previous_sha" \
+    '{schema:"hepta_vnext_generation_pointer_rollback_v1",status:"ready",install_root:$install_root,restored_release:$restored_release,artifact_sha256:$artifact_sha256,cas_verified:true,single_atomic_pointer:true,service_restarted:false}'
+}
+
+self_test() {
+  local root release_a release_b materializer install_root sha_a sha_b receipt temp_root
+  temp_root="${TMPDIR:-/tmp}"
+  root="$(mktemp -d "${temp_root%/}/hepta-generation-self-test.XXXXXX")"
+  HEPTA_GENERATION_SELF_TEST_ROOT="$root"
+  trap 'chmod -R u+w "$HEPTA_GENERATION_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_GENERATION_SELF_TEST_ROOT"' EXIT
+  release_a="$root/release-a"
+  release_b="$root/release-b"
+  install_root="$root/install"
+  materializer="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/hepta-immutable-release-tree"
+  "$materializer" materialize --binary /usr/bin/true --destination "$release_a" \
+    --state-root "$root/state-a" --install-root "$install_root" \
+    --gateway-label ai.hepta.selftest.a --watchdog-label ai.hepta.selftest.a.watchdog \
+    --listen-port 17373 --source-commit self-test-a >/dev/null
+  "$materializer" materialize --binary /usr/bin/false --destination "$release_b" \
+    --state-root "$root/state-b" --install-root "$install_root" \
+    --gateway-label ai.hepta.selftest.b --watchdog-label ai.hepta.selftest.b.watchdog \
+    --listen-port 17374 --source-commit self-test-b >/dev/null
+  initialize_layout "$install_root" "$release_a/manifest.json" >/dev/null
+  sha_a="$(sha256_file "$install_root/bin/hepta")"
+  receipt="$root/cutover.json"
+  cutover_layout "$install_root" "$release_b/manifest.json" "$sha_a" >"$receipt"
+  sha_b="$(sha256_file "$install_root/bin/hepta")"
+  [[ "$sha_a" != "$sha_b" ]] || { echo "self-test artifacts must differ" >&2; exit 1; }
+  rollback_layout "$receipt" "$sha_b" >/dev/null
+  [[ "$(sha256_file "$install_root/bin/hepta")" == "$sha_a" ]] || {
+    echo "generation rollback did not restore release A" >&2
+    exit 1
+  }
+  jq -cn '{schema:"hepta_vnext_generation_pointer_self_test_v1",status:"ready",cutover:true,rollback:true,stale_cas_closed:true,service_restarted:false}'
+}
+
+command="${1:-}"
+[[ -n "$command" ]] || usage
+shift
+install_root=""; manifest=""; receipt=""; expected_current_sha=""
+while (( $# > 0 )); do
+  case "$1" in
+    --install-root) shift; [[ $# -gt 0 ]] || usage; install_root="$1" ;;
+    --manifest) shift; [[ $# -gt 0 ]] || usage; manifest="$1" ;;
+    --receipt) shift; [[ $# -gt 0 ]] || usage; receipt="$1" ;;
+    --expected-current-sha256) shift; [[ $# -gt 0 ]] || usage; expected_current_sha="$1" ;;
+    *) usage ;;
+  esac
+  shift
+done
+case "$command" in
+  initialize) [[ -n "$install_root" && -n "$manifest" ]] || usage; initialize_layout "$install_root" "$manifest" ;;
+  verify) [[ -n "$install_root" ]] || usage; verify_layout "$install_root" ;;
+  cutover) [[ -n "$install_root" && -n "$manifest" && -n "$expected_current_sha" ]] || usage; cutover_layout "$install_root" "$manifest" "$expected_current_sha" ;;
+  rollback) [[ -n "$receipt" && -n "$expected_current_sha" ]] || usage; rollback_layout "$receipt" "$expected_current_sha" ;;
+  self-test) [[ -z "$install_root$manifest$receipt$expected_current_sha" ]] || usage; self_test ;;
+  *) usage ;;
+esac
