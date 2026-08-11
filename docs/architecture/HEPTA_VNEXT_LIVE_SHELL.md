@@ -214,7 +214,10 @@ matching unfinalized cursor, then performs the missing CAS idempotently. Once
 finalized, stale pending bytes at the original path, copied or modified pending
 receipts, and sibling epoch rebases all fail closed without changing the
 cursor. Recutover and controlled superseding epochs also reverify this exact
-final receipt and pending provenance before advancing the chain.
+final receipt and pending provenance before advancing the chain. A superseding
+epoch repeats that verification at apply time, before reserving any output or
+mutating the cursor, so deleting, modifying, or downgrading the parent rebase
+provenance after preparation cannot advance the epoch.
 
 If evidence becomes stale after a successful rebase, or after recovery of an
 interrupted v2 recutover, the unapplied epoch may be superseded without manual

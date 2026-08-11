@@ -726,6 +726,47 @@ verify_rebase_ready_cursor() {
   }
 }
 
+verify_current_rebase_head_provenance() {
+  local cursor="$1" expected_parent_plan_sha="$2" expected_sequence="$3"
+  local expected_receipt="$4" expected_receipt_sha="$5"
+  local rebase_receipt rebase_receipt_sha parent_bundle canonical_parent_bundle parent_plan
+  jq -e '
+    .status == "ready"
+    and (.rebase_receipt | type) == "string"
+    and (.rebase_receipt_sha256 | test("^[0-9a-f]{64}$"))
+    and .rebase_receipt_finalized == true
+  ' "$cursor" >/dev/null || {
+    echo "current chain head lacks finalized rebase provenance" >&2
+    return 1
+  }
+  rebase_receipt="$(jq -r '.rebase_receipt' "$cursor")" || return 1
+  rebase_receipt="$(canonical_file "$rebase_receipt")" || return 1
+  rebase_receipt_sha="$(sha256_file "$rebase_receipt")" || return 1
+  [[ "$rebase_receipt_sha" == "$(jq -r '.rebase_receipt_sha256' "$cursor")" ]] || {
+    echo "current finalized rebase receipt changed after recutover preparation" >&2
+    return 1
+  }
+  parent_bundle="$(jq -r '.bundle // empty' "$rebase_receipt")" || return 1
+  absolute_non_root "$parent_bundle" || return 1
+  [[ -d "$parent_bundle" && ! -L "$parent_bundle" ]] || {
+    echo "current finalized rebase receipt names an unsafe parent bundle" >&2
+    return 1
+  }
+  canonical_parent_bundle="$(cd "$parent_bundle" && pwd -P)" || return 1
+  [[ "$canonical_parent_bundle" == "$parent_bundle" ]] || {
+    echo "current finalized rebase receipt names a non-canonical parent bundle" >&2
+    return 1
+  }
+  verify_bundle "$parent_bundle" >/dev/null || return 1
+  parent_plan="$parent_bundle/plan.json"
+  [[ "$(sha256_file "$parent_plan")" == "$expected_parent_plan_sha" ]] || {
+    echo "current finalized rebase receipt belongs to a different parent plan" >&2
+    return 1
+  }
+  verify_rebase_ready_cursor "$cursor" "$parent_plan" "$expected_sequence" \
+    "$expected_receipt" "$expected_receipt_sha"
+}
+
 prepare_recutover_bundle_locked() {
   local manifest="$1" launch_root="$2" bundle="$3" snapshot_receipt="$4" canary_receipt="$5" soak_receipt="$6"
   local parent_bundle="$7" predecessor_receipt="$8" parent_plan parent_plan_sha parent_plan_schema parent_epoch epoch chain_cursor predecessor_sha predecessor_sequence predecessor_plan_sha supersedes=false
@@ -850,6 +891,11 @@ rebase_after_rollback_locked() {
   }
   verify_chain_head_any_plan "$chain_cursor" "$(jq -r '.parent_chain_head.plan_sha256' "$plan")" "$predecessor_sequence" legacy \
     "$predecessor_receipt" "$predecessor_sha" || return 1
+  if [[ "$(jq -r '.supersedes_unapplied_epoch' "$plan")" == true ]]; then
+    verify_current_rebase_head_provenance "$chain_cursor" \
+      "$(jq -r '.parent_chain_head.plan_sha256' "$plan")" "$predecessor_sequence" \
+      "$predecessor_receipt" "$predecessor_sha" || return 1
+  fi
   active_pair_matches_generation "$plan" legacy || {
     echo "rebase requires the reviewed legacy service pair to remain active" >&2
     return 1
@@ -2031,6 +2077,8 @@ self_test() {
   local saved_rebase_receipt completed_rebase_cursor_sha completed_rebase_receipt_sha recovered_rebase_cursor_sha
   local reserved_fault_receipt reserved_pending_copy reserved_cursor_sha tampered_pending_tmp reserved_recovery_receipt replace_fault_receipt
   local release3 snapshot3 canary3 soak3 bundle3 rebase3 recutover3 rollback3 stale_after_rebase
+  local parent_rebase_saved supersede_cursor_saved supersede_cursor_sha downgraded_cursor_sha
+  local deleted_parent_apply tampered_parent_apply downgraded_cursor_apply
   local release4 snapshot4 canary4 soak4 bundle4 rebase4 rebase4_cursor_sha release5 snapshot5 canary5 soak5 bundle5 rebase5 stale_after_recovery
   temp_root="${TMPDIR:-/tmp}"
   root="$(mktemp -d "${temp_root%/}/hepta-launchd-bridge-self-test.XXXXXX")"
@@ -2520,6 +2568,82 @@ self_test() {
   prepare_recutover_bundle "$release3/manifest.json" "$launch_root" "$bundle3" \
     "$snapshot3" "$canary3" "$soak3" "$recutover_bundle" "$second_rollback_receipt" >/dev/null
   jq -e '.epoch == 3 and .parent_epoch == 2 and .supersedes_unapplied_epoch == true' "$bundle3/plan.json" >/dev/null
+  parent_rebase_saved="$root/rebase-parent-before-supersede.saved"
+  supersede_cursor_saved="$root/rebase-cursor-before-supersede.saved"
+  cp "$rebase_receipt" "$parent_rebase_saved"
+  cp "$(jq -r '.chain_cursor' "$bundle3/plan.json")" "$supersede_cursor_saved"
+  chmod 0400 "$parent_rebase_saved" "$supersede_cursor_saved"
+  supersede_cursor_sha="$(sha256_file "$supersede_cursor_saved")"
+
+  deleted_parent_apply="$root/rebase-epoch3-deleted-parent.json"
+  rm -f "$rebase_receipt"
+  if rebase_after_rollback "$bundle3" "$second_rollback_receipt" "$deleted_parent_apply" true >/dev/null 2>&1; then
+    echo "superseding epoch applied after its parent rebase receipt was deleted" >&2
+    exit 1
+  fi
+  [[ ! -e "$deleted_parent_apply" && ! -L "$deleted_parent_apply" ]] || {
+    echo "deleted parent rebase rejection reserved an output receipt" >&2
+    exit 1
+  }
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$bundle3/plan.json")")" == "$supersede_cursor_sha" ]] || {
+    echo "deleted parent rebase rejection changed the chain cursor" >&2
+    exit 1
+  }
+  cp "$parent_rebase_saved" "$rebase_receipt"
+  chmod 0400 "$rebase_receipt"
+
+  tampered_parent_apply="$root/rebase-epoch3-tampered-parent.json"
+  chmod 0600 "$rebase_receipt"
+  jq '.rebased_at = "1970-01-01T00:00:00Z"' "$parent_rebase_saved" >"$rebase_receipt"
+  chmod 0400 "$rebase_receipt"
+  if rebase_after_rollback "$bundle3" "$second_rollback_receipt" "$tampered_parent_apply" true >/dev/null 2>&1; then
+    echo "superseding epoch applied after its parent rebase receipt was modified" >&2
+    exit 1
+  fi
+  [[ ! -e "$tampered_parent_apply" && ! -L "$tampered_parent_apply" ]] || {
+    echo "modified parent rebase rejection reserved an output receipt" >&2
+    exit 1
+  }
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$bundle3/plan.json")")" == "$supersede_cursor_sha" ]] || {
+    echo "modified parent rebase rejection changed the chain cursor" >&2
+    exit 1
+  }
+  chmod 0600 "$rebase_receipt"
+  cp "$parent_rebase_saved" "$rebase_receipt"
+  chmod 0400 "$rebase_receipt"
+
+  downgraded_cursor_apply="$root/rebase-epoch3-downgraded-cursor.json"
+  chmod 0600 "$(jq -r '.chain_cursor' "$bundle3/plan.json")"
+  jq --arg receipt "$second_rollback_receipt" --arg receipt_sha "$(sha256_file "$second_rollback_receipt")" '
+    del(.rebase_receipt,.rebase_receipt_sha256,.rebase_pending_receipt,
+      .rebase_pending_receipt_sha256,.rebase_pending_cursor_sha256,
+      .rebase_prior_cursor_sha256,.rebase_receipt_finalized)
+    | .transition_receipt = $receipt
+    | .transition_receipt_sha256 = $receipt_sha
+    | .transition_receipt_finalized = true
+  ' "$supersede_cursor_saved" >"$(jq -r '.chain_cursor' "$bundle3/plan.json")"
+  chmod 0400 "$(jq -r '.chain_cursor' "$bundle3/plan.json")"
+  downgraded_cursor_sha="$(sha256_file "$(jq -r '.chain_cursor' "$bundle3/plan.json")")"
+  if rebase_after_rollback "$bundle3" "$second_rollback_receipt" "$downgraded_cursor_apply" true >/dev/null 2>&1; then
+    echo "superseding epoch accepted a cursor with downgraded rebase provenance" >&2
+    exit 1
+  fi
+  [[ ! -e "$downgraded_cursor_apply" && ! -L "$downgraded_cursor_apply" ]] || {
+    echo "downgraded cursor rejection reserved an output receipt" >&2
+    exit 1
+  }
+  [[ "$(sha256_file "$(jq -r '.chain_cursor' "$bundle3/plan.json")")" == "$downgraded_cursor_sha" ]] || {
+    echo "downgraded cursor rejection changed the chain cursor" >&2
+    exit 1
+  }
+  chmod 0600 "$(jq -r '.chain_cursor' "$bundle3/plan.json")"
+  cp "$supersede_cursor_saved" "$(jq -r '.chain_cursor' "$bundle3/plan.json")"
+  chmod 0400 "$(jq -r '.chain_cursor' "$bundle3/plan.json")"
+  [[ "$(sha256_file "$rebase_receipt")" == "$(sha256_file "$parent_rebase_saved")" \
+    && "$(sha256_file "$(jq -r '.chain_cursor' "$bundle3/plan.json")")" == "$supersede_cursor_sha" ]] || {
+    echo "failed to restore exact superseding-epoch parent provenance" >&2
+    exit 1
+  }
   rebase3="$root/rebase-epoch3.json"
   rebase_after_rollback "$bundle3" "$second_rollback_receipt" "$rebase3" true >/dev/null
   recutover3="$root/recutover-epoch3.json"; rollback3="$root/rollback-epoch3.json"
@@ -2596,7 +2720,7 @@ self_test() {
     --arg v2_plan_sha256 "$(sha256_file "$bundle5/plan.json")" \
     --arg v2_recutover_receipt_sha256 "$(sha256_file "$v2_recutover_receipt")" \
     --arg v2_rollback_receipt_sha256 "$(sha256_file "$v2_rollback_receipt")" \
-    '{schema:"hepta_vnext_launchd_bridge_self_test_v2",status:"ready",plan_sha256:$plan_sha256,v2_plan_sha256:$v2_plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,v2_recutover_receipt_sha256:$v2_recutover_receipt_sha256,v2_rollback_receipt_sha256:$v2_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,fresh_full_state_snapshot:true,new_epoch_recutover:true,controlled_epoch_supersede:true,post_rebase_source_drift_recovered_with_fresh_epoch:true,pending_recovery_shm_drift_recovered_with_fresh_epoch:true,no_manual_cursor_mutation:true,v1_evidence_downgrade_rejected_for_v2_release:true,wrong_predecessor_rejected:true,stale_predecessor_rejected:true,fork_rejected:true,cross_plan_cas_enforced:true,rebase_pending_recovery_sealed:true,rebase_replace_failure_restores_exact_cursor:true,pre_cas_pending_recovery_sealed:true,pre_cas_pending_copy_rejected:true,pre_cas_embedded_cursor_tamper_rejected:true,rebase_finalization_crash_recovered:true,rebase_finalization_recovery_idempotent:true,completed_rebase_stale_pending_rejected:true,completed_rebase_copied_pending_rejected:true,completed_rebase_modified_pending_rejected:true,completed_rebase_cursor_unchanged_on_replay:true,post_rebase_sibling_epoch_rejected:true,transition_pending_recovery_sealed:true,transition_finalization_crash_recovered:true,transition_finalization_recovery_idempotent:true,completed_transition_stale_pending_rejected:true,completed_transition_copied_pending_rejected:true,completed_transition_cursor_unchanged_on_replay:true,v2_recutover_pending_exact_cursor_restored:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,dry_run_log_directories_unchanged:true,private_log_directories_ready:true,existing_log_directories_hardened:true,symlink_log_root_rejected:true,symlink_log_child_rejected:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
+    '{schema:"hepta_vnext_launchd_bridge_self_test_v2",status:"ready",plan_sha256:$plan_sha256,v2_plan_sha256:$v2_plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,v2_recutover_receipt_sha256:$v2_recutover_receipt_sha256,v2_rollback_receipt_sha256:$v2_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,fresh_full_state_snapshot:true,new_epoch_recutover:true,controlled_epoch_supersede:true,supersede_deleted_parent_rebase_rejected:true,supersede_tampered_parent_rebase_rejected:true,supersede_downgraded_cursor_rejected:true,supersede_rejection_cursor_unchanged:true,post_rebase_source_drift_recovered_with_fresh_epoch:true,pending_recovery_shm_drift_recovered_with_fresh_epoch:true,no_manual_cursor_mutation:true,v1_evidence_downgrade_rejected_for_v2_release:true,wrong_predecessor_rejected:true,stale_predecessor_rejected:true,fork_rejected:true,cross_plan_cas_enforced:true,rebase_pending_recovery_sealed:true,rebase_replace_failure_restores_exact_cursor:true,pre_cas_pending_recovery_sealed:true,pre_cas_pending_copy_rejected:true,pre_cas_embedded_cursor_tamper_rejected:true,rebase_finalization_crash_recovered:true,rebase_finalization_recovery_idempotent:true,completed_rebase_stale_pending_rejected:true,completed_rebase_copied_pending_rejected:true,completed_rebase_modified_pending_rejected:true,completed_rebase_cursor_unchanged_on_replay:true,post_rebase_sibling_epoch_rejected:true,transition_pending_recovery_sealed:true,transition_finalization_crash_recovered:true,transition_finalization_recovery_idempotent:true,completed_transition_stale_pending_rejected:true,completed_transition_copied_pending_rejected:true,completed_transition_cursor_unchanged_on_replay:true,v2_recutover_pending_exact_cursor_restored:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,dry_run_log_directories_unchanged:true,private_log_directories_ready:true,existing_log_directories_hardened:true,symlink_log_root_rejected:true,symlink_log_child_rejected:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
 }
 
 command="${1:-}"; [[ -n "$command" ]] || usage; shift
