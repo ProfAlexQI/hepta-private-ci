@@ -33,6 +33,24 @@ impl McpDesiredState {
 }
 
 impl Session {
+    #[inline(never)]
+    pub(super) fn install_initial_mcp_runtime_future<'a>(
+        self: &'a Arc<Self>,
+        session_configuration: &'a SessionConfiguration,
+        auth: Option<CodexAuth>,
+        mcp_projection: McpRuntimeProjection,
+        resolved_environments: &'a TurnEnvironmentSnapshot,
+        local_stdio_fallback_cwd: PathBuf,
+    ) -> BoxFuture<'a, anyhow::Result<()>> {
+        Box::pin(self.install_initial_mcp_runtime(
+            session_configuration,
+            auth,
+            mcp_projection,
+            resolved_environments,
+            local_stdio_fallback_cwd,
+        ))
+    }
+
     /// Waits on this session's refreshed server before tool execution is admitted.
     pub(crate) async fn wait_for_mcp_server(self: &Arc<Self>, server: &str) {
         self.refresh_mcp_if_dirty().await;
@@ -131,7 +149,12 @@ impl Session {
             ready_selected_capability_roots,
             elicitation_reviewer,
         );
-        self.services.mcp_runtime.replace(input).await;
+        self.replace_mcp_runtime_future(input).await;
+    }
+
+    #[inline(never)]
+    fn replace_mcp_runtime_future(&self, input: McpRuntimeInput) -> BoxFuture<'_, ()> {
+        self.services.mcp_runtime.replace(input).boxed()
     }
 
     pub(super) fn build_mcp_runtime_input(

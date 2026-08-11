@@ -56,6 +56,7 @@ use codex_async_utils::OrCancelExt;
 use codex_connectors::connector_runtime_context_key;
 use codex_exec_server::Environment;
 use codex_exec_server::EnvironmentManager;
+use codex_exec_server::ResolvedSelectedCapabilityRoot;
 use codex_execpolicy::prefix_rule_migration;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::LoadedUserInstructions;
@@ -492,28 +493,34 @@ const CYBER_SAFETY_URL: &str = "https://developers.openai.com/codex/concepts/cyb
 
 impl Session {
     /// Spawn and initialize a new session.
-    pub(crate) async fn spawn(args: SessionSpawnArgs) -> CodexResult<(Arc<Self>, SessionIo)> {
-        let parent_trace = match args.parent_trace {
-            Some(trace) => {
-                if codex_otel::context_from_w3c_trace_context(&trace).is_some() {
-                    Some(trace)
-                } else {
-                    warn!("ignoring invalid thread spawn trace carrier");
-                    None
+    #[inline(never)]
+    pub(crate) fn spawn(
+        args: SessionSpawnArgs,
+    ) -> BoxFuture<'static, CodexResult<(Arc<Self>, SessionIo)>> {
+        async move {
+            let parent_trace = match args.parent_trace {
+                Some(trace) => {
+                    if codex_otel::context_from_w3c_trace_context(&trace).is_some() {
+                        Some(trace)
+                    } else {
+                        warn!("ignoring invalid thread spawn trace carrier");
+                        None
+                    }
                 }
+                None => None,
+            };
+            let thread_spawn_span = info_span!("thread_spawn", otel.name = "thread_spawn");
+            if let Some(trace) = parent_trace.as_ref() {
+                let _ = set_parent_from_w3c_trace_context(&thread_spawn_span, trace);
             }
-            None => None,
-        };
-        let thread_spawn_span = info_span!("thread_spawn", otel.name = "thread_spawn");
-        if let Some(trace) = parent_trace.as_ref() {
-            let _ = set_parent_from_w3c_trace_context(&thread_spawn_span, trace);
+            Self::spawn_internal(SessionSpawnArgs {
+                parent_trace,
+                ..args
+            })
+            .instrument(thread_spawn_span)
+            .await
         }
-        Self::spawn_internal(SessionSpawnArgs {
-            parent_trace,
-            ..args
-        })
-        .instrument(thread_spawn_span)
-        .await
+        .boxed()
     }
 
     async fn spawn_internal(args: SessionSpawnArgs) -> CodexResult<(Arc<Self>, SessionIo)> {
@@ -1345,7 +1352,13 @@ impl Session {
         state.clear_connector_selection();
     }
 
-    async fn record_initial_history(&self, conversation_history: InitialHistory) {
+    #[inline(never)]
+    fn record_initial_history(&self, conversation_history: InitialHistory) -> BoxFuture<'_, ()> {
+        self.record_initial_history_inner(conversation_history)
+            .boxed()
+    }
+
+    async fn record_initial_history_inner(&self, conversation_history: InitialHistory) {
         let (is_subagent, is_paginated_subagent) = {
             let state = self.state.lock().await;
             let session_configuration = &state.session_configuration;
@@ -3131,6 +3144,47 @@ impl Session {
         .await
     }
 
+    #[inline(never)]
+    fn prepare_step_runtime_future<'a>(
+        self: &'a Arc<Self>,
+        turn_context: &'a TurnContext,
+        selected_capability_roots: &'a [ResolvedSelectedCapabilityRoot],
+        required_servers: &'a [String],
+    ) -> BoxFuture<
+        'a,
+        (
+            Arc<codex_mcp::McpBinding>,
+            turn::PreparedToolRecommendations,
+        ),
+    > {
+        let mcp = self
+            .mcp_runtime_for_step(turn_context, selected_capability_roots, required_servers)
+            .boxed();
+        let recommendations =
+            turn::prepare_tool_recommendations(self.as_ref(), turn_context).boxed();
+        async move { tokio::join!(mcp, recommendations) }.boxed()
+    }
+
+    #[inline(never)]
+    fn build_tools_future<'a>(
+        self: &'a Arc<Self>,
+        turn_context: &'a TurnContext,
+        environments: &'a TurnEnvironmentSnapshot,
+        mcp: &'a Arc<codex_mcp::McpBinding>,
+        extension_data: &'a codex_extension_api::ExtensionData,
+        prepared_recommendations: turn::PreparedToolRecommendations,
+    ) -> BoxFuture<'a, CodexResult<Arc<crate::tools::ToolRouter>>> {
+        turn::built_tools(
+            self.as_ref(),
+            turn_context,
+            environments,
+            mcp,
+            extension_data,
+            prepared_recommendations,
+        )
+        .boxed()
+    }
+
     pub(crate) async fn capture_step_context_with_required_mcp_servers(
         self: &Arc<Self>,
         turn_context: Arc<TurnContext>,
@@ -3184,28 +3238,24 @@ impl Session {
                 .collect::<HashMap<_, _>>();
             extension_data.insert(sandbox_contexts);
         }
-        let (mcp, prepared_recommendations) = async {
-            tokio::join!(
-                self.mcp_runtime_for_step(
-                    turn_context.as_ref(),
-                    &selected_capability_roots,
-                    required_servers,
-                ),
-                turn::prepare_tool_recommendations(self.as_ref(), turn_context.as_ref()),
+        let (mcp, prepared_recommendations) = self
+            .prepare_step_runtime_future(
+                turn_context.as_ref(),
+                &selected_capability_roots,
+                required_servers,
             )
-        }
-        .or_cancel(cancellation_token)
-        .await?;
-        let tool_router = turn::built_tools(
-            self.as_ref(),
-            turn_context.as_ref(),
-            &environments,
-            &mcp,
-            &extension_data,
-            prepared_recommendations,
-        )
-        .or_cancel(cancellation_token)
-        .await??;
+            .or_cancel(cancellation_token)
+            .await?;
+        let tool_router = self
+            .build_tools_future(
+                turn_context.as_ref(),
+                &environments,
+                &mcp,
+                &extension_data,
+                prepared_recommendations,
+            )
+            .or_cancel(cancellation_token)
+            .await??;
         Ok(Arc::new(StepContext {
             turn: turn_context,
             environments,
@@ -3676,13 +3726,23 @@ impl Session {
         items
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(item_count = items.len()))]
-    pub(crate) async fn persist_rollout_items(&self, items: &[RolloutItem]) {
-        if let Some(live_thread) = self.live_thread()
-            && let Err(e) = live_thread.append_items(items).await
-        {
-            error!("failed to record rollout items: {e:#}");
+    #[inline(never)]
+    pub(crate) fn persist_rollout_items<'a>(
+        &'a self,
+        items: &'a [RolloutItem],
+    ) -> BoxFuture<'a, ()> {
+        async move {
+            if let Some(live_thread) = self.live_thread()
+                && let Err(e) = append_rollout_items_future(live_thread, items).await
+            {
+                error!("failed to record rollout items: {e:#}");
+            }
         }
+        .instrument(tracing::trace_span!(
+            "persist_rollout_items",
+            item_count = items.len()
+        ))
+        .boxed()
     }
 
     pub(crate) async fn clone_history(&self) -> ContextManager {
@@ -4197,6 +4257,14 @@ impl Session {
     fn show_raw_agent_reasoning(&self) -> bool {
         self.services.show_raw_agent_reasoning
     }
+}
+
+#[inline(never)]
+fn append_rollout_items_future<'a>(
+    live_thread: &'a LiveThread,
+    items: &'a [RolloutItem],
+) -> BoxFuture<'a, codex_thread_store::ThreadStoreResult<()>> {
+    live_thread.append_items(items).boxed()
 }
 
 pub(crate) fn emit_subagent_session_started(

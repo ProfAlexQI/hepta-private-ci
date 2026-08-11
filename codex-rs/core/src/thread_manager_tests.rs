@@ -1121,6 +1121,10 @@ async fn selected_capability_roots_round_trip_through_fork() {
 
 #[tokio::test]
 async fn resume_and_fork_do_not_restore_thread_environments_from_rollout() {
+    Box::pin(resume_and_fork_do_not_restore_thread_environments_from_rollout_inner()).await;
+}
+
+async fn resume_and_fork_do_not_restore_thread_environments_from_rollout_inner() {
     let temp_dir = tempdir().expect("tempdir");
     let mut config = test_config().await;
     config.codex_home = temp_dir.path().join("codex-home").abs();

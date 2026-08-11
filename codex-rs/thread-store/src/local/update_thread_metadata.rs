@@ -263,7 +263,7 @@ async fn apply_metadata_update(
     let state_db = store.state_db().await;
     let sqlite_write_result: ThreadStoreResult<()> = if let Some(state_db) = state_db.as_ref() {
         let patch = patch.clone();
-        async {
+        Box::pin(async {
             let existing =
                 state_db
                     .get_thread(thread_id)
@@ -432,7 +432,7 @@ async fn apply_metadata_update(
                     })?;
             }
             Ok(())
-        }
+        })
         .await
     } else if require_sqlite_write {
         Err(ThreadStoreError::Internal {
@@ -451,14 +451,14 @@ async fn apply_metadata_update(
         }
     }
 
-    read_thread::read_thread(
+    Box::pin(read_thread::read_thread(
         store,
         ReadThreadParams {
             thread_id,
             include_archived,
             include_history: false,
         },
-    )
+    ))
     .await
 }
 

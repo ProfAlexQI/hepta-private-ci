@@ -39,6 +39,27 @@ fn assistant_output_text(text: &str) -> ResponseItem {
     }
 }
 
+struct PostSamplingTokenEstimateCallsite;
+
+static POST_SAMPLING_TOKEN_ESTIMATE_CALLSITE: PostSamplingTokenEstimateCallsite =
+    PostSamplingTokenEstimateCallsite;
+static POST_SAMPLING_TOKEN_ESTIMATE_METADATA: tracing::Metadata<'static> = tracing::metadata! {
+    name: "post_sampling_token_estimate",
+    target: POST_SAMPLING_TOKEN_ESTIMATE_TARGET,
+    level: tracing::Level::TRACE,
+    fields: &["turn_id", "estimated_token_count", "message"],
+    callsite: &POST_SAMPLING_TOKEN_ESTIMATE_CALLSITE,
+    kind: tracing::metadata::Kind::EVENT,
+};
+
+impl tracing::Callsite for PostSamplingTokenEstimateCallsite {
+    fn set_interest(&self, _interest: tracing::subscriber::Interest) {}
+
+    fn metadata(&self) -> &tracing::Metadata<'_> {
+        &POST_SAMPLING_TOKEN_ESTIMATE_METADATA
+    }
+}
+
 #[test]
 fn post_sampling_token_estimate_is_disabled_by_always_on_sinks() {
     let feedback = codex_feedback::CodexFeedback::new();
@@ -46,15 +67,13 @@ fn post_sampling_token_estimate_is_disabled_by_always_on_sinks() {
         .with(feedback.logger_layer())
         .with(tracing_subscriber::fmt::layer().with_filter(codex_state::log_db::default_filter()));
 
-    tracing::subscriber::with_default(subscriber, || {
-        assert!(!tracing::event_enabled!(
-            target: POST_SAMPLING_TOKEN_ESTIMATE_TARGET,
-            tracing::Level::TRACE,
-            turn_id,
-            estimated_token_count,
-            message
-        ));
-    });
+    // Query this subscriber directly. Another parallel test installs a process-global TRACE
+    // subscriber, whose callsite-interest cache must not affect this assertion.
+    assert!(tracing::Subscriber::register_callsite(
+        &subscriber,
+        &POST_SAMPLING_TOKEN_ESTIMATE_METADATA,
+    )
+    .is_never());
 }
 
 #[tokio::test]

@@ -719,12 +719,13 @@ impl Session {
             .await)
     }
 
-    async fn new_turn_from_configuration(
+    #[inline(never)]
+    fn new_turn_from_configuration(
         &self,
         sub_id: String,
         session_configuration: SessionConfiguration,
         final_output_json_schema: Option<Option<Value>>,
-    ) -> Arc<TurnContext> {
+    ) -> BoxFuture<'_, Arc<TurnContext>> {
         self.new_turn_context_from_configuration(
             sub_id,
             session_configuration,
@@ -732,7 +733,7 @@ impl Session {
             TurnMultiAgentRuntime::ResolveAndStore,
             self.git_enrichment_policy,
         )
-        .await
+        .boxed()
     }
 
     async fn new_startup_prewarm_turn_from_configuration(
@@ -748,6 +749,17 @@ impl Session {
             GitEnrichmentPolicy::Skip,
         )
         .await
+    }
+
+    #[inline(never)]
+    fn plugins_for_turn_future<'a>(
+        &'a self,
+        plugins_input: &'a codex_core_plugins::PluginsConfigInput,
+    ) -> BoxFuture<'a, codex_core_plugins::PluginLoadOutcome> {
+        self.services
+            .plugins_manager
+            .plugins_for_config(plugins_input)
+            .boxed()
     }
 
     #[instrument(name = "turn_context.build", level = "trace", skip_all)]
@@ -790,11 +802,7 @@ impl Session {
             ),
         };
         let plugins_input = per_turn_config.plugins_config_input();
-        let plugin_outcome = self
-            .services
-            .plugins_manager
-            .plugins_for_config(&plugins_input)
-            .await;
+        let plugin_outcome = self.plugins_for_turn_future(&plugins_input).await;
         let trusted_plugin_roots = TrustedPluginRoots::from_plugin_load_outcome(
             &plugin_outcome,
             per_turn_config.codex_home.as_path(),

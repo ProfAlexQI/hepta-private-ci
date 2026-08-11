@@ -1071,6 +1071,9 @@ impl Session {
             );
             let resolved_environments = turn_environments.snapshot().await;
             let agents_md_manager = Arc::new(AgentsMdManager::new(user_instructions));
+            let agents_md_refresh = agents_md_manager
+                .refresh(config.as_ref(), &resolved_environments)
+                .boxed();
             let plugin_skill_warmup = warm_plugins_and_skills_for_session_init(
                 Arc::clone(&config),
                 Arc::clone(&plugins_manager),
@@ -1080,15 +1083,17 @@ impl Session {
             .instrument(info_span!(
                 "session_init.plugin_skill_warmup",
                 otel.name = "session_init.plugin_skill_warmup",
-            ));
+            ))
+            .boxed();
             let thread_name_lookup =
                 thread_title_from_thread_store(live_thread_init.as_ref(), &thread_store, thread_id)
                     .instrument(info_span!(
                         "session_init.thread_name_lookup",
                         otel.name = "session_init.thread_name_lookup",
-                    ));
+                    ))
+                    .boxed();
             let ((), plugin_skill_errors, thread_name) = tokio::join!(
-                agents_md_manager.refresh(config.as_ref(), &resolved_environments),
+                agents_md_refresh,
                 plugin_skill_warmup,
                 thread_name_lookup,
             );
@@ -1403,7 +1408,7 @@ impl Session {
             } else {
                 mcp_projection
             };
-            sess.install_initial_mcp_runtime(
+            sess.install_initial_mcp_runtime_future(
                 &session_configuration,
                 latest_auth,
                 mcp_projection,
@@ -1423,7 +1428,7 @@ impl Session {
             };
 
             // record_initial_history can emit events. We record only after the SessionConfiguredEvent is emitted.
-            Box::pin(sess.record_initial_history(initial_history)).await;
+            sess.record_initial_history(initial_history).await;
             if restore_child_window {
                 sess.state.lock().await.restore_auto_compact_window(
                     /*window_number*/ 0,

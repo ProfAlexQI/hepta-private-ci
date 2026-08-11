@@ -89,13 +89,13 @@ pub async fn user_input_or_turn(
     client_user_message_id: Option<String>,
     parent_turn_id: Option<String>,
 ) {
-    let admission = user_input_or_turn_inner(
+    let admission = Box::pin(user_input_or_turn_inner(
         sess,
         sub_id.clone(),
         op,
         client_user_message_id,
         parent_turn_id,
-    )
+    ))
     .await;
     sess.pending_user_message_admissions
         .complete(&sub_id, admission);

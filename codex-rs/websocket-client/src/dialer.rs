@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use codex_http_client::OutboundProxyRoute;
 use codex_http_client::build_rustls_client_config_with_custom_ca;
+use futures::FutureExt;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use rustls::ClientConfig;
@@ -51,6 +52,7 @@ pub(crate) async fn connect(
                 disable_nagle,
                 tls_config.map(Connector::Rustls),
             )
+            .boxed()
             .await?;
             return Ok((ConnectionInner::TransportDefault(stream), response));
         }
@@ -72,6 +74,7 @@ pub(crate) async fn connect(
                 disable_nagle,
                 tls_config.clone().map(Connector::Rustls),
             )
+            .boxed()
             .await
             {
                 Ok((stream, response)) => {
@@ -126,6 +129,7 @@ pub(crate) async fn connect(
         Some(config),
         tls_config.map(Connector::Rustls),
     )
+    .boxed()
     .await?;
     Ok((ConnectionInner::Routed(stream), response))
 }

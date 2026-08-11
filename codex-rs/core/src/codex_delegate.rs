@@ -100,7 +100,7 @@ pub(crate) async fn run_codex_thread_interactive(
         instructions: parent_session.user_instructions().await,
         warnings: Vec::new(),
     };
-    let (session, io) = Box::pin(Session::spawn(SessionSpawnArgs {
+    let (session, io) = Session::spawn(SessionSpawnArgs {
         config,
         allow_provider_model_fallback: false,
         user_instructions,
@@ -142,7 +142,7 @@ pub(crate) async fn run_codex_thread_interactive(
         inherited_multi_agent_version: Some(MultiAgentVersion::Disabled),
         git_enrichment_policy,
         windows_sandbox_proxy_settings_mode,
-    }))
+    })
     .or_cancel(&cancel_token)
     .await??;
     let thread_config = session.thread_config_snapshot().await;

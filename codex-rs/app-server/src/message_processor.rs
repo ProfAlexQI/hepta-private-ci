@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
@@ -95,9 +96,30 @@ use crate::models_refresh_worker::ModelsRefreshWorker;
 
 const CONNECTION_RPC_DRAIN_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);
 
+type InitializedClientRequestFuture = Pin<
+    Box<
+        dyn Future<Output = Result<Option<ClientResponsePayload>, JSONRPCErrorError>>
+            + Send
+            + 'static,
+    >,
+>;
+
+macro_rules! boxed_request_match {
+    ($request:expr, { $($pattern:pat => $body:expr),+ $(,)? }) => {
+        match $request {
+            $($pattern => Box::pin(async move { $body }) as InitializedClientRequestFuture,)+
+        }
+    };
+}
+
 fn deserialize_client_request(request: JSONRPCRequest) -> Result<ClientRequest, JSONRPCErrorError> {
     ClientRequest::try_from(request)
         .map_err(|err| invalid_request(format!("Invalid request: {err}")))
+}
+
+fn reject_initialized_dispatch_of_initialize()
+-> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+    panic!("Initialize should be handled before initialized request dispatch");
 }
 
 pub(crate) struct MessageProcessor {
@@ -906,53 +928,94 @@ impl MessageProcessor {
             request_id: codex_request.id().clone(),
         };
 
-        let result: Result<Option<ClientResponsePayload>, JSONRPCErrorError> = match codex_request {
-            ClientRequest::Initialize { .. } => {
-                panic!("Initialize should be handled before initialized request dispatch");
+        let response_request_id = request_id.clone();
+        let outgoing = Arc::clone(&self.outgoing);
+        // Most boxed request arms do not capture their context, so retain the original through
+        // the final response/error send to preserve its diagnostics gauge lifetime.
+        let result = Self::initialized_client_request_future(
+            Arc::clone(&self),
+            request_id,
+            codex_request,
+            request_context.clone(),
+            app_server_client_name,
+            client_version,
+            client_mcp_extensions,
+        )
+        .await;
+
+        match result {
+            Ok(Some(response)) => {
+                outgoing
+                    .send_response_as(response_request_id, response)
+                    .await;
             }
+            Ok(None) => {}
+            Err(error) => {
+                outgoing.send_error(response_request_id, error).await;
+            }
+        }
+        drop(request_context);
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn initialized_client_request_future(
+        processor: Arc<Self>,
+        request_id: ConnectionRequestId,
+        codex_request: ClientRequest,
+        request_context: RequestContext,
+        app_server_client_name: Option<String>,
+        client_version: Option<String>,
+        client_mcp_extensions: ClientMcpExtensions,
+    ) -> InitializedClientRequestFuture {
+        let connection_id = request_id.connection_id;
+        boxed_request_match!(codex_request, {
+            ClientRequest::Initialize { .. } => {
+                reject_initialized_dispatch_of_initialize()
+            },
             ClientRequest::ServerDiagnostics { .. } => Ok(Some(read_server_diagnostics().into())),
-            ClientRequest::ConfigRead { params, .. } => self
+            ClientRequest::ConfigRead { params, .. } => processor
                 .config_processor
                 .read(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::WindowsSandboxReadiness { .. } => self
+            ClientRequest::WindowsSandboxReadiness { .. } => processor
                 .windows_sandbox_processor
                 .windows_sandbox_readiness()
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::ExternalAgentConfigDetect { params, .. } => self
+            ClientRequest::ExternalAgentConfigDetect { params, .. } => processor
                 .external_agent_config_processor
                 .detect(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::ExternalAgentConfigImport { params, .. } => self
+            ClientRequest::ExternalAgentConfigImport { params, .. } => processor
                 .external_agent_config_processor
                 .import(request_id.clone(), params)
                 .await
                 .map(|()| None),
-            ClientRequest::ExternalAgentConfigImportHistoryRecord { params, .. } => self
+            ClientRequest::ExternalAgentConfigImportHistoryRecord { params, .. } => processor
                 .external_agent_config_processor
                 .record_import_history(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::ExternalAgentConfigImportHistoriesRead { .. } => self
+            ClientRequest::ExternalAgentConfigImportHistoriesRead { .. } => processor
                 .external_agent_config_processor
                 .read_import_histories()
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::ConfigValueWrite { params, .. } => {
-                self.config_processor.value_write(params).await.map(Some)
-            }
+                processor.config_processor.value_write(params).await.map(Some)
+            },
             ClientRequest::ConfigBatchWrite { params, .. } => {
-                self.config_processor.batch_write(params).await.map(Some)
-            }
+                processor.config_processor.batch_write(params).await.map(Some)
+            },
             ClientRequest::ExperimentalFeatureEnablementSet { params, .. } => {
-                self.config_processor
+                processor.config_processor
                     .experimental_feature_enablement_set(request_id.clone(), params)
                     .await
-            }
-            ClientRequest::RemoteControlEnable { params, .. } => self
+            },
+            ClientRequest::RemoteControlEnable { params, .. } => processor
                 .remote_control_processor
                 .enable(
                     params.is_some_and(|params| params.ephemeral),
@@ -960,7 +1023,7 @@ impl MessageProcessor {
                 )
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::RemoteControlDisable { params, .. } => self
+            ClientRequest::RemoteControlDisable { params, .. } => processor
                 .remote_control_processor
                 .disable(
                     params.is_some_and(|params| params.ephemeral),
@@ -968,106 +1031,106 @@ impl MessageProcessor {
                 )
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::RemoteControlStatusRead { .. } => self
+            ClientRequest::RemoteControlStatusRead { .. } => processor
                 .remote_control_processor
                 .status_read()
                 .map(|response| Some(response.into())),
-            ClientRequest::RemoteControlPairingStart { params, .. } => self
+            ClientRequest::RemoteControlPairingStart { params, .. } => processor
                 .remote_control_processor
                 .pairing_start(params, app_server_client_name.as_deref())
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::RemoteControlPairingStatus { params, .. } => self
+            ClientRequest::RemoteControlPairingStatus { params, .. } => processor
                 .remote_control_processor
                 .pairing_status(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::RemoteControlClientsList { params, .. } => self
+            ClientRequest::RemoteControlClientsList { params, .. } => processor
                 .remote_control_processor
                 .clients_list(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::RemoteControlClientsRevoke { params, .. } => self
+            ClientRequest::RemoteControlClientsRevoke { params, .. } => processor
                 .remote_control_processor
                 .clients_revoke(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::ConfigRequirementsRead { params: _, .. } => self
+            ClientRequest::ConfigRequirementsRead { params: _, .. } => processor
                 .config_processor
                 .config_requirements_read()
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::EnvironmentAdd { params, .. } => {
-                self.environment_processor.environment_add(params).await
-            }
+                processor.environment_processor.environment_add(params).await
+            },
             ClientRequest::EnvironmentInfo { params, .. } => {
-                self.environment_processor.environment_info(params).await
-            }
+                processor.environment_processor.environment_info(params).await
+            },
             ClientRequest::EnvironmentStatus { params, .. } => {
-                self.environment_processor.environment_status(params).await
-            }
-            ClientRequest::FsReadFile { params, .. } => self
+                processor.environment_processor.environment_status(params).await
+            },
+            ClientRequest::FsReadFile { params, .. } => processor
                 .fs_processor
                 .read_file(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FsWriteFile { params, .. } => self
+            ClientRequest::FsWriteFile { params, .. } => processor
                 .fs_processor
                 .write_file(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FsCreateDirectory { params, .. } => self
+            ClientRequest::FsCreateDirectory { params, .. } => processor
                 .fs_processor
                 .create_directory(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FsGetMetadata { params, .. } => self
+            ClientRequest::FsGetMetadata { params, .. } => processor
                 .fs_processor
                 .get_metadata(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FsReadDirectory { params, .. } => self
+            ClientRequest::FsReadDirectory { params, .. } => processor
                 .fs_processor
                 .read_directory(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FsRemove { params, .. } => self
+            ClientRequest::FsRemove { params, .. } => processor
                 .fs_processor
                 .remove(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FsCopy { params, .. } => self
+            ClientRequest::FsCopy { params, .. } => processor
                 .fs_processor
                 .copy(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FsWatch { params, .. } => self
+            ClientRequest::FsWatch { params, .. } => processor
                 .fs_processor
                 .watch(connection_id, params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FsUnwatch { params, .. } => self
+            ClientRequest::FsUnwatch { params, .. } => processor
                 .fs_processor
                 .unwatch(connection_id, params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::ModelProviderCapabilitiesRead { params: _, .. } => self
+            ClientRequest::ModelProviderCapabilitiesRead { params: _, .. } => processor
                 .config_processor
                 .model_provider_capabilities_read()
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::HeptaEvidenceSummaryRead { params, .. } => self
+            ClientRequest::HeptaEvidenceSummaryRead { params, .. } => processor
                 .hepta_evidence_processor
                 .summary_read(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::HeptaHistoricalEvidenceRead { params, .. } => self
+            ClientRequest::HeptaHistoricalEvidenceRead { params, .. } => processor
                 .hepta_evidence_processor
                 .historical_read(params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::ThreadStart { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_start(
                         request_id.clone(),
                         params,
@@ -1077,14 +1140,14 @@ impl MessageProcessor {
                         request_context,
                     )
                     .await
-            }
+            },
             ClientRequest::ThreadUnsubscribe { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_unsubscribe(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadResume { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_resume(
                         request_id.clone(),
                         params,
@@ -1093,9 +1156,9 @@ impl MessageProcessor {
                         client_mcp_extensions.clone(),
                     )
                     .await
-            }
+            },
             ClientRequest::ThreadFork { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_fork(
                         request_id.clone(),
                         params,
@@ -1104,227 +1167,227 @@ impl MessageProcessor {
                         client_mcp_extensions.clone(),
                     )
                     .await
-            }
+            },
             ClientRequest::ThreadArchive { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_archive(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::ThreadDelete { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_delete(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::ThreadIncrementElicitation { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_increment_elicitation(params)
                     .await
-            }
+            },
             ClientRequest::ThreadDecrementElicitation { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_decrement_elicitation(params)
                     .await
-            }
+            },
             ClientRequest::ThreadSetName { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_set_name(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::ThreadGoalSet { params, .. } => {
-                self.thread_goal_processor
+                processor.thread_goal_processor
                     .thread_goal_set(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::ThreadGoalGet { params, .. } => {
-                self.thread_goal_processor.thread_goal_get(params).await
-            }
+                processor.thread_goal_processor.thread_goal_get(params).await
+            },
             ClientRequest::ThreadGoalClear { params, .. } => {
-                self.thread_goal_processor
+                processor.thread_goal_processor
                     .thread_goal_clear(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::ThreadMetadataUpdate { params, .. } => {
-                self.thread_processor.thread_metadata_update(params).await
-            }
+                processor.thread_processor.thread_metadata_update(params).await
+            },
             ClientRequest::ThreadSectionMove { params, .. } => {
-                self.thread_processor.thread_section_move(params).await
-            }
+                processor.thread_processor.thread_section_move(params).await
+            },
             ClientRequest::ThreadSectionList { params, .. } => {
-                self.thread_processor.thread_section_list(params).await
-            }
+                processor.thread_processor.thread_section_list(params).await
+            },
             ClientRequest::ThreadSectionCreate { params, .. } => {
-                self.thread_processor.thread_section_create(params).await
-            }
+                processor.thread_processor.thread_section_create(params).await
+            },
             ClientRequest::ThreadSectionUpdate { params, .. } => {
-                self.thread_processor.thread_section_update(params).await
-            }
+                processor.thread_processor.thread_section_update(params).await
+            },
             ClientRequest::ThreadSectionDelete { params, .. } => {
-                self.thread_processor.thread_section_delete(params).await
-            }
+                processor.thread_processor.thread_section_delete(params).await
+            },
             ClientRequest::ThreadSettingsUpdate { params, .. } => {
-                self.turn_processor
+                processor.turn_processor
                     .thread_settings_update(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadMemoryModeSet { params, .. } => {
-                self.thread_processor.thread_memory_mode_set(params).await
-            }
-            ClientRequest::MemoryReset { .. } => self.thread_processor.memory_reset().await,
+                processor.thread_processor.thread_memory_mode_set(params).await
+            },
+            ClientRequest::MemoryReset { .. } => processor.thread_processor.memory_reset().await,
             ClientRequest::ThreadUnarchive { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_unarchive(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::ThreadCompactStart { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_compact_start(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadBackgroundTerminalsClean { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_background_terminals_clean(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadBackgroundTerminalsList { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_background_terminals_list(params)
                     .await
-            }
+            },
             ClientRequest::ThreadBackgroundTerminalsTerminate { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_background_terminals_terminate(params)
                     .await
-            }
+            },
             ClientRequest::ThreadRollback { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_rollback(&request_id, params, app_server_client_name.as_deref())
                     .await
-            }
+            },
             ClientRequest::ThreadList { params, .. } => {
-                self.thread_processor.thread_list(params).await
-            }
+                processor.thread_processor.thread_list(params).await
+            },
             ClientRequest::ThreadSearch { params, .. } => {
-                self.thread_processor.thread_search(params).await
-            }
+                processor.thread_processor.thread_search(params).await
+            },
             ClientRequest::ThreadSearchOccurrences { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_search_occurrences(params)
                     .await
-            }
+            },
             ClientRequest::ThreadLoadedList { params, .. } => {
-                self.thread_processor.thread_loaded_list(params).await
-            }
+                processor.thread_processor.thread_loaded_list(params).await
+            },
             ClientRequest::ThreadRead { params, .. } => {
-                self.thread_processor.thread_read(params).await
-            }
+                processor.thread_processor.thread_read(params).await
+            },
             ClientRequest::ThreadTurnsList { params, .. } => {
-                self.thread_processor.thread_turns_list(params).await
-            }
+                processor.thread_processor.thread_turns_list(params).await
+            },
             ClientRequest::ThreadItemsList { params, .. } => {
-                self.thread_processor.thread_items_list(params).await
-            }
+                processor.thread_processor.thread_items_list(params).await
+            },
             ClientRequest::ThreadShellCommand { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_shell_command(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadApproveGuardianDeniedAction { params, .. } => {
-                self.thread_processor
+                processor.thread_processor
                     .thread_approve_guardian_denied_action(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::GetConversationSummary { params, .. } => {
-                self.thread_processor.conversation_summary(params).await
-            }
+                processor.thread_processor.conversation_summary(params).await
+            },
             ClientRequest::SkillsList { params, .. } => {
-                self.catalog_processor.skills_list(params).await
-            }
+                processor.catalog_processor.skills_list(params).await
+            },
             ClientRequest::SkillsExtraRootsSet { params, .. } => {
-                self.catalog_processor.skills_extra_roots_set(params).await
-            }
+                processor.catalog_processor.skills_extra_roots_set(params).await
+            },
             ClientRequest::HooksList { params, .. } => {
-                self.catalog_processor.hooks_list(params).await
-            }
+                processor.catalog_processor.hooks_list(params).await
+            },
             ClientRequest::MarketplaceAdd { params, .. } => {
-                self.marketplace_processor.marketplace_add(params).await
-            }
+                processor.marketplace_processor.marketplace_add(params).await
+            },
             ClientRequest::MarketplaceRemove { params, .. } => {
-                self.marketplace_processor.marketplace_remove(params).await
-            }
+                processor.marketplace_processor.marketplace_remove(params).await
+            },
             ClientRequest::MarketplaceUpgrade { params, .. } => {
-                self.marketplace_processor.marketplace_upgrade(params).await
-            }
+                processor.marketplace_processor.marketplace_upgrade(params).await
+            },
             ClientRequest::PluginList { params, .. } => {
-                self.plugin_processor.plugin_list(params).await
-            }
+                processor.plugin_processor.plugin_list(params).await
+            },
             ClientRequest::PluginSearch { params, .. } => {
-                self.plugin_processor.plugin_search(params).await
-            }
+                processor.plugin_processor.plugin_search(params).await
+            },
             ClientRequest::PluginInstalled { params, .. } => {
-                self.plugin_processor.plugin_installed(params).await
-            }
+                processor.plugin_processor.plugin_installed(params).await
+            },
             ClientRequest::PluginRead { params, .. } => {
-                self.plugin_processor.plugin_read(params).await
-            }
+                processor.plugin_processor.plugin_read(params).await
+            },
             ClientRequest::PluginSkillRead { params, .. } => {
-                self.plugin_processor.plugin_skill_read(params).await
-            }
+                processor.plugin_processor.plugin_skill_read(params).await
+            },
             ClientRequest::PluginShareSave { params, .. } => {
-                self.plugin_processor.plugin_share_save(params).await
-            }
+                processor.plugin_processor.plugin_share_save(params).await
+            },
             ClientRequest::PluginShareUpdateTargets { params, .. } => {
-                self.plugin_processor
+                processor.plugin_processor
                     .plugin_share_update_targets(params)
                     .await
-            }
+            },
             ClientRequest::PluginShareList { params, .. } => {
-                self.plugin_processor.plugin_share_list(params).await
-            }
+                processor.plugin_processor.plugin_share_list(params).await
+            },
             ClientRequest::PluginShareCheckout { params, .. } => {
-                self.plugin_processor.plugin_share_checkout(params).await
-            }
+                processor.plugin_processor.plugin_share_checkout(params).await
+            },
             ClientRequest::PluginShareDelete { params, .. } => {
-                self.plugin_processor.plugin_share_delete(params).await
-            }
-            ClientRequest::AppsRead { params, .. } => self.apps_processor.apps_read(params).await,
+                processor.plugin_processor.plugin_share_delete(params).await
+            },
+            ClientRequest::AppsRead { params, .. } => processor.apps_processor.apps_read(params).await,
             ClientRequest::AppsList { params, .. } => {
-                self.apps_processor.apps_list(&request_id, params).await
-            }
-            ClientRequest::AppsInstalled { params, .. } => self
+                processor.apps_processor.apps_list(&request_id, params).await
+            },
+            ClientRequest::AppsInstalled { params, .. } => processor
                 .apps_processor
                 .apps_installed(params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::SkillsConfigWrite { params, .. } => {
-                self.catalog_processor.skills_config_write(params).await
-            }
+                processor.catalog_processor.skills_config_write(params).await
+            },
             ClientRequest::PluginInstall { params, .. } => {
-                self.plugin_processor.plugin_install(params).await
-            }
+                processor.plugin_processor.plugin_install(params).await
+            },
             ClientRequest::PluginUninstall { params, .. } => {
-                self.plugin_processor.plugin_uninstall(params).await
-            }
+                processor.plugin_processor.plugin_uninstall(params).await
+            },
             ClientRequest::ModelList { params, .. } => {
-                self.catalog_processor.model_list(params).await
-            }
+                processor.catalog_processor.model_list(params).await
+            },
             ClientRequest::ExperimentalFeatureList { params, .. } => {
-                self.catalog_processor
+                processor.catalog_processor
                     .experimental_feature_list(params)
                     .await
-            }
+            },
             ClientRequest::PermissionProfileList { params, .. } => {
-                self.catalog_processor.permission_profile_list(params).await
-            }
+                processor.catalog_processor.permission_profile_list(params).await
+            },
             ClientRequest::CollaborationModeList { params, .. } => {
-                self.catalog_processor.collaboration_mode_list(params).await
-            }
+                processor.catalog_processor.collaboration_mode_list(params).await
+            },
             ClientRequest::MockExperimentalMethod { params, .. } => {
-                self.catalog_processor
+                processor.catalog_processor
                     .mock_experimental_method(params)
                     .await
-            }
+            },
             ClientRequest::TurnStart { params, .. } => {
-                self.turn_processor
+                processor.turn_processor
                     .turn_start(
                         request_id.clone(),
                         params,
@@ -1332,193 +1395,180 @@ impl MessageProcessor {
                         client_version.clone(),
                     )
                     .await
-            }
+            },
             ClientRequest::ThreadInjectItems { params, .. } => {
-                self.turn_processor.thread_inject_items(params).await
-            }
+                processor.turn_processor.thread_inject_items(params).await
+            },
             ClientRequest::TurnSteer { params, .. } => {
-                self.turn_processor.turn_steer(&request_id, params).await
-            }
+                processor.turn_processor.turn_steer(&request_id, params).await
+            },
             ClientRequest::TurnInterrupt { params, .. } => {
-                self.turn_processor
+                processor.turn_processor
                     .turn_interrupt(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadRealtimeStart { params, .. } => {
-                self.turn_processor
+                processor.turn_processor
                     .thread_realtime_start(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadRealtimeAppendAudio { params, .. } => {
-                self.turn_processor
+                processor.turn_processor
                     .thread_realtime_append_audio(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadRealtimeAppendText { params, .. } => {
-                self.turn_processor
+                processor.turn_processor
                     .thread_realtime_append_text(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadRealtimeAppendSpeech { params, .. } => {
-                self.turn_processor
+                processor.turn_processor
                     .thread_realtime_append_speech(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadRealtimeStop { params, .. } => {
-                self.turn_processor
+                processor.turn_processor
                     .thread_realtime_stop(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::ThreadRealtimeListVoices { params: _, .. } => {
-                self.turn_processor.thread_realtime_list_voices().await
-            }
+                processor.turn_processor.thread_realtime_list_voices().await
+            },
             ClientRequest::ReviewStart { params, .. } => {
-                self.turn_processor.review_start(&request_id, params).await
-            }
+                processor.turn_processor.review_start(&request_id, params).await
+            },
             ClientRequest::McpServerOauthLogin { params, .. } => {
-                self.mcp_processor.mcp_server_oauth_login(params).await
-            }
+                processor.mcp_processor.mcp_server_oauth_login(params).await
+            },
             ClientRequest::McpServerRefresh { params, .. } => {
-                self.mcp_processor.mcp_server_refresh(params).await
-            }
+                processor.mcp_processor.mcp_server_refresh(params).await
+            },
             ClientRequest::McpServerStatusList { params, .. } => {
-                self.mcp_processor
+                processor.mcp_processor
                     .mcp_server_status_list(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::McpResourceRead { params, .. } => {
-                self.mcp_processor
+                processor.mcp_processor
                     .mcp_resource_read(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::McpServerToolCall { params, .. } => {
-                self.mcp_processor
+                processor.mcp_processor
                     .mcp_server_tool_call(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::WindowsSandboxSetupStart { params, .. } => {
-                self.windows_sandbox_processor
+                processor.windows_sandbox_processor
                     .windows_sandbox_setup_start(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::LoginAccount { params, .. } => {
-                self.account_processor
+                processor.account_processor
                     .login_account(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::LogoutAccount { .. } => {
-                self.account_processor
+                processor.account_processor
                     .logout_account(request_id.clone())
                     .await
-            }
+            },
             ClientRequest::CancelLoginAccount { params, .. } => {
-                self.account_processor.cancel_login_account(params).await
-            }
+                processor.account_processor.cancel_login_account(params).await
+            },
             ClientRequest::GetAccount { params, .. } => {
-                self.account_processor.get_account(params).await
-            }
+                processor.account_processor.get_account(params).await
+            },
             ClientRequest::GetAuthStatus { params, .. } => {
-                self.account_processor.get_auth_status(params).await
-            }
+                processor.account_processor.get_auth_status(params).await
+            },
             ClientRequest::GetAccountRateLimits { .. } => {
-                self.account_processor.get_account_rate_limits().await
-            }
+                processor.account_processor.get_account_rate_limits().await
+            },
             ClientRequest::ConsumeAccountRateLimitResetCredit { params, .. } => {
-                self.account_processor
+                processor.account_processor
                     .consume_account_rate_limit_reset_credit(params)
                     .await
-            }
+            },
             ClientRequest::GetAccountTokenUsage { .. } => {
-                self.account_processor.get_account_token_usage().await
-            }
+                processor.account_processor.get_account_token_usage().await
+            },
             ClientRequest::GetWorkspaceMessages { .. } => {
-                self.account_processor.get_workspace_messages().await
-            }
+                processor.account_processor.get_workspace_messages().await
+            },
             ClientRequest::SendAddCreditsNudgeEmail { params, .. } => {
-                self.account_processor
+                processor.account_processor
                     .send_add_credits_nudge_email(params)
                     .await
-            }
+            },
             ClientRequest::GitDiffToRemote { params, .. } => {
-                self.git_processor.git_diff_to_remote(params).await
-            }
-            ClientRequest::FuzzyFileSearch { params, .. } => self
+                processor.git_processor.git_diff_to_remote(params).await
+            },
+            ClientRequest::FuzzyFileSearch { params, .. } => processor
                 .search_processor
                 .fuzzy_file_search(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FuzzyFileSearchSessionStart { params, .. } => self
+            ClientRequest::FuzzyFileSearchSessionStart { params, .. } => processor
                 .search_processor
                 .fuzzy_file_search_session_start_response(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FuzzyFileSearchSessionUpdate { params, .. } => self
+            ClientRequest::FuzzyFileSearchSessionUpdate { params, .. } => processor
                 .search_processor
                 .fuzzy_file_search_session_update_response(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::FuzzyFileSearchSessionStop { params, .. } => self
+            ClientRequest::FuzzyFileSearchSessionStop { params, .. } => processor
                 .search_processor
                 .fuzzy_file_search_session_stop(params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::OneOffCommandExec { params, .. } => {
-                self.command_exec_processor
+                processor.command_exec_processor
                     .one_off_command_exec(&request_id, params)
                     .await
-            }
+            },
             ClientRequest::CommandExecWrite { params, .. } => {
-                self.command_exec_processor
+                processor.command_exec_processor
                     .command_exec_write(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::CommandExecResize { params, .. } => {
-                self.command_exec_processor
+                processor.command_exec_processor
                     .command_exec_resize(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::CommandExecTerminate { params, .. } => {
-                self.command_exec_processor
+                processor.command_exec_processor
                     .command_exec_terminate(request_id.clone(), params)
                     .await
-            }
-            ClientRequest::ProcessSpawn { params, .. } => self
+            },
+            ClientRequest::ProcessSpawn { params, .. } => processor
                 .process_exec_processor
                 .process_spawn(request_id.clone(), params)
                 .await
                 .map(|()| None),
             ClientRequest::ProcessWriteStdin { params, .. } => {
-                self.process_exec_processor
+                processor.process_exec_processor
                     .process_write_stdin(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::ProcessKill { params, .. } => {
-                self.process_exec_processor
+                processor.process_exec_processor
                     .process_kill(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::ProcessResizePty { params, .. } => {
-                self.process_exec_processor
+                processor.process_exec_processor
                     .process_resize_pty(request_id.clone(), params)
                     .await
-            }
+            },
             ClientRequest::FeedbackUpload { params, .. } => {
-                self.feedback_processor.feedback_upload(params).await
+                processor.feedback_processor.feedback_upload(params).await
             }
-        };
-
-        match result {
-            Ok(Some(response)) => {
-                self.outgoing
-                    .send_response_as(request_id.clone(), response)
-                    .await;
-            }
-            Ok(None) => {}
-            Err(error) => {
-                self.outgoing.send_error(request_id.clone(), error).await;
-            }
-        }
-        Ok(())
+        })
     }
 }
 

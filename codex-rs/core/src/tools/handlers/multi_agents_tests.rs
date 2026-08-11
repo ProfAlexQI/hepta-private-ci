@@ -491,7 +491,7 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
     }
 
     {
-        let (mut session, turn) = make_session_and_context().await;
+        let (mut session, turn) = Box::pin(make_session_and_context()).await;
         let mut turn = turn
             .with_model("gpt-5.4".to_string(), &session.services.models_manager)
             .await;
@@ -532,7 +532,7 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
     }
 
     {
-        let (mut session, turn) = make_session_and_context().await;
+        let (mut session, turn) = Box::pin(make_session_and_context()).await;
         let mut turn = turn
             .with_model("gpt-5.4".to_string(), &session.services.models_manager)
             .await;
@@ -573,7 +573,7 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
     }
 
     {
-        let (mut session, mut turn) = make_session_and_context().await;
+        let (mut session, mut turn) = Box::pin(make_session_and_context()).await;
         tokio::fs::create_dir_all(&turn.config.codex_home)
             .await
             .expect("codex home should be created");

@@ -100,7 +100,9 @@ use codex_tools::create_tools_json_for_responses_lite;
 use codex_tools::create_tools_raw_json_for_responses_api;
 use eventsource_stream::Event;
 use eventsource_stream::EventStreamError;
+use futures::FutureExt;
 use futures::StreamExt;
+use futures::future::BoxFuture;
 use http::HeaderMap as ApiHeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
@@ -1255,6 +1257,28 @@ impl ModelClient {
     /// Both startup prewarm and in-turn `needs_new` reconnects call this path so handshake
     /// behavior remains consistent across both flows.
     #[allow(clippy::too_many_arguments)]
+    #[inline(never)]
+    fn connect_websocket_future<'a>(
+        &'a self,
+        session_telemetry: &'a SessionTelemetry,
+        api_provider: codex_api::Provider,
+        api_auth: SharedAuthProvider,
+        responses_metadata: &'a CodexResponsesMetadata,
+        auth_context: AuthRequestTelemetryContext,
+        request_route_telemetry: RequestRouteTelemetry,
+    ) -> BoxFuture<'a, std::result::Result<ConnectedWebsocket, ApiError>> {
+        self.connect_websocket(
+            session_telemetry,
+            api_provider,
+            api_auth,
+            responses_metadata,
+            auth_context,
+            request_route_telemetry,
+        )
+        .boxed()
+    }
+
+    #[allow(clippy::too_many_arguments)]
     async fn connect_websocket(
         &self,
         session_telemetry: &SessionTelemetry,
@@ -1273,17 +1297,17 @@ impl ModelClient {
         );
         let websocket_connect_timeout = self.state.provider.info().websocket_connect_timeout();
         let start = Instant::now();
-        let result = match tokio::time::timeout(
-            websocket_connect_timeout,
-            ApiWebSocketResponsesClient::new(api_provider, api_auth).connect(
+        let websocket_client = ApiWebSocketResponsesClient::new(api_provider, api_auth);
+        let websocket_connect = websocket_client
+            .connect(
                 &self.http_client_factory,
                 headers,
                 codex_login::default_client::default_headers(),
                 /*turn_state*/ None,
                 Some(websocket_telemetry),
-            ),
-        )
-        .await
+            )
+            .boxed();
+        let result = match tokio::time::timeout(websocket_connect_timeout, websocket_connect).await
         {
             Ok(result) => result,
             Err(_) => Err(ApiError::Transport(TransportError::Timeout)),
@@ -1558,7 +1582,7 @@ impl ModelClientSession {
         );
         let connection = self
             .client
-            .connect_websocket(
+            .connect_websocket_future(
                 session_telemetry,
                 client_setup.api_provider,
                 client_setup.api_auth,
@@ -1608,7 +1632,7 @@ impl ModelClientSession {
             self.websocket_session.last_response_from_untraced_warmup = false;
             let new_conn = match self
                 .client
-                .connect_websocket(
+                .connect_websocket_future(
                     session_telemetry,
                     api_provider,
                     api_auth,
@@ -1967,6 +1991,39 @@ impl ModelClientSession {
                 }
             }
         }
+    }
+
+    /// Streams a turn via the Responses API over WebSocket transport.
+    #[allow(clippy::too_many_arguments)]
+    #[inline(never)]
+    fn stream_responses_websocket_future<'a>(
+        &'a mut self,
+        prompt: &'a Prompt,
+        model_info: &'a ModelInfo,
+        session_telemetry: &'a SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &'a CodexResponsesMetadata,
+        warmup: bool,
+        request_trace: Option<W3cTraceContext>,
+        inference_trace: &'a InferenceTraceContext,
+        provider_policy_context: Option<&'a ModelProviderPolicyContext<'a>>,
+    ) -> BoxFuture<'a, Result<WebsocketStreamOutcome>> {
+        self.stream_responses_websocket(
+            prompt,
+            model_info,
+            session_telemetry,
+            effort,
+            summary,
+            service_tier,
+            responses_metadata,
+            warmup,
+            request_trace,
+            inference_trace,
+            provider_policy_context,
+        )
+        .boxed()
     }
 
     /// Streams a turn via the Responses API over WebSocket transport.
@@ -2482,6 +2539,34 @@ impl ModelClientSession {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[inline(never)]
+    pub(crate) fn stream_with_policy_future<'a>(
+        &'a mut self,
+        prompt: &'a Prompt,
+        model_info: &'a ModelInfo,
+        session_telemetry: &'a SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &'a CodexResponsesMetadata,
+        inference_trace: &'a InferenceTraceContext,
+        provider_policy_context: Option<&'a ModelProviderPolicyContext<'a>>,
+    ) -> BoxFuture<'a, Result<ResponseStream>> {
+        self.stream_with_policy(
+            prompt,
+            model_info,
+            session_telemetry,
+            effort,
+            summary,
+            service_tier,
+            responses_metadata,
+            inference_trace,
+            provider_policy_context,
+        )
+        .boxed()
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn stream_with_policy(
         &mut self,
         prompt: &Prompt,
@@ -2500,7 +2585,7 @@ impl ModelClientSession {
                 if self.client.responses_websocket_enabled() {
                     let request_trace = current_span_w3c_trace_context();
                     match self
-                        .stream_responses_websocket(
+                        .stream_responses_websocket_future(
                             prompt,
                             model_info,
                             session_telemetry,

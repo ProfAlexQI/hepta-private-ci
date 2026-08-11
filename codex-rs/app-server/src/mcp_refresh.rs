@@ -96,7 +96,8 @@ mod tests {
 
     #[tokio::test]
     async fn strict_refresh_reports_thread_planning_failures() -> anyhow::Result<()> {
-        let (temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
+        let (temp_dir, thread_manager, config_manager, _loader) =
+            Box::pin(refresh_test_state()).await?;
         std::fs::write(
             temp_dir.path().join(codex_config::CONFIG_TOML_FILE),
             "[features]\nsecret_auth_storage = true\n",
@@ -123,7 +124,8 @@ mod tests {
 
     #[tokio::test]
     async fn best_effort_refresh_updates_healthy_threads() -> anyhow::Result<()> {
-        let (temp_dir, thread_manager, config_manager, loader) = refresh_test_state().await?;
+        let (temp_dir, thread_manager, config_manager, loader) =
+            Box::pin(refresh_test_state()).await?;
         std::fs::write(
             temp_dir.path().join(codex_config::CONFIG_TOML_FILE),
             "[features]\nsecret_auth_storage = true\n",
@@ -148,7 +150,8 @@ mod tests {
 
     #[tokio::test]
     async fn invalidation_does_not_reload_thread_config() -> anyhow::Result<()> {
-        let (_temp_dir, thread_manager, _config_manager, loader) = refresh_test_state().await?;
+        let (_temp_dir, thread_manager, _config_manager, loader) =
+            Box::pin(refresh_test_state()).await?;
 
         thread_manager.invalidate_mcp_runtimes().await;
 
@@ -159,7 +162,8 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_config_reload_only_applies_mcp_inputs() -> anyhow::Result<()> {
-        let (temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
+        let (temp_dir, thread_manager, config_manager, _loader) =
+            Box::pin(refresh_test_state()).await?;
         std::fs::write(
             temp_dir.path().join(codex_config::CONFIG_TOML_FILE),
             "model = \"unrelated-model-change\"\n[features]\nsecret_auth_storage = true\n",
@@ -190,7 +194,8 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_config_preserves_thread_mcp_overrides() -> anyhow::Result<()> {
-        let (temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
+        let (temp_dir, thread_manager, config_manager, _loader) =
+            Box::pin(refresh_test_state()).await?;
         let initial_config_manager =
             ConfigManager::without_managed_config_for_tests(temp_dir.path().to_path_buf());
         let thread_config = initial_config_manager
@@ -239,7 +244,8 @@ enabled = false
 
     #[tokio::test]
     async fn strict_refresh_installs_refreshed_thread_mcp_config() -> anyhow::Result<()> {
-        let (temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
+        let (temp_dir, thread_manager, config_manager, _loader) =
+            Box::pin(refresh_test_state()).await?;
         let mut good_thread = None;
         for thread_id in thread_manager.list_thread_ids().await {
             let thread = thread_manager.get_thread(thread_id).await?;

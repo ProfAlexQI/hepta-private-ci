@@ -350,20 +350,15 @@ pub(crate) async fn run_turn(
                 .await?;
 
             // Construct the input that we will send to the model.
-            let sampling_request_input: Vec<ResponseItem> = async {
-                sess.clone_history()
-                    .await
-                    .for_prompt(&turn_context.model_info.input_modalities)
-            }
-            .instrument(trace_span!("run_turn.prepare_sampling_request_input"))
-            .await;
+            let sampling_request_input: Vec<ResponseItem> =
+                prepare_sampling_request_input_future(&sess, turn_context.as_ref()).await;
 
             let responses_metadata = turn_context.turn_metadata_state.to_responses_metadata(
                 sess.installation_id.clone(),
                 window_id,
                 CodexResponsesRequestKind::Turn,
             );
-            run_sampling_request(
+            run_sampling_request_future(
                 Arc::clone(&sess),
                 Arc::clone(&step_context),
                 Arc::clone(&turn_context.extension_data),
@@ -1004,36 +999,47 @@ async fn track_turn_resolved_config_analytics(
         });
 }
 
-#[instrument(level = "trace", skip_all)]
-async fn run_pre_sampling_compact(
-    sess: &Arc<Session>,
-    turn_context: &Arc<TurnContext>,
-    client_session: &mut ModelClientSession,
-    cancellation_token: &CancellationToken,
-) -> CodexResult<()> {
-    maybe_run_previous_model_inline_compact(sess, turn_context, client_session, cancellation_token)
-        .await?;
-    let token_status =
-        super::context_window::context_window_token_status(sess.as_ref(), turn_context.as_ref())
-            .await;
-    // Compact if the configured auto-compaction budget or usable context window is exhausted.
-    if token_status.token_limit_reached {
-        // Pre-turn compaction runs before run_turn creates the normal sampling step.
-        let step_context = sess
-            .capture_step_context(Arc::clone(turn_context), cancellation_token)
-            .await?;
-        run_auto_compact(
+#[inline(never)]
+fn run_pre_sampling_compact<'a>(
+    sess: &'a Arc<Session>,
+    turn_context: &'a Arc<TurnContext>,
+    client_session: &'a mut ModelClientSession,
+    cancellation_token: &'a CancellationToken,
+) -> BoxFuture<'a, CodexResult<()>> {
+    async move {
+        maybe_run_previous_model_inline_compact(
             sess,
-            step_context,
-            /*fallback_step_context*/ None,
+            turn_context,
             client_session,
-            InitialContextInjection::DoNotInject,
-            CompactionReason::ContextLimit,
-            CompactionPhase::PreTurn,
+            cancellation_token,
         )
         .await?;
+        let token_status = super::context_window::context_window_token_status(
+            sess.as_ref(),
+            turn_context.as_ref(),
+        )
+        .await;
+        // Compact if the configured auto-compaction budget or usable context window is exhausted.
+        if token_status.token_limit_reached {
+            // Pre-turn compaction runs before run_turn creates the normal sampling step.
+            let step_context = sess
+                .capture_step_context(Arc::clone(turn_context), cancellation_token)
+                .await?;
+            run_auto_compact(
+                sess,
+                step_context,
+                /*fallback_step_context*/ None,
+                client_session,
+                InitialContextInjection::DoNotInject,
+                CompactionReason::ContextLimit,
+                CompactionPhase::PreTurn,
+            )
+            .await?;
+        }
+        Ok(())
     }
-    Ok(())
+    .instrument(trace_span!("run_pre_sampling_compact"))
+    .boxed()
 }
 
 /// Returns true only when both turns declare compaction compatibility hashes and they differ.
@@ -1073,139 +1079,170 @@ async fn capture_current_model_fallback_step_context(
 /// hash changed or when switching to a smaller context-window model.
 ///
 /// Returns `Err(_)` only when compaction was attempted and failed.
-async fn maybe_run_previous_model_inline_compact(
-    sess: &Arc<Session>,
-    turn_context: &Arc<TurnContext>,
-    client_session: &mut ModelClientSession,
-    cancellation_token: &CancellationToken,
-) -> CodexResult<()> {
-    let Some(previous_turn_settings) = sess.previous_turn_settings().await else {
-        return Ok(());
-    };
-    let should_compact_for_comp_hash_change = comp_hash_changed(
-        previous_turn_settings.comp_hash.as_deref(),
-        turn_context.model_info.comp_hash.as_deref(),
-    );
-    let previous_model = previous_turn_settings.model;
-    let previous_model_turn_context = Arc::new(
-        turn_context
-            .with_model(previous_model.clone(), &sess.services.models_manager)
-            .await,
-    );
+#[inline(never)]
+fn maybe_run_previous_model_inline_compact<'a>(
+    sess: &'a Arc<Session>,
+    turn_context: &'a Arc<TurnContext>,
+    client_session: &'a mut ModelClientSession,
+    cancellation_token: &'a CancellationToken,
+) -> BoxFuture<'a, CodexResult<()>> {
+    async move {
+        let Some(previous_turn_settings) = sess.previous_turn_settings().await else {
+            return Ok(());
+        };
 
-    if should_compact_for_comp_hash_change {
-        let step_context = sess
-            .capture_step_context(Arc::clone(&previous_model_turn_context), cancellation_token)
-            .await?;
-        let fallback_step_context = capture_current_model_fallback_step_context(
+        run_previous_model_inline_compact(
             sess,
             turn_context,
-            previous_model.as_str(),
-            cancellation_token,
-        )
-        .await?;
-        run_auto_compact(
-            sess,
-            step_context,
-            fallback_step_context,
             client_session,
-            InitialContextInjection::DoNotInject,
-            CompactionReason::CompHashChanged,
-            CompactionPhase::PreTurn,
-        )
-        .await?;
-        return Ok(());
-    }
-
-    let Some(old_context_window) = previous_model_turn_context.model_context_window() else {
-        return Ok(());
-    };
-    let Some(new_context_window) = turn_context.model_context_window() else {
-        return Ok(());
-    };
-    let active_context_tokens = sess.get_total_token_usage().await;
-    let previous_model_limit_reached = match turn_context
-        .config
-        .model_auto_compact_token_limit_scope
-    {
-        AutoCompactTokenLimitScope::Total => {
-            let new_auto_compact_limit = turn_context
-                .model_info
-                .auto_compact_token_limit()
-                .unwrap_or(i64::MAX);
-            active_context_tokens > new_auto_compact_limit
-                || active_context_tokens >= new_context_window
-        }
-        AutoCompactTokenLimitScope::BodyAfterPrefix => active_context_tokens >= new_context_window,
-    };
-    let should_run = previous_model_limit_reached
-        && previous_model_turn_context.model_info.slug != turn_context.model_info.slug
-        && old_context_window > new_context_window;
-    if should_run {
-        let step_context = sess
-            .capture_step_context(Arc::clone(&previous_model_turn_context), cancellation_token)
-            .await?;
-        let fallback_step_context = capture_current_model_fallback_step_context(
-            sess,
-            turn_context,
-            previous_model.as_str(),
             cancellation_token,
+            previous_turn_settings,
         )
-        .await?;
-        run_auto_compact(
-            sess,
-            step_context,
-            fallback_step_context,
-            client_session,
-            InitialContextInjection::DoNotInject,
-            CompactionReason::ModelDownshift,
-            CompactionPhase::PreTurn,
-        )
-        .await?;
+        .await
     }
-    Ok(())
+    .boxed()
 }
 
-#[instrument(
-    level = "trace",
-    skip_all,
-    fields(reason = ?reason, phase = ?phase)
-)]
-async fn run_auto_compact(
-    sess: &Arc<Session>,
+#[inline(never)]
+fn run_previous_model_inline_compact<'a>(
+    sess: &'a Arc<Session>,
+    turn_context: &'a Arc<TurnContext>,
+    client_session: &'a mut ModelClientSession,
+    cancellation_token: &'a CancellationToken,
+    previous_turn_settings: PreviousTurnSettings,
+) -> BoxFuture<'a, CodexResult<()>> {
+    async move {
+        let should_compact_for_comp_hash_change = comp_hash_changed(
+            previous_turn_settings.comp_hash.as_deref(),
+            turn_context.model_info.comp_hash.as_deref(),
+        );
+        let previous_model = previous_turn_settings.model;
+        let previous_model_turn_context = Arc::new(
+            turn_context
+                .with_model(previous_model.clone(), &sess.services.models_manager)
+                .await,
+        );
+
+        if should_compact_for_comp_hash_change {
+            let step_context = sess
+                .capture_step_context(Arc::clone(&previous_model_turn_context), cancellation_token)
+                .await?;
+            let fallback_step_context = capture_current_model_fallback_step_context(
+                sess,
+                turn_context,
+                previous_model.as_str(),
+                cancellation_token,
+            )
+            .await?;
+            run_auto_compact(
+                sess,
+                step_context,
+                fallback_step_context,
+                client_session,
+                InitialContextInjection::DoNotInject,
+                CompactionReason::CompHashChanged,
+                CompactionPhase::PreTurn,
+            )
+            .await?;
+            return Ok(());
+        }
+
+        let Some(old_context_window) = previous_model_turn_context.model_context_window() else {
+            return Ok(());
+        };
+        let Some(new_context_window) = turn_context.model_context_window() else {
+            return Ok(());
+        };
+        let active_context_tokens = sess.get_total_token_usage().await;
+        let previous_model_limit_reached =
+            match turn_context.config.model_auto_compact_token_limit_scope {
+                AutoCompactTokenLimitScope::Total => {
+                    let new_auto_compact_limit = turn_context
+                        .model_info
+                        .auto_compact_token_limit()
+                        .unwrap_or(i64::MAX);
+                    active_context_tokens > new_auto_compact_limit
+                        || active_context_tokens >= new_context_window
+                }
+                AutoCompactTokenLimitScope::BodyAfterPrefix => {
+                    active_context_tokens >= new_context_window
+                }
+            };
+        let should_run = previous_model_limit_reached
+            && previous_model_turn_context.model_info.slug != turn_context.model_info.slug
+            && old_context_window > new_context_window;
+        if should_run {
+            let step_context = sess
+                .capture_step_context(Arc::clone(&previous_model_turn_context), cancellation_token)
+                .await?;
+            let fallback_step_context = capture_current_model_fallback_step_context(
+                sess,
+                turn_context,
+                previous_model.as_str(),
+                cancellation_token,
+            )
+            .await?;
+            run_auto_compact(
+                sess,
+                step_context,
+                fallback_step_context,
+                client_session,
+                InitialContextInjection::DoNotInject,
+                CompactionReason::ModelDownshift,
+                CompactionPhase::PreTurn,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+    .boxed()
+}
+
+#[inline(never)]
+fn run_auto_compact<'a>(
+    sess: &'a Arc<Session>,
     step_context: Arc<StepContext>,
     fallback_step_context: Option<Arc<StepContext>>,
-    client_session: &mut ModelClientSession,
+    client_session: &'a mut ModelClientSession,
     initial_context_injection: InitialContextInjection,
     reason: CompactionReason,
     phase: CompactionPhase,
-) -> CodexResult<()> {
-    let turn_context = &step_context.turn;
-    let _profile_guard = turn_context.turn_timing_state.begin_compaction();
-    if turn_context.config.features.enabled(Feature::TokenBudget) {
+) -> BoxFuture<'a, CodexResult<()>> {
+    let token_budget_enabled = step_context
+        .turn
+        .config
+        .features
+        .enabled(Feature::TokenBudget);
+    let remote_compaction = step_context.turn.provider.capabilities().remote_compaction;
+    let remote_compaction_v2_enabled = step_context
+        .turn
+        .config
+        .features
+        .enabled(Feature::RemoteCompactionV2);
+    let compact_span = trace_span!("run_auto_compact", ?reason, ?phase);
+
+    if token_budget_enabled {
         // Compaction is the reset request, so force a new context window
         // instead of consuming a pending `new_context` tool request.
-        crate::compact_token_budget::run_inline_auto_compact_task(
-            Arc::clone(sess),
-            step_context,
-            initial_context_injection,
-        )
-        .await?;
-        return Ok(());
+        return async move {
+            let turn_context = Arc::clone(&step_context.turn);
+            let _profile_guard = turn_context.turn_timing_state.begin_compaction();
+            crate::compact_token_budget::run_inline_auto_compact_task(
+                Arc::clone(sess),
+                step_context,
+                initial_context_injection,
+            )
+            .await
+        }
+        .instrument(compact_span)
+        .boxed();
     }
 
-    match turn_context.provider.capabilities().remote_compaction {
-        RemoteCompactionSupport::V2
-            if turn_context
-                .config
-                .features
-                .enabled(Feature::RemoteCompactionV2) =>
-        {
-            emit_compact_metric(
-                &sess.services.session_telemetry,
-                "remote_v2",
-                /*manual*/ false,
-            );
+    match remote_compaction {
+        RemoteCompactionSupport::V2 if remote_compaction_v2_enabled => async move {
+            let turn_context = Arc::clone(&step_context.turn);
+            let _profile_guard = turn_context.turn_timing_state.begin_compaction();
+            emit_compact_metric(&sess.services.session_telemetry, "remote_v2", false);
             run_inline_remote_auto_compact_task_v2(
                 Arc::clone(sess),
                 step_context,
@@ -1215,14 +1252,14 @@ async fn run_auto_compact(
                 reason,
                 phase,
             )
-            .await?;
+            .await
         }
-        RemoteCompactionSupport::V1 | RemoteCompactionSupport::V2 => {
-            emit_compact_metric(
-                &sess.services.session_telemetry,
-                "remote",
-                /*manual*/ false,
-            );
+        .instrument(compact_span)
+        .boxed(),
+        RemoteCompactionSupport::V1 | RemoteCompactionSupport::V2 => async move {
+            let turn_context = Arc::clone(&step_context.turn);
+            let _profile_guard = turn_context.turn_timing_state.begin_compaction();
+            emit_compact_metric(&sess.services.session_telemetry, "remote", false);
             run_inline_remote_auto_compact_task(
                 Arc::clone(sess),
                 step_context,
@@ -1232,25 +1269,26 @@ async fn run_auto_compact(
                 reason,
                 phase,
             )
-            .await?;
+            .await
         }
-        RemoteCompactionSupport::Unsupported => {
-            emit_compact_metric(
-                &sess.services.session_telemetry,
-                "local",
-                /*manual*/ false,
-            );
+        .instrument(compact_span)
+        .boxed(),
+        RemoteCompactionSupport::Unsupported => async move {
+            let turn_context = Arc::clone(&step_context.turn);
+            let _profile_guard = turn_context.turn_timing_state.begin_compaction();
+            emit_compact_metric(&sess.services.session_telemetry, "local", false);
             run_inline_auto_compact_task(
                 Arc::clone(sess),
-                Arc::clone(turn_context),
+                turn_context,
                 initial_context_injection,
                 reason,
                 phase,
             )
-            .await?;
+            .await
         }
+        .instrument(compact_span)
+        .boxed(),
     }
-    Ok(())
 }
 
 pub(super) fn collect_explicit_app_ids_from_skill_items(
@@ -1323,6 +1361,45 @@ pub(crate) fn build_prompt(
     }
 }
 
+#[inline(never)]
+fn prepare_sampling_request_input_future<'a>(
+    sess: &'a Arc<Session>,
+    turn_context: &'a TurnContext,
+) -> BoxFuture<'a, Vec<ResponseItem>> {
+    async move {
+        sess.clone_history()
+            .await
+            .for_prompt(&turn_context.model_info.input_modalities)
+    }
+    .instrument(trace_span!("run_turn.prepare_sampling_request_input"))
+    .boxed()
+}
+
+#[allow(clippy::too_many_arguments)]
+#[inline(never)]
+fn run_sampling_request_future<'a>(
+    sess: Arc<Session>,
+    step_context: Arc<StepContext>,
+    turn_store: Arc<codex_extension_api::ExtensionData>,
+    turn_diff_tracker: SharedTurnDiffTracker,
+    client_session: &'a mut ModelClientSession,
+    responses_metadata: &'a CodexResponsesMetadata,
+    input: Vec<ResponseItem>,
+    cancellation_token: CancellationToken,
+) -> BoxFuture<'a, CodexResult<(SamplingRequestResult, Vec<ResponseItem>)>> {
+    run_sampling_request(
+        sess,
+        step_context,
+        turn_store,
+        turn_diff_tracker,
+        client_session,
+        responses_metadata,
+        input,
+        cancellation_token,
+    )
+    .boxed()
+}
+
 #[allow(clippy::too_many_arguments)]
 #[allow(deprecated)]
 #[instrument(level = "trace",
@@ -1384,7 +1461,7 @@ async fn run_sampling_request(
             turn_context.as_ref(),
             base_instructions.clone(),
         );
-        let err = match try_run_sampling_request(
+        let err = match try_run_sampling_request_future(
             tool_runtime.clone(),
             Arc::clone(&sess),
             Arc::clone(&turn_context),
@@ -2156,6 +2233,35 @@ fn assign_missing_streamed_response_item_id(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[inline(never)]
+fn try_run_sampling_request_future<'a>(
+    tool_runtime: ToolCallRuntime,
+    sess: Arc<Session>,
+    turn_context: Arc<TurnContext>,
+    environments: &'a TurnEnvironmentSnapshot,
+    turn_store: Arc<codex_extension_api::ExtensionData>,
+    client_session: &'a mut ModelClientSession,
+    responses_metadata: &'a CodexResponsesMetadata,
+    turn_diff_tracker: SharedTurnDiffTracker,
+    prompt: &'a Prompt,
+    cancellation_token: CancellationToken,
+) -> BoxFuture<'a, CodexResult<SamplingRequestResult>> {
+    try_run_sampling_request(
+        tool_runtime,
+        sess,
+        turn_context,
+        environments,
+        turn_store,
+        client_session,
+        responses_metadata,
+        turn_diff_tracker,
+        prompt,
+        cancellation_token,
+    )
+    .boxed()
+}
+
+#[allow(clippy::too_many_arguments)]
 #[instrument(level = "trace",
     skip_all,
     fields(
@@ -2207,7 +2313,7 @@ async fn try_run_sampling_request(
             .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
     };
     let mut stream = client_session
-        .stream_with_policy(
+        .stream_with_policy_future(
             prompt,
             &turn_context.model_info,
             &turn_context.session_telemetry,
