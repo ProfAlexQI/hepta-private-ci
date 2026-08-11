@@ -670,7 +670,6 @@ impl ModelClient {
             self.state.auth_env_telemetry.clone(),
         );
         let request = self.build_responses_request(
-            &client_setup.api_provider,
             prompt,
             model_info,
             settings.effort,
@@ -1047,10 +1046,8 @@ impl ModelClient {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn build_responses_request(
         &self,
-        provider: &codex_api::Provider,
         prompt: &Prompt,
         model_info: &ModelInfo,
         effort: Option<ReasoningEffortConfig>,
@@ -1136,7 +1133,7 @@ impl ModelClient {
             tool_choice: "auto".to_string(),
             parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
             reasoning: Some(reasoning),
-            store: provider.is_azure_responses_endpoint(),
+            store: false,
             stream: true,
             stream_options,
             include,
@@ -1734,7 +1731,6 @@ impl ModelClientSession {
                 .await;
 
             let mut request = self.client.build_responses_request(
-                &client_setup.api_provider,
                 prompt,
                 model_info,
                 effort.clone(),
@@ -2070,7 +2066,6 @@ impl ModelClientSession {
                 pending_retry,
             );
             let mut request = self.client.build_responses_request(
-                &client_setup.api_provider,
                 prompt,
                 model_info,
                 effort.clone(),
