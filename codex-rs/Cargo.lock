@@ -3292,6 +3292,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-operator-acceptance"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "libc",
+ "pretty_assertions",
+ "rand 0.9.3",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "codex-hepta-shadow-qualification"
 version = "0.0.0"
 dependencies = [
