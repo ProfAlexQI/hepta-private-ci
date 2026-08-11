@@ -46,7 +46,7 @@ impl HeptaStateRoot {
 
     pub fn production_default(home: &Path) -> Result<Self> {
         validate_absolute_non_root(home).context("validate home directory")?;
-        Self::parse(home.join(".local/share/hepta"))
+        Self::parse(home.join(".local/share/hepta-vnext/live-snapshot"))
     }
 
     pub fn as_path(&self) -> &Path {
@@ -149,24 +149,30 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn production_layout_matches_existing_hepta_names() -> Result<()> {
+    fn production_default_uses_separate_vnext_snapshot_root() -> Result<()> {
         let root = HeptaStateRoot::production_default(Path::new("/Users/operator"))?;
         let layout = root.layout();
         assert_eq!(
             root.as_path(),
-            Path::new("/Users/operator/.local/share/hepta")
+            Path::new("/Users/operator/.local/share/hepta-vnext/live-snapshot")
         );
         assert_eq!(
             layout.outcomes_database(),
-            Path::new("/Users/operator/.local/share/hepta/runtime-v2/outcomes.sqlite3")
+            Path::new(
+                "/Users/operator/.local/share/hepta-vnext/live-snapshot/runtime-v2/outcomes.sqlite3"
+            )
         );
         assert_eq!(
             layout.preferences_database(),
-            Path::new("/Users/operator/.local/share/hepta/runtime-v2/preferences.sqlite3")
+            Path::new(
+                "/Users/operator/.local/share/hepta-vnext/live-snapshot/runtime-v2/preferences.sqlite3"
+            )
         );
         assert_eq!(
             layout.runtime_state(),
-            Path::new("/Users/operator/.local/share/hepta/runtime-v2/runtime-state.json")
+            Path::new(
+                "/Users/operator/.local/share/hepta-vnext/live-snapshot/runtime-v2/runtime-state.json"
+            )
         );
         Ok(())
     }
@@ -177,11 +183,13 @@ mod tests {
         let root = HeptaStateRoot::production_default(Path::new(r"C:\Users\operator"))?;
         assert_eq!(
             root.as_path(),
-            Path::new(r"C:\Users\operator\.local\share\hepta")
+            Path::new(r"C:\Users\operator\.local\share\hepta-vnext\live-snapshot")
         );
         assert_eq!(
             root.layout().outcomes_database(),
-            Path::new(r"C:\Users\operator\.local\share\hepta\runtime-v2\outcomes.sqlite3")
+            Path::new(
+                r"C:\Users\operator\.local\share\hepta-vnext\live-snapshot\runtime-v2\outcomes.sqlite3"
+            )
         );
         Ok(())
     }
