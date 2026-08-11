@@ -234,6 +234,40 @@ with_generation_coordination_lock() {
   )
 }
 
+ensure_vnext_log_directories() {
+  local plan="$1" manifest install_root manifest_install_root directory relative
+  manifest="$(jq -r '.manifest' "$plan")" || return 1
+  install_root="$(jq -r '.vnext_install_root' "$plan")" || return 1
+  manifest_install_root="$(jq -r '.runtime.install_root' "$manifest")" || return 1
+  [[ "$install_root" == "$manifest_install_root" ]] || {
+    echo "bridge plan and manifest disagree on the vNext install root" >&2
+    return 1
+  }
+  absolute_non_root "$install_root" || return 1
+  [[ -d "$install_root" && ! -L "$install_root" \
+    && "$(cd "$install_root" && pwd -P)" == "$install_root" ]] || {
+    echo "vNext install root must be a physical canonical directory" >&2
+    return 1
+  }
+  for relative in logs logs/gateway logs/watchdog; do
+    directory="$install_root/$relative"
+    if [[ ! -e "$directory" && ! -L "$directory" ]]; then
+      mkdir "$directory" || return 1
+    fi
+    [[ -d "$directory" && ! -L "$directory" \
+      && "$(cd "$directory" && pwd -P)" == "$directory" ]] || {
+      echo "vNext log directory must be physical and canonical: $directory" >&2
+      return 1
+    }
+    chmod 0700 "$directory" || return 1
+    [[ "$(stat -f '%Lp' "$directory")" == 700 \
+      && "$(stat -f '%u' "$directory")" == "$(id -u)" ]] || {
+      echo "vNext log directory must be private and operator-owned: $directory" >&2
+      return 1
+    }
+  done
+}
+
 write_chain_cursor_cas() {
   local cursor="$1" expected_sha="$2" source="$3" parent staged source_sha
   absolute_non_root "$cursor" || return 1
@@ -737,6 +771,9 @@ transition_locked() {
   fi
   [[ -n "$output_receipt" ]] || usage
   absolute_non_root "$output_receipt"
+  if [[ "$target_generation" == vnext ]]; then
+    ensure_vnext_log_directories "$plan" || return 1
+  fi
   local temp_root
   temp_root="${TMPDIR:-/tmp}"
   pending_tmp="$(mktemp "${temp_root%/}/hepta-bridge-transition-pending.XXXXXX")"
@@ -916,6 +953,9 @@ recover_pending_locked() {
     echo "pending bridge receipt changed before recovery" >&2
     return 1
   }
+  if [[ "$source_generation" == vnext ]]; then
+    ensure_vnext_log_directories "$plan" || return 1
+  fi
   publish_plist_pair "$plan" "$bundle" "$source_generation" "$launch_root" "$gateway_label" "$watchdog_label" || return 1
   reload_plist_pair "$launch_root" "$gateway_label" "$watchdog_label" "$service_mode" || return 1
   wait_for_service_pair "$plan" "$source_generation" "$service_mode" || return 1
@@ -985,6 +1025,7 @@ self_test() {
   local cutover_receipt rollback_receipt recutover_receipt second_rollback_receipt
   local snapshot_receipt canary_receipt soak_receipt legacy_state source_commit binary_sha fault_receipt occupied_receipt
   local manifest_sha snapshot_sha lock_receipt generation_lock_receipt replay_receipt stale_snapshot_receipt bad_canary bad_bundle
+  local log_symlink_receipt log_child_symlink_receipt
   temp_root="${TMPDIR:-/tmp}"
   root="$(mktemp -d "${temp_root%/}/hepta-launchd-bridge-self-test.XXXXXX")"
   HEPTA_BRIDGE_SELF_TEST_ROOT="$root"
@@ -1056,6 +1097,42 @@ self_test() {
   prepare_bundle "$release/manifest.json" "$launch_root" "$bundle" \
     "$snapshot_receipt" "$canary_receipt" "$soak_receipt" >/dev/null
 
+  transition cutover "$bundle" "" "" false test >/dev/null
+  [[ ! -e "$install_root/logs" && ! -L "$install_root/logs" ]] || {
+    echo "dry-run created vNext log directories" >&2
+    exit 1
+  }
+  mkdir "$root/untrusted-logs"
+  ln -s "$root/untrusted-logs" "$install_root/logs"
+  log_symlink_receipt="$root/log-symlink-refused.json"
+  if transition cutover "$bundle" "" "$log_symlink_receipt" true test >/dev/null 2>&1; then
+    echo "bridge accepted a symlinked vNext log root" >&2
+    exit 1
+  fi
+  [[ ! -e "$log_symlink_receipt" \
+    && "$(sha256_file "$launch_root/ai.hepta.gateway.plist")" == "$(jq -r '.legacy.gateway.sha256' "$bundle/plan.json")" \
+    && "$(sha256_file "$launch_root/ai.hepta.installed-live-watchdog.plist")" == "$(jq -r '.legacy.watchdog.sha256' "$bundle/plan.json")" ]] || {
+    echo "log preflight failure changed the reviewed legacy service pair" >&2
+    exit 1
+  }
+  rm "$install_root/logs"
+
+  mkdir "$install_root/logs"
+  ln -s "$root/untrusted-logs" "$install_root/logs/gateway"
+  log_child_symlink_receipt="$root/log-child-symlink-refused.json"
+  if transition cutover "$bundle" "" "$log_child_symlink_receipt" true test >/dev/null 2>&1; then
+    echo "bridge accepted a symlinked vNext gateway log directory" >&2
+    exit 1
+  fi
+  [[ ! -e "$log_child_symlink_receipt" \
+    && "$(sha256_file "$launch_root/ai.hepta.gateway.plist")" == "$(jq -r '.legacy.gateway.sha256' "$bundle/plan.json")" \
+    && "$(sha256_file "$launch_root/ai.hepta.installed-live-watchdog.plist")" == "$(jq -r '.legacy.watchdog.sha256' "$bundle/plan.json")" ]] || {
+    echo "child log preflight failure changed the reviewed legacy service pair" >&2
+    exit 1
+  }
+  rm "$install_root/logs/gateway"
+  rmdir "$install_root/logs"
+
   fault_receipt="$root/fault-pending.json"
   if HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_GATEWAY_PUBLISH=1 \
     transition cutover "$bundle" "" "$fault_receipt" true test >/dev/null 2>&1; then
@@ -1070,6 +1147,15 @@ self_test() {
   }
   recover_pending "$bundle" "$fault_receipt" true test >/dev/null
   jq -e '.schema == "hepta_vnext_launchd_bridge_pending_recovery_v1" and .source_service_pair_restored == true and .chain_head_restored == true and .no_transition_pass_published == true' "$fault_receipt" >/dev/null
+  for directory in "$install_root/logs" "$install_root/logs/gateway" "$install_root/logs/watchdog"; do
+    [[ -d "$directory" && ! -L "$directory" \
+      && "$(cd "$directory" && pwd -P)" == "$directory" \
+      && "$(stat -f '%Lp' "$directory")" == 700 \
+      && "$(stat -f '%u' "$directory")" == "$(id -u)" ]] || {
+      echo "bridge did not create a private physical vNext log directory: $directory" >&2
+      exit 1
+    }
+  done
 
   cutover_receipt="$root/cutover.json"; rollback_receipt="$root/rollback.json"
   recutover_receipt="$root/recutover.json"; second_rollback_receipt="$root/second-rollback.json"
@@ -1094,7 +1180,14 @@ self_test() {
     echo "pre-existing transition receipt was accepted" >&2
     exit 1
   fi
+  chmod 0755 "$install_root/logs" "$install_root/logs/gateway" "$install_root/logs/watchdog"
   transition cutover "$bundle" "" "$cutover_receipt" true test >/dev/null
+  for directory in "$install_root/logs" "$install_root/logs/gateway" "$install_root/logs/watchdog"; do
+    [[ "$(stat -f '%Lp' "$directory")" == 700 ]] || {
+      echo "bridge did not harden an existing vNext log directory: $directory" >&2
+      exit 1
+    }
+  done
   transition rollback "$bundle" "$cutover_receipt" "$rollback_receipt" true test >/dev/null
   transition recutover "$bundle" "$rollback_receipt" "$recutover_receipt" true test >/dev/null
   replay_receipt="$root/replayed-old-head.json"
@@ -1128,7 +1221,7 @@ self_test() {
     --arg rollback_receipt_sha256 "$(sha256_file "$rollback_receipt")" \
     --arg recutover_receipt_sha256 "$(sha256_file "$recutover_receipt")" \
     --arg second_rollback_receipt_sha256 "$(sha256_file "$second_rollback_receipt")" \
-    '{schema:"hepta_vnext_launchd_bridge_self_test_v1",status:"ready",plan_sha256:$plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
+    '{schema:"hepta_vnext_launchd_bridge_self_test_v1",status:"ready",plan_sha256:$plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,dry_run_log_directories_unchanged:true,private_log_directories_ready:true,existing_log_directories_hardened:true,symlink_log_root_rejected:true,symlink_log_child_rejected:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
 }
 
 command="${1:-}"; [[ -n "$command" ]] || usage; shift

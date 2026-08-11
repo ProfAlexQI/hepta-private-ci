@@ -163,8 +163,12 @@ plist. Both templates are staged and verified first; any publish, reload, or
 health failure restores and rechecks the reviewed source pair. PASS requires
 both launchd jobs, the loopback endpoint, and the listener executable digest
 to match the target generation; vNext targets also pass a fresh three-sample
-post-transition soak before the receipt seals. Rollback restores the byte-exact legacy pair;
-receipts form a monotonic chain supporting repeated
+post-transition soak before the receipt seals. Before publishing a vNext pair,
+the bridge holds both operation locks and
+creates or revalidates the manifest-bound gateway and watchdog log directories
+as physical, operator-owned `0700` paths; dry runs never create them.
+Rollback restores the byte-exact legacy pair; receipts form a monotonic chain
+supporting repeated
 cutover → rollback → recutover → rollback cycles. The bridge self-test runs
 that full cycle under a temporary LaunchAgents root and never calls production
 launchd. If a process exits after reserving a pending receipt but before
