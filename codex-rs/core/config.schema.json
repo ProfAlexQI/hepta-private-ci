@@ -663,6 +663,9 @@
             "prevent_idle_sleep": {
               "type": "boolean"
             },
+            "psp": {
+              "type": "boolean"
+            },
             "realtime_conversation": {
               "type": "boolean"
             },
@@ -5306,6 +5309,9 @@
           "type": "boolean"
         },
         "prevent_idle_sleep": {
+          "type": "boolean"
+        },
+        "psp": {
           "type": "boolean"
         },
         "realtime_conversation": {
