@@ -9,8 +9,11 @@ use base64::engine::general_purpose::STANDARD;
 use tempfile::TempDir;
 
 use super::SSHSIG_NAMESPACE;
+use super::SSHSIG_NAMESPACE_V2;
 use super::TRUST_POLICY_SCHEMA;
+use super::TRUST_POLICY_SCHEMA_V2;
 use super::TRUST_POLICY_SCOPE;
+use super::TRUST_POLICY_SCOPE_V2;
 use super::TrustAnchor;
 use super::TrustInputs;
 use super::TrustPolicy;
@@ -50,6 +53,22 @@ fn sshsig_verifies_only_exact_namespace_against_pinned_policy() {
 
     let wrong = fixture.sign(statement, "hepta-operator-acceptance-v1", "wrong-namespace");
     assert!(anchor.verify(statement, &wrong).is_err());
+}
+
+#[test]
+fn v2_sshsig_and_policy_are_namespace_separated_from_v1() {
+    let fixture = TrustFixture::new_v2();
+    let anchor = fixture.load_anchor_v2();
+    let statement = b"canonical operator acceptance V2 statement";
+
+    let signature = fixture.sign(statement, SSHSIG_NAMESPACE_V2, "accepted-v2");
+    anchor
+        .verify(statement, &signature)
+        .expect("valid V2 SSHSIG");
+
+    let v1_signature = fixture.sign(statement, SSHSIG_NAMESPACE, "wrong-v1-namespace");
+    assert!(anchor.verify(statement, &v1_signature).is_err());
+    assert!(fixture.try_load_anchor().is_err());
 }
 
 #[test]
@@ -121,6 +140,14 @@ struct TrustFixture {
 
 impl TrustFixture {
     fn new() -> Self {
+        Self::new_with_profile(TRUST_POLICY_SCHEMA, 1, TRUST_POLICY_SCOPE)
+    }
+
+    fn new_v2() -> Self {
+        Self::new_with_profile(TRUST_POLICY_SCHEMA_V2, 2, TRUST_POLICY_SCOPE_V2)
+    }
+
+    fn new_with_profile(schema: &str, schema_version: u32, scope: &str) -> Self {
         let temporary = private_tempdir("temporary trust directory");
         let root = temporary
             .path()
@@ -164,9 +191,9 @@ impl TrustFixture {
             key_fingerprint: fingerprint,
             maximum_lifetime_seconds: 900,
             principal: "operator@example".to_string(),
-            schema: TRUST_POLICY_SCHEMA.to_string(),
-            schema_version: 1,
-            trust_policy_scope: TRUST_POLICY_SCOPE.to_string(),
+            schema: schema.to_string(),
+            schema_version,
+            trust_policy_scope: scope.to_string(),
             trust_root_id: "test-operator-root".to_string(),
             trust_root_revision: 1,
         };
@@ -197,6 +224,16 @@ impl TrustFixture {
             externally_pinned_trust_policy_sha256: &self.policy_sha256,
             trust_policy_path: &self.policy,
         })
+    }
+
+    fn load_anchor_v2(&self) -> TrustAnchor {
+        TrustAnchor::load_v2(TrustInputs {
+            acceptance_store_root: &self.root,
+            allowed_signers_path: &self.allowed_signers,
+            externally_pinned_trust_policy_sha256: &self.policy_sha256,
+            trust_policy_path: &self.policy,
+        })
+        .expect("load externally pinned V2 test trust")
     }
 
     fn persist_changed_policy(&mut self) {
