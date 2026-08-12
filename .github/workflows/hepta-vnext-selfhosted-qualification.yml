@@ -1,0 +1,246 @@
+name: hepta-vnext self-hosted exact qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - qualification/selfhosted-09e9
+
+permissions:
+  contents: read
+
+env:
+  HEPTA_EXPECTED_HEAD: 09e9e9ff7fa6b6c1d129d0c7a858979823e13ae8
+  HEPTA_EXPECTED_TREE: bc14150f75cee49515e9bf244e15c526eb74e79e
+
+jobs:
+  portable-product-linux:
+    name: Product (ubuntu-24.04)
+    runs-on: hepta-vnext-linux-x64-09e9
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - name: Checkout exact candidate 09e9
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 09e9e9ff7fa6b6c1d129d0c7a858979823e13ae8
+          persist-credentials: false
+
+      - name: Verify exact candidate source preflight
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_EXPECTED_HEAD"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev bubblewrap
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Locked workspace metadata
+        shell: bash
+        run: cargo metadata --locked --no-deps --format-version 1 >/dev/null
+
+      - name: Portable Hepta tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            -p codex-hepta-contracts \
+            -p codex-hepta-evidence \
+            -p codex-hepta-governance \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-extension \
+            -p codex-hepta-paths \
+            -p codex-hepta-runtime \
+            -p codex-hepta-native-gateway
+
+      - name: Product caller compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked \
+            -p codex-core \
+            -p codex-app-server \
+            -p codex-mcp-server \
+            -p codex-cli
+
+      - name: Strict Hepta Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-evidence \
+            -p codex-hepta-governance \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-extension \
+            -p codex-hepta-paths \
+            -p codex-hepta-runtime \
+            -p codex-hepta-native-gateway \
+            -- -D warnings
+
+      - name: Verify exact candidate source postflight
+        if: always() && !cancelled()
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_EXPECTED_HEAD"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+  portable-product-windows:
+    name: Product (windows-latest)
+    runs-on: hepta-vnext-windows-x64-09e9
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - name: Checkout exact candidate 09e9
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 09e9e9ff7fa6b6c1d129d0c7a858979823e13ae8
+          persist-credentials: false
+
+      - name: Verify exact candidate source preflight
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_EXPECTED_HEAD"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev bubblewrap
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Locked workspace metadata
+        shell: bash
+        run: cargo metadata --locked --no-deps --format-version 1 >/dev/null
+
+      - name: Portable Hepta tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            -p codex-hepta-contracts \
+            -p codex-hepta-evidence \
+            -p codex-hepta-governance \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-extension \
+            -p codex-hepta-paths \
+            -p codex-hepta-runtime \
+            -p codex-hepta-native-gateway
+
+      - name: Product caller compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked \
+            -p codex-core \
+            -p codex-app-server \
+            -p codex-mcp-server \
+            -p codex-cli
+
+      - name: Strict Hepta Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-evidence \
+            -p codex-hepta-governance \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-extension \
+            -p codex-hepta-paths \
+            -p codex-hepta-runtime \
+            -p codex-hepta-native-gateway \
+            -- -D warnings
+
+      - name: Verify exact candidate source postflight
+        if: always() && !cancelled()
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_EXPECTED_HEAD"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+  generated-and-locks:
+    name: Generated artifacts and locks
+    runs-on: hepta-vnext-linux-x64-09e9
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact candidate 09e9
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 09e9e9ff7fa6b6c1d129d0c7a858979823e13ae8
+          persist-credentials: false
+
+      - name: Verify exact candidate source preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_EXPECTED_HEAD"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
+
+      - name: Format
+        working-directory: codex-rs
+        run: cargo fmt --all -- --check
+
+      - name: App Server schemas are current
+        run: |
+          set -euo pipefail
+          just write-app-server-schema --experimental
+          git diff --exit-code
+
+      - name: Bazel lock is current
+        run: just bazel-lock-check
+
+      - name: Clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
+
+      - name: Verify exact candidate source postflight
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_EXPECTED_HEAD"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
