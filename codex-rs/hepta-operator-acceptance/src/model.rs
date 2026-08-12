@@ -14,6 +14,18 @@ pub struct AuthorityBoundary {
 }
 
 impl AuthorityBoundary {
+    pub(crate) const fn all_closed() -> Self {
+        Self {
+            authority: false,
+            enforce: false,
+            operator_acceptance: false,
+            outbound: false,
+            promotion: false,
+            qualification_authority: false,
+            retirement: false,
+        }
+    }
+
     pub(crate) const fn evidence_acceptance_only() -> Self {
         Self {
             authority: false,

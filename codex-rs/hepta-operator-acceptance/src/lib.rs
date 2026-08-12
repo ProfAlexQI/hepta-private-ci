@@ -8,6 +8,7 @@ mod qualification_evidence;
 mod qualification_runs;
 mod receipt_store;
 mod trust;
+pub mod v2;
 
 use serde::Deserialize;
 use serde::Serialize;
