@@ -206,6 +206,7 @@ use codex_protocol::exec_output::StreamOutput;
 
 mod code_mode_warning;
 pub(crate) mod context_window;
+mod environment;
 mod extension_metrics;
 mod handlers;
 mod inject;
@@ -2609,7 +2610,8 @@ impl Session {
                         strict_auto_review: false,
                     },
                 },
-                ReviewDecision::Abort
+                ReviewDecision::ApprovedMcpPolicyAmendment
+                | ReviewDecision::Abort
                 | ReviewDecision::Denied { .. }
                 | ReviewDecision::TimedOut => RequestPermissionsResponse {
                     permissions: RequestPermissionProfile::default(),

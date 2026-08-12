@@ -605,7 +605,7 @@ pub(crate) async fn run_hooks_and_record_inputs(
         let hook_outcome = inspect_pending_input(sess, turn_context, input_item).await;
         if hook_outcome.should_stop {
             blocked_input = true;
-            reject_pending_input(sess, turn_context, input_item).await;
+            reject_pending_input(sess, input_item);
             record_additional_contexts(sess, turn_context, hook_outcome.additional_contexts).await;
         } else {
             if matches!(input_item, TurnInput::UserInput { content, .. } if !content.is_empty()) {
@@ -622,7 +622,7 @@ pub(crate) async fn run_hooks_and_record_inputs(
             .is_err()
             {
                 // Preserve later drained inputs, but stop before sampling so a
-                // later queue retry cannot execute this message twice.
+                // later retry cannot execute this message twice.
                 persistence_failed = true;
             }
         }

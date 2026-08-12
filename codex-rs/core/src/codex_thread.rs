@@ -1,6 +1,7 @@
 use crate::agent::AgentStatus;
 use crate::config::ConstraintResult;
 use crate::elicitation::ElicitationRegistration;
+use crate::environment_config::EnvironmentConfig;
 use crate::session::SessionIo;
 use crate::session::SessionSettingsUpdate;
 use crate::session::SteerInputError;
@@ -109,12 +110,6 @@ pub enum TryStartTurnIfIdleRejectionReason {
     /// Another turn or task is active, or the idle reservation was lost before
     /// the automatic turn could start.
     Busy,
-    /// A user-prompt hook consumed and rejected the submitted input.
-    RejectedByHook,
-    /// The automatic turn ended before its initial input was persisted.
-    TaskEndedBeforePersistence,
-    /// The initial input could not be durably written to the rollout.
-    PersistenceFailed,
 }
 
 /// Rejection returned when an extension asks to start automatic idle work but
@@ -357,6 +352,13 @@ impl CodexThread {
                 ),
             ));
         }
+        if matches!(&op, Op::UserInput { items, .. } if items.is_empty()) {
+            return Err(UserMessageAdmissionError::Admission(
+                CodexErr::InvalidRequest(
+                    "user message admission requires nonempty user input".to_string(),
+                ),
+            ));
+        }
         self.submit_user_input_and_wait_for_admission_inner(
             op,
             trace,
@@ -374,18 +376,11 @@ impl CodexThread {
         client_user_message_id: Option<String>,
         state: PendingUserMessageAdmissionState,
     ) -> Result<AdmittedUserMessage, UserMessageAdmissionError> {
-        let Op::UserInput { items, .. } = &op else {
+        let Op::UserInput { .. } = &op else {
             return Err(UserMessageAdmissionError::Admission(
                 CodexErr::InvalidRequest("user message admission requires user input".to_string()),
             ));
         };
-        if items.is_empty() {
-            return Err(UserMessageAdmissionError::Admission(
-                CodexErr::InvalidRequest(
-                    "user message admission requires nonempty user input".to_string(),
-                ),
-            ));
-        }
         self.session
             .services
             .agent_control
@@ -769,13 +764,18 @@ impl CodexThread {
         self.session.thread_environment_selections().await
     }
 
+    /// Installs resolved environment configuration and capability roots on this thread.
+    pub async fn environment_ready(
+        &self,
+        selection: &TurnEnvironmentSelection,
+        config: EnvironmentConfig,
+    ) -> CodexResult<()> {
+        self.session.environment_ready(selection, config).await
+    }
+
     /// Passively inspects the selected capability roots whose environments are ready now.
     pub fn inspect_selected_capability_roots(&self) -> SelectedCapabilityRootsStatus {
-        self.session
-            .services
-            .turn_environments
-            .environment_manager()
-            .inspect_selected_capability_roots(&self.session.services.selected_capability_roots)
+        self.session.inspect_selected_capability_roots()
     }
 
     pub async fn read_mcp_resource(
