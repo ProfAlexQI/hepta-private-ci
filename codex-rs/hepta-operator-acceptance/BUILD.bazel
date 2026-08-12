@@ -39,3 +39,16 @@ rust_binary(
         "@crates//:serde_json",
     ],
 )
+
+rust_binary(
+    name = "hepta-operator-acceptance-v2",
+    srcs = ["src/bin/hepta-operator-acceptance-v2.rs"],
+    crate_root = "src/bin/hepta-operator-acceptance-v2.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":hepta-operator-acceptance-lib",
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)

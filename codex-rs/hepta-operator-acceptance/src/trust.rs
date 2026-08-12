@@ -23,6 +23,10 @@ pub(crate) const SIGNATURE_ALGORITHM: &str = "openssh-sshsig-ed25519";
 pub(crate) const TRUST_POLICY_SCOPE: &str =
     "externally_pinned_single_ed25519_external_revocation_responsibility_no_local_krl_v1";
 const TRUST_POLICY_SCHEMA: &str = "hepta_operator_acceptance_trust_policy_v1";
+pub(crate) const SSHSIG_NAMESPACE_V2: &str = "hepta-vnext-operator-acceptance-v2";
+pub(crate) const TRUST_POLICY_SCOPE_V2: &str =
+    "externally_pinned_single_ed25519_external_revocation_responsibility_no_local_krl_v2";
+const TRUST_POLICY_SCHEMA_V2: &str = "hepta_operator_acceptance_trust_policy_v2";
 const SSH_KEYGEN: &str = "/usr/bin/ssh-keygen";
 const MAX_TRUST_FILE_BYTES: usize = 16 * 1024;
 const MAX_SIGNATURE_BYTES: usize = 4 * 1024;
@@ -30,6 +34,7 @@ const MAX_SIGNATURE_BYTES: usize = 4 * 1024;
 pub(crate) struct TrustAnchor {
     pub binding: OperatorBinding,
     allowed_signers_bytes: Vec<u8>,
+    namespace: &'static str,
 }
 
 pub(crate) struct TrustInputs<'a> {
@@ -61,6 +66,17 @@ struct TrustPolicy {
 
 impl TrustAnchor {
     pub fn load(inputs: TrustInputs<'_>) -> Result<Self, AcceptanceError> {
+        Self::load_with_profile(inputs, TrustProfile::v1())
+    }
+
+    pub(crate) fn load_v2(inputs: TrustInputs<'_>) -> Result<Self, AcceptanceError> {
+        Self::load_with_profile(inputs, TrustProfile::v2())
+    }
+
+    fn load_with_profile(
+        inputs: TrustInputs<'_>,
+        profile: TrustProfile,
+    ) -> Result<Self, AcceptanceError> {
         if !digest_shape(inputs.externally_pinned_trust_policy_sha256) {
             return Err(invalid(
                 "externally pinned trust-policy digest is malformed",
@@ -78,7 +94,7 @@ impl TrustAnchor {
         if canonical_json(&policy)? != policy_bytes {
             return Err(invalid("trust policy is not canonical JSON"));
         }
-        validate_policy(&policy)?;
+        validate_policy(&policy, profile)?;
         let acceptance_store_root = inputs
             .acceptance_store_root
             .to_str()
@@ -118,6 +134,7 @@ impl TrustAnchor {
                 trust_root_revision: policy.trust_root_revision,
             },
             allowed_signers_bytes,
+            namespace: profile.namespace,
         })
     }
 
@@ -167,7 +184,7 @@ impl TrustAnchor {
         let mut child = Command::new(SSH_KEYGEN)
             .args(["-Y", "verify", "-f"])
             .arg(allowed_signers.child_path())
-            .args(["-I", &self.binding.principal, "-n", SSHSIG_NAMESPACE, "-s"])
+            .args(["-I", &self.binding.principal, "-n", self.namespace, "-s"])
             .arg(signature.child_path())
             .env_clear()
             .env("LANG", "C")
@@ -195,14 +212,44 @@ impl TrustAnchor {
     }
 }
 
-fn validate_policy(policy: &TrustPolicy) -> Result<(), AcceptanceError> {
+#[derive(Clone, Copy)]
+struct TrustProfile {
+    namespace: &'static str,
+    policy_schema: &'static str,
+    policy_scope: &'static str,
+    schema_version: u32,
+}
+
+impl TrustProfile {
+    const fn v1() -> Self {
+        Self {
+            namespace: SSHSIG_NAMESPACE,
+            policy_schema: TRUST_POLICY_SCHEMA,
+            policy_scope: TRUST_POLICY_SCOPE,
+            schema_version: 1,
+        }
+    }
+
+    const fn v2() -> Self {
+        Self {
+            namespace: SSHSIG_NAMESPACE_V2,
+            policy_schema: TRUST_POLICY_SCHEMA_V2,
+            policy_scope: TRUST_POLICY_SCOPE_V2,
+            schema_version: 2,
+        }
+    }
+}
+
+fn validate_policy(policy: &TrustPolicy, profile: TrustProfile) -> Result<(), AcceptanceError> {
     validate_identifier(&policy.principal, "operator principal")?;
     validate_identifier(&policy.trust_root_id, "trust root id")?;
-    if policy.schema != TRUST_POLICY_SCHEMA
-        || policy.schema_version != 1
-        || policy.trust_policy_scope != TRUST_POLICY_SCOPE
+    if policy.schema != profile.policy_schema
+        || policy.schema_version != profile.schema_version
+        || policy.trust_policy_scope != profile.policy_scope
     {
-        return Err(invalid("trust policy schema or scope is not V1"));
+        return Err(invalid(
+            "trust policy schema or scope differs from the selected ceremony",
+        ));
     }
     if policy.trust_root_revision == 0 {
         return Err(invalid("trust root revision must be nonzero"));

@@ -33,6 +33,17 @@ impl VerifiedManifest {
         expected_sha256: &str,
         expected_entries: usize,
     ) -> Result<Self, AcceptanceError> {
+        let verified = Self::load_digest_pinned(root, expected_sha256)?;
+        if verified.entries.len() != expected_entries {
+            return Err(invalid("SHA256SUMS entry count differs from its pin"));
+        }
+        Ok(verified)
+    }
+
+    pub(crate) fn load_digest_pinned(
+        root: &Path,
+        expected_sha256: &str,
+    ) -> Result<Self, AcceptanceError> {
         let root = secure_root(root, "evidence root")?;
         let sums_path = root.join("SHA256SUMS");
         let sums = secure_read(&sums_path, MAX_SMALL_FILE_BYTES)?;
@@ -40,9 +51,6 @@ impl VerifiedManifest {
             return Err(invalid("SHA256SUMS differs from its frozen digest"));
         }
         let parsed = parse_manifest(&sums)?;
-        if parsed.len() != expected_entries {
-            return Err(invalid("SHA256SUMS entry count differs from its pin"));
-        }
         let actual = inventory(&root)?;
         let expected = parsed.keys().cloned().collect::<BTreeSet<_>>();
         let mut actual_paths = actual.files.keys().cloned().collect::<BTreeSet<_>>();
@@ -78,6 +86,10 @@ impl VerifiedManifest {
             return Err(invalid("SHA256SUMS changed during evidence verification"));
         }
         Ok(Self { entries, root })
+    }
+
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entries.len()
     }
 
     pub(crate) fn bytes(&self, relative: &str) -> Result<Vec<u8>, AcceptanceError> {
