@@ -52,7 +52,7 @@ const CANONICAL_PATH_TRUST_MANIFEST_SHA256: &str =
     "319c08c585a3cff07be504e78446240422bb476846fc20ed6b46d104f4acb20b";
 const UPSTREAM_CUTOFF_RECEIPT_ROOT: &str = "/Volumes/T5/hepta-vnext/artifacts/receipts/vnext-main-09e9e9ff7f-upstream-cutoff-observation-20260812T1456Z";
 const UPSTREAM_CUTOFF_MANIFEST_SHA256: &str =
-    "5c4413e79e0082acc35d4ba58caef651fc4c6fbf31d1d5bbd6177251e191d840";
+    "67653bf2ef6bd035401d26e6f80d8af23e2deb14f91e763364c7876057fd11de";
 const WINDOWS_RECEIPT_PREFIX: &str = "vnext-main-09e9e9ff7f-windows-native-";
 
 const PACKET_SCHEMA: &str = "hepta_vnext_aggregate_qualification_packet_v2";
@@ -247,15 +247,15 @@ fn validate_platform_receipts(
         let root = Path::new(&gate.receipt.receipt_root);
         validate_receipt_root(&gate.gate, root)?;
         match gate.gate.as_str() {
-            "macos-aarch64"
-                if gate.receipt.manifest_sha256 != MAC_RECEIPT_MANIFEST_SHA256 =>
-            {
-                return Err(invalid("macOS receipt manifest differs from its source pin"));
+            "macos-aarch64" if gate.receipt.manifest_sha256 != MAC_RECEIPT_MANIFEST_SHA256 => {
+                return Err(invalid(
+                    "macOS receipt manifest differs from its source pin",
+                ));
             }
-            "github-actions"
-                if gate.receipt.manifest_sha256 != GITHUB_RECEIPT_MANIFEST_SHA256 =>
-            {
-                return Err(invalid("GitHub receipt manifest differs from its source pin"));
+            "github-actions" if gate.receipt.manifest_sha256 != GITHUB_RECEIPT_MANIFEST_SHA256 => {
+                return Err(invalid(
+                    "GitHub receipt manifest differs from its source pin",
+                ));
             }
             _ => {}
         }
@@ -403,6 +403,8 @@ fn validate_cutoff_prerequisite(
             "observed_upstream_main",
             "9dd22890f5ff47e4af128c20e32b9758a61d78d2",
         ),
+        ("post_cutoff_commit_count", "4"),
+        ("post_cutoff_changed_file_count", "23"),
         ("candidate_changed", "false"),
         ("qualification_invalidated", "false"),
         (

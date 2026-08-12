@@ -105,14 +105,31 @@ The second non-platform prerequisite freezes the upstream cutoff observation:
 
 ```text
 /Volumes/T5/hepta-vnext/artifacts/receipts/vnext-main-09e9e9ff7f-upstream-cutoff-observation-20260812T1456Z
-SHA256(SHA256SUMS)=5c4413e79e0082acc35d4ba58caef651fc4c6fbf31d1d5bbd6177251e191d840
+SHA256(SHA256SUMS)=67653bf2ef6bd035401d26e6f80d8af23e2deb14f91e763364c7876057fd11de
 frozen cutoff=c4b287cf5791d7f4336b925f7dfdb55ee4c3b668
 observed later upstream=9dd22890f5ff47e4af128c20e32b9758a61d78d2
+post-cutoff commits=4
+post-cutoff changed files=23
 ```
 
 This receipt establishes that post-cutoff commits enter the next development
 cycle backlog and do not move the exact qualification target. It is not a
 platform gate and contributes nothing to the platform PASS count.
+
+The V2 preparation artifact also inventories this read-only production plan:
+
+```text
+/Volumes/T5/hepta-vnext/artifacts/receipts/vnext-main-09e9e9ff7f-production-permission-remediation-plan-20260812T1501Z
+SHA256(SHA256SUMS)=468906b1f9a5d51eb93b0d38b57fe030e56cb4f8f266544792cca0d3b387c55b
+status=prepared_not_applied
+offender_count=22
+planned mode change=0444 -> 0400
+```
+
+This is `non_gate_readonly_plan` evidence only. It is intentionally outside the
+platform and prerequisite PASS calculations. Its mode changes were not applied,
+snapshot materialization remains false, execution authorization remains false,
+and production remains unchanged.
 
 The legacy product oracle is not inferred from the new binary. V2 reuses the
 V1 verifier to fully re-inventory the exact 3110 qualification and frozen
