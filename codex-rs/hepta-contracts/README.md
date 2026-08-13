@@ -5,8 +5,8 @@ implementation is an oracle and evidence source, not a merge target.
 
 ## Frozen baselines
 
-- Candidate spine: execution-time `upstream/main`, currently
-  `6f647caa9bd62b16824cf5efc8e4575090feddf4`.
+- Candidate spine: `upstream/main` frozen at cutoff
+  `74004b5397b24662a87a5264a6ae80664168c7f3`.
 - Read-only Hepta oracle: `2f704dc7c1172cefca908852456beccf4d02a5d1`.
 - The old raw-U evidence run, its receipts, and its verification semantics stay
   isolated from vNext work.
@@ -29,6 +29,8 @@ implementation is an oracle and evidence source, not a merge target.
    old implementation can be retired.
 7. Every new public Hepta surface must have a named product caller in
    `CALLERS.toml`. Caller-zero work remains outside the promotion stack.
+   Qualification and acceptance gate binaries do not count as product callers;
+   their library crates remain explicit `[[excluded]]` entries.
 
 ## Migration waves
 
@@ -83,7 +85,8 @@ implementation is an oracle and evidence source, not a merge target.
    existing integrity-checked evidence store in read-only mode. An empty S5
    result therefore describes that store at read time; it is not proof of
    writer coverage, authority, or promotion readiness.
-5. An operator receipt authorizes retirement.
+5. Operator acceptance is required before retirement. The current
+   qualification-evidence receipt does not itself authorize retirement.
 6. Exact-SHA local, Nix, and hosted receipts are refreshed only after the
    candidate SHA is clean and frozen.
 

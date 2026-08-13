@@ -1,6 +1,6 @@
 schema_version = 1
-rule = "A new public Hepta surface requires at least one named product caller in this manifest. Caller-zero work stays outside the promotion stack."
-candidate_base = "6f647caa9bd62b16824cf5efc8e4575090feddf4"
+rule = "A new public Hepta product surface requires at least one named product caller in this manifest. Caller-zero work stays outside the promotion stack; qualification-only gate callers do not count as product callers."
+candidate_base = "74004b5397b24662a87a5264a6ae80664168c7f3"
 frozen_oracle = "2f704dc7c1172cefca908852456beccf4d02a5d1"
 
 [[surface]]
@@ -51,6 +51,38 @@ product_callers = [
   "codex-rs/app-server/src/extensions.rs",
   "codex-rs/mcp-server/src/message_processor.rs",
 ]
+
+[[surface]]
+crate = "codex-hepta-paths"
+role = "typed_product_state_paths"
+public_items = ["HeptaStateRoot", "HeptaStateLayout"]
+product_callers = [
+  "codex-rs/hepta-runtime/src/lib.rs",
+  "codex-rs/hepta-native-gateway/src/lib.rs",
+]
+
+[[surface]]
+crate = "codex-hepta-runtime"
+role = "read_only_product_runtime"
+public_items = ["HeptaRuntime", "RuntimeStatus"]
+product_callers = ["codex-rs/hepta-native-gateway/src/lib.rs"]
+
+[[surface]]
+crate = "codex-hepta-native-gateway"
+role = "loopback_read_only_product_gateway"
+public_items = [
+  "print_live_shell_contract_if_requested",
+  "run_serve_ui_if_requested",
+]
+product_callers = ["codex-rs/cli/src/main.rs"]
+
+[[excluded]]
+crate = "codex-hepta-shadow-qualification"
+reason = "Qualification-only harness; its dedicated live-trial binary is a gate caller, not a product caller or product-runtime surface."
+
+[[excluded]]
+crate = "codex-hepta-operator-acceptance"
+reason = "Qualification-only ceremony; its dedicated acceptance binary is a gate caller, not a product caller or product-runtime surface."
 
 [[qualification]]
 slice = "S2_memory_recall"

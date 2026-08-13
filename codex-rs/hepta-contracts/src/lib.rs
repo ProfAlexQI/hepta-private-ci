@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+#[cfg(test)]
+mod callers_manifest_tests;
 mod canonical;
 mod identity;
 mod memory;
