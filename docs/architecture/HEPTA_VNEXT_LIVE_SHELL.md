@@ -151,6 +151,22 @@ gateway/watchdog plists alongside the exact vNext templates. It also requires
 and copies the reverified snapshot, exact-binary canary, and bounded-soak
 receipts. Its transition commands are dry-run unless `--apply` is present:
 
+Post-transition health verification is generation-specific and fail closed.
+The legacy generation is accepted only at `GET /health` with the exact ready
+identity (`product=Hepta`, `runtime=hepta`, `status=ready`); vNext is accepted
+only at `GET /healthz`, followed by the release-bound watchdog, listener
+binary digest check, and bounded soak. Transition and pending-recovery
+receipts record the fixed source, target, and verified health paths. These
+routes are code constants rather than plan inputs, so an operator cannot
+redirect rollback verification to an unrelated HTTP 200 endpoint.
+
+This tightens validation of the existing transition receipt schemas: receipts
+that omit the generation-specific health fields are deliberately rejected and
+cannot be promoted or resumed as PASS. Before the fixed bridge is installed,
+the migration preflight must confirm that production has no pre-existing
+bridge chain or pending receipt. If one exists, migration stops for explicit
+versioned recovery; it must not reinterpret the old receipt in place.
+
 ```sh
 scripts/hepta-launchd-cutover-bridge prepare \
   --manifest /absolute/release/manifest.json \

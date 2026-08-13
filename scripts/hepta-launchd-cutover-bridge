@@ -612,16 +612,21 @@ verify_bundle() {
 verify_rollback_predecessor() {
   local receipt="$1" expected_plan_sha="$2" expected_cursor="$3"
   receipt="$(canonical_file "$receipt")" || return 1
-  jq -e --arg plan_sha "$expected_plan_sha" --arg chain_cursor "$expected_cursor" '
+  jq -e --arg plan_sha "$expected_plan_sha" --arg chain_cursor "$expected_cursor" \
+    --arg legacy_health_path "$(generation_health_path legacy)" \
+    --arg vnext_health_path "$(generation_health_path vnext)" '
     (.schema == "hepta_vnext_launchd_bridge_transition_v1" or .schema == "hepta_vnext_launchd_bridge_transition_v2")
     and .status == "ready"
     and .transition == "rollback"
     and .source_generation == "vnext" and .target_generation == "legacy"
+    and .source_health_path == $vnext_health_path
+    and .target_health_path == $legacy_health_path
     and (.sequence | type == "number" and . >= 2 and . == floor)
     and .plan_sha256 == $plan_sha
     and .chain_cursor == $chain_cursor
     and .chain_head_committed == true
     and .applied == true and .service_pair_reloaded == true
+    and .post_transition_health_path == $legacy_health_path
     and .post_transition_health_verified == true
   ' "$receipt" >/dev/null || {
     echo "recutover predecessor is not a valid applied rollback" >&2
@@ -1022,7 +1027,9 @@ verify_previous_receipt() {
     --arg expected_target "$expected_target" \
     --arg chain_cursor "$chain_cursor" \
     --arg gateway_sha "$(jq -r ".${expected_target}.gateway.sha256" "$plan")" \
-    --arg watchdog_sha "$(jq -r ".${expected_target}.watchdog.sha256" "$plan")" '
+    --arg watchdog_sha "$(jq -r ".${expected_target}.watchdog.sha256" "$plan")" \
+    --arg legacy_health_path "$(generation_health_path legacy)" \
+    --arg vnext_health_path "$(generation_health_path vnext)" '
     (.schema == "hepta_vnext_launchd_bridge_transition_v1" or .schema == "hepta_vnext_launchd_bridge_transition_v2")
     and .status == "ready"
     and (.transition as $actual | ($transitions | split("|") | index($actual)) != null)
@@ -1033,11 +1040,14 @@ verify_previous_receipt() {
     else
       .source_generation == "legacy" and .target_generation == "vnext"
     end)
+    and .source_health_path == (if .source_generation == "legacy" then $legacy_health_path else $vnext_health_path end)
+    and .target_health_path == (if .target_generation == "legacy" then $legacy_health_path else $vnext_health_path end)
     and (if .sequence == 1 then .previous_receipt_sha256 == null else (.previous_receipt_sha256 | test("^[0-9a-f]{64}$")) end)
     and .installed.gateway_sha256 == $gateway_sha
     and .installed.watchdog_sha256 == $watchdog_sha
     and .applied == true
     and .service_pair_reloaded == true
+    and .post_transition_health_path == .target_health_path
     and .post_transition_health_verified == true
     and .chain_cursor == $chain_cursor
     and .chain_head_committed == true
@@ -1138,9 +1148,76 @@ listener_matches_generation() {
   [[ "$(sha256_file "$executable")" == "$expected_sha" ]]
 }
 
+generation_health_path() {
+  case "$1" in
+    legacy) printf '%s\n' '/health' ;;
+    vnext) printf '%s\n' '/healthz' ;;
+    *)
+      echo "unsupported service generation for health verification: $1" >&2
+      return 1
+      ;;
+  esac
+}
+
+probe_generation_health() {
+  local generation="$1" port="$2" health_path curl_output http_code response
+  [[ "$port" =~ ^[0-9]+$ && "$port" -ge 1 && "$port" -le 65535 ]] || {
+    echo "invalid health probe port: $port" >&2
+    return 1
+  }
+  health_path="$(generation_health_path "$generation")" || return 1
+  curl_output="$(/usr/bin/curl --disable --noproxy '*' --proto '=http' --max-redirs 0 \
+    --silent --show-error --connect-timeout 1 --max-time 2 \
+    --write-out $'\n%{http_code}' "http://127.0.0.1:$port$health_path")" || return 1
+  http_code="${curl_output##*$'\n'}"
+  response="${curl_output%$'\n'*}"
+  [[ "$http_code" == 200 ]] || return 1
+  case "$generation" in
+    legacy)
+      jq -e '
+        type == "object"
+        and keys == ["product", "runtime", "status"]
+        and .product == "Hepta"
+        and .runtime == "hepta"
+        and .status == "ready"
+      ' <<<"$response" >/dev/null
+      ;;
+    vnext)
+      jq -e '
+        type == "object"
+        and keys == ["product", "status"]
+        and .product == "hepta"
+        and .status == "ok"
+      ' <<<"$response" >/dev/null
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 wait_for_service_pair() {
   local plan="$1" generation="$2" service_mode="$3"
-  [[ "$service_mode" == "launchctl" ]] || return 0
+  local health_path
+  health_path="$(generation_health_path "$generation")" || return 1
+  if [[ "$service_mode" == "test" ]]; then
+    [[ -n "${HEPTA_BRIDGE_SELF_TEST_HEALTH_PORT:-}" \
+      && -n "${HEPTA_BRIDGE_SELF_TEST_ROOT:-}" \
+      && "${HEPTA_BRIDGE_SELF_TEST_HEALTH_MODE_FILE:-}" == "$HEPTA_BRIDGE_SELF_TEST_ROOT/"* \
+      && "${HEPTA_BRIDGE_SELF_TEST_HEALTH_REQUEST_LOG:-}" == "$HEPTA_BRIDGE_SELF_TEST_ROOT/"* ]] || {
+      echo "self-test health transport is incomplete or outside its private root" >&2
+      return 1
+    }
+    local test_health_mode="$generation"
+    if [[ "${HEPTA_BRIDGE_SELF_TEST_FAIL_HEALTH_GENERATION:-}" == "$generation" ]]; then
+      test_health_mode="$generation-fail"
+    fi
+    printf '%s\n' "$test_health_mode" >"$HEPTA_BRIDGE_SELF_TEST_HEALTH_MODE_FILE"
+    probe_generation_health "$generation" "$HEPTA_BRIDGE_SELF_TEST_HEALTH_PORT"
+    return
+  fi
+  [[ "$service_mode" == "launchctl" ]] || {
+    echo "unsupported bridge service mode: $service_mode" >&2
+    return 1
+  }
   local manifest release port gateway_label watchdog_label domain
   manifest="$(jq -r '.manifest' "$plan")"; release="$(dirname "$manifest")"
   port="$(jq -r '.runtime.listen_port' "$manifest")"
@@ -1150,11 +1227,12 @@ wait_for_service_pair() {
     if /bin/launchctl print "$domain/$gateway_label" >/dev/null 2>&1 \
       && /bin/launchctl print "$domain/$watchdog_label" >/dev/null 2>&1; then
       if [[ "$generation" == "vnext" ]]; then
-        "$release/scripts/hepta-watchdog.sh" --manifest "$manifest" >/dev/null 2>&1 \
+        probe_generation_health "$generation" "$port" \
+          && "$release/scripts/hepta-watchdog.sh" --manifest "$manifest" >/dev/null 2>&1 \
           && listener_matches_generation "$plan" "$generation" "$port" \
           && "$release/scripts/hepta-live-soak.sh" --manifest "$manifest" --samples 3 --interval-seconds 0.2 >/dev/null 2>&1 \
           && return 0
-      elif curl --fail --silent --show-error --max-time 2 "http://127.0.0.1:$port/healthz" >/dev/null 2>&1; then
+      elif probe_generation_health "$generation" "$port"; then
         listener_matches_generation "$plan" "$generation" "$port" && return 0
       fi
     fi
@@ -1208,6 +1286,7 @@ replace_plist_pair() {
 transition_locked() {
   local command="$1" bundle="$2" previous_receipt="$3" output_receipt="$4" apply="$5" service_mode="$6"
   local source_generation target_generation expected_previous plan plan_sha previous_sha="" previous_path="" sequence
+  local source_health_path target_health_path
   local plan_schema epoch="" parent_plan_sha="" previous_plan_sha
   local launch_root chain_cursor prior_cursor_sha="" prior_cursor_json="" chain_pending_sha chain_final_sha final_receipt_sha
   local receipt_tmp pending_tmp chain_pending_tmp chain_final_tmp chain_finalized_tmp pending_sha
@@ -1231,6 +1310,8 @@ transition_locked() {
     recutover) source_generation=legacy; target_generation=vnext; expected_previous=rollback ;;
     *) usage ;;
   esac
+  source_health_path="$(generation_health_path "$source_generation")" || return 1
+  target_health_path="$(generation_health_path "$target_generation")" || return 1
   if [[ "$target_generation" == vnext ]]; then
     verify_snapshot_source_fresh "$(jq -r '.manifest' "$plan")" \
       "$bundle/$(jq -r '.evidence.snapshot.relative_path' "$plan")" || return 1
@@ -1269,7 +1350,8 @@ transition_locked() {
     jq -cn --arg transition "$command" --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" \
       --arg epoch "$epoch" --arg parent_plan_sha256 "$parent_plan_sha" \
       --arg source "$source_generation" --arg target "$target_generation" \
-      '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_plan_v2" else "hepta_vnext_launchd_bridge_transition_plan_v1" end),status:"ready",transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),source_generation:$source,target_generation:$target,applied:false,service_changed:false}'
+      --arg source_health_path "$source_health_path" --arg target_health_path "$target_health_path" \
+      '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_plan_v2" else "hepta_vnext_launchd_bridge_transition_plan_v1" end),status:"ready",transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),source_generation:$source,target_generation:$target,source_health_path:$source_health_path,target_health_path:$target_health_path,applied:false,service_changed:false}'
     return
   fi
   [[ -n "$output_receipt" ]] || usage
@@ -1288,12 +1370,13 @@ transition_locked() {
   jq -n --arg transition "$command" --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" \
     --arg epoch "$epoch" --arg parent_plan_sha256 "$parent_plan_sha" \
     --arg source "$source_generation" --arg target "$target_generation" \
+    --arg source_health_path "$source_health_path" --arg target_health_path "$target_health_path" \
     --arg service_mode "$service_mode" \
     --arg pending_receipt "$output_receipt" --arg previous_receipt "$previous_path" --arg previous_receipt_sha256 "$previous_sha" \
     --arg prior_cursor_sha256 "$prior_cursor_sha" --arg prior_cursor_json "$prior_cursor_json" \
     --arg chain_cursor "$chain_cursor" --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson sequence "$sequence" \
-    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_pending_v2" else "hepta_vnext_launchd_bridge_transition_pending_v1" end),status:"pending",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,service_mode:$service_mode,chain_cursor:$chain_cursor,pending_receipt:$pending_receipt,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),prior_cursor_sha256:(if $prior_cursor_sha256=="" then null else $prior_cursor_sha256 end),prior_cursor:(if $prior_cursor_json=="" then null else ($prior_cursor_json|fromjson) end),created_at:$created_at,applied:false}' >"$pending_tmp"
+    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_pending_v2" else "hepta_vnext_launchd_bridge_transition_pending_v1" end),status:"pending",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,source_health_path:$source_health_path,target_health_path:$target_health_path,service_mode:$service_mode,chain_cursor:$chain_cursor,pending_receipt:$pending_receipt,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),prior_cursor_sha256:(if $prior_cursor_sha256=="" then null else $prior_cursor_sha256 end),prior_cursor:(if $prior_cursor_json=="" then null else ($prior_cursor_json|fromjson) end),created_at:$created_at,applied:false}' >"$pending_tmp"
   reserve_private_receipt "$output_receipt" "$pending_tmp" || return 1
   output_receipt="$(canonical_file "$output_receipt")" || return 1
   pending_sha="$(sha256_file "$output_receipt")"
@@ -1318,6 +1401,7 @@ transition_locked() {
   jq -n --arg transition "$command" --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" \
     --arg epoch "$epoch" --arg parent_plan_sha256 "$parent_plan_sha" \
     --arg source "$source_generation" --arg target "$target_generation" \
+    --arg source_health_path "$source_health_path" --arg target_health_path "$target_health_path" \
     --arg service_mode "$service_mode" \
     --arg chain_cursor "$chain_cursor" \
     --arg pending_receipt "$output_receipt" --arg pending_receipt_sha256 "$pending_sha" \
@@ -1327,7 +1411,7 @@ transition_locked() {
     --arg watchdog_sha256 "$(jq -r ".${target_generation}.watchdog.sha256" "$plan")" \
     --arg applied_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson sequence "$sequence" \
-    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_v2" else "hepta_vnext_launchd_bridge_transition_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,service_mode:$service_mode,chain_cursor:$chain_cursor,pending_receipt:$pending_receipt,pending_receipt_sha256:$pending_receipt_sha256,pending_cursor_sha256:$pending_cursor_sha256,prior_cursor_sha256:(if $prior_cursor_sha256=="" then null else $prior_cursor_sha256 end),chain_head_committed:true,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),installed:{gateway_sha256:$gateway_sha256,watchdog_sha256:$watchdog_sha256},applied_at:$applied_at,applied:true,service_pair_reloaded:true,post_transition_health_verified:true,post_transition_bounded_soak_verified:($service_mode == "launchctl" and $target == "vnext"),legacy_authority_reclassified:false}' >"$receipt_tmp"
+    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_v2" else "hepta_vnext_launchd_bridge_transition_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,source_health_path:$source_health_path,target_health_path:$target_health_path,service_mode:$service_mode,chain_cursor:$chain_cursor,pending_receipt:$pending_receipt,pending_receipt_sha256:$pending_receipt_sha256,pending_cursor_sha256:$pending_cursor_sha256,prior_cursor_sha256:(if $prior_cursor_sha256=="" then null else $prior_cursor_sha256 end),chain_head_committed:true,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),installed:{gateway_sha256:$gateway_sha256,watchdog_sha256:$watchdog_sha256},applied_at:$applied_at,applied:true,service_pair_reloaded:true,post_transition_health_path:$target_health_path,post_transition_health_verified:true,post_transition_bounded_soak_verified:($service_mode == "launchctl" and $target == "vnext"),legacy_authority_reclassified:false}' >"$receipt_tmp"
   final_receipt_sha="$(sha256_file "$receipt_tmp")"
   jq -n --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" --arg epoch "$epoch" \
     --arg parent_plan_sha256 "$parent_plan_sha" --arg current_generation "$target_generation" \
@@ -1402,7 +1486,9 @@ recover_pending_locked() {
   chain_cursor="$(jq -r '.chain_cursor' "$plan")"
   jq -e --arg plan_sha "$plan_sha" --arg bundle "$bundle" --arg service_mode "$service_mode" \
     --arg chain_cursor "$chain_cursor" --arg pending_receipt "$pending_receipt" \
-    --arg plan_schema "$plan_schema" --arg epoch "$epoch" --arg parent_plan_sha "$parent_plan_sha" '
+    --arg plan_schema "$plan_schema" --arg epoch "$epoch" --arg parent_plan_sha "$parent_plan_sha" \
+    --arg legacy_health_path "$(generation_health_path legacy)" \
+    --arg vnext_health_path "$(generation_health_path vnext)" '
     (.schema == "hepta_vnext_launchd_bridge_transition_pending_v1" or .schema == "hepta_vnext_launchd_bridge_transition_pending_v2")
     and .status == "pending"
     and .plan_sha256 == $plan_sha
@@ -1419,6 +1505,8 @@ recover_pending_locked() {
     and (.source_generation == "legacy" or .source_generation == "vnext")
     and (.target_generation == "legacy" or .target_generation == "vnext")
     and .source_generation != .target_generation
+    and .source_health_path == (if .source_generation == "legacy" then $legacy_health_path else $vnext_health_path end)
+    and .target_health_path == (if .target_generation == "legacy" then $legacy_health_path else $vnext_health_path end)
     and (if .transition == "cutover" then
       .sequence == 1 and .source_generation == "legacy" and .target_generation == "vnext"
       and .previous_receipt == null and .previous_receipt_sha256 == null
@@ -1585,11 +1673,14 @@ recover_pending_locked() {
     cursor_tmp=""
   fi
   receipt_tmp="$(mktemp "${temp_root%/}/hepta-bridge-recovery.XXXXXX")"
+  local restored_health_path
+  restored_health_path="$(generation_health_path "$source_generation")" || return 1
   jq -n --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" \
     --arg epoch "$epoch" --arg parent_plan_sha256 "$parent_plan_sha" --arg pending_sha256 "$pending_sha" \
     --arg restored_generation "$source_generation" --arg recovered_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg restored_health_path "$restored_health_path" \
     --argjson exact_prior_cursor_restored "$exact_prior_cursor" \
-    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_pending_recovery_v2" else "hepta_vnext_launchd_bridge_pending_recovery_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),bundle:$bundle,plan_sha256:$plan_sha256,pending_receipt_sha256:$pending_sha256,restored_generation:$restored_generation,recovered_at:$recovered_at,applied:true,source_service_pair_restored:true,chain_head_restored:true,exact_prior_cursor_restored:$exact_prior_cursor_restored,no_transition_pass_published:true}' >"$receipt_tmp"
+    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_pending_recovery_v2" else "hepta_vnext_launchd_bridge_pending_recovery_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),bundle:$bundle,plan_sha256:$plan_sha256,pending_receipt_sha256:$pending_sha256,restored_generation:$restored_generation,restored_health_path:$restored_health_path,restored_health_verified:true,recovered_at:$recovered_at,applied:true,source_service_pair_restored:true,chain_head_restored:true,exact_prior_cursor_restored:$exact_prior_cursor_restored,no_transition_pass_published:true}' >"$receipt_tmp"
   replace_reserved_receipt "$pending_receipt" "$pending_sha" "$receipt_tmp" || { rm -f "$receipt_tmp"; return 1; }
   trap - RETURN
   rm -f "${receipt_tmp:-}" "${cursor_tmp:-}" "${prior_cursor_tmp:-}"
@@ -1617,7 +1708,9 @@ recover_transition_final_receipt_locked() {
     --arg legacy_gateway "$(jq -r '.legacy.gateway.sha256' "$plan")" \
     --arg legacy_watchdog "$(jq -r '.legacy.watchdog.sha256' "$plan")" \
     --arg vnext_gateway "$(jq -r '.vnext.gateway.sha256' "$plan")" \
-    --arg vnext_watchdog "$(jq -r '.vnext.watchdog.sha256' "$plan")" '
+    --arg vnext_watchdog "$(jq -r '.vnext.watchdog.sha256' "$plan")" \
+    --arg legacy_health_path "$(generation_health_path legacy)" \
+    --arg vnext_health_path "$(generation_health_path vnext)" '
     (.schema == "hepta_vnext_launchd_bridge_transition_v1" or .schema == "hepta_vnext_launchd_bridge_transition_v2")
     and .status == "ready" and .bundle == $bundle and .plan_sha256 == $plan_sha
     and .service_mode == $service_mode and .chain_cursor == $chain_cursor
@@ -1641,10 +1734,14 @@ recover_transition_final_receipt_locked() {
       .sequence >= 3 and .source_generation == "legacy" and .target_generation == "vnext"
       and (.previous_receipt | startswith("/")) and (.previous_receipt_sha256 | test("^[0-9a-f]{64}$"))
     else false end)
+    and .source_health_path == (if .source_generation == "legacy" then $legacy_health_path else $vnext_health_path end)
+    and .target_health_path == (if .target_generation == "legacy" then $legacy_health_path else $vnext_health_path end)
     and .installed.gateway_sha256 == (if .target_generation == "legacy" then $legacy_gateway else $vnext_gateway end)
     and .installed.watchdog_sha256 == (if .target_generation == "legacy" then $legacy_watchdog else $vnext_watchdog end)
     and .chain_head_committed == true and .applied == true
-    and .service_pair_reloaded == true and .post_transition_health_verified == true
+    and .service_pair_reloaded == true
+    and .post_transition_health_path == .target_health_path
+    and .post_transition_health_verified == true
   ' "$transition_receipt" >/dev/null || {
     echo "invalid finalized transition receipt" >&2
     return 1
@@ -1854,6 +1951,11 @@ recover_rebase_final_receipt_locked() {
   predecessor_sequence="$(jq -r '.predecessor_rollback.sequence' "$plan")"
   [[ "$(sha256_file "$predecessor_receipt")" == "$predecessor_sha" ]] || {
     echo "finalized rebase predecessor differs from the reviewed rollback" >&2
+    return 1
+  }
+  [[ "$(verify_rollback_predecessor "$predecessor_receipt" \
+    "$(jq -r '.predecessor_rollback.plan_sha256' "$plan")" "$chain_cursor")" == "$predecessor_sha" ]] || {
+    echo "finalized rebase predecessor lacks the reviewed rollback health contract" >&2
     return 1
   }
   jq -e --arg bundle "$bundle" --arg plan_sha "$plan_sha" --arg chain_cursor "$chain_cursor" \
@@ -2080,10 +2182,107 @@ self_test() {
   local parent_rebase_saved supersede_cursor_saved supersede_cursor_sha downgraded_cursor_sha
   local deleted_parent_apply tampered_parent_apply downgraded_cursor_apply
   local release4 snapshot4 canary4 soak4 bundle4 rebase4 rebase4_cursor_sha release5 snapshot5 canary5 soak5 bundle5 rebase5 stale_after_recovery
+  local health_mode_file health_request_log health_port_file health_port expected_health_requests
+  local health_failure_cutover health_failure_rollback
+  local v2_pending_saved v2_pending_tampered v2_pending_original_sha v2_pending_cursor_sha
+  local v2_pending_gateway_sha v2_pending_watchdog_sha tamper_mode tampered_receipt
+  local v2_final_missing_health v2_final_swapped_health v2_final_original_sha v2_final_cursor_sha
+  local v2_final_gateway_sha v2_final_watchdog_sha
   temp_root="${TMPDIR:-/tmp}"
   root="$(mktemp -d "${temp_root%/}/hepta-launchd-bridge-self-test.XXXXXX")"
   HEPTA_BRIDGE_SELF_TEST_ROOT="$root"
-  trap 'chmod -R u+w "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_BRIDGE_SELF_TEST_ROOT"' EXIT
+  HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID=""
+  trap 'if [[ -n "${HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID:-}" ]]; then kill "$HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID" 2>/dev/null || true; wait "$HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID" 2>/dev/null || true; fi; chmod -R u+w "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_BRIDGE_SELF_TEST_ROOT"' EXIT
+  health_mode_file="$root/health-mode.txt"
+  health_request_log="$root/health-requests.tsv"
+  health_port_file="$root/health-port.txt"
+  : >"$health_request_log"
+  printf '%s\n' legacy >"$health_mode_file"
+  chmod 0600 "$health_mode_file" "$health_request_log"
+  python3 -u - "$health_mode_file" "$health_request_log" "$health_port_file" <<'PY_HEALTH_SERVER' &
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+from pathlib import Path
+import sys
+
+mode_path = Path(sys.argv[1])
+request_log = Path(sys.argv[2])
+port_path = Path(sys.argv[3])
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        mode = mode_path.read_text(encoding="utf-8").strip()
+        generation = mode.removesuffix("-fail")
+        expected = "/health" if generation == "legacy" else "/healthz"
+        with request_log.open("a", encoding="utf-8") as stream:
+            stream.write(f"{mode}\t{self.path}\n")
+        if generation not in {"legacy", "vnext"} or self.path != expected:
+            code, payload = 404, {"error": "runtime_ingress.route_not_found"}
+        elif mode.endswith("-fail"):
+            code, payload = 503, {"error": "injected_health_failure"}
+        elif generation == "legacy":
+            code, payload = 200, {"product": "Hepta", "runtime": "hepta", "status": "ready"}
+        else:
+            code, payload = 200, {"product": "hepta", "status": "ok"}
+        encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def log_message(self, _format, *_args):
+        return
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+port_path.write_text(f"{server.server_address[1]}\n", encoding="utf-8")
+os.chmod(port_path, 0o600)
+server.serve_forever()
+PY_HEALTH_SERVER
+  HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID=$!
+  for _ in $(seq 1 100); do
+    [[ -s "$health_port_file" ]] && break
+    kill -0 "$HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID" 2>/dev/null || {
+      echo "self-test loopback health server exited before publishing its port" >&2
+      exit 1
+    }
+    sleep 0.02
+  done
+  [[ -s "$health_port_file" ]] || { echo "self-test loopback health server did not publish its port" >&2; exit 1; }
+  health_port="$(tr -d '\r\n' <"$health_port_file")"
+  [[ "$health_port" =~ ^[0-9]+$ ]] || { echo "self-test loopback health port is invalid" >&2; exit 1; }
+  HEPTA_BRIDGE_SELF_TEST_HEALTH_PORT="$health_port"
+  HEPTA_BRIDGE_SELF_TEST_HEALTH_MODE_FILE="$health_mode_file"
+  HEPTA_BRIDGE_SELF_TEST_HEALTH_REQUEST_LOG="$health_request_log"
+
+  printf '%s\n' legacy >"$health_mode_file"
+  probe_generation_health legacy "$health_port"
+  if probe_generation_health vnext "$health_port" >/dev/null 2>&1; then
+    echo "vNext health probe accepted the legacy-only route fixture" >&2
+    exit 1
+  fi
+  printf '%s\n' vnext >"$health_mode_file"
+  probe_generation_health vnext "$health_port"
+  if probe_generation_health legacy "$health_port" >/dev/null 2>&1; then
+    echo "legacy health probe accepted the vNext-only route fixture" >&2
+    exit 1
+  fi
+  if generation_health_path unknown >/dev/null 2>&1; then
+    echo "unknown service generation received a health route" >&2
+    exit 1
+  fi
+  : >"$health_request_log"
+  printf '%s\n' vnext >"$health_mode_file"; probe_generation_health vnext "$health_port"
+  printf '%s\n' legacy >"$health_mode_file"; probe_generation_health legacy "$health_port"
+  printf '%s\n' vnext >"$health_mode_file"; probe_generation_health vnext "$health_port"
+  expected_health_requests="$root/expected-health-requests.tsv"
+  printf 'vnext\t/healthz\nlegacy\t/health\nvnext\t/healthz\n' >"$expected_health_requests"
+  diff -u "$expected_health_requests" "$health_request_log" >/dev/null || {
+    echo "generation-specific health probe sequence differs from the exact route contract" >&2
+    exit 1
+  }
+  : >"$health_request_log"
   materializer="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/hepta-immutable-release-tree"
   release="$root/release"; install_root="$root/vnext-install"; launch_root="$root/LaunchAgents"; bundle="$root/bridge"
   mkdir -p "$launch_root" "$root/legacy-install/bin"
@@ -2233,7 +2432,42 @@ self_test() {
     exit 1
   }
   recover_pending "$bundle" "$fault_receipt" true test >/dev/null
-  jq -e '.schema == "hepta_vnext_launchd_bridge_pending_recovery_v1" and .source_service_pair_restored == true and .chain_head_restored == true and .no_transition_pass_published == true' "$fault_receipt" >/dev/null
+  jq -e '.schema == "hepta_vnext_launchd_bridge_pending_recovery_v1"
+    and .source_service_pair_restored == true and .chain_head_restored == true
+    and .restored_generation == "legacy" and .restored_health_path == "/health"
+    and .restored_health_verified == true and .no_transition_pass_published == true' "$fault_receipt" >/dev/null
+
+  health_failure_cutover="$root/health-failure-cutover-pending.json"
+  : >"$health_request_log"
+  if HEPTA_BRIDGE_SELF_TEST_FAIL_HEALTH_GENERATION=vnext \
+    transition cutover "$bundle" "" "$health_failure_cutover" true test >/dev/null 2>&1; then
+    echo "cutover accepted an unhealthy vNext target" >&2
+    exit 1
+  fi
+  jq -e '.schema == "hepta_vnext_launchd_bridge_transition_pending_v1"
+    and .status == "pending" and .source_generation == "legacy" and .target_generation == "vnext"
+    and .source_health_path == "/health" and .target_health_path == "/healthz"
+    and .applied == false' "$health_failure_cutover" >/dev/null
+  [[ "$(sha256_file "$launch_root/ai.hepta.gateway.plist")" == "$(jq -r '.legacy.gateway.sha256' "$bundle/plan.json")" \
+    && "$(sha256_file "$launch_root/ai.hepta.installed-live-watchdog.plist")" == "$(jq -r '.legacy.watchdog.sha256' "$bundle/plan.json")" ]] || {
+    echo "vNext health failure did not restore the exact legacy plist pair" >&2
+    exit 1
+  }
+  printf 'vnext-fail\t/healthz\nlegacy\t/health\n' >"$expected_health_requests"
+  diff -u "$expected_health_requests" "$health_request_log" >/dev/null || {
+    echo "vNext health failure did not probe and restore the generation-specific routes" >&2
+    exit 1
+  }
+  recover_pending "$bundle" "$health_failure_cutover" true test >/dev/null
+  jq -e '.schema == "hepta_vnext_launchd_bridge_pending_recovery_v1"
+    and .restored_generation == "legacy" and .restored_health_path == "/health"
+    and .restored_health_verified == true and .source_service_pair_restored == true
+    and .chain_head_restored == true and .no_transition_pass_published == true' "$health_failure_cutover" >/dev/null
+  printf 'vnext-fail\t/healthz\nlegacy\t/health\nlegacy\t/health\n' >"$expected_health_requests"
+  diff -u "$expected_health_requests" "$health_request_log" >/dev/null || {
+    echo "pending recovery did not verify the restored legacy /health route" >&2
+    exit 1
+  }
   for directory in "$install_root/logs" "$install_root/logs/gateway" "$install_root/logs/watchdog"; do
     [[ -d "$directory" && ! -L "$directory" \
       && "$(cd "$directory" && pwd -P)" == "$directory" \
@@ -2326,8 +2560,56 @@ self_test() {
       exit 1
     }
   done
+  jq -e '.source_health_path == "/health" and .target_health_path == "/healthz"
+    and .post_transition_health_path == "/healthz" and .post_transition_health_verified == true' \
+    "$cutover_receipt" >/dev/null
+
+  health_failure_rollback="$root/health-failure-rollback-pending.json"
+  : >"$health_request_log"
+  if HEPTA_BRIDGE_SELF_TEST_FAIL_HEALTH_GENERATION=legacy \
+    transition rollback "$bundle" "$cutover_receipt" "$health_failure_rollback" true test >/dev/null 2>&1; then
+    echo "rollback accepted an unhealthy legacy target" >&2
+    exit 1
+  fi
+  jq -e '.schema == "hepta_vnext_launchd_bridge_transition_pending_v1"
+    and .status == "pending" and .source_generation == "vnext" and .target_generation == "legacy"
+    and .source_health_path == "/healthz" and .target_health_path == "/health"
+    and .applied == false' "$health_failure_rollback" >/dev/null
+  [[ "$(sha256_file "$launch_root/ai.hepta.gateway.plist")" == "$(jq -r '.vnext.gateway.sha256' "$bundle/plan.json")" \
+    && "$(sha256_file "$launch_root/ai.hepta.installed-live-watchdog.plist")" == "$(jq -r '.vnext.watchdog.sha256' "$bundle/plan.json")" ]] || {
+    echo "legacy health failure did not restore the exact vNext plist pair" >&2
+    exit 1
+  }
+  printf 'vnext\t/healthz\nlegacy-fail\t/health\nvnext\t/healthz\n' >"$expected_health_requests"
+  diff -u "$expected_health_requests" "$health_request_log" >/dev/null || {
+    echo "legacy health failure did not probe and restore the generation-specific routes" >&2
+    exit 1
+  }
+  recover_pending "$bundle" "$health_failure_rollback" true test >/dev/null
+  jq -e '.schema == "hepta_vnext_launchd_bridge_pending_recovery_v1"
+    and .restored_generation == "vnext" and .restored_health_path == "/healthz"
+    and .restored_health_verified == true and .source_service_pair_restored == true
+    and .chain_head_restored == true and .exact_prior_cursor_restored == true
+    and .no_transition_pass_published == true' "$health_failure_rollback" >/dev/null
+  printf 'vnext\t/healthz\nlegacy-fail\t/health\nvnext\t/healthz\nvnext\t/healthz\n' >"$expected_health_requests"
+  diff -u "$expected_health_requests" "$health_request_log" >/dev/null || {
+    echo "pending recovery did not verify the restored vNext /healthz route" >&2
+    exit 1
+  }
+  : >"$health_request_log"
   transition rollback "$bundle" "$cutover_receipt" "$rollback_receipt" true test >/dev/null
+  jq -e '.source_health_path == "/healthz" and .target_health_path == "/health"
+    and .post_transition_health_path == "/health" and .post_transition_health_verified == true' \
+    "$rollback_receipt" >/dev/null
   transition recutover "$bundle" "$rollback_receipt" "$recutover_receipt" true test >/dev/null
+  jq -e '.source_health_path == "/health" and .target_health_path == "/healthz"
+    and .post_transition_health_path == "/healthz" and .post_transition_health_verified == true' \
+    "$recutover_receipt" >/dev/null
+  printf 'vnext\t/healthz\nlegacy\t/health\nvnext\t/healthz\n' >"$expected_health_requests"
+  diff -u "$expected_health_requests" "$health_request_log" >/dev/null || {
+    echo "normal rollback and recutover did not follow the exact vNext-to-legacy-to-vNext health route sequence" >&2
+    exit 1
+  }
   replay_receipt="$root/replayed-old-head.json"
   if transition rollback "$bundle" "$cutover_receipt" "$replay_receipt" true test >/dev/null 2>&1; then
     echo "bridge accepted a stale receipt instead of the current chain head" >&2
@@ -2645,7 +2927,18 @@ self_test() {
     exit 1
   }
   rebase3="$root/rebase-epoch3.json"
-  rebase_after_rollback "$bundle3" "$second_rollback_receipt" "$rebase3" true >/dev/null
+  if HEPTA_BRIDGE_SELF_TEST_FAIL_AFTER_REBASE_RECEIPT_FINALIZED=1 \
+    rebase_after_rollback "$bundle3" "$second_rollback_receipt" "$rebase3" true >/dev/null 2>&1; then
+    echo "superseding-epoch rebase cursor-finalization interruption unexpectedly passed" >&2
+    exit 1
+  fi
+  jq -e '.schema == "hepta_vnext_launchd_bridge_rebase_v2"
+    and .chain_rebase_committed == true' "$rebase3" >/dev/null
+  jq -e '.rebase_receipt_finalized == false' \
+    "$(jq -r '.chain_cursor' "$bundle3/plan.json")" >/dev/null
+  recover_pending "$bundle3" "$rebase3" true test >/dev/null
+  jq -e '.rebase_receipt_finalized == true' \
+    "$(jq -r '.chain_cursor' "$bundle3/plan.json")" >/dev/null
   recutover3="$root/recutover-epoch3.json"; rollback3="$root/rollback-epoch3.json"
   transition recutover "$bundle3" "$second_rollback_receipt" "$recutover3" true test >/dev/null
   transition rollback "$bundle3" "$recutover3" "$rollback3" true test >/dev/null
@@ -2669,11 +2962,53 @@ self_test() {
     echo "injected v2 recutover interruption unexpectedly passed" >&2
     exit 1
   fi
-  jq -e '.schema == "hepta_vnext_launchd_bridge_transition_pending_v2" and .status == "pending" and .epoch == 4' "$v2_pending_receipt" >/dev/null
+  jq -e '.schema == "hepta_vnext_launchd_bridge_transition_pending_v2"
+    and .status == "pending" and .epoch == 4
+    and .source_generation == "legacy" and .target_generation == "vnext"
+    and .source_health_path == "/health" and .target_health_path == "/healthz"' \
+    "$v2_pending_receipt" >/dev/null
+  v2_pending_saved="$root/v2-recutover-pending.saved"
+  v2_pending_tampered="$root/v2-recutover-pending.tampered"
+  cp "$v2_pending_receipt" "$v2_pending_saved"
+  chmod 0400 "$v2_pending_saved"
+  v2_pending_original_sha="$(sha256_file "$v2_pending_saved")"
+  v2_pending_cursor_sha="$(sha256_file "$(jq -r '.chain_cursor' "$bundle4/plan.json")")"
+  v2_pending_gateway_sha="$(sha256_file "$launch_root/ai.hepta.gateway.plist")"
+  v2_pending_watchdog_sha="$(sha256_file "$launch_root/ai.hepta.installed-live-watchdog.plist")"
+  for tamper_mode in missing swapped; do
+    if [[ "$tamper_mode" == missing ]]; then
+      jq 'del(.source_health_path)' "$v2_pending_saved" >"$v2_pending_tampered"
+    else
+      jq '.source_health_path = "/healthz" | .target_health_path = "/health"' \
+        "$v2_pending_saved" >"$v2_pending_tampered"
+    fi
+    chmod 0600 "$v2_pending_receipt"
+    cp "$v2_pending_tampered" "$v2_pending_receipt"
+    chmod 0400 "$v2_pending_receipt"
+    if recover_pending "$bundle4" "$v2_pending_receipt" true test >/dev/null 2>&1; then
+      echo "v2 pending recovery accepted $tamper_mode generation health fields" >&2
+      exit 1
+    fi
+    [[ "$(sha256_file "$(jq -r '.chain_cursor' "$bundle4/plan.json")")" == "$v2_pending_cursor_sha" \
+      && "$(sha256_file "$launch_root/ai.hepta.gateway.plist")" == "$v2_pending_gateway_sha" \
+      && "$(sha256_file "$launch_root/ai.hepta.installed-live-watchdog.plist")" == "$v2_pending_watchdog_sha" ]] || {
+      echo "rejected v2 pending health tamper changed cursor or service pair" >&2
+      exit 1
+    }
+  done
+  chmod 0600 "$v2_pending_receipt"
+  cp "$v2_pending_saved" "$v2_pending_receipt"
+  chmod 0400 "$v2_pending_receipt"
+  [[ "$(sha256_file "$v2_pending_receipt")" == "$v2_pending_original_sha" ]] || {
+    echo "failed to restore the exact v2 pending receipt after health tamper tests" >&2
+    exit 1
+  }
   recover_pending "$bundle4" "$v2_pending_receipt" true test >/dev/null
   jq -e '.schema == "hepta_vnext_launchd_bridge_pending_recovery_v2"
     and .source_service_pair_restored == true and .chain_head_restored == true
-    and .exact_prior_cursor_restored == true' "$v2_pending_receipt" >/dev/null
+    and .exact_prior_cursor_restored == true
+    and .restored_generation == "legacy" and .restored_health_path == "/health"
+    and .restored_health_verified == true' "$v2_pending_receipt" >/dev/null
   [[ "$(sha256_file "$(jq -r '.chain_cursor' "$bundle4/plan.json")")" == "$rebase4_cursor_sha" ]] || {
     echo "v2 recutover pending recovery did not restore byte-exact rebase provenance" >&2
     exit 1
@@ -2699,8 +3034,45 @@ self_test() {
   rebase_after_rollback "$bundle5" "$rollback3" "$rebase5" true >/dev/null
   v2_recutover_receipt="$root/v2-recutover.json"; v2_rollback_receipt="$root/v2-rollback.json"
   transition recutover "$bundle5" "$rollback3" "$v2_recutover_receipt" true test >/dev/null
-  jq -e '.schema == "hepta_vnext_launchd_bridge_transition_v2" and .epoch == 5 and .transition == "recutover"' "$v2_recutover_receipt" >/dev/null
+  jq -e '.schema == "hepta_vnext_launchd_bridge_transition_v2"
+    and .epoch == 5 and .transition == "recutover"
+    and .source_generation == "legacy" and .target_generation == "vnext"
+    and .source_health_path == "/health" and .target_health_path == "/healthz"
+    and .post_transition_health_path == "/healthz" and .post_transition_health_verified == true' \
+    "$v2_recutover_receipt" >/dev/null
   transition rollback "$bundle5" "$v2_recutover_receipt" "$v2_rollback_receipt" true test >/dev/null
+  jq -e '.schema == "hepta_vnext_launchd_bridge_transition_v2"
+    and .epoch == 5 and .transition == "rollback"
+    and .source_generation == "vnext" and .target_generation == "legacy"
+    and .source_health_path == "/healthz" and .target_health_path == "/health"
+    and .post_transition_health_path == "/health" and .post_transition_health_verified == true' \
+    "$v2_rollback_receipt" >/dev/null
+  v2_final_missing_health="$root/v2-rollback-missing-health.json"
+  v2_final_swapped_health="$root/v2-rollback-swapped-health.json"
+  jq 'del(.post_transition_health_path)' "$v2_rollback_receipt" >"$v2_final_missing_health"
+  jq '.source_health_path = "/health" | .target_health_path = "/healthz"
+    | .post_transition_health_path = "/healthz"' \
+    "$v2_rollback_receipt" >"$v2_final_swapped_health"
+  chmod 0400 "$v2_final_missing_health" "$v2_final_swapped_health"
+  v2_final_original_sha="$(sha256_file "$v2_rollback_receipt")"
+  v2_final_cursor_sha="$(sha256_file "$(jq -r '.chain_cursor' "$bundle5/plan.json")")"
+  v2_final_gateway_sha="$(sha256_file "$launch_root/ai.hepta.gateway.plist")"
+  v2_final_watchdog_sha="$(sha256_file "$launch_root/ai.hepta.installed-live-watchdog.plist")"
+  for tampered_receipt in "$v2_final_missing_health" "$v2_final_swapped_health"; do
+    if verify_previous_receipt "$tampered_receipt" rollback \
+      "$(sha256_file "$bundle5/plan.json")" legacy "$bundle5/plan.json" \
+      "$(jq -r '.chain_cursor' "$bundle5/plan.json")" >/dev/null 2>&1; then
+      echo "v2 rollback verifier accepted tampered generation health fields" >&2
+      exit 1
+    fi
+    [[ "$(sha256_file "$v2_rollback_receipt")" == "$v2_final_original_sha" \
+      && "$(sha256_file "$(jq -r '.chain_cursor' "$bundle5/plan.json")")" == "$v2_final_cursor_sha" \
+      && "$(sha256_file "$launch_root/ai.hepta.gateway.plist")" == "$v2_final_gateway_sha" \
+      && "$(sha256_file "$launch_root/ai.hepta.installed-live-watchdog.plist")" == "$v2_final_watchdog_sha" ]] || {
+      echo "rejected v2 final health tamper changed receipt, cursor, or service pair" >&2
+      exit 1
+    }
+  done
   stale_v2_receipt="$root/stale-v2-predecessor.json"
   if transition recutover "$bundle5" "$rollback3" "$stale_v2_receipt" true test >/dev/null 2>&1; then
     echo "v2 recutover accepted a stale parent-epoch predecessor" >&2
@@ -2720,7 +3092,7 @@ self_test() {
     --arg v2_plan_sha256 "$(sha256_file "$bundle5/plan.json")" \
     --arg v2_recutover_receipt_sha256 "$(sha256_file "$v2_recutover_receipt")" \
     --arg v2_rollback_receipt_sha256 "$(sha256_file "$v2_rollback_receipt")" \
-    '{schema:"hepta_vnext_launchd_bridge_self_test_v2",status:"ready",plan_sha256:$plan_sha256,v2_plan_sha256:$v2_plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,v2_recutover_receipt_sha256:$v2_recutover_receipt_sha256,v2_rollback_receipt_sha256:$v2_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,fresh_full_state_snapshot:true,new_epoch_recutover:true,controlled_epoch_supersede:true,supersede_deleted_parent_rebase_rejected:true,supersede_tampered_parent_rebase_rejected:true,supersede_downgraded_cursor_rejected:true,supersede_rejection_cursor_unchanged:true,post_rebase_source_drift_recovered_with_fresh_epoch:true,pending_recovery_shm_drift_recovered_with_fresh_epoch:true,no_manual_cursor_mutation:true,v1_evidence_downgrade_rejected_for_v2_release:true,wrong_predecessor_rejected:true,stale_predecessor_rejected:true,fork_rejected:true,cross_plan_cas_enforced:true,rebase_pending_recovery_sealed:true,rebase_replace_failure_restores_exact_cursor:true,pre_cas_pending_recovery_sealed:true,pre_cas_pending_copy_rejected:true,pre_cas_embedded_cursor_tamper_rejected:true,rebase_finalization_crash_recovered:true,rebase_finalization_recovery_idempotent:true,completed_rebase_stale_pending_rejected:true,completed_rebase_copied_pending_rejected:true,completed_rebase_modified_pending_rejected:true,completed_rebase_cursor_unchanged_on_replay:true,post_rebase_sibling_epoch_rejected:true,transition_pending_recovery_sealed:true,transition_finalization_crash_recovered:true,transition_finalization_recovery_idempotent:true,completed_transition_stale_pending_rejected:true,completed_transition_copied_pending_rejected:true,completed_transition_cursor_unchanged_on_replay:true,v2_recutover_pending_exact_cursor_restored:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,dry_run_log_directories_unchanged:true,private_log_directories_ready:true,existing_log_directories_hardened:true,symlink_log_root_rejected:true,symlink_log_child_rejected:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
+    '{schema:"hepta_vnext_launchd_bridge_self_test_v2",status:"ready",plan_sha256:$plan_sha256,v2_plan_sha256:$v2_plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,v2_recutover_receipt_sha256:$v2_recutover_receipt_sha256,v2_rollback_receipt_sha256:$v2_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,generation_specific_health_routes:true,legacy_health_route_verified:true,vnext_health_route_verified:true,health_failure_source_restored:true,health_paths_recorded_in_transition_receipts:true,health_paths_recorded_in_recovery_receipts:true,fresh_full_state_snapshot:true,new_epoch_recutover:true,controlled_epoch_supersede:true,supersede_deleted_parent_rebase_rejected:true,supersede_tampered_parent_rebase_rejected:true,supersede_downgraded_cursor_rejected:true,supersede_rejection_cursor_unchanged:true,post_rebase_source_drift_recovered_with_fresh_epoch:true,pending_recovery_shm_drift_recovered_with_fresh_epoch:true,no_manual_cursor_mutation:true,v1_evidence_downgrade_rejected_for_v2_release:true,wrong_predecessor_rejected:true,stale_predecessor_rejected:true,fork_rejected:true,cross_plan_cas_enforced:true,rebase_pending_recovery_sealed:true,rebase_replace_failure_restores_exact_cursor:true,pre_cas_pending_recovery_sealed:true,pre_cas_pending_copy_rejected:true,pre_cas_embedded_cursor_tamper_rejected:true,rebase_finalization_crash_recovered:true,rebase_finalization_recovery_idempotent:true,completed_rebase_stale_pending_rejected:true,completed_rebase_copied_pending_rejected:true,completed_rebase_modified_pending_rejected:true,completed_rebase_cursor_unchanged_on_replay:true,post_rebase_sibling_epoch_rejected:true,transition_pending_recovery_sealed:true,transition_finalization_crash_recovered:true,transition_finalization_recovery_idempotent:true,completed_transition_stale_pending_rejected:true,completed_transition_copied_pending_rejected:true,completed_transition_cursor_unchanged_on_replay:true,v2_recutover_pending_exact_cursor_restored:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,dry_run_log_directories_unchanged:true,private_log_directories_ready:true,existing_log_directories_hardened:true,symlink_log_root_rejected:true,symlink_log_child_rejected:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
 }
 
 command="${1:-}"; [[ -n "$command" ]] || usage; shift
