@@ -2,7 +2,20 @@ use super::model::EvidenceProfileV3;
 use super::model::ManifestLayerIdV3;
 use super::model::ModeManifestFormatV3;
 
-pub(super) const PROFILE_SET: &str = "hepta_vnext_52ec_evidence_profiles_v3_revision_7";
+pub(super) const PROFILE_SET: &str = "hepta_vnext_52ec_evidence_profiles_v3_revision_8";
+
+pub(super) const LINUX_V6_RESULT_SCHEMA: &str = "hepta_vnext_linux_exact_result_v4";
+pub(super) const LINUX_V6_OUTER_RESULT_SCHEMA: &str = "hepta_vnext_linux_exact_outer_result_v4";
+pub(super) const LINUX_V6_ROOT_GUARDIAN_SCHEMA: &str =
+    "hepta_vnext_linux_root_admission_guardian_v1";
+pub(super) const LINUX_V6_CAPABILITY_SCHEMA: &str = "hepta_vnext_linux_execution_capability_v2";
+pub(super) const LINUX_V6_LEDGER_SCHEMA: &str =
+    "hepta_vnext_linux_capability_consumption_ledger_v1";
+pub(super) const LINUX_V6_EVENT_CHAIN_SCHEMA: &str = "hepta_vnext_linux_guardian_event_chain_v1";
+pub(super) const LINUX_V6_NATURAL_TERMINAL_SCHEMA: &str =
+    "hepta_vnext_linux_natural_terminal_no_pause_v1";
+pub(super) const LINUX_V6_RUNNER_IDS: [u64; 2] = [22, 23];
+pub(super) const LINUX_V6_WORKLOAD_VARIANT: &str = "natural_terminal_no_pause_v1";
 
 pub(super) const LINUX_TRUST_POLICY_SCHEMA: &str = "hepta_vnext_linux_operator_trust_policy_v7";
 pub(super) const LINUX_TRUST_ROOT_ID: &str = "qianqi-existing-github-ed25519-2026";
@@ -243,7 +256,7 @@ pub(super) const NESTED_LAYERS: [ManifestLayerIdV3; 2] =
 pub(super) fn gate_profile(gate: &str) -> Option<EvidenceProfileV3> {
     match gate {
         "macos-aarch64" => Some(EvidenceProfileV3::MacExactV6),
-        "linux-x86_64" => Some(EvidenceProfileV3::LinuxExactV5),
+        "linux-x86_64" => Some(EvidenceProfileV3::LinuxExactV6),
         "nix-x86_64-linux" => Some(EvidenceProfileV3::NixExactV3),
         "windows-x86_64-native" => Some(EvidenceProfileV3::WindowsNativeV6),
         "github-actions" => Some(EvidenceProfileV3::GithubHostedExactV2),
@@ -263,6 +276,7 @@ pub(super) fn prerequisite_profile(id: &str) -> Option<EvidenceProfileV3> {
 pub(super) fn expected_layers(profile: EvidenceProfileV3) -> &'static [ManifestLayerIdV3] {
     match profile {
         EvidenceProfileV3::LinuxExactV5
+        | EvidenceProfileV3::LinuxExactV6
         | EvidenceProfileV3::NixExactV3
         | EvidenceProfileV3::WindowsNativeV6 => &NESTED_LAYERS,
         EvidenceProfileV3::CanonicalPathTrustV2
@@ -319,13 +333,18 @@ pub(super) fn layer_profile(
             "MODES.tsv",
             Modes::TypedPosixModeSizePathTsvV2,
         )),
-        (Profile::LinuxExactV5 | Profile::NixExactV3, Layer::Outer) => Some(nested(
-            Layer::Outer,
-            "OUTER-SHA256SUMS",
-            "OUTER-MODES.tsv",
-            Modes::TypedPosixModeSizePathTsvV2,
-        )),
-        (Profile::LinuxExactV5 | Profile::NixExactV3, Layer::InnerReceipt) => Some(nested(
+        (Profile::LinuxExactV5 | Profile::LinuxExactV6 | Profile::NixExactV3, Layer::Outer) => {
+            Some(nested(
+                Layer::Outer,
+                "OUTER-SHA256SUMS",
+                "OUTER-MODES.tsv",
+                Modes::TypedPosixModeSizePathTsvV2,
+            ))
+        }
+        (
+            Profile::LinuxExactV5 | Profile::LinuxExactV6 | Profile::NixExactV3,
+            Layer::InnerReceipt,
+        ) => Some(nested(
             Layer::InnerReceipt,
             "SHA256SUMS",
             "MODES.tsv",
@@ -370,6 +389,11 @@ pub(super) fn authoritative_artifact(
             "result.txt",
             "hepta_vnext_linux_exact_result_v3",
         )),
+        EvidenceProfileV3::LinuxExactV6 => Some((
+            ManifestLayerIdV3::InnerReceipt,
+            "result.json",
+            LINUX_V6_RESULT_SCHEMA,
+        )),
         EvidenceProfileV3::NixExactV3 => Some((
             ManifestLayerIdV3::InnerReceipt,
             "result.txt",
@@ -411,6 +435,9 @@ pub(super) fn outer_verification_artifact(
             "LOCAL-VERIFICATION.txt",
             "hepta_vnext_linux_local_verification_v3",
         )),
+        EvidenceProfileV3::LinuxExactV6 => {
+            Some(("OUTER-RESULT.json", LINUX_V6_OUTER_RESULT_SCHEMA))
+        }
         EvidenceProfileV3::NixExactV3 => Some((
             "LOCAL-VERIFICATION.txt",
             "hepta_vnext_nix_exact_v3_local_verification_v1",
@@ -1071,6 +1098,80 @@ pub(super) fn required_artifacts(
                 path: "host-executables-postflight.tsv",
             },
         ],
+        EvidenceProfileV3::LinuxExactV6 => &[
+            Artifact {
+                layer: Layer::Outer,
+                path: "OUTER-RESULT.json",
+            },
+            Artifact {
+                layer: Layer::Outer,
+                path: "driver/DRIVER-SHA256SUMS",
+            },
+            Artifact {
+                layer: Layer::Outer,
+                path: "driver/DRIVER-MODES.tsv",
+            },
+            Artifact {
+                layer: Layer::Outer,
+                path: "driver/root-admission-guardian",
+            },
+            Artifact {
+                layer: Layer::Outer,
+                path: "driver/execution-capability-contract.json",
+            },
+            Artifact {
+                layer: Layer::Outer,
+                path: "driver/cgroup-containment-contract.json",
+            },
+            Artifact {
+                layer: Layer::Outer,
+                path: "driver/runner-22-23-contract.json",
+            },
+            Artifact {
+                layer: Layer::Outer,
+                path: "driver/natural-terminal-no-pause-contract.json",
+            },
+            Artifact {
+                layer: Layer::Outer,
+                path: "driver/guardian-event-chain-contract.json",
+            },
+            Artifact {
+                layer: Layer::InnerReceipt,
+                path: "result.json",
+            },
+            Artifact {
+                layer: Layer::InnerReceipt,
+                path: "steps.tsv",
+            },
+            Artifact {
+                layer: Layer::InnerReceipt,
+                path: "guardian/events.tsv",
+            },
+            Artifact {
+                layer: Layer::InnerReceipt,
+                path: "guardian/capability-consumption.json",
+            },
+            Artifact {
+                layer: Layer::InnerReceipt,
+                path: "guardian/cgroup-terminal.json",
+            },
+            Artifact {
+                layer: Layer::InnerReceipt,
+                path: "runner/preflight.json",
+            },
+            Artifact {
+                layer: Layer::InnerReceipt,
+                path: "runner/restore-terminal.json",
+            },
+            Artifact {
+                layer: Layer::InnerReceipt,
+                path: "workload/natural-terminal.json",
+            },
+            Artifact {
+                layer: Layer::InnerReceipt,
+                path: "copy/digest-ack.json",
+            },
+        ],
         EvidenceProfileV3::NixExactV3 => &[
             Artifact {
                 layer: Layer::Outer,
@@ -1517,10 +1618,10 @@ pub(super) fn frozen_github_prepared_profile_identity() -> FrozenPreparedProfile
 }
 
 pub(super) fn frozen_linux_driver_identity() -> Option<(&'static str, &'static str)> {
-    // The v5 acceptance contract and required-artifact roster are compiled, but
-    // the prepared driver still declares WIP_NO_GO/implementation_compatible=false
-    // and has no independently sealed terminal driver identity. Do not invent a
-    // digest here: execution and aggregate admission remain fail-closed.
+    // Independent audits classified both historical Linux V5 and V6 drivers as
+    // permanent HARD_NO_GO. Their typed schemas remain useful negative-test
+    // vocabulary, but no driver identity may be compiled from either lineage.
+    // Execution and aggregate admission therefore stay fail-closed.
     None
 }
 

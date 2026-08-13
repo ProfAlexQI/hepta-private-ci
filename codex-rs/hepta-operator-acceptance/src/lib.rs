@@ -1,6 +1,9 @@
+#![recursion_limit = "256"]
+
 mod ceremony;
 mod durable;
 mod evidence;
+pub mod frozen_tool;
 mod manifest_inventory;
 mod model;
 mod preflight;

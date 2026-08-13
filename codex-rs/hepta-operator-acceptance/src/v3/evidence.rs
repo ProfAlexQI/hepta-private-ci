@@ -28,6 +28,8 @@ use super::model::ArtifactBindingV3;
 use super::model::CandidateBindingV3;
 use super::model::CandidateBundleBindingV3;
 use super::model::EvidenceProfileV3;
+use super::model::LinuxExactV6InnerResultV3;
+use super::model::LinuxExactV6OuterResultV3;
 use super::model::ManifestLayerBindingV3;
 use super::model::ManifestLayerIdV3;
 use super::model::ModeManifestFormatV3;
@@ -113,6 +115,159 @@ pub(super) fn exact_candidate() -> CandidateBindingV3 {
         tree: CANDIDATE_TREE.to_string(),
         upstream_cutoff: UPSTREAM_CUTOFF.to_string(),
     }
+}
+
+fn strict_canonical_contract<T>(bytes: &[u8], label: &str) -> Result<T, AcceptanceError>
+where
+    T: for<'de> serde::Deserialize<'de> + serde::Serialize,
+{
+    let value = super::strict_json::parse(bytes)?;
+    let decoded: T = serde_json::from_value(value)
+        .map_err(|error| invalid(format!("invalid {label}: {error}")))?;
+    if canonical_json(&decoded)? != bytes {
+        return Err(invalid(format!("{label} is not canonical JSON")));
+    }
+    Ok(decoded)
+}
+
+fn validate_linux_v6_contract(
+    inner_bytes: &[u8],
+    outer_bytes: &[u8],
+    candidate: &CandidateBindingV3,
+) -> Result<(LinuxExactV6InnerResultV3, LinuxExactV6OuterResultV3), AcceptanceError> {
+    let inner: LinuxExactV6InnerResultV3 =
+        strict_canonical_contract(inner_bytes, "Linux V6 inner result")?;
+    let outer: LinuxExactV6OuterResultV3 =
+        strict_canonical_contract(outer_bytes, "Linux V6 outer result")?;
+
+    if inner.schema != profiles::LINUX_V6_RESULT_SCHEMA
+        || inner.schema_version != 1
+        || inner.acceptance_profile_revision != 8
+        || inner.driver_revision != 6
+        || inner.status != "PASS"
+        || !inner.qualification
+        || !inner.candidate_execution_started
+        || !inner.candidate_execution_completed
+        || !inner.candidate_pass
+        || inner.candidate_fail
+        || inner.harness_fail
+        || inner.production_changed
+        || inner.refs_changed
+        || inner.automatic_transition
+        || inner.promotion_authority
+        || inner.candidate_head != candidate.head
+        || inner.candidate_tree != candidate.tree
+    {
+        return Err(invalid(
+            "Linux V6 inner result differs from the revision-8 PASS boundary",
+        ));
+    }
+    if inner.root_admission_guardian_schema != profiles::LINUX_V6_ROOT_GUARDIAN_SCHEMA
+        || !inner.root_admission_guardian_active
+        || inner.durable_admission_barrier_root != "/var/lib/hepta-vnext/linux-exact-v6/admission"
+        || inner.durable_admission_barrier_dev == 0
+        || inner.durable_admission_barrier_inode == 0
+        || inner.capability_schema != profiles::LINUX_V6_CAPABILITY_SCHEMA
+        || !lower_hex_shape(&inner.capability_id, 24)
+        || !digest_shape(&inner.capability_digest)
+        || inner.single_use_ledger_schema != profiles::LINUX_V6_LEDGER_SCHEMA
+        || !inner.capability_consumed_once
+        || !inner.guardian_restart_recovery
+    {
+        return Err(invalid(
+            "Linux V6 root guardian or single-use capability binding is invalid",
+        ));
+    }
+    if !inner
+        .candidate_cgroup_path
+        .starts_with("/sys/fs/cgroup/hepta-vnext/linux-exact-v6-")
+        || inner.candidate_cgroup_inode == 0
+        || !inner.candidate_cgroup_non_delegated
+        || !inner.candidate_cgroup_kill_supported
+        || inner.candidate_cgroup_populated_at_release != 0
+    {
+        return Err(invalid("Linux V6 candidate cgroup closure is invalid"));
+    }
+    if inner.runner_ids != profiles::LINUX_V6_RUNNER_IDS
+        || inner.runner_topology != "single_shared_process_group"
+        || !inner.runner_restore_terminal
+        || inner.workload_variant != profiles::LINUX_V6_WORKLOAD_VARIANT
+        || inner.natural_terminal_schema != profiles::LINUX_V6_NATURAL_TERMINAL_SCHEMA
+        || inner.workload_mutation
+        || inner.event_chain_schema != profiles::LINUX_V6_EVENT_CHAIN_SCHEMA
+        || !digest_shape(&inner.event_chain_sha256)
+        || inner.event_count != 14
+        || !inner.copy_ack_before_restore
+        || !inner.restore_before_barrier_release
+        || !inner.barrier_held_until_candidate_empty_and_restore_terminal
+    {
+        return Err(invalid(
+            "Linux V6 runner, natural-terminal workload, or event-chain binding is invalid",
+        ));
+    }
+    let sequence = [
+        inner.barrier_acquired_sequence,
+        inner.capability_consumption_sequence,
+        inner.runner_snapshot_sequence,
+        inner.runner_pause_begin_sequence,
+        inner.runner_pause_end_sequence,
+        inner.candidate_cgroup_created_sequence,
+        inner.candidate_start_sequence,
+        inner.candidate_end_empty_sequence,
+        inner.archive_sealed_sequence,
+        inner.copy_digest_ack_sequence,
+        inner.runner_restore_begin_sequence,
+        inner.runner_restore_end_sequence,
+        inner.workload_observation_end_sequence,
+        inner.barrier_release_sequence,
+    ];
+    if sequence != [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] {
+        return Err(invalid(
+            "Linux V6 guardian event chain is incomplete or out of order",
+        ));
+    }
+
+    if outer.schema != profiles::LINUX_V6_OUTER_RESULT_SCHEMA
+        || outer.schema_version != 1
+        || outer.acceptance_profile_revision != 8
+        || outer.driver_revision != 6
+        || outer.status != "PASS"
+        || !outer.qualification
+        || outer.candidate_head != candidate.head
+        || outer.candidate_tree != candidate.tree
+        || outer.root_admission_guardian_schema != profiles::LINUX_V6_ROOT_GUARDIAN_SCHEMA
+        || outer.capability_id != inner.capability_id
+        || outer.capability_digest != inner.capability_digest
+        || outer.event_chain_sha256 != inner.event_chain_sha256
+        || outer.runner_ids != profiles::LINUX_V6_RUNNER_IDS
+        || outer.workload_variant != profiles::LINUX_V6_WORKLOAD_VARIANT
+        || !outer.copy_ack_before_restore
+        || !outer.restore_before_barrier_release
+        || !outer.barrier_held_until_candidate_empty_and_restore_terminal
+        || !outer.local_remote_tracking_only
+        || outer.production_changed
+        || outer.refs_changed
+        || outer.automatic_transition
+        || outer.promotion_authority
+        || outer.inner_result_sha256 != sha256(inner_bytes)
+        || !digest_shape(&outer.inner_manifest_sha256)
+        || !digest_shape(&outer.inner_mode_manifest_sha256)
+        || !digest_shape(&outer.copy_digest_ack_sha256)
+    {
+        return Err(invalid(
+            "Linux V6 outer result differs from the revision-8 tracking boundary",
+        ));
+    }
+    Ok((inner, outer))
+}
+
+#[cfg(test)]
+pub(super) fn validate_linux_v6_contract_for_test(
+    inner_bytes: &[u8],
+    outer_bytes: &[u8],
+    candidate: &CandidateBindingV3,
+) -> Result<(), AcceptanceError> {
+    validate_linux_v6_contract(inner_bytes, outer_bytes, candidate).map(|_| ())
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -572,6 +727,7 @@ pub(super) fn validate_receipt_for_test(
         }
         EvidenceProfileV3::MacExactV6
         | EvidenceProfileV3::LinuxExactV5
+        | EvidenceProfileV3::LinuxExactV6
         | EvidenceProfileV3::NixExactV3
         | EvidenceProfileV3::WindowsNativeV6 => {
             observe_gate(binding.profile, &verified, candidate)?;
@@ -1524,11 +1680,47 @@ fn observe_gate(
     match profile {
         EvidenceProfileV3::MacExactV6 => observe_mac(receipt, candidate),
         EvidenceProfileV3::LinuxExactV5 => observe_linux(receipt, candidate),
+        EvidenceProfileV3::LinuxExactV6 => observe_linux_v6(receipt, candidate),
         EvidenceProfileV3::NixExactV3 => observe_nix(receipt, candidate),
         EvidenceProfileV3::WindowsNativeV6 => observe_windows(receipt, candidate),
         EvidenceProfileV3::GithubHostedExactV2 => observe_github_hosted(receipt, candidate),
         _ => Err(invalid("profile is not a compiled platform gate")),
     }
+}
+
+fn observe_linux_v6(
+    receipt: &VerifiedReceipt,
+    candidate: &CandidateBindingV3,
+) -> Result<ObservedGateV3, AcceptanceError> {
+    let inner_bytes = receipt
+        .layer(ManifestLayerIdV3::InnerReceipt)?
+        .bytes("result.json")?;
+    let outer_bytes = receipt
+        .layer(ManifestLayerIdV3::Outer)?
+        .bytes("OUTER-RESULT.json")?;
+    let (inner, _) = validate_linux_v6_contract(&inner_bytes, &outer_bytes, candidate)?;
+    let steps = step_tsv(
+        receipt.layer(ManifestLayerIdV3::InnerReceipt)?,
+        &inner.status,
+        &profiles::LINUX_STEPS,
+        StepPolicy::PrefixFirstFailure,
+    )?;
+    if steps.count() != profiles::LINUX_STEPS.len() as u64 {
+        return Err(invalid(
+            "Linux V6 PASS does not bind every compiled candidate step",
+        ));
+    }
+    Ok(ObservedGateV3 {
+        candidate_executed: inner.candidate_execution_started,
+        candidate_failure: inner.candidate_fail,
+        executed_steps: steps.count(),
+        harness_failure: inner.harness_fail,
+        pass: inner.candidate_pass,
+        production_changed: Some(inner.production_changed),
+        qualification: inner.qualification,
+        refs_changed: Some(inner.refs_changed),
+        status: inner.status,
+    })
 }
 
 fn observe_mac(

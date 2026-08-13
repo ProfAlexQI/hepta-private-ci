@@ -65,3 +65,15 @@ rust_binary(
         "@crates//:serde_json",
     ],
 )
+
+rust_binary(
+    name = "hepta-operator-acceptance-freeze-tool-v1",
+    srcs = ["src/bin/hepta-operator-acceptance-freeze-tool-v1.rs"],
+    crate_root = "src/bin/hepta-operator-acceptance-freeze-tool-v1.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":hepta-operator-acceptance-lib",
+        "@crates//:serde_json",
+    ],
+)

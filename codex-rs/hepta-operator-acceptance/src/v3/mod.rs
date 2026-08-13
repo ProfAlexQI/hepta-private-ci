@@ -19,6 +19,8 @@ pub use model::ArtifactBindingV3;
 pub use model::CandidateBindingV3;
 pub use model::CandidateBundleBindingV3;
 pub use model::EvidenceProfileV3;
+pub use model::LinuxExactV6InnerResultV3;
+pub use model::LinuxExactV6OuterResultV3;
 pub use model::ManifestLayerBindingV3;
 pub use model::ManifestLayerIdV3;
 pub use model::ManifestRootKindV3;
@@ -98,6 +100,15 @@ fn build_and_seal_v3(
 
 pub fn run_cli_v3(arguments: Vec<OsString>) -> Result<String, String> {
     const USAGE: &str = "usage:\n  hepta-operator-acceptance-v3 build-plan       <canonical-build-spec.json> <expected-build-spec-sha256> <new-aggregate-root>\n  hepta-operator-acceptance-v3 build            --execute <canonical-build-spec.json> <expected-build-spec-sha256> <new-aggregate-root>\n  hepta-operator-acceptance-v3 verify-aggregate <aggregate-root> <externally-pinned-SHA256SUMS-sha256>\n  hepta-operator-acceptance-v3 assess          <aggregate-root> <externally-pinned-SHA256SUMS-sha256>";
+
+    if arguments.len() == 2
+        && matches!(
+            arguments.get(1).and_then(|value| value.to_str()),
+            Some("--help" | "-h" | "help")
+        )
+    {
+        return Ok(USAGE.to_string());
+    }
 
     let command = arguments
         .get(1)

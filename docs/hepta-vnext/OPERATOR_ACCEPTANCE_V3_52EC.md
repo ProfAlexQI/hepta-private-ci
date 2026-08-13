@@ -18,12 +18,13 @@ The replayed 09e9 V2 module, binary, tests, and document exist only as an
 auditable implementation provenance layer. Their formal environment, receipt
 roots, receipt digests, candidate topology, namespace, and ceremony commands
 are explicitly inapplicable to 52ec and must not be invoked for this candidate.
-V3 revision 7 compiles every admissible final PASS receipt identity: canonical
+V3 revision 8 preserves every revision-7 admissible final PASS receipt
+identity: canonical
 root, outer and (where applicable) inner manifest digest and entry count, and
 mode/type inventory digest. A build spec may repeat those identities but can
 never choose or replace them. An uncompiled identity fails before the tool
 reads a spec-selected receipt root. The exact profile-set identifier is
-`hepta_vnext_52ec_evidence_profiles_v3_revision_7`.
+`hepta_vnext_52ec_evidence_profiles_v3_revision_8`.
 
 At this revision, canonical path trust attempt 4, the upstream-cutoff
 observation, and independently audited provenance-preserving Mac, portable,
@@ -48,10 +49,10 @@ V3 implements only:
 It intentionally has no command that creates an aggregate operator challenge,
 detached signature, nonce claim, acceptance receipt, trust policy, Git ref,
 production transition, or GitHub run, and it cannot execute any of them. It
-never reads a private key. Evidence validation does cryptographically verify
-the separately supplied, narrowly scoped Linux V5 execution challenge,
-signature, authorization, and trust-policy root; those inputs authorize only
-the qualification lifecycle described below and grant no aggregate ceremony
+never reads a private key. Historical Linux V5 challenge, signature,
+authorization, and trust-policy parsing remains available for negative tests,
+but the profile is permanently unpinned: none of those inputs can authorize an
+execution or reach receipt validation, and they grant no aggregate ceremony
 authority.
 
 Every aggregate packet carries `automatic_transition=false` and an entirely
@@ -126,7 +127,21 @@ symlinks, hardlinks, special files, changed metadata, digest drift, duplicate
 roots, and `SUPERSEDED.txt` fail closed. Strict JSON parsing rejects duplicate
 keys; booleans, integers, and status literals are never coerced.
 
-The Linux V5 profile independently replays the sealed resource-watchdog log;
+The Linux V5 profile below is retained as a permanent historical NO-GO and its
+frozen identity remains `None`; revision 8 does not relax or repurpose it. The
+active Linux gate selects a distinct `LinuxExactV6` name only as an explicit
+closed placeholder. Independent review also classified the corresponding V6
+driver as permanent `HARD_NO_GO`, so V6 has no frozen driver or receipt
+identity and cannot accept a receipt. Its typed inner/outer schemas preserve
+the proposed vocabulary for a root-owned guardian, capability ledger, cgroup
+closure, exact runner set, terminal-workload observation, copy acknowledgement,
+restore ordering, and an event chain. Parsing those claims is deliberately not
+treated as proof that the unsafe historical driver implemented them. Both V5
+and V6 therefore fail with `PROFILE_IDENTITY_UNPINNED` before any proposed
+receipt is read.
+
+The historical Linux V5 profile independently replays the sealed
+resource-watchdog log;
 it does not trust the driver's PASS booleans or digest claim alone. The inner
 and outer results must exactly cross-bind watchdog start/stop, candidate-window
 start/completion, row count, first/last observations, interval, event absence,
@@ -140,23 +155,26 @@ candidate-completion row must bind the full candidate window and their row
 digests. The filter and replay verifier must be byte-identical between the
 sealed driver and receipt.
 
-V5 also compiles the complete lifecycle semantics for a future final receipt:
+V5 also preserves the historical lifecycle vocabulary that was proposed for a
+future final receipt:
 a Nix-first binding; a frozen acceptance contract; fresh operator authority
 and execution-authorization SSHSIGs; exact runner and independent-workload
 freeze/restore inventories; a root-owned never-unlinked host-lock profile;
 inner lock evidence; and byte-stable legacy production observations before
 remote contact and after completion. The driver and final receipt identities
-remain deliberately unpinned because the current prepared driver declares
-`WIP_NO_GO`, lacks its separately sealed revision-7 trust-policy root, and has
-not executed.
+remain deliberately unpinned because the prepared driver is a permanent
+`HARD_NO_GO`, lacks a separately sealed revision-7 trust-policy root, and must
+not execute.
 
-### Linux V5 revision-7 trust boundary
+### Historical Linux V5 revision-7 trust boundary
 
-Revision 7 may reuse the existing public Ed25519 signer, but it does not reuse
-the old acceptance-V1 policy as Linux execution authority. A future separately
-sealed trust-policy root must contain the exact canonical JSON below and the
-exact one-line `allowed_signers` payload compiled by the verifier. Unknown,
-missing, differently typed, or differently serialized fields fail closed.
+The retained revision-7 contract described use of the existing public Ed25519
+signer without reusing the old acceptance-V1 policy as Linux execution
+authority. The proposed, never-admitted trust-policy root would have required
+the exact canonical JSON below and the exact one-line `allowed_signers` payload
+compiled by the verifier. Unknown, missing, differently typed, or differently
+serialized fields fail closed, but satisfying this historical parser does not
+make V5 executable or admissible.
 
 ```json
 {"acceptance_profile_revision":7,"allowed_signers_sha256":"8c87ea612c4c37c8a0c13a1e4bd04d38bcbde49aeaa313e3d181cbecf9eb588d","authorization_scope":"single_linux_exact_v5_direct_launch_runner_and_independent_workload_lifecycle","authorized_action":"linux_exact_v5_execute_runner_and_workload_freeze_restore","candidate_head":"52ec4b3868fc5272e19ed516d00e11e44c549ea4","candidate_nix_process_pause_authority":false,"candidate_tree":"247e9e7cfcb41dbfcc8c5b3b531b1e1407c0bd5d","challenge_maximum_lifetime_seconds":900,"challenge_schema":"hepta_vnext_linux_operator_challenge_v2","delete_authority":false,"driver_revision":5,"execution_authorization_schema":"hepta_vnext_linux_execution_authorization_v1","fresh_authorization_nonce_required":true,"fresh_challenge_required":true,"independent_workload_pause_restore_authority":true,"key_fingerprint":"SHA256:+eNqmF4lJYlL0besra7M4BSftivEiFsQaTzFkKZKE2E","nix_container_volume_source_mutation_authority":false,"parent_trust_policy_sha256":"7aa71fe6a56a3c5e2bb091bc64e18f2a48f360451b42ad59fb3d7882305f5a49","principal":"qianqi@hepta-operator","production_authority":false,"promotion_authority":false,"qualification_host":"desktop-ts","runner_pause_restore_authority":true,"schema":"hepta_vnext_linux_operator_trust_policy_v7","schema_version":1,"signature_algorithm":"sshsig-ed25519","signature_namespace":"hepta-linux-exact-v5-execution","single_use":true,"trust_policy_scope":"candidate_52ec_linux_v5_runner_and_independent_workload_lifecycle_only","trust_root_id":"qianqi-existing-github-ed25519-2026","trust_root_revision":2,"unregister_authority":false}
@@ -166,12 +184,14 @@ missing, differently typed, or differently serialized fields fail closed.
 qianqi@hepta-operator ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBzqTTB5U+BgfaVDDRmvdMrdRy/Qu9HTiNTsfG8MMX1b
 ```
 
-The detached signatures authorize one fresh, nonce-bound direct Linux V5
-qualification on `desktop-ts`, including pause-and-restore of the self-hosted
-runner and independently owned competing workloads. They explicitly do not
-authorize pausing candidate Nix work, mutating Nix containers, volumes, or
-sources, unregistering a runner, deleting data, changing production, or
-promoting refs. The verifier checks the principal, public-key fingerprint,
+The historical detached-signature format was scoped to one fresh, nonce-bound
+direct Linux V5 qualification on `desktop-ts`, including pause-and-restore of
+the self-hosted runner and independently owned competing workloads. Because V5
+is permanently `HARD_NO_GO`, no such signature is accepted as execution
+authority. Its format explicitly excludes pausing candidate Nix work, mutating
+Nix containers, volumes, or sources, unregistering a runner, deleting data,
+changing production, or promoting refs. The historical parser checks the
+principal, public-key fingerprint,
 allowed-signers digest, SSHSIG namespace, action, scope, 900-second maximum
 lifetime, single-use challenge, and all closed authority bits
 cryptographically; a policy file or claimed PASS boolean cannot substitute.
@@ -215,7 +235,8 @@ projected into a new, one-shot sibling wrapper, subject to all of these rules:
   entry and only their necessary parent directories. Unmapped payloads are
   rejected even when a wrapper is freshly self-sealed.
 
-Revision 7 treats additional sealed provenance manifests (for example a
+Revision 8 retains revision 7's treatment of additional sealed provenance
+manifests (for example a
 historical `DRIVER-MODES.tsv`) as ordinary evidence, not as an alternative
 authority inventory. It still requires every compiled canonical inventory path
 to be present and digest-bound. The verifier parses the projection map, checks
@@ -269,6 +290,24 @@ final source commit and tree, the complete source diff (if any), the built
 binary SHA-256, and the absolute frozen invocation path. Runtime environment
 checks do not make a running binary self-authenticating; that external tool
 identity is a prerequisite for trusting aggregate output.
+
+Revision 8's frozen-tool publisher uses long-lived parent/root directory
+descriptors; descriptor-relative `openat`/`fstatat` with no-follow checks;
+atomic `renameatx_np(RENAME_EXCL)` or `renameat2(RENAME_NOREPLACE)`; parent and
+tree fsync; and a post-publication same-inode replay. Its joint fixed point
+seals `SHA256SUMS`, four-column `MODES.tsv`, nine-column `METADATA.tsv`
+(`type,dev,inode,uid,gid,nlink,mode,size,path`), and per-node `ACL.tsv` and
+`XATTRS.tsv`. Root, directories, and files are covered; symlinks, hardlinks,
+special nodes, ACLs, xattrs, unsafe paths, inode swaps, and replacement fail
+closed. A no-replace sibling `PUBLICATION-RESULT` records all five inventory
+digests/row counts plus publisher, source, acceptance binary, parent/root
+inode, rename, and pre/post bindings.
+
+These artifacts are only tamper-evident when the sibling publication-result
+digest is pinned outside the artifact tree. A self-contained manifest cannot
+authenticate its own replacement. Likewise, any recorded Git relationship is
+strictly `local_remote_tracking_only`; it is not proof of a remote commit,
+remote ref, push, hosted run, or repository authority.
 
 `build-plan` verifies the whole evidence graph and prints the exact files that
 would be created. It does not create the output root. Mutation requires the

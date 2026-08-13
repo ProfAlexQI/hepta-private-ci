@@ -34,6 +34,7 @@ use super::evidence::valid_utc_timestamp_for_test;
 use super::evidence::validate_github_prepared_profile_for_test;
 use super::evidence::validate_kv_execution_fields;
 use super::evidence::validate_linux_v5_trust_policy_for_test;
+use super::evidence::validate_linux_v6_contract_for_test;
 use super::evidence::validate_output_relative_name;
 use super::evidence::validate_receipt_for_test;
 use super::evidence::validate_reemitted_wrapper_for_test;
@@ -73,6 +74,10 @@ fn compiled_gate_and_prerequisite_profiles_are_exact() {
         profiles::gate_profile("github-actions"),
         Some(EvidenceProfileV3::GithubHostedExactV2)
     );
+    assert_eq!(
+        profiles::gate_profile("linux-x86_64"),
+        Some(EvidenceProfileV3::LinuxExactV6)
+    );
     assert_eq!(profiles::gate_profile("shadow-mac"), None);
     assert_eq!(
         profiles::prerequisite_profile("portable-inputs"),
@@ -85,16 +90,183 @@ fn compiled_gate_and_prerequisite_profiles_are_exact() {
     );
     assert!(
         profiles::frozen_linux_driver_identity().is_none(),
-        "Linux v5 must stay programmatically unpinned until its WIP contract becomes compatible"
+        "Linux v5 and v6 must remain permanent programmatic no-go profiles"
+    );
+    assert_eq!(
+        profiles::PROFILE_SET,
+        "hepta_vnext_52ec_evidence_profiles_v3_revision_8"
     );
     for profile in [
         EvidenceProfileV3::GithubHostedExactV2,
         EvidenceProfileV3::LinuxExactV5,
+        EvidenceProfileV3::LinuxExactV6,
         EvidenceProfileV3::WindowsNativeV6,
     ] {
         assert!(
             profiles::frozen_receipt_identity(profile).is_none(),
             "unfinished platform receipts must not acquire placeholder identities"
+        );
+    }
+}
+
+#[test]
+fn historical_linux_v5_and_v6_receipts_are_both_formally_inadmissible() {
+    let candidate = exact_candidate();
+    let receipts_parent = Path::new("/definitely-not-a-receipt-parent");
+    for profile in [
+        EvidenceProfileV3::LinuxExactV5,
+        EvidenceProfileV3::LinuxExactV6,
+    ] {
+        assert!(profiles::is_unpinned(profile));
+        let binding = ReceiptEvidenceBindingV3 {
+            manifest_layers: Vec::new(),
+            profile,
+            provenance: ReceiptProvenanceV3::Direct,
+            receipt_root: "/forged/pass-shaped-linux-receipt".to_string(),
+            required_artifacts: Vec::new(),
+        };
+        let error = validate_receipt_for_test(&binding, receipts_parent, &candidate)
+            .expect_err("an unpinned historical Linux receipt must fail before it is read");
+        assert!(error.to_string().contains("PROFILE_IDENTITY_UNPINNED"));
+    }
+}
+
+fn linux_v6_contract_fixture() -> (serde_json::Value, serde_json::Value) {
+    let candidate = exact_candidate();
+    let inner = json!({
+        "acceptance_profile_revision": 8,
+        "archive_sealed_sequence": 9,
+        "automatic_transition": false,
+        "barrier_acquired_sequence": 1,
+        "barrier_held_until_candidate_empty_and_restore_terminal": true,
+        "barrier_release_sequence": 14,
+        "candidate_cgroup_created_sequence": 6,
+        "candidate_cgroup_inode": 42,
+        "candidate_cgroup_kill_supported": true,
+        "candidate_cgroup_non_delegated": true,
+        "candidate_cgroup_path": "/sys/fs/cgroup/hepta-vnext/linux-exact-v6-aabbccddeeff",
+        "candidate_cgroup_populated_at_release": 0,
+        "candidate_end_empty_sequence": 8,
+        "candidate_execution_completed": true,
+        "candidate_execution_started": true,
+        "candidate_fail": false,
+        "candidate_head": candidate.head,
+        "candidate_pass": true,
+        "candidate_start_sequence": 7,
+        "candidate_tree": candidate.tree,
+        "capability_consumed_once": true,
+        "capability_consumption_sequence": 2,
+        "capability_digest": "1".repeat(64),
+        "capability_id": "aabbccddeeff001122334455",
+        "capability_schema": profiles::LINUX_V6_CAPABILITY_SCHEMA,
+        "copy_ack_before_restore": true,
+        "copy_digest_ack_sequence": 10,
+        "driver_revision": 6,
+        "durable_admission_barrier_dev": 7,
+        "durable_admission_barrier_inode": 11,
+        "durable_admission_barrier_root": "/var/lib/hepta-vnext/linux-exact-v6/admission",
+        "event_chain_schema": profiles::LINUX_V6_EVENT_CHAIN_SCHEMA,
+        "event_chain_sha256": "2".repeat(64),
+        "event_count": 14,
+        "guardian_restart_recovery": true,
+        "harness_fail": false,
+        "natural_terminal_schema": profiles::LINUX_V6_NATURAL_TERMINAL_SCHEMA,
+        "production_changed": false,
+        "promotion_authority": false,
+        "qualification": true,
+        "refs_changed": false,
+        "restore_before_barrier_release": true,
+        "root_admission_guardian_active": true,
+        "root_admission_guardian_schema": profiles::LINUX_V6_ROOT_GUARDIAN_SCHEMA,
+        "runner_ids": profiles::LINUX_V6_RUNNER_IDS,
+        "runner_pause_begin_sequence": 4,
+        "runner_pause_end_sequence": 5,
+        "runner_restore_begin_sequence": 11,
+        "runner_restore_end_sequence": 12,
+        "runner_restore_terminal": true,
+        "runner_snapshot_sequence": 3,
+        "runner_topology": "single_shared_process_group",
+        "schema": profiles::LINUX_V6_RESULT_SCHEMA,
+        "schema_version": 1,
+        "single_use_ledger_schema": profiles::LINUX_V6_LEDGER_SCHEMA,
+        "status": "PASS",
+        "workload_mutation": false,
+        "workload_observation_end_sequence": 13,
+        "workload_variant": profiles::LINUX_V6_WORKLOAD_VARIANT
+    });
+    let inner_bytes = canonical_json(&inner).expect("canonical inner fixture");
+    let outer = json!({
+        "acceptance_profile_revision": 8,
+        "automatic_transition": false,
+        "barrier_held_until_candidate_empty_and_restore_terminal": true,
+        "candidate_head": candidate.head,
+        "candidate_tree": candidate.tree,
+        "capability_digest": "1".repeat(64),
+        "capability_id": "aabbccddeeff001122334455",
+        "copy_ack_before_restore": true,
+        "copy_digest_ack_sha256": "3".repeat(64),
+        "driver_revision": 6,
+        "event_chain_sha256": "2".repeat(64),
+        "inner_manifest_sha256": "4".repeat(64),
+        "inner_mode_manifest_sha256": "5".repeat(64),
+        "inner_result_sha256": sha256(&inner_bytes),
+        "local_remote_tracking_only": true,
+        "production_changed": false,
+        "promotion_authority": false,
+        "qualification": true,
+        "refs_changed": false,
+        "restore_before_barrier_release": true,
+        "root_admission_guardian_schema": profiles::LINUX_V6_ROOT_GUARDIAN_SCHEMA,
+        "runner_ids": profiles::LINUX_V6_RUNNER_IDS,
+        "schema": profiles::LINUX_V6_OUTER_RESULT_SCHEMA,
+        "schema_version": 1,
+        "status": "PASS",
+        "workload_variant": profiles::LINUX_V6_WORKLOAD_VARIANT
+    });
+    (inner, outer)
+}
+
+#[test]
+fn linux_v6_revision_8_contract_is_exact_and_fail_closed() {
+    let candidate = exact_candidate();
+    let (inner, outer) = linux_v6_contract_fixture();
+    let inner_bytes = canonical_json(&inner).expect("canonical inner");
+    let outer_bytes = canonical_json(&outer).expect("canonical outer");
+    validate_linux_v6_contract_for_test(&inner_bytes, &outer_bytes, &candidate)
+        .expect("exact Linux V6 HARD_NO_GO semantic vocabulary");
+
+    let mut cases = Vec::new();
+    let mut wrong_runners = inner.clone();
+    wrong_runners["runner_ids"] = json!([22]);
+    cases.push((wrong_runners, outer.clone()));
+    let mut replayable = inner.clone();
+    replayable["capability_consumed_once"] = json!(false);
+    cases.push((replayable, outer.clone()));
+    let mut populated = inner.clone();
+    populated["candidate_cgroup_populated_at_release"] = json!(1);
+    cases.push((populated, outer.clone()));
+    let mut reordered = inner.clone();
+    reordered["copy_digest_ack_sequence"] = json!(12);
+    cases.push((reordered, outer.clone()));
+    let mut mutated_workload = inner.clone();
+    mutated_workload["workload_mutation"] = json!(true);
+    cases.push((mutated_workload, outer.clone()));
+    let mut remote_claim = outer.clone();
+    remote_claim["remote_claim"] = json!(true);
+    cases.push((inner.clone(), remote_claim));
+    let mut broad_tracking = outer;
+    broad_tracking["local_remote_tracking_only"] = json!(false);
+    cases.push((inner, broad_tracking));
+
+    for (bad_inner, mut bad_outer) in cases {
+        let bad_inner = canonical_json(&bad_inner).expect("canonical negative inner");
+        if bad_outer.get("inner_result_sha256").is_some() {
+            bad_outer["inner_result_sha256"] = json!(sha256(&bad_inner));
+        }
+        let bad_outer = canonical_json(&bad_outer).expect("canonical negative outer");
+        assert!(
+            validate_linux_v6_contract_for_test(&bad_inner, &bad_outer, &candidate).is_err(),
+            "every Linux V6 contract deviation must fail closed"
         );
     }
 }
@@ -158,6 +330,7 @@ fn linux_v5_trust_policy_compiles_only_the_narrow_existing_public_signer_scope()
 fn nested_profiles_separate_outer_relay_from_inner_authority() {
     for profile in [
         EvidenceProfileV3::LinuxExactV5,
+        EvidenceProfileV3::LinuxExactV6,
         EvidenceProfileV3::NixExactV3,
         EvidenceProfileV3::WindowsNativeV6,
     ] {
@@ -210,7 +383,7 @@ fn github_v2_semantics_are_compiled_but_final_identity_stays_unpinned() {
         candidate: candidate.clone(),
         platform_gates: vec![
             gate("macos-aarch64", EvidenceProfileV3::MacExactV6),
-            gate("linux-x86_64", EvidenceProfileV3::LinuxExactV5),
+            gate("linux-x86_64", EvidenceProfileV3::LinuxExactV6),
             gate("nix-x86_64-linux", EvidenceProfileV3::NixExactV3),
             gate("windows-x86_64-native", EvidenceProfileV3::WindowsNativeV6),
             gate("github-actions", EvidenceProfileV3::GithubHostedExactV2),
@@ -291,7 +464,7 @@ fn formal_aggregate_admits_only_terminal_pass_platform_receipts() {
 
 #[cfg(unix)]
 #[test]
-fn minimal_synthetic_receipt_graph_cannot_qualify_revision_7() {
+fn minimal_synthetic_receipt_graph_cannot_qualify_revision_8() {
     let temporary = private_tempdir();
     let receipts = temporary.path().join("receipts");
     fs::create_dir(&receipts).expect("receipts");
@@ -318,7 +491,7 @@ fn minimal_synthetic_receipt_graph_cannot_qualify_revision_7() {
         candidate: candidate.clone(),
         platform_gates: vec![
             gate("macos-aarch64", EvidenceProfileV3::MacExactV6),
-            gate("linux-x86_64", EvidenceProfileV3::LinuxExactV5),
+            gate("linux-x86_64", EvidenceProfileV3::LinuxExactV6),
             gate("nix-x86_64-linux", EvidenceProfileV3::NixExactV3),
             gate("windows-x86_64-native", EvidenceProfileV3::WindowsNativeV6),
             gate("github-actions", EvidenceProfileV3::GithubHostedExactV2),
@@ -1357,7 +1530,7 @@ fn crash_before_publish_leaves_only_unaccepted_incoming_tree() {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[test]
-fn revision_7_builder_plan_and_execute_fail_closed_on_blockers() {
+fn revision_8_builder_plan_and_execute_fail_closed_on_blockers() {
     let temporary = private_tempdir();
     let receipts = temporary.path().join("receipts");
     fs::create_dir(&receipts).expect("receipts");
@@ -1432,7 +1605,7 @@ fn revision_7_builder_plan_and_execute_fail_closed_on_blockers() {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[test]
-fn revision_7_builder_rejects_source_drift_before_publication() {
+fn revision_8_builder_rejects_source_drift_before_publication() {
     use std::os::unix::fs::PermissionsExt;
 
     let temporary = private_tempdir();
@@ -1475,7 +1648,7 @@ fn revision_7_builder_rejects_source_drift_before_publication() {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[test]
-fn revision_7_ready_builder_is_one_shot_and_tamper_evident() {
+fn revision_8_ready_builder_is_one_shot_and_tamper_evident() {
     use std::os::unix::fs::PermissionsExt;
 
     let temporary = private_tempdir();
@@ -1569,6 +1742,27 @@ fn cli_mutator_requires_exact_build_execute_shape() {
         ])
         .is_err()
     );
+}
+
+#[test]
+fn cli_help_is_the_only_non_command_success_shape() {
+    let program = std::ffi::OsString::from("hepta-operator-acceptance-v3");
+    for help in ["--help", "-h", "help"] {
+        let usage = run_cli_v3(vec![program.clone(), help.into()]).expect("exact help shape");
+        assert!(usage.starts_with("usage:\n"));
+        assert!(usage.contains("build            --execute"));
+    }
+
+    for invalid in [
+        vec![program.clone()],
+        vec![program.clone(), "unknown".into()],
+        vec![program.clone(), "--help".into(), "extra".into()],
+        vec![program.clone(), "-h".into(), "extra".into()],
+        vec![program, "help".into(), "extra".into()],
+    ] {
+        let error = run_cli_v3(invalid).expect_err("invalid CLI shape must fail");
+        assert!(error.starts_with("usage:\n"));
+    }
 }
 
 #[test]
