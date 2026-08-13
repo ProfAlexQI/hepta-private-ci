@@ -20,6 +20,11 @@ name = "hepta-operator-acceptance-v2"
 path = "src/bin/hepta-operator-acceptance-v2.rs"
 test = false
 
+[[bin]]
+name = "hepta-operator-acceptance-v3"
+path = "src/bin/hepta-operator-acceptance-v3.rs"
+test = false
+
 [lints]
 workspace = true
 

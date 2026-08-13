@@ -247,15 +247,15 @@ fn validate_platform_receipts(
         let root = Path::new(&gate.receipt.receipt_root);
         validate_receipt_root(&gate.gate, root)?;
         match gate.gate.as_str() {
-            "macos-aarch64"
-                if gate.receipt.manifest_sha256 != MAC_RECEIPT_MANIFEST_SHA256 =>
-            {
-                return Err(invalid("macOS receipt manifest differs from its source pin"));
+            "macos-aarch64" if gate.receipt.manifest_sha256 != MAC_RECEIPT_MANIFEST_SHA256 => {
+                return Err(invalid(
+                    "macOS receipt manifest differs from its source pin",
+                ));
             }
-            "github-actions"
-                if gate.receipt.manifest_sha256 != GITHUB_RECEIPT_MANIFEST_SHA256 =>
-            {
-                return Err(invalid("GitHub receipt manifest differs from its source pin"));
+            "github-actions" if gate.receipt.manifest_sha256 != GITHUB_RECEIPT_MANIFEST_SHA256 => {
+                return Err(invalid(
+                    "GitHub receipt manifest differs from its source pin",
+                ));
             }
             _ => {}
         }

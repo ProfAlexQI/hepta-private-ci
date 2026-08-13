@@ -33,9 +33,19 @@ impl VerifiedManifest {
         expected_sha256: &str,
         expected_entries: usize,
     ) -> Result<Self, AcceptanceError> {
-        let verified = Self::load_digest_pinned(root, expected_sha256)?;
+        Self::load_named(root, "SHA256SUMS", expected_sha256, expected_entries)
+    }
+
+    pub(crate) fn load_named(
+        root: &Path,
+        manifest_relative_path: &str,
+        expected_sha256: &str,
+        expected_entries: usize,
+    ) -> Result<Self, AcceptanceError> {
+        let verified =
+            Self::load_named_digest_pinned(root, manifest_relative_path, expected_sha256)?;
         if verified.entries.len() != expected_entries {
-            return Err(invalid("SHA256SUMS entry count differs from its pin"));
+            return Err(invalid("hash manifest entry count differs from its pin"));
         }
         Ok(verified)
     }
@@ -44,20 +54,29 @@ impl VerifiedManifest {
         root: &Path,
         expected_sha256: &str,
     ) -> Result<Self, AcceptanceError> {
+        Self::load_named_digest_pinned(root, "SHA256SUMS", expected_sha256)
+    }
+
+    pub(crate) fn load_named_digest_pinned(
+        root: &Path,
+        manifest_relative_path: &str,
+        expected_sha256: &str,
+    ) -> Result<Self, AcceptanceError> {
+        validate_relative_path(manifest_relative_path)?;
         let root = secure_root(root, "evidence root")?;
-        let sums_path = root.join("SHA256SUMS");
+        let sums_path = root.join(manifest_relative_path);
         let sums = secure_read(&sums_path, MAX_SMALL_FILE_BYTES)?;
         if sha256(&sums) != expected_sha256 {
-            return Err(invalid("SHA256SUMS differs from its frozen digest"));
+            return Err(invalid("hash manifest differs from its frozen digest"));
         }
         let parsed = parse_manifest(&sums)?;
         let actual = inventory(&root)?;
         let expected = parsed.keys().cloned().collect::<BTreeSet<_>>();
         let mut actual_paths = actual.files.keys().cloned().collect::<BTreeSet<_>>();
-        actual_paths.remove("SHA256SUMS");
+        actual_paths.remove(manifest_relative_path);
         if actual_paths != expected {
             return Err(invalid(
-                "evidence inventory differs from the exact SHA256SUMS paths",
+                "evidence inventory differs from the exact hash-manifest paths",
             ));
         }
         let mut entries = BTreeMap::new();
@@ -83,7 +102,9 @@ impl VerifiedManifest {
             ));
         }
         if sha256(&secure_read(&sums_path, MAX_SMALL_FILE_BYTES)?) != expected_sha256 {
-            return Err(invalid("SHA256SUMS changed during evidence verification"));
+            return Err(invalid(
+                "hash manifest changed during evidence verification",
+            ));
         }
         Ok(Self { entries, root })
     }
@@ -129,6 +150,10 @@ impl VerifiedManifest {
 
     pub(crate) fn entry(&self, relative: &str) -> Option<&ManifestEntry> {
         self.entries.get(relative)
+    }
+
+    pub(crate) fn entry_paths(&self) -> impl Iterator<Item = &str> {
+        self.entries.keys().map(String::as_str)
     }
 
     pub(crate) fn require_hash(
@@ -263,7 +288,7 @@ fn metadata_snapshot(metadata: &std::fs::Metadata) -> String {
     }
 }
 
-fn validate_relative_path(value: &str) -> Result<(), AcceptanceError> {
+pub(crate) fn validate_relative_path(value: &str) -> Result<(), AcceptanceError> {
     if value.is_empty() || value.contains('\\') || value.contains('\0') {
         return Err(invalid("manifest path is empty or uses a forbidden byte"));
     }
