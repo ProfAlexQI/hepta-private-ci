@@ -492,7 +492,7 @@ fn verify_row_mac(
         .with_context(|| format!("{row_kind} keyed integrity verification failed"))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn protect_row(key: &IntegrityKey, payload: &[u8]) -> Result<String> {
     let mut mac =
         HmacSha256::new_from_slice(key.as_ref()).context("initialize durable integrity HMAC")?;
