@@ -168,48 +168,74 @@ impl TrustAnchor {
         statement: &[u8],
         signature_bytes: &[u8],
     ) -> Result<VerifiedSignature, AcceptanceError> {
-        if signature_bytes.len() > MAX_SIGNATURE_BYTES {
-            return Err(invalid("detached signature exceeds its read bound"));
-        }
-        if !signature_bytes.starts_with(b"-----BEGIN SSH SIGNATURE-----\n")
-            || !signature_bytes.ends_with(b"-----END SSH SIGNATURE-----\n")
-        {
-            return Err(invalid(
-                "detached signature is not an OpenSSH SSHSIG envelope",
-            ));
-        }
-
-        let allowed_signers = InheritedPipe::new(&self.allowed_signers_bytes)?;
-        let signature = InheritedPipe::new(signature_bytes)?;
-        let mut child = Command::new(SSH_KEYGEN)
-            .args(["-Y", "verify", "-f"])
-            .arg(allowed_signers.child_path())
-            .args(["-I", &self.binding.principal, "-n", self.namespace, "-s"])
-            .arg(signature.child_path())
-            .env_clear()
-            .env("LANG", "C")
-            .env("LC_ALL", "C")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|error| invalid(format!("failed to start trusted ssh-keygen: {error}")))?;
-        let write_result = child
-            .stdin
-            .take()
-            .ok_or_else(|| invalid("ssh-keygen verification stdin is unavailable"))?
-            .write_all(statement);
-        let status = child.wait();
-        write_result?;
-        let status = status?;
-        if !status.success() {
-            return Err(invalid("OpenSSH SSHSIG verification failed"));
-        }
-        Ok(VerifiedSignature {
-            detached_signature_sha256: sha256(signature_bytes),
-            detached_signature_sshsig_base64: STANDARD.encode(signature_bytes),
-        })
+        verify_sshsig_bytes(
+            statement,
+            signature_bytes,
+            &self.allowed_signers_bytes,
+            &self.binding.principal,
+            self.namespace,
+        )
     }
+}
+
+pub(crate) fn verify_sshsig_bytes(
+    statement: &[u8],
+    signature_bytes: &[u8],
+    allowed_signers_bytes: &[u8],
+    principal: &str,
+    namespace: &str,
+) -> Result<VerifiedSignature, AcceptanceError> {
+    let observed_fingerprint = parse_allowed_signer(allowed_signers_bytes, principal)?;
+    if !observed_fingerprint.starts_with("SHA256:")
+        || namespace.is_empty()
+        || namespace.len() > 128
+        || !namespace
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return Err(invalid("SSHSIG public anchor or namespace is malformed"));
+    }
+    if signature_bytes.len() > MAX_SIGNATURE_BYTES {
+        return Err(invalid("detached signature exceeds its read bound"));
+    }
+    if !signature_bytes.starts_with(b"-----BEGIN SSH SIGNATURE-----\n")
+        || !signature_bytes.ends_with(b"-----END SSH SIGNATURE-----\n")
+    {
+        return Err(invalid(
+            "detached signature is not an OpenSSH SSHSIG envelope",
+        ));
+    }
+
+    let allowed_signers = InheritedPipe::new(allowed_signers_bytes)?;
+    let signature = InheritedPipe::new(signature_bytes)?;
+    let mut child = Command::new(SSH_KEYGEN)
+        .args(["-Y", "verify", "-f"])
+        .arg(allowed_signers.child_path())
+        .args(["-I", principal, "-n", namespace, "-s"])
+        .arg(signature.child_path())
+        .env_clear()
+        .env("LANG", "C")
+        .env("LC_ALL", "C")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| invalid(format!("failed to start trusted ssh-keygen: {error}")))?;
+    let write_result = child
+        .stdin
+        .take()
+        .ok_or_else(|| invalid("ssh-keygen verification stdin is unavailable"))?
+        .write_all(statement);
+    let status = child.wait();
+    write_result?;
+    let status = status?;
+    if !status.success() {
+        return Err(invalid("OpenSSH SSHSIG verification failed"));
+    }
+    Ok(VerifiedSignature {
+        detached_signature_sha256: sha256(signature_bytes),
+        detached_signature_sshsig_base64: STANDARD.encode(signature_bytes),
+    })
 }
 
 #[derive(Clone, Copy)]

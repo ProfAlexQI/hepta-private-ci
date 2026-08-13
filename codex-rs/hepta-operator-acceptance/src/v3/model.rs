@@ -1,10 +1,9 @@
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::Value;
 
 use crate::model::AuthorityBoundary;
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CandidateBundleBindingV3 {
     pub prerequisite_id: String,
@@ -13,7 +12,7 @@ pub struct CandidateBundleBindingV3 {
     pub size_bytes: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CandidateBindingV3 {
     pub bundle: CandidateBundleBindingV3,
@@ -24,39 +23,40 @@ pub struct CandidateBindingV3 {
     pub upstream_cutoff: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceProfileV3 {
+    CanonicalPathTrustV2,
+    GithubHostedExactV2,
+    LinuxExactV5,
+    MacExactV6,
+    NixExactV3,
+    PortableInputsV1,
+    UpstreamCutoffObservationV1,
+    WindowsNativeV6,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManifestLayerIdV3 {
+    InnerReceipt,
+    Outer,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ManifestRootKindV3 {
     Sha256ManifestFullInventoryV1,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ManifestLayerBindingV3 {
-    pub manifest_entry_count: usize,
-    pub manifest_relative_path: String,
-    pub manifest_root_kind: ManifestRootKindV3,
-    pub manifest_sha256: String,
-    pub root_relative_path: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EvidenceArtifactFormatV3 {
-    CanonicalJsonV1,
-    JsonV1,
-    KeyValueLinesV1,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModeManifestFormatV3 {
-    PosixModePathTsvV1,
-    PosixModeSizePathTsvV1,
-    TypedLiteralBackslashTModePathV1,
+    TypedPosixModeSizePathTsvV2,
+    WindowsNtfsTypeSizePathTsvV1,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeManifestBindingV3 {
     pub format: ModeManifestFormatV3,
@@ -64,59 +64,61 @@ pub struct ModeManifestBindingV3 {
     pub sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ArtifactAssertionV3 {
-    pub expected: Value,
-    pub selector: String,
+pub struct ManifestLayerBindingV3 {
+    pub layer_id: ManifestLayerIdV3,
+    pub manifest_entry_count: usize,
+    pub manifest_relative_path: String,
+    pub manifest_root_kind: ManifestRootKindV3,
+    pub manifest_sha256: String,
+    pub mode_manifest: ModeManifestBindingV3,
+    pub root_relative_path: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct EvidenceArtifactBindingV3 {
-    pub assertions: Vec<ArtifactAssertionV3>,
-    pub format: EvidenceArtifactFormatV3,
-    pub id: String,
+pub struct ArtifactBindingV3 {
+    pub layer_id: ManifestLayerIdV3,
     pub relative_path: String,
     pub sha256: String,
+    pub size_bytes: u64,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SemanticClaimV3 {
-    CandidateExecuted,
-    CandidateFailure,
-    CandidateHead,
-    CandidateParent,
-    CandidateTree,
-    ExecutedSteps,
-    HarnessFailure,
-    Pass,
-    ProductionChanged,
-    Qualification,
-    RefsChanged,
-    Schema,
-    Status,
-    UpstreamCutoff,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct SemanticClaimBindingV3 {
-    pub artifact_id: String,
-    pub claim: SemanticClaimV3,
-    pub selector: String,
+pub struct OriginalReceiptBindingV3 {
+    pub manifest_entry_count: usize,
+    pub manifest_relative_path: String,
+    pub manifest_sha256: String,
+    pub receipt_root: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, tag = "kind", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
+pub enum ReceiptProvenanceV3 {
+    Direct,
+    ReemittedWrapper {
+        attestation: ArtifactBindingV3,
+        hardlink_topology: ArtifactBindingV3,
+        original: OriginalReceiptBindingV3,
+        original_extended_metadata_inventory: ArtifactBindingV3,
+        original_metadata_inventory: ArtifactBindingV3,
+        original_tree_relative_path: String,
+        projection_map: ArtifactBindingV3,
+        reemitter: ArtifactBindingV3,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReceiptEvidenceBindingV3 {
-    pub artifacts: Vec<EvidenceArtifactBindingV3>,
-    pub expected_schema: String,
     pub manifest_layers: Vec<ManifestLayerBindingV3>,
-    pub mode_manifest: Option<ModeManifestBindingV3>,
+    pub profile: EvidenceProfileV3,
+    pub provenance: ReceiptProvenanceV3,
     pub receipt_root: String,
-    pub semantic_claims: Vec<SemanticClaimBindingV3>,
+    pub required_artifacts: Vec<ArtifactBindingV3>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -129,23 +131,25 @@ pub struct PlatformPolicyV3 {
     pub zero_step_execution_satisfies_pass: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformGateInputV3 {
     pub gate: String,
-    pub receipt: ReceiptEvidenceBindingV3,
+    pub profile: EvidenceProfileV3,
+    pub receipt: Option<ReceiptEvidenceBindingV3>,
     pub required: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrerequisiteInputV3 {
     pub id: String,
+    pub profile: EvidenceProfileV3,
     pub receipt: ReceiptEvidenceBindingV3,
     pub required: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AggregateBuildSpecV3 {
     pub automatic_transition: bool,
@@ -154,6 +158,7 @@ pub struct AggregateBuildSpecV3 {
     pub platform_gates: Vec<PlatformGateInputV3>,
     pub platform_policy: PlatformPolicyV3,
     pub prerequisite_receipts: Vec<PrerequisiteInputV3>,
+    pub profile_set: String,
     pub schema: String,
     pub schema_version: u32,
 }
@@ -166,18 +171,19 @@ pub struct ObservedGateV3 {
     pub executed_steps: u64,
     pub harness_failure: bool,
     pub pass: bool,
-    pub production_changed: bool,
+    pub production_changed: Option<bool>,
     pub qualification: bool,
-    pub refs_changed: bool,
+    pub refs_changed: Option<bool>,
     pub status: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformGateBindingV3 {
     pub gate: String,
     pub observed: ObservedGateV3,
-    pub receipt: ReceiptEvidenceBindingV3,
+    pub profile: EvidenceProfileV3,
+    pub receipt: Option<ReceiptEvidenceBindingV3>,
     pub required: bool,
 }
 
@@ -185,16 +191,17 @@ pub struct PlatformGateBindingV3 {
 #[serde(deny_unknown_fields)]
 pub struct ObservedPrerequisiteV3 {
     pub pass: bool,
-    pub production_changed: bool,
-    pub refs_changed: bool,
+    pub production_changed: Option<bool>,
+    pub refs_changed: Option<bool>,
     pub status: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrerequisiteReceiptBindingV3 {
     pub id: String,
     pub observed: ObservedPrerequisiteV3,
+    pub profile: EvidenceProfileV3,
     pub receipt: ReceiptEvidenceBindingV3,
     pub required: bool,
 }
@@ -209,7 +216,7 @@ pub struct QualificationDecisionV3 {
     pub verdict: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AggregateQualificationPacketV3 {
     pub automatic_transition: bool,
@@ -219,6 +226,7 @@ pub struct AggregateQualificationPacketV3 {
     pub platform_policy: PlatformPolicyV3,
     pub platform_receipts: Vec<PlatformGateBindingV3>,
     pub prerequisite_receipts: Vec<PrerequisiteReceiptBindingV3>,
+    pub profile_set: String,
     pub schema: String,
     pub schema_version: u32,
 }
@@ -232,6 +240,7 @@ pub struct AggregateBuildRecordV3 {
     pub candidate_head: String,
     pub candidate_tree: String,
     pub evidence_reverified: bool,
+    pub profile_set: String,
     pub qualification_packet_sha256: String,
     pub schema: String,
     pub schema_version: u32,
