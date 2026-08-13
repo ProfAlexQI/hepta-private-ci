@@ -837,8 +837,10 @@ impl Session {
 impl SessionIo {
     /// Submit the `op` wrapped in a `Submission` with a unique ID.
     pub(crate) async fn submit(&self, op: Op) -> CodexResult<String> {
-        self.submit_with_trace(op, /*trace*/ None, /*parent_turn_id*/ None)
-            .await
+        self.submit_with_trace(
+            op, /*trace*/ None, /*parent_turn_id*/ None, /*root_turn_id*/ None,
+        )
+        .await
     }
 
     pub(crate) async fn submit_with_trace(
@@ -846,6 +848,7 @@ impl SessionIo {
         op: Op,
         trace: Option<W3cTraceContext>,
         parent_turn_id: Option<String>,
+        root_turn_id: Option<String>,
     ) -> CodexResult<String> {
         let id = new_submission_id();
         let sub = Submission {
@@ -854,6 +857,7 @@ impl SessionIo {
             client_user_message_id: None,
             trace,
             parent_turn_id,
+            root_turn_id,
         };
         self.submit_with_id(sub).await?;
         Ok(id)
@@ -873,6 +877,7 @@ impl SessionIo {
             client_user_message_id,
             trace,
             parent_turn_id: None,
+            root_turn_id: None,
         };
         self.submit_with_id(sub).await?;
         Ok(id)
@@ -1266,6 +1271,7 @@ impl Session {
             },
             /*client_user_message_id*/ None,
             /*parent_turn_id*/ None,
+            /*root_turn_id*/ None,
         )
         .await;
     }
@@ -2059,6 +2065,7 @@ impl Session {
                 communication,
                 context,
                 /*parent_turn_id*/ None,
+                /*root_turn_id*/ None,
             )
             .await
         {
@@ -2678,40 +2685,6 @@ impl Session {
             }
             response = rx_response => response.ok(),
         }
-    }
-
-    pub(crate) async fn request_permissions_for_cwd(
-        self: &Arc<Self>,
-        turn_context: &Arc<TurnContext>,
-        call_id: String,
-        args: RequestPermissionsArgs,
-        cwd: AbsolutePathBuf,
-        cancellation_token: CancellationToken,
-    ) -> Option<RequestPermissionsResponse> {
-        let turn_environment = match args.environment_id.as_deref() {
-            Some(environment_id) => turn_context
-                .environments
-                .turn_environments()
-                .find(|environment| environment.environment_id == environment_id),
-            None => turn_context.environments.primary(),
-        };
-        let Some(turn_environment) = turn_environment else {
-            return Some(RequestPermissionsResponse {
-                permissions: RequestPermissionProfile::default(),
-                scope: PermissionGrantScope::Turn,
-                strict_auto_review: false,
-            });
-        };
-        let mut environment = turn_environment.selection();
-        environment.cwd = PathUri::from_abs_path(&cwd);
-        self.request_permissions_for_environment(
-            turn_context,
-            call_id,
-            args,
-            environment,
-            cancellation_token,
-        )
-        .await
     }
 
     #[expect(
@@ -4115,6 +4088,7 @@ impl Session {
         expected_turn_id: Option<&str>,
         client_user_message_id: Option<String>,
         responsesapi_client_metadata: Option<HashMap<String, String>>,
+        incoming_turn_metadata: Option<&TurnMetadataState>,
     ) -> Result<String, SteerInputError> {
         self.steer_input_with_context(
             input,
@@ -4122,6 +4096,7 @@ impl Session {
             expected_turn_id,
             client_user_message_id,
             responsesapi_client_metadata,
+            incoming_turn_metadata,
         )
         .await
         .map(|turn_context| turn_context.sub_id.clone())
@@ -4139,6 +4114,7 @@ impl Session {
         expected_turn_id: Option<&str>,
         client_user_message_id: Option<String>,
         responsesapi_client_metadata: Option<HashMap<String, String>>,
+        incoming_turn_metadata: Option<&TurnMetadataState>,
     ) -> Result<Arc<TurnContext>, SteerInputError> {
         let mut active = self.active_turn.lock().await;
         let Some(active_turn) = active.as_mut() else {
@@ -4199,6 +4175,15 @@ impl Session {
             content: input,
             client_id: client_user_message_id.clone(),
         });
+        if let Some(incoming_turn_metadata) = incoming_turn_metadata
+            && active_task.turn_context.turn_metadata_state.root_turn_id()
+                != incoming_turn_metadata.root_turn_id()
+        {
+            active_task
+                .turn_context
+                .turn_metadata_state
+                .mark_root_turn_ambiguous();
+        }
         self.input_queue
             .extend_pending_input_and_accept_mailbox_delivery_for_turn_state(
                 active_turn.turn_state.as_ref(),

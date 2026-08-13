@@ -589,6 +589,7 @@ impl MessageProcessor {
                 client_user_message_id: None,
                 trace: None,
                 parent_turn_id: None,
+                root_turn_id: None,
             })
             .await
         {
