@@ -895,6 +895,7 @@ async fn shadow_lru_selector_recovers_a_skill_invoked_on_an_earlier_turn() -> Te
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Cli,
+            installation_id: TEST_INSTALLATION_ID,
             persistent_thread_state_available: true,
             environments: &[],
             mcp_resource_client: None,

@@ -10968,6 +10968,73 @@ async fn steer_input_returns_active_turn_id() {
 }
 
 #[tokio::test]
+async fn steer_input_with_context_preserves_durable_admission_and_marks_root_ambiguous() {
+    let (sess, active_turn_context, _rx) = make_session_and_context_with_rx().await;
+    active_turn_context
+        .turn_metadata_state
+        .set_root_turn_id("active-root".to_string());
+    let incoming_turn_context = sess
+        .new_default_turn_with_sub_id("incoming".to_string())
+        .await;
+    incoming_turn_context
+        .turn_metadata_state
+        .set_root_turn_id("incoming-root".to_string());
+    sess.spawn_task(
+        Arc::clone(&active_turn_context),
+        Vec::new(),
+        NeverEndingTask {
+            kind: TaskKind::Regular,
+            listen_to_cancellation_token: false,
+        },
+    )
+    .await;
+
+    let client_id = "durable-steer".to_string();
+    let (_guard, mut admission) = sess.pending_user_message_admissions.register(
+        "steer-submission".to_string(),
+        Some(client_id.clone()),
+        crate::user_message_admission::PendingUserMessageAdmissionState::WaitingForAdmission,
+    );
+    let admitted_context = sess
+        .steer_input_with_context(
+            vec![UserInput::Text {
+                text: "steer".to_string(),
+                text_elements: Vec::new(),
+            }],
+            /*additional_context*/ Default::default(),
+            Some(&active_turn_context.sub_id),
+            Some(client_id.clone()),
+            /*responsesapi_client_metadata*/ None,
+            Some(incoming_turn_context.turn_metadata_state.as_ref()),
+        )
+        .await
+        .expect("steered input should be accepted");
+
+    assert!(Arc::ptr_eq(&admitted_context, &active_turn_context));
+    assert_eq!(active_turn_context.turn_metadata_state.root_turn_id(), None);
+    assert!(
+        admission.try_recv().is_err(),
+        "admission must wait for persistence"
+    );
+
+    sess.pending_user_message_admissions
+        .complete_persistence(&client_id, Ok(()));
+    let admitted = admission
+        .await
+        .expect("admission sender should remain live")
+        .expect("persisted steer should be admitted");
+    let (admission, persisted_context) =
+        crate::user_message_admission::AdmittedUserMessage::into_parts(admitted);
+    assert_eq!(
+        admission,
+        crate::user_message_admission::UserMessageAdmission::Steered {
+            turn_id: active_turn_context.sub_id.clone(),
+        }
+    );
+    assert!(Arc::ptr_eq(&persisted_context, &active_turn_context));
+}
+
+#[tokio::test]
 async fn abort_empty_active_turn_preserves_pending_input() {
     let (sess, _tc, _rx) = make_session_and_context_with_rx().await;
     let pending_item = ResponseItem::Message {
