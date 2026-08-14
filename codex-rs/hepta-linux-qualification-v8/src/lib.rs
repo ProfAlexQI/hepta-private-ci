@@ -6,6 +6,7 @@
 
 mod authority;
 mod identity;
+mod install_epoch_v1;
 mod journal;
 mod protocol;
 mod sshsig;
@@ -13,6 +14,7 @@ mod target;
 
 pub use authority::*;
 pub use identity::*;
+pub use install_epoch_v1::*;
 pub use journal::*;
 pub use protocol::*;
 pub use sshsig::*;

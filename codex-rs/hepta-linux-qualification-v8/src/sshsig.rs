@@ -41,6 +41,8 @@ pub const FROZEN_SSHSIG_TRUST_PROFILE_PUBLISHED_V8: bool = false;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SshsigTrustPurposeV8 {
     InstallAuthority,
+    InstallEpochAuthorityV1,
+    ExternalWatermarkLeaseV1,
     OneShotRunAuthority,
     BreakGlassAuthority,
     MacCopyAck,
@@ -50,6 +52,8 @@ impl SshsigTrustPurposeV8 {
     pub(crate) const fn namespace(self) -> &'static str {
         match self {
             Self::InstallAuthority => crate::INSTALL_NAMESPACE_V8,
+            Self::InstallEpochAuthorityV1 => crate::INSTALL_EPOCH_AUTHORITY_NAMESPACE_V1,
+            Self::ExternalWatermarkLeaseV1 => crate::EXTERNAL_WATERMARK_LEASE_NAMESPACE_V1,
             Self::OneShotRunAuthority => crate::ONE_SHOT_RUN_NAMESPACE_V8,
             Self::BreakGlassAuthority => crate::BREAK_GLASS_NAMESPACE_V8,
             Self::MacCopyAck => crate::COPY_ACK_NAMESPACE_V8,
@@ -59,6 +63,8 @@ impl SshsigTrustPurposeV8 {
     const fn canonical_name(self) -> &'static str {
         match self {
             Self::InstallAuthority => "install_authority",
+            Self::InstallEpochAuthorityV1 => "install_epoch_authority_v1",
+            Self::ExternalWatermarkLeaseV1 => "external_watermark_lease_v1",
             Self::OneShotRunAuthority => "one_shot_run_authority",
             Self::BreakGlassAuthority => "break_glass_authority",
             Self::MacCopyAck => "mac_copy_ack",
@@ -190,11 +196,31 @@ fn required_frozen_trust_policy_v8(
 pub(crate) fn test_only_trust_binding_v8(
     purpose: SshsigTrustPurposeV8,
 ) -> VerifiedTrustPolicyBindingV8 {
+    let (trust_root_id, fingerprint_character) = match purpose {
+        SshsigTrustPurposeV8::InstallEpochAuthorityV1 => ("test-only-install-epoch-authority", 'A'),
+        SshsigTrustPurposeV8::ExternalWatermarkLeaseV1 => {
+            ("test-only-external-watermark-provider", 'B')
+        }
+        _ => ("test-only-not-production", 'C'),
+    };
+    test_only_trust_binding_with_identity_v8(
+        purpose,
+        trust_root_id,
+        &format!("SHA256:{}", fingerprint_character.to_string().repeat(43)),
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn test_only_trust_binding_with_identity_v8(
+    purpose: SshsigTrustPurposeV8,
+    trust_root_id: &str,
+    key_fingerprint: &str,
+) -> VerifiedTrustPolicyBindingV8 {
     let allowed_signers_sha256 = sha256(format!("test allowed signers {purpose:?}").as_bytes());
-    let key_fingerprint = format!("SHA256:{}", "A".repeat(43));
+    let key_fingerprint = key_fingerprint.to_string();
     let principal = "linux-v8-operator@example".to_string();
     let namespace = purpose.namespace().to_string();
-    let trust_root_id = "test-only-not-production".to_string();
+    let trust_root_id = trust_root_id.to_string();
     let trust_root_revision = 1;
     let policy_sha256 = trust_policy_sha256(
         purpose,
@@ -233,6 +259,15 @@ pub(crate) fn verify_mac_copy_ack_sshsig_v8(
     let policy = required_frozen_trust_policy_v8(SshsigTrustPurposeV8::MacCopyAck)?;
     let statement = ack.canonical_statement()?;
     verify_sshsig_ed25519_v8(&statement, &ack.signature_bytes, &policy)
+}
+
+pub(crate) fn verify_statement_sshsig_for_purpose_v8(
+    statement: &[u8],
+    signature_bytes: &[u8],
+    purpose: SshsigTrustPurposeV8,
+) -> Result<CryptographicSignatureObservation, QualificationError> {
+    let policy = required_frozen_trust_policy_v8(purpose)?;
+    verify_sshsig_ed25519_v8(statement, signature_bytes, &policy)
 }
 
 /// Verifies one canonical OpenSSH SSHSIG Ed25519 signature entirely in-process.
