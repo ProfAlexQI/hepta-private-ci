@@ -312,6 +312,73 @@ mod linux {
         .unwrap()
     }
 
+    #[derive(Debug, Eq, PartialEq)]
+    struct ExpectedReplayEvent {
+        canonical_bytes: Vec<u8>,
+        event_kind: InstallEpochStoreEventKindV1,
+        event_sequence: u64,
+        payload: Vec<u8>,
+        record_sha256: String,
+    }
+
+    fn append_chain_with_three_retries(root: &mut TrustedStateRootV8) -> Vec<ExpectedReplayEvent> {
+        // Four CurrentTipOutbox records represent the initial query followed
+        // by three byte-distinct retries.
+        let kinds = [
+            InstallEpochStoreEventKindV1::Intent,
+            InstallEpochStoreEventKindV1::CasOutbox,
+            InstallEpochStoreEventKindV1::CasReceipt,
+            InstallEpochStoreEventKindV1::CurrentTipOutbox,
+            InstallEpochStoreEventKindV1::CurrentTipOutbox,
+            InstallEpochStoreEventKindV1::CurrentTipOutbox,
+            InstallEpochStoreEventKindV1::CurrentTipOutbox,
+            InstallEpochStoreEventKindV1::Final,
+        ];
+        let mut previous_event_sha256 = ZERO_SHA256.to_string();
+        let mut phase_predecessor_state_sha256 = ZERO_SHA256.to_string();
+        let mut expected = Vec::new();
+        for (index, event_kind) in kinds.into_iter().enumerate() {
+            let event_sequence = u64::try_from(index).unwrap() + 1;
+            let payload = [
+                vec![0, 0xff, u8::try_from(event_sequence).unwrap(), 0x80],
+                format!("byte-exact-event-{event_sequence}").into_bytes(),
+            ]
+            .concat();
+            let record = record_for_root(
+                root,
+                event_sequence,
+                previous_event_sha256,
+                event_kind,
+                u64::try_from(index).unwrap(),
+                phase_predecessor_state_sha256,
+                &payload,
+            );
+            let record_sha256 = record.record_sha256().unwrap();
+            let canonical_bytes = record.canonical_bytes().unwrap();
+            phase_predecessor_state_sha256 = record.phase_successor_state_sha256.clone();
+            previous_event_sha256 = record_sha256.clone();
+            assert!(matches!(
+                append_install_epoch_store_event_v1(root, &record, &digest('e')).unwrap(),
+                InstallEpochStoreAppendOutcomeV1::Fresh(_)
+            ));
+            expected.push(ExpectedReplayEvent {
+                canonical_bytes,
+                event_kind,
+                event_sequence,
+                payload,
+                record_sha256,
+            });
+        }
+        expected
+    }
+
+    fn event_path(state: &TestRoot, event_sequence: u64) -> std::path::PathBuf {
+        state
+            .path
+            .join(INSTALL_EPOCH_DIRECTORY_V8)
+            .join(install_epoch_event_name_v1(event_sequence).unwrap())
+    }
+
     #[test]
     fn fresh_chain_exact_replay_and_conflict_are_distinct() {
         let state = TestRoot::new("chain");
@@ -478,6 +545,136 @@ mod linux {
     }
 
     #[test]
+    fn anchored_fold_replays_three_retries_in_order_with_byte_exact_payloads() {
+        let _process_guard = serialize_process_fd_lifetime();
+        let state = TestRoot::new("full-replay");
+        let mut root = open_test_trusted_state_root_v8(&state.path).unwrap();
+        let expected = append_chain_with_three_retries(&mut root);
+
+        drop(root);
+        let mut reopened = open_test_trusted_state_root_v8(&state.path).unwrap();
+        let (verified, observed) = fold_install_epoch_store_v1(
+            &mut reopened,
+            Vec::new(),
+            |observed: &mut Vec<ExpectedReplayEvent>, record| {
+                observed.push(ExpectedReplayEvent {
+                    canonical_bytes: record.canonical_bytes()?,
+                    event_kind: record.event_kind(),
+                    event_sequence: record.event_sequence(),
+                    payload: record.payload().to_vec(),
+                    record_sha256: record.record_sha256().to_string(),
+                });
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(verified.event_count(), 8);
+        assert_eq!(
+            verified.tip_sha256(),
+            expected.last().unwrap().record_sha256
+        );
+        assert_eq!(observed, expected);
+        assert_eq!(
+            observed
+                .iter()
+                .filter(|event| {
+                    event.event_kind == InstallEpochStoreEventKindV1::CurrentTipOutbox
+                })
+                .count(),
+            4
+        );
+    }
+
+    #[test]
+    fn anchored_fold_rejects_intermediate_tamper_and_reorder_before_observation() {
+        let _process_guard = serialize_process_fd_lifetime();
+
+        let tampered_state = TestRoot::new("full-replay-tamper");
+        let mut tampered_root = open_test_trusted_state_root_v8(&tampered_state.path).unwrap();
+        append_chain_with_three_retries(&mut tampered_root);
+        drop(tampered_root);
+        let tampered_path = event_path(&tampered_state, 4);
+        let mut tampered_bytes = fs::read(&tampered_path).unwrap();
+        *tampered_bytes.last_mut().unwrap() ^= 1;
+        fs::write(&tampered_path, tampered_bytes).unwrap();
+        let mut tampered_root = open_test_trusted_state_root_v8(&tampered_state.path).unwrap();
+        let mut tampered_observations = 0_u64;
+        let tampered_result = fold_install_epoch_store_v1(&mut tampered_root, (), |_, _| {
+            tampered_observations += 1;
+            Ok(())
+        });
+        assert!(matches!(
+            tampered_result,
+            Err(InstallEpochStoreErrorV1::RecoveryRequired(_))
+        ));
+        assert_eq!(tampered_observations, 0);
+
+        let reordered_state = TestRoot::new("full-replay-reorder");
+        let mut reordered_root = open_test_trusted_state_root_v8(&reordered_state.path).unwrap();
+        append_chain_with_three_retries(&mut reordered_root);
+        drop(reordered_root);
+        let fourth_path = event_path(&reordered_state, 4);
+        let fifth_path = event_path(&reordered_state, 5);
+        let fourth_bytes = fs::read(&fourth_path).unwrap();
+        let fifth_bytes = fs::read(&fifth_path).unwrap();
+        fs::write(&fourth_path, fifth_bytes).unwrap();
+        fs::write(&fifth_path, fourth_bytes).unwrap();
+        let mut reordered_root = open_test_trusted_state_root_v8(&reordered_state.path).unwrap();
+        let mut reordered_observations = 0_u64;
+        let reordered_result = fold_install_epoch_store_v1(&mut reordered_root, (), |_, _| {
+            reordered_observations += 1;
+            Ok(())
+        });
+        assert!(matches!(
+            reordered_result,
+            Err(InstallEpochStoreErrorV1::RecoveryRequired(_))
+        ));
+        assert_eq!(reordered_observations, 0);
+    }
+
+    #[test]
+    fn anchored_fold_discards_accumulator_when_root_swaps_after_callback() {
+        let state = TestRoot::new("full-replay-root-swap");
+        let moved = state.path.with_extension("full-replay-anchored-old");
+        let mut root = open_test_trusted_state_root_v8(&state.path).unwrap();
+        append_chain_with_three_retries(&mut root);
+        let mut callback_ran = false;
+        // Deliberately violate the accumulator-only callback contract to
+        // simulate a concurrent canonical-path swap. Callback execution is
+        // provisional: it must not be mistaken for a verified replay result.
+        let result = fold_install_epoch_store_v1(&mut root, Vec::<u64>::new(), |events, record| {
+            events.push(record.event_sequence());
+            if !callback_ran {
+                callback_ran = true;
+                fs::rename(&state.path, &moved).unwrap();
+                fs::create_dir(&state.path).unwrap();
+                fs::set_permissions(&state.path, fs::Permissions::from_mode(0o700)).unwrap();
+                for name in [
+                    ATTEMPTS_DIRECTORY_V8,
+                    INSTALL_EPOCH_DIRECTORY_V8,
+                    JOURNAL_DIRECTORY_V8,
+                    NONCE_CLAIMS_DIRECTORY_V8,
+                    QUARANTINE_DIRECTORY_V8,
+                ] {
+                    fs::create_dir(state.path.join(name)).unwrap();
+                    fs::set_permissions(state.path.join(name), fs::Permissions::from_mode(0o700))
+                        .unwrap();
+                }
+            }
+            Ok(())
+        });
+        assert!(callback_ran);
+        assert!(matches!(
+            result,
+            Err(InstallEpochStoreErrorV1::RecoveryRequired(_))
+        ));
+
+        drop(root);
+        fs::remove_dir_all(moved).unwrap();
+    }
+
+    #[test]
     fn incoming_unknown_and_illegal_transition_fail_closed() {
         let _process_guard = serialize_process_fd_lifetime();
         let state = TestRoot::new("negative");
@@ -498,6 +695,15 @@ mod linux {
                 committed_tip: None
             }
         ));
+        let mut replay_observations = 0_u64;
+        assert!(matches!(
+            fold_install_epoch_store_v1(&mut root, (), |_, _| {
+                replay_observations += 1;
+                Ok(())
+            }),
+            Err(InstallEpochStoreErrorV1::RecoveryRequired(_))
+        ));
+        assert_eq!(replay_observations, 0);
 
         drop(root);
         fs::remove_file(

@@ -371,8 +371,10 @@ impl fmt::Debug for InstallEpochStoreRecordV1 {
     }
 }
 
-/// Borrowed, read-only terminal record recovered from a complete anchored
-/// replay. It cannot be constructed, cloned, deserialized, or converted back
+/// Borrowed, read-only record recovered from a complete anchored replay.
+/// Public recovery exposes this view only for the terminal record; the
+/// crate-private semantic fold also uses it transiently for each verified
+/// record. It cannot be constructed, cloned, deserialized, or converted back
 /// into raw append authority by callers.
 pub struct RecoveredInstallEpochStoreTipV1<'a> {
     record: &'a InstallEpochStoreRecordV1,
@@ -664,6 +666,76 @@ pub fn scan_install_epoch_store_v1(
     Ok(verified)
 }
 
+/// Streams the complete immutable chain through a semantic fold without
+/// retaining every payload in memory. This remains crate-private until the
+/// executable bridge is published.
+///
+/// A clean exact scan runs before the fold, and a second exact scan confirms
+/// the folded chain afterwards. The fold is called in event-sequence order
+/// only after each record has been decoded canonically and its structural
+/// transition has been verified. Its owned state is returned only after both
+/// scans, the folded replay, and the canonical trusted-root revalidation all
+/// agree. The callback can run before those terminal checks complete; it must
+/// therefore mutate only the owned accumulator supplied here. It absolutely
+/// must not perform provider I/O, mutate external state, or grant dispatch
+/// authority. A future executable bridge may consume only the final verified
+/// replay result returned by this function, never an intermediate callback.
+#[cfg_attr(
+    not(all(test, target_os = "linux")),
+    allow(
+        dead_code,
+        reason = "full-chain semantic replay stays private until the executable bridge is published"
+    )
+)]
+pub(crate) fn fold_install_epoch_store_v1<T, F>(
+    trusted_root: &mut TrustedStateRootV8,
+    initial: T,
+    mut fold: F,
+) -> Result<(VerifiedInstallEpochStoreScanV1, T), InstallEpochStoreErrorV1>
+where
+    F: FnMut(&mut T, RecoveredInstallEpochStoreTipV1<'_>) -> Result<(), NativeErrorV8>,
+{
+    let baseline = scan_install_epoch_store_v1(trusted_root)?;
+    if baseline.incoming_residue_detected {
+        return Err(InstallEpochStoreErrorV1::RecoveryRequired(invalid(
+            "install-epoch semantic replay refuses incoming residue",
+        )));
+    }
+
+    trusted_root
+        .revalidate()
+        .map_err(InstallEpochStoreErrorV1::RecoveryRequired)?;
+    let root_identity = trusted_root.identity();
+    let (replayed, folded) = {
+        let (root, install_epoch, lock) = trusted_root.split_for_store_v8();
+        scan_install_epoch_store_anchored_fold_v1(
+            root,
+            install_epoch,
+            lock,
+            root_identity,
+            initial,
+            true,
+            &mut fold,
+        )
+        .map_err(InstallEpochStoreErrorV1::RecoveryRequired)?
+    };
+
+    let confirmation = scan_install_epoch_store_v1(trusted_root)?;
+    if replayed.incoming_residue_detected
+        || confirmation.incoming_residue_detected
+        || !same_install_epoch_store_scan_v1(&baseline, &replayed)
+        || !same_install_epoch_store_scan_v1(&replayed, &confirmation)
+    {
+        return Err(InstallEpochStoreErrorV1::RecoveryRequired(invalid(
+            "install-epoch semantic replay changed between exact scans",
+        )));
+    }
+    trusted_root
+        .revalidate()
+        .map_err(InstallEpochStoreErrorV1::RecoveryRequired)?;
+    Ok((confirmation, folded))
+}
+
 #[cfg_attr(
     not(all(test, target_os = "linux")),
     allow(
@@ -834,6 +906,33 @@ fn scan_install_epoch_store_anchored_v1(
     lock: &StateRootLockV8,
     root_identity: FileIdentityV8,
 ) -> Result<VerifiedInstallEpochStoreScanV1, NativeErrorV8> {
+    let mut ignore =
+        |_: &mut (), _: RecoveredInstallEpochStoreTipV1<'_>| Ok::<(), NativeErrorV8>(());
+    scan_install_epoch_store_anchored_fold_v1(
+        root,
+        install_epoch,
+        lock,
+        root_identity,
+        (),
+        false,
+        &mut ignore,
+    )
+    .map(|(verified, ())| verified)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scan_install_epoch_store_anchored_fold_v1<T, F>(
+    root: &DirectoryAnchorV8,
+    install_epoch: &DirectoryAnchorV8,
+    lock: &StateRootLockV8,
+    root_identity: FileIdentityV8,
+    mut folded: T,
+    observe_records: bool,
+    fold: &mut F,
+) -> Result<(VerifiedInstallEpochStoreScanV1, T), NativeErrorV8>
+where
+    F: FnMut(&mut T, RecoveredInstallEpochStoreTipV1<'_>) -> Result<(), NativeErrorV8>,
+{
     lock.revalidate_for_root(root)?;
     install_epoch.revalidate_identity()?;
     let directory = install_epoch;
@@ -854,6 +953,11 @@ fn scan_install_epoch_store_anchored_v1(
         return Err(invalid("install-epoch store exceeds its event limit"));
     }
     event_names.sort_by_key(|(sequence, _)| *sequence);
+    if observe_records && incoming_residue_detected {
+        return Err(invalid(
+            "install-epoch semantic replay refuses incoming residue",
+        ));
+    }
     let mut total_bytes = 0_u64;
     let mut last_record: Option<InstallEpochStoreRecordV1> = None;
     let mut tip_sha256 = ZERO_SHA256.to_string();
@@ -897,7 +1001,17 @@ fn scan_install_epoch_store_anchored_v1(
                 "install-epoch store must begin with a genesis intent",
             ));
         }
-        tip_sha256 = decoded.record_sha256()?;
+        let record_sha256 = decoded.record_sha256()?;
+        if observe_records {
+            fold(
+                &mut folded,
+                RecoveredInstallEpochStoreTipV1 {
+                    record: &decoded,
+                    record_sha256: &record_sha256,
+                },
+            )?;
+        }
+        tip_sha256 = record_sha256;
         last_record = Some(decoded);
     }
     lock.revalidate_for_root(root)?;
@@ -905,15 +1019,32 @@ fn scan_install_epoch_store_anchored_v1(
     if directory.list_leaf_names_bounded(INSTALL_EPOCH_STORE_MAX_EVENTS_V1 * 2)? != before {
         return Err(invalid("install-epoch namespace changed during scan"));
     }
-    Ok(VerifiedInstallEpochStoreScanV1 {
-        event_count: u64::try_from(event_names.len())
-            .map_err(|_| invalid("install-epoch event count overflows"))?,
-        incoming_residue_detected,
-        last_record,
-        state_root_identity: root_identity,
-        tip_sha256,
-        total_bytes,
-    })
+    Ok((
+        VerifiedInstallEpochStoreScanV1 {
+            event_count: u64::try_from(event_names.len())
+                .map_err(|_| invalid("install-epoch event count overflows"))?,
+            incoming_residue_detected,
+            last_record,
+            state_root_identity: root_identity,
+            tip_sha256,
+            total_bytes,
+        },
+        folded,
+    ))
+}
+
+fn same_install_epoch_store_scan_v1(
+    left: &VerifiedInstallEpochStoreScanV1,
+    right: &VerifiedInstallEpochStoreScanV1,
+) -> bool {
+    left.event_count == right.event_count
+        && left.incoming_residue_detected == right.incoming_residue_detected
+        && left
+            .state_root_identity
+            .matches_stable_directory(right.state_root_identity)
+        && left.tip_sha256 == right.tip_sha256
+        && left.total_bytes == right.total_bytes
+        && left.last_event_kind() == right.last_event_kind()
 }
 
 fn checked_store_total_bytes_v1(current: u64, additional: u64) -> Result<u64, NativeErrorV8> {
