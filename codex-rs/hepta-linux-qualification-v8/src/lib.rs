@@ -5,8 +5,10 @@
 //! product candidate.
 
 mod identity;
+mod journal;
 
 pub use identity::*;
+pub use journal::*;
 
 pub const SCHEMA_FAMILY: &str = "hepta_linux_exact_v8";
 pub const CANDIDATE_HEAD: &str = "52ec4b3868fc5272e19ed516d00e11e44c549ea4";
