@@ -48,6 +48,14 @@ pub(crate) fn test_only_completed_install_epoch_preparation_after_retry_v1(
     tests::complete_genesis_after_one_retry(model_now_unix_seconds)
 }
 
+#[cfg(test)]
+pub(crate) fn test_only_completed_install_epoch_preparation_after_retries_v1(
+    model_now_unix_seconds: u64,
+    retry_count: u64,
+) -> VerifiedCommittedCurrentTipPreparationV1 {
+    tests::complete_genesis_after_retries(model_now_unix_seconds, retry_count)
+}
+
 pub const EXTERNAL_WATERMARK_COMMIT_SCHEMA_V1: &str = "hepta_linux_v8_external_watermark_commit_v1";
 pub const EXTERNAL_WATERMARK_COMMIT_NAMESPACE_V1: &str =
     "hepta-linux-v8-external-watermark-commit-v1";
@@ -657,6 +665,24 @@ struct VerifiedProviderCasCommitV1 {
     trust_policy_sha256: String,
 }
 
+/// Complete, bounded audit history for one current-tip query attempt. The
+/// initial attempt has no predecessor closure; every retry owns the complete
+/// verified closure that consumed its immediate predecessor. These values are
+/// inert model identities and grant no provider I/O.
+#[derive(Debug)]
+struct CurrentTipAttemptHistoryV1 {
+    phase_predecessor_revision: u64,
+    phase_predecessor_state_sha256: String,
+    phase_successor_revision: u64,
+    phase_successor_state_sha256: String,
+    predecessor_closure: Option<VerifiedExternalWatermarkCurrentTipQueryClosureV1>,
+    query_bundle_binding_sha256: String,
+    query_bundle_id_sha256: String,
+    query_claim_binding_sha256: String,
+    query_nonce: String,
+    query_sequence: u64,
+}
+
 /// Provider CAS is authenticated and cross-bound, while a fresh current-tip
 /// result is still pending. This token owns the original preparation and is
 /// returned intact on every later verification failure.
@@ -670,6 +696,7 @@ pub struct VerifiedCasCommittedPendingTipV1 {
     active_query_state_sha256: String,
     cas_receipt_state_sha256: String,
     commit: VerifiedProviderCasCommitV1,
+    current_tip_attempts: Vec<CurrentTipAttemptHistoryV1>,
     intent: PendingExternalWatermarkCasIntentV1,
     phase_revision: u64,
 }
@@ -1104,6 +1131,24 @@ pub fn prepare_external_watermark_current_tip_retry_v1(
                 "current-tip retry requires a durable, consumed predecessor query",
             ));
         }
+        let history_len = u64::try_from(pending.current_tip_attempts.len())
+            .map_err(|_| invalid("current-tip attempt history length overflows"))?;
+        let active_attempt = pending
+            .current_tip_attempts
+            .last()
+            .ok_or_else(|| invalid("current-tip attempt history is empty"))?;
+        if history_len != pending.active_query_sequence
+            || active_attempt.query_sequence != pending.active_query_sequence
+            || active_attempt.query_nonce != pending.active_query_nonce
+            || active_attempt.query_claim_binding_sha256
+                != pending.active_query_claim_binding_sha256
+            || active_attempt.phase_successor_revision != pending.phase_revision
+            || active_attempt.phase_successor_state_sha256 != pending.active_query_state_sha256
+        {
+            return Err(invalid(
+                "current-tip attempt history does not match the active query",
+            ));
+        }
         if pending.active_query_sequence > pending.intent.profile.maximum_current_tip_retry_count {
             return Err(invalid(
                 "current-tip retry budget is exhausted and the terminal edge is reserved",
@@ -1114,7 +1159,10 @@ pub fn prepare_external_watermark_current_tip_retry_v1(
         if query_nonce == pending.preparation().authority_nonce()
             || query_nonce == pending.preparation().lease_nonce()
             || query_nonce == pending.commit_nonce()
-            || query_nonce == pending.active_query_nonce()
+            || pending
+                .current_tip_attempts
+                .iter()
+                .any(|attempt| attempt.query_nonce == query_nonce)
         {
             return Err(invalid(
                 "current-tip retry nonce collides with the completion operation",
@@ -1210,6 +1258,19 @@ pub fn prepare_external_watermark_current_tip_retry_v1(
     })();
     match result {
         Ok((fresh, query_claim, query_state, query_sequence, phase_revision)) => {
+            let attempt = CurrentTipAttemptHistoryV1 {
+                phase_predecessor_revision: pending.phase_revision,
+                phase_predecessor_state_sha256: pending.active_query_state_sha256.clone(),
+                phase_successor_revision: phase_revision,
+                phase_successor_state_sha256: query_state.clone(),
+                predecessor_closure: Some(closure),
+                query_bundle_binding_sha256: query_state.clone(),
+                query_bundle_id_sha256: query_claim.clone(),
+                query_claim_binding_sha256: query_claim.clone(),
+                query_nonce: query_nonce.clone(),
+                query_sequence,
+            };
+            pending.current_tip_attempts.push(attempt);
             pending.active_query_claim_binding_sha256 = query_claim;
             pending.active_query_may_issue_model = false;
             pending.active_query_nonce = query_nonce;
@@ -1261,17 +1322,15 @@ pub struct VerifiedCommittedCurrentTipPreparationV1 {
 }
 
 impl VerifiedCommittedCurrentTipPreparationV1 {
-    pub(crate) fn durable_projection_source_v1(
+    pub(crate) fn durable_projection_source_v2(
         &self,
-    ) -> crate::install_epoch_durable_projection_v1::InstallEpochDurableProjectionSourceV1 {
+    ) -> crate::install_epoch_durable_projection_v1::InstallEpochDurableProjectionSourceV2 {
         let preparation = self.preparation();
-        crate::install_epoch_durable_projection_v1::InstallEpochDurableProjectionSourceV1 {
-            active_query_bundle: (self.pending.active_query_sequence > 1).then(|| {
-                crate::install_epoch_durable_projection_v1::RawDurableBundleProjectionV1 {
-                    binding_sha256: self.pending.active_query_state_sha256.clone(),
-                    id_sha256: self.pending.active_query_claim_binding_sha256.clone(),
-                }
-            }),
+        crate::install_epoch_durable_projection_v1::InstallEpochDurableProjectionSourceV2 {
+            active_query_claim_binding_sha256: self
+                .pending
+                .active_query_claim_binding_sha256
+                .clone(),
             active_query_revision: self.pending.phase_revision,
             active_query_sequence: self.pending.active_query_sequence,
             active_query_state_sha256: self.pending.active_query_state_sha256.clone(),
@@ -1315,16 +1374,64 @@ impl VerifiedCommittedCurrentTipPreparationV1 {
             current_tip_signature_sha256: self.current_tip_signature_sha256.clone(),
             current_tip_statement_sha256: self.current_tip_statement_sha256.clone(),
             current_tip_trust_policy_sha256: self.current_tip_trust_policy_sha256.clone(),
+            current_tip_attempts: self
+                .pending
+                .current_tip_attempts
+                .iter()
+                .map(|attempt| {
+                    crate::install_epoch_durable_projection_v1::RawDurableCurrentTipAttemptProjectionV2 {
+                        phase_predecessor_revision: attempt.phase_predecessor_revision,
+                        phase_predecessor_state_sha256: attempt
+                            .phase_predecessor_state_sha256
+                            .clone(),
+                        phase_successor_revision: attempt.phase_successor_revision,
+                        phase_successor_state_sha256: attempt.phase_successor_state_sha256.clone(),
+                        predecessor_closure: attempt.predecessor_closure.as_ref().map(|closure| {
+                            crate::install_epoch_durable_projection_v1::RawDurableQueryClosureProjectionV2 {
+                                closure_binding_sha256: closure.closure_binding_sha256.clone(),
+                                closure_evidence_sha256: closure.closure_evidence_sha256.clone(),
+                                closure_profile_sha256: closure.closure_profile_sha256.clone(),
+                                completion_operation_binding_sha256: closure
+                                    .completion_operation_binding_sha256
+                                    .clone(),
+                                phase_head_id_sha256: closure.phase_head_id_sha256.clone(),
+                                provider_transaction_sha256: closure
+                                    .provider_transaction_sha256
+                                    .clone(),
+                                query_claim_binding_sha256: closure
+                                    .query_claim_binding_sha256
+                                    .clone(),
+                                query_nonce: closure.query_nonce.clone(),
+                                query_phase_revision: closure.query_phase_revision,
+                                query_sequence: closure.query_sequence,
+                                query_state_sha256: closure.query_state_sha256.clone(),
+                            }
+                        }),
+                        query_bundle:
+                            crate::install_epoch_durable_projection_v1::RawDurableBundleProjectionV1 {
+                                binding_sha256: attempt.query_bundle_binding_sha256.clone(),
+                                id_sha256: attempt.query_bundle_id_sha256.clone(),
+                            },
+                        query_claim:
+                            crate::install_epoch_durable_projection_v1::RawDurableNonceClaimProjectionV1 {
+                                binding_sha256: attempt.query_claim_binding_sha256.clone(),
+                                nonce: attempt.query_nonce.clone(),
+                                scope: EXTERNAL_WATERMARK_QUERY_CLAIM_SCOPE_V1.to_string(),
+                            },
+                        query_sequence: attempt.query_sequence,
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
             epoch: preparation.epoch().clone(),
             final_phase_revision: self.final_phase_revision,
             finalized_state_sha256: self.finalized_state_sha256.clone(),
+            initial_query_claim_binding_sha256: self
+                .pending
+                .intent
+                .query_claim_binding_sha256
+                .clone(),
             initial_query_nonce: self.pending.intent.initial_query_nonce.clone(),
-            initial_query_claim:
-                crate::install_epoch_durable_projection_v1::RawDurableNonceClaimProjectionV1 {
-                    binding_sha256: self.pending.intent.query_claim_binding_sha256.clone(),
-                    nonce: self.pending.intent.initial_query_nonce.clone(),
-                    scope: EXTERNAL_WATERMARK_QUERY_CLAIM_SCOPE_V1.to_string(),
-                },
             lease_claim:
                 crate::install_epoch_durable_projection_v1::RawDurableNonceClaimProjectionV1 {
                     binding_sha256: preparation.lease_nonce_claim_binding_sha256(),
@@ -1342,13 +1449,6 @@ impl VerifiedCommittedCurrentTipPreparationV1 {
                 },
             predecessor: preparation.predecessor().clone(),
             provider_transaction_sha256: self.pending.commit.provider_transaction_sha256.clone(),
-            retry_query_claim: (self.pending.active_query_sequence > 1).then(|| {
-                crate::install_epoch_durable_projection_v1::RawDurableNonceClaimProjectionV1 {
-                    binding_sha256: self.pending.active_query_claim_binding_sha256.clone(),
-                    nonce: self.pending.active_query_nonce.clone(),
-                    scope: EXTERNAL_WATERMARK_QUERY_CLAIM_SCOPE_V1.to_string(),
-                }
-            }),
             state_root_profile_sha256: preparation.state_root_profile().profile_sha256.clone(),
             successor_record: self.successor_record.clone(),
             successor_tip_sha256: self.successor_tip_sha256.clone(),
@@ -2020,6 +2120,18 @@ fn verify_cas_commit_with_evidence_v1(
         &intent.query_claim_binding_sha256,
         None,
     );
+    let initial_attempt = CurrentTipAttemptHistoryV1 {
+        phase_predecessor_revision: receipt_phase_revision,
+        phase_predecessor_state_sha256: cas_receipt_state_sha256.clone(),
+        phase_successor_revision: initial_query_phase_revision,
+        phase_successor_state_sha256: active_query_state_sha256.clone(),
+        predecessor_closure: None,
+        query_bundle_binding_sha256: active_query_state_sha256.clone(),
+        query_bundle_id_sha256: intent.query_claim_binding_sha256.clone(),
+        query_claim_binding_sha256: intent.query_claim_binding_sha256.clone(),
+        query_nonce: intent.initial_query_nonce.clone(),
+        query_sequence: 1,
+    };
     Ok(VerifiedCasCommittedPendingTipV1 {
         active_query_claim_binding_sha256: intent.query_claim_binding_sha256.clone(),
         // Any exact verified receipt may compete to reserve the next query;
@@ -2032,6 +2144,7 @@ fn verify_cas_commit_with_evidence_v1(
         active_query_state_sha256,
         cas_receipt_state_sha256,
         commit: verified_commit,
+        current_tip_attempts: vec![initial_attempt],
         intent: issued_intent.0,
         phase_revision: receipt_phase_revision,
     })

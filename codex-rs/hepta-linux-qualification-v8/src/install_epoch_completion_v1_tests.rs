@@ -348,30 +348,43 @@ pub(super) fn complete_genesis(
 pub(super) fn complete_genesis_after_one_retry(
     model_now: u64,
 ) -> VerifiedCommittedCurrentTipPreparationV1 {
+    complete_genesis_after_retries(model_now, 1)
+}
+
+pub(super) fn complete_genesis_after_retries(
+    model_now: u64,
+    retry_count: u64,
+) -> VerifiedCommittedCurrentTipPreparationV1 {
+    assert!(retry_count <= MAX_EXTERNAL_WATERMARK_CURRENT_TIP_RETRY_COUNT_V1);
     let (preparation, mut guard) = crate::test_only_genesis_install_epoch_preparation_v1();
     let intent = begin_fresh(preparation, &mut guard);
     let (pending, commit) = commit_pending(intent, 1_060, &mut guard);
-    let (issued, fresh) = reserve_query(pending, &mut guard);
+    let (mut issued, fresh) = reserve_query(pending, &mut guard);
     assert!(fresh);
-    let closure = query_closure(&issued, '8');
-    let retry = match prepare_external_watermark_current_tip_retry_v1(
-        issued,
-        closure,
-        digest('9'),
-        &mut guard,
-    )
-    .unwrap()
-    {
-        ExternalWatermarkCurrentTipQueryReservationOutcomeV1::Fresh(reserved) => {
-            reserved.into_pending_after_provider_call()
-        }
-        ExternalWatermarkCurrentTipQueryReservationOutcomeV1::Recovered(_) => {
-            panic!("fresh retry unexpectedly recovered an existing query")
-        }
-    };
-    let current_tip = exact_signed_current_tip(&retry, &commit.envelope, 1_060, 1_100);
+    for retry_index in 1..=retry_count {
+        let closure = verified_query_closure_for_test_v1(
+            &issued,
+            sha256(format!("projection-retry-closure-{retry_index}").as_bytes()),
+        );
+        let outcome = prepare_external_watermark_current_tip_retry_v1(
+            issued,
+            closure,
+            sha256(format!("projection-retry-query-{retry_index}").as_bytes()),
+            &mut guard,
+        )
+        .unwrap();
+        issued = match outcome {
+            ExternalWatermarkCurrentTipQueryReservationOutcomeV1::Fresh(reserved) => {
+                reserved.into_pending_after_provider_call()
+            }
+            ExternalWatermarkCurrentTipQueryReservationOutcomeV1::Recovered(_) => {
+                panic!("fresh retry unexpectedly recovered an existing query")
+            }
+        };
+    }
+    let current_tip = exact_signed_current_tip(&issued, &commit.envelope, 1_060, 1_100);
     verify_current_tip_for_test_v1(
-        retry,
+        issued,
         &current_tip.envelope,
         &current_tip.observation,
         model_now,
