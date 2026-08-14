@@ -234,6 +234,7 @@ mod linux {
     use crate::NONCE_CLAIMS_DIRECTORY_V8;
     use crate::PROCESS_FD_LIFETIME_TEST_MUTEX;
     use crate::QUARANTINE_DIRECTORY_V8;
+    use crate::STATE_ROOT_LOCK_LEAF_V8;
     use crate::durable::trusted_state_root::open_test_trusted_state_root_v8;
 
     fn serialize_process_fd_lifetime() -> std::sync::MutexGuard<'static, ()> {
@@ -268,6 +269,12 @@ mod linux {
                 fs::create_dir(path.join(name)).unwrap();
                 fs::set_permissions(path.join(name), fs::Permissions::from_mode(0o700)).unwrap();
             }
+            fs::write(path.join(STATE_ROOT_LOCK_LEAF_V8), b"").unwrap();
+            fs::set_permissions(
+                path.join(STATE_ROOT_LOCK_LEAF_V8),
+                fs::Permissions::from_mode(0o600),
+            )
+            .unwrap();
             Self { path }
         }
     }

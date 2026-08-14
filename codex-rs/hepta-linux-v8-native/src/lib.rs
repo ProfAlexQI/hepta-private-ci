@@ -8,12 +8,16 @@
 
 mod durable;
 mod error;
+mod install;
 mod ipc;
 mod recovery;
+mod runtime_bridge;
 mod sys;
 
 pub use durable::*;
 pub use error::*;
+pub use install::*;
 pub use ipc::*;
 pub use recovery::*;
+pub use runtime_bridge::*;
 pub use sys::*;

@@ -1,4 +1,5 @@
 use crate::NativeErrorV8;
+use crate::VerifiedDurableJournalEventScanV8;
 use crate::invalid;
 
 use crate::validate_boot_id_v8;
@@ -175,6 +176,35 @@ pub fn plan_recovery_v8(
         state_root_owner_gid: facts.state_root_owner_gid,
         state_root_owner_uid: facts.state_root_owner_uid,
     })
+}
+
+/// Binds descriptor-anchored typed journal replay into recovery facts. This
+/// is the only bridge from durable effect intents to the recovery planner;
+/// callers cannot clear an unfinished intent with an in-memory assertion.
+pub(crate) fn bind_durable_event_replay_v8(
+    mut facts: RecoveryScanFactsV8,
+    replay: &VerifiedDurableJournalEventScanV8,
+) -> Result<RecoveryScanFactsV8, NativeErrorV8> {
+    let identity = replay.journal().state_root_identity();
+    if replay.journal().attempt_identity_sha256() != facts.attempt_identity_sha256
+        || identity.device() != facts.state_root_device
+        || identity.inode() != facts.state_root_inode
+        || identity.mode() != facts.state_root_mode
+        || identity.owner_uid() != facts.state_root_owner_uid
+        || identity.owner_gid() != facts.state_root_owner_gid
+    {
+        return Err(invalid(
+            "durable event replay differs from recovery attempt/state-root facts",
+        ));
+    }
+    facts.current_journal_tip_sha256 = replay.journal().tip_sha256().to_string();
+    facts.incoming_residue_detected |= replay.journal().incoming_residue_detected();
+    facts.unfinished_intent_detected |= replay.unfinished_intent_detected();
+    facts.prior_boot_detected |= replay.boot_recovery_detected()
+        || replay.current_boot_mismatch_detected()
+        || replay.current_boot_id() != facts.current_boot_id;
+    facts.existing_attempt_detected |= replay.qualification_abandoned();
+    Ok(facts)
 }
 
 #[cfg(test)]

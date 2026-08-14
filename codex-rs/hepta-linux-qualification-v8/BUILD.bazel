@@ -6,7 +6,7 @@ rust_library(
     crate_name = "codex_hepta_linux_qualification_v8",
     crate_root = "src/lib.rs",
     edition = "2024",
-    visibility = ["//visibility:private"],
+    visibility = ["//codex-rs/hepta-linux-v8-native:__pkg__"],
     deps = [
         "@crates//:base64",
         "@crates//:ed25519-dalek",

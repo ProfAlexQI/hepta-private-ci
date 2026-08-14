@@ -29,6 +29,7 @@ use std::os::unix::ffi::OsStrExt;
 #[derive(Debug)]
 pub struct StateRootLockV8 {
     identity: FileIdentityV8,
+    metadata: super::TrustedNodeMetadataV8,
     leaf: Box<OsStr>,
     owner_pid: u32,
     session: Arc<StateRootLockSessionV8>,
@@ -84,25 +85,42 @@ impl StateRootLockV8 {
     }
 }
 
+/// Disposable/model constructor that may create a missing lock leaf.
+/// Production runtime code must use [`open_existing_state_root_lock_v8`].
 pub fn acquire_state_root_lock_v8(
     state_root: &DirectoryAnchorV8,
     leaf: &OsStr,
 ) -> NativeSysResultV8<StateRootLockV8> {
-    acquire_state_root_lock_impl(state_root, leaf)
+    open_state_root_lock_impl(state_root, leaf, true)
+}
+
+/// Opens and locks an already installed singleton leaf. Unlike the disposable
+/// substrate constructor above, this production boundary never passes
+/// `O_CREAT`, never creates a missing pathname, and never fsyncs the root.
+pub fn open_existing_state_root_lock_v8(
+    state_root: &DirectoryAnchorV8,
+    leaf: &OsStr,
+) -> NativeSysResultV8<StateRootLockV8> {
+    open_state_root_lock_impl(state_root, leaf, false)
 }
 
 #[cfg(target_os = "linux")]
-fn acquire_state_root_lock_impl(
+fn open_state_root_lock_impl(
     state_root: &DirectoryAnchorV8,
     leaf: &OsStr,
+    create_if_missing: bool,
 ) -> NativeSysResultV8<StateRootLockV8> {
     let leaf_cstring = validate_leaf(leaf)?;
     // SAFETY: an all-zero `open_how` is the kernel-defined baseline; every
     // used field is then assigned explicitly.
     let mut how: libc::open_how = unsafe { std::mem::zeroed() };
-    how.flags = u64::try_from(libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+    let mut flags = libc::O_RDWR | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+    if create_if_missing {
+        flags |= libc::O_CREAT;
+        how.mode = 0o600;
+    }
+    how.flags = u64::try_from(flags)
         .map_err(|_| NativeSysErrorV8::InvalidInput("invalid lock open flags".to_string()))?;
-    how.mode = 0o600;
     how.resolve = libc::RESOLVE_BENEATH
         | libc::RESOLVE_NO_SYMLINKS
         | libc::RESOLVE_NO_MAGICLINKS
@@ -130,6 +148,7 @@ fn acquire_state_root_lock_impl(
     // SAFETY: the successful openat2 returned a unique descriptor.
     let descriptor = unsafe { OwnedFd::from_raw_fd(raw_fd) };
     let identity = super::openat2::identity_for_fd(descriptor.as_raw_fd())?;
+    let metadata = super::observe_trusted_node_metadata_v8(descriptor.as_raw_fd())?;
     // SAFETY: zero initializes a valid stat buffer, filled by fstat on success.
     let mut stat: libc::stat = unsafe { std::mem::zeroed() };
     // SAFETY: stat points to writable storage for the duration of fstat.
@@ -174,9 +193,18 @@ fn acquire_state_root_lock_impl(
             std::io::Error::last_os_error(),
         ));
     }
-    state_root.sync_directory()?;
+    let metadata_after_lock = super::observe_trusted_node_metadata_v8(descriptor.as_raw_fd())?;
+    if metadata_after_lock != metadata {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "state-root singleton lock metadata changed during acquisition".to_string(),
+        ));
+    }
+    if create_if_missing {
+        state_root.sync_directory()?;
+    }
     Ok(StateRootLockV8 {
         identity,
+        metadata,
         leaf: leaf.into(),
         owner_pid,
         session: Arc::new(StateRootLockSessionV8 { _private: () }),
@@ -215,19 +243,31 @@ fn revalidate_lock_impl(
             "live singleton lock inode was changed or unlinked".to_string(),
         ));
     }
+    let open_metadata = super::observe_trusted_node_metadata_v8(lock.descriptor.as_raw_fd())?;
+    if open_metadata != lock.metadata {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "live singleton lock filesystem, mount, xattr/ACL, or inode flags changed".to_string(),
+        ));
+    }
     let named = state_root.open_regular_readonly_beneath(Path::new(lock.leaf.as_ref()))?;
     if named.identity() != lock.identity {
         return Err(NativeSysErrorV8::RaceDetected(
             "singleton lock pathname no longer names the flocked inode".to_string(),
         ));
     }
+    if named.trusted_node_metadata()? != lock.metadata {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "singleton lock pathname metadata differs from the flocked inode".to_string(),
+        ));
+    }
     Ok(())
 }
 
 #[cfg(not(target_os = "linux"))]
-fn acquire_state_root_lock_impl(
+fn open_state_root_lock_impl(
     _state_root: &DirectoryAnchorV8,
     _leaf: &OsStr,
+    _create_if_missing: bool,
 ) -> NativeSysResultV8<StateRootLockV8> {
     Err(unsupported("state-root singleton lock"))
 }

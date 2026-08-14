@@ -82,7 +82,11 @@ pub enum JournalEventV8 {
 }
 
 impl JournalEventV8 {
-    fn validate(&self) -> Result<(), QualificationError> {
+    /// Validates one event independently of journal ordering. Native durable
+    /// storage uses this boundary before admitting event bytes to its exact
+    /// on-disk envelope; whole-journal ordering remains the responsibility of
+    /// [`validate_journal_v8`].
+    pub fn validate(&self) -> Result<(), QualificationError> {
         match self {
             Self::AttemptOpened {
                 authority_manifest_sha256,
@@ -117,7 +121,8 @@ impl JournalEventV8 {
         }
     }
 
-    fn canonical_bytes(&self) -> Vec<u8> {
+    /// Canonical semantic bytes shared by model and native durable replay.
+    pub fn canonical_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         match self {
             Self::AttemptOpened {
@@ -192,7 +197,7 @@ impl JournalEventV8 {
 }
 
 impl JournalEffectV8 {
-    fn canonical_name(self) -> &'static str {
+    pub fn canonical_name(self) -> &'static str {
         match self {
             Self::RunnerStop => "runner_stop",
             Self::CandidateExecution => "candidate_execution",
@@ -462,29 +467,143 @@ pub fn validate_journal_v8(
     })
 }
 
+/// Shared fail-closed phase fold for the exact 13-step qualification effect
+/// lifecycle. This type carries ordering facts only. It is not runner,
+/// candidate, relay, snapshot, barrier, recovery, or release authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RequiredJournalStepV8 {
-    EffectIntent(JournalEffectV8),
-    EffectObserved(JournalEffectV8),
-    CandidateCompleted,
+pub enum QualificationJournalPhaseV8 {
+    AwaitRunnerStopIntent,
+    AwaitRunnerStopObservation,
+    AwaitCandidateExecutionIntent,
+    AwaitCandidateExecutionObservation,
+    AwaitCandidateCompleted,
+    AwaitCandidateRelayIntent,
+    AwaitCandidateRelayObservation,
+    AwaitRunnerRestoreIntent,
+    AwaitRunnerRestoreObservation,
+    AwaitPostRestoreSnapshotIntent,
+    AwaitPostRestoreSnapshotObservation,
+    AwaitBarrierReleaseIntent,
+    AwaitBarrierReleaseObservation,
+    Complete,
 }
 
-const PRE_RELEASE_STEP_COUNT_V8: usize = 11;
-const REQUIRED_RELEASE_SEQUENCE_V8: [RequiredJournalStepV8; 13] = [
-    RequiredJournalStepV8::EffectIntent(JournalEffectV8::RunnerStop),
-    RequiredJournalStepV8::EffectObserved(JournalEffectV8::RunnerStop),
-    RequiredJournalStepV8::EffectIntent(JournalEffectV8::CandidateExecution),
-    RequiredJournalStepV8::EffectObserved(JournalEffectV8::CandidateExecution),
-    RequiredJournalStepV8::CandidateCompleted,
-    RequiredJournalStepV8::EffectIntent(JournalEffectV8::CandidateRelay),
-    RequiredJournalStepV8::EffectObserved(JournalEffectV8::CandidateRelay),
-    RequiredJournalStepV8::EffectIntent(JournalEffectV8::RunnerRestore),
-    RequiredJournalStepV8::EffectObserved(JournalEffectV8::RunnerRestore),
-    RequiredJournalStepV8::EffectIntent(JournalEffectV8::PostRestoreSnapshot),
-    RequiredJournalStepV8::EffectObserved(JournalEffectV8::PostRestoreSnapshot),
-    RequiredJournalStepV8::EffectIntent(JournalEffectV8::BarrierRelease),
-    RequiredJournalStepV8::EffectObserved(JournalEffectV8::BarrierRelease),
-];
+impl QualificationJournalPhaseV8 {
+    pub const fn initial() -> Self {
+        Self::AwaitRunnerStopIntent
+    }
+
+    pub const fn ready_for_release_authorization(self) -> bool {
+        matches!(self, Self::AwaitBarrierReleaseIntent)
+    }
+
+    pub const fn release_complete(self) -> bool {
+        matches!(self, Self::Complete)
+    }
+
+    pub fn advance(self, event: &JournalEventV8) -> Result<Self, QualificationError> {
+        let next = match (self, event) {
+            (
+                Self::AwaitRunnerStopIntent,
+                JournalEventV8::EffectIntent {
+                    effect: JournalEffectV8::RunnerStop,
+                    ..
+                },
+            ) => Self::AwaitRunnerStopObservation,
+            (
+                Self::AwaitRunnerStopObservation,
+                JournalEventV8::EffectObserved {
+                    effect: JournalEffectV8::RunnerStop,
+                    ..
+                },
+            ) => Self::AwaitCandidateExecutionIntent,
+            (
+                Self::AwaitCandidateExecutionIntent,
+                JournalEventV8::EffectIntent {
+                    effect: JournalEffectV8::CandidateExecution,
+                    ..
+                },
+            ) => Self::AwaitCandidateExecutionObservation,
+            (
+                Self::AwaitCandidateExecutionObservation,
+                JournalEventV8::EffectObserved {
+                    effect: JournalEffectV8::CandidateExecution,
+                    ..
+                },
+            ) => Self::AwaitCandidateCompleted,
+            (Self::AwaitCandidateCompleted, JournalEventV8::CandidateCompleted { .. }) => {
+                Self::AwaitCandidateRelayIntent
+            }
+            (
+                Self::AwaitCandidateRelayIntent,
+                JournalEventV8::EffectIntent {
+                    effect: JournalEffectV8::CandidateRelay,
+                    ..
+                },
+            ) => Self::AwaitCandidateRelayObservation,
+            (
+                Self::AwaitCandidateRelayObservation,
+                JournalEventV8::EffectObserved {
+                    effect: JournalEffectV8::CandidateRelay,
+                    ..
+                },
+            ) => Self::AwaitRunnerRestoreIntent,
+            (
+                Self::AwaitRunnerRestoreIntent,
+                JournalEventV8::EffectIntent {
+                    effect: JournalEffectV8::RunnerRestore,
+                    ..
+                },
+            ) => Self::AwaitRunnerRestoreObservation,
+            (
+                Self::AwaitRunnerRestoreObservation,
+                JournalEventV8::EffectObserved {
+                    effect: JournalEffectV8::RunnerRestore,
+                    ..
+                },
+            ) => Self::AwaitPostRestoreSnapshotIntent,
+            (
+                Self::AwaitPostRestoreSnapshotIntent,
+                JournalEventV8::EffectIntent {
+                    effect: JournalEffectV8::PostRestoreSnapshot,
+                    ..
+                },
+            ) => Self::AwaitPostRestoreSnapshotObservation,
+            (
+                Self::AwaitPostRestoreSnapshotObservation,
+                JournalEventV8::EffectObserved {
+                    effect: JournalEffectV8::PostRestoreSnapshot,
+                    ..
+                },
+            ) => Self::AwaitBarrierReleaseIntent,
+            (
+                Self::AwaitBarrierReleaseIntent,
+                JournalEventV8::EffectIntent {
+                    effect: JournalEffectV8::BarrierRelease,
+                    ..
+                },
+            ) => Self::AwaitBarrierReleaseObservation,
+            (
+                Self::AwaitBarrierReleaseObservation,
+                JournalEventV8::EffectObserved {
+                    effect: JournalEffectV8::BarrierRelease,
+                    ..
+                },
+            ) => Self::Complete,
+            (Self::Complete, _) => {
+                return Err(invalid(
+                    "qualification phase fold rejects records after terminal barrier release",
+                ));
+            }
+            _ => {
+                return Err(invalid(
+                    "qualification event is duplicated, skipped, or out of exact phase order",
+                ));
+            }
+        };
+        Ok(next)
+    }
+}
 
 struct JournalSemanticsV8 {
     abandoned: bool,
@@ -504,7 +623,7 @@ fn validate_journal_semantics(
     records: &[JournalRecordV8],
     reboot_observed: bool,
 ) -> Result<JournalSemanticsV8, QualificationError> {
-    let mut required_index = 0_usize;
+    let mut phase = QualificationJournalPhaseV8::initial();
     let mut pending_intent: Option<(JournalEffectV8, &str)> = None;
     let mut recovery_seen = false;
     let mut abandoned = false;
@@ -523,7 +642,7 @@ fn validate_journal_semantics(
                 "journal contains records after terminal abandonment",
             ));
         }
-        if required_index == REQUIRED_RELEASE_SEQUENCE_V8.len() {
+        if phase.release_complete() {
             return Err(invalid(
                 "journal contains records after terminal barrier release",
             ));
@@ -553,17 +672,14 @@ fn validate_journal_semantics(
                 effect,
                 effect_manifest_sha256,
             } => {
-                if pending_intent.is_some()
-                    || REQUIRED_RELEASE_SEQUENCE_V8.get(required_index)
-                        != Some(&RequiredJournalStepV8::EffectIntent(*effect))
-                {
+                if pending_intent.is_some() {
                     return Err(invalid("effect intent is duplicated or out of order"));
                 }
+                phase = phase.advance(&record.event)?;
                 if *effect == JournalEffectV8::BarrierRelease {
                     barrier_release_manifest_sha256 = Some(effect_manifest_sha256.clone());
                 }
                 pending_intent = Some((*effect, record.record_sha256.as_str()));
-                required_index += 1;
             }
             JournalEventV8::EffectObserved {
                 effect,
@@ -571,14 +687,12 @@ fn validate_journal_semantics(
                 observation_sha256,
                 ..
             } => {
-                if pending_intent != Some((*effect, intent_record_sha256.as_str()))
-                    || REQUIRED_RELEASE_SEQUENCE_V8.get(required_index)
-                        != Some(&RequiredJournalStepV8::EffectObserved(*effect))
-                {
+                if pending_intent != Some((*effect, intent_record_sha256.as_str())) {
                     return Err(invalid(
                         "effect observation does not close the exact pending intent",
                     ));
                 }
+                phase = phase.advance(&record.event)?;
                 match effect {
                     JournalEffectV8::RunnerStop => {
                         runner_stop_observation_sha256 = Some(observation_sha256.clone());
@@ -599,19 +713,15 @@ fn validate_journal_semantics(
                     }
                 }
                 pending_intent = None;
-                required_index += 1;
             }
             JournalEventV8::CandidateCompleted {
                 candidate_result_sha256: observed,
             } => {
-                if pending_intent.is_some()
-                    || REQUIRED_RELEASE_SEQUENCE_V8.get(required_index)
-                        != Some(&RequiredJournalStepV8::CandidateCompleted)
-                {
+                if pending_intent.is_some() {
                     return Err(invalid("candidate completion is out of order"));
                 }
+                phase = phase.advance(&record.event)?;
                 candidate_result_sha256 = Some(observed.clone());
-                required_index += 1;
             }
         }
     }
@@ -621,12 +731,12 @@ fn validate_journal_semantics(
     }
     Ok(JournalSemanticsV8 {
         abandoned,
-        ready_for_release_authorization: required_index == PRE_RELEASE_STEP_COUNT_V8
+        ready_for_release_authorization: phase.ready_for_release_authorization()
             && pending_intent.is_none()
             && !recovery_seen
             && !abandoned,
         pre_release_tip_sha256,
-        release_complete: required_index == REQUIRED_RELEASE_SEQUENCE_V8.len()
+        release_complete: phase.release_complete()
             && pending_intent.is_none()
             && !recovery_seen
             && !abandoned,

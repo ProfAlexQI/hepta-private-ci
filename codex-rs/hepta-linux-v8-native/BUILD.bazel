@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 rust_library(
     name = "hepta-linux-v8-native-lib",
@@ -8,8 +8,10 @@ rust_library(
     edition = "2024",
     visibility = ["//visibility:private"],
     deps = [
+        "//codex-rs/hepta-linux-qualification-v8:hepta-linux-qualification-v8-lib",
         "@crates//:libc",
         "@crates//:serde",
+        "@crates//:serde_json",
         "@crates//:sha2",
         "@crates//:thiserror",
     ],
@@ -20,6 +22,33 @@ rust_test(
     crate = ":hepta-linux-v8-native-lib",
     deps = [
         "@crates//:pretty_assertions",
-        "@crates//:serde_json",
+        "@crates//:tempfile",
     ],
+)
+
+rust_binary(
+    name = "hepta-linux-v8ctl",
+    srcs = ["src/bin/hepta-linux-v8ctl.rs"],
+    crate_root = "src/bin/hepta-linux-v8ctl.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [":hepta-linux-v8-native-lib"],
+)
+
+rust_binary(
+    name = "hepta-linux-v8-admissiond",
+    srcs = ["src/bin/hepta-linux-v8-admissiond.rs"],
+    crate_root = "src/bin/hepta-linux-v8-admissiond.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [":hepta-linux-v8-native-lib"],
+)
+
+rust_binary(
+    name = "hepta-linux-v8-recover",
+    srcs = ["src/bin/hepta-linux-v8-recover.rs"],
+    crate_root = "src/bin/hepta-linux-v8-recover.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [":hepta-linux-v8-native-lib"],
 )

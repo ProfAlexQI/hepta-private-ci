@@ -25,9 +25,22 @@ fn layout_and_profile_digests_are_deterministic_and_exact() {
     );
 }
 
+#[test]
+fn bootstrap_binary_cannot_self_publish_a_production_profile() {
+    let error = open_production_trusted_state_root_v8()
+        .expect_err("bootstrap must remain NO_AUTHORITY until external profile publication");
+    assert!(
+        error
+            .to_string()
+            .contains("production state-root profile is not independently published")
+    );
+}
+
 #[cfg(target_os = "linux")]
 mod linux {
+    use std::ffi::CString;
     use std::fs;
+    use std::os::unix::ffi::OsStrExt as _;
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
 
@@ -55,6 +68,9 @@ mod linux {
                 fs::create_dir(&child).unwrap();
                 fs::set_permissions(child, fs::Permissions::from_mode(0o700)).unwrap();
             }
+            let lock = path.join(STATE_ROOT_LOCK_LEAF_V8);
+            fs::write(&lock, b"").unwrap();
+            fs::set_permissions(lock, fs::Permissions::from_mode(0o600)).unwrap();
             Self { path }
         }
     }
@@ -77,7 +93,45 @@ mod linux {
             state_root_layout_manifest_sha256_v8()
         );
         trusted.revalidate().unwrap();
+        let anchor = DirectoryAnchorV8::open(&root.path).unwrap();
+        assert!(anchor.trusted_node_metadata().unwrap().mount_id() > 0);
         assert!(root.path.join(STATE_ROOT_LOCK_LEAF_V8).exists());
+    }
+
+    fn set_user_xattr(path: &Path) {
+        let path = CString::new(path.as_os_str().as_bytes()).unwrap();
+        // SAFETY: both C strings and the one-byte value remain live and the
+        // kernel retains no pointers after setxattr returns.
+        let result = unsafe {
+            libc::setxattr(
+                path.as_ptr(),
+                c"user.hepta-v8-unapproved".as_ptr(),
+                b"x".as_ptr().cast(),
+                1,
+                0,
+            )
+        };
+        assert_eq!(
+            result,
+            0,
+            "set disposable xattr: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+
+    #[test]
+    fn root_directory_and_lock_xattrs_fail_closed() {
+        let root_xattr = TestRoot::new("root-xattr");
+        set_user_xattr(&root_xattr.path);
+        assert!(open_test_trusted_state_root_v8(&root_xattr.path).is_err());
+
+        let directory_xattr = TestRoot::new("directory-xattr");
+        set_user_xattr(&directory_xattr.path.join(JOURNAL_DIRECTORY_V8));
+        assert!(open_test_trusted_state_root_v8(&directory_xattr.path).is_err());
+
+        let lock_xattr = TestRoot::new("lock-xattr");
+        set_user_xattr(&lock_xattr.path.join(STATE_ROOT_LOCK_LEAF_V8));
+        assert!(open_test_trusted_state_root_v8(&lock_xattr.path).is_err());
     }
 
     #[test]

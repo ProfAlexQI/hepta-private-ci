@@ -5,6 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use super::DirectoryAnchorV8;
 use super::PROCESS_FD_LIFETIME_TEST_MUTEX;
 use super::acquire_state_root_lock_v8;
+use super::open_existing_state_root_lock_v8;
 
 fn serialize_process_fd_lifetime() -> std::sync::MutexGuard<'static, ()> {
     PROCESS_FD_LIFETIME_TEST_MUTEX
@@ -64,6 +65,26 @@ fn unlinked_or_replaced_lock_name_invalidates_the_live_token() {
     permissions.set_mode(0o600);
     fs::set_permissions(root.join("state.lock"), permissions).unwrap();
     assert!(lock.revalidate_for_root(&anchor).is_err());
+    drop(lock);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn production_lock_open_never_creates_and_requires_exact_existing_leaf() {
+    let _process_guard = serialize_process_fd_lifetime();
+    let root = temporary_directory();
+    let anchor = DirectoryAnchorV8::open(&root).unwrap();
+    let leaf = OsStr::new("state.lock");
+    assert!(open_existing_state_root_lock_v8(&anchor, leaf).is_err());
+    assert!(!root.join(leaf).exists());
+
+    fs::write(root.join(leaf), b"").unwrap();
+    let mut permissions = fs::metadata(root.join(leaf)).unwrap().permissions();
+    permissions.set_mode(0o600);
+    fs::set_permissions(root.join(leaf), permissions).unwrap();
+    let lock = open_existing_state_root_lock_v8(&anchor, leaf).unwrap();
+    assert!(open_existing_state_root_lock_v8(&anchor, leaf).is_err());
+    lock.revalidate_for_root(&anchor).unwrap();
     drop(lock);
     fs::remove_dir_all(root).unwrap();
 }

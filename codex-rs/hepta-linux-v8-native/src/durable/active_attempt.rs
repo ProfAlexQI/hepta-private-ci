@@ -279,6 +279,57 @@ pub enum ActiveAttemptPublicationOutcomeV8 {
     ExistingRequiresRecovery(ExistingActiveAttemptV8),
 }
 
+/// Read-only, descriptor-anchored recovery probe for the sole active-attempt
+/// binding. Absence is returned only after two identical closed-world root
+/// inventories under the live singleton lock. An interrupted incoming
+/// publication or any malformed existing binding fails closed.
+pub(crate) fn read_active_attempt_for_recovery_v8(
+    state_root: &DirectoryAnchorV8,
+    state_root_lock: &StateRootLockV8,
+) -> Result<Option<ExistingActiveAttemptV8>, NativeErrorV8> {
+    if !state_root_lock
+        .state_root_identity()
+        .matches_stable_directory(state_root.identity())
+    {
+        return Err(invalid(
+            "active-attempt recovery probe lock belongs to a different state root",
+        ));
+    }
+    state_root_lock.revalidate_for_root(state_root)?;
+    let before = state_root.list_leaf_names_bounded(super::MAX_STATE_ROOT_LEAVES_V8)?;
+    state_root_lock.revalidate_for_root(state_root)?;
+    let after = state_root.list_leaf_names_bounded(super::MAX_STATE_ROOT_LEAVES_V8)?;
+    if before != after {
+        return Err(invalid(
+            "state-root inventory changed during active-attempt recovery probe",
+        ));
+    }
+    let incoming_prefix = format!(".{ACTIVE_ATTEMPT_LEAF_V8}.");
+    if after.iter().any(|name| {
+        name.to_str()
+            .is_some_and(|name| name.starts_with(&incoming_prefix) && name.ends_with(".incoming"))
+    }) {
+        return Err(invalid(
+            "interrupted active-attempt publication requires exact recovery",
+        ));
+    }
+    let active_leaf = OsString::from(ACTIVE_ATTEMPT_LEAF_V8);
+    if !after.iter().any(|name| name == &active_leaf) {
+        state_root_lock.revalidate_for_root(state_root)?;
+        return Ok(None);
+    }
+    let existing = match read_existing_active_attempt(state_root)? {
+        ActiveAttemptPublicationOutcomeV8::ExistingRequiresRecovery(existing) => existing,
+        ActiveAttemptPublicationOutcomeV8::Fresh(_) => {
+            return Err(invalid(
+                "read-only active-attempt probe unexpectedly created fresh authority",
+            ));
+        }
+    };
+    state_root_lock.revalidate_for_root(state_root)?;
+    Ok(Some(existing))
+}
+
 pub fn publish_active_attempt_durably_v8(
     state_root: &DirectoryAnchorV8,
     state_root_lock: &mut StateRootLockV8,

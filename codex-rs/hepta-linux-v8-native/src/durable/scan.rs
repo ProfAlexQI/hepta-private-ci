@@ -29,6 +29,15 @@ pub struct VerifiedDurableJournalScanV8 {
     tip_sha256: String,
 }
 
+/// Internal replay result retaining the exact decoded records. Public callers
+/// receive only the structural scan; typed recovery code uses the retained
+/// records to fold effect obligations without reopening pathnames or trusting
+/// caller-supplied payloads.
+pub(crate) struct VerifiedDurableJournalRecordsV8 {
+    pub(crate) scan: VerifiedDurableJournalScanV8,
+    pub(crate) records: Vec<DurableJournalRecordV8>,
+}
+
 impl VerifiedDurableJournalScanV8 {
     pub fn attempt_identity_sha256(&self) -> &str {
         &self.attempt_identity_sha256
@@ -90,6 +99,19 @@ pub(crate) fn scan_journal_directory_v8(
     expected_attempt_identity_sha256: &str,
     state_root_identity: FileIdentityV8,
 ) -> Result<VerifiedDurableJournalScanV8, NativeErrorV8> {
+    Ok(scan_journal_directory_with_records_v8(
+        journal_directory,
+        expected_attempt_identity_sha256,
+        state_root_identity,
+    )?
+    .scan)
+}
+
+pub(crate) fn scan_journal_directory_with_records_v8(
+    journal_directory: &DirectoryAnchorV8,
+    expected_attempt_identity_sha256: &str,
+    state_root_identity: FileIdentityV8,
+) -> Result<VerifiedDurableJournalRecordsV8, NativeErrorV8> {
     let names = journal_directory.list_leaf_names_bounded(super::MAX_DURABLE_JOURNAL_LEAVES_V8)?;
     let mut incoming_residue_detected = false;
     let mut record_names = Vec::new();
@@ -112,6 +134,7 @@ pub(crate) fn scan_journal_directory_v8(
 
     let directory_identity = journal_directory.identity();
     let mut encoded_records = Vec::with_capacity(record_names.len());
+    let mut records = Vec::with_capacity(record_names.len());
     let mut last_boot_epoch = 0;
     let mut last_boot_id = String::new();
     let mut seen_boot_ids = BTreeSet::new();
@@ -173,6 +196,7 @@ pub(crate) fn scan_journal_directory_v8(
         }
         last_boot_epoch = decoded.boot_epoch();
         last_boot_id = decoded.boot_id().to_string();
+        records.push(decoded);
         encoded_records.push(bytes);
     }
 
@@ -183,14 +207,17 @@ pub(crate) fn scan_journal_directory_v8(
             "durable journal namespace changed during anchored scan",
         ));
     }
-    Ok(VerifiedDurableJournalScanV8 {
-        attempt_identity_sha256: expected_attempt_identity_sha256.to_string(),
-        incoming_residue_detected,
-        last_boot_epoch,
-        last_boot_id,
-        record_count: chain.record_count(),
-        state_root_identity,
-        tip_sha256: chain.tip_sha256().to_string(),
+    Ok(VerifiedDurableJournalRecordsV8 {
+        scan: VerifiedDurableJournalScanV8 {
+            attempt_identity_sha256: expected_attempt_identity_sha256.to_string(),
+            incoming_residue_detected,
+            last_boot_epoch,
+            last_boot_id,
+            record_count: chain.record_count(),
+            state_root_identity,
+            tip_sha256: chain.tip_sha256().to_string(),
+        },
+        records,
     })
 }
 
@@ -440,6 +467,127 @@ mod tests {
             }
             fs::remove_dir_all(root).unwrap();
         }
+    }
+
+    #[test]
+    fn durable_record_real_uid_or_gid_mismatch_fails_closed() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt as _;
+        use std::os::unix::fs::MetadataExt as _;
+
+        let root = temporary_directory("owner-mismatch");
+        let anchor = DirectoryAnchorV8::open(&root).unwrap();
+        let directory_identity = anchor.identity();
+        let attempt = digest('1');
+        let record = DurableJournalRecordV8::new(
+            attempt.clone(),
+            1,
+            "01234567-89ab-cdef-0123-456789abcdef".to_string(),
+            1,
+            ZERO_SHA256.to_string(),
+            b"real-owner-negative".to_vec(),
+        )
+        .unwrap();
+        let record_path = root.join("00000000000000000001.record");
+        publish_record_noreplace_v8(
+            &anchor,
+            "00000000000000000001.record",
+            &digest('2'),
+            &record.canonical_bytes().unwrap(),
+        )
+        .unwrap();
+        let record_path_c = CString::new(record_path.as_os_str().as_bytes()).unwrap();
+
+        // Exercise a real kernel credential transition. Privileged
+        // qualification changes both UID and GID. A rootless run may change
+        // only to an actual supplementary GID; it never fabricates metadata.
+        // SAFETY: geteuid has no arguments or preconditions.
+        let effective_uid = unsafe { libc::geteuid() };
+        if effective_uid == 0 {
+            let mismatched_uid = if directory_identity.owner_uid() == 65_534 {
+                65_533
+            } else {
+                65_534
+            };
+            let mismatched_gid = if directory_identity.owner_gid() == 65_534 {
+                65_533
+            } else {
+                65_534
+            };
+            // SAFETY: record_path_c is a live NUL-terminated path inside this
+            // test's private temporary directory.
+            let rc = unsafe { libc::chown(record_path_c.as_ptr(), mismatched_uid, mismatched_gid) };
+            assert_eq!(
+                rc,
+                0,
+                "privileged fixture must perform a real UID/GID mismatch: {}",
+                std::io::Error::last_os_error()
+            );
+        } else {
+            // SAFETY: the first getgroups call requests only the required
+            // count; the second receives exactly that many gid_t slots.
+            let group_count = unsafe { libc::getgroups(0, std::ptr::null_mut()) };
+            if group_count < 0 {
+                eprintln!(
+                    "SKIP durable real-owner mismatch: rootless getgroups failed: {}",
+                    std::io::Error::last_os_error()
+                );
+                fs::remove_dir_all(root).unwrap();
+                return;
+            }
+            let mut groups = vec![0 as libc::gid_t; usize::try_from(group_count).unwrap()];
+            if group_count > 0 {
+                // SAFETY: groups has group_count writable gid_t elements.
+                let loaded = unsafe { libc::getgroups(group_count, groups.as_mut_ptr()) };
+                if loaded != group_count {
+                    eprintln!(
+                        "SKIP durable real-owner mismatch: rootless supplementary-group inventory changed or failed: {}",
+                        std::io::Error::last_os_error()
+                    );
+                    fs::remove_dir_all(root).unwrap();
+                    return;
+                }
+            }
+            let Some(mismatched_gid) = groups
+                .into_iter()
+                .find(|gid| *gid != directory_identity.owner_gid())
+            else {
+                eprintln!(
+                    "SKIP durable real-owner mismatch: rootless process has no supplementary GID distinct from directory GID {}",
+                    directory_identity.owner_gid()
+                );
+                fs::remove_dir_all(root).unwrap();
+                return;
+            };
+            // SAFETY: record_path_c is a live NUL-terminated path inside this
+            // test's private temporary directory. uid_t::MAX means unchanged.
+            let rc =
+                unsafe { libc::chown(record_path_c.as_ptr(), libc::uid_t::MAX, mismatched_gid) };
+            if rc != 0 {
+                eprintln!(
+                    "SKIP durable real-owner mismatch: rootless chgrp to actual supplementary GID {mismatched_gid} was denied: {}",
+                    std::io::Error::last_os_error()
+                );
+                fs::remove_dir_all(root).unwrap();
+                return;
+            }
+        }
+
+        let changed = fs::metadata(&record_path).unwrap();
+        assert!(
+            changed.uid() != directory_identity.owner_uid()
+                || changed.gid() != directory_identity.owner_gid(),
+            "fixture must establish a real leaf UID or GID mismatch"
+        );
+        let error = scan_journal_directory_v8(&anchor, &attempt, directory_identity).unwrap_err();
+        match error {
+            NativeErrorV8::Invalid(message) => assert_eq!(
+                message,
+                "durable journal record ownership, mode, or link count mismatches"
+            ),
+            other => panic!("unexpected durable owner-mismatch error: {other}"),
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

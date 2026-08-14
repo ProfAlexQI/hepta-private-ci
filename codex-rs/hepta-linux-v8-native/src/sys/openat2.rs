@@ -40,6 +40,27 @@ pub struct FileIdentityV8 {
 }
 
 impl FileIdentityV8 {
+    #[cfg(test)]
+    pub(crate) fn for_test_only(
+        device: u64,
+        inode: u64,
+        owner_uid: u32,
+        owner_gid: u32,
+        mode: u32,
+        link_count: u64,
+        size: u64,
+    ) -> Self {
+        Self {
+            device,
+            inode,
+            owner_uid,
+            owner_gid,
+            mode,
+            link_count,
+            size,
+        }
+    }
+
     pub fn device(&self) -> u64 {
         self.device
     }
@@ -113,6 +134,12 @@ impl DirectoryAnchorV8 {
     /// directory identity and has not been unlinked.
     pub fn revalidate_identity(&self) -> NativeSysResultV8<()> {
         revalidate_directory_identity_impl(self)
+    }
+
+    /// Observes the compiled empty-xattr/ACL, filesystem, mount-id, mount-flag,
+    /// and inode-flag policy twice through this retained descriptor.
+    pub(crate) fn trusted_node_metadata(&self) -> NativeSysResultV8<super::TrustedNodeMetadataV8> {
+        trusted_directory_metadata_impl(self)
     }
 
     pub fn open_directory_beneath(&self, relative: &Path) -> NativeSysResultV8<Self> {
@@ -275,6 +302,10 @@ impl VerifiedFileFdV8 {
         read_all_impl(self, maximum_bytes)
     }
 
+    pub(crate) fn trusted_node_metadata(&self) -> NativeSysResultV8<super::TrustedNodeMetadataV8> {
+        trusted_file_metadata_impl(self)
+    }
+
     #[cfg(target_os = "linux")]
     pub(super) fn raw_fd(&self) -> libc::c_int {
         self.descriptor.as_raw_fd()
@@ -290,6 +321,52 @@ impl VerifiedFileFdV8 {
         }
         Ok(())
     }
+}
+
+#[cfg(target_os = "linux")]
+fn trusted_directory_metadata_impl(
+    anchor: &DirectoryAnchorV8,
+) -> NativeSysResultV8<super::TrustedNodeMetadataV8> {
+    anchor.revalidate_identity()?;
+    let before = super::observe_trusted_node_metadata_v8(anchor.descriptor.as_raw_fd())?;
+    anchor.revalidate_identity()?;
+    let after = super::observe_trusted_node_metadata_v8(anchor.descriptor.as_raw_fd())?;
+    if before != after {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "trusted directory metadata changed during descriptor observation".to_string(),
+        ));
+    }
+    Ok(after)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn trusted_directory_metadata_impl(
+    _anchor: &DirectoryAnchorV8,
+) -> NativeSysResultV8<super::TrustedNodeMetadataV8> {
+    Err(unsupported("observe trusted directory metadata"))
+}
+
+#[cfg(target_os = "linux")]
+fn trusted_file_metadata_impl(
+    file: &VerifiedFileFdV8,
+) -> NativeSysResultV8<super::TrustedNodeMetadataV8> {
+    file.revalidate_identity()?;
+    let before = super::observe_trusted_node_metadata_v8(file.descriptor.as_raw_fd())?;
+    file.revalidate_identity()?;
+    let after = super::observe_trusted_node_metadata_v8(file.descriptor.as_raw_fd())?;
+    if before != after {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "trusted regular-file metadata changed during descriptor observation".to_string(),
+        ));
+    }
+    Ok(after)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn trusted_file_metadata_impl(
+    _file: &VerifiedFileFdV8,
+) -> NativeSysResultV8<super::TrustedNodeMetadataV8> {
+    Err(unsupported("observe trusted regular-file metadata"))
 }
 
 #[cfg(target_os = "linux")]
@@ -787,7 +864,7 @@ pub(super) fn identity_for_fd(fd: libc::c_int) -> NativeSysResultV8<FileIdentity
         owner_uid: stat.st_uid,
         owner_gid: stat.st_gid,
         mode: stat.st_mode & 0o7777,
-        link_count: stat.st_nlink,
+        link_count: u64::from(stat.st_nlink),
         size: u64::try_from(stat.st_size).map_err(|_| {
             NativeSysErrorV8::IdentityMismatch("descriptor has a negative size".to_string())
         })?,

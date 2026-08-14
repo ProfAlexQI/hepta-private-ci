@@ -41,11 +41,13 @@ pub const FROZEN_SSHSIG_TRUST_PROFILE_PUBLISHED_V8: bool = false;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SshsigTrustPurposeV8 {
     InstallAuthority,
+    InstallAuthorityV2,
     InstallEpochAuthorityV1,
     ExternalWatermarkLeaseV1,
     ExternalWatermarkCommitV1,
     ExternalWatermarkCurrentTipV1,
     OneShotRunAuthority,
+    OneShotRunAuthorityV2,
     BreakGlassAuthority,
     MacCopyAck,
 }
@@ -54,6 +56,7 @@ impl SshsigTrustPurposeV8 {
     pub(crate) const fn namespace(self) -> &'static str {
         match self {
             Self::InstallAuthority => crate::INSTALL_NAMESPACE_V8,
+            Self::InstallAuthorityV2 => crate::INSTALL_NAMESPACE_V2,
             Self::InstallEpochAuthorityV1 => crate::INSTALL_EPOCH_AUTHORITY_NAMESPACE_V1,
             Self::ExternalWatermarkLeaseV1 => crate::EXTERNAL_WATERMARK_LEASE_NAMESPACE_V1,
             Self::ExternalWatermarkCommitV1 => crate::EXTERNAL_WATERMARK_COMMIT_NAMESPACE_V1,
@@ -61,6 +64,7 @@ impl SshsigTrustPurposeV8 {
                 crate::EXTERNAL_WATERMARK_CURRENT_TIP_NAMESPACE_V1
             }
             Self::OneShotRunAuthority => crate::ONE_SHOT_RUN_NAMESPACE_V8,
+            Self::OneShotRunAuthorityV2 => crate::ONE_SHOT_RUN_NAMESPACE_V2,
             Self::BreakGlassAuthority => crate::BREAK_GLASS_NAMESPACE_V8,
             Self::MacCopyAck => crate::COPY_ACK_NAMESPACE_V8,
         }
@@ -69,11 +73,13 @@ impl SshsigTrustPurposeV8 {
     const fn canonical_name(self) -> &'static str {
         match self {
             Self::InstallAuthority => "install_authority",
+            Self::InstallAuthorityV2 => "install_authority_v2",
             Self::InstallEpochAuthorityV1 => "install_epoch_authority_v1",
             Self::ExternalWatermarkLeaseV1 => "external_watermark_lease_v1",
             Self::ExternalWatermarkCommitV1 => "external_watermark_commit_v1",
             Self::ExternalWatermarkCurrentTipV1 => "external_watermark_current_tip_v1",
             Self::OneShotRunAuthority => "one_shot_run_authority",
+            Self::OneShotRunAuthorityV2 => "one_shot_run_authority_v2",
             Self::BreakGlassAuthority => "break_glass_authority",
             Self::MacCopyAck => "mac_copy_ack",
         }
@@ -180,7 +186,9 @@ impl FrozenSshsigTrustPolicyV8 {
 pub(crate) fn authority_trust_purpose_v8(kind: AuthorityScopeKindV8) -> SshsigTrustPurposeV8 {
     match kind {
         AuthorityScopeKindV8::Install => SshsigTrustPurposeV8::InstallAuthority,
+        AuthorityScopeKindV8::InstallV2 => SshsigTrustPurposeV8::InstallAuthorityV2,
         AuthorityScopeKindV8::OneShotRun => SshsigTrustPurposeV8::OneShotRunAuthority,
+        AuthorityScopeKindV8::OneShotRunV2 => SshsigTrustPurposeV8::OneShotRunAuthorityV2,
         AuthorityScopeKindV8::BreakGlass => SshsigTrustPurposeV8::BreakGlassAuthority,
     }
 }

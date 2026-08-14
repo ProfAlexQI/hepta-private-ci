@@ -223,6 +223,53 @@ fn candidate_result_rejects_nonempty_or_delegated_containment() {
 }
 
 #[test]
+fn candidate_result_v2_binds_exact_service_child_empty_and_cleanup_absence() {
+    let baseline = candidate_v2(attempt(), CandidateOutcomeV8::Pass);
+    baseline.validate().expect("exact v2 containment result");
+    let baseline_sha256 = baseline.sha256().expect("v2 result digest");
+
+    let mut wrong_parent = baseline.clone();
+    wrong_parent
+        .containment
+        .profile
+        .service_parent_absolute_path = "/hepta-vnext/linux-v8".to_string();
+    wrong_parent.containment.profile.child_absolute_path = format!(
+        "{}/{}",
+        wrong_parent
+            .containment
+            .profile
+            .service_parent_absolute_path,
+        wrong_parent.containment.profile.child_relative_name
+    );
+    assert!(wrong_parent.validate().is_err());
+
+    let mut delegated = baseline.clone();
+    delegated.containment.profile.child_delegated = true;
+    assert!(delegated.validate().is_err());
+
+    let mut nonempty = baseline.clone();
+    nonempty.containment.observed_process_count = 1;
+    assert!(nonempty.validate().is_err());
+
+    let mut still_linked = baseline.clone();
+    still_linked.containment.child_link_count_after_cleanup = 1;
+    assert!(still_linked.validate().is_err());
+
+    let mut still_named = baseline.clone();
+    still_named.containment.cleanup_name_absent = false;
+    assert!(still_named.validate().is_err());
+
+    let mut changed_valid_evidence = baseline;
+    changed_valid_evidence.containment.parent_inode += 10;
+    assert_ne!(
+        changed_valid_evidence
+            .sha256()
+            .expect("changed valid v2 result"),
+        baseline_sha256
+    );
+}
+
+#[test]
 fn candidate_and_copy_ack_digests_bind_every_mutable_security_field() {
     let baseline = candidate(attempt(), CandidateOutcomeV8::Pass);
     let baseline_digest = baseline.sha256().unwrap();
@@ -566,6 +613,57 @@ fn candidate(attempt: AttemptIdentityV8, outcome: CandidateOutcomeV8) -> Candida
     }
 }
 
+fn candidate_v2(
+    attempt: AttemptIdentityV8,
+    outcome: CandidateOutcomeV8,
+) -> CandidateResultBundleV2 {
+    let attempt_identity_sha256 = attempt.sha256().expect("attempt digest");
+    let child_relative_name = format!("hepta-v8-{attempt_identity_sha256}");
+    CandidateResultBundleV2 {
+        schema: CANDIDATE_RESULT_BUNDLE_SCHEMA_V2.to_string(),
+        attempt,
+        containment: CandidateContainmentEvidenceV2 {
+            schema: CANDIDATE_CONTAINMENT_EVIDENCE_SCHEMA_V2.to_string(),
+            profile: CandidateContainmentProfileV2 {
+                schema: CANDIDATE_CONTAINMENT_PROFILE_SCHEMA_V2.to_string(),
+                attempt_identity_sha256,
+                service_parent_absolute_path: ADMISSIOND_SERVICE_CGROUP_PARENT_V2.to_string(),
+                child_absolute_path: format!(
+                    "{ADMISSIOND_SERVICE_CGROUP_PARENT_V2}/{child_relative_name}"
+                ),
+                child_relative_name,
+                child_delegated: false,
+            },
+            parent_device: 1,
+            parent_inode: 2,
+            parent_owner_uid: 0,
+            parent_owner_gid: 0,
+            child_device: 1,
+            child_inode: 3,
+            child_owner_uid: 0,
+            child_owner_gid: 0,
+            delegated_controller_count: 0,
+            observed_process_count: 0,
+            populated_value: 0,
+            empty_observation_sha256: digest('6'),
+            cleanup_name_absent: true,
+            child_link_count_after_cleanup: 0,
+            cleanup_absence_observation_sha256: digest('7'),
+        },
+        manifest_sha256: digest('4'),
+        outcome,
+        publication_method: NoReplacePublicationMethodV8::RenameAt2NoReplaceFileAndDirectoryFsync,
+        source: PublishedFileIdentityV8 {
+            device: 4,
+            inode: 5,
+            mode: 0o600,
+            nlink: 1,
+            sha256: digest('5'),
+            size_bytes: 4096,
+        },
+    }
+}
+
 fn post_snapshot_state(
     candidate: &CandidateResultBundleV8,
     runner_stop_evidence_sha256: String,
@@ -690,7 +788,9 @@ fn recovery_state(attempt: &AttemptIdentityV8) -> RecoveryStateBindingV8 {
 fn verified_authority(scope: AuthorityScopeV8, nonce: char) -> VerifiedAuthorityV8 {
     let purpose = match &scope {
         AuthorityScopeV8::Install { .. } => SshsigTrustPurposeV8::InstallAuthority,
+        AuthorityScopeV8::InstallV2 { .. } => SshsigTrustPurposeV8::InstallAuthorityV2,
         AuthorityScopeV8::OneShotRun { .. } => SshsigTrustPurposeV8::OneShotRunAuthority,
+        AuthorityScopeV8::OneShotRunV2 { .. } => SshsigTrustPurposeV8::OneShotRunAuthorityV2,
         AuthorityScopeV8::BreakGlass { .. } => SshsigTrustPurposeV8::BreakGlassAuthority,
     };
     let trust_policy = test_only_trust_binding_v8(purpose);

@@ -10,15 +10,32 @@ name = "codex_hepta_linux_v8_native"
 path = "src/lib.rs"
 doctest = false
 
+[[bin]]
+name = "hepta-linux-v8ctl"
+path = "src/bin/hepta-linux-v8ctl.rs"
+test = false
+
+[[bin]]
+name = "hepta-linux-v8-admissiond"
+path = "src/bin/hepta-linux-v8-admissiond.rs"
+test = false
+
+[[bin]]
+name = "hepta-linux-v8-recover"
+path = "src/bin/hepta-linux-v8-recover.rs"
+test = false
+
 [lints]
 workspace = true
 
 [dependencies]
+codex-hepta-linux-qualification-v8 = { path = "../hepta-linux-qualification-v8" }
 libc = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
-serde_json = { workspace = true }
+tempfile = { workspace = true }

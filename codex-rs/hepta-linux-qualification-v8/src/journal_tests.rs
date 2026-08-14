@@ -150,6 +150,39 @@ fn interrupted_chain() -> Vec<JournalRecordV8> {
 }
 
 #[test]
+fn shared_phase_fold_accepts_every_exact_prefix_and_rejects_splices() {
+    let records = same_boot_chain();
+    let required_events = records
+        .iter()
+        .skip(1)
+        .map(|record| record.event.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(required_events.len(), 13);
+
+    let mut phase = QualificationJournalPhaseV8::initial();
+    assert!(!phase.ready_for_release_authorization());
+    assert!(!phase.release_complete());
+    for (expected_index, expected) in required_events.iter().enumerate() {
+        for (splice_index, splice) in required_events.iter().enumerate() {
+            if splice_index != expected_index {
+                assert!(
+                    phase.advance(splice).is_err(),
+                    "phase {phase:?} accepted splice step {splice_index} before {expected_index}"
+                );
+            }
+        }
+        assert!(phase.advance(&records[0].event).is_err());
+        phase = phase.advance(expected).expect("exact next phase");
+        assert_eq!(
+            phase.ready_for_release_authorization(),
+            expected_index == 10
+        );
+        assert_eq!(phase.release_complete(), expected_index == 12);
+    }
+    assert!(phase.advance(&required_events[0]).is_err());
+}
+
+#[test]
 fn validates_contiguous_same_boot_chain() {
     let records = same_boot_chain();
     let assessment = validate_journal_v8(&records).expect("valid journal");

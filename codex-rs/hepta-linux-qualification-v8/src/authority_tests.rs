@@ -11,6 +11,8 @@ fn exact_install_run_and_break_glass_authorities_verify() {
         (install_scope(), 'a', AuthorityScopeKindV8::Install),
         (run_scope(), 'b', AuthorityScopeKindV8::OneShotRun),
         (break_glass_scope(), 'c', AuthorityScopeKindV8::BreakGlass),
+        (install_v2_scope(), 'd', AuthorityScopeKindV8::InstallV2),
+        (run_v2_scope(), 'e', AuthorityScopeKindV8::OneShotRunV2),
     ];
 
     for (scope, nonce, expected_kind) in cases {
@@ -226,6 +228,144 @@ fn install_authority_accepts_only_the_exact_root_inventory() {
 }
 
 #[test]
+fn install_v2_authority_binds_the_complete_fixed_inventory_and_target_boot() {
+    let signed = signed_authority(install_v2_scope(), 'a');
+    let verified = verify_signed_authority_with_observation_for_test_v8(
+        &signed,
+        &observation(&signed),
+        1_100,
+        &mut AuthorityReplayGuardV8::default(),
+    )
+    .expect("exact install-v2 authority");
+    let (install_plan_sha256, state_disposition, inventory, target_host) = verified
+        .authorized_install_v2()
+        .expect("install-v2 scope remains opaque and exact");
+    assert_eq!(install_plan_sha256, digest('7'));
+    assert_eq!(state_disposition, &InstallStateDispositionV2::FreshEmpty);
+    assert_eq!(inventory, &install_v2_inventory());
+    assert_eq!(target_host, &install_v2_host());
+
+    let mut wrong_plan = challenge(install_v2_scope(), 'f');
+    if let AuthorityScopeV8::InstallV2 {
+        install_plan_sha256,
+        ..
+    } = &mut wrong_plan.scope
+    {
+        *install_plan_sha256 = "not-a-plan-digest".to_string();
+    }
+    assert!(canonical_authority_statement_for_test_v8(&wrong_plan).is_err());
+
+    let mut wrong_ctl = challenge(install_v2_scope(), 'b');
+    if let AuthorityScopeV8::InstallV2 { inventory, .. } = &mut wrong_ctl.scope {
+        inventory.ctl_binary.path = "/tmp/hepta-linux-v8ctl".to_string();
+    }
+    assert!(canonical_authority_statement_for_test_v8(&wrong_ctl).is_err());
+
+    let mut wrong_lock = challenge(install_v2_scope(), 'c');
+    if let AuthorityScopeV8::InstallV2 { inventory, .. } = &mut wrong_lock.scope {
+        inventory.state_lock.path = "/var/lib/hepta-linux-v8/runtime.lock".to_string();
+    }
+    assert!(canonical_authority_statement_for_test_v8(&wrong_lock).is_err());
+
+    let mut wrong_directory = challenge(install_v2_scope(), 'd');
+    if let AuthorityScopeV8::InstallV2 { inventory, .. } = &mut wrong_directory.scope {
+        inventory.nonce_claims_directory.path =
+            "/var/lib/hepta-linux-v8/nonce-claims-other".to_string();
+    }
+    assert!(canonical_authority_statement_for_test_v8(&wrong_directory).is_err());
+
+    let mut wrong_boot = challenge(install_v2_scope(), 'e');
+    if let AuthorityScopeV8::InstallV2 { target_host, .. } = &mut wrong_boot.scope {
+        target_host.boot_id = "01234567-89AB-cdef-8123-456789abcdef".to_string();
+    }
+    assert!(canonical_authority_statement_for_test_v8(&wrong_boot).is_err());
+}
+
+#[test]
+fn one_shot_v2_authority_binds_exact_service_child_containment() {
+    let scope = run_v2_scope();
+    let (attempt, containment, driver_peer, target_host) = match &scope {
+        AuthorityScopeV8::OneShotRunV2 {
+            attempt,
+            containment,
+            driver_peer,
+            target_host,
+            ..
+        } => (
+            attempt.clone(),
+            containment.clone(),
+            driver_peer.clone(),
+            target_host.clone(),
+        ),
+        _ => unreachable!("fixture is one-shot-v2"),
+    };
+    let signed = signed_authority(scope, 'a');
+    let verified = verify_signed_authority_with_observation_for_test_v8(
+        &signed,
+        &observation(&signed),
+        1_100,
+        &mut AuthorityReplayGuardV8::default(),
+    )
+    .expect("exact one-shot-v2 authority");
+    let observation = VerifiedOneShotEnvironmentV2::for_test_only(
+        attempt.clone(),
+        containment.clone(),
+        driver_peer.clone(),
+        target_host.clone(),
+    );
+    assert!(verified.authorizes_one_shot_v2(&observation));
+    let mut wrong_driver_peer = driver_peer;
+    wrong_driver_peer.uid += 1;
+    let wrong_peer_observation = VerifiedOneShotEnvironmentV2::for_test_only(
+        attempt.clone(),
+        containment.clone(),
+        wrong_driver_peer,
+        target_host.clone(),
+    );
+    assert!(!verified.authorizes_one_shot_v2(&wrong_peer_observation));
+
+    let mut wrong_boot_host = target_host;
+    wrong_boot_host.boot_id = "11111111-1111-1111-1111-111111111111".to_string();
+    let wrong_boot_observation = VerifiedOneShotEnvironmentV2::for_test_only(
+        attempt,
+        containment,
+        DriverPeerBindingV8 {
+            executable_sha256: digest('2'),
+            gid: 1000,
+            uid: 1000,
+        },
+        wrong_boot_host,
+    );
+    assert!(!verified.authorizes_one_shot_v2(&wrong_boot_observation));
+
+    let mut wrong_parent = challenge(run_v2_scope(), 'b');
+    if let AuthorityScopeV8::OneShotRunV2 { containment, .. } = &mut wrong_parent.scope {
+        containment.service_parent_absolute_path = "/hepta-vnext/linux-v8".to_string();
+        containment.child_absolute_path = format!(
+            "{}/{}",
+            containment.service_parent_absolute_path, containment.child_relative_name
+        );
+    }
+    assert!(canonical_authority_statement_for_test_v8(&wrong_parent).is_err());
+
+    let mut delegated_child = challenge(run_v2_scope(), 'c');
+    if let AuthorityScopeV8::OneShotRunV2 { containment, .. } = &mut delegated_child.scope {
+        containment.child_delegated = true;
+    }
+    assert!(canonical_authority_statement_for_test_v8(&delegated_child).is_err());
+
+    let mut wrong_leaf = challenge(run_v2_scope(), 'd');
+    if let AuthorityScopeV8::OneShotRunV2 { containment, .. } = &mut wrong_leaf.scope {
+        containment.child_relative_name = "hepta-v8-forged".to_string();
+        containment.child_absolute_path = format!(
+            "{}/{}",
+            containment.service_parent_absolute_path, containment.child_relative_name
+        );
+    }
+    assert!(canonical_authority_statement_for_test_v8(&wrong_leaf).is_err());
+}
+
+#[test]
 fn canonical_statement_binds_attempt_inventory_time_and_signer() {
     let baseline = challenge(run_scope(), 'a');
     let baseline_bytes =
@@ -263,11 +403,16 @@ fn canonical_statement_binds_attempt_inventory_time_and_signer() {
 
 #[test]
 fn unpublished_production_trust_policy_fails_closed_without_consuming_nonce() {
-    let signed = signed_authority(run_scope(), 'a');
-    let mut replay = AuthorityReplayGuardV8::default();
-
-    assert!(verify_signed_authority_v8(&signed, 1_100, &mut replay).is_err());
-    assert!(!replay.is_consumed(&signed.challenge.authority_nonce));
+    for (scope, nonce) in [
+        (run_scope(), 'a'),
+        (install_v2_scope(), 'b'),
+        (run_v2_scope(), 'c'),
+    ] {
+        let signed = signed_authority(scope, nonce);
+        let mut replay = AuthorityReplayGuardV8::default();
+        assert!(verify_signed_authority_v8(&signed, 1_100, &mut replay).is_err());
+        assert!(!replay.is_consumed(&signed.challenge.authority_nonce));
+    }
 }
 
 #[test]
@@ -353,13 +498,21 @@ fn observation(signed: &SignedAuthorityV8) -> CryptographicSignatureObservation 
 
 fn challenge(scope: AuthorityScopeV8, nonce: char) -> AuthorityChallengeV8 {
     let namespace = scope.namespace().to_string();
-    let trust_policy = test_only_trust_binding_v8(authority_trust_purpose_v8(scope.kind()));
+    let kind = scope.kind();
+    let trust_policy = test_only_trust_binding_v8(authority_trust_purpose_v8(kind));
+    let schema = match kind {
+        AuthorityScopeKindV8::InstallV2 => INSTALL_AUTHORITY_SCHEMA_V2,
+        AuthorityScopeKindV8::OneShotRunV2 => ONE_SHOT_RUN_AUTHORITY_SCHEMA_V2,
+        AuthorityScopeKindV8::Install
+        | AuthorityScopeKindV8::OneShotRun
+        | AuthorityScopeKindV8::BreakGlass => AUTHORITY_SCHEMA_V8,
+    };
     AuthorityChallengeV8 {
         authority_nonce: digest(nonce),
         expires_at_unix_seconds: 1_900,
         issued_at_unix_seconds: 1_000,
         namespace,
-        schema: AUTHORITY_SCHEMA_V8.to_string(),
+        schema: schema.to_string(),
         scope,
         signer: AuthoritySignerBindingV8 {
             allowed_signers_sha256: trust_policy.allowed_signers_sha256().to_string(),
@@ -390,6 +543,54 @@ fn install_scope() -> AuthorityScopeV8 {
     }
 }
 
+fn install_v2_scope() -> AuthorityScopeV8 {
+    AuthorityScopeV8::InstallV2 {
+        activation: InstallActivationV8::InstallFilesOnlyNoDaemonReloadEnableOrStart,
+        install_plan_sha256: digest('7'),
+        inventory: Box::new(install_v2_inventory()),
+        state_disposition: InstallStateDispositionV2::FreshEmpty,
+        target_host: install_v2_host(),
+    }
+}
+
+fn install_v2_inventory() -> ExactRootInstallInventoryV2 {
+    ExactRootInstallInventoryV2 {
+        ctl_binary: root_file(CTL_INSTALL_PATH_V2, '1', 0o555),
+        admissiond_binary: root_file(ADMISSIOND_INSTALL_PATH_V2, '2', 0o555),
+        recovery_binary: root_file(RECOVERY_INSTALL_PATH_V2, '3', 0o555),
+        admissiond_unit: root_file(ADMISSIOND_UNIT_PATH_V8, '4', 0o444),
+        recovery_unit: root_file(RECOVERY_UNIT_PATH_V8, '5', 0o444),
+        binary_directory: root_directory(INSTALL_BINARY_DIRECTORY_PATH_V2, 0o755),
+        state_root: RootStateIdentityV8 {
+            gid: 0,
+            layout_manifest_sha256: digest('6'),
+            mode: 0o700,
+            path: STATE_ROOT_PATH_V8.to_string(),
+            uid: 0,
+        },
+        attempts_directory: root_directory(ATTEMPTS_DIRECTORY_PATH_V2, 0o700),
+        install_epoch_directory: root_directory(INSTALL_EPOCH_DIRECTORY_PATH_V2, 0o700),
+        journal_directory: root_directory(JOURNAL_DIRECTORY_PATH_V2, 0o700),
+        nonce_claims_directory: root_directory(NONCE_CLAIMS_DIRECTORY_PATH_V2, 0o700),
+        quarantine_directory: root_directory(QUARANTINE_DIRECTORY_PATH_V2, 0o700),
+        state_lock: RootFileInstallIdentityV8 {
+            content_sha256: sha256(b""),
+            gid: 0,
+            mode: 0o600,
+            path: STATE_LOCK_PATH_V2.to_string(),
+            size_bytes: 0,
+            uid: 0,
+        },
+    }
+}
+
+fn install_v2_host() -> InstallTargetHostBindingV2 {
+    InstallTargetHostBindingV2 {
+        boot_id: "01234567-89ab-cdef-8123-456789abcdef".to_string(),
+        machine_id_sha256: digest('e'),
+    }
+}
+
 fn run_scope() -> AuthorityScopeV8 {
     AuthorityScopeV8::OneShotRun {
         attempt: attempt(),
@@ -400,6 +601,48 @@ fn run_scope() -> AuthorityScopeV8 {
             uid: 1000,
         },
         target_host: host(),
+    }
+}
+
+fn run_v2_scope() -> AuthorityScopeV8 {
+    let attempt = attempt();
+    let attempt_identity_sha256 = attempt.sha256().expect("attempt digest");
+    let child_relative_name = format!("hepta-v8-{attempt_identity_sha256}");
+    AuthorityScopeV8::OneShotRunV2 {
+        target_host: run_v2_host(),
+        attempt,
+        capability: OneShotRunCapabilityV8::Runner22And23SharedProcessGroupSigstopThenSigcontOnly,
+        containment: crate::CandidateContainmentProfileV2 {
+            schema: crate::CANDIDATE_CONTAINMENT_PROFILE_SCHEMA_V2.to_string(),
+            attempt_identity_sha256,
+            service_parent_absolute_path: crate::ADMISSIOND_SERVICE_CGROUP_PARENT_V2.to_string(),
+            child_absolute_path: format!(
+                "{}/{}",
+                crate::ADMISSIOND_SERVICE_CGROUP_PARENT_V2,
+                child_relative_name
+            ),
+            child_relative_name,
+            child_delegated: false,
+        },
+        driver_peer: DriverPeerBindingV8 {
+            executable_sha256: digest('2'),
+            gid: 1000,
+            uid: 1000,
+        },
+    }
+}
+
+fn run_v2_host() -> RunTargetHostBindingV2 {
+    RunTargetHostBindingV2 {
+        boot_id: "01234567-89ab-cdef-8123-456789abcdef".to_string(),
+        cgroup_namespace_inode: 103,
+        machine_id_sha256: digest('e'),
+        mount_namespace_inode: 102,
+        pid_namespace_inode: 101,
+        systemd_manager_pid: 1,
+        systemd_manager_start_time_ticks: 99,
+        systemd_unit_fragment_sha256: digest('9'),
+        systemd_unit_name: ADMISSIOND_UNIT_NAME_V2.to_string(),
     }
 }
 
@@ -448,6 +691,15 @@ fn root_file(path: &str, digest_character: char, mode: u32) -> RootFileInstallId
         mode,
         path: path.to_string(),
         size_bytes: 100,
+        uid: 0,
+    }
+}
+
+fn root_directory(path: &str, mode: u32) -> RootDirectoryInstallIdentityV2 {
+    RootDirectoryInstallIdentityV2 {
+        gid: 0,
+        mode,
+        path: path.to_string(),
         uid: 0,
     }
 }

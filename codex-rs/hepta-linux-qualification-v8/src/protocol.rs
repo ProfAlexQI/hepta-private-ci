@@ -174,6 +174,198 @@ impl CandidateResultBundleV8 {
     }
 }
 
+pub const CANDIDATE_CONTAINMENT_PROFILE_SCHEMA_V2: &str =
+    "hepta_linux_v8_candidate_containment_profile_v2";
+pub const CANDIDATE_CONTAINMENT_EVIDENCE_SCHEMA_V2: &str =
+    "hepta_linux_v8_candidate_containment_evidence_v2";
+pub const CANDIDATE_RESULT_BUNDLE_SCHEMA_V2: &str = "hepta_linux_v8_candidate_result_bundle_v2";
+pub const ADMISSIOND_SERVICE_CGROUP_PARENT_V2: &str =
+    "/sys/fs/cgroup/system.slice/hepta-linux-v8-admissiond.service";
+
+/// Exact one-child containment selected before a one-shot run. The service
+/// cgroup remains the sole delegated parent; the candidate child itself is
+/// never delegated and its name is derived from the exact attempt identity.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CandidateContainmentProfileV2 {
+    pub schema: String,
+    pub attempt_identity_sha256: String,
+    pub service_parent_absolute_path: String,
+    pub child_relative_name: String,
+    pub child_absolute_path: String,
+    pub child_delegated: bool,
+}
+
+impl CandidateContainmentProfileV2 {
+    pub fn validate(&self, expected_attempt: &str) -> Result<(), QualificationError> {
+        let expected_leaf = format!("hepta-v8-{expected_attempt}");
+        if self.schema != CANDIDATE_CONTAINMENT_PROFILE_SCHEMA_V2
+            || !hex64(expected_attempt)
+            || self.attempt_identity_sha256 != expected_attempt
+            || self.service_parent_absolute_path != ADMISSIOND_SERVICE_CGROUP_PARENT_V2
+            || self.child_relative_name != expected_leaf
+            || self.child_relative_name.len() > 128
+            || self.child_relative_name.contains('/')
+            || self.child_absolute_path
+                != format!(
+                    "{}/{}",
+                    self.service_parent_absolute_path.trim_end_matches('/'),
+                    self.child_relative_name
+                )
+            || self.child_delegated
+        {
+            return Err(invalid(
+                "candidate containment v2 profile is not one exact nondelegated service child",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn sha256(&self) -> Result<String, QualificationError> {
+        self.validate(&self.attempt_identity_sha256)?;
+        let mut bytes = Vec::new();
+        push(
+            &mut bytes,
+            b"hepta_linux_v8_candidate_containment_profile_v2",
+        );
+        push(&mut bytes, self.attempt_identity_sha256.as_bytes());
+        push(&mut bytes, self.service_parent_absolute_path.as_bytes());
+        push(&mut bytes, self.child_relative_name.as_bytes());
+        push(&mut bytes, self.child_absolute_path.as_bytes());
+        push(&mut bytes, b"child_delegated=false");
+        Ok(sha256(&bytes))
+    }
+}
+
+/// Descriptor-derived terminal evidence for the exact v2 child. A successful
+/// record proves both pre-cleanup emptiness and post-rmdir name absence while
+/// retaining the original parent/child inode binding.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CandidateContainmentEvidenceV2 {
+    pub schema: String,
+    pub profile: CandidateContainmentProfileV2,
+    pub parent_device: u64,
+    pub parent_inode: u64,
+    pub parent_owner_uid: u32,
+    pub parent_owner_gid: u32,
+    pub child_device: u64,
+    pub child_inode: u64,
+    pub child_owner_uid: u32,
+    pub child_owner_gid: u32,
+    pub delegated_controller_count: u32,
+    pub observed_process_count: u32,
+    pub populated_value: u32,
+    pub empty_observation_sha256: String,
+    pub cleanup_name_absent: bool,
+    pub child_link_count_after_cleanup: u64,
+    pub cleanup_absence_observation_sha256: String,
+}
+
+impl CandidateContainmentEvidenceV2 {
+    pub fn validate(&self, expected_attempt: &str) -> Result<(), QualificationError> {
+        self.profile.validate(expected_attempt)?;
+        if self.schema != CANDIDATE_CONTAINMENT_EVIDENCE_SCHEMA_V2
+            || self.parent_device == 0
+            || self.parent_inode == 0
+            || self.parent_owner_uid != 0
+            || self.parent_owner_gid != 0
+            || self.child_device != self.parent_device
+            || self.child_inode == 0
+            || self.child_inode == self.parent_inode
+            || self.child_owner_uid != 0
+            || self.child_owner_gid != 0
+            || self.delegated_controller_count != 0
+            || self.observed_process_count != 0
+            || self.populated_value != 0
+            || !hex64(&self.empty_observation_sha256)
+            || !self.cleanup_name_absent
+            || self.child_link_count_after_cleanup != 0
+            || !hex64(&self.cleanup_absence_observation_sha256)
+        {
+            return Err(invalid(
+                "candidate containment v2 lacks exact empty-and-cleanup absence proof",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Successor bundle. Legacy `CandidateResultBundleV8` remains frozen and is
+/// never silently interpreted as service-child containment evidence.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CandidateResultBundleV2 {
+    pub schema: String,
+    pub attempt: AttemptIdentityV8,
+    pub containment: CandidateContainmentEvidenceV2,
+    pub manifest_sha256: String,
+    pub outcome: CandidateOutcomeV8,
+    pub publication_method: NoReplacePublicationMethodV8,
+    pub source: PublishedFileIdentityV8,
+}
+
+impl CandidateResultBundleV2 {
+    pub fn validate(&self) -> Result<(), QualificationError> {
+        self.attempt.validate()?;
+        let attempt_sha256 = self.attempt.sha256()?;
+        self.containment.validate(&attempt_sha256)?;
+        self.source.validate_private_regular_file()?;
+        if self.schema != CANDIDATE_RESULT_BUNDLE_SCHEMA_V2 || !hex64(&self.manifest_sha256) {
+            return Err(invalid("candidate result bundle v2 is malformed"));
+        }
+        Ok(())
+    }
+
+    pub fn sha256(&self) -> Result<String, QualificationError> {
+        self.validate()?;
+        let mut bytes = Vec::new();
+        push(&mut bytes, CANDIDATE_RESULT_BUNDLE_SCHEMA_V2.as_bytes());
+        push(&mut bytes, self.attempt.sha256()?.as_bytes());
+        push(&mut bytes, self.outcome.as_str().as_bytes());
+        push(&mut bytes, self.publication_method.as_str().as_bytes());
+        push(&mut bytes, self.manifest_sha256.as_bytes());
+        push(&mut bytes, self.source.sha256.as_bytes());
+        push_u64(&mut bytes, self.source.device);
+        push_u64(&mut bytes, self.source.inode);
+        push_u64(&mut bytes, u64::from(self.source.mode));
+        push_u64(&mut bytes, self.source.nlink);
+        push_u64(&mut bytes, self.source.size_bytes);
+        push(&mut bytes, self.containment.profile.sha256()?.as_bytes());
+        push_u64(&mut bytes, self.containment.parent_device);
+        push_u64(&mut bytes, self.containment.parent_inode);
+        push_u64(&mut bytes, u64::from(self.containment.parent_owner_uid));
+        push_u64(&mut bytes, u64::from(self.containment.parent_owner_gid));
+        push_u64(&mut bytes, self.containment.child_device);
+        push_u64(&mut bytes, self.containment.child_inode);
+        push_u64(&mut bytes, u64::from(self.containment.child_owner_uid));
+        push_u64(&mut bytes, u64::from(self.containment.child_owner_gid));
+        push_u64(
+            &mut bytes,
+            u64::from(self.containment.delegated_controller_count),
+        );
+        push_u64(
+            &mut bytes,
+            u64::from(self.containment.observed_process_count),
+        );
+        push_u64(&mut bytes, u64::from(self.containment.populated_value));
+        push(
+            &mut bytes,
+            self.containment.empty_observation_sha256.as_bytes(),
+        );
+        push(
+            &mut bytes,
+            self.containment
+                .cleanup_absence_observation_sha256
+                .as_bytes(),
+        );
+        push_u64(&mut bytes, self.containment.child_link_count_after_cleanup);
+        push(&mut bytes, b"child_empty=true");
+        push(&mut bytes, b"cleanup_name_absent=true");
+        Ok(sha256(&bytes))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MacCopyAckV8 {

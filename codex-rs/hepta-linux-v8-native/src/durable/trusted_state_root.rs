@@ -8,9 +8,11 @@ use crate::DirectoryAnchorV8;
 use crate::FileIdentityV8;
 use crate::NativeErrorV8;
 use crate::StateRootLockV8;
-use crate::acquire_state_root_lock_v8;
+use crate::TRUSTED_FILESYSTEM_FLAG_POLICIES_V8;
+use crate::TrustedNodeMetadataV8;
 use crate::invalid;
 use crate::observe_machine_id_v8;
+use crate::open_existing_state_root_lock_v8;
 
 use super::ACTIVE_ATTEMPT_LEAF_V8;
 use super::ATTEMPTS_DIRECTORY_V8;
@@ -100,8 +102,9 @@ pub struct TrustedStateRootV8 {
     machine_id_source_identity: FileIdentityV8,
     path: PathBuf,
     profile_sha256: String,
-    required_directory_identities: Vec<(&'static str, FileIdentityV8)>,
+    required_directory_identities: Vec<(&'static str, FileIdentityV8, TrustedNodeMetadataV8)>,
     root_identity: FileIdentityV8,
+    root_metadata: TrustedNodeMetadataV8,
 }
 
 impl TrustedStateRootV8 {
@@ -117,6 +120,10 @@ impl TrustedStateRootV8 {
         &self.layout_manifest_sha256
     }
 
+    pub fn lock_identity(&self) -> FileIdentityV8 {
+        self.lock.identity()
+    }
+
     pub fn machine_id_sha256(&self) -> &str {
         &self.machine_id_sha256
     }
@@ -127,6 +134,12 @@ impl TrustedStateRootV8 {
 
     pub fn revalidate(&self) -> Result<(), NativeErrorV8> {
         self.anchor.revalidate_identity()?;
+        let root_metadata = self.anchor.trusted_node_metadata()?;
+        if !root_metadata.matches_filesystem_domain(self.root_metadata) {
+            return Err(invalid(
+                "trusted state-root filesystem or mount domain changed after pinning",
+            ));
+        }
         self.install_epoch_anchor.revalidate_identity()?;
         self.lock.revalidate_for_root(&self.anchor)?;
         let named = DirectoryAnchorV8::open(&self.path)?;
@@ -136,6 +149,11 @@ impl TrustedStateRootV8 {
         {
             return Err(invalid(
                 "compiled state-root pathname no longer names the trusted inode",
+            ));
+        }
+        if named.trusted_node_metadata()? != root_metadata {
+            return Err(invalid(
+                "compiled state-root pathname metadata differs from the retained descriptor",
             ));
         }
         let machine = observe_machine_id_v8()?;
@@ -150,9 +168,10 @@ impl TrustedStateRootV8 {
             &self.anchor,
             &self.lock,
             self.root_identity,
+            root_metadata,
             Some(&self.required_directory_identities),
         )?;
-        if !same_directory_identity_roster_v8(&observed, &self.required_directory_identities) {
+        if !matches_pinned_directory_roster_v8(&self.required_directory_identities, &observed) {
             return Err(invalid(
                 "state-root required-directory identities changed after pinning",
             ));
@@ -211,6 +230,7 @@ fn open_trusted_state_root_with_profile_v8(
 
     let anchor = DirectoryAnchorV8::open(&profile.path)?;
     let root_identity = anchor.identity();
+    let root_metadata = anchor.trusted_node_metadata()?;
     require_directory_identity_v8(
         "state root",
         root_identity,
@@ -219,7 +239,7 @@ fn open_trusted_state_root_with_profile_v8(
         profile.mode,
         None,
     )?;
-    preflight_top_level_layout_v8(&anchor, root_identity)?;
+    preflight_top_level_layout_v8(&anchor, root_identity, root_metadata)?;
 
     let machine_after_preflight = observe_machine_id_v8()?;
     if machine_after_preflight.machine_id_sha256() != profile.machine_id_sha256
@@ -229,9 +249,9 @@ fn open_trusted_state_root_with_profile_v8(
             "fixed machine-id changed during state-root preflight",
         ));
     }
-    let lock = acquire_state_root_lock_v8(&anchor, OsStr::new(STATE_ROOT_LOCK_LEAF_V8))?;
+    let lock = open_existing_state_root_lock_v8(&anchor, OsStr::new(STATE_ROOT_LOCK_LEAF_V8))?;
     let required_directory_identities =
-        verify_top_level_layout_v8(&anchor, &lock, root_identity, None)?;
+        verify_top_level_layout_v8(&anchor, &lock, root_identity, root_metadata, None)?;
     let install_epoch_anchor =
         anchor.open_directory_beneath(Path::new(INSTALL_EPOCH_DIRECTORY_V8))?;
     if install_epoch_anchor.identity()
@@ -245,6 +265,11 @@ fn open_trusted_state_root_with_profile_v8(
     if !named.identity().matches_stable_directory(root_identity) {
         return Err(invalid(
             "compiled state-root pathname changed during trust establishment",
+        ));
+    }
+    if named.trusted_node_metadata()? != root_metadata {
+        return Err(invalid(
+            "compiled state-root pathname metadata changed during trust establishment",
         ));
     }
     let machine_final = observe_machine_id_v8()?;
@@ -273,17 +298,19 @@ fn open_trusted_state_root_with_profile_v8(
         profile_sha256: profile.profile_sha256,
         required_directory_identities,
         root_identity,
+        root_metadata,
     })
 }
 
 fn preflight_top_level_layout_v8(
     anchor: &DirectoryAnchorV8,
     root_identity: FileIdentityV8,
+    root_metadata: TrustedNodeMetadataV8,
 ) -> Result<(), NativeErrorV8> {
     let (before_names, before_directories, before_active) =
-        collect_top_level_layout_v8(anchor, root_identity, false)?;
+        collect_top_level_layout_v8(anchor, root_identity, root_metadata, false)?;
     let (after_names, after_directories, after_active) =
-        collect_top_level_layout_v8(anchor, root_identity, false)?;
+        collect_top_level_layout_v8(anchor, root_identity, root_metadata, false)?;
     if before_names != after_names
         || !same_directory_identity_roster_v8(&before_directories, &after_directories)
         || before_active != after_active
@@ -299,14 +326,15 @@ fn verify_top_level_layout_v8(
     anchor: &DirectoryAnchorV8,
     lock: &StateRootLockV8,
     root_identity: FileIdentityV8,
-    expected_directories: Option<&[(&'static str, FileIdentityV8)]>,
-) -> Result<Vec<(&'static str, FileIdentityV8)>, NativeErrorV8> {
+    root_metadata: TrustedNodeMetadataV8,
+    expected_directories: Option<&[(&'static str, FileIdentityV8, TrustedNodeMetadataV8)]>,
+) -> Result<Vec<(&'static str, FileIdentityV8, TrustedNodeMetadataV8)>, NativeErrorV8> {
     lock.revalidate_for_root(anchor)?;
     let (before_names, before_directories, before_active) =
-        collect_top_level_layout_v8(anchor, root_identity, true)?;
+        collect_top_level_layout_v8(anchor, root_identity, root_metadata, true)?;
     lock.revalidate_for_root(anchor)?;
     let (after_names, after_directories, after_active) =
-        collect_top_level_layout_v8(anchor, root_identity, true)?;
+        collect_top_level_layout_v8(anchor, root_identity, root_metadata, true)?;
     if before_names != after_names
         || !same_directory_identity_roster_v8(&before_directories, &after_directories)
         || before_active != after_active
@@ -316,7 +344,7 @@ fn verify_top_level_layout_v8(
         ));
     }
     if expected_directories
-        .is_some_and(|expected| !same_directory_identity_roster_v8(expected, &before_directories))
+        .is_some_and(|expected| !matches_pinned_directory_roster_v8(expected, &before_directories))
     {
         return Err(invalid(
             "state-root required-directory identities differ from the pinned layout",
@@ -328,13 +356,14 @@ fn verify_top_level_layout_v8(
 
 type TopLevelLayoutObservationV8 = (
     Vec<std::ffi::OsString>,
-    Vec<(&'static str, FileIdentityV8)>,
-    Option<FileIdentityV8>,
+    Vec<(&'static str, FileIdentityV8, TrustedNodeMetadataV8)>,
+    Option<(FileIdentityV8, TrustedNodeMetadataV8)>,
 );
 
 fn collect_top_level_layout_v8(
     anchor: &DirectoryAnchorV8,
     root_identity: FileIdentityV8,
+    root_metadata: TrustedNodeMetadataV8,
     require_lock: bool,
 ) -> Result<TopLevelLayoutObservationV8, NativeErrorV8> {
     anchor.revalidate_identity()?;
@@ -381,7 +410,13 @@ fn collect_top_level_layout_v8(
             mode,
             Some(root_identity.device()),
         )?;
-        directories.push((relative, directory.identity()));
+        let metadata = directory.trusted_node_metadata()?;
+        if !metadata.matches_filesystem_domain(root_metadata) {
+            return Err(invalid(format!(
+                "{relative} directory differs from the trusted filesystem or mount domain",
+            )));
+        }
+        directories.push((relative, directory.identity(), metadata));
     }
     let active = if names
         .iter()
@@ -399,7 +434,13 @@ fn collect_top_level_layout_v8(
                 "state-root active-attempt leaf identity is not exact",
             ));
         }
-        Some(identity)
+        let metadata = active.trusted_node_metadata()?;
+        if !metadata.matches_filesystem_domain(root_metadata) {
+            return Err(invalid(
+                "state-root active-attempt leaf differs from the trusted filesystem or mount domain",
+            ));
+        }
+        Some((identity, metadata))
     } else {
         None
     };
@@ -408,23 +449,45 @@ fn collect_top_level_layout_v8(
 }
 
 fn required_identity_v8(
-    identities: &[(&'static str, FileIdentityV8)],
+    identities: &[(&'static str, FileIdentityV8, TrustedNodeMetadataV8)],
     name: &str,
 ) -> Result<FileIdentityV8, NativeErrorV8> {
     identities
         .iter()
-        .find_map(|(observed, identity)| (*observed == name).then_some(*identity))
+        .find_map(|(observed, identity, _)| (*observed == name).then_some(*identity))
         .ok_or_else(|| invalid(format!("required state-root identity {name} is absent")))
 }
 
 fn same_directory_identity_roster_v8(
-    left: &[(&'static str, FileIdentityV8)],
-    right: &[(&'static str, FileIdentityV8)],
+    left: &[(&'static str, FileIdentityV8, TrustedNodeMetadataV8)],
+    right: &[(&'static str, FileIdentityV8, TrustedNodeMetadataV8)],
 ) -> bool {
     left.len() == right.len()
         && left.iter().zip(right).all(
-            |((left_name, left_identity), (right_name, right_identity))| {
-                left_name == right_name && left_identity.matches_stable_directory(*right_identity)
+            |(
+                (left_name, left_identity, left_metadata),
+                (right_name, right_identity, right_metadata),
+            )| {
+                left_name == right_name
+                    && left_identity.matches_stable_directory(*right_identity)
+                    && left_metadata == right_metadata
+            },
+        )
+}
+
+fn matches_pinned_directory_roster_v8(
+    pinned: &[(&'static str, FileIdentityV8, TrustedNodeMetadataV8)],
+    observed: &[(&'static str, FileIdentityV8, TrustedNodeMetadataV8)],
+) -> bool {
+    pinned.len() == observed.len()
+        && pinned.iter().zip(observed).all(
+            |(
+                (pinned_name, pinned_identity, pinned_metadata),
+                (observed_name, observed_identity, observed_metadata),
+            )| {
+                pinned_name == observed_name
+                    && pinned_identity.matches_stable_directory(*observed_identity)
+                    && pinned_metadata.matches_filesystem_domain(*observed_metadata)
             },
         )
 }
@@ -473,6 +536,13 @@ pub fn state_root_layout_manifest_sha256_v8() -> String {
         b"true",
     );
     append_field_v8(&mut bytes, "policy.required_identities_pinned", b"true");
+    append_field_v8(&mut bytes, "policy.statx_mount_id_required", b"true");
+    append_field_v8(&mut bytes, "policy.xattr_acl_allowlist", b"empty");
+    append_field_v8(
+        &mut bytes,
+        "policy.filesystem_inode_flags_exact_allow_masks",
+        b"true",
+    );
     append_field_v8(
         &mut bytes,
         "policy.root_and_directories_exact_owner_mode",
@@ -484,6 +554,14 @@ pub fn state_root_layout_manifest_sha256_v8() -> String {
     }
     append_layout_entry_v8(&mut bytes, "required_leaf", STATE_ROOT_LOCK_LEAF_V8, 0o600);
     append_layout_entry_v8(&mut bytes, "optional_leaf", ACTIVE_ATTEMPT_LEAF_V8, 0o600);
+    for (filesystem_type, inode_flags_allow_mask) in TRUSTED_FILESYSTEM_FLAG_POLICIES_V8 {
+        append_u64_v8(&mut bytes, "filesystem.type", u64::from(filesystem_type));
+        append_u64_v8(
+            &mut bytes,
+            "filesystem.inode_flags_allow_mask",
+            u64::from(inode_flags_allow_mask),
+        );
+    }
     format!("{:x}", sha2::Sha256::digest(bytes))
 }
 

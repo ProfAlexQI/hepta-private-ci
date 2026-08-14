@@ -4,32 +4,52 @@
 //! from caller-supplied booleans. On non-Linux targets every constructor and
 //! operation returns [`NativeSysErrorV8::UnsupportedPlatform`].
 
+mod boot;
+mod cgroup;
 mod execveat;
 mod lock;
 mod machine_id;
+mod metadata;
 mod openat2;
 mod pidfd;
+mod procfs;
 mod rename_noreplace;
+mod signal;
 
+pub use boot::*;
+pub use cgroup::*;
 pub use execveat::*;
 pub use lock::*;
 pub use machine_id::*;
+pub(crate) use metadata::*;
 pub use openat2::*;
 pub use pidfd::*;
+pub use procfs::*;
 pub use rename_noreplace::*;
+pub use signal::*;
 
+#[cfg(test)]
+mod boot_tests;
+#[cfg(test)]
+mod cgroup_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod execveat_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod lock_tests;
 #[cfg(test)]
 mod machine_id_tests;
+#[cfg(test)]
+mod metadata_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod openat2_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod pidfd_tests;
+#[cfg(test)]
+mod procfs_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod rename_noreplace_tests;
+#[cfg(test)]
+mod signal_tests;
 
 // Fork-based execveat tests can transiently inherit a live flock descriptor
 // from another parallel test until the child execs. Serialize only those

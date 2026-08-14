@@ -3360,11 +3360,13 @@ dependencies = [
 name = "codex-hepta-linux-v8-native"
 version = "0.0.0"
 dependencies = [
+ "codex-hepta-linux-qualification-v8",
  "libc",
  "pretty_assertions",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
