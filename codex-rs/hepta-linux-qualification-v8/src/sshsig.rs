@@ -43,6 +43,8 @@ pub enum SshsigTrustPurposeV8 {
     InstallAuthority,
     InstallEpochAuthorityV1,
     ExternalWatermarkLeaseV1,
+    ExternalWatermarkCommitV1,
+    ExternalWatermarkCurrentTipV1,
     OneShotRunAuthority,
     BreakGlassAuthority,
     MacCopyAck,
@@ -54,6 +56,10 @@ impl SshsigTrustPurposeV8 {
             Self::InstallAuthority => crate::INSTALL_NAMESPACE_V8,
             Self::InstallEpochAuthorityV1 => crate::INSTALL_EPOCH_AUTHORITY_NAMESPACE_V1,
             Self::ExternalWatermarkLeaseV1 => crate::EXTERNAL_WATERMARK_LEASE_NAMESPACE_V1,
+            Self::ExternalWatermarkCommitV1 => crate::EXTERNAL_WATERMARK_COMMIT_NAMESPACE_V1,
+            Self::ExternalWatermarkCurrentTipV1 => {
+                crate::EXTERNAL_WATERMARK_CURRENT_TIP_NAMESPACE_V1
+            }
             Self::OneShotRunAuthority => crate::ONE_SHOT_RUN_NAMESPACE_V8,
             Self::BreakGlassAuthority => crate::BREAK_GLASS_NAMESPACE_V8,
             Self::MacCopyAck => crate::COPY_ACK_NAMESPACE_V8,
@@ -65,6 +71,8 @@ impl SshsigTrustPurposeV8 {
             Self::InstallAuthority => "install_authority",
             Self::InstallEpochAuthorityV1 => "install_epoch_authority_v1",
             Self::ExternalWatermarkLeaseV1 => "external_watermark_lease_v1",
+            Self::ExternalWatermarkCommitV1 => "external_watermark_commit_v1",
+            Self::ExternalWatermarkCurrentTipV1 => "external_watermark_current_tip_v1",
             Self::OneShotRunAuthority => "one_shot_run_authority",
             Self::BreakGlassAuthority => "break_glass_authority",
             Self::MacCopyAck => "mac_copy_ack",
@@ -198,7 +206,9 @@ pub(crate) fn test_only_trust_binding_v8(
 ) -> VerifiedTrustPolicyBindingV8 {
     let (trust_root_id, fingerprint_character) = match purpose {
         SshsigTrustPurposeV8::InstallEpochAuthorityV1 => ("test-only-install-epoch-authority", 'A'),
-        SshsigTrustPurposeV8::ExternalWatermarkLeaseV1 => {
+        SshsigTrustPurposeV8::ExternalWatermarkLeaseV1
+        | SshsigTrustPurposeV8::ExternalWatermarkCommitV1
+        | SshsigTrustPurposeV8::ExternalWatermarkCurrentTipV1 => {
             ("test-only-external-watermark-provider", 'B')
         }
         _ => ("test-only-not-production", 'C'),

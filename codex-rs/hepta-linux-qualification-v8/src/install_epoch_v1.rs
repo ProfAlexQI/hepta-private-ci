@@ -5,7 +5,7 @@
 //! establish a trusted state root, claim external current-tip state, or begin
 //! a qualification attempt.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -28,6 +28,25 @@ use crate::verify_statement_sshsig_for_purpose_v8;
 #[path = "install_epoch_v1_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+pub(crate) fn test_only_genesis_install_epoch_preparation_v1()
+-> (VerifiedInstallEpochPreparationV1, InstallEpochReplayGuardV1) {
+    test_only_genesis_install_epoch_preparation_at_v1(1_050)
+}
+
+#[cfg(test)]
+pub(crate) fn test_only_genesis_install_epoch_preparation_at_v1(
+    model_verified_at_unix_seconds: u64,
+) -> (VerifiedInstallEpochPreparationV1, InstallEpochReplayGuardV1) {
+    tests::verified_genesis_preparation_at(model_verified_at_unix_seconds)
+}
+
+#[cfg(test)]
+pub(crate) fn test_only_successor_install_epoch_preparation_v1()
+-> (VerifiedInstallEpochPreparationV1, InstallEpochReplayGuardV1) {
+    tests::verified_successor_preparation()
+}
+
 pub const INSTALL_EPOCH_AUTHORITY_SCHEMA_V1: &str = "hepta_linux_v8_install_epoch_authority_v1";
 pub const INSTALL_EPOCH_AUTHORITY_NAMESPACE_V1: &str = "hepta-linux-v8-install-epoch-v1";
 pub const EXTERNAL_WATERMARK_LEASE_SCHEMA_V1: &str = "hepta_linux_v8_external_watermark_lease_v1";
@@ -38,6 +57,13 @@ pub const EXTERNAL_WATERMARK_PROVIDER_PROFILE_ID_V1: &str =
     "hepta-linux-v8-external-watermark-provider-profile-v1";
 pub const MAX_INSTALL_EPOCH_AUTHORITY_LIFETIME_SECONDS_V1: u64 = 15 * 60;
 pub const MAX_EXTERNAL_WATERMARK_LEASE_LIFETIME_SECONDS_V1: u64 = 2 * 60;
+
+pub(crate) const INSTALL_EPOCH_AUTHORITY_CLAIM_SCOPE_V1: &str =
+    "hepta-linux-v8-install-epoch-authority-claim-v1";
+pub(crate) const EXTERNAL_WATERMARK_LEASE_CLAIM_SCOPE_V1: &str =
+    "hepta-linux-v8-external-watermark-lease-claim-v1";
+const INSTALL_EPOCH_PREPARATION_BUNDLE_DOMAIN_V1: &str =
+    "hepta-linux-v8-install-epoch-preparation-bundle-v1";
 
 const MAX_SIGNATURE_BYTES_V1: usize = 16 * 1024;
 
@@ -278,28 +304,705 @@ pub struct SignedExternalWatermarkLeaseV1 {
     pub detached_signature_sha256: String,
 }
 
-/// Process-memory replay model for the install-epoch successor family. A live
-/// provider must additionally atomically consume both nonces in one durable,
-/// cross-namespace domain outside the state root; this type is not the
-/// external anti-rollback authority or the system-wide replay guard.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct InstallEpochNonceClaimV1 {
+    binding_sha256: String,
+    scope: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct InstallEpochPhaseEdgeV1 {
+    predecessor_revision: u64,
+    predecessor_state_sha256: String,
+    revision: u64,
+    state_sha256: String,
+}
+
+const MAX_INSTALL_EPOCH_REPLAY_RECORDS_V1: usize = 4_096;
+const MAX_INSTALL_EPOCH_PHASE_EDGES_V1: usize = 128;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum InstallEpochExactPhaseLookupV1 {
+    Exact,
+    Absent,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum InstallEpochDurableRecordV1 {
+    Bundle {
+        binding_sha256: String,
+    },
+    Claim(InstallEpochNonceClaimV1),
+    PhaseHead {
+        edges: Vec<InstallEpochPhaseEdgeV1>,
+        genesis_revision: u64,
+        genesis_state_sha256: String,
+        revision: u64,
+        state_sha256: String,
+    },
+}
+
+/// Process-memory model of the one cross-namespace claim store shared by
+/// install preparation and external-watermark completion. The value retained
+/// for every nonce is an exact typed-claim binding, not only a presence bit.
+/// A live successor must replace this model with atomic, durable no-replace
+/// claims outside the state root; this type grants no replay or execution
+/// authority by itself. Its composite methods are atomic only as one
+/// in-process model call; a live implementation must persist each composite
+/// record set and phase transition as one crash-recoverable transaction, not
+/// as a sequence of independent publishes.
 #[derive(Debug, Default)]
 pub struct InstallEpochReplayGuardV1 {
-    consumed_nonces: BTreeSet<String>,
+    records: BTreeMap<String, InstallEpochDurableRecordV1>,
 }
 
 impl InstallEpochReplayGuardV1 {
+    fn require_exact_records(
+        &self,
+        required_claims: &[(&str, &str, &str)],
+        required_bundles: &[(&str, &str)],
+    ) -> Result<(), QualificationError> {
+        for (nonce, scope, binding_sha256) in required_claims {
+            validate_digest("required predecessor claim nonce", nonce)?;
+            validate_digest("required predecessor claim binding", binding_sha256)?;
+            if scope.is_empty() {
+                return Err(invalid("required predecessor claim scope is empty"));
+            }
+            if !matches!(
+                self.records.get(*nonce),
+                Some(InstallEpochDurableRecordV1::Claim(claim))
+                    if claim.scope == *scope
+                        && claim.binding_sha256 == *binding_sha256
+            ) {
+                return Err(invalid(
+                    "required predecessor claim is missing or not exact",
+                ));
+            }
+        }
+        for (bundle_id_sha256, bundle_binding_sha256) in required_bundles {
+            validate_digest("required predecessor bundle id", bundle_id_sha256)?;
+            validate_digest("required predecessor bundle binding", bundle_binding_sha256)?;
+            if !matches!(
+                self.records.get(*bundle_id_sha256),
+                Some(InstallEpochDurableRecordV1::Bundle { binding_sha256 })
+                    if binding_sha256 == *bundle_binding_sha256
+            ) {
+                return Err(invalid(
+                    "required predecessor bundle is missing or not exact",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn from_consumed_nonces(
         nonces: impl IntoIterator<Item = String>,
     ) -> Result<Self, QualificationError> {
-        let consumed_nonces = nonces.into_iter().collect::<BTreeSet<_>>();
-        if consumed_nonces.iter().any(|nonce| !digest_shape(nonce)) {
+        let nonces = nonces.into_iter().collect::<Vec<_>>();
+        if nonces.iter().any(|nonce| !digest_shape(nonce)) {
             return Err(invalid("persisted install-epoch nonce is malformed"));
         }
-        Ok(Self { consumed_nonces })
+        let records = nonces
+            .into_iter()
+            .map(|nonce| {
+                (
+                    nonce,
+                    InstallEpochDurableRecordV1::Claim(InstallEpochNonceClaimV1 {
+                        binding_sha256: "0".repeat(64),
+                        scope: "opaque_prior_claim".to_string(),
+                    }),
+                )
+            })
+            .collect();
+        Ok(Self { records })
     }
 
     pub fn nonce_is_consumed(&self, nonce: &str) -> bool {
-        self.consumed_nonces.contains(nonce)
+        self.records.contains_key(nonce)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn claim_exact_or_replay(
+        &mut self,
+        nonce: &str,
+        scope: &str,
+        binding_sha256: &str,
+    ) -> Result<bool, QualificationError> {
+        validate_digest("cross-namespace claim nonce", nonce)?;
+        validate_digest("cross-namespace claim binding", binding_sha256)?;
+        if scope.is_empty() {
+            return Err(invalid("cross-namespace claim scope is empty"));
+        }
+        if let Some(existing) = self.records.get(nonce) {
+            if matches!(
+                existing,
+                InstallEpochDurableRecordV1::Claim(claim)
+                    if claim.scope == scope && claim.binding_sha256 == binding_sha256
+            ) {
+                return Ok(false);
+            }
+            return Err(invalid(
+                "cross-namespace nonce is already bound to a different claim",
+            ));
+        }
+        self.records.insert(
+            nonce.to_string(),
+            InstallEpochDurableRecordV1::Claim(InstallEpochNonceClaimV1 {
+                binding_sha256: binding_sha256.to_string(),
+                scope: scope.to_string(),
+            }),
+        );
+        Ok(true)
+    }
+
+    pub(crate) fn claim_pair_and_bundle_or_exact_recovery(
+        &mut self,
+        first: (&str, &str, &str),
+        second: (&str, &str, &str),
+        bundle_id_sha256: &str,
+        bundle_binding_sha256: &str,
+    ) -> Result<bool, QualificationError> {
+        validate_digest("cross-namespace bundle id", bundle_id_sha256)?;
+        validate_digest("cross-namespace bundle binding", bundle_binding_sha256)?;
+        for (nonce, scope, binding_sha256) in [first, second] {
+            validate_digest("cross-namespace claim nonce", nonce)?;
+            validate_digest("cross-namespace claim binding", binding_sha256)?;
+            if scope.is_empty() {
+                return Err(invalid("cross-namespace claim scope is empty"));
+            }
+        }
+        if first.0 == second.0 || first.0 == bundle_id_sha256 || second.0 == bundle_id_sha256 {
+            return Err(invalid(
+                "cross-namespace bundled nonce pair is not distinct",
+            ));
+        }
+        let first_existing = self.records.get(first.0);
+        let second_existing = self.records.get(second.0);
+        let bundle_existing = self.records.get(bundle_id_sha256);
+        if let (Some(first_claim), Some(second_claim), Some(bundle)) =
+            (first_existing, second_existing, bundle_existing)
+        {
+            if matches!(
+                first_claim,
+                InstallEpochDurableRecordV1::Claim(claim)
+                    if claim.scope == first.1 && claim.binding_sha256 == first.2
+            ) && matches!(
+                second_claim,
+                InstallEpochDurableRecordV1::Claim(claim)
+                    if claim.scope == second.1 && claim.binding_sha256 == second.2
+            ) && matches!(
+                bundle,
+                InstallEpochDurableRecordV1::Bundle { binding_sha256 }
+                    if binding_sha256 == bundle_binding_sha256
+            ) {
+                return Ok(false);
+            }
+            return Err(invalid(
+                "cross-namespace bundled claims conflict with durable state",
+            ));
+        }
+        if first_existing.is_some() || second_existing.is_some() || bundle_existing.is_some() {
+            return Err(invalid(
+                "cross-namespace bundled claims are partially persisted",
+            ));
+        }
+        if self
+            .records
+            .len()
+            .checked_add(3)
+            .is_none_or(|count| count > MAX_INSTALL_EPOCH_REPLAY_RECORDS_V1)
+        {
+            return Err(invalid("cross-namespace replay record budget is exhausted"));
+        }
+        self.records.insert(
+            first.0.to_string(),
+            InstallEpochDurableRecordV1::Claim(InstallEpochNonceClaimV1 {
+                binding_sha256: first.2.to_string(),
+                scope: first.1.to_string(),
+            }),
+        );
+        self.records.insert(
+            second.0.to_string(),
+            InstallEpochDurableRecordV1::Claim(InstallEpochNonceClaimV1 {
+                binding_sha256: second.2.to_string(),
+                scope: second.1.to_string(),
+            }),
+        );
+        self.records.insert(
+            bundle_id_sha256.to_string(),
+            InstallEpochDurableRecordV1::Bundle {
+                binding_sha256: bundle_binding_sha256.to_string(),
+            },
+        );
+        Ok(true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn claim_pair_bundle_and_phase_or_exact_recovery(
+        &mut self,
+        required_claims: [(&str, &str, &str); 2],
+        required_bundle: (&str, &str),
+        first: (&str, &str, &str),
+        second: (&str, &str, &str),
+        bundle_id_sha256: &str,
+        bundle_binding_sha256: &str,
+        phase_head_id_sha256: &str,
+        phase_revision: u64,
+        phase_state_sha256: &str,
+    ) -> Result<bool, QualificationError> {
+        validate_digest("cross-namespace phase-head id", phase_head_id_sha256)?;
+        validate_digest("cross-namespace phase state", phase_state_sha256)?;
+        validate_digest("required predecessor bundle id", required_bundle.0)?;
+        validate_digest("required predecessor bundle binding", required_bundle.1)?;
+        for (nonce, scope, binding_sha256) in required_claims {
+            validate_digest("required predecessor claim nonce", nonce)?;
+            validate_digest("required predecessor claim binding", binding_sha256)?;
+            if scope.is_empty() {
+                return Err(invalid("required predecessor claim scope is empty"));
+            }
+        }
+        let identities = [
+            required_claims[0].0,
+            required_claims[1].0,
+            required_bundle.0,
+            first.0,
+            second.0,
+            bundle_id_sha256,
+            phase_head_id_sha256,
+        ];
+        if phase_revision == 0
+            || identities
+                .iter()
+                .enumerate()
+                .any(|(left, value)| identities[(left + 1)..].contains(value))
+        {
+            return Err(invalid(
+                "cross-namespace predecessor, claims, bundle, and phase identities are not distinct",
+            ));
+        }
+        self.require_exact_records(&required_claims, &[required_bundle])?;
+        let existing_phase = self.records.get(phase_head_id_sha256).cloned();
+        if existing_phase.is_none() {
+            if self.records.contains_key(first.0)
+                || self.records.contains_key(second.0)
+                || self.records.contains_key(bundle_id_sha256)
+            {
+                return Err(invalid(
+                    "cross-namespace completion intent is partially persisted",
+                ));
+            }
+            if self
+                .records
+                .len()
+                .checked_add(4)
+                .is_none_or(|count| count > MAX_INSTALL_EPOCH_REPLAY_RECORDS_V1)
+            {
+                return Err(invalid("cross-namespace replay record budget is exhausted"));
+            }
+            self.claim_pair_and_bundle_or_exact_recovery(
+                first,
+                second,
+                bundle_id_sha256,
+                bundle_binding_sha256,
+            )?;
+            self.records.insert(
+                phase_head_id_sha256.to_string(),
+                InstallEpochDurableRecordV1::PhaseHead {
+                    edges: Vec::new(),
+                    genesis_revision: phase_revision,
+                    genesis_state_sha256: phase_state_sha256.to_string(),
+                    revision: phase_revision,
+                    state_sha256: phase_state_sha256.to_string(),
+                },
+            );
+            return Ok(true);
+        }
+        let first_exact = matches!(
+            self.records.get(first.0),
+            Some(InstallEpochDurableRecordV1::Claim(claim))
+                if claim.scope == first.1 && claim.binding_sha256 == first.2
+        );
+        let second_exact = matches!(
+            self.records.get(second.0),
+            Some(InstallEpochDurableRecordV1::Claim(claim))
+                if claim.scope == second.1 && claim.binding_sha256 == second.2
+        );
+        let bundle_exact = matches!(
+            self.records.get(bundle_id_sha256),
+            Some(InstallEpochDurableRecordV1::Bundle { binding_sha256 })
+                if binding_sha256 == bundle_binding_sha256
+        );
+        if !first_exact || !second_exact || !bundle_exact {
+            return Err(invalid(
+                "cross-namespace phase head exists without exact intent records",
+            ));
+        }
+        if matches!(
+            existing_phase,
+            Some(InstallEpochDurableRecordV1::PhaseHead {
+                genesis_revision,
+                genesis_state_sha256,
+                ..
+            }) if genesis_revision == phase_revision
+                && genesis_state_sha256 == phase_state_sha256
+        ) {
+            Ok(false)
+        } else {
+            Err(invalid(
+                "cross-namespace completion phase head conflicts with exact replay",
+            ))
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn advance_phase_or_exact_recovery(
+        &mut self,
+        required_claims: &[(&str, &str, &str)],
+        required_bundles: &[(&str, &str)],
+        phase_head_id_sha256: &str,
+        expected_revision: u64,
+        expected_state_sha256: &str,
+        next_revision: u64,
+        next_state_sha256: &str,
+    ) -> Result<bool, QualificationError> {
+        validate_digest("cross-namespace phase-head id", phase_head_id_sha256)?;
+        validate_digest(
+            "cross-namespace expected phase state",
+            expected_state_sha256,
+        )?;
+        validate_digest("cross-namespace next phase state", next_state_sha256)?;
+        let required_next_revision = expected_revision
+            .checked_add(1)
+            .ok_or_else(|| invalid("cross-namespace completion phase revision overflows"))?;
+        if expected_revision == 0
+            || next_revision != required_next_revision
+            || next_state_sha256 == expected_state_sha256
+        {
+            return Err(invalid(
+                "cross-namespace completion phase transition is not consecutive and distinct",
+            ));
+        }
+        self.require_exact_records(required_claims, required_bundles)?;
+        match self.records.get_mut(phase_head_id_sha256) {
+            Some(InstallEpochDurableRecordV1::PhaseHead {
+                edges,
+                revision,
+                state_sha256,
+                ..
+            }) if *revision == expected_revision && state_sha256 == expected_state_sha256 => {
+                if edges.len() >= MAX_INSTALL_EPOCH_PHASE_EDGES_V1 {
+                    return Err(invalid(
+                        "cross-namespace completion phase edge budget is exhausted",
+                    ));
+                }
+                let prior_revision = *revision;
+                let prior_state = state_sha256.clone();
+                edges.push(InstallEpochPhaseEdgeV1 {
+                    predecessor_revision: prior_revision,
+                    predecessor_state_sha256: prior_state,
+                    revision: next_revision,
+                    state_sha256: next_state_sha256.to_string(),
+                });
+                *revision = next_revision;
+                *state_sha256 = next_state_sha256.to_string();
+                Ok(true)
+            }
+            Some(InstallEpochDurableRecordV1::PhaseHead { edges, .. })
+                if edges.iter().any(|edge| {
+                    edge.predecessor_revision == expected_revision
+                        && edge.predecessor_state_sha256 == expected_state_sha256
+                        && edge.revision == next_revision
+                        && edge.state_sha256 == next_state_sha256
+                }) =>
+            {
+                Ok(false)
+            }
+            Some(_) => Err(invalid(
+                "cross-namespace completion phase transition forks or regresses",
+            )),
+            None => Err(invalid("cross-namespace completion phase head is missing")),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn lookup_exact_phase_transition(
+        &self,
+        required_claims: &[(&str, &str, &str)],
+        required_bundles: &[(&str, &str)],
+        phase_head_id_sha256: &str,
+        expected_revision: u64,
+        expected_state_sha256: &str,
+        next_revision: u64,
+        next_state_sha256: &str,
+    ) -> Result<InstallEpochExactPhaseLookupV1, QualificationError> {
+        validate_digest("cross-namespace phase-head id", phase_head_id_sha256)?;
+        validate_digest(
+            "cross-namespace expected phase state",
+            expected_state_sha256,
+        )?;
+        validate_digest("cross-namespace next phase state", next_state_sha256)?;
+        let required_next_revision = expected_revision
+            .checked_add(1)
+            .ok_or_else(|| invalid("cross-namespace completion phase revision overflows"))?;
+        if expected_revision == 0
+            || next_revision != required_next_revision
+            || next_state_sha256 == expected_state_sha256
+        {
+            return Err(invalid(
+                "cross-namespace completion recovery edge is not consecutive and distinct",
+            ));
+        }
+        self.require_exact_records(required_claims, required_bundles)?;
+        match self.records.get(phase_head_id_sha256) {
+            Some(InstallEpochDurableRecordV1::PhaseHead { edges, .. })
+                if edges.iter().any(|edge| {
+                    edge.predecessor_revision == expected_revision
+                        && edge.predecessor_state_sha256 == expected_state_sha256
+                        && edge.revision == next_revision
+                        && edge.state_sha256 == next_state_sha256
+                }) =>
+            {
+                Ok(InstallEpochExactPhaseLookupV1::Exact)
+            }
+            Some(InstallEpochDurableRecordV1::PhaseHead {
+                revision,
+                state_sha256,
+                ..
+            }) if *revision == expected_revision && state_sha256 == expected_state_sha256 => {
+                Ok(InstallEpochExactPhaseLookupV1::Absent)
+            }
+            Some(_) => Err(invalid(
+                "cross-namespace completion recovery edge is absent or forked",
+            )),
+            None => Err(invalid("cross-namespace completion phase head is missing")),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn claim_bundle_and_advance_phase_or_exact_recovery(
+        &mut self,
+        required_claims: &[(&str, &str, &str)],
+        required_bundles: &[(&str, &str)],
+        claim: (&str, &str, &str),
+        bundle_id_sha256: &str,
+        bundle_binding_sha256: &str,
+        phase_head_id_sha256: &str,
+        expected_revision: u64,
+        expected_state_sha256: &str,
+        next_revision: u64,
+        next_state_sha256: &str,
+    ) -> Result<bool, QualificationError> {
+        let (nonce, scope, claim_binding_sha256) = claim;
+        validate_digest("cross-namespace claim nonce", nonce)?;
+        validate_digest("cross-namespace claim binding", claim_binding_sha256)?;
+        validate_digest("cross-namespace bundle id", bundle_id_sha256)?;
+        validate_digest("cross-namespace bundle binding", bundle_binding_sha256)?;
+        validate_digest("cross-namespace phase-head id", phase_head_id_sha256)?;
+        validate_digest(
+            "cross-namespace expected phase state",
+            expected_state_sha256,
+        )?;
+        validate_digest("cross-namespace next phase state", next_state_sha256)?;
+        if scope.is_empty() {
+            return Err(invalid("cross-namespace claim scope is empty"));
+        }
+        let required_next_revision = expected_revision
+            .checked_add(1)
+            .ok_or_else(|| invalid("cross-namespace completion phase revision overflows"))?;
+        if expected_revision == 0
+            || next_revision != required_next_revision
+            || next_state_sha256 == expected_state_sha256
+        {
+            return Err(invalid(
+                "cross-namespace completion phase transition is not consecutive and distinct",
+            ));
+        }
+        if nonce == bundle_id_sha256
+            || nonce == phase_head_id_sha256
+            || bundle_id_sha256 == phase_head_id_sha256
+        {
+            return Err(invalid(
+                "cross-namespace claim, bundle, and phase identities are not distinct",
+            ));
+        }
+        self.require_exact_records(required_claims, required_bundles)?;
+
+        let claim_exact = matches!(
+            self.records.get(nonce),
+            Some(InstallEpochDurableRecordV1::Claim(existing))
+                if existing.scope == scope
+                    && existing.binding_sha256 == claim_binding_sha256
+        );
+        let bundle_exact = matches!(
+            self.records.get(bundle_id_sha256),
+            Some(InstallEpochDurableRecordV1::Bundle { binding_sha256 })
+                if binding_sha256 == bundle_binding_sha256
+        );
+        let phase_is_expected = matches!(
+            self.records.get(phase_head_id_sha256),
+            Some(InstallEpochDurableRecordV1::PhaseHead { revision, state_sha256, .. })
+                if *revision == expected_revision && state_sha256 == expected_state_sha256
+        );
+        let phase_contains_next_edge = matches!(
+            self.records.get(phase_head_id_sha256),
+            Some(InstallEpochDurableRecordV1::PhaseHead {
+                edges,
+                ..
+            }) if edges.iter().any(|edge| {
+                edge.predecessor_revision == expected_revision
+                    && edge.predecessor_state_sha256 == expected_state_sha256
+                    && edge.revision == next_revision
+                    && edge.state_sha256 == next_state_sha256
+            })
+        );
+        let claim_absent = !self.records.contains_key(nonce);
+        let bundle_absent = !self.records.contains_key(bundle_id_sha256);
+
+        let next_phase_record = if claim_absent && bundle_absent && phase_is_expected {
+            if self
+                .records
+                .len()
+                .checked_add(2)
+                .is_none_or(|count| count > MAX_INSTALL_EPOCH_REPLAY_RECORDS_V1)
+            {
+                return Err(invalid("cross-namespace replay record budget is exhausted"));
+            }
+            match self.records.get(phase_head_id_sha256).cloned() {
+                Some(InstallEpochDurableRecordV1::PhaseHead {
+                    mut edges,
+                    genesis_revision,
+                    genesis_state_sha256,
+                    ..
+                }) => {
+                    if edges.len() >= MAX_INSTALL_EPOCH_PHASE_EDGES_V1 {
+                        return Err(invalid(
+                            "cross-namespace completion phase edge budget is exhausted",
+                        ));
+                    }
+                    edges.push(InstallEpochPhaseEdgeV1 {
+                        predecessor_revision: expected_revision,
+                        predecessor_state_sha256: expected_state_sha256.to_string(),
+                        revision: next_revision,
+                        state_sha256: next_state_sha256.to_string(),
+                    });
+                    Some(InstallEpochDurableRecordV1::PhaseHead {
+                        edges,
+                        genesis_revision,
+                        genesis_state_sha256,
+                        revision: next_revision,
+                        state_sha256: next_state_sha256.to_string(),
+                    })
+                }
+                _ => unreachable!("phase predecessor was validated before mutation"),
+            }
+        } else {
+            None
+        };
+
+        if let Some(next_phase_record) = next_phase_record {
+            self.records.insert(
+                nonce.to_string(),
+                InstallEpochDurableRecordV1::Claim(InstallEpochNonceClaimV1 {
+                    binding_sha256: claim_binding_sha256.to_string(),
+                    scope: scope.to_string(),
+                }),
+            );
+            self.records.insert(
+                bundle_id_sha256.to_string(),
+                InstallEpochDurableRecordV1::Bundle {
+                    binding_sha256: bundle_binding_sha256.to_string(),
+                },
+            );
+            self.records
+                .insert(phase_head_id_sha256.to_string(), next_phase_record);
+            return Ok(true);
+        }
+        if claim_exact && bundle_exact && phase_contains_next_edge {
+            return Ok(false);
+        }
+        Err(invalid(
+            "cross-namespace bundled phase transition is partial, forked, or regressed",
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn claim_count(&self) -> usize {
+        self.records
+            .values()
+            .filter(|record| matches!(record, InstallEpochDurableRecordV1::Claim(_)))
+            .count()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bundle_count(&self) -> usize {
+        self.records
+            .values()
+            .filter(|record| matches!(record, InstallEpochDurableRecordV1::Bundle { .. }))
+            .count()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn phase_head_count(&self) -> usize {
+        self.records
+            .values()
+            .filter(|record| matches!(record, InstallEpochDurableRecordV1::PhaseHead { .. }))
+            .count()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn phase_head_for_test(&self, phase_head_id_sha256: &str) -> Option<(u64, &str)> {
+        match self.records.get(phase_head_id_sha256) {
+            Some(InstallEpochDurableRecordV1::PhaseHead {
+                revision,
+                state_sha256,
+                ..
+            }) => Some((*revision, state_sha256)),
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn phase_head_edge_for_test(
+        &self,
+        phase_head_id_sha256: &str,
+    ) -> Option<(Option<u64>, Option<&str>, u64, &str)> {
+        match self.records.get(phase_head_id_sha256) {
+            Some(InstallEpochDurableRecordV1::PhaseHead {
+                edges,
+                revision,
+                state_sha256,
+                ..
+            }) => {
+                let predecessor = edges.last();
+                Some((
+                    predecessor.map(|edge| edge.predecessor_revision),
+                    predecessor.map(|edge| edge.predecessor_state_sha256.as_str()),
+                    *revision,
+                    state_sha256,
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn remove_bundle_for_test(&mut self, bundle_id_sha256: &str) {
+        if matches!(
+            self.records.get(bundle_id_sha256),
+            Some(InstallEpochDurableRecordV1::Bundle { .. })
+        ) {
+            self.records.remove(bundle_id_sha256);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn remove_phase_head_for_test(&mut self, phase_head_id_sha256: &str) {
+        if matches!(
+            self.records.get(phase_head_id_sha256),
+            Some(InstallEpochDurableRecordV1::PhaseHead { .. })
+        ) {
+            self.records.remove(phase_head_id_sha256);
+        }
     }
 }
 
@@ -312,15 +1015,20 @@ impl InstallEpochReplayGuardV1 {
 #[derive(Debug)]
 pub struct VerifiedInstallEpochPreparationV1 {
     authority_nonce: String,
+    authority_expires_at_unix_seconds: u64,
+    authority_issued_at_unix_seconds: u64,
     authority_signature_sha256: String,
     authority_statement_sha256: String,
     authority_trust_policy_sha256: String,
     epoch: InstallEpochBindingV1,
     install_inventory: ExactRootInstallInventoryV8,
     lease_nonce: String,
+    lease_expires_at_unix_seconds: u64,
+    lease_issued_at_unix_seconds: u64,
     lease_signature_sha256: String,
     lease_statement_sha256: String,
     lease_trust_policy_sha256: String,
+    model_verified_at_unix_seconds: u64,
     predecessor: ExternalWatermarkPredecessorV1,
     reserved_successor_revision: u64,
     state_root_profile: StateRootProfileBindingV1,
@@ -328,6 +1036,14 @@ pub struct VerifiedInstallEpochPreparationV1 {
 }
 
 impl VerifiedInstallEpochPreparationV1 {
+    pub fn authority_expires_at_unix_seconds(&self) -> u64 {
+        self.authority_expires_at_unix_seconds
+    }
+
+    pub fn authority_issued_at_unix_seconds(&self) -> u64 {
+        self.authority_issued_at_unix_seconds
+    }
+
     pub fn authority_nonce(&self) -> &str {
         &self.authority_nonce
     }
@@ -356,6 +1072,14 @@ impl VerifiedInstallEpochPreparationV1 {
         &self.lease_nonce
     }
 
+    pub fn lease_expires_at_unix_seconds(&self) -> u64 {
+        self.lease_expires_at_unix_seconds
+    }
+
+    pub fn lease_issued_at_unix_seconds(&self) -> u64 {
+        self.lease_issued_at_unix_seconds
+    }
+
     pub fn lease_signature_sha256(&self) -> &str {
         &self.lease_signature_sha256
     }
@@ -366,6 +1090,12 @@ impl VerifiedInstallEpochPreparationV1 {
 
     pub fn lease_trust_policy_sha256(&self) -> &str {
         &self.lease_trust_policy_sha256
+    }
+
+    /// Time supplied to the model verifier. This is only a signed-window
+    /// binding for successor contracts; it is not trusted wall-clock evidence.
+    pub fn model_verified_at_unix_seconds(&self) -> u64 {
+        self.model_verified_at_unix_seconds
     }
 
     pub fn predecessor(&self) -> &ExternalWatermarkPredecessorV1 {
@@ -382,6 +1112,81 @@ impl VerifiedInstallEpochPreparationV1 {
 
     pub fn target_host(&self) -> &TargetHostBindingV8 {
         &self.target_host
+    }
+
+    pub(crate) fn authority_nonce_claim_binding_sha256(&self) -> String {
+        install_epoch_nonce_claim_binding_sha256_v1(
+            INSTALL_EPOCH_AUTHORITY_CLAIM_SCOPE_V1,
+            &self.authority_nonce,
+            &self.authority_statement_sha256,
+            &self.authority_signature_sha256,
+            &self.authority_trust_policy_sha256,
+        )
+    }
+
+    pub(crate) fn lease_nonce_claim_binding_sha256(&self) -> String {
+        install_epoch_nonce_claim_binding_sha256_v1(
+            EXTERNAL_WATERMARK_LEASE_CLAIM_SCOPE_V1,
+            &self.lease_nonce,
+            &self.lease_statement_sha256,
+            &self.lease_signature_sha256,
+            &self.lease_trust_policy_sha256,
+        )
+    }
+
+    pub(crate) fn preparation_bundle_id_sha256(&self) -> String {
+        let mut bytes = b"hepta_linux_v8_install_epoch_preparation_bundle_id_v1\0".to_vec();
+        append_field(
+            &mut bytes,
+            "bundle_domain",
+            INSTALL_EPOCH_PREPARATION_BUNDLE_DOMAIN_V1.as_bytes(),
+        );
+        append_field(
+            &mut bytes,
+            "authority_nonce",
+            self.authority_nonce.as_bytes(),
+        );
+        append_field(&mut bytes, "lease_nonce", self.lease_nonce.as_bytes());
+        append_field(
+            &mut bytes,
+            "authority_claim_sha256",
+            self.authority_nonce_claim_binding_sha256().as_bytes(),
+        );
+        append_field(
+            &mut bytes,
+            "lease_claim_sha256",
+            self.lease_nonce_claim_binding_sha256().as_bytes(),
+        );
+        sha256(&bytes)
+    }
+
+    pub(crate) fn preparation_bundle_binding_sha256(&self) -> String {
+        let mut bytes = b"hepta_linux_v8_install_epoch_preparation_bundle_binding_v1\0".to_vec();
+        append_field(
+            &mut bytes,
+            "bundle_id_sha256",
+            self.preparation_bundle_id_sha256().as_bytes(),
+        );
+        append_u64(
+            &mut bytes,
+            "model_verified_at_unix_seconds",
+            self.model_verified_at_unix_seconds,
+        );
+        append_epoch(&mut bytes, &self.epoch);
+        append_predecessor(&mut bytes, &self.predecessor);
+        append_u64(
+            &mut bytes,
+            "reserved_successor_revision",
+            self.reserved_successor_revision,
+        );
+        append_field(
+            &mut bytes,
+            "machine_id_sha256",
+            self.target_host.machine_id_sha256.as_bytes(),
+        );
+        append_state_root_profile(&mut bytes, &self.state_root_profile);
+        append_install_inventory(&mut bytes, &self.install_inventory);
+        sha256(&bytes)
     }
 
     pub fn model_preparation_verified(&self) -> bool {
@@ -568,12 +1373,9 @@ fn verify_install_epoch_preparation_with_evidence_v1(
         now_unix_seconds,
         "external watermark lease",
     )?;
-    if authority.challenge.authority_nonce == lease.challenge.lease_nonce
-        || replay_guard.nonce_is_consumed(&authority.challenge.authority_nonce)
-        || replay_guard.nonce_is_consumed(&lease.challenge.lease_nonce)
-    {
+    if authority.challenge.authority_nonce == lease.challenge.lease_nonce {
         return Err(invalid(
-            "install-epoch authority or lease nonce was already consumed",
+            "install-epoch authority and lease nonces are not distinct",
         ));
     }
     if lease.challenge.issued_at_unix_seconds < authority.challenge.issued_at_unix_seconds
@@ -604,28 +1406,46 @@ fn verify_install_epoch_preparation_with_evidence_v1(
         ));
     }
 
-    replay_guard
-        .consumed_nonces
-        .insert(authority.challenge.authority_nonce.clone());
-    replay_guard
-        .consumed_nonces
-        .insert(lease.challenge.lease_nonce.clone());
-    Ok(VerifiedInstallEpochPreparationV1 {
+    let verified = VerifiedInstallEpochPreparationV1 {
         authority_nonce: authority.challenge.authority_nonce.clone(),
+        authority_expires_at_unix_seconds: authority.challenge.expires_at_unix_seconds,
+        authority_issued_at_unix_seconds: authority.challenge.issued_at_unix_seconds,
         authority_signature_sha256,
         authority_statement_sha256,
         authority_trust_policy_sha256: authority_trust.policy_sha256().to_string(),
         epoch: authority.challenge.epoch.clone(),
         install_inventory: authority.challenge.install_inventory.clone(),
         lease_nonce: lease.challenge.lease_nonce.clone(),
+        lease_expires_at_unix_seconds: lease.challenge.expires_at_unix_seconds,
+        lease_issued_at_unix_seconds: lease.challenge.issued_at_unix_seconds,
         lease_signature_sha256,
         lease_statement_sha256,
         lease_trust_policy_sha256: lease_trust.policy_sha256().to_string(),
+        model_verified_at_unix_seconds: now_unix_seconds,
         predecessor: authority.challenge.predecessor.clone(),
         reserved_successor_revision: lease.challenge.reserved_successor_revision,
         state_root_profile: authority.challenge.state_root_profile.clone(),
         target_host: authority.challenge.target_host.clone(),
-    })
+    };
+    let authority_claim = verified.authority_nonce_claim_binding_sha256();
+    let lease_claim = verified.lease_nonce_claim_binding_sha256();
+    let preparation_bundle_id = verified.preparation_bundle_id_sha256();
+    let preparation_bundle_binding = verified.preparation_bundle_binding_sha256();
+    replay_guard.claim_pair_and_bundle_or_exact_recovery(
+        (
+            verified.authority_nonce(),
+            INSTALL_EPOCH_AUTHORITY_CLAIM_SCOPE_V1,
+            &authority_claim,
+        ),
+        (
+            verified.lease_nonce(),
+            EXTERNAL_WATERMARK_LEASE_CLAIM_SCOPE_V1,
+            &lease_claim,
+        ),
+        &preparation_bundle_id,
+        &preparation_bundle_binding,
+    )?;
+    Ok(verified)
 }
 
 fn validate_independent_trust_bindings_v1(
@@ -1226,6 +2046,26 @@ fn digest_shape(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+}
+
+fn install_epoch_nonce_claim_binding_sha256_v1(
+    scope: &str,
+    nonce: &str,
+    statement_sha256: &str,
+    signature_sha256: &str,
+    trust_policy_sha256: &str,
+) -> String {
+    let mut bytes = b"hepta_linux_v8_install_epoch_nonce_claim_binding_v1\0".to_vec();
+    append_field(&mut bytes, "scope", scope.as_bytes());
+    append_field(&mut bytes, "nonce", nonce.as_bytes());
+    append_field(&mut bytes, "statement_sha256", statement_sha256.as_bytes());
+    append_field(&mut bytes, "signature_sha256", signature_sha256.as_bytes());
+    append_field(
+        &mut bytes,
+        "trust_policy_sha256",
+        trust_policy_sha256.as_bytes(),
+    );
+    sha256(&bytes)
 }
 
 fn sha256(bytes: &[u8]) -> String {
