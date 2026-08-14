@@ -122,6 +122,7 @@ fn same_boot_chain() -> Vec<JournalRecordV8> {
     for (effect, digest_byte) in [
         (JournalEffectV8::CandidateRelay, 'b'),
         (JournalEffectV8::RunnerRestore, 'c'),
+        (JournalEffectV8::PostRestoreSnapshot, 'd'),
         (JournalEffectV8::BarrierRelease, 'd'),
     ] {
         append_effect(
@@ -158,12 +159,36 @@ fn validates_contiguous_same_boot_chain() {
         assessment.tip_sha256(),
         records.last().expect("tip").record_sha256
     );
-    assert_eq!(assessment.record_count(), 12);
+    assert_eq!(assessment.record_count(), 14);
     assert_eq!(assessment.boot_count(), 1);
     assert!(!assessment.reboot_observed());
     assert!(!assessment.qualification_abandoned());
     assert!(assessment.release_complete());
+    assert!(!assessment.ready_for_release_authorization());
     assert!(assessment.qualification_may_pass());
+}
+
+#[test]
+fn pre_release_prefix_authorizes_but_does_not_claim_release() {
+    let mut records = same_boot_chain();
+    records.truncate(records.len() - 2);
+    let assessment = validate_journal_v8(&records).expect("valid pre-release journal");
+
+    assert!(assessment.ready_for_release_authorization());
+    assert!(!assessment.release_complete());
+    assert!(!assessment.qualification_may_pass());
+    assert_eq!(
+        assessment.pre_release_tip_sha256(),
+        Some(
+            records
+                .last()
+                .expect("pre-release tip")
+                .record_sha256
+                .as_str()
+        )
+    );
+    assert!(assessment.barrier_release_manifest_sha256().is_none());
+    assert!(assessment.barrier_release_observation_sha256().is_none());
 }
 
 #[test]
@@ -348,7 +373,7 @@ fn terminal_release_and_abandonment_reject_any_later_record() {
     let mut released = same_boot_chain();
     append(
         &mut released,
-        stamp(1, BOOT_ONE, 13, 1_700),
+        stamp(1, BOOT_ONE, 15, 1_900),
         JournalEventV8::QualificationAbandoned {
             abandonment_evidence_sha256: digest('e'),
         },

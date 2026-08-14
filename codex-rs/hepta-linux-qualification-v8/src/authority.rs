@@ -6,7 +6,12 @@ use sha2::Digest as _;
 
 use crate::AttemptIdentityV8;
 use crate::QualificationError;
+use crate::SshsigTrustPurposeV8;
+use crate::VerifiedTrustPolicyBindingV8;
+use crate::authority_trust_purpose_v8;
 use crate::invalid;
+use crate::required_frozen_trust_binding_v8;
+use crate::verify_signed_authority_sshsig_v8;
 
 pub const AUTHORITY_SCHEMA_V8: &str = "hepta_linux_v8_signed_authority_v1";
 pub const INSTALL_NAMESPACE_V8: &str = "hepta-linux-v8-install";
@@ -139,7 +144,9 @@ impl AuthoritySignerBindingV8 {
     pub(crate) fn validate(&self) -> Result<(), QualificationError> {
         if self.principal.is_empty()
             || self.principal.len() > 256
-            || !self.principal.bytes().all(|byte| byte.is_ascii_graphic())
+            || !self.principal.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'@' | b'.' | b'_' | b'+' | b'-')
+            })
         {
             return Err(invalid("authority signer principal is malformed"));
         }
@@ -159,6 +166,13 @@ impl AuthoritySignerBindingV8 {
         }
         Ok(())
     }
+
+    fn exactly_matches_trust_policy(&self, policy: &VerifiedTrustPolicyBindingV8) -> bool {
+        self.allowed_signers_sha256 == policy.allowed_signers_sha256()
+            && self.key_fingerprint == policy.key_fingerprint()
+            && self.principal == policy.principal()
+            && self.signature_algorithm == policy.signature_algorithm()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -171,6 +185,12 @@ pub struct AuthorityChallengeV8 {
     pub schema: String,
     pub scope: AuthorityScopeV8,
     pub signer: AuthoritySignerBindingV8,
+}
+
+impl AuthorityChallengeV8 {
+    pub(crate) fn scope_kind(&self) -> AuthorityScopeKindV8 {
+        self.scope.kind()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -191,30 +211,19 @@ pub struct SignedAuthorityV8 {
 pub struct CryptographicSignatureObservation {
     signature_sha256: String,
     signed_statement_sha256: String,
-    verified_allowed_signers_sha256: String,
-    verified_key_fingerprint: String,
-    verified_namespace: String,
-    verified_principal: String,
-    verified_signature_algorithm: AuthoritySignatureAlgorithmV8,
+    verified_trust_policy: VerifiedTrustPolicyBindingV8,
 }
 
 impl CryptographicSignatureObservation {
     pub(crate) fn from_verified_sshsig(
         signature_sha256: String,
         signed_statement_sha256: String,
-        allowed_signers_sha256: String,
-        key_fingerprint: String,
-        namespace: String,
-        principal: String,
+        verified_trust_policy: VerifiedTrustPolicyBindingV8,
     ) -> Self {
         Self {
             signature_sha256,
             signed_statement_sha256,
-            verified_allowed_signers_sha256: allowed_signers_sha256,
-            verified_key_fingerprint: key_fingerprint,
-            verified_namespace: namespace,
-            verified_principal: principal,
-            verified_signature_algorithm: AuthoritySignatureAlgorithmV8::OpenSshSshsigEd25519,
+            verified_trust_policy,
         }
     }
 
@@ -222,34 +231,23 @@ impl CryptographicSignatureObservation {
         &self,
         signature_sha256: &str,
         statement_sha256: &str,
-        namespace: &str,
-        signer: &AuthoritySignerBindingV8,
+        trust_policy: &VerifiedTrustPolicyBindingV8,
     ) -> bool {
         self.signature_sha256 == signature_sha256
             && self.signed_statement_sha256 == statement_sha256
-            && self.verified_allowed_signers_sha256 == signer.allowed_signers_sha256
-            && self.verified_key_fingerprint == signer.key_fingerprint
-            && self.verified_namespace == namespace
-            && self.verified_principal == signer.principal
-            && self.verified_signature_algorithm == signer.signature_algorithm
+            && &self.verified_trust_policy == trust_policy
     }
 
     #[cfg(test)]
     pub(crate) fn for_test_only(
         signature_sha256: String,
         signed_statement_sha256: String,
-        allowed_signers_sha256: String,
-        key_fingerprint: String,
-        namespace: String,
-        principal: String,
+        purpose: SshsigTrustPurposeV8,
     ) -> Self {
         Self::from_verified_sshsig(
             signature_sha256,
             signed_statement_sha256,
-            allowed_signers_sha256,
-            key_fingerprint,
-            namespace,
-            principal,
+            crate::test_only_trust_binding_v8(purpose),
         )
     }
 }
@@ -269,6 +267,7 @@ pub struct VerifiedAuthorityV8 {
     namespace: String,
     scope: AuthorityScopeV8,
     statement_sha256: String,
+    trust_policy: VerifiedTrustPolicyBindingV8,
 }
 
 impl VerifiedAuthorityV8 {
@@ -294,6 +293,10 @@ impl VerifiedAuthorityV8 {
 
     pub fn statement_sha256(&self) -> &str {
         &self.statement_sha256
+    }
+
+    pub fn trust_policy_binding(&self) -> &VerifiedTrustPolicyBindingV8 {
+        &self.trust_policy
     }
 
     pub(crate) fn authorizes_one_shot(&self, attempt: &AttemptIdentityV8) -> bool {
@@ -376,7 +379,27 @@ impl AuthorityScopeV8 {
 pub fn canonical_authority_statement_v8(
     challenge: &AuthorityChallengeV8,
 ) -> Result<Vec<u8>, QualificationError> {
-    validate_challenge(challenge)?;
+    let purpose = authority_trust_purpose_v8(challenge.scope_kind());
+    let trust_policy = required_frozen_trust_binding_v8(purpose)?;
+    canonical_authority_statement_with_trust_v8(challenge, &trust_policy)
+}
+
+#[cfg(test)]
+pub(crate) fn canonical_authority_statement_for_test_v8(
+    challenge: &AuthorityChallengeV8,
+) -> Result<Vec<u8>, QualificationError> {
+    let purpose = authority_trust_purpose_v8(challenge.scope_kind());
+    canonical_authority_statement_with_trust_v8(
+        challenge,
+        &crate::test_only_trust_binding_v8(purpose),
+    )
+}
+
+fn canonical_authority_statement_with_trust_v8(
+    challenge: &AuthorityChallengeV8,
+    trust_policy: &VerifiedTrustPolicyBindingV8,
+) -> Result<Vec<u8>, QualificationError> {
+    validate_challenge(challenge, trust_policy)?;
     let mut statement = b"hepta-linux-v8-authority-statement-v1\0".to_vec();
     append_field(&mut statement, "schema", challenge.schema.as_bytes());
     append_field(
@@ -421,12 +444,51 @@ pub fn canonical_authority_statement_v8(
 
 pub fn verify_signed_authority_v8(
     signed: &SignedAuthorityV8,
-    observation: &CryptographicSignatureObservation,
     now_unix_seconds: u64,
     replay_guard: &mut AuthorityReplayGuardV8,
 ) -> Result<VerifiedAuthorityV8, QualificationError> {
     let statement = canonical_authority_statement_v8(&signed.challenge)?;
-    let statement_sha256 = sha256(&statement);
+    let observation = verify_signed_authority_sshsig_v8(signed)?;
+    let purpose = authority_trust_purpose_v8(signed.challenge.scope_kind());
+    let trust_policy = required_frozen_trust_binding_v8(purpose)?;
+    verify_signed_authority_with_evidence_v8(
+        signed,
+        &observation,
+        &statement,
+        trust_policy,
+        now_unix_seconds,
+        replay_guard,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn verify_signed_authority_with_observation_for_test_v8(
+    signed: &SignedAuthorityV8,
+    observation: &CryptographicSignatureObservation,
+    now_unix_seconds: u64,
+    replay_guard: &mut AuthorityReplayGuardV8,
+) -> Result<VerifiedAuthorityV8, QualificationError> {
+    let statement = canonical_authority_statement_for_test_v8(&signed.challenge)?;
+    let purpose = authority_trust_purpose_v8(signed.challenge.scope_kind());
+    verify_signed_authority_with_evidence_v8(
+        signed,
+        observation,
+        &statement,
+        crate::test_only_trust_binding_v8(purpose),
+        now_unix_seconds,
+        replay_guard,
+    )
+}
+
+fn verify_signed_authority_with_evidence_v8(
+    signed: &SignedAuthorityV8,
+    observation: &CryptographicSignatureObservation,
+    statement: &[u8],
+    trust_policy: VerifiedTrustPolicyBindingV8,
+    now_unix_seconds: u64,
+    replay_guard: &mut AuthorityReplayGuardV8,
+) -> Result<VerifiedAuthorityV8, QualificationError> {
+    let statement_sha256 = sha256(statement);
     if !digest_shape(&signed.canonical_statement_sha256)
         || signed.canonical_statement_sha256 != statement_sha256
     {
@@ -456,12 +518,7 @@ pub fn verify_signed_authority_v8(
     if replay_guard.is_consumed(&signed.challenge.authority_nonce) {
         return Err(invalid("authority nonce has already been consumed"));
     }
-    if !observation.exactly_matches(
-        &signature_sha256,
-        &statement_sha256,
-        &signed.challenge.namespace,
-        &signed.challenge.signer,
-    ) {
+    if !observation.exactly_matches(&signature_sha256, &statement_sha256, &trust_policy) {
         return Err(invalid(
             "cryptographic verification observation does not bind the exact authority",
         ));
@@ -477,16 +534,28 @@ pub fn verify_signed_authority_v8(
         namespace: signed.challenge.namespace.clone(),
         scope: signed.challenge.scope.clone(),
         statement_sha256,
+        trust_policy,
     })
 }
 
-fn validate_challenge(challenge: &AuthorityChallengeV8) -> Result<(), QualificationError> {
+fn validate_challenge(
+    challenge: &AuthorityChallengeV8,
+    trust_policy: &VerifiedTrustPolicyBindingV8,
+) -> Result<(), QualificationError> {
     if challenge.schema != AUTHORITY_SCHEMA_V8 {
         return Err(invalid("authority schema is not Linux v8"));
     }
     if challenge.namespace != challenge.scope.namespace() {
         return Err(invalid(
             "authority namespace does not match its closed scope",
+        ));
+    }
+    if challenge.namespace != trust_policy.namespace()
+        || authority_trust_purpose_v8(challenge.scope_kind()) != trust_policy.purpose()
+        || !challenge.signer.exactly_matches_trust_policy(trust_policy)
+    {
+        return Err(invalid(
+            "authority signer and namespace differ from the frozen trust policy",
         ));
     }
     if !digest_shape(&challenge.authority_nonce) {

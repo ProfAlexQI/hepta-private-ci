@@ -9,9 +9,9 @@ use base64::engine::general_purpose::STANDARD;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use sha2::Digest as _;
 
-use crate::AuthoritySignatureAlgorithmV8;
-use crate::AuthoritySignerBindingV8;
-use crate::sshsig::verify_sshsig_ed25519_v8;
+use crate::FrozenSshsigTrustPolicyV8;
+use crate::QualificationError;
+use crate::SshsigTrustPurposeV8;
 
 const PRINCIPAL: &str = "linux-v8-operator@example";
 const NAMESPACE: &str = "hepta-linux-v8-execution";
@@ -32,18 +32,10 @@ fn verifies_real_openssh_sha256_sshsig_and_binds_observation() {
         NAMESPACE,
     )
     .expect("verify exact in-process SSHSIG");
-    let signer = AuthoritySignerBindingV8 {
-        allowed_signers_sha256: sha256(&fixture.allowed_signers),
-        key_fingerprint: fixture.fingerprint.clone(),
-        principal: PRINCIPAL.to_string(),
-        signature_algorithm: AuthoritySignatureAlgorithmV8::OpenSshSshsigEd25519,
-    };
-    assert!(observation.exactly_matches(
-        &sha256(&signature),
-        &sha256(statement),
-        NAMESPACE,
-        &signer,
-    ));
+    let policy = fixture.policy(NAMESPACE);
+    assert!(
+        observation.exactly_matches(&sha256(&signature), &sha256(statement), policy.binding(),)
+    );
 }
 
 #[test]
@@ -216,7 +208,6 @@ fn rejects_sha512_envelope_and_weak_anchor() {
 struct SshsigFixture {
     _temporary: TemporaryDirectory,
     allowed_signers: Vec<u8>,
-    fingerprint: String,
     key: PathBuf,
 }
 
@@ -263,9 +254,18 @@ impl SshsigFixture {
         Self {
             _temporary: temporary,
             allowed_signers,
-            fingerprint,
             key,
         }
+    }
+
+    fn policy(&self, namespace: &str) -> FrozenSshsigTrustPolicyV8 {
+        FrozenSshsigTrustPolicyV8::for_test_only(
+            self.allowed_signers.clone(),
+            PRINCIPAL.to_string(),
+            namespace.to_string(),
+            SshsigTrustPurposeV8::OneShotRunAuthority,
+        )
+        .expect("valid test-only frozen policy")
     }
 
     fn sign(&self, statement: &[u8], namespace: &str, sha256: bool, name: &str) -> Vec<u8> {
@@ -288,6 +288,22 @@ impl SshsigFixture {
         );
         std::fs::read(format!("{}.sig", statement_path.display())).expect("read SSHSIG fixture")
     }
+}
+
+fn verify_sshsig_ed25519_v8(
+    statement: &[u8],
+    signature_bytes: &[u8],
+    allowed_signers_bytes: &[u8],
+    expected_principal: &str,
+    expected_namespace: &str,
+) -> Result<crate::CryptographicSignatureObservation, QualificationError> {
+    let policy = FrozenSshsigTrustPolicyV8::for_test_only(
+        allowed_signers_bytes.to_vec(),
+        expected_principal.to_string(),
+        expected_namespace.to_string(),
+        SshsigTrustPurposeV8::OneShotRunAuthority,
+    )?;
+    super::verify_sshsig_ed25519_v8(statement, signature_bytes, &policy)
 }
 
 struct TemporaryDirectory(PathBuf);

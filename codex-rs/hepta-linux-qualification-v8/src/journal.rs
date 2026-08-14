@@ -45,6 +45,7 @@ pub enum JournalEffectV8 {
     CandidateExecution,
     CandidateRelay,
     RunnerRestore,
+    PostRestoreSnapshot,
     BarrierRelease,
 }
 
@@ -197,6 +198,7 @@ impl JournalEffectV8 {
             Self::CandidateExecution => "candidate_execution",
             Self::CandidateRelay => "candidate_relay",
             Self::RunnerRestore => "runner_restore",
+            Self::PostRestoreSnapshot => "post_restore_snapshot",
             Self::BarrierRelease => "barrier_release",
         }
     }
@@ -300,12 +302,16 @@ pub struct JournalAssessmentV8 {
     boot_count: u64,
     reboot_observed: bool,
     qualification_abandoned: bool,
+    ready_for_release_authorization: bool,
+    pre_release_tip_sha256: Option<String>,
     release_complete: bool,
     qualification_may_pass: bool,
     runner_stop_observation_sha256: Option<String>,
     candidate_result_sha256: Option<String>,
     candidate_relay_observation_sha256: Option<String>,
     runner_restore_observation_sha256: Option<String>,
+    post_snapshot_observation_sha256: Option<String>,
+    barrier_release_manifest_sha256: Option<String>,
     barrier_release_observation_sha256: Option<String>,
 }
 
@@ -338,6 +344,14 @@ impl JournalAssessmentV8 {
         self.release_complete
     }
 
+    pub fn ready_for_release_authorization(&self) -> bool {
+        self.ready_for_release_authorization
+    }
+
+    pub fn pre_release_tip_sha256(&self) -> Option<&str> {
+        self.pre_release_tip_sha256.as_deref()
+    }
+
     pub fn qualification_may_pass(&self) -> bool {
         self.qualification_may_pass
     }
@@ -356,6 +370,14 @@ impl JournalAssessmentV8 {
 
     pub fn runner_restore_observation_sha256(&self) -> Option<&str> {
         self.runner_restore_observation_sha256.as_deref()
+    }
+
+    pub fn post_snapshot_observation_sha256(&self) -> Option<&str> {
+        self.post_snapshot_observation_sha256.as_deref()
+    }
+
+    pub fn barrier_release_manifest_sha256(&self) -> Option<&str> {
+        self.barrier_release_manifest_sha256.as_deref()
     }
 
     pub fn barrier_release_observation_sha256(&self) -> Option<&str> {
@@ -423,7 +445,9 @@ pub fn validate_journal_v8(
             .map_err(|_| invalid("journal record count exceeds u64"))?,
         boot_count: tip.boot.boot_epoch,
         reboot_observed,
-        qualification_abandoned: semantics.abandoned,
+        qualification_abandoned: reboot_observed || semantics.abandoned,
+        ready_for_release_authorization: semantics.ready_for_release_authorization,
+        pre_release_tip_sha256: semantics.pre_release_tip_sha256,
         release_complete: semantics.release_complete,
         qualification_may_pass: !reboot_observed
             && !semantics.abandoned
@@ -432,6 +456,8 @@ pub fn validate_journal_v8(
         candidate_result_sha256: semantics.candidate_result_sha256,
         candidate_relay_observation_sha256: semantics.candidate_relay_observation_sha256,
         runner_restore_observation_sha256: semantics.runner_restore_observation_sha256,
+        post_snapshot_observation_sha256: semantics.post_snapshot_observation_sha256,
+        barrier_release_manifest_sha256: semantics.barrier_release_manifest_sha256,
         barrier_release_observation_sha256: semantics.barrier_release_observation_sha256,
     })
 }
@@ -443,7 +469,8 @@ enum RequiredJournalStepV8 {
     CandidateCompleted,
 }
 
-const REQUIRED_RELEASE_SEQUENCE_V8: [RequiredJournalStepV8; 11] = [
+const PRE_RELEASE_STEP_COUNT_V8: usize = 11;
+const REQUIRED_RELEASE_SEQUENCE_V8: [RequiredJournalStepV8; 13] = [
     RequiredJournalStepV8::EffectIntent(JournalEffectV8::RunnerStop),
     RequiredJournalStepV8::EffectObserved(JournalEffectV8::RunnerStop),
     RequiredJournalStepV8::EffectIntent(JournalEffectV8::CandidateExecution),
@@ -453,17 +480,23 @@ const REQUIRED_RELEASE_SEQUENCE_V8: [RequiredJournalStepV8; 11] = [
     RequiredJournalStepV8::EffectObserved(JournalEffectV8::CandidateRelay),
     RequiredJournalStepV8::EffectIntent(JournalEffectV8::RunnerRestore),
     RequiredJournalStepV8::EffectObserved(JournalEffectV8::RunnerRestore),
+    RequiredJournalStepV8::EffectIntent(JournalEffectV8::PostRestoreSnapshot),
+    RequiredJournalStepV8::EffectObserved(JournalEffectV8::PostRestoreSnapshot),
     RequiredJournalStepV8::EffectIntent(JournalEffectV8::BarrierRelease),
     RequiredJournalStepV8::EffectObserved(JournalEffectV8::BarrierRelease),
 ];
 
 struct JournalSemanticsV8 {
     abandoned: bool,
+    ready_for_release_authorization: bool,
+    pre_release_tip_sha256: Option<String>,
     release_complete: bool,
     runner_stop_observation_sha256: Option<String>,
     candidate_result_sha256: Option<String>,
     candidate_relay_observation_sha256: Option<String>,
     runner_restore_observation_sha256: Option<String>,
+    post_snapshot_observation_sha256: Option<String>,
+    barrier_release_manifest_sha256: Option<String>,
     barrier_release_observation_sha256: Option<String>,
 }
 
@@ -479,6 +512,9 @@ fn validate_journal_semantics(
     let mut candidate_result_sha256 = None;
     let mut candidate_relay_observation_sha256 = None;
     let mut runner_restore_observation_sha256 = None;
+    let mut post_snapshot_observation_sha256 = None;
+    let mut pre_release_tip_sha256 = None;
+    let mut barrier_release_manifest_sha256 = None;
     let mut barrier_release_observation_sha256 = None;
 
     for record in records.iter().skip(1) {
@@ -513,12 +549,18 @@ fn validate_journal_semantics(
                     "a rebooted qualification may only record recovery and abandonment",
                 ));
             }
-            JournalEventV8::EffectIntent { effect, .. } => {
+            JournalEventV8::EffectIntent {
+                effect,
+                effect_manifest_sha256,
+            } => {
                 if pending_intent.is_some()
                     || REQUIRED_RELEASE_SEQUENCE_V8.get(required_index)
                         != Some(&RequiredJournalStepV8::EffectIntent(*effect))
                 {
                     return Err(invalid("effect intent is duplicated or out of order"));
+                }
+                if *effect == JournalEffectV8::BarrierRelease {
+                    barrier_release_manifest_sha256 = Some(effect_manifest_sha256.clone());
                 }
                 pending_intent = Some((*effect, record.record_sha256.as_str()));
                 required_index += 1;
@@ -548,6 +590,10 @@ fn validate_journal_semantics(
                     JournalEffectV8::RunnerRestore => {
                         runner_restore_observation_sha256 = Some(observation_sha256.clone());
                     }
+                    JournalEffectV8::PostRestoreSnapshot => {
+                        post_snapshot_observation_sha256 = Some(observation_sha256.clone());
+                        pre_release_tip_sha256 = Some(record.record_sha256.clone());
+                    }
                     JournalEffectV8::BarrierRelease => {
                         barrier_release_observation_sha256 = Some(observation_sha256.clone());
                     }
@@ -575,6 +621,11 @@ fn validate_journal_semantics(
     }
     Ok(JournalSemanticsV8 {
         abandoned,
+        ready_for_release_authorization: required_index == PRE_RELEASE_STEP_COUNT_V8
+            && pending_intent.is_none()
+            && !recovery_seen
+            && !abandoned,
+        pre_release_tip_sha256,
         release_complete: required_index == REQUIRED_RELEASE_SEQUENCE_V8.len()
             && pending_intent.is_none()
             && !recovery_seen
@@ -583,6 +634,8 @@ fn validate_journal_semantics(
         candidate_result_sha256,
         candidate_relay_observation_sha256,
         runner_restore_observation_sha256,
+        post_snapshot_observation_sha256,
+        barrier_release_manifest_sha256,
         barrier_release_observation_sha256,
     })
 }

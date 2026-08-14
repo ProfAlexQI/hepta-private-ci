@@ -12,8 +12,12 @@ use crate::CryptographicSignatureObservation;
 use crate::JournalAssessmentV8;
 use crate::QualificationError;
 use crate::RecoveryStateBindingV8;
+use crate::SshsigTrustPurposeV8;
 use crate::VerifiedAuthorityV8;
+use crate::VerifiedTrustPolicyBindingV8;
 use crate::invalid;
+use crate::required_frozen_trust_binding_v8;
+use crate::verify_mac_copy_ack_sshsig_v8;
 
 pub const COPY_ACK_NAMESPACE_V8: &str = "hepta-linux-v8-copy-ack";
 pub const MAX_COPY_ACK_LIFETIME_SECONDS_V8: u64 = 15 * 60;
@@ -190,7 +194,22 @@ pub struct MacCopyAckV8 {
 
 impl MacCopyAckV8 {
     pub fn canonical_statement(&self) -> Result<Vec<u8>, QualificationError> {
-        self.validate_shape()?;
+        let trust_policy = required_frozen_trust_binding_v8(SshsigTrustPurposeV8::MacCopyAck)?;
+        self.canonical_statement_with_trust(&trust_policy)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn canonical_statement_for_test(&self) -> Result<Vec<u8>, QualificationError> {
+        self.canonical_statement_with_trust(&crate::test_only_trust_binding_v8(
+            SshsigTrustPurposeV8::MacCopyAck,
+        ))
+    }
+
+    fn canonical_statement_with_trust(
+        &self,
+        trust_policy: &VerifiedTrustPolicyBindingV8,
+    ) -> Result<Vec<u8>, QualificationError> {
+        self.validate_shape(trust_policy)?;
         let mut bytes = Vec::new();
         push(&mut bytes, b"hepta_linux_v8_mac_copy_ack_statement_v1");
         push(&mut bytes, COPY_ACK_NAMESPACE_V8.as_bytes());
@@ -214,9 +233,13 @@ impl MacCopyAckV8 {
         Ok(bytes)
     }
 
-    fn validate_shape(&self) -> Result<(), QualificationError> {
+    fn validate_shape(
+        &self,
+        trust_policy: &VerifiedTrustPolicyBindingV8,
+    ) -> Result<(), QualificationError> {
         self.copied_publication.validate_private_regular_file()?;
-        self.signer_binding().validate()?;
+        let signer = self.signer_binding();
+        signer.validate()?;
         if !hex64(&self.allowed_signers_sha256)
             || !hex64(&self.attempt_identity_sha256)
             || !hex64(&self.candidate_result_bundle_sha256)
@@ -231,6 +254,17 @@ impl MacCopyAckV8 {
                 > MAX_COPY_ACK_LIFETIME_SECONDS_V8
         {
             return Err(invalid("Mac copy acknowledgement shape is invalid"));
+        }
+        if trust_policy.purpose() != SshsigTrustPurposeV8::MacCopyAck
+            || trust_policy.namespace() != COPY_ACK_NAMESPACE_V8
+            || signer.allowed_signers_sha256 != trust_policy.allowed_signers_sha256()
+            || signer.key_fingerprint != trust_policy.key_fingerprint()
+            || signer.principal != trust_policy.principal()
+            || signer.signature_algorithm != trust_policy.signature_algorithm()
+        {
+            return Err(invalid(
+                "Mac copy acknowledgement signer differs from the frozen trust policy",
+            ));
         }
         Ok(())
     }
@@ -253,6 +287,7 @@ pub struct VerifiedCopyAckV8 {
     copied_manifest_sha256: String,
     signature_sha256: String,
     statement_sha256: String,
+    trust_policy: VerifiedTrustPolicyBindingV8,
 }
 
 impl VerifiedCopyAckV8 {
@@ -279,6 +314,10 @@ impl VerifiedCopyAckV8 {
     pub fn statement_sha256(&self) -> &str {
         &self.statement_sha256
     }
+
+    pub fn trust_policy_binding(&self) -> &VerifiedTrustPolicyBindingV8 {
+        &self.trust_policy
+    }
 }
 
 #[derive(Debug, Default)]
@@ -301,27 +340,61 @@ impl CopyAckReplayGuardV8 {
         &mut self,
         ack: &MacCopyAckV8,
         candidate: &CandidateResultBundleV8,
+        now_unix_seconds: u64,
+    ) -> Result<VerifiedCopyAckV8, QualificationError> {
+        let statement = ack.canonical_statement()?;
+        let observation = verify_mac_copy_ack_sshsig_v8(ack)?;
+        let trust_policy = required_frozen_trust_binding_v8(SshsigTrustPurposeV8::MacCopyAck)?;
+        self.verify_and_consume_with_evidence(
+            ack,
+            candidate,
+            &observation,
+            &statement,
+            trust_policy,
+            now_unix_seconds,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn verify_and_consume_with_observation_for_test(
+        &mut self,
+        ack: &MacCopyAckV8,
+        candidate: &CandidateResultBundleV8,
         observation: &CryptographicSignatureObservation,
+        now_unix_seconds: u64,
+    ) -> Result<VerifiedCopyAckV8, QualificationError> {
+        let statement = ack.canonical_statement_for_test()?;
+        self.verify_and_consume_with_evidence(
+            ack,
+            candidate,
+            observation,
+            &statement,
+            crate::test_only_trust_binding_v8(SshsigTrustPurposeV8::MacCopyAck),
+            now_unix_seconds,
+        )
+    }
+
+    fn verify_and_consume_with_evidence(
+        &mut self,
+        ack: &MacCopyAckV8,
+        candidate: &CandidateResultBundleV8,
+        observation: &CryptographicSignatureObservation,
+        statement: &[u8],
+        trust_policy: VerifiedTrustPolicyBindingV8,
         now_unix_seconds: u64,
     ) -> Result<VerifiedCopyAckV8, QualificationError> {
         candidate.validate()?;
         let attempt_sha256 = candidate.attempt.sha256()?;
         let candidate_sha256 = candidate.sha256()?;
-        let statement_sha256 = sha256(&ack.canonical_statement()?);
+        let statement_sha256 = sha256(statement);
         let signature_sha256 = sha256(&ack.signature_bytes);
-        let signer = ack.signer_binding();
         if ack.attempt_identity_sha256 != attempt_sha256
             || ack.candidate_result_bundle_sha256 != candidate_sha256
             || ack.linux_source_device != candidate.source.device
             || ack.linux_source_inode != candidate.source.inode
             || now_unix_seconds < ack.issued_unix_seconds
             || now_unix_seconds >= ack.valid_before_unix_seconds
-            || !observation.exactly_matches(
-                &signature_sha256,
-                &statement_sha256,
-                COPY_ACK_NAMESPACE_V8,
-                &signer,
-            )
+            || !observation.exactly_matches(&signature_sha256, &statement_sha256, &trust_policy)
         {
             return Err(invalid(
                 "copy acknowledgement is stale or cryptographically misbound",
@@ -337,6 +410,7 @@ impl CopyAckReplayGuardV8 {
             copied_manifest_sha256: ack.copied_manifest_sha256.clone(),
             signature_sha256,
             statement_sha256,
+            trust_policy,
         })
     }
 }
@@ -351,6 +425,7 @@ pub enum AdmissionPhaseV8 {
     CopyAcknowledged,
     RunnerRestored,
     PostSnapshot,
+    ReleaseAuthorized,
     Released,
     Abandoned,
 }
@@ -370,6 +445,31 @@ pub struct AdmissionStateV8 {
     restore_evidence_sha256: Option<String>,
     runner_stop_evidence_sha256: Option<String>,
     verified_journal_tip_sha256: Option<String>,
+    release_authorization: Option<BarrierReleaseAuthorizationV8>,
+    barrier_release_observation_sha256: Option<String>,
+}
+
+/// Opaque single-writer authorization produced only after exact durable
+/// pre-release records have been matched to admission state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BarrierReleaseAuthorizationV8 {
+    attempt_identity_sha256: String,
+    pre_release_journal_tip_sha256: String,
+    release_manifest_sha256: String,
+}
+
+impl BarrierReleaseAuthorizationV8 {
+    pub fn attempt_identity_sha256(&self) -> &str {
+        &self.attempt_identity_sha256
+    }
+
+    pub fn pre_release_journal_tip_sha256(&self) -> &str {
+        &self.pre_release_journal_tip_sha256
+    }
+
+    pub fn release_manifest_sha256(&self) -> &str {
+        &self.release_manifest_sha256
+    }
 }
 
 impl AdmissionStateV8 {
@@ -389,6 +489,8 @@ impl AdmissionStateV8 {
             restore_evidence_sha256: None,
             runner_stop_evidence_sha256: None,
             verified_journal_tip_sha256: None,
+            release_authorization: None,
+            barrier_release_observation_sha256: None,
         })
     }
 
@@ -410,6 +512,10 @@ impl AdmissionStateV8 {
 
     pub fn qualification_pass(&self) -> bool {
         self.qualification_pass
+    }
+
+    pub(crate) fn release_authorization(&self) -> Option<&BarrierReleaseAuthorizationV8> {
+        self.release_authorization.as_ref()
     }
 
     pub(crate) fn apply(&mut self, event: AdmissionEventV8) -> Result<(), QualificationError> {
@@ -474,45 +580,59 @@ impl AdmissionStateV8 {
                 self.post_snapshot_sha256 = Some(snapshot_sha256);
                 self.phase = AdmissionPhaseV8::PostSnapshot;
             }
-            AdmissionEventV8::Release { journal } => {
+            AdmissionEventV8::AuthorizeRelease { journal } => {
                 self.require_phase(AdmissionPhaseV8::PostSnapshot)?;
                 if journal.attempt_sha256() != self.attempt.sha256()?
-                    || !journal.release_complete()
+                    || !journal.ready_for_release_authorization()
+                    || journal.release_complete()
+                    || journal.tip_sha256() != journal.pre_release_tip_sha256().unwrap_or_default()
                     || journal.reboot_observed()
                     || journal.qualification_abandoned()
                 {
                     return Err(invalid(
-                        "release journal does not prove this exact uninterrupted attempt",
+                        "pre-release journal is not an exact uninterrupted authorization prefix",
                     ));
                 }
-                let candidate = self
-                    .candidate_result
+                self.validate_release_facts(&journal)?;
+                let pre_release_tip = journal
+                    .pre_release_tip_sha256()
+                    .ok_or_else(|| invalid("pre-release journal omits its exact tip"))?;
+                let release_manifest_sha256 = self.release_manifest_sha256(pre_release_tip)?;
+                self.release_authorization = Some(BarrierReleaseAuthorizationV8 {
+                    attempt_identity_sha256: self.attempt.sha256()?,
+                    pre_release_journal_tip_sha256: pre_release_tip.to_string(),
+                    release_manifest_sha256,
+                });
+                self.phase = AdmissionPhaseV8::ReleaseAuthorized;
+            }
+            AdmissionEventV8::CompleteRelease { journal } => {
+                self.require_phase(AdmissionPhaseV8::ReleaseAuthorized)?;
+                let authorization = self
+                    .release_authorization
                     .as_ref()
-                    .ok_or_else(|| invalid("release state omits candidate result"))?;
-                if journal.runner_stop_observation_sha256()
-                    != self.runner_stop_evidence_sha256.as_deref()
-                    || journal.candidate_result_sha256().map(str::to_owned)
-                        != Some(candidate.sha256()?)
-                    || journal.candidate_relay_observation_sha256()
-                        != self.copy_ack_statement_sha256.as_deref()
-                    || journal.runner_restore_observation_sha256()
-                        != self.restore_evidence_sha256.as_deref()
-                    || journal.barrier_release_observation_sha256()
-                        != self.post_snapshot_sha256.as_deref()
+                    .ok_or_else(|| invalid("release completion lacks internal authorization"))?;
+                if journal.attempt_sha256() != authorization.attempt_identity_sha256()
+                    || !journal.release_complete()
+                    || journal.ready_for_release_authorization()
+                    || journal.pre_release_tip_sha256()
+                        != Some(authorization.pre_release_journal_tip_sha256())
+                    || journal.barrier_release_manifest_sha256()
+                        != Some(authorization.release_manifest_sha256())
+                    || journal.barrier_release_observation_sha256().is_none()
+                    || journal.reboot_observed()
+                    || journal.qualification_abandoned()
                 {
                     return Err(invalid(
-                        "release journal observations do not bind the exact durable facts",
+                        "release completion does not extend the exact internal authorization",
                     ));
                 }
-                if self.active_claim_sha256.is_some()
-                    || self.runner_stop_evidence_sha256.is_none()
-                    || self.candidate_result.is_none()
-                    || self.copy_ack_statement_sha256.is_none()
-                    || self.restore_evidence_sha256.is_none()
-                    || self.post_snapshot_sha256.is_none()
-                {
-                    return Err(invalid("durable release prerequisites are incomplete"));
-                }
+                self.validate_release_facts(&journal)?;
+                self.barrier_release_observation_sha256 = Some(
+                    journal
+                        .barrier_release_observation_sha256()
+                        .ok_or_else(|| invalid("release completion omits effect observation"))?
+                        .to_string(),
+                );
                 self.verified_journal_tip_sha256 = Some(journal.tip_sha256().to_string());
                 self.barrier_armed = false;
                 self.qualification_pass = journal.qualification_may_pass()
@@ -559,6 +679,53 @@ impl AdmissionStateV8 {
         self.phase = AdmissionPhaseV8::Abandoned;
     }
 
+    fn validate_release_facts(
+        &self,
+        journal: &JournalAssessmentV8,
+    ) -> Result<(), QualificationError> {
+        let candidate = self
+            .candidate_result
+            .as_ref()
+            .ok_or_else(|| invalid("release state omits candidate result"))?;
+        if journal.runner_stop_observation_sha256() != self.runner_stop_evidence_sha256.as_deref()
+            || journal.candidate_result_sha256().map(str::to_owned) != Some(candidate.sha256()?)
+            || journal.candidate_relay_observation_sha256()
+                != self.copy_ack_statement_sha256.as_deref()
+            || journal.runner_restore_observation_sha256()
+                != self.restore_evidence_sha256.as_deref()
+            || journal.post_snapshot_observation_sha256() != self.post_snapshot_sha256.as_deref()
+        {
+            return Err(invalid(
+                "release journal observations do not bind the exact durable facts",
+            ));
+        }
+        if self.active_claim_sha256.is_some()
+            || self.runner_stop_evidence_sha256.is_none()
+            || self.copy_ack_statement_sha256.is_none()
+            || self.restore_evidence_sha256.is_none()
+            || self.post_snapshot_sha256.is_none()
+        {
+            return Err(invalid("durable release prerequisites are incomplete"));
+        }
+        Ok(())
+    }
+
+    fn release_manifest_sha256(
+        &self,
+        pre_release_tip_sha256: &str,
+    ) -> Result<String, QualificationError> {
+        release_manifest_sha256_v8(
+            &self.attempt,
+            pre_release_tip_sha256,
+            self.post_snapshot_sha256
+                .as_deref()
+                .ok_or_else(|| invalid("release authorization omits post snapshot"))?,
+            self.restore_evidence_sha256
+                .as_deref()
+                .ok_or_else(|| invalid("release authorization omits restore evidence"))?,
+        )
+    }
+
     pub fn final_receipt(&self) -> Result<FinalReceiptBindingV8, QualificationError> {
         self.require_phase(AdmissionPhaseV8::Released)?;
         let journal_tip_sha256 = self
@@ -587,8 +754,17 @@ impl AdmissionStateV8 {
                 .restore_evidence_sha256
                 .clone()
                 .ok_or_else(|| invalid("released state omits restore evidence"))?,
+            release_authorization_sha256: self
+                .release_authorization
+                .as_ref()
+                .map(|authorization| authorization.release_manifest_sha256.clone())
+                .ok_or_else(|| invalid("released state omits release authorization"))?,
+            barrier_release_observation_sha256: self
+                .barrier_release_observation_sha256
+                .clone()
+                .ok_or_else(|| invalid("released state omits barrier release observation"))?,
         };
-        receipt.validate()?;
+        receipt.validate_shape()?;
         Ok(receipt)
     }
 
@@ -625,7 +801,10 @@ pub(crate) enum AdmissionEventV8 {
     PostSnapshot {
         snapshot_sha256: String,
     },
-    Release {
+    AuthorizeRelease {
+        journal: JournalAssessmentV8,
+    },
+    CompleteRelease {
         journal: JournalAssessmentV8,
     },
     RecoverAfterCrash {
@@ -649,10 +828,15 @@ pub struct FinalReceiptBindingV8 {
     pub post_snapshot_sha256: String,
     pub qualification_pass: bool,
     pub restore_evidence_sha256: String,
+    pub release_authorization_sha256: String,
+    pub barrier_release_observation_sha256: String,
 }
 
 impl FinalReceiptBindingV8 {
-    pub fn validate(&self) -> Result<(), QualificationError> {
+    /// Structural validation only. This is not qualification authority.
+    /// External evidence consumers must call [`verify_final_receipt_v8`] and
+    /// retain its opaque result.
+    pub(crate) fn validate_shape(&self) -> Result<(), QualificationError> {
         for (label, digest) in [
             ("final attempt identity", &self.attempt_identity_sha256),
             (
@@ -666,6 +850,14 @@ impl FinalReceiptBindingV8 {
             ("final journal tip", &self.journal_tip_sha256),
             ("final post snapshot", &self.post_snapshot_sha256),
             ("final restore evidence", &self.restore_evidence_sha256),
+            (
+                "final release authorization",
+                &self.release_authorization_sha256,
+            ),
+            (
+                "final barrier release observation",
+                &self.barrier_release_observation_sha256,
+            ),
         ] {
             require_hex(digest, label)?;
         }
@@ -678,7 +870,7 @@ impl FinalReceiptBindingV8 {
     }
 
     pub fn sha256(&self) -> Result<String, QualificationError> {
-        self.validate()?;
+        self.validate_shape()?;
         let mut bytes = Vec::new();
         push(&mut bytes, b"hepta_linux_v8_final_receipt_binding_v1");
         push(&mut bytes, self.attempt_identity_sha256.as_bytes());
@@ -696,8 +888,141 @@ impl FinalReceiptBindingV8 {
             },
         );
         push(&mut bytes, self.restore_evidence_sha256.as_bytes());
+        push(&mut bytes, self.release_authorization_sha256.as_bytes());
+        push(
+            &mut bytes,
+            self.barrier_release_observation_sha256.as_bytes(),
+        );
         Ok(sha256(&bytes))
     }
+}
+
+/// Opaque result of verifying a final receipt against every in-memory typed
+/// predecessor. It cannot be deserialized from the receipt artifact itself.
+#[derive(Debug)]
+pub struct VerifiedFinalReceiptV8 {
+    attempt_identity_sha256: String,
+    copy_ack_trust_policy_sha256: String,
+    journal_tip_sha256: String,
+    qualification_pass: bool,
+    receipt_sha256: String,
+}
+
+impl VerifiedFinalReceiptV8 {
+    pub fn attempt_identity_sha256(&self) -> &str {
+        &self.attempt_identity_sha256
+    }
+
+    pub fn copy_ack_trust_policy_sha256(&self) -> &str {
+        &self.copy_ack_trust_policy_sha256
+    }
+
+    pub fn journal_tip_sha256(&self) -> &str {
+        &self.journal_tip_sha256
+    }
+
+    pub fn qualification_pass(&self) -> bool {
+        self.qualification_pass
+    }
+
+    pub fn receipt_sha256(&self) -> &str {
+        &self.receipt_sha256
+    }
+}
+
+/// Verifies all redundant final fields against exact typed predecessors.
+///
+/// This closes the tempting but unsafe path of treating a shape-valid,
+/// caller-constructed `FinalReceiptBindingV8` as a PASS. Durable filesystem
+/// provenance remains a separate required native boundary.
+pub fn verify_final_receipt_v8(
+    receipt: &FinalReceiptBindingV8,
+    expected_attempt: &AttemptIdentityV8,
+    candidate: &CandidateResultBundleV8,
+    copy_ack: &VerifiedCopyAckV8,
+    completed_journal: &JournalAssessmentV8,
+    release_authorization: &BarrierReleaseAuthorizationV8,
+) -> Result<VerifiedFinalReceiptV8, QualificationError> {
+    receipt.validate_shape()?;
+    expected_attempt.validate()?;
+    candidate.validate()?;
+    let attempt_sha256 = expected_attempt.sha256()?;
+    let candidate_sha256 = candidate.sha256()?;
+    let pre_release_tip = completed_journal
+        .pre_release_tip_sha256()
+        .ok_or_else(|| invalid("final receipt journal omits the pre-release tip"))?;
+    let expected_release_manifest = release_manifest_sha256_v8(
+        expected_attempt,
+        pre_release_tip,
+        &receipt.post_snapshot_sha256,
+        &receipt.restore_evidence_sha256,
+    )?;
+    let expected_pass = candidate.outcome == CandidateOutcomeV8::Pass;
+
+    if &candidate.attempt != expected_attempt
+        || copy_ack.attempt_identity_sha256() != attempt_sha256
+        || copy_ack.candidate_result_bundle_sha256() != candidate_sha256
+        || completed_journal.attempt_sha256() != attempt_sha256
+        || !completed_journal.release_complete()
+        || !completed_journal.qualification_may_pass()
+        || completed_journal.ready_for_release_authorization()
+        || completed_journal.reboot_observed()
+        || completed_journal.qualification_abandoned()
+        || completed_journal.candidate_result_sha256() != Some(candidate_sha256.as_str())
+        || completed_journal.candidate_relay_observation_sha256()
+            != Some(copy_ack.statement_sha256())
+        || completed_journal.runner_restore_observation_sha256()
+            != Some(receipt.restore_evidence_sha256.as_str())
+        || completed_journal.post_snapshot_observation_sha256()
+            != Some(receipt.post_snapshot_sha256.as_str())
+        || completed_journal.barrier_release_manifest_sha256()
+            != Some(expected_release_manifest.as_str())
+        || completed_journal.barrier_release_observation_sha256()
+            != Some(receipt.barrier_release_observation_sha256.as_str())
+        || release_authorization.attempt_identity_sha256() != attempt_sha256
+        || release_authorization.pre_release_journal_tip_sha256() != pre_release_tip
+        || release_authorization.release_manifest_sha256() != expected_release_manifest
+        || receipt.attempt_identity_sha256 != attempt_sha256
+        || receipt.candidate_result_bundle_sha256 != candidate_sha256
+        || receipt.copy_ack_statement_sha256 != copy_ack.statement_sha256()
+        || receipt.journal_tip_sha256 != completed_journal.tip_sha256()
+        || receipt.outcome != candidate.outcome
+        || receipt.qualification_pass != expected_pass
+        || receipt.release_authorization_sha256 != expected_release_manifest
+    {
+        return Err(invalid(
+            "final receipt does not match the exact typed qualification chain",
+        ));
+    }
+
+    Ok(VerifiedFinalReceiptV8 {
+        attempt_identity_sha256: attempt_sha256,
+        copy_ack_trust_policy_sha256: copy_ack.trust_policy_binding().policy_sha256().to_string(),
+        journal_tip_sha256: completed_journal.tip_sha256().to_string(),
+        qualification_pass: expected_pass,
+        receipt_sha256: receipt.sha256()?,
+    })
+}
+
+fn release_manifest_sha256_v8(
+    attempt: &AttemptIdentityV8,
+    pre_release_tip_sha256: &str,
+    post_snapshot_sha256: &str,
+    restore_evidence_sha256: &str,
+) -> Result<String, QualificationError> {
+    require_hex(pre_release_tip_sha256, "pre-release journal tip")?;
+    require_hex(post_snapshot_sha256, "release post snapshot")?;
+    require_hex(restore_evidence_sha256, "release restore evidence")?;
+    let mut bytes = Vec::new();
+    push(
+        &mut bytes,
+        b"hepta_linux_v8_internal_barrier_release_authorization_v1",
+    );
+    push(&mut bytes, attempt.sha256()?.as_bytes());
+    push(&mut bytes, pre_release_tip_sha256.as_bytes());
+    push(&mut bytes, post_snapshot_sha256.as_bytes());
+    push(&mut bytes, restore_evidence_sha256.as_bytes());
+    Ok(sha256(&bytes))
 }
 
 fn require_hex(value: &str, label: &str) -> Result<(), QualificationError> {
