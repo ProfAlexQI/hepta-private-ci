@@ -4,12 +4,16 @@
 //! v1-v7 artifact, install privileged services, stop runners, or execute the
 //! product candidate.
 
+mod authority;
 mod identity;
 mod journal;
+mod sshsig;
 mod target;
 
+pub use authority::*;
 pub use identity::*;
 pub use journal::*;
+pub use sshsig::*;
 pub use target::*;
 
 pub const SCHEMA_FAMILY: &str = "hepta_linux_exact_v8";

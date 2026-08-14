@@ -3347,6 +3347,8 @@ dependencies = [
 name = "codex-hepta-linux-qualification-v8"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek",
  "pretty_assertions",
  "serde",
  "serde_json",
