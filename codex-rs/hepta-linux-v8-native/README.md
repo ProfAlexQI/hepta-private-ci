@@ -13,6 +13,14 @@ authority to install root files, reload or start systemd units, signal runner
 processes, execute the product candidate on the target, mutate refs or
 production state, or publish a qualification PASS.
 
+The Linux test harness launches a separate test process and exits it after
+successful syscall-return boundaries around create, write, file fsync,
+no-replace rename, directory fsync, and final reopen. It verifies fail-closed
+restart behavior for active-attempt, nonce, and journal publication. This is a
+process-crash model only: it does not claim mid-syscall interruption, power
+loss, page-cache loss, filesystem replay, torn-sector, ENOSPC, EIO, or reboot
+coverage.
+
 Live use remains blocked until all of the following exist and are independently
 frozen and audited:
 

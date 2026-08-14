@@ -11,7 +11,6 @@ use super::PublishedRecordV8;
 use super::VerifiedDurableJournalScanV8;
 use super::attempt_relative_path_v8;
 use super::journal_record_name_v8;
-use super::publish_record_noreplace_v8;
 use super::scan_journal_directory_v8;
 
 /// A newly appended record plus a fresh anchored replay of the entire chain.
@@ -38,6 +37,27 @@ pub fn append_journal_record_durably_v8(
     record: &DurableJournalRecordV8,
     publication_nonce: &str,
 ) -> Result<PublishedDurableJournalRecordV8, NativeErrorV8> {
+    append_journal_record_durably_observed_v8(
+        state_root,
+        state_root_lock,
+        active_attempt,
+        record,
+        publication_nonce,
+        |_| {},
+    )
+}
+
+pub(super) fn append_journal_record_durably_observed_v8<F>(
+    state_root: &DirectoryAnchorV8,
+    state_root_lock: &mut StateRootLockV8,
+    active_attempt: &FreshActiveAttemptPublicationV8,
+    record: &DurableJournalRecordV8,
+    publication_nonce: &str,
+    observe: F,
+) -> Result<PublishedDurableJournalRecordV8, NativeErrorV8>
+where
+    F: FnMut(super::DurablePublicationCheckpointV8),
+{
     if state_root_lock.state_root_identity() != state_root.identity() {
         return Err(invalid(
             "durable journal lock belongs to a different state root",
@@ -96,11 +116,12 @@ pub fn append_journal_record_durably_v8(
 
     let final_name = journal_record_name_v8(record.global_sequence())?;
     state_root_lock.revalidate_for_root(state_root)?;
-    let publication = publish_record_noreplace_v8(
+    let publication = super::publish_record_noreplace_observed_v8(
         &journal_directory,
         &final_name,
         publication_nonce,
         &record.canonical_bytes()?,
+        observe,
     )?;
     state_root_lock.revalidate_for_root(state_root)?;
     let verified_chain = scan_journal_directory_v8(

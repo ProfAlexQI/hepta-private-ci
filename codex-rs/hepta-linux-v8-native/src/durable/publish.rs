@@ -49,6 +49,29 @@ pub fn publish_record_noreplace_v8(
     publication_nonce: &str,
     bytes: &[u8],
 ) -> Result<PublishedRecordV8, NativeErrorV8> {
+    publish_record_noreplace_observed_v8(directory, final_leaf, publication_nonce, bytes, |_| {})
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum DurablePublicationCheckpointV8 {
+    IncomingCreatedBeforeWrite,
+    IncomingWrittenBeforeFileSync,
+    IncomingFileSyncedBeforeRename,
+    RenamedBeforeDirectorySync,
+    DirectorySyncedBeforeFinalReopen,
+    FinalReopenVerified,
+}
+
+pub(super) fn publish_record_noreplace_observed_v8<F>(
+    directory: &DirectoryAnchorV8,
+    final_leaf: &str,
+    publication_nonce: &str,
+    bytes: &[u8],
+    mut observe: F,
+) -> Result<PublishedRecordV8, NativeErrorV8>
+where
+    F: FnMut(DurablePublicationCheckpointV8),
+{
     validate_leaf_name(final_leaf)?;
     if bytes.is_empty() {
         return Err(invalid("durable publication bytes must not be empty"));
@@ -61,7 +84,11 @@ pub fn publish_record_noreplace_v8(
 
     let incoming_leaf = incoming_name_v8(final_leaf, publication_nonce)?;
     let created = directory.create_regular_leaf_exclusive(OsStr::new(&incoming_leaf))?;
-    let synced = created.write_all_and_sync(bytes)?;
+    observe(DurablePublicationCheckpointV8::IncomingCreatedBeforeWrite);
+    let written = created.write_all_without_sync(bytes)?;
+    observe(DurablePublicationCheckpointV8::IncomingWrittenBeforeFileSync);
+    let synced = written.sync_and_revalidate()?;
+    observe(DurablePublicationCheckpointV8::IncomingFileSyncedBeforeRename);
     synced.revalidate()?;
     let source_identity = synced.identity();
 
@@ -72,7 +99,9 @@ pub fn publish_record_noreplace_v8(
         OsStr::new(final_leaf),
     )?;
     synced.revalidate()?;
+    observe(DurablePublicationCheckpointV8::RenamedBeforeDirectorySync);
     directory.sync_directory()?;
+    observe(DurablePublicationCheckpointV8::DirectorySyncedBeforeFinalReopen);
 
     let reopened = directory.open_regular_readonly_beneath(Path::new(final_leaf))?;
     let reopened_bytes = reopened.read_all(MAX_DURABLE_RECORD_BYTES_V8)?;
@@ -86,6 +115,7 @@ pub fn publish_record_noreplace_v8(
             "durable publication final bytes differ from the fsynced source",
         ));
     }
+    observe(DurablePublicationCheckpointV8::FinalReopenVerified);
 
     Ok(PublishedRecordV8 {
         final_leaf: final_leaf.to_string(),

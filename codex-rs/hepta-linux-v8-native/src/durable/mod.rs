@@ -7,6 +7,9 @@ mod nonce_store;
 mod publish;
 mod scan;
 
+#[cfg(all(test, target_os = "linux"))]
+mod crash_tests;
+
 pub use active_attempt::*;
 pub use journal_publish::*;
 pub use journal_store::*;

@@ -167,7 +167,32 @@ impl CreatedRegularLeafV8 {
     }
 
     pub fn write_all_and_sync(self, bytes: &[u8]) -> NativeSysResultV8<SyncedRegularLeafV8> {
-        write_all_and_sync_impl(self, bytes)
+        self.write_all_without_sync(bytes)?.sync_and_revalidate()
+    }
+
+    pub(crate) fn write_all_without_sync(
+        self,
+        bytes: &[u8],
+    ) -> NativeSysResultV8<WrittenRegularLeafV8> {
+        write_all_without_sync_impl(self, bytes)
+    }
+}
+
+/// A fully written leaf that has not yet crossed the file-fsync boundary.
+/// It is crate-private so no external caller can mistake it for durability.
+#[derive(Debug)]
+pub(crate) struct WrittenRegularLeafV8 {
+    #[cfg(target_os = "linux")]
+    descriptor: OwnedFd,
+    #[cfg(target_os = "linux")]
+    leaf: Box<OsStr>,
+    #[cfg(target_os = "linux")]
+    expected_size: u64,
+}
+
+impl WrittenRegularLeafV8 {
+    pub(crate) fn sync_and_revalidate(self) -> NativeSysResultV8<SyncedRegularLeafV8> {
+        sync_and_revalidate_written_impl(self)
     }
 }
 
@@ -330,21 +355,46 @@ fn create_regular_leaf_exclusive_impl(
 }
 
 #[cfg(target_os = "linux")]
-fn write_all_and_sync_impl(
+fn write_all_without_sync_impl(
     created: CreatedRegularLeafV8,
     bytes: &[u8],
-) -> NativeSysResultV8<SyncedRegularLeafV8> {
+) -> NativeSysResultV8<WrittenRegularLeafV8> {
     let CreatedRegularLeafV8 { descriptor, leaf } = created;
     let mut file = File::from(descriptor);
     file.write_all(bytes)
         .map_err(|source| io_error("write exclusive anchored leaf", source))?;
+    let expected_size = u64::try_from(bytes.len())
+        .map_err(|_| NativeSysErrorV8::InvalidInput("record bytes do not fit u64".to_string()))?;
+    Ok(WrittenRegularLeafV8 {
+        descriptor: file.into(),
+        leaf,
+        expected_size,
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn write_all_without_sync_impl(
+    _created: CreatedRegularLeafV8,
+    _bytes: &[u8],
+) -> NativeSysResultV8<WrittenRegularLeafV8> {
+    Err(unsupported("write exclusive anchored leaf"))
+}
+
+#[cfg(target_os = "linux")]
+fn sync_and_revalidate_written_impl(
+    written: WrittenRegularLeafV8,
+) -> NativeSysResultV8<SyncedRegularLeafV8> {
+    let WrittenRegularLeafV8 {
+        descriptor,
+        leaf,
+        expected_size,
+    } = written;
+    let file = File::from(descriptor);
     file.sync_all()
         .map_err(|source| io_error("fsync exclusive anchored leaf", source))?;
     let descriptor: OwnedFd = file.into();
     require_regular(descriptor.as_raw_fd())?;
     let identity = identity_for_fd(descriptor.as_raw_fd())?;
-    let expected_size = u64::try_from(bytes.len())
-        .map_err(|_| NativeSysErrorV8::InvalidInput("record bytes do not fit u64".to_string()))?;
     // 0600 is unaffected by any umask. Ownership must match the creating
     // process, and a durable record is never allowed to be hard-linked.
     // SAFETY: geteuid has no preconditions or pointer arguments.
@@ -374,11 +424,10 @@ fn write_all_and_sync_impl(
 }
 
 #[cfg(not(target_os = "linux"))]
-fn write_all_and_sync_impl(
-    _created: CreatedRegularLeafV8,
-    _bytes: &[u8],
+fn sync_and_revalidate_written_impl(
+    _written: WrittenRegularLeafV8,
 ) -> NativeSysResultV8<SyncedRegularLeafV8> {
-    Err(unsupported("write and fsync exclusive anchored leaf"))
+    Err(unsupported("fsync and revalidate written anchored leaf"))
 }
 
 #[cfg(target_os = "linux")]

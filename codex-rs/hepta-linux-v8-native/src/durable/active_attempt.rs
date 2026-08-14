@@ -12,7 +12,6 @@ use crate::StateRootLockV8;
 use crate::invalid;
 
 use super::PublishedRecordV8;
-use super::publish_record_noreplace_v8;
 use super::validate_boot_id_v8;
 use super::validate_digest;
 
@@ -286,6 +285,25 @@ pub fn publish_active_attempt_durably_v8(
     request: &ActiveAttemptRequestV8,
     publication_nonce: &str,
 ) -> Result<ActiveAttemptPublicationOutcomeV8, NativeErrorV8> {
+    publish_active_attempt_durably_observed_v8(
+        state_root,
+        state_root_lock,
+        request,
+        publication_nonce,
+        |_| {},
+    )
+}
+
+pub(super) fn publish_active_attempt_durably_observed_v8<F>(
+    state_root: &DirectoryAnchorV8,
+    state_root_lock: &mut StateRootLockV8,
+    request: &ActiveAttemptRequestV8,
+    publication_nonce: &str,
+    observe: F,
+) -> Result<ActiveAttemptPublicationOutcomeV8, NativeErrorV8>
+where
+    F: FnMut(super::DurablePublicationCheckpointV8),
+{
     request.validate()?;
     validate_digest("active publication nonce", publication_nonce)?;
     if state_root_lock.state_root_identity() != state_root.identity() {
@@ -310,17 +328,27 @@ pub fn publish_active_attempt_durably_v8(
         state_root_lock.revalidate_for_root(state_root)?;
         return Ok(existing);
     }
+    let incoming_prefix = format!(".{ACTIVE_ATTEMPT_LEAF_V8}.");
+    if after.iter().any(|name| {
+        name.to_str()
+            .is_some_and(|name| name.starts_with(&incoming_prefix) && name.ends_with(".incoming"))
+    }) {
+        return Err(invalid(
+            "interrupted active-attempt publication requires recovery",
+        ));
+    }
     super::require_inventory_capacity_v8(
         "state root",
         after.len(),
         super::MAX_STATE_ROOT_LEAVES_V8,
     )?;
 
-    let publication = publish_record_noreplace_v8(
+    let publication = super::publish_record_noreplace_observed_v8(
         state_root,
         ACTIVE_ATTEMPT_LEAF_V8,
         publication_nonce,
         &canonical,
+        observe,
     )?;
     state_root_lock.revalidate_for_root(state_root)?;
     let reopened = state_root.open_regular_readonly_beneath(Path::new(ACTIVE_ATTEMPT_LEAF_V8))?;
@@ -520,6 +548,27 @@ mod tests {
         let mut lock = acquire_state_root_lock_v8(&anchor, OsStr::new("state.lock")).unwrap();
         publish_active_attempt_durably_v8(&anchor, &mut lock, &request(), &digest('4')).unwrap();
         fs::write(root.join(ACTIVE_ATTEMPT_LEAF_V8), b"tampered").unwrap();
+        assert!(
+            publish_active_attempt_durably_v8(&anchor, &mut lock, &request(), &digest('5'))
+                .is_err()
+        );
+        drop(lock);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn interrupted_active_incoming_never_yields_fresh_authority() {
+        let root = temporary_state_root();
+        let anchor = DirectoryAnchorV8::open(&root).unwrap();
+        let mut lock = acquire_state_root_lock_v8(&anchor, OsStr::new("state.lock")).unwrap();
+        fs::write(
+            root.join(format!(
+                ".{ACTIVE_ATTEMPT_LEAF_V8}.{}.incoming",
+                digest('4')
+            )),
+            b"interrupted",
+        )
+        .unwrap();
         assert!(
             publish_active_attempt_durably_v8(&anchor, &mut lock, &request(), &digest('5'))
                 .is_err()

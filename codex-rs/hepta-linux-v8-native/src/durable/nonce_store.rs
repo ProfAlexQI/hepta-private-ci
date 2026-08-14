@@ -10,7 +10,6 @@ use super::FreshActiveAttemptPublicationV8;
 use super::NONCE_CLAIMS_DIRECTORY_V8;
 use super::NonceClaimRecordV8;
 use super::PublishedRecordV8;
-use super::publish_record_noreplace_v8;
 
 const MAX_NONCE_CLAIM_BYTES_V8: u64 = 64 * 1024;
 
@@ -109,6 +108,19 @@ pub fn claim_nonce_durably_v8(
     active_attempt: &FreshActiveAttemptPublicationV8,
     record: &NonceClaimRecordV8,
 ) -> Result<DurableNonceClaimOutcomeV8, NativeErrorV8> {
+    claim_nonce_durably_observed_v8(state_root, state_root_lock, active_attempt, record, |_| {})
+}
+
+pub(super) fn claim_nonce_durably_observed_v8<F>(
+    state_root: &DirectoryAnchorV8,
+    state_root_lock: &mut StateRootLockV8,
+    active_attempt: &FreshActiveAttemptPublicationV8,
+    record: &NonceClaimRecordV8,
+    observe: F,
+) -> Result<DurableNonceClaimOutcomeV8, NativeErrorV8>
+where
+    F: FnMut(super::DurablePublicationCheckpointV8),
+{
     record.validate()?;
     if state_root_lock.state_root_identity() != state_root.identity() {
         return Err(invalid(
@@ -170,8 +182,13 @@ pub fn claim_nonce_durably_v8(
     )?;
 
     state_root_lock.revalidate_for_root(state_root)?;
-    let publication =
-        publish_record_noreplace_v8(&claims_directory, &final_leaf, &record.nonce, &canonical)?;
+    let publication = super::publish_record_noreplace_observed_v8(
+        &claims_directory,
+        &final_leaf,
+        &record.nonce,
+        &canonical,
+        observe,
+    )?;
     state_root_lock.revalidate_for_root(state_root)?;
     Ok(DurableNonceClaimOutcomeV8::FreshPublication(
         FreshDurableNoncePublicationV8 {

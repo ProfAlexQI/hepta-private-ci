@@ -32,7 +32,7 @@ mod rename_noreplace_tests;
 // process-wide descriptor-lifetime fixtures; production code has no such
 // global lock or test-only coupling.
 #[cfg(all(test, target_os = "linux"))]
-pub(super) static PROCESS_FD_LIFETIME_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub(crate) static PROCESS_FD_LIFETIME_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[derive(Debug, thiserror::Error)]
 pub enum NativeSysErrorV8 {
