@@ -584,7 +584,7 @@ struct DiskInfoPlist {
 
 #[derive(Debug, Deserialize)]
 struct DiskInfoPhysicalStorePlist {
-    #[serde(rename = "DeviceIdentifier")]
+    #[serde(rename = "APFSPhysicalStore", alias = "DeviceIdentifier")]
     device_identifier: String,
 }
 
@@ -600,6 +600,10 @@ struct DiskNodeInfoPlist {
     device_node: Option<String>,
     #[serde(rename = "DiskImage", default)]
     disk_image: Option<bool>,
+    #[serde(rename = "BusProtocol", default)]
+    bus_protocol: Option<String>,
+    #[serde(rename = "Internal", default)]
+    internal: Option<bool>,
     #[serde(rename = "ParentWholeDisk", default)]
     parent_whole_disk: Option<String>,
     #[serde(rename = "TotalSize", default)]
@@ -608,8 +612,10 @@ struct DiskNodeInfoPlist {
     virtual_or_physical: Option<String>,
     #[serde(rename = "VolumeUUID", default)]
     volume_uuid: Option<String>,
-    #[serde(rename = "Whole", default)]
+    #[serde(rename = "WholeDisk", alias = "Whole", default)]
     whole: Option<bool>,
+    #[serde(rename = "Removable", default)]
+    removable: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -647,8 +653,16 @@ struct ApfsContainerPlist {
     container_reference: String,
     #[serde(rename = "DesignatedPhysicalStore")]
     designated_physical_store: String,
+    #[serde(rename = "PhysicalStores")]
+    physical_stores: Vec<ApfsPhysicalStorePlist>,
     #[serde(rename = "Volumes")]
     volumes: Vec<ApfsVolumePlist>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApfsPhysicalStorePlist {
+    #[serde(rename = "DeviceIdentifier")]
+    device_identifier: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -671,6 +685,14 @@ struct AttachedImage {
     volume_name: String,
     volume_uuid: String,
     whole_disk_identifier: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct HdiTopologyEntities {
+    apfs_container: String,
+    apfs_volume: String,
+    physical_store: String,
+    whole_disk: String,
 }
 
 pub fn plan() -> ApfsFixturePlanV1 {
@@ -1289,26 +1311,33 @@ fn disk_node_from_info(
     info: DiskNodeInfoPlist,
     expect_whole: bool,
 ) -> Result<DiskNodeV1, AcceptanceError> {
+    let inferred_disk_image = info.bus_protocol.as_deref() == Some("Disk Image")
+        && info.internal == Some(false)
+        && info.removable != Some(false);
+    let disk_image = info.disk_image.unwrap_or(inferred_disk_image);
+    let virtual_or_physical = info.virtual_or_physical.unwrap_or_else(|| {
+        if inferred_disk_image {
+            "Virtual".to_string()
+        } else {
+            String::new()
+        }
+    });
     let node = DiskNodeV1 {
         device_identifier: info.device_identifier.clone(),
         device_node: info
             .device_node
             .ok_or_else(|| invalid("disk node info omitted DeviceNode"))?,
-        disk_image: info
-            .disk_image
-            .ok_or_else(|| invalid("disk node info omitted DiskImage"))?,
+        disk_image,
         parent_whole_disk: info
             .parent_whole_disk
             .unwrap_or_else(|| info.device_identifier.clone()),
         size: info
             .total_size
             .ok_or_else(|| invalid("disk node info omitted TotalSize"))?,
-        virtual_or_physical: info
-            .virtual_or_physical
-            .ok_or_else(|| invalid("disk node info omitted VirtualOrPhysical"))?,
+        virtual_or_physical,
         whole: info
             .whole
-            .ok_or_else(|| invalid("disk node info omitted Whole"))?,
+            .ok_or_else(|| invalid("disk node info omitted WholeDisk"))?,
     };
     validate_disk_node(&node, expect_whole)?;
     Ok(node)
@@ -1357,44 +1386,24 @@ fn parse_attached_image(
     apfs: &ApfsListPlist,
     expected_name: &str,
 ) -> Result<AttachedImage, AcceptanceError> {
-    let whole_disks = attach
-        .system_entities
-        .iter()
-        .filter(|entity| entity.content_hint.as_deref() == Some("GUID_partition_scheme"))
-        .collect::<Vec<_>>();
-    let physical_stores = attach
-        .system_entities
-        .iter()
-        .filter(|entity| entity.content_hint.as_deref() == Some("Apple_APFS"))
-        .collect::<Vec<_>>();
-    let apfs_volumes = attach
-        .system_entities
-        .iter()
-        .filter(|entity| entity.volume_kind.as_deref() == Some("apfs"))
-        .collect::<Vec<_>>();
-    if whole_disks.len() != 1 || physical_stores.len() != 1 || apfs_volumes.len() != 1 {
-        return Err(invalid(
-            "disk image attachment topology is not a single APFS volume",
-        ));
-    }
+    let entities = normalize_hdi_topology_entities(&attach.system_entities)?;
     if apfs.containers.len() != 1 {
         return Err(invalid("disk image has more than one APFS container"));
     }
     let container = &apfs.containers[0];
-    if container.volumes.len() != 1 {
+    if container.volumes.len() != 1 || container.physical_stores.len() != 1 {
         return Err(invalid(
-            "disk image APFS container has more than one volume",
+            "disk image APFS container does not have exactly one volume and physical store",
         ));
     }
     let volume = &container.volumes[0];
-    let whole = strip_device_prefix(&whole_disks[0].dev_entry);
-    let physical = strip_device_prefix(&physical_stores[0].dev_entry);
-    let attached_volume = strip_device_prefix(&apfs_volumes[0].dev_entry);
-    if physical != container.designated_physical_store
-        || attached_volume != volume.device_identifier
+    if entities.physical_store != container.designated_physical_store
+        || container.physical_stores[0].device_identifier != container.designated_physical_store
+        || entities.apfs_container != container.container_reference
+        || entities.apfs_volume != volume.device_identifier
         || volume.name != expected_name
         || !container.container_reference.starts_with("disk")
-        || !whole.starts_with("disk")
+        || !entities.whole_disk.starts_with("disk")
     {
         return Err(invalid(
             "APFS device, container, volume, or name lineage is inconsistent",
@@ -1405,13 +1414,125 @@ fn parse_attached_image(
     Ok(AttachedImage {
         apfs_container_uuid: container.apfs_container_uuid.to_ascii_lowercase(),
         container_identifier: container.container_reference.clone(),
-        physical_store_identifier: physical.to_string(),
+        physical_store_identifier: entities.physical_store.clone(),
         topology: None,
         volume_identifier: volume.device_identifier.clone(),
         volume_name: volume.name.clone(),
         volume_uuid: volume.apfs_volume_uuid.to_ascii_lowercase(),
-        whole_disk_identifier: whole.to_string(),
+        whole_disk_identifier: entities.whole_disk,
     })
+}
+
+fn normalize_hdi_topology_entities(
+    entities: &[HdiutilEntity],
+) -> Result<HdiTopologyEntities, AcceptanceError> {
+    if entities.len() != 4 {
+        return Err(invalid(
+            "disk image topology must contain exactly four hdiutil system entities",
+        ));
+    }
+    let mut identifiers = BTreeSet::new();
+    for entity in entities {
+        let identifier = strip_device_prefix(&entity.dev_entry);
+        if entity.dev_entry != format!("/dev/{identifier}")
+            || !valid_disk_identifier(identifier)
+            || !identifiers.insert(identifier.to_string())
+        {
+            return Err(invalid(
+                "hdiutil system entities contain a malformed or duplicate device",
+            ));
+        }
+    }
+    let exactly_one = |predicate: &dyn Fn(&HdiutilEntity) -> bool, label: &str| {
+        let matching = entities
+            .iter()
+            .filter(|entity| predicate(entity))
+            .collect::<Vec<_>>();
+        if matching.len() == 1 {
+            Ok(strip_device_prefix(&matching[0].dev_entry).to_string())
+        } else {
+            Err(invalid(format!(
+                "hdiutil system entities do not contain exactly one {label}"
+            )))
+        }
+    };
+    let whole_disk = exactly_one(
+        &|entity| entity.content_hint.as_deref() == Some("GUID_partition_scheme"),
+        "whole disk",
+    )?;
+    let physical_store = exactly_one(
+        &|entity| entity.content_hint.as_deref() == Some("Apple_APFS"),
+        "APFS physical store",
+    )?;
+    let remaining = identifiers
+        .iter()
+        .filter(|identifier| **identifier != whole_disk && **identifier != physical_store)
+        .cloned()
+        .collect::<Vec<_>>();
+    let containers = remaining
+        .iter()
+        .filter(|identifier| {
+            disk_identifier_parts(identifier).is_some_and(|(_, slice)| slice.is_none())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let volumes = remaining
+        .iter()
+        .filter(|identifier| {
+            disk_identifier_parts(identifier).is_some_and(|(_, slice)| slice.is_some())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if remaining.len() != 2
+        || containers.len() != 1
+        || volumes.len() != 1
+        || physical_store == whole_disk
+        || !physical_store.starts_with(&format!("{whole_disk}s"))
+        || !volumes[0].starts_with(&format!("{}s", containers[0]))
+        || entities.iter().any(|entity| {
+            entity
+                .volume_kind
+                .as_deref()
+                .is_some_and(|kind| kind != "apfs")
+        })
+        || entities.iter().any(|entity| {
+            entity.volume_kind.as_deref() == Some("apfs")
+                && strip_device_prefix(&entity.dev_entry) != volumes[0]
+        })
+    {
+        return Err(invalid(
+            "hdiutil whole, physical, container, and volume entity lineage is inconsistent",
+        ));
+    }
+    Ok(HdiTopologyEntities {
+        apfs_container: containers[0].clone(),
+        apfs_volume: volumes[0].clone(),
+        physical_store,
+        whole_disk,
+    })
+}
+
+fn disk_identifier_parts(value: &str) -> Option<(u32, Option<u32>)> {
+    let suffix = value.strip_prefix("disk")?;
+    let (whole, slice) = match suffix.split_once('s') {
+        Some((whole, slice)) if !slice.contains('s') => (whole, Some(slice)),
+        Some(_) => return None,
+        None => (suffix, None),
+    };
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || slice.is_some_and(|slice| {
+            slice.is_empty() || !slice.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    {
+        return None;
+    }
+    let whole = whole.parse().ok()?;
+    let slice = match slice {
+        Some(slice) => Some(slice.parse().ok()?),
+        None => None,
+    };
+    Some((whole, slice))
 }
 
 fn strip_device_prefix(value: &str) -> &str {
@@ -1864,9 +1985,16 @@ fn attach_image(
         .iter()
         .filter(|candidate| Path::new(&candidate.image_path) == image)
         .collect::<Vec<_>>();
-    if matching_images.len() != 1 || matching_images[0].system_entities != attach.system_entities {
+    if matching_images.len() != 1 {
         return Err(invalid(
             "hdiutil info does not bind the exact image backing to the attach topology",
+        ));
+    }
+    let attach_entities = normalize_hdi_topology_entities(&attach.system_entities)?;
+    let info_entities = normalize_hdi_topology_entities(&matching_images[0].system_entities)?;
+    if info_entities != attach_entities {
+        return Err(invalid(
+            "hdiutil info topology differs from attach after order-insensitive normalization",
         ));
     }
 
@@ -5125,12 +5253,7 @@ fn verify_command_artifacts(
 }
 
 fn valid_disk_identifier(value: &str) -> bool {
-    value.starts_with("disk")
-        && value.len() <= 32
-        && value[4..]
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || byte == b's')
-        && value[4..].bytes().any(|byte| byte.is_ascii_digit())
+    value.len() <= 32 && disk_identifier_parts(value).is_some()
 }
 
 fn strings(values: &[&str]) -> Vec<String> {
@@ -5507,7 +5630,6 @@ fn reconstruct_attached_topology(
     )?;
     let current_image = file_identity(&root.join(IMAGE_NAME))?;
     if matching.len() != 1
-        || matching[0].system_entities != attach.system_entities
         || parsed.whole_disk_identifier != whole.device_identifier
         || parsed.physical_store_identifier != physical.device_identifier
         || parsed.container_identifier != container.device_identifier
@@ -5524,6 +5646,13 @@ fn reconstruct_attached_topology(
     {
         return Err(invalid(
             "sealed raw receipts do not reconstruct the attached image topology",
+        ));
+    }
+    if normalize_hdi_topology_entities(&matching[0].system_entities)?
+        != normalize_hdi_topology_entities(&attach.system_entities)?
+    {
+        return Err(invalid(
+            "sealed hdiutil info and attach topology differ after normalization",
         ));
     }
     Ok(())
@@ -6872,6 +7001,155 @@ mod tests {
         let mut wrong_parent = topology;
         wrong_parent.physical_store.parent_whole_disk = "disk8".to_string();
         assert!(validate_attached_topology_shape(&wrong_parent).is_err());
+    }
+
+    #[test]
+    fn real_macos_plist_shapes_normalize_without_entity_order_or_optional_node_fields() {
+        // Reduced only by deleting unrelated keys from the read-only receipts:
+        // attach-rw-owners.plist sha256
+        // 680855d6c733f6173969cf3f5d77e4ef690513af4671363a761137b412b7d5e3
+        // research-apfs-list.plist sha256
+        // 8ce780ebac12247ce47ba8ae6af02d546cf90824397cb985afff9f5cacfa2e04
+        // info-rw-owners-attach.plist sha256
+        // 78ba3dd279648a2c9eea7b77a9be4b8bbdac1b824042dcaec7546ce6ca7aad88
+        let attach: HdiutilPlist = serde_json::from_str(
+            r#"{"system-entities":[
+                {"content-hint":"Apple_APFS","dev-entry":"/dev/disk8s1"},
+                {"content-hint":"GUID_partition_scheme","dev-entry":"/dev/disk8"},
+                {"content-hint":"41504653-0000-11AA-AA11-00306543ECAC","dev-entry":"/dev/disk9s1","volume-kind":"apfs"},
+                {"content-hint":"EF57347C-0000-11AA-AA11-00306543ECAC","dev-entry":"/dev/disk9"}
+            ]}"#,
+        )
+        .expect("real attach plist shape");
+        let apfs: ApfsListPlist = serde_json::from_str(
+            r#"{"Containers":[{
+                "APFSContainerUUID":"CA29A494-7520-42D0-BC7B-300B61FC1BFE",
+                "ContainerReference":"disk9",
+                "DesignatedPhysicalStore":"disk8s1",
+                "PhysicalStores":[{"DeviceIdentifier":"disk8s1"}],
+                "Volumes":[{
+                    "APFSVolumeUUID":"92F75E11-F0E7-4187-9340-1B807579568B",
+                    "DeviceIdentifier":"disk9s1",
+                    "Name":"HEPTA_BARRIER_TEST"
+                }]
+            }]}"#,
+        )
+        .expect("real APFS list plist shape");
+        let attached =
+            parse_attached_image(&attach, &apfs, "HEPTA_BARRIER_TEST").expect("normalized lineage");
+        assert_eq!(attached.whole_disk_identifier, "disk8");
+        assert_eq!(attached.physical_store_identifier, "disk8s1");
+        assert_eq!(attached.container_identifier, "disk9");
+        assert_eq!(attached.volume_identifier, "disk9s1");
+
+        let mut reordered_without_volume_kind = attach.system_entities.clone();
+        reordered_without_volume_kind.reverse();
+        for entity in &mut reordered_without_volume_kind {
+            entity.volume_kind = None;
+        }
+        assert_eq!(
+            normalize_hdi_topology_entities(&attach.system_entities)
+                .expect("attach entity normalization"),
+            normalize_hdi_topology_entities(&reordered_without_volume_kind)
+                .expect("hdiutil-info entity normalization"),
+        );
+
+        let node: DiskNodeInfoPlist = serde_json::from_str(
+            r#"{
+                "APFSContainerReference":"disk9",
+                "APFSPhysicalStores":[{"APFSPhysicalStore":"disk8s1"}],
+                "BusProtocol":"Disk Image",
+                "DeviceIdentifier":"disk9s1",
+                "DeviceNode":"/dev/disk9s1",
+                "Internal":false,
+                "ParentWholeDisk":"disk9",
+                "Removable":true,
+                "TotalSize":134176768,
+                "VolumeUUID":"92F75E11-F0E7-4187-9340-1B807579568B",
+                "WholeDisk":false
+            }"#,
+        )
+        .expect("real diskutil info plist shape");
+        assert_eq!(node.apfs_physical_stores[0].device_identifier, "disk8s1");
+        let normalized_node =
+            disk_node_from_info(node, false).expect("absent DiskImage/VirtualOrPhysical fallback");
+        assert!(normalized_node.disk_image);
+        assert_eq!(normalized_node.virtual_or_physical, "Virtual");
+        assert!(!normalized_node.whole);
+    }
+
+    #[test]
+    fn macos_plist_normalizer_rejects_extra_entities_and_physical_stores() {
+        let entities = vec![
+            HdiutilEntity {
+                content_hint: Some("GUID_partition_scheme".to_string()),
+                dev_entry: "/dev/disk8".to_string(),
+                volume_kind: None,
+            },
+            HdiutilEntity {
+                content_hint: Some("Apple_APFS".to_string()),
+                dev_entry: "/dev/disk8s1".to_string(),
+                volume_kind: None,
+            },
+            HdiutilEntity {
+                content_hint: Some("container".to_string()),
+                dev_entry: "/dev/disk9".to_string(),
+                volume_kind: None,
+            },
+            HdiutilEntity {
+                content_hint: Some("volume".to_string()),
+                dev_entry: "/dev/disk9s1".to_string(),
+                volume_kind: None,
+            },
+        ];
+        assert!(normalize_hdi_topology_entities(&entities).is_ok());
+        let mut extra = entities.clone();
+        extra.push(HdiutilEntity {
+            content_hint: Some("extra".to_string()),
+            dev_entry: "/dev/disk10".to_string(),
+            volume_kind: None,
+        });
+        assert!(normalize_hdi_topology_entities(&extra).is_err());
+
+        let attach = HdiutilPlist {
+            system_entities: entities,
+        };
+        let apfs: ApfsListPlist = serde_json::from_str(
+            r#"{"Containers":[{
+                "APFSContainerUUID":"CA29A494-7520-42D0-BC7B-300B61FC1BFE",
+                "ContainerReference":"disk9",
+                "DesignatedPhysicalStore":"disk8s1",
+                "PhysicalStores":[
+                    {"DeviceIdentifier":"disk8s1"},
+                    {"DeviceIdentifier":"disk8s2"}
+                ],
+                "Volumes":[{
+                    "APFSVolumeUUID":"92F75E11-F0E7-4187-9340-1B807579568B",
+                    "DeviceIdentifier":"disk9s1",
+                    "Name":"HEPTA_BARRIER_TEST"
+                }]
+            }]}"#,
+        )
+        .expect("extra-store APFS plist");
+        assert!(parse_attached_image(&attach, &apfs, "HEPTA_BARRIER_TEST").is_err());
+    }
+
+    #[test]
+    fn disk_identifier_normalizer_rejects_ambiguous_bsd_names() {
+        for valid in ["disk0", "disk12", "disk12s1", "disk4294967295s4294967295"] {
+            assert!(valid_disk_identifier(valid), "{valid}");
+        }
+        for invalid in [
+            "disk",
+            "disk1s",
+            "disk1ss2",
+            "disk1s2s3",
+            "disk-1",
+            "/dev/disk1",
+            "disk4294967296",
+        ] {
+            assert!(!valid_disk_identifier(invalid), "{invalid}");
+        }
     }
 
     #[test]
