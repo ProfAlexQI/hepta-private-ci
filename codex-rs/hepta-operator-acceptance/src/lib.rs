@@ -6,6 +6,7 @@ mod evidence;
 pub mod frozen_tool;
 #[cfg(target_os = "macos")]
 pub mod mac_apfs_barrier_fixture;
+pub mod mac_iomedia_identity;
 #[cfg(target_os = "macos")]
 pub mod mac_privileged_broker;
 mod manifest_inventory;

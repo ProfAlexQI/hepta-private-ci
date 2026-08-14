@@ -42,6 +42,12 @@ use crate::AcceptanceError;
 use crate::durable::MAX_ARTIFACT_BYTES;
 use crate::durable::canonical_json;
 use crate::durable::sha256;
+use crate::mac_iomedia_identity::AttachedIOMediaTopologyV1;
+use crate::mac_iomedia_identity::ExpectedIOMediaTopology;
+#[cfg(test)]
+use crate::mac_iomedia_identity::IOMediaRegistryIdentityV1;
+use crate::mac_iomedia_identity::capture_attached_iomedia_topology;
+use crate::mac_iomedia_identity::validate_iomedia_topology_identity_shape;
 use crate::mac_privileged_broker::AuthenticatedPeerV1;
 use crate::mac_privileged_broker::NamespacePolicy;
 use crate::mac_privileged_broker::ObjectBindingV1;
@@ -338,6 +344,10 @@ pub struct AttachedTopologyV1 {
     pub image_backing_after: FileIdentityV1,
     pub image_backing_before: FileIdentityV1,
     pub image_path_from_hdiutil: String,
+    /// Added by attached-topology v2.  `None` exists only so historical v1
+    /// receipts remain structurally readable; new capture must always emit v2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iomedia_identity: Option<AttachedIOMediaTopologyV1>,
     pub physical_store: DiskNodeV1,
     pub pre_attach_inventory_sha256: String,
     pub schema: String,
@@ -1386,7 +1396,6 @@ fn parse_attached_image(
     apfs: &ApfsListPlist,
     expected_name: &str,
 ) -> Result<AttachedImage, AcceptanceError> {
-    let entities = normalize_hdi_topology_entities(&attach.system_entities)?;
     if apfs.containers.len() != 1 {
         return Err(invalid("disk image has more than one APFS container"));
     }
@@ -1397,6 +1406,12 @@ fn parse_attached_image(
         ));
     }
     let volume = &container.volumes[0];
+    let entities = normalize_hdi_topology_entities(
+        &attach.system_entities,
+        &container.designated_physical_store,
+        &container.container_reference,
+        &volume.device_identifier,
+    )?;
     if entities.physical_store != container.designated_physical_store
         || container.physical_stores[0].device_identifier != container.designated_physical_store
         || entities.apfs_container != container.container_reference
@@ -1425,6 +1440,9 @@ fn parse_attached_image(
 
 fn normalize_hdi_topology_entities(
     entities: &[HdiutilEntity],
+    expected_physical_store: &str,
+    expected_apfs_container: &str,
+    expected_apfs_volume: &str,
 ) -> Result<HdiTopologyEntities, AcceptanceError> {
     if entities.len() != 4 {
         return Err(invalid(
@@ -1443,52 +1461,41 @@ fn normalize_hdi_topology_entities(
             ));
         }
     }
-    let exactly_one = |predicate: &dyn Fn(&HdiutilEntity) -> bool, label: &str| {
-        let matching = entities
+    let expected = [
+        expected_physical_store,
+        expected_apfs_container,
+        expected_apfs_volume,
+    ];
+    if expected.iter().any(|value| !valid_disk_identifier(value))
+        || expected
             .iter()
-            .filter(|entity| predicate(entity))
-            .collect::<Vec<_>>();
-        if matching.len() == 1 {
-            Ok(strip_device_prefix(&matching[0].dev_entry).to_string())
-        } else {
-            Err(invalid(format!(
-                "hdiutil system entities do not contain exactly one {label}"
-            )))
-        }
-    };
-    let whole_disk = exactly_one(
-        &|entity| entity.content_hint.as_deref() == Some("GUID_partition_scheme"),
-        "whole disk",
-    )?;
-    let physical_store = exactly_one(
-        &|entity| entity.content_hint.as_deref() == Some("Apple_APFS"),
-        "APFS physical store",
-    )?;
-    let remaining = identifiers
-        .iter()
-        .filter(|identifier| **identifier != whole_disk && **identifier != physical_store)
-        .cloned()
-        .collect::<Vec<_>>();
-    let containers = remaining
-        .iter()
-        .filter(|identifier| {
-            disk_identifier_parts(identifier).is_some_and(|(_, slice)| slice.is_none())
+            .enumerate()
+            .any(|(index, value)| expected[..index].contains(value))
+        || expected.iter().any(|value| !identifiers.contains(*value))
+    {
+        return Err(invalid(
+            "fresh APFS graph does not bind three distinct hdiutil system entities",
+        ));
+    }
+    let (physical_whole_number, physical_slice) = disk_identifier_parts(expected_physical_store)
+        .ok_or_else(|| invalid("APFS physical store identifier is malformed"))?;
+    let (container_number, container_slice) = disk_identifier_parts(expected_apfs_container)
+        .ok_or_else(|| invalid("APFS container identifier is malformed"))?;
+    let (volume_container_number, volume_slice) = disk_identifier_parts(expected_apfs_volume)
+        .ok_or_else(|| invalid("APFS volume identifier is malformed"))?;
+    let whole_disk = format!("disk{physical_whole_number}");
+    if physical_slice.is_none()
+        || container_slice.is_some()
+        || volume_slice.is_none()
+        || volume_container_number != container_number
+        || whole_disk == expected_apfs_container
+        || !identifiers.contains(&whole_disk)
+        || identifiers.iter().any(|identifier| {
+            identifier != &whole_disk
+                && identifier != expected_physical_store
+                && identifier != expected_apfs_container
+                && identifier != expected_apfs_volume
         })
-        .cloned()
-        .collect::<Vec<_>>();
-    let volumes = remaining
-        .iter()
-        .filter(|identifier| {
-            disk_identifier_parts(identifier).is_some_and(|(_, slice)| slice.is_some())
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    if remaining.len() != 2
-        || containers.len() != 1
-        || volumes.len() != 1
-        || physical_store == whole_disk
-        || !physical_store.starts_with(&format!("{whole_disk}s"))
-        || !volumes[0].starts_with(&format!("{}s", containers[0]))
         || entities.iter().any(|entity| {
             entity
                 .volume_kind
@@ -1497,7 +1504,7 @@ fn normalize_hdi_topology_entities(
         })
         || entities.iter().any(|entity| {
             entity.volume_kind.as_deref() == Some("apfs")
-                && strip_device_prefix(&entity.dev_entry) != volumes[0]
+                && strip_device_prefix(&entity.dev_entry) != expected_apfs_volume
         })
     {
         return Err(invalid(
@@ -1505,9 +1512,9 @@ fn normalize_hdi_topology_entities(
         ));
     }
     Ok(HdiTopologyEntities {
-        apfs_container: containers[0].clone(),
-        apfs_volume: volumes[0].clone(),
-        physical_store,
+        apfs_container: expected_apfs_container.to_string(),
+        apfs_volume: expected_apfs_volume.to_string(),
+        physical_store: expected_physical_store.to_string(),
         whole_disk,
     })
 }
@@ -1521,8 +1528,11 @@ fn disk_identifier_parts(value: &str) -> Option<(u32, Option<u32>)> {
     };
     if whole.is_empty()
         || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || (whole.len() > 1 && whole.starts_with('0'))
         || slice.is_some_and(|slice| {
-            slice.is_empty() || !slice.bytes().all(|byte| byte.is_ascii_digit())
+            slice.is_empty()
+                || slice.starts_with('0')
+                || !slice.bytes().all(|byte| byte.is_ascii_digit())
         })
     {
         return None;
@@ -1617,14 +1627,32 @@ fn validate_attached_topology_shape(topology: &AttachedTopologyV1) -> Result<(),
     validate_disk_node(&topology.physical_store, false)?;
     validate_disk_node(&topology.apfs_container, true)?;
     validate_disk_node(&topology.apfs_volume, false)?;
+    match (topology.schema.as_str(), topology.iomedia_identity.as_ref()) {
+        ("hepta_mac_attached_apfs_topology_v1", None) => {}
+        ("hepta_mac_attached_apfs_topology_v2", Some(identity)) => {
+            validate_iomedia_topology_identity_shape(
+                identity,
+                ExpectedIOMediaTopology {
+                    apfs_container: &topology.apfs_container.device_identifier,
+                    apfs_volume: &topology.apfs_volume.device_identifier,
+                    physical_store: &topology.physical_store.device_identifier,
+                    physical_whole: &topology.whole_disk.device_identifier,
+                },
+            )?;
+        }
+        _ => {
+            return Err(invalid(
+                "attached topology schema and IOMedia identity version do not match",
+            ));
+        }
+    }
     let identifiers = [
         &topology.whole_disk.device_identifier,
         &topology.physical_store.device_identifier,
         &topology.apfs_container.device_identifier,
         &topology.apfs_volume.device_identifier,
     ];
-    if topology.schema != "hepta_mac_attached_apfs_topology_v1"
-        || topology.image_backing_before != topology.image_backing_after
+    if topology.image_backing_before != topology.image_backing_after
         || topology.image_backing_before.path != topology.image_path_from_hdiutil
         || identifiers
             .iter()
@@ -1990,8 +2018,18 @@ fn attach_image(
             "hdiutil info does not bind the exact image backing to the attach topology",
         ));
     }
-    let attach_entities = normalize_hdi_topology_entities(&attach.system_entities)?;
-    let info_entities = normalize_hdi_topology_entities(&matching_images[0].system_entities)?;
+    let attach_entities = normalize_hdi_topology_entities(
+        &attach.system_entities,
+        &attached.physical_store_identifier,
+        &attached.container_identifier,
+        &attached.volume_identifier,
+    )?;
+    let info_entities = normalize_hdi_topology_entities(
+        &matching_images[0].system_entities,
+        &attached.physical_store_identifier,
+        &attached.container_identifier,
+        &attached.volume_identifier,
+    )?;
     if info_entities != attach_entities {
         return Err(invalid(
             "hdiutil info topology differs from attach after order-insensitive normalization",
@@ -2031,6 +2069,12 @@ fn attach_image(
         commands,
     )?;
     let image_backing_after = file_identity(image)?;
+    let iomedia_identity = capture_attached_iomedia_topology(ExpectedIOMediaTopology {
+        apfs_container: &apfs_container.device_identifier,
+        apfs_volume: &apfs_volume.device_identifier,
+        physical_store: &physical_store.device_identifier,
+        physical_whole: &whole_disk.device_identifier,
+    })?;
     let topology = AttachedTopologyV1 {
         apfs_container,
         apfs_container_uuid: attached.apfs_container_uuid.clone(),
@@ -2040,9 +2084,10 @@ fn attach_image(
         image_backing_after,
         image_backing_before,
         image_path_from_hdiutil: matching_images[0].image_path.clone(),
+        iomedia_identity: Some(iomedia_identity),
         physical_store,
         pre_attach_inventory_sha256: inventory_sha256(pre_attach_inventory)?,
-        schema: "hepta_mac_attached_apfs_topology_v1".to_string(),
+        schema: "hepta_mac_attached_apfs_topology_v2".to_string(),
         whole_disk,
     };
     validate_attached_topology_shape(&topology)?;
@@ -5648,9 +5693,17 @@ fn reconstruct_attached_topology(
             "sealed raw receipts do not reconstruct the attached image topology",
         ));
     }
-    if normalize_hdi_topology_entities(&matching[0].system_entities)?
-        != normalize_hdi_topology_entities(&attach.system_entities)?
-    {
+    if normalize_hdi_topology_entities(
+        &matching[0].system_entities,
+        &parsed.physical_store_identifier,
+        &parsed.container_identifier,
+        &parsed.volume_identifier,
+    )? != normalize_hdi_topology_entities(
+        &attach.system_entities,
+        &parsed.physical_store_identifier,
+        &parsed.container_identifier,
+        &parsed.volume_identifier,
+    )? {
         return Err(invalid(
             "sealed hdiutil info and attach topology differ after normalization",
         ));
@@ -6388,6 +6441,12 @@ mod tests {
 
     fn test_topology(phase: MountPhaseV1) -> AttachedTopologyV1 {
         let image = test_image(phase == MountPhaseV1::ReadOnly);
+        let iomedia_node = |bsd_name: &str, registry_entry_id: u64| IOMediaRegistryIdentityV1 {
+            authority_granted: false,
+            bsd_name: bsd_name.to_string(),
+            registry_entry_id: format!("{registry_entry_id:016x}"),
+            schema: "hepta_mac_iomedia_registry_identity_v1".to_string(),
+        };
         AttachedTopologyV1 {
             apfs_container: test_disk_node("disk10", "disk10", true),
             apfs_container_uuid: "11111111-1111-4111-8111-111111111111".to_string(),
@@ -6397,10 +6456,19 @@ mod tests {
             image_backing_after: image.clone(),
             image_backing_before: image.clone(),
             image_path_from_hdiutil: image.path,
+            iomedia_identity: Some(AttachedIOMediaTopologyV1 {
+                apfs_container: iomedia_node("disk10", 103),
+                apfs_volume: iomedia_node("disk10s1", 104),
+                authority_granted: false,
+                boot_session_uuid: boot_session_uuid().expect("test boot session UUID"),
+                physical_store: iomedia_node("disk9s1", 102),
+                physical_whole: iomedia_node("disk9", 101),
+                schema: "hepta_mac_attached_iomedia_topology_v1".to_string(),
+            }),
             physical_store: test_disk_node("disk9s1", "disk9", false),
             pre_attach_inventory_sha256: inventory_sha256(&test_inventory())
                 .expect("test inventory digest"),
-            schema: "hepta_mac_attached_apfs_topology_v1".to_string(),
+            schema: "hepta_mac_attached_apfs_topology_v2".to_string(),
             whole_disk: test_disk_node("disk9", "disk9", true),
         }
     }
@@ -7004,6 +7072,35 @@ mod tests {
     }
 
     #[test]
+    fn attached_topology_v2_keeps_legacy_v1_structurally_readable_without_live_boot_gate() {
+        let topology = test_topology(MountPhaseV1::ReadWrite);
+        let mut another_boot = topology.clone();
+        another_boot
+            .iomedia_identity
+            .as_mut()
+            .expect("v2 IOMedia identity")
+            .boot_session_uuid = "33333333-3333-4333-8333-333333333333".to_string();
+        assert!(validate_attached_topology_shape(&another_boot).is_ok());
+
+        let mut legacy = topology.clone();
+        legacy.schema = "hepta_mac_attached_apfs_topology_v1".to_string();
+        legacy.iomedia_identity = None;
+        let encoded = serde_json::to_vec(&legacy).expect("serialize legacy topology");
+        assert!(!String::from_utf8_lossy(&encoded).contains("iomedia_identity"));
+        let decoded: AttachedTopologyV1 =
+            serde_json::from_slice(&encoded).expect("read historical v1 topology");
+        assert!(validate_attached_topology_shape(&decoded).is_ok());
+
+        let mut missing_v2 = topology.clone();
+        missing_v2.iomedia_identity = None;
+        assert!(validate_attached_topology_shape(&missing_v2).is_err());
+
+        let mut injected_v1 = legacy;
+        injected_v1.iomedia_identity = topology.iomedia_identity;
+        assert!(validate_attached_topology_shape(&injected_v1).is_err());
+    }
+
+    #[test]
     fn real_macos_plist_shapes_normalize_without_entity_order_or_optional_node_fields() {
         // Reduced only by deleting unrelated keys from the read-only receipts:
         // attach-rw-owners.plist sha256
@@ -7048,10 +7145,72 @@ mod tests {
             entity.volume_kind = None;
         }
         assert_eq!(
-            normalize_hdi_topology_entities(&attach.system_entities)
+            normalize_hdi_topology_entities(
+                &attach.system_entities,
+                "disk8s1",
+                "disk9",
+                "disk9s1",
+            )
                 .expect("attach entity normalization"),
-            normalize_hdi_topology_entities(&reordered_without_volume_kind)
+            normalize_hdi_topology_entities(
+                &reordered_without_volume_kind,
+                "disk8s1",
+                "disk9",
+                "disk9s1",
+            )
                 .expect("hdiutil-info entity normalization"),
+        );
+
+        // A real global `hdiutil info -plist` uses this UUID content hint for
+        // the physical slice even when the corresponding attach receipt uses
+        // `Apple_APFS`. Classification must come exclusively from the fresh
+        // APFS graph, never from this optional presentation field.
+        let mut global_uuid_hint = attach.system_entities.clone();
+        global_uuid_hint
+            .iter_mut()
+            .find(|entity| entity.dev_entry == "/dev/disk8s1")
+            .expect("physical entity")
+            .content_hint = Some("7C3457EF-0000-11AA-AA11-00306543ECAC".to_string());
+        assert_eq!(
+            normalize_hdi_topology_entities(
+                &attach.system_entities,
+                "disk8s1",
+                "disk9",
+                "disk9s1",
+            )
+            .expect("attach hint shape"),
+            normalize_hdi_topology_entities(
+                &global_uuid_hint,
+                "disk8s1",
+                "disk9",
+                "disk9s1",
+            )
+            .expect("global UUID hint shape"),
+        );
+
+        let mut missing_hints = attach.system_entities.clone();
+        for entity in &mut missing_hints {
+            entity.content_hint = None;
+        }
+        assert!(
+            normalize_hdi_topology_entities(&missing_hints, "disk8s1", "disk9", "disk9s1").is_ok()
+        );
+
+        let mut adversarial_hints = attach.system_entities.clone();
+        for (index, entity) in adversarial_hints.iter_mut().enumerate() {
+            entity.content_hint = Some(if index % 2 == 0 {
+                "Apple_APFS".to_string()
+            } else {
+                "GUID_partition_scheme".to_string()
+            });
+        }
+        assert!(
+            normalize_hdi_topology_entities(&adversarial_hints, "disk8s1", "disk9", "disk9s1",)
+                .is_ok()
+        );
+        assert!(
+            normalize_hdi_topology_entities(&adversarial_hints, "disk9s1", "disk9", "disk8s1",)
+                .is_err()
         );
 
         let node: DiskNodeInfoPlist = serde_json::from_str(
@@ -7102,14 +7261,29 @@ mod tests {
                 volume_kind: None,
             },
         ];
-        assert!(normalize_hdi_topology_entities(&entities).is_ok());
+        assert!(normalize_hdi_topology_entities(&entities, "disk8s1", "disk9", "disk9s1").is_ok());
         let mut extra = entities.clone();
         extra.push(HdiutilEntity {
             content_hint: Some("extra".to_string()),
             dev_entry: "/dev/disk10".to_string(),
             volume_kind: None,
         });
-        assert!(normalize_hdi_topology_entities(&extra).is_err());
+        assert!(normalize_hdi_topology_entities(&extra, "disk8s1", "disk9", "disk9s1").is_err());
+
+        let mut leading_zero_graph = entities.clone();
+        leading_zero_graph[0].dev_entry = "/dev/disk08".to_string();
+        leading_zero_graph[1].dev_entry = "/dev/disk08s1".to_string();
+        assert!(
+            normalize_hdi_topology_entities(&leading_zero_graph, "disk08s1", "disk9", "disk9s1",)
+                .is_err()
+        );
+
+        let mut zero_slice_graph = entities.clone();
+        zero_slice_graph[3].dev_entry = "/dev/disk9s0".to_string();
+        assert!(
+            normalize_hdi_topology_entities(&zero_slice_graph, "disk8s1", "disk9", "disk9s0",)
+                .is_err()
+        );
 
         let attach = HdiutilPlist {
             system_entities: entities,
@@ -7141,7 +7315,10 @@ mod tests {
         }
         for invalid in [
             "disk",
+            "disk01",
             "disk1s",
+            "disk1s0",
+            "disk1s00",
             "disk1ss2",
             "disk1s2s3",
             "disk-1",
