@@ -4,6 +4,10 @@ mod ceremony;
 mod durable;
 mod evidence;
 pub mod frozen_tool;
+#[cfg(target_os = "macos")]
+pub mod mac_apfs_barrier_fixture;
+#[cfg(target_os = "macos")]
+pub mod mac_privileged_broker;
 mod manifest_inventory;
 mod model;
 mod preflight;
