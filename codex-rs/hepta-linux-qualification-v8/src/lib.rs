@@ -7,12 +7,14 @@
 mod authority;
 mod identity;
 mod journal;
+mod protocol;
 mod sshsig;
 mod target;
 
 pub use authority::*;
 pub use identity::*;
 pub use journal::*;
+pub use protocol::*;
 pub use sshsig::*;
 pub use target::*;
 
