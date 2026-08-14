@@ -306,7 +306,10 @@ where
 {
     request.validate()?;
     validate_digest("active publication nonce", publication_nonce)?;
-    if state_root_lock.state_root_identity() != state_root.identity() {
+    if !state_root_lock
+        .state_root_identity()
+        .matches_stable_directory(state_root.identity())
+    {
         return Err(invalid(
             "active attempt lock belongs to a different state root",
         ));

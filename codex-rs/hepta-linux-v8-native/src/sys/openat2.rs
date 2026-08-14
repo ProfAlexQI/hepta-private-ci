@@ -68,6 +68,20 @@ impl FileIdentityV8 {
     pub fn size(&self) -> u64 {
         self.size
     }
+
+    /// Compares the security-stable identity of two already verified
+    /// directories. Directory size and link count legitimately change when
+    /// children are added or removed, so they cannot be equality pins; both
+    /// observations must still name a linked inode with exact owner and mode.
+    pub(crate) fn matches_stable_directory(self, other: Self) -> bool {
+        self.device == other.device
+            && self.inode == other.inode
+            && self.owner_uid == other.owner_uid
+            && self.owner_gid == other.owner_gid
+            && self.mode == other.mode
+            && self.link_count > 0
+            && other.link_count > 0
+    }
 }
 
 /// An exact directory descriptor used as the anchor for all relative opens.
@@ -93,6 +107,12 @@ impl DirectoryAnchorV8 {
 
     pub fn identity(&self) -> FileIdentityV8 {
         self.identity
+    }
+
+    /// Revalidates that the still-open descriptor names the exact pinned
+    /// directory identity and has not been unlinked.
+    pub fn revalidate_identity(&self) -> NativeSysResultV8<()> {
+        revalidate_directory_identity_impl(self)
     }
 
     pub fn open_directory_beneath(&self, relative: &Path) -> NativeSysResultV8<Self> {
@@ -147,6 +167,22 @@ impl DirectoryAnchorV8 {
     pub(super) fn raw_fd(&self) -> libc::c_int {
         self.descriptor.as_raw_fd()
     }
+}
+
+#[cfg(target_os = "linux")]
+fn revalidate_directory_identity_impl(anchor: &DirectoryAnchorV8) -> NativeSysResultV8<()> {
+    let observed = identity_for_fd(anchor.descriptor.as_raw_fd())?;
+    if !observed.matches_stable_directory(anchor.identity) {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "opened directory identity changed or was unlinked".to_string(),
+        ));
+    }
+    require_directory(anchor.descriptor.as_raw_fd())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn revalidate_directory_identity_impl(_anchor: &DirectoryAnchorV8) -> NativeSysResultV8<()> {
+    Err(unsupported("revalidate opened directory identity"))
 }
 
 /// A just-created leaf that has not yet been durably populated.

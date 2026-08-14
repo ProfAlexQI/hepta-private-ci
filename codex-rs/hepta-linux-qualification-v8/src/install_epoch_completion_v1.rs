@@ -34,6 +34,20 @@ use crate::verify_statement_sshsig_for_purpose_v8;
 #[path = "install_epoch_completion_v1_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+pub(crate) fn test_only_completed_install_epoch_preparation_v1(
+    model_now_unix_seconds: u64,
+) -> VerifiedCommittedCurrentTipPreparationV1 {
+    tests::complete_genesis(model_now_unix_seconds).0
+}
+
+#[cfg(test)]
+pub(crate) fn test_only_completed_install_epoch_preparation_after_retry_v1(
+    model_now_unix_seconds: u64,
+) -> VerifiedCommittedCurrentTipPreparationV1 {
+    tests::complete_genesis_after_one_retry(model_now_unix_seconds)
+}
+
 pub const EXTERNAL_WATERMARK_COMMIT_SCHEMA_V1: &str = "hepta_linux_v8_external_watermark_commit_v1";
 pub const EXTERNAL_WATERMARK_COMMIT_NAMESPACE_V1: &str =
     "hepta-linux-v8-external-watermark-commit-v1";
@@ -1247,6 +1261,100 @@ pub struct VerifiedCommittedCurrentTipPreparationV1 {
 }
 
 impl VerifiedCommittedCurrentTipPreparationV1 {
+    pub(crate) fn durable_projection_source_v1(
+        &self,
+    ) -> crate::install_epoch_durable_projection_v1::InstallEpochDurableProjectionSourceV1 {
+        let preparation = self.preparation();
+        crate::install_epoch_durable_projection_v1::InstallEpochDurableProjectionSourceV1 {
+            active_query_bundle: (self.pending.active_query_sequence > 1).then(|| {
+                crate::install_epoch_durable_projection_v1::RawDurableBundleProjectionV1 {
+                    binding_sha256: self.pending.active_query_state_sha256.clone(),
+                    id_sha256: self.pending.active_query_claim_binding_sha256.clone(),
+                }
+            }),
+            active_query_revision: self.pending.phase_revision,
+            active_query_sequence: self.pending.active_query_sequence,
+            active_query_state_sha256: self.pending.active_query_state_sha256.clone(),
+            authority_claim:
+                crate::install_epoch_durable_projection_v1::RawDurableNonceClaimProjectionV1 {
+                    binding_sha256: preparation.authority_nonce_claim_binding_sha256(),
+                    nonce: preparation.authority_nonce().to_string(),
+                    scope: INSTALL_EPOCH_AUTHORITY_CLAIM_SCOPE_V1.to_string(),
+                },
+            cas_intent_revision: 1,
+            cas_intent_state_sha256: self.pending.intent.cas_intent_state_sha256.clone(),
+            cas_issue_revision: self.pending.intent.phase_revision,
+            cas_issue_state_sha256: self.pending.intent.phase_state_sha256.clone(),
+            cas_receipt_revision: 3,
+            cas_receipt_state_sha256: self.pending.cas_receipt_state_sha256.clone(),
+            claim_domain_id: EXTERNAL_WATERMARK_COMPLETION_CLAIM_DOMAIN_ID_V1.to_string(),
+            commit_claim:
+                crate::install_epoch_durable_projection_v1::RawDurableNonceClaimProjectionV1 {
+                    binding_sha256: self.pending.intent.commit_claim_binding_sha256.clone(),
+                    nonce: self.pending.intent.commit_nonce.clone(),
+                    scope: EXTERNAL_WATERMARK_COMMIT_CLAIM_SCOPE_V1.to_string(),
+                },
+            commit_signature_sha256: self.pending.commit.signature_sha256.clone(),
+            commit_statement_sha256: self.pending.commit.statement_sha256.clone(),
+            commit_trust_policy_sha256: self.pending.commit.trust_policy_sha256.clone(),
+            committed_at_unix_seconds: self.pending.commit.committed_at_unix_seconds,
+            completion_bundle:
+                crate::install_epoch_durable_projection_v1::RawDurableBundleProjectionV1 {
+                    binding_sha256: self.pending.intent.cas_intent_state_sha256.clone(),
+                    id_sha256: self.pending.intent.completion_slot_id_sha256.clone(),
+                },
+            completion_operation_binding_sha256: self
+                .pending
+                .intent
+                .completion_operation_binding_sha256
+                .clone(),
+            completion_profile_sha256: self.pending.intent.profile.profile_sha256.clone(),
+            current_tip_expires_at_unix_seconds: self.current_tip_expires_at_unix_seconds,
+            current_tip_issued_at_unix_seconds: self.current_tip_issued_at_unix_seconds,
+            current_tip_query_nonce: self.query_nonce.clone(),
+            current_tip_signature_sha256: self.current_tip_signature_sha256.clone(),
+            current_tip_statement_sha256: self.current_tip_statement_sha256.clone(),
+            current_tip_trust_policy_sha256: self.current_tip_trust_policy_sha256.clone(),
+            epoch: preparation.epoch().clone(),
+            final_phase_revision: self.final_phase_revision,
+            finalized_state_sha256: self.finalized_state_sha256.clone(),
+            initial_query_nonce: self.pending.intent.initial_query_nonce.clone(),
+            initial_query_claim:
+                crate::install_epoch_durable_projection_v1::RawDurableNonceClaimProjectionV1 {
+                    binding_sha256: self.pending.intent.query_claim_binding_sha256.clone(),
+                    nonce: self.pending.intent.initial_query_nonce.clone(),
+                    scope: EXTERNAL_WATERMARK_QUERY_CLAIM_SCOPE_V1.to_string(),
+                },
+            lease_claim:
+                crate::install_epoch_durable_projection_v1::RawDurableNonceClaimProjectionV1 {
+                    binding_sha256: preparation.lease_nonce_claim_binding_sha256(),
+                    nonce: preparation.lease_nonce().to_string(),
+                    scope: EXTERNAL_WATERMARK_LEASE_CLAIM_SCOPE_V1.to_string(),
+                },
+            machine_id_sha256: preparation.target_host().machine_id_sha256.clone(),
+            phase_head_id_sha256: self.pending.intent.phase_head_id_sha256.clone(),
+            prepared_epoch_binding_sha256: prepared_epoch_binding_sha256_v1(preparation),
+            preparation_binding_sha256: install_epoch_preparation_binding_sha256_v1(preparation),
+            preparation_bundle:
+                crate::install_epoch_durable_projection_v1::RawDurableBundleProjectionV1 {
+                    binding_sha256: preparation.preparation_bundle_binding_sha256(),
+                    id_sha256: preparation.preparation_bundle_id_sha256(),
+                },
+            predecessor: preparation.predecessor().clone(),
+            provider_transaction_sha256: self.pending.commit.provider_transaction_sha256.clone(),
+            retry_query_claim: (self.pending.active_query_sequence > 1).then(|| {
+                crate::install_epoch_durable_projection_v1::RawDurableNonceClaimProjectionV1 {
+                    binding_sha256: self.pending.active_query_claim_binding_sha256.clone(),
+                    nonce: self.pending.active_query_nonce.clone(),
+                    scope: EXTERNAL_WATERMARK_QUERY_CLAIM_SCOPE_V1.to_string(),
+                }
+            }),
+            state_root_profile_sha256: preparation.state_root_profile().profile_sha256.clone(),
+            successor_record: self.successor_record.clone(),
+            successor_tip_sha256: self.successor_tip_sha256.clone(),
+        }
+    }
+
     pub fn preparation(&self) -> &VerifiedInstallEpochPreparationV1 {
         self.pending.preparation()
     }

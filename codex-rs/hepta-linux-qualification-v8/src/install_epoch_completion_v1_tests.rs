@@ -322,7 +322,7 @@ fn duplicate_consumed_initial_query_phase() -> (
     (fresh_pending, recovered_pending, signed, guard)
 }
 
-fn complete_genesis(
+pub(super) fn complete_genesis(
     model_now: u64,
 ) -> (
     VerifiedCommittedCurrentTipPreparationV1,
@@ -343,6 +343,41 @@ fn complete_genesis(
     )
     .unwrap();
     (verified, guard)
+}
+
+pub(super) fn complete_genesis_after_one_retry(
+    model_now: u64,
+) -> VerifiedCommittedCurrentTipPreparationV1 {
+    let (preparation, mut guard) = crate::test_only_genesis_install_epoch_preparation_v1();
+    let intent = begin_fresh(preparation, &mut guard);
+    let (pending, commit) = commit_pending(intent, 1_060, &mut guard);
+    let (issued, fresh) = reserve_query(pending, &mut guard);
+    assert!(fresh);
+    let closure = query_closure(&issued, '8');
+    let retry = match prepare_external_watermark_current_tip_retry_v1(
+        issued,
+        closure,
+        digest('9'),
+        &mut guard,
+    )
+    .unwrap()
+    {
+        ExternalWatermarkCurrentTipQueryReservationOutcomeV1::Fresh(reserved) => {
+            reserved.into_pending_after_provider_call()
+        }
+        ExternalWatermarkCurrentTipQueryReservationOutcomeV1::Recovered(_) => {
+            panic!("fresh retry unexpectedly recovered an existing query")
+        }
+    };
+    let current_tip = exact_signed_current_tip(&retry, &commit.envelope, 1_060, 1_100);
+    verify_current_tip_for_test_v1(
+        retry,
+        &current_tip.envelope,
+        &current_tip.observation,
+        model_now,
+        &mut guard,
+    )
+    .unwrap()
 }
 
 #[test]

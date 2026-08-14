@@ -6,12 +6,14 @@
 
 mod execveat;
 mod lock;
+mod machine_id;
 mod openat2;
 mod pidfd;
 mod rename_noreplace;
 
 pub use execveat::*;
 pub use lock::*;
+pub use machine_id::*;
 pub use openat2::*;
 pub use pidfd::*;
 pub use rename_noreplace::*;
@@ -20,6 +22,8 @@ pub use rename_noreplace::*;
 mod execveat_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod lock_tests;
+#[cfg(test)]
+mod machine_id_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod openat2_tests;
 #[cfg(all(test, target_os = "linux"))]

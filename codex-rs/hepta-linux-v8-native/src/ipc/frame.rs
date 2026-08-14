@@ -767,6 +767,28 @@ mod tests {
 
     #[test]
     fn adopts_and_closes_all_complete_rights_before_rejecting_malformed_oversize() {
+        const CHILD_ENV: &str = "HEPTA_LINUX_V8_RIGHTS_CLOSURE_CHILD";
+        if std::env::var_os(CHILD_ENV).is_none() {
+            // Raw descriptor numbers are process-global and may be reused by
+            // another parallel test immediately after OwnedFd drops. Run the
+            // dynamic EBADF assertion in a one-test child so descriptor reuse
+            // cannot turn a successful close into a false failure.
+            let status = std::process::Command::new(
+                std::env::current_exe().expect("current test executable"),
+            )
+            .arg("--exact")
+            .arg(
+                "ipc::frame::tests::adopts_and_closes_all_complete_rights_before_rejecting_malformed_oversize",
+            )
+            .arg("--nocapture")
+            .arg("--test-threads=1")
+            .env(CHILD_ENV, "1")
+            .status()
+            .expect("launch isolated descriptor-closure child");
+            assert!(status.success(), "descriptor-closure child failed");
+            return;
+        }
+
         let temporary = TestSocketDirectory::create("rights-overflow");
         let payload_path = temporary.root.join("passed-file");
         fs::write(&payload_path, b"overflow fixture").expect("write passed file");

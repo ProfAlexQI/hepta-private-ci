@@ -122,7 +122,10 @@ where
     F: FnMut(super::DurablePublicationCheckpointV8),
 {
     record.validate()?;
-    if state_root_lock.state_root_identity() != state_root.identity() {
+    if !state_root_lock
+        .state_root_identity()
+        .matches_stable_directory(state_root.identity())
+    {
         return Err(invalid(
             "durable nonce claim lock belongs to a different state root",
         ));

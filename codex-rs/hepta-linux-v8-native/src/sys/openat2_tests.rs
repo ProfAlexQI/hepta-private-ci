@@ -1,6 +1,7 @@
 use super::DirectoryAnchorV8;
 use std::ffi::OsStr;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
@@ -100,6 +101,29 @@ fn initial_anchor_rejects_parent_symlinks_and_filesystem_root() {
 
     assert!(DirectoryAnchorV8::open(&temporary.path.join("linked-parent/state")).is_err());
     assert!(DirectoryAnchorV8::open(Path::new("/")).is_err());
+}
+
+#[test]
+fn directory_revalidation_allows_topology_metadata_but_rejects_mode_drift() {
+    let temporary = TestDirectory::create("stable-directory-identity");
+    fs::set_permissions(&temporary.path, fs::Permissions::from_mode(0o700))
+        .expect("set exact initial directory mode");
+    let anchor = DirectoryAnchorV8::open(&temporary.path).expect("open anchor");
+    let before = anchor.identity();
+
+    fs::create_dir(temporary.path.join("child")).expect("change directory link count");
+    anchor
+        .revalidate_identity()
+        .expect("child topology must not invalidate the same directory inode");
+    let after = DirectoryAnchorV8::open(&temporary.path)
+        .expect("reopen changed directory")
+        .identity();
+    assert!(before.matches_stable_directory(after));
+    assert_ne!(before.link_count(), after.link_count());
+
+    fs::set_permissions(&temporary.path, fs::Permissions::from_mode(0o755))
+        .expect("change directory mode");
+    assert!(anchor.revalidate_identity().is_err());
 }
 
 #[test]

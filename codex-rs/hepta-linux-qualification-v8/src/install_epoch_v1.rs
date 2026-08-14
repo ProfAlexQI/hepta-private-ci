@@ -159,7 +159,7 @@ impl ExternalWatermarkPredecessorV1 {
         }
     }
 
-    fn provider_profile_sha256(&self) -> &str {
+    pub(crate) fn provider_profile_sha256(&self) -> &str {
         match self {
             Self::GenesisPinnedSentinel {
                 provider_profile_sha256,
@@ -172,7 +172,7 @@ impl ExternalWatermarkPredecessorV1 {
         }
     }
 
-    fn revision(&self) -> u64 {
+    pub(crate) fn revision(&self) -> u64 {
         match self {
             Self::GenesisPinnedSentinel { revision, .. } | Self::Successor { revision, .. } => {
                 *revision
@@ -180,7 +180,7 @@ impl ExternalWatermarkPredecessorV1 {
         }
     }
 
-    fn stream_id_sha256(&self) -> &str {
+    pub(crate) fn stream_id_sha256(&self) -> &str {
         match self {
             Self::GenesisPinnedSentinel {
                 stream_id_sha256, ..

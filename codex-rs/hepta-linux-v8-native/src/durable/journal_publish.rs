@@ -58,7 +58,10 @@ pub(super) fn append_journal_record_durably_observed_v8<F>(
 where
     F: FnMut(super::DurablePublicationCheckpointV8),
 {
-    if state_root_lock.state_root_identity() != state_root.identity() {
+    if !state_root_lock
+        .state_root_identity()
+        .matches_stable_directory(state_root.identity())
+    {
         return Err(invalid(
             "durable journal lock belongs to a different state root",
         ));
@@ -194,6 +197,26 @@ mod tests {
 
     #[test]
     fn locked_append_replays_exact_chain_and_rejects_duplicate() {
+        const CHILD_ENV: &str = "HEPTA_LINUX_V8_JOURNAL_REACQUIRE_CHILD";
+        if std::env::var_os(CHILD_ENV).is_none() {
+            // A concurrently spawned test child briefly inherits every live
+            // descriptor before exec closes O_CLOEXEC handles. Isolate the
+            // drop-then-reacquire assertion so that transient fork inheritance
+            // cannot retain this test's flock after the owning token drops.
+            let status = std::process::Command::new(
+                std::env::current_exe().expect("current test executable"),
+            )
+            .arg("--exact")
+            .arg("durable::journal_publish::tests::locked_append_replays_exact_chain_and_rejects_duplicate")
+            .arg("--nocapture")
+            .arg("--test-threads=1")
+            .env(CHILD_ENV, "1")
+            .status()
+            .expect("launch isolated journal reacquire child");
+            assert!(status.success(), "journal reacquire child failed");
+            return;
+        }
+
         let attempt = digest('1');
         let root = temporary_state_root(&attempt);
         let anchor = DirectoryAnchorV8::open(&root).unwrap();

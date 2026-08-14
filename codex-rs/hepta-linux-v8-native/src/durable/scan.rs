@@ -64,7 +64,10 @@ pub fn scan_durable_journal_v8(
     state_root_lock: &StateRootLockV8,
     expected_attempt_identity_sha256: &str,
 ) -> Result<VerifiedDurableJournalScanV8, NativeErrorV8> {
-    if state_root_lock.state_root_identity() != state_root.identity() {
+    if !state_root_lock
+        .state_root_identity()
+        .matches_stable_directory(state_root.identity())
+    {
         return Err(invalid(
             "durable journal scan lock belongs to a different state root",
         ));

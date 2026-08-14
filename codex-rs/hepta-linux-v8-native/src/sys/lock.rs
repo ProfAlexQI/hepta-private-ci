@@ -191,7 +191,10 @@ fn revalidate_lock_impl(
     lock: &StateRootLockV8,
     state_root: &DirectoryAnchorV8,
 ) -> NativeSysResultV8<()> {
-    if state_root.identity() != lock.state_root_identity {
+    if !state_root
+        .identity()
+        .matches_stable_directory(lock.state_root_identity)
+    {
         return Err(NativeSysErrorV8::IdentityMismatch(
             "singleton lock is being used with a different state root".to_string(),
         ));
