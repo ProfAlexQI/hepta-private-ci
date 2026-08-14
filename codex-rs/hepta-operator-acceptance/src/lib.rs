@@ -5,6 +5,7 @@ mod durable;
 mod evidence;
 pub mod frozen_tool;
 mod manifest_inventory;
+pub mod mnl_scope_v1;
 mod model;
 mod preflight;
 mod qualification_evidence;
