@@ -9,6 +9,8 @@ use crate::FileIdentityV8;
 use crate::NativeErrorV8;
 use crate::StateRootLockSessionV8;
 use crate::StateRootLockV8;
+use crate::TrustedNodeMetadataV8;
+use crate::VerifiedFileFdV8;
 use crate::invalid;
 
 use super::PublishedRecordV8;
@@ -238,6 +240,8 @@ impl FreshActiveAttemptPublicationV8 {
 /// abandon, and quarantine instead of continuing the qualification.
 #[derive(Debug)]
 pub struct ExistingActiveAttemptV8 {
+    descriptor: VerifiedFileFdV8,
+    metadata: TrustedNodeMetadataV8,
     record: ActiveAttemptRecordV8,
     record_sha256: String,
     identity: FileIdentityV8,
@@ -270,6 +274,71 @@ impl ExistingActiveAttemptV8 {
 
     pub fn identity(&self) -> FileIdentityV8 {
         self.identity
+    }
+
+    /// Replays the exact active-attempt bytes through the retained descriptor
+    /// and through a fresh openat2 lookup of its fixed leaf. This is
+    /// read-only evidence: it grants no fresh-attempt or recovery authority.
+    pub(crate) fn revalidate_descriptor_bound_v8(
+        &self,
+        state_root: &DirectoryAnchorV8,
+    ) -> Result<(), NativeErrorV8> {
+        state_root.revalidate_identity()?;
+        self.descriptor.revalidate_identity()?;
+        if self.descriptor.identity() != self.identity
+            || self.descriptor.trusted_node_metadata()? != self.metadata
+        {
+            return Err(invalid(
+                "retained active-attempt descriptor identity or mount metadata drifted",
+            ));
+        }
+        let retained_bytes = self
+            .descriptor
+            .read_all(ACTIVE_ATTEMPT_RECORD_BYTES_V8 as u64)?;
+        let retained_record = ActiveAttemptRecordV8::decode_exact(&retained_bytes)?;
+        if retained_record != self.record
+            || retained_record.sha256()? != self.record_sha256
+            || !retained_record.matches_root(state_root.identity())
+        {
+            return Err(invalid(
+                "retained active-attempt descriptor no longer contains the pinned binding",
+            ));
+        }
+
+        let named = state_root.open_regular_readonly_beneath(Path::new(ACTIVE_ATTEMPT_LEAF_V8))?;
+        if named.identity() != self.identity || named.trusted_node_metadata()? != self.metadata {
+            return Err(invalid(
+                "active-attempt pathname no longer names the retained descriptor identity",
+            ));
+        }
+        let named_bytes = named.read_all(ACTIVE_ATTEMPT_RECORD_BYTES_V8 as u64)?;
+        named.revalidate_identity()?;
+        if named.trusted_node_metadata()? != self.metadata {
+            return Err(invalid(
+                "active-attempt pathname metadata changed after descriptor read",
+            ));
+        }
+        let retained_after = self
+            .descriptor
+            .read_all(ACTIVE_ATTEMPT_RECORD_BYTES_V8 as u64)?;
+        self.descriptor.revalidate_identity()?;
+        if self.descriptor.trusted_node_metadata()? != self.metadata
+            || named_bytes != retained_bytes
+            || retained_after != retained_bytes
+        {
+            return Err(invalid(
+                "active-attempt named and retained bytes changed during descriptor replay",
+            ));
+        }
+        let named_after = named.read_all(ACTIVE_ATTEMPT_RECORD_BYTES_V8 as u64)?;
+        named.revalidate_identity()?;
+        if named.trusted_node_metadata()? != self.metadata || named_after != retained_after {
+            return Err(invalid(
+                "active-attempt pathname changed during final descriptor replay",
+            ));
+        }
+        state_root.revalidate_identity()?;
+        Ok(())
     }
 }
 
@@ -441,7 +510,19 @@ fn read_existing_active_attempt(
     {
         return Err(invalid("existing active attempt identity is not exact"));
     }
+    let root_metadata = state_root.trusted_node_metadata()?;
+    let metadata = existing.trusted_node_metadata()?;
+    if !metadata.matches_filesystem_domain(root_metadata) {
+        return Err(invalid(
+            "existing active attempt differs from the state-root mount domain",
+        ));
+    }
     let bytes = existing.read_all(ACTIVE_ATTEMPT_RECORD_BYTES_V8 as u64)?;
+    if existing.trusted_node_metadata()? != metadata {
+        return Err(invalid(
+            "existing active-attempt metadata changed during descriptor read",
+        ));
+    }
     let record = ActiveAttemptRecordV8::decode_exact(&bytes)?;
     if !record.matches_root(root) {
         return Err(invalid(
@@ -450,6 +531,8 @@ fn read_existing_active_attempt(
     }
     Ok(ActiveAttemptPublicationOutcomeV8::ExistingRequiresRecovery(
         ExistingActiveAttemptV8 {
+            descriptor: existing,
+            metadata,
             record_sha256: record.sha256()?,
             record,
             identity,

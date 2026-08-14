@@ -43,6 +43,27 @@ pub(crate) struct FrozenTransitionIntentContextV8 {
     pub(crate) candidate_execution_request_sha256: String,
 }
 
+/// Live, descriptor-retained origin against which candidate-execution
+/// evidence is replayed by the read-only capsule. The candidate request hash
+/// is intentionally absent: this slice has no retained external source for
+/// that value, so it remains canonical journal evidence only and can never be
+/// treated as independently authenticated execution authority.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DescriptorReplayOriginV8<'a> {
+    pub(crate) machine_id_sha256: &'a str,
+    pub(crate) machine_id_source_identity: FileIdentityV8,
+    pub(crate) state_root_binding_sha256: &'a str,
+    pub(crate) state_root_identity: FileIdentityV8,
+    pub(crate) state_root_mount_id: u64,
+    pub(crate) state_root_lock_identity: FileIdentityV8,
+    pub(crate) attempt_identity_sha256: &'a str,
+    pub(crate) active_attempt_record_sha256: &'a str,
+    pub(crate) active_attempt_file_identity: FileIdentityV8,
+    pub(crate) barrier_generation: u64,
+    pub(crate) restore_plan_sha256: &'a str,
+    pub(crate) boot_id: &'a str,
+}
+
 /// Canonical fact retained once a future executor has crossed an effect-call
 /// boundary. `effect_call_issued_or_uncertain` is deliberately one-way: it is
 /// never accepted as a fresh retry permit.
@@ -612,6 +633,72 @@ impl FrozenTransitionEffectEvidenceFieldsV8 {
         Ok(())
     }
 
+    fn validate_descriptor_origin(
+        &self,
+        schema: &'static str,
+        effect: JournalEffectV8,
+        record: &DurableJournalRecordV8,
+        previous_record: &DurableJournalRecordV8,
+        origin: &DescriptorReplayOriginV8<'_>,
+    ) -> Result<(), NativeErrorV8> {
+        self.validate(schema, effect)?;
+        let previous_record_sha256 = previous_record.record_sha256()?;
+        let expected_sequence = previous_record
+            .global_sequence()
+            .checked_add(1)
+            .ok_or_else(|| invalid("descriptor-bound journal sequence overflows"))?;
+        if previous_record_sha256 != record.previous_record_sha256()
+            || expected_sequence != record.global_sequence()
+            || self.machine_id_sha256 != origin.machine_id_sha256
+            || self.machine_id_source_device != origin.machine_id_source_identity.device()
+            || self.machine_id_source_inode != origin.machine_id_source_identity.inode()
+            || self.state_root_binding_sha256 != origin.state_root_binding_sha256
+            || self.state_root_device != origin.state_root_identity.device()
+            || self.state_root_inode != origin.state_root_identity.inode()
+            || self.state_root_mode != origin.state_root_identity.mode()
+            || self.state_root_owner_uid != origin.state_root_identity.owner_uid()
+            || self.state_root_owner_gid != origin.state_root_identity.owner_gid()
+            || self.state_root_mount_id != origin.state_root_mount_id
+            || self.state_root_lock_device != origin.state_root_lock_identity.device()
+            || self.state_root_lock_inode != origin.state_root_lock_identity.inode()
+            || self.attempt_identity_sha256 != origin.attempt_identity_sha256
+            || self.active_attempt_record_sha256 != origin.active_attempt_record_sha256
+            || self.active_attempt_file_device != origin.active_attempt_file_identity.device()
+            || self.active_attempt_file_inode != origin.active_attempt_file_identity.inode()
+            || self.barrier_generation != origin.barrier_generation
+            || self.restore_plan_sha256 != origin.restore_plan_sha256
+            || self.boot_id != origin.boot_id
+            || self.attempt_identity_sha256 != record.attempt_identity_sha256()
+            || self.boot_id != record.boot_id()
+            || self.boot_epoch != record.boot_epoch()
+            || self.global_sequence != record.global_sequence()
+            || self.journal_tip_sha256 != previous_record_sha256
+        {
+            return Err(invalid(
+                "typed candidate evidence differs from its retained live origin or record chain",
+            ));
+        }
+        match self.phase {
+            FrozenTransitionEvidencePhaseV8::Intent
+                if self.predecessor_record_sha256 != previous_record_sha256 =>
+            {
+                Err(invalid(
+                    "typed candidate intent does not bind its immediately preceding retained record",
+                ))
+            }
+            FrozenTransitionEvidencePhaseV8::Observation
+                if self.intent_record_sha256.as_deref()
+                    != Some(previous_record_sha256.as_str()) =>
+            {
+                Err(invalid(
+                    "typed candidate observation does not bind its immediately preceding retained intent record",
+                ))
+            }
+            FrozenTransitionEvidencePhaseV8::Intent
+            | FrozenTransitionEvidencePhaseV8::Observation => Ok(()),
+        }
+    }
+
     fn closes_exact_manifest(
         &self,
         schema: &'static str,
@@ -758,6 +845,21 @@ impl CandidateExecutionEffectEvidenceV8 {
         )
     }
 
+    pub(crate) fn validate_descriptor_origin(
+        &self,
+        record: &DurableJournalRecordV8,
+        previous_record: &DurableJournalRecordV8,
+        origin: &DescriptorReplayOriginV8<'_>,
+    ) -> Result<(), NativeErrorV8> {
+        self.0.validate_descriptor_origin(
+            "hepta-linux-v8-candidate-execution-evidence-v1",
+            JournalEffectV8::CandidateExecution,
+            record,
+            previous_record,
+            origin,
+        )
+    }
+
     pub(crate) fn closes_exact_manifest(
         &self,
         intent: &Self,
@@ -857,6 +959,196 @@ mod tests {
             CandidateExecutionEffectEvidenceV8,
             JournalEffectV8::CandidateExecution
         );
+    }
+
+    #[test]
+    fn descriptor_origin_binds_live_fields_and_adjacent_retained_records() {
+        const ZERO_SHA256: &str =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+
+        let previous = DurableJournalRecordV8::new(
+            digest('3'),
+            1,
+            "01234567-89ab-cdef-0123-456789abcdef".to_string(),
+            1,
+            ZERO_SHA256.to_string(),
+            b"retained predecessor".to_vec(),
+        )
+        .unwrap();
+        let previous_sha256 = previous.record_sha256().unwrap();
+        let mut context = context();
+        context.journal_tip_sha256 = previous_sha256.clone();
+        context.predecessor_record_sha256 = previous_sha256.clone();
+        let intent = CandidateExecutionEffectEvidenceV8::intent(context.clone()).unwrap();
+        let intent_record = DurableJournalRecordV8::new(
+            context.attempt_identity_sha256.clone(),
+            context.boot_epoch,
+            context.boot_id.clone(),
+            context.global_sequence,
+            previous_sha256,
+            b"candidate intent envelope".to_vec(),
+        )
+        .unwrap();
+        let origin = DescriptorReplayOriginV8 {
+            machine_id_sha256: &context.machine_id_sha256,
+            machine_id_source_identity: context.machine_id_source_identity,
+            state_root_binding_sha256: &context.state_root_binding_sha256,
+            state_root_identity: context.state_root_identity,
+            state_root_mount_id: context.state_root_mount_id,
+            state_root_lock_identity: context.state_root_lock_identity,
+            attempt_identity_sha256: &context.attempt_identity_sha256,
+            active_attempt_record_sha256: &context.active_attempt_record_sha256,
+            active_attempt_file_identity: context.active_attempt_file_identity,
+            barrier_generation: context.barrier_generation,
+            restore_plan_sha256: &context.restore_plan_sha256,
+            boot_id: &context.boot_id,
+        };
+        intent
+            .validate_descriptor_origin(&intent_record, &previous, &origin)
+            .unwrap();
+
+        let bad_digest = digest('f');
+        let bad_boot = "11111111-1111-1111-1111-111111111111".to_string();
+        let mut bad = origin;
+        bad.machine_id_sha256 = &bad_digest;
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.machine_id_source_identity = leaf_identity(99, 10, 0o444);
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.state_root_binding_sha256 = &bad_digest;
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.state_root_identity = FileIdentityV8::for_test_only(7, 99, 0, 0, 0o700, 1, 0);
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.state_root_mount_id += 1;
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.state_root_lock_identity = leaf_identity(7, 99, 0o600);
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.attempt_identity_sha256 = &bad_digest;
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.active_attempt_record_sha256 = &bad_digest;
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.active_attempt_file_identity = leaf_identity(7, 99, 0o600);
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.barrier_generation += 1;
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.restore_plan_sha256 = &bad_digest;
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+        let mut bad = origin;
+        bad.boot_id = &bad_boot;
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &previous, &bad)
+                .is_err()
+        );
+
+        let different_previous = DurableJournalRecordV8::new(
+            context.attempt_identity_sha256.clone(),
+            1,
+            context.boot_id.clone(),
+            1,
+            ZERO_SHA256.to_string(),
+            b"different predecessor".to_vec(),
+        )
+        .unwrap();
+        assert!(
+            intent
+                .validate_descriptor_origin(&intent_record, &different_previous, &origin)
+                .is_err()
+        );
+        let wrong_sequence_record = DurableJournalRecordV8::new(
+            context.attempt_identity_sha256.clone(),
+            1,
+            context.boot_id.clone(),
+            3,
+            previous.record_sha256().unwrap(),
+            b"wrong containing sequence".to_vec(),
+        )
+        .unwrap();
+        assert!(
+            intent
+                .validate_descriptor_origin(&wrong_sequence_record, &previous, &origin)
+                .is_err()
+        );
+
+        let intent_manifest_sha256 = intent.sha256().unwrap();
+        let intent_record_sha256 = intent_record.record_sha256().unwrap();
+        let observation = CandidateExecutionEffectEvidenceV8::observation(
+            &intent,
+            intent_manifest_sha256,
+            intent_record_sha256.clone(),
+            digest('8'),
+            10,
+            20,
+            digest('9'),
+            20,
+            30,
+        )
+        .unwrap();
+        let observation_record = DurableJournalRecordV8::new(
+            context.attempt_identity_sha256.clone(),
+            1,
+            context.boot_id.clone(),
+            3,
+            intent_record_sha256,
+            b"candidate observation envelope".to_vec(),
+        )
+        .unwrap();
+        observation
+            .validate_descriptor_origin(&observation_record, &intent_record, &origin)
+            .unwrap();
     }
 
     #[test]

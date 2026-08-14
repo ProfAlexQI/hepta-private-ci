@@ -18,17 +18,22 @@ use crate::RestoreAuthorizedStoppedRunnerScopeV8;
 use crate::RunnerScopeContinueExecutionV8;
 use crate::StateRootLockV8;
 use crate::StoppedRunnerScopeV8;
+use crate::TrustedNodeMetadataV8;
 use crate::invalid;
 
 use super::CandidateExecutionEffectEvidenceV8;
+use super::DescriptorReplayOriginV8;
 use super::DurableJournalRecordV8;
 use super::FreshActiveAttemptPublicationV8;
 use super::FrozenTransitionEvidencePhaseV8;
+use super::JOURNAL_DIRECTORY_V8;
 use super::PublishedDurableJournalRecordV8;
+use super::VerifiedDescriptorBoundDurableJournalRecordsV8;
 use super::VerifiedDurableJournalScanV8;
 #[cfg(all(test, target_os = "linux"))]
 use super::append_journal_record_durably_v8;
 use super::attempt_relative_path_v8;
+use super::scan_journal_directory_descriptor_bound_v8;
 use super::scan_journal_directory_with_records_v8;
 
 const DURABLE_JOURNAL_EVENT_SCHEMA_V8: &[u8] = b"hepta-linux-v8-durable-journal-event-v2\0";
@@ -794,6 +799,32 @@ pub struct VerifiedDurableJournalEventScanV8 {
     qualification_abandoned: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DurableJournalEventAssessmentV8 {
+    pending_effect: Option<PendingDurableEffectV8>,
+    runner_stop_observation_record_sha256: Option<String>,
+    qualification_phase: Option<QualificationJournalPhaseV8>,
+    boot_recovery_detected: bool,
+    current_boot_id: String,
+    current_boot_mismatch_detected: bool,
+    qualification_abandoned: bool,
+}
+
+/// Internal descriptor-retained replay. Record descriptors are dropped before
+/// the journal and attempt anchors, and all of them are dropped before the
+/// owning trusted state root in the outer capsule. This is read-only evidence,
+/// not a recovery token or an admission barrier.
+pub(crate) struct VerifiedDescriptorBoundDurableJournalEventScanV8 {
+    journal_records: VerifiedDescriptorBoundDurableJournalRecordsV8,
+    journal_directory: DirectoryAnchorV8,
+    journal_directory_identity: FileIdentityV8,
+    journal_directory_metadata: TrustedNodeMetadataV8,
+    attempt_directory: DirectoryAnchorV8,
+    attempt_directory_identity: FileIdentityV8,
+    attempt_directory_metadata: TrustedNodeMetadataV8,
+    assessment: DurableJournalEventAssessmentV8,
+}
+
 impl VerifiedDurableJournalEventScanV8 {
     pub fn journal(&self) -> &VerifiedDurableJournalScanV8 {
         &self.journal
@@ -871,8 +902,6 @@ pub fn scan_durable_journal_events_v8(
         ));
     }
     state_root_lock.revalidate_for_root(state_root)?;
-    let state_root_mount_id = state_root.trusted_node_metadata()?.mount_id();
-    let state_root_lock_identity = state_root_lock.identity();
     let current_boot_before = crate::observe_boot_id_v8()?;
     let attempt_directory = attempt_relative_path_v8(expected_attempt_identity_sha256)?;
     let journal_relative = format!("{attempt_directory}/journal");
@@ -882,6 +911,280 @@ pub fn scan_durable_journal_events_v8(
         expected_attempt_identity_sha256,
         state_root.identity(),
     )?;
+    let assessment = fold_durable_journal_events_v8(
+        replay.records.iter(),
+        &replay.scan,
+        state_root,
+        state_root_lock,
+        current_boot_before,
+        None,
+    )?;
+    Ok(VerifiedDurableJournalEventScanV8 {
+        journal: replay.scan,
+        pending_effect: assessment.pending_effect,
+        runner_stop_observation_record_sha256: assessment.runner_stop_observation_record_sha256,
+        qualification_phase: assessment.qualification_phase,
+        boot_recovery_detected: assessment.boot_recovery_detected,
+        current_boot_id: assessment.current_boot_id,
+        current_boot_mismatch_detected: assessment.current_boot_mismatch_detected,
+        qualification_abandoned: assessment.qualification_abandoned,
+    })
+}
+
+pub(crate) fn scan_durable_journal_events_descriptor_bound_v8(
+    state_root: &DirectoryAnchorV8,
+    state_root_lock: &StateRootLockV8,
+    expected_attempt_identity_sha256: &str,
+    descriptor_origin: &DescriptorReplayOriginV8<'_>,
+) -> Result<VerifiedDescriptorBoundDurableJournalEventScanV8, NativeErrorV8> {
+    if !state_root_lock
+        .state_root_identity()
+        .matches_stable_directory(state_root.identity())
+    {
+        return Err(invalid(
+            "descriptor-bound event replay lock belongs to a different state root",
+        ));
+    }
+    state_root_lock.revalidate_for_root(state_root)?;
+    let current_boot_before = crate::observe_boot_id_v8()?;
+    let state_root_metadata = state_root.trusted_node_metadata()?;
+    let attempt_relative = attempt_relative_path_v8(expected_attempt_identity_sha256)?;
+    let attempt_directory = state_root.open_directory_beneath(Path::new(&attempt_relative))?;
+    let attempt_directory_identity = attempt_directory.current_identity()?;
+    let attempt_directory_metadata = attempt_directory.trusted_node_metadata()?;
+    require_descriptor_bound_directory_v8(
+        "attempt",
+        attempt_directory_identity,
+        attempt_directory_metadata,
+        state_root.identity(),
+        state_root_metadata,
+    )?;
+    let journal_directory =
+        attempt_directory.open_directory_beneath(Path::new(JOURNAL_DIRECTORY_V8))?;
+    let journal_directory_identity = journal_directory.current_identity()?;
+    let journal_directory_metadata = journal_directory.trusted_node_metadata()?;
+    require_descriptor_bound_directory_v8(
+        "journal",
+        journal_directory_identity,
+        journal_directory_metadata,
+        attempt_directory_identity,
+        attempt_directory_metadata,
+    )?;
+    let journal_records = scan_journal_directory_descriptor_bound_v8(
+        &journal_directory,
+        expected_attempt_identity_sha256,
+        state_root.identity(),
+    )?;
+    let assessment = fold_durable_journal_events_v8(
+        journal_records
+            .records
+            .iter()
+            .map(super::RetainedDurableJournalRecordV8::record),
+        &journal_records.scan,
+        state_root,
+        state_root_lock,
+        current_boot_before,
+        Some(descriptor_origin),
+    )?;
+    revalidate_named_descriptor_bound_directories_v8(
+        state_root,
+        state_root_lock,
+        expected_attempt_identity_sha256,
+        &attempt_directory,
+        attempt_directory_identity,
+        attempt_directory_metadata,
+        &journal_directory,
+        journal_directory_identity,
+        journal_directory_metadata,
+    )?;
+    journal_records.revalidate_descriptor_bound_v8(&journal_directory)?;
+    Ok(VerifiedDescriptorBoundDurableJournalEventScanV8 {
+        journal_records,
+        journal_directory,
+        journal_directory_identity,
+        journal_directory_metadata,
+        attempt_directory,
+        attempt_directory_identity,
+        attempt_directory_metadata,
+        assessment,
+    })
+}
+
+impl VerifiedDescriptorBoundDurableJournalEventScanV8 {
+    pub(crate) fn journal(&self) -> &VerifiedDurableJournalScanV8 {
+        &self.journal_records.scan
+    }
+
+    pub(crate) fn pending_effect(&self) -> Option<&PendingDurableEffectV8> {
+        self.assessment.pending_effect.as_ref()
+    }
+
+    pub(crate) fn qualification_phase(&self) -> Option<QualificationJournalPhaseV8> {
+        self.assessment.qualification_phase
+    }
+
+    pub(crate) fn boot_recovery_detected(&self) -> bool {
+        self.assessment.boot_recovery_detected
+    }
+
+    pub(crate) fn current_boot_id(&self) -> &str {
+        &self.assessment.current_boot_id
+    }
+
+    pub(crate) fn current_boot_mismatch_detected(&self) -> bool {
+        self.assessment.current_boot_mismatch_detected
+    }
+
+    pub(crate) fn qualification_abandoned(&self) -> bool {
+        self.assessment.qualification_abandoned
+    }
+
+    pub(crate) fn equivalent_read_only_assessment_v8(&self, other: &Self) -> bool {
+        self.assessment == other.assessment
+            && self.journal().attempt_identity_sha256() == other.journal().attempt_identity_sha256()
+            && self.journal().incoming_residue_detected()
+                == other.journal().incoming_residue_detected()
+            && self.journal().last_boot_epoch() == other.journal().last_boot_epoch()
+            && self.journal().last_boot_id() == other.journal().last_boot_id()
+            && self.journal().record_count() == other.journal().record_count()
+            && self.journal().state_root_identity() == other.journal().state_root_identity()
+            && self.journal().tip_sha256() == other.journal().tip_sha256()
+    }
+
+    pub(crate) fn revalidate_descriptor_bound_v8(
+        &self,
+        state_root: &DirectoryAnchorV8,
+        state_root_lock: &StateRootLockV8,
+        descriptor_origin: &DescriptorReplayOriginV8<'_>,
+    ) -> Result<(), NativeErrorV8> {
+        revalidate_named_descriptor_bound_directories_v8(
+            state_root,
+            state_root_lock,
+            self.journal().attempt_identity_sha256(),
+            &self.attempt_directory,
+            self.attempt_directory_identity,
+            self.attempt_directory_metadata,
+            &self.journal_directory,
+            self.journal_directory_identity,
+            self.journal_directory_metadata,
+        )?;
+        self.journal_records
+            .revalidate_descriptor_bound_v8(&self.journal_directory)?;
+        let current_boot_before = crate::observe_boot_id_v8()?;
+        let assessment = fold_durable_journal_events_v8(
+            self.journal_records
+                .records
+                .iter()
+                .map(super::RetainedDurableJournalRecordV8::record),
+            self.journal(),
+            state_root,
+            state_root_lock,
+            current_boot_before,
+            Some(descriptor_origin),
+        )?;
+        if assessment != self.assessment {
+            return Err(invalid(
+                "descriptor-bound journal semantics differ from the pinned read-only assessment",
+            ));
+        }
+        self.journal_records
+            .revalidate_descriptor_bound_v8(&self.journal_directory)?;
+        revalidate_named_descriptor_bound_directories_v8(
+            state_root,
+            state_root_lock,
+            self.journal().attempt_identity_sha256(),
+            &self.attempt_directory,
+            self.attempt_directory_identity,
+            self.attempt_directory_metadata,
+            &self.journal_directory,
+            self.journal_directory_identity,
+            self.journal_directory_metadata,
+        )
+    }
+}
+
+fn require_descriptor_bound_directory_v8(
+    label: &str,
+    identity: FileIdentityV8,
+    metadata: TrustedNodeMetadataV8,
+    parent_identity: FileIdentityV8,
+    parent_metadata: TrustedNodeMetadataV8,
+) -> Result<(), NativeErrorV8> {
+    if identity.device() != parent_identity.device()
+        || identity.owner_uid() != parent_identity.owner_uid()
+        || identity.owner_gid() != parent_identity.owner_gid()
+        || identity.mode() != 0o700
+        || identity.link_count() == 0
+        || !metadata.matches_filesystem_domain(parent_metadata)
+    {
+        return Err(invalid(format!(
+            "descriptor-bound {label} directory identity or mount domain is not exact"
+        )));
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn revalidate_named_descriptor_bound_directories_v8(
+    state_root: &DirectoryAnchorV8,
+    state_root_lock: &StateRootLockV8,
+    expected_attempt_identity_sha256: &str,
+    attempt_directory: &DirectoryAnchorV8,
+    attempt_identity: FileIdentityV8,
+    attempt_metadata: TrustedNodeMetadataV8,
+    journal_directory: &DirectoryAnchorV8,
+    journal_identity: FileIdentityV8,
+    journal_metadata: TrustedNodeMetadataV8,
+) -> Result<(), NativeErrorV8> {
+    state_root_lock.revalidate_for_root(state_root)?;
+    if attempt_directory.current_identity()? != attempt_identity
+        || attempt_directory.trusted_node_metadata()? != attempt_metadata
+        || journal_directory.current_identity()? != journal_identity
+        || journal_directory.trusted_node_metadata()? != journal_metadata
+    {
+        return Err(invalid(
+            "retained attempt or journal directory identity drifted",
+        ));
+    }
+    let attempt_relative = attempt_relative_path_v8(expected_attempt_identity_sha256)?;
+    let named_attempt = state_root.open_directory_beneath(Path::new(&attempt_relative))?;
+    if named_attempt.current_identity()? != attempt_identity
+        || named_attempt.trusted_node_metadata()? != attempt_metadata
+    {
+        return Err(invalid(
+            "attempt pathname no longer names the retained directory identity",
+        ));
+    }
+    let retained_named_journal =
+        attempt_directory.open_directory_beneath(Path::new(JOURNAL_DIRECTORY_V8))?;
+    let fresh_named_journal =
+        named_attempt.open_directory_beneath(Path::new(JOURNAL_DIRECTORY_V8))?;
+    for named_journal in [&retained_named_journal, &fresh_named_journal] {
+        if named_journal.current_identity()? != journal_identity
+            || named_journal.trusted_node_metadata()? != journal_metadata
+        {
+            return Err(invalid(
+                "journal pathname no longer names the retained directory identity",
+            ));
+        }
+    }
+    state_root_lock.revalidate_for_root(state_root)?;
+    Ok(())
+}
+
+fn fold_durable_journal_events_v8<'a, I>(
+    records: I,
+    journal: &VerifiedDurableJournalScanV8,
+    state_root: &DirectoryAnchorV8,
+    state_root_lock: &StateRootLockV8,
+    current_boot_before: crate::BootIdV8,
+    descriptor_origin: Option<&DescriptorReplayOriginV8<'_>>,
+) -> Result<DurableJournalEventAssessmentV8, NativeErrorV8>
+where
+    I: IntoIterator<Item = &'a DurableJournalRecordV8>,
+{
+    let state_root_mount_id = state_root.trusted_node_metadata()?.mount_id();
+    let state_root_lock_identity = state_root_lock.identity();
     let mut pending_effect: Option<PendingDurableEffectV8> = None;
     let mut runner_stop_observation_record_sha256: Option<String> = None;
     let mut candidate_execution_observation_record_sha256: Option<String> = None;
@@ -892,7 +1195,7 @@ pub fn scan_durable_journal_events_v8(
     let mut qualification_abandoned = false;
     let mut previous: Option<&DurableJournalRecordV8> = None;
 
-    for (index, record) in replay.records.iter().enumerate() {
+    for (index, record) in records.into_iter().enumerate() {
         let decoded = decode_durable_journal_event_envelope_v8(record.payload())?;
         let event = decoded.event;
         let evidence = decoded.evidence;
@@ -964,6 +1267,15 @@ pub fn scan_durable_journal_events_v8(
                     state_root_mount_id,
                     state_root_lock_identity,
                 )?;
+                if let Some(origin) = descriptor_origin {
+                    typed.validate_descriptor_origin(
+                        record,
+                        previous.ok_or_else(|| {
+                            invalid("candidate intent lacks a retained predecessor")
+                        })?,
+                        origin,
+                    )?;
+                }
                 if typed.phase() != FrozenTransitionEvidencePhaseV8::Intent
                     || format!("{:x}", sha2::Sha256::digest(&evidence)) != *effect_manifest_sha256
                 {
@@ -984,6 +1296,15 @@ pub fn scan_durable_journal_events_v8(
                     state_root_mount_id,
                     state_root_lock_identity,
                 )?;
+                if let Some(origin) = descriptor_origin {
+                    typed.validate_descriptor_origin(
+                        record,
+                        previous.ok_or_else(|| {
+                            invalid("candidate observation lacks a retained predecessor")
+                        })?,
+                        origin,
+                    )?;
+                }
                 if typed.phase() != FrozenTransitionEvidencePhaseV8::Observation
                     || typed.intent_record_sha256() != Some(intent_record_sha256.as_str())
                     || format!("{:x}", sha2::Sha256::digest(&evidence)) != *observation_sha256
@@ -1301,9 +1622,8 @@ pub fn scan_durable_journal_events_v8(
         ));
     }
     let current_boot_id = current_boot_after.to_string();
-    let current_boot_mismatch_detected = replay.scan.last_boot_id() != current_boot_id;
-    Ok(VerifiedDurableJournalEventScanV8 {
-        journal: replay.scan,
+    let current_boot_mismatch_detected = journal.last_boot_id() != current_boot_id;
+    Ok(DurableJournalEventAssessmentV8 {
         pending_effect,
         runner_stop_observation_record_sha256,
         qualification_phase,
@@ -2279,6 +2599,18 @@ mod linux_tests {
                 .join("journal"),
         )
         .unwrap();
+        fs::set_permissions(
+            root.join(ATTEMPTS_DIRECTORY_V8).join(attempt),
+            fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+        fs::set_permissions(
+            root.join(ATTEMPTS_DIRECTORY_V8)
+                .join(attempt)
+                .join("journal"),
+            fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
         root
     }
 
@@ -2436,6 +2768,48 @@ mod linux_tests {
             Some(QualificationJournalPhaseV8::AwaitCandidateExecutionObservation)
         );
         assert!(!pending.ordinary_continuation_allowed());
+
+        let state_root_binding_sha256 = digest('b');
+        let descriptor_origin = DescriptorReplayOriginV8 {
+            machine_id_sha256: machine.machine_id_sha256(),
+            machine_id_source_identity: machine.source_identity(),
+            state_root_binding_sha256: &state_root_binding_sha256,
+            state_root_identity: anchor.identity(),
+            state_root_mount_id: anchor.trusted_node_metadata().unwrap().mount_id(),
+            state_root_lock_identity: lock.identity(),
+            attempt_identity_sha256: &attempt,
+            active_attempt_record_sha256: active.record_sha256(),
+            active_attempt_file_identity: active.publication().identity(),
+            barrier_generation: active.barrier_generation(),
+            restore_plan_sha256: active.restore_plan_sha256(),
+            boot_id: active.boot_id(),
+        };
+        let descriptor_pending = scan_durable_journal_events_descriptor_bound_v8(
+            &anchor,
+            &lock,
+            &attempt,
+            &descriptor_origin,
+        )
+        .unwrap();
+        assert_eq!(
+            descriptor_pending.pending_effect().unwrap().effect(),
+            JournalEffectV8::CandidateExecution
+        );
+        descriptor_pending
+            .revalidate_descriptor_bound_v8(&anchor, &lock, &descriptor_origin)
+            .unwrap();
+        let wrong_binding = digest('f');
+        let mut wrong_origin = descriptor_origin;
+        wrong_origin.state_root_binding_sha256 = &wrong_binding;
+        assert!(
+            scan_durable_journal_events_descriptor_bound_v8(
+                &anchor,
+                &lock,
+                &attempt,
+                &wrong_origin,
+            )
+            .is_err()
+        );
 
         let candidate_result_sha256 = digest('d');
         let candidate_observation = CandidateExecutionEffectEvidenceV8::observation(

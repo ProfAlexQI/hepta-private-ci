@@ -136,6 +136,15 @@ impl DirectoryAnchorV8 {
         revalidate_directory_identity_impl(self)
     }
 
+    /// Returns the complete current descriptor identity for crate-internal
+    /// long-lived read-only replay. Unlike [`Self::identity`], which is the
+    /// identity captured at open, this observation includes the current size
+    /// and link count so a frozen capsule can reject later directory growth or
+    /// unlinking without exposing the raw descriptor.
+    pub(crate) fn current_identity(&self) -> NativeSysResultV8<FileIdentityV8> {
+        current_directory_identity_impl(self)
+    }
+
     /// Observes the compiled empty-xattr/ACL, filesystem, mount-id, mount-flag,
     /// and inode-flag policy twice through this retained descriptor.
     pub(crate) fn trusted_node_metadata(&self) -> NativeSysResultV8<super::TrustedNodeMetadataV8> {
@@ -311,16 +320,40 @@ impl VerifiedFileFdV8 {
         self.descriptor.as_raw_fd()
     }
 
-    #[cfg(target_os = "linux")]
-    pub(super) fn revalidate_identity(&self) -> NativeSysResultV8<()> {
-        let observed = identity_for_fd(self.descriptor.as_raw_fd())?;
-        if observed != self.identity {
-            return Err(NativeSysErrorV8::RaceDetected(
-                "opened file metadata changed after verification".to_string(),
-            ));
-        }
-        Ok(())
+    pub(crate) fn revalidate_identity(&self) -> NativeSysResultV8<()> {
+        revalidate_verified_file_identity_impl(self)
     }
+}
+
+#[cfg(target_os = "linux")]
+fn current_directory_identity_impl(
+    anchor: &DirectoryAnchorV8,
+) -> NativeSysResultV8<FileIdentityV8> {
+    require_directory(anchor.descriptor.as_raw_fd())?;
+    identity_for_fd(anchor.descriptor.as_raw_fd())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn current_directory_identity_impl(
+    _anchor: &DirectoryAnchorV8,
+) -> NativeSysResultV8<FileIdentityV8> {
+    Err(unsupported("observe current opened directory identity"))
+}
+
+#[cfg(target_os = "linux")]
+fn revalidate_verified_file_identity_impl(file: &VerifiedFileFdV8) -> NativeSysResultV8<()> {
+    let observed = identity_for_fd(file.descriptor.as_raw_fd())?;
+    if observed != file.identity {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "opened file metadata changed after verification".to_string(),
+        ));
+    }
+    require_regular(file.descriptor.as_raw_fd())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn revalidate_verified_file_identity_impl(_file: &VerifiedFileFdV8) -> NativeSysResultV8<()> {
+    Err(unsupported("revalidate opened regular-file identity"))
 }
 
 #[cfg(target_os = "linux")]

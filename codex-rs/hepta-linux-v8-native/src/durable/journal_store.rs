@@ -183,16 +183,27 @@ pub fn verify_durable_journal_chain_v8(
     encoded_records: &[Vec<u8>],
     expected_attempt_identity_sha256: &str,
 ) -> Result<VerifiedDurableJournalChainV8, NativeErrorV8> {
+    verify_durable_journal_chain_slices_v8(
+        encoded_records.iter().map(Vec::as_slice),
+        expected_attempt_identity_sha256,
+    )
+}
+
+pub(crate) fn verify_durable_journal_chain_slices_v8<'a, I>(
+    encoded_records: I,
+    expected_attempt_identity_sha256: &str,
+) -> Result<VerifiedDurableJournalChainV8, NativeErrorV8>
+where
+    I: IntoIterator<Item = &'a [u8]>,
+{
     validate_digest(
         "expected attempt identity",
         expected_attempt_identity_sha256,
     )?;
-    if encoded_records.is_empty() {
-        return Err(invalid("durable journal chain must not be empty"));
-    }
 
     let mut previous_hash = ZERO_SHA256.to_string();
-    for (index, encoded) in encoded_records.iter().enumerate() {
+    let mut record_count = 0_u64;
+    for (index, encoded) in encoded_records.into_iter().enumerate() {
         let record = DurableJournalRecordV8::decode_exact(encoded)?;
         let expected_sequence = u64::try_from(index)
             .map_err(|_| invalid("journal record index overflow"))?
@@ -208,12 +219,15 @@ pub fn verify_durable_journal_chain_v8(
             return Err(invalid("durable journal predecessor hash mismatches"));
         }
         previous_hash = record.record_sha256()?;
+        record_count = expected_sequence;
+    }
+    if record_count == 0 {
+        return Err(invalid("durable journal chain must not be empty"));
     }
 
     Ok(VerifiedDurableJournalChainV8 {
         attempt_identity_sha256: expected_attempt_identity_sha256.to_string(),
-        record_count: u64::try_from(encoded_records.len())
-            .map_err(|_| invalid("journal record count overflow"))?,
+        record_count,
         tip_sha256: previous_hash,
     })
 }

@@ -132,6 +132,22 @@ impl TrustedStateRootV8 {
         &self.profile_sha256
     }
 
+    pub(crate) fn machine_id_source_identity_v8(&self) -> FileIdentityV8 {
+        self.machine_id_source_identity
+    }
+
+    pub(crate) fn current_root_identity_v8(&self) -> Result<FileIdentityV8, NativeErrorV8> {
+        Ok(self.anchor.current_identity()?)
+    }
+
+    pub(crate) fn current_root_metadata_v8(&self) -> Result<TrustedNodeMetadataV8, NativeErrorV8> {
+        Ok(self.anchor.trusted_node_metadata()?)
+    }
+
+    pub(crate) fn descriptor_replay_handles_v8(&self) -> (&DirectoryAnchorV8, &StateRootLockV8) {
+        (&self.anchor, &self.lock)
+    }
+
     pub fn revalidate(&self) -> Result<(), NativeErrorV8> {
         self.anchor.revalidate_identity()?;
         let root_metadata = self.anchor.trusted_node_metadata()?;
