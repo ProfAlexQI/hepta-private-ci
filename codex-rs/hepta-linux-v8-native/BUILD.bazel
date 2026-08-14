@@ -1,0 +1,25 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "hepta-linux-v8-native-lib",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "codex_hepta_linux_v8_native",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        "@crates//:libc",
+        "@crates//:serde",
+        "@crates//:sha2",
+        "@crates//:thiserror",
+    ],
+)
+
+rust_test(
+    name = "hepta-linux-v8-native-tests",
+    crate = ":hepta-linux-v8-native-lib",
+    deps = [
+        "@crates//:pretty_assertions",
+        "@crates//:serde_json",
+    ],
+)

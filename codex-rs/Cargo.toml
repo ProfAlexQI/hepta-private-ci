@@ -47,6 +47,7 @@ members = [
     "hepta-contracts",
     "hepta-evidence",
     "hepta-linux-qualification-v8",
+    "hepta-linux-v8-native",
     "hepta-memory",
     "hepta-native-gateway",
     "hepta-operator-acceptance",
