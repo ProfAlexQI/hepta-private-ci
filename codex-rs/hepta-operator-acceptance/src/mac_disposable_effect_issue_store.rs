@@ -20,6 +20,7 @@ use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
 use crate::mac_disposable_lifecycle_store::RetainedEffectIssueSourceV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleIssueSourceV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorIssueBindingV3;
+use crate::mac_inert_one_shot_runner::AuthenticatedEffectEpochBindingV3;
 #[cfg(test)]
 use crate::mac_iomedia_identity::current_boot_session_uuid;
 use crate::mac_privileged_disposable_control::EffectIssueAppendSinkV3;
@@ -197,6 +198,11 @@ pub(crate) struct IssuedEffectRecordV3 {
     purpose: EffectPurposeV3,
     runner_epoch_nonce: String,
     runner_epoch_sha256: String,
+    runner_hello_sha256: String,
+    runner_kernel_start_microseconds: u64,
+    runner_pid: u32,
+    runner_pre_hello_fd_census_sha256: String,
+    runner_transport_sha256: String,
     schema: String,
     schema_version: u32,
     unique_binding_sha256: Option<String>,
@@ -211,9 +217,43 @@ pub(crate) struct EffectEpochEvidenceV3 {
     process_epoch_sha256: String,
     runner_epoch_nonce: String,
     runner_epoch_sha256: String,
+    runner_hello_sha256: String,
+    runner_kernel_start_microseconds: u64,
+    runner_pid: u32,
+    runner_pre_hello_fd_census_sha256: String,
+    runner_transport_sha256: String,
 }
 
 impl EffectEpochEvidenceV3 {
+    pub(crate) fn from_authenticated(
+        binding: AuthenticatedEffectEpochBindingV3,
+    ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        binding.validate_current().map_err(|error| {
+            invalid(format!(
+                "authenticated runner epoch failed current replay: {error}"
+            ))
+        })?;
+        let runner_transport_sha256 = binding.transport_sha256().map_err(|error| {
+            invalid(format!(
+                "authenticated runner transport could not be sealed: {error}"
+            ))
+        })?;
+        let evidence = Self {
+            boot_session_uuid: binding.boot_session_uuid().to_string(),
+            process_epoch_nonce: binding.process_epoch_nonce().to_string(),
+            process_epoch_sha256: binding.process_epoch_sha256().to_string(),
+            runner_epoch_nonce: binding.runner_epoch_nonce().to_string(),
+            runner_epoch_sha256: binding.runner_epoch_sha256().to_string(),
+            runner_hello_sha256: binding.runner_hello_sha256().to_string(),
+            runner_kernel_start_microseconds: binding.runner_kernel_start_microseconds(),
+            runner_pid: binding.runner_pid(),
+            runner_pre_hello_fd_census_sha256: binding.pre_hello_fd_census_sha256().to_string(),
+            runner_transport_sha256,
+        };
+        evidence.validate()?;
+        Ok(evidence)
+    }
+
     #[cfg(test)]
     pub(crate) fn bind_current_boot(
         boot_session_uuid: &str,
@@ -235,13 +275,45 @@ impl EffectEpochEvidenceV3 {
                 "effect epochs are stale, aliased, or not bound to the current boot",
             ));
         }
-        Ok(Self {
+        let evidence = Self {
             boot_session_uuid: boot_session_uuid.to_string(),
             process_epoch_nonce: process_epoch_nonce.to_string(),
             process_epoch_sha256: process_epoch_sha256.to_string(),
             runner_epoch_nonce: runner_epoch_nonce.to_string(),
             runner_epoch_sha256: runner_epoch_sha256.to_string(),
-        })
+            runner_hello_sha256: runner_epoch_sha256.to_string(),
+            runner_kernel_start_microseconds: 1,
+            runner_pid: 1,
+            runner_pre_hello_fd_census_sha256: sha256(b"test-pre-hello-fd-census"),
+            runner_transport_sha256: sha256(b"test-runner-transport"),
+        };
+        evidence.validate()?;
+        Ok(evidence)
+    }
+
+    fn validate(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        require_uuid(&self.boot_session_uuid, "effect issue boot session UUID")?;
+        require_nonce(&self.process_epoch_nonce, "process epoch nonce")?;
+        require_digest(&self.process_epoch_sha256, "process epoch digest")?;
+        require_nonce(&self.runner_epoch_nonce, "runner epoch nonce")?;
+        require_digest(&self.runner_epoch_sha256, "runner epoch digest")?;
+        require_digest(&self.runner_hello_sha256, "runner hello digest")?;
+        require_digest(
+            &self.runner_pre_hello_fd_census_sha256,
+            "runner pre-hello FD census digest",
+        )?;
+        require_digest(&self.runner_transport_sha256, "runner transport digest")?;
+        if self.process_epoch_nonce == self.runner_epoch_nonce
+            || self.process_epoch_sha256 == self.runner_epoch_sha256
+            || self.runner_epoch_sha256 != self.runner_hello_sha256
+            || self.runner_pid == 0
+            || self.runner_kernel_start_microseconds == 0
+        {
+            return Err(invalid(
+                "effect epochs, runner identity, hello, or transport binding is invalid",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -1106,6 +1178,7 @@ impl DurableEffectIssueStoreV3 {
     where
         F: FnMut(PublishCutpointV3) -> io::Result<()>,
     {
+        epochs.validate()?;
         if self.poisoned {
             return Err(invalid(
                 "issue store is poisoned; exact restart replay is required",
@@ -1175,6 +1248,11 @@ impl DurableEffectIssueStoreV3 {
             purpose: target.purpose,
             runner_epoch_nonce: epochs.runner_epoch_nonce,
             runner_epoch_sha256: epochs.runner_epoch_sha256,
+            runner_hello_sha256: epochs.runner_hello_sha256,
+            runner_kernel_start_microseconds: epochs.runner_kernel_start_microseconds,
+            runner_pid: epochs.runner_pid,
+            runner_pre_hello_fd_census_sha256: epochs.runner_pre_hello_fd_census_sha256,
+            runner_transport_sha256: epochs.runner_transport_sha256,
             schema: ISSUE_SCHEMA_V3.to_string(),
             schema_version: 3,
             unique_binding_sha256: Some(unique_binding_sha256),
@@ -1357,6 +1435,20 @@ impl DurableEffectIssueStoreV3 {
             .iter()
             .find(|issue| issue.record.effect_id == effect_id)
             .map(|issue| &issue.record)
+    }
+
+    pub(crate) fn replayed_issue_canonical_bytes(&self, effect_id: u64) -> Option<&[u8]> {
+        self.issues
+            .iter()
+            .find(|issue| issue.record.effect_id == effect_id)
+            .map(|issue| issue.bytes.as_slice())
+    }
+
+    pub(crate) fn replayed_issue_sha256(&self, effect_id: u64) -> Option<&str> {
+        self.issues
+            .iter()
+            .find(|issue| issue.record.effect_id == effect_id)
+            .map(|issue| issue.record_sha256.as_str())
     }
 
     pub(crate) fn revalidate_s1_adopted(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
@@ -1560,8 +1652,36 @@ impl IssuedEffectRecordV3 {
         &self.process_epoch_sha256
     }
 
+    pub(crate) fn lifecycle_tip_before_sha256(&self) -> &str {
+        &self.lifecycle_tip_before_sha256
+    }
+
+    pub(crate) fn purpose(&self) -> EffectPurposeV3 {
+        self.purpose
+    }
+
     pub(crate) fn runner_epoch_sha256(&self) -> &str {
         &self.runner_epoch_sha256
+    }
+
+    pub(crate) fn runner_pid(&self) -> u32 {
+        self.runner_pid
+    }
+
+    pub(crate) fn runner_kernel_start_microseconds(&self) -> u64 {
+        self.runner_kernel_start_microseconds
+    }
+
+    pub(crate) fn runner_hello_sha256(&self) -> &str {
+        &self.runner_hello_sha256
+    }
+
+    pub(crate) fn runner_pre_hello_fd_census_sha256(&self) -> &str {
+        &self.runner_pre_hello_fd_census_sha256
+    }
+
+    pub(crate) fn runner_transport_sha256(&self) -> &str {
+        &self.runner_transport_sha256
     }
 
     fn validate_against(
@@ -1607,10 +1727,21 @@ impl IssuedEffectRecordV3 {
         require_digest(&self.process_epoch_sha256, "process epoch digest")?;
         require_nonce(&self.runner_epoch_nonce, "runner epoch nonce")?;
         require_digest(&self.runner_epoch_sha256, "runner epoch digest")?;
+        require_digest(&self.runner_hello_sha256, "runner hello digest")?;
+        require_digest(
+            &self.runner_pre_hello_fd_census_sha256,
+            "runner pre-hello FD census digest",
+        )?;
+        require_digest(&self.runner_transport_sha256, "runner transport digest")?;
         if self.process_epoch_nonce == self.runner_epoch_nonce
             || self.process_epoch_sha256 == self.runner_epoch_sha256
+            || self.runner_epoch_sha256 != self.runner_hello_sha256
+            || self.runner_pid == 0
+            || self.runner_kernel_start_microseconds == 0
         {
-            return Err(invalid("process and runner epochs alias each other"));
+            return Err(invalid(
+                "process/runner epochs, runner identity, hello, or transport binding is invalid",
+            ));
         }
         if let Some(unique_binding_sha256) = &self.unique_binding_sha256 {
             require_digest(unique_binding_sha256, "unique collector binding digest")?;
