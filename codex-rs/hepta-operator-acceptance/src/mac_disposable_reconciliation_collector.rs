@@ -7,6 +7,9 @@
 use crate::AcceptanceError;
 use crate::durable::canonical_json;
 use crate::durable::sha256;
+use crate::mac_disposable_effect_issue_store::ExactDisposableCommandV3;
+use crate::mac_disposable_effect_issue_store::ExactMountBindingCommandV3;
+use crate::mac_disposable_effect_issue_store::ExactMountDeltaCommandViewV3;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
@@ -407,6 +410,53 @@ pub(crate) enum RetainedCollectorMatchV3 {
 pub(crate) enum RetainedCollectorObservationV3 {
     Reconciliation(RetainedCollectorMatchV3),
     FreshAbsence(RetainedFreshAbsenceV3),
+}
+
+pub(crate) struct MountingV3;
+pub(crate) struct UnmountingV3;
+
+/// Linear pending mount-table transition.  It owns the prior retained
+/// collector evidence, so a caller cannot use one observation both to issue a
+/// second effect and to authorize a mount-state transition.
+pub(crate) struct RetainedCollectorMountDeltaV3<K> {
+    after: Vec<MountBindingV3>,
+    before: Vec<MountBindingV3>,
+    command_sha256: String,
+    operation_nonce: String,
+    prior: RetainedCollectorObservationV3,
+    target: MountBindingV3,
+    _kind: PhantomData<K>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Borrowed sealed view consumed by S1 when it changes only the mount
+/// typestate.  It exposes no descriptor and cannot outlive the linear retained
+/// collector transition which owns all evidence.
+pub(crate) struct SealedMountDeltaPlanV3<'a, K> {
+    delta: &'a RetainedCollectorMountDeltaV3<K>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct SealedMountDeltaAdvanceV3<'a, K> {
+    delta: &'a RetainedCollectorMountDeltaV3<K>,
+    next: &'a RetainedCollectorObservationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Borrowed proof that one persisted post-effect collector receipt is the
+/// exact expected-after observation for a linear delta and has not yet been
+/// appended to lifecycle storage.  S2 may inspect only its derived digest;
+/// callers cannot construct it from a digest or mount-table DTO.
+pub(crate) struct SealedMountDeltaObservationV3<'a, K> {
+    delta: &'a RetainedCollectorMountDeltaV3<K>,
+    next: &'a RetainedCollectorObservationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+#[derive(Clone, Copy)]
+enum MountDeltaDirectionV3 {
+    Mount,
+    Unmount,
 }
 
 pub(crate) enum RetainedCollectorAppendEventV3<'a> {
@@ -990,6 +1040,28 @@ impl RetainedCollectorEvidenceV3 {
         Ok(())
     }
 
+    fn revalidate_across_mount_delta(
+        &self,
+        expected_after: &[MountBindingV3],
+        direction: MountDeltaDirectionV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.durable.revalidate()?;
+        let record = self
+            .lifecycle_record
+            .as_ref()
+            .ok_or_else(|| invalid("pre-delta collector lacks its exact lifecycle capsule"))?;
+        record.revalidate().map_err(|error| {
+            invalid(format!(
+                "pre-delta lifecycle capsule failed descriptor replay: {error}"
+            ))
+        })?;
+        if sha256(&canonical_json(&self.receipt)?) != self.receipt_sha256 {
+            return Err(invalid("pre-delta durable collector receipt changed"));
+        }
+        self.guard
+            .revalidate_across_mount_delta(&self.receipt, expected_after, direction)
+    }
+
     fn append_capability(&self) -> Result<RetainedCollectorAppendV3<'_>, RestartCollectorErrorV3> {
         self.revalidate()?;
         if self.lifecycle_record.is_some() {
@@ -1087,6 +1159,16 @@ impl RetainedCollectorObservationV3 {
         if self.evidence().lifecycle_record.is_none() {
             return Err(invalid(
                 "retained collector observation lacks its durable lifecycle-record binding",
+            ));
+        }
+        Ok(())
+    }
+
+    fn revalidate_unbound(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        if self.evidence().lifecycle_record.is_some() {
+            return Err(invalid(
+                "post-delta collector was already bound to a lifecycle record",
             ));
         }
         Ok(())
@@ -2257,6 +2339,98 @@ impl LiveReplayGuardV3 {
         &self,
         receipt: &RestartCollectorReceiptV3,
     ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_non_mount_evidence(receipt)?;
+        self.mountpoint.revalidate()?;
+        if mount_table_snapshot()? != self.mounts {
+            return Err(invalid(
+                "mount table changed after restart receipt persistence",
+            ));
+        }
+        Ok(())
+    }
+
+    fn revalidate_across_mount_delta(
+        &self,
+        receipt: &RestartCollectorReceiptV3,
+        expected_after: &[MountBindingV3],
+        direction: MountDeltaDirectionV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_non_mount_evidence(receipt)?;
+        if expected_after.len() > MAX_MOUNT_ENTRIES {
+            return Err(invalid("expected-after mount census exceeds its bound"));
+        }
+        for mount in expected_after {
+            validate_mount_binding_shape(mount)?;
+        }
+        if expected_after.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err(invalid(
+                "expected-after mount census is not a strictly sorted exact roster",
+            ));
+        }
+        match direction {
+            MountDeltaDirectionV3::Mount => {
+                if exact_added_mount(&self.mounts, expected_after).is_none() {
+                    return Err(invalid(
+                        "mount transition is not exactly the retained census plus one entry",
+                    ));
+                }
+                let UnderlyingMountpointGuardV3::Held(mountpoint) = &self.mountpoint else {
+                    return Err(invalid(
+                        "mount transition lacks the retained underlying mountpoint descriptor",
+                    ));
+                };
+                // The pathname now resolves through the mounted filesystem.
+                // Revalidate only the descriptor that was captured before the
+                // effect; pathname replay is intentionally deferred until the
+                // filesystem is later unmounted.
+                mountpoint.revalidate_descriptor_only("underlying mountpoint hidden by mount")?;
+            }
+            MountDeltaDirectionV3::Unmount => {
+                if exact_removed_mount(&self.mounts, expected_after).is_none() {
+                    return Err(invalid(
+                        "unmount transition is not exactly the retained census minus one entry",
+                    ));
+                }
+                if !matches!(
+                    &self.mountpoint,
+                    UnderlyingMountpointGuardV3::DeferredWhileMounted { .. }
+                ) {
+                    return Err(invalid(
+                        "unmount transition lacks a deferred underlying mountpoint guard",
+                    ));
+                }
+                // This reopens through the retained parent dirfd with
+                // O_NOFOLLOW_ANY and compares the full prepared identity.
+                // It is the first point where the previously hidden pathname
+                // may be trusted again.
+                self.mountpoint.reopen_underlying_after_unmount()?;
+            }
+        }
+        if mount_table_snapshot()? != expected_after {
+            return Err(invalid(
+                "mount table differs from the exact expected-after census",
+            ));
+        }
+        Ok(())
+    }
+
+    fn revalidate_non_mount_evidence(
+        &self,
+        receipt: &RestartCollectorReceiptV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        if self.mounts != receipt.mount_evidence.mounts_after {
+            return Err(invalid(
+                "retained mount census differs from the persisted receipt",
+            ));
+        }
+        for mount in &self.mounts {
+            validate_mount_binding_shape(mount)?;
+        }
+        if self.mounts.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err(invalid(
+                "retained mount census is not a strictly sorted exact roster",
+            ));
+        }
         self.iomedia.revalidate_after_persistence()?;
         if self.iomedia.report() != &receipt.iomedia_inventory {
             return Err(invalid(
@@ -2280,13 +2454,8 @@ impl LiveReplayGuardV3 {
                 "operation-artifact census changed after receipt persistence",
             ));
         }
-        self.mountpoint.revalidate()?;
-        if mount_table_snapshot()? != self.mounts
-            || current_boot_session_uuid()? != receipt.boot_session_uuid
-        {
-            return Err(invalid(
-                "mount table or boot changed after restart receipt persistence",
-            ));
+        if current_boot_session_uuid()? != receipt.boot_session_uuid {
+            return Err(invalid("boot changed after restart receipt persistence"));
         }
         validate_receipt(receipt)
     }
@@ -2461,6 +2630,19 @@ impl HeldDirectoryV3 {
         if lstat_binding(&self.path, label)? != self.binding {
             return Err(invalid(format!(
                 "held {label} pathname changed during ACL/xattr replay"
+            )));
+        }
+        Ok(())
+    }
+
+    fn revalidate_descriptor_only(&self, label: &str) -> Result<(), RestartCollectorErrorV3> {
+        if fstat_binding(self.file.as_raw_fd(), label)? != self.binding {
+            return Err(invalid(format!("held {label} descriptor changed")));
+        }
+        verify_fd_binding_secure(self.file.as_raw_fd(), &self.binding, label)?;
+        if fstat_binding(self.file.as_raw_fd(), label)? != self.binding {
+            return Err(invalid(format!(
+                "held {label} descriptor changed during ACL/xattr replay"
             )));
         }
         Ok(())
@@ -3192,3 +3374,436 @@ fn reject_nested_mounts(
 #[cfg(test)]
 #[path = "mac_disposable_reconciliation_collector_tests.rs"]
 mod tests;
+impl RetainedCollectorObservationV3 {
+    pub(crate) fn into_mount_delta(
+        self,
+        command: &ExactDisposableCommandV3,
+    ) -> Result<RetainedCollectorMountDeltaV3<MountingV3>, RestartCollectorErrorV3> {
+        self.revalidate_bound()?;
+        let ExactMountDeltaCommandViewV3::Mount {
+            binding,
+            mountpoint_underlying_sha256,
+            read_only,
+            volume_identity_sha256,
+        } = command
+            .mount_delta_view()
+            .ok_or_else(|| invalid("mount delta requires the exact durable mount command"))?
+        else {
+            return Err(invalid("mount delta cannot consume an unmount command"));
+        };
+        let evidence = self.evidence();
+        let unique = match &self {
+            Self::Reconciliation(RetainedCollectorMatchV3::UniqueAttached(unique)) => unique,
+            _ => {
+                return Err(invalid(
+                    "mount delta requires one retained unique-attached collector match",
+                ));
+            }
+        };
+        let group = exact_unique_group(&unique.evidence.receipt)?;
+        let target = mount_binding_from_command(binding);
+        validate_mount_binding_shape(&target)?;
+        if mountpoint_underlying_sha256 != evidence.receipt.mountpoint_underlying_sha256
+            || volume_identity_sha256 != unique_volume_identity_sha256(group)?
+            || target.mount_on != evidence.receipt.collector_policy.mountpoint
+            || !group_source_matches(group, &target.mount_from)
+            || ((target.mount_flags & libc::MNT_RDONLY as u64) != 0) != read_only
+        {
+            return Err(invalid(
+                "mount command, unique volume, mountpoint, access flags, or exact entry differ",
+            ));
+        }
+        let before = evidence.receipt.mount_evidence.mounts_after.clone();
+        if before != evidence.guard.mounts
+            || before.iter().any(|mount| {
+                mount.mount_on == target.mount_on || group_source_matches(group, &mount.mount_from)
+            })
+        {
+            return Err(invalid(
+                "unique-attached evidence already owns or aliases the target mount entry",
+            ));
+        }
+        let mut after = before.clone();
+        after.push(target.clone());
+        after.sort();
+        if after.windows(2).any(|pair| pair[0] == pair[1])
+            || exact_added_mount(&before, &after) != Some(&target)
+        {
+            return Err(invalid(
+                "mount expected-after is not exactly before plus one target entry",
+            ));
+        }
+        Ok(RetainedCollectorMountDeltaV3 {
+            after,
+            before,
+            command_sha256: sha256(&canonical_json(command)?),
+            operation_nonce: evidence.receipt.operation_nonce.clone(),
+            prior: self,
+            target,
+            _kind: PhantomData,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn into_unmount_delta(
+        self,
+        command: &ExactDisposableCommandV3,
+    ) -> Result<RetainedCollectorMountDeltaV3<UnmountingV3>, RestartCollectorErrorV3> {
+        self.revalidate_bound()?;
+        let ExactMountDeltaCommandViewV3::Unmount {
+            mounted_binding_sha256,
+        } = command
+            .mount_delta_view()
+            .ok_or_else(|| invalid("unmount delta requires the exact durable unmount command"))?
+        else {
+            return Err(invalid("unmount delta cannot consume a mount command"));
+        };
+        let evidence = self.evidence();
+        let unique = match &self {
+            Self::Reconciliation(RetainedCollectorMatchV3::UniqueMounted(unique)) => unique,
+            _ => {
+                return Err(invalid(
+                    "unmount delta requires one retained unique-mounted collector match",
+                ));
+            }
+        };
+        let group = exact_unique_group(&unique.evidence.receipt)?;
+        let before = evidence.receipt.mount_evidence.mounts_after.clone();
+        if before != evidence.guard.mounts {
+            return Err(invalid(
+                "unique-mounted retained guard differs from its exact receipt snapshot",
+            ));
+        }
+        let targets = before
+            .iter()
+            .filter(|mount| {
+                mount.mount_on == evidence.receipt.collector_policy.mountpoint
+                    && group_source_matches(group, &mount.mount_from)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let [target] = targets.as_slice() else {
+            return Err(invalid(
+                "unique-mounted evidence does not have exactly one target mount entry",
+            ));
+        };
+        if sha256(&canonical_json(target)?) != mounted_binding_sha256 {
+            return Err(invalid(
+                "unmount command digest differs from the exact mounted binding",
+            ));
+        }
+        let mut after = before.clone();
+        let index = after
+            .binary_search(target)
+            .map_err(|_| invalid("target mount is absent from the sorted exact census"))?;
+        after.remove(index);
+        if exact_removed_mount(&before, &after) != Some(target) {
+            return Err(invalid(
+                "unmount expected-after is not exactly before minus one target entry",
+            ));
+        }
+        Ok(RetainedCollectorMountDeltaV3 {
+            after,
+            before,
+            command_sha256: sha256(&canonical_json(command)?),
+            operation_nonce: evidence.receipt.operation_nonce.clone(),
+            prior: self,
+            target: target.clone(),
+            _kind: PhantomData,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl<K> RetainedCollectorMountDeltaV3<K> {
+    pub(crate) fn sealed_plan(&self) -> SealedMountDeltaPlanV3<'_, K> {
+        SealedMountDeltaPlanV3 {
+            delta: self,
+            _not_send_or_sync: PhantomData,
+        }
+    }
+
+    pub(crate) fn revalidate_snapshot(
+        &self,
+        observed: &[MountBindingV3],
+    ) -> Result<(), RestartCollectorErrorV3> {
+        if observed != self.before && observed != self.after {
+            return Err(invalid(
+                "pending mount census observed neither exact before nor exact expected-after",
+            ));
+        }
+        if observed == self.before {
+            self.prior.revalidate_bound()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn revalidate_live_pending(&self) -> Result<(), RestartCollectorErrorV3> {
+        let observed = mount_table_snapshot()?;
+        self.revalidate_snapshot(&observed)
+    }
+
+    fn validate_post_delta(
+        &self,
+        next: &RetainedCollectorObservationV3,
+        direction: MountDeltaDirectionV3,
+        require_bound: bool,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        if require_bound {
+            next.revalidate_bound()?;
+        } else {
+            next.revalidate_unbound()?;
+        }
+        let prior = self.prior.evidence();
+        let next_evidence = next.evidence();
+        let expected_match = match direction {
+            MountDeltaDirectionV3::Mount => ReconciliationMatchV2::Unique { mounted: true },
+            MountDeltaDirectionV3::Unmount => ReconciliationMatchV2::Unique { mounted: false },
+        };
+        let expected_underlying_revalidated = matches!(direction, MountDeltaDirectionV3::Unmount);
+        if next_evidence.receipt.purpose != CollectorPurposeV3::ReconciliationSnapshot
+            || next_evidence.receipt.match_result != expected_match
+            || next_evidence
+                .receipt
+                .mount_evidence
+                .mountpoint_underlying_revalidated
+                != expected_underlying_revalidated
+            || next_evidence.receipt.mount_evidence.mounts_before != self.after
+            || next_evidence.receipt.mount_evidence.mounts_after != self.after
+            || next_evidence.guard.mounts != self.after
+            || next_evidence.receipt.operation_nonce != self.operation_nonce
+            || next_evidence.receipt.operation_nonce != prior.receipt.operation_nonce
+            || next_evidence.receipt.boot_session_uuid != prior.receipt.boot_session_uuid
+            || next_evidence.receipt.restart_epoch_nonce != prior.receipt.restart_epoch_nonce
+            || next_evidence.receipt.collector_policy_sha256
+                != prior.receipt.collector_policy_sha256
+            || next_evidence.receipt.backing_identity_sha256
+                != prior.receipt.backing_identity_sha256
+            || next_evidence.receipt.mountpoint_underlying_sha256
+                != prior.receipt.mountpoint_underlying_sha256
+            || next_evidence.receipt.matching_groups != prior.receipt.matching_groups
+        {
+            return Err(invalid(
+                "post-delta retained collector does not bind the exact operation, epoch, unique group, or expected mount snapshot",
+            ));
+        }
+        prior.revalidate_across_mount_delta(&self.after, direction)?;
+        if mount_table_snapshot()? != self.after {
+            return Err(invalid(
+                "mount table changed after post-delta collector final replay",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RetainedCollectorMountDeltaV3<MountingV3> {
+    pub(crate) fn seal_observation<'a>(
+        &'a self,
+        next: &'a RetainedCollectorObservationV3,
+    ) -> Result<SealedMountDeltaObservationV3<'a, MountingV3>, RestartCollectorErrorV3> {
+        self.validate_post_delta(next, MountDeltaDirectionV3::Mount, false)?;
+        Ok(SealedMountDeltaObservationV3 {
+            delta: self,
+            next,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn seal_advance<'a>(
+        &'a self,
+        next: &'a RetainedCollectorObservationV3,
+    ) -> Result<SealedMountDeltaAdvanceV3<'a, MountingV3>, RestartCollectorErrorV3> {
+        self.validate_post_delta(next, MountDeltaDirectionV3::Mount, true)?;
+        Ok(SealedMountDeltaAdvanceV3 {
+            delta: self,
+            next,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl RetainedCollectorMountDeltaV3<UnmountingV3> {
+    pub(crate) fn seal_observation<'a>(
+        &'a self,
+        next: &'a RetainedCollectorObservationV3,
+    ) -> Result<SealedMountDeltaObservationV3<'a, UnmountingV3>, RestartCollectorErrorV3> {
+        self.validate_post_delta(next, MountDeltaDirectionV3::Unmount, false)?;
+        Ok(SealedMountDeltaObservationV3 {
+            delta: self,
+            next,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn seal_advance<'a>(
+        &'a self,
+        next: &'a RetainedCollectorObservationV3,
+    ) -> Result<SealedMountDeltaAdvanceV3<'a, UnmountingV3>, RestartCollectorErrorV3> {
+        self.validate_post_delta(next, MountDeltaDirectionV3::Unmount, true)?;
+        Ok(SealedMountDeltaAdvanceV3 {
+            delta: self,
+            next,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl<K> SealedMountDeltaPlanV3<'_, K> {
+    pub(crate) fn before(&self) -> &[MountBindingV3] {
+        &self.delta.before
+    }
+
+    pub(crate) fn expected_after(&self) -> &[MountBindingV3] {
+        &self.delta.after
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.delta.operation_nonce
+    }
+
+    pub(crate) fn command_sha256(&self) -> &str {
+        &self.delta.command_sha256
+    }
+
+    pub(crate) fn target(&self) -> &MountBindingV3 {
+        &self.delta.target
+    }
+}
+
+impl<K> SealedMountDeltaAdvanceV3<'_, K> {
+    pub(crate) fn before(&self) -> &[MountBindingV3] {
+        &self.delta.before
+    }
+
+    pub(crate) fn expected_after(&self) -> &[MountBindingV3] {
+        &self.delta.after
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.delta.operation_nonce
+    }
+
+    pub(crate) fn command_sha256(&self) -> &str {
+        &self.delta.command_sha256
+    }
+
+    pub(crate) fn target(&self) -> &MountBindingV3 {
+        &self.delta.target
+    }
+
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.next.revalidate_bound()?;
+        if self.next.evidence().receipt.mount_evidence.mounts_after != self.delta.after {
+            return Err(invalid("sealed mount advance changed after construction"));
+        }
+        Ok(())
+    }
+}
+
+impl<K> SealedMountDeltaObservationV3<'_, K> {
+    pub(crate) fn mount_evidence_sha256(&self) -> &str {
+        &self.next.evidence().receipt.mount_evidence_sha256
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.delta.operation_nonce
+    }
+}
+
+fn mount_binding_from_command(binding: &ExactMountBindingCommandV3) -> MountBindingV3 {
+    MountBindingV3 {
+        filesystem_id: binding.filesystem_id(),
+        filesystem_type: binding.filesystem_type().to_string(),
+        mount_flags: binding.mount_flags(),
+        mount_from: binding.mount_from().to_string(),
+        mount_on: binding.mount_on().to_string(),
+    }
+}
+
+fn validate_mount_binding_shape(binding: &MountBindingV3) -> Result<(), RestartCollectorErrorV3> {
+    for (value, label, absolute) in [
+        (&binding.filesystem_type, "mount filesystem type", false),
+        (&binding.mount_from, "mount source", false),
+        (&binding.mount_on, "mount target", true),
+    ] {
+        if value.is_empty()
+            || value.len() > MAX_MOUNT_STRING_BYTES
+            || value.as_bytes().contains(&0)
+            || (absolute && !value.starts_with('/'))
+        {
+            return Err(invalid(format!("{label} is malformed")));
+        }
+    }
+    Ok(())
+}
+
+fn exact_unique_group(
+    receipt: &RestartCollectorReceiptV3,
+) -> Result<&MatchingDiskImageGroupV3, RestartCollectorErrorV3> {
+    let [group] = receipt.matching_groups.as_slice() else {
+        return Err(invalid(
+            "retained unique collector receipt is not exactly unique",
+        ));
+    };
+    Ok(group)
+}
+
+fn unique_volume_identity_sha256(
+    group: &MatchingDiskImageGroupV3,
+) -> Result<String, RestartCollectorErrorV3> {
+    Ok(sha256(&canonical_json(group)?))
+}
+
+fn group_source_matches(group: &MatchingDiskImageGroupV3, source: &str) -> bool {
+    group
+        .member_bsd_names
+        .iter()
+        .any(|name| source == name || source == format!("/dev/{name}"))
+}
+
+fn exact_added_mount<'a>(
+    before: &'a [MountBindingV3],
+    after: &'a [MountBindingV3],
+) -> Option<&'a MountBindingV3> {
+    if !strictly_sorted_mounts(before)
+        || !strictly_sorted_mounts(after)
+        || after.len() != before.len().checked_add(1)?
+    {
+        return None;
+    }
+    let added = after
+        .iter()
+        .filter(|entry| before.binary_search(entry).is_err())
+        .collect::<Vec<_>>();
+    (added.len() == 1
+        && before
+            .iter()
+            .all(|entry| after.binary_search(entry).is_ok()))
+    .then_some(added[0])
+}
+
+fn exact_removed_mount<'a>(
+    before: &'a [MountBindingV3],
+    after: &[MountBindingV3],
+) -> Option<&'a MountBindingV3> {
+    if !strictly_sorted_mounts(before)
+        || !strictly_sorted_mounts(after)
+        || before.len() != after.len().checked_add(1)?
+    {
+        return None;
+    }
+    let removed = before
+        .iter()
+        .filter(|entry| after.binary_search(entry).is_err())
+        .collect::<Vec<_>>();
+    (removed.len() == 1
+        && after
+            .iter()
+            .all(|entry| before.binary_search(entry).is_ok()))
+    .then_some(removed[0])
+}
+
+fn strictly_sorted_mounts(mounts: &[MountBindingV3]) -> bool {
+    mounts.windows(2).all(|pair| pair[0] < pair[1])
+}

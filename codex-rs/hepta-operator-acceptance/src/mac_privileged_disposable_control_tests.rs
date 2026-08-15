@@ -43,6 +43,10 @@ type BlockingCensusForCompileAssertions =
     RetainedControlCensusV3<'static, BlockingOperationV3, StableMountStateV3>;
 type CompletedCensusForCompileAssertions =
     RetainedControlCensusV3<'static, CompletedOperationV3, StableMountStateV3>;
+type PendingMountCensusForCompileAssertions =
+    RetainedControlCensusV3<'static, BlockingOperationV3, PendingMountDeltaV3>;
+type PendingUnmountCensusForCompileAssertions =
+    RetainedControlCensusV3<'static, BlockingOperationV3, PendingUnmountDeltaV3>;
 assert_not_impl!(BlockingCensusForCompileAssertions, Clone);
 assert_not_impl!(BlockingCensusForCompileAssertions, Send);
 assert_not_impl!(BlockingCensusForCompileAssertions, Sync);
@@ -55,9 +59,102 @@ assert_not_impl!(CompletedCensusForCompileAssertions, Sync);
 assert_not_impl!(CompletedCensusForCompileAssertions, serde::Serialize);
 assert_not_impl!(CompletedCensusForCompileAssertions, std::os::fd::AsRawFd);
 assert_not_impl!(CompletedCensusForCompileAssertions, From<std::fs::File>);
+assert_not_impl!(PendingMountCensusForCompileAssertions, Clone);
+assert_not_impl!(PendingMountCensusForCompileAssertions, Send);
+assert_not_impl!(PendingMountCensusForCompileAssertions, Sync);
+assert_not_impl!(PendingMountCensusForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    PendingMountCensusForCompileAssertions,
+    serde::de::DeserializeOwned
+);
+assert_not_impl!(PendingMountCensusForCompileAssertions, std::os::fd::AsRawFd);
+assert_not_impl!(PendingMountCensusForCompileAssertions, From<std::fs::File>);
+assert_not_impl!(
+    PendingMountCensusForCompileAssertions,
+    From<Vec<MountBindingV3>>
+);
+assert_not_impl!(PendingMountCensusForCompileAssertions, From<String>);
+assert_not_impl!(PendingUnmountCensusForCompileAssertions, Clone);
+assert_not_impl!(PendingUnmountCensusForCompileAssertions, Send);
+assert_not_impl!(PendingUnmountCensusForCompileAssertions, Sync);
+assert_not_impl!(PendingUnmountCensusForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    PendingUnmountCensusForCompileAssertions,
+    serde::de::DeserializeOwned
+);
+assert_not_impl!(
+    PendingUnmountCensusForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    PendingUnmountCensusForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(
+    PendingUnmountCensusForCompileAssertions,
+    From<Vec<MountBindingV3>>
+);
+assert_not_impl!(PendingUnmountCensusForCompileAssertions, From<String>);
 
 fn digest(byte: char) -> String {
     byte.to_string().repeat(64)
+}
+
+fn test_mount_binding(id: i32, source: &str, target: &str) -> MountBindingV3 {
+    MountBindingV3 {
+        filesystem_id: [id, id],
+        filesystem_type: "apfs".to_string(),
+        mount_flags: 0,
+        mount_from: source.to_string(),
+        mount_on: target.to_string(),
+    }
+}
+
+#[test]
+fn exact_mount_typestate_accepts_only_stable_or_one_pending_pair() {
+    let existing = test_mount_binding(1, "/dev/disk1s1", "/");
+    let target = test_mount_binding(9, "/dev/disk9s1", "/private/tmp/hepta-mount");
+    let before = vec![existing.clone()];
+    let mut after = vec![existing, target.clone()];
+    after.sort();
+    let mut third = after.clone();
+    third.push(test_mount_binding(
+        10,
+        "/dev/disk10s1",
+        "/private/tmp/foreign",
+    ));
+    third.sort();
+
+    assert!(
+        StableMountStateV3
+            .validate_current(&before, &before)
+            .is_ok()
+    );
+    assert!(
+        StableMountStateV3
+            .validate_current(&before, &after)
+            .is_err()
+    );
+
+    let mounting = PendingMountDeltaV3 {
+        command_sha256: digest('a'),
+        expected_after: after.clone(),
+        target: target.clone(),
+        _not_send_or_sync: PhantomData,
+    };
+    assert!(mounting.validate_current(&before, &before).is_ok());
+    assert!(mounting.validate_current(&before, &after).is_ok());
+    assert!(mounting.validate_current(&before, &third).is_err());
+
+    let unmounting = PendingUnmountDeltaV3 {
+        command_sha256: digest('b'),
+        expected_after: before.clone(),
+        target,
+        _not_send_or_sync: PhantomData,
+    };
+    assert!(unmounting.validate_current(&after, &after).is_ok());
+    assert!(unmounting.validate_current(&after, &before).is_ok());
+    assert!(unmounting.validate_current(&after, &third).is_err());
 }
 
 fn prepared_event() -> DisposableLifecycleEventV2 {

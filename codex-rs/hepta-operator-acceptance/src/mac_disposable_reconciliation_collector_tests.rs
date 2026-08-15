@@ -51,7 +51,9 @@ assert_not_impl_any!(
         std::os::fd::AsFd,
         std::os::fd::IntoRawFd,
         From<File>,
-        TryFrom<File>
+        TryFrom<File>,
+        From<Vec<MountBindingV3>>,
+        From<String>
 );
 assert_not_impl_any!(
     RetainedCollectorAppendV3<'static>:
@@ -64,7 +66,9 @@ assert_not_impl_any!(
         std::os::fd::AsFd,
         std::os::fd::IntoRawFd,
         From<File>,
-        TryFrom<File>
+        TryFrom<File>,
+        From<Vec<MountBindingV3>>,
+        From<String>
 );
 assert_not_impl_any!(
     RetainedCollectorIssueBindingV3<'static>:
@@ -79,9 +83,140 @@ assert_not_impl_any!(
         From<File>,
         TryFrom<File>
 );
+assert_not_impl_any!(
+    RetainedCollectorMountDeltaV3<MountingV3>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<MountBindingV3>>,
+        From<String>
+);
+assert_not_impl_any!(
+    RetainedCollectorMountDeltaV3<UnmountingV3>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<MountBindingV3>>,
+        From<String>
+);
+assert_not_impl_any!(
+    SealedMountDeltaPlanV3<'static, MountingV3>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<MountBindingV3>>,
+        From<String>
+);
+assert_not_impl_any!(
+    SealedMountDeltaAdvanceV3<'static, UnmountingV3>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<MountBindingV3>>,
+        From<String>
+);
+assert_not_impl_any!(
+    SealedMountDeltaObservationV3<'static, UnmountingV3>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<MountBindingV3>>,
+        From<String>
+);
 
 fn id(value: u64) -> String {
     format!("{value:016x}")
+}
+
+fn synthetic_mount(
+    filesystem_id: [i32; 2],
+    mount_from: &str,
+    mount_on: &str,
+    mount_flags: u64,
+) -> MountBindingV3 {
+    MountBindingV3 {
+        filesystem_id,
+        filesystem_type: "apfs".to_string(),
+        mount_flags,
+        mount_from: mount_from.to_string(),
+        mount_on: mount_on.to_string(),
+    }
+}
+
+#[test]
+fn exact_mount_delta_helpers_reject_extra_changed_and_unsorted_states() {
+    let existing = synthetic_mount([1, 1], "/dev/disk1s1", "/", 0);
+    let target = synthetic_mount(
+        [9, 4],
+        "/dev/disk9s4",
+        "/private/tmp/hepta-mount",
+        libc::MNT_RDONLY as u64,
+    );
+    let before = vec![existing.clone()];
+    let mut after = vec![existing.clone(), target.clone()];
+    after.sort();
+    assert_eq!(exact_added_mount(&before, &after), Some(&target));
+    assert_eq!(exact_removed_mount(&after, &before), Some(&target));
+
+    let mut changed = after.clone();
+    let existing_index = changed
+        .iter()
+        .position(|entry| entry.mount_on == "/")
+        .unwrap();
+    changed[existing_index].mount_flags ^= libc::MNT_RDONLY as u64;
+    changed.sort();
+    assert!(exact_added_mount(&before, &changed).is_none());
+
+    let mut extra = after.clone();
+    extra.push(synthetic_mount(
+        [10, 1],
+        "/dev/disk10s1",
+        "/private/tmp/foreign",
+        0,
+    ));
+    extra.sort();
+    assert!(exact_added_mount(&before, &extra).is_none());
+    assert!(exact_removed_mount(&extra, &before).is_none());
+
+    let mut unsorted = after.clone();
+    unsorted.reverse();
+    assert!(exact_added_mount(&before, &unsorted).is_none());
+    assert!(exact_removed_mount(&unsorted, &before).is_none());
 }
 
 fn synthetic_backing(path: &str) -> DiskImageBackingIdentityV2 {
