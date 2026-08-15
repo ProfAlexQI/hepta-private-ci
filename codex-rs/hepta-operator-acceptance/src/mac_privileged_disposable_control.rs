@@ -5,16 +5,24 @@
 //! never invokes an effect, and never turns a clean roster into authority.
 
 use crate::durable::canonical_json;
+use crate::mac_apfs_barrier_fixture::ApfsFixtureResultV1;
 use crate::mac_apfs_barrier_fixture::AttachmentObligationEventV1;
 use crate::mac_apfs_barrier_fixture::AttachmentObligationRecordV1;
+use crate::mac_apfs_barrier_fixture::AttachmentObligationVerificationV1;
 use crate::mac_apfs_barrier_fixture::ObligationDispositionV1;
 use crate::mac_apfs_barrier_fixture::replay_attachment_obligation_records;
+use crate::mac_apfs_barrier_fixture::verify_disposable_fixture_tree;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::LifecycleDispatchV2;
 use crate::mac_disposable_lifecycle::dispatch_lifecycle_records;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_disposable_lifecycle::validate_fresh_absence_shape;
+use crate::mac_iomedia_identity::current_boot_session_uuid;
+use crate::mac_privileged_broker::BarrierJournal;
+use crate::mac_privileged_broker::BarrierPhaseV1;
+use crate::mac_privileged_broker::NamespacePolicy;
+use crate::mac_privileged_broker::verify_sealed_publication;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -198,6 +206,7 @@ struct LegacyClosureExpectation {
     operation_nonce: String,
     root_identity: Identity,
     root_name: String,
+    semantics_replayed: bool,
     terminal_record_sha256: String,
 }
 
@@ -207,6 +216,47 @@ struct HistoricalScan {
     closure_expectations: Vec<LegacyClosureExpectation>,
     roots: Vec<HistoricalRootCapsule>,
     volume_roster: Vec<String>,
+}
+
+#[derive(Debug)]
+struct RetainedFdBudget {
+    retained: usize,
+    remaining: usize,
+}
+
+impl RetainedFdBudget {
+    fn after_existing(
+        maximum: usize,
+        existing: usize,
+    ) -> Result<Self, PrivilegedDisposableControlErrorV2> {
+        let remaining = maximum
+            .checked_sub(existing)
+            .ok_or_else(|| invalid("retained descriptor budget exceeded by fixed descriptors"))?;
+        Ok(Self {
+            retained: existing,
+            remaining,
+        })
+    }
+
+    /// Reserve before every open which will remain alive in the returned
+    /// assessment.  A failed open terminates the census, so reservations never
+    /// need to be refunded or reused by another fixture.
+    fn reserve(&mut self, label: &str) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        self.remaining = self.remaining.checked_sub(1).ok_or_else(|| {
+            invalid(format!(
+                "retained descriptor budget exhausted before opening {label}"
+            ))
+        })?;
+        self.retained = self
+            .retained
+            .checked_add(1)
+            .ok_or_else(|| invalid("retained descriptor counter overflowed"))?;
+        Ok(())
+    }
+
+    fn retained(&self) -> usize {
+        self.retained
+    }
 }
 
 #[derive(Default)]
@@ -314,7 +364,7 @@ impl LivePrivilegedDisposablePolicyV2 {
     pub fn assess_read_only(
         &self,
     ) -> Result<LivePrivilegedDisposableExecutionV2<'_>, PrivilegedDisposableControlErrorV2> {
-        self.assess_read_only_inner(|| Ok(()))
+        self.assess_read_only_inner(MAX_RETAINED_FDS, || Ok(()))
     }
 
     #[cfg(test)]
@@ -325,11 +375,20 @@ impl LivePrivilegedDisposablePolicyV2 {
     where
         F: FnOnce() -> Result<(), PrivilegedDisposableControlErrorV2>,
     {
-        self.assess_read_only_inner(before_final_revalidation)
+        self.assess_read_only_inner(MAX_RETAINED_FDS, before_final_revalidation)
+    }
+
+    #[cfg(test)]
+    fn assess_read_only_with_fd_limit(
+        &self,
+        retained_fd_limit: usize,
+    ) -> Result<LivePrivilegedDisposableExecutionV2<'_>, PrivilegedDisposableControlErrorV2> {
+        self.assess_read_only_inner(retained_fd_limit, || Ok(()))
     }
 
     fn assess_read_only_inner<F>(
         &self,
+        retained_fd_limit: usize,
         before_final_revalidation: F,
     ) -> Result<LivePrivilegedDisposableExecutionV2<'_>, PrivilegedDisposableControlErrorV2>
     where
@@ -343,9 +402,12 @@ impl LivePrivilegedDisposablePolicyV2 {
         let mut blocking = Vec::new();
         let mut completed = Vec::new();
         let mut total_bytes = 0usize;
+        let fixed_descriptors = 5usize + self.ancestors.as_ref().map_or(0, |_| 3);
+        let mut retained_fds =
+            RetainedFdBudget::after_existing(retained_fd_limit, fixed_descriptors)?;
         for name in &operation_names {
             let nonce = operation_nonce(name)?;
-            let capsule = self.open_operation(name, &mut total_bytes)?;
+            let capsule = self.open_operation(name, &mut total_bytes, &mut retained_fds)?;
             let bytes = capsule
                 .records
                 .iter()
@@ -374,9 +436,13 @@ impl LivePrivilegedDisposablePolicyV2 {
             }
             capsules.push(capsule);
         }
-        let historical = self.scan_historical_roots(&mut total_bytes)?;
-        let (historical_closed, publication_records, publication_roster) =
-            self.verify_legacy_closures(&historical.closure_expectations, &mut total_bytes)?;
+        let historical = self.scan_historical_roots(&mut total_bytes, &mut retained_fds)?;
+        let (historical_closed, publication_records, publication_roster) = self
+            .verify_legacy_closures(
+                &historical.closure_expectations,
+                &mut total_bytes,
+                &mut retained_fds,
+            )?;
         let awaiting = historical
             .awaiting_closure
             .iter()
@@ -427,8 +493,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 &self.filesystem,
             )?;
         }
-        let retained_fds = 5usize
-            + self.ancestors.as_ref().map_or(0, |_| 3)
+        let retained_fds_from_capsules = fixed_descriptors
             + capsules
                 .iter()
                 .map(|capsule| 1 + capsule.records.len())
@@ -439,8 +504,10 @@ impl LivePrivilegedDisposablePolicyV2 {
                 .map(HistoricalRootCapsule::descriptor_count)
                 .sum::<usize>()
             + publication_records.len();
-        if retained_fds > MAX_RETAINED_FDS {
-            return Err(invalid("retained descriptor budget exceeded"));
+        if retained_fds.retained() != retained_fds_from_capsules {
+            return Err(invalid(
+                "incremental retained descriptor budget disagrees with final capsule census",
+            ));
         }
         let mut aliases = CensusRegistry::default();
         aliases.insert("control root", self.root_identity)?;
@@ -605,8 +672,9 @@ impl LivePrivilegedDisposablePolicyV2 {
         &self,
         name: &str,
         total_bytes: &mut usize,
+        retained_fds: &mut RetainedFdBudget,
     ) -> Result<OperationCapsule, PrivilegedDisposableControlErrorV2> {
-        self.open_record_set(self.operations.as_raw_fd(), name, total_bytes)
+        self.open_record_set(self.operations.as_raw_fd(), name, total_bytes, retained_fds)
     }
 
     fn open_record_set(
@@ -614,7 +682,9 @@ impl LivePrivilegedDisposablePolicyV2 {
         parent_fd: RawFd,
         name: &str,
         total_bytes: &mut usize,
+        retained_fds: &mut RetainedFdBudget,
     ) -> Result<OperationCapsule, PrivilegedDisposableControlErrorV2> {
+        retained_fds.reserve("operation or obligation directory")?;
         let directory = openat_node(parent_fd, name, libc::O_RDONLY | libc::O_DIRECTORY)?;
         let identity = validate_directory(
             &directory,
@@ -635,6 +705,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                     "operation records contain an unknown, temporary, or gap name",
                 ));
             }
+            retained_fds.reserve("operation or obligation record")?;
             let file = openat_node(directory.as_raw_fd(), record_name, libc::O_RDONLY)?;
             let record_identity = validate_regular(
                 &file,
@@ -678,7 +749,13 @@ impl LivePrivilegedDisposablePolicyV2 {
     fn scan_historical_roots(
         &self,
         total_bytes: &mut usize,
+        retained_fds: &mut RetainedFdBudget,
     ) -> Result<HistoricalScan, PrivilegedDisposableControlErrorV2> {
+        let current_boot_session_uuid = current_boot_session_uuid().map_err(|error| {
+            invalid(format!(
+                "current boot session UUID could not be captured for historical replay: {error}"
+            ))
+        })?;
         let volume_roster = list_directory(self.volume.as_raw_fd(), MAX_VOLUME_ENTRIES)?;
         let historical_names = volume_roster
             .iter()
@@ -696,6 +773,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 .strip_prefix(HISTORICAL_ROOT_PREFIX)
                 .expect("filtered historical prefix");
             require_hex_nonce(root_nonce, "historical root nonce")?;
+            retained_fds.reserve("historical qualification root")?;
             let directory = openat_node(
                 self.volume.as_raw_fd(),
                 root_name,
@@ -715,6 +793,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 &["barrier-journal", "publication"],
                 "historical qualification root",
             )?;
+            retained_fds.reserve("historical publication directory")?;
             let publication = openat_node(
                 directory.as_raw_fd(),
                 "publication",
@@ -728,6 +807,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 &self.filesystem,
                 "historical publication directory",
             )?;
+            retained_fds.reserve("historical barrier journal")?;
             let barrier = openat_node(
                 directory.as_raw_fd(),
                 "barrier-journal",
@@ -742,7 +822,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 "historical barrier journal",
             )?;
             let (barrier_roster, barrier_nodes) =
-                self.open_barrier_journal(&barrier, total_bytes)?;
+                self.open_barrier_journal(&barrier, total_bytes, retained_fds)?;
             let publication_roster =
                 list_directory(publication.as_raw_fd(), MAX_HISTORICAL_ROOT_ENTRIES)?;
             if publication_roster.is_empty() {
@@ -769,6 +849,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                         name,
                         self.expected_uid,
                         self.expected_gid,
+                        retained_fds,
                     )?);
                 } else if let Some(nonce) = historical_publication_record_nonce(name) {
                     if nonce != root_nonce {
@@ -776,6 +857,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                             "historical publication receipt nonce differs from root nonce",
                         ));
                     }
+                    retained_fds.reserve("historical publication receipt")?;
                     let file = openat_node(publication.as_raw_fd(), name, libc::O_RDONLY)?;
                     let identity = validate_regular(
                         &file,
@@ -813,12 +895,18 @@ impl LivePrivilegedDisposablePolicyV2 {
                 )));
             }
             let mut obligations = Vec::new();
+            let mut obligation_verification = None;
+            let mut root_expectation = None;
             for obligation_name in obligation_names {
                 let operation_nonce = obligation_name
                     .strip_prefix(HISTORICAL_OBLIGATION_PREFIX)
                     .expect("validated obligation prefix");
-                let capsule =
-                    self.open_record_set(publication.as_raw_fd(), &obligation_name, total_bytes)?;
+                let capsule = self.open_record_set(
+                    publication.as_raw_fd(),
+                    &obligation_name,
+                    total_bytes,
+                    retained_fds,
+                )?;
                 let decoded = capsule
                     .records
                     .iter()
@@ -830,21 +918,24 @@ impl LivePrivilegedDisposablePolicyV2 {
                             })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let verification = replay_attachment_obligation_records(
-                    &decoded,
-                    "00000000-0000-0000-0000-000000000000",
-                )
-                .map_err(|error| invalid(format!("frozen historical v1 replay failed: {error}")))?;
+                let verification =
+                    replay_attachment_obligation_records(&decoded, &current_boot_session_uuid)
+                        .map_err(|error| {
+                            invalid(format!("frozen historical v1 replay failed: {error}"))
+                        })?;
                 if verification.operation_nonce != operation_nonce {
                     return Err(invalid("historical directory and record nonces differ"));
                 }
+                obligation_verification = Some(verification.clone());
                 match verification.disposition {
                     ObligationDispositionV1::Active
                     | ObligationDispositionV1::ReconcileRequired
                     | ObligationDispositionV1::Quarantined => {
                         blockers.push(format!("{root_name}/{operation_nonce}"));
                     }
-                    ObligationDispositionV1::Reconciled => {
+                    ObligationDispositionV1::Reconciled
+                        if historical_obligation_closure_eligible(&verification) =>
+                    {
                         let AttachmentObligationEventV1::Prepared {
                             image_backing,
                             mountpoint_underlying,
@@ -865,13 +956,35 @@ impl LivePrivilegedDisposablePolicyV2 {
                             operation_nonce: operation_nonce.to_string(),
                             root_identity,
                             root_name: root_name.clone(),
+                            semantics_replayed: false,
                             terminal_record_sha256: verification.terminal_record_sha256,
                         };
-                        awaiting_closure.push(expectation.binding_key());
-                        closure_expectations.push(expectation);
+                        root_expectation = Some(expectation);
+                    }
+                    ObligationDispositionV1::Reconciled => {
+                        blockers.push(
+                            historical_obligation_semantic_blocker(root_name, &verification)
+                                .expect("ineligible reconciled obligation has a blocker"),
+                        );
                     }
                 }
                 obligations.push(capsule);
+            }
+            let semantic_blockers = self.verify_historical_v1_semantics(
+                root_name,
+                root_nonce,
+                &publication_roster,
+                &other_nodes,
+                obligation_verification
+                    .as_ref()
+                    .expect("historical root has exactly one replayed obligation"),
+            );
+            let semantics_replayed = semantic_blockers.is_empty();
+            blockers.extend(semantic_blockers);
+            if let Some(mut expectation) = root_expectation {
+                expectation.semantics_replayed = semantics_replayed;
+                awaiting_closure.push(expectation.binding_key());
+                closure_expectations.push(expectation);
             }
             roots.push(HistoricalRootCapsule {
                 barrier,
@@ -905,6 +1018,7 @@ impl LivePrivilegedDisposablePolicyV2 {
         &self,
         barrier: &File,
         total_bytes: &mut usize,
+        retained_fds: &mut RetainedFdBudget,
     ) -> Result<(Vec<String>, Vec<HeldNode>), PrivilegedDisposableControlErrorV2> {
         let roster = list_directory(barrier.as_raw_fd(), MAX_HISTORICAL_ROOT_ENTRIES)?;
         let mut nodes = Vec::with_capacity(roster.len());
@@ -936,6 +1050,7 @@ impl LivePrivilegedDisposablePolicyV2 {
             ));
         }
         for name in &roster {
+            retained_fds.reserve("historical barrier record")?;
             let file = openat_node(barrier.as_raw_fd(), name, libc::O_RDONLY)?;
             let node_identity = validate_regular(
                 &file,
@@ -971,24 +1086,169 @@ impl LivePrivilegedDisposablePolicyV2 {
         name: &str,
         expected_uid: u32,
         expected_gid: u32,
+        retained_fds: &mut RetainedFdBudget,
     ) -> Result<HeldNode, PrivilegedDisposableControlErrorV2> {
-        let mut retained = 0usize;
         open_sealed_fixture_node(
             parent_fd,
             name,
             ".",
             0,
-            &mut retained,
+            retained_fds,
             expected_uid,
             expected_gid,
             &self.filesystem,
         )
     }
 
+    fn verify_historical_v1_semantics(
+        &self,
+        root_name: &str,
+        root_nonce: &str,
+        publication_roster: &[String],
+        other_nodes: &[HeldNode],
+        obligation: &AttachmentObligationVerificationV1,
+    ) -> Vec<String> {
+        let mut blockers = Vec::new();
+        let root_path = self.volume_path.join(root_name);
+        let publication_path = root_path.join("publication");
+        let fixture_name = format!("apfs-fixture-{root_nonce}");
+        let fixture_path = publication_path.join(&fixture_name);
+        let semantic_policy = if self.expected_uid == 0 && self.expected_gid == 0 {
+            NamespacePolicy::live()
+        } else {
+            NamespacePolicy::mechanism_only_current_user()
+        };
+        let policy = match semantic_policy {
+            Ok(policy) => Some(policy),
+            Err(error) => {
+                blockers.push(format!(
+                    "{root_name}:historical_v1_policy_semantics_unproved:{error}"
+                ));
+                None
+            }
+        };
+
+        if let Some(policy) = policy.as_ref() {
+            match BarrierJournal::open(&root_path.join("barrier-journal"), policy.clone())
+                .and_then(|journal| journal.verify())
+            {
+                Ok(verification)
+                    if !verification.admission_release_authority
+                        && !verification.live_authority
+                        && verification.current_phase == BarrierPhaseV1::Released
+                        && verification.epoch_nonce == root_nonce
+                        && verification.recovery_disposition == "terminal_released" => {}
+                Ok(_) => blockers.push(format!(
+                    "{root_name}:historical_v1_barrier_not_exact_terminal_released"
+                )),
+                Err(error) => blockers.push(format!(
+                    "{root_name}:historical_v1_barrier_semantics_unproved:{error}"
+                )),
+            }
+        }
+
+        let mut expected_publication_records = [
+            format!("hepta-operation-{root_nonce}.prepared.json"),
+            format!("hepta-operation-{root_nonce}.mechanism-receipt.json"),
+            format!("hepta-operation-{root_nonce}.terminal-receipt.json"),
+        ];
+        expected_publication_records.sort();
+        let publication_records = publication_roster
+            .iter()
+            .filter(|name| historical_publication_record_nonce(name).is_some())
+            .cloned()
+            .collect::<Vec<_>>();
+        if publication_records != expected_publication_records {
+            blockers.push(format!(
+                "{root_name}:historical_v1_publication_exact_three_record_roster_unproved"
+            ));
+        } else if let Some(policy) = policy.as_ref() {
+            match verify_sealed_publication(&publication_path, root_nonce, policy) {
+                Ok(sealed)
+                    if !sealed.publication_receipt.authority_granted
+                        && sealed.publication_receipt.final_name == fixture_name
+                        && !sealed.qualification_receipt.live_authority
+                        && !sealed.qualification_receipt.aggregate_authority
+                        && !sealed.qualification_receipt.cutover_authority
+                        && !sealed.qualification_receipt.deletion_authority
+                        && !sealed.qualification_receipt.production_authority
+                        && !sealed.qualification_receipt.refs_authority
+                        && !sealed.qualification_receipt.remote_authority
+                        && sealed.qualification_receipt.operation_nonce == root_nonce => {}
+                Ok(_) => blockers.push(format!(
+                    "{root_name}:historical_v1_publication_chain_not_exact_no_authority"
+                )),
+                Err(error) => blockers.push(format!(
+                    "{root_name}:historical_v1_publication_semantics_unproved:{error}"
+                )),
+            }
+        }
+
+        let matching_fixtures = other_nodes
+            .iter()
+            .filter(|node| node.name == fixture_name)
+            .collect::<Vec<_>>();
+        if matching_fixtures.len() != 1 {
+            blockers.push(format!(
+                "{root_name}:historical_v1_fixture_exact_singleton_unproved"
+            ));
+        } else {
+            let result = matching_fixtures[0]
+                .child_named("RESULT.json")
+                .ok_or_else(|| invalid("sealed fixture has no held RESULT.json"))
+                .and_then(|node| node.read_regular_bytes());
+            match result {
+                Ok(bytes) => {
+                    let decoded = serde_json::from_slice::<ApfsFixtureResultV1>(&bytes)
+                        .map_err(|error| invalid(format!("fixture RESULT JSON failed: {error}")))
+                        .and_then(|decoded| {
+                            if canonical_json(&decoded).map_err(|error| {
+                                invalid(format!("fixture RESULT canonicalization failed: {error}"))
+                            })? != bytes
+                            {
+                                return Err(invalid("fixture RESULT is not canonical JSON"));
+                            }
+                            Ok(decoded)
+                        });
+                    match decoded {
+                        Ok(result) => {
+                            let result_sha256 = crate::durable::sha256(&bytes);
+                            match verify_disposable_fixture_tree(&fixture_path, &result_sha256) {
+                                Ok(verification)
+                                    if !verification.authority_granted
+                                        && verification.operation_nonce == root_nonce
+                                        && verification.operation_nonce == obligation.operation_nonce
+                                        && verification.boot_session_uuid
+                                            == obligation.boot_session_uuid
+                                        && result.operation_nonce == root_nonce
+                                        && result.attachment_obligation_terminal_sha256
+                                            == obligation.terminal_record_sha256 => {}
+                                Ok(_) => blockers.push(format!(
+                                    "{root_name}:historical_v1_fixture_nonce_boot_or_terminal_binding_failed"
+                                )),
+                                Err(error) => blockers.push(format!(
+                                    "{root_name}:historical_v1_fixture_semantics_unproved:{error}"
+                                )),
+                            }
+                        }
+                        Err(error) => blockers.push(format!(
+                            "{root_name}:historical_v1_fixture_result_semantics_unproved:{error}"
+                        )),
+                    }
+                }
+                Err(error) => blockers.push(format!(
+                    "{root_name}:historical_v1_fixture_result_semantics_unproved:{error}"
+                )),
+            }
+        }
+        blockers
+    }
+
     fn verify_legacy_closures(
         &self,
         expectations: &[LegacyClosureExpectation],
         total_bytes: &mut usize,
+        retained_fds: &mut RetainedFdBudget,
     ) -> Result<(Vec<String>, Vec<RecordCapsule>, Vec<String>), PrivilegedDisposableControlErrorV2>
     {
         let publication_roster =
@@ -1009,6 +1269,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 .iter()
                 .find(|expectation| &expectation.attestation_name == name)
                 .expect("publication roster was checked above");
+            retained_fds.reserve("legacy closure record")?;
             let file = openat_node(
                 self.publication.as_raw_fd(),
                 &expectation.attestation_name,
@@ -1074,7 +1335,9 @@ impl LivePrivilegedDisposablePolicyV2 {
             {
                 return Err(invalid("legacy closure changed during descriptor replay"));
             }
-            closed.push(expectation.binding_key());
+            if expectation.semantics_replayed {
+                closed.push(expectation.binding_key());
+            }
             records.push(RecordCapsule {
                 bytes,
                 file,
@@ -1401,6 +1664,19 @@ impl HistoricalRootCapsule {
 }
 
 impl HeldNode {
+    fn child_named(&self, name: &str) -> Option<&HeldNode> {
+        self.children.iter().find(|child| child.name == name)
+    }
+
+    fn read_regular_bytes(&self) -> Result<Vec<u8>, PrivilegedDisposableControlErrorV2> {
+        if self.identity.mode & libc::S_IFMT as u16 != libc::S_IFREG as u16 {
+            return Err(invalid(
+                "held fixture semantic object is not a regular file",
+            ));
+        }
+        read_stable(&self.file, self.identity)
+    }
+
     fn revalidate(
         &self,
         parent_fd: RawFd,
@@ -1611,20 +1887,20 @@ fn open_sealed_fixture_node(
     name: &str,
     relative: &str,
     depth: usize,
-    retained: &mut usize,
+    retained_fds: &mut RetainedFdBudget,
     expected_uid: u32,
     expected_gid: u32,
     filesystem: &FilesystemBinding,
 ) -> Result<HeldNode, PrivilegedDisposableControlErrorV2> {
-    if depth > MAX_DESCRIPTOR_DEPTH || *retained >= MAX_RETAINED_FDS {
+    if depth > MAX_DESCRIPTOR_DEPTH {
         return Err(invalid(
-            "sealed fixture descriptor census exceeds its depth or node bound",
+            "sealed fixture descriptor census exceeds its depth bound",
         ));
     }
-    *retained += 1;
     let path_identity = named_identity(parent_fd, name)?;
     let file_type = path_identity.mode & libc::S_IFMT as u16;
     if file_type == libc::S_IFDIR as u16 {
+        retained_fds.reserve("historical sealed fixture directory")?;
         let file = openat_node(parent_fd, name, libc::O_RDONLY | libc::O_DIRECTORY)?;
         let expected_mode = if relative == "mountpoint" {
             0o700
@@ -1657,7 +1933,7 @@ fn open_sealed_fixture_node(
                 child_name,
                 &child_relative,
                 depth + 1,
-                retained,
+                retained_fds,
                 expected_uid,
                 expected_gid,
                 filesystem,
@@ -1675,6 +1951,7 @@ fn open_sealed_fixture_node(
         if relative == "." {
             return Err(invalid("historical sealed fixture root is not a directory"));
         }
+        retained_fds.reserve("historical sealed fixture file")?;
         let file = openat_node(parent_fd, name, libc::O_RDONLY)?;
         let node_identity = validate_regular(
             &file,
@@ -1881,6 +2158,29 @@ fn historical_publication_record_nonce(name: &str) -> Option<&str> {
             .strip_suffix(suffix)
             .filter(|nonce| require_hex_nonce(nonce, "historical publication nonce").is_ok())
     })
+}
+
+fn historical_obligation_closure_eligible(
+    verification: &AttachmentObligationVerificationV1,
+) -> bool {
+    !verification.authority_granted
+        && verification.current_boot
+        && verification.disposition == ObligationDispositionV1::Reconciled
+        && !verification.requires_privileged_reconciliation
+}
+
+fn historical_obligation_semantic_blocker(
+    root_name: &str,
+    verification: &AttachmentObligationVerificationV1,
+) -> Option<String> {
+    if !historical_obligation_closure_eligible(verification) {
+        Some(format!(
+            "{root_name}/{}:historical_v1_prior_boot_or_reconciliation_required",
+            verification.operation_nonce
+        ))
+    } else {
+        None
+    }
 }
 
 fn typed_sha256<T: Serialize>(value: &T) -> Result<String, PrivilegedDisposableControlErrorV2> {
