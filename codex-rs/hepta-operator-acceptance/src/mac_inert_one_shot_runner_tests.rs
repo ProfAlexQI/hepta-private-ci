@@ -53,7 +53,27 @@ assert_not_impl_any!(
         From<File>
 );
 assert_not_impl_any!(
+    AuthenticatedEffectEpochBindingV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
     PersistedIssuedRunnerGrantV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    RecoveredRunnerDeathProofV3<'static>:
         Clone,
         Send,
         Sync,
@@ -468,7 +488,8 @@ fn build_test_grant(
         schema: ISSUE_SCHEMA_V3.to_string(),
         schema_version: 3,
     };
-    let issued_record_sha256 = digest_canonical(&record).expect("issued digest");
+    let bytes = canonical_bytes(&record).expect("canonical issued record");
+    let issued_record_sha256 = sha256(&bytes);
     let envelope = RunnerCommandEnvelopeV3 {
         command_sha256: record.command_sha256.clone(),
         effect_id: record.effect_id,
@@ -489,7 +510,7 @@ fn build_test_grant(
         RunnerWireCommandV3 {
             command: command.to_vec(),
             envelope,
-            issued_record: record,
+            issued_record_canonical_bytes: bytes,
         },
         DurableIssuedBindingV3 {
             command_sha256: sha256(command),
@@ -622,6 +643,66 @@ fn fresh_process_epoch_is_kernel_bound_and_fork_inheritance_hits_pid_gate() {
     assert_eq!(unsafe { libc::waitpid(child, &mut status, 0) }, child);
     assert!(libc::WIFEXITED(status));
     assert_eq!(libc::WEXITSTATUS(status), 0);
+}
+
+#[test]
+fn recovered_proof_uses_boot_change_without_same_supervisor_signals() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh recovery epoch");
+    let current = kernel_process_identity(unsafe { libc::getpid() } as u32)
+        .expect("current supervisor identity");
+    let old_boot = if epoch.binding.boot_session_uuid == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    } else {
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    };
+    let proof: RecoveredRunnerDeathProofV3<'_> = RecoveredRunnerDeathProofV3::from_exact_replay(
+        RecoveredControlLeaseSealV3::for_test().expect("test retained lease"),
+        &epoch,
+        old_boot.to_string(),
+        digest_canonical(&("old", 1u64)).expect("issued digest"),
+        sha256(b"command"),
+        1,
+        NONCE.to_string(),
+        DurableEffectPurposeV3::RestartReconciliation,
+        current.pid,
+        current.parent_pid,
+        current.start_microseconds,
+        current.pid.saturating_add(1),
+        1,
+        || Ok(()),
+    )
+    .expect("boot change plus retained global lease proves old runner epoch dead");
+    assert_eq!(proof.sha256().expect("recovered proof digest").len(), 64);
+    assert!(proof.receipt.boot_changed);
+    assert!(!proof.receipt.same_boot_runner_identity_absent);
+    assert!(!proof.receipt.same_boot_supervisor_identity_absent);
+}
+
+#[test]
+fn recovered_proof_rejects_a_live_exact_same_boot_runner() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh recovery epoch");
+    let current = kernel_process_identity(unsafe { libc::getpid() } as u32)
+        .expect("current process identity");
+    let error = match RecoveredRunnerDeathProofV3::from_exact_replay(
+        RecoveredControlLeaseSealV3::for_test().expect("test retained lease"),
+        &epoch,
+        epoch.binding.boot_session_uuid.clone(),
+        digest_canonical(&("same", 1u64)).expect("issued digest"),
+        sha256(b"command"),
+        1,
+        NONCE.to_string(),
+        DurableEffectPurposeV3::RestartReconciliation,
+        current.pid.saturating_add(1),
+        current.pid.saturating_add(2),
+        1,
+        current.pid,
+        current.start_microseconds,
+        || Ok(()),
+    ) {
+        Ok(_) => panic!("live exact same-boot runner minted a recovered proof"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("still sees"));
 }
 
 #[test]
@@ -1234,6 +1315,33 @@ fn process_epoch_mismatch_is_rejected_before_persistence() {
         .expect_err("wrong process epoch");
     assert!(matches!(error, InertRunnerErrorV3::Invalid(_)));
     assert!(!persisted);
+}
+
+#[test]
+fn authenticated_effect_epoch_binds_pid_start_hello_fd_census_and_expires_with_runner() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let (_directory, _lease, runner) = spawn_runner(&epoch);
+    let binding = runner
+        .bind_effect_epoch(&epoch)
+        .expect("authenticated effect epoch");
+    assert_eq!(binding.process_epoch_sha256(), epoch.sha256());
+    assert_eq!(binding.runner_epoch_sha256(), runner.runner_epoch_sha256());
+    assert_eq!(binding.runner_hello_sha256(), runner.runner_epoch_sha256());
+    assert_eq!(binding.runner_pid(), runner.runner_identity.pid);
+    assert_eq!(
+        binding.runner_kernel_start_microseconds(),
+        runner.runner_identity.start_microseconds
+    );
+    require_sha256(binding.pre_hello_fd_census_sha256(), "pre-hello FD census")
+        .expect("FD census digest");
+    require_sha256(
+        &binding.transport_sha256().expect("transport digest"),
+        "transport",
+    )
+    .expect("transport digest shape");
+    binding.validate_current().expect("live binding replay");
+    drop(runner);
+    assert!(binding.validate_current().is_err());
 }
 
 #[test]
