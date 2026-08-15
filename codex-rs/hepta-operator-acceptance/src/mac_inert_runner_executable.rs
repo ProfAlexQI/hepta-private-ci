@@ -26,6 +26,8 @@ use std::time::Duration;
 
 const MAX_FIXED_RUNNER_BYTES_V3: u64 = 512 * 1024 * 1024;
 const CHILD_REAP_TIMEOUT_V3: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const TEST_FORCE_BOUNDED_REAP_FAILURE_ENV_V3: &str = "HEPTA_TEST_FORCE_BOUNDED_REAP_FAILURE_V3";
 
 #[derive(Clone, Copy)]
 struct ChildReapDeadlineV3 {
@@ -139,6 +141,13 @@ impl SpawnedInertChildV3 {
         // drifted or raced, group-only cleanup would otherwise wait for a
         // still-live runner and could outlast the protocol deadline.
         let child_kill = send_sigkill_allow_absent(self.pid);
+        #[cfg(test)]
+        if std::env::var_os(TEST_FORCE_BOUNDED_REAP_FAILURE_ENV_V3).is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "injected bounded inert runner reap failure",
+            ));
+        }
         loop {
             if deadline.expired()? {
                 return Err(io::Error::new(

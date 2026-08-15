@@ -2387,6 +2387,20 @@ fn absorb_transferred_lifecycle_record<A, M: MountCensusStateV3>(
 }
 
 impl<'a> RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3> {
+    #[cfg(test)]
+    pub(crate) fn selected_record_count(&self) -> usize {
+        self.admission
+            .admitted_operation_name
+            .as_ref()
+            .and_then(|name| {
+                self.assessment
+                    ._operations
+                    .iter()
+                    .find(|capsule| &capsule.name == name)
+            })
+            .map_or(0, |capsule| capsule.records.len())
+    }
+
     pub(crate) fn fresh_operation_admission_sink(
         &mut self,
     ) -> Result<FreshOperationAdmissionSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
@@ -2413,7 +2427,7 @@ impl<'a> RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3> {
     /// No `File`, raw descriptor, or cloneable descriptor-bearing bundle is
     /// ever returned to the caller between S1 revalidation and S2 creation.
     pub(crate) fn wire_fresh_store(
-        mut self,
+        self,
         wiring: FreshCensusStoreWiringV3,
     ) -> Result<CensusBoundDurableLifecycleStoreV3<'a>, DurableLifecycleStoreErrorV3> {
         if self.admission.admitted_operation_name.is_some() {
