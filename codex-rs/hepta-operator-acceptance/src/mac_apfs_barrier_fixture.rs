@@ -4823,7 +4823,7 @@ fn read_canonical<T: for<'de> Deserialize<'de> + Serialize>(
     Ok((parsed, bytes))
 }
 
-fn replay_attachment_obligation_records(
+pub(crate) fn replay_attachment_obligation_records(
     records: &[(AttachmentObligationRecordV1, Vec<u8>)],
     current_boot_session_uuid: &str,
 ) -> Result<AttachmentObligationVerificationV1, AcceptanceError> {
