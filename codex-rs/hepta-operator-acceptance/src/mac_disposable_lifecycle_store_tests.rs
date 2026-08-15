@@ -23,6 +23,7 @@ macro_rules! assert_not_impl {
 
 type FreshOperationStoreForCompileAssertions = CensusBoundDurableLifecycleStoreV3<'static>;
 type RestartOperationStoreForCompileAssertions = ReconciliationOperationStoreV3<'static, 'static>;
+type RetainedLifecycleAppendForCompileAssertions = RetainedLifecycleRecordAppendV3;
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Clone);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Send);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Sync);
@@ -42,6 +43,21 @@ assert_not_impl!(
 );
 assert_not_impl!(
     RestartOperationStoreForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(RetainedLifecycleAppendForCompileAssertions, Clone);
+assert_not_impl!(RetainedLifecycleAppendForCompileAssertions, Send);
+assert_not_impl!(RetainedLifecycleAppendForCompileAssertions, Sync);
+assert_not_impl!(
+    RetainedLifecycleAppendForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    RetainedLifecycleAppendForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RetainedLifecycleAppendForCompileAssertions,
     From<std::fs::File>
 );
 

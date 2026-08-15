@@ -12,6 +12,8 @@ use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
+use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
+use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
 use crate::mac_iomedia_identity::DiskImageBackingIdentityV2;
 use crate::mac_iomedia_identity::HeldDiskImageBacking;
 use crate::mac_iomedia_identity::HeldRestartIOMediaInventoryV3;
@@ -370,6 +372,7 @@ pub(crate) struct MountedV3;
 struct RetainedCollectorEvidenceV3 {
     durable: DurableCollectorReceiptV3,
     guard: LiveReplayGuardV3,
+    lifecycle_record_sha256: Option<String>,
     observation: FinalizedRestartObservationV3,
     receipt: RestartCollectorReceiptV3,
     receipt_sha256: String,
@@ -403,6 +406,17 @@ pub(crate) enum RetainedCollectorMatchV3 {
 pub(crate) enum RetainedCollectorObservationV3 {
     Reconciliation(RetainedCollectorMatchV3),
     FreshAbsence(RetainedFreshAbsenceV3),
+}
+
+pub(crate) enum RetainedCollectorAppendEventV3<'a> {
+    ReconciliationSnapshot(&'a ReconciliationSnapshotV2),
+    FreshAbsence(&'a FreshAbsenceObservationV2),
+}
+
+pub(crate) struct RetainedCollectorAppendV3<'a> {
+    event: RetainedCollectorAppendEventV3<'a>,
+    operation_nonce: &'a str,
+    _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 impl RestartCollectorPolicyV3 {
@@ -759,10 +773,27 @@ impl PendingRestartObservationV3 {
         &self.receipt
     }
 
+    #[cfg(test)]
     pub(crate) fn persist_and_retain(
         self,
     ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3> {
         self.persist_and_retain_inner(|| Ok(()))
+    }
+
+    pub(crate) fn persist_and_append(
+        self,
+        operation: &mut ReconciliationOperationStoreV3<'_, '_>,
+    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3> {
+        let mut retained = self.persist_and_retain_inner(|| Ok(()))?;
+        operation
+            .append_retained_collector(&mut retained)
+            .map_err(|error| {
+                invalid(format!(
+                    "durable lifecycle append rejected retained collector evidence: {error}"
+                ))
+            })?;
+        retained.revalidate_bound()?;
+        Ok(retained)
     }
 
     #[cfg(test)]
@@ -846,6 +877,7 @@ impl PendingRestartObservationV3 {
         let evidence = RetainedCollectorEvidenceV3 {
             durable,
             guard: self.guard,
+            lifecycle_record_sha256: None,
             observation,
             receipt: self.receipt,
             receipt_sha256,
@@ -915,21 +947,116 @@ impl RetainedCollectorEvidenceV3 {
                 "retained collector observation differs from its durable receipt",
             ));
         }
+        if self
+            .lifecycle_record_sha256
+            .as_deref()
+            .is_some_and(|digest| !valid_digest(digest))
+        {
+            return Err(invalid(
+                "retained collector lifecycle-record binding is malformed",
+            ));
+        }
         Ok(())
+    }
+
+    fn append_capability(&self) -> Result<RetainedCollectorAppendV3<'_>, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        if self.lifecycle_record_sha256.is_some() {
+            return Err(invalid(
+                "retained collector observation was already appended to lifecycle storage",
+            ));
+        }
+        let event = match &self.observation {
+            FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => {
+                RetainedCollectorAppendEventV3::ReconciliationSnapshot(snapshot)
+            }
+            FinalizedRestartObservationV3::FreshAbsence(observation) => {
+                RetainedCollectorAppendEventV3::FreshAbsence(observation)
+            }
+        };
+        Ok(RetainedCollectorAppendV3 {
+            event,
+            operation_nonce: &self.receipt.operation_nonce,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    fn bind_lifecycle_record(
+        &mut self,
+        append: RetainedLifecycleRecordAppendV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        let lifecycle_record_sha256 = append.digest();
+        if self.lifecycle_record_sha256.is_some() || !valid_digest(lifecycle_record_sha256) {
+            return Err(invalid(
+                "retained collector lifecycle-record binding is duplicate or malformed",
+            ));
+        }
+        self.lifecycle_record_sha256 = Some(lifecycle_record_sha256.to_string());
+        self.revalidate()
     }
 }
 
 impl RetainedCollectorObservationV3 {
-    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+    fn evidence(&self) -> &RetainedCollectorEvidenceV3 {
         match self {
             Self::Reconciliation(match_result) => match match_result {
-                RetainedCollectorMatchV3::Zero(value) => value.evidence.revalidate(),
-                RetainedCollectorMatchV3::UniqueAttached(value) => value.evidence.revalidate(),
-                RetainedCollectorMatchV3::UniqueMounted(value) => value.evidence.revalidate(),
-                RetainedCollectorMatchV3::Ambiguous(value) => value.evidence.revalidate(),
+                RetainedCollectorMatchV3::Zero(value) => &value.evidence,
+                RetainedCollectorMatchV3::UniqueAttached(value) => &value.evidence,
+                RetainedCollectorMatchV3::UniqueMounted(value) => &value.evidence,
+                RetainedCollectorMatchV3::Ambiguous(value) => &value.evidence,
             },
-            Self::FreshAbsence(value) => value.evidence.revalidate(),
+            Self::FreshAbsence(value) => &value.evidence,
         }
+    }
+
+    fn evidence_mut(&mut self) -> &mut RetainedCollectorEvidenceV3 {
+        match self {
+            Self::Reconciliation(match_result) => match match_result {
+                RetainedCollectorMatchV3::Zero(value) => &mut value.evidence,
+                RetainedCollectorMatchV3::UniqueAttached(value) => &mut value.evidence,
+                RetainedCollectorMatchV3::UniqueMounted(value) => &mut value.evidence,
+                RetainedCollectorMatchV3::Ambiguous(value) => &mut value.evidence,
+            },
+            Self::FreshAbsence(value) => &mut value.evidence,
+        }
+    }
+
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.evidence().revalidate()
+    }
+
+    pub(crate) fn append_capability(
+        &self,
+    ) -> Result<RetainedCollectorAppendV3<'_>, RestartCollectorErrorV3> {
+        self.evidence().append_capability()
+    }
+
+    pub(crate) fn bind_lifecycle_record(
+        &mut self,
+        append: RetainedLifecycleRecordAppendV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.evidence_mut().bind_lifecycle_record(append)
+    }
+
+    pub(crate) fn revalidate_bound(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        if self.evidence().lifecycle_record_sha256.is_none() {
+            return Err(invalid(
+                "retained collector observation lacks its durable lifecycle-record binding",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RetainedCollectorAppendV3<'_> {
+    pub(crate) fn event(&self) -> &RetainedCollectorAppendEventV3<'_> {
+        &self.event
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        self.operation_nonce
     }
 }
 

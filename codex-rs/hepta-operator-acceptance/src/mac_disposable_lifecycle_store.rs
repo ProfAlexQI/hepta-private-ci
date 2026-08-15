@@ -9,12 +9,16 @@ use crate::mac_disposable_lifecycle::CallbackOutcomeV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
 use crate::mac_disposable_lifecycle::EffectPurposeV2;
+#[cfg(test)]
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::LifecycleProcessModeV2;
+#[cfg(test)]
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
+use crate::mac_disposable_reconciliation_collector::RetainedCollectorAppendEventV3;
+use crate::mac_disposable_reconciliation_collector::RetainedCollectorObservationV3;
 use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
 use crate::mac_privileged_disposable_control::BlockingOperationV3;
 use crate::mac_privileged_disposable_control::FreshAdmissionV3;
@@ -30,6 +34,7 @@ use std::marker::PhantomData;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::RawFd;
+use std::rc::Rc;
 use thiserror::Error;
 
 const MAX_RECORD_BYTES: usize = 1024 * 1024;
@@ -148,6 +153,7 @@ impl ReconciliationLifecycleEventV3 {
         })
     }
 
+    #[cfg(test)]
     pub fn snapshot_observed(snapshot: ReconciliationSnapshotV2) -> Self {
         Self(DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot })
     }
@@ -188,6 +194,7 @@ impl ReconciliationLifecycleEventV3 {
         })
     }
 
+    #[cfg(test)]
     pub fn fresh_absence_observed(observation: FreshAbsenceObservationV2) -> Self {
         Self(DisposableLifecycleEventV2::FreshAbsenceObserved { observation })
     }
@@ -247,6 +254,26 @@ pub(crate) struct ReconciliationOperationStoreV3<'a, 'e> {
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
+}
+
+/// Unforgeable acknowledgement that the reconciliation store has retained
+/// and replayed the exact lifecycle record produced by one append.
+pub(crate) struct RetainedLifecycleRecordAppendV3 {
+    digest: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+impl RetainedLifecycleRecordAppendV3 {
+    fn new(digest: String) -> Self {
+        Self {
+            digest,
+            _not_send_or_sync: PhantomData,
+        }
+    }
+
+    pub(crate) fn digest(&self) -> &str {
+        &self.digest
+    }
 }
 
 pub type ReconciliationDurableLifecycleStoreV3 = DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>;
@@ -561,7 +588,61 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn append_reconciliation(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        self.append_reconciliation_inner(event)
+    }
+
+    pub(crate) fn append_retained_collector(
+        &mut self,
+        retained: &mut RetainedCollectorObservationV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        let (operation_nonce, event) = {
+            let capability = retained.append_capability().map_err(|error| {
+                invalid(format!(
+                    "retained collector evidence failed replay: {error}"
+                ))
+            })?;
+            let event = match capability.event() {
+                RetainedCollectorAppendEventV3::ReconciliationSnapshot(snapshot) => {
+                    DisposableLifecycleEventV2::ReconciliationSnapshotObserved {
+                        snapshot: (*snapshot).clone(),
+                    }
+                }
+                RetainedCollectorAppendEventV3::FreshAbsence(observation) => {
+                    DisposableLifecycleEventV2::FreshAbsenceObserved {
+                        observation: (*observation).clone(),
+                    }
+                }
+            };
+            (capability.operation_nonce().to_string(), event)
+        };
+        if operation_nonce != self.store.operation_nonce() {
+            return Err(invalid(
+                "retained collector operation differs from the reconciliation store",
+            ));
+        }
+        let digest = self.append_reconciliation_inner(ReconciliationLifecycleEventV3(event))?;
+        let append = RetainedLifecycleRecordAppendV3::new(digest.clone());
+        if let Err(error) = retained.bind_lifecycle_record(append) {
+            self.poisoned = true;
+            return Err(invalid(format!(
+                "durable collector append could not bind its retained record: {error}"
+            )));
+        }
+        retained.revalidate_bound().map_err(|error| {
+            self.poisoned = true;
+            invalid(format!(
+                "retained collector evidence changed after lifecycle append: {error}"
+            ))
+        })?;
+        Ok(digest)
+    }
+
+    fn append_reconciliation_inner(
         &mut self,
         event: ReconciliationLifecycleEventV3,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {

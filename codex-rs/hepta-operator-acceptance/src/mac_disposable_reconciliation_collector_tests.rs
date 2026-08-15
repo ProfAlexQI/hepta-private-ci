@@ -22,6 +22,51 @@ use std::process::Command;
 
 static LIVE_COLLECTOR_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+macro_rules! assert_not_impl_any {
+    ($ty:ty: $($trait:path),+ $(,)?) => {
+        const _: fn() = || {
+            trait AmbiguousIfImpl<A> {
+                fn marker() {}
+            }
+            impl<T: ?Sized> AmbiguousIfImpl<()> for T {}
+            $(
+                {
+                    struct Invalid;
+                    impl<T: ?Sized + $trait> AmbiguousIfImpl<Invalid> for T {}
+                }
+            )+
+            let _ = <$ty as AmbiguousIfImpl<_>>::marker;
+        };
+    };
+}
+
+assert_not_impl_any!(
+    RetainedCollectorObservationV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>
+);
+assert_not_impl_any!(
+    RetainedCollectorAppendV3<'static>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>
+);
+
 fn id(value: u64) -> String {
     format!("{value:016x}")
 }
@@ -791,6 +836,11 @@ fn retained_observation_keeps_live_evidence_after_persistence() {
         .persist_and_retain()
         .unwrap();
     retained.revalidate().unwrap();
+    {
+        let append = retained.append_capability().unwrap();
+        assert_eq!(append.operation_nonce(), fixture.bindings.operation_nonce);
+    }
+    assert!(retained.revalidate_bound().is_err());
 
     let late_artifact = fixture
         .artifact_root
