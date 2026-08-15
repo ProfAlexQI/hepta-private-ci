@@ -24,6 +24,9 @@ const REGISTRY_INVENTORY_SCHEMA: &str = "hepta_mac_iomedia_registry_inventory_v2
 const FOUR_NODE_TOPOLOGY_SCHEMA: &str = "hepta_mac_iomedia_four_node_topology_v2";
 const PROVENANCE_TOPOLOGY_SCHEMA: &str = "hepta_mac_attached_iomedia_topology_v2";
 const BACKING_SCHEMA: &str = "hepta_mac_disk_image_backing_provenance_v1";
+const BACKING_IDENTITY_SCHEMA: &str = "hepta_mac_disk_image_backing_identity_v2";
+const RESTART_BACKING_IDENTITY_SCHEMA: &str = "hepta_mac_restart_disk_image_backing_identity_v3";
+const RESTART_INVENTORY_SCHEMA: &str = "hepta_mac_restart_iomedia_inventory_v3";
 const MAX_IOMEDIA_OBJECTS: usize = 256;
 const MAX_ANCESTOR_DEPTH: usize = 64;
 const MAX_CF_STRING_BYTES: usize = 16 * 1024;
@@ -179,6 +182,183 @@ pub struct DiskImageBackingProvenanceV1 {
     pub opened_components: Vec<BackingPathComponentV1>,
     pub path_authority_granted: bool,
     pub schema: String,
+}
+
+/// Prepared, path-only identity of a disk-image backing file.  Unlike
+/// `DiskImageBackingProvenanceV1`, this deliberately excludes boot-scoped
+/// IORegistry ancestry so it can be replayed by a fresh process before a
+/// lingering attachment has been classified.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiskImageBackingIdentityV2 {
+    pub authority_granted: bool,
+    pub canonical_path: String,
+    pub opened_components: Vec<BackingPathComponentV1>,
+    pub path_authority_granted: bool,
+    pub schema: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RestartDiskImageBackingIdentityV3 {
+    pub authority_granted: bool,
+    pub canonical_path: String,
+    pub file_binding: BackingObjectBindingV1,
+    pub schema: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RestartDiskImageCandidateV3 {
+    pub backing_identity: RestartDiskImageBackingIdentityV3,
+    pub canonical_backing_path: String,
+    pub disk_image_device: IORegistryAncestorV1,
+    pub disk_image_url: String,
+    pub disk_image_url_path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RestartIOMediaObjectV3 {
+    pub authority_granted: bool,
+    pub candidate: Option<RestartDiskImageCandidateV3>,
+    pub provenance: IOMediaRegistryProvenanceV2,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RestartIOMediaInventoryV3 {
+    pub authority_granted: bool,
+    pub boot_session_uuid: String,
+    pub objects: Vec<RestartIOMediaObjectV3>,
+    pub schema: String,
+}
+
+fn valid_restart_bsd_name(value: &str) -> bool {
+    let Some(rest) = value.strip_prefix("disk") else {
+        return false;
+    };
+    let components = rest.split('s').collect::<Vec<_>>();
+    !components.is_empty()
+        && components.iter().enumerate().all(|(index, component)| {
+            !component.is_empty()
+                && component.bytes().all(|byte| byte.is_ascii_digit())
+                && !component.starts_with('0')
+                || (index == 0 && *component == "0")
+        })
+}
+
+pub fn validate_restart_iomedia_inventory_v3(
+    inventory: &RestartIOMediaInventoryV3,
+) -> Result<(), AcceptanceError> {
+    if inventory.schema != RESTART_INVENTORY_SCHEMA
+        || inventory.authority_granted
+        || !valid_uuid(&inventory.boot_session_uuid)
+        || inventory.objects.is_empty()
+        || inventory.objects.len() > MAX_IOMEDIA_OBJECTS
+    {
+        return Err(invalid(
+            "restart IOMedia inventory is malformed or grants authority",
+        ));
+    }
+    let mut previous_id: Option<&str> = None;
+    let mut bsd_names = BTreeSet::new();
+    for object in &inventory.objects {
+        let node = &object.provenance;
+        let first = node.ancestry.first();
+        let terminal = node.ancestry.last();
+        if object.authority_granted
+            || node.schema != PROVENANCE_SCHEMA
+            || node.authority_granted
+            || !node.conforms_to_iomedia
+            || node.bsd_name.len() > 256
+            || !valid_restart_bsd_name(&node.bsd_name)
+            || parse_registry_entry_id(&node.registry_entry_id).is_err()
+            || !valid_registry_path(&node.registry_path)
+            || node.ancestry.is_empty()
+            || node.ancestry.len() > MAX_ANCESTOR_DEPTH
+            || first.is_none_or(|ancestor| {
+                ancestor.registry_entry_id != node.registry_entry_id
+                    || ancestor.registry_path.as_deref() != Some(node.registry_path.as_str())
+            })
+            || terminal.is_none_or(|ancestor| {
+                ancestor.class_name != "IORegistryEntry" || ancestor.registry_path.is_some()
+            })
+            || node.whole_disk.schema != IDENTITY_SCHEMA
+            || node.whole_disk.authority_granted
+            || !valid_restart_bsd_name(&node.whole_disk.bsd_name)
+            || parse_registry_entry_id(&node.whole_disk.registry_entry_id).is_err()
+            || !bsd_names.insert(node.bsd_name.as_str())
+            || previous_id.is_some_and(|previous| previous >= node.registry_entry_id.as_str())
+        {
+            return Err(invalid(
+                "restart IOMedia object is malformed, duplicated, or out of order",
+            ));
+        }
+        previous_id = Some(&node.registry_entry_id);
+        let mut ancestry_ids = BTreeSet::new();
+        let mut ancestry_paths = BTreeSet::new();
+        for (index, ancestor) in node.ancestry.iter().enumerate() {
+            let terminal_root = index + 1 == node.ancestry.len()
+                && ancestor.class_name == "IORegistryEntry"
+                && ancestor.registry_path.is_none();
+            if parse_registry_entry_id(&ancestor.registry_entry_id).is_err()
+                || !valid_class_name(&ancestor.class_name)
+                || (!terminal_root
+                    && ancestor
+                        .registry_path
+                        .as_deref()
+                        .is_none_or(|path| !valid_registry_path(path)))
+                || !ancestry_ids.insert(ancestor.registry_entry_id.as_str())
+                || ancestor
+                    .registry_path
+                    .as_deref()
+                    .is_some_and(|path| !ancestry_paths.insert(path))
+            {
+                return Err(invalid(
+                    "restart IOMedia ancestry is malformed, cyclic, or aliased",
+                ));
+            }
+        }
+        if node.iomedia.preferred_block_size != node.disk_arbitration.block_size
+            || node.iomedia.content != node.disk_arbitration.content
+            || node.iomedia.ejectable != node.disk_arbitration.ejectable
+            || node.iomedia.leaf != node.disk_arbitration.leaf
+            || node.iomedia.removable != node.disk_arbitration.removable
+            || node.iomedia.size != node.disk_arbitration.size
+            || node.iomedia.whole != node.disk_arbitration.whole
+            || node.iomedia.writable != node.disk_arbitration.writable
+        {
+            return Err(invalid(
+                "restart IOMedia and Disk Arbitration properties disagree",
+            ));
+        }
+        let device_ancestors = node
+            .ancestry
+            .iter()
+            .filter(|ancestor| ancestor.class_name == "AppleDiskImageDevice")
+            .collect::<Vec<_>>();
+        match &object.candidate {
+            None if device_ancestors.is_empty() => {}
+            Some(candidate)
+                if device_ancestors.len() == 1
+                    && device_ancestors[0] == &candidate.disk_image_device
+                    && strict_file_url_path(&candidate.disk_image_url)?
+                        == candidate.disk_image_url_path
+                    && validate_restart_disk_image_backing_identity_v3(
+                        &candidate.backing_identity,
+                    )
+                    .is_ok()
+                    && candidate.backing_identity.canonical_path
+                        == candidate.canonical_backing_path => {}
+            _ => {
+                return Err(invalid(
+                    "restart IOMedia object has an ambiguous disk-image candidate",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -892,6 +1072,154 @@ fn validate_backing_shape(backing: &DiskImageBackingProvenanceV1) -> Result<(), 
         ));
     }
     Ok(())
+}
+
+pub fn validate_disk_image_backing_identity_v2(
+    backing: &DiskImageBackingIdentityV2,
+) -> Result<(), AcceptanceError> {
+    if backing.schema != BACKING_IDENTITY_SCHEMA
+        || backing.authority_granted
+        || backing.path_authority_granted
+        || backing.opened_components.len() < 2
+        || backing.opened_components.len() > MAX_BACKING_COMPONENTS
+    {
+        return Err(invalid(
+            "disk-image backing identity is malformed or grants authority",
+        ));
+    }
+    let path = Path::new(&backing.canonical_path);
+    if !path.is_absolute()
+        || backing
+            .opened_components
+            .first()
+            .map(|component| component.path.as_str())
+            != Some("/")
+        || backing
+            .opened_components
+            .last()
+            .map(|component| component.path.as_str())
+            != Some(backing.canonical_path.as_str())
+    {
+        return Err(invalid(
+            "disk-image backing identity component chain has wrong endpoints",
+        ));
+    }
+    for (index, component) in backing.opened_components.iter().enumerate() {
+        let binding = &component.fd_binding;
+        let expected_directory = index + 1 != backing.opened_components.len();
+        let expected_type = if expected_directory {
+            libc::S_IFDIR
+        } else {
+            libc::S_IFREG
+        } as u32;
+        let content_binding_is_valid = if expected_directory {
+            binding.content_sha256.is_none()
+        } else {
+            binding.content_sha256.as_deref().is_some_and(valid_sha256)
+        };
+        if component.directory != expected_directory
+            || binding.dev == 0
+            || binding.inode == 0
+            || binding.nlink == 0
+            || !(0..1_000_000_000).contains(&binding.ctime_nanoseconds)
+            || !(0..1_000_000_000).contains(&binding.mtime_nanoseconds)
+            || binding.mode & libc::S_IFMT as u32 != expected_type
+            || !content_binding_is_valid
+            || component.path_binding_before != component.fd_binding
+            || component.path_binding_after != component.fd_binding
+            || (index > 0
+                && Path::new(&component.path).parent()
+                    != Some(Path::new(&backing.opened_components[index - 1].path)))
+        {
+            return Err(invalid(
+                "disk-image backing identity component binding is unsafe or discontinuous",
+            ));
+        }
+    }
+    let file = &backing
+        .opened_components
+        .last()
+        .expect("checked length")
+        .fd_binding;
+    if file.nlink != 1 || file.size == 0 || file.size > MAX_BACKING_FILE_BYTES {
+        return Err(invalid(
+            "disk-image backing identity file has an unsafe link count or size",
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_restart_disk_image_backing_identity_v3(
+    backing: &RestartDiskImageBackingIdentityV3,
+) -> Result<(), AcceptanceError> {
+    let binding = &backing.file_binding;
+    let path = Path::new(&backing.canonical_path);
+    if backing.schema != RESTART_BACKING_IDENTITY_SCHEMA
+        || backing.authority_granted
+        || backing.canonical_path.len() > MAX_CF_STRING_BYTES
+        || !path.is_absolute()
+        || path.components().count() > MAX_BACKING_COMPONENTS
+        || path.components().any(|component| {
+            !matches!(
+                component,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            )
+        })
+        || binding.content_sha256.is_some()
+        || binding.dev == 0
+        || binding.inode == 0
+        || binding.nlink == 0
+        || binding.size == 0
+        || binding.mode & libc::S_IFMT as u32 != libc::S_IFREG as u32
+        || !(0..1_000_000_000).contains(&binding.ctime_nanoseconds)
+        || !(0..1_000_000_000).contains(&binding.mtime_nanoseconds)
+    {
+        return Err(invalid(
+            "restart DiskImageURL backing identity is malformed or grants authority",
+        ));
+    }
+    Ok(())
+}
+
+pub fn restart_disk_image_backing_matches_prepared_v3(
+    candidate: &RestartDiskImageBackingIdentityV3,
+    prepared: &DiskImageBackingIdentityV2,
+) -> Result<bool, AcceptanceError> {
+    validate_restart_disk_image_backing_identity_v3(candidate)?;
+    validate_disk_image_backing_identity_v2(prepared)?;
+    let prepared = &prepared
+        .opened_components
+        .last()
+        .expect("validated prepared backing")
+        .fd_binding;
+    let candidate = &candidate.file_binding;
+    Ok(candidate.ctime_nanoseconds == prepared.ctime_nanoseconds
+        && candidate.ctime_seconds == prepared.ctime_seconds
+        && candidate.dev == prepared.dev
+        && candidate.flags == prepared.flags
+        && candidate.gid == prepared.gid
+        && candidate.inode == prepared.inode
+        && candidate.mode == prepared.mode
+        && candidate.mtime_nanoseconds == prepared.mtime_nanoseconds
+        && candidate.mtime_seconds == prepared.mtime_seconds
+        && candidate.nlink == prepared.nlink
+        && candidate.size == prepared.size
+        && candidate.uid == prepared.uid)
+}
+
+pub fn project_disk_image_backing_identity_v2(
+    backing: &DiskImageBackingProvenanceV1,
+) -> Result<DiskImageBackingIdentityV2, AcceptanceError> {
+    validate_backing_shape(backing)?;
+    let identity = DiskImageBackingIdentityV2 {
+        authority_granted: false,
+        canonical_path: backing.canonical_path.clone(),
+        opened_components: backing.opened_components.clone(),
+        path_authority_granted: false,
+        schema: BACKING_IDENTITY_SCHEMA.to_string(),
+    };
+    validate_disk_image_backing_identity_v2(&identity)?;
+    Ok(identity)
 }
 
 pub fn validate_iomedia_topology_provenance_shape(
@@ -1641,6 +1969,30 @@ mod platform {
         _not_send_or_sync: PhantomData<Rc<()>>,
     }
 
+    /// A bounded full-registry restart census. Every IOMedia, DADisk,
+    /// whole-disk, and ancestry handle remains live until the caller has
+    /// persisted its canonical collector receipt and requests final replay.
+    #[must_use = "restart IOMedia handles must outlive collector receipt persistence"]
+    pub struct HeldRestartIOMediaInventoryV3 {
+        held_backings: Vec<HeldRestartCandidateBackingV3>,
+        held_nodes: Vec<HeldRestartNodeV3>,
+        report: RestartIOMediaInventoryV3,
+        _not_send_or_sync: PhantomData<Rc<()>>,
+    }
+
+    struct HeldRestartCandidateBackingV3 {
+        canonical_path: String,
+        disk_image_url: String,
+        disk_image_url_path: String,
+        file: File,
+        identity: RestartDiskImageBackingIdentityV3,
+    }
+
+    struct HeldRestartNodeV3 {
+        candidate: Option<RestartDiskImageCandidateV3>,
+        captured: CapturedNode,
+    }
+
     /// Opaque, non-serializable capsule retaining both exact pre-attach T5
     /// captures. The report can be cloned into canonical receipts, but the
     /// IOKit, Disk Arbitration, and ancestry handles remain owned here.
@@ -1859,7 +2211,9 @@ mod platform {
                 let directory = index + 1 != normal_components.len();
                 let parent_fd = files.last().expect("root retained").as_raw_fd();
                 let before = backing_fstatat(parent_fd, &name, "backing component before open")?;
-                let mut flags = libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW;
+                require_backing_kind(&before, directory, "disk-image backing component")?;
+                let mut flags =
+                    libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK;
                 if directory {
                     flags |= libc::O_DIRECTORY;
                 }
@@ -1875,7 +2229,6 @@ mod platform {
                         "disk-image backing component changed across openat",
                     ));
                 }
-                require_backing_kind(&before, directory, "disk-image backing component")?;
                 let stable_binding = if directory {
                     before
                 } else {
@@ -1925,17 +2278,27 @@ mod platform {
             })
         }
 
-        fn finish(
+        pub fn identity(&self) -> Result<DiskImageBackingIdentityV2, AcceptanceError> {
+            self.replay_identity()
+        }
+
+        pub fn revalidate_identity_after_persistence(
             &self,
-            candidate: &DiskImageCandidateObservation,
-            disk_image_device_count: usize,
-            disk_image_url_count: usize,
-        ) -> Result<DiskImageBackingProvenanceV1, AcceptanceError> {
-            if strict_file_url_path(&candidate.url)? != self.canonical_path
-                || std::fs::canonicalize(&self.canonical_path)? != Path::new(&self.canonical_path)
-            {
+            expected: &DiskImageBackingIdentityV2,
+        ) -> Result<(), AcceptanceError> {
+            validate_disk_image_backing_identity_v2(expected)?;
+            if self.replay_identity()? != *expected {
                 return Err(invalid(
-                    "DiskImageURL does not resolve to the held canonical backing path",
+                    "held disk-image backing identity changed after receipt persistence",
+                ));
+            }
+            Ok(())
+        }
+
+        fn replay_identity(&self) -> Result<DiskImageBackingIdentityV2, AcceptanceError> {
+            if std::fs::canonicalize(&self.canonical_path)? != Path::new(&self.canonical_path) {
+                return Err(invalid(
+                    "held disk-image backing path is no longer canonical",
                 ));
             }
             let mut opened_components = Vec::with_capacity(self.files.len());
@@ -2013,14 +2376,37 @@ mod platform {
                     path_binding_before: self.path_bindings_before[index].clone(),
                 });
             }
-            let report = DiskImageBackingProvenanceV1 {
+            let identity = DiskImageBackingIdentityV2 {
                 authority_granted: false,
                 canonical_path: self.canonical_path.clone(),
+                opened_components,
+                path_authority_granted: false,
+                schema: BACKING_IDENTITY_SCHEMA.to_string(),
+            };
+            validate_disk_image_backing_identity_v2(&identity)?;
+            Ok(identity)
+        }
+
+        fn finish(
+            &self,
+            candidate: &DiskImageCandidateObservation,
+            disk_image_device_count: usize,
+            disk_image_url_count: usize,
+        ) -> Result<DiskImageBackingProvenanceV1, AcceptanceError> {
+            if strict_file_url_path(&candidate.url)? != self.canonical_path {
+                return Err(invalid(
+                    "DiskImageURL does not resolve to the held canonical backing path",
+                ));
+            }
+            let identity = self.replay_identity()?;
+            let report = DiskImageBackingProvenanceV1 {
+                authority_granted: false,
+                canonical_path: identity.canonical_path,
                 disk_image_device: candidate.device.clone(),
                 disk_image_device_ancestor_count: disk_image_device_count as u32,
                 disk_image_url: candidate.url.clone(),
                 disk_image_url_ancestor_count: disk_image_url_count as u32,
-                opened_components,
+                opened_components: identity.opened_components,
                 path_authority_granted: false,
                 schema: BACKING_SCHEMA.to_string(),
             };
@@ -2470,6 +2856,333 @@ mod platform {
             return Err(invalid("full IOMedia inventory returned no objects"));
         }
         Ok(ids.into_iter().collect())
+    }
+
+    struct RestartCandidateObservationV3 {
+        device: IORegistryAncestorV1,
+        disk_image_url: String,
+        disk_image_url_path: String,
+    }
+
+    fn restart_candidate_observation(
+        ancestry: &HeldAncestry,
+    ) -> Result<Option<RestartCandidateObservationV3>, AcceptanceError> {
+        match (
+            ancestry.disk_image_device_count,
+            ancestry.disk_image_candidates.as_slice(),
+        ) {
+            (0, []) => Ok(None),
+            (1, [candidate]) => {
+                if candidate.device.class_name != "AppleDiskImageDevice"
+                    || parse_registry_entry_id(&candidate.device.registry_entry_id).is_err()
+                    || candidate
+                        .device
+                        .registry_path
+                        .as_deref()
+                        .is_none_or(|path| !valid_registry_path(path))
+                {
+                    return Err(invalid(
+                        "restart candidate has malformed AppleDiskImageDevice ancestry",
+                    ));
+                }
+                Ok(Some(RestartCandidateObservationV3 {
+                    device: candidate.device.clone(),
+                    disk_image_url: candidate.url.clone(),
+                    disk_image_url_path: strict_file_url_path(&candidate.url)?,
+                }))
+            }
+            _ => Err(invalid(
+                "restart IOMedia ancestry has an ambiguous DiskImageURL/device relationship",
+            )),
+        }
+    }
+
+    fn canonical_restart_url_path(path: &str) -> Result<String, AcceptanceError> {
+        let canonical = std::fs::canonicalize(Path::new(path))?;
+        canonical
+            .to_str()
+            .filter(|value| !value.is_empty() && value.len() <= MAX_CF_STRING_BYTES)
+            .map(str::to_string)
+            .ok_or_else(|| invalid("DiskImageURL realpath is not bounded UTF-8"))
+    }
+
+    fn capture_restart_url_backing(
+        canonical_path: &str,
+        disk_image_url: &str,
+        disk_image_url_path: &str,
+    ) -> Result<HeldRestartCandidateBackingV3, AcceptanceError> {
+        let path = CString::new(canonical_path)
+            .map_err(|_| invalid("DiskImageURL realpath contains NUL"))?;
+        let before = backing_fstatat(libc::AT_FDCWD, &path, "DiskImageURL backing before open")?;
+        require_backing_kind(&before, false, "DiskImageURL backing")?;
+        let fd = unsafe {
+            libc::open(
+                path.as_ptr(),
+                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK,
+            )
+        };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        let file = unsafe { File::from_raw_fd(fd) };
+        let held = backing_fstat(file.as_raw_fd(), "held DiskImageURL backing")?;
+        let after = backing_fstatat(libc::AT_FDCWD, &path, "DiskImageURL backing after open")?;
+        require_backing_kind(&held, false, "DiskImageURL backing")?;
+        if before != held || held != after {
+            return Err(invalid(
+                "DiskImageURL backing changed across descriptor capture",
+            ));
+        }
+        let identity = RestartDiskImageBackingIdentityV3 {
+            authority_granted: false,
+            canonical_path: canonical_path.to_string(),
+            file_binding: held,
+            schema: RESTART_BACKING_IDENTITY_SCHEMA.to_string(),
+        };
+        validate_restart_disk_image_backing_identity_v3(&identity)?;
+        Ok(HeldRestartCandidateBackingV3 {
+            canonical_path: canonical_path.to_string(),
+            disk_image_url: disk_image_url.to_string(),
+            disk_image_url_path: disk_image_url_path.to_string(),
+            file,
+            identity,
+        })
+    }
+
+    #[cfg(test)]
+    pub(super) fn capture_restart_url_backing_identity_for_test(
+        disk_image_url: &str,
+    ) -> Result<RestartDiskImageBackingIdentityV3, AcceptanceError> {
+        let disk_image_url_path = strict_file_url_path(disk_image_url)?;
+        let canonical_path = canonical_restart_url_path(&disk_image_url_path)?;
+        let held =
+            capture_restart_url_backing(&canonical_path, disk_image_url, &disk_image_url_path)?;
+        if canonical_restart_url_path(&disk_image_url_path)? != canonical_path
+            || backing_fstat(held.file.as_raw_fd(), "test DiskImageURL backing replay")?
+                != held.identity.file_binding
+        {
+            return Err(invalid(
+                "test DiskImageURL backing changed across retained replay",
+            ));
+        }
+        Ok(held.identity.clone())
+    }
+
+    fn restart_candidate_with_backing(
+        observation: RestartCandidateObservationV3,
+        backing: &HeldRestartCandidateBackingV3,
+    ) -> Result<RestartDiskImageCandidateV3, AcceptanceError> {
+        if observation.disk_image_url != backing.disk_image_url
+            || observation.disk_image_url_path != backing.disk_image_url_path
+            || canonical_restart_url_path(&observation.disk_image_url_path)?
+                != backing.canonical_path
+        {
+            return Err(invalid(
+                "DiskImageURL alias changed while its live backing was retained",
+            ));
+        }
+        Ok(RestartDiskImageCandidateV3 {
+            backing_identity: backing.identity.clone(),
+            canonical_backing_path: backing.canonical_path.clone(),
+            disk_image_device: observation.device,
+            disk_image_url: observation.disk_image_url,
+            disk_image_url_path: observation.disk_image_url_path,
+        })
+    }
+
+    pub fn capture_restart_inventory() -> Result<HeldRestartIOMediaInventoryV3, AcceptanceError> {
+        let boot = current_boot_session_uuid_impl()?;
+        let class = CString::new("IOMedia").expect("fixed IOKit class");
+        let matching = unsafe { IOServiceMatching(class.as_ptr()) };
+        if matching.is_null() {
+            return Err(invalid("IOServiceMatching could not match IOMedia"));
+        }
+        let mut iterator = IO_OBJECT_NULL;
+        let rc =
+            unsafe { IOServiceGetMatchingServices(K_IOMAIN_PORT_DEFAULT, matching, &mut iterator) };
+        if rc != KERN_SUCCESS || iterator == IO_OBJECT_NULL {
+            return Err(invalid(format!(
+                "IOServiceGetMatchingServices failed with IOKit status 0x{rc:x}"
+            )));
+        }
+        let iterator = IoObjectGuard(iterator);
+        let session = Session::create()?;
+        let mut nodes = BTreeMap::<String, CapturedNode>::new();
+        loop {
+            let object = unsafe { IOIteratorNext(iterator.0) };
+            if object == IO_OBJECT_NULL {
+                break;
+            }
+            if nodes.len() == MAX_IOMEDIA_OBJECTS {
+                return Err(invalid(
+                    "restart IOMedia enumeration exceeds the object bound",
+                ));
+            }
+            let media = IoObjectGuard(object);
+            require_iomedia(media.0, "restart census")?;
+            let id = registry_id(media.0, "restart census IOMedia")?;
+            let disk = DADiskGuard::new(unsafe {
+                DADiskCreateFromIOMedia(std::ptr::null(), session.0, media.0)
+            })?;
+            let bsd_name = disk_bsd_name(disk.0)?;
+            let resolved = describe_media(&session, media, id, &bsd_name)?;
+            let captured = provenance_from_resolved(resolved)?;
+            let key = format!("{id:016x}");
+            if nodes.insert(key, captured).is_some() {
+                return Err(invalid(
+                    "restart IOMedia enumeration returned a duplicate registry ID",
+                ));
+            }
+        }
+        if nodes.is_empty() {
+            return Err(invalid("restart IOMedia enumeration returned no objects"));
+        }
+        let all_ids = enumerate_all_registry_ids()?;
+        if nodes.keys().cloned().collect::<Vec<_>>() != all_ids
+            || current_boot_session_uuid_impl()? != boot
+        {
+            return Err(invalid(
+                "restart full IOMedia census or boot changed during capture",
+            ));
+        }
+        let mut backing_by_url = BTreeMap::<String, HeldRestartCandidateBackingV3>::new();
+        let mut held_nodes = Vec::with_capacity(nodes.len());
+        for captured in nodes.into_values() {
+            let candidate = match restart_candidate_observation(&captured.ancestry)? {
+                None => None,
+                Some(observation) => {
+                    let canonical_path =
+                        canonical_restart_url_path(&observation.disk_image_url_path)?;
+                    if !backing_by_url.contains_key(&observation.disk_image_url) {
+                        backing_by_url.insert(
+                            observation.disk_image_url.clone(),
+                            capture_restart_url_backing(
+                                &canonical_path,
+                                &observation.disk_image_url,
+                                &observation.disk_image_url_path,
+                            )?,
+                        );
+                    }
+                    let backing = backing_by_url
+                        .get(&observation.disk_image_url)
+                        .expect("restart backing inserted");
+                    if backing.canonical_path != canonical_path {
+                        return Err(invalid(
+                            "one DiskImageURL resolved to multiple live backing paths",
+                        ));
+                    }
+                    Some(restart_candidate_with_backing(observation, backing)?)
+                }
+            };
+            held_nodes.push(HeldRestartNodeV3 {
+                candidate,
+                captured,
+            });
+        }
+        let objects = held_nodes
+            .iter()
+            .map(|node| RestartIOMediaObjectV3 {
+                authority_granted: false,
+                candidate: node.candidate.clone(),
+                provenance: node.captured.report.clone(),
+            })
+            .collect::<Vec<_>>();
+        let report = RestartIOMediaInventoryV3 {
+            authority_granted: false,
+            boot_session_uuid: boot,
+            objects,
+            schema: RESTART_INVENTORY_SCHEMA.to_string(),
+        };
+        validate_restart_iomedia_inventory_v3(&report)?;
+        Ok(HeldRestartIOMediaInventoryV3 {
+            held_backings: backing_by_url.into_values().collect(),
+            held_nodes,
+            report,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    impl HeldRestartIOMediaInventoryV3 {
+        pub fn report(&self) -> &RestartIOMediaInventoryV3 {
+            &self.report
+        }
+
+        pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
+            if current_boot_session_uuid_impl()? != self.report.boot_session_uuid
+                || self.held_nodes.len() != self.report.objects.len()
+            {
+                return Err(invalid(
+                    "restart IOMedia census changed boot or descriptor cardinality",
+                ));
+            }
+            for backing in &self.held_backings {
+                if canonical_restart_url_path(&backing.disk_image_url_path)?
+                    != backing.canonical_path
+                {
+                    return Err(invalid(
+                        "DiskImageURL realpath changed after receipt persistence",
+                    ));
+                }
+                let path = CString::new(backing.canonical_path.as_str())
+                    .map_err(|_| invalid("DiskImageURL realpath contains NUL"))?;
+                let held =
+                    backing_fstat(backing.file.as_raw_fd(), "held DiskImageURL backing replay")?;
+                let named =
+                    backing_fstatat(libc::AT_FDCWD, &path, "named DiskImageURL backing replay")?;
+                if held != backing.identity.file_binding || named != backing.identity.file_binding {
+                    return Err(invalid(
+                        "held DiskImageURL backing changed after receipt persistence",
+                    ));
+                }
+                validate_restart_disk_image_backing_identity_v3(&backing.identity)?;
+            }
+            for (index, (held, expected)) in
+                self.held_nodes.iter().zip(&self.report.objects).enumerate()
+            {
+                held.captured
+                    .ancestry
+                    .revalidate_retained(&format!("restart held node {index}"))?;
+                let replayed = replay_provenance_from_held(
+                    &held.captured,
+                    &format!("restart held node {index}"),
+                )?;
+                let replayed_candidate = match restart_candidate_observation(&replayed.ancestry)? {
+                    None => None,
+                    Some(observation) => {
+                        let backing = self
+                            .held_backings
+                            .iter()
+                            .find(|backing| backing.disk_image_url == observation.disk_image_url)
+                            .ok_or_else(|| {
+                                invalid("replayed DiskImageURL has no retained backing")
+                            })?;
+                        Some(restart_candidate_with_backing(observation, backing)?)
+                    }
+                };
+                if replayed.report != expected.provenance
+                    || replayed_candidate != expected.candidate
+                    || held.candidate != expected.candidate
+                {
+                    return Err(invalid(
+                        "restart held IOMedia provenance changed after receipt persistence",
+                    ));
+                }
+            }
+            let expected_ids = self
+                .report
+                .objects
+                .iter()
+                .map(|object| object.provenance.registry_entry_id.clone())
+                .collect::<Vec<_>>();
+            if enumerate_all_registry_ids()? != expected_ids
+                || current_boot_session_uuid_impl()? != self.report.boot_session_uuid
+            {
+                return Err(invalid(
+                    "restart full IOMedia inventory changed after receipt persistence",
+                ));
+            }
+            validate_restart_iomedia_inventory_v3(&self.report)
+        }
     }
 
     struct CapturedFour {
@@ -3264,6 +3977,8 @@ pub use platform::HeldDiskImageBacking;
 #[cfg(target_os = "macos")]
 pub use platform::HeldPreAttachIOMediaInventory;
 #[cfg(target_os = "macos")]
+pub use platform::HeldRestartIOMediaInventoryV3;
+#[cfg(target_os = "macos")]
 pub use platform::ResolvedIOMediaObject;
 
 #[cfg(not(target_os = "macos"))]
@@ -3284,6 +3999,12 @@ pub struct HeldPreAttachIOMediaInventory {
 }
 
 #[cfg(not(target_os = "macos"))]
+#[must_use = "restart IOMedia handles must outlive collector receipt persistence"]
+pub struct HeldRestartIOMediaInventoryV3 {
+    _unsupported: (),
+}
+
+#[cfg(not(target_os = "macos"))]
 pub struct ResolvedIOMediaObject {
     _unsupported: (),
 }
@@ -3300,6 +4021,27 @@ pub fn hold_disk_image_backing(path: &Path) -> Result<HeldDiskImageBacking, Acce
             "disk-image backing descriptor capture is unsupported outside macOS",
         ))
     }
+}
+
+pub fn capture_restart_iomedia_inventory_v3()
+-> Result<HeldRestartIOMediaInventoryV3, AcceptanceError> {
+    #[cfg(target_os = "macos")]
+    {
+        platform::capture_restart_inventory()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err(invalid(
+            "restart IOMedia inventory capture is unsupported outside macOS",
+        ))
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) fn capture_restart_disk_image_url_identity_for_test(
+    disk_image_url: &str,
+) -> Result<RestartDiskImageBackingIdentityV3, AcceptanceError> {
+    platform::capture_restart_url_backing_identity_for_test(disk_image_url)
 }
 
 pub fn capture_pre_attach_iomedia_inventory(
@@ -3375,6 +4117,37 @@ pub fn project_iomedia_identity_v1(
 impl HeldPreAttachIOMediaInventory {
     pub fn report(&self) -> &IOMediaRegistryInventoryV2 {
         unreachable!("non-macOS capture never constructs a held pre-attach capsule")
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+impl HeldDiskImageBacking {
+    pub fn identity(&self) -> Result<DiskImageBackingIdentityV2, AcceptanceError> {
+        Err(invalid(
+            "held disk-image backing replay is unsupported outside macOS",
+        ))
+    }
+
+    pub fn revalidate_identity_after_persistence(
+        &self,
+        _expected: &DiskImageBackingIdentityV2,
+    ) -> Result<(), AcceptanceError> {
+        Err(invalid(
+            "held disk-image backing replay is unsupported outside macOS",
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+impl HeldRestartIOMediaInventoryV3 {
+    pub fn report(&self) -> &RestartIOMediaInventoryV3 {
+        unreachable!("non-macOS capture never constructs a restart inventory")
+    }
+
+    pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
+        Err(invalid(
+            "restart IOMedia replay is unsupported outside macOS",
+        ))
     }
 }
 
