@@ -258,16 +258,139 @@ struct LifecycleIssueBindingV3 {
     sequence: u32,
 }
 
+struct RetainedLifecycleRecordV3 {
+    binding: FilesystemBindingV3,
+    file: File,
+    name: String,
+    record_sha256: String,
+    size: usize,
+}
+
+enum LifecycleReplaySourceV3 {
+    Retained {
+        operation_directory: File,
+        operation_directory_binding: FilesystemBindingV3,
+        records: Vec<RetainedLifecycleRecordV3>,
+        roster: Vec<String>,
+    },
+    #[cfg(test)]
+    Synthetic,
+}
+
 /// Exact canonical V2 replay product.  Fields are private so caller-provided
 /// effect IDs, tips, or collector digests cannot stand in for lifecycle bytes.
 pub(crate) struct VerifiedLifecycleIssueRosterV3 {
     issues: Vec<LifecycleIssueBindingV3>,
     operation_nonce: String,
+    source: LifecycleReplaySourceV3,
     terminal_record_sha256: String,
 }
 
 impl VerifiedLifecycleIssueRosterV3 {
+    /// Capture canonical V2 numbered records directly from their retained
+    /// operation directory.  Production callers cannot substitute an
+    /// in-memory journal or self-reported digest for this descriptor roster.
+    pub(crate) fn capture(
+        operation_directory: &File,
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        require_current_owner(expected_uid, expected_gid)?;
+        let operation_directory = operation_directory.try_clone()?;
+        let operation_directory_binding = validate_directory(
+            &operation_directory,
+            expected_uid,
+            expected_gid,
+            None,
+            "V2 lifecycle operation directory",
+        )?;
+        let roster = lifecycle_record_roster(operation_directory.as_raw_fd())?;
+        if roster.is_empty() || roster.len() > MAX_LIFECYCLE_RECORDS_V3 {
+            return Err(invalid(
+                "V2 lifecycle descriptor roster is empty or exceeds its bound",
+            ));
+        }
+        let mut aggregate = 0usize;
+        let mut bytes = Vec::with_capacity(roster.len());
+        let mut retained = Vec::with_capacity(roster.len());
+        for (index, name) in roster.iter().enumerate() {
+            if lifecycle_record_name(index + 1) != *name {
+                return Err(invalid(
+                    "V2 lifecycle descriptor roster is not contiguous and canonical",
+                ));
+            }
+            let file = openat_issue_file(operation_directory.as_raw_fd(), name)?;
+            let initial = binding(&file)?;
+            let size = usize::try_from(initial.size)
+                .ok()
+                .filter(|size| *size > 0 && *size <= MAX_ISSUE_BYTES_V3)
+                .ok_or_else(|| invalid("V2 lifecycle record size is outside its bound"))?;
+            aggregate = aggregate
+                .checked_add(size)
+                .filter(|total| *total <= MAX_TOTAL_LIFECYCLE_BYTES_V3)
+                .ok_or_else(|| invalid("V2 lifecycle descriptor aggregate exceeds its bound"))?;
+            let binding = validate_issue_file(
+                &file,
+                expected_uid,
+                expected_gid,
+                operation_directory_binding.dev,
+                size,
+                "retained V2 lifecycle record",
+            )?;
+            if binding != initial
+                || named_binding(operation_directory.as_raw_fd(), name)? != binding
+            {
+                return Err(invalid(
+                    "V2 lifecycle record pathname differs from its retained descriptor",
+                ));
+            }
+            let record_bytes = read_exact_file(&file, binding)?;
+            let record_sha256 = sha256(&record_bytes);
+            bytes.push(record_bytes);
+            retained.push(RetainedLifecycleRecordV3 {
+                binding,
+                file,
+                name: name.clone(),
+                record_sha256,
+                size,
+            });
+        }
+        if lifecycle_record_roster(operation_directory.as_raw_fd())? != roster
+            || !same_directory_object(
+                validate_directory(
+                    &operation_directory,
+                    expected_uid,
+                    expected_gid,
+                    None,
+                    "V2 lifecycle operation directory final capture",
+                )?,
+                operation_directory_binding,
+            )
+        {
+            return Err(invalid(
+                "V2 lifecycle descriptor roster changed during capture",
+            ));
+        }
+        let source = LifecycleReplaySourceV3::Retained {
+            operation_directory,
+            operation_directory_binding,
+            records: retained,
+            roster,
+        };
+        let result = Self::replay_with_source(&bytes, source)?;
+        result.revalidate()?;
+        Ok(result)
+    }
+
+    #[cfg(test)]
     pub(crate) fn replay(records: &[Vec<u8>]) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        Self::replay_with_source(records, LifecycleReplaySourceV3::Synthetic)
+    }
+
+    fn replay_with_source(
+        records: &[Vec<u8>],
+        source: LifecycleReplaySourceV3,
+    ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
         if records.len() > MAX_LIFECYCLE_RECORDS_V3 {
             return Err(invalid("lifecycle roster exceeds its fixed replay bound"));
         }
@@ -337,6 +460,7 @@ impl VerifiedLifecycleIssueRosterV3 {
         Ok(Self {
             issues,
             operation_nonce: inspection.operation_nonce,
+            source,
             terminal_record_sha256: inspection.terminal_record_sha256,
         })
     }
@@ -347,6 +471,71 @@ impl VerifiedLifecycleIssueRosterV3 {
 
     pub(crate) fn terminal_record_sha256(&self) -> &str {
         &self.terminal_record_sha256
+    }
+
+    fn revalidate(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        match &self.source {
+            LifecycleReplaySourceV3::Retained {
+                operation_directory,
+                operation_directory_binding,
+                records,
+                roster,
+            } => {
+                let operation = validate_directory(
+                    operation_directory,
+                    operation_directory_binding.uid,
+                    operation_directory_binding.gid,
+                    None,
+                    "retained V2 lifecycle operation directory",
+                )?;
+                if !same_directory_object(operation, *operation_directory_binding)
+                    || lifecycle_record_roster(operation_directory.as_raw_fd())? != *roster
+                {
+                    return Err(invalid("retained V2 lifecycle roster changed"));
+                }
+                for record in records {
+                    if binding(&record.file)? != record.binding
+                        || named_binding(operation_directory.as_raw_fd(), &record.name)?
+                            != record.binding
+                        || validate_issue_file(
+                            &record.file,
+                            operation_directory_binding.uid,
+                            operation_directory_binding.gid,
+                            operation_directory_binding.dev,
+                            record.size,
+                            "retained V2 lifecycle record replay",
+                        )? != record.binding
+                        || sha256(&read_exact_file(&record.file, record.binding)?)
+                            != record.record_sha256
+                        || named_binding(operation_directory.as_raw_fd(), &record.name)?
+                            != record.binding
+                    {
+                        return Err(invalid(
+                            "retained V2 lifecycle record changed during replay",
+                        ));
+                    }
+                }
+                if lifecycle_record_roster(operation_directory.as_raw_fd())? != *roster
+                    || !same_directory_object(
+                        validate_directory(
+                            operation_directory,
+                            operation_directory_binding.uid,
+                            operation_directory_binding.gid,
+                            None,
+                            "retained V2 lifecycle operation directory final replay",
+                        )?,
+                        *operation_directory_binding,
+                    )
+                {
+                    return Err(invalid(
+                        "retained V2 lifecycle roster changed across final replay",
+                    ));
+                }
+                Ok(())
+            }
+            #[cfg(test)]
+            LifecycleReplaySourceV3::Synthetic => Ok(()),
+        }
     }
 }
 
@@ -458,6 +647,7 @@ impl DurableEffectIssueStoreV3 {
         expected_uid: u32,
         expected_gid: u32,
     ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        lifecycle.revalidate()?;
         if !lifecycle.issues.is_empty() {
             return Err(invalid(
                 "new V3 issue directory must exist before the first V2 issue",
@@ -557,6 +747,7 @@ impl DurableEffectIssueStoreV3 {
             ));
         }
         reject_issue_directory_aliases(operation_directory.as_raw_fd(), true)?;
+        lifecycle.revalidate()?;
         Ok(Self {
             directory,
             directory_binding,
@@ -872,6 +1063,7 @@ impl DurableEffectIssueStoreV3 {
                     "V3 issue or directory changed across final publication replay",
                 ));
             }
+            lifecycle.revalidate()?;
             hook(PublishCutpointV3::FinalReplayed)?;
             Ok((
                 IssueFileCapsuleV3 {
@@ -927,6 +1119,7 @@ impl DurableEffectIssueStoreV3 {
         &self,
         lifecycle: &VerifiedLifecycleIssueRosterV3,
     ) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        lifecycle.revalidate()?;
         if lifecycle.operation_nonce != self.operation_nonce
             || lifecycle.issues.len() < self.issues.len()
         {
@@ -1304,6 +1497,39 @@ fn parse_issue_name(name: &str) -> Option<(u64, String)> {
         return None;
     }
     Some((effect_id, digest.to_string()))
+}
+
+fn lifecycle_record_name(sequence: usize) -> String {
+    format!("{sequence:08}.json")
+}
+
+fn parse_lifecycle_record_name(name: &str) -> Option<usize> {
+    let sequence = name.strip_suffix(".json")?;
+    if sequence.len() != 8 || !sequence.as_bytes().iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let sequence = sequence.parse::<usize>().ok().filter(|value| *value != 0)?;
+    (lifecycle_record_name(sequence) == name).then_some(sequence)
+}
+
+fn lifecycle_record_roster(
+    operation_directory_fd: RawFd,
+) -> Result<Vec<String>, DurableEffectIssueStoreErrorV3> {
+    let names = list_directory(operation_directory_fd, MAX_OPERATION_ENTRIES_V3)?;
+    let mut records = Vec::new();
+    for name in names {
+        if name == ISSUE_DIRECTORY_NAME_V3 {
+            continue;
+        }
+        if name.contains("effect-issues-v3") || parse_lifecycle_record_name(&name).is_none() {
+            return Err(invalid(
+                "operation contains a noncanonical lifecycle or V3 issue-root entry",
+            ));
+        }
+        records.push(name);
+    }
+    records.sort();
+    Ok(records)
 }
 
 fn reject_issue_directory_aliases(

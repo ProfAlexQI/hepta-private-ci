@@ -233,6 +233,27 @@ impl StoreFixture {
     }
 }
 
+fn disk_operation_with_lifecycle(records: &[Vec<u8>]) -> (TempDir, File, PathBuf) {
+    let temporary = tempfile::Builder::new()
+        .prefix(".retained-v2-lifecycle-")
+        .tempdir()
+        .expect("temporary root");
+    std::fs::set_permissions(temporary.path(), std::fs::Permissions::from_mode(0o700))
+        .expect("private temporary root");
+    let operation_path = temporary.path().join(format!("operation-{NONCE}"));
+    std::fs::create_dir(&operation_path).expect("operation directory");
+    std::fs::set_permissions(&operation_path, std::fs::Permissions::from_mode(0o700))
+        .expect("private operation directory");
+    for (index, bytes) in records.iter().enumerate() {
+        publish_test_bytes(
+            &operation_path.join(lifecycle_record_name(index + 1)),
+            bytes,
+        );
+    }
+    let operation = File::open(&operation_path).expect("open operation directory");
+    (temporary, operation, operation_path)
+}
+
 fn unmount_command() -> ExactDisposableCommandV3 {
     ExactDisposableCommandV3::UnmountVolume {
         mounted_binding_sha256: digest('a'),
@@ -320,6 +341,137 @@ fn normal_publish_is_canonical_private_retained_and_replayable() {
     assert_eq!(record.prior_collector_receipt_sha256, digest('e'));
     assert_eq!(record.lifecycle_issue_sequence, 4);
     assert_eq!(record.prior_collector_lifecycle_sequence, 3);
+}
+
+#[test]
+fn production_capture_retains_exact_v2_descriptors_through_publish_and_reopen() {
+    let mut lifecycle = LifecycleFixture::new();
+    let (_temporary, operation, operation_path) = disk_operation_with_lifecycle(&lifecycle.records);
+    let before =
+        VerifiedLifecycleIssueRosterV3::capture(&operation, unsafe { libc::geteuid() }, unsafe {
+            libc::getegid()
+        })
+        .expect("capture collector-bound V2 descriptors");
+    assert_eq!(before.operation_nonce(), NONCE);
+    assert_eq!(
+        before.terminal_record_sha256(),
+        sha256(&lifecycle.records[2])
+    );
+    let mut store = DurableEffectIssueStoreV3::create_new(
+        &operation,
+        &before,
+        unsafe { libc::geteuid() },
+        unsafe { libc::getegid() },
+    )
+    .expect("create issue root under retained lifecycle roster");
+
+    lifecycle.append_unmount();
+    publish_test_bytes(
+        &operation_path.join(lifecycle_record_name(4)),
+        &lifecycle.records[3],
+    );
+    let issued =
+        VerifiedLifecycleIssueRosterV3::capture(&operation, unsafe { libc::geteuid() }, unsafe {
+            libc::getegid()
+        })
+        .expect("capture durable V2 issue descriptor");
+    {
+        let retained = store
+            .persist(
+                &issued,
+                unmount_command(),
+                lifecycle.epochs('7'),
+                Some(digest('c')),
+            )
+            .expect("publish V3 issue from retained V2 descriptors");
+        retained
+            .revalidate()
+            .expect("retained V3 issue remains exact");
+    }
+    drop(store);
+
+    let replay =
+        VerifiedLifecycleIssueRosterV3::capture(&operation, unsafe { libc::geteuid() }, unsafe {
+            libc::getegid()
+        })
+        .expect("recapture exact lifecycle at restart");
+    let reopened = DurableEffectIssueStoreV3::open_existing_required(
+        &operation,
+        &replay,
+        unsafe { libc::geteuid() },
+        unsafe { libc::getegid() },
+    )
+    .expect("reopen exact V2/V3 bijection");
+    assert_eq!(reopened.replayed_issue(1).expect("issue").effect_id(), 1);
+}
+
+#[test]
+fn production_capture_blocks_replaced_or_extended_v2_descriptor_rosters() {
+    let mut lifecycle = LifecycleFixture::new();
+    let (temporary, operation, operation_path) = disk_operation_with_lifecycle(&lifecycle.records);
+    let before =
+        VerifiedLifecycleIssueRosterV3::capture(&operation, unsafe { libc::geteuid() }, unsafe {
+            libc::getegid()
+        })
+        .expect("capture initial V2 descriptors");
+    let mut store = DurableEffectIssueStoreV3::create_new(
+        &operation,
+        &before,
+        unsafe { libc::geteuid() },
+        unsafe { libc::getegid() },
+    )
+    .expect("create issue root");
+
+    lifecycle.append_unmount();
+    let issue_record_path = operation_path.join(lifecycle_record_name(4));
+    publish_test_bytes(&issue_record_path, &lifecycle.records[3]);
+    let issued =
+        VerifiedLifecycleIssueRosterV3::capture(&operation, unsafe { libc::geteuid() }, unsafe {
+            libc::getegid()
+        })
+        .expect("capture issued V2 descriptor roster");
+
+    let displaced = temporary.path().join("displaced-lifecycle-record");
+    std::fs::rename(&issue_record_path, &displaced).expect("displace retained V2 record");
+    publish_test_bytes(&issue_record_path, &lifecycle.records[3]);
+    assert!(
+        issued.revalidate().is_err(),
+        "inode replacement was accepted"
+    );
+    assert!(
+        store
+            .persist(
+                &issued,
+                unmount_command(),
+                lifecycle.epochs('7'),
+                Some(digest('c')),
+            )
+            .is_err(),
+        "a replaced retained V2 descriptor authorized V3 publication"
+    );
+    assert!(
+        operation_path
+            .join(ISSUE_DIRECTORY_NAME_V3)
+            .read_dir()
+            .expect("issue root")
+            .next()
+            .is_none(),
+        "failed descriptor replay left a V3 issue"
+    );
+
+    let replacement =
+        VerifiedLifecycleIssueRosterV3::capture(&operation, unsafe { libc::geteuid() }, unsafe {
+            libc::getegid()
+        })
+        .expect("capture replacement roster independently");
+    publish_test_bytes(
+        &operation_path.join(lifecycle_record_name(5)),
+        &lifecycle.records[0],
+    );
+    assert!(
+        replacement.revalidate().is_err(),
+        "post-capture roster extension was accepted"
+    );
 }
 
 #[test]
