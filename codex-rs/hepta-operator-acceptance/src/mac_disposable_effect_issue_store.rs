@@ -17,6 +17,7 @@ use crate::mac_disposable_lifecycle::DisposableLifecycleRecordV2;
 use crate::mac_disposable_lifecycle::EffectPurposeV2;
 use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
+use crate::mac_disposable_lifecycle_store::RetainedEffectIssueSourceV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleIssueSourceV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorIssueBindingV3;
 #[cfg(test)]
@@ -892,8 +893,12 @@ impl DurableEffectIssueStoreV3 {
         Self::open_existing_directory(operation_directory, lifecycle, expected_uid, expected_gid)
     }
 
-    pub(crate) fn open_existing_from_s2(
+    /// Consume the exact S1-retained issue directory and file descriptors
+    /// transferred through the sealed S2 restart wiring.  No path reopen or
+    /// caller-provided format flag can substitute for these capsules.
+    pub(crate) fn open_existing_from_retained_s1(
         source: RetainedLifecycleIssueSourceV3<'_>,
+        retained: RetainedEffectIssueSourceV3,
         lifecycle: &VerifiedLifecycleIssueRosterV3,
     ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
         if source.operation_nonce() != lifecycle.operation_nonce() {
@@ -901,12 +906,60 @@ impl DurableEffectIssueStoreV3 {
                 "sealed S2 operation differs from the lifecycle issue roster",
             ));
         }
-        Self::open_existing_directory(
-            source.directory(),
+        let expected_uid = source.expected_uid();
+        let expected_gid = source.expected_gid();
+        require_current_owner(expected_uid, expected_gid)?;
+        let operation_directory = source.directory().try_clone()?;
+        let operation_directory_binding = validate_directory(
+            &operation_directory,
+            expected_uid,
+            expected_gid,
+            None,
+            "retained S1 V3 operation directory",
+        )?;
+        require_absent(
+            operation_directory.as_raw_fd(),
+            ISSUE_DIRECTORY_TEMPORARY_NAME_V3,
+        )?;
+        reject_issue_directory_aliases(operation_directory.as_raw_fd(), true)?;
+        let (directory, expected_directory_inode, retained_issues) = retained.into_parts();
+        let directory_binding = validate_directory(
+            &directory,
+            expected_uid,
+            expected_gid,
+            Some(operation_directory_binding.dev),
+            "retained S1 V3 issue directory",
+        )?;
+        if (directory_binding.dev, directory_binding.inode) != expected_directory_inode
+            || named_binding(operation_directory.as_raw_fd(), ISSUE_DIRECTORY_NAME_V3)?
+                != directory_binding
+        {
+            return Err(invalid(
+                "S2 V3 issue directory differs from the exact retained S1 descriptor",
+            ));
+        }
+        let issues = replay_retained_issue_directory(
+            &directory,
+            directory_binding,
+            expected_uid,
+            expected_gid,
+            retained_issues,
             lifecycle,
-            source.expected_uid(),
-            source.expected_gid(),
-        )
+        )?;
+        let store = Self {
+            directory,
+            directory_binding,
+            expected_gid,
+            expected_uid,
+            issues,
+            operation_directory,
+            operation_directory_binding,
+            operation_nonce: lifecycle.operation_nonce.clone(),
+            poisoned: false,
+            _not_send_or_sync: PhantomData,
+        };
+        store.revalidate_against(lifecycle)?;
+        Ok(store)
     }
 
     fn open_existing_directory(
@@ -1628,6 +1681,96 @@ fn replay_issue_directory(
     }
     if !by_effect.is_empty() {
         return Err(invalid("V3 issue roster contains orphan entries"));
+    }
+    Ok(issues)
+}
+
+fn replay_retained_issue_directory(
+    directory: &File,
+    directory_binding: FilesystemBindingV3,
+    expected_uid: u32,
+    expected_gid: u32,
+    retained_issues: Vec<(String, Vec<u8>, File, (u64, u64))>,
+    lifecycle: &VerifiedLifecycleIssueRosterV3,
+) -> Result<Vec<IssueFileCapsuleV3>, DurableEffectIssueStoreErrorV3> {
+    let names = list_directory(directory.as_raw_fd(), MAX_ISSUES_V3)?;
+    let retained_names = retained_issues
+        .iter()
+        .map(|(name, _, _, _)| name.clone())
+        .collect::<Vec<_>>();
+    if names != retained_names || names.len() != lifecycle.issues.len() {
+        return Err(invalid(
+            "V3 issue roster differs from the exact retained S1 capsules or V2 issued roster",
+        ));
+    }
+    let mut by_effect = BTreeMap::new();
+    let mut aggregate = 0usize;
+    for (name, retained_bytes, file, expected_inode) in retained_issues {
+        let (effect_id, name_sha256) = parse_issue_name(&name)
+            .ok_or_else(|| invalid("retained S1 V3 issue name is noncanonical"))?;
+        if by_effect.contains_key(&effect_id) {
+            return Err(invalid(
+                "retained S1 V3 issue roster duplicates an effect ID",
+            ));
+        }
+        let size = retained_bytes.len();
+        if size == 0 || size > MAX_ISSUE_BYTES_V3 {
+            return Err(invalid("retained S1 V3 issue size is outside its bound"));
+        }
+        aggregate = aggregate
+            .checked_add(size)
+            .filter(|total| *total <= MAX_TOTAL_ISSUE_BYTES_V3)
+            .ok_or_else(|| invalid("retained S1 V3 issue aggregate exceeds its bound"))?;
+        let issue_binding = validate_issue_file(
+            &file,
+            expected_uid,
+            expected_gid,
+            directory_binding.dev,
+            size,
+            "retained S1 V3 issue file",
+        )?;
+        if (issue_binding.dev, issue_binding.inode) != expected_inode
+            || named_binding(directory.as_raw_fd(), &name)? != issue_binding
+            || read_exact_file(&file, issue_binding)? != retained_bytes
+        {
+            return Err(invalid(
+                "S2 V3 issue capsule differs from the exact retained S1 descriptor",
+            ));
+        }
+        let record_sha256 = sha256(&retained_bytes);
+        if record_sha256 != name_sha256 {
+            return Err(invalid(
+                "retained S1 V3 issue bytes differ from their filename digest",
+            ));
+        }
+        let expected = lifecycle
+            .issues
+            .iter()
+            .find(|issue| issue.effect_id == effect_id)
+            .ok_or_else(|| invalid("retained S1 V3 issue is orphaned from V2"))?;
+        let record = decode_and_validate_record(&retained_bytes, &name, expected)?;
+        by_effect.insert(
+            effect_id,
+            IssueFileCapsuleV3 {
+                binding: issue_binding,
+                bytes: retained_bytes,
+                file,
+                name,
+                record,
+                record_sha256,
+            },
+        );
+    }
+    let mut issues = Vec::with_capacity(lifecycle.issues.len());
+    for expected in &lifecycle.issues {
+        issues.push(
+            by_effect
+                .remove(&expected.effect_id)
+                .ok_or_else(|| invalid("retained S1 V3 issue is missing for a V2 issue"))?,
+        );
+    }
+    if !by_effect.is_empty() {
+        return Err(invalid("retained S1 V3 issue roster contains orphans"));
     }
     Ok(issues)
 }

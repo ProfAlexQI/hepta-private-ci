@@ -41,12 +41,20 @@ macro_rules! assert_not_impl {
 
 type BlockingCensusForCompileAssertions =
     RetainedControlCensusV3<'static, BlockingOperationV3, StableMountStateV3>;
+type CompletedCensusForCompileAssertions =
+    RetainedControlCensusV3<'static, CompletedOperationV3, StableMountStateV3>;
 assert_not_impl!(BlockingCensusForCompileAssertions, Clone);
 assert_not_impl!(BlockingCensusForCompileAssertions, Send);
 assert_not_impl!(BlockingCensusForCompileAssertions, Sync);
 assert_not_impl!(BlockingCensusForCompileAssertions, serde::Serialize);
 assert_not_impl!(BlockingCensusForCompileAssertions, std::os::fd::AsRawFd);
 assert_not_impl!(BlockingCensusForCompileAssertions, From<std::fs::File>);
+assert_not_impl!(CompletedCensusForCompileAssertions, Clone);
+assert_not_impl!(CompletedCensusForCompileAssertions, Send);
+assert_not_impl!(CompletedCensusForCompileAssertions, Sync);
+assert_not_impl!(CompletedCensusForCompileAssertions, serde::Serialize);
+assert_not_impl!(CompletedCensusForCompileAssertions, std::os::fd::AsRawFd);
+assert_not_impl!(CompletedCensusForCompileAssertions, From<std::fs::File>);
 
 fn digest(byte: char) -> String {
     byte.to_string().repeat(64)
@@ -507,6 +515,17 @@ fn clean_storage_receipt_is_complete_but_never_grants_authority() {
 }
 
 #[test]
+fn one_policy_and_flock_can_cast_only_one_live_s1_assessment() {
+    let temporary = tempfile::tempdir().expect("temporary root parent");
+    let root = temporary.path().join("control");
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+    let first = control.assess_read_only().expect("first linear assessment");
+    assert!(control.assess_read_only().is_err());
+    drop(first);
+    assert!(control.assess_read_only().is_err());
+}
+
+#[test]
 fn stable_mount_typestate_retains_the_exact_full_snapshot() {
     let temporary = tempfile::tempdir().expect("temporary root parent");
     let root = temporary.path().join("control");
@@ -691,7 +710,7 @@ fn blocking_census_rejects_foreign_roster_and_selected_inode_replacement() {
         fs::create_dir(&foreign).expect("foreign operation");
         fs::set_permissions(&foreign, fs::Permissions::from_mode(0o700))
             .expect("foreign operation mode");
-        assert!(census.prepare_existing_store().is_err());
+        assert!(census.revalidate().is_err());
     }
 
     {
@@ -712,7 +731,7 @@ fn blocking_census_rejects_foreign_roster_and_selected_inode_replacement() {
         fs::rename(&original, temporary.path().join("stale-operation"))
             .expect("move retained inode aside");
         write_operation(&root, &nonce, &nonce);
-        assert!(census.prepare_existing_store().is_err());
+        assert!(census.revalidate().is_err());
     }
 }
 
@@ -916,6 +935,8 @@ fn final_revalidation_rejects_roster_mutation() {
         Ok(())
     });
     assert_rejected(result);
+    fs::remove_file(operations.join("late-entry")).expect("restore test roster");
+    assert_rejected(control.assess_read_only());
 }
 
 #[test]
