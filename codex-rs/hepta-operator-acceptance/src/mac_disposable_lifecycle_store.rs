@@ -524,7 +524,9 @@ struct PersistedOperationIssueSealV3 {
 /// The only production-capable S2-to-runner handoff.  `issue` is the actual
 /// exclusive borrow of the whole reconciliation store; `dispatch` embeds the
 /// exact durable issue bytes and the S1-derived lease.  Neither component has
-/// a raw descriptor or digest projection.
+/// a raw descriptor or digest projection.  There is deliberately no benign
+/// Drop path: until a future sealed successor consumes this entire token, any
+/// release would otherwise make an issued-or-uncertain operation reusable.
 pub(crate) struct PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
     issue: RetainedOperationEffectIssueV3<'store, 'a, 'e>,
     dispatch: Option<SealedRunnerDispatchV3>,
@@ -536,21 +538,26 @@ pub(crate) struct PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
 pub(crate) struct IssuedEffectSessionV3<'store, 'a, 'e> {
     runner: Option<AuthenticatedDispatchedRunnerV3>,
     grant: Option<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>>,
-    death_proven: bool,
+    proof_and_grant_transferred: bool,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 /// A post-durability dispatch failure retains the same whole-store grant until
-/// a composite death proof exists.  Drop poisons the in-memory wrapper if
-/// fail-closed cleanup cannot prove the runner dead.
+/// a composite death proof exists.  Best-effort cleanup may retain that proof,
+/// but Drop still poisons unless an explicit transition moves the proof and
+/// whole-store grant together into `IssuedEffectDeathProvedV3`.
 pub(crate) struct IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
     error: String,
     runner_failure: Option<IssuedRunnerDispatchFailureV3>,
     grant: Option<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>>,
-    death_proven: bool,
+    proof_and_grant_transferred: bool,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
+/// Same-supervisor death evidence still bound to the exact issued operation.
+/// There is no owned-proof projection.  Until a future durable successor
+/// consumes this entire value, its retained grant keeps the wrapper armed and
+/// poisons again on Drop.
 pub(crate) struct IssuedEffectDeathProvedV3<'store, 'a, 'e> {
     proof: SameSupervisorRunnerDeathProofV3,
     receipt: Option<InertDispatchReceiptV3>,
@@ -1746,20 +1753,14 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         ) {
             Ok(dispatch) => dispatch,
             Err(error) => {
-                issue.poison_after_unproved_runner_drop();
+                issue.poison_after_unconsumed_runner_proof_drop();
                 return Err(error.into());
             }
         };
-        let grant = PersistedIssuedRunnerGrantV3 {
+        Ok(PersistedIssuedRunnerGrantV3::new_armed(
             issue,
-            dispatch: Some(dispatch),
-            _not_send_or_sync: PhantomData,
-        };
-        // The whole grant now exists.  Disarm through its exclusive operation
-        // borrow only after every epoch/lease/dispatch seal has succeeded; a
-        // panic at any earlier outer cutpoint leaves the wrapper fail-closed.
-        grant.issue.store.poisoned = false;
-        Ok(grant)
+            Some(dispatch),
+        ))
     }
 
     /// Produce the distinct fresh-supervisor death proof for the latest exact
@@ -2480,7 +2481,7 @@ impl RetainedOperationEffectIssueV3<'_, '_, '_> {
         })
     }
 
-    pub(crate) fn poison_after_unproved_runner_drop(&mut self) {
+    pub(crate) fn poison_after_unconsumed_runner_proof_drop(&mut self) {
         self.store.poisoned = true;
     }
 
@@ -2499,6 +2500,22 @@ impl SealedRunnerIssueMaterialV3 {
 }
 
 impl<'store, 'a, 'e> PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
+    fn new_armed(
+        issue: RetainedOperationEffectIssueV3<'store, 'a, 'e>,
+        dispatch: Option<SealedRunnerDispatchV3>,
+    ) -> Self {
+        // Keep the wrapper armed while the linear grant exists.  `Drop` is a
+        // useful explicit guard, but safe Rust may also forget a value.  Only
+        // a future sealed durable successor which consumes this entire grant
+        // may introduce a private disarm transition.
+        issue.store.poisoned = true;
+        Self {
+            issue,
+            dispatch,
+            _not_send_or_sync: PhantomData,
+        }
+    }
+
     pub(crate) fn effect_id(&self) -> u64 {
         self.issue.effect_id()
     }
@@ -2514,13 +2531,13 @@ impl<'store, 'a, 'e> PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
     ) -> Result<IssuedEffectSessionV3<'store, 'a, 'e>, IssuedEffectDispatchFailureV3<'store, 'a, 'e>>
     {
         if let Err(error) = self.issue.revalidate() {
-            self.issue.poison_after_unproved_runner_drop();
+            self.issue.poison_after_unconsumed_runner_proof_drop();
             drop(runner);
             return Err(IssuedEffectDispatchFailureV3 {
                 error: format!("exact S2 issue changed before dispatch: {error}"),
                 runner_failure: None,
                 grant: Some(self),
-                death_proven: true,
+                proof_and_grant_transferred: false,
                 _not_send_or_sync: PhantomData,
             });
         }
@@ -2532,21 +2549,32 @@ impl<'store, 'a, 'e> PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
             Ok(runner) => Ok(IssuedEffectSessionV3 {
                 runner: Some(runner),
                 grant: Some(self),
-                death_proven: false,
+                proof_and_grant_transferred: false,
                 _not_send_or_sync: PhantomData,
             }),
             Err(failure) => {
                 let error = failure.error().to_string();
-                let death_proven = failure.has_death_proof();
                 Err(IssuedEffectDispatchFailureV3 {
                     error,
                     runner_failure: Some(failure),
                     grant: Some(self),
-                    death_proven,
+                    proof_and_grant_transferred: false,
                     _not_send_or_sync: PhantomData,
                 })
             }
         }
+    }
+}
+
+impl Drop for PersistedIssuedRunnerGrantV3<'_, '_, '_> {
+    fn drop(&mut self) {
+        // The grant is the linear whole-operation capability.  Dispatching it,
+        // proving the runner dead, or merely observing that proof does not by
+        // itself durably advance reconciliation.  SAFE-INERT has no sealed
+        // successor yet, so every Drop remains fail-closed.  A future
+        // successor must consume this whole token and perform its durable
+        // transition before it may add a private disarm path.
+        self.issue.poison_after_unconsumed_runner_proof_drop();
     }
 }
 
@@ -2587,7 +2615,7 @@ impl<'store, 'a, 'e> IssuedEffectSessionV3<'store, 'a, 'e> {
             .grant
             .take()
             .expect("issued session retains its whole-store grant");
-        self.death_proven = true;
+        self.proof_and_grant_transferred = true;
         Ok(IssuedEffectDeathProvedV3 {
             proof,
             receipt: Some(receipt),
@@ -2599,19 +2627,22 @@ impl<'store, 'a, 'e> IssuedEffectSessionV3<'store, 'a, 'e> {
 
 impl Drop for IssuedEffectSessionV3<'_, '_, '_> {
     fn drop(&mut self) {
-        if self.death_proven {
+        if self.proof_and_grant_transferred {
             return;
         }
-        let proved = self
+        let _cleanup_result = self
             .runner
             .as_mut()
             .map(|runner| runner.ensure_death_proof(std::time::Duration::from_secs(5)))
-            .transpose()
-            .is_ok();
-        if !proved {
-            if let Some(grant) = self.grant.as_mut() {
-                grant.issue.poison_after_unproved_runner_drop();
-            }
+            .transpose();
+        // Cleanup may retain a valid proof inside the runner, but Drop is not
+        // the sealed state transition which consumes and returns that proof.
+        // Releasing the whole-store borrow without an explicit successor
+        // would make the issued operation reusable while its only proof is
+        // destroyed.  Always poison unless `finish_after_death_proof` moved
+        // both the proof and grant into `IssuedEffectDeathProvedV3`.
+        if let Some(grant) = self.grant.as_mut() {
+            grant.issue.poison_after_unconsumed_runner_proof_drop();
         }
     }
 }
@@ -2636,7 +2667,7 @@ impl<'store, 'a, 'e> IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
             .grant
             .take()
             .expect("failed dispatch retains its whole-store grant");
-        self.death_proven = true;
+        self.proof_and_grant_transferred = true;
         Ok(IssuedEffectDeathProvedV3 {
             proof,
             receipt: None,
@@ -2648,19 +2679,16 @@ impl<'store, 'a, 'e> IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
 
 impl Drop for IssuedEffectDispatchFailureV3<'_, '_, '_> {
     fn drop(&mut self) {
-        if self.death_proven {
+        if self.proof_and_grant_transferred {
             return;
         }
-        let proved = self
+        let _cleanup_result = self
             .runner_failure
             .as_mut()
             .map(|failure| failure.ensure_death_proof(std::time::Duration::from_secs(5)))
-            .transpose()
-            .is_ok();
-        if !proved {
-            if let Some(grant) = self.grant.as_mut() {
-                grant.issue.poison_after_unproved_runner_drop();
-            }
+            .transpose();
+        if let Some(grant) = self.grant.as_mut() {
+            grant.issue.poison_after_unconsumed_runner_proof_drop();
         }
     }
 }
@@ -2672,10 +2700,6 @@ impl IssuedEffectDeathProvedV3<'_, '_, '_> {
 
     pub(crate) fn receipt(&self) -> Option<&InertDispatchReceiptV3> {
         self.receipt.as_ref()
-    }
-
-    pub(crate) fn into_same_supervisor_proof(self) -> SameSupervisorRunnerDeathProofV3 {
-        self.proof
     }
 }
 

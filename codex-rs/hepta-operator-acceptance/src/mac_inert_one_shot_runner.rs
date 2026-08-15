@@ -2003,15 +2003,6 @@ impl IssuedRunnerDispatchFailureV3 {
         &self.error
     }
 
-    pub(crate) fn has_death_proof(&self) -> bool {
-        self.proof.is_some()
-            || self
-                .runner
-                .as_ref()
-                .and_then(|runner| runner.retained_death_proof.as_ref())
-                .is_some()
-    }
-
     pub(crate) fn ensure_death_proof(
         &mut self,
         timeout: Duration,
